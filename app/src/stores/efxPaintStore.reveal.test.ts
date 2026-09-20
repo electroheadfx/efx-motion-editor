@@ -6,6 +6,7 @@ import {
   physicPaintStore,
   _setPhysicPaintMarkDirtyCallback,
   _setPhysicPaintCompositorSizeProvider,
+  commitRevealBake,
   registerReferenceSourceImage,
 } from './physicPaintStore';
 import {
@@ -656,5 +657,132 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     // The descriptor carries no raster bytes — the document carries sidecar
     // refs, never raster-byte snapshots (RVL-06).
     expect(JSON.stringify(descriptor)).not.toContain('baked-');
+  });
+});
+
+/**
+ * WR-02 (260920-kov): the D-15 frame-aligned law at the BAKE boundary.
+ *
+ * `_resolveReferenceSourceImage(document, frame)` is frame-aligned by
+ * construction (frame N → source frame N, clamped at the last source frame),
+ * but `commitRevealBake` called it ONCE at `canonicalStart` and handed the
+ * single verdict's bytes to the renderer for every frame of the span. A
+ * multi-image reference was therefore baked frame-AGNOSTIC — every key carried
+ * the span-start image — while the bake's own comment claimed frame alignment.
+ *
+ * These legs drive the real store + the real bake commit path (the renderer
+ * module is the harness's mock, as in the rest of this file) and read the
+ * `reference` argument the bake hands to the renderer. A span starting at or
+ * after the last source frame clamps identically either way, so the legs use a
+ * span STARTING AT FRAME 0 — the only shape where frame-alignment and
+ * single-resolution actually diverge.
+ */
+describe('reveal bake frame-aligned reference resolution — WR-02 (260920-kov)', () => {
+  beforeEach(() => {
+    physicPaintStore.reset();
+    reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+    _setEfxPaintRevealScriptLoader(async () => script);
+    harness.renderReveal.mockReset();
+  });
+
+  /** Register a multi-image reference on a fresh reveal-ready layer. */
+  function registerMultiImageLayer(layerId: string, refs: readonly string[]): void {
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, [...refs]);
+  }
+
+  /** The `reference` argument the bake handed the (mocked) renderer. */
+  function renderReference(): { bytesByAppFrame?: ReadonlyMap<number, Uint8Array>; bytes?: Uint8Array; zoom: number } {
+    const call = harness.renderReveal.mock.calls[0]![0] as { reference: { bytesByAppFrame?: ReadonlyMap<number, Uint8Array>; bytes?: Uint8Array; zoom: number } };
+    return call.reference;
+  }
+
+  it('WR-02: a multi-image reference bakes frame-aligned — frame N carries source frame N (D-15)', async () => {
+    const layerId = 'layer-reveal';
+    registerMultiImageLayer(layerId, ['ref-0', 'ref-1', 'ref-2']);
+    registerReferenceSourceImage('ref-0', testWebpBytes('ref-0'));
+    registerReferenceSourceImage('ref-1', testWebpBytes('ref-1'));
+    registerReferenceSourceImage('ref-2', testWebpBytes('ref-2'));
+
+    // Span [0, 3): the span where frame-alignment and single-resolution diverge.
+    await createRail(layerId, 0, 3);
+
+    expect(harness.renderReveal).toHaveBeenCalledTimes(1);
+    const bytesByAppFrame = renderReference().bytesByAppFrame;
+    expect(bytesByAppFrame).toBeDefined();
+    expect([...bytesByAppFrame!.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    expect(bytesByAppFrame!.get(0)).toEqual(testWebpBytes('ref-0'));
+    expect(bytesByAppFrame!.get(1)).toEqual(testWebpBytes('ref-1'));
+    expect(bytesByAppFrame!.get(2)).toEqual(testWebpBytes('ref-2'));
+  });
+
+  it('WR-02: an unresolved reference at ANY span frame fails the bake closed — no keys, no rail (D-12)', async () => {
+    const layerId = 'layer-reveal';
+    registerMultiImageLayer(layerId, ['ref-0', 'ref-1', 'ref-2']);
+    registerReferenceSourceImage('ref-0', testWebpBytes('ref-0'));
+    // ref-1 deliberately left unregistered — the middle frame of the span.
+    registerReferenceSourceImage('ref-2', testWebpBytes('ref-2'));
+    // The renderer would happily produce the span — the point is that the
+    // STORE must refuse before ever reaching it.
+    harness.renderReveal.mockResolvedValue(stagedFrames(0, 3));
+
+    const bakeResult = await commitRevealBake({
+      layerId,
+      trackId: TEST_TRACK_ID,
+      script,
+      frameCount: 3,
+      canonicalStart: 0,
+      motion: { deformation: 0, position: 0 },
+      mode: 'progressive',
+      signal: new AbortController().signal,
+    });
+    expect(bakeResult).toEqual({ ok: false, error: 'missing reference source' });
+    // Fail-closed BEFORE any render and BEFORE any write.
+    expect(harness.renderReveal).not.toHaveBeenCalled();
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)).toHaveLength(0);
+
+    // The rail-creation entry surfaces the same refusal and writes no clip.
+    const createResult = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 0,
+      frameCount: 3,
+    });
+    expect(createResult).toEqual({ ok: false, reason: 'bake-failed' });
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)).toHaveLength(0);
+  });
+
+  it('WR-02 control: a single-image reference resolves every frame of the span to that image', async () => {
+    const layerId = 'layer-reveal';
+    const single = testWebpBytes('ref-a');
+    registerMultiImageLayer(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', single);
+
+    await createRail(layerId, 0, 3);
+
+    const bytesByAppFrame = renderReference().bytesByAppFrame;
+    expect([...bytesByAppFrame!.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2]);
+    // The clamped-repeat case stays legal, and every frame shares the ONE
+    // registered instance so the renderer's decode-once cache holds.
+    expect(bytesByAppFrame!.get(0)).toEqual(single);
+    expect(bytesByAppFrame!.get(1)).toBe(bytesByAppFrame!.get(0));
+    expect(bytesByAppFrame!.get(2)).toBe(bytesByAppFrame!.get(0));
+  });
+
+  it('WR-02 control: the project→working zoom still rides on the reference object (G-52-2a)', async () => {
+    _setPhysicPaintCompositorSizeProvider(() => ({ width: 1920, height: 1080 }));
+    const layerId = 'layer-reveal';
+    registerMultiImageLayer(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
+
+    await createRail(layerId, 0, 2);
+
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({
+      reference: expect.objectContaining({ zoom: 1920 / 1920 }),
+    }));
   });
 });

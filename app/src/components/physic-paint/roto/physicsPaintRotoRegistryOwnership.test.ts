@@ -133,7 +133,13 @@ function revealInput(extra: Record<string, unknown> = {}): Parameters<typeof ren
     motion: { deformation: 0, position: 0 },
     mode: 'progressive',
     size: { width: 10, height: 10 },
-    reference: { bytes: testWebpBytes('ref'), transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+    // WR-02 (260920-kov): the reference carries a per-application-frame bytes
+    // map — the span [15, 18) resolves every frame to the one shared payload.
+    reference: {
+      bytesByAppFrame: new Map([[15, testWebpBytes('ref')], [16, testWebpBytes('ref')], [17, testWebpBytes('ref')]]),
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      zoom: 1,
+    },
     signal: new AbortController().signal,
     ...extra,
   } as Parameters<typeof renderRotoRevealFrames>[0];

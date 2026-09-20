@@ -36,6 +36,8 @@ const harness = vi.hoisted(() => ({
   maskOps: [] as MaskOp[],
   referenceImage: null as HTMLImageElement | null,
   canvases: [] as Array<{ width: number; height: number }>,
+  /** WR-02 (260920-kov): every createObjectURL call, for the decode-once count. */
+  objectUrlCalls: [] as Array<{ parts?: Uint8Array[] }>,
 }));
 
 vi.mock('@efxlab/efx-physic-paint', () => ({
@@ -111,11 +113,30 @@ class FakeImage {
   get src(): string { return this.currentSrc; }
 }
 
+/** WR-02: a Blob stub that exposes its parts synchronously so the URL mock can label by content. */
+class RecordingBlob {
+  readonly parts: Uint8Array[];
+  readonly type: string;
+  readonly size: number;
+  constructor(parts: Array<Uint8Array | string>, options?: { type?: string }) {
+    this.parts = parts.filter((part): part is Uint8Array => part instanceof Uint8Array);
+    this.type = options?.type ?? '';
+    this.size = this.parts.reduce((total, part) => total + part.byteLength, 0);
+  }
+}
+
 function canvas(): HTMLCanvasElement {
   return { width: 10, height: 10 } as HTMLCanvasElement;
 }
 
 function input(extra: Partial<Parameters<typeof renderRotoRevealFrames>[0]> = {}): Parameters<typeof renderRotoRevealFrames>[0] {
+  const canonicalStart = extra.canonicalStart ?? 4;
+  const frameCount = extra.frameCount ?? 1;
+  // WR-02 (260920-kov): the reference now carries a per-application-frame bytes
+  // map. The default mirrors the store's single-image shape — ONE shared
+  // instance resolving every frame of the span — which is also the decode-once
+  // case (the renderer caches by payload identity).
+  const sharedBytes = testWebpBytes('ref');
   return {
     script: { provenance: { sessionId: 'session', layerId: 'layer', sourceFrame: 0 }, sourceFrame: 0, sourceDisplayFrame: 0, sourceRevision: 1, brushes: [] },
     frameCount: 1,
@@ -123,7 +144,11 @@ function input(extra: Partial<Parameters<typeof renderRotoRevealFrames>[0]> = {}
     motion: { deformation: 0, position: 0 },
     mode: 'progressive',
     size: { width: 10, height: 10 },
-    reference: { bytes: testWebpBytes('ref'), transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+    reference: {
+      bytesByAppFrame: new Map(Array.from({ length: frameCount }, (_, index) => [canonicalStart + index, sharedBytes] as const)),
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      zoom: 1,
+    },
     signal: new AbortController().signal,
     ...extra,
   };
@@ -176,8 +201,19 @@ function setupDom(): void {
   });
   vi.stubGlobal('Image', FakeImage);
   vi.stubGlobal('HTMLImageElement', FakeImage);
+  harness.objectUrlCalls.length = 0;
+  // WR-02 (260920-kov): the object-URL label is derived from the PAYLOAD
+  // CONTENT (the testWebpBytes fixture appends its seed from byte 32), so the
+  // mask-op log can tell distinct reference images apart. A constant label
+  // cannot express "application frame N drew source image N".
+  vi.stubGlobal('Blob', RecordingBlob);
   vi.stubGlobal('URL', {
-    createObjectURL: vi.fn(() => 'blob:reveal-ref'),
+    createObjectURL: vi.fn((blob: unknown) => {
+      const parts = (blob as { parts?: Uint8Array[] } | null)?.parts ?? [];
+      harness.objectUrlCalls.push({ parts });
+      const seed = Array.from(parts[0]?.slice(32) ?? []).map((code) => String.fromCharCode(code)).join('');
+      return `blob:${seed}`;
+    }),
     revokeObjectURL: vi.fn(),
   });
   vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 1; }));
@@ -217,11 +253,11 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
 
   it('draws the reference AS PLACED at full opacity, then applies the coverage alpha as destination-in (D-14/D-17/D-18)', async () => {
     await renderRotoRevealFrames(input({
-      reference: { bytes: testWebpBytes('ref'), transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 }, zoom: 1 },
+      reference: { bytesByAppFrame: new Map([[4, testWebpBytes('ref')]]), transform: { x: 2, y: 3, scaleX: 1.5, scaleY: 0.5, rotation: 45 }, zoom: 1 },
     }));
     const ops = harness.maskOps;
     // The reference draw: save → translate(center + x·zoom, center + y·zoom) → rotate → scale → drawImage(ref, full alpha) → restore
-    const referenceDraw = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref');
+    const referenceDraw = ops.findIndex((op) => op.type === 'drawImage' && op.source === 'blob:ref');
     expect(referenceDraw).toBeGreaterThan(-1);
     const draw = ops[referenceDraw] as Extract<MaskOp, { type: 'drawImage' }>;
     expect(draw.globalAlpha).toBe(1); // D-18: full source opacity, guide opacity ignored
@@ -244,12 +280,12 @@ describe('renderRotoRevealFrames happy path (52-01 Task 1)', () => {
     // Working size 10×10 with zoom 0.5 (a 20×20 project): the reference image
     // (4×3) draws at 2×1.5 and the transform translation scales by zoom.
     await renderRotoRevealFrames(input({
-      reference: { bytes: testWebpBytes('ref'), transform: { x: 2, y: 3, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 0.5 },
+      reference: { bytesByAppFrame: new Map([[4, testWebpBytes('ref')]]), transform: { x: 2, y: 3, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 0.5 },
     }));
     const ops = harness.maskOps;
     const translate = ops.find((op) => op.type === 'translate') as Extract<MaskOp, { type: 'translate' }>;
     expect(translate).toEqual({ type: 'translate', x: 5 + 2 * 0.5, y: 5 + 3 * 0.5 });
-    const referenceDraw = ops.find((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref') as Extract<MaskOp, { type: 'drawImage' }>;
+    const referenceDraw = ops.find((op) => op.type === 'drawImage' && op.source === 'blob:ref') as Extract<MaskOp, { type: 'drawImage' }>;
     expect(referenceDraw.args).toEqual([-1, -0.75, 2, 1.5]);
   });
 
@@ -312,7 +348,7 @@ describe('renderRotoRevealFrames mask semantics (52-01 Task 2, RVL-02/RVL-03)', 
   it('full coverage bakes the full reference: the reference draw precedes the destination-in mask on every frame (RVL-02 full)', async () => {
     await renderRotoRevealFrames(input({ frameCount: 2, script: scriptWithStrokes() }));
     // Two frames → two reference draws + two destination-in masks.
-    const referenceDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref');
+    const referenceDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'blob:ref');
     const maskDraws = harness.maskOps.filter((op) => op.type === 'drawImage' && op.source === 'canvas');
     expect(referenceDraws).toHaveLength(2);
     expect(maskDraws).toHaveLength(2);
@@ -326,7 +362,7 @@ describe('renderRotoRevealFrames mask semantics (52-01 Task 2, RVL-02/RVL-03)', 
     // source-over at full alpha, and the mask only clips alpha. The encode
     // boundary is the existing straight-alpha `encodeRotoFrameFromCanvas`.
     await renderRotoRevealFrames(input({ script: scriptWithStrokes() }));
-    const referenceDraw = harness.maskOps.find((op) => op.type === 'drawImage' && op.source === 'blob:reveal-ref') as Extract<MaskOp, { type: 'drawImage' }>;
+    const referenceDraw = harness.maskOps.find((op) => op.type === 'drawImage' && op.source === 'blob:ref') as Extract<MaskOp, { type: 'drawImage' }>;
     expect(referenceDraw.globalAlpha).toBe(1);
     expect(referenceDraw.globalCompositeOperation).toBe('source-over');
     // No alpha-blend or multiply op is ever set on the mask canvas.
@@ -353,6 +389,96 @@ describe('renderRotoRevealFrames mask semantics (52-01 Task 2, RVL-02/RVL-03)', 
     const rendered = harness.renderedFrames[0].map((entry) => entry.stroke);
     expect(rendered.map((entry) => entry.tool)).toEqual(['paint', 'erase', 'paint']);
     expect(rendered.map((entry) => entry.color)).toEqual(['#123456', null, '#654321']);
+  });
+});
+
+// WR-02 (260920-kov): the D-15 frame-aligned law at the RENDERER boundary.
+// The bake used to decode ONE reference image before the frame loop and reuse
+// it for every frame of the span — the second half of the WR-02 surface. The
+// reference now arrives as a per-application-frame bytes map resolved (and
+// fail-closed pre-validated) by the store, and the render loop picks the image
+// for the frame it is drawing.
+describe('renderRotoRevealFrames frame-aligned reference (WR-02, 260920-kov)', () => {
+  beforeEach(() => {
+    setupDom();
+    setupHarness();
+  });
+
+  /** The ordered labels of the reference draws, one per frame. */
+  function referenceDrawLabels(): string[] {
+    return harness.maskOps
+      .filter((op): op is Extract<MaskOp, { type: 'drawImage' }> => op.type === 'drawImage' && op.source.startsWith('blob:'))
+      .map((op) => op.source);
+  }
+
+  it('WR-02: draws image N on application frame N across the span (D-15)', async () => {
+    const bytesByAppFrame = new Map([
+      [15, testWebpBytes('ref-0')],
+      [16, testWebpBytes('ref-1')],
+      [17, testWebpBytes('ref-2')],
+    ]);
+    await renderRotoRevealFrames(input({
+      frameCount: 3,
+      canonicalStart: 15,
+      script: scriptWithStrokes(),
+      reference: { bytesByAppFrame, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+    }));
+
+    // One reference draw per frame, in frame order, each the image that
+    // resolves at that application frame.
+    expect(referenceDrawLabels()).toEqual(['blob:ref-0', 'blob:ref-1', 'blob:ref-2']);
+    expect(harness.encode).toHaveBeenCalledTimes(3);
+  });
+
+  it('WR-02: a frame with no reference entry fails closed instead of drawing a stale image', async () => {
+    const bytesByAppFrame = new Map([
+      [15, testWebpBytes('ref-0')],
+      // frame 16 deliberately absent — the store pre-validates, so reaching
+      // here means a caller bug and must never silently reuse frame 15's image.
+      [17, testWebpBytes('ref-2')],
+    ]);
+    await expect(renderRotoRevealFrames(input({
+      frameCount: 3,
+      canonicalStart: 15,
+      script: scriptWithStrokes(),
+      reference: { bytesByAppFrame, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+    }))).rejects.toThrow('reference image for frame 16');
+    // Fail closed: frame 15 renders, frame 16 THROWS before any draw — the
+    // reference is never substituted, and the staged prefix is discarded by
+    // the same `staged.length = 0` catch the abort legs rely on.
+    expect(referenceDrawLabels()).toEqual(['blob:ref-0']);
+    expect(harness.encode).toHaveBeenCalledTimes(1);
+  });
+
+  it('WR-02: each DISTINCT payload decodes once — clamped repeats reuse the decoded image (no decode storm)', async () => {
+    // The single-image reference: ONE payload instance resolving every frame of
+    // a 3-frame span (exactly what the store hands for a one-image reference).
+    const shared = testWebpBytes('ref-a');
+    await renderRotoRevealFrames(input({
+      frameCount: 3,
+      canonicalStart: 15,
+      script: scriptWithStrokes(),
+      reference: { bytesByAppFrame: new Map([[15, shared], [16, shared], [17, shared]]), transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }, zoom: 1 },
+    }));
+
+    expect(referenceDrawLabels()).toEqual(['blob:ref-a', 'blob:ref-a', 'blob:ref-a']);
+    // THREE frames, ONE decode: the count is the number of distinct payloads,
+    // never the frame count (the project's decode-storm lesson).
+    expect(harness.objectUrlCalls).toHaveLength(1);
+  });
+
+  it('WR-02: a multi-image span decodes each distinct payload exactly once', async () => {
+    await renderRotoRevealFrames(input({
+      frameCount: 3,
+      canonicalStart: 15,
+      script: scriptWithStrokes(),
+      reference: {
+        bytesByAppFrame: new Map([[15, testWebpBytes('ref-0')], [16, testWebpBytes('ref-1')], [17, testWebpBytes('ref-2')]]),
+        transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+        zoom: 1,
+      },
+    }));
+    expect(harness.objectUrlCalls).toHaveLength(3);
   });
 });
 
