@@ -188,7 +188,14 @@ export class PlaybackEngine {
   private syncActiveSequence() {
     const cf = timelineStore.currentFrame.peek();
     const entry = frameMap.peek()[cf];
-    if (entry) {
+    // WR-01 (52.3-REVIEW.md): 52.3's dense enumeration emits
+    // {kind: 'gap', sequenceId: ''} for frames outside every span; setActive
+    // also clears selectedKeyPhotoId (sequenceStore.ts:1091-1094), so reaching
+    // it with '' deselects the sidebar and the export dialog's sequence.
+    // Pre-52.3 unowned positions had no entry and preserved the active
+    // sequence — this guard restores that contract; paint entries (real owner
+    // ids) still activate.
+    if (entry && entry.sequenceId !== '') {
       const activeId = sequenceStore.activeSequenceId.peek();
       if (entry.sequenceId !== activeId) {
         sequenceStore.setActive(entry.sequenceId);
