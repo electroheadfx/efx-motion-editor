@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-20 - Completed quick task 260920-j5r: WR-01 52.3 gap entries must not deselect the active sequence on scrub
+Last activity: 2026-09-20 - Completed quick task 260920-ji7: sequence-extension refusal — launch-capacity latch clamp fixed (native UAT pending)
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
@@ -371,6 +371,7 @@ None yet.
 | 260919-azh | Paint content never reaches export — RED discrimination matrix + trace. Verdict NEVER-WIRED: frameMap enumerates content keyPhotos only, paint-only branch never designed (52.2 reference-only carriers EXONERATED in-test). Cases C/D parked as it.todo Phase 53 contracts per escalation clause; zero production-code changes | 2026-09-19 | a5900f7c | [260919-azh-paint-content-never-reaches-export-accep](./quick/260919-azh-paint-content-never-reaches-export-accep/) |
 | 260919-sns | Export click gives no feedback for several seconds before progress appears — 'preparing' write hoisted ahead of the Studio flush await (5 s timeout leg when Studio closed); latent cancel-during-flush resetProgress wipe repaired by the same hoist. RED-first tests; full suite green. Native UAT passed 2026-09-19 | 2026-09-19 | c10c6e9e | [260919-sns-export-click-gives-no-feedback-for-sever](./quick/260919-sns-export-click-gives-no-feedback-for-sever/) |
 | 260920-j5r | WR-01 52.3 (guard scrub): gap entries must not deselect the active sequence on scrub — syncActiveSequence guarded to activate on real owner ids only (pre-52.3 contract restored for leading/inter-fx gaps); RED-first preservation pins + anti-over-suppression leg. Native UAT pending | 2026-09-20 | 8f178095 | [260920-j5r-wr-01-52-3-guard-scrub-gap-entries-must-](./quick/260920-j5r-wr-01-52-3-guard-scrub-gap-entries-must-/) |
+| 260920-ji7 | Sequence-extension refusal in the main app — D-08 diagnosis verdict CLAMP at createPhysicPaintLaunchContext: the launch write-back was min(parent end, own stored capacity) → a one-way latch that froze the extent on first launch and refused every later parent-end growth. Fix authorizes the live parent end with a stored-content floor, capped only by PHYSIC_PAINT_MAX_APPLY_FRAMES; validators and refusal messages untouched (paths A-D recorded with evidence; probe ran on real stores). RED-first (4 RED → green), o0n suite + full suite + tsc green; scope gate clean. Native UAT pending | 2026-09-20 | 0ff76f43 | [260920-ji7-sequence-extension-refusal-in-the-main-a](./quick/260920-ji7-sequence-extension-refusal-in-the-main-a/) |
 
 ### Roadmap Evolution
 
