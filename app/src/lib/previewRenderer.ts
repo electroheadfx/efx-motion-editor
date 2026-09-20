@@ -77,11 +77,6 @@ export function createCanvasGradient(
  */
 export {blendModeToCompositeOp};
 
-/** 46-01: runtime state is per-track; preview resolves the ACTIVE track. */
-function getActiveTrackId(layerId: string): string {
-  return getEfxPaintDocument(layerId)?.activeTrackId ?? '';
-}
-
 /**
  * 47-01 hide/solo preview filter (TML-04/Pitfall M8). The truth table:
  * - no solo armed → every track whose `visible !== false` resolves visible;
@@ -197,7 +192,11 @@ export class PreviewRenderer {
       for (const layer of seq.layers) {
         if (layer.type !== 'physic-paint') continue;
         const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
-        const background = physicPaintStore.getRotoBackgroundMetadata(layerId, getActiveTrackId(layerId))?.background;
+        // 260920-k34 (53-CONTEXT D-09): the gate asks the STORE for the fond
+        // texture the flattened draw will use — the same resolution, never a
+        // local read. Reading the active track's mirror here (the plan base)
+        // awaited a texture the draw ignored and missed the one it drew.
+        const background = physicPaintStore.getFondPaperTexture(layerId);
         if (background?.startsWith('canvas')) paperTextures.add(background);
       }
     }

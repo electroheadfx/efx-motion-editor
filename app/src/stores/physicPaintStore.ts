@@ -1132,6 +1132,7 @@ function _clearLayerState(layerId: string): boolean {
   // resident (and a re-registered layer id can never be served stale output).
   _flattenedMemo.delete(layerId);
   _trackRasterMemo.delete(layerId);
+  _flattenedFondSignatures.delete(layerId);
   changed = _frames.delete(layerId) || changed;
   changed = _rotoBackgroundMetadata.delete(layerId) || changed;
   changed = _rotoCacheMetadata.delete(layerId) || changed;
@@ -1505,18 +1506,62 @@ function _trackContentRevision(layerId: string, trackId: string, frame: number):
 }
 
 /**
+ * 260920-k34 (53-CONTEXT D-09): the ONE fond resolution. The ACTIVE TRACK's
+ * paper mirror first; the document fallback only when that track has no paper of
+ * its own. One resolution, two consumers — the flattened draw
+ * ({@link _resolveDocumentFondInstruction}) and the preload gate
+ * ({@link physicPaintStore.getFondPaperTexture}, consumed by
+ * `previewRenderer.collectRotoPaperTextures`) — so the gate can never await a
+ * texture the draw ignores, nor miss the one it draws.
+ *
+ * Precedence, total and deterministic (T-260920-k34-01):
+ *  1. an entry EXISTS for the ACTIVE track in `_rotoBackgroundMetadata` → it is
+ *     the track's own paper and governs; `background: 'transparent'` means the
+ *     user chose no paper for that track → no fond (null, never a thrown error);
+ *  2. no entry → the document fallback exactly as it resolves today:
+ *     transparent → none, solid → the color, paper → paper + the
+ *     `paperGrain ? texture : ''` mapping.
+ *
+ * Visibility/solo are deliberately NOT consulted — the fond is composite-level
+ * state, never track content, and the two solo systems are untouched.
+ */
+type FondSource =
+  | { readonly kind: 'paper'; readonly metadata: PhysicPaintRotoBackgroundMetadata }
+  | { readonly kind: 'color'; readonly color: string };
+
+function _resolveFondSource(layerId: string, efxDocument: EfxPaintDocument): FondSource | null {
+  const trackPaper = _rotoBackgroundMetadata.get(layerId)?.get(efxDocument.activeTrackId);
+  if (trackPaper) {
+    if (trackPaper.background === 'transparent') return null;
+    return { kind: 'paper', metadata: trackPaper };
+  }
+  const fallback = efxDocument.background.fallback;
+  if (fallback.mode === 'transparent') return null;
+  if (fallback.mode === 'solid') return { kind: 'color', color: fallback.color };
+  return {
+    kind: 'paper',
+    metadata: {
+      background: fallback.texture,
+      paperGrain: fallback.paperGrain ? fallback.texture : '',
+      grainStrength: fallback.grainStrength,
+    },
+  };
+}
+
+/**
  * v1.0 rendering law (locked): the paper fond is NOT track content. Per-track
  * rasters stay transparent where unpainted so upper tracks composite normally
  * (opacity+blend) instead of masking lower ones; the paper is drawn ONCE
- * beneath the flattened composite as the document fond.
+ * beneath the flattened composite as the composite-level fond.
  *
- * 49-03 (D-11 consumption half): the fond is the DOCUMENT FALLBACK — the
- * single authority for every surface (store instruction, monitor fond, row gap
- * swatches, flattened parent output, main preview, export). The per-track
- * `_rotoBackgroundMetadata` fond walk is DELETED, not shadowed (Pitfall 1):
- * transparent → no instruction; solid → solid fill; paper → paper draw with
- * paperGrain/grainStrength. Instruction construction stays in
- * `resolveMissingRotoFrameDraw` (one place, no second switch). The
+ * 49-03 (D-11 consumption half) — SUPERSEDED on its RESOLUTION half by
+ * 260920-k34 / 53-CONTEXT D-09: the fond is NOT the document fallback alone.
+ * The active track's paper mirror is consulted FIRST (see
+ * {@link _resolveFondSource}); the document fallback resolves only when the
+ * track has no paper of its own. D-11's STRUCTURAL half STANDS: the paper
+ * remains ONE composite-level fond beneath the tracks — never per-track raster
+ * content — so the v1.0 rendering law is unchanged. Instruction construction
+ * stays in `resolveMissingRotoFrameDraw` (one place, no second switch). The
  * texture-less deterministic draw (color fill + grain) matches the 48-03
  * flattened-path reference (paperCanvas deliberately null).
  */
@@ -1524,14 +1569,43 @@ function _resolveDocumentFondInstruction(
   layerId: string,
   efxDocument: EfxPaintDocument,
 ): Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }> | null {
-  const fallback = efxDocument.background.fallback;
-  if (fallback.mode === 'transparent') return null;
+  const source = _resolveFondSource(layerId, efxDocument);
+  if (!source) return null;
   const backgroundState: MissingRotoFrameBackgroundState =
-    fallback.mode === 'solid'
-      ? { mode: 'color', color: fallback.color }
-      : { mode: 'paper', metadata: { background: fallback.texture, paperGrain: fallback.paperGrain ? fallback.texture : '', grainStrength: fallback.grainStrength } };
+    source.kind === 'color'
+      ? { mode: 'color', color: source.color }
+      : { mode: 'paper', metadata: source.metadata };
   const instruction = resolveMissingRotoFrameDraw(layerId, 0, { backgroundState });
   return instruction.kind === 'background-only' ? instruction : null;
+}
+
+/**
+ * 260920-k34: `activeTrackId` is NOT a term of the flattened key — its config
+ * term (`buildEfxPaintCompositeRevision`) covers track id/order/visible/solo/
+ * opacity/blendMode plus background id/visible/fallback, and the `fb:`/clip/
+ * content terms cover the rest. So an active-track SWITCH would otherwise serve
+ * a memoized raster carrying the previous track's paper. This guard compares
+ * the resolved fond signature BEFORE the memo lookup and clears the layer's
+ * memos only when it actually changed: an unchanged resolution never clears, so
+ * there is no recomposite churn (T-260920-k34-02) and no cache-key change (the
+ * plan's guardrail — a memo CLEAR, never a key term). A paper EDIT is already
+ * covered by `setRotoBackgroundMetadata`'s own memo clear.
+ */
+const _flattenedFondSignatures = new Map<string, string>();
+
+function _fondSourceSignature(source: FondSource | null): string {
+  if (!source) return 'none';
+  if (source.kind === 'color') return `color:${source.color}`;
+  const metadata = source.metadata;
+  return `paper:${metadata.background}:${metadata.paperGrain}:${metadata.grainStrength}:${metadata.color ?? ''}`;
+}
+
+function _rotateFlattenedMemoOnFondChange(layerId: string, efxDocument: EfxPaintDocument): void {
+  const signature = _fondSourceSignature(_resolveFondSource(layerId, efxDocument));
+  if (_flattenedFondSignatures.get(layerId) === signature) return;
+  _flattenedFondSignatures.set(layerId, signature);
+  _flattenedMemo.delete(layerId);
+  _trackRasterMemo.delete(layerId);
 }
 
 /**
@@ -2425,6 +2499,11 @@ function _resolveFlattenedFrame(
   if (!Number.isInteger(frame) || frame < 0) return null;
   const efxDocument = getEfxPaintDocument(layerId);
   if (!efxDocument) return null;
+  // 260920-k34: the fond resolution is NOT a flattened-key term (activeTrackId
+  // is absent from the key) — rotate the layer's memo BEFORE the lookup when
+  // the resolved fond changed, so an active-track switch never serves the
+  // previous track's paper.
+  _rotateFlattenedMemoOnFondChange(layerId, efxDocument);
   const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
 
   const participating = participatingPaintTracks(efxDocument)
@@ -2625,16 +2704,33 @@ export const physicPaintStore = {
   },
 
   /**
-   * 49-03 (D-11 consumption half): the monitor's fond — the SAME resolved
-   * document-fallback instruction the flattened path uses (one authority, two
-   * consumers, Pitfall 1). The Studio monitor fond layer and the flattened
-   * parent output can never disagree. Returns null when the fallback is
-   * transparent (no fond) or the layer has no document.
+   * 49-03 (D-11 consumption half), resolution half superseded by 260920-k34
+   * (53-CONTEXT D-09): the monitor's fond — the SAME resolved instruction the
+   * flattened path uses (one authority, two consumers, Pitfall 1). The Studio
+   * monitor fond layer and the flattened parent output can never disagree.
+   * Returns null when the resolution yields no fond (the active track's paper is
+   * transparent, the document fallback is transparent) or the layer has no
+   * document.
    */
   getDocumentFondInstruction(layerId: string): Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }> | null {
     const efxDocument = getEfxPaintDocument(layerId);
     if (!efxDocument) return null;
     return _resolveDocumentFondInstruction(layerId, efxDocument);
+  },
+
+  /**
+   * 260920-k34 (53-CONTEXT D-09): the preload gate's texture. Resolves through
+   * the SAME `_resolveFondSource` the flattened draw consumes — no second read,
+   * no parallel switch, so the gate and the draw cannot disagree by
+   * construction. Returns the paper texture name for a paper source and null
+   * otherwise (a solid/absent fond, or the layer has no document). Callers keep
+   * the `startsWith('canvas')` filter: `'white'` carries no paper texture.
+   */
+  getFondPaperTexture(layerId: string): string | null {
+    const efxDocument = getEfxPaintDocument(layerId);
+    if (!efxDocument) return null;
+    const source = _resolveFondSource(layerId, efxDocument);
+    return source?.kind === 'paper' ? source.metadata.background : null;
   },
 
   /**
@@ -3187,7 +3283,7 @@ export const physicPaintStore = {
 
   reset(options?: { preserveRotoAlphaCanvases?: boolean }): void {
     const resetAlphaCanvases = options?.preserveRotoAlphaCanvases !== true;
-    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && _frameMediaBytes.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
+    if (_frames.size === 0 && _rotoBackgroundMetadata.size === 0 && _rotoCacheMetadata.size === 0 && _rotoGeneratedCacheMetadata.size === 0 && _generatedRenderSourceCache.size === 0 && _rotoInterpolationSettings.size === 0 && _rotoInterpolationFailureStatus.size === 0 && (!resetAlphaCanvases || rotoAlphaCanvasRegistry.size === 0) && _rotoRealKeyRecords.size === 0 && _rotoGroupOverrideRecords.size === 0 && _rotoPhysicalInterpolationState.size === 0 && _rotoPhysicalScriptMotion.size === 0 && _rotoPhysicalLoopClips.size === 0 && _rotoPhysicalSelectedKeyId.size === 0 && _rotoPhysicalCursorAppFrame.size === 0 && _rotoPhysicalCapacity.size === 0 && _rotoPlaybackSettings.size === 0 && _rotoPhysicalOperationLeases.size === 0 && _settledRotoPhysicalOperationLeases.size === 0 && _flattenedMemo.size === 0 && _trackRasterMemo.size === 0 && _flattenedFondSignatures.size === 0 && _compositorDecodeLoading.size === 0 && _compositorDecodePromises.size === 0 && _frameMediaVerdicts.size === 0 && _frameMediaResolutionPromises.size === 0 && _frameMediaBytes.size === 0 && frameLru.byteTotal === 0 && _backgroundSourceImages.size === 0 && _referenceSourceImages.size === 0 && trackRevisions.size === 0) return;
     _frames.clear();
     _rotoBackgroundMetadata.clear();
     _rotoCacheMetadata.clear();
@@ -3220,6 +3316,7 @@ export const physicPaintStore = {
     // rest of the store (decode caches clear here only, per the plan).
     _flattenedMemo.clear();
     _trackRasterMemo.clear();
+    _flattenedFondSignatures.clear();
     _compositorDecodeLoading.clear();
     _compositorDecodePromises.clear();
     // 52.2-09 Task 3: the media verdicts are per-session runtime state too — a
