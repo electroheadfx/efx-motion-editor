@@ -9,7 +9,7 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, hasFrameMediaBytes, installFrameMediaBytes, registerBackgroundSourceImage, hydrateBackgroundSourceImages, prefetchNeighborFrames } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
-import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setTrackVisible } from './efxPaintStore';
+import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setActiveTrackId, setTrackVisible } from './efxPaintStore';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument, FrameLoopClip, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -1719,8 +1719,8 @@ describe('physicPaintStore', () => {
       };
     }
 
-    function flatDocument(tracks: InternalPaintTrack[], background?: Partial<EfxPaintDocument['background']>): EfxPaintDocument {
-      const base = createEfxPaintDocument(FLAT_LAYER);
+    function flatDocument(tracks: InternalPaintTrack[], background?: Partial<EfxPaintDocument['background']>, layerId = FLAT_LAYER): EfxPaintDocument {
+      const base = createEfxPaintDocument(layerId);
       // The document model requires activeTrackId to match a track, so a
       // "background-only" document carries a hidden ghost track (hidden →
       // non-participating: it never draws and never appears in the missing
@@ -1738,6 +1738,7 @@ describe('physicPaintStore', () => {
       trackId: string,
       keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>,
       options: { background?: { background: 'canvas1' | 'canvas2' | 'canvas3' | 'transparent'; paperGrain: string; grainStrength: number } | null; loopClips?: PhysicPaintRotoLoopClip[] } = {},
+      layerId = FLAT_LAYER,
     ): void {
       const records = keys.map((key) => ({
         keyId: key.keyId,
@@ -1747,7 +1748,7 @@ describe('physicPaintStore', () => {
       }));
       const loopClips = options.loopClips ?? [];
       const interpolation = { enabled: false, mode: 'duplicate' as const };
-      const result = physicPaintStore.replaceRotoPhysicalDocument(FLAT_LAYER, trackId, {
+      const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, trackId, {
         capacity: 600,
         realKeyRecords: records,
         interpolation,
@@ -2184,9 +2185,12 @@ describe('physicPaintStore', () => {
       expect(noFond.missing).toEqual(withFond.missing);
     });
 
-    // 49-03 Task 1 (D-11 consumption half): the document fallback is the SINGLE
-    // fond authority — the per-track roto background metadata walk is deleted.
-    it('49-03 T1: solid white fallback fills white regardless of per-track roto background metadata', async () => {
+    // 49-03 Task 1 (D-11 consumption half) — SUPERSEDED on its RESOLUTION half
+    // by 260920-k34 / 53-CONTEXT D-09: the track's OWN paper governs the fond,
+    // and the document fallback is consulted only when the track has no paper of
+    // its own. D-11's STRUCTURAL half stands: the paper remains ONE
+    // composite-level fond beneath the tracks, never per-track raster content.
+    it('49-03 T1 (rewritten by 260920-k34): the active track\'s own paper governs the fond over the document fallback', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
@@ -2197,9 +2201,10 @@ describe('physicPaintStore', () => {
       });
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
-      // The document fallback is the single fond authority: solid white fills
-      // beneath the composite even though the track carries canvas1 metadata.
-      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
+      // The track carries its own paper (canvas1): it governs, so the solid
+      // white fallback never reaches the fond. The fallback-only path is pinned
+      // by the rewritten 49-03 T4 below.
+      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
     });
 
     it('49-03 T2: paper canvas2 fallback draws the canvas2 paper; transparent fallback produces no fond', async () => {
@@ -2224,7 +2229,11 @@ describe('physicPaintStore', () => {
       expect((await transparentRecord.encodeBytes())).toEqual(testWebpBytes('clear|save|draw(bitmap:test-frame,1,source-over)|restore'));
     });
 
-    it('49-03 T4: deleting a per-track roto background metadata entry no longer changes the fond instruction', async () => {
+    // 49-03 T4 — rewritten by 260920-k34 to the precedence D-09 (53-CONTEXT)
+    // supersedes it with: the fallback is no longer the single authority, it is
+    // the FALLBACK OF THE FALLBACK. Deleting the track's own paper is exactly
+    // the case that still reaches it.
+    it('49-03 T4 (rewritten by 260920-k34): deleting the track\'s paper metadata falls back to the document fallback', async () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
@@ -2235,15 +2244,146 @@ describe('physicPaintStore', () => {
       });
 
       const withMetadata = (await flattenAfterDecode(FLAT_LAYER, 5))!;
-      expect((await withMetadata.encodeBytes())).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await withMetadata.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
 
-      // Delete the metadata entry (re-seed with background: null) and force a
-      // recompute (fresh content revision) — the fond instruction is unchanged
-      // (the metadata walk is gone).
+      // …and once the entry is deleted (re-seed with background: null and force
+      // a recompute with a fresh content revision) the document fallback fills
+      // white again — the track has no paper of its own any more.
       const frameDataUrl2 = makeFrame(1, 5).bytes;
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl2 }], { background: null });
       const afterDelete = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect((await afterDelete.encodeBytes())).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
+    });
+
+    // -----------------------------------------------------------------------
+    // 260920-k34 — the fond resolution (53-CONTEXT D-09). At the plan base the
+    // DRAW authority (`_resolveDocumentFondInstruction`) reads ONLY the document
+    // fallback while the PRELOAD GATE reads the active track's mirror: the
+    // resolution is split across two sources. These legs pin the law that
+    // replaces it — the ACTIVE TRACK's paper first, the fallback only when the
+    // track has no paper of its own — and the raw RED output decides which
+    // source won per surface.
+    // -----------------------------------------------------------------------
+    it('k34-A (RED): the active track\'s own paper governs the fond — not the document fallback', async () => {
+      // The reported case: the Studio's own initial paper (canvas1 + grain
+      // 0.45) lives in the active track's mirror; the document fallback is a
+      // different paper (canvas2). The export must show canvas1 + grain.
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas2', paperGrain: false, grainStrength: 0 },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
+      });
+
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      const log = decodeFlatLog((await record.encodeBytes()));
+      expect(log).toContain('fill(#f4efe3,1,source-over)');
+      expect(log).toContain('fill(#000000,'); // the deterministic grain
+      expect(log).not.toContain('#ebe3d2');
+      expect(log).toContain('draw(canvas,1,source-over)');
+    });
+
+    it('k34-B (control, green): a track with no paper of its own still draws the document fond', async () => {
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], { background: null });
+
+      const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+    });
+
+    it('k34-C (RED): an active-track switch resolves the new track\'s paper and rotates the flattened memo', async () => {
+      // `activeTrackId` is not a term of the flattened key, so the memo MUST be
+      // rotated explicitly when the resolution changes with the active track.
+      registerDocument(flatDocument([
+        flatTrack('track-a'),
+        flatTrack('track-b', { order: 1 }),
+      ]));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: makeFrame(1, 5).bytes }], {
+        background: { background: 'canvas3', paperGrain: 'canvas3', grainStrength: 0 },
+      });
+
+      const trackARecord = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      expect(decodeFlatLog((await trackARecord.encodeBytes()))).toContain('fill(#f4efe3,1,source-over)');
+
+      expect(setActiveTrackId(FLAT_LAYER, 'track-b')).toBe(true);
+      const trackBRecord = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      const trackBLog = decodeFlatLog((await trackBRecord.encodeBytes()));
+      expect(trackBLog).toContain('fill(#ded2bc,1,source-over)');
+      expect(trackBLog).not.toContain('#f4efe3');
+    });
+
+    it('k34-D (RED): each layer resolves its own document\'s active-track paper', async () => {
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'solid', color: '#ffffff' },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'solid', color: '#ffffff' },
+      }, 'flat-layer-b'));
+      seedRoto('track-a', [{ keyId: 'kb', appFrame: 5, bytes: makeFrame(1, 5).bytes }], {
+        background: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0 },
+      }, 'flat-layer-b');
+
+      const first = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      expect((await first.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+      const second = (await flattenAfterDecode('flat-layer-b', 5))!;
+      expect((await second.encodeBytes())).toEqual(testWebpBytes('fill(#ebe3d2,1,source-over)|draw(canvas,1,source-over)'));
+    });
+
+    it('k34-E (control, green): the two-solo behavior never reaches the fond resolution', async () => {
+      // The fond follows the ACTIVE track's paper and nothing else — neither the
+      // solo arm nor the visibility flag may rotate it.
+      registerDocument(flatDocument([
+        flatTrack('track-a'),
+        flatTrack('track-b', { order: 1 }),
+      ], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: false, grainStrength: 0 },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
+        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+      });
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: makeFrame(1, 5).bytes }], {
+        background: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0 },
+      });
+
+      const fondLog = async (): Promise<string> => {
+        const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+        return decodeFlatLog((await record.encodeBytes()));
+      };
+
+      const baseline = await fondLog();
+      expect(baseline).toContain('fill(#f4efe3,1,source-over)');
+
+      // Solo armed on the OTHER track: the fond must not follow it.
+      const document = getEfxPaintDocument(FLAT_LAYER)!;
+      registerDocument({
+        ...document,
+        tracks: document.tracks.map((track) => (track.id === 'track-b' ? { ...track, solo: true } : track)),
+      });
+      const soloed = await fondLog();
+      expect(soloed).toContain('fill(#f4efe3,1,source-over)');
+      expect(soloed).not.toContain('#ebe3d2');
+
+      // The active track hidden: the fond term still resolves the active paper.
+      registerDocument({
+        ...document,
+        tracks: document.tracks.map((track) => (track.id === 'track-a' ? { ...track, visible: false } : track)),
+      });
+      const hidden = await fondLog();
+      expect(hidden).toContain('fill(#f4efe3,1,source-over)');
+      expect(hidden).not.toContain('#ebe3d2');
     });
 
     it('RED 9 background port wiring: a resolvable clip draws its raster; an unresolvable clip reports missing', async () => {

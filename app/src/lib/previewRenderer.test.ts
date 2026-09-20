@@ -850,3 +850,65 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     }));
   });
 });
+
+// ---------------------------------------------------------------------------
+// 260920-k34 — the fond preload gate (53-CONTEXT D-09). At the plan base the
+// gate (`collectRotoPaperTextures`) reads the ACTIVE TRACK's mirror while the
+// flattened draw reads the DOCUMENT fallback: the export awaits a texture
+// nothing draws and never awaits the one it does. These legs pin the law that
+// replaces it — ONE resolution, TWO consumers, never two sources.
+// ---------------------------------------------------------------------------
+describe('260920-k34 fond preload gate (export parity)', () => {
+  const sequence: Sequence = {
+    id: 'k34-sequence',
+    name: 'K34',
+    kind: 'content',
+    fps: 24,
+    width: 4,
+    height: 3,
+    keyPhotos: [{ id: 'kp-1', imageId: '', holdFrames: 1 }],
+    layers: [makeRotoLayer()],
+  };
+
+  /** Flatten with the decode loop the export path's readiness gate performs. */
+  async function flattenAfterDecode(layerId: string, frame: number) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const record = physicPaintStore.getFlattenedFrame(layerId, frame);
+      if (record !== null) return record;
+      await flushDecode();
+    }
+    return null;
+  }
+
+  it('k34-F (RED): the gate collects the document fond the draw uses when the track has no paper of its own', () => {
+    const result = setBackgroundFallback('roto-layer', { mode: 'paper', texture: 'canvas1', paperGrain: false, grainStrength: 0 });
+    expect(result.ok).toBe(true);
+    const renderer = new PreviewRenderer(makeCanvas(new RecordingCanvasContext()));
+
+    // The draw resolves canvas1 from the document fallback; the gate must
+    // preload exactly that texture, in the same string[] shape.
+    expect(renderer.collectRotoPaperTextures([sequence])).toEqual(['canvas1']);
+  });
+
+  it('k34-G (RED): the gate collects exactly the texture the flattened draw uses — one resolution, two consumers', async () => {
+    const result = setBackgroundFallback('roto-layer', { mode: 'paper', texture: 'canvas1', paperGrain: false, grainStrength: 0 });
+    expect(result.ok).toBe(true);
+    seedPhysicalRoto([{ keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') }]);
+    physicPaintStore.setRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID, {
+      background: 'canvas2',
+      paperGrain: 'canvas3',
+      grainStrength: 0.65,
+    });
+    const renderer = new PreviewRenderer(makeCanvas(new RecordingCanvasContext()));
+
+    // Gate half: the track's own paper — never the document fallback.
+    expect(renderer.collectRotoPaperTextures([sequence])).toEqual(['canvas2']);
+
+    // Draw half: the same paper, on the flattened raster's fond.
+    offscreenOperations = [];
+    const record = await flattenAfterDecode('roto-layer', 1);
+    expect(record).not.toBeNull();
+    expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#ebe3d2' }));
+    expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
+  });
+});
