@@ -1788,11 +1788,6 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
     return { ok: false, error: 'reveal span exceeds capacity' };
   }
 
-  // Frame-aligned reference resolution (D-15): null-on-missing fails closed —
-  // a missing reference must never bake garbage (D-12, T-52-01).
-  const verdict = _resolveReferenceSourceImage(document, input.canonicalStart);
-  if (verdict === null) return { ok: false, error: 'missing reference source' };
-
   // The bake renders at the WORKING canvas size — the same size authority as
   // the PlayScript path (Studio `getSize` port) — because script strokes live
   // in working coordinates. Rendering at project size squashes coverage into
@@ -1802,6 +1797,21 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   const projectSize = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
   const size = getPhysicsPaintWorkingSize(projectSize.width, projectSize.height);
   const referenceZoom = size.width / projectSize.width;
+
+  // Frame-aligned reference resolution (D-15): the span is walked ONCE and ANY
+  // unresolved span frame fails the bake closed BEFORE a pixel is rendered and
+  // BEFORE a key is written — never a clamped or substituted image (D-12,
+  // T-52-01). `_resolveReferenceSourceImage` is frame-aligned by construction;
+  // resolving it once at `canonicalStart` (WR-02) silently baked the span-start
+  // image into EVERY frame of a multi-image reference.
+  const bytesByAppFrame = new Map<number, Uint8Array>();
+  for (let index = 0; index < input.frameCount; index += 1) {
+    const appFrame = input.canonicalStart + index;
+    const verdict = _resolveReferenceSourceImage(document, appFrame);
+    if (verdict === null) return { ok: false, error: 'missing reference source' };
+    bytesByAppFrame.set(appFrame, verdict.bytes);
+  }
+
   let staged;
   try {
     staged = await renderRotoRevealFrames({
@@ -1811,7 +1821,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       motion: input.motion,
       mode: input.mode,
       size,
-      reference: { bytes: verdict.bytes, transform: track.transform, zoom: referenceZoom },
+      reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
       signal: input.signal,
       onProgress: input.onProgress,
     });

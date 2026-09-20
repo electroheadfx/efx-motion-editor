@@ -47,9 +47,19 @@ export interface RotoRevealRenderInput {
   papers?: readonly Readonly<{ name: string; url: string }>[];
   defaultPaper?: string;
   paperTextureScale?: number;
-  /** The frame-aligned reference verdict (bytes) plus the display transform (D-14). */
+  /**
+   * The frame-aligned reference plus the display transform (D-14).
+   *
+   * `bytesByAppFrame` maps an APPLICATION frame to the reference image that
+   * resolves there — the D-15 law (frame N → source frame N) carried to the
+   * renderer so each baked key gets the image belonging to ITS frame. Clamped
+   * repeats share one payload instance, which is also the decode-once key.
+   * The store walks and pre-validates the whole span fail-closed before
+   * calling; a missing entry here is a caller bug and throws rather than
+   * silently reusing a neighbouring frame's image (WR-02).
+   */
   reference: Readonly<{
-    bytes: Uint8Array;
+    bytesByAppFrame: ReadonlyMap<number, Uint8Array>;
     transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>;
     /** Project→working scale (working size / project size) — the ghost draw's `zoom`. */
     zoom: number;
@@ -87,18 +97,30 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
     engine.setInputLocked(true);
     engine.setBgMode('transparent');
 
-    const referenceImage = await loadRevealReferenceImage(input.reference.bytes);
-    throwIfAborted(input.signal);
-
     const strokes = flattenScriptStrokes(input.script);
     const mode = input.mode ?? 'progressive';
     const schedule = mode === 'static'
       ? buildStaticStrokeSchedule(strokes, input.frameCount)
       : buildProgressiveStrokeSchedule(strokes, input.frameCount);
+    // DECODE-ONCE per distinct payload, keyed by payload identity: a clamped
+    // repeat (one image resolving several frames) reuses the decoded image
+    // instead of paying a fresh blob + decode per frame — the project's
+    // documented decode-storm lesson.
+    const referenceImages = new Map<Uint8Array, HTMLImageElement>();
 
     for (let frameIndex = 0; frameIndex < input.frameCount; frameIndex += 1) {
       throwIfAborted(input.signal);
       const destination = input.canonicalStart + frameIndex;
+      // D-15: the image for THIS application frame. The store pre-validates the
+      // whole span, so a miss here is a caller bug — never a stale substitute.
+      const referenceBytes = input.reference.bytesByAppFrame.get(destination);
+      if (referenceBytes === undefined) throw new Error(`No reveal reference image for frame ${destination}.`);
+      let referenceImage = referenceImages.get(referenceBytes);
+      if (referenceImage === undefined) {
+        referenceImage = await loadRevealReferenceImage(referenceBytes);
+        referenceImages.set(referenceBytes, referenceImage);
+      }
+      throwIfAborted(input.signal);
       const transformFrameStroke = (stroke: PaintStroke, _scheduleFrame: number, strokeIndex: number): PaintStroke => {
         const transformed = stroke.points.length === 0
           ? stroke
