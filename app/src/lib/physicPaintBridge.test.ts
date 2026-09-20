@@ -38,9 +38,9 @@ import {
   serializeRuntimeIntoDocument,
 } from '../stores/efxPaintStore';
 import { timelineStore } from '../stores/timelineStore';
-import { getTimelineOverlaySequenceOutFrame, totalFrames } from './frameMap';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
+  PHYSIC_PAINT_MAX_APPLY_FRAMES,
   buildFrameBytesToken,
   isPhysicPaintApplyResult,
   isPhysicPaintRotoPhysicalEditApplyPayload,
@@ -494,119 +494,96 @@ describe('physicPaintBridge', async () => {
     });
   });
 
-  // 260920-ji7 Task 1 (temporary diagnosis probe): reproduce the sequence-
-  // extension refusal end-to-end against the REAL stores. Deleted on a
-  // STRUCTURAL verdict; promoted to the permanent regression cases on a CLAMP
-  // verdict.
-  it('PROBE 260920-ji7: parent-span extension vs the launch capacity', async () => {
-    const layer = physicLayer();
-    mockLayers([layer], 40);
-
-    const firstLaunch = createPhysicPaintLaunchContext(layer, 10);
-    console.log('[PROBE ji7] A. first launch (parent span end 40):', JSON.stringify({
-      carriedCapacity: carriedRotoPhysical(firstLaunch).capacity,
-      storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
-    }));
-
-    // The user extends the sequence: span end 40 -> 80 (post-o0n the span-drag
-    // path carries no timeline ceiling).
-    sequenceStore.updateFxSequenceRange('bridge-test-parent-sequence', 0, 80);
-    const extendedSpan = sequenceStore.sequences.peek().find((candidate) => candidate.id === 'bridge-test-parent-sequence');
-    console.log('[PROBE ji7] B. parent span after extension:', JSON.stringify({
-      inFrame: extendedSpan?.inFrame,
-      outFrame: extendedSpan?.outFrame,
-    }));
-
-    const secondLaunch = createPhysicPaintLaunchContext(layer, 10);
-    const second = {
-      carriedCapacity: carriedRotoPhysical(secondLaunch).capacity,
-      storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
-    };
-    console.log('[PROBE ji7] C. second launch (parent span end 80):', JSON.stringify(second));
-
-    const authorityAt = (canonicalStart: number) => getPhysicPaintRotoAuthority({
-      operationId: `probe-ji7-${canonicalStart}`,
+  // 260920-ji7 (CLAMP verdict, D-08): the launch-context capacity resolution
+  // (physicPaintBridge.ts createPhysicPaintLaunchContext) wrote back
+  // min(liveParentEnd, its own stored value), so the first launch froze the
+  // layer's addressable extent and every later sequence extension was refused
+  // ('No remaining Physics Paint sequence capacity is available.'). The law:
+  // the bound is authorized by the LIVE parent end, floored by existing
+  // content so a shrink never invalidates stored keys, and capped only by
+  // PHYSIC_PAINT_MAX_APPLY_FRAMES — never by its own previous value.
+  describe('sequence-extension authority (260920-ji7)', () => {
+    const authorityAt = (layerId: string, canonicalStart: number) => getPhysicPaintRotoAuthority({
+      operationId: `ji7-authority-${canonicalStart}`,
       projectContextId: projectStore.projectContextId.peek(),
-      layerId: layer.id,
+      layerId,
       canonicalStart,
       trackId: TEST_TRACK_ID,
     });
-    for (const canonicalStart of [39, 40, 60]) {
-      const authority = authorityAt(canonicalStart);
-      console.log(`[PROBE ji7] D. authority canonicalStart ${canonicalStart}:`, JSON.stringify({
-        ok: authority.ok,
-        error: authority.error,
-        physicalCapacity: authority.physicalCapacity,
-        capacity: authority.capacity,
-      }));
-    }
 
-    // Loop-bearing layer: an infinity loop's natural end IS the capacity.
-    const loopRecords = [makePhysicalRecord('loop-a', 0), makePhysicalRecord('loop-b', 4)];
-    const loopClips = [{ loopId: 'probe-loop', placementStart: 10, sourceKeyIds: ['loop-a', 'loop-b'], repeat: 'infinity' as const, mode: 'progressive' as const }];
-    const loopSeed = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
-      capacity: second.storeCapacity,
-      realKeyRecords: loopRecords,
-      interpolation: { enabled: false, mode: 'duplicate' },
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      selectedKeyId: null,
-      cursorAppFrame: 0,
-      revision: buildPhysicPaintRotoPhysicalRevision(loopRecords, { enabled: false, mode: 'duplicate' }, loopClips, []),
-      loopClips,
+    it('raises the layer capacity when the parent span is extended', () => {
+      const layer = physicLayer();
+      mockLayers([layer], 40);
+
+      const first = createPhysicPaintLaunchContext(layer, 10);
+      expect(carriedRotoPhysical(first).capacity).toBe(40);
+      expect(physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID)).toBe(40);
+
+      // The user extends the sequence: span end 40 -> 80 (post-o0n the
+      // span-drag path carries no timeline ceiling).
+      sequenceStore.updateFxSequenceRange('bridge-test-parent-sequence', 0, 80);
+      const extended = createPhysicPaintLaunchContext(layer, 10);
+
+      expect(carriedRotoPhysical(extended).capacity).toBe(80);
+      expect(physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID)).toBe(80);
     });
-    console.log('[PROBE ji7] E. infinity-loop seed:', JSON.stringify({ ok: loopSeed.ok, error: loopSeed.ok ? null : loopSeed.error }));
-    console.log('[PROBE ji7] F. derived ends (parent span now 80):', JSON.stringify({
-      storeEndFrame: physicPaintStore.getRotoPhysicalEndFrame(layer.id, TEST_TRACK_ID),
-      timelineTotalFrames: totalFrames.peek(),
-      overlaySequenceOutFrame: extendedSpan ? getTimelineOverlaySequenceOutFrame(extendedSpan, 100) : null,
-    }));
 
-    // Counterpart: the same layer under a capacity that follows the span (80).
-    physicPaintStore.setRotoPhysicalCapacity(layer.id, TEST_TRACK_ID, 80);
-    console.log('[PROBE ji7] G. same layer at capacity 80:', JSON.stringify({
-      storeEndFrame: physicPaintStore.getRotoPhysicalEndFrame(layer.id, TEST_TRACK_ID),
-    }));
+    it('caps the capacity only at the global maximum', () => {
+      const layer = physicLayer();
+      mockLayers([layer], 40);
+      createPhysicPaintLaunchContext(layer, 10);
 
-    expect(second.carriedCapacity).toBe(40);
-  });
+      sequenceStore.updateFxSequenceRange(
+        'bridge-test-parent-sequence',
+        0,
+        PHYSIC_PAINT_MAX_APPLY_FRAMES + 200,
+      );
+      const beyond = createPhysicPaintLaunchContext(layer, 10);
 
-  // 260920-ji7 Task 1 (temporary diagnosis probe): the SHRINK direction — does
-  // a parent span that shrinks below stored keys still launch?
-  it('PROBE 260920-ji7: parent-span shrink below stored keys', async () => {
-    const layer = physicLayer();
-    mockLayers([layer], 60);
-    const records = [makePhysicalRecord('shrink-a', 0), makePhysicalRecord('shrink-b', 50)];
-    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
-      capacity: 60,
-      realKeyRecords: records,
-      interpolation: { enabled: false, mode: 'duplicate' },
-      scriptMotion: { deformation: 0, position: 0 },
-      background: null,
-      selectedKeyId: null,
-      cursorAppFrame: 0,
-      revision: buildPhysicPaintRotoPhysicalRevision(records, { enabled: false, mode: 'duplicate' }, []),
+      expect(carriedRotoPhysical(beyond).capacity).toBe(PHYSIC_PAINT_MAX_APPLY_FRAMES);
+      expect(physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID)).toBe(PHYSIC_PAINT_MAX_APPLY_FRAMES);
     });
-    console.log('[PROBE ji7] H. shrink seed:', JSON.stringify({ ok: seeded.ok }));
-    const launchAt60 = createPhysicPaintLaunchContext(layer, 10);
-    console.log('[PROBE ji7] I. launch at parent end 60:', JSON.stringify({
-      carriedCapacity: carriedRotoPhysical(launchAt60).capacity,
-    }));
 
-    sequenceStore.updateFxSequenceRange('bridge-test-parent-sequence', 0, 30);
-    try {
+    it('follows the extension in both directions without invalidating surviving keys', () => {
+      const layer = physicLayer();
+      mockLayers([layer], 60);
+      const records = [makePhysicalRecord('shrink-a', 0), makePhysicalRecord('shrink-b', 50)];
+      seedPhysicalDocument(layer.id, records);
+
+      const atSixty = createPhysicPaintLaunchContext(layer, 10);
+      expect(carriedRotoPhysical(atSixty).capacity).toBe(60);
+
+      // The parent span shrinks below the last stored key: the live parent end
+      // is honored, but never below what the stored records need — nothing is
+      // dropped to make the bound fit and the launch never throws.
+      sequenceStore.updateFxSequenceRange('bridge-test-parent-sequence', 0, 30);
       const shrunk = createPhysicPaintLaunchContext(layer, 10);
-      console.log('[PROBE ji7] J. launch after shrink to 30:', JSON.stringify({
-        carriedCapacity: carriedRotoPhysical(shrunk).capacity,
-        storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
-        realKeys: carriedRotoPhysical(shrunk).realKeyRecords.map((record) => record.appFrame),
-      }));
-    } catch (error) {
-      console.log('[PROBE ji7] J. launch after shrink to 30 THREW:', JSON.stringify({
-        error: error instanceof Error ? error.message : String(error),
-        storeCapacity: physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID),
-      }));
-    }
+
+      expect(carriedRotoPhysical(shrunk).capacity).toBe(51);
+      expect(physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID)).toBe(51);
+      expect(carriedRotoPhysical(shrunk).realKeyRecords.map((record) => record.appFrame)).toEqual([0, 50]);
+    });
+
+    it('stops refusing the authority read at the frame the extension added', () => {
+      const layer = physicLayer();
+      mockLayers([layer], 40);
+      createPhysicPaintLaunchContext(layer, 10);
+
+      const before = authorityAt(layer.id, 60);
+      expect(before.ok).toBe(false);
+      expect(before.error).toBe('No remaining Physics Paint sequence capacity is available.');
+
+      sequenceStore.updateFxSequenceRange('bridge-test-parent-sequence', 0, 80);
+      createPhysicPaintLaunchContext(layer, 10);
+
+      expect(authorityAt(layer.id, 60)).toMatchObject({
+        ok: true,
+        canonicalStart: 60,
+        layerEndExclusive: 80,
+        capacity: 20,
+        physicalCapacity: 80,
+      });
+    });
   });
 
   it('launches a nonzero-inFrame sequence at its layer-local origin', async () => {
