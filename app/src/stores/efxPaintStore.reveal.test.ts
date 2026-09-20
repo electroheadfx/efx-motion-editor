@@ -786,3 +786,127 @@ describe('reveal bake frame-aligned reference resolution — WR-02 (260920-kov)'
     }));
   });
 });
+
+/**
+ * WR-01 (260920-kov): the reveal rail's DERIVED extent law (D-07).
+ *
+ * `resizeRevealRail` derived the new end from the SURVIVING KEY COUNT
+ * (`placementStart + keyCount × repeat`). On a STRETCH every key survives, so
+ * the derived end equalled the PRE-stretch extent: the clip was rewritten
+ * identically, `documentRevision` bumped, a `'reveal-span'` undo entry was
+ * recorded, and `ok: true` was returned for a span the rail never gained —
+ * what is shown and what is stored diverged silently. The finite extent is now
+ * the REQUESTED span end (the shrink and the stretch land on the same law),
+ * and an identical-span resize writes nothing at all, mirroring
+ * `setPhotoReferenceSource`'s same-source no-op.
+ *
+ * The legs assert the DERIVED extent (`getTrackRotoResolutionContext(...)`
+ * `.context.ranges[0].effectiveEnd`) and not just the raw field: the field
+ * alone can be stamped while the resolver still clips the band to a smaller
+ * value.
+ */
+describe('reveal rail span resize — the derived extent law, WR-01 (260920-kov)', () => {
+  beforeEach(() => {
+    physicPaintStore.reset();
+    reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
+    _setEfxPaintRevealScriptLoader(async () => script);
+    harness.renderReveal.mockReset();
+  });
+
+  afterEach(() => {
+    _setPhysicPaintCompositorSizeProvider(null);
+    _setEfxPaintRevealScriptLoader(null);
+  });
+
+  async function railAt(layerId: string, startFrame: number, frameCount: number): Promise<string> {
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
+    const descriptor = await createRail(layerId, startFrame, frameCount);
+    return descriptor.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
+  }
+
+  /** The DERIVED extent of the rail — what the timeline renders and the resolver serves. */
+  function derivedEnd(layerId: string): number | undefined {
+    return physicPaintStore.getTrackRotoResolutionContext(layerId, TEST_TRACK_ID)!.context.ranges[0]!.effectiveEnd;
+  }
+
+  it('WR-01: a STRETCH extends the derived extent to the requested end, keys preserved, new frames left empty (D-07)', async () => {
+    const layerId = 'layer-reveal';
+    const loopId = await railAt(layerId, 10, 2);
+    expect(derivedEnd(layerId)).toBe(12);
+
+    const result = resizeRevealRail(layerId, loopId, 15);
+    expect(result.ok).toBe(true);
+
+    const clip = getDocument(layerId)!.tracks[0].rotoPhysical!.loopClips[0];
+    // Both carriers move together — the resolver takes naturalEnd from
+    // originalEndExclusive AND clips by fragment.endExclusive.
+    expect(clip.originalEndExclusive).toBe(15);
+    expect(clip.visibleRanges).toEqual([{ start: 10, endExclusive: 15 }]);
+    // The DERIVED extent, not just the stamped field.
+    expect(derivedEnd(layerId)).toBe(15);
+
+    // D-07: a stretch never deletes baked keys and never bakes the new frames.
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.appFrame)).toEqual([10, 11]);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!.sourceKeyIds).toHaveLength(2);
+  });
+
+  it('WR-01: a resize to the rail\'s CURRENT span is a no-op — no revision bump, no undo entry, no write', async () => {
+    const layerId = 'layer-reveal';
+    const loopId = await railAt(layerId, 10, 2);
+    const before = getDocument(layerId)!;
+
+    const result = resizeRevealRail(layerId, loopId, 12);
+    expect(result).toEqual({ ok: true, descriptor: null });
+    // The document object is not replaced at all — so nothing downstream can
+    // observe a phantom edit.
+    expect(getDocument(layerId)).toBe(before);
+    expect(getDocument(layerId)!.documentRevision).toBe(before.documentRevision);
+    expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!.originalEndExclusive).toBe(12);
+    expect(physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID).map((record) => record.appFrame)).toEqual([10, 11]);
+    expect(derivedEnd(layerId)).toBe(12);
+  });
+
+  it('WR-01: an invalid span still fails closed with no write (unchanged base guard)', async () => {
+    const layerId = 'layer-reveal';
+    const loopId = await railAt(layerId, 10, 2);
+    const before = getDocument(layerId)!;
+
+    // at the placement start, before it, and non-integer
+    expect(resizeRevealRail(layerId, loopId, 10)).toEqual({ ok: false, reason: 'invalid-span' });
+    expect(resizeRevealRail(layerId, loopId, 9)).toEqual({ ok: false, reason: 'invalid-span' });
+    expect(resizeRevealRail(layerId, loopId, 12.5)).toEqual({ ok: false, reason: 'invalid-span' });
+    expect(getDocument(layerId)).toBe(before);
+  });
+
+  it('WR-01: an Infinity rail keeps the pinned one-cycle lifecycle — the resize never re-extends it (G-52-4)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+    const createResult = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+      repeat: 'infinity',
+    });
+    const loopId = (createResult as OkRevealMutation).descriptor!.after.tracks[0].rotoPhysical!.loopClips[0].loopId;
+    const clipBefore = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!;
+    expect(clipBefore.originalEndExclusive).toBe(12);
+
+    expect(resizeRevealRail(layerId, loopId, 15).ok).toBe(true);
+
+    // Pinned at one cycle: the resolver extends it to capacity at READ time,
+    // and the resize must never turn the pin into a stored 15.
+    const clipAfter = physicPaintStore.getRotoPhysicalLoopClips(layerId, TEST_TRACK_ID)[0]!;
+    expect(clipAfter.originalEndExclusive).toBe(12);
+    expect(derivedEnd(layerId)).toBeGreaterThan(15);
+  });
+});

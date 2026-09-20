@@ -1562,10 +1562,36 @@ export function deleteRevealRail(layerId: string, loopId: string): RevealRailMut
 }
 
 /**
+ * The rail's CURRENT finite extent end — the value the requested span is
+ * compared against for the same-span no-op. A lifecycle-complete clip (every
+ * reveal rail is born that way, and the parser hydrates that shape) stores it
+ * as `originalEndExclusive`; a lifecycle-less clip falls back to the key-count
+ * proxy so the detection still fires. Infinity returns null: its stored value
+ * is the pinned one-cycle end, not a user-requested span (the resolver extends
+ * it to capacity at read time), so an Infinity resize is never a no-op.
+ */
+function _resolveRevealRailExtentEnd(clip: PhysicPaintRotoLoopClip): number | null {
+  if (clip.repeat === 'infinity') return null;
+  if (clip.originalEndExclusive !== undefined) return clip.originalEndExclusive;
+  return clip.placementStart + clip.sourceKeyIds.length * clip.repeat;
+}
+
+/**
  * Resize a reveal rail's span (D-07): SHORTENING deletes the baked keys now
  * outside the span (undo recovers); stretching keeps existing keys and leaves
  * the new frames empty until a voluntary Replay. One undo-ledger entry
  * (`'reveal-span'`) restores the prior span + keys by reference.
+ *
+ * EXTENT LAW (D-07, in BOTH directions): the finite extent IS the requested
+ * span end — what is stored must equal what is shown. Deriving it from the
+ * surviving key COUNT reported a span the rail never gained: on a stretch
+ * every key survives, so the derived end equalled the PRE-stretch extent, the
+ * clip was rewritten identically, `documentRevision` bumped and a
+ * `'reveal-span'` undo entry was recorded for nothing (WR-01). A resize to the
+ * span the rail already has is therefore a NO-OP — `{ ok: true, descriptor:
+ * null }` before any write, mirroring `setPhotoReferenceSource`'s same-source
+ * no-op. The Infinity pin (G-52-4: one cycle, extended to capacity at read
+ * time) is unchanged.
  */
 export function resizeRevealRail(layerId: string, loopId: string, newEndExclusive: number): RevealRailMutationResult {
   const document = getDocument(layerId);
@@ -1583,6 +1609,14 @@ export function resizeRevealRail(layerId: string, loopId: string, newEndExclusiv
     if (!keyIdSet.has(record.keyId)) return true;
     return record.appFrame < newEndExclusive;
   });
+
+  // Same-span no-op: the requested end already IS the rail's stored extent and
+  // no key is pruned, so nothing would change. Return BEFORE any write — no
+  // records replacement, no clip rewrite, no documentRevision bump and no undo
+  // entry for a resize that never moved.
+  if (newEndExclusive === _resolveRevealRailExtentEnd(rail.clip) && remaining.length === records.length) {
+    return { ok: true, descriptor: null };
+  }
   // 52 UAT (AM-4): a removed baked key may own an incoming break (a scissor
   // split inside a reveal rail, or the leading break when the span shrinks to
   // the empty boundary). Prune the removed keys' breaks BEFORE the records
@@ -1600,12 +1634,17 @@ export function resizeRevealRail(layerId: string, loopId: string, newEndExclusiv
   if (!recordResult.ok) return { ok: false, reason: 'bake-failed' };
 
   const survivingKeyIds = rail.clip.sourceKeyIds.filter((keyId) => remaining.some((record) => record.keyId === keyId));
-  // G-52-4: keep the stamped 43-06 lifecycle consistent with the surviving
-  // cycle so the derived extent matches the span law exactly (the same shape
-  // the parser would hydrate). Infinity pins one cycle; the resolver extends
-  // it to capacity at read time.
-  const resizedEnd = rail.clip.placementStart
-    + survivingKeyIds.length * (rail.clip.repeat === 'infinity' ? 1 : rail.clip.repeat);
+  // The finite extent is the REQUESTED end — the shrink and the stretch land
+  // on the same law, and what is stored matches what is shown (D-07).
+  // G-52-4: Infinity keeps the pinned one-cycle lifecycle (the shape the
+  // parser would hydrate); the resolver extends it to capacity at read time.
+  // The end must reach BOTH `originalEndExclusive` AND the single
+  // `visibleRanges` entry: with a stamped lifecycle the resolver takes
+  // `naturalEnd = originalEndExclusive` AND clips by `fragment.endExclusive`,
+  // so moving only one leaves the band at the smaller value.
+  const resizedEnd = rail.clip.repeat === 'infinity'
+    ? rail.clip.placementStart + survivingKeyIds.length
+    : newEndExclusive;
   const updatedClip: PhysicPaintRotoLoopClip = {
     ...rail.clip,
     sourceKeyIds: survivingKeyIds,
