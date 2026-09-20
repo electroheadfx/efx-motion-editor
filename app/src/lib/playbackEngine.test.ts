@@ -302,4 +302,68 @@ describe('playbackEngine paint-frame activation (52.3-02, Pitfall 3)', () => {
     expect(setActive).toHaveBeenCalledWith('fx-p');
     expect(sequenceStore.activeSequenceId.value).toBe('fx-p');
   });
+
+  it('scrubbing onto a leading gap preserves the active sequence and key-photo selection', async () => {
+    // WR-01 (52.3-REVIEW.md): a gap entry is ownerless (sequenceId ''), never a
+    // deselection signal (D-08) — pre-52.3 unowned positions had no entry and
+    // preserved the active sequence.
+    const {frameMap} = await import('./frameMap');
+    const entries: FrameEntry[] = [
+      {kind: 'gap' as const, globalFrame: 0, sequenceId: ''},
+      {kind: 'gap' as const, globalFrame: 1, sequenceId: ''},
+      ...Array.from({length: 4}, (_, i) => ({
+        kind: 'paint' as const,
+        globalFrame: i + 2,
+        sequenceId: 'fx-p',
+        layerId: 'roto-layer',
+      })),
+    ];
+    (frameMap as unknown as {value: FrameEntry[]}).value = entries;
+    const setActive = vi.spyOn(sequenceStore, 'setActive');
+
+    // Pre-condition: entering the paint span activates the owning fx sequence.
+    playbackEngine.scrubToFrame(2);
+    expect(setActive).toHaveBeenCalledWith('fx-p');
+    expect(sequenceStore.activeSequenceId.value).toBe('fx-p');
+    sequenceStore.selectKeyPhoto('kp-1');
+    expect(sequenceStore.selectedKeyPhotoId.value).toBe('kp-1');
+
+    setActive.mockClear();
+
+    // The leading gap scrub must not reach setActive at all (it also clears
+    // selectedKeyPhotoId, sequenceStore.ts:1091-1094).
+    playbackEngine.scrubToFrame(1);
+    expect(setActive).not.toHaveBeenCalled();
+    expect(sequenceStore.activeSequenceId.value).toBe('fx-p');
+    expect(sequenceStore.selectedKeyPhotoId.value).toBe('kp-1');
+  });
+
+  it('scrubbing through an inter-fx gap keeps the previous owner and still activates the next one', async () => {
+    // WR-01 (52.3-REVIEW.md): ownerless gap frames preserve the prior active
+    // sequence; a real owner transition must still run in full.
+    const {frameMap} = await import('./frameMap');
+    const entries: FrameEntry[] = [
+      {kind: 'paint' as const, globalFrame: 0, sequenceId: 'fx-a', layerId: 'roto-layer'},
+      {kind: 'paint' as const, globalFrame: 1, sequenceId: 'fx-a', layerId: 'roto-layer'},
+      {kind: 'gap' as const, globalFrame: 2, sequenceId: ''},
+      {kind: 'paint' as const, globalFrame: 3, sequenceId: 'fx-b', layerId: 'roto-layer'},
+      {kind: 'paint' as const, globalFrame: 4, sequenceId: 'fx-b', layerId: 'roto-layer'},
+    ];
+    (frameMap as unknown as {value: FrameEntry[]}).value = entries;
+
+    playbackEngine.scrubToFrame(0);
+    expect(sequenceStore.activeSequenceId.value).toBe('fx-a');
+    sequenceStore.selectKeyPhoto('kp-a');
+
+    // Inter-fx gap: neither the sequence nor its key-photo selection moves.
+    playbackEngine.scrubToFrame(2);
+    expect(sequenceStore.activeSequenceId.value).toBe('fx-a');
+    expect(sequenceStore.selectedKeyPhotoId.value).toBe('kp-a');
+
+    // Anti-over-suppression pin: a genuine owner change still activates and
+    // still clears the key-photo selection (setActive's documented behavior).
+    playbackEngine.scrubToFrame(3);
+    expect(sequenceStore.activeSequenceId.value).toBe('fx-b');
+    expect(sequenceStore.selectedKeyPhotoId.value).toBeNull();
+  });
 });
