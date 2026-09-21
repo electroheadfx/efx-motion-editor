@@ -1,0 +1,210 @@
+{
+  "task": "260921-ffh",
+  "title": "Studio-origin surfaces (reference selection, background keyframes, (+) tracks) through the REAL child→parent chain — re-diagnosis after 260921-e21 was falsified by native UAT",
+  "planBase": "afc349aab77cb2bd825b573ebc750dd105da8334",
+  "headAtStart": "afc349aab77cb2bd825b573ebc750dd105da8334",
+  "command": "pnpm --filter efx-motion-editor exec vitest run src/stores/efxPaintStudioOriginSync.scratch.test.ts",
+  "exitCode": 0,
+  "targetTest": "app/src/stores/efxPaintStudioOriginSync.scratch.test.ts",
+  "targetFile": "app/src/stores/efxPaintStudioOriginSync.scratch.test.ts",
+  "expected": "The plan's FG table expected the drop at FG-1 (the guard returning null with dirty already cleared) or FG-2 (serializeRuntimeIntoDocument reverting the change on the way out) or FG-4 (a false close gate).",
+  "actual": "FG-2 and FG-4 are GREEN for these three surfaces (measured) and FG-1 is GREEN for a simple composition — the e21 trap, again. The drop is at the SAME composite link FG-1 names, one level deeper: the failure-path re-arm e21 added is NOT REACHABLE from the retry that follows it. MEASURED, all three surfaces: rearmWroteTheRefNotTheCapturedConst=true; the retry against the render-captured const returnsNull=true with emitCount=0 and owedAfterRetry=false; the identical retry against the re-armed ref returnsNull=false with emitCount=1 (the control).",
+  "note": "All probe output below is raw and verbatim from the run at this head. Nothing is summarised from a probe that was not run.",
+  "realmIsolation": {
+    "separateInstances": true,
+    "separateEfxVersionSignals": true,
+    "separatePhysicStores": true,
+    "childDocumentVisibleInChild": true,
+    "childDocumentVisibleInParent": false
+  },
+  "fidelityGaps": {
+    "FG-1": {
+      "whatTheGapWas": "e21 handed the document straight to sendEfxPaintDocumentSync and pinned the guard with a SOURCE-TEXT assertion, so the guard-in-the-loop behaviour (a null return consuming a cleared dirty flag) was never entered.",
+      "howThisRunClosedIt": "Every push-shaped probe routes its document through createDocumentSyncPushGuard().evaluate(() => serializeRuntimeIntoDocument(layerId), () => efxPaintVersion.peek()) exactly as pushLiveProjection does (:3922-3931), and the caller contract (dirty cleared BEFORE the call) is driven with a signal, not asserted from source text.",
+      "observedControlResult": "FIRST evaluate non-null (a real send) and the SECOND, re-entrant evaluate on the same guard returns null with dirtyAfterClear=false and documentStillOwed=false — the drop SHAPE is real and measured, but on a duplicate where nothing is lost. The reachable drop is step 8: after a FAILED send, the re-arm writes the ref while the decision reads the render-captured const, so the retry returns null with nothing owed."
+    },
+    "FG-2": {
+      "whatTheGapWas": "e21 used a HAND-BUILT document, or serialized in the realm that had not mutated.",
+      "howThisRunClosedIt": "d1 = revision of the child document BEFORE serialize, d2 = the revision of the document serialize RETURNED, d3 = the revision of the child document AFTER the write-back (efxPaintStore.ts:1708-1734).",
+      "observedControlResult": "GREEN — serializeThrew=null, d2 === d3 (efxdoc-659-5ee832d9), documentRevision 4 -> 5, returnedIsStoredObject=true, and all three surfaces carried before AND after. FG-2 is EXONERATED for these three surfaces: the write-back does not revert them."
+    },
+    "FG-3": {
+      "whatTheGapWas": "e21 drove ONE module instance and faked the parent realm with resetEfxPaintStore() mid-test, so module-level state (documents, runtimes, documentSyncSentDigests) leaked across the 'boundary'.",
+      "howThisRunClosedIt": "TWO real module instances: the child realm imported first, then vi.resetModules(), then the parent realm (efxPaintStore, physicPaintStore, transport, guard, document module, revision module). The realm control is asserted before any probe.",
+      "observedControlResult": "PASS — separateInstances=true, separateEfxVersionSignals=true, separatePhysicStores=true, childDocumentVisibleInChild=true, childDocumentVisibleInParent=false (a child-only document is INVISIBLE to the parent until the send crosses)."
+    },
+    "FG-4": {
+      "whatTheGapWas": "e21 never drove the close sequence at all.",
+      "howThisRunClosedIt": "The close gate (:1919) is composed with the real terms, evaluated for the state EACH surface's mutation leaves (dirty=true, failures=0), then the flush body (:4013-4027) is driven through the mode gate and the clear, and the resulting push's outcome is recorded.",
+      "observedControlResult": "GREEN for the gate itself — for each of the three surfaces the gate WOULD fire (true), the flush WOULD clear inside the mode gate and WOULD push. The push it then makes is the step-8 link: against a failed send's stale const it returns null, the flush reports a clean outcome, and the close sequence destroys the window with the parent stale."
+    }
+  },
+  "verdicts": [
+    {
+      "surface": "reference selection (setPhotoReferenceSource via PhysicsPaintStudio.tsx:4298-4329 handleConfirmReferencePicker)",
+      "verdict": "a",
+      "link": "app/src/components/physic-paint/PhysicsPaintStudio.tsx:3913 (the render-captured `documentSyncPushGuard` const, used at :3922) × :3981 (the failure path re-arms the REF) × :3984 (the re-mark is a no-op when the flag is already true, so no render is guaranteed after the write) × :4024 (the caller clears documentSyncDirty BEFORE the push) × app/src/components/physic-paint/bridge/documentSyncPushGuard.ts:19-20 (the duplicate fingerprint returns null) — the mutation is consumed in the child with NO send and NO re-mark",
+      "structural": false,
+      "evidence": "step8_rearmReachability.surfaceChecks[surface=reference]: firstPushSent=true, sendError='ffh: simulated bridge failure on the push', rearmWroteTheRefNotTheCapturedConst=true, retryAgainstTheCapturedConst={returnedNull:true, threw:null, emitCount:0, owedAfterRetry:false}, controlRetryAgainstTheRearmedRef={returnedNull:false, emitCount:1}",
+      "exonerated_links": [
+        "the mutation itself (step1: writes the child document, bumps efxPaintVersion, changes the revision)",
+        "serializeRuntimeIntoDocument (step2: d2 === d3, surface carried)",
+        "the transport + the real parent listener (step4: parent applies it, carries the surface)",
+        "the reopen carrier (step5: carries it)",
+        "the store/package save seam (pre-state, efxPaintChildParentSync.scratch.test.ts 3 passed)"
+      ]
+    },
+    {
+      "surface": "background-image keyframes (addBackgroundClip via PhysicsPaintStudio.tsx:4209-4285 handleConfirmBackgroundPicker)",
+      "verdict": "a",
+      "link": "the same composite link as the reference verdict: PhysicsPaintStudio.tsx:3913/:3922 (the decision reads the render-captured const) × :3981 (the re-arm writes the ref) × :3984 (no guaranteed render after the write) × :4024/:4048 (the caller clears before the push) × documentSyncPushGuard.ts:19-20 → PhysicsPaintStudio.tsx:3938 (the null path returns without re-marking)",
+      "structural": false,
+      "evidence": "step8_rearmReachability.surfaceChecks[surface=background]: identical measured shape (returnedNull=true, emitCount=0, owedAfterRetry=false; control emitCount=1). Step 1 also records the handler's full sequence: addBackgroundClip then the library hydration (ok, missing=1) then getFlattenedFrame, which throws 'document is not defined' under vitest's node environment — the browser-canvas read is a harness boundary, recorded, never skipped.",
+      "exonerated_links": [
+        "the mutation itself (step1: descriptor kind add-background-clip, revision changed)",
+        "serializeRuntimeIntoDocument (step2: carried)",
+        "the transport + the real parent listener (step4: carried)",
+        "the reopen carrier (step5: carried)"
+      ]
+    },
+    {
+      "surface": "(+) track (addTrack + setActiveTrackId via PhysicsPaintStudio.tsx:2866-2875 handleAddTrack)",
+      "verdict": "a",
+      "link": "the same composite link, and it is the one the CLOSE path destroys the evidence for: the close gate fires (:1919 via :4012), the flush clears inside the mode gate (:4023-4026) and pushes (:4025) — against the stale const the guard returns null (:3938), the flush reports a clean outcome (runStudioFlush, :1913-1917), and usePhysicsPaintCloseFlush destroys the window (bridge/usePhysicsPaintParentBridge.ts:38-45) with the parent stale",
+      "structural": false,
+      "evidence": "step8_rearmReachability.surfaceChecks[surface=track]: identical measured shape. step6_teardown.gateForTheStateEachMutationLeaves[track]: dirtyAtClose=true, gateWouldFire=true, flushWouldClear=true, flushWouldPush=true — the gate is NOT the drop.",
+      "exonerated_links": [
+        "the mutation itself (step1: addTrack + setActiveTrackId, activationAccepted=true, 2 tracks)",
+        "serializeRuntimeIntoDocument (step2: carried)",
+        "the transport + the real parent listener (step4: parentTrackCount=2)",
+        "the reopen carrier (step5: carriedTrackCount=2)"
+      ]
+    }
+  ],
+  "structuralCheck": {
+    "S1_manifest_or_package_format_or_52_2_law": false,
+    "S2_new_independent_transport": false,
+    "S3_c7x_revision_identity_or_loop_clip_lifecycle": false,
+    "S4_rust_command_or_capability": false,
+    "verdict": "not structural — the root is inside the existing push wiring on physic-paint:efx-paint-document"
+  },
+  "probes": {
+    "realmIsolation": { "separateInstances": true, "separateEfxVersionSignals": true, "separatePhysicStores": true, "childDocumentVisibleInChild": true, "childDocumentVisibleInParent": false },
+    "step1_surfaceMutations": {
+      "note": "Substituted for the mounted component: these are the handler call sequences read off PhysicsPaintStudio.tsx and reproduced on the child realm store. The component cannot be mounted in vitest (Tauri window/engine deps), so no click path is driven.",
+      "handlerSources": { "reference": "PhysicsPaintStudio.tsx:4298-4329 handleConfirmReferencePicker", "background": "PhysicsPaintStudio.tsx:4209-4285 handleConfirmBackgroundPicker", "track": "PhysicsPaintStudio.tsx:2866-2875 handleAddTrack" },
+      "reference": { "before": { "version": 1, "revision": "efxdoc-293-fb5bed16" }, "after": { "version": 2, "revision": "efxdoc-359-f0fad33a", "ok": true }, "versionBumped": true, "revisionChanged": true, "descriptorKind": "set-photo-reference-source", "recordedOnLedgerByHandler": true },
+      "background": { "before": { "version": 2, "revision": "efxdoc-359-f0fad33a" }, "after": { "version": 3, "revision": "efxdoc-484-db8ccda5", "ok": true }, "versionBumped": true, "revisionChanged": true, "descriptorKind": "add-background-clip", "hydration": { "ok": true, "missing": 1 }, "flattenedFramePresent": false, "flattenedFrameError": "document is not defined" },
+      "track": { "before": { "version": 3, "revision": "efxdoc-484-db8ccda5" }, "after": { "version": 5, "revision": "efxdoc-644-19ac6133", "ok": true, "activationAccepted": true }, "versionBumped": true, "revisionChanged": true, "addedTrackId": "7d5ebcc2-7cc1-4b99-9aa0-f684ef48a6d0" },
+      "childDocumentCarries": { "photoReference": true, "backgroundClip": true, "addedTrack": true },
+      "childDocumentRevision": 4,
+      "childDocumentTrackCount": 2
+    },
+    "step2_serializeDiff": {
+      "note": "d1 = revision of the child document BEFORE serialize, d2 = revision of the document serialize RETURNED, d3 = revision of the child document AFTER the call (the write-back). A d3 that lost a surface is the FG-2 finding.",
+      "serializeThrew": null,
+      "d1_revisionBefore": "efxdoc-644-19ac6133",
+      "d2_revisionReturned": "efxdoc-659-5ee832d9",
+      "d3_revisionAfterWriteBack": "efxdoc-659-5ee832d9",
+      "documentRevisionBefore": 4,
+      "documentRevisionAfter": 5,
+      "documentRevisionBumped": true,
+      "returnedIsStoredObject": true,
+      "returnedCarries": { "photoReference": true, "backgroundClip": true, "addedTrack": true },
+      "storedAfterCarries": { "photoReference": true, "backgroundClip": true, "addedTrack": true }
+    },
+    "step3_guardInTheLoop": {
+      "note": "A null from evaluate paired with a cleared documentSyncDirty is the H2 drop shape: the caller cleared the flag the line before, nothing re-marks it, and no send occurs.",
+      "callerContract": { "close": "PhysicsPaintStudio.tsx:4023-4026", "debounce": ":4047-4050", "gesture": ":4080-4083" },
+      "firstCall": { "label": "first evaluate (the push the caller believed it was making)", "dirtyBeforeCall": true, "dirtyAfterClear": false, "guardReturnedNull": false, "threw": null, "documentStillOwed": false },
+      "secondCall": { "label": "second evaluate on the SAME guard (the push serialize re-fires the dirty effect — the re-entrant shape)", "dirtyBeforeCall": true, "dirtyAfterClear": false, "guardReturnedNull": true, "threw": null, "documentStillOwed": false },
+      "emitCountDuringGuardCalls": 0
+    },
+    "step4_crossing": {
+      "note": "The child realm built and sent the document through the real sender; the parent realm applied it through the real installed listener. A skipped apply is a verdict datum — record it as one.",
+      "sendError": null,
+      "emittedEvent": "physic-paint:efx-paint-document",
+      "emittedTarget": "main",
+      "handlerInstalled": true,
+      "revisionGuardPath": { "parentRevisionBefore": "efxdoc-293-3d7a1482", "parentRevisionAfter": "efxdoc-659-5ee832d9", "idempotencyEarlyReturnFired": false },
+      "parentIdentityChanged": true,
+      "parentAfterCarries": { "photoReference": true, "backgroundClip": true, "addedTrack": true },
+      "parentTrackCount": 2,
+      "parentDocumentRevision": 5,
+      "fidelityNote": "The listener is installed through the non-Tauri branch (stubWindow has no __TAURI_INTERNALS__), so the payload arrives via the DOM CustomEvent detail the DOM fallback reads. The Tauri branch reads event.payload and runs the SAME applyDocument body — recorded as a boundary, not hidden."
+    },
+    "step5_reopenCarrier": {
+      "note": "createPhysicPaintLaunchContext builds `{ ...baseDocument, tracks }` from the PARENT realm document and fails closed if that cannot parse. It can only carry what the parent already holds.",
+      "carrierError": null,
+      "carrierCarries": { "photoReference": true, "backgroundClip": true, "addedTrack": true },
+      "carriedTrackCount": 2
+    },
+    "step6_teardown": {
+      "note": "Term (a) is the close gate as PhysicsPaintStudio.tsx:1919 composes it. Terms the mounted component owns (engine stroke count, pending live pixels, playback settings) cannot be evaluated here; the DOCUMENT-SYNC term — the one this defect rides — is evaluated for the state each surface left.",
+      "gateForTheStateEachMutationLeaves": [
+        { "label": "reference selection (setPhotoReferenceSource)", "dirtyAtClose": true, "failureStreak": 0, "gateWouldFire": true, "flushWouldClear": true, "flushWouldPush": true, "dirtyAfterFlush": false },
+        { "label": "background clip (addBackgroundClip)", "dirtyAtClose": true, "failureStreak": 0, "gateWouldFire": true, "flushWouldClear": true, "flushWouldPush": true, "dirtyAfterFlush": false },
+        { "label": "(+) track (addTrack + setActiveTrackId)", "dirtyAtClose": true, "failureStreak": 0, "gateWouldFire": true, "flushWouldClear": true, "flushWouldPush": true, "dirtyAfterFlush": false }
+      ],
+      "closePaths": [
+        "header Close: PhysicsPaintStudio.tsx:1943-1947 handleWorkflowClose → getCurrentWindow().close() → onCloseRequested",
+        "OS window close: onCloseRequested directly",
+        "usePhysicsPaintCloseFlush (bridge/usePhysicsPaintParentBridge.ts:28-51) is the single handler for all of them"
+      ],
+      "gateComposition": "workflowMode === \"roto\" && Boolean(strokeCount || hasPendingLivePixels || playbackHasPending || pendingDocumentSyncRef.current())",
+      "workflowModeConstant": "PhysicsPaintStudio.tsx:797 `const workflowMode = \"roto\" as const` — the workflowMode term is ALWAYS true",
+      "documentSyncTerm": { "source": "PhysicsPaintStudio.tsx:4012 — pendingDocumentSyncRef.current = () => documentSyncDirty.peek() || documentSyncPushFailuresRef.current > 0", "dirtyAfterStep3CallerSequence": false, "failureStreak": 0, "gateWouldFire": false },
+      "flushBodyDecisions": { "source": "PhysicsPaintStudio.tsx:4013-4027 flushDocumentSyncRef.current", "clearsInsideModeGate": true, "modeGate": "layerId && (mode === \"Tauri\" || mode === \"Browser fallback\")", "clearsThenPushes": true },
+      "guardOutcomeForTheClosePush": "the close flush would call pushLiveProjection and consume the change with NO send (guard returns null)"
+    },
+    "step7_strokesContrast": {
+      "stroke": {
+        "direction": "child→main",
+        "sender": "sendPhysicPaintApplyPayload (components/physic-paint/bridge/physicsPaintBridgeTransport.ts:420)",
+        "event": "physic-paint:apply (lib/physicPaintBridge.ts:89)",
+        "ackPair": "physic-paint:apply-result (lib/physicPaintBridge.ts:90) — the parent answers, correlated by operationId",
+        "callSites": ["PhysicsPaintStudio.tsx:1469 (physical edits)", ":841 (cache payload)", ":1866"],
+        "gatedByDirtyFlag": false,
+        "debounced": false,
+        "closeFlushRequired": false,
+        "emittedEvent": "physic-paint:apply",
+        "emitError": null
+      },
+      "studioOriginSurfaces": {
+        "direction": "child→main",
+        "sender": "sendEfxPaintDocumentSync (components/physic-paint/bridge/physicsPaintBridgeTransport.ts:323), reached only through documentSyncDirty → the scheduler/close flush → the push guard → serializeRuntimeIntoDocument",
+        "event": "physic-paint:efx-paint-document (lib/physicPaintBridge.ts:97)",
+        "ackPair": null,
+        "gatedByDirtyFlag": true,
+        "debounced": "2000ms debounce (non-gesture) / 2500ms gesture-quiet (gesture)",
+        "closeFlushRequired": true,
+        "guardInTheLoop": true
+      },
+      "theSentence": "A stroke survives teardown because it never rides this channel: it is emitted eagerly on physic-paint:apply, answered by physic-paint:apply-result, and needs no dirty flag, no guard, no debounce and no close flush. These three surfaces ride physic-paint:efx-paint-document, which has NO ack — so the child cannot tell a delivered push from a consumed one, and the single failure path that could re-send (the :3981 re-arm) is unreachable from the retry that follows it while the caller has already cleared the flag that would have kept the change owed."
+    },
+    "step8_rearmReachability": {
+      "note": "A failed push arms a retry the component cannot reach: the re-arm writes the ref (:3981) while the decision reads the render-captured const (:3913/:3922). The retry then sees the failed content as a duplicate and consumes it — no send, no re-mark.",
+      "modelledWindow": "no re-render between the failure and the retry. In the product this window is real for the CLOSE push: the render the push's own serialize schedules happens BEFORE the rejection lands (the rejection needs the await chain through projectEfxPaintDocumentForSync + the dynamic import), and the .catch's own re-mark (:3984) is a no-op because the serialize already set the flag — so nothing guarantees a render after the write.",
+      "surfaceChecks": [
+        { "surface": "reference", "firstPushSent": true, "sendError": "ffh: simulated bridge failure on the push", "rearmWroteTheRefNotTheCapturedConst": true, "retryAgainstTheCapturedConst": { "returnedNull": true, "threw": null, "emitCount": 0, "owedAfterRetry": false }, "controlRetryAgainstTheRearmedRef": { "returnedNull": false, "emitCount": 1 } },
+        { "surface": "background", "firstPushSent": true, "sendError": "ffh: simulated bridge failure on the push", "rearmWroteTheRefNotTheCapturedConst": true, "retryAgainstTheCapturedConst": { "returnedNull": true, "threw": null, "emitCount": 0, "owedAfterRetry": false }, "controlRetryAgainstTheRearmedRef": { "returnedNull": false, "emitCount": 1 } },
+        { "surface": "track", "firstPushSent": true, "sendError": "ffh: simulated bridge failure on the push", "rearmWroteTheRefNotTheCapturedConst": true, "retryAgainstTheCapturedConst": { "returnedNull": true, "threw": null, "emitCount": 0, "owedAfterRetry": false }, "controlRetryAgainstTheRearmedRef": { "returnedNull": false, "emitCount": 1 } }
+      ]
+    }
+  },
+  "pins": [],
+  "replacedPins": {
+    "status": "recorded in Task 2",
+    "reason": "FG-2 and FG-4 were GREEN where the plan expected RED. Following the plan's rule, the pins are pointed at the link the verdicts name (the step-8 composite), and the end-to-end green legs (steps 2/4/5) are kept as permanent green locks in the same file rather than dropped."
+  },
+  "halt": {
+    "fired": false,
+    "reason": "No structural root (S1..S4 all false) and the drop is measured, not inferred: the failure-path re-arm is unreachable from the retry that follows it, on all three surfaces, with a passing control.",
+    "proceedToTask2": true
+  },
+  "gate": {
+    "command": "vitest run src/stores/efxPaintStudioOriginSync.scratch.test.ts && node -e <RED-EVIDENCE contract check>",
+    "expectedExit": 0,
+    "observed": "exit 0 — 'verdicts, fidelity controls and halt decision recorded' (vitest 1 passed / 1 file)"
+  }
+}
