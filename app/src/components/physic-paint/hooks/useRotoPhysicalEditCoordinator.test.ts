@@ -771,6 +771,32 @@ function harness(options: {
     error: 'Parent rejected empty segment.',
   }));
   const mismatch = () => coordinator.consumePhysicalEditResult(makeResult({ selectedAppFrame: 15 }));
+  /**
+   * The parent's OWN revision recompute: the bridge hashes the collection the
+   * PARENT store holds (`currentLoopClips`), not the collection the wire carried
+   * (`payload.loopClips`). On a track holding a lifecycle-less Infinity clip the
+   * two collections are different canonical documents, and the result comes back
+   * with a revision the child never staged.
+   */
+  const parentRevisionOverStoreClips = () => {
+    if (!payload) throw new Error('Expected a sent payload.');
+    return buildPhysicPaintRotoPhysicalRevision(
+      payload.records.map((entry) => ({
+        kind: 'real-key' as const,
+        keyId: entry.keyId,
+        appFrame: entry.appFrame,
+        payload: entry.payload,
+      })),
+      { enabled: payload.interpolationEnabled, mode: payload.interpolationMode },
+      loopClips,
+      payload.incomingInterpolationBreakKeyIds ?? [],
+      (payload.groupOverrideRecords ?? []).map((entry) => ({ kind: 'real-key' as const, ...entry })),
+    );
+  };
+  const acceptAsParentRecomputes = () => {
+    const stagedRevision = parentRevisionOverStoreClips();
+    return coordinator.consumePhysicalEditResult(makeResult({ stagedRevision, acceptedRevision: stagedRevision }));
+  };
   const mismatchDelta = (semanticDelta: unknown) => coordinator.consumePhysicalEditResult(makeResult({
     semanticDelta: semanticDelta as PhysicPaintRotoPhysicalEditSemanticDelta,
   }));
@@ -796,6 +822,9 @@ function harness(options: {
     reject,
     mismatch,
     mismatchDelta,
+    parentRevisionOverStoreClips,
+    acceptAsParentRecomputes,
+    makeResult,
     initial,
     replaceRecords,
     replaceLoopClips,
@@ -1277,8 +1306,77 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(mismatched.getCurrentFrame()).toBe(0);
     expect(mismatched.reconcileCurrentFrame).not.toHaveBeenCalled();
     expect(mismatched.coordinator.acceptedOutput.value).toBeNull();
-    expect(mismatched.coordinator.failureOutput.value).toBeNull();
-    mismatched.coordinator.cancelPhysicalEdit('disposal');
+  });
+
+  // 260921-c7x leg 1: the H-A identity split, at the settlement layer. The
+  // coordinator stages the collection it read; the parent hashes the collection
+  // its OWN store holds. A lifecycle-less Infinity clip makes those two
+  // different canonical documents, so the echoed revision is not the staged one.
+  it('settles when the parent recomputes the revision over its own store collection', async () => {
+    const test = harness();
+    test.replaceLoopClips('layer-1', [
+      ...test.getLoopClips(),
+      {
+        loopId: 'loop-infinity',
+        placementStart: 20,
+        sourceKeyIds: ['X', 'Y'],
+        repeat: 'infinity',
+        mode: 'static',
+      },
+    ]);
+    expect(await test.executeEmptySegment()).toBe(true);
+    // The staged revision (wire shape) and the parent's recompute (store shape)
+    // must be ONE identity.
+    expect(test.parentRevisionOverStoreClips()).toBe(
+      buildPhysicPaintRotoPhysicalRevision(
+        test.getPayload()!.records.map((entry) => ({
+          kind: 'real-key' as const,
+          keyId: entry.keyId,
+          appFrame: entry.appFrame,
+          payload: entry.payload,
+        })),
+        {
+          enabled: test.getPayload()!.interpolationEnabled,
+          mode: test.getPayload()!.interpolationMode,
+        },
+        test.getPayload()!.loopClips ?? [],
+        test.getPayload()!.incomingInterpolationBreakKeyIds ?? [],
+        (test.getPayload()!.groupOverrideRecords ?? []).map((entry) => ({ kind: 'real-key' as const, ...entry })),
+      ),
+    );
+    expect(test.acceptAsParentRecomputes()).toBe('accepted');
+    expect(test.coordinator.acceptedOutput.value).not.toBeNull();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+  });
+
+  // 260921-c7x leg 2: the latch. A mismatch must be terminal — released like any
+  // other failure — while still answering 'mismatch' to the caller.
+  it('releases a mismatched settlement so the next edit can start', async () => {
+    const test = harness();
+    expect(await test.executeEmptySegment()).toBe(true);
+    expect(test.mismatch()).toBe('mismatch');
+
+    // The mismatch is terminal: the failure surface reports it and the pending
+    // slot is released (lease released, settlement deregistered).
+    expect(test.coordinator.failureOutput.value?.reason).toBe('settlement-mismatch');
+    expect(test.clearPendingSettlement).toHaveBeenCalled();
+    expect(test.releaseLease).toHaveBeenCalled();
+
+    test.setConciseMessage.mockClear();
+    test.sendPhysicalEditPayload.mockClear();
+    expect(await test.executeEmptySegment()).toBe(true);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+    expect(test.setConciseMessage).not.toHaveBeenCalledWith('A Roto physical edit is already in flight.');
+  });
+
+  // 260921-c7x leg 3: a result that is not OUR result never settles the pending.
+  it('ignores a result carrying another operation identity and keeps the pending edit', async () => {
+    const test = harness();
+    expect(await test.executeEmptySegment()).toBe(true);
+    test.coordinator.consumePhysicalEditResult(test.makeResult({ operationId: 'someone-elses-operation' }));
+    expect(test.coordinator.acceptedOutput.value).toBeNull();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+    expect(test.releaseLease).not.toHaveBeenCalled();
   });
 
   it('rejects missing or mismatched ordinary intent before staging or transport', async () => {

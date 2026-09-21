@@ -52,9 +52,11 @@ import {
   buildPhysicPaintRotoProjectEquality,
   requirePhysicPaintRotoInlineBytes,
   parsePhysicPaintRotoPhysicalDocument,
+  parsePhysicPaintRotoLoopClips,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoLoopClip,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
+import { normalizeLoopClipForPayload } from '../components/physic-paint/hooks/useRotoPhysicalEditCoordinator';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
 import {
   proposePhysicPaintRotoActionGroupLifecycle,
@@ -102,14 +104,14 @@ const TEST_TRACK_ID = 'track-1';
 // 46-01: the launch IS the document — build a document whose ACTIVE track is
 // the fixed TEST_TRACK_ID so production resolve paths read the same track
 // the tests seed runtime state under.
-function makeTrackDocument(layerId: string): EfxPaintDocument {
+function makeTrackDocument(layerId: string, trackId: string = TEST_TRACK_ID): EfxPaintDocument {
   return {
     version: 1,
     parentLayerId: layerId,
     documentRevision: 0,
-    activeTrackId: TEST_TRACK_ID,
+    activeTrackId: trackId,
     tracks: [{
-      id: TEST_TRACK_ID,
+      id: trackId,
       name: 'Paint',
       order: 0,
       visible: true,
@@ -6406,5 +6408,713 @@ describe('Phase 43.2 UAT-13 cross-window first-paint settlement', async () => {
     const transported = JSON.parse(JSON.stringify(toTransportPayload(result)));
     const restored = fromTransportPayload(transported);
     expect(isPhysicPaintApplyResult(restored)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Quick 260921-c7x: live settlement-descriptor capture on the REAL stores.
+//
+// The cluster: a rail physical edit dies with "Ignored mismatched physics paint
+// physical edit result." and then "Roto physical edit timed out." — and on a
+// SECOND layer key moves are dead entirely. The settlement predicate
+// (useRotoPhysicalEditCoordinator.ts:562-590) accepts a descriptor only when
+// `detail.stagedRevision === pending.stagedRevision`, so any producer asymmetry
+// between the child's staged revision and the parent's echoed revision makes
+// EVERY edit on that track mismatch.
+//
+// This capture drives the real apply door (applyPhysicPaintPayload) against the
+// real store with payloads built exactly as the coordinator builds them:
+//   child staged revision -> buildPhysicPaintRotoPhysicalRevision(records,
+//       interpolation, RAW staged clips, breaks, overrides)   (coordinator :2124)
+//   wire clips            -> cloneLoopClips(RAW staged clips) (coordinator :2191)
+//       = parsePhysicPaintRotoLoopClips(clips).map(normalizeLoopClipForPayload)
+// Every descriptor below is recorded verbatim; the SUMMARY carries the raw run.
+// ---------------------------------------------------------------------------
+describe('260921-c7x physical-edit settlement descriptors', async () => {
+  const SECOND_LAYER_ID = 'phys-layer-2';
+  const SECOND_TRACK_ID = 'track-2';
+  const CAPACITY = 60;
+  const INTERPOLATION = { enabled: false, mode: 'duplicate' as const };
+
+  /** The exact wire transform `cloneLoopClips` applies (coordinator :655). */
+  function wireLoopClips(clips: readonly PhysicPaintRotoLoopClip[]): readonly PhysicPaintRotoLoopClip[] {
+    return parsePhysicPaintRotoLoopClips(clips).map((clip) => normalizeLoopClipForPayload(clip));
+  }
+
+  /**
+   * The exact child revision the coordinator stages (its `stagedRevision`), over
+   * whatever clip collection is handed in — raw or wire-shaped.
+   */
+  function childRevision(
+    records: Parameters<typeof buildPhysicPaintRotoPhysicalRevision>[0],
+    clips: readonly PhysicPaintRotoLoopClip[],
+    breaks: readonly string[] = [],
+  ): string {
+    return buildPhysicPaintRotoPhysicalRevision(
+      records,
+      INTERPOLATION,
+      clips,
+      breaks,
+      [],
+    );
+  }
+
+  /**
+   * The live shape that carries the asymmetry: an Infinity clip. Parse cannot
+   * hydrate it (`buildDefaultPhysicPaintRotoGroupLifecycle` returns null for
+   * `repeat: 'infinity'`), so the store keeps it lifecycle-less while the wire
+   * transform synthesizes the one-cycle lifecycle the payload validator demands.
+   */
+  const infinityClip: PhysicPaintRotoLoopClip = {
+    loopId: 'loop-infinity',
+    placementStart: 0,
+    sourceKeyIds: ['A', 'B'],
+    repeat: 'infinity',
+    mode: 'static',
+  };
+
+  /** Resolve an intent the way the coordinator does, against the live store. */
+  function resolveAgainstStore(input: {
+    readonly layerId: string;
+    readonly trackId: string;
+    readonly records: ReturnType<typeof makePhysicalRecord>[];
+    readonly intent: PhysicPaintRotoPhysicalEditIntent;
+    readonly parentEndExclusive: number;
+    readonly capacity: number;
+  }) {
+    return resolvePhysicPaintRotoPhysicalEdit({
+      identities: input.records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records: input.records,
+      intent: input.intent,
+      parentEndExclusive: input.parentEndExclusive,
+      capacity: input.capacity,
+      interpolationEnabled: false,
+      loopClips: storedClips(input.layerId, input.trackId),
+      incomingInterpolationBreakKeyIds: [],
+    });
+  }
+
+  /** The child's wire records: `recordsToApplyPayloadRecords` (drop `kind`). */
+  function wireRecords(records: readonly { kind?: string }[]) {
+    return records.map(({ kind: _kind, ...record }) => record);
+  }
+
+  /** A Phase 52 Reveal rail (kov): born lifecycle-complete, railKind 'reveal'. */
+  function revealClip(endExclusive: number): PhysicPaintRotoLoopClip {
+    return {
+      loopId: 'reveal-rail-1',
+      placementStart: 0,
+      sourceKeyIds: ['bake-A', 'bake-B'],
+      repeat: 1,
+      mode: 'static',
+      railKind: 'reveal',
+      scriptId: 'action-reveal',
+      motion: { deformation: 0, position: 0 },
+      overrideColor: null,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: endExclusive,
+      visibleRanges: [{ start: 0, endExclusive }],
+      frameOverrides: [],
+    };
+  }
+
+  /**
+   * Stage one edit exactly the way the coordinator stages it: resolve against
+   * the live store, take the proposal's records, and take the proposal's clips
+   * (`proposal.nextLoopClips ?? currentLoopClips`) — the RAW collection, which
+   * is what the child hashes while the wire ships `cloneLoopClips` of it.
+   */
+  function stageFromProposal(input: {
+    readonly layerId: string;
+    readonly trackId: string;
+    readonly records: ReturnType<typeof makePhysicalRecord>[];
+    readonly capacity: number;
+    readonly parentEndExclusive: number;
+    readonly intent: PhysicPaintRotoPhysicalEditIntent;
+  }) {
+    const resolution = resolveAgainstStore(input);
+    if (!resolution.ok) return null;
+    const proposal = resolution.proposal;
+    const records = proposal.nextRecords
+      ?? proposal.orderedKeyIds.map((keyId) => {
+        const current = input.records.find((record) => record.keyId === keyId);
+        const appFrame = proposal.mapping.get(keyId);
+        if (!current || appFrame === undefined) throw new Error(`Missing canonical ${keyId} record`);
+        return movePhysicalRecord(current, appFrame);
+      });
+    const stagedClips = proposal.nextLoopClips ?? storedClips(input.layerId, input.trackId);
+    return {
+      intent: input.intent,
+      records,
+      stagedClips,
+      childStagedRevision: childRevision(records, stagedClips),
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+    };
+  }
+
+  /**
+   * Which ordinary intents a track carrying a rail will actually accept, and
+   * which the resolver refuses outright. A refusal never reaches the settle
+   * predicate at all, so the cluster's mismatch needs one of the accepted kinds.
+   */
+  function probeIntentBattery(input: {
+    readonly layerId: string;
+    readonly trackId: string;
+    readonly records: ReturnType<typeof makePhysicalRecord>[];
+    readonly capacity: number;
+  }): { readonly accepted: readonly PhysicPaintRotoPhysicalEditIntent[]; readonly record: Record<string, string> } {
+    const firstKeyId = input.records[0]?.keyId ?? 'A';
+    const secondKeyId = input.records[1]?.keyId ?? firstKeyId;
+    const candidates: readonly PhysicPaintRotoPhysicalEditIntent[] = [
+      { kind: 'force-spacing', emptyFrames: 1, selectedKeyId: null },
+      { kind: 'move-key', movedKeyId: firstKeyId, target: { kind: 'physical-cell', appFrame: 1 } },
+      { kind: 'move-key-group', movedKeyIds: [firstKeyId, secondKeyId], grabbedKeyId: firstKeyId, target: { kind: 'physical-cell', appFrame: 1 } },
+      { kind: 'duplicate-key', sourceKeyId: firstKeyId, newKeyId: `dup-${firstKeyId}` },
+      { kind: 'delete-key', selectedKeyId: firstKeyId },
+    ];
+    const accepted: PhysicPaintRotoPhysicalEditIntent[] = [];
+    const record: Record<string, string> = {};
+    for (const intent of candidates) {
+      const resolution = resolveAgainstStore({
+        layerId: input.layerId,
+        trackId: input.trackId,
+        records: input.records,
+        intent,
+        parentEndExclusive: input.capacity,
+        capacity: input.capacity,
+      });
+      record[intent.kind] = resolution.ok ? 'accepted' : resolution.failure.text;
+      if (resolution.ok) accepted.push(intent);
+    }
+    return { accepted, record };
+  }
+
+  function seedTrack(
+    layerId: string,
+    trackId: string,
+    records: ReturnType<typeof makePhysicalRecord>[],
+    clips: readonly PhysicPaintRotoLoopClip[] = [],
+    capacity = CAPACITY,
+  ) {
+    const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, trackId, {
+      capacity,
+      realKeyRecords: records,
+      interpolation: INTERPOLATION,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: records[0]?.appFrame ?? 0,
+      revision: childRevision(records, clips),
+      loopClips: clips,
+      incomingInterpolationBreakKeyIds: [],
+    });
+    if (!result.ok) throw new Error(result.error);
+    return result.document;
+  }
+
+  /** The live stored clip collection for a track (what the coordinator stages from). */
+  function storedClips(layerId: string, trackId: string): readonly PhysicPaintRotoLoopClip[] {
+    return physicPaintStore.getRotoPhysicalLoopClips(layerId, trackId);
+  }
+
+  /**
+   * The parent's LIVE `currentRevision` gate (:1639) — the value `expectedRevision`
+   * must equal. Derived from the STORE's clip collection, i.e. the raw shape.
+   */
+  function liveRevision(layerId: string, trackId: string): string {
+    return physicPaintStore.getRotoPhysicalDocument(layerId, trackId)?.revision ?? '';
+  }
+
+  /** A settleable force-spacing payload shaped exactly like the coordinator's. */
+  function railEditPayload(input: {
+    layerId: string;
+    trackId: string;
+    launchOperationId: string;
+    expectedRevision: string;
+    records: ReturnType<typeof makePhysicalRecord>[];
+    wireClips: readonly PhysicPaintRotoLoopClip[];
+    operationId: string;
+    intent: PhysicPaintRotoPhysicalEditIntent;
+    selection?: { readonly selectedKeyId: string | null; readonly selectedAppFrame: number | null };
+  }) {
+    return {
+      kind: 'replace-roto-physical-map' as const,
+      operationId: input.operationId,
+      operationKind: input.intent.kind,
+      intent: input.intent,
+      layerId: input.layerId,
+      trackId: input.trackId,
+      leaseToken: acquirePhysicalLease(input.layerId, projectStore.projectContextId.peek(), input.trackId),
+      startFrame: input.selection?.selectedAppFrame ?? 0,
+      launchOperationId: input.launchOperationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: input.expectedRevision,
+      records: input.records.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: INTERPOLATION.enabled,
+      interpolationMode: INTERPOLATION.mode,
+      loopClips: [...input.wireClips],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: input.selection?.selectedKeyId ?? null,
+      selectedAppFrame: input.selection?.selectedAppFrame ?? null,
+      cursorAppFrame: input.selection?.selectedAppFrame ?? 0,
+    };
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    resetPhysicPaintDocumentSyncFrameState();
+    _setPhysicPaintDocumentSyncFramePorts(null);
+    registerDocument(makeTrackDocument('phys-layer-1', TEST_TRACK_ID));
+    registerDocument(makeTrackDocument(SECOND_LAYER_ID, SECOND_TRACK_ID));
+    mockLayers([
+      physicLayer(),
+      physicLayer({ id: SECOND_LAYER_ID, name: 'Physic Paint 2', source: { type: 'physic-paint', layerId: SECOND_LAYER_ID } }),
+    ]);
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn().mockReturnValue({ focus: vi.fn() }),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.doUnmock('@tauri-apps/api/core');
+    vi.resetModules();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  it('H-A: one clip collection, two canonical revisions — the parent echo is not what the child staged', async () => {
+    const layer = physicLayer();
+    const records = [makePhysicalRecord('A', 0), makePhysicalRecord('B', 2)];
+    seedTrack('phys-layer-1', TEST_TRACK_ID, records, [infinityClip]);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok) throw new Error(launch.error);
+    const carried = carriedRotoPhysical(launch.data);
+
+    const stored = storedClips('phys-layer-1', TEST_TRACK_ID);
+    const wire = wireLoopClips(stored);
+    const rawHash = childRevision(records, stored);
+    const wireHash = childRevision(records, wire);
+
+    // The child's own proposal + staging path (coordinator :2080-:2130): resolve
+    // against the live store, stage the proposal's records, and stage the
+    // proposal's clips — `proposal.nextLoopClips ?? currentLoopClips` — which are
+    // the STORE's raw clips for an ordinary edit.
+    const battery = probeIntentBattery({
+      layerId: 'phys-layer-1',
+      trackId: TEST_TRACK_ID,
+      records,
+      capacity: carried.capacity,
+    });
+    const intent = battery.accepted[0];
+    const staged = intent
+      ? stageFromProposal({
+          layerId: 'phys-layer-1',
+          trackId: TEST_TRACK_ID,
+          records,
+          capacity: carried.capacity,
+          parentEndExclusive: carried.capacity,
+          intent,
+        })
+      : null;
+    let settled: { readonly ok: boolean; readonly error: string | null; readonly stagedRevision: string; readonly acceptedRevision: string | null } | null = null;
+    if (staged) {
+      const result = await applyPhysicPaintPayload(railEditPayload({
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        launchOperationId: launch.data.operationId,
+        expectedRevision: liveRevision('phys-layer-1', TEST_TRACK_ID),
+        records: staged.records,
+        // The wire: `cloneLoopClips(stagedLoopClips)` (coordinator :2191).
+        wireClips: wireLoopClips(staged.stagedClips),
+        operationId: 'c7x-hA-infinity',
+        intent: staged.intent,
+        selection: { selectedKeyId: staged.selectedKeyId, selectedAppFrame: staged.selectedAppFrame },
+      }));
+      settled = {
+        ok: result.ok,
+        error: result.ok ? null : result.error,
+        stagedRevision: result.stagedRevision,
+        acceptedRevision: result.acceptedRevision,
+      };
+    }
+
+    // RAW evidence (the SUMMARY ground truth).
+    console.log('[c7x][H-A] captured descriptor', JSON.stringify({
+      storedClipHasLifecycle: stored[0]?.syncState !== undefined,
+      wireClipHasLifecycle: wire[0]?.syncState !== undefined,
+      sameCollectionRawHash: rawHash,
+      sameCollectionWireHash: wireHash,
+      storeRevision: liveRevision('phys-layer-1', TEST_TRACK_ID),
+      carriedRevision: carried.revision,
+      resolverBattery: battery.record,
+      chosenIntent: intent?.kind ?? null,
+      childStagedRevision: staged?.childStagedRevision ?? null,
+      settled,
+    }));
+
+    expect(stored[0]?.syncState).toBeUndefined();
+    expect(wire[0]?.syncState).toBe('synchronized');
+    // THE DIVERGENCE: one clip collection, two canonical revisions. Every finite
+    // clip hashes identically in both shapes; only the Infinity clip splits.
+    expect(rawHash).not.toBe(wireHash);
+    // THE LATCH TRIGGER: the parent refuses the canonical gate and echoes a
+    // revision the child never staged.
+    expect(settled?.ok).toBe(false);
+    expect(settled?.stagedRevision).not.toBe(staged?.childStagedRevision);
+  });
+
+  it('H-A: bisects which lifecycle term moves the revision', async () => {
+    const records = [makePhysicalRecord('A', 0), makePhysicalRecord('B', 2)];
+    const base = {
+      loopId: 'loop-bisect',
+      placementStart: 0,
+      sourceKeyIds: ['A', 'B'],
+      repeat: 2 as const,
+      mode: 'static' as const,
+    };
+    const lifecycleComplete: PhysicPaintRotoLoopClip = {
+      ...base,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 0,
+      originalEndExclusive: 4,
+      visibleRanges: [{ start: 0, endExclusive: 4 }],
+      frameOverrides: [],
+    };
+    const baselineHash = childRevision(records, [lifecycleComplete]);
+    const bisection: Record<string, { readonly hash: string | null; readonly moved: boolean; readonly error?: string }> = {};
+    const terms: readonly (readonly [string, Partial<PhysicPaintRotoLoopClip>])[] = [
+      ['syncState', { syncState: 'modified' }],
+      ['railKind', { railKind: 'reveal' }],
+      ['provenanceState', { provenanceState: 'detached' }],
+      ['phaseOrigin', { phaseOrigin: 1 }],
+      ['originalEndExclusive', { originalEndExclusive: 6 }],
+      ['visibleRanges', { visibleRanges: [{ start: 0, endExclusive: 6 }] }],
+      ['frameOverrides', { frameOverrides: [{ appFrame: 2, keyId: 'B' }] }],
+    ];
+    for (const [name, patch] of terms) {
+      try {
+        const hash = childRevision(records, [{ ...lifecycleComplete, ...patch }]);
+        bisection[name] = { hash, moved: hash !== baselineHash };
+      } catch (error) {
+        // A term the lifecycle guard refuses on its own is still evidence: the
+        // term is part of the lifecycle block the lifecycle-less clip lacks.
+        bisection[name] = {
+          hash: null,
+          moved: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    // THE BISECTION: a FINITE lifecycle-less clip and its wire shape hash the
+    // same, because the canonical encoder re-parses (and so re-hydrates) every
+    // finite clip before encoding.
+    const finiteLifecycleLessHash = childRevision(records, [base]);
+    const finiteLifecycleLessWireHash = childRevision(records, wireLoopClips([base]));
+    // An INFINITY clip cannot be hydrated — `buildDefaultPhysicPaintRotoGroupLifecycle`
+    // returns null for it — so the stored shape omits the lifecycle block while the
+    // wire shape carries the synthesized one, and the two revisions split.
+    const infinityLifecycleLessHash = childRevision(records, [infinityClip]);
+    const infinityLifecycleLessWireHash = childRevision(records, wireLoopClips([infinityClip]));
+
+    console.log('[c7x][H-A bisect] captured terms', JSON.stringify({
+      baselineHash,
+      finiteLifecycleLessHash,
+      finiteLifecycleLessWireHash,
+      finiteDiverges: finiteLifecycleLessHash !== finiteLifecycleLessWireHash,
+      infinityLifecycleLessHash,
+      infinityLifecycleLessWireHash,
+      infinityDiverges: infinityLifecycleLessHash !== infinityLifecycleLessWireHash,
+      terms: bisection,
+    }));
+
+    // Every lifecycle term is a fingerprint term; flipping any single one moves
+    // the hash (terms that the lifecycle guard refuses standalone are recorded
+    // with their guard error instead).
+    for (const [name, entry] of Object.entries(bisection)) {
+      if (entry.error) continue;
+      expect(entry.moved, `${name} must be a canonical term`).toBe(true);
+    }
+    // The wire transform is a hash identity for finite clips...
+    expect(finiteLifecycleLessWireHash).toBe(baselineHash);
+    expect(finiteLifecycleLessHash).toBe(finiteLifecycleLessWireHash);
+    // ...and a hash SPLIT for Infinity clips. This is the whole asymmetry.
+    expect(infinityLifecycleLessHash).not.toBe(infinityLifecycleLessWireHash);
+  });
+
+  it('H-B: a pre-resolution reject recomputes the revision from the wire payload', async () => {
+    const layer = physicLayer();
+    const records = [makePhysicalRecord('A', 0), makePhysicalRecord('B', 2)];
+    seedTrack('phys-layer-1', TEST_TRACK_ID, records, [infinityClip]);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok) throw new Error(launch.error);
+    const stored = storedClips('phys-layer-1', TEST_TRACK_ID);
+
+    const movedRecords = [movePhysicalRecord(records[0], 1), records[1]];
+    const intent: PhysicPaintRotoPhysicalEditIntent = {
+      kind: 'move-key',
+      movedKeyId: 'A',
+      target: { kind: 'physical-cell', appFrame: 1 },
+    };
+    // What the CHILD staged: the moved records over its RAW staged clips.
+    const childStagedRevision = childRevision(movedRecords, stored);
+
+    // Deliberately stale: the parent rejects at the revision gate (:1687), long
+    // before any proposal parsing.
+    const staleResult = await applyPhysicPaintPayload(railEditPayload({
+      layerId: 'phys-layer-1',
+      trackId: TEST_TRACK_ID,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: 'stale-revision-never-staged',
+      records: movedRecords,
+      wireClips: wireLoopClips(stored),
+      operationId: 'c7x-hB-stale-revision',
+      intent,
+      selection: { selectedKeyId: 'A', selectedAppFrame: 1 },
+    }));
+
+    console.log('[c7x][H-B] captured descriptor', JSON.stringify({
+      childStagedRevision,
+      parentEchoStagedRevision: staleResult.stagedRevision,
+      echoIsChildStaged: staleResult.stagedRevision === childStagedRevision,
+      echoOverWireClips: childRevision(movedRecords, wireLoopClips(stored)),
+      ok: staleResult.ok,
+      error: staleResult.ok ? null : staleResult.error,
+    }));
+
+    expect(staleResult.ok).toBe(false);
+    // No resolution ever ran, yet the parent still answers with a revision — and
+    // it is one the child never staged, so the settlement predicate latches.
+    expect(staleResult.stagedRevision).not.toBe(childStagedRevision);
+  });
+
+  it('H-B: a ref-expansion failure answers with no staged revision at all', async () => {
+    const layer = physicLayer();
+    const records = [makePhysicalRecord('A', 0), makePhysicalRecord('B', 2)];
+    seedTrack('phys-layer-1', TEST_TRACK_ID, records, [infinityClip]);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok) throw new Error(launch.error);
+    const leaseToken = acquirePhysicalLease('phys-layer-1');
+    const movedRecords = [movePhysicalRecord(records[0], 1), records[1]];
+    const intent: PhysicPaintRotoPhysicalEditIntent = {
+      kind: 'move-key',
+      movedKeyId: 'A',
+      target: { kind: 'physical-cell', appFrame: 1 },
+    };
+    const payload = {
+      kind: 'replace-roto-physical-map' as const,
+      operationId: 'c7x-hB-ref-expansion-failure',
+      operationKind: 'move-key' as const,
+      intent,
+      layerId: 'phys-layer-1',
+      trackId: TEST_TRACK_ID,
+      leaseToken,
+      startFrame: 1,
+      launchOperationId: launch.data.operationId,
+      projectContextId: projectStore.projectContextId.peek(),
+      expectedRevision: liveRevision('phys-layer-1', TEST_TRACK_ID),
+      // 52.1 Part 2: unchanged records ride as content refs; a token mismatch
+      // fails the expansion closed before the parent can hash anything real.
+      records: [
+        { keyId: 'A', appFrame: 1, refToken: 'token-mismatch' },
+        wireRecords(movedRecords)[1],
+      ],
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate' as const,
+      loopClips: wireLoopClips(storedClips('phys-layer-1', TEST_TRACK_ID)),
+      incomingInterpolationBreakKeyIds: [] as string[],
+      selectedKeyId: 'A',
+      selectedAppFrame: 1,
+      cursorAppFrame: 1,
+    };
+
+    let captured: Awaited<ReturnType<typeof applyPhysicPaintPayload>> | undefined;
+    let listener: ((event: MessageEvent) => void) | undefined;
+    const child = { postMessage: vi.fn() };
+    vi.spyOn(window, 'addEventListener').mockImplementation((event, cb) => {
+      if (event === 'message') listener = cb as (event: MessageEvent) => void;
+    });
+    vi.spyOn(window, 'dispatchEvent').mockReturnValue(true);
+    await installPhysicPaintApplyListener((result) => { captured = result; });
+    listener?.({
+      origin: 'http://localhost:1420',
+      data: { type: PHYSIC_PAINT_APPLY_EVENT, payload },
+      source: child as unknown as MessageEventSource,
+    } as MessageEvent);
+    for (let tick = 0; tick < 3; tick += 1) await new Promise((resolve) => setTimeout(resolve, 0));
+
+    console.log('[c7x][H-B ref] captured descriptor', JSON.stringify({
+      ok: captured?.ok,
+      error: (captured as { error?: string } | undefined)?.error ?? null,
+      stagedRevision: (captured as { stagedRevision?: string } | undefined)?.stagedRevision ?? null,
+      hasStagedRevisionField: captured !== undefined && 'stagedRevision' in captured,
+    }));
+
+    expect(captured?.ok).toBe(false);
+    // The child receives a revision it never staged — the fallback recompute
+    // cannot even parse the ref-shaped records it was handed.
+    expect((captured as { stagedRevision?: string } | undefined)?.stagedRevision)
+      .toBe('invalid-physical-revision');
+  });
+
+  it('layer-2 leg: a second layer settles with layer-1 parity', async () => {
+    const layerOne = physicLayer();
+    const layerTwo = physicLayer({
+      id: SECOND_LAYER_ID,
+      name: 'Physic Paint 2',
+      source: { type: 'physic-paint', layerId: SECOND_LAYER_ID },
+    });
+    const layerOneRecords = [makePhysicalRecord('A', 0), makePhysicalRecord('B', 2)];
+    const layerTwoRecords = [makePhysicalRecord('A', 0), makePhysicalRecord('B', 2)];
+    seedTrack('phys-layer-1', TEST_TRACK_ID, layerOneRecords, []);
+    seedTrack(SECOND_LAYER_ID, SECOND_TRACK_ID, layerTwoRecords, []);
+
+    const launchOne = await openPhysicPaintCanvas({ layer: layerOne, frame: 0 });
+    if (!launchOne.ok) throw new Error(launchOne.error);
+    const launchTwo = await openPhysicPaintCanvas({ layer: layerTwo, frame: 0 });
+    if (!launchTwo.ok) throw new Error(launchTwo.error);
+
+    const intent: PhysicPaintRotoPhysicalEditIntent = {
+      kind: 'move-key',
+      movedKeyId: 'A',
+      target: { kind: 'physical-cell', appFrame: 1 },
+    };
+    const runLayer = async (input: {
+      readonly layerId: string;
+      readonly trackId: string;
+      readonly launchOperationId: string;
+      readonly expectedRevision: string;
+      readonly records: ReturnType<typeof makePhysicalRecord>[];
+      readonly operationId: string;
+    }) => applyPhysicPaintPayload(railEditPayload({
+      ...input,
+      wireClips: [],
+      intent,
+      selection: { selectedKeyId: 'A', selectedAppFrame: 1 },
+    }));
+
+    const one = await runLayer({
+      layerId: 'phys-layer-1',
+      trackId: TEST_TRACK_ID,
+      launchOperationId: launchOne.data.operationId,
+      expectedRevision: carriedRotoPhysical(launchOne.data).revision,
+      records: [movePhysicalRecord(layerOneRecords[0], 1), layerOneRecords[1]],
+      operationId: 'c7x-layer-1',
+    });
+    const two = await runLayer({
+      layerId: SECOND_LAYER_ID,
+      trackId: SECOND_TRACK_ID,
+      launchOperationId: launchTwo.data.operationId,
+      expectedRevision: carriedRotoPhysical(launchTwo.data).revision,
+      records: [movePhysicalRecord(layerTwoRecords[0], 1), layerTwoRecords[1]],
+      operationId: 'c7x-layer-2',
+    });
+
+    console.log('[c7x][layer-2] captured descriptors', JSON.stringify({
+      layerOne: { ok: one.ok, error: one.ok ? null : one.error, stagedRevision: one.stagedRevision, acceptedRevision: one.acceptedRevision },
+      layerTwo: { ok: two.ok, error: two.ok ? null : two.error, stagedRevision: two.stagedRevision, acceptedRevision: two.acceptedRevision },
+    }));
+
+    // Layer/track identity must never change the settlement outcome.
+    expect(one.ok, one.ok ? undefined : one.error).toBe(true);
+    expect(two.ok, two.ok ? undefined : two.error).toBe(true);
+    expect(two.stagedRevision).toBe(one.stagedRevision);
+    expect(physicPaintStore.getRotoPhysicalDocument(SECOND_LAYER_ID, SECOND_TRACK_ID)?.realKeyRecords
+      .find((record) => record.keyId === 'A')?.appFrame).toBe(1);
+    // Layer 1 is untouched by layer 2's edit.
+    expect(physicPaintStore.getRotoPhysicalDocument('phys-layer-1', TEST_TRACK_ID)?.realKeyRecords
+      .find((record) => record.keyId === 'A')?.appFrame).toBe(1);
+  });
+
+  it('reveal probe: a reveal rail is lifecycle-complete at birth, so its wire shape is identity', async () => {
+    const layer = physicLayer();
+    const records = [makePhysicalRecord('bake-A', 0), makePhysicalRecord('bake-B', 2)];
+    seedTrack('phys-layer-1', TEST_TRACK_ID, records, [revealClip(4)]);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 0 });
+    if (!launch.ok) throw new Error(launch.error);
+    const carried = carriedRotoPhysical(launch.data);
+
+    const stored = storedClips('phys-layer-1', TEST_TRACK_ID);
+    const battery = probeIntentBattery({
+      layerId: 'phys-layer-1',
+      trackId: TEST_TRACK_ID,
+      records,
+      capacity: carried.capacity,
+    });
+    const intent = battery.accepted[0];
+    const staged = intent
+      ? stageFromProposal({
+          layerId: 'phys-layer-1',
+          trackId: TEST_TRACK_ID,
+          records,
+          capacity: carried.capacity,
+          parentEndExclusive: carried.capacity,
+          intent,
+        })
+      : null;
+    let settled: { readonly ok: boolean; readonly error: string | null; readonly stagedRevision: string } | null = null;
+    if (staged) {
+      const result = await applyPhysicPaintPayload(railEditPayload({
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        launchOperationId: launch.data.operationId,
+        expectedRevision: liveRevision('phys-layer-1', TEST_TRACK_ID),
+        records: staged.records,
+        wireClips: wireLoopClips(staged.stagedClips),
+        operationId: 'c7x-reveal-unchanged',
+        intent: staged.intent,
+        selection: { selectedKeyId: staged.selectedKeyId, selectedAppFrame: staged.selectedAppFrame },
+      }));
+      settled = {
+        ok: result.ok,
+        error: result.ok ? null : result.error,
+        stagedRevision: result.stagedRevision,
+      };
+    }
+
+    console.log('[c7x][reveal] captured descriptor', JSON.stringify({
+      railKind: stored[0]?.railKind,
+      hasLifecycleAtBirth: stored[0]?.syncState !== undefined,
+      normalizeReturnsSameReference: stored[0] !== undefined
+        && normalizeLoopClipForPayload(stored[0]) === stored[0],
+      childStagedRevision: childRevision(records, stored),
+      wireRevision: childRevision(records, wireLoopClips(stored)),
+      resolverBattery: battery.record,
+      chosenIntent: intent?.kind ?? null,
+      stagedRevisionFromProposal: staged?.childStagedRevision ?? null,
+      settled,
+    }));
+
+    expect(stored[0]?.railKind).toBe('reveal');
+    // Born lifecycle-complete: the wire transform is identity on it, so there is
+    // exactly ONE canonical revision. Reveal identity alone is NOT the divergence.
+    expect(normalizeLoopClipForPayload(stored[0]!)).toBe(stored[0]);
+    expect(childRevision(records, stored)).toBe(childRevision(records, wireLoopClips(stored)));
+    // THE CONTRAST with H-A: the SAME intent through the SAME gate SETTLES here,
+    // because this clip has one canonical revision instead of two.
+    expect(settled?.ok, settled?.error ?? undefined).toBe(true);
+    expect(settled?.stagedRevision).toBe(staged?.childStagedRevision);
+    // A stretched span, by contrast, is a canonical term — a stretch can never
+    // ride through the settle path as an unrecomputed echo.
+    expect(childRevision(records, wireLoopClips([revealClip(6)])))
+      .not.toBe(childRevision(records, wireLoopClips(stored)));
   });
 });
