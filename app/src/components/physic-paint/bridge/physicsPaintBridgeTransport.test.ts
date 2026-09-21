@@ -195,6 +195,11 @@ describe('image-import bridge pair (quick-260921-bjm)', () => {
     format: 'png',
   };
 
+  // The hoisted `invoke` spy is shared across the whole file and the later
+  // thumbnail describe asserts its TOTAL call count — clear the history the
+  // REOPEN SEAM leg (and any failed early exit) leaves behind.
+  afterEach(() => { invoke.mockClear(); });
+
   it('REQUEST GUARD: the payload names operationId + paths only — a destination directory, an unbounded entry, or an empty list is rejected (T-260921-bjm-01/03)', () => {
     expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: ['/tmp/a.png'] })).toBe(true);
     // A payload naming a destination directory is rejected at the boundary:
