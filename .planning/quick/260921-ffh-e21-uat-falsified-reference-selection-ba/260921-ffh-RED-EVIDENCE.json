@@ -485,5 +485,124 @@
       "PIN 3 ((+) track with its content)"
     ],
     "expectedExit": "non-zero at base: the pins are RED by construction; a green pin here would be a verdict datum, and none was green."
+  },
+  "task3": {
+    "step": "Task 3 — the fix, and the seven verification checks",
+    "diagnosedLink": {
+      "before": "documentSyncPushGuard.ts:createDocumentSyncPushDecision captured guardRef.current at creation (`const captured = guardRef.current`) and `decide` consulted `captured`.",
+      "after": "`decide` reads `guardRef.current` per decision (`const guard = guardRef.current; return guard === null ? null : guard.evaluate(serialize, readVersion);`).",
+      "whyThisIsTheMinimum": "The link Task 1 named is the capture vs the re-arm, both inside this module and the component that calls it. Nothing else needed to move: the re-arm, the budget, the clear placement, the close gate and both effect deps arrays are untouched.",
+      "filesChanged": [
+        "app/src/components/physic-paint/bridge/documentSyncPushGuard.ts",
+        "app/src/components/physic-paint/PhysicsPaintStudio.tsx"
+      ]
+    },
+    "green": {
+      "command": "cd /Users/lmarques/Dev/efx-motion-editor && pnpm --filter efx-motion-editor exec vitest run src/stores/efxPaintStudioOriginSync.scratch.test.ts",
+      "exitCode": 0,
+      "runSummary": "Test Files 1 passed (1) | Tests 6 passed (6)",
+      "pinsThatTurnedGreen": [
+        "PIN 1 (reference selection)",
+        "PIN 2 (background keyframe)",
+        "PIN 3 ((+) track with its content)"
+      ],
+      "unchangedInTheSameRun": [
+        "the Task-1 diagnostic probe",
+        "CONTROL (strokes, H4)",
+        "CONTROL (e21 guardrail)"
+      ],
+      "assertionsWeakened": 0,
+      "assertionsDeleted": 0
+    },
+    "guardrailAudit": [
+      {
+        "invariant": "DOCUMENT_SYNC_MAX_AUTO_RETRIES = 3",
+        "where": "PhysicsPaintStudio.tsx:359, used :3988",
+        "held": true
+      },
+      {
+        "invariant": "documentSyncPushFailuresRef",
+        "where": ":3928 (declared), :3981 (reset on landed push), :3988-3989 (bounded increment), :4018/:4020 (close gate + early return)",
+        "held": true
+      },
+      {
+        "invariant": "the .catch re-arm",
+        "where": ":3987 documentSyncPushGuardRef.current = createDocumentSyncPushGuard()",
+        "held": true
+      },
+      {
+        "invariant": "clear-dirty INSIDE the mode gate",
+        "where": ":4030 (close flush), :4054 (debounce), :4087 (gesture) — each preceded by `if (layerId && (mode === \"Tauri\" || mode === \"Browser fallback\"))`",
+        "held": true
+      },
+      {
+        "invariant": "close gate reports a still-owed change",
+        "where": ":4018 + :1919 (dirty.peek() || failures > 0)",
+        "held": true
+      },
+      {
+        "invariant": "the deps arrays that make the re-arm reachable",
+        "where": ":4063 reads documentSyncDirty.value; :4096 reads interactionIdle.value",
+        "held": true
+      }
+    ],
+    "verification": [
+      {
+        "check": 1,
+        "name": "the 5-suite row",
+        "command": "vitest run src/stores/efxPaintStudioOriginSync.scratch.test.ts src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts src/components/physic-paint/bridge/documentSyncPushGuard.test.ts src/stores/efxPaintChildParentSync.scratch.test.ts",
+        "result": "Test Files 5 passed (5) | Tests 192 passed (192)",
+        "exitCode": 0
+      },
+      {
+        "check": 2,
+        "name": "tsc --noEmit",
+        "result": "exit 0, no output",
+        "exitCode": 0
+      },
+      {
+        "check": 3,
+        "name": "full suite",
+        "command": "vitest run",
+        "result": "Test Files 217 passed | 2 skipped (219) | Tests 4071 passed | 1 skipped | 101 todo (4173)",
+        "exitCode": 0,
+        "baseCountNote": "base = 4065 passed, derived — the harness file is new in this plan (absent at planBase) and contributes exactly 6 legs, and this plan's diff touches no pre-existing test file, so no other count moved. Delta = +6, zero failures, zero absorbed.",
+        "skippedBefore": 1,
+        "skippedAfter": 1
+      },
+      {
+        "check": 4,
+        "name": "bjm regression",
+        "command": "vitest run src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts src/components/physic-paint/view/BackgroundAssetPickerView.test.ts src/stores/projectStore.test.ts src/stores/physicPaintStore.test.ts",
+        "result": "Test Files 5 passed (5) | Tests 313 passed | 9 todo (322)",
+        "exitCode": 0
+      },
+      {
+        "check": 5,
+        "name": "c7x regression",
+        "command": "vitest run src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts src/lib/physicPaintBridge.test.ts",
+        "result": "Test Files 2 passed (2) | Tests 218 passed | 1 skipped (219)",
+        "exitCode": 0,
+        "commMinus12": "empty — the c7x commits (a4605d67, 49992816) touched 5 files, none of them in this plan's diff"
+      },
+      {
+        "check": 6,
+        "name": "scope gate",
+        "command": "git diff --name-only afc349aa..HEAD",
+        "result": "4 paths, all inside the plan's authorized set; no src-tauri/, no capability file, no dependency manifest, no app/src/efx-paint/document/**, no app/src/stores/efxPaintStore.ts",
+        "exitCode": 0
+      },
+      {
+        "check": 7,
+        "name": "event-pair gate",
+        "result": "no new event-name string constant: the only added occurrences are probe narration strings quoting the pre-existing constants with their source locations. No invoke() in production files; the added unlisten() calls are the harness's teardown of its own parent-realm listener.",
+        "exitCode": 0
+      }
+    ],
+    "commits": {
+      "task1": "7fc456b0",
+      "task2": "5e860169",
+      "task3": "eecadba2"
+    }
   }
 }
