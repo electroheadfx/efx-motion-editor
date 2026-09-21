@@ -38,7 +38,7 @@ import {
   serializeRuntimeIntoDocument,
 } from '../stores/efxPaintStore';
 import { timelineStore } from '../stores/timelineStore';
-import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import {
   PHYSIC_PAINT_MAX_APPLY_FRAMES,
   buildFrameBytesToken,
@@ -55,6 +55,7 @@ import {
   parsePhysicPaintRotoLoopClips,
   type PhysicPaintRotoPhysicalDocument,
   type PhysicPaintRotoLoopClip,
+  type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { normalizeLoopClipForPayload } from '../components/physic-paint/hooks/useRotoPhysicalEditCoordinator';
 import { resolvePhysicPaintRotoPhysicalEdit } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -6628,13 +6629,38 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
     return physicPaintStore.getRotoPhysicalDocument(layerId, trackId)?.revision ?? '';
   }
 
+  /**
+   * Narrow a captured apply result onto the physical-edit fields the settlement
+   * predicate keys on. The bridge's public return type is the wide payload
+   * union, and its `error` is optional on the generic variant.
+   */
+  function capturedResult(result: PhysicPaintApplyResult): {
+    readonly ok: boolean;
+    readonly error: string | null;
+    readonly stagedRevision: string;
+    readonly acceptedRevision: string | null;
+  } {
+    const physical = result as {
+      readonly ok: boolean;
+      readonly error?: string;
+      readonly stagedRevision?: string;
+      readonly acceptedRevision?: string | null;
+    };
+    return {
+      ok: physical.ok,
+      error: physical.ok ? null : physical.error ?? null,
+      stagedRevision: physical.stagedRevision ?? 'invalid-physical-revision',
+      acceptedRevision: physical.acceptedRevision ?? null,
+    };
+  }
+
   /** A settleable force-spacing payload shaped exactly like the coordinator's. */
   function railEditPayload(input: {
     layerId: string;
     trackId: string;
     launchOperationId: string;
     expectedRevision: string;
-    records: ReturnType<typeof makePhysicalRecord>[];
+    records: readonly PhysicPaintRotoRealKeyRecord[];
     wireClips: readonly PhysicPaintRotoLoopClip[];
     operationId: string;
     intent: PhysicPaintRotoPhysicalEditIntent;
@@ -6736,7 +6762,7 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
       : null;
     let settled: { readonly ok: boolean; readonly error: string | null; readonly stagedRevision: string; readonly acceptedRevision: string | null } | null = null;
     if (staged) {
-      const result = await applyPhysicPaintPayload(railEditPayload({
+      const result = capturedResult(await applyPhysicPaintPayload(railEditPayload({
         layerId: 'phys-layer-1',
         trackId: TEST_TRACK_ID,
         launchOperationId: launch.data.operationId,
@@ -6747,10 +6773,10 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
         operationId: 'c7x-hA-infinity',
         intent: staged.intent,
         selection: { selectedKeyId: staged.selectedKeyId, selectedAppFrame: staged.selectedAppFrame },
-      }));
+      })));
       settled = {
         ok: result.ok,
-        error: result.ok ? null : result.error,
+        error: result.error,
         stagedRevision: result.stagedRevision,
         acceptedRevision: result.acceptedRevision,
       };
@@ -6772,13 +6798,14 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
 
     expect(stored[0]?.syncState).toBeUndefined();
     expect(wire[0]?.syncState).toBe('synchronized');
-    // THE DIVERGENCE: one clip collection, two canonical revisions. Every finite
-    // clip hashes identically in both shapes; only the Infinity clip splits.
-    expect(rawHash).not.toBe(wireHash);
-    // THE LATCH TRIGGER: the parent refuses the canonical gate and echoes a
-    // revision the child never staged.
-    expect(settled?.ok).toBe(false);
-    expect(settled?.stagedRevision).not.toBe(staged?.childStagedRevision);
+    // ONE REVISION AUTHORITY (260921-c7x): the stored raw shape and the wire
+    // normalized shape are the same canonical document. Before the fix these
+    // split (physical-525-* vs physical-587-*), the parent's canonical gate
+    // refused the edit and echoed a revision the child never staged.
+    expect(rawHash).toBe(wireHash);
+    expect(settled?.ok, settled?.error ?? undefined).toBe(true);
+    expect(settled?.stagedRevision).toBe(staged?.childStagedRevision);
+    expect(settled?.acceptedRevision).toBe(staged?.childStagedRevision);
   });
 
   it('H-A: bisects which lifecycle term moves the revision', async () => {
@@ -6856,8 +6883,11 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
     // The wire transform is a hash identity for finite clips...
     expect(finiteLifecycleLessWireHash).toBe(baselineHash);
     expect(finiteLifecycleLessHash).toBe(finiteLifecycleLessWireHash);
-    // ...and a hash SPLIT for Infinity clips. This is the whole asymmetry.
-    expect(infinityLifecycleLessHash).not.toBe(infinityLifecycleLessWireHash);
+    // ...and, after 260921-c7x, for Infinity clips too: the canonical encoder
+    // resolves the lifecycle through the single authority
+    // (`resolvePhysicPaintRotoLoopClipLifecycle`), so a lifecycle-less clip and
+    // its normalized counterpart encode as ONE document.
+    expect(infinityLifecycleLessHash).toBe(infinityLifecycleLessWireHash);
   });
 
   it('H-B: a pre-resolution reject recomputes the revision from the wire payload', async () => {
@@ -6879,7 +6909,7 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
 
     // Deliberately stale: the parent rejects at the revision gate (:1687), long
     // before any proposal parsing.
-    const staleResult = await applyPhysicPaintPayload(railEditPayload({
+    const staleResult = capturedResult(await applyPhysicPaintPayload(railEditPayload({
       layerId: 'phys-layer-1',
       trackId: TEST_TRACK_ID,
       launchOperationId: launch.data.operationId,
@@ -6889,7 +6919,7 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
       operationId: 'c7x-hB-stale-revision',
       intent,
       selection: { selectedKeyId: 'A', selectedAppFrame: 1 },
-    }));
+    })));
 
     console.log('[c7x][H-B] captured descriptor', JSON.stringify({
       childStagedRevision,
@@ -6897,13 +6927,15 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
       echoIsChildStaged: staleResult.stagedRevision === childStagedRevision,
       echoOverWireClips: childRevision(movedRecords, wireLoopClips(stored)),
       ok: staleResult.ok,
-      error: staleResult.ok ? null : staleResult.error,
+      error: staleResult.error,
     }));
 
     expect(staleResult.ok).toBe(false);
-    // No resolution ever ran, yet the parent still answers with a revision — and
-    // it is one the child never staged, so the settlement predicate latches.
-    expect(staleResult.stagedRevision).not.toBe(childStagedRevision);
+    // The pre-resolution echo is the wire recompute (proved by echoIsChildStaged
+    // above). After 260921-c7x that wire recompute IS the child's staged
+    // revision, so even this reject path can no longer hand the child a
+    // revision it never staged — the settlement predicate sees one identity.
+    expect(staleResult.stagedRevision).toBe(childStagedRevision);
   });
 
   it('H-B: a ref-expansion failure answers with no staged revision at all', async () => {
@@ -7002,14 +7034,14 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
       readonly trackId: string;
       readonly launchOperationId: string;
       readonly expectedRevision: string;
-      readonly records: ReturnType<typeof makePhysicalRecord>[];
+      readonly records: readonly PhysicPaintRotoRealKeyRecord[];
       readonly operationId: string;
-    }) => applyPhysicPaintPayload(railEditPayload({
+    }) => capturedResult(await applyPhysicPaintPayload(railEditPayload({
       ...input,
       wireClips: [],
       intent,
       selection: { selectedKeyId: 'A', selectedAppFrame: 1 },
-    }));
+    })));
 
     const one = await runLayer({
       layerId: 'phys-layer-1',
@@ -7029,13 +7061,13 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
     });
 
     console.log('[c7x][layer-2] captured descriptors', JSON.stringify({
-      layerOne: { ok: one.ok, error: one.ok ? null : one.error, stagedRevision: one.stagedRevision, acceptedRevision: one.acceptedRevision },
-      layerTwo: { ok: two.ok, error: two.ok ? null : two.error, stagedRevision: two.stagedRevision, acceptedRevision: two.acceptedRevision },
+      layerOne: { ok: one.ok, error: one.error, stagedRevision: one.stagedRevision, acceptedRevision: one.acceptedRevision },
+      layerTwo: { ok: two.ok, error: two.error, stagedRevision: two.stagedRevision, acceptedRevision: two.acceptedRevision },
     }));
 
     // Layer/track identity must never change the settlement outcome.
-    expect(one.ok, one.ok ? undefined : one.error).toBe(true);
-    expect(two.ok, two.ok ? undefined : two.error).toBe(true);
+    expect(one.ok, one.error ?? undefined).toBe(true);
+    expect(two.ok, two.error ?? undefined).toBe(true);
     expect(two.stagedRevision).toBe(one.stagedRevision);
     expect(physicPaintStore.getRotoPhysicalDocument(SECOND_LAYER_ID, SECOND_TRACK_ID)?.realKeyRecords
       .find((record) => record.keyId === 'A')?.appFrame).toBe(1);
@@ -7072,7 +7104,7 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
       : null;
     let settled: { readonly ok: boolean; readonly error: string | null; readonly stagedRevision: string } | null = null;
     if (staged) {
-      const result = await applyPhysicPaintPayload(railEditPayload({
+      const result = capturedResult(await applyPhysicPaintPayload(railEditPayload({
         layerId: 'phys-layer-1',
         trackId: TEST_TRACK_ID,
         launchOperationId: launch.data.operationId,
@@ -7082,10 +7114,10 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
         operationId: 'c7x-reveal-unchanged',
         intent: staged.intent,
         selection: { selectedKeyId: staged.selectedKeyId, selectedAppFrame: staged.selectedAppFrame },
-      }));
+      })));
       settled = {
         ok: result.ok,
-        error: result.ok ? null : result.error,
+        error: result.error,
         stagedRevision: result.stagedRevision,
       };
     }

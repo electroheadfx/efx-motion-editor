@@ -73,6 +73,7 @@ import {
   parsePhysicPaintRotoLoopClips,
   parsePhysicPaintRotoPhysicalDocument,
   parsePhysicPaintRotoRealKeyRecordCollection,
+  resolvePhysicPaintRotoLoopClipLifecycle,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import {
   proposePhysicPaintRotoDeleteGroup,
@@ -636,19 +637,17 @@ function cloneIncomingInterpolationBreakKeyIds(keyIds: readonly string[]): strin
  * sourceKeyIds.length * repeat; infinity: one cycle, which the resolver extends
  * to capacity). The resolver renders an infinity+lifecycle clip to capacity
  * unchanged, so this is render-neutral.
+ *
+ * 260921-c7x: the synthesis itself now lives in the model as the ONE lifecycle
+ * authority (`resolvePhysicPaintRotoLoopClipLifecycle`), shared with the
+ * canonical encoder. Duplicating it here is what let the wire shape and the
+ * store shape hash to two different revisions.
  */
 export function normalizeLoopClipForPayload(clip: PhysicPaintRotoLoopClip): PhysicPaintRotoLoopClip {
   if (clip.syncState !== undefined) return clip;
-  const originalEndExclusive = clip.placementStart
-    + clip.sourceKeyIds.length * (clip.repeat === 'infinity' ? 1 : clip.repeat);
   return {
     ...clip,
-    syncState: 'synchronized',
-    provenanceState: 'attached',
-    phaseOrigin: clip.placementStart,
-    originalEndExclusive,
-    visibleRanges: [{ start: clip.placementStart, endExclusive: originalEndExclusive }],
-    frameOverrides: [],
+    ...resolvePhysicPaintRotoLoopClipLifecycle(clip),
   } as PhysicPaintRotoLoopClip;
 }
 
@@ -1420,6 +1419,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       if (transition.type === 'ignore') return 'ignore';
       if (transition.type === 'mismatch') {
         portsRef.current.status.logDiagnostic(`Roto physical edit result mismatch: ${transition.message}`);
+        // 260921-c7x: a mismatch is TERMINAL. The child published nothing (the
+        // predicate runs before publishCompleteDocument), so there is no state
+        // to restore — but the pending slot, the lease and the settlement
+        // registration must be released, or the GLOBAL latch keeps every later
+        // edit on every layer answering PHYSICAL_EDIT_SERIALIZE_MESSAGE until
+        // the 5s timeout fires and claims a rollback that never happened.
+        finalizeFailed(pending, before, 'settlement-mismatch', PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE);
         return 'mismatch';
       }
       if (!transition.ok) {

@@ -19,6 +19,7 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   buildPhysicPaintRotoPayloadContentToken,
   buildPhysicPaintRotoProjectEquality,
+  canonicalizePhysicPaintRotoLoopClips,
   encodePhysicPaintRotoPhysicalContent,
   parsePhysicPaintRotoIncomingInterpolationBreakKeyIds,
   parsePhysicPaintRotoLoopClips,
@@ -341,7 +342,13 @@ function createAcceptedPhysicalCommandSnapshot(input: {
     records: input.records,
     groupOverrideRecords: input.groupOverrideRecords,
     interpolation: input.interpolation,
-    loopClips: input.loopClips,
+    // 260921-c7x: the ledger stores ONE clip shape. A `before` snapshot reads
+    // the store (a lifecycle-less Infinity clip) while the matching `after`
+    // snapshot reads the staged document (normalized) — comparing the two raw
+    // made a faithful Undo/Redo source reject with 'replay source snapshot does
+    // not match the original accepted command'. Both sides resolve through the
+    // shared lifecycle authority instead.
+    loopClips: canonicalizePhysicPaintRotoLoopClips(input.loopClips),
     incomingInterpolationBreakKeyIds: input.incomingInterpolationBreakKeyIds,
     selectedKeyId: selectedRecord?.keyId ?? null,
     selectedAppFrame: selectedRecord?.appFrame ?? null,
@@ -898,6 +905,24 @@ function stableSerialize(value: unknown, seen: WeakSet<object>): string {
   }
 }
 
+/**
+ * 260921-c7x: structural Loop Clip comparison across the store/wire boundary.
+ *
+ * The store may hold a lifecycle-less clip — an Infinity clip, which parse
+ * deliberately refuses to hydrate — while every bridge payload ships the same
+ * clip normalized to a complete lifecycle. Both describe ONE clip, so any
+ * comparison between a store-derived and a wire-derived collection runs through
+ * the shared lifecycle authority (`resolvePhysicPaintRotoLoopClipLifecycle`)
+ * instead of rejecting a faithful edit on shape alone.
+ */
+function sameCanonicalLoopClips(
+  left: readonly PhysicPaintRotoLoopClip[],
+  right: readonly PhysicPaintRotoLoopClip[],
+): boolean {
+  return stableSerialize(canonicalizePhysicPaintRotoLoopClips(left), new WeakSet<object>())
+    === stableSerialize(canonicalizePhysicPaintRotoLoopClips(right), new WeakSet<object>());
+}
+
 function sameDurableRealKey(left: PhysicPaintRotoAuthorityResult['frames'][number], right: PhysicPaintRotoAuthorityResult['frames'][number]): boolean {
   return (left.sourceFrame ?? left.appFrame) === (right.sourceFrame ?? right.appFrame)
     && left.appFrame === right.appFrame
@@ -1035,7 +1060,7 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   );
   if (!sameCompletePhysicalRecords(canonicalRecords, input.proposedRecords)
     || !sameCompletePhysicalRecords(canonicalGroupOverrideRecords, input.proposedGroupOverrideRecords)
-    || stableSerialize(canonicalLoopClips, new WeakSet<object>()) !== stableSerialize(input.proposedLoopClips, new WeakSet<object>())
+    || !sameCanonicalLoopClips(canonicalLoopClips, input.proposedLoopClips)
     || canonicalIncomingInterpolationBreakKeyIds.length !== input.proposedIncomingInterpolationBreakKeyIds.length
     || canonicalIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== input.proposedIncomingInterpolationBreakKeyIds[index])
     || proposal.selectedKeyId !== input.selectedKeyId
@@ -1109,8 +1134,7 @@ async function validateInsertEmptySegmentPhysicalDelta(input: {
   if (!inserted || !(await isCanonicalBlankRotoPayload(inserted.payload, delta.destinationAppFrame))) {
     return 'Empty-segment insert must carry the canonical blank Paint payload.';
   }
-  if (stableSerialize(proposedLoopClips, new WeakSet<object>())
-    !== stableSerialize(currentLoopClips, new WeakSet<object>())) {
+  if (!sameCanonicalLoopClips(proposedLoopClips, currentLoopClips)) {
     return 'Empty-segment insert must preserve Loop Clips exactly.';
   }
   // Quick 260816-tv7: Insert connects — the inserted key adds no incoming break
@@ -1577,8 +1601,7 @@ function validateCanonicalGroupLifecycleEdit(input: {
   const proposal = recomputed.proposal;
   if (!sameCompletePhysicalRecords(proposal.realKeyRecords, input.proposedRecords)
     || !sameCompletePhysicalRecords(proposal.groupOverrideRecords ?? [], input.proposedGroupOverrideRecords)
-    || stableSerialize(proposal.loopClips, new WeakSet<object>())
-      !== stableSerialize(input.proposedLoopClips, new WeakSet<object>())
+    || !sameCanonicalLoopClips(proposal.loopClips, input.proposedLoopClips)
     || stableSerialize(proposal.incomingInterpolationBreakKeyIds, new WeakSet<object>())
       !== stableSerialize(input.proposedIncomingInterpolationBreakKeyIds, new WeakSet<object>())
     || proposal.interpolation.enabled !== input.stagedInterpolation.enabled

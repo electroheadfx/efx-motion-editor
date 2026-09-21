@@ -819,6 +819,81 @@ function buildDefaultPhysicPaintRotoGroupLifecycle(
 }
 
 /**
+ * The resolved Group lifecycle a Loop Clip presents to every canonical consumer.
+ * Canonical finite Groups always carry all six members.
+ */
+export interface PhysicPaintRotoLoopClipLifecycle {
+  readonly syncState: 'synchronized' | 'modified';
+  readonly provenanceState: 'attached' | 'detached';
+  readonly phaseOrigin: number;
+  readonly originalEndExclusive: number;
+  readonly visibleRanges: readonly PhysicPaintRotoGroupVisibleRange[];
+  readonly frameOverrides: readonly PhysicPaintRotoGroupFrameOverride[];
+}
+
+/**
+ * 260921-c7x: the single Loop Clip lifecycle authority.
+ *
+ * `buildDefaultPhysicPaintRotoGroupLifecycle` deliberately refuses to hydrate an
+ * Infinity clip — parse must not invent a lifecycle for a persisted record — so
+ * a v1.0-created Infinity clip stays lifecycle-less in the store while the
+ * bridge payload normalizer synthesizes one for the wire. That gave ONE clip
+ * collection TWO canonical encodings (raw `physical-N-*` vs wire
+ * `physical-M-*`), which is the physical-edit settlement mismatch root: the
+ * coordinator stages the collection it read, the parent re-verifies the
+ * collection it holds, and the two never agree.
+ *
+ * Resolving the lifecycle here — one formula, one place — makes the canonical
+ * encoder, the bridge's structural comparisons and the wire normalizer
+ * (`normalizeLoopClipForPayload`) agree by construction: a lifecycle-less clip
+ * and its lifecycle-complete counterpart are recognised as the same clip.
+ * Infinity resolves to one cycle, which the resolver extends to capacity, so
+ * this is render-neutral (46 UAT R5).
+ */
+export function resolvePhysicPaintRotoLoopClipLifecycle(
+  clip: PhysicPaintRotoLoopClip,
+): PhysicPaintRotoLoopClipLifecycle {
+  if (clip.syncState !== undefined) {
+    return {
+      syncState: clip.syncState,
+      provenanceState: clip.provenanceState!,
+      phaseOrigin: clip.phaseOrigin!,
+      originalEndExclusive: clip.originalEndExclusive!,
+      visibleRanges: clip.visibleRanges!,
+      frameOverrides: clip.frameOverrides!,
+    };
+  }
+  const originalEndExclusive = clip.placementStart
+    + clip.sourceKeyIds.length * (clip.repeat === 'infinity' ? 1 : clip.repeat);
+  return {
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: clip.placementStart,
+    originalEndExclusive,
+    visibleRanges: [{ start: clip.placementStart, endExclusive: originalEndExclusive }],
+    frameOverrides: [],
+  };
+}
+
+/**
+ * Project a Loop Clip onto its resolved canonical shape. Used by every
+ * structural comparison that pits a store-derived collection against a
+ * wire-derived one, so the two shapes compare equal by construction.
+ */
+export function canonicalizePhysicPaintRotoLoopClip(
+  clip: PhysicPaintRotoLoopClip,
+): PhysicPaintRotoLoopClip {
+  return { ...clip, ...resolvePhysicPaintRotoLoopClipLifecycle(clip) };
+}
+
+/** Project a whole Loop Clip collection onto its resolved canonical shape. */
+export function canonicalizePhysicPaintRotoLoopClips(
+  loopClips: readonly PhysicPaintRotoLoopClip[],
+): readonly PhysicPaintRotoLoopClip[] {
+  return loopClips.map(canonicalizePhysicPaintRotoLoopClip);
+}
+
+/**
  * Reconstruct a fresh, deeply immutable Loop Clip collection from untrusted
  * input. Preserves the persisted order and every source keyId reference
  * verbatim (D-31); rejects duplicate `loopId` identities. Finite pre-lifecycle
@@ -1277,45 +1352,49 @@ function encodeCanonicalIncomingInterpolationBreakKeyIds(keyIds: readonly string
 
 function encodeCanonicalLoopClips(loopClips: readonly PhysicPaintRotoLoopClip[]): string {
   const ordered = [...loopClips].sort((a, b) => a.loopId.localeCompare(b.loopId));
-  const encoded = ordered.map((clip) => [
-    encodeCanonicalString(clip.loopId),
-    encodeCanonicalNumber(clip.placementStart),
-    `ids:${clip.sourceKeyIds.length}:`,
-    ...clip.sourceKeyIds.map(encodeCanonicalString),
-    clip.repeat === 'infinity' ? encodeCanonicalString('infinity') : encodeCanonicalNumber(clip.repeat),
-    encodeCanonicalString(clip.mode),
-    // 52-01 (D-03): the rail-kind discriminator joins the fingerprint when
-    // present — a reveal rail and a playscript rail with identical cycles are
-    // distinct content.
-    ...(clip.railKind !== undefined ? [encodeCanonicalString(clip.railKind)] : []),
-    // 43-06 provenance joins the fingerprint when present (all-or-nothing).
-    ...(clip.scriptId !== undefined
-      ? [
-          encodeCanonicalString(clip.scriptId),
-          encodeCanonicalNumber(clip.motion!.deformation),
-          encodeCanonicalNumber(clip.motion!.position),
-          encodeCanonicalString(clip.overrideColor ?? ''),
-        ]
-      : []),
-    ...(clip.syncState !== undefined
-      ? [
-          encodeCanonicalString(clip.syncState),
-          encodeCanonicalString(clip.provenanceState!),
-          encodeCanonicalNumber(clip.phaseOrigin!),
-          encodeCanonicalNumber(clip.originalEndExclusive!),
-          `ranges:${clip.visibleRanges!.length}:`,
-          ...clip.visibleRanges!.flatMap((range) => [
-            encodeCanonicalNumber(range.start),
-            encodeCanonicalNumber(range.endExclusive),
-          ]),
-          `overrides:${clip.frameOverrides!.length}:`,
-          ...clip.frameOverrides!.flatMap((override) => [
-            encodeCanonicalNumber(override.appFrame),
-            encodeCanonicalString(override.keyId),
-          ]),
-        ]
-      : []),
-  ].join('')).join('');
+  const encoded = ordered.map((clip) => {
+    // 260921-c7x: the lifecycle block is emitted UNCONDITIONALLY, resolved
+    // through the single lifecycle authority. Emitting it only when the stored
+    // record carried one made a lifecycle-less clip and its normalized
+    // counterpart encode as two different documents — one collection, two
+    // revisions (the physical-edit settlement mismatch root).
+    const lifecycle = resolvePhysicPaintRotoLoopClipLifecycle(clip);
+    return [
+      encodeCanonicalString(clip.loopId),
+      encodeCanonicalNumber(clip.placementStart),
+      `ids:${clip.sourceKeyIds.length}:`,
+      ...clip.sourceKeyIds.map(encodeCanonicalString),
+      clip.repeat === 'infinity' ? encodeCanonicalString('infinity') : encodeCanonicalNumber(clip.repeat),
+      encodeCanonicalString(clip.mode),
+      // 52-01 (D-03): the rail-kind discriminator joins the fingerprint when
+      // present — a reveal rail and a playscript rail with identical cycles are
+      // distinct content.
+      ...(clip.railKind !== undefined ? [encodeCanonicalString(clip.railKind)] : []),
+      // 43-06 provenance joins the fingerprint when present (all-or-nothing).
+      ...(clip.scriptId !== undefined
+        ? [
+            encodeCanonicalString(clip.scriptId),
+            encodeCanonicalNumber(clip.motion!.deformation),
+            encodeCanonicalNumber(clip.motion!.position),
+            encodeCanonicalString(clip.overrideColor ?? ''),
+          ]
+        : []),
+      encodeCanonicalString(lifecycle.syncState),
+      encodeCanonicalString(lifecycle.provenanceState),
+      encodeCanonicalNumber(lifecycle.phaseOrigin),
+      encodeCanonicalNumber(lifecycle.originalEndExclusive),
+      `ranges:${lifecycle.visibleRanges.length}:`,
+      ...lifecycle.visibleRanges.flatMap((range) => [
+        encodeCanonicalNumber(range.start),
+        encodeCanonicalNumber(range.endExclusive),
+      ]),
+      `overrides:${lifecycle.frameOverrides.length}:`,
+      ...lifecycle.frameOverrides.flatMap((override) => [
+        encodeCanonicalNumber(override.appFrame),
+        encodeCanonicalString(override.keyId),
+      ]),
+    ].join('');
+  }).join('');
   return `${ordered.length}:${encoded}`;
 }
 

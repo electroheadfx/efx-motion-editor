@@ -3142,7 +3142,7 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
     expect(test.coordinator.failureOutput.value).toBeNull();
   });
 
-  it('leaves a Delete Rails settlement with a divergent semantic delta pending without success', async () => {
+  it('releases a Delete Rails settlement with a divergent semantic delta without success', async () => {
     const test = harness();
     const before = groupLifecycleDocument();
     test.seedGroupDocument(before);
@@ -3159,9 +3159,13 @@ describe('Phase 43.2 accepted Group lifecycle delete settlement', () => {
       nextRevision: 'revision-other',
     })).toBe('mismatch');
     expect(test.coordinator.acceptedOutput.value).toBeNull();
-    expect(test.coordinator.failureOutput.value).toBeNull();
+    // 260921-c7x: the mismatch is TERMINAL — the pending slot and the lease are
+    // released on the spot instead of holding the global latch until the 5s
+    // timeout. Nothing published, so nothing to restore.
+    expect(test.coordinator.failureOutput.value?.reason).toBe('settlement-mismatch');
+    expect(test.releaseLease).toHaveBeenCalled();
+    expect(test.coordinator.pendingOperationId.value).toBeNull();
     expect(test.reconcileCurrentFrame).not.toHaveBeenCalled();
-    test.coordinator.cancelPhysicalEdit('disposal');
   });
 
   it('deletes one repeated source phase only after acknowledgement and holds the lease through settlement', async () => {
