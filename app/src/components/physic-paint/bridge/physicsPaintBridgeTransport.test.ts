@@ -826,9 +826,11 @@ describe('Studio-origin document surfaces across the real pair (quick-260921-e21
 
     // The reopen half: the launch carrier a reopened Studio receives.
     const carrier = createPhysicPaintLaunchContext(physicLayer(), 0);
-    expect(carrier.document.photoReference?.sourceFrameRefs).toEqual(['ref-photo-1']);
-    expect(carrier.document.background.clips.map((clip) => ({ startFrame: clip.startFrame, refs: clip.sourceFrameRefs })))
+    const carrierDocument = carrier.document;
+    if (!carrierDocument) throw new Error('the reopen launch carrier carried no document');
+    expect(carrierDocument.photoReference?.sourceFrameRefs).toEqual(['ref-photo-1']);
+    expect(carrierDocument.background.clips.map((clip) => ({ startFrame: clip.startFrame, refs: clip.sourceFrameRefs })))
       .toEqual([{ startFrame: 4, refs: ['ref-bg-1'] }]);
-    expect(carrier.document.tracks.map((track) => track.id)).toContain(addedTrackId);
+    expect(carrierDocument.tracks.map((track) => track.id)).toContain(addedTrackId);
   });
 });

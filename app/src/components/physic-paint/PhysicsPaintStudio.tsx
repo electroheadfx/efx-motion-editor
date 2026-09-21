@@ -350,6 +350,14 @@ function readDocumentActiveTrackId(layerId: string): string {
 // decode at a genuine stop. Matches CAPTURE_PRODUCE_QUIET_MS.
 const DOCUMENT_SYNC_GESTURE_QUIET_MS = 2500;
 
+// 260921-e21: how many AUTOMATIC re-flushes a failed document push may arm.
+// The reference selection, the background image keyframes and the tracks added
+// with (+) reach the main realm ONLY through this push, so a failed send must
+// not consume the change — but the 2s debounce must never become an unbounded
+// retry loop either. Past the budget the change stays owed and the close flush
+// (user-driven, one-shot) is the last attempt.
+const DOCUMENT_SYNC_MAX_AUTO_RETRIES = 3;
+
 // 52.1 (fresh-frame first-paint freeze): a newly-activated frame's canvas
 // surfaces are cold — the first paint's synchronous readback flushes them
 // mid-stroke (the ~380ms rAF gaps on the fast-chained 2nd stroke). The
@@ -3903,6 +3911,12 @@ export function PhysicsPaintStudio() {
     documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
   }
   const documentSyncPushGuard = documentSyncPushGuardRef.current;
+  // 260921-e21 (T-260921-e21-03): the guard latches its fingerprint BEFORE the
+  // send resolves, so a failed send would suppress the same content for the
+  // rest of the session unless the guard is re-armed. This counts the automatic
+  // re-flushes already armed for the current failure streak; a landed push
+  // resets it.
+  const documentSyncPushFailuresRef = useRef(0);
   const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback'): Promise<void> | null => {
     const pushStartedAtMs = performance.now();
     const document = documentSyncPushGuard.evaluate(
@@ -3954,7 +3968,21 @@ export function PhysicsPaintStudio() {
       document,
       mode,
       Object.keys(backgroundSources).length > 0 ? backgroundSources : undefined,
-    ).catch((error) => {
+    ).then(() => {
+      // The document reached the main realm: the failure streak is over and the
+      // retry budget re-arms. The pending flag is left as the caller set it —
+      // clearing it here would swallow a mutation that landed DURING the send.
+      documentSyncPushFailuresRef.current = 0;
+    }).catch((error) => {
+      // 260921-e21 (T-260921-e21-03): a failed send must not swallow the change
+      // that was riding it. Re-arm the guard (its fingerprint is latched for
+      // this exact content, so the next attempt would be skipped silently) and
+      // keep the change owed for a bounded number of automatic re-flushes.
+      documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
+      if (documentSyncPushFailuresRef.current < DOCUMENT_SYNC_MAX_AUTO_RETRIES) {
+        documentSyncPushFailuresRef.current += 1;
+        documentSyncDirty.value = true;
+      }
       console.warn('[PhysicsPaintStudio] EFX Paint document sync failed:', error);
     }).finally(() => {
       recordPhysicsPaintPerformance({
@@ -3977,13 +4005,23 @@ export function PhysicsPaintStudio() {
   }, [efxPaintVersion.value]);
   // 52.1 (background sync on close): wire the close-flush refs to the live dirty
   // flag + push so a bare non-stroke document change survives window close.
-  pendingDocumentSyncRef.current = () => documentSyncDirty.peek();
+  // 260921-e21 (T-260921-e21-04): a change stays OWED until a push was actually
+  // attempted — the close gate reports a still-unpushed change (the retry
+  // budget did not consume it), so the last flush of the session is never
+  // skipped over a flag that a failed push left false.
+  pendingDocumentSyncRef.current = () => documentSyncDirty.peek() || documentSyncPushFailuresRef.current > 0;
   flushDocumentSyncRef.current = async () => {
-    if (!documentSyncDirty.peek()) return;
-    documentSyncDirty.value = false;
+    if (!documentSyncDirty.peek() && documentSyncPushFailuresRef.current === 0) return;
     const layerId = launchContext?.layerId;
     const mode = bridgeModeRef.current;
+    // 260921-e21: the pending change is consumed ONLY here, once the push mode
+    // is confirmed and the send is about to be attempted. Clearing it while the
+    // bridge mode is still unresolved (usePhysicsPaintBridgeMode starts
+    // 'Unavailable') dropped it with no push and no retry — the reference
+    // selection, the background keyframes and the (+) track all travel only
+    // through this push, so one clear here lost the whole session's structure.
     if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+      documentSyncDirty.value = false;
       await pushLiveProjection(layerId, mode);
     }
   };
@@ -4001,10 +4039,13 @@ export function PhysicsPaintStudio() {
         timer = window.setTimeout(tryFlush, DOCUMENT_SYNC_GESTURE_QUIET_MS - quietMs);
         return;
       }
-      documentSyncDirty.value = false;
       const layerId = launchContext?.layerId;
       const mode = bridgeModeRef.current;
+      // 260921-e21 (T-260921-e21-04): consumed only once the push mode is
+      // confirmed — an unresolved mode must leave the change pending for the
+      // next flush instead of clearing it into nothing.
       if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+        documentSyncDirty.value = false;
         void pushLiveProjection(layerId, mode);
       }
     };
@@ -4032,10 +4073,12 @@ export function PhysicsPaintStudio() {
         timer = window.setTimeout(tryFlush, DOCUMENT_SYNC_GESTURE_QUIET_MS - quietMs);
         return;
       }
-      documentSyncDirty.value = false;
       const layerId = launchContext?.layerId;
       const mode = bridgeModeRef.current;
+      // 260921-e21 (T-260921-e21-04): same contract as the debounced path — the
+      // idle transition must not consume a change no push can carry yet.
       if (layerId && (mode === 'Tauri' || mode === 'Browser fallback')) {
+        documentSyncDirty.value = false;
         void pushLiveProjection(layerId, mode);
       }
     };
