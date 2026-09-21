@@ -26,11 +26,26 @@ import {
   applyPhysicPaintImageLibraryRequest,
   createImageLibraryRequestLifecycle,
   createPhysicPaintImageImportStatePorts,
+  createPhysicPaintLaunchContext,
+  installPhysicPaintEfxPaintDocumentListener,
+  PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT,
   PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT,
   PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT,
   PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT,
   PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT,
 } from '../../../lib/physicPaintBridge';
+import { defaultTransform, type Layer } from '../../../types/layer';
+import { sequenceStore } from '../../../stores/sequenceStore';
+import {
+  addBackgroundClip,
+  addTrack,
+  getDocument as getEfxPaintDocument,
+  registerDocument as registerEfxPaintDocument,
+  reset as resetEfxPaintStore,
+  serializeRuntimeIntoDocument,
+  setPhotoReferenceSource,
+} from '../../../stores/efxPaintStore';
+import { physicPaintStore } from '../../../stores/physicPaintStore';
 import { isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryResult } from '../../../types/physicPaint';
 import { imageStore, _setImageMarkDirtyCallback } from '../../../stores/imageStore';
 import type { MceImageRef } from '../../../types/project';
@@ -676,5 +691,144 @@ describe('session document checkpoint is transport-shaped and launch-bound (quic
   it('a legacy raw-document checkpoint (pre-fix shape) is ignored, never migrated', () => {
     stored.set(PHYSIC_PAINT_SESSION_DOCUMENT_KEY, JSON.stringify(checkpointDocument(testWebpBytes('legacy'))));
     expect(readEfxPaintSessionDocumentCheckpoint('op-1')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 260921-e21: the three Studio-origin document surfaces across the REAL pair.
+//
+// Diagnosis at base (probes recorded in 260921-e21-RED-EVIDENCE.json): this
+// file's transport and the parent apply are GREEN for all three surfaces when
+// they are driven directly, and so are the reopen carrier and the child
+// hydration (probes B/C/D/D2). The link that can lose them is the child PUSH
+// WIRING, pinned by contract in PhysicsPaintStudio.test.ts. This leg is the
+// reopen contract the same document must keep whenever it IS pushed: a
+// reference selection, a background keyframe placement and a (+) track reach
+// the realm that owns the save path, through the pre-existing event pair and
+// the pre-existing carrier — no second channel.
+// ---------------------------------------------------------------------------
+describe('Studio-origin document surfaces across the real pair (quick-260921-e21)', () => {
+  const LAYER = 'layer-e21';
+  type SyncHandler = (event: { detail?: unknown }) => void;
+  const installed = new Map<string, SyncHandler>();
+
+  const stubWindow = () => {
+    installed.clear();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        addEventListener: (name: string, fn: unknown) => { installed.set(name, fn as SyncHandler); },
+        removeEventListener: (name: string) => { installed.delete(name); },
+        location: { origin: 'http://localhost' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  };
+
+  beforeEach(() => {
+    emitTo.mockClear();
+    resetEfxPaintDocumentSyncTransferState();
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    stubWindow();
+    // The reopen carrier resolves the layer's parent timeline range from the
+    // sequence store; the layer must belong to a live sequence or the carrier
+    // refuses the launch.
+    sequenceStore.sequences.value = [{
+      id: 'e21-parent-sequence',
+      kind: 'fx',
+      name: 'e21 parent authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [physicLayer()],
+      inFrame: 0,
+      outFrame: 60,
+    }];
+  });
+
+  afterEach(() => {
+    sequenceStore.sequences.value = [];
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  function physicLayer(): Layer {
+    return {
+      id: LAYER,
+      name: 'Physic Paint',
+      type: 'physic-paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'physic-paint', layerId: LAYER },
+    };
+  }
+
+  const TRACK1 = 'e21-track-1';
+
+  const baseDocument = (): EfxPaintDocument => {
+    const base = createEfxPaintDocument(LAYER);
+    return { ...base, activeTrackId: TRACK1, tracks: [{ ...base.tracks[0], id: TRACK1 }] };
+  };
+
+  it('carries the reference selection, the background keyframes and the (+) track into the reopen carrier', async () => {
+    const base = baseDocument();
+    registerEfxPaintDocument(base);
+    const physical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 4096,
+      realKeyRecords: [{ kind: 'real-key', keyId: 'k1', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('k1'), width: 8, height: 6 } }],
+      groupOverrideRecords: [],
+      interpolation: { enabled: false, mode: 'duplicate' },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        [{ kind: 'real-key', keyId: 'k1', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('k1'), width: 8, height: 6 } }],
+        { enabled: false, mode: 'duplicate' }, [], [], [],
+      ),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    registerEfxPaintDocument({ ...base, tracks: [{ ...base.tracks[0], rotoPhysical: physical }] });
+    const parentBefore = getEfxPaintDocument(LAYER)!;
+
+    // The three Studio-origin mutations, in the child realm.
+    const refResult = setPhotoReferenceSource(LAYER, ['ref-photo-1']);
+    const clipResult = addBackgroundClip(LAYER, { startFrame: 4, sourceFrameRefs: ['ref-bg-1'], repeat: { mode: 'finite', count: 1 } });
+    const trackResult = addTrack(LAYER);
+    expect(refResult.ok).toBe(true);
+    expect(clipResult.ok).toBe(true);
+    expect(trackResult.ok).toBe(true);
+    const addedTrackId = trackResult.ok ? trackResult.trackId : '';
+
+    const childDocument = serializeRuntimeIntoDocument(LAYER);
+    await sendEfxPaintDocumentSync(childDocument, 'Tauri');
+    expect(emitTo).toHaveBeenCalledTimes(1);
+    const payload = emitTo.mock.calls[emitTo.mock.calls.length - 1][2] as { document: unknown };
+
+    // Parent realm: the REAL receiver applies the pushed document.
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    registerEfxPaintDocument(parentBefore);
+    const unlisten = await installPhysicPaintEfxPaintDocumentListener();
+    const handler = installed.get(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT);
+    expect(typeof handler).toBe('function');
+    handler?.({ detail: payload });
+    const applied = getEfxPaintDocument(LAYER)!;
+    expect(applied.photoReference?.sourceFrameRefs).toEqual(['ref-photo-1']);
+    expect(applied.background.clips.map((clip) => ({ startFrame: clip.startFrame, refs: clip.sourceFrameRefs })))
+      .toEqual([{ startFrame: 4, refs: ['ref-bg-1'] }]);
+    expect(applied.tracks.map((track) => track.id)).toContain(addedTrackId);
+    unlisten();
+
+    // The reopen half: the launch carrier a reopened Studio receives.
+    const carrier = createPhysicPaintLaunchContext(physicLayer(), 0);
+    expect(carrier.document.photoReference?.sourceFrameRefs).toEqual(['ref-photo-1']);
+    expect(carrier.document.background.clips.map((clip) => ({ startFrame: clip.startFrame, refs: clip.sourceFrameRefs })))
+      .toEqual([{ startFrame: 4, refs: ['ref-bg-1'] }]);
+    expect(carrier.document.tracks.map((track) => track.id)).toContain(addedTrackId);
   });
 });

@@ -2113,3 +2113,69 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
     expect(studio).toContain('interrupt: () => rotoPersistenceRef.current.interruptLivePixels()');
   });
 });
+
+// 260921-e21: the three Studio-origin surfaces — the reference selection, the
+// background image keyframes and the tracks added with (+) — reach the save
+// realm ONLY through the child→main document sync. The diagnosis at base
+// (probes recorded in 260921-e21-RED-EVIDENCE.json) exonerates every link
+// downstream of the push: the child transport, the parent apply, the reopen
+// carrier and the child hydration each carry all three surfaces when they are
+// driven directly. The link that can lose them is the child PUSH WIRING here,
+// and it has two drop shapes: a pending change is consumed BEFORE the push mode
+// is confirmed (so a change pending while the bridge mode is still unresolved
+// is cleared with no push and no retry), and the push guard latches its
+// fingerprint BEFORE the send resolves (so a send that fails suppresses that
+// content for the rest of the session). A component-level test cannot mount the
+// Studio (Tauri window/engine deps), so the wiring is pinned by contract — the
+// same style as the 52.2-15 suite above.
+describe('Studio-origin document state reaches the save realm (quick-260921-e21)', () => {
+  const closePushPath = (() => {
+    const start = studio.indexOf('flushDocumentSyncRef.current = async () => {');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('// Non-gesture path:', start));
+  })();
+  const schedulerPushPath = (() => {
+    const start = studio.indexOf('// Non-gesture path:');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('// 52.1 (flush-before-save/export)', start));
+  })();
+  const pushPath = (() => {
+    const start = studio.indexOf('const pushLiveProjection = (layerId');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('const documentSyncDirtyRef = useRef(signal(false));', start));
+  })();
+
+  it('PIN 1 (reference selection): the close flush consumes the pending change only after a push with a confirmed mode', () => {
+    // The close flush is the LAST automatic chance for an image-reference
+    // selection to reach the save realm. Clearing the pending flag while the
+    // bridge mode is still unresolved loses it outright: nothing bumps the
+    // document version again, so no later flush ever re-marks it.
+    expect(closePushPath).not.toBe('');
+    const modeGate = closePushPath.indexOf("mode === 'Tauri'");
+    expect(modeGate, 'the close flush must confirm the push mode before it consumes the pending change').toBeGreaterThan(-1);
+    const clear = closePushPath.indexOf('documentSyncDirty.value = false;');
+    expect(clear).toBeGreaterThan(modeGate);
+  });
+
+  it('PIN 2 (background keyframes): neither scheduler flush consumes the pending change before the push mode is confirmed', () => {
+    // A background keyframe placement is not a gesture: it flushes on the
+    // non-gesture debounce, and again on the idle transition. Both bodies must
+    // leave the change pending when no push could be attempted.
+    const bodies = schedulerPushPath.split('const tryFlush = () => {').slice(1);
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) {
+      const modeGate = body.indexOf("mode === 'Tauri'");
+      expect(modeGate).toBeGreaterThan(-1);
+      const clear = body.indexOf('documentSyncDirty.value = false;');
+      expect(clear).toBeGreaterThan(modeGate);
+    }
+  });
+
+  it('PIN 3 ((+) track with its content): a failed push is retryable, never latched away', () => {
+    // A track added with (+) and painted on travels only through this push. The
+    // guard latches its fingerprint before the send resolves, so a failed send
+    // would suppress that track for the rest of the session unless the wiring
+    // re-arms the guard on the failure path.
+    expect(pushPath).not.toBe('');
+    expect(pushPath).toContain('sendEfxPaintDocumentSync(');
+    expect(pushPath).toContain('.catch(');
+    expect(pushPath).toContain('documentSyncPushGuardRef.current = createDocumentSyncPushGuard();');
+  });
+});
