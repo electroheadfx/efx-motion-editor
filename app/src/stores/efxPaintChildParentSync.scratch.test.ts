@@ -8,7 +8,7 @@ import { settlePackageFileTokens } from '../lib/efxPaintPersistence';
 import { buildFrameMediaRelativePath } from '../lib/efxPaintPackage';
 import type { PhysicPaintRenderedFrame } from '../types/physicPaint';
 import { physicPaintStore, physicPaintVersion, _setPhysicPaintMarkDirtyCallback } from './physicPaintStore';
-import { _setEfxPaintMarkDirtyCallback, addTrack, registerDocument, reset as resetEfxPaint, serializeRuntimeIntoDocument } from './efxPaintStore';
+import { _setEfxPaintMarkDirtyCallback, addBackgroundClip, addTrack, registerDocument, reset as resetEfxPaint, serializeRuntimeIntoDocument, setPhotoReferenceSource } from './efxPaintStore';
 import { projectStore } from './projectStore';
 import { sequenceStore } from './sequenceStore';
 import { layerStore } from './layerStore';
@@ -104,6 +104,33 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
     activeTrackId: TEST_TRACK_ID,
     tracks: [{ ...track, id: TEST_TRACK_ID, frames: {}, rotoPhysical: null, loopClips: [] }],
   };
+}
+
+// The package save only indexes a Physics Paint layer that belongs to a live
+// sequence; a layer outside every sequence never reaches the manifest's
+// efxPaint index and writes no layer sub-file.
+function installParentSequence(layerId: string): void {
+  sequenceStore.sequences.value = [{
+    id: 'parent-seq',
+    kind: 'fx',
+    name: 'Parent sequence',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    keyPhotos: [],
+    layers: [{
+      id: layerId,
+      name: 'Physics Paint',
+      type: 'physic-paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: { x: 0, y: 0, scale: 1, rotation: 0 },
+      source: { type: 'physic-paint', layerId },
+    } as never],
+    inFrame: 0,
+    outFrame: 100,
+  } as never];
 }
 
 const makeFrame = (frameIndex: number, appFrame: number): PhysicPaintRenderedFrame => ({
@@ -306,6 +333,62 @@ describe('SCRATCH: child document push + parent save preserves Track 1 keys', ()
     expect(track1.rotoPhysical?.realKeyRecords.map((record) => record.keyId)).toEqual(['t1-key-1', 't1-key-2']);
     const newTrack = document.tracks.find((track) => track.id === newTrackId)!;
     expect(newTrack.rotoPhysical?.realKeyRecords.map((record) => record.keyId)).toEqual(['new-key-1']);
+  });
+
+  // 260921-e21: the same seam, extended from tracks to the other two
+  // Studio-origin surfaces. The child push wiring is the diagnosed link (see
+  // 260921-e21-RED-EVIDENCE.json); these two cases lock the half that was
+  // already green — once the parent HAS the child's document, the .mce layer
+  // sub-file the manifest indexes must carry the background clip and the photo
+  // reference, or the fix would only move the loss one link downstream.
+  it('keeps a child-placed background clip, at its frame with its source refs, when the child pushes and the parent saves', async () => {
+    const LAYER_ID = 'layer-1';
+    installParentSequence(LAYER_ID);
+    registerDocument(makeTrackDocument(LAYER_ID));
+
+    // CHILD: places a background image clip at frame 4 with a source cycle.
+    const placed = addBackgroundClip(LAYER_ID, {
+      startFrame: 4,
+      sourceFrameRefs: ['bg-ref-1', 'bg-ref-2'],
+      repeat: { mode: 'finite', count: 1 },
+    });
+    expect(placed.ok).toBe(true);
+
+    // CHILD pushes its document to the parent.
+    registerDocument(parseEfxPaintDocument(serializeRuntimeIntoDocument(LAYER_ID)));
+
+    // PARENT saves — the layer sub-file must carry the clip and its frame.
+    await projectStore.saveProject();
+
+    expect(ipcProjectSave).toHaveBeenCalledTimes(1);
+    const document = stagedLayerDocument(LAYER_ID) as {
+      background: { clips: Array<{ id: string; startFrame: number; sourceFrameRefs: string[] }> };
+    };
+    expect(document.background.clips).toHaveLength(1);
+    expect(document.background.clips[0].startFrame).toBe(4);
+    expect(document.background.clips[0].sourceFrameRefs).toEqual(['bg-ref-1', 'bg-ref-2']);
+  });
+
+  it('keeps a child-selected reference source, with its refs, when the child pushes and the parent saves', async () => {
+    const LAYER_ID = 'layer-1';
+    installParentSequence(LAYER_ID);
+    registerDocument(makeTrackDocument(LAYER_ID));
+
+    // CHILD: selects the reference source image(s).
+    const selected = setPhotoReferenceSource(LAYER_ID, ['ref-photo-1', 'ref-photo-2']);
+    expect(selected.ok).toBe(true);
+
+    // CHILD pushes its document to the parent.
+    registerDocument(parseEfxPaintDocument(serializeRuntimeIntoDocument(LAYER_ID)));
+
+    // PARENT saves — the layer sub-file must carry the reference source.
+    await projectStore.saveProject();
+
+    expect(ipcProjectSave).toHaveBeenCalledTimes(1);
+    const document = stagedLayerDocument(LAYER_ID) as {
+      photoReference: { sourceFrameRefs: string[] } | null;
+    };
+    expect(document.photoReference?.sourceFrameRefs).toEqual(['ref-photo-1', 'ref-photo-2']);
   });
 
   it('re-hydrates the parent runtime from the pushed LIVE projection when the parent runtime is stale', () => {
