@@ -27,10 +27,13 @@ import {
  * macrotask, so only `Date` is faked here (fake timers would swallow it) and
  * the clock is moved explicitly to cross the dedupe window.
  */
-const settleWrite = (): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+const settleWrite = async (): Promise<void> => {
+  for (let turn = 0; turn < 5; turn += 1) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+  }
+};
 
 const advancePastDedupeWindow = (): void => {
   vi.setSystemTime(new Date(Date.now() + GESTURE_REFUSAL_CAPTURE_DEDUPE_WINDOW_MS + 1));
