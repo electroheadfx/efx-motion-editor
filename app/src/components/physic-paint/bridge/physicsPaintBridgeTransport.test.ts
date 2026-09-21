@@ -56,7 +56,8 @@ import {
   parsePhysicPaintRotoPhysicalDocument,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import { buildFrameMediaRelativePath } from '../../../lib/efxPaintPackage';
-import { bytesToBase64 } from '../../../lib/webpBytes';
+import { bytesToBase64, fromTransportPayload } from '../../../lib/webpBytes';
+import { parseEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocumentParsers';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const transport = readFileSync(fileURLToPath(new URL('./physicsPaintBridgeTransport.ts', import.meta.url)), 'utf8');
@@ -832,5 +833,81 @@ describe('Studio-origin document surfaces across the real pair (quick-260921-e21
     expect(carrierDocument.background.clips.map((clip) => ({ startFrame: clip.startFrame, refs: clip.sourceFrameRefs })))
       .toEqual([{ startFrame: 4, refs: ['ref-bg-1'] }]);
     expect(carrierDocument.tracks.map((track) => track.id)).toContain(addedTrackId);
+  });
+
+  /**
+   * 2026-09-21 studio-origin-persist-loss: the sibling pin above ships a track
+   * whose runtime never held records (`registerDocument` does not hydrate the
+   * runtime), so it never exercises the 52.2-10 (D-12) reference projection of
+   * a bytes-carrying document — the live child ALWAYS has bytes (launch
+   * hydration). The projection swaps every record's carrier bytes→media; the
+   * shipped document must therefore carry a revision computed over the
+   * PROJECTED collections, or the receiver's fail-closed canonical parse
+   * (physicPaintBridge.ts:3292) rejects the sync with 'canonical revision
+   * mismatch' — which is exactly how the whole physic-paint:efx-paint-document
+   * channel died live. This pin drives the real sender, the receiver's exact
+   * parse door, and the real installed listener.
+   */
+  it('a bytes-carrying runtime document crosses the D-12 projection into the parent realm', async () => {
+    const base = baseDocument();
+    const keyBytes = testWebpBytes('e21-roto-key');
+    const record = {
+      kind: 'real-key' as const,
+      keyId: 'k1',
+      appFrame: 0,
+      payload: { frameIndex: 0, appFrame: 0, bytes: keyBytes, width: 8, height: 6 },
+    };
+    const physical = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 600,
+      realKeyRecords: [record],
+      groupOverrideRecords: [],
+      interpolation: { enabled: false, mode: 'duplicate' },
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision([record], { enabled: false, mode: 'duplicate' }, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    registerEfxPaintDocument({ ...base, tracks: [{ ...base.tracks[0], rotoPhysical: physical }] });
+    // The Studio launch hydration door: the runtime owns the bytes-carrying
+    // records (registerDocument alone leaves the runtime maps empty).
+    physicPaintStore.installRuntimeStateFromDocument(LAYER, TRACK1, { trackId: TRACK1, frames: new Map(), rotoPhysical: physical });
+    const parentBefore = getEfxPaintDocument(LAYER)!;
+
+    // The three Studio-origin gestures, in the child realm.
+    expect(setPhotoReferenceSource(LAYER, ['ref-photo-1']).ok).toBe(true);
+    expect(addBackgroundClip(LAYER, { startFrame: 4, sourceFrameRefs: ['ref-bg-1'], repeat: { mode: 'finite', count: 1 } }).ok).toBe(true);
+    const trackResult = addTrack(LAYER);
+    expect(trackResult.ok).toBe(true);
+    const addedTrackId = trackResult.ok ? trackResult.trackId : '';
+
+    const childDocument = serializeRuntimeIntoDocument(LAYER);
+    await sendEfxPaintDocumentSync(childDocument, 'Tauri');
+    const payload = emitTo.mock.calls[emitTo.mock.calls.length - 1][2] as { document: unknown };
+
+    // (a) The receiver's door exactly as physicPaintBridge.ts:3292 opens it.
+    const received = parseEfxPaintDocument(fromTransportPayload(payload.document));
+    expect(received.tracks.find((track) => track.id === TRACK1)?.rotoPhysical?.realKeyRecords.map((entry) => entry.keyId))
+      .toEqual(['k1']);
+
+    // (b) The REAL parent listener applies the push.
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    registerEfxPaintDocument(parentBefore);
+    const unlisten = await installPhysicPaintEfxPaintDocumentListener();
+    const handler = installed.get(PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT);
+    expect(typeof handler).toBe('function');
+    handler?.({ detail: payload });
+    unlisten();
+
+    const applied = getEfxPaintDocument(LAYER)!;
+    expect(applied.photoReference?.sourceFrameRefs).toEqual(['ref-photo-1']);
+    expect(applied.background.clips.map((clip) => ({ startFrame: clip.startFrame, refs: clip.sourceFrameRefs })))
+      .toEqual([{ startFrame: 4, refs: ['ref-bg-1'] }]);
+    expect(applied.tracks.map((track) => track.id)).toContain(addedTrackId);
+    expect(applied.tracks.find((track) => track.id === TRACK1)?.rotoPhysical?.realKeyRecords.map((entry) => entry.keyId))
+      .toEqual(['k1']);
   });
 });

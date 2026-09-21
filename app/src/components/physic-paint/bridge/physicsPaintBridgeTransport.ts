@@ -1,5 +1,6 @@
 import type { EfxPaintDocument, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyPayload, PhysicPaintRotoAuthorityRequest, PhysicPaintScriptLibraryRequest } from '../../../types/physicPaint';
+import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 import type {
   PhysicPaintRotoRealKeyPayload,
   PhysicPaintRotoRealKeyRecord,
@@ -290,12 +291,32 @@ async function projectEfxPaintDocumentForSync(
       : await projectRecordsForSync(
         overrides, 'group-override', document.parentLayerId, track.id, knownDigests, changedBytes, shippedDigests,
       );
+    const projectedRealKeyRecords = realKeyRecords ?? roto.realKeyRecords;
+    const projectedGroupOverrideRecords = groupOverrideRecords === undefined
+      ? roto.groupOverrideRecords
+      : groupOverrideRecords ?? overrides;
     tracks.push({
       ...track,
       rotoPhysical: {
         ...roto,
-        realKeyRecords: realKeyRecords ?? roto.realKeyRecords,
-        ...(groupOverrideRecords === undefined ? {} : { groupOverrideRecords: groupOverrideRecords ?? overrides }),
+        realKeyRecords: projectedRealKeyRecords,
+        ...(groupOverrideRecords === undefined ? {} : { groupOverrideRecords: projectedGroupOverrideRecords }),
+        // 2026-09-21 (studio-origin-persist-loss): the shipped document is a
+        // PROJECTED document, so its revision must be the canonical revision
+        // OF THE PROJECTED collections (the media-reference terms) — the same
+        // law every other projection seam honors (`extractRuntimeStateForDocument`
+        // in physicPaintStore). Spreading the runtime revision here shipped
+        // byte-token terms over media-carrying records, and the receiver's
+        // fail-closed parse (physicPaintBridge.ts applyDocument) rejected
+        // EVERY sync with 'canonical revision mismatch' — the whole
+        // physic-paint:efx-paint-document channel was dead in the live app.
+        revision: buildPhysicPaintRotoPhysicalRevision(
+          projectedRealKeyRecords,
+          roto.interpolation,
+          roto.loopClips,
+          roto.incomingInterpolationBreakKeyIds,
+          projectedGroupOverrideRecords,
+        ),
       },
     });
   }
