@@ -97,7 +97,7 @@ import type { KeyRailSegment } from './view/physicsPaintKeyRailPresentation';
 import { applyBackgroundFallbackToSettings, backgroundModeToFallback, buildRotoBackgroundMetadata, makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './engine/physicsPaintStudioSettings';
 import { parsePhysicsPaintLaunchContext } from './bridge/physicsPaintLaunchContext';
 import { createPhysicPaintThumbnailNativeEncoder, sendEfxPaintDocumentSync, sendPhysicPaintApplyPayload, sendPhysicPaintAudioOwnership, sendPhysicPaintFrameSyncMessage, writeEfxPaintSessionDocumentCheckpoint } from './bridge/physicsPaintBridgeTransport';
-import { createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
+import { createDocumentSyncPushDecision, createDocumentSyncPushGuard, type DocumentSyncPushGuard } from './bridge/documentSyncPushGuard';
 import { beginInteraction, endInteraction, interactionIdle, markInteractionActive, readInteractionIdle, readLastInteractionAt } from './bridge/gestureIdleScheduler';
 import { installPhysicPaintFlushRequestListener } from '../../lib/physicPaintFlush';
 import { createFlushPipeline, type FlushStep, type FlushPipeline } from './pilot/flushPipeline';
@@ -3910,7 +3910,13 @@ export function PhysicsPaintStudio() {
   if (documentSyncPushGuardRef.current === null) {
     documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
   }
-  const documentSyncPushGuard = documentSyncPushGuardRef.current;
+  // quick-260921-ffh: the decision is the hoisted guard link (the capture +
+  // the duplicate check). It is created here, once per render, exactly where
+  // the render used to read the ref into a local.
+  const documentSyncPushDecision = createDocumentSyncPushDecision(
+    documentSyncPushGuardRef,
+    () => efxPaintVersion.peek(),
+  );
   // 260921-e21 (T-260921-e21-03): the guard latches its fingerprint BEFORE the
   // send resolves, so a failed send would suppress the same content for the
   // rest of the session unless the guard is re-armed. This counts the automatic
@@ -3919,16 +3925,13 @@ export function PhysicsPaintStudio() {
   const documentSyncPushFailuresRef = useRef(0);
   const pushLiveProjection = (layerId: string, mode: 'Tauri' | 'Browser fallback'): Promise<void> | null => {
     const pushStartedAtMs = performance.now();
-    const document = documentSyncPushGuard.evaluate(
-      () => {
-        try {
-          return serializeRuntimeIntoDocument(layerId);
-        } catch {
-          return getEfxPaintDocument(layerId);
-        }
-      },
-      () => efxPaintVersion.peek(),
-    );
+    const document = documentSyncPushDecision.decide(() => {
+      try {
+        return serializeRuntimeIntoDocument(layerId);
+      } catch {
+        return getEfxPaintDocument(layerId);
+      }
+    });
     recordPhysicsPaintPerformance({
       stage: 'bridge.docSyncSerialize',
       category: 'sync-cpu',
