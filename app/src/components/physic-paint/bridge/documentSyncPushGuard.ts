@@ -55,13 +55,21 @@ export function createDocumentSyncPushGuard(): DocumentSyncPushGuard {
  * diagnosis named, and one the Studio component cannot expose to a test (it
  * cannot be mounted under vitest: Tauri window/engine deps).
  *
- * The decision is created ONCE PER RENDER, exactly where the component used to
- * read `documentSyncPushGuardRef.current` into a render local: the render
- * CAPTURES the guard it will consult. The failure path re-arms the REF instead,
- * so a retry that runs with no render in between (a quiet Studio: no input, no
- * version bump, no other signal write) would decide against the guard whose
- * latch the FAILED send already claimed — the same content reads as a duplicate
- * and is consumed, because every caller clears the pending flag BEFORE the push.
+ * The component creates the decision ONCE PER RENDER, at the point where it
+ * used to read `documentSyncPushGuardRef.current` into a render local. The
+ * decision consults the REF AT DECISION TIME (not a value captured at creation):
+ * the failure path re-arms the REF (`:3981`), so a retry that runs with no
+ * render in between (a quiet Studio: no input, no version bump, no other signal
+ * write) must decide against the guard the failure path re-armed — the guard
+ * whose latch is empty — not against the guard the failed send already latched.
+ *
+ * Capture-at-creation was the diagnosed defect: the retry read the same content
+ * as a duplicate of the FAILED push (`createDocumentSyncPushGuard` latches the
+ * fingerprint BEFORE the send resolves), returned null, and the caller — which
+ * clears the pending flag BEFORE the push — consumed the change with no send and
+ * no re-mark, so reference selections, background keyframes and (+) tracks never
+ * left the child. Reading the ref per decision restores the re-arm's reach.
+ *
  * The link is pinned behaviourally in
  * `stores/efxPaintStudioOriginSync.scratch.test.ts` (quick-260921-ffh).
  */
@@ -69,7 +77,9 @@ export interface DocumentSyncPushDecision {
   /**
    * Run the serialize step and decide whether the resulting document must be
    * pushed: the document to send, or null when the push is a duplicate and must
-   * be skipped. Same contract as `DocumentSyncPushGuard.evaluate`.
+   * be skipped. Same contract as `DocumentSyncPushGuard.evaluate`, and it must
+   * be called with that guard's CURRENT value: the failure path swaps the guard
+   * to keep a failed push retryable.
    */
   decide(serialize: () => EfxPaintDocument | null): EfxPaintDocument | null;
 }
@@ -78,8 +88,10 @@ export function createDocumentSyncPushDecision(
   guardRef: { current: DocumentSyncPushGuard | null },
   readVersion: () => number,
 ): DocumentSyncPushDecision {
-  const captured = guardRef.current;
   return {
-    decide: (serialize) => (captured === null ? null : captured.evaluate(serialize, readVersion)),
+    decide: (serialize) => {
+      const guard = guardRef.current;
+      return guard === null ? null : guard.evaluate(serialize, readVersion);
+    },
   };
 }

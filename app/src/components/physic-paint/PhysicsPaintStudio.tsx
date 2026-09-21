@@ -3910,9 +3910,12 @@ export function PhysicsPaintStudio() {
   if (documentSyncPushGuardRef.current === null) {
     documentSyncPushGuardRef.current = createDocumentSyncPushGuard();
   }
-  // quick-260921-ffh: the decision is the hoisted guard link (the capture +
+  // quick-260921-ffh: the decision is the hoisted guard link (the guard read +
   // the duplicate check). It is created here, once per render, exactly where
-  // the render used to read the ref into a local.
+  // the render used to read the ref into a local. It consults the REF at
+  // decision time, so the retry armed by the failure path below (:3981) is
+  // decided against the guard that path installed — not against the one every
+  // earlier push latch made look like a duplicate.
   const documentSyncPushDecision = createDocumentSyncPushDecision(
     documentSyncPushGuardRef,
     () => efxPaintVersion.peek(),
