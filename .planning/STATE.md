@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Phase 53 context gathered
-last_updated: "2026-09-20T11:38:25.026Z"
-last_activity: 2026-09-19
+stopped_at: Completed 260921-bjm-PLAN.md
+last_updated: "2026-09-21T06:39:06.743Z"
+last_activity: 2026-09-20
 last_activity_desc: Phase 52.3 complete, transitioned to Phase 53
-state_head: f26bd8a4cc9a7f33c787b6372f1916eb3d1e92a3
+state_head: f4f1544fdba073272730f48e9084556058885c29
 progress:
   total_phases: 12
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-20 - Completed quick task 260920-kov: Phase 52 Reveal warnings WR-03/WR-02/WR-01 — WR-03 obsolete (no change), per-frame bake (D-15), stretch extends the derived extent (D-07); native UAT pending
+Last activity: 2026-09-21 - Completed quick task 260921-bjm: Studio gallery/background image imports lost across close/reopen — verdict (b) child-realm store write; the picker's Import now registers in the main-realm library via a child→main bridge pair; native UAT pending
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
@@ -127,6 +127,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.3 P01 | 22min | 3 tasks | 12 files |
 | Phase 52.3 P02 | 13min | 2 tasks | 4 files |
 | Phase 52.3 P03 | ~15 min + UAT | 2 tasks | 0 files |
+| Phase 260921-bjm P260921-bjm | 12min | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -335,6 +336,9 @@ Recent decisions affecting current work:
 - [Phase 52.3]: [Phase 52.3 P01]: FrameEntry is now a discriminated union (ContentFrameEntry | PaintFrameEntry | GapFrameEntry) — fail-closed by type per D-01; PaintFrameEntry carries the owning fx sequenceId + layerId and never keyPhotoId/imageId; GapFrameEntry is ownerless (sequenceId ''). Paint enumeration in frameMap fires only in content-empty projects (entries.length === 0 guard, Finding F1) with coverage via the shared getTimelineOverlaySequenceOutFrame predicate (anti-drift lock with the overlay leg); D-06 top-level identity clearRect gated on !hasContentEntry; efxPaintVersion consciously subscribed (Pitfall 2); D-08 pinned: paint-only fx-active selectedSequenceOnly completes, mixed fx-active refuses with the locked copy (Case E2)
 - [Phase 52.3]: [Phase 52.3 P03]: 7/7 native UAT rows pass across formats, resolutions, and 0.5x/1x/2x scales — the WYSIWYG law (D-05) holds on the real surface; Phase 53 unblocked
 - [Phase 52.3]: [Phase 52.3 P03]: Playback activation callout (UAT Row 7) confirmed deliberate and D-08-consistent — sidebar activating the fx row as the playhead enters paint frames is intended, not a bug
+- [Phase 53]: Verdict (b) root cause: the Studio picker's Import wrote the CHILD webview's imageStore module instance, never the main realm's — the only source of the manifest images array; the 52.2 reference-only package format is exonerated and unchanged.
+- [Phase 53]: The fix reuses the existing 49-04 bridge idiom: a validated child-to-main image-import-request/-result pair (operationId + paths only — the main realm resolves its own project directory), no new IPC/Rust command, no picker UI change.
+- [Phase 53]: Chunk-size budget raised 1340 -> 1355 (measured 1340.68 kB + ~14.3 kB headroom) per the f57ec8e7 precedent — this plan's +3.38 kB tipped the gate and the two config files are the plan's only scope expansion.
 
 ### Pending Todos
 
@@ -374,6 +378,7 @@ None yet.
 | 260920-ji7 | Sequence-extension refusal in the main app — D-08 diagnosis verdict CLAMP at createPhysicPaintLaunchContext: the launch write-back was min(parent end, own stored capacity) → a one-way latch that froze the extent on first launch and refused every later parent-end growth. Fix authorizes the live parent end with a stored-content floor, capped only by PHYSIC_PAINT_MAX_APPLY_FRAMES; validators and refusal messages untouched (paths A-D recorded with evidence; probe ran on real stores). RED-first (4 RED → green), o0n suite + full suite + tsc green; scope gate clean. Native UAT pending | 2026-09-20 | 0ff76f43 | [260920-ji7-sequence-extension-refusal-in-the-main-a](./quick/260920-ji7-sequence-extension-refusal-in-the-main-a/) |
 | 260920-k34 | Fond preload-gate — the flattened draw resolved the document fallback while the preload gate awaited the active track's mirror (gate `[]` while drawing `canvas1`). One `_resolveFondSource` now resolves the ACTIVE TRACK's paper mirror first, the document fallback only when the track has no paper of its own, consumed by the draw (`_resolveDocumentFondInstruction`) and the gate (`collectRotoPaperTextures` via the new `getFondPaperTexture` accessor). `_rotateFlattenedMemoOnFondChange` memo-rotation guard added (activeTrackId is not a flattened-key term; memo CLEAR, no key change). Superseded 49-03 T1/T4 rewritten (53-CONTEXT D-09; D-11 structural half stands). RED-first on both surfaces (7 legs red, controls green); full suite 4019 pass, tsc clean, scope gate + guardrail audit 6/6 clean. Native UAT pending | 2026-09-20 | 8edfc4d7 | [260920-k34-fond-preload-gate-export-must-read-the-a](./quick/260920-k34-fond-preload-gate-export-must-read-the-a/) |
 | 260920-kov | Phase 52 Reveal warnings WR-03/WR-02/WR-01 (v1.0.0 acceptance blockers). WR-03 recorded OBSOLETE with evidence — `revealCreationRequested` exists nowhere in `app/src` (surface removed by 1b11e1c0, reveal creation moved into the Create Rail dialog); guarantee locked by 4 behavioural + 2 structural regression legs, no production change. WR-02 (live): `commitRevealBake` resolved the reference once at `canonicalStart` and reused those bytes for every span frame → now walks the span, resolves `_resolveReferenceSourceImage` per frame (D-15), fails closed on any unresolved frame before any render/write (D-12), hands the renderer a per-frame bytes map decoded once per distinct payload. WR-01 (live): `resizeRevealRail`'s stretch derived the extent from surviving key count (identical rewrite + revision bump + `'reveal-span'` undo entry + `ok: true` for a span that never moved) → finite extent now follows the requested span end in both carriers (`originalEndExclusive` + `visibleRanges`), identical-span resize returns `{ ok: true, descriptor: null }` with no write; infinity pin untouched. RED-first (raw RED recorded from base-checked-out sources); targeted suites + leak contract 342 pass, tsc clean, full suite 4037 pass / 0 failures, scope gate clean (8 planned `app/src` files only). Native UAT pending | 2026-09-20 | ff645d38 | [260920-kov-phase-52-reveal-warnings-wr-03-wr-02-wr-](./quick/260920-kov-phase-52-reveal-warnings-wr-03-wr-02-wr-/) |
+| 260921-bjm | Studio gallery/background image imports lost across close/reopen — verdict (b): the picker's Import wrote the child webview's imageStore, never the main realm's (the manifest source). New child→main image-import-request/-result bridge pair (operationId + paths only; the main realm resolves its own dir), RED-first legs + manifest round-trip/hydration locks, chunk budget 1340→1355 (measured, f57ec8e7 precedent). No format change — 52.2 exonerated. Native UAT pending | 2026-09-21 | f4f1544f | [260921-bjm-imported-gallery-background-images-are-l](./quick/260921-bjm-imported-gallery-background-images-are-l/) |
 
 ### Roadmap Evolution
 
@@ -397,6 +402,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-20T11:38:23.995Z
-Stopped at: Phase 53 context gathered
-Resume file: .planning/phases/53-integrated-v1-0-0-acceptance/53-CONTEXT.md
+Last session: 2026-09-21T06:38:59.216Z
+Stopped at: Completed 260921-bjm-PLAN.md
+Resume file: None
