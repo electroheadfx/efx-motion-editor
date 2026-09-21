@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed 260921-bjm-PLAN.md
-last_updated: "2026-09-21T06:39:06.743Z"
-last_activity: 2026-09-20
+stopped_at: "Completed quick-260921-e21 (Studio-origin state persists: reference selection, background keyframes, (+) tracks) - native UAT pending"
+last_updated: "2026-09-21T08:36:25.877Z"
+last_activity: 2026-09-21
 last_activity_desc: Phase 52.3 complete, transitioned to Phase 53
-state_head: f4f1544fdba073272730f48e9084556058885c29
+state_head: 2238e5d178d93d42e69287485703f0cdf1b38a3e
 progress:
   total_phases: 12
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-09-21 - Completed quick task 260921-c7x: physical-edit cluster — rail edits result mismatch → timeout + latched "already in flight"; verdict H-A one clip collection encoded as two canonical revisions (lifecycle-less Infinity clips); one lifecycle authority across encode/normalize/compare + terminal mismatch release; native UAT pending
+Last activity: 2026-09-21 - Completed quick task 260921-e21: Studio-origin state lost on Studio close — reference selection, background image keyframes, (+) tracks; verdict (a) on all three, root = the child push wiring (clear-before-mode-check + push-guard fingerprint latch); transport/apply/carrier/hydration/store-save exonerated by live probe; native UAT pending
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
@@ -339,6 +339,8 @@ Recent decisions affecting current work:
 - [Phase 53]: Verdict (b) root cause: the Studio picker's Import wrote the CHILD webview's imageStore module instance, never the main realm's — the only source of the manifest images array; the 52.2 reference-only package format is exonerated and unchanged.
 - [Phase 53]: The fix reuses the existing 49-04 bridge idiom: a validated child-to-main image-import-request/-result pair (operationId + paths only — the main realm resolves its own project directory), no new IPC/Rust command, no picker UI change.
 - [Phase 53]: Chunk-size budget raised 1340 -> 1355 (measured 1340.68 kB + ~14.3 kB headroom) per the f57ec8e7 precedent — this plan's +3.38 kB tipped the gate and the two config files are the plan's only scope expansion.
+- [Phase 53]: quick-260921-e21 verdict (a) on all three Studio-origin surfaces: the loss was in the child push wiring (clear-before-mode-check on the close flush and both scheduler bodies, plus a push-guard fingerprint latched before the send resolves) - transport, parent apply, reopen carrier, child hydration and store/package save all exonerated by live probe; fix extends the existing physic-paint:efx-paint-document pair only, no manifest change, c7x untouched
+- [Phase 53]: quick-260921-e21 locks: three RED-then-GREEN wiring pins + one end-to-end reopen-carrier leg + two store-seam cases (background clip frame/refs, reference source refs) - full suite 4065 passed (c7x base 4059, +6 = exactly the new legs); native UAT 5 rows PENDING
 
 ### Pending Todos
 
@@ -380,6 +382,7 @@ None yet.
 | 260920-kov | Phase 52 Reveal warnings WR-03/WR-02/WR-01 (v1.0.0 acceptance blockers). WR-03 recorded OBSOLETE with evidence — `revealCreationRequested` exists nowhere in `app/src` (surface removed by 1b11e1c0, reveal creation moved into the Create Rail dialog); guarantee locked by 4 behavioural + 2 structural regression legs, no production change. WR-02 (live): `commitRevealBake` resolved the reference once at `canonicalStart` and reused those bytes for every span frame → now walks the span, resolves `_resolveReferenceSourceImage` per frame (D-15), fails closed on any unresolved frame before any render/write (D-12), hands the renderer a per-frame bytes map decoded once per distinct payload. WR-01 (live): `resizeRevealRail`'s stretch derived the extent from surviving key count (identical rewrite + revision bump + `'reveal-span'` undo entry + `ok: true` for a span that never moved) → finite extent now follows the requested span end in both carriers (`originalEndExclusive` + `visibleRanges`), identical-span resize returns `{ ok: true, descriptor: null }` with no write; infinity pin untouched. RED-first (raw RED recorded from base-checked-out sources); targeted suites + leak contract 342 pass, tsc clean, full suite 4037 pass / 0 failures, scope gate clean (8 planned `app/src` files only). Native UAT pending | 2026-09-20 | ff645d38 | [260920-kov-phase-52-reveal-warnings-wr-03-wr-02-wr-](./quick/260920-kov-phase-52-reveal-warnings-wr-03-wr-02-wr-/) |
 | 260921-bjm | Studio gallery/background image imports lost across close/reopen — verdict (b): the picker's Import wrote the child webview's imageStore, never the main realm's (the manifest source). New child→main image-import-request/-result bridge pair (operationId + paths only; the main realm resolves its own dir), RED-first legs + manifest round-trip/hydration locks, chunk budget 1340→1355 (measured, f57ec8e7 precedent). No format change — 52.2 exonerated. Native UAT passed 2026-09-21 | 2026-09-21 | f4f1544f | [260921-bjm-imported-gallery-background-images-are-l](./quick/260921-bjm-imported-gallery-background-images-are-l/) |
 | 260921-c7x | Physical-edit cluster: rail spacing/move/stretch (incl. reveal) edits surfaced result mismatch → timeout-restore, and every later edit on every layer answered "already in flight"; on non-first layers key move + interpolated-frame targeting were dead. Verdict H-A: ONE clip collection encoded as TWO canonical revisions — the store held lifecycle-less Infinity clips (parse deliberately cannot hydrate them) while every bridge payload shipped the same clip normalized, so the child staged raw `physical-525-*` and the parent's canonical gate hashed wire `physical-587-*` → mismatch. H-B confirmed as independent secondary (Undo/Redo ledger compared a raw store `before` against a staged `after`); H-C falsified. One lifecycle authority `resolvePhysicPaintRotoLoopClipLifecycle` shared by the canonical encoder (now unconditional), the wire normalizer (`normalizeLoopClipForPayload` delegates) and `sameCanonicalLoopClips` at the 3 store-vs-wire gates + one-shape accepted-command ledger; the mismatch branch of `consumePhysicalEditResult` is now TERMINAL — `finalizeFailed` releases the pending slot/lease/timer, still returns `'mismatch'`. `parsePhysicPaintRotoLoopClips` and `resizeRevealRail` identical-span no-write untouched (kov WR-01 lock; 0 hits in the fix diff). RED-first descriptor captures + layer-2 identity + latch legs. Targeted 218 pass, neighbours+kov lock 170 pass, full suite 4059 pass / 0 fail, tsc clean. Native UAT pending (5 rows carried in SUMMARY) | 2026-09-21 | a4605d67 | [260921-c7x-physical-edit-cluster-result-mismatch-ti](./quick/260921-c7x-physical-edit-cluster-result-mismatch-ti/) |
+| 260921-e21 | Studio-origin state lost on Studio close — reference selection, background image keyframes, (+) tracks. Verdict (a) on all three: the loss is in the child PUSH WIRING (both drop shapes on one link) — `documentSyncDirty` cleared BEFORE the bridge-mode check in all three flush paths, so a change pending while the mode is unresolved is consumed with no push and never re-marked; and `documentSyncPushGuard` latches its fingerprint before the send resolves, so a failed send suppresses that content for the session. Transport, parent apply, reopen carrier, child hydration and store/package save all exonerated by live probe — 52.2 reference-only law holds, no format change. Fix extends the existing `physic-paint:efx-paint-document` pair only (dirty consumed after the mode gate; guard re-armed on failure with a bounded 3-retry budget; close gate reports a still-owed change). RED pins + one end-to-end reopen-carrier lock + two store-seam cases; full suite 4065 pass / 0 fail, tsc clean, c7x untouched. CAVEAT: every behavioural probe is GREEN at base, so the three RED pins are source-shape assertions — no behavioural reproduction of the reported loss exists. Native UAT PENDING (5 rows) | 2026-09-21 | 2238e5d1 | [260921-e21-studio-origin-state-never-persists-refer](./quick/260921-e21-studio-origin-state-never-persists-refer/) |
 
 ### Roadmap Evolution
 
@@ -403,6 +406,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-21T06:38:59.216Z
-Stopped at: Completed 260921-bjm-PLAN.md
+Last session: 2026-09-21T08:36:18.225Z
+Stopped at: Completed quick-260921-e21 (Studio-origin state persists: reference selection, background keyframes, (+) tracks) - native UAT pending
 Resume file: None

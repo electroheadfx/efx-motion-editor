@@ -1,0 +1,131 @@
+{
+  "task": "quick-260921-e21 — Studio-origin state never persists: reference keyframes, background keyframes, (+) tracks",
+  "planBase": "6ec09422",
+  "headAtStart": "6ec09422ffa88a4e8158ece88eeb886d97a8a2b0",
+  "command": "pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts src/components/physic-paint/PhysicsPaintStudio.test.ts src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.test.ts",
+  "exitCode": 1,
+  "targetTest": "Studio-origin document state reaches the save realm (quick-260921-e21) — PIN 1 (reference selection), PIN 2 (background keyframes), PIN 3 ((+) track with its content)",
+  "targetFile": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+  "expected": "The three Studio-origin document surfaces reach the realm that owns the save path. The diagnosis bisected the whole chain from the child store mutation to the reopen carrier, and every link downstream of the push was found GREEN when driven directly (probes B/C/D/D2/E). The remaining link — the child PUSH WIRING in PhysicsPaintStudio.tsx — has two drop shapes, and the three pins assert the contracts that remove them: a pending change is consumed only after a push with a confirmed mode (PIN 1 close path, PIN 2 both scheduler paths), and a failed push re-arms the push guard instead of latching that content away (PIN 3).",
+  "actual": "3 pre-fix failures, exactly the three planned pins, each naming the diagnosed mechanism. PIN 1 fails AssertionError: expected 92 to be greater than 229 — in flushDocumentSyncRef.current the pending flag is cleared at offset 92, BEFORE the push-mode gate at offset 229 (base PhysicsPaintStudio.tsx:3983 clears, :3986 gates). PIN 2 fails AssertionError: expected 330 to be greater than 473 — the same clear-before-gate shape in the non-gesture tryFlush body (base :4004 clears, :4007 gates). PIN 3 fails AssertionError: the pushLiveProjection source contains no re-arm of documentSyncPushGuardRef — the guard latches lastPushedFingerprint before the send resolves (documentSyncPushGuard.ts:44-48) and pushLiveProjection's .catch at :3957 swallows the failure, so a failed send suppresses that content for the rest of the session (T-260921-e21-03).",
+  "output": "❯ src/components/physic-paint/PhysicsPaintStudio.test.ts (147 tests | 3 failed) 585ms\n   × Studio-origin document state reaches the save realm (quick-260921-e21) > PIN 1 (reference selection): the close flush consumes the pending change only after a push with a confirmed mode 4ms\n     → expected 92 to be greater than 229\n   × Studio-origin document state reaches the save realm (quick-260921-e21) > PIN 2 (background keyframes): neither scheduler flush consumes the pending change before the push mode is confirmed 0ms\n     → expected 330 to be greater than 473\n   × Studio-origin document state reaches the save realm (quick-260921-e21) > PIN 3 ((+) track with its content): a failed push is retryable, never latched away 7ms\n     → expected 'const pushLiveProjection = (layerId: …' to contain 'documentSyncPushGuardRef.current = cr…'\n\n FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > Studio-origin document state reaches the save realm (quick-260921-e21) > PIN 1 (reference selection): the close flush consumes the pending change only after a push with a confirmed mode\nAssertionError: expected 92 to be greater than 229\n FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > Studio-origin document state reaches the save realm (quick-260921-e21) > PIN 2 (background keyframes): neither scheduler flush consumes the pending change before the push mode is confirmed\nAssertionError: expected 330 to be greater than 473\n FAIL  src/components/physic-paint/PhysicsPaintStudio.test.ts > Studio-origin document state reaches the save realm (quick-260921-e21) > PIN 3 ((+) track with its content): a failed push is retryable, never latched away\nAssertionError: expected 'const pushLiveProjection = (layerId: …' to contain 'documentSyncPushGuardRef.current = cr…'\n\n Test Files  1 failed (1)\n      Tests  3 failed | 144 passed (147)",
+  "note": "RED is intentional and is exactly the three pins, each failing on its mechanism assertion (never on a missing symbol or a compile error). The same run is GREEN for everything else: 144 passed in PhysicsPaintStudio.test.ts, 29 passed in physicsPaintBridgeTransport.test.ts (including the new end-to-end leg 'carries the reference selection, the background keyframes and the (+) track into the reopen carrier', which drives the real child transport, the real parent listener and the real launch carrier), and 6 passed in usePhysicsPaintLaunchIntegration.test.ts. The machine classifier parses node --test TAP summaries only; vitest emits none of the three `# tests N` / `# pass N` / `# fail N` lines in ANY of its TAP reporters, so `check tdd-red-evidence` returns INVALID_RED (zero_tests_discovered) on parser grounds alone — documented tooling limitation, same precedent as 52.2-01 / 260919-azh / 260920-ji7 / 52.3-01 + 52.3-02 / 260921-bjm. The verbatim failing run above is the evidence.",
+
+  "verdicts": [
+    {
+      "surface": "reference selection (setPhotoReferenceSource)",
+      "verdict": "a",
+      "structural": false,
+      "link": "child push wiring (PROBE A) — PhysicsPaintStudio.tsx:3981-3989 and :3953-3966",
+      "evidence": "The mutation itself is NOT child-realm-only: setPhotoReferenceSource (efxPaintStore.ts:1129-1176) writes _documents, bumps documentRevision and calls _notifyChange(), and PROBE A observed the child emit the reference on the wire (wireHasPhotoRef true) and the parent apply accept it (applied.photoReference.sourceFrameRefs = ['ref-photo-1']). The loss is at the WIRING that decides whether the push is attempted: flushDocumentSyncRef.current clears documentSyncDirty at :3983 and only THEN reads the bridge mode at :3986, so a change pending while bridgeModeRef.current is neither 'Tauri' nor 'Browser fallback' (usePhysicsPaintBridgeMode initialises to 'Unavailable' until detectPhysicsPaintBridgeMode resolves) is cleared with no push, and nothing re-marks it (the version does not bump again). Second shape on the same link: documentSyncPushGuard.evaluate latches lastPushedFingerprint BEFORE the send resolves (documentSyncPushGuard.ts:44-48) and pushLiveProjection's .catch at :3957 swallows a failed send, so that content is permanently suppressed for the session (T-260921-e21-03).",
+      "exonerated_links": "child transport (PROBE B GREEN), parent apply (PROBE C GREEN), reopen carrier (PROBE D GREEN), child hydration (PROBE D2 GREEN), store/package save seam (PROBE E GREEN)"
+    },
+    {
+      "surface": "background image keyframes (addBackgroundClip)",
+      "verdict": "a",
+      "structural": false,
+      "link": "child push wiring (PROBE A) — PhysicsPaintStudio.tsx:3993-4047 (both scheduler flush bodies)",
+      "evidence": "addBackgroundClip (efxPaintStore.ts:692-723) writes the clip with its startFrame and sourceFrameRefs, sorts, bumps documentRevision and calls _notifyChange(); PROBE A observed the clip on the wire (wireHasBgRef true), PROBE C observed the parent document hold it (clips [{startFrame:4, refs:['ref-bg-1']}]), and PROBE D/D2 observed the reopen carrier and the child hydration carry it unchanged. The loss is the SAME wiring shape as surface 1, in the two scheduler bodies: both tryFlush closures clear documentSyncDirty at :4004 / :4035 and read the mode only afterwards at :4007 / :4038, so a placement that flushes while the mode is unresolved is consumed with no push. The non-gesture body also drops its timer without rescheduling when readInteractionIdle() is false at :3998, leaving the change to the gesture path — which only re-runs on an interactionIdle transition.",
+      "exonerated_links": "child transport (PROBE B GREEN), parent apply (PROBE C GREEN), reopen carrier (PROBE D GREEN), child hydration (PROBE D2 GREEN), store/package save seam (PROBE E GREEN)"
+    },
+    {
+      "surface": "(+) track with its content (addTrack)",
+      "verdict": "a",
+      "structural": false,
+      "link": "child push wiring (PROBE A) — PhysicsPaintStudio.tsx:3906-3966 (pushLiveProjection) + :3957 catch",
+      "evidence": "addTrack (efxPaintStore.ts:183-206) writes _documents, mounts the track runtime, sets rotoPhysical null and calls _notifyChange(); PROBE A observed the added track id on the wire (wireHasAddedTrack true), PROBE C observed the parent document hold both track ids, PROBE D/D2 observed the carrier and the hydration carry both, and PROBE E proved the store/package seam already writes BOTH tracks' keys into layers/<layerId>.json when the parent HAS the document (3 passed, reproduced at base). The loss is the push guard latch: lastPushedFingerprint is latched BEFORE the send resolves (:44-48), the .catch at :3957 swallows the failure, and nothing re-arms the guard or re-marks the change, so one failed send suppresses that track for the rest of the session.",
+      "exonerated_links": "child transport (PROBE B GREEN), parent apply (PROBE C GREEN), reopen carrier (PROBE D GREEN), child hydration (PROBE D2 GREEN), store/package save seam (PROBE E GREEN, both tracks in layers/<layerId>.json)"
+    }
+  ],
+  "structuralCheck": {
+    "S1_manifest_or_52_2_reference_law": false,
+    "S2_new_independent_transport": false,
+    "S3_c7x_revision_identity_or_loop_clip_lifecycle": false,
+    "S4_rust_command_or_capability": false,
+    "verdict": "not structural — the fix removes two drop shapes inside the existing child push wiring (PhysicsPaintStudio.tsx, an authorized Task 2 file). No format change, no new transport, no second event pair, no IPC/Rust command, no revision/identity comparison, no manifest shape change."
+  },
+  "pins": [
+    {
+      "name": "PIN 1 (reference selection)",
+      "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+      "assertion": "closePushPath (flushDocumentSyncRef.current → '// Non-gesture path:') consumes the pending change only after the push mode gate",
+      "linkPinned": "child push wiring — the close flush clears documentSyncDirty before the mode is confirmed",
+      "redObserved": true,
+      "output": "AssertionError: expected 92 to be greater than 229"
+    },
+    {
+      "name": "PIN 2 (background keyframes)",
+      "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+      "assertion": "both scheduler tryFlush bodies ('// Non-gesture path:' → '// 52.1 (flush-before-save/export)') consume the pending change only after the push mode gate",
+      "linkPinned": "child push wiring — both scheduler flush paths clear documentSyncDirty before the mode is confirmed",
+      "redObserved": true,
+      "output": "AssertionError: expected 330 to be greater than 473"
+    },
+    {
+      "name": "PIN 3 ((+) track with its content)",
+      "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+      "assertion": "pushLiveProjection (→ 'const documentSyncDirtyRef = useRef(signal(false));') re-arms the push guard on its failure path",
+      "linkPinned": "child push wiring — the pre-resolve fingerprint latch suppresses a failed push for the rest of the session (T-260921-e21-03)",
+      "redObserved": true,
+      "output": "AssertionError: expected 'const pushLiveProjection = (layerId: …' to contain 'documentSyncPushGuardRef.current = createDocumentSyncPushGuard();'"
+    }
+  ],
+  "replacedPins": {
+    "reason": "The plan's original pins asserted the end-to-end reopen carrier. Run at base, that chain is GREEN for all three surfaces (probes B/C/D/D2), so a carrier pin is a verdict datum pointing at a different link, not a failure. Per the plan's own instruction (Task 1 STEP 2) each green pin was replaced by a leg over the link the verdict named, keeping the end-to-end carrier contract as a permanent green regression lock in physicsPaintBridgeTransport.test.ts.",
+    "kept": "app/src/components/physic-paint/bridge/physicsPaintBridgeTransport.test.ts — 'carries the reference selection, the background keyframes and the (+) track into the reopen carrier' (child transport → real parent listener → real launch carrier; GREEN at base, 29 passed)"
+  },
+  "probes": {
+    "A": {
+      "kind": "read + run",
+      "what": "child side: do the three mutations bump the version / set the dirty flag, and is a change ever cleared without a push?",
+      "output": "[e21][PROBE A] {\"refOk\":true,\"clipOk\":true,\"trackOk\":true,\"trackId\":\"56f3ad1b-e990-4fe3-a782-a50b842540d7\"}",
+      "findings": "All three mutations write the child document and call _notifyChange() (efxPaintStore.ts:183-206, :692-723, :1129-1176) → efxPaintVersion bumps → the dirty flag is set (PhysicsPaintStudio.tsx:3974-3977). CLEAR-BEFORE-MODE-CHECK confirmed by read at :4004/:4007, :4035/:4038 and :3983/:3986: YES — a change is cleared without a push whenever bridgeModeRef.current is not 'Tauri'/'Browser fallback'. documentSyncPushGuard latches lastPushedFingerprint before the send resolves (documentSyncPushGuard.ts:44-48) — confirmed by read, pinned by PIN 3.",
+      "verdictForLink": "BROKEN — this is the diagnosed link."
+    },
+    "B": {
+      "kind": "run (child transport)",
+      "what": "drive the real sendEfxPaintDocumentSync with a document carrying a background clip, a photo reference and an added track",
+      "output": "[e21][PROBE B] {\"emitCount\":1,\"wireLength\":1368,\"wireHasPhotoRef\":true,\"wireHasBgRef\":true,\"wireHasAddedTrack\":true}",
+      "findings": "The emit resolves once; the wire payload carries all three surfaces (projectEfxPaintDocumentForSync's `{ ...document, tracks }` spread preserves background.clips and photoReference; no record failed projection in this shape).",
+      "verdictForLink": "GREEN — the transport is exonerated."
+    },
+    "C": {
+      "kind": "run (parent apply)",
+      "what": "feed the captured payload into the REAL parent listener path (installPhysicPaintEfxPaintDocumentListener → parseEfxPaintDocument(fromTransportPayload(...)) → the revision guard → registerEfxPaintDocument) and read the parent document back",
+      "output": "[e21][PROBE C-handler] {\"installedNames\":[\"physic-paint:efx-paint-document\",\"message\"],\"hasHandler\":true}\n[e21][PROBE C] {\"appliedRevision\":4,\"parentRevision\":0,\"trackIds\":[\"56f3ad1b-e990-4fe3-a782-a50b842540d7\",\"e21-track-1\"],\"photoRef\":[\"ref-photo-1\"],\"clips\":[{\"startFrame\":4,\"refs\":[\"ref-bg-1\"]}]}",
+      "findings": "The handler installs on the pre-existing pair, the apply is NOT rejected (no '[physicPaintBridge] Rejected EFX Paint document sync' warning), and the parent document afterwards holds all three surfaces. The idempotency guard cannot skip a real change: buildEfxPaintDocumentRevision encodes docrev/active/tracks/clips/photo (efxPaintDocumentRevision.ts:119-151).",
+      "verdictForLink": "GREEN — the apply is exonerated, and the parent idempotency guard is confirmed non-skipping (T-260921-e21-02 holds at base)."
+    },
+    "D": {
+      "kind": "run (reopen carrier)",
+      "what": "call the REAL createPhysicPaintLaunchContext on the parent state left by the apply and read the carrier",
+      "output": "[e21][PROBE D] {\"refOk\":true,\"clipOk\":true,\"trackOk\":true,\"parentTrackCount\":2,\"parentPhotoRef\":[\"e21-ref-1\"],\"parentClipCount\":1,\"carrierBuilt\":true,\"carrierError\":null,\"carriedTrackCount\":2,\"carriedHasAddedTrack\":true,\"carriedPhotoRef\":[\"e21-ref-1\"],\"carriedClips\":[{\"startFrame\":4,\"refs\":[\"e21-bg-1\"]}],\"carriedTrackIds\":[\"dfa2d496-a607-441d-afb3-4f64db2e071b\",\"eccc7bc6-6208-42a8-bfe5-1aea26077155\"]}",
+      "findings": "The carrier builds and parseCanonicalPhysicsPaintLaunchValue accepts it (no fail-closed throw at physicPaintBridge.ts:3541); `{ ...baseDocument, tracks }` carries photoReference and background.clips, and every track rides along.",
+      "verdictForLink": "GREEN — the carrier is exonerated."
+    },
+    "D2": {
+      "kind": "run (child hydration)",
+      "what": "hydrate that carrier into a FRESH child store through the REAL hydrateRotoPhysicalLaunchContext",
+      "output": "[e21][PROBE D2] {\"ok\":true,\"error\":null,\"hydratedTrackCount\":2,\"hydratedTrackIds\":[\"aff6f7b1-d252-42d4-8f4c-fbb9e764a471\",\"d132674b-3db8-4d3f-b9e2-d67bd11038f0\"],\"hydratedPhotoRef\":[\"e21-ref-1\"],\"hydratedClips\":[{\"startFrame\":4,\"refs\":[\"e21-bg-1\"]}]}",
+      "findings": "The hydration succeeds and the hydrated document keeps all three surfaces.",
+      "verdictForLink": "GREEN — the hydration is exonerated (no verdict (c))."
+    },
+    "E": {
+      "kind": "run (store seam control, reproduces the plan-time observation)",
+      "what": "pnpm --filter efx-motion-editor exec vitest run src/stores/efxPaintChildParentSync.scratch.test.ts",
+      "output": "✓ src/stores/efxPaintChildParentSync.scratch.test.ts (3 tests) 16ms\n Test Files  2 passed (2)\n      Tests  9 passed (9)",
+      "findings": "Reproduced the plan-time observation: the store/save seam is GREEN. A child-pushed document registered by the parent and then saved keeps a child-added track in layers/<layerId>.json, and the manifest carries no efx_paint_documents blob.",
+      "verdictForLink": "GREEN — the store/package save seam is exonerated; the loss is upstream of it."
+    }
+  },
+  "halt": {
+    "fired": false,
+    "reason": "No surface's root is structural (S1..S4 all false). The diagnosed link is the child push wiring inside PhysicsPaintStudio.tsx — an authorized Task 2 file — fixing two drop shapes that already exist there. No manifest/package format change and no 52.2 reference-only-law breach (the document keeps carrying references only), no new independent transport (the pre-existing physic-paint:efx-paint-document pair stays the only carrier), no c7x revision/identity or loop-clip lifecycle territory, no Rust command or capability change.",
+    "proceedToTask2": true
+  },
+  "gate": {
+    "command": "vitest run (the three Task 1 files) + the RED-EVIDENCE JSON contract check",
+    "expectedExit": 0,
+    "observed": "0 — 'verdicts and RED pins recorded'"
+  }
+}
