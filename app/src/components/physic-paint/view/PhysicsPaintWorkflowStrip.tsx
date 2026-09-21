@@ -2813,7 +2813,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     });
     if (!rotoDragLocked) return;
     if (arrival.surface !== 'key-cell' && arrival.surface !== 'key-rail' && arrival.surface !== 'loop-rail') return;
+    // quick-260921-qls follow-up: the selection side of the same refusal. The
+    // rail segment resolves the CLICKED rail against the live rail model, so a
+    // null here means the model the strip holds does not contain that rail —
+    // a different failure from "the rail is there but nothing is selected".
+    const clickedRailSegment = arrival.railFirstFrame === null
+      ? null
+      : keyRailSegments.find((segment) => segment.firstKeyFrame === arrival.railFirstFrame) ?? null;
     reportGestureRefusal('strip-gate', {
+      selection: {
+        layerId: props.layerId ?? null,
+        activeTrackId: props.activeTrackId ?? null,
+        primarySelectedKeyId: props.rotoPrimarySelectedKeyId ?? null,
+        selectedKeyRailFirstKeyId: props.selectedRotoKeyRail?.firstKeyId ?? null,
+        selectedKeyIdCount: (props.rotoSelectedKeyIds ?? []).length,
+        keyRecordsOnRail: rotoKeyRecords.length,
+        railSegmentFirstKeyId: clickedRailSegment?.firstKeyId ?? null,
+        railSegmentKeyCount: clickedRailSegment?.keyIds.length ?? 0,
+      },
       strip: {
         ready: props.ready !== false,
         mutationLocked: Boolean(props.mutationLocked),
@@ -2833,9 +2850,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     physicalDragAvailable,
     sessionKeyAvailability,
     rotoDragPreview,
+    keyRailSegments,
+    rotoKeyRecords,
     props.ready,
     props.mutationLocked,
     props.keyActionInFlight,
+    props.layerId,
+    props.activeTrackId,
+    props.rotoPrimarySelectedKeyId,
+    props.selectedRotoKeyRail,
+    props.rotoSelectedKeyIds,
   ]);
 
   // Lane capture-phase pointer-down: the armed push session wins over the

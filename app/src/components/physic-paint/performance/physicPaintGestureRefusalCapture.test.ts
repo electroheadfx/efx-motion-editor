@@ -117,7 +117,7 @@ afterEach(() => {
 });
 
 describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
-  it('SHAPE: one strip refusal writes one capture carrying the timestamp, the name, the event count and all four term groups', async () => {
+  it('SHAPE: one strip refusal writes one capture carrying the timestamp, the name, the event count and all five term groups', async () => {
     vi.stubGlobal('window', {});
 
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
@@ -134,12 +134,35 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     expect(capture.eventCount).toBe(1);
     expect(capture.events).toHaveLength(1);
     expect(capture.events[0].reason).toBe('strip-gate');
-    expect(Object.keys(capture.events[0].terms).sort()).toEqual(['door', 'install', 'pointerdown', 'strip']);
+    expect(Object.keys(capture.events[0].terms).sort()).toEqual(['door', 'install', 'pointerdown', 'selection', 'strip']);
     expect(capture.events[0].terms.door).toBeNull();
     expect(capture.events[0].terms.install).toBeNull();
+    expect(capture.events[0].terms.selection).toBeNull();
     expect(capture.events[0].terms.strip).toEqual(STRIP_TERMS);
     expect(capture.events[0].terms.pointerdown).toEqual({ arrived: false });
     expect(capture.arrivalSlot).toBeNull();
+  });
+
+  it('SELECTION: the selection group is written verbatim and distinguishes the rail highlight from the primary', async () => {
+    vi.stubGlobal('window', {});
+
+    const selection = {
+      layerId: 'layer-2',
+      activeTrackId: 'track-live',
+      primarySelectedKeyId: null,
+      selectedKeyRailFirstKeyId: 'key-7',
+      selectedKeyIdCount: 0,
+      keyRecordsOnRail: 3,
+      railSegmentFirstKeyId: 'key-7',
+      railSegmentKeyCount: 3,
+    };
+    reportGestureRefusal('strip-gate', { strip: STRIP_TERMS, selection });
+    await settleWrite();
+
+    const written = lastWrittenCapture().events[0].terms.selection;
+    expect(written).toEqual(selection);
+    expect(written!.selectedKeyRailFirstKeyId).not.toBeNull();
+    expect(written!.primarySelectedKeyId).toBeNull();
   });
 
   it('WRITTEN ON REFUSAL: every strip term is printed individually and verbatim', async () => {

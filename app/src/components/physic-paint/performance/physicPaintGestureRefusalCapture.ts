@@ -90,10 +90,29 @@ export interface PhysicPaintGestureStripTerms {
   rotoDragLocked: boolean;
 }
 
+/**
+ * The selection side of a strip refusal. `primarySelectedKeyId` is the REAL-KEY
+ * selection `canDragKey` reads; `selectedKeyRailFirstKeyId` is the separate
+ * rail-level highlight a plain click paints. A refusal that shows the rail
+ * highlighted while the primary is null is the "clicked a key, it highlighted,
+ * yet nothing is draggable" shape — the two are different selections.
+ */
+export interface PhysicPaintGestureSelectionTerms {
+  layerId: string | null;
+  activeTrackId: string | null;
+  primarySelectedKeyId: string | null;
+  selectedKeyRailFirstKeyId: string | null;
+  selectedKeyIdCount: number;
+  keyRecordsOnRail: number;
+  railSegmentFirstKeyId: string | null;
+  railSegmentKeyCount: number;
+}
+
 export interface PhysicPaintGestureRefusalTerms {
   door?: PhysicPaintGestureDoorTerms;
   install?: PhysicPaintGestureInstallTerms;
   strip?: PhysicPaintGestureStripTerms;
+  selection?: PhysicPaintGestureSelectionTerms;
 }
 
 export interface PhysicPaintGestureRefusalEvent {
@@ -103,6 +122,7 @@ export interface PhysicPaintGestureRefusalEvent {
     door: PhysicPaintGestureDoorTerms | null;
     install: PhysicPaintGestureInstallTerms | null;
     strip: PhysicPaintGestureStripTerms | null;
+    selection: PhysicPaintGestureSelectionTerms | null;
     pointerdown: (PhysicPaintGesturePointerArrival & { arrived: true }) | { arrived: false };
   };
 }
@@ -225,6 +245,7 @@ function cloneEvent(event: PhysicPaintGestureRefusalEvent): PhysicPaintGestureRe
           }
         : null,
       strip: event.terms.strip ? { ...event.terms.strip } : null,
+      selection: event.terms.selection ? { ...event.terms.selection } : null,
       pointerdown: { ...event.terms.pointerdown },
     },
   };
@@ -293,6 +314,7 @@ function refusalSignature(reason: PhysicPaintGestureRefusalReason, terms: Physic
       door: terms.door ?? null,
       install: terms.install ?? null,
       strip: terms.strip ?? null,
+      selection: terms.selection ?? null,
       pointerdown,
     },
   });
@@ -317,6 +339,7 @@ export function reportGestureRefusal(
         door: terms.door ?? null,
         install: terms.install ?? null,
         strip: terms.strip ?? null,
+        selection: terms.selection ?? null,
         pointerdown: arrivalSlot ? { ...arrivalSlot, arrived: true } : { arrived: false },
       },
     });
