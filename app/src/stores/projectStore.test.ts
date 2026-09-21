@@ -5,6 +5,8 @@ import {projectStore} from './projectStore';
 import {audioStore} from './audioStore';
 import {sequenceStore} from './sequenceStore';
 import {physicPaintStore} from './physicPaintStore';
+import {imageStore} from './imageStore';
+import {applyPhysicPaintImageImportRequest, createPhysicPaintImageImportStatePorts} from '../lib/physicPaintBridge';
 import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
@@ -13,11 +15,15 @@ import { testWebpBytes } from '../testUtils/testWebpBytes';
 // is observable. Other ipc exports (assetUrl, configGet*, etc.) keep their real
 // implementations so dependent stores load unchanged.
 const mockProjectCreate = vi.hoisted(() => vi.fn());
+// quick-260921-bjm: spy on the import IPC wrapper so the picker's import leg is
+// observable through the REAL imageStore (the manifest's only source).
+const mockImportImages = vi.hoisted(() => vi.fn());
 vi.mock('../lib/ipc', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../lib/ipc')>();
   return {
     ...actual,
     projectCreate: mockProjectCreate,
+    importImages: mockImportImages,
   };
 });
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
@@ -349,5 +355,87 @@ describe('260918-ovi: canvas format threading', () => {
       expect(projectStore.width.value).toBe(1080);
       expect(projectStore.height.value).toBe(1920);
     });
+  });
+});
+
+/**
+ * quick-260921-bjm (verdict (b)): the manifest is the ONLY place a picker
+ * import becomes durable. `buildMceProject()` reads `imageStore.toMceImages()`
+ * (the record the 52.2 package writes) and the reopen path reads
+ * `imageStore.loadFromMceImages(project.images, projectRoot)`. This locks the
+ * record through that round-trip — the "close Studio, quit, relaunch" half of
+ * the reported loss.
+ */
+describe('quick-260921-bjm: an imported image survives the manifest round-trip', () => {
+  const PROJECT_DIR = '/projects/persisted-import';
+  const importedImage = {
+    id: 'asset-persisted',
+    original_path: 'shot_1.png',
+    project_path: `${PROJECT_DIR}/images/shot_1_ab12cd34.png`,
+    thumbnail_path: `${PROJECT_DIR}/images/.thumbs/shot_1_ab12cd34.png`,
+    width: 640,
+    height: 480,
+    format: 'png',
+  };
+  const importedRef = {
+    id: 'asset-persisted',
+    original_filename: 'shot_1.png',
+    relative_path: 'images/shot_1_ab12cd34.png',
+    thumbnail_relative_path: 'images/.thumbs/shot_1_ab12cd34.png',
+    width: 640,
+    height: 480,
+    format: 'png',
+  };
+
+  /** Drive the ONE production import path: the main realm's own ports. */
+  const runPickerImport = () => applyPhysicPaintImageImportRequest(
+    { operationId: 'op-260921-bjm', paths: ['/Users/someone/Pictures/shot_1.png'] },
+    createPhysicPaintImageImportStatePorts(),
+  );
+
+  beforeEach(() => {
+    imageStore.reset();
+    mockImportImages.mockReset();
+    projectStore.dirPath.value = PROJECT_DIR;
+  });
+
+  it('MANIFEST LEG: the picker import lands in buildMceProject().images with PROJECT-RELATIVE paths', async () => {
+    mockImportImages.mockResolvedValueOnce({ ok: true, data: { imported: [importedImage], errors: [] } });
+
+    const result = await runPickerImport();
+
+    expect(mockImportImages).toHaveBeenCalledWith(['/Users/someone/Pictures/shot_1.png'], PROJECT_DIR);
+    expect(result.ok).toBe(true);
+    expect(result.images).toEqual([importedRef]);
+    // The record the package writes — relative paths, so the manifest stays
+    // portable (52.2 reference-only format, unchanged by this fix).
+    expect(projectStore.buildMceProject().images).toEqual([importedRef]);
+  });
+
+  it('REOPEN LEG: quit → relaunch reproduces the library from the manifest alone', async () => {
+    mockImportImages.mockResolvedValueOnce({ ok: true, data: { imported: [importedImage], errors: [] } });
+    await runPickerImport();
+    const manifestImages = projectStore.buildMceProject().images;
+    expect(manifestImages).toEqual([importedRef]);
+
+    // Quit: the realm's library is gone. Relaunch: the manifest is the only
+    // input (projectStore open → imageStore.loadFromMceImages).
+    imageStore.reset();
+    expect(imageStore.images.value).toEqual([]);
+    imageStore.loadFromMceImages(manifestImages, PROJECT_DIR);
+
+    // Same ids, same project-relative paths — the gallery is populated again.
+    expect(imageStore.toMceImages(PROJECT_DIR)).toEqual([importedRef]);
+    expect(imageStore.getById('asset-persisted')?.project_path).toBe(importedImage.project_path);
+  });
+
+  it('CONTROL: an import that could not be performed writes NO record — never a silent no-op dressed as success', async () => {
+    mockImportImages.mockResolvedValueOnce({ ok: false, error: 'No space left on device' });
+
+    const result = await runPickerImport();
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('Image import failed');
+    expect(projectStore.buildMceProject().images).toEqual([]);
   });
 });

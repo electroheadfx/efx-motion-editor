@@ -7,9 +7,11 @@ import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, hasFrameMediaBytes, installFrameMediaBytes, registerBackgroundSourceImage, hydrateBackgroundSourceImages, prefetchNeighborFrames } from './physicPaintStore';
+import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, hasFrameMediaBytes, installFrameMediaBytes, registerBackgroundSourceImage, registerReferenceSourceImage, hydrateBackgroundSourceImages, hydrateReferenceSourceImages, prefetchNeighborFrames } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
-import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setActiveTrackId, setTrackVisible } from './efxPaintStore';
+import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setActiveTrackId, setTrackVisible, setPhotoReferenceSource } from './efxPaintStore';
+import { imageStore } from './imageStore';
+import { assetUrl } from '../lib/ipc';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument, FrameLoopClip, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRotoLoopClip } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -2488,6 +2490,106 @@ describe('physicPaintStore', () => {
         },
       };
     }
+
+    /**
+     * quick-260921-bjm (verdict (c)): the launch hydration was never the cause
+     * — it relinks exactly the refs the MAIN library holds, so once the record
+     * survives (Task 1 + the manifest round-trip lock) it does the rest with NO
+     * change. These legs prove the two halves of that claim against the real
+     * imageStore: the persisted ref relinks, and the absent one stays
+     * fail-closed.
+     */
+    describe('quick-260921-bjm: the reopened library relinks the persisted refs', () => {
+      const PROJECT_DIR = '/projects/reopened';
+      const persistedRef = {
+        id: 'asset-persisted',
+        original_filename: 'shot_1.png',
+        relative_path: 'images/shot_1_ab12cd34.png',
+        thumbnail_relative_path: 'images/.thumbs/shot_1_ab12cd34.png',
+        width: 640,
+        height: 480,
+        format: 'png',
+      };
+
+      /**
+       * Mirrors `hydrateBackgroundSourceImagesFromLibrary`'s production
+       * resolver: imageStore primary (`project_path`), picker list fallback.
+       * Only the library record's existence decides — that IS the seam.
+       */
+      function reopenedResolveAssetUrls(ref: string): readonly string[] {
+        const image = imageStore.getById(ref);
+        return image ? [assetUrl(image.project_path)] : [];
+      }
+
+      function reopenedPorts(registered: Map<string, Uint8Array>) {
+        return {
+          resolveAssetUrls: reopenedResolveAssetUrls,
+          decodeBytes: async (url: string) => testWebpBytes(url),
+          register: (ref: string, bytes: Uint8Array) => {
+            registered.set(ref, bytes);
+            registerBackgroundSourceImage(ref, bytes);
+          },
+        };
+      }
+
+      /** quit → relaunch: the manifest's `images` array is the only input. */
+      function reopenLibrary(): void {
+        imageStore.reset();
+        imageStore.loadFromMceImages([persistedRef], PROJECT_DIR);
+      }
+
+      beforeEach(reopenLibrary);
+      afterEach(() => { imageStore.reset(); });
+
+      it('RELINK LEG: a persisted ref resolves content — the untouched hydration is correct once the record exists', async () => {
+        expect(imageStore.getById('asset-persisted')?.project_path).toBe(`${PROJECT_DIR}/images/shot_1_ab12cd34.png`);
+
+        const registered = new Map<string, Uint8Array>();
+        registerDocument(flatDocument([], {
+          visible: true,
+          clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['asset-persisted'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+        }));
+        const result = await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, reopenedPorts(registered));
+
+        expect(result).toEqual({ registered: ['asset-persisted'], missing: [] });
+        expect(registered.get('asset-persisted')).toEqual(testWebpBytes(assetUrl(`${PROJECT_DIR}/images/shot_1_ab12cd34.png`)));
+        expect(physicPaintStore.getBackgroundFrameVerdict(FLAT_LAYER, 0)).toBe('content');
+      });
+
+      it('REFERENCE LEG: the same persisted ref used as a reference/reveal source relinks too', async () => {
+        registerDocument(flatDocument([]));
+        setPhotoReferenceSource(FLAT_LAYER, ['asset-persisted']);
+
+        const result = await hydrateReferenceSourceImages(getEfxPaintDocument(FLAT_LAYER)!, {
+          resolveAssetUrls: reopenedResolveAssetUrls,
+          decodeBytes: async (url: string) => testWebpBytes(url),
+          register: registerReferenceSourceImage,
+        });
+
+        expect(result).toEqual({ registered: ['asset-persisted'], missing: [] });
+        expect(physicPaintStore.getReferenceSourceFrameVerdict(FLAT_LAYER, 0)).toEqual({
+          ref: 'asset-persisted',
+          bytes: testWebpBytes(assetUrl(`${PROJECT_DIR}/images/shot_1_ab12cd34.png`)),
+          clamped: false,
+        });
+      });
+
+      it('MISS LEG: a ref ABSENT from the reopened library still reports asset-not-found and registers nothing', async () => {
+        // The defect's own signature: the document names a ref the manifest
+        // never learned (it was written by the child realm). Fail-closed —
+        // never a throw, never invented content.
+        const registered = new Map<string, Uint8Array>();
+        registerDocument(flatDocument([], {
+          visible: true,
+          clips: [{ id: 'clip-1', startFrame: 0, sourceFrameRefs: ['asset-never-persisted'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+        }));
+        const result = await hydrateBackgroundSourceImages(getEfxPaintDocument(FLAT_LAYER)!, reopenedPorts(registered));
+
+        expect(result).toEqual({ registered: [], missing: [{ ref: 'asset-never-persisted', reason: 'asset-not-found' }] });
+        expect(registered.size).toBe(0);
+        expect(physicPaintStore.getBackgroundFrameVerdict(FLAT_LAYER, 0)).toBe('missing');
+      });
+    });
 
     it('REGISTERS ALL: hydrating a document whose clips reference {a,b} and {b,c} registers each distinct ref exactly once with decoded bytes', async () => {
       const registered = new Map<string, Uint8Array>();
