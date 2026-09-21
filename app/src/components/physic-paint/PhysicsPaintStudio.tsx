@@ -109,6 +109,7 @@ import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPain
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
+import { reportGestureRefusal } from './performance/physicPaintGestureRefusalCapture';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -2388,6 +2389,26 @@ export function PhysicsPaintStudio() {
       // superseded navigation re-sets it for the newer frame.
       const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
+      // quick-260921-qls follow-up: navigating to a frame the rail model carries
+      // a key for, yet resolving NO key, is a contradiction — the rail read and
+      // the store lookup disagree about the track or the frame space, and it
+      // strands every gesture behind the drag gate. Diagnostic only.
+      if (nextSelectedKeyId === null) {
+        const railRecordAtFrame = rotoKeyRecords.find((record) => record.appFrame === frame) ?? null;
+        if (railRecordAtFrame) {
+          reportGestureRefusal('nav-no-key', {
+            nav: {
+              frame,
+              layerId: launchContext.layerId,
+              trackId: studioActiveTrackId(),
+              launchTrackId: trackIdOfLaunch(launchContextRef.current),
+              railModelKeyId: railRecordAtFrame.keyId,
+              railModelCount: rotoKeyRecords.length,
+              railModelKeyFrames: rotoKeyRecords.map((record) => record.appFrame),
+            },
+          });
+        }
+      }
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
       const flushFinalizationsStartedAtMs = performance.now();
@@ -2460,7 +2481,7 @@ export function PhysicsPaintStudio() {
       rotoCachedPlayback.seek(frame);
     }
     return true;
-  }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
+  }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
   // active track can change with no runtime content mutation (row click,
   // addTrack, duplicateTrack) and its visibility can flip through

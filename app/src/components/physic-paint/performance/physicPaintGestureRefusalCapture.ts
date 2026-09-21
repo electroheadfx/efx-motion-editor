@@ -35,7 +35,7 @@ export const GESTURE_REFUSAL_CAPTURE_EVENT_CAP = 8;
 /** Consecutive identical refusals inside this window collapse to one write. */
 export const GESTURE_REFUSAL_CAPTURE_DEDUPE_WINDOW_MS = 1500;
 
-export type PhysicPaintGestureRefusalReason = 'launch-door' | 'launch-install' | 'strip-gate';
+export type PhysicPaintGestureRefusalReason = 'launch-door' | 'launch-install' | 'strip-gate' | 'nav-no-key';
 
 export type PhysicPaintGestureSurfaceKind = 'key-cell' | 'key-rail' | 'loop-rail' | 'lane' | 'other';
 
@@ -108,11 +108,28 @@ export interface PhysicPaintGestureSelectionTerms {
   railSegmentKeyCount: number;
 }
 
+/**
+ * A navigation that selected nothing on a frame whose key the rail model DOES
+ * carry. That pairing is a contradiction, not a plain empty-frame navigation:
+ * the rail shows a key at `frame`, yet the store lookup resolved none — the two
+ * reads disagree about either the track or the frame space.
+ */
+export interface PhysicPaintGestureNavTerms {
+  frame: number;
+  layerId: string | null;
+  trackId: string;
+  launchTrackId: string;
+  railModelKeyId: string;
+  railModelCount: number;
+  railModelKeyFrames: number[];
+}
+
 export interface PhysicPaintGestureRefusalTerms {
   door?: PhysicPaintGestureDoorTerms;
   install?: PhysicPaintGestureInstallTerms;
   strip?: PhysicPaintGestureStripTerms;
   selection?: PhysicPaintGestureSelectionTerms;
+  nav?: PhysicPaintGestureNavTerms;
 }
 
 export interface PhysicPaintGestureRefusalEvent {
@@ -123,6 +140,7 @@ export interface PhysicPaintGestureRefusalEvent {
     install: PhysicPaintGestureInstallTerms | null;
     strip: PhysicPaintGestureStripTerms | null;
     selection: PhysicPaintGestureSelectionTerms | null;
+    nav: PhysicPaintGestureNavTerms | null;
     pointerdown: (PhysicPaintGesturePointerArrival & { arrived: true }) | { arrived: false };
   };
 }
@@ -246,6 +264,7 @@ function cloneEvent(event: PhysicPaintGestureRefusalEvent): PhysicPaintGestureRe
         : null,
       strip: event.terms.strip ? { ...event.terms.strip } : null,
       selection: event.terms.selection ? { ...event.terms.selection } : null,
+      nav: event.terms.nav ? { ...event.terms.nav, railModelKeyFrames: [...event.terms.nav.railModelKeyFrames] } : null,
       pointerdown: { ...event.terms.pointerdown },
     },
   };
@@ -315,6 +334,7 @@ function refusalSignature(reason: PhysicPaintGestureRefusalReason, terms: Physic
       install: terms.install ?? null,
       strip: terms.strip ?? null,
       selection: terms.selection ?? null,
+      nav: terms.nav ?? null,
       pointerdown,
     },
   });
@@ -340,6 +360,7 @@ export function reportGestureRefusal(
         install: terms.install ?? null,
         strip: terms.strip ?? null,
         selection: terms.selection ?? null,
+        nav: terms.nav ?? null,
         pointerdown: arrivalSlot ? { ...arrivalSlot, arrived: true } : { arrived: false },
       },
     });

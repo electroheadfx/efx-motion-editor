@@ -134,10 +134,11 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     expect(capture.eventCount).toBe(1);
     expect(capture.events).toHaveLength(1);
     expect(capture.events[0].reason).toBe('strip-gate');
-    expect(Object.keys(capture.events[0].terms).sort()).toEqual(['door', 'install', 'pointerdown', 'selection', 'strip']);
+    expect(Object.keys(capture.events[0].terms).sort()).toEqual(['door', 'install', 'nav', 'pointerdown', 'selection', 'strip']);
     expect(capture.events[0].terms.door).toBeNull();
     expect(capture.events[0].terms.install).toBeNull();
     expect(capture.events[0].terms.selection).toBeNull();
+    expect(capture.events[0].terms.nav).toBeNull();
     expect(capture.events[0].terms.strip).toEqual(STRIP_TERMS);
     expect(capture.events[0].terms.pointerdown).toEqual({ arrived: false });
     expect(capture.arrivalSlot).toBeNull();
