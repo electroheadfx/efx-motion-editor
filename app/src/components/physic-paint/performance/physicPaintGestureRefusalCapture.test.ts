@@ -22,9 +22,18 @@ import {
   type PhysicPaintGestureStripTerms,
 } from './physicPaintGestureRefusalCapture';
 
-/** The write is fire-and-forget: drain microtasks (never timers) until it lands. */
-const settleWrite = async (): Promise<void> => {
-  for (let tick = 0; tick < 16; tick += 1) await Promise.resolve();
+/**
+ * The write is fire-and-forget behind a dynamic import: it lands on a real
+ * macrotask, so only `Date` is faked here (fake timers would swallow it) and
+ * the clock is moved explicitly to cross the dedupe window.
+ */
+const settleWrite = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+const advancePastDedupeWindow = (): void => {
+  vi.setSystemTime(new Date(Date.now() + GESTURE_REFUSAL_CAPTURE_DEDUPE_WINDOW_MS + 1));
 };
 
 /** The last payload handed to `write_debug_capture`, parsed. */
@@ -81,10 +90,19 @@ const distinctStripTerms = (index: number): PhysicPaintGestureStripTerms => ({
   dragDisabledReason: `reason-${index}`,
 });
 
+/** A duck-typed stand-in for a DOM element: `closest` returns the node itself, as the DOM does. */
+const element = (matches: (selector: string) => boolean, attributes: Record<string, string>) => {
+  const node = {
+    closest: (selector: string) => (matches(selector) ? node : null),
+    getAttribute: (name: string) => attributes[name] ?? null,
+  };
+  return node;
+};
+
 beforeEach(() => {
   resetGestureRefusalCaptureForTesting();
   invoke.mockClear();
-  vi.useFakeTimers();
+  vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-09-21T12:00:00.000Z'));
 });
 
@@ -192,7 +210,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     await settleWrite();
     expect(invoke).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(GESTURE_REFUSAL_CAPTURE_DEDUPE_WINDOW_MS + 1);
+    advancePastDedupeWindow();
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
     await settleWrite();
     expect(invoke).toHaveBeenCalledTimes(2);
@@ -211,8 +229,8 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
 
     const record = async (reason: 'launch-door' | 'strip-gate', terms: { door?: PhysicPaintGestureDoorTerms; strip?: PhysicPaintGestureStripTerms }): Promise<void> => {
       reportGestureRefusal(reason, terms);
-      vi.advanceTimersByTime(GESTURE_REFUSAL_CAPTURE_DEDUPE_WINDOW_MS + 1);
       await settleWrite();
+      advancePastDedupeWindow();
     };
 
     await record('strip-gate', { strip: distinctStripTerms(0) });
@@ -230,9 +248,8 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     expect(capture.eventCount).toBe(GESTURE_REFUSAL_CAPTURE_EVENT_CAP);
     expect(capture.events[0].reason).toBe('launch-door');
     expect(capture.events[0].terms.door).toEqual(DOOR_TERMS);
-    expect(capture.events[capture.events.length - 1].terms.strip).toEqual(distinctStripTerms(8));
     expect(capture.events.map((event) => event.terms.strip?.dragDisabledReason)).toEqual([
-      null,
+      undefined,
       'reason-2',
       'reason-3',
       'reason-4',
@@ -241,6 +258,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
       'reason-7',
       'reason-8',
     ]);
+    expect(capture.events[capture.events.length - 1].terms.strip).toEqual(distinctStripTerms(8));
   });
 
   it('NEVER THROWS: a rejected write and an unimportable transport both leave the refusal report silent', async () => {
@@ -261,31 +279,23 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     reloaded.resetGestureRefusalCaptureForTesting();
     expect(() => reloaded.reportGestureRefusal('strip-gate', { strip: STRIP_TERMS })).not.toThrow();
     await settleWrite();
+    vi.doUnmock('@tauri-apps/api/core');
   });
 
   it('SURFACE DESCRIPTION: the duck-typed reader classifies the rail, loop-rail and key-cell targets without a DOM', () => {
-    const element = (closest: (selector: string) => unknown, attributes: Record<string, string>) => ({
-      closest,
-      getAttribute: (name: string) => attributes[name] ?? null,
-    });
-
-    const keyRail = element((selector) => (selector === '.physics-paint-key-rail-target' ? { tag: 'rail' } : null), {
-      'data-rail-first-frame': '12',
-    });
+    const keyRail = element((selector) => selector === '.physics-paint-key-rail-target', { 'data-rail-first-frame': '12' });
     expect(describeGestureSurface(keyRail)).toEqual({ surface: 'key-rail', keyId: null, appFrame: null, railFirstFrame: 12 });
 
-    const loopRail = element((selector) => (selector === '.physics-paint-loop-clip-rail-target' ? { tag: 'loop' } : null), {
-      'data-rail-first-frame': '4',
-    });
+    const loopRail = element((selector) => selector === '.physics-paint-loop-clip-rail-target', { 'data-rail-first-frame': '4' });
     expect(describeGestureSurface(loopRail)).toEqual({ surface: 'loop-rail', keyId: null, appFrame: null, railFirstFrame: 4 });
 
-    const keyCell = element((selector) => (selector === '[data-roto-app-frame]' ? { tag: 'cell' } : null), {
+    const keyCell = element((selector) => selector === '[data-roto-app-frame]', {
       'data-roto-app-frame': '3',
       'data-roto-key-id': 'key-1',
     });
     expect(describeGestureSurface(keyCell)).toEqual({ surface: 'key-cell', keyId: 'key-1', appFrame: 3, railFirstFrame: null });
 
-    const lane = element(() => null, {});
+    const lane = element(() => false, {});
     expect(describeGestureSurface(lane)).toEqual({ surface: 'lane', keyId: null, appFrame: null, railFirstFrame: null });
     expect(describeGestureSurface(null)).toEqual({ surface: 'other', keyId: null, appFrame: null, railFirstFrame: null });
   });
