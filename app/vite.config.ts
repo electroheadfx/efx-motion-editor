@@ -254,7 +254,11 @@ export default defineConfig({
     // them behind the PhysicsPaintStudio lazy boundary. Budget raised to 1340
     // (measured value + ~13.6 kB headroom); the raise is for the landed format
     // work, never anticipation of pilot code.
-    chunkSizeWarningLimit: 1340,
+    // Measured 2026-09-21: 1340.68 kB after quick-260921-bjm's main-realm
+    // image-import bridge pair (+3.38 kB vs the 1337.30 kB base — the request/
+    // result guards, the main-realm install, and the Studio's `requestImageImport`
+    // port). Budget raised 1340 → 1355 (measured value + ~14.3 kB headroom).
+    chunkSizeWarningLimit: 1355,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

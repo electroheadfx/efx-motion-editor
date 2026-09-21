@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1340 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 1355 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1340 desktop budget').toBe(1340);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1355 desktop budget').toBe(1355);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1340 desktop budget',
+    'emits no chunk-size warning at the 1355 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -231,11 +231,15 @@ describe('production vite build', () => {
       // PhysicsPaintStudio lazy boundary. Budget raised 1320 → 1340 (measured
       // value + ~13.6 kB headroom) for the landed format work, not for
       // anticipated pilot code.
+      // Measured 2026-09-21: 1340.68 kB after quick-260921-bjm's main-realm
+      // image-import bridge pair (+3.38 kB vs the 1337.30 kB base; the request/
+      // result guards, the main-realm install, and the Studio's requestImageImport
+      // port). Budget raised 1340 → 1355 (measured value + ~14.3 kB headroom).
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1340 desktop budget',
+        'no chunk-size warning may be emitted at the 1355 desktop budget',
       ).toBe(0);
     },
   );
