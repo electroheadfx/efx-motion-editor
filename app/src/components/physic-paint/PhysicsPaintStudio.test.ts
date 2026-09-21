@@ -1389,7 +1389,18 @@ describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
   it('wires the signal-driven picker controller to the image-library bridge consumer and imageStore import path', () => {
     expect(studio).toContain('useBackgroundAssetPickerController({');
     expect(studio).toContain('requestLibrary: () => requestImageLibrary()');
-    expect(studio).toContain('importFiles: (paths: string[], projectDir: string) => imageStore.importFiles(paths, projectDir)');
+    // quick-260921-bjm: this line used to assert
+    // `importFiles: (paths: string[], projectDir: string) => imageStore.importFiles(paths, projectDir)`
+    // — which PINNED the defect. The picker runs in the Studio webview, so that
+    // call wrote the CHILD realm's imageStore module instance: a different
+    // module instance from the main webview's, and never the one
+    // projectStore.buildMceProject() reads for the manifest `images` array. The
+    // bytes landed on disk, the library record vanished on close. The import now
+    // crosses the bridge and is performed by the main realm.
+    expect(studio).toContain('importFiles: async (paths: string[], _projectDir: string) => {');
+    expect(studio).toContain('const result = await requestImageImport(paths);');
+    expect(studio).toContain("if (!result.ok) throw new Error(result.error ?? 'Image import failed');");
+    expect(studio).not.toContain('imageStore.importFiles');
     expect(studio).toContain('openNativeImageDialog({');
     expect(studio).toContain("filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'heic', 'heif'] }]");
     expect(studio).toContain('refreshLibrary: async () => {');

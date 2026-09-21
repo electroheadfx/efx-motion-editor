@@ -22,12 +22,17 @@ import {
   writeEfxPaintSessionDocumentCheckpoint,
 } from './physicsPaintBridgeTransport';
 import {
+  applyPhysicPaintImageImportRequest,
   applyPhysicPaintImageLibraryRequest,
   createImageLibraryRequestLifecycle,
+  createPhysicPaintImageImportStatePorts,
+  PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT,
+  PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT,
   PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT,
   PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT,
 } from '../../../lib/physicPaintBridge';
-import { isPhysicPaintImageLibraryResult } from '../../../types/physicPaint';
+import { isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryResult } from '../../../types/physicPaint';
+import { imageStore, _setImageMarkDirtyCallback } from '../../../stores/imageStore';
 import type { MceImageRef } from '../../../types/project';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
@@ -155,6 +160,192 @@ describe('image-library bridge pair (49-04, Task 1)', () => {
     expect(bridge).toContain("import { tempProjectDir } from './projectDir';");
     expect(bridge).toContain("getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? '')");
     expect(bridge).toContain("getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? ''");
+  });
+});
+
+/**
+ * quick-260921-bjm: the picker's Import ran in the STUDIO webview, so it wrote
+ * the CHILD realm's imageStore module instance — a different module instance
+ * from the main webview's, the only one `projectStore.buildMceProject()` reads
+ * for the manifest `images` array. The bytes landed on disk (verdict (a)
+ * false), the library RECORD never left the child (verdict (b) true), and the
+ * next launch asked for a library without it. This pair is the missing
+ * child→main leg: the child names dialog-selected PATHS, the main realm
+ * resolves its OWN destination and answers with the post-import library.
+ */
+describe('image-import bridge pair (quick-260921-bjm)', () => {
+  const PROJECT_DIR = '/projects/import-demo';
+  const dialogPaths = ['/Users/someone/Pictures/shot_1.png', '/Users/someone/Pictures/shot_2.png'];
+  const importedImage = {
+    id: 'asset-imported',
+    original_path: 'shot_1.png',
+    project_path: `${PROJECT_DIR}/images/shot_1_ab12cd34.png`,
+    thumbnail_path: `${PROJECT_DIR}/images/.thumbs/shot_1_ab12cd34.png`,
+    width: 640,
+    height: 480,
+    format: 'png',
+  };
+  const importedRef = {
+    id: 'asset-imported',
+    original_filename: 'shot_1.png',
+    relative_path: 'images/shot_1_ab12cd34.png',
+    thumbnail_relative_path: 'images/.thumbs/shot_1_ab12cd34.png',
+    width: 640,
+    height: 480,
+    format: 'png',
+  };
+
+  it('REQUEST GUARD: the payload names operationId + paths only — a destination directory, an unbounded entry, or an empty list is rejected (T-260921-bjm-01/03)', () => {
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: ['/tmp/a.png'] })).toBe(true);
+    // A payload naming a destination directory is rejected at the boundary:
+    // the main realm resolves its own dir, the child never chooses it.
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: ['/tmp/a.png'], projectDir: '/tmp/project' })).toBe(false);
+    // paths not an array / empty array / non-string entry / empty entry.
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: 'nope' })).toBe(false);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: [] })).toBe(false);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: [42] })).toBe(false);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: [''] })).toBe(false);
+    // Over-long path and over-long path list are both bounded out.
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: [`/tmp/a.png${'x'.repeat(5000)}`] })).toBe(false);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: Array.from({ length: 65 }, (_, index) => `/tmp/${index}.png`) })).toBe(false);
+    // operationId absent / empty / over-long.
+    expect(isPhysicPaintImageImportRequest({ paths: ['/tmp/a.png'] })).toBe(false);
+    expect(isPhysicPaintImageImportRequest({ operationId: '', paths: ['/tmp/a.png'] })).toBe(false);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'x'.repeat(500), paths: ['/tmp/a.png'] })).toBe(false);
+    // The result side is validated on correlation (T-260921-bjm-02).
+    expect(isPhysicPaintImageImportResult({ operationId: 'op-1', ok: true, images: [importedRef], errors: [] })).toBe(true);
+    expect(isPhysicPaintImageImportResult({ operationId: 'op-1', ok: false, images: [], errors: [], error: 'Image import failed' })).toBe(true);
+    expect(isPhysicPaintImageImportResult({ operationId: 'op-1', ok: true, images: 'nope', errors: [] })).toBe(false);
+    expect(isPhysicPaintImageImportResult({ operationId: 'op-1', ok: true, images: [], errors: [42] })).toBe(false);
+    expect(isPhysicPaintImageImportResult({ operationId: 'op-1', ok: true, images: [{ id: 'a' }], errors: [] })).toBe(false);
+    expect(isPhysicPaintImageImportResult({ operationId: 'op-1', ok: true, images: [], errors: [], extra: 1 })).toBe(false);
+    expect(isPhysicPaintImageImportResult({ operationId: 'op-1', ok: true, images: [], errors: [], error: 42 })).toBe(false);
+  });
+
+  it('HANDLER: a valid request imports the dialog paths once, into the MAIN realm\'s own resolved directory, and answers with the post-import library snapshot', async () => {
+    const attempts: Array<{ paths: readonly string[]; projectDir: string }> = [];
+    const state = {
+      getImages: () => [importedRef],
+      getProjectDir: () => PROJECT_DIR,
+      importImages: async (paths: readonly string[], projectDir: string) => {
+        attempts.push({ paths, projectDir });
+        return [] as readonly string[];
+      },
+    };
+    const result = await applyPhysicPaintImageImportRequest({ operationId: 'op-import-1', paths: dialogPaths }, state);
+
+    // Exactly one attempt, handed the dialog paths verbatim and the MAIN
+    // realm's own directory — never a directory taken from the payload.
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].paths).toEqual(dialogPaths);
+    expect(attempts[0].projectDir).toBe(PROJECT_DIR);
+    expect(result).toEqual({ operationId: 'op-import-1', ok: true, images: [importedRef], errors: [] });
+    expect(result.operationId).toBe('op-import-1');
+  });
+
+  it('PER-FILE ERRORS: a partially failed import still lands ok:true with the ready-to-ship error strings', async () => {
+    const state = {
+      getImages: () => [importedRef],
+      getProjectDir: () => PROJECT_DIR,
+      importImages: async () => ['/Users/someone/Pictures/shot_2.png: Failed to copy image: denied'] as readonly string[],
+    };
+    const result = await applyPhysicPaintImageImportRequest({ operationId: 'op-import-2', paths: dialogPaths }, state);
+
+    expect(result.ok).toBe(true);
+    expect(result.images).toEqual([importedRef]);
+    expect(result.errors).toEqual(['/Users/someone/Pictures/shot_2.png: Failed to copy image: denied']);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('TERMINAL: an empty project directory, an unperformable import, and a thrown import are ok:false with zero mutation and no silent no-op', async () => {
+    const unusedImport = vi.fn(async () => [] as readonly string[]);
+    const noDir = await applyPhysicPaintImageImportRequest(
+      { operationId: 'op-3', paths: dialogPaths },
+      { getImages: () => [importedRef], getProjectDir: () => '', importImages: unusedImport },
+    );
+    // The child pre-flight copy, preserved end to end.
+    expect(noDir).toEqual({ operationId: 'op-3', ok: false, images: [], errors: [], error: 'No project directory is open.' });
+    expect(unusedImport).not.toHaveBeenCalled();
+
+    const nullImport = await applyPhysicPaintImageImportRequest(
+      { operationId: 'op-4', paths: dialogPaths },
+      { getImages: () => [importedRef], getProjectDir: () => PROJECT_DIR, importImages: async () => null },
+    );
+    expect(nullImport).toEqual({ operationId: 'op-4', ok: false, images: [], errors: [], error: 'Image import failed' });
+
+    const thrown = await applyPhysicPaintImageImportRequest(
+      { operationId: 'op-5', paths: dialogPaths },
+      { getImages: () => [importedRef], getProjectDir: () => PROJECT_DIR, importImages: async () => { throw new Error('ipc exploded'); } },
+    );
+    expect(thrown.ok).toBe(false);
+    expect(thrown.images).toEqual([]);
+    expect(thrown.error).toBe('Image import failed: Error: ipc exploded');
+  });
+
+  it('MALFORMED REQUEST: a bad payload is terminal with ZERO import attempts', async () => {
+    const attempts = vi.fn(async () => [] as readonly string[]);
+    for (const payload of [
+      { operationId: 'op-6', paths: dialogPaths, projectDir: PROJECT_DIR },
+      { operationId: 'op-6', paths: [] },
+      { paths: dialogPaths },
+      'nope',
+      null,
+    ]) {
+      const result = await applyPhysicPaintImageImportRequest(payload, {
+        getImages: () => [importedRef],
+        getProjectDir: () => PROJECT_DIR,
+        importImages: attempts,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.images).toEqual([]);
+      expect(result.errors).toEqual([]);
+      expect(result.error).toBe('Invalid image import request');
+    }
+    expect(attempts).not.toHaveBeenCalled();
+  });
+
+  it('exposes the image-import request/result event constants on the bridge', () => {
+    expect(PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT).toBe('physic-paint:image-import-request');
+    expect(PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT).toBe('physic-paint:image-import-result');
+  });
+
+  it('REOPEN SEAM: a picker import reaches the REAL main-realm imageStore, the library read contains the ref with project-relative paths, and the manifest mark-dirty trigger fires', async () => {
+    imageStore.reset();
+    let markDirtyCalls = 0;
+    _setImageMarkDirtyCallback(() => { markDirtyCalls += 1; });
+    invoke.mockResolvedValueOnce({ imported: [importedImage], errors: [] });
+
+    // Production ports (the main realm's own binding, including its import
+    // adapter) with the test's explicit project directory.
+    const state = {
+      ...createPhysicPaintImageImportStatePorts(),
+      getImages: () => imageStore.toMceImages(PROJECT_DIR),
+      getProjectDir: () => PROJECT_DIR,
+    };
+    const result = await applyPhysicPaintImageImportRequest({ operationId: 'op-seam', paths: dialogPaths }, state);
+
+    expect(result.ok).toBe(true);
+    expect(invoke).toHaveBeenCalledWith('import_images', { paths: dialogPaths, projectDir: PROJECT_DIR });
+    // autoSave subscribes to imageStore.images in the MAIN realm only — this is
+    // the trigger the manifest write hangs off.
+    expect(markDirtyCalls).toBe(1);
+    // "close Studio → reopen → gallery present": the next library request (and
+    // projectStore.buildMceProject) reads the SAME realm this imported into.
+    const reopened = applyPhysicPaintImageLibraryRequest({ operationId: 'op-lib' }, { getImages: state.getImages, getProjectDir: state.getProjectDir });
+    expect(reopened.ok).toBe(true);
+    expect(reopened.images).toEqual([importedRef]);
+
+    // A failed import leaves the library byte-identical — never a silent no-op
+    // dressed as a success.
+    invoke.mockRejectedValueOnce(new Error('disk full'));
+    const failed = await applyPhysicPaintImageImportRequest({ operationId: 'op-seam-2', paths: dialogPaths }, state);
+    expect(failed.ok).toBe(false);
+    expect(failed.images).toEqual([]);
+    expect(failed.error).toBe('Image import failed');
+    expect(markDirtyCalls).toBe(1);
+    expect(imageStore.toMceImages(PROJECT_DIR)).toEqual([importedRef]);
+    imageStore.reset();
+    _setImageMarkDirtyCallback(() => {});
   });
 });
 
