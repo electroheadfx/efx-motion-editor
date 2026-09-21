@@ -36,7 +36,7 @@ import {
   deleteBackgroundClip,
   type TrackMutationResult,
 } from '../../stores/efxPaintStore';
-import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, requirePhysicPaintRotoInlineBytes, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -81,7 +81,7 @@ import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { getFrameBlobUrl } from './hooks/useRotoReferenceController';
-import { recordsAsRuntimeFrames, resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { recordsAsRuntimeFramesToleratingReferences, resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
 import { getCarriedRotoPhysical } from './roto/rotoLaunchHydration';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
 import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput, type RotoRailSetPasteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
@@ -515,7 +515,11 @@ export function PhysicsPaintStudio() {
   const railSetClipboardReadRef = useRef<() => RotoRailSetCopyPayload | null>(() => null);
   const railSetClipboardWriteRef = useRef<(payload: RotoRailSetCopyPayload | null) => void>(() => {});
   const initialCarried = launchContext ? getCarriedRotoPhysical(launchContext) : null;
-  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(initialCarried ? recordsAsRuntimeFrames(initialCarried) : []);
+  // debug studio-reopen-empty-boot: the launch SEED is tolerant — a record whose
+  // bytes could not be materialized at the launch door (reported loudly there)
+  // boots as missing content instead of bricking the Studio. The publish path
+  // keeps the strict projection.
+  const latestRotoFramesRef = useRef<PhysicPaintRotoCacheFrame[]>(initialCarried ? recordsAsRuntimeFramesToleratingReferences(initialCarried) : []);
   // 47 close-out UAT round 9: which track latestRotoFramesRef currently holds.
   const latestRotoFramesTrackRef = useRef<string>(trackIdOfLaunch(launchContext));
   const setLaunchContext = useCallback((update: PhysicPaintLaunchContext | null | ((current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null)) => {
@@ -524,7 +528,11 @@ export function PhysicsPaintStudio() {
       launchContextRef.current = next;
       if (next?.operationId !== current?.operationId || next?.layerId !== current?.layerId) {
         const carried = next ? getCarriedRotoPhysical(next) : null;
-        latestRotoFramesRef.current = carried ? recordsAsRuntimeFrames(carried) : [];
+        // debug studio-reopen-empty-boot: THE production throw site — this
+        // updater runs synchronously inside the setter, so a strict assertion
+        // here aborted the whole launch replacement handoff and froze the
+        // Studio at its pre-launch shell. Tolerant seed: skip, never brick.
+        latestRotoFramesRef.current = carried ? recordsAsRuntimeFramesToleratingReferences(carried) : [];
         selectedKeyId.value = carried?.selectedKeyId ?? null;
         // Launch replacement resets the multi-selection exactly like the
         // single selection (Pattern 5): a replaced launch never inherits a
@@ -940,7 +948,9 @@ export function PhysicsPaintStudio() {
     if (latestRotoFramesTrackRef.current !== activeTrackIdNow) {
       const physicalDocument = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, activeTrackIdNow);
       if (physicalDocument) {
-        latestRotoFramesRef.current = recordsAsRuntimeFrames(physicalDocument);
+        // debug studio-reopen-empty-boot: reseed is a SEED — same tolerance as
+        // the launch seed (a residual unreadable frame is missing content).
+        latestRotoFramesRef.current = recordsAsRuntimeFramesToleratingReferences(physicalDocument);
         latestRotoFramesTrackRef.current = activeTrackIdNow;
       }
     }
@@ -1719,13 +1729,15 @@ export function PhysicsPaintStudio() {
       getSelectedKeyIds: () => selectedKeyIds.value,
       getRotoKeyRecords: () => launchContext ? physicPaintStore.getRotoRealKeyRecords(launchContext.layerId, studioActiveTrackId()) : [],
       canvasSize: { width: canvasWidth, height: canvasHeight },
-      realKeyFrames: rotoKeyRecords.map((record): PhysicPaintRotoCacheFrame => ({
-        ...record.payload,
-        // 52.2-02 (D-07): a runtime cache frame needs pixels; the inline raster
-        // carrier is asserted here (a reference-only payload is a persisted shape).
-        bytes: requirePhysicPaintRotoInlineBytes(record.payload),
-        source: 'real-key',
-      })),
+      realKeyFrames: rotoKeyRecords.flatMap((record): PhysicPaintRotoCacheFrame[] => {
+        // debug studio-reopen-empty-boot: render-body twin of the launch seed.
+        // A reference-only record (its bytes unresolvable at the launch door,
+        // reported loudly there) is missing content — skipped here, never a
+        // mid-render assertion that would crash the Studio.
+        const bytes = record.payload.bytes;
+        if (bytes === undefined) return [];
+        return [{ ...record.payload, bytes, source: 'real-key' }];
+      }),
       cachedRotoFrames: latestRotoFramesRef.current,
       dirtyFrames: dirtyRotoFramesRef.current,
       applyStatus,

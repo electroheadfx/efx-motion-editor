@@ -1,5 +1,5 @@
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
-import { buildEfxPaintDocumentRevision } from '../../../efx-paint/document/efxPaintDocumentRevision';
+import { buildEfxPaintDocumentSyncFingerprint } from '../../../efx-paint/document/efxPaintDocumentRevision';
 
 /**
  * 52.1 (Fix A): deduplicates the child→main document sync push. The push
@@ -8,8 +8,11 @@ import { buildEfxPaintDocumentRevision } from '../../../efx-paint/document/efxPa
  * then crosses the bridge a second time per gesture. The guard skips a push
  * when the serialized document CONTENT is unchanged from the last push.
  *
- * The content fingerprint is `buildEfxPaintDocumentRevision` — NOT a
- * before/after efxPaintVersion check: a direct document mutation (e.g.
+ * The content fingerprint is `buildEfxPaintDocumentSyncFingerprint` — the
+ * canonical document revision PLUS the photo-reference display-preference term
+ * the revision excludes (a visibility/opacity/transform change is persisted
+ * content and must ship, yet never bumps the revision) — NOT a before/after
+ * efxPaintVersion check: a direct document mutation (e.g.
  * setBackgroundFallback bumps the fallback + documentRevision OUTSIDE the
  * serialize step) left the version unchanged DURING serialize, so the old
  * version heuristic skipped every post-mount change and the main window kept a
@@ -41,7 +44,7 @@ export function createDocumentSyncPushGuard(): DocumentSyncPushGuard {
     evaluate(serialize, _readVersion) {
       const document = serialize();
       if (!document) return null;
-      const fingerprint = buildEfxPaintDocumentRevision(document);
+      const fingerprint = buildEfxPaintDocumentSyncFingerprint(document);
       if (lastPushedFingerprint !== null && lastPushedFingerprint === fingerprint) return null;
       lastPushedFingerprint = fingerprint;
       return document;

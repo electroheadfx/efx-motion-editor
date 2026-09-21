@@ -272,6 +272,35 @@ export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument
   }));
 }
 
+/**
+ * The tolerant sibling of {@link recordsAsRuntimeFrames} for the LAUNCH SEED
+ * (debug studio-reopen-empty-boot, 2026-09-21). A carried launch document can
+ * legitimately hold a reference-only record when its bytes could not be
+ * materialized at the launch door (no package root in the parent window, a
+ * missing or digest-refused file) — the failure the door reports loudly per
+ * key. The PUBLISH path keeps the strict helper (a reference-only record on a
+ * runtime projection there is still a contract violation), but a boot must
+ * never brick on one: the record is SKIPPED — it renders as missing content,
+ * exactly like the hydration's skipped alpha canvas (quick-260913-52r G: one
+ * unreadable frame never blocks the open) — and every byte-carrying record
+ * seeds normally.
+ */
+export function recordsAsRuntimeFramesToleratingReferences(
+  document: PhysicPaintRotoPhysicalDocument,
+): PhysicPaintRotoCacheFrame[] {
+  return document.realKeyRecords
+    .filter((record) => record.payload.bytes !== undefined)
+    .map((record) => ({
+      ...record.payload,
+      bytes: requirePhysicPaintRotoInlineBytes(record.payload),
+      appFrame: record.appFrame,
+      source: 'real-key' as const,
+      keyId: record.keyId,
+      contentRevision: document.revision,
+      cacheRevision: `${document.revision}:real:${record.keyId}`,
+    }));
+}
+
 export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenceCoordinatorInput) {
   const editBuffer = useRotoEditBufferController<ReturnType<import('@efxlab/efx-physic-paint').EfxPaintEngine['save']>, RenderedFramePayload>();
   const confirmedFramesRef = useRef<Map<number, RenderedFramePayload>>(new Map());

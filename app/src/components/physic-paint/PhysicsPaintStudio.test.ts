@@ -232,7 +232,11 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(bridge).toContain("PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT = 'physic-paint:efx-paint-document'");
     expect(bridge).toContain('installPhysicPaintEfxPaintDocumentListener');
     expect(bridge).toContain('parseEfxPaintDocument(fromTransportPayload(incoming.document ?? payload))');
-    expect(bridge).toContain('buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)');
+    // Display-persistence fix (uncommitted, 2026-09-21): the idempotency guard
+    // moved from the bare document revision to the sync fingerprint — the
+    // revision plus the photo-reference display term — so a display-only change
+    // is no longer skipped as "equal". Same law, wider comparison.
+    expect(bridge).toContain('buildEfxPaintDocumentSyncFingerprint(current) === buildEfxPaintDocumentSyncFingerprint(document)');
     // 49-06 (UAT round 11): the child carries its runtime background source
     // bytes with the sync (the main window's registry is only hydrated at
     // project load), and the listener registers them BEFORE the revision guard.

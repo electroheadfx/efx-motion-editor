@@ -31,13 +31,21 @@ import {
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 
+/**
+ * Why one record stayed reference-only. `missing`/`refused*` come from the
+ * digest-verified read; `no-package-root` is the launch-door class — a runtime
+ * record whose bytes were destroyed upstream (the docSync mirror) and whose
+ * window knows no package root to read them back from (an unsaved project).
+ */
+export type FrameMediaMaterializeFailureReason = 'missing' | 'no-package-root' | FrameMediaRefusalReason;
+
 export interface FrameMediaMaterializeFailure {
   readonly layerId: string;
   readonly trackId: string;
   readonly collection: 'real-key' | 'group-override';
   readonly keyId: string;
   readonly relativePath: string;
-  readonly reason: 'missing' | FrameMediaRefusalReason;
+  readonly reason: FrameMediaMaterializeFailureReason;
 }
 
 export interface FrameMediaMaterializeResult {
@@ -50,7 +58,7 @@ export interface FrameMediaMaterializeResult {
   readonly materializedKeys: number;
 }
 
-function buildBytesPayload(
+export function buildBytesPayload(
   record: PhysicPaintRotoRealKeyRecord,
   bytes: Uint8Array,
 ): PhysicPaintRotoRealKeyRecord['payload'] {

@@ -50,6 +50,7 @@ import { getCarriedRotoPhysical } from '../components/physic-paint/roto/rotoLaun
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import {
   buildEfxPaintDocumentRevision,
+  buildEfxPaintDocumentSyncFingerprint,
   buildEfxPaintTrackRevision,
 } from '../efx-paint/document/efxPaintDocumentRevision';
 import { getDocument as getEfxPaintDocument, registerDocument as registerEfxPaintDocument } from '../stores/efxPaintStore';
@@ -3280,7 +3281,10 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // the guard below would otherwise return before the byte channel is read.
       applyDocumentSyncFrameMedia(document, incoming.changedBytes);
       const current = getEfxPaintDocument(document.parentLayerId);
-      if (current && buildEfxPaintDocumentRevision(current) === buildEfxPaintDocumentRevision(document)) return;
+      // The sync fingerprint (canonical revision + photo-reference display
+      // preferences): a display-only change never bumps the revision but is
+      // persisted content, so it must still register here.
+      if (current && buildEfxPaintDocumentSyncFingerprint(current) === buildEfxPaintDocumentSyncFingerprint(document)) return;
       registerEfxPaintDocument(document);
       // 47-01 UAT round 8: mirror the child's live runtime into the main
       // window's runtime maps (rotoPhysical only — frame bytes stay owned by
@@ -3546,6 +3550,22 @@ export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Pr
   try {
     const validation = validateOpenRequest(request);
     if (!validation.ok) return validation;
+
+    // debug studio-reopen-empty-boot: the launch pack is a declared
+    // byte-requiring consumer (efxPaintMediaMaterialize.ts), and the docSync
+    // receive mirror can leave this runtime's records reference-only. The
+    // door re-materializes before the pack is built — bridged bytes first (no
+    // IO), then the digest-verified package read — and a per-key failure is
+    // LOUD but never blocks the launch: the child's tolerant launch seed
+    // renders the frame as missing content (quick-260913-52r G doctrine).
+    const launchLayer = validation.data.layer;
+    const launchLayerId = launchLayer.source.type === 'physic-paint' ? launchLayer.source.layerId : launchLayer.id;
+    const launchMediaFailures = await physicPaintStore.materializeRuntimeRotoMediaBytes(launchLayerId);
+    for (const failure of launchMediaFailures) {
+      console.warn(
+        `[physicPaintBridge] launch frame media "${failure.relativePath}" (track "${failure.trackId}", key "${failure.keyId}", ${failure.collection}) could not be materialized: ${failure.reason}. The record stays reference-only and the Studio boots it as missing content.`,
+      );
+    }
 
     const context = createPhysicPaintLaunchContext(
       validation.data.layer,

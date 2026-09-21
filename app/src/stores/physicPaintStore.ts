@@ -10,8 +10,16 @@ import { frameLru } from '../lib/frameLru';
 // store keeps ownership of the LRU budget and the two-format sniff.
 import {
   resolveFrameMediaBitmap,
+  resolveFrameMediaBytes,
   type FrameMediaRefusalReason,
 } from '../lib/efxPaintMediaRead';
+// debug studio-reopen-empty-boot: the launch-door materialization shares the
+// open leg's payload re-carrier (buildBytesPayload) and its failure shape, so
+// one law covers both readers of a persisted reference.
+import {
+  buildBytesPayload,
+  type FrameMediaMaterializeFailure,
+} from '../lib/efxPaintMediaMaterialize';
 import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
@@ -3672,6 +3680,139 @@ export const physicPaintStore = {
       loopClips: this.getRotoPhysicalLoopClips(layerId, trackId),
       incomingInterpolationBreakKeyIds: this.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, trackId),
     });
+  },
+
+  /**
+   * debug studio-reopen-empty-boot (2026-09-21): the LAUNCH-DOOR read half of
+   * the D-13 read-back pair, the launch-leg sibling of the open leg's
+   * `materializePackageRotoMediaBytes`. The docSync receiver mirrors the
+   * child's persisted-shape document (media references, no pixels) into THIS
+   * runtime on every accepted push (physicPaintBridge mirror loop), so at the
+   * next launch the runtime records can be reference-only — while the
+   * launch-context pack is a declared byte-requiring consumer
+   * (`efxPaintMediaMaterialize.ts`). This method re-attaches the bytes BEFORE
+   * any launch projection reads the runtime:
+   *
+   *   1. bridged bytes already held for the digest (`_frameMediaBytes`) — in
+   *      memory, no IO, never destroyed by this read;
+   *   2. otherwise the package root (`_packageDirProvider`) + the
+   *      digest-verified native read (`resolveFrameMediaBytes`);
+   *   3. otherwise a per-key failure, never a throw: the record stays
+   *      reference-only for the caller to log loudly, and the child's tolerant
+   *      launch seed renders it as missing content instead of refusing the
+   *      boot (quick-260913-52r G doctrine).
+   *
+   * Installs through the mirror door on purpose: no revision bump, no dirty,
+   * no auto-save — the parent runtime stays passive. A lease-held track that
+   * refuses the install is reported and skipped; every other track still
+   * heals.
+   */
+  async materializeRuntimeRotoMediaBytes(layerId: string): Promise<readonly FrameMediaMaterializeFailure[]> {
+    const failures: FrameMediaMaterializeFailure[] = [];
+    if (!layerId || typeof layerId !== 'string') return Object.freeze(failures);
+    const trackIds = Array.from(_rotoRealKeyRecords.get(layerId)?.keys() ?? []);
+    for (const trackId of trackIds) {
+      const physical = this.getRotoPhysicalDocument(layerId, trackId);
+      if (!physical) continue;
+      let changed = false;
+      const heal = async (
+        records: readonly PhysicPaintRotoRealKeyRecord[],
+        collection: 'real-key' | 'group-override',
+      ): Promise<PhysicPaintRotoRealKeyRecord[]> => {
+        const healed: PhysicPaintRotoRealKeyRecord[] = [];
+        for (const record of records) {
+          const media = record.payload.media;
+          if (media === undefined || record.payload.bytes !== undefined) {
+            healed.push(record);
+            continue;
+          }
+          const bridged = _frameMediaBytes.get(media.digest);
+          if (bridged !== undefined) {
+            changed = true;
+            healed.push(Object.freeze({
+              kind: 'real-key' as const,
+              keyId: record.keyId,
+              appFrame: record.appFrame,
+              payload: Object.freeze(buildBytesPayload(record, bridged)),
+            }));
+            continue;
+          }
+          const packageDir = _packageDirProvider?.() ?? null;
+          if (packageDir === null) {
+            failures.push(Object.freeze({
+              layerId,
+              trackId,
+              collection,
+              keyId: record.keyId,
+              relativePath: media.relativePath,
+              reason: 'no-package-root',
+            }));
+            healed.push(record);
+            continue;
+          }
+          let resolved;
+          try {
+            resolved = await resolveFrameMediaBytes(packageDir, media);
+          } catch {
+            failures.push(Object.freeze({
+              layerId,
+              trackId,
+              collection,
+              keyId: record.keyId,
+              relativePath: media.relativePath,
+              reason: 'io',
+            }));
+            healed.push(record);
+            continue;
+          }
+          if (resolved.kind !== 'bytes') {
+            failures.push(Object.freeze({
+              layerId,
+              trackId,
+              collection,
+              keyId: record.keyId,
+              relativePath: media.relativePath,
+              reason: resolved.kind === 'missing' ? 'missing' : resolved.reason,
+            }));
+            healed.push(record);
+            continue;
+          }
+          changed = true;
+          healed.push(Object.freeze({
+            kind: 'real-key' as const,
+            keyId: record.keyId,
+            appFrame: record.appFrame,
+            payload: Object.freeze(buildBytesPayload(record, resolved.bytes)),
+          }));
+        }
+        return healed;
+      };
+      const realKeyRecords = await heal(physical.realKeyRecords, 'real-key');
+      const groupOverrideRecords = await heal(physical.groupOverrideRecords ?? [], 'group-override');
+      if (!changed) continue;
+      const healed: PhysicPaintRotoPhysicalDocument = {
+        ...physical,
+        realKeyRecords,
+        groupOverrideRecords,
+        // The revision fingerprint covers the raster carriers, so the healed
+        // collections need their own revision — the same law the open leg's
+        // materialization applies.
+        revision: buildPhysicPaintRotoPhysicalRevision(
+          realKeyRecords,
+          physical.interpolation,
+          physical.loopClips,
+          physical.incomingInterpolationBreakKeyIds,
+          groupOverrideRecords,
+        ),
+      };
+      const installed = this.mirrorRotoPhysicalDocument(layerId, trackId, healed);
+      if (!installed.ok) {
+        console.warn(
+          `[physicPaint] launch media materialization could not install layer "${layerId}" track "${trackId}": ${installed.error}. The launch carrier keeps this track's reference-only records.`,
+        );
+      }
+    }
+    return Object.freeze(failures);
   },
 
   setRotoPhysicalSelection(layerId: string, trackId: string, selectedKeyId: string | null, cursorAppFrame: number): { ok: true } | { ok: false; error: string } {

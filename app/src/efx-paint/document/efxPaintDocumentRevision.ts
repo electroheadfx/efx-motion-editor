@@ -116,6 +116,29 @@ function encodeCanonicalPhotoReference(track: PhotoReferenceTrack | null): strin
   ].join('');
 }
 
+/**
+ * Canonical display-preference term of the photo/reference track (D-11/D-12/
+ * D-13): `visibleInStudio`, `opacity`, `transform`, `transformLocked`. The
+ * canonical document revision EXCLUDES these fields by design, so the sync
+ * channel's change detection — which must ship them, since they persist in the
+ * package — appends this term to the revision instead of widening the revision
+ * itself. A null track contributes an empty term (D-29 idiom).
+ */
+function encodeCanonicalPhotoReferenceDisplay(track: PhotoReferenceTrack | null): string {
+  if (track === null) return '';
+  const transform = track.transform;
+  return [
+    `visible:${validatedBoolean(track.visibleInStudio)}`,
+    `opacity:${encodeCanonicalNumber(track.opacity)}`,
+    `locked:${validatedBoolean(track.transformLocked)}`,
+    `x:${encodeCanonicalNumber(transform.x)}`,
+    `y:${encodeCanonicalNumber(transform.y)}`,
+    `scaleX:${encodeCanonicalNumber(transform.scaleX)}`,
+    `scaleY:${encodeCanonicalNumber(transform.scaleY)}`,
+    `rotation:${encodeCanonicalNumber(transform.rotation)}`,
+  ].join('');
+}
+
 function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): string {
   const orderedTracks = [...document.tracks].sort((a, b) => a.id.localeCompare(b.id));
   const tracksTerm = `tracks:${orderedTracks.length}:${orderedTracks.map(encodeValidatedEfxPaintTrackContent).join('')}`;
@@ -138,6 +161,10 @@ function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): str
   ].join('');
 }
 
+function computeDocumentRevision(document: EfxPaintDocument): string {
+  return `efxdoc-${hashCanonicalPhysicalValue(encodeValidatedEfxPaintDocumentContent(document))}`;
+}
+
 /**
  * Compute the deterministic document revision for a validated
  * {@link EfxPaintDocument}. Equal content yields equal revisions regardless
@@ -145,9 +172,21 @@ function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): str
  * term. Throws a closed validation failure on any invalid input.
  */
 export function buildEfxPaintDocumentRevision(value: unknown): string {
+  return computeDocumentRevision(parseEfxPaintDocument(value));
+}
+
+/**
+ * Change-detection fingerprint of the child→main document sync channel: the
+ * canonical document revision PLUS the photo/reference display-preference term
+ * the revision deliberately excludes. Display preferences persist in the
+ * package but never bump the revision (D-07 vs D-11/D-12/D-13 split), so the
+ * channel's two change-detection points — the child's push guard and the
+ * parent's register guard — compare THIS fingerprint; comparing the bare
+ * revision silently drops every display-only change from the sync.
+ */
+export function buildEfxPaintDocumentSyncFingerprint(value: unknown): string {
   const document = parseEfxPaintDocument(value);
-  const source = encodeValidatedEfxPaintDocumentContent(document);
-  return `efxdoc-${hashCanonicalPhysicalValue(source)}`;
+  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}`;
 }
 
 /**
