@@ -13,7 +13,6 @@ vi.mock('preact/hooks', () => ({
 import type { Layer } from '../types/layer';
 import { defaultTransform } from '../types/layer';
 import type { PhysicPaintLaunchContext } from '../types/physicPaint';
-import { layerStore } from '../stores/layerStore';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
 import { timelineStore } from '../stores/timelineStore';
@@ -288,7 +287,7 @@ function readDragAvailability(
     getStoreRealKeyFrames: () => [],
     getStoreRotoFrames: () => [],
     getCurrentSettings: () => physicPaintStore.getRotoInterpolationSettings(built.layerId, activeTrack()),
-    setInterpolationSettings: (settings) => settings,
+    setInterpolationSettings: (settings: unknown) => settings,
     getCurrentAppFrame: () => launch.startFrame,
     getPhysicalCells: () => [],
     getFrameResolution: () => ({ kind: 'empty' }),
@@ -404,13 +403,21 @@ describe('quick 260921-pgd probe: physic-paint layer 1 vs layer 2 gesture inputs
       // makes reconcile fail closed — the second fidelity gap this probe closes.
       const orderedIdentities = resolveOrderedRailSetIdentities(segments);
       const effective = reconcileRailSetSelection(selection, orderedIdentities);
-      const moveMembers = (effective?.members ?? []).flatMap((member) => {
-        if (member.kind !== 'key-rail') return [{ kind: 'loop', loopId: member.loopId }];
+      // The Studio's own resolver (PhysicsPaintStudio.tsx:1008-1022), verbatim:
+      // membership is never re-derived in the view, the strip consumes `keyIds`.
+      type MoveMember = { kind: 'loop'; loopId: string }
+        | { kind: 'key-rail'; firstKeyId: string; keyIds: readonly string[] };
+      const moveMembers: MoveMember[] = [];
+      for (const member of effective?.members ?? []) {
+        if (member.kind !== 'key-rail') {
+          moveMembers.push({ kind: 'loop', loopId: member.loopId });
+          continue;
+        }
         const segment = segments.find((candidate) => candidate.firstKeyId === member.firstKeyId);
-        return segment
-          ? [{ kind: 'key-rail', firstKeyId: segment.firstKeyId, keyIds: segment.keyIds }]
-          : [];
-      });
+        if (segment) {
+          moveMembers.push({ kind: 'key-rail', firstKeyId: segment.firstKeyId, keyIds: segment.keyIds });
+        }
+      }
       return {
         label: built.label,
         keyRailSegments: segments.length,
