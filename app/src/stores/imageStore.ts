@@ -1,5 +1,5 @@
 import {signal, computed, batch} from '@preact/signals';
-import type {ImportedImage} from '../types/image';
+import type {ImportResult, ImportedImage} from '../types/image';
 import type {MceImageRef} from '../types/project';
 import {importImages as ipcImportImages, assetUrl} from '../lib/ipc';
 
@@ -61,9 +61,18 @@ export const imageStore = {
   audioAssets,
   audioAssetCount,
 
-  /** Import images from file paths via Rust backend */
-  async importFiles(paths: string[], projectDir: string) {
-    if (paths.length === 0) return;
+  /**
+   * Import images from file paths via Rust backend.
+   *
+   * quick-260921-bjm: returns the IPC outcome additively so the image-import
+   * bridge handler (running in THIS realm — the one that owns the manifest
+   * `images` record) can report success and per-file errors. `null` = the
+   * import could not be performed (IPC failure). The two main-app callers
+   * (`EditorShell.tsx`, `ImportedView.tsx`) ignore the value; `importErrors`
+   * and `isImporting` behave exactly as before.
+   */
+  async importFiles(paths: string[], projectDir: string): Promise<ImportResult | null> {
+    if (paths.length === 0) return null;
 
     isImporting.value = true;
     importErrors.value = [];
@@ -72,7 +81,7 @@ export const imageStore = {
       const result = await ipcImportImages(paths, projectDir);
       if (!result.ok) {
         importErrors.value = [result.error];
-        return;
+        return null;
       }
 
       batch(() => {
@@ -88,6 +97,7 @@ export const imageStore = {
       });
       // Mark project dirty so auto-save interval also triggers
       _markDirty?.();
+      return result.data;
     } finally {
       isImporting.value = false;
     }

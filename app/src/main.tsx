@@ -17,7 +17,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageLibraryListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
@@ -121,6 +121,13 @@ if (window.location.pathname === '/physics-paint') {
     // install the child's emitTo('main', ...) has no receiver and every request
     // times out. Main window only; app-lifetime install like the siblings.
     await installPhysicPaintImageLibraryListener();
+    // quick-260921-bjm: the main webview also PERFORMS the Studio picker's
+    // imports. The child names the dialog-selected paths only; this realm —
+    // whose imageStore feeds the persisted manifest `images` array — resolves
+    // its own directory, imports, and answers with the post-import library.
+    // Without this install the child's import request has no receiver and
+    // times out. Main window only; app-lifetime install like the siblings.
+    await installPhysicPaintImageImportListener();
     // Route physic-paint:seek-frame navigation events from the standalone
     // Physics Paint window to the editor timeline. Awaited install like the
     // sibling bridge installs above; the discarded cleanup handle matches the

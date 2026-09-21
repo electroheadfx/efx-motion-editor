@@ -2146,6 +2146,49 @@ export interface PhysicPaintImageLibraryResultMessage {
   payload: PhysicPaintImageLibraryResult;
 }
 
+/**
+ * quick-260921-bjm: the image-import request/result pair — the missing
+ * child→main leg. The scoped picker's Import ran in the STUDIO webview, so it
+ * wrote that realm's own `imageStore` module instance: a different module
+ * instance from the main webview's, and never the one that feeds the persisted
+ * manifest `images` array (`projectStore.buildMceProject` → `imageStore.toMceImages`).
+ * The bytes landed in `<projectDir>/images/` (Rust `process_image`), the
+ * library RECORD never left the child, and every clip/reference naming the ref
+ * resolved `asset-not-found` on the next launch.
+ *
+ * The child now names the dialog-selected PATHS only; the MAIN realm — the one
+ * that owns the library and the manifest — resolves its own destination
+ * directory and answers with the post-import library snapshot. No format
+ * change, no new IPC command: the existing save/open/hydration chain carries
+ * the record.
+ *
+ * T-260921-bjm-01/03: the payload is whitelisted to `operationId` + `paths`
+ * (a payload naming a destination directory is REJECTED at the boundary) and
+ * every entry is non-empty, length-bounded, and count-bounded.
+ */
+export interface PhysicPaintImageImportRequest {
+  operationId: string;
+  paths: string[];
+}
+
+export interface PhysicPaintImageImportResult {
+  operationId: string;
+  ok: boolean;
+  images: MceImageRef[];
+  errors: string[];
+  error?: string;
+}
+
+export interface PhysicPaintImageImportRequestMessage {
+  type: 'physic-paint:image-import-request';
+  payload: PhysicPaintImageImportRequest;
+}
+
+export interface PhysicPaintImageImportResultMessage {
+  type: 'physic-paint:image-import-result';
+  payload: PhysicPaintImageImportResult;
+}
+
 export interface PhysicPaintReadinessState {
   ready: boolean;
   engineReady: boolean;
@@ -2441,6 +2484,40 @@ export function isPhysicPaintImageLibraryRequestMessage(value: unknown): value i
 
 export function isPhysicPaintImageLibraryResultMessage(value: unknown): value is PhysicPaintImageLibraryResultMessage {
   return Boolean(isRecord(value) && value.type === 'physic-paint:image-library-result' && isPhysicPaintImageLibraryResult(value.payload));
+}
+
+/** quick-260921-bjm: the import request bound — count-capped, length-capped. */
+const PHYSIC_PAINT_IMAGE_IMPORT_MAX_PATHS = 64;
+const PHYSIC_PAINT_IMAGE_IMPORT_MAX_PATH_LENGTH = 4096;
+
+export function isPhysicPaintImageImportRequest(value: unknown): value is PhysicPaintImageImportRequest {
+  return Boolean(
+    isRecord(value) &&
+      // `projectDir` is structurally forbidden: the destination directory is
+      // the MAIN realm's own resolved dir, never a child-supplied one.
+      hasOnlyKeys(value, ['operationId', 'paths']) &&
+      isBoundedOperationId(value.operationId) &&
+      Array.isArray(value.paths) &&
+      value.paths.length > 0 &&
+      value.paths.length <= PHYSIC_PAINT_IMAGE_IMPORT_MAX_PATHS &&
+      value.paths.every((path: unknown) => isNonEmptyString(path) && path.length <= PHYSIC_PAINT_IMAGE_IMPORT_MAX_PATH_LENGTH)
+  );
+}
+
+export function isPhysicPaintImageImportResult(value: unknown): value is PhysicPaintImageImportResult {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'images', 'errors', 'error'])) return false;
+  if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
+  if (!Array.isArray(value.images) || !value.images.every(isMceImageRef)) return false;
+  if (!Array.isArray(value.errors) || !value.errors.every((entry: unknown) => typeof entry === 'string')) return false;
+  return value.error === undefined || typeof value.error === 'string';
+}
+
+export function isPhysicPaintImageImportRequestMessage(value: unknown): value is PhysicPaintImageImportRequestMessage {
+  return Boolean(isRecord(value) && value.type === 'physic-paint:image-import-request' && isPhysicPaintImageImportRequest(value.payload));
+}
+
+export function isPhysicPaintImageImportResultMessage(value: unknown): value is PhysicPaintImageImportResultMessage {
+  return Boolean(isRecord(value) && value.type === 'physic-paint:image-import-result' && isPhysicPaintImageImportResult(value.payload));
 }
 
 export function isPhysicPaintRotoAuthorityRequest(value: unknown): value is PhysicPaintRotoAuthorityRequest {

@@ -127,7 +127,7 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
-import { encodeSourceBytesForDocumentSync, requestImageLibrary } from '../../lib/physicPaintBridge';
+import { encodeSourceBytesForDocumentSync, requestImageImport, requestImageLibrary } from '../../lib/physicPaintBridge';
 import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
 import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
@@ -359,11 +359,13 @@ const FRESH_FRAME_WARM_MS = 1000;
 
 /**
  * 49-04 (Task 2): merges the main-webview library (authoritative imageStore)
- * with the Studio realm's own imageStore (which gains newly imported images via
- * importFiles) so the picker grid shows both after an in-picker import. The
- * main webview is the save-path authority; the Studio realm's copy is the
- * immediate post-import source. Dedupe by asset id — the same file imported
- * once is never duplicated.
+ * with the Studio realm's own imageStore. quick-260921-bjm: the AUTHORITY
+ * statement changed — a picker import is now performed by the MAIN realm and
+ * the main realm's library record is the persisted one (`buildMceProject` →
+ * manifest `images`), so the child copy is a LAUNCH-SNAPSHOT FALLBACK only:
+ * it holds whatever the last launch hydration pushed in, never a new import.
+ * The merge stays for that stale copy's sake and dedupes by asset id — the
+ * same file imported once is never duplicated.
  */
 function mergeImageLibraries(main: readonly MceImageRef[], studio: readonly MceImageRef[]): MceImageRef[] {
   const byId = new Map<string, MceImageRef>();
@@ -4098,7 +4100,18 @@ export function PhysicsPaintStudio() {
   // instance-local.
   const sharedPickerPorts = {
     requestLibrary: () => requestImageLibrary(),
-    importFiles: (paths: string[], projectDir: string) => imageStore.importFiles(paths, projectDir),
+    // quick-260921-bjm: the import is performed by the MAIN realm — the realm
+    // that owns the library record the manifest persists. This used to call the
+    // child realm's own imageStore import HERE, in the Studio webview: a
+    // different module instance from the main webview's, so the record never
+    // reached `buildMceProject().images` and the next launch showed an empty
+    // gallery. The dialog-selected directory is deliberately unused (the main
+    // realm resolves its own); the controller's pre-flight guard still runs
+    // first.
+    importFiles: async (paths: string[], _projectDir: string) => {
+      const result = await requestImageImport(paths);
+      if (!result.ok) throw new Error(result.error ?? 'Image import failed');
+    },
     openDialog: async () => {
       const selected = await openNativeImageDialog({
         multiple: true,

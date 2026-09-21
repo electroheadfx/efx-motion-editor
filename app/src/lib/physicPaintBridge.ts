@@ -1,8 +1,8 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
@@ -109,6 +109,17 @@ export const PHYSIC_PAINT_STATE_SAVE_RESULT_EVENT = 'physic-paint:state-save-res
  */
 export const PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT = 'physic-paint:image-library-request';
 export const PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT = 'physic-paint:image-library-result';
+/**
+ * quick-260921-bjm: the image-import request/result pair. The picker's Import
+ * used to run in the Studio realm, writing THAT realm's imageStore module
+ * instance — never the main webview's, the only one `projectStore.buildMceProject`
+ * reads for the persisted manifest `images` array. The child names the
+ * dialog-selected PATHS only, the main realm resolves its OWN destination
+ * directory and performs the import, and answers with the post-import library.
+ * Existing save/open/hydration then carries the record (no format change).
+ */
+export const PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT = 'physic-paint:image-import-request';
+export const PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT = 'physic-paint:image-import-result';
 /**
  * 52.2-10 (D-12): main→Studio frame-media request. With the document crossing
  * reference-shaped, the main window is the receiving side of the digest-keyed
@@ -2453,6 +2464,67 @@ export function applyPhysicPaintImageLibraryRequest(
   return { operationId, ok: true, images: state.getImages(), projectDir };
 }
 
+/**
+ * quick-260921-bjm: publisher-side handler for the image-import request. It is
+ * the ONLY place a picker import is performed, and it runs in the MAIN realm —
+ * the realm whose `imageStore` feeds `projectStore.buildMceProject()`'s
+ * manifest `images` array and the reopen hydration
+ * (`imageStore.loadFromMceImages`). Nothing else writes either.
+ *
+ * `state` is injected so the handler is unit-testable without a live store;
+ * `importImages` resolves the ready-to-ship per-file error list (`null` = the
+ * import could not be performed at all).
+ */
+export interface PhysicPaintImageImportStatePorts {
+  readonly getImages: () => MceImageRef[];
+  readonly getProjectDir: () => string;
+  readonly importImages: (paths: readonly string[], projectDir: string) => Promise<readonly string[] | null>;
+}
+
+export async function applyPhysicPaintImageImportRequest(
+  value: unknown,
+  state: PhysicPaintImageImportStatePorts,
+): Promise<PhysicPaintImageImportResult> {
+  const request = isPhysicPaintImageImportRequest(value) ? value : null;
+  const operationId = request?.operationId ?? 'invalid-operation';
+  // Malformed / oversized / directory-carrying payloads are terminal with ZERO
+  // import attempts (T-260921-bjm-01/03).
+  if (!request) return { operationId, ok: false, images: [], errors: [], error: 'Invalid image import request' };
+  const projectDir = state.getProjectDir();
+  if (!projectDir) return { operationId, ok: false, images: [], errors: [], error: 'No project directory is open.' };
+  let errors: readonly string[] | null;
+  try {
+    errors = await state.importImages(request.paths, projectDir);
+  } catch (error) {
+    return { operationId, ok: false, images: [], errors: [], error: `Image import failed: ${String(error)}` };
+  }
+  // Never a silent no-op dressed as a success: the picker surfaces this error.
+  if (errors === null) return { operationId, ok: false, images: [], errors: [], error: 'Image import failed' };
+  return { operationId, ok: true, images: state.getImages(), errors: [...errors] };
+}
+
+/**
+ * The main realm's own image-import binding: its resolved project directory
+ * (`dirPath ?? tempProjectDir`, the production fallback), the real
+ * `imageStore.importFiles`, and the post-import library read. `importFiles`
+ * returns the IPC outcome; the port hands the handler the per-file error
+ * strings in the store's existing `${path}: ${error}` shape.
+ */
+export function createPhysicPaintImageImportStatePorts(): PhysicPaintImageImportStatePorts {
+  return {
+    getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? ''),
+    getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? '',
+    importImages: async (paths, projectDir) => {
+      const result = await imageStore.importFiles([...paths], projectDir);
+      return result ? result.errors.map((error) => `${error.path}: ${error.error}`) : null;
+    },
+  };
+}
+
+function failedImageImportResult(operationId: string, error: string): PhysicPaintImageImportResult {
+  return { operationId, ok: false, images: [], errors: [], error };
+}
+
 export interface ImageLibraryRequestLifecyclePorts {
   readonly getBridgeMode: () => PhysicsPaintBridgeMode;
   readonly detectBridgeMode?: () => Promise<PhysicsPaintBridgeMode>;
@@ -2584,6 +2656,72 @@ export async function installPhysicPaintImageLibraryListener(): Promise<() => vo
   window.addEventListener(PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, custom);
   window.addEventListener('message', message);
   return () => { window.removeEventListener(PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
+}
+
+/**
+ * quick-260921-bjm: consumer-side convenience entry point used by the Studio
+ * realm's picker. Self-contained in the requestImageLibrary shape (listen →
+ * 15s timeout → emitTo('main')), validating the result with the new guard AND
+ * correlating on operationId so a forged/foreign result is dropped
+ * (T-260921-bjm-02). The request carries `operationId` + `paths` only — the
+ * destination directory is never named by the child.
+ */
+export async function requestImageImport(paths: readonly string[]): Promise<PhysicPaintImageImportResult> {
+  const eventApi = await import('@tauri-apps/api/event');
+  if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') {
+    return failedImageImportResult('invalid-operation', 'Image import bridge is unavailable');
+  }
+  const operationId = `physics-paint-image-import-${Date.now()}-${crypto.randomUUID()}`;
+  let timeout = 0;
+  let unlisten: (() => void) | undefined;
+  try {
+    let resolveResult: (result: PhysicPaintImageImportResult) => void = () => {};
+    const resultPromise = new Promise<PhysicPaintImageImportResult>((resolve) => { resolveResult = resolve; });
+    unlisten = await eventApi.listen(PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT, (event) => {
+      if (!isPhysicPaintImageImportResult(event.payload) || event.payload.operationId !== operationId) return;
+      resolveResult(event.payload);
+    });
+    timeout = window.setTimeout(() => resolveResult(failedImageImportResult(operationId, 'Image import request timed out')), 15_000);
+    await eventApi.emitTo('main', PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, { operationId, paths: [...paths] });
+    return await resultPromise;
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+    unlisten?.();
+  }
+}
+
+export async function installPhysicPaintImageImportListener(): Promise<() => void> {
+  const emitResult = async (result: PhysicPaintImageImportResult, source?: Pick<Window, 'postMessage'> | null) => {
+    if (isTauriRuntime()) {
+      const eventApi = await import('@tauri-apps/api/event');
+      await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT, result);
+    }
+    if (typeof window !== 'undefined') {
+      const message = { type: PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT, payload: result };
+      window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT, { detail: result }));
+      source?.postMessage?.(message, window.location.origin);
+      window.opener?.postMessage?.(message, window.location.origin);
+    }
+  };
+  // The main realm resolves its OWN project directory (dirPath ?? tempProjectDir
+  // — the same fallback the production import flow uses) and performs the
+  // import against the authoritative imageStore.
+  const state = createPhysicPaintImageImportStatePorts();
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, async (event) => emitResult(await applyPhysicPaintImageImportRequest(event.payload, state)));
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const custom = (event: Event) => { void applyPhysicPaintImageImportRequest((event as CustomEvent).detail, state).then((result) => emitResult(result)); };
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT) return;
+    const source = event.source && 'postMessage' in event.source ? event.source as Pick<Window, 'postMessage'> : undefined;
+    void applyPhysicPaintImageImportRequest(event.data.payload, state).then((result) => emitResult(result, source));
+  };
+  window.addEventListener(PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => { window.removeEventListener(PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
 }
 
 export async function publishPhysicPaintProjectContext(): Promise<void> {
