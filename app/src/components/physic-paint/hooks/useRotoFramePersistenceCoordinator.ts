@@ -259,13 +259,17 @@ export function rejectRotoLoopPlaceholderSource(
 
 export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
   // 52.2-02 (D-07): a runtime cache frame needs pixels, so the inline carrier is
-  // asserted. A reference-only record IS reachable here since 52r (G): the
-  // tolerant launch installs a carried reference-only record into the runtime
-  // document when its package file could not be read (warned per key at the
-  // door). The key and its rail stay correct and the frame renders as missing
-  // content, so this projection skips it exactly like the launch seed does —
-  // refusing the whole document would leave the Studio unable to boot.
-  return recordsAsRuntimeFramesToleratingReferences(document);
+  // asserted. A reference-only record is a persisted shape and never reaches
+  // this projection — the document here was built from in-memory runtime records.
+  return document.realKeyRecords.map((record) => ({
+    ...record.payload,
+    bytes: requirePhysicPaintRotoInlineBytes(record.payload),
+    appFrame: record.appFrame,
+    source: 'real-key' as const,
+    keyId: record.keyId,
+    contentRevision: document.revision,
+    cacheRevision: `${document.revision}:real:${record.keyId}`,
+  }));
 }
 
 /**

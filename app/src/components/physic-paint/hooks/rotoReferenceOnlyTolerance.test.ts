@@ -1,12 +1,17 @@
 /**
- * The tolerant launch (quick-260913-52r G) installs carried reference-only
- * records into the runtime document when a key's package file could not be
- * read — warned per key at the door, "the frame renders as missing content".
+ * A key whose frame file could not be read at project open stays reference-only.
+ * The launch tolerates it by design (quick-260913-52r G: warned per key, "the
+ * frame renders as missing content") and installs the record so its key and rail
+ * stay correct — which makes a reference-only record REACHABLE in the runtime
+ * document for the first time.
  *
- * Every runtime projection that reads pixels must therefore SKIP such a record
- * rather than refuse the whole document: refusing leaves the Studio unable to
- * boot at all (the rejection lands in the async launch chain, so the window
- * comes up empty with the engine never ready).
+ * The strict consumers are therefore split by contract:
+ *  - the PUBLISH seed refuses it loudly (debug studio-reopen-empty-boot LEG 2 —
+ *    a door-materialization regression must not go unnoticed), and
+ *  - the projections the Studio runs at BOOT must skip it instead, because a
+ *    throw there kills the boot render: the strip's onion projection runs in a
+ *    render memo over the same rail records, so refusing leaves the Studio an
+ *    empty window with the engine never ready.
  */
 import { describe, expect, it } from 'vitest';
 import { recordsAsRuntimeFrames } from './useRotoFramePersistenceCoordinator';
@@ -49,12 +54,12 @@ const renderSource = (record: PhysicPaintRotoRealKeyRecord): PhysicPaintRotoPhys
   cacheRevision: `rev-1:real:${record.keyId}`,
 }) as unknown as PhysicPaintRotoPhysicalRenderSource;
 
-describe('runtime projections tolerate a reference-only record', () => {
-  it('the cache-frame projection skips it instead of refusing the document', () => {
-    const frames = recordsAsRuntimeFrames(document);
-
-    expect(frames.map((frame) => frame.appFrame)).toEqual([4]);
-    expect(frames).toHaveLength(1);
+describe('runtime projections and a reference-only record', () => {
+  it('the PUBLISH seed stays strict by contract (a violation must stay loud)', () => {
+    // debug studio-reopen-empty-boot LEG 2: the publish path keeps refusing, so
+    // a door-materialization regression cannot go unnoticed. Only the boot seed
+    // tolerates.
+    expect(() => recordsAsRuntimeFrames(document)).toThrow(/carries no inline raster bytes/);
   });
 
   it('the onion projection skips it instead of refusing the strip', () => {
