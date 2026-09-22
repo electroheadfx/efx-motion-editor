@@ -129,8 +129,12 @@ export function projectRotoOnionPreviewFrames(input: RotoPhysicalOnionInput | Ro
       ? preview
       : null;
     // 52.2-02 (D-07): an onion projection reads pixels, so the runtime render
-    // source's inline carrier is asserted — a reference-only payload is a
-    // persisted shape and never reaches this runtime projection.
+    // source's inline carrier is asserted. A reference-only source IS reachable
+    // here since 52r (G): the tolerant launch installs a carried reference-only
+    // record into the runtime document when its package file could not be read.
+    // An onion skin has no pixels to draw from such a key, and the launch
+    // already warned per key — skip it rather than refuse the whole strip.
+    if (exactPreview === null && source.renderedFrame.bytes === undefined) continue;
     const frame: RotoOnionFrame = exactPreview ?? {
       ...source.renderedFrame,
       bytes: requirePhysicPaintRotoInlineBytes(source.renderedFrame),
