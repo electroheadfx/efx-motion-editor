@@ -207,13 +207,19 @@ pub fn write_efx_paint_package_layer_file(
     layer_file: String,
     contents: String,
 ) -> Result<(), EfxPaintMediaError> {
-    write_package_layer_file(
+    let result = write_package_layer_file(
         std::path::Path::new(&package_dir),
         &staging_basename,
         &layer_file,
         contents.as_bytes(),
-    )?;
-    Ok(())
+    );
+    match result {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            crate::commands::efx_paint_media::trace_media_error(&error);
+            Err(error)
+        }
+    }
 }
 
 /// Read one layer sub-file back as text (quick-260913-05k). The text — never a
@@ -224,7 +230,14 @@ pub fn read_efx_paint_package_layer_file(
     package_dir: String,
     layer_file: String,
 ) -> Result<String, EfxPaintMediaError> {
-    read_package_layer_file(std::path::Path::new(&package_dir), &layer_file)
+    let result = read_package_layer_file(std::path::Path::new(&package_dir), &layer_file);
+    match result {
+        Ok(text) => Ok(text),
+        Err(error) => {
+            crate::commands::efx_paint_media::trace_media_error(&error);
+            Err(error)
+        }
+    }
 }
 
 /// Discard a package staging generation left behind by a failed save

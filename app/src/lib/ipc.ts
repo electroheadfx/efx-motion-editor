@@ -587,11 +587,20 @@ function efxPaintMediaFailureFrom(error: unknown): EfxPaintMediaFailure {
   if (typeof error === 'object' && error !== null && 'label' in error) {
     label = (error as { label?: unknown }).label;
   }
-  if (typeof label !== 'string') return { kind: 'io' };
+  if (typeof label !== 'string') {
+    // [DEBUG-9f3c] DEV-only: a non-label error is a transport failure or a shape
+    // this taxonomy does not know — both degrade to `io` with no trace at all.
+    if (import.meta.env.DEV) console.error('[DEBUG-9f3c] unrecognized package failure', error);
+    return { kind: 'io' };
+  }
   const normalized = label.trim().replace(/^"(.*)"$/, '$1');
   if (normalized === 'missing') return { kind: 'missing' };
   const rejection = EFX_PAINT_MEDIA_REJECTION_LABELS.find((entry) => entry === normalized);
-  return rejection === undefined ? { kind: 'io' } : { kind: 'refused', rejection };
+  if (rejection === undefined) {
+    if (import.meta.env.DEV) console.error('[DEBUG-9f3c] unrecognized package label', normalized);
+    return { kind: 'io' };
+  }
+  return { kind: 'refused', rejection };
 }
 
 /**
