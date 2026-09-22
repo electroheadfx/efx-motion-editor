@@ -210,7 +210,7 @@ export function PhysicsPaintPhotoReferenceDialog({
           <div class="physics-paint-photo-reference-toggles">
             <button
               type="button"
-              class="physics-paint-photo-reference-toggle"
+              class="physics-paint-photo-reference-toggle physics-paint-transform-lock-toggle"
               aria-label="Lock reference transform"
               aria-pressed={transformLocked}
               title={transformLocked ? undefined : PHOTO_REFERENCE_UNLOCKED_TOOLTIP}

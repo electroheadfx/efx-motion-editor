@@ -1,6 +1,7 @@
 import { useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import { efxPaintVersion } from '../../../stores/efxPaintStore';
 import type {
   PhotoReferenceDisplayResult,
   PhotoReferenceMutationResult,
@@ -97,6 +98,10 @@ export function usePhysicsPaintPhotoReferenceController({
   ports = {},
 }: PhysicsPaintPhotoReferenceControllerProps): PhysicsPaintPhotoReferenceController {
   const getDocument = ports.getDocument ?? defaultPorts.getDocument;
+  // 260922-rd4 UAT fix (same defect class as the background Transform button):
+  // narrow read of the store version clock so the Lock/Visible display
+  // re-renders on a store write even when the dialog's parent is memo-blocked.
+  efxPaintVersion.value;
   const setOpacity = ports.setOpacity ?? defaultPorts.setOpacity;
   const setTransformLocked = ports.setTransformLocked ?? defaultPorts.setTransformLocked;
   const setVisible = ports.setVisible ?? defaultPorts.setVisible;

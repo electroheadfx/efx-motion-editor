@@ -4299,6 +4299,19 @@ button.destructive {
   color: #7e8894;
 }
 
+/* 260922-rd4 UAT: the transform LOCK buttons glow green while UNLOCKED
+   (aria-pressed=false = transform editable) — scoped to the lock class so the
+   Visible/Hidden eye toggle keeps its gray inactive state. */
+.physics-paint-transform-lock-toggle[aria-pressed='false'] {
+  border-color: #4caf70;
+  background: #12331f;
+  color: #4caf70;
+}
+
+.physics-paint-transform-lock-toggle[aria-pressed='false'] svg {
+  color: #4caf70;
+}
+
 .physics-paint-photo-reference-toggle:hover {
   filter: brightness(1.12);
 }

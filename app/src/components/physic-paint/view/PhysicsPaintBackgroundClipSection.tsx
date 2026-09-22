@@ -2,7 +2,7 @@ import { useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
 import { Lock, LockOpen, Trash2 } from 'lucide-preact';
 import type { EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../../efx-paint/document/efxPaintDocument';
-import type { BackgroundClipMutationResult, PhotoReferenceDisplayResult } from '../../../stores/efxPaintStore';
+import { efxPaintVersion, type BackgroundClipMutationResult, type PhotoReferenceDisplayResult } from '../../../stores/efxPaintStore';
 
 /**
  * 49-06 (Task 1, S5): the right-panel `Background Clip` properties section.
@@ -118,6 +118,13 @@ export function usePhysicsPaintBackgroundClipSectionController({
   const setTransformLocked = ports.setTransformLocked ?? defaultPorts.setTransformLocked;
 
   const selectedClipId = selectedBackgroundClipId.value;
+  // 260922-rd4 UAT fix: the transform-lock display is plain document state, and
+  // the right panel sits behind the preact/compat memo boundary — without this
+  // narrow read the button never re-renders on a lock toggle (stayed "Locked"
+  // while the transform was already unlocked). Subscribing the section itself
+  // to the store version clock makes the display freshness independent of the
+  // parent memo chain (efx-preact-reactivity: narrow signal read, no effect).
+  efxPaintVersion.value;
   const document = getDocument(layerId);
   const clip = selectedClipId
     ? document?.background.clips.find((candidate) => candidate.id === selectedClipId)
@@ -284,7 +291,7 @@ export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundC
           <span class="physics-paint-right-label">Transform</span>
           <button
             type="button"
-            class="physics-paint-photo-reference-toggle"
+            class="physics-paint-photo-reference-toggle physics-paint-transform-lock-toggle"
             aria-label="Lock background transform"
             aria-pressed={transformLocked}
             onClick={toggleTransformLocked}
