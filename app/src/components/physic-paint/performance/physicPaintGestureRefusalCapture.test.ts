@@ -28,11 +28,20 @@ import {
  * the clock is moved explicitly to cross the dedupe window.
  */
 const settleWrite = async (): Promise<void> => {
-  for (let turn = 0; turn < 5; turn += 1) {
+  // The write resolves through a dynamic `import('@tauri-apps/api/core')`, which
+  // can outlast a fixed handful of macrotasks when the suite runs under load
+  // (a full-suite run once lost this race and read an empty `invoke.mock.calls`).
+  // Poll until the call lands, with a bounded budget so a genuinely absent
+  // write — the healthy-path and dedupe legs — still settles in reasonable time.
+  for (let turn = 0; turn < 100; turn += 1) {
     await new Promise((resolve) => {
       setTimeout(resolve, 0);
     });
+    if (invoke.mock.calls.length > 0) break;
   }
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
 };
 
 const advancePastDedupeWindow = (): void => {

@@ -2302,6 +2302,13 @@ function _getOrRenderGeneratedRotoFrame(
     recordPhysicsPaintPerformanceCounter('generated.cacheHit');
     return cached;
   }
+  // A reference-only record (its frame file could not be read at project open;
+  // the launch warned per key and renders it as missing content) carries no
+  // pixels to interpolate FROM. `null` is this path's existing "cannot render
+  // this cell" signal — the cell then has no generated frame, exactly like the
+  // real keys it sits between — instead of refusing the whole strip.
+  if (left.payload.bytes === undefined) return null;
+  if (mode === 'blend' && right.payload.bytes === undefined) return null;
   recordPhysicsPaintPerformanceCounter('generated.cacheMiss');
   const settings = { ...DEFAULT_ROTO_INTERPOLATION_SETTINGS, enabled: true, mode };
   const renderStartedAtMs = performance.now();
