@@ -711,9 +711,27 @@ export function PhysicsPaintStudio() {
     selectedRotoKeyRail.value,
     keyRailSegments,
   );
+  // quick-260921-qls follow-up: read (never write) the rail selection BEFORE the
+  // fail-closed clear below, so a selection that arrives and is dropped in the
+  // SAME render is distinguishable from one that never arrived. Diagnostic only.
+  const railSelectionBeforeFailClosedClear = selectedRotoKeyRail.peek();
   if (selectedRotoKeyRail.peek() !== null
     && (effectiveSelectedRotoKeyRail === null || selectedKeyId.value !== null || selectedKeyIds.value.length > 0)) {
     selectedRotoKeyRail.value = null;
+  }
+  if (railSelectionBeforeFailClosedClear !== null && selectedRotoKeyRail.peek() === null) {
+    const droppedSegment = keyRailSegments.find((candidate) => candidate.firstKeyId === railSelectionBeforeFailClosedClear.firstKeyId) ?? null;
+    reportGestureRefusal('rail-selection-cleared', {
+      attempt: {
+        frame: droppedSegment?.firstKeyFrame ?? -1,
+        layerId: launchContext?.layerId ?? null,
+        trackId: studioActiveTrackId(),
+        railModelKeyId: railSelectionBeforeFailClosedClear.firstKeyId,
+        railModelCount: keyRailSegments.length,
+        pushArmed: isPushToolArmed(),
+        detail: `reconcileFailed:${effectiveSelectedRotoKeyRail === null} primaryKey:${selectedKeyId.value !== null} multi:${selectedKeyIds.value.length}`,
+      },
+    });
   }
   const orderedRotoLoopClipIds = useMemo(() => [...rotoLoopClips]
     .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId))

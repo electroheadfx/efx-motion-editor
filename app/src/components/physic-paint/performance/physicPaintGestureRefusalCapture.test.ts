@@ -173,6 +173,8 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
       keyRecordsOnRail: 3,
       railSegmentFirstKeyId: 'key-7',
       railSegmentKeyCount: 3,
+      selectedLoopClipIdCount: 0,
+      selectedLoopClipId: null,
     };
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS, selection });
     await settleWrite(invoke.mock.calls.length + 1);

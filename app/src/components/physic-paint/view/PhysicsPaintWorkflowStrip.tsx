@@ -2830,6 +2830,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         keyRecordsOnRail: rotoKeyRecords.length,
         railSegmentFirstKeyId: clickedRailSegment?.firstKeyId ?? null,
         railSegmentKeyCount: clickedRailSegment?.keyIds.length ?? 0,
+        selectedLoopClipIdCount: (props.selectedRotoLoopClipIds ?? []).length,
+        selectedLoopClipId: (props.selectedRotoLoopClipIds ?? [])[0] ?? null,
       },
       strip: {
         ready: props.ready !== false,

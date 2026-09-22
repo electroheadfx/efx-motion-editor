@@ -43,7 +43,9 @@ export type PhysicPaintGestureRefusalReason =
   | 'cell-click-locked'
   | 'nav-scrub-swallow'
   | 'nav-refused'
-  | 'nav-threw';
+  | 'nav-threw'
+  | 'rail-click-suppressed'
+  | 'rail-selection-cleared';
 
 export type PhysicPaintGestureSurfaceKind = 'key-cell' | 'key-rail' | 'loop-rail' | 'lane' | 'other';
 
@@ -137,6 +139,13 @@ export interface PhysicPaintGestureSelectionTerms {
   keyRecordsOnRail: number;
   railSegmentFirstKeyId: string | null;
   railSegmentKeyCount: number;
+  /**
+   * The loop-clip selection: a plain loop-rail click CLEARS the primary key
+   * selection, so a null primary paired with a live loop selection is a healthy
+   * loop selection, not a dead one.
+   */
+  selectedLoopClipIdCount: number;
+  selectedLoopClipId: string | null;
 }
 
 /**
