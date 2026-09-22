@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 24
-waived_count: 1
-fixed_count: 42
-total_count: 67
-last_updated: 2026-08-12T05:51:29.071Z
+open_count: 0
+waived_count: 5
+fixed_count: 67
+total_count: 72
+last_updated: 2026-09-22T15:42:15.805Z
 ---
 
 # Broken Windows Ledger
@@ -18,18 +18,18 @@ last_updated: 2026-08-12T05:51:29.071Z
 | 1 | 36.14 | deviation | app/src/lib/physicPaintBridge.ts |  | Valid physical failures now use the exact parent acknowledgement shape. | fixed |  | 2026-07-22T10:48:07.831Z | 2026-07-22T10:53:08.172Z |
 | 2 | 36.14 | deviation | app/src/lib/physicPaintBridge.ts |  | Complete physical-map edits bypass the legacy generated display mutation guard and use authoritative semantic validation. | fixed |  | 2026-07-22T10:48:07.922Z | 2026-07-22T10:53:08.534Z |
 | 3 | 36.14 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts |  | Malformed resolver intents are rejected before reading their discriminator. | fixed |  | 2026-07-22T10:48:08.016Z | 2026-07-22T10:53:08.869Z |
-| 4 | 36.14 | deviation | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Compile proof deferred to Plan 13 after byte-exact native UAT approval | open |  | 2026-07-22T13:56:41.272Z |  |
-| 5 | 36.14 | unrun-verify | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Build did not run because the chained typecheck failed on obsolete pre-UAT Script tests | open |  | 2026-07-22T13:56:41.382Z |  |
+| 4 | 36.14 | deviation | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Compile proof deferred to Plan 13 after byte-exact native UAT approval | fixed |  | 2026-07-22T13:56:41.272Z | 2026-09-22T15:42:10.446Z |
+| 5 | 36.14 | unrun-verify | .planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md |  | Build did not run because the chained typecheck failed on obsolete pre-UAT Script tests | fixed |  | 2026-07-22T13:56:41.382Z | 2026-09-22T15:42:10.626Z |
 | 6 | 36.14 | deviation | app/src/components/physic-paint/hooks/usePhysicsPaintLaunchIntegration.ts | 21 | Plan 23 hydration became asynchronous, so the existing launch replacement owner was updated to await the canonical PNG publication barrier. | fixed |  | 2026-07-24T06:23:36.118Z | 2026-07-24T06:25:00.079Z |
 | 7 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale latest-activity text and mismatched prose completed-plan count after Plan 22 state update | fixed |  | 2026-07-24T07:33:38.997Z | 2026-07-24T07:34:22.331Z |
 | 8 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale Plan 22 activity, Plan 28 next action, and 111-plan prose count left by state handlers after Plan 25 closure | fixed |  | 2026-07-24T07:53:03.816Z | 2026-07-24T07:54:09.840Z |
 | 9 | 36.14 | deviation | app/src/types/physicPaint.ts | 739 | The active apply-payload allowlist omitted the valid play-script physical operation. | fixed |  | 2026-07-24T09:36:17.277Z | 2026-07-24T09:37:35.662Z |
 | 10 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale Plan 25 activity, Plan 26 next action, and 112-plan prose count after the non-linear Plan 26 state update. | fixed |  | 2026-07-24T09:40:48.530Z | 2026-07-24T09:41:05.837Z |
 | 11 | 36.14 | deviation | .planning/STATE.md |  | Corrected stale non-linear recovery position after generic state advancement | fixed |  | 2026-07-24T09:56:45.875Z | 2026-07-24T09:57:16.430Z |
-| 12 | 36.15 | stub | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule | open |  | 2026-07-25T18:41:27.754Z |  |
-| 13 | 38 | deviation | .planning/phases/38-multi-copy-paste-and-tooltip-polish/38-01-PLAN.md |  | 38-01 verify block: Studio port grep expectations (==1 whole-file) contradict action text; verified scoped to keyUtilities block instead | open |  | 2026-07-27T14:40:22.046Z |  |
+| 12 | 36.15 | stub | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule | fixed |  | 2026-07-25T18:41:27.754Z | 2026-09-22T15:42:10.811Z |
+| 13 | 38 | deviation | .planning/phases/38-multi-copy-paste-and-tooltip-polish/38-01-PLAN.md |  | 38-01 verify block: Studio port grep expectations (==1 whole-file) contradict action text; verified scoped to keyUtilities block instead | fixed |  | 2026-07-27T14:40:22.046Z | 2026-09-22T15:42:10.996Z |
 | 14 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Deferred follow-up: right color sidebar + left tool rail visibly re-render on timeline navigation; user wants navigation UI updates localized to the timeline | fixed |  | 2026-07-28T05:55:05.652Z | 2026-07-28T17:51:37.769Z |
-| 15 | 38.1 | deviation | app/src/components/physic-paint |  | Deferred follow-up: plain mouse wheel does not scroll the timeline horizontally (shift+wheel required); bottom action toolbar also needs working horizontal scroll | open |  | 2026-07-28T05:55:05.768Z |  |
+| 15 | 38.1 | deviation | app/src/components/physic-paint |  | Deferred follow-up: plain mouse wheel does not scroll the timeline horizontally (shift+wheel required); bottom action toolbar also needs working horizontal scroll | fixed |  | 2026-07-28T05:55:05.768Z | 2026-09-22T15:42:11.185Z |
 | 16 | 38.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Task 1 source contract initially scanned a following comment and was narrowed to the actual dependency list. | fixed |  | 2026-07-28T17:22:23.472Z | 2026-07-28T17:51:37.894Z |
 | 17 | 38.1 | unrun-verify | .planning/phases/38.1-studio-render-path-performance/38.1-09-SUMMARY.md |  | Plan 09 forward/reverse native five-counter verification is pending user-owned runtime capture. | fixed |  | 2026-07-28T17:22:23.916Z | 2026-07-28T17:51:38.030Z |
 | 18 | 38.1 | deviation | app/src/components/physic-paint/view/PhysicsPaintScriptsPanel.test.ts | 81 | Updated stale Plan 09 Play Script dialog mount assertion so the Plan 10 full-suite gate matches the approved memo wrapper. | fixed |  | 2026-07-28T18:37:11.200Z | 2026-07-28T18:38:16.745Z |
@@ -40,27 +40,27 @@ last_updated: 2026-08-12T05:51:29.071Z
 | 23 | 38.1 | deviation | app/src/test/preactHookRuntime.ts |  | Adjusted the test runtime to the app TypeScript target and removed one unused GREEN-test binding after the no-emit gate. | fixed |  | 2026-07-29T08:08:16.664Z | 2026-07-29T08:09:04.219Z |
 | 24 | 38 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.test.ts |  | Rewrote omitted stale header-tooltip assertion against the region-driven fixed-position contract | fixed | Verified by the focused 63-test file and full Phase 38 closing suite. | 2026-07-29T16:15:36.790Z | 2026-07-29T16:15:38.053Z |
 | 25 | 38 | deviation | app/src/components/physic-paint/view/PhysicsPaintStyledTooltip.test.ts |  | Applied the user-approved flat #62666d tooltip visual over stale plan wording | fixed | Verified by the focused 9-test file and full Phase 38 closing suite. | 2026-07-29T16:15:36.934Z | 2026-07-29T16:15:38.053Z |
-| 26 | quick-260801-jun | unrun-verify | app/src-tauri/src/services/project_io.rs |  | Pre-existing cargo test lib-test compile failure (stale roto field names); verification battery item 5 red | open |  | 2026-08-01T13:41:39.096Z |  |
-| 27 | 41 | deviation | app/src/components/physic-paint/audio/efxPaintAudioMonitor.ts |  | 41-04 deviation: revisioned-update restart decision moved after prepare await (toggle race serialization) | open |  | 2026-08-04T22:36:07.192Z |  |
-| 28 | 43 | unmet-truth | app/src/viteBuild.test.ts | 184 | Pre-existing main desktop chunk exceeds the locked 1100 kB warning budget (1,112.66 kB at pre-GREEN baseline 02fa699d). | open |  | 2026-08-07T11:01:42.037Z |  |
-| 29 | 43.1 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts |  | Inherited break lifecycle behaviors were characterized green instead of forcing artificial RED failures | open |  | 2026-08-09T15:05:02.967Z |  |
-| 30 | 43.1 | deviation | app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts |  | Structural cache test and projection threading landed in the same atomic commit | open |  | 2026-08-09T15:05:03.053Z |  |
-| 31 | 43.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state. | open |  | 2026-08-09T16:51:31.383Z |  |
-| 32 | 43.1 | deviation | app/src/lib/physicPaintPersistence.ts |  | Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache. | open |  | 2026-08-10T06:36:00.210Z |  |
+| 26 | quick-260801-jun | unrun-verify | app/src-tauri/src/services/project_io.rs |  | Pre-existing cargo test lib-test compile failure (stale roto field names); verification battery item 5 red | fixed |  | 2026-08-01T13:41:39.096Z | 2026-09-22T15:42:11.381Z |
+| 27 | 41 | deviation | app/src/components/physic-paint/audio/efxPaintAudioMonitor.ts |  | 41-04 deviation: revisioned-update restart decision moved after prepare await (toggle race serialization) | fixed |  | 2026-08-04T22:36:07.192Z | 2026-09-22T15:42:11.577Z |
+| 28 | 43 | unmet-truth | app/src/viteBuild.test.ts | 184 | Pre-existing main desktop chunk exceeds the locked 1100 kB warning budget (1,112.66 kB at pre-GREEN baseline 02fa699d). | fixed |  | 2026-08-07T11:01:42.037Z | 2026-09-22T15:42:11.767Z |
+| 29 | 43.1 | deviation | app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts |  | Inherited break lifecycle behaviors were characterized green instead of forcing artificial RED failures | waived | Accepted process deviation: inherited break-lifecycle behaviors were characterized green; no artificial RED was forced (43.1). | 2026-08-09T15:05:02.967Z | 2026-09-22T15:42:15.227Z |
+| 30 | 43.1 | deviation | app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts |  | Structural cache test and projection threading landed in the same atomic commit | waived | Accepted process deviation: the structural cache test and its projection threading landed in one atomic commit (43.1). | 2026-08-09T15:05:03.053Z | 2026-09-22T15:42:15.411Z |
+| 31 | 43.1 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state. | waived | Accepted scope deviation: break-ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state (43.1). | 2026-08-09T16:51:31.383Z | 2026-09-22T15:42:15.601Z |
+| 32 | 43.1 | deviation | app/src/lib/physicPaintPersistence.ts |  | Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache. | fixed |  | 2026-08-10T06:36:00.210Z | 2026-09-22T15:42:11.971Z |
 | 33 | 43.1 | deviation | .planning/STATE.md |  | state.update-progress reported 90% but wrote progress.percent 57; closeout reconciled STATE metadata | fixed |  | 2026-08-10T06:55:25.047Z | 2026-08-10T06:56:05.035Z |
 | 34 | 43.1 | deviation | .planning/STATE.md |  | Corrected inconsistent generated Plan 09 progress, activity, and decision metadata | fixed |  | 2026-08-10T07:42:52.621Z | 2026-08-10T07:43:54.828Z |
 | 35 | 43.1 | deviation | app/src/lib/physicPaintBridge.test.ts | 879 | Updated the legacy incoming-break bridge test so ordinary edits preserve, rather than author or clear, stable-key break ownership. | fixed |  | 2026-08-10T08:14:54.920Z | 2026-08-10T08:15:01.785Z |
 | 36 | 43.1 | deviation | .planning/STATE.md |  | Reconciled Plan 10 progress percentage, latest activity, decision labels, and next action after generic state handlers wrote stale metadata. | fixed |  | 2026-08-10T08:17:20.229Z | 2026-08-10T08:17:28.221Z |
 | 37 | 43.1 | deviation | .planning/STATE.md |  | Reconciled generated Plan 11 progress, activity, decision labels, and next-action metadata. | fixed |  | 2026-08-10T10:48:22.939Z | 2026-08-10T10:48:54.748Z |
-| 38 | 43.2 | stub | app/src/components/physic-paint/roto/physicsPaintRotoLoopClips.test.ts | 389 | Wave 0 controlled markers keep canonical revision and project equality unsupported until the production schema cutover | open |  | 2026-08-11T02:45:01.220Z |  |
-| 39 | 43.2 | stub | app/src/lib/physicPaintPersistence.test.ts | 300 | Wave 0 controlled markers keep Group lifecycle fields unsupported at save/reopen until the production schema cutover | open |  | 2026-08-11T02:45:01.302Z |  |
-| 40 | 43.2 | stub | app/src/types/physicPaint.test.ts | 305 | Wave 0 controlled markers keep Group lifecycle fields unsupported in physical transport until the production schema cutover | open |  | 2026-08-11T02:45:01.385Z |  |
-| 41 | 43.2 | stub | app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts | 191 | Wave 0 controlled markers keep Group lifecycle fields ignored by history equality until the production schema cutover | open |  | 2026-08-11T02:45:01.469Z |  |
+| 38 | 43.2 | stub | app/src/components/physic-paint/roto/physicsPaintRotoLoopClips.test.ts | 389 | Wave 0 controlled markers keep canonical revision and project equality unsupported until the production schema cutover | fixed |  | 2026-08-11T02:45:01.220Z | 2026-09-22T15:42:12.157Z |
+| 39 | 43.2 | stub | app/src/lib/physicPaintPersistence.test.ts | 300 | Wave 0 controlled markers keep Group lifecycle fields unsupported at save/reopen until the production schema cutover | fixed |  | 2026-08-11T02:45:01.302Z | 2026-09-22T15:42:12.353Z |
+| 40 | 43.2 | stub | app/src/types/physicPaint.test.ts | 305 | Wave 0 controlled markers keep Group lifecycle fields unsupported in physical transport until the production schema cutover | fixed |  | 2026-08-11T02:45:01.385Z | 2026-09-22T15:42:12.553Z |
+| 41 | 43.2 | stub | app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts | 191 | Wave 0 controlled markers keep Group lifecycle fields ignored by history equality until the production schema cutover | fixed |  | 2026-08-11T02:45:01.469Z | 2026-09-22T15:42:12.743Z |
 | 42 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale Plan 43.2-01 progress percentage, activity, and Current Position metadata after generic state handlers wrote contradictory values | fixed |  | 2026-08-11T02:48:16.498Z | 2026-08-11T02:48:42.796Z |
-| 43 | 43.2 | stub | app/src/lib/physicPaintBridge.test.ts | 2108 | The production-cutover-pending result deliberately keeps lifecycle proposal acceptance test-only until the later canonical production cutover. | open |  | 2026-08-11T02:58:41.370Z |  |
-| 44 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1860 | Pre-existing skipped native close-window test remains outside Plan 43.2-02. | open |  | 2026-08-11T02:58:41.449Z |  |
-| 45 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale generated progress percentage and last-activity metadata after Plan 43.2-02. | open |  | 2026-08-11T02:59:29.105Z |  |
-| 46 | 43.2 | stub | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md | 5 | Wave 0 UAT rows intentionally retain Plan 17 observation and evidence sentinels until frozen-session native acceptance | open |  | 2026-08-11T03:07:49.461Z |  |
+| 43 | 43.2 | stub | app/src/lib/physicPaintBridge.test.ts | 2108 | The production-cutover-pending result deliberately keeps lifecycle proposal acceptance test-only until the later canonical production cutover. | fixed |  | 2026-08-11T02:58:41.370Z | 2026-09-22T15:42:12.937Z |
+| 44 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1860 | Pre-existing skipped native close-window test remains outside Plan 43.2-02. | fixed |  | 2026-08-11T02:58:41.449Z | 2026-09-22T15:42:13.129Z |
+| 45 | 43.2 | deviation | .planning/STATE.md |  | Reconciled stale generated progress percentage and last-activity metadata after Plan 43.2-02. | fixed |  | 2026-08-11T02:59:29.105Z | 2026-09-22T15:42:13.318Z |
+| 46 | 43.2 | stub | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md | 5 | Wave 0 UAT rows intentionally retain Plan 17 observation and evidence sentinels until frozen-session native acceptance | fixed |  | 2026-08-11T03:07:49.461Z | 2026-09-22T15:42:13.496Z |
 | 47 | 43.2 | deviation | app/src/components/physic-paint/hooks/useRotoPhysicalEditCoordinator.test.ts |  | Updated accepted settlement fixtures to echo exact project authority after lease propagation. | fixed |  | 2026-08-11T06:49:05.439Z | 2026-08-11T06:49:38.327Z |
 | 48 | 43.2 | deviation | app/src/lib/physicPaintBridge.test.ts |  | Updated accepted bridge fixtures to acquire and release exact canonical lease tokens. | fixed |  | 2026-08-11T06:49:05.521Z | 2026-08-11T06:49:38.410Z |
 | 49 | 43.2 | deviation | app/src/lib/physicPaintBridge.ts |  | Extended the closed bridge token parser to validate exclusive and recovery ownership. | fixed |  | 2026-08-11T06:49:05.605Z | 2026-08-11T06:49:38.494Z |
@@ -71,22 +71,22 @@ last_updated: 2026-08-12T05:51:29.071Z
 | 54 | 43.2 | deviation | app/src/types/physicPaint.test.ts |  | Corrected Action transaction fixtures to canonical UUID v4 tokens | fixed |  | 2026-08-11T10:18:29.203Z | 2026-08-11T10:18:56.986Z |
 | 55 | 43.2 | deviation | app/src/types/physicPaint.ts |  | Added persisted acknowledged receipt validation for transaction status | fixed |  | 2026-08-11T10:18:29.282Z | 2026-08-11T10:18:57.062Z |
 | 56 | 43.2 | deviation | .planning/STATE.md |  | Corrected out-of-order plan position and progress after state handler advancement | fixed |  | 2026-08-11T10:18:29.355Z | 2026-08-11T10:18:57.147Z |
-| 57 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1997 | Pre-existing native window close-save listener test remains skipped and is unrelated to referenced Action replay. | open |  | 2026-08-11T11:27:09.939Z |  |
+| 57 | 43.2 | skipped-test | app/src/lib/physicPaintBridge.test.ts | 1997 | Pre-existing native window close-save listener test remains skipped and is unrelated to referenced Action replay. | waived | The remaining it.skip is the native window close-save test; vitest cannot drive a Tauri webview and the close-save path is covered by native UAT (Studio-close rounds 2026-09-21/22). | 2026-08-11T11:27:09.939Z | 2026-09-22T15:42:15.805Z |
 | 58 | 43.2 | deviation | .planning/STATE.md |  | Corrected out-of-order Plan 20 state advancement so the next executable position remains Plan 13 and progress stays 92 percent | fixed |  | 2026-08-11T11:33:31.640Z | 2026-08-11T11:33:31.793Z |
 | 59 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintRightPanel.tsx |  | Added the visible Actions tab rename required to complete the canonical product vocabulary. | fixed |  | 2026-08-11T12:47:34.636Z | 2026-08-11T12:48:39.440Z |
 | 60 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Forwarded accepted passive Action linkage to the existing Group Rail halo inputs. | fixed |  | 2026-08-11T12:47:34.722Z | 2026-08-11T12:51:09.300Z |
 | 61 | 43.2 | deviation | app/src/components/physic-paint/physicsPaintStudio.css |  | Added scoped linked Group navigation presentation and endpoint disabled styles. | fixed |  | 2026-08-11T12:47:34.814Z | 2026-08-11T12:51:09.670Z |
 | 62 | 43.2 | deviation | app/src/components/physic-paint/view/PhysicsPaintLoopClipRail.test.tsx |  | Updated stale rail ownership tracer expectations after the canonical terminology cutover. | fixed |  | 2026-08-11T12:47:34.900Z | 2026-08-11T12:51:10.023Z |
 | 63 | 43.2 | deviation | .planning/STATE.md |  | Skipped state.advance-plan to preserve blocked Plan 43.2-17 while completing out-of-order gap Plan 43.2-21. | fixed |  | 2026-08-11T17:30:56.351Z | 2026-08-11T17:32:28.720Z |
-| 64 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-23-PLAN.md |  | Targeted copied-project frozen parent/child save-reopen verification remains pending; retained fixture was not accessed and Plan 43.2-17 remains blocked | open |  | 2026-08-11T17:52:56.791Z |  |
+| 64 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-23-PLAN.md |  | Targeted copied-project frozen parent/child save-reopen verification remains pending; retained fixture was not accessed and Plan 43.2-17 remains blocked | fixed |  | 2026-08-11T17:52:56.791Z | 2026-09-22T15:42:13.658Z |
 | 65 | 43.2 | deviation | .planning/STATE.md |  | Corrected state.update-progress metadata from percent 63 to 97 while preserving Plan 43.2-17 as blocked | fixed |  | 2026-08-11T17:53:43.789Z | 2026-08-11T17:54:00.857Z |
-| 66 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Plan 43.2-25 native Task 3 failed on 2418ed6c; replacement settlement candidate 69d07703 remains pending seven targeted parent/child retests | open |  | 2026-08-11T20:44:55.517Z |  |
-| 67 | 43.2 | unmet-truth | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Frozen 2418ed6c native Group operations partially settled; automated repair 69d07703 is pending seven targeted exact-once parent/child retests | open |  | 2026-08-12T05:51:29.071Z |  |
-| 68 | 43.2 | unmet-truth | app/src-tauri/capabilities |  | Frozen 69d07703 save rejects the project-local .physic-paint-staging UUID path under allow-exists; SAVE-REOPEN remains blocked without broad filesystem scope | open |  | 2026-08-12T11:58:21.000Z |  |
-| 69 | 43.2 | unmet-truth | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Frozen 69d07703 Delete Frame removes the occurrence and history works, but the accepted empty Group gap remains green | open |  | 2026-08-12T11:58:21.000Z |  |
-| 70 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 cannot Paint directly into a deleted Group-owned gap; no exact-frame override or cache is accepted | open |  | 2026-08-12T11:58:21.000Z |  |
-| 71 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 local Paint over Group content destroys both prior and requested content with no accepted cache | open |  | 2026-08-12T11:58:21.000Z |  |
-| 72 | 43.2 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent | open |  | 2026-08-12T11:58:21.000Z |  |
+| 66 | 43.2 | unrun-verify | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Plan 43.2-25 native Task 3 failed on 2418ed6c; replacement settlement candidate 69d07703 remains pending seven targeted parent/child retests | fixed |  | 2026-08-11T20:44:55.517Z | 2026-09-22T15:42:13.847Z |
+| 67 | 43.2 | unmet-truth | .planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md |  | Frozen 2418ed6c native Group operations partially settled; automated repair 69d07703 is pending seven targeted exact-once parent/child retests | fixed |  | 2026-08-12T05:51:29.071Z | 2026-09-22T15:42:14.037Z |
+| 68 | 43.2 | unmet-truth | app/src-tauri/capabilities |  | Frozen 69d07703 save rejects the project-local .physic-paint-staging UUID path under allow-exists; SAVE-REOPEN remains blocked without broad filesystem scope | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.237Z |
+| 69 | 43.2 | unmet-truth | app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx |  | Frozen 69d07703 Delete Frame removes the occurrence and history works, but the accepted empty Group gap remains green | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.439Z |
+| 70 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 cannot Paint directly into a deleted Group-owned gap; no exact-frame override or cache is accepted | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.636Z |
+| 71 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 local Paint over Group content destroys both prior and requested content with no accepted cache | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.832Z |
+| 72 | 43.2 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:15.031Z |
 
 ````json
 [
@@ -133,10 +133,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md",
     "line": null,
     "description": "Compile proof deferred to Plan 13 after byte-exact native UAT approval",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-22T13:56:41.272Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:10.446Z"
   },
   {
     "id": 5,
@@ -145,10 +145,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/phases/36.14-physics-paint-roto-timeline-ui-from-pencil/36.14-11-SUMMARY.md",
     "line": null,
     "description": "Build did not run because the chained typecheck failed on obsolete pre-UAT Script tests",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-22T13:56:41.382Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:10.626Z"
   },
   {
     "id": 6,
@@ -229,10 +229,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx",
     "line": null,
     "description": "Intentional empty flex-1 capsule slot (.physics-paint-header-capsule-slot); resolved by Plan 05 status capsule",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-25T18:41:27.754Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:10.811Z"
   },
   {
     "id": 13,
@@ -241,10 +241,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/phases/38-multi-copy-paste-and-tooltip-polish/38-01-PLAN.md",
     "line": null,
     "description": "38-01 verify block: Studio port grep expectations (==1 whole-file) contradict action text; verified scoped to keyUtilities block instead",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-27T14:40:22.046Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:10.996Z"
   },
   {
     "id": 14,
@@ -265,10 +265,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint",
     "line": null,
     "description": "Deferred follow-up: plain mouse wheel does not scroll the timeline horizontally (shift+wheel required); bottom action toolbar also needs working horizontal scroll",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-07-28T05:55:05.768Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:11.185Z"
   },
   {
     "id": 16,
@@ -397,10 +397,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src-tauri/src/services/project_io.rs",
     "line": null,
     "description": "Pre-existing cargo test lib-test compile failure (stale roto field names); verification battery item 5 red",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-01T13:41:39.096Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:11.381Z"
   },
   {
     "id": 27,
@@ -409,10 +409,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/audio/efxPaintAudioMonitor.ts",
     "line": null,
     "description": "41-04 deviation: revisioned-update restart decision moved after prepare await (toggle race serialization)",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-04T22:36:07.192Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:11.577Z"
   },
   {
     "id": 28,
@@ -421,10 +421,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/viteBuild.test.ts",
     "line": 184,
     "description": "Pre-existing main desktop chunk exceeds the locked 1100 kB warning budget (1,112.66 kB at pre-GREEN baseline 02fa699d).",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-07T11:01:42.037Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:11.767Z"
   },
   {
     "id": 29,
@@ -433,10 +433,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.test.ts",
     "line": null,
     "description": "Inherited break lifecycle behaviors were characterized green instead of forcing artificial RED failures",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Accepted process deviation: inherited break-lifecycle behaviors were characterized green; no artificial RED was forced (43.1).",
     "recorded_at": "2026-08-09T15:05:02.967Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:15.227Z"
   },
   {
     "id": 30,
@@ -445,10 +445,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/stores/physicPaintStore.rotoPhysicalStructuralCache.test.ts",
     "line": null,
     "description": "Structural cache test and projection threading landed in the same atomic commit",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Accepted process deviation: the structural cache test and its projection threading landed in one atomic commit (43.1).",
     "recorded_at": "2026-08-09T15:05:03.053Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:15.411Z"
   },
   {
     "id": 31,
@@ -457,10 +457,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
     "line": null,
     "description": "Accepted break ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state.",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "Accepted scope deviation: break-ownership wiring was added outside the plan's listed Task 2 files so the live strip receives canonical state (43.1).",
     "recorded_at": "2026-08-09T16:51:31.383Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:15.601Z"
   },
   {
     "id": 32,
@@ -469,10 +469,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/lib/physicPaintPersistence.ts",
     "line": null,
     "description": "Cleared memoized save authority when empty-output cleanup removes the canonical Physics Paint cache.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-10T06:36:00.210Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:11.971Z"
   },
   {
     "id": 33,
@@ -541,10 +541,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/roto/physicsPaintRotoLoopClips.test.ts",
     "line": 389,
     "description": "Wave 0 controlled markers keep canonical revision and project equality unsupported until the production schema cutover",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T02:45:01.220Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:12.157Z"
   },
   {
     "id": 39,
@@ -553,10 +553,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/lib/physicPaintPersistence.test.ts",
     "line": 300,
     "description": "Wave 0 controlled markers keep Group lifecycle fields unsupported at save/reopen until the production schema cutover",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T02:45:01.302Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:12.353Z"
   },
   {
     "id": 40,
@@ -565,10 +565,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/types/physicPaint.test.ts",
     "line": 305,
     "description": "Wave 0 controlled markers keep Group lifecycle fields unsupported in physical transport until the production schema cutover",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T02:45:01.385Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:12.553Z"
   },
   {
     "id": 41,
@@ -577,10 +577,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/hooks/useRotoPhysicalEditHistory.test.ts",
     "line": 191,
     "description": "Wave 0 controlled markers keep Group lifecycle fields ignored by history equality until the production schema cutover",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T02:45:01.469Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:12.743Z"
   },
   {
     "id": 42,
@@ -601,10 +601,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/lib/physicPaintBridge.test.ts",
     "line": 2108,
     "description": "The production-cutover-pending result deliberately keeps lifecycle proposal acceptance test-only until the later canonical production cutover.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T02:58:41.370Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:12.937Z"
   },
   {
     "id": 44,
@@ -613,10 +613,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/lib/physicPaintBridge.test.ts",
     "line": 1860,
     "description": "Pre-existing skipped native close-window test remains outside Plan 43.2-02.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T02:58:41.449Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:13.129Z"
   },
   {
     "id": 45,
@@ -625,10 +625,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/STATE.md",
     "line": null,
     "description": "Reconciled stale generated progress percentage and last-activity metadata after Plan 43.2-02.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T02:59:29.105Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:13.318Z"
   },
   {
     "id": 46,
@@ -637,10 +637,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md",
     "line": 5,
     "description": "Wave 0 UAT rows intentionally retain Plan 17 observation and evidence sentinels until frozen-session native acceptance",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T03:07:49.461Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:13.496Z"
   },
   {
     "id": 47,
@@ -769,10 +769,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/lib/physicPaintBridge.test.ts",
     "line": 1997,
     "description": "Pre-existing native window close-save listener test remains skipped and is unrelated to referenced Action replay.",
-    "status": "open",
-    "reason": "",
+    "status": "waived",
+    "reason": "The remaining it.skip is the native window close-save test; vitest cannot drive a Tauri webview and the close-save path is covered by native UAT (Studio-close rounds 2026-09-21/22).",
     "recorded_at": "2026-08-11T11:27:09.939Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:15.805Z"
   },
   {
     "id": 58,
@@ -853,10 +853,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-23-PLAN.md",
     "line": null,
     "description": "Targeted copied-project frozen parent/child save-reopen verification remains pending; retained fixture was not accessed and Plan 43.2-17 remains blocked",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T17:52:56.791Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:13.658Z"
   },
   {
     "id": 65,
@@ -877,10 +877,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md",
     "line": null,
     "description": "Plan 43.2-25 native Task 3 failed on 2418ed6c; replacement settlement candidate 69d07703 remains pending seven targeted parent/child retests",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-11T20:44:55.517Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:13.847Z"
   },
   {
     "id": 67,
@@ -889,10 +889,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": ".planning/phases/43.2-motion-and-static-group-stabilization-and-action-lifecycle-u/43.2-UAT.md",
     "line": null,
     "description": "Frozen 2418ed6c native Group operations partially settled; automated repair 69d07703 is pending seven targeted exact-once parent/child retests",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-12T05:51:29.071Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:14.037Z"
   },
   {
     "id": 68,
@@ -901,10 +901,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src-tauri/capabilities",
     "line": null,
     "description": "Frozen 69d07703 save rejects the project-local .physic-paint-staging UUID path under allow-exists; SAVE-REOPEN remains blocked without broad filesystem scope",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-12T11:58:21.000Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:14.237Z"
   },
   {
     "id": 69,
@@ -913,10 +913,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx",
     "line": null,
     "description": "Frozen 69d07703 Delete Frame removes the occurrence and history works, but the accepted empty Group gap remains green",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-12T11:58:21.000Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:14.439Z"
   },
   {
     "id": 70,
@@ -925,10 +925,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
     "line": null,
     "description": "Frozen 69d07703 cannot Paint directly into a deleted Group-owned gap; no exact-frame override or cache is accepted",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-12T11:58:21.000Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:14.636Z"
   },
   {
     "id": 71,
@@ -937,10 +937,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
     "line": null,
     "description": "Frozen 69d07703 local Paint over Group content destroys both prior and requested content with no accepted cache",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-12T11:58:21.000Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:14.832Z"
   },
   {
     "id": 72,
@@ -949,10 +949,10 @@ last_updated: 2026-08-12T05:51:29.071Z
     "file": "app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts",
     "line": null,
     "description": "Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-08-12T11:58:21.000Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-22T15:42:15.031Z"
   }
 ]
 ````
