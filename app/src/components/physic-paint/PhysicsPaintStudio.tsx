@@ -121,6 +121,7 @@ import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkf
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
+import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
 import { useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
 import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
@@ -1159,13 +1160,24 @@ export function PhysicsPaintStudio() {
       const applied = await rotoScript.applyPreparedScript(preparation);
       if (applied) setLastError(null);
       else {
-        const message = rotoScript.error.peek()?.message;
-        if (message) setLastError(message);
+        // quick-260922-al1 (Task 3): a refused apply surfaces through the
+        // EXISTING status capsule — the same route the rail-set rejections
+        // already take (useRotoPhysicalEditCoordinator.ts:1909-1912), since the
+        // `setLastError` value alone is discarded by its empty destructure. The
+        // refusal copy wins where the code has one; every unaffected code keeps
+        // the clipboard's own message.
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error) ?? error?.message ?? null;
+        if (message) {
+          setLastError(message);
+          setApplyMessage(message);
+          setApplyStatus('error');
+        }
       }
     } finally {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
-  }, [rotoScript, rotoScriptLibrary]);
+  }, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus]);
   // 260905-dso: the relocated buffer Apply/Clear handlers — identity-stable
   // useCallbacks wired into the workflow memo (the Tools popover Actions
   // section). Bodies moved verbatim from the rightPanel scripts props.
@@ -1174,11 +1186,19 @@ export function PhysicsPaintStudio() {
       const success = await rotoScript.applyScript();
       if (success) setLastError(null);
       else {
-        const message = rotoScript.error.peek()?.message;
-        if (message) setLastError(message);
+        // quick-260922-al1 (Task 3): the same explicit refusal surface as
+        // handleSelectedScriptLoadAndApply above — one route for both apply
+        // entry points, and nothing else about Apply changes.
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error) ?? error?.message ?? null;
+        if (message) {
+          setLastError(message);
+          setApplyMessage(message);
+          setApplyStatus('error');
+        }
       }
     })();
-  }, [rotoScript, setLastError]);
+  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus]);
   const handleDiscardScript = useCallback(() => {
     rotoScript.discardScript();
     setLastError(null);

@@ -2183,3 +2183,73 @@ describe('Studio-origin document state reaches the save realm (quick-260921-e21)
     expect(pushPath).toContain('documentSyncPushGuardRef.current = createDocumentSyncPushGuard();');
   });
 });
+
+describe('quick-260922-al1 explicit Action-apply refusal on the status capsule', () => {
+  const loadAndApplyBody = (() => {
+    const start = studio.indexOf('const handleSelectedScriptLoadAndApply = useCallback(async () => {');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('const handleApplyScript = useCallback(() => {', start));
+  })();
+  const applyScriptBody = (() => {
+    const start = studio.indexOf('const handleApplyScript = useCallback(() => {');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('const handleDiscardScript = useCallback(() => {', start));
+  })();
+  const rowActivateBody = (() => {
+    const start = studio.indexOf('const handleScriptRowActivate = useCallback(async (id: string) => {');
+    return start === -1 ? '' : studio.slice(start, studio.indexOf('const handleSelectedScriptLoadAndApply = useCallback(async () => {', start));
+  })();
+
+  it('routes BOTH apply entry points through the refusal helper and the capsule', () => {
+    // The `setApplyStatus`/`setApplyMessage` pair is the ONLY real surface: the
+    // Studio destructures `setLastError` with an empty slot, so its value is
+    // discarded and a refused apply used to reach the user as nothing at all.
+    for (const [name, body] of [['handleSelectedScriptLoadAndApply', loadAndApplyBody], ['handleApplyScript', applyScriptBody]] as const) {
+      expect(body, `${name} must be sliceable for this pin`).not.toBe('');
+      expect(body, `${name} must consult the refusal mapper`).toContain('buildRotoScriptApplyRefusalMessage(error)');
+      expect(body, `${name} must keep the clipboard message for unaffected codes`).toContain('?? error?.message ?? null');
+      expect(body, `${name} must publish the message to every surface`).toContain('setLastError(message);');
+      expect(body, `${name} must publish the message to the capsule`).toContain('setApplyMessage(message);');
+      expect(body, `${name} must mark the capsule as an error`).toContain("setApplyStatus('error');");
+    }
+  });
+
+  it('leaves the success path byte-identical and never marks a success as an error', () => {
+    expect(loadAndApplyBody).toContain('if (applied) setLastError(null);');
+    expect(applyScriptBody).toContain('if (success) setLastError(null);');
+    for (const [name, body] of [['handleSelectedScriptLoadAndApply', loadAndApplyBody], ['handleApplyScript', applyScriptBody]] as const) {
+      const clears = body.split('setLastError(null);').length - 1;
+      expect(clears, `${name} must clear the last error exactly once`).toBe(1);
+      // Exactly one error publication, and it sits AFTER the success clear — a
+      // success can never take the error branch.
+      const errors = body.split("setApplyStatus('error');").length - 1;
+      expect(errors, `${name} must mark an error exactly once`).toBe(1);
+      expect(body.indexOf('setLastError(null);')).toBeLessThan(body.indexOf("setApplyStatus('error');"));
+    }
+  });
+
+  it('keeps both callbacks identity-stable with the setters they use declared', () => {
+    expect(loadAndApplyBody).not.toBe('');
+    expect(studio).toContain('}, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus]);');
+    expect(studio).toContain('}, [rotoScript, setLastError, setApplyMessage, setApplyStatus]);');
+  });
+
+  it('does NOT change handleScriptRowActivate — it loads, it never applies', () => {
+    expect(rowActivateBody).not.toBe('');
+    expect(rowActivateBody).toContain('rotoScriptLibrary.activateAndLoad(id);');
+    expect(rowActivateBody).not.toContain('applyScript');
+    expect(rowActivateBody).not.toContain('setApplyStatus');
+    expect(rowActivateBody).not.toContain('setApplyMessage');
+    expect(rowActivateBody).not.toContain('buildRotoScriptApplyRefusalMessage');
+  });
+
+  it('adds no second refusal route: the mapper is imported once and called only at the two apply sites', () => {
+    const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
+    expect(mentions).toBe(3); // one import + the two apply call sites
+    expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
+  });
+
+  it('surfaces through the EXISTING capsule bundle — no toast, no dialog, no new status surface', () => {
+    // The capsule reads this exact pair; the refusal change adds copy to it and
+    // must not have introduced a competing surface.
+    expect(studio).toContain(": (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error',");
+  });
+});

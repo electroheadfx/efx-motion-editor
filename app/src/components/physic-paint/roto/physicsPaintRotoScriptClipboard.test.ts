@@ -1,6 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
-import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptActionAvailability, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
+import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptActionAvailability, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
+import { filterScriptRows } from './physicsPaintRotoScriptScope';
+import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
+import { createPersistedRotoScript } from './physicsPaintRotoScriptSchema';
+import type { PhysicPaintLaunchContext, PhysicPaintScriptLibraryRequest, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
 import { createPhysicsPaintEngineActions } from '../engine/usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { createPhysicsPaintSessionController, type PhysicsPaintSessionControllerInput } from '../hooks/usePhysicsPaintSessionController';
@@ -976,3 +982,192 @@ describe('quick-260922-al1 apply-path evidence (L2 cross-layer / L3a refusal)', 
     expect(test.controller.clipboard.value).toBe(copied);
   });
 });
+
+/**
+ * quick-260922-al1 (Task 3) — the filter is PRESENTATION-ONLY, pinned against
+ * the real selection machinery and the real apply destination.
+ *
+ * The brief's design point 4 asks for proof that narrowing the rendered list by
+ * origin layer cannot reach into selection or into where an Action lands. The
+ * whole risk is a filter that leaks past the view, so the pins below drive the
+ * real `createRotoScriptLibraryController` and the real clipboard controller —
+ * never a stub of either — and the source-shape leg pins the absence of the
+ * filter symbol from both controllers.
+ */
+const SCOPE_ORIGIN_LAYER_ID = 'layer-1';
+const SCOPE_CURRENT_LAYER_ID = 'layer-2';
+const SCOPE_HIDDEN_SCRIPT_ID = '123e4567-e89b-42d3-a456-426614174000';
+const SCOPE_VISIBLE_SCRIPT_ID = '223e4567-e89b-42d3-a456-426614174000';
+const SCOPE_WEBP = 'data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAUAAAAvAAAAAAA=';
+
+const librarySource = readFileSync(fileURLToPath(new URL('./physicsPaintRotoScriptLibrary.ts', import.meta.url)), 'utf8');
+const clipboardSource = readFileSync(fileURLToPath(new URL('./physicsPaintRotoScriptClipboard.ts', import.meta.url)), 'utf8');
+const scriptsPanelSource = readFileSync(fileURLToPath(new URL('../view/PhysicsPaintScriptsPanel.tsx', import.meta.url)), 'utf8');
+
+function scopeLibraryRow(id: string, name: string, layerId: string, layerName: string) {
+  return {
+    id,
+    revision: `rev-${id}`,
+    integritySha256: 'a'.repeat(64),
+    name,
+    createdAt: '2026-07-16T12:00:00Z',
+    updatedAt: '2026-07-16T12:00:00Z',
+    source: {
+      projectName: 'Project', layerId, layerName, sourceFrame: 4, displayFrame: 4, width: 1600, height: 900,
+      background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 },
+    },
+    thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' },
+    brushCount: 1,
+  };
+}
+
+function scopeLibraryHarness() {
+  const rows = [
+    scopeLibraryRow(SCOPE_HIDDEN_SCRIPT_ID, 'Origin-layer Action', SCOPE_ORIGIN_LAYER_ID, 'Layer 1'),
+    scopeLibraryRow(SCOPE_VISIBLE_SCRIPT_ID, 'Current-layer Action', SCOPE_CURRENT_LAYER_ID, 'Layer 2'),
+  ];
+  const persisted = new Map(rows.map((row) => [row.id, createPersistedRotoScript({
+    id: row.id, name: row.name, createdAt: row.createdAt, updatedAt: row.updatedAt, source: row.source,
+    thumbnail: { ...row.thumbnail, dataUrl: SCOPE_WEBP },
+    brushes: [{ primary: { tool: 'paint', points: [{ x: 10, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }],
+  })]));
+  const launch = scopeLibraryHarnessContext();
+  const request = vi.fn(async (input: PhysicPaintScriptLibraryRequest): Promise<PhysicPaintScriptLibraryResult> => ({
+    operationId: input.operationId, kind: input.kind, ok: true, rows, skippedInvalidCount: 0, diagnostics: [],
+    ...(input.kind === 'load' ? { script: persisted.get(input.scriptId) } : {}),
+  }));
+  const capture: RotoScriptPersistenceCapture = {
+    script: { provenance: { sessionId: 's', layerId: SCOPE_CURRENT_LAYER_ID, sourceFrame: 4 }, sourceFrame: 4, sourceDisplayFrame: 4, sourceRevision: 1, brushes: [] },
+    scriptAlphaCanvas: {} as HTMLCanvasElement,
+  };
+  const controller = createRotoScriptLibraryController({
+    request,
+    capturePersistence: vi.fn(async () => capture),
+    captureThumbnail: vi.fn(async () => ({ mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: SCOPE_WEBP })),
+    replaceClipboard: vi.fn(() => RotoScriptClipboardReplacementOutcome.Replaced),
+    getLaunchContext: () => launch,
+    log: vi.fn(),
+    publishScriptScope: vi.fn(),
+  });
+  return { controller, rows };
+}
+
+describe('quick-260922-al1 the layer filter is presentation-only (drift-proof pins)', () => {
+  it('filterScriptRows mutates neither the array nor any row, and keeps identity for All', () => {
+    const rows = [
+      scopeLibraryRow(SCOPE_HIDDEN_SCRIPT_ID, 'Origin-layer Action', SCOPE_ORIGIN_LAYER_ID, 'Layer 1'),
+      scopeLibraryRow(SCOPE_VISIBLE_SCRIPT_ID, 'Current-layer Action', SCOPE_CURRENT_LAYER_ID, 'Layer 2'),
+    ];
+    const snapshot = JSON.parse(JSON.stringify(rows));
+    // Frozen inputs turn any in-place write into a strict-mode TypeError, so this
+    // is a real mutation probe rather than a comparison that could share refs.
+    for (const row of rows) Object.freeze(row);
+    Object.freeze(rows);
+
+    expect(filterScriptRows(rows, 'all')).toBe(rows);
+    const narrowed = filterScriptRows(rows, SCOPE_CURRENT_LAYER_ID);
+    expect(narrowed).toEqual([rows[1]]);
+    expect(narrowed[0]).toBe(rows[1]);
+    expect(rows).toEqual(snapshot);
+  });
+
+  it('hides the selected Action without disturbing selectedId, selected or selectability', async () => {
+    const test = scopeLibraryHarness();
+    await test.controller.updateProjectContext(scopeLibraryHarnessContext());
+    expect(test.controller.rows.value.map((row) => row.id)).toEqual([SCOPE_HIDDEN_SCRIPT_ID, SCOPE_VISIBLE_SCRIPT_ID]);
+
+    test.controller.select(SCOPE_HIDDEN_SCRIPT_ID);
+    expect(test.controller.selectedId.value).toBe(SCOPE_HIDDEN_SCRIPT_ID);
+
+    // The current layer's scope hides the origin-layer Action...
+    const visible = filterScriptRows(test.controller.rows.value, SCOPE_CURRENT_LAYER_ID);
+    expect(visible.map((row) => row.id)).toEqual([SCOPE_VISIBLE_SCRIPT_ID]);
+
+    // ...and the controller is untouched by that: the selection survives, and a
+    // row the filter hides stays selectable because `select` validates against
+    // the UNFILTERED rows.
+    expect(test.controller.selectedId.value).toBe(SCOPE_HIDDEN_SCRIPT_ID);
+    expect(test.controller.selected.value?.id).toBe(SCOPE_HIDDEN_SCRIPT_ID);
+    test.controller.select(SCOPE_VISIBLE_SCRIPT_ID);
+    test.controller.select(SCOPE_HIDDEN_SCRIPT_ID);
+    expect(test.controller.selectedId.value).toBe(SCOPE_HIDDEN_SCRIPT_ID);
+  });
+
+  it('still loads a hidden Action, because activateAndLoad reads the unfiltered rows', async () => {
+    const test = scopeLibraryHarness();
+    await test.controller.updateProjectContext(scopeLibraryHarnessContext());
+    test.controller.select(SCOPE_HIDDEN_SCRIPT_ID);
+    expect(filterScriptRows(test.controller.rows.value, SCOPE_CURRENT_LAYER_ID).map((row) => row.id)).toEqual([SCOPE_VISIBLE_SCRIPT_ID]);
+
+    await expect(test.controller.activateAndLoad(SCOPE_HIDDEN_SCRIPT_ID)).resolves.toBe(true);
+    expect(test.controller.status.value).toContain('Origin-layer Action');
+  });
+
+  it('applies to the CURRENT layer target, never the origin layer, whatever the scope hides', async () => {
+    // The scope hides the origin-layer Action; the clipboard still resolves its
+    // destination from the LIVE source at apply time. An incompatible current
+    // target is REFUSED — it is never silently redirected to the origin layer.
+    const incompatible = harness([stroke(1)]);
+    incompatible.setSource({ selectionKind: 'real-key', layerId: SCOPE_CURRENT_LAYER_ID, keyId: 'current-key', appFrame: 9 });
+    await copyCompletedSource(incompatible);
+    incompatible.setSource({ selectionKind: 'real-key', layerId: SCOPE_CURRENT_LAYER_ID, keyId: 'current-key', appFrame: 10 });
+    incompatible.setPrepareTarget(async () => null);
+    await expect(incompatible.controller.applyScript()).resolves.toBe(false);
+    expect(incompatible.controller.error.value?.code).toBe('apply-empty-target-failed');
+    expect(incompatible.submitted).toHaveLength(0);
+
+    // With an accepting target, the committed destination is the CURRENT
+    // layer's key at the live playhead — one brush on `current-key`, never the
+    // Action's origin.
+    const compatible = harness([stroke(1)]);
+    compatible.setSource({ selectionKind: 'real-key', layerId: SCOPE_ORIGIN_LAYER_ID, keyId: 'origin-key', appFrame: 4 });
+    await copyCompletedSource(compatible, [1]);
+    compatible.setSource({ selectionKind: 'real-key', layerId: SCOPE_CURRENT_LAYER_ID, keyId: 'current-key', appFrame: 10 });
+    compatible.setPrepareTarget(async (current) => ({ keyId: current.keyId ?? 'unused', appFrame: current.appFrame }));
+    const applying = compatible.controller.applyScript();
+    await flushMicrotasks();
+    expect(compatible.submitted).toHaveLength(1);
+    expect(compatible.controller.getAcceptedTarget(compatible.engine, 100)).toMatchObject({ keyId: 'current-key', appFrame: 10 });
+    compatible.controller.observeCompletedMutation(compatible.engine, completion(100));
+    await expect(applying).resolves.toBe(true);
+    expect(compatible.controller.status.value).toBe('Applied 1');
+  });
+
+  it('PIN: neither controller knows the filter exists — it lives in the panel, never in the machinery', () => {
+    expect(scriptsPanelSource).toContain('filterScriptRows(');
+    // The library knows the scope model only through the `'all'` sentinel it
+    // needs for its own signal's initial value — one import, no filtering. The
+    // clipboard is not allowed to know the module at all.
+    expect(librarySource.split('physicsPaintRotoScriptScope').length - 1).toBe(1);
+    expect(librarySource).toContain("import { ROTO_SCRIPT_SCOPE_ALL } from './physicsPaintRotoScriptScope';");
+    for (const [name, source] of [['physicsPaintRotoScriptLibrary.ts', librarySource], ['physicsPaintRotoScriptClipboard.ts', clipboardSource]] as const) {
+      expect(source, `${name} must not narrow its rows`).not.toContain('filterScriptRows');
+      expect(source, `${name} must not build scope entries`).not.toContain('buildScriptScopeEntries');
+      expect(source, `${name} must not resolve provenance`).not.toContain('resolveScriptProvenance');
+    }
+    expect(clipboardSource).not.toContain('physicsPaintRotoScriptScope');
+    // Every selection and lookup reads the unfiltered source of truth.
+    expect(librarySource).toContain('select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; }');
+    expect(librarySource).toContain('const selected = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null);');
+    expect(librarySource).toContain('const row = rows.peek().find((candidate) => candidate.id === id);');
+  });
+
+  it('PIN: the refusal is a surfacing change only — codes and operation errors are untouched', () => {
+    for (const code of ['copy-drain-failed', 'copy-source-invalidated', 'apply-empty-target-failed', 'apply-enqueue-failed', 'apply-cancelled', 'apply-partial-failure', 'apply-invalidated']) {
+      expect(clipboardSource).toContain(`'${code}'`);
+    }
+    expect(clipboardSource).toContain("'Apply Script could not prepare the physical destination'");
+    expect(clipboardSource).toContain("'Apply Script could not prepare the destination as an accepted physical Roto key.'");
+    expect(clipboardSource).not.toContain('buildRotoScriptApplyRefusalMessage');
+  });
+});
+
+function scopeLibraryHarnessContext(): PhysicPaintLaunchContext {
+  return {
+    operationId: 'launch', layerId: SCOPE_CURRENT_LAYER_ID, layerName: 'Layer 2', startFrame: 4, width: 1600, height: 900,
+    project: {
+      name: 'Project', saved: true, contextId: 'context-1', scriptScope: 'all',
+      layers: [{ id: SCOPE_ORIGIN_LAYER_ID, name: 'Layer 1' }, { id: SCOPE_CURRENT_LAYER_ID, name: 'Layer 2' }],
+    },
+  };
+}
