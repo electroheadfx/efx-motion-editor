@@ -7,9 +7,20 @@ const emitTo = vi.hoisted(() => vi.fn(
   async (_target: string, _event: string, _payload: unknown): Promise<void> => undefined,
 ));
 const performanceRecord = vi.hoisted(() => vi.fn());
+// quick-260922-al1: the child's project-context PULL registers a one-shot
+// `listen` before it emits, so the mock needs `listen` and a way to deliver the
+// reply the child awaits. Every other `listen` call site in the bridge sits
+// behind `isTauriRuntime()`, which is false under this Node harness (the stubs
+// below carry none of the Tauri markers), so adding it changes no existing path.
+const listeners = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
+const unlistenSpy = vi.hoisted(() => vi.fn());
+const listen = vi.hoisted(() => vi.fn(async (event: string, handler: (event: { payload: unknown }) => void) => {
+  listeners.set(event, handler);
+  return unlistenSpy;
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
-vi.mock('@tauri-apps/api/event', () => ({ emitTo }));
+vi.mock('@tauri-apps/api/event', () => ({ emitTo, listen }));
 vi.mock('../performance/physicsPaintPerformanceTrace', () => ({ recordPhysicsPaintPerformance: performanceRecord }));
 
 import {
@@ -28,11 +39,16 @@ import {
   createPhysicPaintImageImportStatePorts,
   createPhysicPaintLaunchContext,
   installPhysicPaintEfxPaintDocumentListener,
+  installPhysicPaintProjectContextRequestListener,
   PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT,
   PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT,
   PHYSIC_PAINT_IMAGE_IMPORT_RESULT_EVENT,
   PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT,
   PHYSIC_PAINT_IMAGE_LIBRARY_RESULT_EVENT,
+  PHYSIC_PAINT_PROJECT_CONTEXT_EVENT,
+  PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT,
+  publishPhysicPaintProjectContext,
+  requestPhysicPaintProjectContext,
 } from '../../../lib/physicPaintBridge';
 import { defaultTransform, type Layer } from '../../../types/layer';
 import { sequenceStore } from '../../../stores/sequenceStore';
@@ -46,7 +62,9 @@ import {
   setPhotoReferenceSource,
 } from '../../../stores/efxPaintStore';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import { isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryResult } from '../../../types/physicPaint';
+import { isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextLayer, isPhysicPaintProjectContextRequest, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH } from '../../../types/physicPaint';
+import { acceptPhysicPaintProjectContextPayload, normalizeProjectContextLayers } from './usePhysicsPaintParentBridge';
+import { projectStore } from '../../../stores/projectStore';
 import { imageStore, _setImageMarkDirtyCallback } from '../../../stores/imageStore';
 import type { MceImageRef } from '../../../types/project';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
@@ -909,5 +927,256 @@ describe('Studio-origin document surfaces across the real pair (quick-260921-e21
     expect(applied.tracks.map((track) => track.id)).toContain(addedTrackId);
     expect(applied.tracks.find((track) => track.id === TRACK1)?.rotoPhysical?.realKeyRecords.map((entry) => entry.keyId))
       .toEqual(['k1']);
+  });
+});
+
+/**
+ * quick-260922-al1: the Scripts panel's layer scope is MAIN-realm state (a
+ * Studio layer switch NAVIGATES the reused child webview — lib.rs:186 — so no
+ * in-child signal survives one), and this is the pair that carries it: the
+ * child PULLS the project context on mount with NO scope, the main realm
+ * validates any requested scope against the LIVE layer set and republishes the
+ * whole payload on the existing project-context channel.
+ */
+describe('project-context scope round trip (quick-260922-al1)', () => {
+  type Handler = (event: { detail?: unknown; origin?: string; data?: unknown }) => void;
+  const installed = new Map<string, Handler>();
+  const posted: unknown[] = [];
+  const published: unknown[] = [];
+
+  const flush = () => new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+
+  const stubWindow = () => {
+    installed.clear();
+    posted.length = 0;
+    published.length = 0;
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        addEventListener: (name: string, fn: unknown) => { installed.set(name, fn as Handler); },
+        removeEventListener: (name: string) => { installed.delete(name); },
+        dispatchEvent: (event: { type: string; detail?: unknown }) => {
+          if (event.type === PHYSIC_PAINT_PROJECT_CONTEXT_EVENT) published.push(event.detail);
+          installed.get(event.type)?.({ detail: event.detail });
+          return true;
+        },
+        location: { origin: 'http://localhost' },
+        setTimeout: globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout,
+        opener: { postMessage: (message: unknown) => { posted.push(message); } },
+      },
+      writable: true,
+      configurable: true,
+    });
+  };
+
+  const physicLayer = (id: string, name: string): Layer => ({
+    id,
+    name,
+    type: 'physic-paint',
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'physic-paint', layerId: id },
+  });
+
+  beforeEach(() => {
+    emitTo.mockClear();
+    unlistenSpy.mockClear();
+    listeners.clear();
+    stubWindow();
+    projectStore.scriptScope.value = 'all';
+    sequenceStore.sequences.value = [{
+      id: 'al1-parent-sequence',
+      kind: 'fx',
+      name: 'al1 parent authority',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      keyPhotos: [],
+      layers: [physicLayer('layer-1', 'Character'), physicLayer('layer-2', 'Hair')],
+    }];
+  });
+
+  afterEach(() => {
+    sequenceStore.sequences.value = [];
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('PUBLISH: the payload carries every live layer (id + LIVE name) and the stored scope, re-clamped at publish time', async () => {
+    projectStore.scriptScope.value = 'layer-2';
+    await publishPhysicPaintProjectContext();
+
+    const project = published[0] as { layers: unknown; scriptScope: unknown; name: unknown; saved: unknown; contextId: unknown };
+    expect(project.layers).toEqual([{ id: 'layer-1', name: 'Character' }, { id: 'layer-2', name: 'Hair' }]);
+    expect(project.scriptScope).toBe('layer-2');
+    // The pre-al1 three-field contract is unchanged.
+    expect(typeof project.name).toBe('string');
+    expect(typeof project.saved).toBe('boolean');
+    expect(typeof project.contextId).toBe('string');
+    // The postMessage leg carries the identical payload.
+    expect(posted[0]).toEqual({ type: PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, payload: project });
+  });
+
+  it('PUBLISH CLAMP: a stored scope whose layer no longer exists degrades to all on the wire', async () => {
+    projectStore.scriptScope.value = 'layer-1';
+    sequenceStore.sequences.value = [{
+      id: 'al1-parent-sequence', kind: 'fx', name: 'al1 parent authority', fps: 24, width: 1920, height: 1080, keyPhotos: [],
+      layers: [physicLayer('layer-2', 'Hair')],
+    }];
+    await publishPhysicPaintProjectContext();
+
+    expect((published[0] as { scriptScope: unknown }).scriptScope).toBe('all');
+  });
+
+  it('ROUND TRIP: the child requests a live scope → the main realm stores it and republishes the payload the child accepts', async () => {
+    const unlisten = await installPhysicPaintProjectContextRequestListener();
+    const request = { operationId: 'op-al1-scope', scriptScope: 'layer-2' };
+
+    installed.get(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT)!({ detail: request });
+    await flush();
+
+    expect(projectStore.scriptScope.value).toBe('layer-2');
+    const childView = acceptPhysicPaintProjectContextPayload(published[published.length - 1]);
+    expect(childView?.scriptScope).toBe('layer-2');
+    expect(childView?.layers).toEqual([{ id: 'layer-1', name: 'Character' }, { id: 'layer-2', name: 'Hair' }]);
+
+    unlisten();
+    expect(installed.has(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT)).toBe(false);
+  });
+
+  it('FAIL-CLOSED: a request naming an unknown, dead or malformed scope stores and publishes all, changing nothing else', async () => {
+    projectStore.scriptScope.value = 'layer-1';
+    await installPhysicPaintProjectContextRequestListener();
+
+    // These are all WELL-FORMED requests (the shape guard accepts them) whose
+    // VALUE is not a live layer — the clamp is the second gate, and it is the
+    // one that stores All. (A malformed value never reaches here; see REFUSES.)
+    for (const requested of ['layer-ghost', 'layer-2-dead', 'all']) {
+      published.length = 0;
+      installed.get(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT)!({ detail: { operationId: 'op-al1-scope', scriptScope: requested } });
+      await flush();
+      expect(projectStore.scriptScope.value).toBe('all');
+      expect((published[0] as { scriptScope: unknown }).scriptScope).toBe('all');
+    }
+
+    published.length = 0;
+    installed.get(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT)!({ detail: { operationId: 'op-al1-scope', scriptScope: 'layer-2' } });
+    await flush();
+    expect(projectStore.scriptScope.value).toBe('layer-2');
+  });
+
+  it('READ-ONLY: a request with NO scope republishes but writes nothing — reopening the Studio cannot reset the stored filter', async () => {
+    projectStore.scriptScope.value = 'layer-2';
+    await installPhysicPaintProjectContextRequestListener();
+
+    installed.get(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT)!({ detail: { operationId: 'op-al1-mount-pull' } });
+    await flush();
+
+    expect(projectStore.scriptScope.value).toBe('layer-2');
+    expect((published[0] as { scriptScope: unknown }).scriptScope).toBe('layer-2');
+  });
+
+  it('REFUSES a malformed request: nothing is stored and nothing is published', async () => {
+    projectStore.scriptScope.value = 'layer-1';
+    await installPhysicPaintProjectContextRequestListener();
+
+    for (const malformed of [
+      undefined,
+      null,
+      'nope',
+      {},
+      { operationId: '' },
+      { operationId: 'op-al1-scope', scriptScope: 42 },
+      { operationId: 'op-al1-scope', scriptScope: 'layer-'.repeat(100) },
+      { operationId: 'op-al1-scope', unknownKey: true },
+    ]) {
+      installed.get(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT)!({ detail: malformed });
+      await flush();
+      expect(projectStore.scriptScope.value).toBe('layer-1');
+      expect(published).toHaveLength(0);
+    }
+  });
+
+  it('VALIDATION: the request/layer guards hold the bounded shape the wire contract names', () => {
+    expect(isPhysicPaintProjectContextLayer({ id: 'layer-1', name: 'Character' })).toBe(true);
+    expect(isPhysicPaintProjectContextLayer({ id: '', name: 'Character' })).toBe(false);
+    expect(isPhysicPaintProjectContextLayer({ id: 'layer-1', name: 7 })).toBe(false);
+    expect(isPhysicPaintProjectContextLayer({ id: 'layer-1', name: 'C', extra: 1 })).toBe(false);
+
+    expect(isPhysicPaintProjectContextRequest({ operationId: 'op-1' })).toBe(true);
+    expect(isPhysicPaintProjectContextRequest({ operationId: 'op-1', scriptScope: 'layer-1' })).toBe(true);
+    expect(isPhysicPaintProjectContextRequest({ operationId: 'op-1', scriptScope: 'layer-1'.repeat(100) })).toBe(false);
+    expect(isPhysicPaintProjectContextRequest({ operationId: 'op-1', extra: true })).toBe(false);
+    expect(isPhysicPaintProjectContextRequest({})).toBe(false);
+  });
+
+  it('PULL: the child emits a bounded request to main, and the mount pull carries NO scriptScope field', async () => {
+    const pending = requestPhysicPaintProjectContext();
+    await vi.waitFor(() => { expect(listeners.has(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT)).toBe(true); });
+    expect(emitTo).toHaveBeenCalledWith('main', PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT, expect.objectContaining({ operationId: expect.any(String) }));
+    // NO scope key at all — an explicit `{ scriptScope: 'all' }` would WIPE the
+    // stored filter on every Studio reopen.
+    expect(Object.keys(emitTo.mock.calls[emitTo.mock.calls.length - 1][2] as object)).toEqual(['operationId']);
+    listeners.get(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT)!({ payload: { contextId: 'ctx-1' } });
+    await pending;
+    expect(unlistenSpy).toHaveBeenCalled();
+  });
+
+  it('PULL WRITES: an explicit scope travels on the request, and the one-shot listener is always removed', async () => {
+    const pending = requestPhysicPaintProjectContext('layer-2');
+    await vi.waitFor(() => { expect(listeners.has(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT)).toBe(true); });
+    expect(emitTo.mock.calls[emitTo.mock.calls.length - 1][2]).toMatchObject({ scriptScope: 'layer-2' });
+    listeners.get(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT)!({ payload: { contextId: 'ctx-1' } });
+    await pending;
+    expect(unlistenSpy).toHaveBeenCalled();
+  });
+
+  it('PULL NEVER THROWS: a failed emit resolves, logs, and still removes its listener', async () => {
+    emitTo.mockRejectedValueOnce(new Error('no main realm'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(requestPhysicPaintProjectContext('layer-1')).resolves.toBeUndefined();
+
+    expect(unlistenSpy).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('CHILD ACCEPT: the payload widens to layers + scope, tolerating a malformed entry rather than rejecting the context', async () => {
+    const project = acceptPhysicPaintProjectContextPayload({
+      name: 'Demo',
+      saved: true,
+      contextId: 'ctx-9',
+      layers: [{ id: 'layer-1', name: 'Character' }, 'nope', { id: '', name: 'x' }, { id: 'layer-2', name: 5 }, { id: 'layer-3', name: 'Grain' }],
+      scriptScope: 'layer-3',
+    });
+
+    expect(project).toEqual({
+      name: 'Demo',
+      saved: true,
+      contextId: 'ctx-9',
+      layers: [{ id: 'layer-1', name: 'Character' }, { id: 'layer-3', name: 'Grain' }],
+      scriptScope: 'layer-3',
+    });
+  });
+
+  it('CHILD ACCEPT DEGRADES: a pre-al1 payload (no layers, no scope) still drives the panel as All-only', () => {
+    expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: false, contextId: 'ctx-1' }))
+      .toEqual({ name: 'Demo', saved: false, contextId: 'ctx-1', layers: [], scriptScope: 'all' });
+    expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: false, contextId: 'ctx-1', layers: 'nope', scriptScope: 7 }))
+      .toEqual({ name: 'Demo', saved: false, contextId: 'ctx-1', layers: [], scriptScope: 'all' });
+    // The three-field contract stays mandatory and byte-identical.
+    expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: false })).toBeNull();
+    expect(acceptPhysicPaintProjectContextPayload(null)).toBeNull();
+  });
+
+  it('CHILD NORMALIZER: caps the count and truncates a name past the wire bound', () => {
+    const long = normalizeProjectContextLayers([{ id: 'layer-1', name: 'x'.repeat(PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH + 50) }]);
+    expect(long[0].name).toHaveLength(PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH);
+
+    const many = normalizeProjectContextLayers(
+      Array.from({ length: PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS + 10 }, (_, index) => ({ id: `layer-${index}`, name: `L${index}` })),
+    );
+    expect(many).toHaveLength(PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS);
   });
 });

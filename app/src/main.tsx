@@ -17,7 +17,7 @@ import {canvasStore} from './stores/canvasStore';
 import {uiStore} from './stores/uiStore';
 import {timelineStore} from './stores/timelineStore';
 import {paintStore} from './stores/paintStore';
-import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
+import {installPhysicPaintApplyListener, installPhysicPaintAudioContextPublisher, installPhysicPaintAudioOwnershipListener, installPhysicPaintEfxPaintDocumentListener, installPhysicPaintFrameSyncListener, installPhysicPaintImageImportListener, installPhysicPaintImageLibraryListener, installPhysicPaintProjectContextRequestListener, installPhysicPaintRotoAuthorityListener, installPhysicPaintScriptLibraryListener, installPhysicPaintStateSaveListener} from './lib/physicPaintBridge';
 import {setDebugApplyPayloadValidation} from './types/physicPaint';
 import {shouldReloadPaintWindow} from './lib/paintWindowWatchdog';
 import {setDebugRotoUndo} from './components/physic-paint/hooks/useRotoPhysicalEditHistory';
@@ -128,6 +128,14 @@ if (window.location.pathname === '/physics-paint') {
     // Without this install the child's import request has no receiver and
     // times out. Main window only; app-lifetime install like the siblings.
     await installPhysicPaintImageImportListener();
+    // quick-260922-al1: the main webview answers the Studio's project-context
+    // request — the Scripts panel's layer-scope pull/round trip. The Studio
+    // window RE-BOOTS on every layer switch (the reused window is navigated),
+    // and the project context is only pushed at bind/clear — before the Studio
+    // exists — so a Studio opened later PULLS the live layer list plus the
+    // stored scope through this installer. Without it the pull has no receiver
+    // and the scope stays All with snapshotted provenance.
+    await installPhysicPaintProjectContextRequestListener();
     // Route physic-paint:seek-frame navigation events from the standalone
     // Physics Paint window to the editor timeline. Awaited install like the
     // sibling bridge installs above; the discarded cleanup handle matches the

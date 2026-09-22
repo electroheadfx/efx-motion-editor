@@ -1837,12 +1837,44 @@ export interface PhysicPaintRotoCacheFrame extends PhysicPaintRenderedFrame {
   onionBytes?: Uint8Array;
 }
 
+/**
+ * quick-260922-al1: one live physic-paint layer as the Studio realm sees it —
+ * the id the Scripts panel filter matches rows against, and the LIVE name both
+ * the filter entries and the provenance line render. The child realm owns no
+ * layer list of its own, so this travels on the project-context channel.
+ */
+export interface PhysicPaintProjectContextLayer {
+  id: string;
+  name: string;
+}
+
 export interface PhysicPaintProjectContext {
   name: string;
   saved: boolean;
   contextId: string;
   /** Opaque Rust capability forwarded only to the trusted Physics Paint webview. */
   scriptLibraryAuthority?: string;
+  /** Live physic-paint layers; absent means the child renders All-only with snapshotted provenance. */
+  layers?: readonly PhysicPaintProjectContextLayer[];
+  /** The main realm's stored Scripts-panel scope: `'all'` or a live layer id. */
+  scriptScope?: string;
+}
+
+/**
+ * quick-260922-al1: the child→main request that reads (and optionally writes)
+ * the project context. `scriptScope` is OPTIONAL ON PURPOSE — the mount pull
+ * carries NO scope, so reopening the Studio is a read-only republish and can
+ * never reset the main realm's stored scope to the child's default. The request
+ * names no layer data; the main realm resolves everything itself.
+ */
+export interface PhysicPaintProjectContextRequest {
+  operationId: string;
+  scriptScope?: string;
+}
+
+export interface PhysicPaintProjectContextRequestMessage {
+  type: 'physic-paint:project-context-request';
+  payload: PhysicPaintProjectContextRequest;
 }
 
 /** Closed plain-data physical document carried by launch and bridge envelopes. */
@@ -2522,6 +2554,36 @@ export function isPhysicPaintImageImportResultMessage(value: unknown): value is 
   return Boolean(isRecord(value) && value.type === 'physic-paint:image-import-result' && isPhysicPaintImageImportResult(value.payload));
 }
 
+export function isPhysicPaintProjectContextLayer(value: unknown): value is PhysicPaintProjectContextLayer {
+  return Boolean(
+    isRecord(value) &&
+      hasOnlyKeys(value, ['id', 'name']) &&
+      isNonEmptyString(value.id) &&
+      value.id.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_ID_LENGTH &&
+      typeof value.name === 'string' &&
+      value.name.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH,
+  );
+}
+
+/**
+ * quick-260922-al1: the child→main scope request. `scriptScope` is optional and
+ * bounded WHEN PRESENT — absent is the read-only mount pull, an empty or
+ * oversized or non-string value is malformed and the request is dropped whole
+ * (nothing imported, nothing published).
+ */
+export function isPhysicPaintProjectContextRequest(value: unknown): value is PhysicPaintProjectContextRequest {
+  return Boolean(
+    isRecord(value) &&
+      hasOnlyKeys(value, ['operationId', 'scriptScope']) &&
+      isBoundedOperationId(value.operationId) &&
+      optionalPhysicPaintProjectContextScope(value.scriptScope),
+  );
+}
+
+export function isPhysicPaintProjectContextRequestMessage(value: unknown): value is PhysicPaintProjectContextRequestMessage {
+  return Boolean(isRecord(value) && value.type === 'physic-paint:project-context-request' && isPhysicPaintProjectContextRequest(value.payload));
+}
+
 export function isPhysicPaintRotoAuthorityRequest(value: unknown): value is PhysicPaintRotoAuthorityRequest {
   return Boolean(
     isRecord(value) &&
@@ -2617,7 +2679,30 @@ function optionalProjectContext(value: unknown): boolean {
     && typeof value.saved === 'boolean'
     && isNonEmptyString(value.contextId)
     && optionalNonEmptyString(value.scriptLibraryAuthority)
-    && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId' || key === 'scriptLibraryAuthority'));
+    // quick-260922-al1: the widened project shape stays a LEGAL launch-context
+    // project — both new keys are optional and bounded under the same
+    // discipline as `scriptLibraryAuthority`. Leave them strict and a context
+    // the child now expects to accept is refused on every re-validation.
+    && optionalProjectContextLayers(value.layers)
+    && optionalPhysicPaintProjectContextScope(value.scriptScope)
+    && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId' || key === 'scriptLibraryAuthority' || key === 'layers' || key === 'scriptScope'));
+}
+
+/** quick-260922-al1: the project-context bounds — count-capped, length-capped. */
+export const PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS = 64;
+export const PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_ID_LENGTH = 256;
+export const PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH = 128;
+export const PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH = 256;
+
+function optionalProjectContextLayers(value: unknown): boolean {
+  if (value === undefined) return true;
+  return Array.isArray(value)
+    && value.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS
+    && value.every(isPhysicPaintProjectContextLayer);
+}
+
+function optionalPhysicPaintProjectContextScope(value: unknown): boolean {
+  return value === undefined || (isNonEmptyString(value) && value.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH);
 }
 
 function optionalNonEmptyString(value: unknown): boolean {

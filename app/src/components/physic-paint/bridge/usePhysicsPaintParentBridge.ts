@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
-import { isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
-import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT } from '../../../lib/physicPaintBridge';
+import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintProjectContext, PhysicPaintProjectContextLayer, PhysicPaintRotoAuthorityResult, PhysicPaintScriptLibraryResult } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_ID_LENGTH, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH, isPhysicPaintApplyResult, isPhysicPaintApplyResultMessage, isPhysicPaintLaunchContext, isPhysicPaintScriptLibraryResult, isPhysicPaintScriptLibraryResultMessage } from '../../../types/physicPaint';
+import { PHYSIC_PAINT_APPLY_RESULT_EVENT, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, PHYSIC_PAINT_LAUNCH_EVENT, PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, PHYSIC_PAINT_ROTO_AUTHORITY_RESULT_EVENT, PHYSIC_PAINT_SCRIPT_LIBRARY_RESULT_EVENT, requestPhysicPaintProjectContext } from '../../../lib/physicPaintBridge';
 import { fromTransportPayload, isWebpBytes } from '../../../lib/webpBytes';
 
 export type PhysicsPaintBridgeMode = 'Tauri' | 'Browser fallback' | 'Unavailable';
@@ -109,14 +109,60 @@ export function usePhysicsPaintLaunchBridge(applyIncomingLaunchContext: (context
   }, []);
 }
 
+/**
+ * quick-260922-al1: tolerant normalizer for the project-context `layers` field.
+ * The child realm owns no layer list of its own, so it accepts whatever the
+ * main realm sends — but one malformed entry must never poison the payload:
+ * entries that are not `{ id, name }` strings are dropped individually, the
+ * list is capped, and names are truncated to the wire bound. Anything that is
+ * not an array degrades to `[]`, which is exactly the All-only rendering the
+ * pre-al1 child already produced.
+ */
+export function normalizeProjectContextLayers(value: unknown): PhysicPaintProjectContextLayer[] {
+  if (!Array.isArray(value)) return [];
+  const layers: PhysicPaintProjectContextLayer[] = [];
+  for (const entry of value) {
+    if (layers.length >= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS) break;
+    if (!entry || typeof entry !== 'object') continue;
+    const candidate = entry as { id?: unknown; name?: unknown };
+    if (typeof candidate.id !== 'string' || candidate.id.length === 0 || candidate.id.length > PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_ID_LENGTH) continue;
+    if (typeof candidate.name !== 'string') continue;
+    layers.push({ id: candidate.id, name: candidate.name.slice(0, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH) });
+  }
+  return layers;
+}
+
+/**
+ * quick-260922-al1: the wider shape the child now accepts. The three-field
+ * contract (`name`/`saved`/`contextId`) stays byte-identical and mandatory; the
+ * two new fields are ADDITIVE — absent or malformed values degrade to
+ * `[]` / `'all'` rather than rejecting the payload, so a main realm that
+ * predates the field still drives the panel. Returns null for a payload the
+ * pre-al1 child would also have rejected.
+ */
+export function acceptPhysicPaintProjectContextPayload(value: unknown): PhysicPaintProjectContext | null {
+  if (!value || typeof value !== 'object') return null;
+  const project = value as { name?: unknown; saved?: unknown; contextId?: unknown; layers?: unknown; scriptScope?: unknown };
+  if (typeof project.name !== 'string' || typeof project.saved !== 'boolean' || typeof project.contextId !== 'string') return null;
+  const scriptScope = typeof project.scriptScope === 'string' && project.scriptScope.length > 0 && project.scriptScope.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH
+    ? project.scriptScope
+    : 'all';
+  return {
+    name: project.name,
+    saved: project.saved,
+    contextId: project.contextId,
+    layers: normalizeProjectContextLayers(project.layers),
+    scriptScope,
+  };
+}
+
 export function usePhysicsPaintProjectContextBridge(handleProject: (project: PhysicPaintLaunchContext['project']) => void): void {
   const handleRef = useRef(handleProject); handleRef.current = handleProject;
   useEffect(() => {
     let disposed = false; let unlisten: (() => void) | undefined;
     const accept = (value: unknown) => {
-      if (!value || typeof value !== 'object') return;
-      const project = value as { name?: unknown; saved?: unknown; contextId?: unknown };
-      if (typeof project.name === 'string' && typeof project.saved === 'boolean' && typeof project.contextId === 'string') handleRef.current({ name: project.name, saved: project.saved, contextId: project.contextId });
+      const project = acceptPhysicPaintProjectContextPayload(value);
+      if (project) handleRef.current(project);
     };
     const custom = (event: Event) => accept((event as CustomEvent).detail);
     const message = (event: MessageEvent) => { if (event.origin === window.location.origin && event.data?.type === PHYSIC_PAINT_PROJECT_CONTEXT_EVENT) accept(event.data.payload); };
@@ -126,6 +172,15 @@ export function usePhysicsPaintProjectContextBridge(handleProject: (project: Phy
       unlisten = await eventApi.listen?.(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, (event) => accept(event.payload));
       if (disposed) unlisten?.();
     }).catch(() => undefined);
+    // quick-260922-al1: the main realm PUSHES the project context only at bind
+    // and clear (projectStore.ts:106-121) — both of which happen before this
+    // Studio exists, because the child webview is navigated/re-booted on every
+    // layer switch (lib.rs:186). Without this one-shot pull a Studio opened
+    // after the bind renders with no live layer list and only snapshotted
+    // provenance. NO ARGUMENT ON PURPOSE: the pull is a READ-ONLY republish, so
+    // reopening the Studio can never overwrite the stored filter with the
+    // child's default.
+    void requestPhysicPaintProjectContext();
     return () => { disposed = true; unlisten?.(); window.removeEventListener(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, custom); window.removeEventListener('message', message); };
   }, []);
 }

@@ -1,8 +1,8 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
-import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
@@ -74,6 +74,18 @@ import { assetUrl, scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, 
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
+/**
+ * quick-260922-al1: the child→main project-context request. The mounted Studio
+ * webview is a FRESH realm on every launch (the reused window is navigated,
+ * lib.rs:186), and the publisher above only fires at project bind/clear
+ * (`projectStore.ts:106-121`) — i.e. BEFORE the Studio window exists. So a
+ * Studio opened later PULLS: `{ operationId, scriptScope? }` out, the validated
+ * payload back on PHYSIC_PAINT_PROJECT_CONTEXT_EVENT. An absent `scriptScope`
+ * is a read-only republish (the mount pull never writes the main realm's scope).
+ */
+export const PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT = 'physic-paint:project-context-request';
+/** Bounded wait for the republished context; a missing receiver never hangs the caller. */
+const PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_TIMEOUT_MS = 5_000;
 export const PHYSIC_PAINT_AUDIO_CONTEXT_EVENT = 'physic-paint:audio-context';
 /**
  * 41-04 (D-05..D-07): main→child playback-state broadcast ({playing}) and
@@ -2749,11 +2761,24 @@ export async function installPhysicPaintImageImportListener(): Promise<() => voi
 }
 
 export async function publishPhysicPaintProjectContext(): Promise<void> {
+  // quick-260922-al1: the child realm has no layer list of its own, so the live
+  // physic-paint layers ride this existing channel (bounded: id + truncated
+  // live name) together with the stored scope. The scope is re-clamped against
+  // the SAME list at publish time — a layer deleted while its scope was stored
+  // degrades to All rather than travelling as a dead id.
+  const layers = projectStore.getActivePhysicPaintLayers().map((layer) => ({
+    id: layer.id,
+    name: layer.name.slice(0, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH),
+  }));
+  const storedScope = projectStore.scriptScope.peek();
+  const scriptScope = storedScope === 'all' || layers.some((layer) => layer.id === storedScope) ? storedScope : 'all';
   const project = {
     name: projectStore.name.peek(),
     saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()),
     contextId: projectStore.projectContextId.peek(),
     ...(projectStore.scriptLibraryAuthority.peek() ? { scriptLibraryAuthority: projectStore.scriptLibraryAuthority.peek()! } : {}),
+    layers,
+    scriptScope,
   };
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
@@ -2764,6 +2789,75 @@ export async function publishPhysicPaintProjectContext(): Promise<void> {
     window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, { detail: project }));
     window.opener?.postMessage?.(message, window.location.origin);
   }
+}
+
+/**
+ * quick-260922-al1: consumer-side convenience entry point used by the Studio
+ * realm — the PULL half of the project-context channel. Self-contained in the
+ * requestImageLibrary shape (listen → bounded timeout → emitTo('main') → await)
+ * because the Studio's layer switch re-boots the child and the publisher only
+ * fires at project bind, before the Studio exists.
+ *
+ * `scriptScope` is optional ON PURPOSE: called with no argument (the mount
+ * pull) the request writes NOTHING in the main realm, so reopening the Studio
+ * cannot reset the stored scope to the child's default. Never throws; the
+ * one-shot listener is always removed.
+ */
+export async function requestPhysicPaintProjectContext(scriptScope?: string): Promise<void> {
+  const eventApi = await import('@tauri-apps/api/event');
+  if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') return;
+  const operationId = `physics-paint-project-context-${Date.now()}-${crypto.randomUUID()}`;
+  const request: PhysicPaintProjectContextRequest = scriptScope === undefined ? { operationId } : { operationId, scriptScope };
+  let timeout = 0;
+  let unlisten: (() => void) | undefined;
+  try {
+    let resolveReceived: () => void = () => {};
+    const received = new Promise<void>((resolve) => { resolveReceived = resolve; });
+    unlisten = await eventApi.listen(PHYSIC_PAINT_PROJECT_CONTEXT_EVENT, (event) => {
+      const payload = event.payload;
+      if (payload && typeof payload === 'object' && typeof (payload as { contextId?: unknown }).contextId === 'string') resolveReceived();
+    });
+    timeout = window.setTimeout(resolveReceived, PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_TIMEOUT_MS);
+    await eventApi.emitTo('main', PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT, request);
+    await received;
+  } catch (error) {
+    console.warn('[physicPaintBridge] Project context request failed', error);
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+    unlisten?.();
+  }
+}
+
+/**
+ * quick-260922-al1: main-window installer for the child's project-context
+ * request. Same triple-transport discipline as the sibling installers (Tauri
+ * `listen` + CustomEvent + origin-checked `postMessage`), and the same
+ * fail-closed contract as the rest of the channel: a malformed request imports
+ * nothing and publishes nothing, and a requested scope is validated against the
+ * LIVE layer set by `projectStore.setScriptScope`, which clamps to All for an
+ * unknown, dead or malformed value (T-260922-al1-01/02). An ABSENT scope is a
+ * read-only republish — the main realm's stored scope is untouched.
+ */
+export async function installPhysicPaintProjectContextRequestListener(): Promise<() => void> {
+  const applyRequest = async (value: unknown): Promise<void> => {
+    if (!isPhysicPaintProjectContextRequest(value)) return;
+    if (value.scriptScope !== undefined) projectStore.setScriptScope(value.scriptScope);
+    await publishPhysicPaintProjectContext();
+  };
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    const unlisten = await eventApi.listen?.(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT, (event) => { void applyRequest(event.payload); });
+    if (unlisten) return unlisten;
+  }
+  if (typeof window === 'undefined') return () => {};
+  const custom = (event: Event) => { void applyRequest((event as CustomEvent).detail); };
+  const message = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || !event.data || event.data.type !== PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT) return;
+    void applyRequest(event.data.payload);
+  };
+  window.addEventListener(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT, custom);
+  window.addEventListener('message', message);
+  return () => { window.removeEventListener(PHYSIC_PAINT_PROJECT_CONTEXT_REQUEST_EVENT, custom); window.removeEventListener('message', message); };
 }
 
 /**

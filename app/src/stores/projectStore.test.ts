@@ -1,6 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
+import {effect} from '@preact/signals';
 import {projectStore} from './projectStore';
 import {audioStore} from './audioStore';
 import {sequenceStore} from './sequenceStore';
@@ -366,6 +367,99 @@ describe('260918-ovi: canvas format threading', () => {
  * record through that round-trip — the "close Studio, quit, relaunch" half of
  * the reported loss.
  */
+describe('quick-260922-al1: the main realm owns the Scripts-panel layer scope', () => {
+  const sequence = (layers: { id: string; name: string; kind: 'physic-paint' | 'other' }[]) => ({
+    id: 'seq-a',
+    kind: 'content' as const,
+    name: 'Seq A',
+    fps: 24,
+    width: 1920,
+    height: 1080,
+    keyPhotos: [],
+    layers: layers.map((entry) => (entry.kind === 'physic-paint'
+      ? { id: entry.id, name: entry.name, type: 'physic-paint' as const, visible: true, opacity: 1, blendMode: 'normal' as const, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 }, source: { type: 'physic-paint' as const, layerId: entry.id } }
+      : { id: entry.id, name: entry.name, type: 'image-sequence' as const, visible: true, opacity: 1, blendMode: 'normal' as const, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 }, source: { type: 'image-sequence' as const, imageIds: [] } })),
+  });
+
+  beforeEach(() => {
+    sequenceStore.sequences.value = [];
+    projectStore.setScriptScope('all');
+  });
+
+  it('lists every live physic-paint layer in timeline order, deduplicated by layerId, with LIVE names', () => {
+    sequenceStore.sequences.value = [sequence([
+      { id: 'layer-1', name: 'Character', kind: 'physic-paint' },
+      { id: 'layer-2', name: 'Hair', kind: 'physic-paint' },
+    ]) as never];
+
+    expect(projectStore.getActivePhysicPaintLayers()).toEqual([
+      { id: 'layer-1', name: 'Character' },
+      { id: 'layer-2', name: 'Hair' },
+    ]);
+  });
+
+  it('skips non-physic-paint layers and falls back to the layer id when the name is blank', () => {
+    sequenceStore.sequences.value = [sequence([
+      { id: 'layer-1', name: 'Key Photos', kind: 'other' },
+      { id: 'layer-2', name: '   ', kind: 'physic-paint' },
+    ]) as never];
+
+    expect(projectStore.getActivePhysicPaintLayers()).toEqual([{ id: 'layer-2', name: 'layer-2' }]);
+  });
+
+  it('deduplicates the same layerId appearing in two sequences, keeping the first occurrence', () => {
+    sequenceStore.sequences.value = [
+      sequence([{ id: 'layer-1', name: 'Character', kind: 'physic-paint' }]),
+      { ...sequence([{ id: 'layer-1', name: 'Duplicate', kind: 'physic-paint' }]), id: 'seq-b' },
+    ] as never;
+
+    expect(projectStore.getActivePhysicPaintLayers()).toEqual([{ id: 'layer-1', name: 'Character' }]);
+  });
+
+  it('stores a LIVE layer id, and clamps anything else (unknown, dead, malformed) fail-closed to all', () => {
+    sequenceStore.sequences.value = [sequence([{ id: 'layer-1', name: 'Character', kind: 'physic-paint' }]) as never];
+
+    projectStore.setScriptScope('layer-1');
+    expect(projectStore.scriptScope.value).toBe('layer-1');
+
+    projectStore.setScriptScope('layer-ghost');
+    expect(projectStore.scriptScope.value).toBe('all');
+
+    projectStore.setScriptScope('layer-1');
+    sequenceStore.sequences.value = [];
+    projectStore.setScriptScope('layer-1');
+    expect(projectStore.scriptScope.value).toBe('all');
+  });
+
+  it('is idempotent — a repeat of the stored value writes nothing (no settable loop)', () => {
+    sequenceStore.sequences.value = [sequence([{ id: 'layer-1', name: 'Character', kind: 'physic-paint' }]) as never];
+
+    projectStore.setScriptScope('layer-1');
+    const writes: string[] = [];
+    const stop = effect(() => { writes.push(projectStore.scriptScope.value); });
+    projectStore.setScriptScope('layer-1');
+    stop();
+
+    expect(writes).toEqual(['layer-1']);
+  });
+
+  it('returns to all on project rotation (open / close / new), not on a mere layer-identity change', () => {
+    sequenceStore.sequences.value = [sequence([{ id: 'layer-1', name: 'Character', kind: 'physic-paint' }]) as never];
+    projectStore.setScriptScope('layer-1');
+    expect(projectStore.scriptScope.value).toBe('layer-1');
+
+    // A layer-identity change is NOT a project rotation: same context, and the
+    // layers array simply no longer contains the stored id. The stored value is
+    // preserved (the read path degrades it), so switching layers and back keeps
+    // the user's filter.
+    sequenceStore.sequences.value = [sequence([{ id: 'layer-2', name: 'Hair', kind: 'physic-paint' }]) as never];
+    expect(projectStore.scriptScope.value).toBe('layer-1');
+
+    projectStore.closeProject();
+    expect(projectStore.scriptScope.value).toBe('all');
+  });
+});
+
 describe('quick-260921-bjm: an imported image survives the manifest round-trip', () => {
   const PROJECT_DIR = '/projects/persisted-import';
   const importedImage = {

@@ -69,6 +69,15 @@ const isDirty = signal(false);
 const isSaving = signal(false);
 const scriptLibraryAuthority = signal<string | null>(null);
 const projectContextId = signal(crypto.randomUUID());
+/**
+ * quick-260922-al1: the Scripts panel's layer-scope filter. The MAIN realm owns
+ * it because a Studio layer switch re-boots the child webview — the reused
+ * window is NAVIGATED by `open_physics_paint_window` (app/src-tauri/src/lib.rs:186)
+ * — so no in-child signal survives one, while this realm survives the whole
+ * Studio session inside one open project. Holds `'all'` or a LIVE physic-paint
+ * layer id; `setScriptScope` clamps fail-closed, so a dead layer is never stored.
+ */
+const scriptScope = signal<string>('all');
 
 /**
  * The package identity (52.2-07, D-05): the manifest's `projectId`, and the key
@@ -81,6 +90,11 @@ const projectId = signal<string>(crypto.randomUUID());
 
 function rotateProjectContext(): void {
   projectContextId.value = crypto.randomUUID();
+  // quick-260922-al1: the scope is project-SESSION state. The project identity
+  // is the only term that rotates on open / close / new, so this is exactly the
+  // locked "returns to All on every project reopen" trigger — a LAYER identity
+  // change (same projectContextId, different layerId) must keep the scope.
+  scriptScope.value = 'all';
 }
 
 function rotateProjectId(): void {
@@ -122,16 +136,44 @@ function clearScriptLibraryAuthority(): void {
 
 // --- Helpers ---
 
-/** Build MceProject from current store state */
-function getActivePhysicPaintLayerIds(): Set<string> {
-  const ids = new Set<string>();
+/**
+ * Every live physic-paint layer, in timeline order, deduplicated by layerId.
+ * `name` is the layer's LIVE display name (quick-260922-al1: the Scripts panel
+ * filter entries and the provenance line resolve from it); an empty or absent
+ * name falls back to the layer id so a filter entry is never blank.
+ */
+function getActivePhysicPaintLayers(): { id: string; name: string }[] {
+  const layers: { id: string; name: string }[] = [];
+  const seen = new Set<string>();
   for (const sequence of sequenceStore.sequences.value) {
     for (const layer of sequence.layers) {
       if (layer.type !== 'physic-paint' || layer.source.type !== 'physic-paint') continue;
-      ids.add(layer.source.layerId);
+      const id = layer.source.layerId;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      layers.push({ id, name: typeof layer.name === 'string' && layer.name.trim() ? layer.name : id });
     }
   }
-  return ids;
+  return layers;
+}
+
+/** The ids of every live physic-paint layer — `getActivePhysicPaintLayers`'s consumer. */
+function getActivePhysicPaintLayerIds(): Set<string> {
+  return new Set(getActivePhysicPaintLayers().map((layer) => layer.id));
+}
+
+/**
+ * Store a requested script scope (quick-260922-al1). Idempotent compare-then-
+ * write — a repeat call with the same value writes nothing, so it can never
+ * drive a subscriber loop — and fail-closed: anything that is not `'all'` or a
+ * LIVE layer id (unknown, dead, malformed) stores `'all'`. This is the main
+ * realm's INBOUND edge; the child's outbound request never reaches a stored
+ * value the child cannot render an entry for.
+ */
+function setScriptScope(value: string): void {
+  const next = value === 'all' || getActivePhysicPaintLayers().some((layer) => layer.id === value) ? value : 'all';
+  if (scriptScope.peek() === next) return;
+  scriptScope.value = next;
 }
 
 /**
@@ -730,6 +772,10 @@ export const projectStore = {
   isSaving,
   scriptLibraryAuthority,
   projectContextId,
+  scriptScope,
+
+  getActivePhysicPaintLayers,
+  setScriptScope,
 
   setName(v: string) {
     name.value = v;
