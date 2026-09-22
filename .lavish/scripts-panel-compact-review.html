@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scripts panel — compact layout &amp; linked state</title>
+<style>
+  :root{
+    --ink:#12161c; --ink-2:#3d4753; --ink-3:#6b7683; --line:#e2e6ec; --line-2:#eef1f5;
+    --paper:#ffffff; --paper-2:#f7f9fb; --accent:#2d5be3; --accent-soft:#eef2fe;
+    --ok:#1a7f52; --warn:#9a5b00; --warn-soft:#fff6e8;
+    /* ---- real app tokens (physicsPaintStudio.css) ---- */
+    --app-surface:#343638;
+    --app-select-bg:#2a3036; --app-select-fg:#c9d1d9; --app-select-border:#3a424a;
+    --app-label:#7d8791;
+    --app-btn-bg:#4b4e51; --app-btn-border:#62676d; --app-btn-fg:#f3f5f7;
+    --app-row-border:#565b61; --app-row-fg:#eef1f4;
+    --app-row-hover-bg:#414447; --app-row-hover-border:#747b83;
+    --app-row-sel-bg:#454b5a; --app-row-sel-border:#7e9cff;
+    --app-muted:#6f7883;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--paper-2); color:var(--ink);
+    font:15px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:40px 28px 96px}
+  [data-fr]{display:none}
+
+  /* ---------- page chrome ---------- */
+  header.topbar{display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; justify-content:space-between; border-bottom:2px solid var(--ink); padding-bottom:20px; margin-bottom:8px}
+  .topbar h1{font-size:29px; line-height:1.2; margin:0 0 8px; letter-spacing:-.02em}
+  .topbar p.lede{margin:0; max-width:70ch; color:var(--ink-2); font-size:14.5px}
+  .kicker{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); font-weight:700; margin:0 0 10px}
+  .lang{display:flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--paper); flex:0 0 auto}
+  .lang button{border:0; background:transparent; padding:7px 15px; font:inherit; font-size:13px; font-weight:600; color:var(--ink-3); cursor:pointer}
+  .lang button[aria-pressed="true"]{background:var(--ink); color:#fff}
+
+  h2{font-size:20px; margin:52px 0 6px; letter-spacing:-.01em}
+  h2 .num{color:var(--accent); font-variant-numeric:tabular-nums; margin-right:8px}
+  h2 + .sub{margin:0 0 22px; color:var(--ink-2); font-size:14px; max-width:78ch}
+  h3{font-size:15px; margin:0 0 4px; letter-spacing:-.005em}
+
+  .callout{border-left:3px solid var(--accent); background:var(--accent-soft); padding:13px 16px; border-radius:0 8px 8px 0; font-size:14px; color:var(--ink-2); margin:20px 0}
+  .callout strong{color:var(--ink)}
+  .callout.warn{border-left-color:#d9932a; background:var(--warn-soft)}
+  .callout.plain{border-left-color:var(--line); background:var(--paper)}
+
+  /* ---------- option cards ---------- */
+  .cards{display:grid; gap:18px}
+  .cards.two{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+  .card{background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:20px; min-width:0}
+  .card.pick{border-color:#c6d2f5; box-shadow:0 1px 0 #c6d2f5}
+  .card-head{display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; margin-bottom:12px}
+  .badge{font-size:10.5px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; padding:3px 8px; border-radius:999px; background:var(--line-2); color:var(--ink-3)}
+  .badge.rec{background:#e7f4ed; color:var(--ok)}
+  .badge.no{background:#fdecec; color:#a32222}
+  .card p.desc{margin:0 0 14px; font-size:13.5px; color:var(--ink-2)}
+  .pros,.costs{list-style:none; margin:12px 0 0; padding:0; font-size:13px}
+  .pros li,.costs li{padding-left:20px; position:relative; margin-bottom:5px; color:var(--ink-2)}
+  .pros li::before{content:"+"; position:absolute; left:5px; color:var(--ok); font-weight:800}
+  .costs li::before{content:"−"; position:absolute; left:5px; color:#a32222; font-weight:800}
+
+  /* ---------- the dark app mockup ---------- */
+  .stage{background:var(--paper-2); border:1px dashed #cfd6e0; border-radius:10px; padding:14px; display:flex; justify-content:center; margin:4px 0 14px; min-width:0}
+  .app{
+    width:300px; max-width:100%; background:var(--app-surface); border-radius:8px;
+    padding:12px 4px 10px; display:flex; flex-direction:column; gap:8px;
+    font:12px/1.4 Inter,-apple-system,system-ui,sans-serif; color:var(--app-row-fg);
+  }
+  .app .toolbar{display:grid; grid-template-columns:repeat(6,auto); justify-content:start; column-gap:4px; row-gap:8px; padding:0 4px}
+  .app .tbtn{width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:4px; color:#c2c8cf}
+  .app .tbtn svg{width:14px; height:14px; display:block}
+  .app .metarow{display:flex; align-items:center; gap:6px; padding:0 4px; min-width:0}
+  .app .scope{display:flex; align-items:center; gap:6px; min-width:0; flex:1 1 auto}
+  .app .scope-label{color:var(--app-label); font-size:10px; letter-spacing:.04em; white-space:nowrap}
+  .app .scope-label.up{text-transform:uppercase}
+  .app select{
+    flex:1 1 auto; min-width:0; background:var(--app-select-bg); color:var(--app-select-fg);
+    border:1px solid var(--app-select-border); border-radius:4px; font-size:11px; padding:2px 4px;
+    appearance:none; -webkit-appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,#7d8791 50%),linear-gradient(135deg,#7d8791 50%,transparent 50%);
+    background-position:calc(100% - 11px) 50%,calc(100% - 7px) 50%; background-size:4px 4px,4px 4px; background-repeat:no-repeat;
+    padding-right:20px;
+  }
+  .app .navline{display:flex; align-items:center; justify-content:space-between; gap:6px; padding:0 4px; min-width:0}
+  .app .navline strong{color:#eef1f4; font-size:11px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .app .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:5px; white-space:nowrap;
+    border:1px solid var(--app-btn-border); border-radius:5px; background:var(--app-btn-bg); color:var(--app-btn-fg);
+  }
+  .app .btn.lg{height:30px; padding:0 8px; font-size:12px}
+  .app .btn.sm{height:24px; padding:0 7px; font-size:11px}
+  .app .btn.icon{width:22px; height:22px; padding:0}
+  .app .btn.icon svg{width:12px; height:12px; display:block}
+  .app .navbtns{display:flex; gap:4px; flex:0 0 auto}
+  .app .pager{display:flex; align-items:center; gap:3px; flex:0 0 auto}
+  .app .pager-n{font-size:10.5px; color:#c2c8cf; font-variant-numeric:tabular-nums; min-width:27px; text-align:center; white-space:nowrap}
+  .app .btn.tiny{width:20px; height:20px; padding:0; border-radius:4px}
+  .app .btn.tiny svg{width:11px; height:11px; display:block}
+  .app .btn.tiny[disabled]{color:#6c757f; border-color:#4d5156; background:#3b3e41}
+  .app .list{display:flex; flex-direction:column; gap:5px; padding-right:6px}
+  .app .row{
+    display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:8px;
+    padding:5px; border:1px solid var(--app-row-border); border-radius:6px; color:var(--app-row-fg); min-width:0;
+  }
+  .app .row.sel{border-color:var(--app-row-sel-border); background:var(--app-row-sel-bg)}
+  .app .thumb{width:48px; height:48px; border-radius:4px; background:#fff; display:flex; align-items:center; justify-content:center; overflow:hidden}
+  .app .thumb svg{width:40px; height:40px}
+  .app .copy{min-width:0; display:flex; flex-direction:column; gap:1px}
+  .app .nm{font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .app .pv,.app .ct{font-size:10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .app .pv.un{color:var(--app-muted); font-style:italic}
+  .app .railtag{color:#9ec1ff}
+  .app .railchip{display:inline-flex; align-items:center; gap:3px; font-size:9.5px; color:#cfe0ff; border:1px solid #4d5b78; background:#333d52; border-radius:999px; padding:0 6px; height:14px; white-space:nowrap}
+  .app .strip{width:2px; border-radius:2px; background:#7e9cff}
+  .app .chips{display:flex; gap:4px; overflow:hidden}
+  .app .chip{font-size:10px; border:1px solid #4d5b78; background:#333d52; color:#cfe0ff; border-radius:999px; padding:1px 7px; white-space:nowrap}
+  .app .chip.on{border-color:#7e9cff; background:#3b4664; color:#fff}
+  .app .grouphead{font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:#8d97a3; padding:2px 4px 0}
+
+  .mock-caption{font-size:12px; color:var(--ink-3); text-align:center; margin:0 0 2px}
+
+  /* ---------- possibility rows ---------- */
+  .poss{display:grid; grid-template-columns:minmax(0,340px) minmax(0,1fr); gap:22px; align-items:start; padding:22px 0; border-top:1px solid var(--line)}
+  .poss:first-of-type{border-top:0}
+  .poss h3{margin-bottom:6px}
+  .poss .why{font-size:13.5px; color:var(--ink-2); margin:0 0 12px}
+  .tag{display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; padding:2px 7px; border-radius:5px; background:var(--line-2); color:var(--ink-3); margin-bottom:10px}
+
+  table{width:100%; border-collapse:collapse; font-size:13.5px; margin:16px 0 0}
+  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
+  th{font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); border-bottom:1.5px solid var(--ink)}
+  td.rec{color:var(--ok); font-weight:700}
+  td.no{color:var(--ink-3)}
+
+  /* ---------- decision controls ---------- */
+  .decide{background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:22px; margin-top:22px}
+  .decide h3{font-size:16px; margin-bottom:4px}
+  .decide p.q{color:var(--ink-2); font-size:13.5px; margin:0 0 16px}
+  .opts{display:grid; gap:9px; margin-bottom:16px}
+  .opt{display:flex; gap:11px; align-items:flex-start; border:1px solid var(--line); border-radius:9px; padding:12px 14px; cursor:pointer; min-width:0}
+  .opt:hover{border-color:#c6d2f5; background:#fbfcff}
+  .opt input{margin:3px 0 0; accent-color:var(--accent); flex:0 0 auto}
+  .opt span{min-width:0}
+  .opt b{display:block; font-size:13.5px; margin-bottom:2px}
+  .opt small{color:var(--ink-3); font-size:12.5px; line-height:1.5}
+  .queue{border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:700; font-size:13.5px; padding:10px 20px; cursor:pointer}
+  .queue:hover{background:#2450c9}
+  .queued{display:none; margin-left:12px; font-size:13px; color:var(--ok); font-weight:600}
+  .queued.on{display:inline}
+
+  footer{margin-top:64px; border-top:1px solid var(--line); padding-top:20px; display:flex; flex-wrap:wrap; gap:10px; justify-content:space-between; color:var(--ink-3); font-size:12.5px}
+  code{background:var(--line-2); padding:1px 5px; border-radius:4px; font-size:.9em; font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  @media (max-width:720px){ .poss{grid-template-columns:minmax(0,1fr)} .wrap{padding:24px 16px 72px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="topbar">
+  <div>
+    <p class="kicker">EFX Motion Editor · Physic Paint Studio · review sheet</p>
+    <h1>Scripts panel — compact layout &amp; linked state</h1>
+    <p class="lede" data-en>Today the scope select and the Linked Rails nav are two stacked full-width rows. This sheet proposes how to fold them together, plus four ways to surface which Actions are already on the timeline. Every mockup is drawn at 300&nbsp;px with your real <code>physicsPaintStudio.css</code> tokens.</p>
+    <p class="lede" data-fr>Aujourd'hui le sélecteur de portée et la navigation Linked Rails occupent deux lignes pleine largeur empilées. Cette fiche propose de les replier ensemble, plus quatre façons de montrer quelles Actions sont déjà sur la timeline. Chaque maquette est dessinée à 300&nbsp;px avec vos vrais tokens <code>physicsPaintStudio.css</code>.</p>
+  </div>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="en" aria-pressed="true">EN</button>
+    <button type="button" data-lang="fr" aria-pressed="false">FR</button>
+  </div>
+</header>
+
+<div class="callout plain" style="margin-top:28px">
+  <strong data-en>Two decisions.</strong><strong data-fr>Deux décisions.</strong>
+  <span data-en> <b>①</b> How the top of the list is laid out, and <b>②</b> whether linkage becomes visible on the rows. Each option below is a real mockup; decide at the bottom of the sheet.</span>
+  <span data-fr> <b>①</b> La disposition du haut de liste, et <b>②</b> si le lien devient visible sur les lignes. Chaque option est une vraie maquette ; décidez en bas de fiche.</span>
+</div>
+
+<h2><span class="num">0</span><span data-en>Today, and what is actually at stake</span><span data-fr>Aujourd'hui, et ce qui est vraiment en jeu</span></h2>
+<p class="sub" data-en>This is the current state, drawn honestly. The row you are paying for is the second one: a 30&nbsp;px button on its own full-width line, under a full-width select.</p>
+<p class="sub" data-fr>Voici l'état actuel, dessiné honnêtement. La ligne qui coûte cher est la seconde : un bouton de 30&nbsp;px sur sa propre ligne pleine largeur, sous un sélecteur pleine largeur.</p>
+
+<div class="stage">
+  <div class="app">
+    <div class="toolbar">
+      <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></div>
+      <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z"/><path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7"/></svg></div>
+      <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg></div>
+      <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
+      <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg></div>
+      <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
+    </div>
+    <div class="metarow"><div class="scope"><span class="scope-label up">Action scope</span><select><option>All</option></select></div></div>
+    <div class="navline"><strong>Linked Rails — 1 of 1</strong><button class="btn lg">Go to Rail</button></div>
+    <div class="list">
+      <div class="row sel">
+        <div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+        <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="mock-caption" data-en>Today — two stacked full-width rows before the list.</p>
+<p class="mock-caption" data-fr>Aujourd'hui — deux lignes pleine largeur empilées avant la liste.</p>
+
+<div class="callout warn">
+  <strong data-en>The fact that changes the calculus:</strong><strong data-fr>Le fait qui change le calcul :</strong>
+  <span data-en> every Play Script Apply persists exactly one Loop Clip — including Repeat&nbsp;1. So an Action that has ever been applied owns at least one Rail, and a "Linked Rails" filter really means <b>"Actions already placed on the timeline"</b>, not "Actions with siblings". That is a real distinction, but it is a different axis from layers.</span>
+  <span data-fr> chaque Apply de Play Script persiste exactement un Loop Clip — y compris Repeat&nbsp;1. Une Action déjà appliquée possède donc au moins un Rail, et un filtre « Linked Rails » signifie en réalité <b>« Actions déjà placées sur la timeline »</b>, et non « Actions avec des sœurs ». C'est une vraie distinction, mais sur un autre axe que les calques.</span>
+</div>
+
+<h2><span class="num">1</span><span data-en>Decision ① — the layout of the top of the list</span><span data-fr>Décision ① — la disposition du haut de liste</span></h2>
+<p class="sub" data-en><b>Decided:</b> option B — one meta row, <code>[Scope ▾] &lt; 1/4 &gt; [Go]</code>, with the Scope select capped so it stops eating the row and the pager gets the room. The count text "Linked Rails — 1 of 1" goes away entirely. Option A and C are kept for reference only. One constraint every shape must respect: the nav can appear <em>without</em> the scope select (when only one layer owns Actions), so it can never be hidden by the select's own presence.</p>
+<p class="sub" data-fr><b>Décidé :</b> option B — une ligne meta, <code>[Scope ▾] &lt; 1/4 &gt; [Go]</code>, avec le sélecteur Scope plafonné pour qu'il cesse de manger la ligne et laisse la place au pager. Le texte « Linked Rails — 1 of 1 » disparaît complètement. Les options A et C ne sont conservées que pour référence. Contrainte commune : la navigation peut apparaître <em>sans</em> le sélecteur de portée (quand un seul calque possède des Actions), elle ne peut donc pas être masquée par la présence du sélecteur.</p>
+
+<div class="callout">
+  <strong data-en>Why the pager is a real simplification, not just a compaction:</strong><strong data-fr>Pourquoi le pager est une vraie simplification, pas juste un compactage :</strong>
+  <span data-en> today the panel branches on <code>total === 1 ? [Go to Rail] : [◀][▶]</code> — two markups, two behaviours, and the row <em>changes shape</em> as the count moves. With <code>&lt; 1/4 &gt;</code> one row serves every total: at 1/1 the arrows are simply disabled. That deletes the branch, the "n of N" text node, and the whole <code>total === 1</code> special case.</span>
+  <span data-fr> aujourd'hui le panneau branche sur <code>total === 1 ? [Go to Rail] : [◀][▶]</code> — deux markups, deux comportements, et la ligne <em>change de forme</em> selon le compte. Avec <code>&lt; 1/4 &gt;</code>, une seule ligne sert tous les totaux : à 1/1 les flèches sont simplement désactivées. Cela supprime la branche, le nœud texte « n de N » et tout le cas particulier <code>total === 1</code>.</span>
+</div>
+
+<div class="cards two">
+
+  <div class="card">
+    <div class="card-head"><h3>A · One meta row, label hidden at 1</h3><span class="badge">Alternative</span></div>
+    <p class="desc" data-en>Scope and nav share one row. The "Linked Rails — n of N" text lives only where it earns its place (total&nbsp;&gt;&nbsp;1, where it orients you between siblings); at 1 you keep just the button.</p>
+    <p class="desc" data-fr>Portée et navigation partagent une ligne. Le texte « Linked Rails — n de N » n'apparaît que là où il sert (total&nbsp;&gt;&nbsp;1, pour s'orienter entre sœurs) ; à 1 il ne reste que le bouton.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="toolbar">
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
+        </div>
+        <div class="metarow">
+          <div class="scope"><span class="scope-label">Scope</span><select><option>All</option></select></div>
+          <button class="btn sm">Go to Rail</button>
+        </div>
+        <div class="list">
+          <div class="row sel">
+            <div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="mock-caption" data-en>total = 1 · one row, quiet button</p>
+    <p class="mock-caption" data-fr>total = 1 · une ligne, bouton discret</p>
+    <div class="stage">
+      <div class="app">
+        <div class="metarow">
+          <div class="scope"><span class="scope-label">Scope</span><select><option>All</option></select></div>
+          <div class="navbtns">
+            <button class="btn icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg></button>
+            <button class="btn icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+        </div>
+        <div class="navline" style="padding:0 4px"><strong style="font-size:10px;color:#8d97a3">Linked Rails — 2 of 3</strong></div>
+      </div>
+    </div>
+    <p class="mock-caption" data-en>total &gt; 1 · the count returns as a quiet sub-line</p>
+    <p class="mock-caption" data-fr>total &gt; 1 · le compte revient en sous-ligne discrète</p>
+    <ul class="pros">
+      <li data-en>Reclaims a full row; the button sits where the eye already is.</li>
+      <li data-fr>Récupère une ligne entière ; le bouton est là où le regard se trouve déjà.</li>
+      <li data-en>Removes a label that tells you nothing at 1.</li>
+      <li data-fr>Supprime un libellé qui n'apprend rien à 1.</li>
+    </ul>
+    <ul class="costs">
+      <li data-en>"1 of 1" disappearing changes existing vocabulary — needs a UAT pass.</li>
+      <li data-fr>La disparition de « 1 of 1 » change le vocabulaire — nécessite un passage UAT.</li>
+    </ul>
+  </div>
+
+  <div class="card pick">
+    <div class="card-head"><h3>B · One meta row with a rail pager</h3><span class="badge rec">Your pick</span></div>
+    <p class="desc" data-en><code>[Scope ▾] &lt; 1/4 &gt; [Go]</code> — the count becomes a pager: <b>&lt;</b> previous rail, <b>1/4</b> position, <b>&gt;</b> next rail, then the go action, which shrinks to a one-word <b>Go</b>. One row, every total. <b>Scope no longer grows</b>: it is capped so the pager and Go own the right end of the row.</p>
+    <p class="desc" data-fr><code>[Scope ▾] &lt; 1/4 &gt; [Go]</code> — le compte devient un pager : <b>&lt;</b> rail précédent, <b>1/4</b> position, <b>&gt;</b> rail suivant, puis l'action, réduite à <b>Go</b>. Une ligne, tous les totaux. <b>Scope ne s'étire plus</b> : il est plafonné pour que le pager et Go occupent l'extrémité droite.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="toolbar">
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></div>
+          <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
+        </div>
+        <div class="metarow">
+          <div class="scope" style="flex:0 1 auto; max-width:104px"><span class="scope-label">Scope</span><select><option>All</option></select></div>
+          <div class="pager" style="margin-left:auto">
+            <button class="btn tiny" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
+            <span class="pager-n">1/4</span>
+            <button class="btn tiny"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <button class="btn sm">Go</button>
+        </div>
+        <div class="list">
+          <div class="row sel">
+            <div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="mock-caption" data-en>2 of 4 · Scope capped at ~104 px, pager pushes right, first arrow disabled on rail 1</p>
+    <p class="mock-caption" data-fr>2 sur 4 · Scope plafonné à ~104 px, le pager pousse à droite, première flèche désactivée sur le rail 1</p>
+    <p class="mock-caption" data-en style="margin-top:-8px">With a long layer name the select ellipsizes inside its cap rather than stealing from the pager.</p>
+    <p class="mock-caption" data-fr style="margin-top:-8px">Avec un nom de calque long, le sélecteur ellipse dans son plafond au lieu de voler la place du pager.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="metarow">
+          <div class="scope" style="flex:0 1 auto; max-width:104px"><span class="scope-label">Scope</span><select><option>All</option></select></div>
+          <div class="pager" style="margin-left:auto">
+            <button class="btn tiny" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg></button>
+            <span class="pager-n">1/1</span>
+            <button class="btn tiny" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <button class="btn sm">Go</button>
+        </div>
+      </div>
+    </div>
+    <p class="mock-caption" data-en>1 of 1 · both arrows disabled, same row, same shape</p>
+    <p class="mock-caption" data-fr>1 sur 1 · les deux flèches désactivées, même ligne, même forme</p>
+    <ul class="pros">
+      <li data-en>One markup for every total — the <code>total === 1</code> branch and the "n of N" text disappear.</li>
+      <li data-fr>Un seul markup pour tous les totaux — la branche <code>total === 1</code> et le texte « n de N » disparaissent.</li>
+      <li data-en>Position is unambiguous without words.</li>
+      <li data-fr>La position est sans ambiguïté, sans mots.</li>
+      <li data-en>The row never changes shape as the count moves.</li>
+      <li data-fr>La ligne ne change jamais de forme quand le compte évolue.</li>
+    </ul>
+    <ul class="costs">
+      <li data-en><b>Go</b> alone needs a tooltip — it is the only place the "go to the Rail" meaning now lives.</li>
+      <li data-fr><b>Go</b> seul nécessite un tooltip — c'est le seul endroit où vit encore le sens « aller au Rail ».</li>
+      <li data-en>The pager is only meaningful for the selected Action; with no selection the row falls back to Scope alone.</li>
+      <li data-fr>Le pager n'a de sens que pour l'Action sélectionnée ; sans sélection la ligne se réduit à Scope seul.</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>C · Two rows, button only shrunk</h3><span class="badge no" data-en>Does not meet the ask</span><span class="badge no" data-fr>Ne répond pas à la demande</span></div>
+    <p class="desc" data-en>Keep the two stacked blocks; only compact the button from 30&nbsp;px to the 24&nbsp;px icon scale used by the ◀ ▶ rail buttons.</p>
+    <p class="desc" data-fr>Garder les deux blocs empilés ; compacter seulement le bouton de 30&nbsp;px à l'échelle 24&nbsp;px des boutons ◀ ▶.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="metarow"><div class="scope"><span class="scope-label">Scope</span><select><option>All</option></select></div></div>
+        <div class="navline"><strong>Linked Rails — 1 of 1</strong><button class="btn sm">Go to Rail</button></div>
+        <div class="list">
+          <div class="row sel">
+            <div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="pros">
+      <li data-en>Smallest diff; zero wording risk.</li>
+      <li data-fr>Plus petit diff ; aucun risque de libellé.</li>
+    </ul>
+    <ul class="costs">
+      <li data-en>Still two full-width rows — this is what you asked to stop.</li>
+      <li data-fr>Toujours deux lignes pleine largeur — ce que vous vouliez arrêter.</li>
+    </ul>
+  </div>
+
+</div>
+
+<h2><span class="num">2</span><span data-en>Decision ② — should linkage show on the rows?</span><span data-fr>Décision ② — le lien doit-il apparaître sur les lignes ?</span></h2>
+<p class="sub" data-en>Today you can only see a script's Rails <em>after</em> selecting it — <code>getLinkedRotoGroupsForAction(rotoLoopClips, selectedActionId)</code> runs for the selected Action only. Every option below needs a per-row rail count plumbed into the panel (one pass over the clips, cheap); they differ in how much they show.</p>
+<p class="sub" data-fr>Aujourd'hui on ne voit les Rails d'un script qu'<em>après</em> l'avoir sélectionné — <code>getLinkedRotoGroupsForAction</code> ne tourne que pour l'Action sélectionnée. Chaque option ci-dessous exige de faire remonter un compte de rails par ligne (une passe sur les clips, peu coûteux) ; elles diffèrent par ce qu'elles affichent.</p>
+
+<div class="cards two">
+  <div class="card pick">
+    <div class="card-head"><h3>Filter + row badge</h3><span class="badge rec">Recommended</span></div>
+    <p class="desc" data-en>A "Linked Rails" entry joins the Scope select, and rows that own Rails carry a small count badge. The badge explains why a row is in the list when the filter is on — and is useful on its own.</p>
+    <p class="desc" data-fr>Une entrée « Linked Rails » rejoint le Scope, et les lignes possédant des Rails portent un petit badge de compte. Le badge explique pourquoi une ligne est listée quand le filtre est actif — et sert aussi seul.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="metarow"><div class="scope"><span class="scope-label">Scope</span><select><option>Linked Rails</option></select></div><button class="btn sm">Go to Rail</button></div>
+        <div class="list">
+          <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush <span class="railtag">· ⌁ 2 rails</span></span></div></div>
+          <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M10 30c4-10 10-14 14-10s4 10 10 12" fill="none" stroke="#6b9ac8" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-27</span><span class="pv">v1.0.0 · Physic Paint · F30</span><span class="ct">3 brushes <span class="railtag">· ⌁ 1 rail</span></span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Row badge only</h3></div>
+    <p class="desc" data-en>No new filter — Scope stays a pure layer filter. Rows that own Rails get the count. One axis, smaller change.</p>
+    <p class="desc" data-fr>Pas de nouveau filtre — Scope reste un filtre de calques. Les lignes avec Rails reçoivent le compte. Un seul axe, changement plus petit.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="metarow"><div class="scope"><span class="scope-label">Scope</span><select><option>All</option></select></div><button class="btn sm">Go to Rail</button></div>
+        <div class="list">
+          <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush <span class="railtag">· ⌁ 2 rails</span></span></div></div>
+          <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M10 30c4-10 10-14 14-10s4 10 10 12" fill="none" stroke="#6b9ac8" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-28</span><span class="pv">v1.0.0 · Physic Paint · F12</span><span class="ct">2 brushes</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Filter only</h3></div>
+    <p class="desc" data-en>The Scope select gains the entry; rows stay as they are. With the filter on, you cannot tell which rows are the multi-Rail ones.</p>
+    <p class="desc" data-fr>Le Scope gagne l'entrée ; les lignes restent identiques. Filtre actif, impossible de distinguer les lignes à plusieurs Rails.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="metarow"><div class="scope"><span class="scope-label">Scope</span><select><option>Linked Rails</option></select></div><button class="btn sm">Go to Rail</button></div>
+        <div class="list">
+          <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>Neither — leave it</h3></div>
+    <p class="desc" data-en>Scope stays a layer filter, rows unmarked. The Linked Rails nav remains the only place linkage surfaces, exactly as today.</p>
+    <p class="desc" data-fr>Scope reste un filtre de calques, lignes non marquées. La navigation Linked Rails reste le seul endroit où le lien apparaît, comme aujourd'hui.</p>
+    <div class="stage">
+      <div class="app">
+        <div class="metarow"><div class="scope"><span class="scope-label">Scope</span><select><option>All</option></select></div><button class="btn sm">Go to Rail</button></div>
+        <div class="list">
+          <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+            <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2><span class="num">3</span><span data-en>Four more possibilities worth considering</span><span data-fr>Quatre autres possibilités à considérer</span></h2>
+<p class="sub" data-en>Independent of the two decisions above — each can be taken or left on its own.</p>
+<p class="sub" data-fr>Indépendantes des deux décisions ci-dessus — chacune peut être prise ou laissée seule.</p>
+
+<div class="poss">
+  <div>
+    <span class="tag" data-en>compactness</span><span class="tag" data-fr>compacité</span>
+    <h3 data-en>Rail chips instead of ◀ ▶</h3>
+    <h3 data-fr>Des puces de rails au lieu de ◀ ▶</h3>
+    <p class="why" data-en>When a script owns several Rails, replace the prev/next pair with a row of small chips — one per Rail, the current one lit. One click to any sibling instead of stepping, and it reads as "which Rails does this Action have?" rather than "where am I in a list?".</p>
+    <p class="why" data-fr>Quand un script possède plusieurs Rails, remplacer la paire précédent/suivant par une rangée de puces — une par Rail, la courante allumée. Un clic vers n'importe quelle sœur au lieu d'avancer pas à pas, et cela répond à « quels Rails cette Action a-t-elle ? » plutôt qu'à « où suis-je dans une liste ? ».</p>
+    <ul class="pros"><li data-en>Removes the "n of N" text entirely — position is legible from the chips.</li><li data-fr>Supprime complètement le texte « n de N » — la position se lit sur les puces.</li></ul>
+    <ul class="costs"><li data-en>Needs a cap and an overflow rule when the group is large.</li><li data-fr>Nécessite un plafond et une règle de débordement pour les grands groupes.</li></ul>
+  </div>
+  <div class="stage" style="margin:0">
+    <div class="app">
+      <div class="metarow"><div class="scope"><span class="scope-label">Scope</span><select><option>All</option></select></div></div>
+      <div class="navline" style="flex-direction:column; align-items:stretch; gap:5px">
+        <span style="font-size:10px;color:#8d97a3">Rails from this Action</span>
+        <div class="chips"><span class="chip on">1</span><span class="chip">2</span><span class="chip">3</span><span class="chip">4</span></div>
+      </div>
+      <div class="list"><div class="row sel"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+        <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="poss">
+  <div>
+    <span class="tag" data-en>zero new elements</span><span class="tag" data-fr>zéro nouvel élément</span>
+    <h3 data-en>Fold the rail count into the provenance line</h3>
+    <h3 data-fr>Replier le compte de rails dans la ligne de provenance</h3>
+    <p class="why" data-en>Instead of a badge, append the count to the line that already exists: <code>v1.0.0 · Physic Paint · F26 · ⌁ 2</code>. The list gains no new row height, no new colour, no new shape — one more token on a muted line you already read.</p>
+    <p class="why" data-fr>Plutôt qu'un badge, ajouter le compte à la ligne existante : <code>v1.0.0 · Physic Paint · F26 · ⌁ 2</code>. La liste ne gagne aucune hauteur, aucune couleur, aucune forme — un token de plus sur une ligne déjà lue.</p>
+    <ul class="pros"><li data-en>Cheapest possible surfacing; survives narrow widths.</li><li data-fr>Le moins coûteux ; résiste aux largeurs étroites.</li></ul>
+    <ul class="costs"><li data-en>Weakest signal — easy to miss while scanning.</li><li data-fr>Signal le plus faible — facile à manquer.</li></ul>
+  </div>
+  <div class="stage" style="margin:0">
+    <div class="app">
+      <div class="list" style="padding-top:4px">
+        <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+          <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26 · ⌁ 2</span><span class="ct">1 brush</span></div></div>
+        <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M10 30c4-10 10-14 14-10s4 10 10 12" fill="none" stroke="#6b9ac8" stroke-width="2"/></svg></div>
+          <div class="copy"><span class="nm">v1.0.0-Physic Paint-28</span><span class="pv">v1.0.0 · Physic Paint · F12</span><span class="ct">2 brushes</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="poss">
+  <div>
+    <span class="tag" data-en>list structure</span><span class="tag" data-fr>structure de liste</span>
+    <h3 data-en>Group rows by layer under sticky headers</h3>
+    <h3 data-fr>Grouper les lignes par calque sous des en-têtes fixes</h3>
+    <p class="why" data-en>With Scope = All, sort the list by layer and put a sticky layer header above each block. That removes the repeated layer name from every provenance line, and answers "which layer is this from?" at a glance instead of by reading each row.</p>
+    <p class="why" data-fr>Avec Scope = All, trier la liste par calque et poser un en-tête collant au-dessus de chaque bloc. Cela retire le nom de calque répété de chaque ligne de provenance et répond à « de quel calque vient ceci ? » d'un coup d'œil.</p>
+    <ul class="pros"><li data-en>Frees room in each provenance line for the rail count.</li><li data-fr>Libère de la place dans chaque ligne pour le compte de rails.</li></ul>
+    <ul class="costs"><li data-en>Bigger change; interacts with the selected-row scroll behaviour.</li><li data-fr>Changement plus gros ; interagit avec le comportement de défilement de la ligne sélectionnée.</li></ul>
+  </div>
+  <div class="stage" style="margin:0">
+    <div class="app">
+      <div class="list" style="padding-top:4px">
+        <div class="grouphead">Physic Paint · 2 actions</div>
+        <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+          <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">F26 · ⌁ 2</span><span class="ct">1 brush</span></div></div>
+        <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M10 30c4-10 10-14 14-10s4 10 10 12" fill="none" stroke="#6b9ac8" stroke-width="2"/></svg></div>
+          <div class="copy"><span class="nm">v1.0.0-Physic Paint-27</span><span class="pv">F30 · ⌁ 1</span><span class="ct">3 brushes</span></div></div>
+        <div class="grouphead">Background · 1 action</div>
+        <div class="row"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M12 34c8-6 10-16 18-16s8 8 4 14" fill="none" stroke="#8fb06b" stroke-width="2"/></svg></div>
+          <div class="copy"><span class="nm">sky-shading</span><span class="pv">F08</span><span class="ct">2 brushes</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="poss">
+  <div>
+    <span class="tag" data-en>reclaim a row</span><span class="tag" data-fr>récupérer une ligne</span>
+    <h3 data-en>Move Scope into the toolbar row</h3>
+    <h3 data-fr>Déplacer Scope dans la ligne de la barre d'outils</h3>
+    <p class="why" data-en>The toolbar is a 6-column grid with a mostly-empty second row (Copy / Apply / Clear). The scope select could live there, deleting the scope row outright and leaving the meta row free for the nav alone.</p>
+    <p class="why" data-fr>La barre d'outils est une grille de 6 colonnes avec une seconde rangée presque vide (Copy / Apply / Clear). Le sélecteur pourrait y vivre, supprimant la ligne de portée et libérant la ligne meta pour la navigation seule.</p>
+    <ul class="pros"><li data-en>Net one row saved; the panel gets shorter, not just tighter.</li><li data-fr>Une ligne nette de gagnée ; le panneau raccourcit, pas seulement se resserre.</li></ul>
+    <ul class="costs"><li data-en>Fights the toolbar's icon-grid layout and its byte-identical UAT pins.</li><li data-fr>Entre en conflit avec la grille d'icônes et ses pins UAT byte-identiques.</li></ul>
+  </div>
+  <div class="stage" style="margin:0">
+    <div class="app">
+      <div class="toolbar" style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; padding:0 4px">
+        <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/></svg></div>
+        <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 20 12 6 21 6 3"/></svg></div>
+        <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></div>
+        <div class="tbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></div>
+        <div class="scope" style="flex:1 1 120px; padding-left:4px"><span class="scope-label">Scope</span><select><option>All</option></select></div>
+      </div>
+      <div class="navline"><strong>Linked Rails — 1 of 1</strong><button class="btn sm">Go to Rail</button></div>
+      <div class="list"><div class="row sel"><div class="thumb"><svg viewBox="0 0 48 48"><path d="M8 32c6-14 12-18 16-14s2 12 8 14 8-4 8-10" fill="none" stroke="#c86b8a" stroke-width="2"/></svg></div>
+        <div class="copy"><span class="nm">v1.0.0-Physic Paint-26</span><span class="pv">v1.0.0 · Physic Paint · F26</span><span class="ct">1 brush</span></div></div></div>
+    </div>
+  </div>
+</div>
+
+<h2><span class="num">4</span><span data-en>Recommendation</span><span data-fr>Recommandation</span></h2>
+<table>
+  <thead><tr>
+    <th data-en>Decision</th><th data-fr>Décision</th>
+    <th data-en>Recommendation</th><th data-fr>Recommandation</th>
+    <th data-en>Why</th><th data-fr>Pourquoi</th>
+  </tr></thead>
+  <tbody>
+    <tr>
+      <td><b>① Layout</b></td>
+      <td class="rec" data-en>DECIDED — B with a capped Scope</td><td class="rec" data-fr>DÉCIDÉ — B avec Scope plafonné</td>
+      <td data-en>Your call. The pager replaces the count text <em>and</em> the prev/next pair, so one markup covers every total and the <code>total === 1</code> branch is deleted rather than special-cased. The Scope select stops growing so the pager owns the right end. A and C are no longer needed.</td>
+      <td data-fr>Votre choix. Le pager remplace le texte du compte <em>et</em> la paire précédent/suivant, donc un seul markup couvre tous les totaux et la branche <code>total === 1</code> est supprimée au lieu d'être traitée à part. Le sélecteur Scope cesse de s'étirer pour que le pager occupe la droite. A et C ne sont plus nécessaires.</td>
+    </tr>
+    <tr>
+      <td><b>①b Go label</b></td>
+      <td data-en>Verify at real width</td><td data-fr>À vérifier à largeur réelle</td>
+      <td data-en>Your sketch says <b>Go</b>. At 300 px the fuller <b>Go to Rail</b> also fits — but only just, and the Scope select gives up the width. Worth one look on device before settling on the shorter word.</td>
+      <td data-fr>Votre croquis dit <b>Go</b>. À 300 px le libellé complet <b>Go to Rail</b> tient aussi — mais tout juste, et le sélecteur Scope y perd de la largeur. Un coup d'œil sur l'appareil avant de trancher.</td>
+    </tr>
+    <tr>
+      <td><b>② Linked state</b></td>
+      <td class="rec" data-en>Filter + badge</td><td class="rec" data-fr>Filtre + badge</td>
+      <td data-en>Because linkage is currently invisible until you select a row. The badge is the part that pays off even without the filter; the filter is what turns it into a workflow ("show me what is already on the timeline").</td>
+      <td data-fr>Parce que le lien est aujourd'hui invisible avant sélection. Le badge est la partie rentable même sans filtre ; le filtre en fait un vrai flux (« montre ce qui est déjà sur la timeline »).</td>
+    </tr>
+    <tr>
+      <td><b>③ Extras</b></td>
+      <td data-en>Take the provenance fold-in</td><td data-fr>Prendre le repli dans la provenance</td>
+      <td data-en>If you want the badge without any new shape, the fold-in gives you almost the same information for free. Chips and grouping are larger changes — worth their own pass.</td>
+      <td data-fr>Si vous voulez le badge sans nouvelle forme, le repli donne presque la même information gratuitement. Les puces et le groupement sont des changements plus larges — à traiter à part.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <strong data-en>Two small decisions the pager creates:</strong><strong data-fr>Deux petites décisions créées par le pager :</strong>
+  <span data-en> <b>1.</b> The go action does real work at 1/1 — it selects that Rail and jumps the playhead to its placement start — but a bare <b>Go</b> no longer says so. It needs a tooltip, or the fuller <b>Go to Rail</b> if it fits at the real width. <b>2.</b> With no Action selected there is no group, so the pager must vanish and leave Scope alone on the row — the same fallback the current code gets from <code>linkedGroupNavigation === null</code>.</span>
+  <span data-fr> <b>1.</b> L'action à 1/1 fait un vrai travail — elle sélectionne ce Rail et amène la tête de lecture à son placement — mais un simple <b>Go</b> ne le dit plus. Il faut un tooltip, ou le libellé complet <b>Go to Rail</b> s'il tient à largeur réelle. <b>2.</b> Sans Action sélectionnée il n'y a pas de groupe, donc le pager doit disparaître et laisser Scope seul sur la ligne — le même repli que le code actuel obtient via <code>linkedGroupNavigation === null</code>.</span>
+</div>
+
+<h2><span class="num">5</span><span data-en>Decide</span><span data-fr>Décider</span></h2>
+<p class="sub" data-en>Pick one per question and queue the answer — or annotate any mockup above instead.</p>
+<p class="sub" data-fr>Choisissez une réponse par question et envoyez-la — ou annotez n'importe quelle maquette ci-dessus.</p>
+
+<div class="decide" style="background:#f4f8f5; border-color:#cfe6d9">
+  <h3 data-en>① Top-of-list layout — recorded</h3><h3 data-fr>① Disposition du haut de liste — enregistré</h3>
+  <p class="q" style="margin-bottom:8px"><b data-en>B — one meta row with the rail pager, Scope capped.</b><b data-fr>B — une ligne meta avec le pager de rails, Scope plafonné.</b></p>
+  <p class="q" style="margin:0" data-en>Recorded from your sketch and your annotation. Still to confirm on device: whether the bare <b>Go</b> needs a tooltip, or whether the fuller <b>Go to Rail</b> fits at the real panel width.</p>
+  <p class="q" style="margin:0" data-fr>Enregistré depuis votre croquis et votre annotation. Reste à confirmer sur l'appareil : si le simple <b>Go</b> a besoin d'un tooltip, ou si le libellé complet <b>Go to Rail</b> tient à la largeur réelle du panneau.</p>
+</div>
+
+<form class="decide" data-lavish-question="linked" onsubmit="event.preventDefault(); const v = new FormData(event.currentTarget).get('linked'); if (!v) return; window.lavish.queuePrompt('Linked-state decision: ' + v + ' — apply it to the Scripts panel.', { tag:'choice', text:'Linked state: ' + v, element: event.currentTarget, data:{ question:'linked', answer:String(v) } }); event.currentTarget.querySelector('.queued').classList.add('on');">
+  <h3 data-en>② Linked state on the Actions list</h3><h3 data-fr>② État « linked » sur la liste d'Actions</h3>
+  <p class="q" data-en>Remember: every Apply persists one Loop Clip, so a "Linked Rails" filter really means "already placed on the timeline".</p>
+  <p class="q" data-fr>Rappel : chaque Apply persiste un Loop Clip, donc un filtre « Linked Rails » signifie en réalité « déjà placé sur la timeline ».</p>
+  <div class="opts">
+    <label class="opt"><input type="radio" name="linked" value="Filter + row badge">
+      <span><b data-en>Filter + row badge</b><b data-fr>Filtre + badge de ligne</b>
+      <small data-en>A "Linked Rails" Scope entry plus a rail count on rows that own Rails.</small><small data-fr>Une entrée « Linked Rails » dans Scope plus un compte de rails sur les lignes concernées.</small></span></label>
+    <label class="opt"><input type="radio" name="linked" value="Row badge only">
+      <span><b data-en>Row badge only</b><b data-fr>Badge de ligne seulement</b>
+      <small data-en>No new filter; Scope stays a layer filter.</small><small data-fr>Pas de nouveau filtre ; Scope reste un filtre de calques.</small></span></label>
+    <label class="opt"><input type="radio" name="linked" value="Filter only">
+      <span><b data-en>Filter only</b><b data-fr>Filtre seulement</b>
+      <small data-en>Scope gains the entry; rows unchanged.</small><small data-fr>Scope gagne l'entrée ; lignes inchangées.</small></span></label>
+    <label class="opt"><input type="radio" name="linked" value="Neither — leave linkage to the Linked Rails nav">
+      <span><b data-en>Neither</b><b data-fr>Aucun des deux</b>
+      <small data-en>Linkage stays visible only after selecting a row.</small><small data-fr>Le lien ne reste visible qu'après sélection d'une ligne.</small></span></label>
+  </div>
+  <button class="queue" type="submit" data-en>Queue this answer</button>
+  <button class="queue" type="submit" data-fr>Envoyer cette réponse</button>
+  <span class="queued" data-en>Queued ✓</span><span class="queued" data-fr>Envoyé ✓</span>
+</form>
+
+<footer>
+  <span>EFX Motion Editor · Physic Paint Studio · Scripts panel review · 2026-09-22</span>
+  <span data-en>Mockups drawn at 300 px with the real <code>physicsPaintStudio.css</code> tokens · no app code changed</span>
+  <span data-fr>Maquettes à 300 px avec les vrais tokens <code>physicsPaintStudio.css</code> · aucun code applicatif modifié</span>
+</footer>
+
+</div>
+
+<script>
+  (function () {
+    var buttons = document.querySelectorAll('.lang button');
+    function setLang(lang) {
+      document.querySelectorAll('[data-en]').forEach(function (el) { el.style.display = lang === 'en' ? '' : 'none'; });
+      document.querySelectorAll('[data-fr]').forEach(function (el) { el.style.display = lang === 'fr' ? '' : 'none'; });
+      buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.lang === lang)); });
+    }
+    buttons.forEach(function (b) { b.addEventListener('click', function () { setLang(b.dataset.lang); }); });
+    setLang('en');
+  })();
+</script>
+</body>
+</html>
