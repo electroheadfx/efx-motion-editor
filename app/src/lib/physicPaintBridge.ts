@@ -4,6 +4,7 @@ import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
+import { buildBytesPayload } from './efxPaintMediaMaterialize';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
 import { GENERATED_ROTO_RENDER_ONLY_STATUS_TEMPLATE } from '../components/physic-paint/roto/physicsPaintRotoKeyController';
@@ -3337,6 +3338,135 @@ function applyDocumentSyncFrameMedia(
 }
 
 /**
+ * One frame digest per distinct raster content, keyed by the O(1) byte token
+ * (G-52-6). The preserve below runs on every mirror install of a reference-
+ * shaped push; memoizing keeps a re-pushed unchanged frame from paying its
+ * SHA-256 twice.
+ */
+const frameDigestByContentToken = new Map<string, string>();
+
+async function frameDigestForInlineBytes(bytes: Uint8Array): Promise<string> {
+  const token = buildFrameBytesToken(bytes);
+  const held = frameDigestByContentToken.get(token);
+  if (held !== undefined) return held;
+  const digest = await sha256HexBytes(bytes);
+  frameDigestByContentToken.set(token, digest);
+  return digest;
+}
+
+/**
+ * debug layer-2-ref-mismatch (2026-09-22): the child's docSync projection is
+ * reference-shaped by design (52.2-10 D-12), but the RECEIVER's runtime is the
+ * byte-shaped authority the physical-edit ref expansion and the apply's
+ * revision gate read — the runtime mirror must reconstruct the shape, not
+ * adopt the wire projection. A reference whose digest the receiver's own
+ * inline bytes already hash to names exactly those pixels, so the bytes are
+ * preserved under the pushed identity. An unverifiable digest is left
+ * reference-only (the fail-closed direction: the pushed revision keeps naming
+ * the references, and a later edit's ref for it is refused rather than
+ * resolved against bytes that may not be the child's).
+ *
+ * The document's revision is recomputed over the preserved collections — the
+ * same law every projection seam honors: the fingerprint covers the raster
+ * carriers, so a byte-carrying collection can never carry a reference-shaped
+ * revision.
+ */
+export async function preserveMirroredInlineBytes(
+  layerId: string,
+  trackId: string,
+  document: PhysicPaintRotoPhysicalDocument,
+): Promise<PhysicPaintRotoPhysicalDocument> {
+  const preserveCollection = async (
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+  ): Promise<{ readonly records: readonly PhysicPaintRotoRealKeyRecord[]; readonly changed: boolean }> => {
+    let changed = false;
+    const preserved: PhysicPaintRotoRealKeyRecord[] = [];
+    for (const record of records) {
+      const media = record.payload.media;
+      const current = media === undefined
+        ? null
+        : physicPaintStore.getRotoRealKeyRecord(layerId, trackId, record.keyId);
+      const bytes = current?.payload.bytes;
+      if (media === undefined || bytes === undefined || await frameDigestForInlineBytes(bytes) !== media.digest) {
+        preserved.push(record);
+        continue;
+      }
+      changed = true;
+      preserved.push(Object.freeze({
+        kind: 'real-key' as const,
+        keyId: record.keyId,
+        appFrame: record.appFrame,
+        payload: Object.freeze(buildBytesPayload(record, bytes)),
+      }));
+    }
+    return { records: preserved, changed };
+  };
+  const realKeyRecords = await preserveCollection(document.realKeyRecords);
+  const groupOverrideRecords = document.groupOverrideRecords === undefined
+    ? undefined
+    : await preserveCollection(document.groupOverrideRecords);
+  if (!realKeyRecords.changed && groupOverrideRecords?.changed !== true) return document;
+  const overrides = groupOverrideRecords?.records ?? document.groupOverrideRecords;
+  return {
+    ...document,
+    realKeyRecords: realKeyRecords.records,
+    ...(overrides === undefined ? {} : { groupOverrideRecords: overrides }),
+    revision: buildPhysicPaintRotoPhysicalRevision(
+      realKeyRecords.records,
+      document.interpolation,
+      document.loopClips,
+      document.incomingInterpolationBreakKeyIds,
+      overrides ?? [],
+    ),
+  };
+}
+
+/**
+ * The mirror install is async (the preserve verifies digests), so two syncs
+ * landing back to back would otherwise be able to install out of arrival order
+ * and leave the runtime holding the OLDER document. One promise chain keeps
+ * every install on the arrival order.
+ */
+let pendingDocumentMirror: Promise<void> = Promise.resolve();
+
+function scheduleMirrorOfSyncedDocument(document: EfxPaintDocument): void {
+  pendingDocumentMirror = pendingDocumentMirror
+    .then(() => mirrorSyncedTrackDocuments(document))
+    .catch((error) => {
+      console.warn(`[physicPaintBridge] EFX Paint runtime mirror failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+}
+
+async function mirrorSyncedTrackDocuments(document: EfxPaintDocument): Promise<void> {
+  for (const track of document.tracks) {
+    if (!track.rotoPhysical) continue;
+    if (physicPaintStore.getRotoPhysicalContentRevision(document.parentLayerId, track.id) === track.rotoPhysical.revision) continue;
+    const value = await preserveMirroredInlineBytes(document.parentLayerId, track.id, track.rotoPhysical);
+    const result = physicPaintStore.mirrorRotoPhysicalDocument(
+      document.parentLayerId,
+      track.id,
+      value,
+    );
+    if (!result.ok) {
+      console.warn(`[physicPaintBridge] EFX Paint runtime mirror skipped for track ${track.id}: ${result.error}`);
+    }
+  }
+}
+
+/**
+ * Await the in-flight runtime mirror kicked by a document sync. Never rejects
+ * — a failed install is logged and the next sync rebuilds from the pushed
+ * document.
+ */
+export async function awaitPendingPhysicPaintRuntimeMirror(): Promise<void> {
+  let pending = pendingDocumentMirror;
+  while (true) {
+    await pending;
+    if (pending === pendingDocumentMirror) return;
+    pending = pendingDocumentMirror;
+  }
+}
+/**
  * 47-01: main-window listener for the child's EFX Paint document sync. The
  * incoming payload is validated fail-closed by the canonical parser and
  * re-registered into the main window's efxPaintStore ONLY when the document
@@ -3391,18 +3521,7 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // Best-effort per track: a track under an active operation lease is
       // skipped (fail closed), and tracks without rotoPhysical state are
       // untouched.
-      for (const track of document.tracks) {
-        if (!track.rotoPhysical) continue;
-        if (physicPaintStore.getRotoPhysicalContentRevision(document.parentLayerId, track.id) === track.rotoPhysical.revision) continue;
-        const result = physicPaintStore.mirrorRotoPhysicalDocument(
-          document.parentLayerId,
-          track.id,
-          track.rotoPhysical,
-        );
-        if (!result.ok) {
-          console.warn(`[physicPaintBridge] EFX Paint runtime mirror skipped for track ${track.id}: ${result.error}`);
-        }
-      }
+      scheduleMirrorOfSyncedDocument(document);
     } catch (error) {
       console.warn('[physicPaintBridge] Rejected EFX Paint document sync:', error instanceof Error ? error.message : String(error));
     }

@@ -70,6 +70,7 @@ import {
 import { proposeRails, type RotoRailSetCopyPayload } from '../components/physic-paint/roto/physicsPaintRotoRailSetCopy';
 import { getCarriedRotoPhysical, hydrateRotoPhysicalLaunchContext } from '../components/physic-paint/roto/rotoLaunchHydration';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
+import { toPersistedRotoRecords } from '../components/physic-paint/roto/physicsPaintRotoMediaProjection';
 import { encodeSourceBytesForDocumentSync,
   _setPhysicPaintDocumentSyncFramePorts,
   applyCommittedReferencedActionDeletion,
@@ -88,6 +89,7 @@ import { encodeSourceBytesForDocumentSync,
   installPhysicPaintFrameSyncListener,
   isPhysicPaintChildAudioClaimed,
   openPhysicPaintCanvas,
+  preserveMirroredInlineBytes,
   physicPaintLaunchActive,
   PHYSIC_PAINT_APPLY_EVENT,
   PHYSIC_PAINT_APPLY_RESULT_EVENT,
@@ -432,6 +434,105 @@ describe('physicPaintBridge', async () => {
     it('returns the payload unchanged for a non-physical payload', () => {
       const payload = { kind: 'apply-canvas', layerId: 'phys-layer-1' };
       expect(expandRotoPhysicalEditRecordRefs(payload)).toEqual({ payload });
+    });
+  });
+
+  /**
+   * debug layer-2-ref-mismatch (2026-09-22): the docSync receiver installs the
+   * child's REFERENCE-shaped projection over the parent runtime. Without the
+   * preservation below, that install replaced byte-carrying records with
+   * media-only ones, and the next physical edit's content-token refs (byte
+   * tokens, compacted from the child's runtime records) could never match a
+   * `media:<digest>` token — the first edit after a Studio launch on a layer
+   * was refused with "no longer matches the parent document content".
+   */
+  describe('docSync inline-byte preservation (layer-2 ref mismatch, 2026-09-22)', () => {
+    const digestOf = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+    const INTERPOLATION = { enabled: false, mode: 'duplicate' as const };
+
+    const projectRecords = (
+      records: ReturnType<typeof makePhysicalRecord>[],
+      digests?: (keyId: string) => string,
+    ): PhysicPaintRotoPhysicalDocument => {
+      const projection = toPersistedRotoRecords(records, (keyId) => {
+        const record = records.find((candidate) => candidate.keyId === keyId)!;
+        return {
+          relativePath: `frames/phys-layer-1/${keyId}.webp`,
+          digest: digests ? digests(keyId) : digestOf(record.payload.bytes),
+          width: 1000,
+          height: 650,
+        };
+      });
+      if (!projection.ok) throw new Error('projection failed');
+      return parsePhysicPaintRotoPhysicalDocument({
+        capacity: 600,
+        realKeyRecords: projection.records,
+        interpolation: INTERPOLATION,
+        scriptMotion: { deformation: 0, position: 0 },
+        background: null,
+        selectedKeyId: null,
+        cursorAppFrame: records[0]?.appFrame ?? 0,
+        revision: buildPhysicPaintRotoPhysicalRevision(
+          projection.records,
+          INTERPOLATION,
+          [],
+          PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+          [],
+        ),
+        incomingInterpolationBreakKeyIds: [],
+      });
+    };
+
+    it('a reference-shaped sync leaves content-token refs unexpandable (the live failure)', () => {
+      const record = makePhysicalRecord('A', 1);
+      seedPhysicalDocument('phys-layer-1', [record]);
+      physicPaintStore.mirrorRotoPhysicalDocument('phys-layer-1', TEST_TRACK_ID, projectRecords([record]));
+
+      const result = expandRotoPhysicalEditRecordRefs({
+        kind: 'replace-roto-physical-map',
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        records: [{ keyId: 'A', appFrame: 1, refToken: buildFrameBytesToken(record.payload.bytes) }],
+      });
+
+      expect('error' in result).toBe(true);
+      expect((result as { error: string }).error).toContain('no longer matches the parent document content');
+    });
+
+    it('preserves the runtime inline bytes for references whose pixels it already holds', async () => {
+      const recordA = makePhysicalRecord('A', 1);
+      const recordB = makePhysicalRecord('B', 3);
+      seedPhysicalDocument('phys-layer-1', [recordA, recordB]);
+      const projected = projectRecords([recordA, recordB]);
+
+      const preserved = await preserveMirroredInlineBytes('phys-layer-1', TEST_TRACK_ID, projected);
+
+      expect(preserved.realKeyRecords.map((entry) => entry.payload.bytes)).toEqual([
+        recordA.payload.bytes,
+        recordB.payload.bytes,
+      ]);
+      expect(preserved.realKeyRecords.every((entry) => entry.payload.media === undefined)).toBe(true);
+      expect(() => parsePhysicPaintRotoPhysicalDocument(preserved)).not.toThrow();
+
+      const installed = physicPaintStore.mirrorRotoPhysicalDocument('phys-layer-1', TEST_TRACK_ID, preserved);
+      expect(installed.ok).toBe(true);
+      const result = expandRotoPhysicalEditRecordRefs({
+        kind: 'replace-roto-physical-map',
+        layerId: 'phys-layer-1',
+        trackId: TEST_TRACK_ID,
+        records: [{ keyId: 'A', appFrame: 1, refToken: buildFrameBytesToken(recordA.payload.bytes) }],
+      });
+      expect('error' in result).toBe(false);
+    });
+
+    it('leaves a reference alone when its digest does not match the runtime bytes', async () => {
+      const record = makePhysicalRecord('A', 1);
+      seedPhysicalDocument('phys-layer-1', [record]);
+      const projected = projectRecords([record], () => 'f'.repeat(64));
+
+      const preserved = await preserveMirroredInlineBytes('phys-layer-1', TEST_TRACK_ID, projected);
+
+      expect(preserved).toBe(projected);
     });
   });
 

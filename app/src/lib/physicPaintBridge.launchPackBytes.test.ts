@@ -13,7 +13,10 @@
  *      into the PARENT RUNTIME (`mirrorRotoPhysicalDocument`), replacing the
  *      byte-carrying runtime records with media-only ones. The guard always
  *      mismatches (runtime revision is byte-terms, the pushed one media-terms),
- *      so the mirror fires on the first accepted push;
+ *      so the mirror fires on the first accepted push. The 2026-09-22
+ *      preservation (LEG 5) stops this REPLACEMENT for every reference whose
+ *      digest the runtime bytes verify — the legs below stay the net for a
+ *      runtime that genuinely holds no pixels;
  *   3. `createPhysicPaintLaunchContext` builds the launch pack from that runtime
  *      with NO launch-leg materialization — the launch pack is one of the three
  *      declared byte-requiring consumers (`efxPaintMediaMaterialize.ts`), which
@@ -25,12 +28,13 @@
  *      Studio shell stays at its pre-launch render forever.
  *
  * WHAT THIS FILE PINS.
- *  - LEG 1 — the launch DOOR: after the real child→parent push poisoned the
- *    parent runtime, `openPhysicPaintCanvas` (the production entry the
- *    properties panel calls) must hand the child a pack whose active-track
- *    record carries inline bytes — resolved through the digest-verified native
- *    read, or straight from the bridged byte map when the receiver already
- *    holds the digest (no IO). RED at base: the door ships reference-only.
+ *  - LEG 1 — the launch DOOR: over a runtime that holds no pixels (the open
+ *    leg's shape, `referenceOnlyRecord`), `openPhysicPaintCanvas` (the
+ *    production entry the properties panel calls) must hand the child a pack
+ *    whose active-track record carries inline bytes — resolved through the
+ *    digest-verified native read, or straight from the bridged byte map when
+ *    the receiver already holds the digest (no IO). RED at base: the door
+ *    ships reference-only.
  *  - LEG 2 — the seed TOLERANCE: `recordsAsRuntimeFrames` keeps its strict
  *    publishing contract (a reference-only record on the publish path still
  *    throws), and the tolerant launch-seed helper the Studio boots through
@@ -47,6 +51,12 @@
  *    document is revision-identical to the parent's current one — a register
  *    guard comparing the bare canonical revision dedupes the display change
  *    (its root cause), while the sync fingerprint registers it.
+ *  - LEG 5 — the receiver's runtime SHAPE (debug layer-2-ref-mismatch,
+ *    2026-09-22): a reference-shaped push preserves the runtime's inline bytes
+ *    when the pushed digest verifies them, so the physical-edit ref expansion
+ *    (and the apply's revision gate) keep a byte-shaped authority — and the
+ *    launch door needs no IO at all. RED at base: the push leaves the runtime
+ *    reference-shaped and every first physical edit on the layer is refused.
  *
  * FIDELITY NOTES, stated. The Studio component cannot be mounted in vitest
  * (Tauri window + engine deps): the component's launch seed is driven through
@@ -142,6 +152,18 @@ const byteRecord = (): PhysicPaintRotoRealKeyRecord => ({
   keyId: KEY,
   appFrame: FRAME,
   payload: { frameIndex: 0, appFrame: FRAME, bytes: BYTES, width: 4, height: 4 },
+});
+
+/**
+ * The runtime shape the open leg can leave (52.2-13 doctrine): the reference
+ * with no pixels. The launch pack is a declared byte-requiring consumer, so
+ * the door must re-materialize it — the legs below pin exactly that.
+ */
+const referenceOnlyRecord = (): PhysicPaintRotoRealKeyRecord => ({
+  kind: 'real-key',
+  keyId: KEY,
+  appFrame: FRAME,
+  payload: { frameIndex: 0, appFrame: FRAME, media: MEDIA },
 });
 
 function physical(
@@ -282,7 +304,7 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
    * launch assertion below depends on — plus the display preference the
    * parent's live document holds after both pushes.
    */
-  const driveDisplayChangePush = async (): Promise<{
+  const driveDisplayChangePush = async (seed: 'bytes' | 'reference-only' = 'bytes'): Promise<{
     wireCarriedByteChannel: boolean;
     runtimeRecordAfterPush: PhysicPaintRotoRealKeyRecord | null;
     parentRegisteredDisplayPreference: boolean | null;
@@ -296,10 +318,16 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
     await child.transport.markEfxPaintDocumentSyncFrameDelivered(LAYER, TRACK, KEY, BYTES);
 
     // The parent: its runtime holds the bytes the apply channel delivered, and
-    // its registered document is whatever the last push installed.
+    // its registered document is whatever the last push installed. The
+    // `reference-only` seed is the open leg's shape — a record whose file could
+    // not be materialized — which the door must still heal.
     parent.efx.reset();
     parent.physic.physicPaintStore.reset();
-    const runtimeSeed = parent.physic.physicPaintStore.replaceRotoPhysicalDocument(LAYER, TRACK, physicalValue);
+    const runtimeSeed = parent.physic.physicPaintStore.replaceRotoPhysicalDocument(
+      LAYER,
+      TRACK,
+      physical(seed === 'bytes' ? [byteRecord()] : [referenceOnlyRecord()]),
+    );
     if (!runtimeSeed.ok) throw new Error(`runtime seed failed: ${runtimeSeed.error}`);
 
     const unlisten = await parentBridge.installPhysicPaintEfxPaintDocumentListener();
@@ -325,6 +353,9 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
     const wirePayload = lastEmittedPayload();
     handler?.({ detail: wirePayload });
     unlisten();
+    // The runtime mirror is async (the inline-byte preservation verifies
+    // digests), so the runtime state below is read only after it settles.
+    await parentBridge.awaitPendingPhysicPaintRuntimeMirror();
 
     const runtimeRecord = parent.physic.physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK)[0] ?? null;
     return {
@@ -343,22 +374,23 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
   const carrierRecord = (document: unknown): PhysicPaintRotoRealKeyRecord | null =>
     carrierPhysical(document)?.realKeyRecords[0] ?? null;
 
-  it('LEG 1: the launch door hands the child a pack whose record carries inline bytes after the mirror poisoned the runtime', async () => {
+  it('LEG 1: the launch door hands the child a pack whose record carries inline bytes when the runtime is reference-only', async () => {
     readFrameMediaMock.mockResolvedValue({ ok: true, data: { bytes: BYTES, digest: DIGEST } });
     parent.physic._setPhysicPaintPackageDirProvider(() => PACKAGE_DIR);
     seedParentSequence(parentSequence);
 
-    const push = await driveDisplayChangePush();
-    // The bug's precondition, asserted so harness drift fails loudly instead of
-    // silently disarming the pin: the push withheld the bytes AND the mirror
-    // replaced the runtime's byte-carrying record with a reference-only one.
+    const push = await driveDisplayChangePush('reference-only');
+    // The precondition, asserted so harness drift fails loudly instead of
+    // silently disarming the pin: the push withheld the byte channel AND the
+    // runtime holds the reference only — the byte-requiring pack must be
+    // healed by the door.
     expect({
       wireCarriedByteChannel: push.wireCarriedByteChannel,
       runtimeRecordIsReferenceOnly:
         push.runtimeRecordAfterPush !== null
         && push.runtimeRecordAfterPush.payload.bytes === undefined
         && push.runtimeRecordAfterPush.payload.media !== undefined,
-    }, 'scenario precondition: the display-change push is reference-only and the parent runtime mirror consumed the byte record').toEqual({
+    }, 'scenario precondition: the display-change push is reference-only and the runtime holds no pixels for the key').toEqual({
       wireCarriedByteChannel: false,
       runtimeRecordIsReferenceOnly: true,
     });
@@ -384,7 +416,7 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
       childLaunchSeedThrew: seedError,
       childLaunchSeedFrameCount: seededFrames.length,
       digestVerifiedRead: readFrameMediaMock.mock.calls.map((call) => call as unknown[]),
-    }, 'the launch pack is a declared byte-requiring consumer: after the mirror poisons the runtime, the door must re-materialize the bytes (digest-verified) before the child seeds its launch.').toEqual({
+    }, 'the launch pack is a declared byte-requiring consumer: with a reference-only runtime, the door must re-materialize the bytes (digest-verified) before the child seeds its launch.').toEqual({
       doorOpened: true,
       carriedRecordPresent: true,
       carriedRecordCarriesBytes: true,
@@ -401,7 +433,7 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
     // The receiver was asked for the digest and the Studio re-shipped the
     // bytes: they sit in the bridged byte map, undecoded, with NO package root
     // in this window either — the door must resolve them without any IO.
-    await driveDisplayChangePush();
+    await driveDisplayChangePush('reference-only');
     const installedBytes = await parent.physic.installFrameMediaBytes(BYTES, DIGEST);
     expect(installedBytes.ok).toBe(true);
 
@@ -435,7 +467,7 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
 
   it('LEG 3: no package root and no bridged bytes — the door still opens, the failure is named per key, and the tolerant seed carries the boot', async () => {
     seedParentSequence(parentSequence);
-    await driveDisplayChangePush();
+    await driveDisplayChangePush('reference-only');
 
     const opened = await parentBridge.openPhysicPaintCanvas({ layer: physicLayer() as never, frame: FRAME });
     if (!opened.ok) throw new Error(`launch door refused: ${opened.error}`);
@@ -512,6 +544,41 @@ describe('launch pack bytes after a Studio-origin push (debug studio-reopen-empt
       parentRegisteredDisplayPreference: push.parentRegisteredDisplayPreference,
     }, 'the parent register guard must accept a display-only change: the pushed document carries the preference the parent does not yet hold.').toEqual({
       parentRegisteredDisplayPreference: false,
+    });
+  });
+
+  /**
+   * debug layer-2-ref-mismatch (2026-09-22): the mirror must RECONSTRUCT the
+   * runtime shape, not adopt the wire projection. The child compacts every
+   * unchanged record of its next physical edit to a byte-token ref, and only a
+   * byte-shaped parent can expand it — against a reference-shaped runtime every
+   * first edit after a Studio launch on a layer was refused ("no longer matches
+   * the parent document content"). Preserving the bytes also means the launch
+   * door needs no IO at all.
+   */
+  it('LEG 5 (no poison): a reference-shaped push keeps the runtime inline bytes whose digest it verifies', async () => {
+    seedParentSequence(parentSequence);
+
+    const push = await driveDisplayChangePush();
+
+    expect({
+      wireCarriedByteChannel: push.wireCarriedByteChannel,
+      runtimeRecordCarriesBytes: push.runtimeRecordAfterPush?.payload.bytes === BYTES,
+    }, 'the mirror preserves inline bytes the pushed digest verifies — a byte-shaped runtime is what the physical-edit ref expansion and the apply revision gate read.').toEqual({
+      wireCarriedByteChannel: false,
+      runtimeRecordCarriesBytes: true,
+    });
+
+    const opened = await parentBridge.openPhysicPaintCanvas({ layer: physicLayer() as never, frame: FRAME });
+    if (!opened.ok) throw new Error(`launch door refused: ${opened.error}`);
+    const carried = carrierRecord(opened.data.document);
+
+    expect({
+      carriedBytesAreTheKeyBytes: carried !== null && carried.payload.bytes === BYTES,
+      frameMediaReads: readFrameMediaMock.mock.calls.length,
+    }, 'the preserved bytes survive into the launch pack with no package root and no file read.').toEqual({
+      carriedBytesAreTheKeyBytes: true,
+      frameMediaReads: 0,
     });
   });
 });
