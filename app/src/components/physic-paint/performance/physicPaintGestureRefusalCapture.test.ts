@@ -23,25 +23,32 @@ import {
 } from './physicPaintGestureRefusalCapture';
 
 /**
- * The write is fire-and-forget behind a dynamic import: it lands on a real
- * macrotask, so only `Date` is faked here (fake timers would swallow it) and
- * the clock is moved explicitly to cross the dedupe window.
+ * The write is fire-and-forget behind a DYNAMIC import: it lands on a real
+ * macrotask, so only `Date` is faked here (fake timers would swallow it) and the
+ * clock is moved explicitly to cross the dedupe window.
+ *
+ * `settleWrite` waits for the write the leg just triggered — always call it as
+ * `settleWrite(invoke.mock.calls.length + 1)`, so the target is the count BEFORE
+ * the wait — and gives up after a bounded budget (a fixed tick budget loses the
+ * race when the whole suite runs under load). `settleNoWrite` instead observes a
+ * bounded window: it is what makes "this refusal wrote nothing" a real
+ * observation rather than a hopeful one.
  */
-const settleWrite = async (): Promise<void> => {
-  // The write resolves through a dynamic `import('@tauri-apps/api/core')`, which
-  // can outlast a fixed handful of macrotasks when the suite runs under load
-  // (a full-suite run once lost this race and read an empty `invoke.mock.calls`).
-  // Poll until the call lands, with a bounded budget so a genuinely absent
-  // write — the healthy-path and dedupe legs — still settles in reasonable time.
-  for (let turn = 0; turn < 100; turn += 1) {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    if (invoke.mock.calls.length > 0) break;
+const tick = (): Promise<void> => new Promise((resolve) => {
+  setTimeout(resolve, 0);
+});
+
+const settleWrite = async (expectedWrites: number): Promise<void> => {
+  for (let turn = 0; turn < 200 && invoke.mock.calls.length < expectedWrites; turn += 1) {
+    await tick();
   }
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
+  await tick();
+};
+
+const settleNoWrite = async (): Promise<void> => {
+  for (let turn = 0; turn < 40; turn += 1) {
+    await tick();
+  }
 };
 
 const advancePastDedupeWindow = (): void => {
@@ -130,7 +137,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     vi.stubGlobal('window', {});
 
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
 
     expect(invoke).toHaveBeenCalledTimes(1);
     const [command, args] = invoke.mock.calls[0];
@@ -167,7 +174,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
       railSegmentKeyCount: 3,
     };
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS, selection });
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
 
     const written = lastWrittenCapture().events[0].terms.selection;
     expect(written).toEqual(selection);
@@ -179,7 +186,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     vi.stubGlobal('window', {});
 
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
 
     const strip = lastWrittenCapture().events[0].terms.strip;
     expect(strip).not.toBeNull();
@@ -213,13 +220,13 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     // The node default: no window at all — the gate is closed before any IO.
     expect(gestureRefusalCaptureEnabled()).toBe(false);
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleNoWrite();
     expect(invoke).not.toHaveBeenCalled();
 
     vi.stubGlobal('window', {});
     expect(gestureRefusalCaptureEnabled()).toBe(true);
     recordGesturePointerArrival(ARRIVAL);
-    await settleWrite();
+    await settleNoWrite();
 
     expect(invoke).not.toHaveBeenCalled();
     const snapshot = snapshotGestureRefusalCapture();
@@ -228,7 +235,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
 
     // The arrival is in-memory context, never a write trigger on its own.
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(lastWrittenCapture().events[0].terms.pointerdown).toEqual({
       ...ARRIVAL,
@@ -241,22 +248,22 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     vi.stubGlobal('window', {});
 
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleNoWrite();
     expect(invoke).toHaveBeenCalledTimes(1);
 
     advancePastDedupeWindow();
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
     expect(invoke).toHaveBeenCalledTimes(2);
 
     reportGestureRefusal('strip-gate', { strip: STRIP_TERMS });
-    await settleWrite();
+    await settleNoWrite();
     expect(invoke).toHaveBeenCalledTimes(2);
 
     reportGestureRefusal('strip-gate', { strip: { ...STRIP_TERMS, dragPreviewPending: true } });
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
     expect(invoke).toHaveBeenCalledTimes(3);
   });
 
@@ -265,7 +272,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
 
     const record = async (reason: 'launch-door' | 'strip-gate', terms: { door?: PhysicPaintGestureDoorTerms; strip?: PhysicPaintGestureStripTerms }): Promise<void> => {
       reportGestureRefusal(reason, terms);
-      await settleWrite();
+      await settleWrite(invoke.mock.calls.length + 1);
       advancePastDedupeWindow();
     };
 
@@ -303,7 +310,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     invoke.mockRejectedValueOnce(new Error('capture write refused'));
 
     expect(() => reportGestureRefusal('launch-install', { install: INSTALL_TERMS })).not.toThrow();
-    await settleWrite();
+    await settleWrite(invoke.mock.calls.length + 1);
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalled();
 
@@ -314,7 +321,7 @@ describe('Physic Paint gesture refusal capture (quick-260921-qls)', () => {
     const reloaded = await import('./physicPaintGestureRefusalCapture');
     reloaded.resetGestureRefusalCaptureForTesting();
     expect(() => reloaded.reportGestureRefusal('strip-gate', { strip: STRIP_TERMS })).not.toThrow();
-    await settleWrite();
+    await settleNoWrite();
     vi.doUnmock('@tauri-apps/api/core');
   });
 
