@@ -1138,6 +1138,17 @@ export function PhysicsPaintStudio() {
   // navigation lock's true/false pulse cannot invalidate their memo props.
   const staticControlsLocked = mutationLocked && !rotoScriptNavigationLocked;
   const loopScriptRows = rotoScriptLibrary.rows.value;
+  // quick-260922-al1 (code review CR-01): ownership of the refusal line the two
+  // apply sites publish. `applyStatus` never reaches 'success' on this path, so
+  // the capsule would keep showing a stale refusal after a later apply
+  // succeeds — clearing is gated on this flag so only the publisher clears it.
+  const scriptApplyRefusalOwnedRef = useRef(false);
+  const clearOwnedScriptApplyRefusal = useCallback(() => {
+    if (!scriptApplyRefusalOwnedRef.current) return;
+    scriptApplyRefusalOwnedRef.current = false;
+    setApplyMessage(null);
+    setApplyStatus('idle');
+  }, [setApplyMessage, setApplyStatus]);
   const handleScriptRowActivate = useCallback(async (id: string) => {
     const loaded = await rotoScriptLibrary.activateAndLoad(id);
     if (!loaded) return;
@@ -1158,8 +1169,10 @@ export function PhysicsPaintStudio() {
       const loaded = await rotoScriptLibrary.activateAndLoad(selectedId, preparation);
       if (!loaded) return;
       const applied = await rotoScript.applyPreparedScript(preparation);
-      if (applied) setLastError(null);
-      else {
+      if (applied) {
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+      } else {
         // quick-260922-al1 (Task 3): a refused apply surfaces through the
         // EXISTING status capsule — the same route the rail-set rejections
         // already take (useRotoPhysicalEditCoordinator.ts:1909-1912), since the
@@ -1172,20 +1185,23 @@ export function PhysicsPaintStudio() {
           setLastError(message);
           setApplyMessage(message);
           setApplyStatus('error');
+          scriptApplyRefusalOwnedRef.current = true;
         }
       }
     } finally {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
-  }, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus]);
+  }, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
   // 260905-dso: the relocated buffer Apply/Clear handlers — identity-stable
   // useCallbacks wired into the workflow memo (the Tools popover Actions
   // section). Bodies moved verbatim from the rightPanel scripts props.
   const handleApplyScript = useCallback(() => {
     void (async () => {
       const success = await rotoScript.applyScript();
-      if (success) setLastError(null);
-      else {
+      if (success) {
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+      } else {
         // quick-260922-al1 (Task 3): the same explicit refusal surface as
         // handleSelectedScriptLoadAndApply above — one route for both apply
         // entry points, and nothing else about Apply changes.
@@ -1195,10 +1211,11 @@ export function PhysicsPaintStudio() {
           setLastError(message);
           setApplyMessage(message);
           setApplyStatus('error');
+          scriptApplyRefusalOwnedRef.current = true;
         }
       }
     })();
-  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus]);
+  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
   const handleDiscardScript = useCallback(() => {
     rotoScript.discardScript();
     setLastError(null);

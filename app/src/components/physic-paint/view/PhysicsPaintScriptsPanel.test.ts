@@ -1144,7 +1144,22 @@ describe('Physics Paint Actions layer scope (quick-260922-al1)', () => {
 
     const scoped = renderPanel(createFakePlayScript(), createFakeLibrary({ rows: [], scriptLayers: LAYERS, scriptScope: 'layer-1' }));
     expect(textOf(scoped)).toContain('No project Actions yet.');
-    expect(scoped).toBeTruthy();
+    expect(findAll(scoped, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Show all Actions')).toHaveLength(0);
+  });
+
+  it('falls back to All when the scope names no renderable entry (code review WR-02)', () => {
+    // The scoped layer owns the ONLY row, then that row is deleted: the entry
+    // vanishes while the store still holds its id. The control must read All —
+    // not a blank selectedIndex -1 — and the list must agree with it.
+    const library = createFakeLibrary({ rows: [scopeRow('a', 'layer-1', 'Ink')], scriptLayers: LAYERS, scriptScope: 'layer-2' });
+    const tree = renderPanel(createFakePlayScript(), library);
+
+    expect(scopeSelect(tree).props.value).toBe('all');
+    expect(findAll(tree, (vnode) => vnode.props?.['data-action-id'] !== undefined).map((vnode) => vnode.props['data-action-id'])).toEqual(['a']);
+    // Falling back is presentation-only: the store keeps the artist's choice and
+    // nothing writes it back from render.
+    expect(library.setScriptScope).not.toHaveBeenCalled();
+    expect(library.scriptScope.value).toBe('layer-2');
   });
 
   it('pins the scope row and marker CSS without disturbing the toolbar grid', () => {

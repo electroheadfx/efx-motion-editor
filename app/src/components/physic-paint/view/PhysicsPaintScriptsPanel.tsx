@@ -4,7 +4,7 @@ import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
-import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, ROTO_SCRIPT_SCOPE_ALL } from '../roto/physicsPaintRotoScriptScope';
+import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, resolveScriptScopeValue, ROTO_SCRIPT_SCOPE_ALL } from '../roto/physicsPaintRotoScriptScope';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
@@ -52,8 +52,12 @@ export function PhysicsPaintScriptsPanel({
   // hidden Action keeps every contract it had before the filter existed.
   const scriptScope = library.scriptScope.value;
   const scriptLayers = library.scriptLayers.value;
-  const visibleRows = filterScriptRows(rows, scriptScope);
-  const scopeEntries = buildScriptScopeEntries(rows, scriptLayers, scriptScope);
+  const scopeEntries = buildScriptScopeEntries(rows, scriptLayers);
+  // code review WR-02: a scope the selector cannot render (its layer's last
+  // Action was just deleted, or the id is stale) resolves to All, so the
+  // control and the list always agree.
+  const scopeValue = resolveScriptScopeValue(scopeEntries, scriptScope);
+  const visibleRows = filterScriptRows(rows, scopeValue);
   const selectedActionId = library.selectedId.value;
   const availability = library.availability.value;
   const actionMutationDisabledReason = library.actionMutationDisabledReason.value;
@@ -205,7 +209,7 @@ export function PhysicsPaintScriptsPanel({
           <select
             id={scopeSelectId}
             class="physics-paint-scripts-scope-select"
-            value={scriptScope}
+            value={scopeValue}
             onChange={(event) => { library.setScriptScope(event.currentTarget.value); }}
           >
             {scopeEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}

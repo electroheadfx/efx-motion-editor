@@ -4,6 +4,7 @@ import {
   buildScriptScopeEntries,
   filterScriptRows,
   resolveScriptProvenance,
+  resolveScriptScopeValue,
   type RotoScriptScopeRow,
 } from './physicsPaintRotoScriptScope';
 
@@ -50,13 +51,28 @@ describe('buildScriptScopeEntries', () => {
       ]);
   });
 
-  it('orders entries by the live layer list, and never invents an entry for the current scope', () => {
+  it('orders entries by the live layer list, and never invents an entry for a scope', () => {
     const rows = [scopeRow('a', 'layer-1', 'Ink'), scopeRow('b', 'layer-2', 'Hair')];
     const layers = [layer('layer-2', 'Hair'), layer('layer-1', 'Character')];
     expect(buildScriptScopeEntries(rows, layers).map((entry) => entry.id)).toEqual(['all', 'layer-2', 'layer-1']);
-    // A current scope that is hidden or unknown adds nothing — the <select>
-    // falls back to All rather than rendering a phantom option.
-    expect(buildScriptScopeEntries(rows, layers, 'layer-dead').map((entry) => entry.id)).toEqual(['all', 'layer-2', 'layer-1']);
+  });
+});
+
+describe('resolveScriptScopeValue', () => {
+  const entries = [{ id: ROTO_SCRIPT_SCOPE_ALL, label: 'All' }, { id: 'layer-1', label: 'Character' }];
+
+  it('passes a rendered scope through unchanged', () => {
+    expect(resolveScriptScopeValue(entries, ROTO_SCRIPT_SCOPE_ALL)).toBe(ROTO_SCRIPT_SCOPE_ALL);
+    expect(resolveScriptScopeValue(entries, 'layer-1')).toBe('layer-1');
+  });
+
+  it('resolves to All for a scope the selector cannot render — never a blank control', () => {
+    // code review WR-02: the scoped layer's last Action was just deleted, so its
+    // entry vanished while the store still holds the id. The control and the
+    // list must agree on All rather than the select landing on selectedIndex -1.
+    expect(resolveScriptScopeValue(entries, 'layer-dead')).toBe(ROTO_SCRIPT_SCOPE_ALL);
+    expect(resolveScriptScopeValue(entries, '')).toBe(ROTO_SCRIPT_SCOPE_ALL);
+    expect(resolveScriptScopeValue([{ id: ROTO_SCRIPT_SCOPE_ALL, label: 'All' }], 'layer-1')).toBe(ROTO_SCRIPT_SCOPE_ALL);
   });
 });
 

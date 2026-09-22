@@ -20,7 +20,6 @@ import {
 } from '../../../lib/ipc';
 import {
   applyCommittedReferencedActionDeletion,
-  requestPhysicPaintProjectContext,
   type ReferencedActionDeletionHistoryEntry,
 } from '../../../lib/physicPaintBridge';
 import {
@@ -562,18 +561,14 @@ export function createRotoScriptLibraryControllerAdapter(
   getPorts: () => RotoScriptLibraryControllerPorts,
   request: RotoScriptLibraryControllerPorts['request'],
   nativeReferencedActionDeletion = createNativeReferencedActionDeletionPorts(getPorts),
-  // quick-260922-al1: the outbound scope edge as a 4th DEFAULTED parameter, the
-  // same shape `nativeReferencedActionDeletion` already carries — a concrete
-  // default with a test-injectable override. The outer Studio ports object is
-  // deliberately NOT widened: nothing else needs to know the scope exists.
-  // `requestPhysicPaintProjectContext(scope)` is fire-and-forget by contract (it
-  // never rejects, and its one-shot listener is always removed), so this port
-  // stays synchronous like its siblings here.
-  publishScriptScope = (scope: string) => { void requestPhysicPaintProjectContext(scope); },
 ): RotoScriptLibraryControllerPorts {
   return {
     request,
-    publishScriptScope,
+    // quick-260922-al1 (code review WR-01): the outbound scope edge DELEGATES to
+    // the live ports like every sibling here. It previously carried its own
+    // identical default, which left the Studio's implementation dead wiring —
+    // an edit there changed nothing.
+    publishScriptScope: (scope) => getPorts().publishScriptScope(scope),
     capturePersistence: () => getPorts().capturePersistence(),
     captureThumbnail: (canvas) => getPorts().captureThumbnail(canvas),
     replaceClipboard: (script, preparation) => getPorts().replaceClipboard(script, preparation),

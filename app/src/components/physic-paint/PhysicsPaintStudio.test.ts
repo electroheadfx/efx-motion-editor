@@ -2212,9 +2212,13 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     }
   });
 
-  it('leaves the success path byte-identical and never marks a success as an error', () => {
-    expect(loadAndApplyBody).toContain('if (applied) setLastError(null);');
-    expect(applyScriptBody).toContain('if (success) setLastError(null);');
+  it('clears the refusal line on a successful apply, and never marks a success as an error', () => {
+    // code review CR-01: the refusal this path published must not outlive a
+    // later success — the capsule would otherwise keep showing a stale
+    // "nothing changed" line, since `applyStatus` never reaches 'success' on
+    // the script apply path.
+    expect(loadAndApplyBody).toContain('clearOwnedScriptApplyRefusal();');
+    expect(applyScriptBody).toContain('clearOwnedScriptApplyRefusal();');
     for (const [name, body] of [['handleSelectedScriptLoadAndApply', loadAndApplyBody], ['handleApplyScript', applyScriptBody]] as const) {
       const clears = body.split('setLastError(null);').length - 1;
       expect(clears, `${name} must clear the last error exactly once`).toBe(1);
@@ -2223,13 +2227,23 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
       const errors = body.split("setApplyStatus('error');").length - 1;
       expect(errors, `${name} must mark an error exactly once`).toBe(1);
       expect(body.indexOf('setLastError(null);')).toBeLessThan(body.indexOf("setApplyStatus('error');"));
+      // Ownership is taken on the failure branch only, exactly once.
+      const owns = body.split('scriptApplyRefusalOwnedRef.current = true;').length - 1;
+      expect(owns, `${name} must take refusal ownership exactly once`).toBe(1);
+      expect(body.indexOf('setLastError(null);')).toBeLessThan(body.indexOf('scriptApplyRefusalOwnedRef.current = true;'));
     }
+    // The helper is ownership-gated and returns the capsule to idle — it can
+    // never wipe a message another surface posted, and never claims 'success'.
+    expect(studio).toContain('if (!scriptApplyRefusalOwnedRef.current) return;');
+    expect(studio).toContain('scriptApplyRefusalOwnedRef.current = false;');
+    expect(studio).toContain('setApplyMessage(null);');
+    expect(studio).toContain("setApplyStatus('idle');");
   });
 
-  it('keeps both callbacks identity-stable with the setters they use declared', () => {
+  it('keeps both callbacks identity-stable with the setter set they use declared', () => {
     expect(loadAndApplyBody).not.toBe('');
-    expect(studio).toContain('}, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus]);');
-    expect(studio).toContain('}, [rotoScript, setLastError, setApplyMessage, setApplyStatus]);');
+    expect(studio).toContain('}, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);');
+    expect(studio).toContain('}, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);');
   });
 
   it('does NOT change handleScriptRowActivate — it loads, it never applies', () => {

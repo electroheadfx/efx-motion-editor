@@ -50,15 +50,13 @@ export interface RotoScriptScopeEntry {
  * orphan layer id — present in rows, absent from `layers` — gets no entry
  * either, so a dead layer can never be selected. A duplicated live name keeps
  * both entries: ids stay distinct and the label is the artist's own naming,
- * which this model does not second-guess. `currentScope` is read for exactly
- * one purpose — never to invent a phantom entry for a scope the selector cannot
- * render; a scope naming a hidden or unknown layer simply falls back to All in
- * the `<select>`.
+ * which this model does not second-guess. No scope is read here: a phantom
+ * entry is never invented for one. See `resolveScriptScopeValue` for how an
+ * unrenderable scope reaches the control.
  */
 export function buildScriptScopeEntries(
   rows: readonly RotoScriptScopeRow[],
   layers: readonly PhysicPaintProjectContextLayer[],
-  _currentScope?: string,
 ): RotoScriptScopeEntry[] {
   const owned = new Set(rows.map((row) => row.source.layerId));
   const entries: RotoScriptScopeEntry[] = [{ id: ROTO_SCRIPT_SCOPE_ALL, label: 'All' }];
@@ -67,6 +65,21 @@ export function buildScriptScopeEntries(
     entries.push({ id: layer.id, label: layer.name });
   }
   return entries;
+}
+
+/**
+ * The value the `<select>` renders, and the value the list is filtered by. A
+ * scope naming a rendered entry falls through unchanged; anything else — a
+ * layer whose last Action was just deleted, a dead id, a malformed value —
+ * resolves to All. Without this the control would sit on a blank
+ * `selectedIndex = -1` while `filterScriptRows` failed open and listed
+ * everything anyway; resolving here keeps the control and the list in lockstep.
+ */
+export function resolveScriptScopeValue(
+  entries: readonly RotoScriptScopeEntry[],
+  scopeId: string,
+): string {
+  return entries.some((entry) => entry.id === scopeId) ? scopeId : ROTO_SCRIPT_SCOPE_ALL;
 }
 
 /**
