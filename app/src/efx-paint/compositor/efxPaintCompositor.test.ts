@@ -48,7 +48,13 @@ type RecordedCanvasOp =
   | { type: 'drawImage'; source: string; args: number[]; globalAlpha: number; globalCompositeOperation: GlobalCompositeOperation }
   | { type: 'clearRect'; w: number; h: number }
   | { type: 'save' }
-  | { type: 'restore' };
+  | { type: 'restore' }
+  // 260922-rd4 Task 1 (additive): transform-ops recorder so the background
+  // transform legs can assert translate/rotate/scale. Existing legs only ever
+  // see these types once the compositor applies a non-identity transform.
+  | { type: 'translate'; args: [number, number] }
+  | { type: 'rotate'; args: [number] }
+  | { type: 'scale'; args: [number, number] };
 
 class RecordingCanvasContext {
   operations: RecordedCanvasOp[];
@@ -104,6 +110,21 @@ class RecordingCanvasContext {
       globalAlpha: this.globalAlpha,
       globalCompositeOperation: this.globalCompositeOperation,
     });
+  }
+
+  // 260922-rd4 Task 1 (additive): record the CTM transform ops — pure
+  // recording, no state to save/restore (the CTM is not part of the
+  // fillStyle/globalAlpha/globalCompositeOperation snapshot).
+  translate(x: number, y: number): void {
+    this.operations.push({ type: 'translate', args: [x, y] });
+  }
+
+  rotate(angle: number): void {
+    this.operations.push({ type: 'rotate', args: [angle] });
+  }
+
+  scale(x: number, y: number): void {
+    this.operations.push({ type: 'scale', args: [x, y] });
   }
 }
 
@@ -707,6 +728,81 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     expect(bgDraws).toHaveLength(2); // 0 and 19 draw; 20 draws nothing (gap)
     expect(bgDraws[0].source).toBe('bg-a'); // frame 0 → ref-a
     expect(bgDraws[1].source).toBe('bg-d'); // frame 19 → 19 % 4 = 3 → ref-d
+  });
+});
+
+// --- quick 260922-rd4 Task 1: background transform application (RED) ---
+
+describe('compositeFrame — background transform application (260922-rd4)', () => {
+  /** Content harness with one resolved background source — the existing idiom. */
+  function makeBackgroundHarness() {
+    return makeHarness({
+      content: { 'track-a': { kind: 'content', raster: raster('track-a') } },
+      background: 'content',
+      backgroundSourceImages: { 'bg-ref': raster('bg-raster') },
+    });
+  }
+
+  it('(c1) move + resize — translate carries the (+40, −20) offset onto the base-rect center and scale is 1.5× on both axes', () => {
+    const { ops, ports } = makeBackgroundHarness();
+    const doc = makeDocument(
+      [makeTrack('track-a', { order: 0 })],
+      { transform: { x: 40, y: -20, scaleX: 1.5, scaleY: 1.5, rotation: 0 } },
+    );
+
+    compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    // Base rect for the TestRaster stub (no source dims → stretch-to-fill) is
+    // [0,0,4,3] → center (2, 1.5) → translate(2+40, 1.5−20) = (42, −18.5).
+    // THE RED: the compositor records no translate/scale ops today.
+    expect(ops).toContainEqual({ type: 'translate', args: [42, -18.5] });
+    expect(ops).toContainEqual({ type: 'scale', args: [1.5, 1.5] });
+    // The draw itself stays a plain destination-over under alpha 1 (D-04).
+    const bgDraw = ops.find((op) => op.type === 'drawImage' && op.source === 'bg-raster');
+    expect(bgDraw).toMatchObject({ globalAlpha: 1, globalCompositeOperation: 'destination-over' });
+  });
+
+  it('(c2) rotation — a stored 90° rotation records rotate(π/2) around the base-rect center (degrees convention, same as the photo bounds/handles)', () => {
+    const { ops, ports } = makeBackgroundHarness();
+    const doc = makeDocument(
+      [makeTrack('track-a', { order: 0 })],
+      { transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 90 } },
+    );
+
+    compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    // THE RED: no rotate op today. Stored rotation is DEGREES (the photo
+    // getReferenceBounds/applyRotation unit) → compositor converts ×π/180.
+    const rotateOp = ops.find((op) => op.type === 'rotate');
+    expect(rotateOp).toBeDefined();
+    expect((rotateOp as { args: [number] }).args[0]).toBeCloseTo(Math.PI / 2, 10);
+    // Zero offset → the translate is the bare base-rect center.
+    expect(ops).toContainEqual({ type: 'translate', args: [2, 1.5] });
+  });
+
+  it('(c0) control — an identity transform draws the byte-equal baseline: zero translate/rotate/scale ops, unchanged bg drawImage args', () => {
+    const { ops, ports } = makeBackgroundHarness();
+    const doc = makeDocument(
+      [makeTrack('track-a', { order: 0 })],
+      { transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 } },
+    );
+
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+
+    expect(result.missing).toEqual([]);
+    // Pre-plan baseline (transparent fallback): clear → track draw → bg draw.
+    expect(ops.map((op) => op.type)).toEqual([
+      'clearRect', 'save', 'drawImage', 'restore',
+      'save', 'drawImage', 'restore',
+    ]);
+    expect(ops.filter((op) => op.type === 'translate' || op.type === 'rotate' || op.type === 'scale')).toEqual([]);
+    expect(ops[5]).toEqual({
+      type: 'drawImage',
+      source: 'bg-raster',
+      args: [0, 0, 4, 3],
+      globalAlpha: 1,
+      globalCompositeOperation: 'destination-over',
+    });
   });
 });
 

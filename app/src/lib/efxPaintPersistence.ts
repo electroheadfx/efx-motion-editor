@@ -581,7 +581,7 @@ const VOLATILE_MANIFEST_KEYS: ReadonlySet<string> = new Set(['created_at', 'modi
  * includes the trackId (trackId:appFrame:dataUrl) so identical bytes on
  * distinct tracks stay distinct terms (T-46-06).
  */
-function buildEfxPaintSaveFingerprint(
+export function buildEfxPaintSaveFingerprint(
   projectDir: string,
   documents: ReadonlyMap<string, EfxPaintDocumentSaveInput>,
 ): string {

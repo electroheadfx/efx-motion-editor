@@ -81,7 +81,15 @@ function makeDocument(photoReference: PhotoReferenceTrack | null): EfxPaintDocum
     documentRevision: 1,
     activeTrackId: 'track-1',
     tracks: [],
-    background: { id: 'bg-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 1 },
+    background: {
+      id: 'bg-1',
+      clips: [],
+      fallback: { mode: 'transparent' },
+      visible: true,
+      revision: 1,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transformLocked: true,
+    },
     photoReference,
     compositeRevision: 0,
   };

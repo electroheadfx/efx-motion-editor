@@ -126,7 +126,15 @@ function makeTrackDocument(layerId: string, trackId: string = TEST_TRACK_ID): Ef
       rotoPhysical: null,
       loopClips: [],
     }],
-    background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
+    background: {
+      id: 'background-1',
+      clips: [],
+      fallback: { mode: 'transparent' },
+      visible: true,
+      revision: 0,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transformLocked: true,
+    },
     photoReference: null,
     compositeRevision: 0,
   };

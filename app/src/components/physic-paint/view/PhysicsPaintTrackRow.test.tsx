@@ -367,6 +367,8 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       fallback: { mode: 'transparent' },
       visible: true,
       revision: 1,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transformLocked: true,
     };
     const tree = render({
       trackId: 'bg-row',
@@ -411,6 +413,8 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       fallback: { mode: 'transparent' },
       visible: true,
       revision: 1,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transformLocked: true,
     };
     const onMovePointerDown = vi.fn();
     const onSelectBackgroundClip = vi.fn();
@@ -461,6 +465,8 @@ describe('PhysicsPaintTrackRow — 47 close-out cross-track UAT', () => {
       fallback: { mode: 'transparent' },
       visible: true,
       revision: 1,
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transformLocked: true,
     };
     const onMovePointerDown = vi.fn();
     const onResizePointerDown = vi.fn();

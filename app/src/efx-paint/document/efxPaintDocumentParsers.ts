@@ -54,7 +54,10 @@ function isFinitePositiveNumber(value: unknown): value is number {
 
 const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'compositeRevision']);
 const TRACK_KEYS = new Set(['id', 'name', 'order', 'visible', 'solo', 'opacity', 'blendMode', 'revision', 'frames', 'rotoPhysical', 'loopClips']);
-const BACKGROUND_KEYS = new Set(['id', 'clips', 'fallback', 'visible', 'revision']);
+// 260922-rd4: `transform`/`transformLocked` are the ONLY format additions —
+// the background display-preference members (package-format touch is confined
+// to this set + the two-member validation in parseBackgroundTrack).
+const BACKGROUND_KEYS = new Set(['id', 'clips', 'fallback', 'visible', 'revision', 'transform', 'transformLocked']);
 const FALLBACK_TRANSPARENT_KEYS = new Set(['mode']);
 const FALLBACK_SOLID_KEYS = new Set(['mode', 'color']);
 const FALLBACK_PAPER_KEYS = new Set(['mode', 'texture', 'paperGrain', 'grainStrength']);
@@ -294,7 +297,7 @@ function parseBackgroundTrack(value: unknown): BackgroundTrack {
     throw new Error('BackgroundTrack: expected a record.');
   }
   if (!hasOnlyKeys(value, BACKGROUND_KEYS)) {
-    throw new Error('BackgroundTrack: unknown members; expected exactly id, clips, fallback, visible, revision.');
+    throw new Error('BackgroundTrack: unknown members; expected exactly id, clips, fallback, visible, revision, transform, transformLocked.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('BackgroundTrack: id must be a non-empty string.');
@@ -308,12 +311,25 @@ function parseBackgroundTrack(value: unknown): BackgroundTrack {
   if (!isNonNegativeInteger(value.revision)) {
     throw new Error('BackgroundTrack: revision must be a non-negative integer.');
   }
+  // 260922-rd4: the transform REUSES the photo-transform validator (one
+  // transform type, one validation idiom — never a second hand-written
+  // finite-number check). Absent → identity so documents predating the member
+  // normalize (D-29 idiom); present → fail-closed exact-member record.
+  const transform = value.transform === undefined
+    ? Object.freeze({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 })
+    : parsePhotoReferenceTransform(value.transform);
+  if (value.transformLocked !== undefined && typeof value.transformLocked !== 'boolean') {
+    throw new Error('BackgroundTrack: transformLocked must be a boolean.');
+  }
+  const transformLocked = value.transformLocked === undefined ? true : value.transformLocked;
   return Object.freeze({
     id: value.id,
     clips: Object.freeze(value.clips.map(parseFrameLoopClip)),
     fallback: parseBackgroundFallback(value.fallback),
     visible: value.visible,
     revision: value.revision,
+    transform,
+    transformLocked,
   });
 }
 

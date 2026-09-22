@@ -1237,6 +1237,33 @@ export function setPhotoReferenceTransformLocked(layerId: string, locked: boolea
 }
 
 /**
+ * Set the Background track's display transform (260922-rd4 — display
+ * preference, same class as `setPhotoReferenceTransform`: persists on the
+ * track, NO undo descriptor, NO documentRevision bump). Shares the photo
+ * transform validator (`_isValidTransform`) — one setter idiom, no fork.
+ */
+export function setBackgroundTransform(layerId: string, transform: PhotoReferenceTransform): PhotoReferenceDisplayResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (!_isValidTransform(transform)) return { ok: false, reason: 'invalid-transform' };
+  const current = document.background.transform;
+  if (
+    current.x === transform.x
+    && current.y === transform.y
+    && current.scaleX === transform.scaleX
+    && current.scaleY === transform.scaleY
+    && current.rotation === transform.rotation
+  ) {
+    return { ok: true };
+  }
+  // INERT until Task 2 — RED surface for 260922-rd4
+  // (Task 2 removes this early return so the display-pref write runs:
+  //  immutable next-background object → _documents.set → single
+  //  _notifyChange(); still NO revision bump and NO undo descriptor.)
+  return { ok: true };
+}
+
+/**
  * Remove the photo/reference track entirely (D-03 remove). A DOCUMENT MUTATION —
  * sets `photoReference` back to null, bumps the document `documentRevision`
  * counter, and records ONE undo entry by reference (operation kind

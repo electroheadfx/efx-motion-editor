@@ -92,6 +92,14 @@ export interface BackgroundTrack {
   readonly fallback: BackgroundFallback;
   readonly visible: boolean;
   readonly revision: number;
+  /**
+   * Background display transform (260922-rd4): REUSES the photo-reference
+   * transform type — one transform type, no fork. Display preference: never a
+   * document mutation, never a `buildEfxPaintDocumentRevision` term.
+   */
+  readonly transform: PhotoReferenceTransform;
+  /** Display preference: whether the Studio transform handles are locked (default true). */
+  readonly transformLocked: boolean;
 }
 
 /**
@@ -175,6 +183,10 @@ export function createEfxPaintDocument(parentLayerId: string): EfxPaintDocument 
       fallback: Object.freeze({ mode: 'transparent' as const }),
       visible: true,
       revision: 0,
+      // 260922-rd4: identity transform, handles locked at creation (mirrors
+      // the photo/reference track defaults).
+      transform: Object.freeze({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 }),
+      transformLocked: true,
     }),
     photoReference: null,
     compositeRevision: 0,
