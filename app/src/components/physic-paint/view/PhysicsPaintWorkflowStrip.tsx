@@ -210,6 +210,11 @@ export interface PhysicsPaintWorkflowStripProps {
   workflowLabel?: string;
   currentFrame: number;
   /**
+   * 260922-qad: the launch startFrame at Studio open — one-shot viewport
+   * positioning target; null/absent = no launch context.
+   */
+  timelineOpenFrame?: number | null;
+  /**
    * G-52-9 drag-gate: non-null ONLY while the ruler scrub gesture is armed —
    * the dragged playhead position. The strip body NEVER reads it; it is passed
    * as a reference to the playhead bar leaf, the single per-drag-frame

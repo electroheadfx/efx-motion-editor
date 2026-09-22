@@ -36,7 +36,7 @@ vi.mock('@preact/signals', async () => {
   return { ...actual, useSignal: <Value,>(initial: Value) => actual.signal(initial) };
 });
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
@@ -140,6 +140,8 @@ interface WorkflowHarnessOptions {
   readonly capacity?: number;
   readonly currentFrame?: number;
   readonly visibleFrameCount?: number;
+  /** 260922-qad: the launch startFrame at Studio open (strip prop timelineOpenFrame). */
+  readonly openFrame?: number | null;
   readonly physicalCells?: readonly RotoPhysicalTimelineCell[];
   readonly realKeyRecords?: readonly PhysicPaintRotoRealKeyRecord[];
   readonly cachedRotoFrames?: readonly PhysicPaintRotoCacheFrame[];
@@ -154,7 +156,11 @@ interface WorkflowHarnessOptions {
 }
 
 function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
-  const capacity = options.capacity ?? 240;
+  // Mutable locals: render reads them fresh, so tests can grow the content
+  // extent (setCapacity) or move the launch frame (setOpenFrame) between
+  // renders — the 260922-qad late-content and one-shot legs rely on this.
+  let capacity = options.capacity ?? 240;
+  let openFrame: number | null | undefined = options.openFrame;
   const visibleFrameCount = options.visibleFrameCount ?? 47;
   const runtime = runtimeHolder.current;
   if (!runtime) throw new Error('Expected the Preact hook runtime mock.');
@@ -183,6 +189,7 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
     runtime.beginRender();
     tree = PhysicsPaintWorkflowStrip({
       currentFrame,
+      timelineOpenFrame: openFrame,
       isPlaying: false,
       ready: true,
       onion: { enabled: false, previous: false, next: false, count: 1, opacity: 0.5 },
@@ -326,7 +333,17 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   }
 
   return {
-    capacity,
+    get capacity() {
+      return capacity;
+    },
+    setCapacity(next: number) {
+      capacity = next;
+    },
+    setOpenFrame(next: number | null | undefined) {
+      openFrame = next;
+    },
+    /** Run queued effects AFTER render() has assigned the scroller ref. */
+    flushEffects: () => runtimeHolder.current?.flushEffects(),
     scroller,
     render,
     scrollToFrame,
@@ -395,6 +412,13 @@ function expectCompletePhysicalExtent(harness: ReturnType<typeof createWorkflowH
   expect(frames[0]).toBe(0);
   expect(frames[frames.length - 1]).toBe(harness.capacity - 1);
   expect(harness.scroller.scrollWidth).toBe(harness.capacity * CELL_WIDTH_PX);
+}
+
+/** ResizeObserver stub — the strip's mount effect constructs one on flush. */
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 }
 
 describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
@@ -960,5 +984,100 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       // The lane still renders its full cell extent (the fade is the only change).
       expect(findAll(lane, (vnode) => typeof vnode.props.frame === 'number').length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('Studio open positions the timeline viewport on the opened frame', () => {
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** frameLeft = frame * 18; intersects the [scrollLeft, scrollLeft + clientWidth] viewport. */
+  function frameInView(scroller: ReturnType<typeof createScroller>, frame: number): boolean {
+    const frameLeft = frame * CELL_WIDTH_PX;
+    const frameRight = frameLeft + CELL_WIDTH_PX;
+    const viewLeft = scroller.scrollLeft;
+    const viewRight = viewLeft + scroller.clientWidth;
+    return frameLeft < viewRight && frameRight > viewLeft;
+  }
+
+  // Harness fixture unless stated: capacity 240, visibleFrameCount 47
+  // (clientWidth 846, maxScroll 3474); positioning target for frame 111 =
+  // 111*18 + 9 - 846/2 = 1584.
+
+  it('(i) THE RED: opening at frame 111 puts frame 111 inside the viewport', () => {
+    const harness = createWorkflowHarness({ capacity: 240, visibleFrameCount: 47, openFrame: 111 });
+    harness.render();
+    harness.flushEffects();
+
+    expect(harness.scroller.scrollLeft).toBe(1584);
+    expect(frameInView(harness.scroller, 111)).toBe(true);
+  });
+
+  it('(ii) control: opening at frame 1 keeps scrollLeft at 0 with frame 0 in view', () => {
+    const harness = createWorkflowHarness({ capacity: 240, visibleFrameCount: 47, openFrame: 0 });
+    harness.render();
+    harness.flushEffects();
+
+    expect(harness.scroller.scrollLeft).toBe(0);
+    expect(frameInView(harness.scroller, 0)).toBe(true);
+  });
+
+  it('(iii) control: positioning writes no navigation or selection intent', () => {
+    const harness = createWorkflowHarness({ capacity: 240, visibleFrameCount: 47, openFrame: 111 });
+    harness.render();
+    harness.flushEffects();
+
+    expect(harness.spies.onNavigateToSyncedFrame).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onGoToFirstFrame).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onGoToPreviousFrame).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onGoToNextFrame).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onGoToLastFrame).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onSelectRotoSpacingProxy).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onClearRotoKeySelection).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onSelectRotoLoopClip).toHaveBeenCalledTimes(0);
+  });
+
+  it('(iv) RED: one-shot positioning — navigation never re-positions and manual scroll never snaps back', () => {
+    const harness = createWorkflowHarness({ capacity: 240, visibleFrameCount: 47, openFrame: 111 });
+    harness.render();
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(1584);
+
+    // In-session: the launch frame moves on and the current frame navigates.
+    harness.setOpenFrame(50);
+    harness.spies.onNavigateToSyncedFrame(50);
+    harness.render();
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(1584);
+
+    // Manual scroll after open stays free — no snap-back on the next flush.
+    harness.scrollToFrame(5);
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(90);
+  });
+
+  it('(v) RED: late content — parked while the extent is short, positions once content covers the frame', () => {
+    const harness = createWorkflowHarness({ capacity: 50, visibleFrameCount: 47, openFrame: 111 });
+    harness.render();
+    harness.flushEffects();
+    // scrollWidth 900 < (111+1)*18 = 2016 → not eligible → parked at 0.
+    expect(harness.scroller.scrollLeft).toBe(0);
+
+    harness.setCapacity(240);
+    harness.render();
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(1584);
+  });
+
+  it('(vi) control: no launch frame never positions, whatever the current frame is', () => {
+    const harness = createWorkflowHarness({ capacity: 240, visibleFrameCount: 47, currentFrame: 111 });
+    harness.render();
+    harness.flushEffects();
+
+    expect(harness.scroller.scrollLeft).toBe(0);
   });
 });
