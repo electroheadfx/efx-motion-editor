@@ -916,3 +916,63 @@ describe('Roto script clipboard discard availability port (36.15-07)', () => {
     });
   });
 });
+
+/**
+ * quick-260922-al1 (Task 1, STEP 0 — EVIDENCE at the plan base bbc36e03).
+ *
+ * The brief's cross-layer design rests on two APPLY-path properties. These legs
+ * were written and RUN before any production edit of this plan; their verdicts
+ * are recorded in 260922-al1-RED-EVIDENCE.json. Both are expected GREEN at HEAD
+ * (the research refuted the recon's "origin-layer gate" premise) — a green leg
+ * is a REGRESSION GUARD, never manufactured into a failure.
+ *
+ * L2 — the destination is resolved fresh at apply time and is the CURRENT
+ * layer's key; the clipboard never consults the script's origin layer, and the
+ * origin survives only as provenance metadata on the reusable clipboard.
+ * L3a — a destination that cannot accept the Action fails closed with
+ * `apply-empty-target-failed`, and nothing is enqueued.
+ */
+describe('quick-260922-al1 apply-path evidence (L2 cross-layer / L3a refusal)', () => {
+  it('L2: a Layer-1 Action applies to a Layer-2 key resolved fresh at apply time', async () => {
+    const test = harness([stroke(1), stroke(2)]);
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-1', keyId: 'layer-1-key', appFrame: 4 });
+    await copyCompletedSource(test, [1, 2]);
+    const originProvenanceLayerId = test.controller.clipboard.value?.provenance.layerId;
+
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-2', keyId: 'layer-2-key', appFrame: 12 });
+    test.setPrepareTarget(async (current) => ({ keyId: current.keyId ?? 'unused', appFrame: current.appFrame }));
+
+    const applying = test.controller.applyScript();
+    await flushMicrotasks();
+
+    expect(test.submitted).toHaveLength(2);
+    expect(test.controller.getAcceptedTarget(test.engine, 100)).toMatchObject({ keyId: 'layer-2-key', appFrame: 12, publishPixels: false });
+    expect(test.controller.getAcceptedTarget(test.engine, 101)).toMatchObject({ keyId: 'layer-2-key', appFrame: 12, publishPixels: true });
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    test.controller.observeCompletedMutation(test.engine, completion(101));
+
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBe('Applied 2');
+    expect(test.flushSourcePublication).toHaveBeenCalledWith(12);
+    // The origin layer is cosmetic: it stays on the reusable clipboard record
+    // while the committed destination is the CURRENT layer.
+    expect(originProvenanceLayerId).toBe('layer-1');
+  });
+
+  it('L3a: an incompatible destination refuses with apply-empty-target-failed and changes nothing', async () => {
+    const test = harness([stroke(1)]);
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-1', keyId: 'layer-1-key', appFrame: 4 });
+    await copyCompletedSource(test);
+    const copied = test.controller.clipboard.value;
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-1', keyId: 'layer-1-key', appFrame: 5 });
+    test.setPrepareTarget(async () => null);
+
+    await expect(test.controller.applyScript()).resolves.toBe(false);
+
+    expect(test.controller.error.value?.code).toBe('apply-empty-target-failed');
+    expect(test.controller.status.value).toBe('Failed');
+    expect(test.submitted).toHaveLength(0);
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+    expect(test.controller.clipboard.value).toBe(copied);
+  });
+});
