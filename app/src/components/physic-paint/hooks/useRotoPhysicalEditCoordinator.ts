@@ -247,7 +247,7 @@ export async function executePhysicPaintRotoGroupFramePaintTransaction(
  */
 type PhysicalEditResultTransition =
   | { readonly type: 'ignore' }
-  | { readonly type: 'mismatch'; readonly message: string }
+  | { readonly type: 'mismatch'; readonly message: string; readonly fields?: readonly string[] }
   | { readonly type: 'accepted'; readonly ok: boolean; readonly detail: PhysicPaintRotoPhysicalEditApplyResult };
 
 interface PendingPhysicalEditContext extends PendingPhysicPaintRotoPhysicalEdit {
@@ -560,6 +560,40 @@ function replayProvenanceEquals(
     && left.targetRevision === right.targetRevision;
 }
 
+/** [DEBUG-9f3c] Shows which compared term rejected the result, and both sides for scalars. */
+function describePhysicalEditMismatch(
+  pending: PendingPhysicalEditContext,
+  detail: PhysicPaintRotoPhysicalEditApplyResult,
+): string[] {
+  const out: string[] = [];
+  const show = (value: unknown): string => {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    return text === undefined ? 'undefined' : text.length > 48 ? `${text.slice(0, 48)}…` : text;
+  };
+  const term = (name: string, ok: boolean, left?: unknown, right?: unknown) => {
+    if (ok) return;
+    out.push(left === undefined && right === undefined ? name : `${name}[pending=${show(right)} got=${show(left)}]`);
+  };
+  term('kind', detail.kind === 'replace-roto-physical-map', detail.kind);
+  term('operationKind', detail.operationKind === pending.operationKind, detail.operationKind, pending.operationKind);
+  term('layerId', detail.layerId === pending.layerId, detail.layerId, pending.layerId);
+  term('startFrame', detail.startFrame === pending.startFrame, detail.startFrame, pending.startFrame);
+  term('launchOperationId', detail.launchOperationId === pending.launchOperationId, detail.launchOperationId, pending.launchOperationId);
+  term('projectContextId', pending.projectContextId === null ? detail.projectContextId === undefined : detail.projectContextId === pending.projectContextId, detail.projectContextId, pending.projectContextId);
+  term('expectedRevision', detail.expectedRevision === pending.expectedRevision, detail.expectedRevision, pending.expectedRevision);
+  term('stagedRevision', detail.stagedRevision === pending.stagedRevision, detail.stagedRevision, pending.stagedRevision);
+  term('interpolationMode', detail.interpolationMode === pending.interpolationMode, detail.interpolationMode, pending.interpolationMode);
+  term('selectedKeyId', detail.selectedKeyId === pending.selectedKeyId, detail.selectedKeyId, pending.selectedKeyId);
+  term('selectedAppFrame', detail.selectedAppFrame === pending.selectedAppFrame, detail.selectedAppFrame, pending.selectedAppFrame);
+  term('cursorAppFrame', detail.cursorAppFrame === pending.cursorAppFrame, detail.cursorAppFrame, pending.cursorAppFrame);
+  term('appliedFrameCount', detail.appliedFrameCount === (detail.ok ? pending.appliedFrameCount : 0), detail.appliedFrameCount, detail.ok ? pending.appliedFrameCount : 0);
+  term('semanticDelta', semanticDeltaEquals(detail.semanticDelta, pending.semanticDelta));
+  term('historyProvenance', replayProvenanceEquals(detail.historyProvenance, pending.historyProvenance));
+  if (detail.ok) term('incomingInterpolationBreakKeyIds', stringArraysEqual(detail.incomingInterpolationBreakKeyIds ?? [], pending.deferredDocument.incomingInterpolationBreakKeyIds), detail.incomingInterpolationBreakKeyIds ?? [], pending.deferredDocument.incomingInterpolationBreakKeyIds);
+  term('acceptedRevision', detail.ok ? detail.acceptedRevision === pending.stagedRevision : detail.acceptedRevision === null, detail.acceptedRevision, detail.ok ? pending.stagedRevision : null);
+  return out;
+}
+
 function transitionPhysicalEditResult(
   pending: PendingPhysicalEditContext | null,
   detail: PhysicPaintRotoPhysicalEditApplyResult | null | undefined,
@@ -588,7 +622,7 @@ function transitionPhysicalEditResult(
     ))
     || (detail.ok ? detail.acceptedRevision !== pending.stagedRevision : detail.acceptedRevision !== null)
   ) {
-    return { type: 'mismatch', message: PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE };
+    return { type: 'mismatch', message: PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE, fields: describePhysicalEditMismatch(pending, detail) };
   }
   return { type: 'accepted', ok: detail.ok, detail };
 }
@@ -1419,6 +1453,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       if (transition.type === 'ignore') return 'ignore';
       if (transition.type === 'mismatch') {
         portsRef.current.status.logDiagnostic(`Roto physical edit result mismatch: ${transition.message}`);
+        // [DEBUG-9f3c] DEV-only: names the term(s) that rejected the result so a
+        // live repro identifies the seam instead of the symptom.
+        if (import.meta.env.DEV && transition.fields?.length) {
+          portsRef.current.status.logDiagnostic(`[DEBUG-9f3c] rejected by: ${transition.fields.join(' | ')}`);
+        }
         // 260921-c7x: a mismatch is TERMINAL. The child published nothing (the
         // predicate runs before publishCompleteDocument), so there is no state
         // to restore — but the pending slot, the lease and the settlement
