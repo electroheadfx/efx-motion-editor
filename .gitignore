@@ -62,3 +62,5 @@ entities.json
 .planning/milestone.lock
 .planning/.mempalace-stage/
 .planning/state.json
+
+.lavish/
