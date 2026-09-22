@@ -1124,6 +1124,44 @@ button.destructive {
   min-width: 0;
 }
 
+/* quick-260922-al1: the Action-scope row is its OWN full-width flex row
+   between the toolbar and the list — the toolbar's 6-column icon grid above is
+   untouched. */
+.physics-paint-scripts-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.physics-paint-scripts-scope-label {
+  color: #7d8791;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.physics-paint-scripts-scope-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #2a3036;
+  color: #c9d1d9;
+  border: 1px solid #3a424a;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+/* quick-260922-al1: an Action whose origin layer no longer exists keeps its
+   snapshotted name and marks itself, quietly — this is provenance, not an
+   error. */
+.physics-paint-script-provenance-unavailable {
+  color: #6f7883;
+  font-style: italic;
+}
+
 /* Guarded toolbar actions (Save / Load + Apply / Create Rail / Delete /
    Refresh / Copy) all use the guarded styled-tooltip idiom (260905-dso). */
 .physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action {
@@ -1222,6 +1260,7 @@ button.destructive {
    (rename still requires selection) but renders white at full opacity with no dark strip. */
 .physics-paint-script-name:disabled { color: inherit; opacity: 1; background: transparent; cursor: default; }
 .physics-paint-script-provenance, .physics-paint-script-count, .physics-paint-scripts-empty { margin: 0; color: #eef1f4; font-size: 10px; }
+.physics-paint-scripts-empty-action { align-self: flex-start; background: #2a3036; color: #c9d1d9; border: 1px solid #3a424a; border-radius: 4px; font-size: 10px; padding: 2px 6px; cursor: pointer; }
 .physics-paint-script-rename-wrap input { min-width: 0; width: 100%; box-sizing: border-box; }
 .physics-paint-script-inline-error { color: #ff8585; font-size: 10px; }
 .physics-paint-loop-clip-panel { justify-content: flex-start; }

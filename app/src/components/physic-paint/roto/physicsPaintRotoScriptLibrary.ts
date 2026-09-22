@@ -5,8 +5,10 @@ import type {
   PhysicPaintActionTransactionResult,
   PhysicPaintLaunchContext,
   PhysicPaintScriptLibraryRequest,
+  PhysicPaintProjectContextLayer,
   PhysicPaintScriptLibraryResult,
 } from '../../../types/physicPaint';
+import { ROTO_SCRIPT_SCOPE_ALL } from './physicsPaintRotoScriptScope';
 import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
@@ -59,6 +61,17 @@ export interface RotoScriptLibraryControllerPorts {
   replaceClipboard: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => RotoScriptClipboardReplacementOutcome;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   log: (message: string, error?: boolean) => void;
+  /**
+   * quick-260922-al1: the OUTBOUND half of the layer-scope round trip — the
+   * ONLY place a user scope choice leaves this realm. `setScriptScope` calls it
+   * exactly once per accepted change and nothing else calls it, so the loop is
+   * one-directional by construction: choice → port → main stores + republishes
+   * → `updateProjectContext` writes both signals DIRECTLY (never back through
+   * this port) → stop. A port that fed the inbound hydrate would be a signal
+   * write reacting to a signal it wrote — the OOM shape this repo has already
+   * been bitten by.
+   */
+  publishScriptScope: (scope: string) => void;
   readonly referencedActionDeletion?: ReferencedActionDeletionPorts;
 }
 
@@ -106,6 +119,12 @@ export interface RotoScriptLibraryController {
   recoveryReady: Signal<boolean>;
   actionMutationDisabledReason: ReadonlySignal<string | null>;
   availability: ReadonlySignal<RotoScriptLibraryAvailability>;
+  /** quick-260922-al1: the Scripts-panel filter value — `'all'` or a LIVE layer id. */
+  scriptScope: Signal<string>;
+  /** quick-260922-al1: the live physic-paint layers the panel's filter and provenance read. */
+  scriptLayers: Signal<readonly PhysicPaintProjectContextLayer[]>;
+  /** quick-260922-al1: the OUTBOUND edge — stores, then publishes. Never touches rows or selection. */
+  setScriptScope: (scope: string) => void;
   updateProjectContext: (context: PhysicPaintLaunchContext) => Promise<void>;
   enterScripts: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -272,6 +291,15 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   const transactionPhase = signal<'idle' | 'preparing' | 'committed' | 'recovery-required'>('idle');
   const recoveryReady = signal(!ports.referencedActionDeletion?.recoverBeforeAvailability);
   const projectSaved = signal(Boolean(ports.getLaunchContext()?.project?.saved));
+  // quick-260922-al1: the child-realm half of the Scripts-panel scope. Both are
+  // INBOUND-only (written by updateProjectContext) except for scriptScope's one
+  // OUTBOUND user edge (setScriptScope). `scriptLayers` is [] until the first
+  // project-context payload lands, which renders exactly the pre-al1 All-only
+  // panel with snapshotted provenance — a degraded render, never a crash.
+  const scriptScope = signal<string>(ROTO_SCRIPT_SCOPE_ALL);
+  const scriptLayers = signal<readonly PhysicPaintProjectContextLayer[]>([]);
+  /** The project identity the scope state belongs to; a CHANGE is a project rotation. */
+  let lastSeenContextId: string | null = ports.getLaunchContext()?.project?.contextId ?? null;
   let disposed = false;
   let contextGeneration = 0;
   let operationGeneration = 0;
@@ -332,6 +360,47 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       if (!disposed && acceptedOperationGeneration === operationGeneration) busy.value = false;
     }
   }
+  /**
+   * quick-260922-al1: the OUTBOUND edge of the layer-scope round trip, and the
+   * only one. Idempotent by explicit compare-then-write: a repeat of the stored
+   * value returns before the signal write AND before the port call, so it can
+   * neither notify a subscriber nor emit a redundant request. It publishes —
+   * it never refreshes, never selects and never touches a row: the filter is
+   * presentation-only, so a hidden Action stays selectable and applicable.
+   */
+  function setScriptScope(scope: string): void {
+    if (scriptScope.peek() === scope) return;
+    scriptScope.value = scope;
+    ports.publishScriptScope(scope);
+  }
+
+  /**
+   * quick-260922-al1: the INBOUND hop — the FINAL leg of the round trip, and
+   * the reason the loop terminates. It writes `scriptLayers`/`scriptScope`
+   * DIRECTLY and must NEVER route through `setScriptScope`: that function is
+   * the outbound port, so reusing it here would let the inbound write re-emit
+   * the request that produced it. Round trip: artist picks a scope → outbound
+   * port → main stores + republishes → this function writes the signals → stop.
+   * No effect reacts to a signal this function writes.
+   *
+   * A project-identity CHANGE (open / close / new) is the only reset trigger.
+   * The layer identity is deliberately NOT part of it: a Studio layer switch
+   * re-boots the child, and the locked decision is that the artist's scope
+   * survives it.
+   */
+  function hydrateProjectContext(context: PhysicPaintLaunchContext | null | undefined): void {
+    const contextId = context?.project?.contextId ?? null;
+    if (contextId !== lastSeenContextId) {
+      lastSeenContextId = contextId;
+      if (scriptScope.peek() !== ROTO_SCRIPT_SCOPE_ALL) scriptScope.value = ROTO_SCRIPT_SCOPE_ALL;
+      if (scriptLayers.peek().length) scriptLayers.value = [];
+    }
+    const layers = context?.project?.layers ?? [];
+    if (scriptLayers.peek() !== layers) scriptLayers.value = layers;
+    const scope = context?.project?.scriptScope;
+    if (typeof scope === 'string' && scriptScope.peek() !== scope) scriptScope.value = scope;
+  }
+
   function applyContextReset(nextContextKey: string): void {
     contextKey = nextContextKey;
     contextGeneration += 1;
@@ -386,6 +455,12 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   }
   async function updateProjectContext(context: PhysicPaintLaunchContext): Promise<void> {
     if (disposed) return;
+    // quick-260922-al1: the inbound hop runs BEFORE every early return below —
+    // the layer list and the stored scope are panel state, not library state,
+    // so an unlocked project or a repeat context must still land them (only the
+    // SCAN is once-per-context). See hydrateProjectContext for the loop
+    // termination contract.
+    hydrateProjectContext(context);
     const nextContextKey = contextIdentity(context);
     if (nextContextKey !== contextKey) {
       applyContextReset(nextContextKey);
@@ -583,6 +658,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   return {
     rows, selectedId, selected, busy, status, skippedInvalidCount, rename, deleteConfirmation, deleteError,
     referencedDeleteImpact, transactionPhase, recoveryReady, actionMutationDisabledReason, availability,
+    scriptScope, scriptLayers, setScriptScope,
     updateProjectContext, enterScripts: refresh, refresh, saveActiveFrame, activateAndLoad, loadSnapshot, beginRename, updateRenameDraft, commitRename,
     cancelRename: () => { rename.value = null; }, requestDelete: () => {
       const row = selected.peek();
@@ -597,7 +673,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       deleteError.value = null;
       deleteConfirmation.value = null;
     }, select: (id) => { if (rows.peek().some((row) => row.id === id)) selectedId.value = id; },
-    dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; deleteError.value = null; lastAutoHydratedKey = null; },
+    dispose: () => { disposed = true; contextGeneration += 1; operationGeneration += 1; busy.value = false; rows.value = []; selectedId.value = null; rename.value = null; deleteConfirmation.value = null; deleteError.value = null; lastAutoHydratedKey = null; lastSeenContextId = null; scriptScope.value = ROTO_SCRIPT_SCOPE_ALL; scriptLayers.value = []; },
   };
 }
 

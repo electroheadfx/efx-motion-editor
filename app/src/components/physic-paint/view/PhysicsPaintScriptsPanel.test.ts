@@ -486,6 +486,9 @@ interface FakeLibrarySeed {
   status?: string | null;
   deleteError?: string | null;
   actionMutationDisabledReason?: string | null;
+  // quick-260922-al1: the scope state the panel now reads.
+  scriptScope?: string;
+  scriptLayers?: readonly { id: string; name: string }[];
 }
 
 function createFakeLibrary(seed: FakeLibrarySeed = {}): RotoScriptLibraryController {
@@ -493,6 +496,9 @@ function createFakeLibrary(seed: FakeLibrarySeed = {}): RotoScriptLibraryControl
   const selectedId = seed.selectedId ?? null;
   return {
     rows: sig(rows),
+    scriptScope: sig(seed.scriptScope ?? 'all'),
+    scriptLayers: sig(seed.scriptLayers ?? []),
+    setScriptScope: vi.fn(),
     availability: sig({ saveDisabledReason: null, canSave: true, canRename: true, canDelete: true }),
     selected: sig(rows.find((row) => row.id === selectedId) ?? null),
     busy: sig(seed.busy ?? false),
@@ -506,6 +512,7 @@ function createFakeLibrary(seed: FakeLibrarySeed = {}): RotoScriptLibraryControl
     selectedId: sig(selectedId),
     status: sig(seed.status ?? null),
     skippedInvalidCount: sig(0),
+    select: vi.fn(),
     beginRename: vi.fn(),
     requestDelete: vi.fn(),
     cancelDelete: vi.fn(),
@@ -1039,5 +1046,111 @@ describe('Physics Paint Scripts panel readable rows contract (260905-f3v)', () =
     const globalRule = css.slice(globalStart, globalEnd === -1 ? css.length : globalEnd + 1);
     expect(globalRule).toContain('opacity: 0.5');
     expect(globalRule).toContain('color: #6b7280');
+  });
+});
+
+/**
+ * quick-260922-al1: the layer-scope selector. It narrows ONLY the rendered
+ * list — selection, the clipboard and the apply destination are all outside its
+ * reach — and it lives in its own full-width row so the toolbar's 6-column icon
+ * grid is untouched (pinned above).
+ */
+describe('Physics Paint Actions layer scope (quick-260922-al1)', () => {
+  const scopeRow = (id: string, layerId: string, layerName: string) => ({
+    id,
+    name: `Action ${id}`,
+    revision: `revision-${id}`,
+    createdAt: '2026-08-11T00:00:00.000Z',
+    updatedAt: '2026-08-11T00:00:00.000Z',
+    source: { projectName: 'Project', layerId, layerName, sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } },
+    thumbnail: { dataUrl: 'data:image/webp;base64,AA==', width: 48, height: 48 },
+    brushCount: 2,
+    integrity: '0'.repeat(64),
+  });
+  const LAYERS = [{ id: 'layer-1', name: 'Character' }, { id: 'layer-2', name: 'Hair' }];
+
+  const scopeSelect = (tree: TestVNode) => findOne(tree, (vnode) => vnode.type === 'select');
+
+  it('renders a native labelled select between the toolbar and the list, with All plus one entry per owning layer', () => {
+    const library = createFakeLibrary({ rows: [scopeRow('a', 'layer-1', 'Ink'), scopeRow('b', 'layer-2', 'Hair')], scriptLayers: LAYERS });
+    const tree = renderPanel(createFakePlayScript(), library);
+
+    const select = scopeSelect(tree);
+    expect(String(select.props['aria-label'] ?? select.props.id)).toBeTruthy();
+    const options = findAll(select, (vnode) => vnode.type === 'option').map((option) => [option.props.value, textOf(option)]);
+    expect(options).toEqual([['all', 'All'], ['layer-1', 'Character'], ['layer-2', 'Hair']]);
+    expect(textOf(tree)).toContain('Action scope');
+    // Its own row, outside the toolbar's icon grid.
+    expect(hasClass(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-scope')), 'physics-paint-scripts-scope')).toBe(true);
+  });
+
+  it('renders no selector when no layer owns an Action (a one-option select would be dead UI)', () => {
+    const library = createFakeLibrary({ rows: [scopeRow('a', 'layer-1', 'Ink')], scriptLayers: [] });
+    const tree = renderPanel(createFakePlayScript(), library);
+    expect(findAll(tree, (vnode) => vnode.type === 'select')).toHaveLength(0);
+  });
+
+  it('changing it calls ONLY library.setScriptScope(value) — no select, no refresh', () => {
+    const library = createFakeLibrary({ rows: [scopeRow('a', 'layer-1', 'Ink'), scopeRow('b', 'layer-2', 'Hair')], scriptLayers: LAYERS });
+    const tree = renderPanel(createFakePlayScript(), library);
+
+    (scopeSelect(tree).props.onChange as (event: { currentTarget: { value: string } }) => void)({ currentTarget: { value: 'layer-2' } });
+
+    expect(library.setScriptScope).toHaveBeenCalledTimes(1);
+    expect(library.setScriptScope).toHaveBeenCalledWith('layer-2');
+    expect(library.select).not.toHaveBeenCalled();
+    expect(library.beginRename).not.toHaveBeenCalled();
+    expect(library.requestDelete).not.toHaveBeenCalled();
+  });
+
+  it('renders the FILTERED projection while selection state is read from the unfiltered rows', () => {
+    const library = createFakeLibrary({
+      rows: [scopeRow('a', 'layer-1', 'Ink'), scopeRow('b', 'layer-2', 'Hair')],
+      scriptLayers: LAYERS,
+      scriptScope: 'layer-2',
+      selectedId: 'a',
+    });
+    const tree = renderPanel(createFakePlayScript(), library);
+
+    const rendered = findAll(tree, (vnode) => vnode.props?.['data-action-id'] !== undefined).map((vnode) => vnode.props['data-action-id']);
+    expect(rendered).toEqual(['b']);
+    // The hidden, still-selected row keeps its selection in the controller: the
+    // filter is presentation-only, so nothing here may clear it.
+    expect(library.selectedId.value).toBe('a');
+    expect(findAll(tree, (vnode) => vnode.props?.['aria-selected'] === true)).toHaveLength(0);
+  });
+
+  it('renders the LIVE layer name in provenance, and marks an orphan unavailable', () => {
+    const library = createFakeLibrary({
+      rows: [scopeRow('a', 'layer-1', 'Ink'), scopeRow('ghost', 'layer-gone', 'Ghost')],
+      scriptLayers: LAYERS,
+    });
+    const tree = renderPanel(createFakePlayScript(), library);
+    const copy = textOf(tree);
+
+    // The renamed live layer wins over the snapshotted name.
+    expect(copy).toContain('Project · Character · F1');
+    expect(copy).not.toContain('Project · Ink · F1');
+    // The orphan keeps its snapshotted name and says so.
+    expect(copy).toContain('Project · Ghost · F1');
+    expect(copy).toContain('unavailable');
+    expect(hasClass(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-script-provenance-unavailable')), 'physics-paint-script-provenance-unavailable')).toBe(true);
+  });
+
+  it('keeps the two empty states distinct, and the scope-aware one offers the way back to All', () => {
+    const empty = renderPanel(createFakePlayScript(), createFakeLibrary({ rows: [], scriptLayers: LAYERS }));
+    expect(textOf(empty)).toContain('No project Actions yet.');
+    expect(findAll(empty, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Show all Actions')).toHaveLength(0);
+
+    const scoped = renderPanel(createFakePlayScript(), createFakeLibrary({ rows: [], scriptLayers: LAYERS, scriptScope: 'layer-1' }));
+    expect(textOf(scoped)).toContain('No project Actions yet.');
+    expect(scoped).toBeTruthy();
+  });
+
+  it('pins the scope row and marker CSS without disturbing the toolbar grid', () => {
+    expect(css).toMatch(/\.physics-paint-scripts-scope[\s\S]*?display:\s*flex/);
+    expect(css).toContain('.physics-paint-script-provenance-unavailable');
+    expect(css).toContain('.physics-paint-scripts-empty-action');
+    expect(css).toMatch(/\.physics-paint-scripts-toolbar[\s\S]*?grid-template-columns:\s*repeat\(6,\s*auto\)/);
   });
 });

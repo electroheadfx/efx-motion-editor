@@ -19,8 +19,11 @@ function harness(saved = true) {
   const thumbnail: PersistedRotoScriptThumbnailV1 = { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' };
   const replaceClipboard = vi.fn((value, _preparation?: PreparedRotoScriptLoadAndApply) => { clipboard.current = value; return RotoScriptClipboardReplacementOutcome.Replaced; });
   const log = vi.fn();
-  const controller = createRotoScriptLibraryController({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail: vi.fn(async () => thumbnail), replaceClipboard, getLaunchContext: () => launch, log });
-  return { controller, request, requests, clipboard, replaceClipboard, log, setLaunch: (value: PhysicPaintLaunchContext) => { launch = value; } };
+  // quick-260922-al1: the outbound scope port, injected so the idempotence and
+  // loop-termination claims are observable rather than assumed.
+  const publishScriptScope = vi.fn();
+  const controller = createRotoScriptLibraryController({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail: vi.fn(async () => thumbnail), replaceClipboard, getLaunchContext: () => launch, log, publishScriptScope });
+  return { controller, request, requests, clipboard, replaceClipboard, log, publishScriptScope, setLaunch: (value: PhysicPaintLaunchContext) => { launch = value; } };
 }
 
 const scriptIds = {
@@ -459,7 +462,7 @@ describe('startup Action transaction recovery gate', () => {
     const recoverBeforeAvailability = vi.fn(async () => new Promise<{ ok: boolean; error?: string }>((resolve) => { finishRecovery = resolve; }));
     const controller = createRotoScriptLibraryController({
       request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
-      getLaunchContext: context, log: vi.fn(),
+      getLaunchContext: context, log: vi.fn(), publishScriptScope: vi.fn(),
       referencedActionDeletion: {
         getPhysicalDocument: vi.fn(), acquireLease: vi.fn(), releaseLease: vi.fn(), nextUuid: vi.fn(), nextGeneration: vi.fn(),
         digest: vi.fn(), prepare: vi.fn(), commit: vi.fn(), recoverBeforeAvailability,
@@ -488,7 +491,7 @@ describe('startup Action transaction recovery gate', () => {
     const request = vi.fn();
     const controller = createRotoScriptLibraryController({
       request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
-      getLaunchContext: context, log: vi.fn(),
+      getLaunchContext: context, log: vi.fn(), publishScriptScope: vi.fn(),
       referencedActionDeletion: {
         getPhysicalDocument: vi.fn(), acquireLease: vi.fn(), releaseLease: vi.fn(), nextUuid: vi.fn(), nextGeneration: vi.fn(),
         digest: vi.fn(), prepare: vi.fn(), commit: vi.fn(), recoverBeforeAvailability: vi.fn(async () => ({ ok: false, error: 'newer physical authority' })),
@@ -554,5 +557,158 @@ describe('Wave 0 committed-only referenced Action deletion ledger', () => {
   it('marks the committed-only Wave 0 protocol as executable', () => {
     const committedOnlyProtocolImplemented = true;
     expect(committedOnlyProtocolImplemented).toBe(true);
+  });
+});
+
+/**
+ * quick-260922-al1: the two LIBRARY read-path legs, captured at Task 2's base
+ * commit BEFORE any production edit of this leg's subject. The file-level
+ * `context()`/`row()` factories are hardcoded to `layer-1`/`context-1`, so both
+ * legs live here with their own layer-2 / orphan inputs.
+ */
+describe('quick-260922-al1 library read-path evidence (L1 cross-layer visibility / L5 orphan)', () => {
+  const atLayer = (layerId: string, layerName: string): PhysicPaintLaunchContext => ({
+    operationId: 'launch',
+    layerId,
+    layerName,
+    startFrame: 4,
+    width: 1600,
+    height: 900,
+    project: { name: 'Project', saved: true, contextId: 'context-1' },
+  });
+  const orphanRow = (id: string, name: string) => ({
+    ...row(id, name),
+    source: { ...row(id, name).source, layerId: 'layer-gone', layerName: 'Ghost' },
+  });
+
+  it('L1: rows from another layer stay visible after a layer-identity change under the same project context', async () => {
+    const test = harness();
+    await test.controller.updateProjectContext(atLayer('layer-1', 'Ink'));
+    expect(test.controller.rows.value.map((item) => item.id)).toEqual(['a', 'b']);
+
+    // Layer switch: SAME project contextId, DIFFERENT layerId. The read path is
+    // project-scoped, so the re-hydration must list EVERY project Action, not
+    // only the current layer's.
+    test.setLaunch(atLayer('layer-2', 'Hair'));
+    await test.controller.updateProjectContext(atLayer('layer-2', 'Hair'));
+
+    expect(test.requests.filter((request) => request.kind === 'scan')).toHaveLength(2);
+    expect(test.controller.rows.value.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('L5: a row whose origin layer no longer exists still loads', async () => {
+    const test = harness();
+    test.request.mockImplementation(async (input) => result(input, [orphanRow('b', 'B')], {
+      script: input.kind === 'load' ? loadedScript('b', 'B') : undefined,
+    }));
+    await test.controller.updateProjectContext(atLayer('layer-2', 'Hair'));
+    expect(test.controller.rows.value.map((item) => item.source.layerId)).toEqual(['layer-gone']);
+
+    await expect(test.controller.activateAndLoad('b')).resolves.toBe(true);
+
+    expect(test.replaceClipboard).toHaveBeenCalledTimes(1);
+    expect(test.clipboard.current).toBeTruthy();
+    expect(test.controller.status.value).toBe('Loaded B — 1 brushes');
+  });
+});
+
+describe('quick-260922-al1 child-realm scope state and its hydration hop', () => {
+  const LAYERS = [{ id: 'layer-1', name: 'Character' }, { id: 'layer-2', name: 'Hair' }];
+  const withProject = (layerId: string, project: Record<string, unknown>): PhysicPaintLaunchContext => ({
+    operationId: 'launch',
+    layerId,
+    layerName: layerId === 'layer-2' ? 'Hair' : 'Ink',
+    startFrame: 4,
+    width: 1600,
+    height: 900,
+    project: { name: 'Project', saved: true, contextId: 'context-1', ...project },
+  });
+
+  it('defaults to All with no layers, and hydrates BOTH signals from the project payload', async () => {
+    const test = harness();
+    expect(test.controller.scriptScope.value).toBe('all');
+    expect(test.controller.scriptLayers.value).toEqual([]);
+
+    await test.controller.updateProjectContext(withProject('layer-1', { layers: LAYERS, scriptScope: 'layer-2' }));
+
+    expect(test.controller.scriptLayers.value).toEqual(LAYERS);
+    expect(test.controller.scriptScope.value).toBe('layer-2');
+    // The inbound hop never emits: hydration is a write, not a publish.
+    expect(test.publishScriptScope).not.toHaveBeenCalled();
+  });
+
+  it('degrades to All-only with snapshotted provenance when the payload carries no layers field', async () => {
+    const test = harness();
+    await test.controller.updateProjectContext(withProject('layer-1', { scriptScope: 'layer-1' }));
+    expect(test.controller.scriptLayers.value).toEqual([]);
+    expect(test.controller.scriptScope.value).toBe('layer-1');
+    await test.controller.updateProjectContext(context());
+    expect(test.controller.scriptScope.value).toBe('layer-1');
+  });
+
+  it('publishes exactly once per accepted change, and a repeat writes nothing and calls no port', () => {
+    const test = harness();
+
+    test.controller.setScriptScope('layer-1');
+    expect(test.controller.scriptScope.value).toBe('layer-1');
+    expect(test.publishScriptScope).toHaveBeenCalledTimes(1);
+    expect(test.publishScriptScope).toHaveBeenLastCalledWith('layer-1');
+
+    test.controller.setScriptScope('layer-1');
+    expect(test.publishScriptScope).toHaveBeenCalledTimes(1);
+  });
+
+  it('is the OUTBOUND edge only: it never refreshes, never selects and never touches a row', async () => {
+    const test = harness();
+    await test.controller.updateProjectContext(withProject('layer-1', { layers: LAYERS }));
+    const scansBefore = test.requests.filter((request) => request.kind === 'scan').length;
+    test.controller.select('a');
+    const selectedBefore = test.controller.selectedId.value;
+    const rowsBefore = test.controller.rows.value;
+
+    test.controller.setScriptScope('layer-2');
+
+    expect(test.requests.filter((request) => request.kind === 'scan')).toHaveLength(scansBefore);
+    expect(test.controller.rows.value).toBe(rowsBefore);
+    expect(test.controller.selectedId.value).toBe(selectedBefore);
+  });
+
+  it('holds the scope across a LAYER switch (same contextId, different layerId)', async () => {
+    const test = harness();
+    await test.controller.updateProjectContext(withProject('layer-1', { layers: LAYERS }));
+    test.controller.setScriptScope('layer-2');
+
+    test.setLaunch(withProject('layer-2', { layers: LAYERS }));
+    await test.controller.updateProjectContext(withProject('layer-2', { layers: LAYERS }));
+
+    expect(test.controller.scriptScope.value).toBe('layer-2');
+    expect(test.controller.scriptLayers.value).toEqual(LAYERS);
+  });
+
+  it('resets to All when the PROJECT identity changes, and on dispose', async () => {
+    const test = harness();
+    await test.controller.updateProjectContext(withProject('layer-1', { layers: LAYERS }));
+    test.controller.setScriptScope('layer-2');
+
+    await test.controller.updateProjectContext({
+      ...withProject('layer-1', { layers: LAYERS }),
+      project: { name: 'Other', saved: true, contextId: 'context-2' },
+    });
+    expect(test.controller.scriptScope.value).toBe('all');
+
+    test.controller.setScriptScope('layer-1');
+    test.controller.dispose();
+    expect(test.controller.scriptScope.value).toBe('all');
+    expect(test.controller.scriptLayers.value).toEqual([]);
+  });
+
+  it('hydrates even for an unlocked project — the panel state is not library state', async () => {
+    const test = harness(false);
+    await test.controller.updateProjectContext({
+      ...withProject('layer-1', { layers: LAYERS, scriptScope: 'layer-2' }),
+      project: { name: 'Project', saved: false, contextId: 'context-1', layers: LAYERS, scriptScope: 'layer-2' },
+    });
+    expect(test.controller.scriptLayers.value).toEqual(LAYERS);
+    expect(test.controller.scriptScope.value).toBe('layer-2');
   });
 });

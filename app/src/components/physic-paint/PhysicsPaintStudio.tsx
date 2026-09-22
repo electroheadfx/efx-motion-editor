@@ -127,7 +127,7 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
-import { encodeSourceBytesForDocumentSync, requestImageImport, requestImageLibrary } from '../../lib/physicPaintBridge';
+import { encodeSourceBytesForDocumentSync, requestImageImport, requestImageLibrary, requestPhysicPaintProjectContext } from '../../lib/physicPaintBridge';
 import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
 import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
@@ -1083,6 +1083,10 @@ export function PhysicsPaintStudio() {
     replaceClipboard: rotoScript.replaceClipboardFromPersisted,
     getLaunchContext: () => launchContext,
     log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
+    // quick-260922-al1: the Studio supplies the OUTBOUND scope edge explicitly
+    // (the adapter's default would serve just as well, but naming it here keeps
+    // the one remaining port that leaves this realm visible at the wiring site).
+    publishScriptScope: (scope) => { void requestPhysicPaintProjectContext(scope); },
   }, bridgeMode);
   // 52-04 (D-10): the reveal bake loads the library script snapshot by id — the
   // rail references the library script, never a copy. Wire the store's reveal

@@ -4,6 +4,7 @@ import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryController } from '../roto/physicsPaintRotoScriptLibrary';
 import type { RotoPlayScriptController } from '../roto/physicsPaintRotoPlayScriptController';
+import { buildScriptScopeEntries, filterScriptRows, resolveScriptProvenance, ROTO_SCRIPT_SCOPE_ALL } from '../roto/physicsPaintRotoScriptScope';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import type { PhysicsPaintLoopClipPresentation } from './physicsPaintLoopClipPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
@@ -46,6 +47,13 @@ export function PhysicsPaintScriptsPanel({
   onRefresh,
 }: PhysicsPaintScriptsPanelProps) {
   const rows = library.rows.value;
+  // quick-260922-al1: the scope narrows ONLY what is rendered. `rows` stays the
+  // unfiltered source for selection, rename, delete and the row lookup, so a
+  // hidden Action keeps every contract it had before the filter existed.
+  const scriptScope = library.scriptScope.value;
+  const scriptLayers = library.scriptLayers.value;
+  const visibleRows = filterScriptRows(rows, scriptScope);
+  const scopeEntries = buildScriptScopeEntries(rows, scriptLayers, scriptScope);
   const selectedActionId = library.selectedId.value;
   const availability = library.availability.value;
   const actionMutationDisabledReason = library.actionMutationDisabledReason.value;
@@ -74,6 +82,7 @@ export function PhysicsPaintScriptsPanel({
   const nextRailReasonId = useId();
   const deleteReasonId = useId();
   const refreshReasonId = useId();
+  const scopeSelectId = useId();
   const copyScriptTooltip = useStyledTooltip();
   const canCopyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canCopy;
   const copyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canCopyRotoScript ? null : rotoScript.availability.value.copyDisabledReason);
@@ -185,6 +194,24 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
+      {scopeEntries.length > 1 ? (
+        // quick-260922-al1: a full-width row of its OWN, outside the toolbar's
+        // 6-column icon grid — the toolbar stays byte-identical, and the select
+        // is a native control so it is keyboard reachable and announced
+        // without inventing a widget. It renders only when at least one layer
+        // actually owns an Action: a single-option select would be dead UI.
+        <div class="physics-paint-scripts-scope">
+          <label class="physics-paint-scripts-scope-label" htmlFor={scopeSelectId}>Action scope</label>
+          <select
+            id={scopeSelectId}
+            class="physics-paint-scripts-scope-select"
+            value={scriptScope}
+            onChange={(event) => { library.setScriptScope(event.currentTarget.value); }}
+          >
+            {scopeEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+          </select>
+        </div>
+      ) : null}
       {linkedGroupNavigation ? (
         <section class="physics-paint-loop-clip-linked-navigation physics-paint-loop-clip-nav-compact" aria-label="Linked Rail navigation">
           <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
@@ -200,7 +227,9 @@ export function PhysicsPaintScriptsPanel({
       ) : null}
       <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
       <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto Actions">
-        {rows.map((row) => (
+        {visibleRows.map((row) => {
+          const provenance = resolveScriptProvenance(row, scriptLayers);
+          return (
           <div
             key={row.id}
             data-action-id={row.id}
@@ -254,15 +283,33 @@ export function PhysicsPaintScriptsPanel({
                   {row.name}
                 </button>
               )}
-              <span class="physics-paint-script-provenance">{row.source.projectName} · {row.source.layerName} · F{row.source.displayFrame}</span>
+              {/* quick-260922-al1: the layer name is resolved LIVE (a renamed
+                  layer is reflected at once); an orphan — a row whose origin
+                  layer no longer exists — keeps its snapshotted name and says
+                  so, rather than silently claiming a layer that is gone. */}
+              <span class="physics-paint-script-provenance">
+                {row.source.projectName} · {provenance.layerName} · F{row.source.displayFrame}
+                {provenance.unavailable ? <span class="physics-paint-script-provenance-unavailable"> · unavailable</span> : null}
+              </span>
               <span class="physics-paint-script-count">{row.brushCount} {row.brushCount === 1 ? 'brush' : 'brushes'}</span>
             </span>
           </div>
-        ))}
+          );
+        })}
         {!rows.length ? (
           <div class="physics-paint-scripts-empty">
             <p>No project Actions yet.</p>
             <p>Save the current real Roto frame as an Action to create a Rail.</p>
+          </div>
+        ) : !visibleRows.length ? (
+          // Defensive: `filterScriptRows` fails OPEN, so a scope that matches
+          // nothing renders every row rather than an empty list — this branch
+          // only exists so that a future narrowing can never read as data
+          // loss, and it always offers the way back.
+          <div class="physics-paint-scripts-empty">
+            <p>No Actions from this layer.</p>
+            <p>Every project Action is still available under All.</p>
+            <button type="button" class="physics-paint-scripts-empty-action" onClick={() => library.setScriptScope(ROTO_SCRIPT_SCOPE_ALL)}>Show all Actions</button>
           </div>
         ) : null}
       </div>

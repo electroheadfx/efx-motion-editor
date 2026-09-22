@@ -185,6 +185,11 @@ function sig<Value,>(value: Value): { value: Value } {
 function createLibrary(): RotoScriptLibraryController {
   return {
     rows: sig([]),
+    // quick-260922-al1: the panel reads the scope state on every render; an
+    // empty layer list renders exactly the pre-al1 All-only panel.
+    scriptScope: sig('all'),
+    scriptLayers: sig([]),
+    setScriptScope: vi.fn(),
     availability: sig({ saveDisabledReason: null, canSave: true, canRename: true, canDelete: true }),
     selected: sig(null),
     busy: sig(false),

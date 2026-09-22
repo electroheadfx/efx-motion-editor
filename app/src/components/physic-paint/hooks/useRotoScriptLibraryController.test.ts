@@ -52,7 +52,7 @@ describe('persistent Roto script library hook adapters', () => {
     };
     const ports = {
       request: vi.fn(), capturePersistence: vi.fn(), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
-      getLaunchContext: launchContext, log: vi.fn(), referencedActionDeletion,
+      getLaunchContext: launchContext, log: vi.fn(), publishScriptScope: vi.fn(), referencedActionDeletion,
     };
     const adapter = createRotoScriptLibraryControllerAdapter(() => ports, ports.request);
     expect(adapter.referencedActionDeletion).toBe(referencedActionDeletion);
@@ -72,7 +72,7 @@ describe('persistent Roto script library hook adapters', () => {
       : RotoScriptClipboardReplacementOutcome.Rejected);
     const applyPreparedScript = vi.fn(async (received: PreparedRotoScriptLoadAndApply) => received === preparation);
     const log = vi.fn();
-    const ports = { request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard, getLaunchContext: launchContext, log };
+    const ports = { request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard, getLaunchContext: launchContext, log, publishScriptScope: vi.fn() };
     const controller = createRotoScriptLibraryController(createRotoScriptLibraryControllerAdapter(() => ports, request));
     await controller.refresh();
     const loading = controller.activateAndLoad(row.id, preparation);
@@ -93,7 +93,7 @@ describe('persistent Roto script library hook adapters', () => {
     const clipboard = { current: 'prior' };
     const applyPreparedScript = vi.fn(async () => false);
     const log = vi.fn();
-    const ports = { request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(() => valid ? RotoScriptClipboardReplacementOutcome.Replaced : RotoScriptClipboardReplacementOutcome.Stale), getLaunchContext: launchContext, log };
+    const ports = { request, capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(() => valid ? RotoScriptClipboardReplacementOutcome.Replaced : RotoScriptClipboardReplacementOutcome.Stale), getLaunchContext: launchContext, log, publishScriptScope: vi.fn() };
     const controller = createRotoScriptLibraryController(createRotoScriptLibraryControllerAdapter(() => ports, request));
     await controller.refresh();
     controller.select(row.id);
