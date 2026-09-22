@@ -1454,9 +1454,21 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       if (transition.type === 'mismatch') {
         portsRef.current.status.logDiagnostic(`Roto physical edit result mismatch: ${transition.message}`);
         // [DEBUG-9f3c] DEV-only: names the term(s) that rejected the result so a
-        // live repro identifies the seam instead of the symptom.
-        if (import.meta.env.DEV && transition.fields?.length) {
-          portsRef.current.status.logDiagnostic(`[DEBUG-9f3c] rejected by: ${transition.fields.join(' | ')}`);
+        // live repro identifies the seam instead of the symptom, plus the
+        // parent's own failure text — the sentinel it returns in place of a
+        // staged revision swallows the reason the parent refused.
+        if (import.meta.env.DEV) {
+          const parentError = (detail as { error?: unknown }).error;
+          const parentText = typeof parentError === 'string' && parentError.length > 0 ? ` | parent=${parentError}` : '';
+          // The pending snapshot's own shapes: a ref-shaped (`m`) record and a
+          // byte-carrying (`b`) one hash identically by design, so a token
+          // mismatch between the two sides shows up as a shape difference here.
+          const shapes = before.records
+            .map((record) => `${record.keyId.slice(0, 8)}:${record.payload.bytes ? 'b' : ''}${record.payload.media ? 'm' : ''}`)
+            .join(',');
+          if (transition.fields?.length || parentText) {
+            portsRef.current.status.logDiagnostic(`[DEBUG-9f3c] rejected by: ${transition.fields?.join(' | ') ?? '(no term)'} | layer=${pending.layerId.slice(0, 8)} | records=[${shapes}]${parentText}`);
+          }
         }
         // 260921-c7x: a mismatch is TERMINAL. The child published nothing (the
         // predicate runs before publishCompleteDocument), so there is no state
