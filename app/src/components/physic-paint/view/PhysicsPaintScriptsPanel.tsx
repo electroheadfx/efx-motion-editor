@@ -220,7 +220,7 @@ export function PhysicsPaintScriptsPanel({
         <section class="physics-paint-loop-clip-linked-navigation physics-paint-loop-clip-nav-compact" aria-label="Linked Rail navigation">
           <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
           {linkedGroupNavigation.total === 1 ? (
-            <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Group</button>
+            <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Rail</button>
           ) : (
             <div class="physics-paint-loop-clip-nav-compact-actions">
               <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /></IconButton>

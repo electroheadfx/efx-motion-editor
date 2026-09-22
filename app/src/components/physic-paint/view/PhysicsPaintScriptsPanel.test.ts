@@ -956,8 +956,30 @@ describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
     expect(nav).not.toContain('physics-paint-roto-key-icon-label');
     expect(nav).not.toContain('Edit Rail');
     expect(nav).not.toContain('physics-paint-loop-clip-inspector-actions');
-    // Go to Group stays for total === 1.
-    expect(panel).toContain('Go to Group');
+    // 260922-jss: the single-link action stays for total === 1 and now reads
+    // "Go to Rail" — the same vocabulary as the inspector's action, "Linked
+    // Rails", "Previous Rail" and "Next Rail". Re-scoped from a whole-file
+    // `toContain('Go to Group')`: after the rename the NEW label exists in the
+    // INSPECTOR too, so only the list-view line signature (one-line button,
+    // class then onClick then the label) pins this rename — deleting it makes
+    // both assertions below fail while the inspector rendering stays intact.
+    expect(nav).toContain('>Go to Rail</button>');
+    expect(panel).toContain('<button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Rail</button>');
+  });
+
+  it('routes the compact list-view "Go to Rail" action for total === 1 (260922-jss)', () => {
+    const onGoToGroup = vi.fn();
+    // No selectedLoopClip, so the inspector's early `return` does not fire and
+    // this tree IS the list view. The two renderings are mutually exclusive,
+    // which is why the same exactly-one-match predicate the inspector legs use
+    // holds here as well.
+    const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
+      linkedGroupNavigation: { currentIndex: 0, total: 1, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup },
+    });
+    expect(textOf(tree)).toContain('Linked Rails — 1 of 1');
+    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Rail');
+    (go.props.onClick as () => void)();
+    expect(onGoToGroup).toHaveBeenCalledTimes(1);
   });
 
   it('renders a single 4-button top action row above the inspector scroll area (260905-hfd)', () => {
