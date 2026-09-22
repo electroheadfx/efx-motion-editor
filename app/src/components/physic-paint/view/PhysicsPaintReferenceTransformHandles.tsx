@@ -2,9 +2,15 @@ import { useEffect, useRef } from 'preact/hooks';
 import { useSignal } from '@preact/signals';
 import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 import type { PhotoReferenceTransform } from '../../../efx-paint/document/efxPaintDocument';
-import { efxPaintVersion, getDocument, setPhotoReferenceTransform } from '../../../stores/efxPaintStore';
+import {
+  efxPaintVersion,
+  getDocument,
+  setBackgroundTransform,
+  setPhotoReferenceTransform,
+} from '../../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../../stores/physicPaintStore';
-import { getReferenceBounds } from './PhysicsPaintReferenceTransform';
+import { computeEfxPaintBackgroundBaseDrawSize } from '../../../efx-paint/compositor/efxPaintCompositor';
+import { getBackgroundBounds, getReferenceBounds } from './PhysicsPaintReferenceTransform';
 import {
   getHandlePositions,
   hitTestHandles,
@@ -39,9 +45,22 @@ import type { HandleType, LayerBounds } from '../../canvas/transformHandles';
  * useState — efx-preact-reactivity); while `transformLocked` is true (the
  * default) the effect skips the resolution entirely — the handles are
  * invisible in that state, so no decode work runs.
+ *
+ * 260922-rd4 (STEP B): ONE required `target` discriminator — `'photo-reference'`
+ * reads/writes the photo track via `getReferenceBounds` /
+ * `setPhotoReferenceTransform`; `'background'` reads/writes
+ * `document.background` via `getBackgroundBounds` (contain-fit × clip-scale
+ * base) / `setBackgroundTransform`. The gesture state machine, threshold,
+ * apply bodies, SVG markup, and counter-scaling are UNCHANGED — only the
+ * read/write endpoints are target-dispatched (one component, no fork).
  */
 
+/** 260922-rd4: the ONE handles target discriminator (no default — every mount passes it). */
+export type PhysicsPaintTransformHandleTarget = 'photo-reference' | 'background';
+
 export interface PhysicsPaintReferenceTransformHandlesProps {
+  /** Required discriminator — inline union so the reuse pin sees it literally. */
+  readonly target: 'photo-reference' | 'background';
   readonly layerId: string | null;
   readonly currentFrame: number;
   readonly isPlaying: boolean;
@@ -73,15 +92,24 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     startTransform: IDENTITY_TRANSFORM,
   });
 
-  const { layerId, currentFrame, isPlaying, width, height, zoom } = props;
+  const { target, layerId, currentFrame, isPlaying, width, height, zoom } = props;
 
-  // Resolve the source image's natural dimensions through the shared
-  // decode-once cache (G-52-5 — never a per-effect `new Image()` decode; the
-  // cache's onload bump of physicPaintVersion re-fires this effect). Gated on
-  // !isPlaying, a present layerId, AND !transformLocked — the handles are
-  // invisible while locked (the default), so no decode work runs at all. A
-  // missing track / missing verdict / pending or failed decode clears the
-  // size (fail-closed — no handles without a resolved source, D-04).
+  // 260922-rd4 (STEP B): target-dispatched setter — the ONE write endpoint the
+  // gesture bodies call. Same three apply* functions, no duplicated gesture.
+  function writeTransform(next: PhotoReferenceTransform) {
+    if (!layerId) return;
+    if (target === 'background') setBackgroundTransform(layerId, next);
+    else setPhotoReferenceTransform(layerId, next);
+  }
+
+  // Resolve the source image's natural dimensions (photo) or the contain-fit ×
+  // clip-scale base draw size (background) through the shared decode-once cache
+  // (G-52-5 — never a per-effect `new Image()` decode; the cache's onload bump
+  // of physicPaintVersion re-fires this effect). Gated on !isPlaying, a present
+  // layerId, AND !transformLocked — the handles are invisible while locked (the
+  // default), so no decode work runs at all. A missing track / missing source /
+  // pending or failed decode clears the size (fail-closed — no handles without
+  // a resolved source, D-04).
   useEffect(() => {
     if (isPlaying || !layerId) {
       imageSize.value = null;
@@ -90,6 +118,37 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     const document = getDocument(layerId);
     if (!document) {
       imageSize.value = null;
+      return;
+    }
+    if (target === 'background') {
+      if (document.background.transformLocked) {
+        imageSize.value = null;
+        return;
+      }
+      const source = physicPaintStore.getBackgroundSourceAt(layerId, currentFrame);
+      if (!source) {
+        imageSize.value = null;
+        return;
+      }
+      const image = physicPaintStore.getDecodedImage(source.bytes);
+      if (image === null) {
+        imageSize.value = null;
+        return;
+      }
+      // PROJECT-space base = contain-fit × clip scale — the compositor's ONE
+      // formula (computeEfxPaintBackgroundBaseDrawSize). The handles props are
+      // WORKING size; project size recovers via zoom = paperTextureScale.
+      const projectSize = {
+        width: zoom > 0 ? width / zoom : width,
+        height: zoom > 0 ? height / zoom : height,
+      };
+      const base = computeEfxPaintBackgroundBaseDrawSize(
+        image.width,
+        image.height,
+        projectSize,
+        source.scale,
+      );
+      imageSize.value = { w: base.width, h: base.height };
       return;
     }
     const track = document.photoReference;
@@ -108,11 +167,16 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     // clocks are read inside the effect's dep array (narrow leaf subscription,
     // never the Studio root); a source/transform/lock change re-resolves the
     // size, and the cache's decode-complete bump re-fires for a pending decode.
-  }, [layerId, currentFrame, isPlaying, efxPaintVersion.value, physicPaintVersion.value]);
+    // width/height/zoom ride along so a canvas resize re-fits the background
+    // contain-fit base (photo natural dims don't depend on them, re-run is a
+    // cheap cache-hit).
+  }, [target, layerId, currentFrame, isPlaying, width, height, zoom, efxPaintVersion.value, physicPaintVersion.value]);
 
-  // Read accepted display state (narrow reads, no render-body writes).
+  // Read accepted display state by target (narrow reads, no render-body writes).
   const document = layerId ? getDocument(layerId) : null;
-  const track = document?.photoReference ?? null;
+  const track = target === 'background'
+    ? document?.background ?? null
+    : document?.photoReference ?? null;
   const transformLocked = track?.transformLocked ?? true;
   const transform = track?.transform ?? IDENTITY_TRANSFORM;
 
@@ -127,7 +191,12 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     );
   }
 
-  const bounds = getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
+  // Bounds endpoint is target-dispatched onto the SHARED core: photo base =
+  // natural source size; background base = contain-fit × clip-scale (already
+  // project-space in imageSize for the background path).
+  const bounds = target === 'background'
+    ? getBackgroundBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height)
+    : getReferenceBounds(transform, imageSize.value.w, imageSize.value.h, zoom, width, height);
   const handles = getHandlePositions(bounds, zoom);
 
   const [tl, tr, br, bl] = bounds.corners;
@@ -261,7 +330,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     const current = getWorkingPointFromClient(e.clientX, e.clientY);
     const dx = (current.x - start.x) / zoom;
     const dy = (current.y - start.y) / zoom;
-    setPhotoReferenceTransform(layerId!, {
+    writeTransform({
       ...state.startTransform,
       x: state.startTransform.x + dx,
       y: state.startTransform.y + dy,
@@ -281,7 +350,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
 
     const ht = state.handleType;
     if (ht?.startsWith('corner')) {
-      setPhotoReferenceTransform(layerId!, {
+      writeTransform({
         ...state.startTransform,
         scaleX: state.startTransform.scaleX * scaleFactor,
         scaleY: state.startTransform.scaleY * scaleFactor,
@@ -294,7 +363,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
       if (Math.abs(startProj) < 1) return;
       const factor = currProj / startProj;
-      setPhotoReferenceTransform(layerId!, {
+      writeTransform({
         ...state.startTransform,
         scaleX: state.startTransform.scaleX * factor,
       });
@@ -306,7 +375,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
       const currProj = (mouse.x - center.x) * axisX + (mouse.y - center.y) * axisY;
       if (Math.abs(startProj) < 1) return;
       const factor = currProj / startProj;
-      setPhotoReferenceTransform(layerId!, {
+      writeTransform({
         ...state.startTransform,
         scaleY: state.startTransform.scaleY * factor,
       });
@@ -323,7 +392,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     const startAngle = Math.atan2(startMouse.y - center.y, startMouse.x - center.x);
     const deltaAngle = ((currentAngle - startAngle) * 180) / Math.PI;
 
-    setPhotoReferenceTransform(layerId!, {
+    writeTransform({
       ...state.startTransform,
       rotation: state.startTransform.rotation + deltaAngle,
     });
@@ -355,7 +424,7 @@ export function PhysicsPaintReferenceTransformHandles(props: PhysicsPaintReferen
     <div
       ref={containerRef}
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-      aria-label="Reference transform"
+      aria-label={target === 'background' ? 'Background transform' : 'Reference transform'}
     >
       <svg
         style={{

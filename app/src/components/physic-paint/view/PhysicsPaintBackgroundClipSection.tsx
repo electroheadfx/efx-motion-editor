@@ -1,8 +1,8 @@
 import { useSignal } from '@preact/signals';
 import type { Signal } from '@preact/signals';
-import { Trash2 } from 'lucide-preact';
+import { Lock, LockOpen, Trash2 } from 'lucide-preact';
 import type { EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../../efx-paint/document/efxPaintDocument';
-import type { BackgroundClipMutationResult } from '../../../stores/efxPaintStore';
+import type { BackgroundClipMutationResult, PhotoReferenceDisplayResult } from '../../../stores/efxPaintStore';
 
 /**
  * 49-06 (Task 1, S5): the right-panel `Background Clip` properties section.
@@ -41,6 +41,12 @@ export interface PhysicsPaintBackgroundClipSectionPorts {
   replaceSource: (layerId: string, clipId: string) => void;
   /** sourceRef → original filename (D-02: natural order is the stored refs order). */
   resolveFilename: (sourceRef: string) => string | undefined;
+  /**
+   * 260922-rd4: setBackgroundTransformLocked(layerId, locked) — the background
+   * transform lock (display preference). The Studio port also locks the photo
+   * reference on unlock (mutual exclusion — one handle set).
+   */
+  setTransformLocked: (layerId: string, locked: boolean) => PhotoReferenceDisplayResult;
 }
 
 export interface PhysicsPaintBackgroundClipSectionProps {
@@ -68,6 +74,10 @@ export interface PhysicsPaintBackgroundClipSectionController {
   toggleInfinity: (enabled: boolean) => void;
   handleDelete: () => void;
   handleReplace: () => void;
+  /** 260922-rd4: the background transform lock state (accepted document read). */
+  transformLocked: boolean;
+  /** Invert the lock from the LIVE document (photo dialog idiom). */
+  toggleTransformLocked: () => void;
 }
 
 /** The locked repeat hint copy (UI-SPEC Copywriting Contract). */
@@ -105,6 +115,7 @@ export function usePhysicsPaintBackgroundClipSectionController({
   const deleteClip = ports.deleteClip ?? defaultPorts.deleteClip;
   const replaceSource = ports.replaceSource ?? defaultPorts.replaceSource;
   const resolveFilename = ports.resolveFilename ?? defaultPorts.resolveFilename;
+  const setTransformLocked = ports.setTransformLocked ?? defaultPorts.setTransformLocked;
 
   const selectedClipId = selectedBackgroundClipId.value;
   const document = getDocument(layerId);
@@ -218,6 +229,16 @@ export function usePhysicsPaintBackgroundClipSectionController({
         .filter((name): name is string => Boolean(name))
     : [];
 
+  // 260922-rd4: the background transform lock — accepted document state only;
+  // the toggle inverts from a LIVE getDocument read (photo dialog idiom, so a
+  // second click can never re-send a stale first value).
+  const transformLocked = document?.background.transformLocked ?? true;
+  const toggleTransformLocked = () => {
+    const live = getDocument(layerId);
+    if (!live) return;
+    setTransformLocked(layerId, !live.background.transformLocked);
+  };
+
   return {
     clip,
     repeatDraft,
@@ -235,6 +256,8 @@ export function usePhysicsPaintBackgroundClipSectionController({
     toggleInfinity,
     handleDelete,
     handleReplace,
+    transformLocked,
+    toggleTransformLocked,
   };
 }
 
@@ -242,6 +265,7 @@ export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundC
   const {
     clip, repeatDraft, repeatError, isInfinite, filenames, commitRepeat, toggleInfinity, handleDelete, handleReplace,
     scaleXDraft, scaleYDraft, scaleGlobalDraft, scaleError, commitScaleX, commitScaleY, commitScaleGlobal,
+    transformLocked, toggleTransformLocked,
   } = usePhysicsPaintBackgroundClipSectionController(props);
   if (!clip) return null;
   return (
@@ -251,6 +275,23 @@ export function PhysicsPaintBackgroundClipSection(props: PhysicsPaintBackgroundC
         <div class="physics-paint-option-row">
           <span class="physics-paint-right-label">Start frame</span>
           <span class="physics-paint-bg-clip-value">{clip.startFrame}</span>
+        </div>
+        {/* 260922-rd4: Lock/LockOpen — the photo dialog's toggle idiom
+            (aria-pressed + lucide icons) writing the background transform lock.
+            Unlocking locks the photo reference at the Studio port (mutual
+            exclusion). */}
+        <div class="physics-paint-option-row">
+          <span class="physics-paint-right-label">Transform</span>
+          <button
+            type="button"
+            class="physics-paint-photo-reference-toggle"
+            aria-label="Lock background transform"
+            aria-pressed={transformLocked}
+            onClick={toggleTransformLocked}
+          >
+            {transformLocked ? <Lock size={12} aria-hidden="true" /> : <LockOpen size={12} aria-hidden="true" />}
+            <span>{transformLocked ? 'Locked' : 'Unlocked'}</span>
+          </button>
         </div>
         <div class="physics-paint-option-row">
           <span class="physics-paint-right-label">Repeat</span>
@@ -387,4 +428,5 @@ const defaultPorts: PhysicsPaintBackgroundClipSectionPorts = {
   deleteClip: () => ({ ok: false, reason: 'clip-not-found' }),
   replaceSource: () => {},
   resolveFilename: () => undefined,
+  setTransformLocked: () => ({ ok: false, reason: 'no-document' }),
 };

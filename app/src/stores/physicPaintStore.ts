@@ -2774,6 +2774,30 @@ export const physicPaintStore = {
   },
 
   /**
+   * 260922-rd4 (STEP C): the background source bytes AND the owning clip's
+   * scale % at `frame` for the transform-handles size probe. Composes the SAME
+   * already-resolved `resolveEfxPaintBackgroundFrame` plumbing the flattened
+   * path uses (never a re-resolution) plus the runtime known-source set;
+   * decode stays on the SHARED `getDecodedImage` (G-52-05 — never a second
+   * decode path). Null on absent document / gap / unregistered bytes
+   * (fail-closed — no handles without a resolvable source).
+   */
+  getBackgroundSourceAt(layerId: string, frame: number): {
+    readonly bytes: Uint8Array;
+    readonly scale: { readonly x: number; readonly y: number };
+  } | null {
+    const efxDocument = getEfxPaintDocument(layerId);
+    if (!efxDocument) return null;
+    const context = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
+    const resolution = resolveEfxPaintBackgroundFrame(context, frame, new Set(_backgroundSourceImages.keys()));
+    if (resolution.kind !== 'content') return null;
+    const bytes = _backgroundSourceImages.get(resolution.sourceRef);
+    if (bytes === undefined) return null;
+    const clip = efxDocument.background.clips.find((candidate) => candidate.id === resolution.clipId);
+    return { bytes, scale: clip?.scale ?? { x: 100, y: 100 } };
+  },
+
+  /**
    * 50-02 Task 2: the frame-aligned reference source verdict for the ghost draw
    * path (Plan 50-04) and the band tooltip. Returns null when the layer has no
    * document, no photo reference track, or the resolved source ref is missing

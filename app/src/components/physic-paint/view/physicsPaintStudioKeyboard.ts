@@ -56,6 +56,10 @@ export interface PhysicsPaintStudioKeyboardActions {
    *  when the transform was actually unlocked (reference-transform mode), so
    *  the Escape layer consumes at most one layer (Pitfall 2). */
   relockReferenceTransform?: () => boolean;
+  /** 260922-rd4: re-lock the BACKGROUND transform. Returns true ONLY when the
+   *  background transform was actually unlocked — chained AFTER the reference
+   *  relock so one Escape still consumes at most one layer (Pitfall 2). */
+  relockBackgroundTransform?: () => boolean;
 }
 
 export function isPhysicsPaintShortcutTarget(target: EventTarget | null): boolean {
@@ -240,6 +244,13 @@ export function dispatchPhysicsPaintStudioKeyDown(
     // Escape only when the transform was actually unlocked (reference-transform
     // mode). One Escape handles at most one layer (Pitfall 2).
     if (actions.relockReferenceTransform?.()) {
+      event.preventDefault();
+      return;
+    }
+    // 260922-rd4: background-transform re-lock — immediately AFTER the
+    // reference relock; consumes the Escape only when the background was
+    // actually unlocked (one Escape, one layer).
+    if (actions.relockBackgroundTransform?.()) {
       event.preventDefault();
       return;
     }

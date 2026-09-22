@@ -28,6 +28,7 @@ import {
   setPhotoReferenceVisible,
   setPhotoReferenceOpacity,
   setPhotoReferenceTransformLocked,
+  setBackgroundTransformLocked,
   clearPhotoReference,
   setTrackBlend,
   setTrackOpacity,
@@ -3013,6 +3014,18 @@ export function PhysicsPaintStudio() {
         setPhotoReferenceTransformLocked(layerId, true);
         return true;
       },
+      // 260922-rd4: Escape re-locks the BACKGROUND transform — chained AFTER
+      // the reference relock so one Escape still consumes at most one layer
+      // (Pitfall 2). Returns true ONLY when the background was actually
+      // unlocked.
+      relockBackgroundTransform: () => {
+        const layerId = launchContext?.layerId;
+        if (!layerId) return false;
+        const document = getEfxPaintDocument(layerId);
+        if (!document || document.background.transformLocked) return false;
+        setBackgroundTransformLocked(layerId, true);
+        return true;
+      },
       collapseRotoSelection: () => {
         // 43.6 D-04: the rail-set is the top selection layer — one Escape
         // collapses the set without touching the key selection (Pitfall 2).
@@ -3336,6 +3349,13 @@ export function PhysicsPaintStudio() {
     setRepeat: (layerId: string, clipId: string, repeat: FrameLoopClipRepeat) => setBackgroundClipRepeat(layerId, clipId, repeat),
     // 49-06 (UAT round 9): the resize % control — contain-fit scale percentages.
     setScale: (layerId: string, clipId: string, scale: FrameLoopClipScale) => setBackgroundClipScale(layerId, clipId, scale),
+    // 260922-rd4: the background transform lock — unlocking LOCKS the photo
+    // reference (mutual exclusion: only one handle set active).
+    setTransformLocked: (layerId: string, locked: boolean) => {
+      const result = setBackgroundTransformLocked(layerId, locked);
+      if (result.ok && !locked) setPhotoReferenceTransformLocked(layerId, true);
+      return result;
+    },
     deleteClip: (layerId: string, clipId: string) => {
       // 49-06 UAT: the sidebar trash delete rides the same unified-ledger
       // undo step as the Delete/Backspace shortcut (BKG-08, D-08).
@@ -3357,7 +3377,13 @@ export function PhysicsPaintStudio() {
   const photoReferenceSectionPortsRef = useRef({
     getDocument: (layerId: string) => getEfxPaintDocument(layerId) ?? undefined,
     setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity),
-    setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked),
+    // 260922-rd4 MUTUAL EXCLUSION: unlocking the reference LOCKS the
+    // background at this unlock port (never deep in the component).
+    setTransformLocked: (layerId: string, locked: boolean) => {
+      const result = setPhotoReferenceTransformLocked(layerId, locked);
+      if (result.ok && !locked) setBackgroundTransformLocked(layerId, true);
+      return result;
+    },
     setVisible: (layerId: string, visible: boolean) => setPhotoReferenceVisible(layerId, visible),
     clearReference: (layerId: string) => {
       const result = clearPhotoReference(layerId);
@@ -3686,6 +3712,11 @@ export function PhysicsPaintStudio() {
     const programMonitorActiveTrackId = programMonitorLayerId
       ? getEfxPaintDocument(programMonitorLayerId)?.activeTrackId ?? null
       : null;
+    // 260922-rd4: lock state for the mutual-exclusion handle gates (read here
+    // so efxPaintVersion — already a memo dep — re-resolves the mounts).
+    const stackDocument = programMonitorLayerId
+      ? getEfxPaintDocument(programMonitorLayerId)
+      : undefined;
     // 48-06 (UAT-B): a hidden (or non-soloed-under-solo) active track blanks
     // the engine canvas by law, but the cleared engine surface can still carry
     // the engine's own background paint and would occlude the program monitor
@@ -3764,15 +3795,35 @@ export function PhysicsPaintStudio() {
       // clocks in its OWN effect; this memo re-resolves on document changes
       // (efxPaintVersion.value) so a transform/lock change re-targets the
       // overlay. The zoom is the project→working scale (paperTextureScale) so
-      // the handles overlay the ghost exactly (D-13).
-      referenceTransformHandles: programMonitorLayerId ? {
-        layerId: programMonitorLayerId,
-        currentFrame,
-        isPlaying,
-        width: canvasWidth,
-        height: canvasHeight,
-        zoom: paperTextureScale,
-      } : null,
+      // the handles overlay the ghost exactly (D-13). 260922-rd4 MUTUAL
+      // EXCLUSION: both handle sets mount only while their own lock is open —
+      // never two active sets at once (unlocking one locks the other at the
+      // Studio unlock ports).
+      referenceTransformHandles: programMonitorLayerId
+        && stackDocument?.photoReference?.transformLocked === false
+        ? {
+          layerId: programMonitorLayerId,
+          target: 'photo-reference' as const,
+          currentFrame,
+          isPlaying,
+          width: canvasWidth,
+          height: canvasHeight,
+          zoom: paperTextureScale,
+        } : null,
+      // 260922-rd4: the BACKGROUND transform handles — the same envelope
+      // (zoom = paperTextureScale) with target="background", gated on the
+      // background's own lock.
+      backgroundTransformHandles: programMonitorLayerId
+        && stackDocument?.background.transformLocked === false
+        ? {
+          layerId: programMonitorLayerId,
+          target: 'background' as const,
+          currentFrame,
+          isPlaying,
+          width: canvasWidth,
+          height: canvasHeight,
+          zoom: paperTextureScale,
+        } : null,
     };
   });
   // 43.6-08 (quick 260820-bjw): set-aware rotoKeyState overlay. With an active

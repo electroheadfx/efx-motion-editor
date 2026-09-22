@@ -106,6 +106,8 @@ function createHarness(initialClips: readonly FrameLoopClip[], selection: string
     deleteClip,
     replaceSource,
     resolveFilename: (ref) => FILENAMES[ref],
+    // 260922-rd4: the background transform lock port (display preference).
+    setTransformLocked: () => ({ ok: true }),
   };
   const render = () => usePhysicsPaintBackgroundClipSectionController({
     layerId: 'layer-1',

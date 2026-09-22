@@ -91,6 +91,34 @@ export type EfxPaintTrackContentResolution =
 export const EFX_PAINT_BACKGROUND_MISSING_FILL = '#4b5563';
 
 /**
+ * The background base draw SIZE (contain-fit × clip scale) in PROJECT pixels —
+ * the ONE formula (260922-rd4 STEP A): the compositor's content draw and the
+ * Studio handles' `getBackgroundBounds` base both call this, never a second
+ * hand-written contain-fit. Non-positive / non-finite source dims fall back to
+ * the full project rect (stretch-to-fill — the pre-49-09 test-stub path).
+ */
+export function computeEfxPaintBackgroundBaseDrawSize(
+  sourceWidth: number,
+  sourceHeight: number,
+  size: EfxPaintCompositeSize,
+  scale: { readonly x: number; readonly y: number },
+): { readonly width: number; readonly height: number } {
+  if (
+    Number.isFinite(sourceWidth)
+    && Number.isFinite(sourceHeight)
+    && sourceWidth > 0
+    && sourceHeight > 0
+  ) {
+    const containScale = Math.min(size.width / sourceWidth, size.height / sourceHeight);
+    return {
+      width: sourceWidth * containScale * (scale.x / 100),
+      height: sourceHeight * containScale * (scale.y / 100),
+    };
+  }
+  return { width: size.width, height: size.height };
+}
+
+/**
  * The Background contribution resolved by the injected port (D-03 seam).
  * This is the 48-02 union ({@link EfxPaintBackgroundFrameResolution}): content
  * names the owning clip's source ref — the compositor NEVER maps FrameLoopClip
@@ -296,28 +324,26 @@ export function compositeFrame(
         // source (an <img> or canvas) always exposes them. When they're
         // unavailable (a test stub) fall back to the pre-49-09 stretch-to-fill.
         const source = raster as { width: number; height: number };
-        const sourceWidth = source.width;
-        const sourceHeight = source.height;
-        let drawX = 0;
-        let drawY = 0;
-        let drawWidth = size.width;
-        let drawHeight = size.height;
-        if (Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) && sourceWidth > 0 && sourceHeight > 0) {
-          const containScale = Math.min(size.width / sourceWidth, size.height / sourceHeight);
-          const baseWidth = sourceWidth * containScale;
-          const baseHeight = sourceHeight * containScale;
-          drawWidth = baseWidth * (scale.x / 100);
-          drawHeight = baseHeight * (scale.y / 100);
-          drawX = (size.width - drawWidth) / 2;
-          drawY = (size.height - drawHeight) / 2;
-        }
+        // 260922-rd4: the contain-fit × clip-scale base size is the exported
+        // single formula — the handles bounds wrapper consumes the same helper,
+        // so the overlay and the draw can never drift (one convention).
+        const baseSize = computeEfxPaintBackgroundBaseDrawSize(
+          source.width,
+          source.height,
+          size,
+          scale,
+        );
+        const drawWidth = baseSize.width;
+        const drawHeight = baseSize.height;
+        const drawX = (size.width - drawWidth) / 2;
+        const drawY = (size.height - drawHeight) / 2;
         // 260922-rd4: the track transform rides AFTER contain-fit × clip-scale
         // (composition order: fit → clip scale → track transform), around the
         // base-rect center, with x/y in project-space pixels added to that
         // center. Rotation is DEGREES — the one photo bounds/handles unit
-        // (getReferenceBounds/applyRotation) → ×π/180 here, never a second
-        // convention. Identity takes the EXACT pre-plan draw path (leg c0) so
-        // untransformed documents keep their hot path byte-for-byte.
+        // (applyRotation) → ×π/180 here, never a second convention. Identity
+        // takes the EXACT pre-plan draw path (leg c0) so untransformed
+        // documents keep their hot path byte-for-byte.
         const backgroundTransform = document.background.transform;
         const backgroundTransformIsIdentity = backgroundTransform.x === 0
           && backgroundTransform.y === 0

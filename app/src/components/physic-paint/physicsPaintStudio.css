@@ -5682,6 +5682,16 @@ button.destructive {
   pointer-events: none;
 }
 
+/* 260922-rd4: the background handles share the reference wrapper treatment —
+   same seat, same pass-through contract (interactive children own pointer
+   events). */
+.physics-paint-background-transform {
+  position: absolute;
+  z-index: 6;
+  overflow: visible;
+  pointer-events: none;
+}
+
 .physics-paint-onion-frame {
   position: absolute;
   inset: 0;

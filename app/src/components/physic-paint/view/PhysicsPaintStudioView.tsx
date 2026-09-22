@@ -90,6 +90,13 @@ interface PhysicsPaintCanvasStackViewProps {
    * so painting gestures pass through by default (D-13).
    */
   referenceTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;
+  /**
+   * 260922-rd4: the BACKGROUND transform handles — a sibling of the reference
+   * handles (same envelope shape, `target="background"`), mounted only while
+   * `document.background.transformLocked === false` (mutual exclusion with the
+   * reference handles — never two active handle sets).
+   */
+  backgroundTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;
 }
 
 /**
@@ -247,6 +254,18 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           <PhysicsPaintReferenceTransformHandles {...props.referenceTransformHandles} />
+        </div>
+      ) : null}
+      {/* 260922-rd4: the background transform handles — same sibling seat and
+          pointer-events pattern as the reference handles (container none,
+          shapes all); mounted only while the background transform is unlocked
+          (the Studio gates the prop — mutual exclusion). */}
+      {canvasBounds && props.backgroundTransformHandles ? (
+        <div
+          class="physics-paint-background-transform"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <PhysicsPaintReferenceTransformHandles {...props.backgroundTransformHandles} />
         </div>
       ) : null}
     </div>

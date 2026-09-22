@@ -15,18 +15,32 @@ import type { LayerBounds } from '../../canvas/transformHandles';
  *
  * The returned `LayerBounds` (corners + center) is the same shape the main
  * editor's `transformHandles` helpers consume, so `getHandlePositions`,
- * `hitTestHandles`, `getRotationZone`, and `pointInPolygon` are reused verbatim.
+ * `hitTestHandles`, `getRotationZone`, and `pointInPolygon` are reused
+ * verbatim.
+ *
+ * 260922-rd4: the rotation/offset math lives in ONE core shared by
+ * {@link getReferenceBounds} (photo base = natural source size) and
+ * {@link getBackgroundBounds} (background base = contain-fit × clip scale) —
+ * shared math, only the base rect differs (reuse, not a fork).
  */
-export function getReferenceBounds(
+
+/**
+ * The shared rotation/offset bounds core (260922-rd4 STEP A). `baseWidth` /
+ * `baseHeight` are PROJECT-space dimensions of the untransformed draw rect
+ * (photo: natural source size; background: contain-fit × clip scale); the
+ * result is the WORKING-space box after zoom, center offset, scale, and
+ * rotation-degrees — one convention with `getReferenceBounds`/`applyRotation`.
+ */
+function transformBoundsCore(
   transform: PhotoReferenceTransform,
-  imageWidth: number,
-  imageHeight: number,
+  baseWidth: number,
+  baseHeight: number,
   zoom: number,
   canvasWidth: number,
   canvasHeight: number,
 ): LayerBounds {
-  const w = imageWidth * zoom;
-  const h = imageHeight * zoom;
+  const w = baseWidth * zoom;
+  const h = baseHeight * zoom;
   const cx = canvasWidth / 2 + transform.x * zoom;
   const cy = canvasHeight / 2 + transform.y * zoom;
   const hw = (w / 2) * transform.scaleX;
@@ -48,4 +62,37 @@ export function getReferenceBounds(
   }));
 
   return { corners, center: { x: cx, y: cy }, drawW: w, drawH: h };
+}
+
+/**
+ * Photo-reference bounds — thin wrapper over the shared core with base =
+ * (imageWidth, imageHeight). Signature and output stay byte-identical to the
+ * pre-260922-rd4 implementation (photo regression guardrail).
+ */
+export function getReferenceBounds(
+  transform: PhotoReferenceTransform,
+  imageWidth: number,
+  imageHeight: number,
+  zoom: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): LayerBounds {
+  return transformBoundsCore(transform, imageWidth, imageHeight, zoom, canvasWidth, canvasHeight);
+}
+
+/**
+ * Background bounds (260922-rd4) — the same core with base =
+ * (baseDrawW, baseDrawH): the compositor's contain-fit × clip-scale draw rect
+ * in PROJECT pixels (see `computeEfxPaintBackgroundBaseDrawSize`), so the
+ * handles overlay the transformed background exactly.
+ */
+export function getBackgroundBounds(
+  transform: PhotoReferenceTransform,
+  baseDrawW: number,
+  baseDrawH: number,
+  zoom: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): LayerBounds {
+  return transformBoundsCore(transform, baseDrawW, baseDrawH, zoom, canvasWidth, canvasHeight);
 }

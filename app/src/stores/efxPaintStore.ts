@@ -1268,6 +1268,27 @@ export function setBackgroundTransform(layerId: string, transform: PhotoReferenc
 }
 
 /**
+ * Lock/unlock the Background track's transform (260922-rd4 — display
+ * preference, same class as `setPhotoReferenceTransformLocked`). Unlocking one
+ * target is mirrored to LOCK the other at the Studio unlock ports (mutual
+ * exclusion — only one handle set active); this setter itself stays a pure
+ * display-pref write (no revision, no undo).
+ */
+export function setBackgroundTransformLocked(layerId: string, locked: boolean): PhotoReferenceDisplayResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  const current = document.background.transformLocked;
+  if (current === locked) return { ok: true };
+  const next: EfxPaintDocument = {
+    ...document,
+    background: { ...document.background, transformLocked: locked },
+  };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return { ok: true };
+}
+
+/**
  * Remove the photo/reference track entirely (D-03 remove). A DOCUMENT MUTATION —
  * sets `photoReference` back to null, bumps the document `documentRevision`
  * counter, and records ONE undo entry by reference (operation kind

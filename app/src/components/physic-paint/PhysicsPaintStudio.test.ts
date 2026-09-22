@@ -48,6 +48,8 @@ const exportRenderer = readFileSync(fileURLToPath(new URL('../../lib/exportRende
 const referenceTransformHandles = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransformHandles.tsx', import.meta.url)), 'utf8');
 const referenceTransform = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransform.ts', import.meta.url)), 'utf8');
 const studioKeyboard = readFileSync(fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
+// 260922-rd4: the background transform wiring pins (STEP F).
+const backgroundClipSection = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
   it('wires focused Roto script, Play Script, and cached playback controllers', () => {
@@ -1777,7 +1779,10 @@ describe('Physics Paint reference transform handles (50-05, S4/D-13/D-06)', () =
   it('mounts the transform handles overlay above the ghost layer (S4)', () => {
     // The Studio threads a referenceTransformHandles config into the canvas stack;
     // the view renders the overlay as a sibling of the ghost layer (z-index 6).
-    expect(studio).toContain('referenceTransformHandles: programMonitorLayerId ? {');
+    // 260922-rd4: the envelope is now gated on the photo lock (mutual
+    // exclusion) — same seat, same zoom, mount only while unlocked.
+    expect(studio).toContain('referenceTransformHandles: programMonitorLayerId');
+    expect(studio).toContain("stackDocument?.photoReference?.transformLocked === false");
     expect(studio).toContain('zoom: paperTextureScale,');
     expect(studioView).toContain('referenceTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;');
     expect(studioView).toContain('{canvasBounds && props.referenceTransformHandles ? (');
@@ -1824,8 +1829,11 @@ describe('Physics Paint reference transform handles (50-05, S4/D-13/D-06)', () =
     // The pure geometry module computes the SAME bounding box the ghost draws
     // (natural size scaled by zoom, centered, then rotated/scaled).
     expect(referenceTransform).toContain('export function getReferenceBounds');
-    expect(referenceTransform).toContain('imageWidth * zoom');
+    // 260922-rd4: the math moved into the shared core (base = image or
+    // contain-fit rect) — getReferenceBounds stays a thin byte-identical wrapper.
+    expect(referenceTransform).toContain('baseWidth * zoom');
     expect(referenceTransform).toContain('transform.rotation');
+    expect(referenceTransform).toContain('function transformBoundsCore');
   });
 
   it('renders a VISIBLE and interactive rotation handle above the top edge (D-13 spec)', () => {
@@ -1860,7 +1868,10 @@ describe('Physics Paint photo reference dialog mount + Escape re-lock (50-UAT/50
     // setPhotoReferenceTransformLocked (display preferences, no undo). The
     // Phase 50 mode port is REMOVED (52-02, D-15 clean break).
     expect(studio).toContain('setOpacity: (layerId: string, opacity: number) => setPhotoReferenceOpacity(layerId, opacity)');
-    expect(studio).toContain('setTransformLocked: (layerId: string, locked: boolean) => setPhotoReferenceTransformLocked(layerId, locked)');
+    // 260922-rd4: the photo lock port now also cross-locks the background on
+    // unlock (mutual exclusion) — the photo store op itself is unchanged.
+    expect(studio).toContain('const result = setPhotoReferenceTransformLocked(layerId, locked);');
+    expect(studio).toContain('if (result.ok && !locked) setBackgroundTransformLocked(layerId, true);');
   });
 
   it('wires Escape to re-lock the transform from anywhere in reference-transform mode (D-13)', () => {
@@ -2273,5 +2284,45 @@ describe('quick-260922-qad Studio open viewport positioning wiring', () => {
     // The one-shot positioning behaviour is proven by the strip's viewport
     // legs; this pin only guarantees the wiring exists on the workflow object.
     expect(studio).toContain('timelineOpenFrame: launchContext?.startFrame ?? null');
+  });
+});
+
+describe('260922-rd4 background transform via the shared photo-reference handles path', () => {
+  it('pins (1) the Studio passes target: background to the background handles envelope', () => {
+    expect(studio).toContain("target: 'background' as const,");
+    expect(studio).toContain('backgroundTransformHandles: programMonitorLayerId');
+    // Mutual exclusion: the envelope mounts only while the background lock is open.
+    expect(studio).toContain("stackDocument?.background.transformLocked === false");
+  });
+
+  it('pins (2) PhysicsPaintStudioView mounts a target="background" handles instance', () => {
+    expect(studioView).toContain('backgroundTransformHandles?: ComponentProps<typeof PhysicsPaintReferenceTransformHandles> | null;');
+    expect(studioView).toContain('class="physics-paint-background-transform"');
+    expect(studioView).toContain('<PhysicsPaintReferenceTransformHandles {...props.backgroundTransformHandles} />');
+  });
+
+  it('pins (3) ONE handles component carries target: photo-reference | background and dispatches setBackgroundTransform (reuse)', () => {
+    expect(referenceTransformHandles).toContain("target: 'photo-reference' | 'background'");
+    expect(referenceTransformHandles).toContain('setBackgroundTransform');
+    // The photo write endpoint still exists — same component, dispatch only.
+    expect(referenceTransformHandles).toContain('setPhotoReferenceTransform');
+    // Shared bounds core: both wrappers, one rotation/offset implementation.
+    expect(referenceTransform).toContain('export function getReferenceBounds');
+    expect(referenceTransform).toContain('export function getBackgroundBounds');
+    expect(referenceTransform).toContain('function transformBoundsCore');
+  });
+
+  it('pins (4) the Background Clip section wires setTransformLocked', () => {
+    expect(backgroundClipSection).toContain('setTransformLocked: (layerId: string, locked: boolean) => PhotoReferenceDisplayResult;');
+    expect(backgroundClipSection).toContain('aria-label="Lock background transform"');
+    expect(backgroundClipSection).toContain('toggleTransformLocked');
+    // Studio port wires the store op and the mutual-exclusion cross-lock.
+    expect(studio).toContain('setTransformLocked: (layerId: string, locked: boolean) => {');
+    expect(studio).toContain('setBackgroundTransformLocked(layerId, locked)');
+    expect(studio).toContain('setPhotoReferenceTransformLocked(layerId, true);');
+    // Escape chain: background relock after the reference relock.
+    expect(studio).toContain('relockBackgroundTransform: () => {');
+    expect(studioKeyboard).toContain('relockBackgroundTransform?: () => boolean;');
+    expect(studioKeyboard).toContain('if (actions.relockBackgroundTransform?.())');
   });
 });
