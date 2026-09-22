@@ -17,6 +17,7 @@ import { imageStore } from '../../../stores/imageStore';
 import { requestImageLibrary } from '../../../lib/physicPaintBridge';
 import { readEfxPaintSessionDocumentCheckpoint } from '../bridge/physicsPaintBridgeTransport';
 import { useEfxPaintAudioContextBridge, usePhysicsPaintLaunchBridge, usePhysicsPaintProjectContextBridge } from '../bridge/usePhysicsPaintParentBridge';
+import { createPhysicsPaintProjectContextSettlement, type PhysicsPaintProjectContextSettlement } from './physicsPaintProjectContextSettlement';
 
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: () => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: () => void };
@@ -174,7 +175,13 @@ export function usePhysicsPaintLaunchIntegration(input: {
     // (the single authority), not the carried per-track roto background — the
     // selector must agree with the engine and monitor fond before the first
     // click. The launch IS the document (D-03), so the fallback is carried.
-    applyPhysicsPaintLaunchContext(hydration.context, input.state, (launch) => {
+    // quick-260922-jss: the launch settle is the only moment a project-context
+    // payload that arrived while this launch was still settling can reach a
+    // published context (the one-shot read-only pull races this async path).
+    // The settle moves `.project` and nothing else, which is why every other
+    // read below keeps reading `hydration.context` / `hydration.document`.
+    const settledContext = settlementRef.current?.settle(hydration.context) ?? hydration.context;
+    applyPhysicsPaintLaunchContext(settledContext, input.state, (launch) => {
       const fallback = launch.document?.background?.fallback;
       return fallback ? applyBackgroundFallbackToSettings(fallback) : null;
     });
@@ -195,7 +202,7 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.state.setLastError(null);
     input.lifecycle.activeOperationIdRef.current = null;
     input.lifecycle.pendingApplyRef.current = null;
-    input.onSettledLaunchContext?.(hydration.context);
+    input.onSettledLaunchContext?.(settledContext);
   }, [input, resetRotoSessionForLaunch]);
 
   const prepareReplacementRef = useRef(async () => {
@@ -208,6 +215,23 @@ export function usePhysicsPaintLaunchIntegration(input: {
     await input.lifecycle.preparePlaybackSettingsLaunchReplacement();
   };
   applySettledLaunchContextRef.current = applySettledLaunchContext;
+  // quick-260922-jss: the project-context round trip runs through its own
+  // controller (physicsPaintProjectContextSettlement.ts) so both arrival orders
+  // — payload before the settle, payload after it — land the same way. `input`
+  // is a fresh literal on every render, so the controller's ports read it
+  // through a ref, the same idiom as applySettledLaunchContextRef above.
+  const settlementInputRef = useRef(input);
+  settlementInputRef.current = input;
+  const settlementRef = useRef<PhysicsPaintProjectContextSettlement | null>(null);
+  if (!settlementRef.current) {
+    settlementRef.current = createPhysicsPaintProjectContextSettlement({
+      peekLaunchContext: () => settlementInputRef.current.peekLaunchContext(),
+      applyContext: (context) => {
+        settlementInputRef.current.state.setLaunchContext(context);
+        settlementInputRef.current.onSettledLaunchContext?.(context);
+      },
+    });
+  }
   const coordinatorRef = useRef<PhysicsPaintLaunchReplacementCoordinator | null>(null);
   if (!coordinatorRef.current) {
     coordinatorRef.current = createPhysicsPaintLaunchReplacementCoordinator({
@@ -234,12 +258,8 @@ export function usePhysicsPaintLaunchIntegration(input: {
   // first-player-wins ownership guard (suppress + note + auto-resume). One
   // listener per event, same install idiom as the sibling bridges.
   useEffect(() => installEfxPaintAudioPlaybackStateListener(), []);
-  usePhysicsPaintProjectContextBridge((project) => {
-    const current = input.peekLaunchContext();
-    if (!current) return;
-    const updated = { ...current, project };
-    input.state.setLaunchContext(updated);
-    input.onSettledLaunchContext?.(updated);
-  });
+  // The bridge's callback type carries `undefined` (it is typed off the optional
+  // launch field) while its validation gate only ever hands over a real payload.
+  usePhysicsPaintProjectContextBridge((project) => { if (project) settlementRef.current?.accept(project); });
   return { getStrokeMetadata };
 }
