@@ -198,36 +198,45 @@ export function PhysicsPaintScriptsPanel({
           </PhysicsPaintStyledTooltip>
         </span>
       </div>
-      {scopeEntries.length > 1 ? (
-        // quick-260922-al1: a full-width row of its OWN, outside the toolbar's
-        // 6-column icon grid — the toolbar stays byte-identical, and the select
-        // is a native control so it is keyboard reachable and announced
-        // without inventing a widget. It renders only when at least one layer
-        // actually owns an Action: a single-option select would be dead UI.
-        <div class="physics-paint-scripts-scope">
-          <label class="physics-paint-scripts-scope-label" htmlFor={scopeSelectId}>Action scope</label>
-          <select
-            id={scopeSelectId}
-            class="physics-paint-scripts-scope-select"
-            value={scopeValue}
-            onChange={(event) => { library.setScriptScope(event.currentTarget.value); }}
-          >
-            {scopeEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
-          </select>
-        </div>
-      ) : null}
-      {linkedGroupNavigation ? (
-        <section class="physics-paint-loop-clip-linked-navigation physics-paint-loop-clip-nav-compact" aria-label="Linked Rail navigation">
-          <strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>
-          {linkedGroupNavigation.total === 1 ? (
-            <button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Rail</button>
-          ) : (
-            <div class="physics-paint-loop-clip-nav-compact-actions">
-              <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /></IconButton>
-              <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronRight size={16} aria-hidden="true" /></IconButton>
+      {scopeEntries.length > 1 || linkedGroupNavigation ? (
+        // quick-260922-jss amendment: ONE meta row carries both the scope
+        // filter and the linked-Rail pager. They are independent — either can
+        // be absent — so the row renders when EITHER exists and each half
+        // keeps its own gate; the pager can never be hidden by the select's
+        // absence (a project whose Actions come from a single layer has no
+        // select but still navigates its Rails).
+        <div class="physics-paint-scripts-meta-row">
+          {scopeEntries.length > 1 ? (
+            // quick-260922-al1: the select is a native control so it is
+            // keyboard reachable and announced without inventing a widget. It
+            // renders only when at least one layer actually owns an Action: a
+            // single-option select would be dead UI. Its width is capped so it
+            // cannot starve the pager beside it.
+            <div class="physics-paint-scripts-scope">
+              <label class="physics-paint-scripts-scope-label" htmlFor={scopeSelectId}>Scope</label>
+              <select
+                id={scopeSelectId}
+                class="physics-paint-scripts-scope-select"
+                value={scopeValue}
+                onChange={(event) => { library.setScriptScope(event.currentTarget.value); }}
+              >
+                {scopeEntries.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+              </select>
             </div>
-          )}
-        </section>
+          ) : null}
+          {linkedGroupNavigation ? (
+            // The pager replaces both the old count line and the old
+            // total === 1 / total > 1 markup split: one shape serves every
+            // total, the arrows simply disabling at the ends, so the row never
+            // changes shape as the count moves.
+            <div class="physics-paint-scripts-pager" role="group" aria-label="Linked Rail navigation">
+              <IconButton label="Previous Rail" title="Previous Rail" disabled={linkedGroupNavigation.currentIndex === 0} disabledReason={linkedGroupNavigation.currentIndex === 0 ? 'Already on the first linked Rail' : undefined} descriptionId={previousRailReasonId} onClick={linkedGroupNavigation.onPrevious} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronLeft size={16} aria-hidden="true" /></IconButton>
+              <span class="physics-paint-scripts-pager-count" aria-hidden="true">{linkedGroupNavigation.currentIndex + 1}/{linkedGroupNavigation.total}</span>
+              <IconButton label="Next Rail" title="Next Rail" disabled={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1} disabledReason={linkedGroupNavigation.currentIndex === linkedGroupNavigation.total - 1 ? 'Already on the last linked Rail' : undefined} descriptionId={nextRailReasonId} onClick={linkedGroupNavigation.onNext} className="physics-paint-loop-clip-nav-compact-button" wrapperClassName="physics-paint-roto-key-icon-action physics-paint-loop-clip-nav-compact-action"><ChevronRight size={16} aria-hidden="true" /></IconButton>
+              <button type="button" class="physics-paint-scripts-pager-go" title="Go to the linked Rail and jump to its placement start" aria-label="Go to the linked Rail" onClick={linkedGroupNavigation.onGoToGroup}>Go</button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
       <SidebarScrollArea class="physics-paint-scripts-list-scroll-area" interactive>
       <div ref={listRef} class="physics-paint-scripts-list" role="listbox" aria-label="Saved Roto Actions">

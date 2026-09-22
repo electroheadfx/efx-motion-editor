@@ -1124,10 +1124,10 @@ button.destructive {
   min-width: 0;
 }
 
-/* quick-260922-al1: the Action-scope row is its OWN full-width flex row
-   between the toolbar and the list — the toolbar's 6-column icon grid above is
-   untouched. */
-.physics-paint-scripts-scope {
+/* quick-260922-jss amendment: ONE meta row between the toolbar and the list
+   carries the scope filter and the linked-Rail pager. Either can be absent, so
+   the halves are independent and the pager is pushed to the right end. */
+.physics-paint-scripts-meta-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1135,10 +1135,20 @@ button.destructive {
   padding: 0 4px;
 }
 
+.physics-paint-scripts-scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  /* Capped, not flex-grow: the select must never starve the pager sharing the
+     row. A long layer name ellipsizes inside the cap. */
+  flex: 0 1 auto;
+  max-width: 112px;
+}
+
 .physics-paint-scripts-scope-label {
   color: #7d8791;
   font-size: 10px;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
 }
@@ -1152,6 +1162,51 @@ button.destructive {
   border-radius: 4px;
   font-size: 11px;
   padding: 2px 4px;
+}
+
+.physics-paint-scripts-pager {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.physics-paint-scripts-pager-count {
+  min-width: 27px;
+  color: #c2c8cf;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* The pager's go action at the compact-button scale, not the 30px inspector
+   scale — it shares the meta row with the select and two arrows. */
+.physics-paint-scripts-pager-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid #62676d;
+  border-radius: 5px;
+  background: #4b4e51;
+  color: #f3f5f7;
+  font-size: 11px;
+  font-family: inherit;
+  white-space: nowrap;
+  text-transform: none;
+}
+
+.physics-paint-scripts-pager-go:hover {
+  border-color: #747b83;
+  background: #565a5e;
+}
+
+.physics-paint-scripts-pager-go:focus-visible {
+  outline: 2px solid #8fa8ff;
+  outline-offset: 2px;
 }
 
 /* quick-260922-al1: an Action whose origin layer no longer exists keeps its
@@ -1274,11 +1329,10 @@ button.destructive {
 .physics-paint-loop-clip-inspector-action.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }
 .physics-paint-loop-clip-inspector-action:disabled { border-color: #4d5156; background: #34373a; color: #777e86; cursor: not-allowed; }
 .physics-paint-loop-clip-inspector-action:focus-visible { outline: 2px solid #8fa8ff; outline-offset: 2px; }
-/* 260905-hfd: compact one-line Linked Rails nav — heading left, icon-only
-   chevron buttons right. The row-direction override wins at equal specificity
-   because it is declared after the column-direction linked-navigation rule. */
-.physics-paint-loop-clip-nav-compact { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 6px; }
-.physics-paint-loop-clip-nav-compact-actions { display: flex; flex: 0 0 auto; gap: 4px; }
+/* 260905-hfd: compact one-line Linked Rails nav — icon-only chevron buttons.
+   The old row container and its `-actions` wrapper went with 260922-jss, which
+   moved the list-view nav into the scope meta row as a pager; only the button
+   and its per-button wrapper are still shared with the inspector. */
 .physics-paint-loop-clip-nav-compact-action { display: flex; flex: 0 0 auto; }
 .physics-paint-loop-clip-nav-compact-button { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; min-width: 24px; padding: 0; border: 1px solid #62676d; border-radius: 5px; background: #4b4e51; color: #f3f5f7; text-transform: none; }
 .physics-paint-loop-clip-nav-compact-button.primary { border-color: rgba(45, 91, 227, 0.8); background: rgba(45, 91, 227, 0.85); }

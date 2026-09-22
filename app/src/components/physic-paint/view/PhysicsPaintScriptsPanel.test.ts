@@ -896,13 +896,13 @@ describe('Physics Paint Scripts panel compact sidebar contract', () => {
 });
 
 describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
-  it('keeps the toolbar and Linked Rails nav pinned above the scripts list scroll area in the normal view', () => {
+  it('keeps the toolbar and the scope/pager meta row pinned above the scripts list scroll area in the normal view', () => {
     const normalViewStart = panel.indexOf('aria-label="Project Actions"');
     expect(normalViewStart).toBeGreaterThanOrEqual(0);
     const normalView = panel.slice(normalViewStart);
     const scrollAreaOpen = normalView.indexOf('<SidebarScrollArea class="physics-paint-scripts-list-scroll-area"');
     expect(scrollAreaOpen).toBeGreaterThanOrEqual(0);
-    expectInOrder(normalView.slice(0, scrollAreaOpen), ['physics-paint-scripts-toolbar', 'physics-paint-loop-clip-linked-navigation']);
+    expectInOrder(normalView.slice(0, scrollAreaOpen), ['physics-paint-scripts-toolbar', 'physics-paint-scripts-meta-row']);
   });
 
   it('wraps only the scripts list in the scroll area and keeps the confirmation dialog outside it', () => {
@@ -940,44 +940,63 @@ describe('PhysicsPaintScriptsPanel scroll hierarchy (260905-epb)', () => {
     expect(topRowStart).toBeLessThan(scrollAreaOpen);
   });
 
-  it('compacts the list-view Linked Rails nav to one row with two icon-only chevron buttons (260905-hfd)', () => {
+  it('compacts the list-view Linked Rails nav into the scope meta row as a pager (260922-jss)', () => {
     const listStart = panel.indexOf('aria-label="Project Actions"');
     expect(listStart).toBeGreaterThanOrEqual(0);
     const list = panel.slice(listStart);
-    const navStart = list.indexOf('physics-paint-loop-clip-linked-navigation');
+    const navStart = list.indexOf('physics-paint-scripts-meta-row');
     expect(navStart).toBeGreaterThanOrEqual(0);
     const navEnd = list.indexOf('physics-paint-scripts-list', navStart);
     const nav = list.slice(navStart, navEnd === -1 ? list.length : navEnd);
-    expect(nav).toContain('physics-paint-loop-clip-nav-compact');
-    expect(nav).toContain('<strong>Linked Rails — {linkedGroupNavigation.currentIndex + 1} of {linkedGroupNavigation.total}</strong>');
-    expect(nav).toContain('physics-paint-loop-clip-nav-compact-actions');
+    // 260922-jss: one row carries the scope filter AND the pager. The old
+    // "Linked Rails — n of N" line and the total === 1 / total > 1 markup split
+    // are gone — one shape serves every total, the arrows disabling at the ends.
+    expect(nav).toContain('physics-paint-scripts-scope');
+    expect(nav).toContain('physics-paint-scripts-pager');
+    expect(nav).toContain('{linkedGroupNavigation.currentIndex + 1}/{linkedGroupNavigation.total}');
+    expect(nav).not.toContain('Linked Rails —');
     expect(nav.match(/<IconButton label="Previous Rail"/g)).toHaveLength(1);
     expect(nav.match(/<IconButton label="Next Rail"/g)).toHaveLength(1);
     expect(nav).not.toContain('physics-paint-roto-key-icon-label');
     expect(nav).not.toContain('Edit Rail');
     expect(nav).not.toContain('physics-paint-loop-clip-inspector-actions');
-    // 260922-jss: the single-link action stays for total === 1 and now reads
-    // "Go to Rail" — the same vocabulary as the inspector's action, "Linked
-    // Rails", "Previous Rail" and "Next Rail". Re-scoped from a whole-file
-    // `toContain('Go to Group')`: after the rename the NEW label exists in the
-    // INSPECTOR too, so only the list-view line signature (one-line button,
-    // class then onClick then the label) pins this rename — deleting it makes
-    // both assertions below fail while the inspector rendering stays intact.
-    expect(nav).toContain('>Go to Rail</button>');
-    expect(panel).toContain('<button type="button" class="physics-paint-loop-clip-inspector-action" onClick={linkedGroupNavigation.onGoToGroup}>Go to Rail</button>');
+    // The go action dropped from the 30px inspector scale to the 24px pager
+    // scale and reads "Go"; its accessible name stays descriptive because the
+    // visible word no longer says where it goes.
+    expect(nav).toContain('class="physics-paint-scripts-pager-go"');
+    expect(nav).toContain('aria-label="Go to the linked Rail" onClick={linkedGroupNavigation.onGoToGroup}>Go</button>');
+    // The inspector keeps its own 30px "Go to Rail" action for total === 1 —
+    // asserted on the inspector slice, because the previous whole-file form of
+    // this pin was silently matching the LIST view's single-line button (the
+    // inspector's is multi-line) and would have gone on passing after the list
+    // action was replaced by the pager.
+    const inspectorStart = panel.indexOf('physics-paint-loop-clip-panel');
+    const inspectorEnd = panel.indexOf('aria-label="Project Actions"');
+    expect(inspectorStart).toBeGreaterThanOrEqual(0);
+    expect(inspectorEnd).toBeGreaterThan(inspectorStart);
+    const inspector = panel.slice(inspectorStart, inspectorEnd);
+    expect(inspector).toContain('physics-paint-loop-clip-inspector-action');
+    expect(inspector).toContain('onClick={linkedGroupNavigation.onGoToGroup}');
+    expect(inspector).toContain('Go to Rail');
   });
 
-  it('routes the compact list-view "Go to Rail" action for total === 1 (260922-jss)', () => {
+  it('serves every Rail total with one pager shape and routes the Go action (260922-jss)', () => {
     const onGoToGroup = vi.fn();
     // No selectedLoopClip, so the inspector's early `return` does not fire and
     // this tree IS the list view. The two renderings are mutually exclusive,
     // which is why the same exactly-one-match predicate the inspector legs use
-    // holds here as well.
+    // holds here as well. No scriptLayers either, so the scope half is absent
+    // and this also pins that the pager survives without the select beside it.
     const tree = renderPanel(createFakePlayScript(), createFakeLibrary(), {
       linkedGroupNavigation: { currentIndex: 0, total: 1, onPrevious: vi.fn(), onNext: vi.fn(), onGoToGroup },
     });
-    expect(textOf(tree)).toContain('Linked Rails — 1 of 1');
-    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go to Rail');
+    expect(textOf(tree)).toContain('1/1');
+    expect(textOf(tree)).not.toContain('Linked Rails');
+    // 1/1 is the case the old markup special-cased; the pager just disables both
+    // arrows instead, so the row never changes shape.
+    expect(findOne(tree, (vnode) => vnode.props?.label === 'Previous Rail').props.disabled).toBe(true);
+    expect(findOne(tree, (vnode) => vnode.props?.label === 'Next Rail').props.disabled).toBe(true);
+    const go = findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Go');
     (go.props.onClick as () => void)();
     expect(onGoToGroup).toHaveBeenCalledTimes(1);
   });
@@ -1101,9 +1120,10 @@ describe('Physics Paint Actions layer scope (quick-260922-al1)', () => {
     expect(String(select.props['aria-label'] ?? select.props.id)).toBeTruthy();
     const options = findAll(select, (vnode) => vnode.type === 'option').map((option) => [option.props.value, textOf(option)]);
     expect(options).toEqual([['all', 'All'], ['layer-1', 'Character'], ['layer-2', 'Hair']]);
-    expect(textOf(tree)).toContain('Action scope');
-    // Its own row, outside the toolbar's icon grid.
+    expect(textOf(tree)).toContain('Scope');
+    // Shares the meta row with the pager, outside the toolbar's icon grid.
     expect(hasClass(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-scope')), 'physics-paint-scripts-scope')).toBe(true);
+    expect(hasClass(findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-scripts-meta-row')), 'physics-paint-scripts-meta-row')).toBe(true);
   });
 
   it('renders no selector when no layer owns an Action (a one-option select would be dead UI)', () => {
