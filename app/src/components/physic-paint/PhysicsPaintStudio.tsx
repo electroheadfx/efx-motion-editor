@@ -71,7 +71,7 @@ import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
-import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
+import { disarmPushTool, isPushCommitInFlight, isPushToolArmed } from './view/physicsPaintPushArmedTool';
 import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
 import { deriveSoloContentStart, deriveSoloPlaybackWindow, type SoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
@@ -3156,6 +3156,20 @@ export function PhysicsPaintStudio() {
     // sync all wait for the release settle in onScrubEnd — a mid-drag seek
     // never re-renders the Studio/strip and never touches the main timeline.
     if (scrubActiveRef.current) {
+      // quick-260921-qls follow-up: a navigation request swallowed by the
+      // scrub-armed early return never selects and never flushes — the click
+      // reads as "nothing happened". Reported only on this swallow.
+      reportGestureRefusal('nav-scrub-swallow', {
+        attempt: {
+          frame,
+          layerId: launchContextRef.current?.layerId ?? null,
+          trackId: studioActiveTrackId(),
+          railModelKeyId: null,
+          railModelCount: 0,
+          pushArmed: isPushToolArmed(),
+          detail: null,
+        },
+      });
       rotoScrubFrameSignal.value = frame;
       rotoCachedScrub(frame);
       // Realtime image preview: paint the cached frame for the scrubbed cell
@@ -3169,7 +3183,27 @@ export function PhysicsPaintStudio() {
     // release-settle propagation caught up (see the startFrame effect below).
     if (rotoScrubFrameSignal.peek() !== null) rotoScrubFrameSignal.value = null;
     publishOperationResult(null);
-    void requestRotoFrameNavigationRef.current(frame);
+    // quick-260921-qls follow-up: the navigation OUTCOME. `false` is the script
+    // controller's `prepareNavigation` gate (or a superseded/failed
+    // destination); a throw here otherwise only reaches the console. Both leave
+    // the frame unselected, which strands every drag behind the gate.
+    const attemptDetail = (): { frame: number; layerId: string | null; trackId: string; railModelKeyId: string | null; railModelCount: number; pushArmed: boolean; detail: string | null } => ({
+      frame,
+      layerId: launchContextRef.current?.layerId ?? null,
+      trackId: studioActiveTrackId(),
+      railModelKeyId: null,
+      railModelCount: 0,
+      pushArmed: isPushToolArmed(),
+      detail: null,
+    });
+    void requestRotoFrameNavigationRef.current(frame).then((navigated) => {
+      if (navigated) return;
+      reportGestureRefusal('nav-refused', { attempt: attemptDetail() });
+    }).catch((error: unknown) => {
+      const attempt = attemptDetail();
+      attempt.detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      reportGestureRefusal('nav-threw', { attempt });
+    });
   }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame]);
   // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
   // or a rail on a NON-active row activates the track and selects the target

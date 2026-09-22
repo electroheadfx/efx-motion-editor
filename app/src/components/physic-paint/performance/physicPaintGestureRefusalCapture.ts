@@ -35,7 +35,15 @@ export const GESTURE_REFUSAL_CAPTURE_EVENT_CAP = 8;
 /** Consecutive identical refusals inside this window collapse to one write. */
 export const GESTURE_REFUSAL_CAPTURE_DEDUPE_WINDOW_MS = 1500;
 
-export type PhysicPaintGestureRefusalReason = 'launch-door' | 'launch-install' | 'strip-gate' | 'nav-no-key';
+export type PhysicPaintGestureRefusalReason =
+  | 'launch-door'
+  | 'launch-install'
+  | 'strip-gate'
+  | 'nav-no-key'
+  | 'cell-click-locked'
+  | 'nav-scrub-swallow'
+  | 'nav-refused'
+  | 'nav-threw';
 
 export type PhysicPaintGestureSurfaceKind = 'key-cell' | 'key-rail' | 'loop-rail' | 'lane' | 'other';
 
@@ -88,6 +96,29 @@ export interface PhysicPaintGestureStripTerms {
   canDragKey: boolean | null;
   dragDisabledReason: string | null;
   rotoDragLocked: boolean;
+  /**
+   * The armed Push tool owns the lane while armed: it stops the cell/rail
+   * pointerdown handlers and swallows lane clicks. A refusal reported while
+   * `pushArmed` is true is that ownership, not a selection problem.
+   */
+  pushArmed: boolean;
+}
+
+/**
+ * One navigation attempt as the STUDIO saw it — the side of the chain the strip
+ * cannot observe. `nav-scrub-swallow` is the scrub-armed early return;
+ * `nav-refused` is a navigation that settled false (the script controller's
+ * `prepareNavigation` gate or a superseded/invalid destination); `nav-threw` is
+ * an unhandled rejection that would otherwise only reach the console.
+ */
+export interface PhysicPaintGestureNavAttemptTerms {
+  frame: number;
+  layerId: string | null;
+  trackId: string;
+  railModelKeyId: string | null;
+  railModelCount: number;
+  pushArmed: boolean;
+  detail: string | null;
 }
 
 /**
@@ -130,6 +161,7 @@ export interface PhysicPaintGestureRefusalTerms {
   strip?: PhysicPaintGestureStripTerms;
   selection?: PhysicPaintGestureSelectionTerms;
   nav?: PhysicPaintGestureNavTerms;
+  attempt?: PhysicPaintGestureNavAttemptTerms;
 }
 
 export interface PhysicPaintGestureRefusalEvent {
@@ -141,6 +173,7 @@ export interface PhysicPaintGestureRefusalEvent {
     strip: PhysicPaintGestureStripTerms | null;
     selection: PhysicPaintGestureSelectionTerms | null;
     nav: PhysicPaintGestureNavTerms | null;
+    attempt: PhysicPaintGestureNavAttemptTerms | null;
     pointerdown: (PhysicPaintGesturePointerArrival & { arrived: true }) | { arrived: false };
   };
 }
@@ -265,6 +298,7 @@ function cloneEvent(event: PhysicPaintGestureRefusalEvent): PhysicPaintGestureRe
       strip: event.terms.strip ? { ...event.terms.strip } : null,
       selection: event.terms.selection ? { ...event.terms.selection } : null,
       nav: event.terms.nav ? { ...event.terms.nav, railModelKeyFrames: [...event.terms.nav.railModelKeyFrames] } : null,
+      attempt: event.terms.attempt ? { ...event.terms.attempt } : null,
       pointerdown: { ...event.terms.pointerdown },
     },
   };
@@ -335,6 +369,7 @@ function refusalSignature(reason: PhysicPaintGestureRefusalReason, terms: Physic
       strip: terms.strip ?? null,
       selection: terms.selection ?? null,
       nav: terms.nav ?? null,
+      attempt: terms.attempt ?? null,
       pointerdown,
     },
   });
@@ -361,6 +396,7 @@ export function reportGestureRefusal(
         strip: terms.strip ?? null,
         selection: terms.selection ?? null,
         nav: terms.nav ?? null,
+        attempt: terms.attempt ?? null,
         pointerdown: arrivalSlot ? { ...arrivalSlot, arrived: true } : { arrived: false },
       },
     });

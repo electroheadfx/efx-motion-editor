@@ -16,7 +16,7 @@ import {
   prepareRotoPhysicalLaunch,
   type RotoPhysicalLaunchHydrationStore,
 } from './rotoLaunchHydration';
-import type { PhysicPaintLaunchContext } from '../../../efx-paint/document/efxPaintDocument';
+import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 
 /** A carried physical payload the strict parser refuses, missing every collection. */
 function malformedRefusingContext(): PhysicPaintLaunchContext {

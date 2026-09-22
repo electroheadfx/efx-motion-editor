@@ -2842,6 +2842,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         canDragKey: physicalActions?.canDragKey.value ?? null,
         dragDisabledReason: physicalActions?.dragDisabledReason.value ?? null,
         rotoDragLocked,
+        pushArmed: isPushToolArmed(),
       },
     });
   }, [
@@ -3173,6 +3174,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     keyIdByAppFrame,
     rotoSelectedKeyIdSet,
     spacingProxyByAppFrame: visibleSpacingProxies ?? EMPTY_SPACING_PROXIES,
+    rotoDragLocked,
+    railModelCount: rotoKeyRecords.length,
+    layerId: props.layerId ?? null,
+    activeTrackId: props.activeTrackId ?? null,
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
     onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
     onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
@@ -3186,6 +3191,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     keyIdByAppFrame,
     rotoSelectedKeyIdSet,
     spacingProxyByAppFrame: visibleSpacingProxies ?? EMPTY_SPACING_PROXIES,
+    rotoDragLocked,
+    railModelCount: rotoKeyRecords.length,
+    layerId: props.layerId ?? null,
+    activeTrackId: props.activeTrackId ?? null,
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
     onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
     onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
@@ -3201,6 +3210,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       return;
     }
     const current = rotoCellClickStateRef.current;
+    // quick-260921-qls follow-up: the CLICK half of the same refusal. A
+    // pointerdown arrival proves the press landed; only this proves the click
+    // survived to the handler that owns navigation (and therefore selection).
+    // Reported only while the drag gate is locked — a healthy click writes
+    // nothing.
+    if (current.rotoDragLocked) {
+      reportGestureRefusal('cell-click-locked', {
+        attempt: {
+          frame,
+          layerId: current.layerId,
+          trackId: current.activeTrackId ?? '',
+          railModelKeyId: current.keyIdByAppFrame.get(frame) ?? null,
+          railModelCount: current.railModelCount,
+          pushArmed: isPushToolArmed(),
+          detail: `vm:${vm.baseMeaning} editable:${String(vm.isEditableTarget)}`,
+        },
+      });
+    }
     current.onSelectRotoLoopClip?.(null);
     const spacingProxy = current.spacingProxyByAppFrame.get(frame) ?? null;
     if (spacingProxy !== null) {
