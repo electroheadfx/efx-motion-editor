@@ -117,11 +117,6 @@ import { usePhysicsPaintBackgroundClipDrag } from '../hooks/usePhysicsPaintBackg
 import { usePhysicsPaintBackgroundClipResize, type BackgroundClipResizeSource } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import {
-  describeGestureSurface,
-  recordGesturePointerArrival,
-  reportGestureRefusal,
-} from '../performance/physicPaintGestureRefusalCapture';
 import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
 // requestDeleteTrack preview plus the rename-validation constants — every
@@ -2790,90 +2785,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         gapIntervals: railSetDragPreview.gapIntervals,
       })
     : null;
-  // quick-260921-qls probe 3/3 (strip gate + pointerdown arrival): the active
-  // lane's capture handler is the ONLY unconditional pointerdown observer for a
-  // real gesture — the key cell's own onPointerDown is attached only while
-  // `dragEligible`, which is exactly what the lock turns off. Recording the
-  // arrival here is what separates "the pointerdown never reached the lane"
-  // (H-7's upstream half) from "it arrived and nothing refused".
-  // Diagnostic only: no guard, return value, prop, signal or rendered output is
-  // touched; the module self-gates on DEV and writes nothing when healthy, so no
-  // second gate belongs here. The five busy terms are reported individually so
-  // the capture names WHICH term locked the strip, never only that it is locked.
-  const probeLaneGestureRefusal = useCallback((event: PointerEvent) => {
-    const arrival = describeGestureSurface(event.target);
-    recordGesturePointerArrival({
-      ...arrival,
-      pointerId: event.pointerId,
-      button: event.button,
-      isPrimary: event.isPrimary,
-      metaKey: event.metaKey,
-      ctrlKey: event.ctrlKey,
-      shiftKey: event.shiftKey,
-    });
-    if (!rotoDragLocked) return;
-    if (arrival.surface !== 'key-cell' && arrival.surface !== 'key-rail' && arrival.surface !== 'loop-rail') return;
-    // quick-260921-qls follow-up: the selection side of the same refusal. The
-    // rail segment resolves the CLICKED rail against the live rail model, so a
-    // null here means the model the strip holds does not contain that rail —
-    // a different failure from "the rail is there but nothing is selected".
-    const clickedRailSegment = arrival.railFirstFrame === null
-      ? null
-      : keyRailSegments.find((segment) => segment.firstKeyFrame === arrival.railFirstFrame) ?? null;
-    reportGestureRefusal('strip-gate', {
-      selection: {
-        layerId: props.layerId ?? null,
-        activeTrackId: props.activeTrackId ?? null,
-        primarySelectedKeyId: props.rotoPrimarySelectedKeyId ?? null,
-        selectedKeyRailFirstKeyId: props.selectedRotoKeyRail?.firstKeyId ?? null,
-        selectedKeyIdCount: (props.rotoSelectedKeyIds ?? []).length,
-        keyRecordsOnRail: rotoKeyRecords.length,
-        railSegmentFirstKeyId: clickedRailSegment?.firstKeyId ?? null,
-        railSegmentKeyCount: clickedRailSegment?.keyIds.length ?? 0,
-        selectedLoopClipIdCount: (props.selectedRotoLoopClipIds ?? []).length,
-        selectedLoopClipId: (props.selectedRotoLoopClipIds ?? [])[0] ?? null,
-      },
-      strip: {
-        ready: props.ready !== false,
-        mutationLocked: Boolean(props.mutationLocked),
-        keyActionInFlight: Boolean(props.keyActionInFlight),
-        sessionBusy: Boolean(sessionKeyAvailability?.busy),
-        dragPreviewPending: Boolean(rotoDragPreview?.pending),
-        hasPhysicalActions: Boolean(physicalActions),
-        physicalDragAvailable,
-        canDragKey: physicalActions?.canDragKey.value ?? null,
-        dragDisabledReason: physicalActions?.dragDisabledReason.value ?? null,
-        rotoDragLocked,
-        pushArmed: isPushToolArmed(),
-      },
-    });
-  }, [
-    rotoDragLocked,
-    physicalActions,
-    physicalDragAvailable,
-    sessionKeyAvailability,
-    rotoDragPreview,
-    keyRailSegments,
-    rotoKeyRecords,
-    props.ready,
-    props.mutationLocked,
-    props.keyActionInFlight,
-    props.layerId,
-    props.activeTrackId,
-    props.rotoPrimarySelectedKeyId,
-    props.selectedRotoKeyRail,
-    props.rotoSelectedKeyIds,
-  ]);
-
   // Lane capture-phase pointer-down: the armed push session wins over the
   // cell/rail drag handlers below it (PUSH-08 — push originates exclusively
   // from armed state). Resolution is UI-derived anchor only; set membership,
   // attachment, and straddle derive from canonical facts in the resolver
   // (T-43.5-02, Pitfall 4/6).
   const handleLanePushPointerDownCapture = useCallback((event: PointerEvent) => {
-    // quick-260921-qls: recorded FIRST, before the push-tool early return, so the
-    // arrival is observed even when the gesture dies silently here.
-    probeLaneGestureRefusal(event);
     if (!isPushToolArmed()) return;
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     // While armed, the push gesture owns the lane — stop propagation so
@@ -2918,7 +2835,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       clampFailed: false,
     };
     pushDragApiRef.current?.onPointerDown(event);
-  }, [isPushToolArmed, armedAnchorRef, frameCells, keyRailSegments, loopResolutionContext, props.onSelectRotoKeyRail, props.onSelectRotoLoopClip, probeLaneGestureRefusal]);
+  }, [isPushToolArmed, armedAnchorRef, frameCells, keyRailSegments, loopResolutionContext, props.onSelectRotoKeyRail, props.onSelectRotoLoopClip]);
 
   const handleLanePushClickCapture = useCallback((event: MouseEvent) => {
     const armed = isPushToolArmed();
@@ -3176,10 +3093,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     keyIdByAppFrame,
     rotoSelectedKeyIdSet,
     spacingProxyByAppFrame: visibleSpacingProxies ?? EMPTY_SPACING_PROXIES,
-    rotoDragLocked,
-    railModelCount: rotoKeyRecords.length,
-    layerId: props.layerId ?? null,
-    activeTrackId: props.activeTrackId ?? null,
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
     onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
     onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
@@ -3193,10 +3106,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     keyIdByAppFrame,
     rotoSelectedKeyIdSet,
     spacingProxyByAppFrame: visibleSpacingProxies ?? EMPTY_SPACING_PROXIES,
-    rotoDragLocked,
-    railModelCount: rotoKeyRecords.length,
-    layerId: props.layerId ?? null,
-    activeTrackId: props.activeTrackId ?? null,
     onNavigateToSyncedFrame: props.onNavigateToSyncedFrame,
     onSelectRotoSpacingProxy: props.onSelectRotoSpacingProxy,
     onClearRotoSpacingSelection: props.onClearRotoSpacingSelection,
@@ -3212,24 +3121,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       return;
     }
     const current = rotoCellClickStateRef.current;
-    // quick-260921-qls follow-up: the CLICK half of the same refusal. A
-    // pointerdown arrival proves the press landed; only this proves the click
-    // survived to the handler that owns navigation (and therefore selection).
-    // Reported only while the drag gate is locked — a healthy click writes
-    // nothing.
-    if (current.rotoDragLocked) {
-      reportGestureRefusal('cell-click-locked', {
-        attempt: {
-          frame,
-          layerId: current.layerId,
-          trackId: current.activeTrackId ?? '',
-          railModelKeyId: current.keyIdByAppFrame.get(frame) ?? null,
-          railModelCount: current.railModelCount,
-          pushArmed: isPushToolArmed(),
-          detail: `vm:${vm.baseMeaning} editable:${String(vm.isEditableTarget)}`,
-        },
-      });
-    }
     current.onSelectRotoLoopClip?.(null);
     const spacingProxy = current.spacingProxyByAppFrame.get(frame) ?? null;
     if (spacingProxy !== null) {

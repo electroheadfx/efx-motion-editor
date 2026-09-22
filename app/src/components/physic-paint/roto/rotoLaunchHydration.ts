@@ -10,10 +10,6 @@ import {
 } from './physicsPaintRotoPhysicalModel';
 import { projectPhysicPaintRotoPhysicalTimeline } from './physicsPaintRotoPhysicalResolver';
 import { prepareRotoPhysicalRealKeyFrames } from './rotoCanvasFrames';
-// quick-260921-qls: the DEV-only refusal capture that records which link of the
-// launch→gesture chain refused. Same import direction as rotoCanvasFrames.ts:10
-// (`roto/` → `../performance/`), so it introduces no cycle.
-import { reportGestureRefusal } from '../performance/physicPaintGestureRefusalCapture';
 
 export interface RotoPhysicalLaunchHydrationStore {
   replaceRotoPhysicalDocument(
@@ -81,35 +77,7 @@ export async function hydrateRotoPhysicalLaunchContext(
   store: RotoPhysicalLaunchHydrationStore,
 ): Promise<RotoPhysicalLaunchHydrationResult> {
   const prepared = prepareRotoPhysicalLaunch(context);
-  if (!prepared.ok) {
-    // quick-260921-qls probe 1/3 (launch door): the launch was refused, so every
-    // gesture on this layer is already dead. The `reason` field is what tells
-    // this arm apart from the install refusal below — both carry the door's own
-    // error string. Diagnostic only: no control flow change.
-    //
-    // The carried document is untrusted here (it crossed the webview boundary),
-    // and a diagnostic read that throws would abort the launch BEFORE the
-    // caller's loud failure path can report the refusal — the Studio would look
-    // silently dead. Every read below is therefore guarded.
-    const door = {
-      ok: prepared.ok,
-      error: prepared.error,
-      layerId: context.layerId,
-      startFrame: context.startFrame,
-      activeTrackId: context.document?.activeTrackId ?? null,
-      carriedCursorAppFrame: null as number | null,
-      carriedRecordCount: -1,
-    };
-    try {
-      const carried = getCarriedRotoPhysical(context);
-      door.carriedCursorAppFrame = carried?.cursorAppFrame ?? null;
-      door.carriedRecordCount = carried?.realKeyRecords?.length ?? -1;
-    } catch {
-      // A diagnostic never aborts launch hydration.
-    }
-    reportGestureRefusal('launch-door', { door });
-    return prepared;
-  }
+  if (!prepared.ok) return prepared;
 
   // quick-260913-52r (G): the alpha-canvas preparation requires inline bytes.
   // A reference-only record (its file was missing or refused at open, so the
@@ -149,26 +117,7 @@ export async function hydrateRotoPhysicalLaunchContext(
     if (!replacement.ok) return replacement;
     if (track.id === activeTrackId) activeDocument = replacement.document;
   }
-  if (!activeDocument) {
-    // quick-260921-qls probe 2/3 (carried-document install): the install loop
-    // found no track whose id equals the carried activeTrackId, so the child
-    // never received the physical document. The ids below name the mismatch.
-    const install = {
-      activeTrackId,
-      carriedTrackIds: [] as string[],
-      tracksCarryingPhysical: [] as string[],
-      activeDocumentInstalled: activeDocument !== null,
-    };
-    try {
-      const tracks = context.document?.tracks ?? [];
-      install.carriedTrackIds = tracks.map((track) => track?.id ?? '<missing>');
-      install.tracksCarryingPhysical = tracks.filter((track) => track?.rotoPhysical).map((track) => track?.id ?? '<missing>');
-    } catch {
-      // A diagnostic never aborts launch hydration.
-    }
-    reportGestureRefusal('launch-install', { install });
-    return { ok: false, error: 'Launch is missing the complete physical Roto document.' };
-  }
+  if (!activeDocument) return { ok: false, error: 'Launch is missing the complete physical Roto document.' };
   return { ok: true, context, document: activeDocument };
 }
 

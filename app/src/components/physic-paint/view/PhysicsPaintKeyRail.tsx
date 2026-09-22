@@ -26,7 +26,6 @@ import {
   RAIL_LANE_SELECTOR,
   roveRailTargetFocus,
 } from './physicsPaintRailKeyboardNavigation';
-import { reportGestureRefusal } from '../performance/physicPaintGestureRefusalCapture';
 
 export interface PhysicsPaintKeyRailGeometry {
   readonly left: number;
@@ -234,23 +233,7 @@ function PhysicsPaintKeyRailTarget(props: PhysicsPaintKeyRailTargetProps) {
     // is never armed for move members). Paint-only set-of-one members fall
     // through to their own suppression.
     if (isMoveMember && props.onRailSetDragClickSuppressed?.()) return;
-    if (drag.consumeClickSuppression()) {
-      // quick-260921-qls follow-up: the rail's own drag suppresses the click it
-      // armed — a wobbled rail click selects NOTHING (the same shape the cell
-      // drag fixed in the 47 close-out). Diagnostic only.
-      reportGestureRefusal('rail-click-suppressed', {
-        attempt: {
-          frame: segment.firstKeyFrame,
-          layerId: null,
-          trackId: '',
-          railModelKeyId: segment.firstKeyId,
-          railModelCount: segment.keyIds.length,
-          pushArmed: false,
-          detail: 'rail drag armed past threshold; click swallowed',
-        },
-      });
-      return;
-    }
+    if (drag.consumeClickSuppression()) return;
     tooltip.hide();
     // 43.4 defect 10: an explicit click is a focus-worthy activation for every
     // rail family — move DOM focus to this target so the shared ring paints.

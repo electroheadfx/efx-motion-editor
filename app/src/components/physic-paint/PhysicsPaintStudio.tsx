@@ -71,7 +71,7 @@ import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
-import { disarmPushTool, isPushCommitInFlight, isPushToolArmed } from './view/physicsPaintPushArmedTool';
+import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
 import { deriveSoloContentStart, deriveSoloPlaybackWindow, type SoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
@@ -109,7 +109,6 @@ import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPain
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
-import { reportGestureRefusal } from './performance/physicPaintGestureRefusalCapture';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -711,27 +710,9 @@ export function PhysicsPaintStudio() {
     selectedRotoKeyRail.value,
     keyRailSegments,
   );
-  // quick-260921-qls follow-up: read (never write) the rail selection BEFORE the
-  // fail-closed clear below, so a selection that arrives and is dropped in the
-  // SAME render is distinguishable from one that never arrived. Diagnostic only.
-  const railSelectionBeforeFailClosedClear = selectedRotoKeyRail.peek();
   if (selectedRotoKeyRail.peek() !== null
     && (effectiveSelectedRotoKeyRail === null || selectedKeyId.value !== null || selectedKeyIds.value.length > 0)) {
     selectedRotoKeyRail.value = null;
-  }
-  if (railSelectionBeforeFailClosedClear !== null && selectedRotoKeyRail.peek() === null) {
-    const droppedSegment = keyRailSegments.find((candidate) => candidate.firstKeyId === railSelectionBeforeFailClosedClear.firstKeyId) ?? null;
-    reportGestureRefusal('rail-selection-cleared', {
-      attempt: {
-        frame: droppedSegment?.firstKeyFrame ?? -1,
-        layerId: launchContext?.layerId ?? null,
-        trackId: studioActiveTrackId(),
-        railModelKeyId: railSelectionBeforeFailClosedClear.firstKeyId,
-        railModelCount: keyRailSegments.length,
-        pushArmed: isPushToolArmed(),
-        detail: `reconcileFailed:${effectiveSelectedRotoKeyRail === null} primaryKey:${selectedKeyId.value !== null} multi:${selectedKeyIds.value.length}`,
-      },
-    });
   }
   const orderedRotoLoopClipIds = useMemo(() => [...rotoLoopClips]
     .sort((left, right) => left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId))
@@ -2407,26 +2388,6 @@ export function PhysicsPaintStudio() {
       // superseded navigation re-sets it for the newer frame.
       const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
-      // quick-260921-qls follow-up: navigating to a frame the rail model carries
-      // a key for, yet resolving NO key, is a contradiction — the rail read and
-      // the store lookup disagree about the track or the frame space, and it
-      // strands every gesture behind the drag gate. Diagnostic only.
-      if (nextSelectedKeyId === null) {
-        const railRecordAtFrame = rotoKeyRecords.find((record) => record.appFrame === frame) ?? null;
-        if (railRecordAtFrame) {
-          reportGestureRefusal('nav-no-key', {
-            nav: {
-              frame,
-              layerId: launchContext.layerId,
-              trackId: studioActiveTrackId(),
-              launchTrackId: trackIdOfLaunch(launchContextRef.current),
-              railModelKeyId: railRecordAtFrame.keyId,
-              railModelCount: rotoKeyRecords.length,
-              railModelKeyFrames: rotoKeyRecords.map((record) => record.appFrame),
-            },
-          });
-        }
-      }
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
       const flushFinalizationsStartedAtMs = performance.now();
@@ -3174,20 +3135,6 @@ export function PhysicsPaintStudio() {
     // sync all wait for the release settle in onScrubEnd — a mid-drag seek
     // never re-renders the Studio/strip and never touches the main timeline.
     if (scrubActiveRef.current) {
-      // quick-260921-qls follow-up: a navigation request swallowed by the
-      // scrub-armed early return never selects and never flushes — the click
-      // reads as "nothing happened". Reported only on this swallow.
-      reportGestureRefusal('nav-scrub-swallow', {
-        attempt: {
-          frame,
-          layerId: launchContextRef.current?.layerId ?? null,
-          trackId: studioActiveTrackId(),
-          railModelKeyId: null,
-          railModelCount: 0,
-          pushArmed: isPushToolArmed(),
-          detail: null,
-        },
-      });
       rotoScrubFrameSignal.value = frame;
       rotoCachedScrub(frame);
       // Realtime image preview: paint the cached frame for the scrubbed cell
@@ -3201,27 +3148,7 @@ export function PhysicsPaintStudio() {
     // release-settle propagation caught up (see the startFrame effect below).
     if (rotoScrubFrameSignal.peek() !== null) rotoScrubFrameSignal.value = null;
     publishOperationResult(null);
-    // quick-260921-qls follow-up: the navigation OUTCOME. `false` is the script
-    // controller's `prepareNavigation` gate (or a superseded/failed
-    // destination); a throw here otherwise only reaches the console. Both leave
-    // the frame unselected, which strands every drag behind the gate.
-    const attemptDetail = (): { frame: number; layerId: string | null; trackId: string; railModelKeyId: string | null; railModelCount: number; pushArmed: boolean; detail: string | null } => ({
-      frame,
-      layerId: launchContextRef.current?.layerId ?? null,
-      trackId: studioActiveTrackId(),
-      railModelKeyId: null,
-      railModelCount: 0,
-      pushArmed: isPushToolArmed(),
-      detail: null,
-    });
-    void requestRotoFrameNavigationRef.current(frame).then((navigated) => {
-      if (navigated) return;
-      reportGestureRefusal('nav-refused', { attempt: attemptDetail() });
-    }).catch((error: unknown) => {
-      const attempt = attemptDetail();
-      attempt.detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-      reportGestureRefusal('nav-threw', { attempt });
-    });
+    void requestRotoFrameNavigationRef.current(frame);
   }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame]);
   // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
   // or a rail on a NON-active row activates the track and selects the target

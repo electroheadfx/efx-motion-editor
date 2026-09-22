@@ -1,14 +1,13 @@
 /**
- * quick-260921-qls regression pin: the refusal probes must never be able to
- * abort launch hydration.
+ * The launch door's refusal contract: a refused launch RESOLVES the refusal,
+ * never rejects.
  *
- * The launch-door probe reads into the carried document, which crosses the
- * webview boundary and is not guaranteed to match its declared type. A carried
- * `rotoPhysical` that the strict parser rejects (the door's own refusal path)
- * can still be missing the collections the probe reads; when the probe threw
- * from that read, `hydrateRotoPhysicalLaunchContext` rejected instead of
- * returning the refusal, the caller's loud failure path never ran, and the
- * Studio came up empty — black canvas, engine never ready.
+ * The carried document crosses the webview boundary and is not guaranteed to
+ * match its declared type — a `rotoPhysical` the strict parser refuses can be
+ * missing every collection. Anything that throws on that arm (a read into the
+ * malformed payload) rejects the hydration instead: the caller's loud failure
+ * path never runs and the Studio comes up empty, black canvas, engine never
+ * ready. The refusal is data, so it is returned.
  */
 import { describe, expect, it } from 'vitest';
 import {
