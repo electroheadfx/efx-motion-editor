@@ -14,7 +14,7 @@
  *    empty window with the engine never ready.
  */
 import { describe, expect, it } from 'vitest';
-import { recordsAsRuntimeFrames } from './useRotoFramePersistenceCoordinator';
+import { recordsAsPublishableRuntimeFrames, recordsAsRuntimeFrames } from './useRotoFramePersistenceCoordinator';
 import { projectRotoOnionPreviewFrames } from '../roto/rotoOnionPreview';
 import type {
   PhysicPaintRotoPhysicalDocument,
@@ -60,6 +60,21 @@ describe('runtime projections and a reference-only record', () => {
     // a door-materialization regression cannot go unnoticed. Only the boot seed
     // tolerates.
     expect(() => recordsAsRuntimeFrames(document)).toThrow(/carries no inline raster bytes/);
+  });
+
+  it('the PUBLISH path projects the readable records and keeps the layer editable', () => {
+    // Without this a single unreadable frame refused the whole document, so
+    // every edit on that layer failed for the session.
+    const frames = recordsAsPublishableRuntimeFrames(document);
+
+    expect(frames.map((frame) => frame.appFrame)).toEqual([4]);
+    expect(frames).toHaveLength(1);
+  });
+
+  it('the PUBLISH path is unchanged for a document that carries its bytes', () => {
+    const readableOnly = { revision: 3, realKeyRecords: [withBytes] } as unknown as PhysicPaintRotoPhysicalDocument;
+
+    expect(recordsAsPublishableRuntimeFrames(readableOnly).map((frame) => frame.appFrame)).toEqual([4]);
   });
 
   it('the onion projection skips it instead of refusing the strip', () => {

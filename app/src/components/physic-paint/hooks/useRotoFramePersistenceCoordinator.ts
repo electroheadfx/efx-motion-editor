@@ -273,6 +273,25 @@ export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument
 }
 
 /**
+ * The publish-path projection for a document that holds a REFERENCE-ONLY record
+ * — a frame file the package simply does not have (deleted or never written),
+ * warned loudly per key at the launch door (quick-260913-52r G). The strict
+ * projection refuses the WHOLE document over one such record, which made every
+ * edit on that layer fail for the session: the layer could be opened but never
+ * touched again.
+ *
+ * The pixel-bearing records publish exactly as before; an unreadable one keeps
+ * its key and rail structure and renders as missing content — the same outcome
+ * the launch seed gives it. The strict helper stays strict for the case it was
+ * written for, a door that failed to materialize bytes the package DOES have.
+ */
+export function recordsAsPublishableRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
+  const readable = document.realKeyRecords.filter((record) => record.payload.bytes !== undefined);
+  if (readable.length === document.realKeyRecords.length) return recordsAsRuntimeFrames(document);
+  return recordsAsRuntimeFrames({ ...document, realKeyRecords: readable });
+}
+
+/**
  * The tolerant sibling of {@link recordsAsRuntimeFrames} for the LAUNCH SEED
  * (debug studio-reopen-empty-boot, 2026-09-21). A carried launch document can
  * legitimately hold a reference-only record when its bytes could not be
@@ -391,7 +410,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const trackId = launch?.layerId === layerId ? inputRef.current.getActiveTrackId(layerId) : '';
     const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
     if (!document) return;
-    const frames = recordsAsRuntimeFrames(document);
+    const frames = recordsAsPublishableRuntimeFrames(document);
     inputRef.current.latestFramesRef.current = frames;
     if (!options?.preserveRuntimeCaches) {
       confirmedFramesRef.current = new Map(frames.map((frame) => [frame.appFrame, frame]));
