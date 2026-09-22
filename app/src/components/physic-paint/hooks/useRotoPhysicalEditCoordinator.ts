@@ -247,7 +247,7 @@ export async function executePhysicPaintRotoGroupFramePaintTransaction(
  */
 type PhysicalEditResultTransition =
   | { readonly type: 'ignore' }
-  | { readonly type: 'mismatch'; readonly message: string; readonly fields?: readonly string[] }
+  | { readonly type: 'mismatch'; readonly message: string }
   | { readonly type: 'accepted'; readonly ok: boolean; readonly detail: PhysicPaintRotoPhysicalEditApplyResult };
 
 interface PendingPhysicalEditContext extends PendingPhysicPaintRotoPhysicalEdit {
@@ -560,40 +560,6 @@ function replayProvenanceEquals(
     && left.targetRevision === right.targetRevision;
 }
 
-/** [DEBUG-9f3c] Shows which compared term rejected the result, and both sides for scalars. */
-function describePhysicalEditMismatch(
-  pending: PendingPhysicalEditContext,
-  detail: PhysicPaintRotoPhysicalEditApplyResult,
-): string[] {
-  const out: string[] = [];
-  const show = (value: unknown): string => {
-    const text = typeof value === 'string' ? value : JSON.stringify(value);
-    return text === undefined ? 'undefined' : text.length > 48 ? `${text.slice(0, 48)}…` : text;
-  };
-  const term = (name: string, ok: boolean, left?: unknown, right?: unknown) => {
-    if (ok) return;
-    out.push(left === undefined && right === undefined ? name : `${name}[pending=${show(right)} got=${show(left)}]`);
-  };
-  term('kind', detail.kind === 'replace-roto-physical-map', detail.kind);
-  term('operationKind', detail.operationKind === pending.operationKind, detail.operationKind, pending.operationKind);
-  term('layerId', detail.layerId === pending.layerId, detail.layerId, pending.layerId);
-  term('startFrame', detail.startFrame === pending.startFrame, detail.startFrame, pending.startFrame);
-  term('launchOperationId', detail.launchOperationId === pending.launchOperationId, detail.launchOperationId, pending.launchOperationId);
-  term('projectContextId', pending.projectContextId === null ? detail.projectContextId === undefined : detail.projectContextId === pending.projectContextId, detail.projectContextId, pending.projectContextId);
-  term('expectedRevision', detail.expectedRevision === pending.expectedRevision, detail.expectedRevision, pending.expectedRevision);
-  term('stagedRevision', detail.stagedRevision === pending.stagedRevision, detail.stagedRevision, pending.stagedRevision);
-  term('interpolationMode', detail.interpolationMode === pending.interpolationMode, detail.interpolationMode, pending.interpolationMode);
-  term('selectedKeyId', detail.selectedKeyId === pending.selectedKeyId, detail.selectedKeyId, pending.selectedKeyId);
-  term('selectedAppFrame', detail.selectedAppFrame === pending.selectedAppFrame, detail.selectedAppFrame, pending.selectedAppFrame);
-  term('cursorAppFrame', detail.cursorAppFrame === pending.cursorAppFrame, detail.cursorAppFrame, pending.cursorAppFrame);
-  term('appliedFrameCount', detail.appliedFrameCount === (detail.ok ? pending.appliedFrameCount : 0), detail.appliedFrameCount, detail.ok ? pending.appliedFrameCount : 0);
-  term('semanticDelta', semanticDeltaEquals(detail.semanticDelta, pending.semanticDelta));
-  term('historyProvenance', replayProvenanceEquals(detail.historyProvenance, pending.historyProvenance));
-  if (detail.ok) term('incomingInterpolationBreakKeyIds', stringArraysEqual(detail.incomingInterpolationBreakKeyIds ?? [], pending.deferredDocument.incomingInterpolationBreakKeyIds), detail.incomingInterpolationBreakKeyIds ?? [], pending.deferredDocument.incomingInterpolationBreakKeyIds);
-  term('acceptedRevision', detail.ok ? detail.acceptedRevision === pending.stagedRevision : detail.acceptedRevision === null, detail.acceptedRevision, detail.ok ? pending.stagedRevision : null);
-  return out;
-}
-
 function transitionPhysicalEditResult(
   pending: PendingPhysicalEditContext | null,
   detail: PhysicPaintRotoPhysicalEditApplyResult | null | undefined,
@@ -622,7 +588,7 @@ function transitionPhysicalEditResult(
     ))
     || (detail.ok ? detail.acceptedRevision !== pending.stagedRevision : detail.acceptedRevision !== null)
   ) {
-    return { type: 'mismatch', message: PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE, fields: describePhysicalEditMismatch(pending, detail) };
+    return { type: 'mismatch', message: PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE };
   }
   return { type: 'accepted', ok: detail.ok, detail };
 }
@@ -1453,23 +1419,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       if (transition.type === 'ignore') return 'ignore';
       if (transition.type === 'mismatch') {
         portsRef.current.status.logDiagnostic(`Roto physical edit result mismatch: ${transition.message}`);
-        // [DEBUG-9f3c] DEV-only: names the term(s) that rejected the result so a
-        // live repro identifies the seam instead of the symptom, plus the
-        // parent's own failure text — the sentinel it returns in place of a
-        // staged revision swallows the reason the parent refused.
-        if (import.meta.env.DEV) {
-          const parentError = (detail as { error?: unknown }).error;
-          const parentText = typeof parentError === 'string' && parentError.length > 0 ? ` | parent=${parentError}` : '';
-          // The pending snapshot's own shapes: a ref-shaped (`m`) record and a
-          // byte-carrying (`b`) one hash identically by design, so a token
-          // mismatch between the two sides shows up as a shape difference here.
-          const shapes = before.records
-            .map((record) => `${record.keyId.slice(0, 8)}:${record.payload.bytes ? 'b' : ''}${record.payload.media ? 'm' : ''}`)
-            .join(',');
-          if (transition.fields?.length || parentText) {
-            portsRef.current.status.logDiagnostic(`[DEBUG-9f3c] rejected by: ${transition.fields?.join(' | ') ?? '(no term)'} | layer=${pending.layerId.slice(0, 8)} | records=[${shapes}]${parentText}`);
-          }
-        }
         // 260921-c7x: a mismatch is TERMINAL. The child published nothing (the
         // predicate runs before publishCompleteDocument), so there is no state
         // to restore — but the pending slot, the lease and the settlement

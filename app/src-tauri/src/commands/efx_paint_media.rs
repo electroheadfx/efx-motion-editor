@@ -39,30 +39,15 @@ pub struct FrameMediaReadResponse {
     pub bytes_base64: String,
 }
 
-/// [DEBUG-9f3c] The wire carries one fixed label by contract (T-52.2-03), so an
-/// `io` failure reaches the renderer with no cause at all. stderr is a local
-/// channel, not the wire: print the real message to the dev terminal.
-#[cfg(debug_assertions)]
-pub(crate) fn trace_media_error(error: &EfxPaintMediaError) {
-    if let EfxPaintMediaError::Io(io) = error {
-        eprintln!("[DEBUG-9f3c] efx-paint media io: {}", io.message);
-    }
-}
-
-#[cfg(not(debug_assertions))]
-pub(crate) fn trace_media_error(_error: &EfxPaintMediaError) {}
-
 fn header(headers: &HeaderMap, name: &str) -> Result<String, EfxPaintMediaError> {
     headers
         .get(name)
         .and_then(|value| value.to_str().ok())
         .map(|value| value.to_string())
         .ok_or_else(|| {
-            let error = EfxPaintMediaError::Io(EfxPaintMediaIoError::new(format!(
+            EfxPaintMediaError::Io(EfxPaintMediaIoError::new(format!(
                 "efx_paint_frame_media: missing or invalid {name} header"
-            )));
-            trace_media_error(&error);
-            error
+            )))
         })
 }
 
@@ -84,27 +69,18 @@ pub fn efx_paint_write_frame_media(
     let bytes = match request.body() {
         InvokeBody::Raw(bytes) => bytes.clone(),
         _ => {
-            let error = EfxPaintMediaError::Io(EfxPaintMediaIoError::new(
+            return Err(EfxPaintMediaError::Io(EfxPaintMediaIoError::new(
                 "efx_paint_write_frame_media: expected a raw byte body",
-            ));
-            trace_media_error(&error);
-            return Err(error);
+            )))
         }
     };
     let result = write_frame_media(
-        &PathBuf::from(&package_dir),
+        &PathBuf::from(package_dir),
         staging_basename.as_deref(),
         &layer_id,
         &key_id,
         &bytes,
-    );
-    let result = match result {
-        Ok(result) => result,
-        Err(error) => {
-            trace_media_error(&error);
-            return Err(error);
-        }
-    };
+    )?;
     Ok(FrameMediaWriteResponse {
         relative_path: result.relative_path,
         digest: result.digest,
@@ -122,14 +98,7 @@ pub fn efx_paint_read_frame_media(
     let headers = request.headers();
     let package_dir = header(headers, "packageDir")?;
     let relative_path = header(headers, "relativePath")?;
-    let result = read_frame_media(&PathBuf::from(&package_dir), &relative_path);
-    let result = match result {
-        Ok(result) => result,
-        Err(error) => {
-            trace_media_error(&error);
-            return Err(error);
-        }
-    };
+    let result = read_frame_media(&PathBuf::from(package_dir), &relative_path)?;
     Ok(FrameMediaReadResponse {
         relative_path: result.relative_path,
         digest: result.digest,
