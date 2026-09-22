@@ -3298,6 +3298,31 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     ensureActiveRowVisible();
   }, [ensureActiveRowVisible]);
 
+  // 260922-qad: one-shot viewport positioning on the Studio-open frame.
+  // TERMINATION CONDITION (written): timelineOpenPositionedRef flips true
+  // exactly once, on the first successful positioning; nothing else in the
+  // strip writes it, no re-arm exists, so the effect can never move the
+  // viewport again this mount — in-session navigation and manual scrolling
+  // are never overridden.
+  const timelineOpenPositionedRef = useRef(false);
+  useEffect(() => {
+    if (timelineOpenPositionedRef.current) return;
+    const frame = props.timelineOpenFrame;
+    // A launch may still arrive (null → N): park WITHOUT flipping the guard
+    // so the cells-length dep below can retry; leg (vi) stays parked too.
+    if (frame === null || frame === undefined || !Number.isInteger(frame) || frame < 0) return;
+    const scroller = timelineScrollRef.current;
+    if (!scroller) return;
+    // Content not yet covering the frame: park WITHOUT flipping the guard —
+    // the rotoPhysicalCells.length dep retries once the extent grows.
+    if (scroller.scrollWidth < (frame + 1) * ROTO_CELL_WIDTH_PX) return;
+    const target = frame * ROTO_CELL_WIDTH_PX + ROTO_CELL_WIDTH_PX / 2 - scroller.clientWidth / 2;
+    const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    scroller.scrollLeft = Math.min(Math.max(0, target), maxScroll);
+    updateScrollbar();
+    timelineOpenPositionedRef.current = true;
+  }, [props.timelineOpenFrame, props.rotoPhysicalCells.length, updateScrollbar]);
+
   const classifyRotoDragTarget = useCallback((clientX: number, clientY: number, movedKeyId: string, sourceAppFrame: number): {
     target: RotoDragTarget | null;
     kind: RotoDragCandidateKind;

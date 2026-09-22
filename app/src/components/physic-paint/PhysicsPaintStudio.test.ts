@@ -2267,3 +2267,11 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     expect(studio).toContain(": (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error',");
   });
 });
+
+describe('quick-260922-qad Studio open viewport positioning wiring', () => {
+  it('passes the launch startFrame into the strip as timelineOpenFrame', () => {
+    // The one-shot positioning behaviour is proven by the strip's viewport
+    // legs; this pin only guarantees the wiring exists on the workflow object.
+    expect(studio).toContain('timelineOpenFrame: launchContext?.startFrame ?? null');
+  });
+});

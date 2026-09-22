@@ -4504,7 +4504,7 @@ export function PhysicsPaintStudio() {
         onSelectTrackFrame: multiTrackRowBundle.onSelectTrackFrame,
         onSelectTrackRail: multiTrackRowBundle.onSelectTrackRail,
         workflowLabel: launchContext?.workflowLabel,
-        currentFrame, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
+        currentFrame, timelineOpenFrame: launchContext?.startFrame ?? null, isPlaying, ready: readyToApply, occupiedRotoFrames: timelineOccupiedRotoFrames, savedRotoFrames: timelineSavedRotoFrames, cachedRotoFrames: timelineCachedRotoFrames,
         keyActionInFlight: rotoKeyUtilities.keyActionInFlight || rotoScriptNavigationLocked, mutationLocked, rotoCachedPlaybackAvailable, rotoCachedPlaybackStatus: rotoCachedPlayback.status, rotoCachedPlaybackLoop: rotoCachedPlayback.loop, rotoCachedPlaybackFps: rotoCachedPlayback.fps, projectFps: previewFps, isRotoCachedPlaybackActive: rotoCachedPlayback.isActive,
         // 38.1-D-01: the per-tick playback signal passes through as a signal
         // reference (never .value-read here); only the nav-pill current-frame
