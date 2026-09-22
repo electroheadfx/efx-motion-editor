@@ -1,0 +1,65 @@
+{
+  "task": "quick-260922-al1",
+  "planBase": "bbc36e034116024728dc44d8c51a3ffbcc37d8eb",
+  "rule": "Each leg's verdict is captured BEFORE any edit to that leg's subject. A leg already GREEN at its base is a REGRESSION GUARD, never manufactured into a failure.",
+  "legs": [
+    {
+      "id": "L2",
+      "name": "cross-layer apply — a Layer-1 Action applies to a Layer-2 key resolved fresh at apply time",
+      "test": "quick-260922-al1 apply-path evidence (L2 cross-layer / L3a refusal) > L2: a Layer-1 Action applies to a Layer-2 key resolved fresh at apply time",
+      "command": "pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.test.ts -t \"L2: a Layer-1 Action applies to a Layer-2 key resolved fresh at apply time\"",
+      "base": "bbc36e034116024728dc44d8c51a3ffbcc37d8eb",
+      "measuredAt": "plan base (before any production edit of this plan)",
+      "verdict": "GREEN",
+      "output": "RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app\n\n ✓ src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.test.ts (41 tests | 40 skipped) 3ms\n\n Test Files  1 passed (1)\n      Tests  1 passed | 40 skipped (41)\n   Duration  901ms",
+      "note": "GREEN at base => regression guard. What it now guards: the committed destination is the layer whose key prepareTarget resolved for the LIVE source (accepted targets carry keyId 'layer-2-key' at appFrame 12 for both enqueued brushes, flushSourcePublication(12), status 'Applied 2'), while the script's origin survives only as clipboard provenance 'layer-1'. Evidence-backed refinement over the plan wording: 2 brushes were committed (the plan asked for the number of brushes/keys committed to be recorded for the cross-layer claim)."
+    },
+    {
+      "id": "L3a",
+      "name": "incompatible destination refuses and changes nothing",
+      "test": "quick-260922-al1 apply-path evidence (L2 cross-layer / L3a refusal) > L3a: an incompatible destination refuses with apply-empty-target-failed and changes nothing",
+      "command": "pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.test.ts -t \"L3a: an incompatible destination refuses with apply-empty-target-failed and changes nothing\"",
+      "base": "bbc36e034116024728dc44d8c51a3ffbcc37d8eb",
+      "measuredAt": "plan base (before any production edit of this plan)",
+      "verdict": "GREEN",
+      "output": "RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app\n\n ✓ src/components/physic-paint/roto/physicsPaintRotoScriptClipboard.test.ts (41 tests | 40 skipped) 3ms\n\n Test Files  1 passed (1)\n      Tests  1 passed | 40 skipped (41)\n   Duration  1.02s",
+      "note": "GREEN at base => regression guard for the CLIPBOARD half only: error code 'apply-empty-target-failed', status 'Failed', zero enqueued strokes, and the reusable clipboard preserved. The user-visible refusal copy is missing at base (the Studio drops rotoScript.error into a write-only setLastError) and is what Task 3 adds — that half is RED-by-inspection, not by this leg."
+    },
+    {
+      "id": "L1",
+      "name": "cross-layer visibility — a Layer-1 Action stays listed in a Layer-2 session",
+      "test": "quick-260922-al1 library read-path evidence (L1 cross-layer visibility / L5 orphan) > L1: rows from another layer stay visible after a layer-identity change under the same project context",
+      "command": "pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.test.ts -t \"L1: rows from another layer stay visible after a layer-identity change under the same project context\"",
+      "base": "0c1223c1cabb3d0c562da085c6f15501bacd6f31",
+      "measuredAt": "Task 2 base (Task 1 changed no library read-path behaviour)",
+      "verdict": "GREEN",
+      "output": "RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app\n\n ✓ src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.test.ts (28 tests | 27 skipped) 8ms\n\n Test Files  1 passed (1)\n      Tests  1 passed | 27 skipped (28)\n   Duration  581ms",
+      "note": "GREEN at the Task-2 base => regression guard, not a plan-base verdict: Task 1 changed no library read-path behaviour. What it guards: a layer-identity change under the SAME contextId re-hydrates with a SECOND scan (2 scans asserted) and the re-listed rows are the full project set, so the read path is project-scoped. The row()/context() factories at the file head are hardcoded to layer-1/context-1, so this leg defines its own atLayer() helper in the new describe."
+    },
+    {
+      "id": "L5",
+      "name": "scope-unknown (orphan origin layer) still loads",
+      "test": "quick-260922-al1 library read-path evidence (L1 cross-layer visibility / L5 orphan) > L5: a row whose origin layer no longer exists still loads",
+      "command": "pnpm --filter efx-motion-editor exec vitest run src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.test.ts -t \"L5: a row whose origin layer no longer exists still loads\"",
+      "base": "0c1223c1cabb3d0c562da085c6f15501bacd6f31",
+      "measuredAt": "Task 2 base (Task 1 changed no library read-path behaviour)",
+      "verdict": "GREEN",
+      "output": "RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app\n\n ✓ src/components/physic-paint/roto/physicsPaintRotoScriptLibrary.test.ts (28 tests | 27 skipped) 3ms\n\n Test Files  1 passed (1)\n      Tests  1 passed | 27 skipped (28)\n   Duration  569ms",
+      "note": "GREEN at the Task-2 base => regression guard. What it guards: a row whose source.layerId ('layer-gone') no live layer owns still loads — activateAndLoad('b') resolves true, replaceClipboard received the runtime script exactly once, status 'Loaded B — 1 brushes'. This is the REACHABLE scope-unknown case; the literal 'pre-provenance script' leg is vacuous (see vacuous[0])."
+    }
+  ],
+  "vacuous": [
+    {
+      "id": "pre-provenance",
+      "reason": "A script without a provenance layer id cannot exist as a valid row. The durable schema is v1 on both sides and required source.layerId from the start: Rust validate_source requires non-empty layerId/layerName (app/src-tauri/src/services/script_library.rs:2130-2136) and a file lacking them scans as invalid-managed-script, counted in skippedInvalidCount (script_library.rs:1995-2002); TS PersistedRotoScriptSourceV1 declares layerId: string; layerName: string (app/src/components/physic-paint/roto/physicsPaintRotoScriptSchema.ts:29-38) and the runtime mapping writes provenance.layerId = document.source.layerId (:147). The literal leg was therefore NOT simulated with a hand-built row; the reachable scope-unknown case is the ORPHAN (a layerId no live layer owns), covered by L5."
+    }
+  ],
+  "refutedReconClaims": [
+    {
+      "claim": "The layer binding lives in the apply target resolution: prepareRotoScriptTargetRef returns null when source.layerId !== launch.layerId (CONTEXT.md recon finding 3).",
+      "verdict": "REFUTED as an origin gate",
+      "evidence": "app/src/components/physic-paint/PhysicsPaintStudio.tsx:1639-1644 reads `source.layerId !== launch.layerId`, but `source` is the LIVE source snapshot (built with layerId: launchContext?.layerId), so the term compares the launch against itself — a live-source consistency check, i.e. a tautology. No origin-layer gate exists on the read path or the apply path; L2 above proves the clipboard commits to whatever destination prepareTarget resolved.",
+      "consequence": "There is no origin gate to remove. The work is to make the DESTINATION explicit and the ORIGIN cosmetic."
+    }
+  ]
+}
