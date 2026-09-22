@@ -311,10 +311,33 @@ export function compositeFrame(
           drawX = (size.width - drawWidth) / 2;
           drawY = (size.height - drawHeight) / 2;
         }
+        // 260922-rd4: the track transform rides AFTER contain-fit × clip-scale
+        // (composition order: fit → clip scale → track transform), around the
+        // base-rect center, with x/y in project-space pixels added to that
+        // center. Rotation is DEGREES — the one photo bounds/handles unit
+        // (getReferenceBounds/applyRotation) → ×π/180 here, never a second
+        // convention. Identity takes the EXACT pre-plan draw path (leg c0) so
+        // untransformed documents keep their hot path byte-for-byte.
+        const backgroundTransform = document.background.transform;
+        const backgroundTransformIsIdentity = backgroundTransform.x === 0
+          && backgroundTransform.y === 0
+          && backgroundTransform.scaleX === 1
+          && backgroundTransform.scaleY === 1
+          && backgroundTransform.rotation === 0;
         ctx.save();
         ctx.globalAlpha = 1;
         ctx.globalCompositeOperation = 'destination-over';
-        ctx.drawImage(raster, drawX, drawY, drawWidth, drawHeight);
+        if (backgroundTransformIsIdentity) {
+          ctx.drawImage(raster, drawX, drawY, drawWidth, drawHeight);
+        } else {
+          ctx.translate(
+            drawX + drawWidth / 2 + backgroundTransform.x,
+            drawY + drawHeight / 2 + backgroundTransform.y,
+          );
+          ctx.rotate((backgroundTransform.rotation * Math.PI) / 180);
+          ctx.scale(backgroundTransform.scaleX, backgroundTransform.scaleY);
+          ctx.drawImage(raster, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+        }
         ctx.restore();
       }
     } else if (backgroundResolution.kind === 'missing') {
@@ -329,11 +352,31 @@ export function compositeFrame(
       // the clip occupies the frame and can replace its source from the right
       // panel. Track sources stay transparent on missing — only the background
       // gains this fill.
+      // 260922-rd4: the placeholder rides the same display transform as the
+      // content draw so a moved/scaled/rotated background's missing-source
+      // fill moves with it (plan STEP C). The fill covers the full frame, so
+      // its base rect IS the composite size — translate to its center + x/y.
+      const missingTransform = document.background.transform;
+      const missingTransformIsIdentity = missingTransform.x === 0
+        && missingTransform.y === 0
+        && missingTransform.scaleX === 1
+        && missingTransform.scaleY === 1
+        && missingTransform.rotation === 0;
       ctx.save();
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'destination-over';
       ctx.fillStyle = EFX_PAINT_BACKGROUND_MISSING_FILL;
-      ctx.fillRect(0, 0, size.width, size.height);
+      if (missingTransformIsIdentity) {
+        ctx.fillRect(0, 0, size.width, size.height);
+      } else {
+        ctx.translate(
+          size.width / 2 + missingTransform.x,
+          size.height / 2 + missingTransform.y,
+        );
+        ctx.rotate((missingTransform.rotation * Math.PI) / 180);
+        ctx.scale(missingTransform.scaleX, missingTransform.scaleY);
+        ctx.fillRect(-size.width / 2, -size.height / 2, size.width, size.height);
+      }
       ctx.restore();
     }
   }

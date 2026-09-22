@@ -25,6 +25,7 @@ import type {
   FrameLoopClip,
   InternalPaintTrack,
   PhotoReferenceTrack,
+  PhotoReferenceTransform,
 } from './efxPaintDocument';
 import { parseEfxPaintDocument, parseInternalPaintTrack } from './efxPaintDocumentParsers';
 
@@ -139,6 +140,26 @@ function encodeCanonicalPhotoReferenceDisplay(track: PhotoReferenceTrack | null)
   ].join('');
 }
 
+/**
+ * Canonical background display-transform term (260922-rd4): x, y, scaleX,
+ * scaleY, rotation (DEGREES — the one photo-handles/bounds/compositor unit).
+ * The LOCK is deliberately excluded: it changes no pixels and no package
+ * content worth a fingerprint term — unlocking is mirrored onto the track
+ * member, which the parser roundtrip already preserves. THIS is the single
+ * encoder (T-49-03-02): the sync fingerprint (`|bgDisplay:`), the save
+ * fingerprint (`|bgT:`) and the flattened cache key (`bgtransform:`) all call
+ * it — never a second hand-written transform encoding.
+ */
+export function encodeCanonicalBackgroundTransform(transform: PhotoReferenceTransform): string {
+  return [
+    encodeCanonicalNumber(transform.x),
+    encodeCanonicalNumber(transform.y),
+    encodeCanonicalNumber(transform.scaleX),
+    encodeCanonicalNumber(transform.scaleY),
+    encodeCanonicalNumber(transform.rotation),
+  ].join('');
+}
+
 function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): string {
   const orderedTracks = [...document.tracks].sort((a, b) => a.id.localeCompare(b.id));
   const tracksTerm = `tracks:${orderedTracks.length}:${orderedTracks.map(encodeValidatedEfxPaintTrackContent).join('')}`;
@@ -178,15 +199,17 @@ export function buildEfxPaintDocumentRevision(value: unknown): string {
 /**
  * Change-detection fingerprint of the child→main document sync channel: the
  * canonical document revision PLUS the photo/reference display-preference term
- * the revision deliberately excludes. Display preferences persist in the
- * package but never bump the revision (D-07 vs D-11/D-12/D-13 split), so the
- * channel's two change-detection points — the child's push guard and the
- * parent's register guard — compare THIS fingerprint; comparing the bare
- * revision silently drops every display-only change from the sync.
+ * the revision deliberately excludes PLUS the background display-transform
+ * term (260922-rd4, same display-preference class). Display preferences
+ * persist in the package but never bump the revision (D-07 vs
+ * D-11/D-12/D-13), so the channel's two change-detection points — the child's
+ * push guard and the parent's register guard — compare THIS fingerprint;
+ * comparing the bare revision silently drops every display-only change from
+ * the sync.
  */
 export function buildEfxPaintDocumentSyncFingerprint(value: unknown): string {
   const document = parseEfxPaintDocument(value);
-  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}`;
+  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}|bgDisplay:${encodeCanonicalBackgroundTransform(document.background.transform)}`;
 }
 
 /**

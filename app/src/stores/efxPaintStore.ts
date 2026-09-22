@@ -1240,7 +1240,9 @@ export function setPhotoReferenceTransformLocked(layerId: string, locked: boolea
  * Set the Background track's display transform (260922-rd4 — display
  * preference, same class as `setPhotoReferenceTransform`: persists on the
  * track, NO undo descriptor, NO documentRevision bump). Shares the photo
- * transform validator (`_isValidTransform`) — one setter idiom, no fork.
+ * transform validator (`_isValidTransform`) — one setter idiom, no fork:
+ * fail-closed → identity no-op → immutable next-background → single
+ * `_notifyChange()`.
  */
 export function setBackgroundTransform(layerId: string, transform: PhotoReferenceTransform): PhotoReferenceDisplayResult {
   const document = getDocument(layerId);
@@ -1256,10 +1258,12 @@ export function setBackgroundTransform(layerId: string, transform: PhotoReferenc
   ) {
     return { ok: true };
   }
-  // INERT until Task 2 — RED surface for 260922-rd4
-  // (Task 2 removes this early return so the display-pref write runs:
-  //  immutable next-background object → _documents.set → single
-  //  _notifyChange(); still NO revision bump and NO undo descriptor.)
+  const next: EfxPaintDocument = {
+    ...document,
+    background: { ...document.background, transform: Object.freeze({ ...transform }) },
+  };
+  _documents.set(layerId, next);
+  _notifyChange();
   return { ok: true };
 }
 

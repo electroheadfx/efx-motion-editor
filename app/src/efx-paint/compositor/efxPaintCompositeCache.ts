@@ -32,6 +32,7 @@
 import {
   buildEfxPaintCompositeRevision,
   encodeCanonicalBackgroundFallback,
+  encodeCanonicalBackgroundTransform,
 } from '../document/efxPaintDocumentRevision';
 import {
   encodeCanonicalNumber,
@@ -143,6 +144,13 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     // with an unchanged background.revision still rotates the key, so a stale
     // fond raster is never served (Pitfall 1).
     `fallback:${encodeCanonicalBackgroundFallback(document.background.fallback)}`,
+    // 260922-rd4: the background display transform (fallback-term precedent) —
+    // ALWAYS emitted for determinism (empty-vs-missing is a footgun). A
+    // transform-only edit bumps no revision, so without this term the
+    // flattened key would stay stable and a stale untransformed raster would
+    // be served to monitor/export. Same canonical encoder as the sync/save
+    // fingerprints; the lock is excluded (matches the encoder contract).
+    `bgtransform:${encodeCanonicalBackgroundTransform(document.background.transform)}`,
     `clips:${encodeCanonicalNumber(backgroundClipRevisions.length)}:${clipTerms}`,
     ...(excludedIds.length > 0
       ? [`excl:${encodeCanonicalNumber(excludedIds.length)}:${excludedIds.map((id) => encodeCanonicalString(id)).join('')}`]

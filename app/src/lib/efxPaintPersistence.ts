@@ -52,6 +52,7 @@ import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentPar
 import {
   buildEfxPaintCompositeRevision,
   buildEfxPaintDocumentRevision,
+  encodeCanonicalBackgroundTransform,
 } from '../efx-paint/document/efxPaintDocumentRevision';
 import { hashCanonicalPhysicalValue } from '../efx-paint/document/efxPaintCanonicalEncoder';
 import {
@@ -588,7 +589,12 @@ export function buildEfxPaintSaveFingerprint(
   const terms: string[] = [];
   for (const [layerId, input] of documents) {
     const document = parseEfxPaintDocument(input.document);
-    terms.push(`${layerId.length}:${layerId}:${buildEfxPaintDocumentRevision(document)}`);
+    // 260922-rd4: `|bgT:` — the background display transform is NOT a
+    // document-revision term (display pref, D-07 vs D-11/D-12/D-13), so a
+    // transform-only edit would otherwise dedupe as a no-op save. One
+    // canonical encoder; the photo-reference contribution (the docrev hash
+    // fed by encodeCanonicalPhotoReference) stays byte-identical.
+    terms.push(`${layerId.length}:${layerId}:${buildEfxPaintDocumentRevision(document)}|bgT:${encodeCanonicalBackgroundTransform(document.background.transform)}`);
     for (const track of document.tracks) {
       const trackFrames = input.frames.get(track.id);
       if (!trackFrames) continue;
