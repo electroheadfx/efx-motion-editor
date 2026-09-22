@@ -303,3 +303,15 @@ Not committed by the executor (the orchestrator's Step 8 handles the docs commit
 ## Self-Check: PASSED
 
 Verified: created file `app/src/lib/physicPaintLayerGestureProbe.test.ts` exists; commits `26a8b378` and `253e6340` both exist in `git log --oneline --all`.
+
+---
+
+## Resolution — CLOSED 2026-09-22 (supersedes the STRUCTURAL ruling's open half)
+
+The STRUCTURAL verdict was correct about what the in-process chain could see, and its handoff half is what ended up naming the defect — but the surviving link turned out to be **not a gesture-routing problem at all**: it was one layer's background metadata failing a contract its own app produced.
+
+**The chain the live capture exposed.** A physic-paint layer added in the main app defaults to a paper with the grain OFF (`paperGrain: false`); the Studio encodes that as `paperGrain: ''` ("grain off", the state its top bar renders as no grain swatch) and publishes it as the track's background metadata. Both background validators required a NON-EMPTY grain texture, so the store's own `getRotoPhysicalDocument()` threw `PhysicPaintRotoPhysicalDocument: invalid background metadata.` on every read. `navigateToSyncedPhysicalFrame` reads the projection before the selection write, so navigation threw, no key selection ever landed, `canDragKey` stayed false, and key move / rail edit / delete were all locked at once — on exactly those layers whose paper had grain off, i.e. the layers added fresh. Layer 1 escaped only because its paper has grain on, which is why the defect read as "2nd layer onwards".
+
+**Fix:** `4f35efd7` (accepts `''` in both contracts, RED-pinned). **Live evidence:** the qls capture run 3 carried the throw verbatim on layer 2 (`raw/attempt.detail`). **Native UAT:** PASSED (user, 2026-09-22) — layer 1 gestures + persistence, layer 2 gestures after the fix, and a newly added third layer including a grain-off paper on it. **Cleanup:** `002521b5` retires the DEV probes and this task's layer-1-vs-layer-2 diagnostic harness (`app/src/lib/physicPaintLayerGestureProbe.test.ts`, deleted — its eight falsifications stand above and its verdicts needed no re-run).
+
+The numbered live probe-instrumentation handoff in this SUMMARY is therefore SPENT; the H-7 "undecidable in-process" half was answered by ephemeral in-app probes rather than by re-running this harness.

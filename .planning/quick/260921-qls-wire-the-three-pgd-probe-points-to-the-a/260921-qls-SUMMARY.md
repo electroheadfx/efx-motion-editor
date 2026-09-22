@@ -246,3 +246,25 @@ Not performed, and not performable by this executor (the app is the user's to ru
 ## Self-Check: PASSED
 
 Verified: `app/src/components/physic-paint/performance/physicPaintGestureRefusalCapture.ts` exists; commits `4e64118a`, `72abfe08`, `7212b37e`, `72f27e08` all exist in `git log --oneline --all`; the three probe points are present at their anchors (`rotoLaunchHydration.ts:89` / `:145`, `PhysicsPaintWorkflowStrip.tsx:2803` / `:2805` / `:2816` / `:2849`).
+
+---
+
+## Resolution — CLOSED 2026-09-22
+
+The capture did its job in three live runs, and the escalation it was built for is closed.
+
+**What the captures named.** Run 1 pinned the lock to a NULL PRIMARY SELECTION (`canDragKey:false`, "Select a real Roto key to drag.", no `nav-no-key`) — i.e. a click was never landing a selection. Run 2 cleared the cell half (a cell click DOES set the primary; the gate opens) and left the rail half as the suspect. Run 3, on layer 2, named the exact throw: `PhysicPaintRotoPhysicalDocument: invalid background metadata.` on every navigation.
+
+**Root cause (the pgd defect — "layers beyond the first are interaction-dead").** A layer added in the main app defaults to a paper with the grain OFF (`paperGrain: false`); `applyBackgroundFallbackToSettings` (physicsPaintStudioSettings.ts:128) encodes that as `settings.paperGrain = ''` — the app's own "grain off" state, and what the top bar renders as no grain swatch — which `buildRotoBackgroundMetadata` publishes as the track's background metadata. Both background validators (physicsPaintRotoPhysicalModel.ts's document guard and types/physicPaint.ts's payload guard) demanded a NON-EMPTY grain texture, so the store's own `getRotoPhysicalDocument()` threw on every read; `navigateToSyncedPhysicalFrame` reads the projection BEFORE the selection write, so navigation threw, `canDragKey` stayed false, and key move + rail edit + delete were all locked at once. Only layers whose paper had grain off were affected — which is exactly a layer added fresh (layer 1's paper has grain on, which is why the defect read as "2nd layer onwards").
+
+**Fix.** `4f35efd7` accepts `''` as "paper with the grain off" in both contracts, and pins it (`physicsPaintRotoBackgroundGrainOff.test.ts`, RED on both validators before the change).
+
+**Also fixed through the same chain** (each with its own pin): `051d6ede` a launch-door diagnostic read can no longer abort hydration (its regression pin `3ed05844`); `aeac557e` + `e14c4d5e` + `dd22ecb8` the Studio boot projections (boot seed, onion, interpolated cell) skip reference-only keys instead of throwing; `58016be5` the publish projection tolerates reference-only records, so one unreadable frame no longer makes a whole layer uneditable; `7ec8f699` the capture test's settle.
+
+**Project data.** The user's layer `a605a976` also carried 10 records whose frame files were absent (their pixels were still on disk under stale file names, matched by SHA-256) plus a loop clip over exactly those keys; with the user's approval the 10 records and the orphaned clip were removed on disk (backup `v1.0.0.mce.backup-20260922-070351`). A hand-edited layer JSON must have its `revision` recomputed with `buildPhysicPaintRotoPhysicalRevision` — the parser hard-fails on a mismatch.
+
+**Cleanup — `002521b5`.** The probes are retired: this module, its test, the three original probe points, the follow-up probes (`cell-click-locked`, `nav-scrub-swallow`, `nav-refused`/`nav-threw`, `rail-click-suppressed`, `rail-selection-cleared`, the loop-selection terms) and the one-off pgd layer-1-vs-layer-2 diagnostic harness are all deleted. Kept because they pin contracts rather than probes: the launch door's "a refusal resolves, never rejects" pin, the reference-only tolerance splits, and the grain-off background pin.
+
+**Native UAT — PASSED (user, 2026-09-22).** Layer 1: key selection and rail drag work, and the move persisted (the app saved it; keys 50–62 → 43–55, revision recomputed by the app itself). Layer 2: gestures work after the fix. A newly added **third** layer works — including the former trap (a paper with the grain off on a fresh layer).
+
+**Known residual.** The probes were the only live instrumentation for the gesture chain; a future live gesture defect starts again from a capture-less position (the decision table in section (a) still describes what to instrument).
