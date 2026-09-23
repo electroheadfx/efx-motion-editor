@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 0
+open_count: 1
 waived_count: 5
 fixed_count: 67
-total_count: 72
-last_updated: 2026-09-22T15:42:15.805Z
+total_count: 73
+last_updated: 2026-09-23T14:17:20.987Z
 ---
 
 # Broken Windows Ledger
@@ -87,6 +87,7 @@ last_updated: 2026-09-22T15:42:15.805Z
 | 70 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 cannot Paint directly into a deleted Group-owned gap; no exact-frame override or cache is accepted | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.636Z |
 | 71 | 43.2 | unmet-truth | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Frozen 69d07703 local Paint over Group content destroys both prior and requested content with no accepted cache | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:14.832Z |
 | 72 | 43.2 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:15.031Z |
+| 73 | 26 | deviation | app/src/stores/projectStore.efxPaintCutover.test.ts |  | Quick 260923-kcs: retargeted 45-05 Task 3 AddFxMenu source-shape pins (name: 'Physic Paint' -> name: stackName; old createFxSequence literals -> position:'top' shapes) — pre-existing pins encoded the fixed-name defect the quick kills; file was outside the plan's files_modified list (Rule 1, commit 39a60fd2) | open |  | 2026-09-23T14:17:20.987Z |  |
 
 ````json
 [
@@ -953,6 +954,19 @@ last_updated: 2026-09-22T15:42:15.805Z
     "reason": "",
     "recorded_at": "2026-08-12T11:58:21.000Z",
     "resolved_at": "2026-09-22T15:42:15.031Z"
+  },
+  {
+    "id": 73,
+    "kind": "deviation",
+    "phase": "26",
+    "file": "app/src/stores/projectStore.efxPaintCutover.test.ts",
+    "line": null,
+    "description": "Quick 260923-kcs: retargeted 45-05 Task 3 AddFxMenu source-shape pins (name: 'Physic Paint' -> name: stackName; old createFxSequence literals -> position:'top' shapes) — pre-existing pins encoded the fixed-name defect the quick kills; file was outside the plan's files_modified list (Rule 1, commit 39a60fd2)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-23T14:17:20.987Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
   }
 ]
 ````
