@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createEfxPaintDocument } from './efxPaintDocument';
+import { createEfxPaintDocument, type BackgroundFallback } from './efxPaintDocument';
 import { parseEfxPaintDocument } from './efxPaintDocumentParsers';
-import { buildEfxPaintDocumentRevision } from './efxPaintDocumentRevision';
+import { buildEfxPaintDocumentRevision, encodeCanonicalBackgroundFallback } from './efxPaintDocumentRevision';
 
 /** Build a fresh document JSON whose background.fallback is replaced. */
 function documentWithFallback(fallback: unknown): Record<string, unknown> {
@@ -19,7 +19,55 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
       grainStrength: 0.5,
     });
     const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(document)));
-    expect(parsed).toEqual(document);
+    // 260923-bcm: the parser ALWAYS emits the normalized grain scale, so an
+    // input without the member round-trips to grainScale 1.
+    expect(parsed).toEqual({
+      ...document,
+      background: { ...document.background, fallback: { ...document.background.fallback, grainScale: 1 } },
+    });
+    expect(parsed.background.fallback).toMatchObject({ grainScale: 1 });
+  });
+
+  // 260923-bcm Task 1 (RED): the optional grain SCALE member on the paper
+  // fallback — accepted in range, normalized to 1 when absent/invalid, and a
+  // term of the canonical document revision encoder.
+  it('260923-bcm: accepts an optional grainScale, normalizes absent/invalid to 1, and the encoder rotates on scale', () => {
+    const scaled = documentWithFallback({
+      mode: 'paper',
+      texture: 'canvas2',
+      paperGrain: true,
+      grainStrength: 0.5,
+      grainScale: 2,
+    });
+    const parsedScaled = parseEfxPaintDocument(JSON.parse(JSON.stringify(scaled)));
+    expect(parsedScaled.background.fallback).toEqual({
+      mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.5, grainScale: 2,
+    });
+
+    for (const bad of [0, -1, NaN, '2', 11]) {
+      const invalid = documentWithFallback({
+        mode: 'paper',
+        texture: 'canvas1',
+        paperGrain: true,
+        grainStrength: 0.5,
+        grainScale: bad,
+      });
+      expect(parseEfxPaintDocument(JSON.parse(JSON.stringify(invalid))).background.fallback).toMatchObject({ grainScale: 1 });
+    }
+
+    const paper = (grainScale?: number): BackgroundFallback => ({
+      mode: 'paper',
+      texture: 'canvas1',
+      paperGrain: true,
+      grainStrength: 0.45,
+      ...(grainScale === undefined ? {} : { grainScale }),
+    });
+    expect(encodeCanonicalBackgroundFallback(paper(2))).not.toBe(encodeCanonicalBackgroundFallback(paper(1)));
+    expect(encodeCanonicalBackgroundFallback(paper(2))).toBe(encodeCanonicalBackgroundFallback(paper(2)));
+    expect(encodeCanonicalBackgroundFallback(paper())).toBe(encodeCanonicalBackgroundFallback(paper(1)));
+
+    const revisionBase = buildEfxPaintDocumentRevision(documentWithFallback(paper(1)));
+    expect(buildEfxPaintDocumentRevision(documentWithFallback(paper(2)))).not.toBe(revisionBase);
   });
 
   it('produces distinct canonical revisions for distinct paper textures and identical revisions for identical paper fallbacks', () => {
@@ -39,7 +87,7 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
 
   it('throws at parse for a paper fallback missing paperGrain/grainStrength or with an unknown texture', () => {
     const missingMembers = documentWithFallback({ mode: 'paper', texture: 'canvas1' });
-    expect(() => parseEfxPaintDocument(missingMembers)).toThrow(/paper fallback must contain exactly/);
+    expect(() => parseEfxPaintDocument(missingMembers)).toThrow(/paper fallback must contain/);
 
     const unknownTexture = documentWithFallback({
       mode: 'paper',
@@ -108,7 +156,7 @@ describe('BackgroundFallback reserved and unknown mode rejection (D-11)', () => 
       grainStrength: 0.5,
       extra: true,
     });
-    expect(() => parseEfxPaintDocument(extraMember)).toThrow(/paper fallback must contain exactly/);
+    expect(() => parseEfxPaintDocument(extraMember)).toThrow(/paper fallback must contain/);
   });
 });
 

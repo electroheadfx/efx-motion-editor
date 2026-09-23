@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import {
@@ -34,6 +37,48 @@ describe('Physics Paint Studio settings', () => {
     });
   });
 
+  // 260923-bcm Task 1 (RED): the paper grain SCALE is a REQUIRED settings
+  // field defaulting to 1 and threads through every settings<->metadata<->fallback
+  // mapping — the persistence spine the Tools control and the scaled paper
+  // pattern draw depend on.
+  it('260923-bcm: default settings carry grainScale 1 and the round trip preserves a scale of 2', () => {
+    expect(makeInitialPhysicsPaintStudioSettings().grainScale).toBe(1);
+
+    const scaled = { ...makeInitialPhysicsPaintStudioSettings(), grainScale: 2 };
+    expect(buildRotoBackgroundMetadata(scaled)).toMatchObject({ grainScale: 2 });
+    expect(applyRotoBackgroundMetadataToSettings({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2 }).grainScale).toBe(2);
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2 }).grainScale).toBe(2);
+    // Absent member on hydration falls back to the type-shape default (1).
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45 }).grainScale).toBe(1);
+  });
+
+  it('260923-bcm: the paper fallback write-through carries the grain scale and round-trips 2', () => {
+    const settings = { ...makeInitialPhysicsPaintStudioSettings(), grainScale: 2 };
+    const fallback = backgroundModeToFallback('canvas1', settings);
+    expect(fallback).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2 });
+    expect(applyBackgroundFallbackToSettings(fallback).grainScale).toBe(2);
+  });
+
+  it('260923-bcm: setBackgroundFallback validates the optional grain scale fail-closed', () => {
+    const layerId = 'layer-grain-scale-validate';
+    registerDocument(createEfxPaintDocument(layerId));
+    const paper = (grainScale: unknown) => ({
+      mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale,
+    }) as unknown as Parameters<typeof setBackgroundFallback>[1];
+    expect(setBackgroundFallback(layerId, paper(2)).ok).toBe(true);
+    for (const bad of [0, -1, NaN, '2', 11]) {
+      expect(setBackgroundFallback(layerId, paper(bad)).ok).toBe(false);
+    }
+  });
+
+  it('260923-bcm: fondInstructionToFondMetadata copies the instruction grain scale (white arm: 1)', () => {
+    const studioPath = resolve(dirname(fileURLToPath(import.meta.url)), '../PhysicsPaintStudio.tsx');
+    const studio = readFileSync(studioPath, 'utf8');
+    const fnBody = studio.slice(studio.indexOf('function fondInstructionToFondMetadata'));
+    expect(fnBody).toContain('grainScale: instruction.grainScale ?? 1');
+    expect(fnBody).toContain('grainScale: 1');
+  });
+
   it('52.1-06 (D-15): the brush size default is rescaled ~1.9x (6 → ~11-12) to preserve relative stroke width at 1920', () => {
     const settings = makeInitialPhysicsPaintStudioSettings();
     expect(settings.size).toBeGreaterThanOrEqual(11);
@@ -64,10 +109,11 @@ describe('Physics Paint Studio settings', () => {
     // White maps to the 49-01-gated solid #ffffff (no distinct 'white' literal).
     expect(backgroundModeToFallback('white', settings)).toEqual({ mode: 'solid', color: '#ffffff' });
     // Paper modes carry the current grain controls: paperGrain boolean = the
-    // grain texture matches the selected paper; grainStrength carried directly.
-    expect(backgroundModeToFallback('canvas1', settings)).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45 });
-    expect(backgroundModeToFallback('canvas2', { paperGrain: 'canvas2', grainStrength: 0.65 })).toEqual({ mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.65 });
-    expect(backgroundModeToFallback('canvas3', { paperGrain: 'canvas1', grainStrength: 0.35 })).toEqual({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0.35 });
+    // grain texture matches the selected paper; grainStrength carried directly;
+    // grainScale carried directly (260923-bcm — same class as grainStrength).
+    expect(backgroundModeToFallback('canvas1', settings)).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 1 });
+    expect(backgroundModeToFallback('canvas2', { paperGrain: 'canvas2', grainStrength: 0.65, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.65, grainScale: 1 });
+    expect(backgroundModeToFallback('canvas3', { paperGrain: 'canvas1', grainStrength: 0.35, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0.35, grainScale: 1 });
   });
 
   it('49-03 T2: the active segment resolves unambiguously from the document fallback (reflection)', () => {

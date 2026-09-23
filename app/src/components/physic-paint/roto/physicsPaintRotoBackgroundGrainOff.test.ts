@@ -52,7 +52,7 @@ describe('paper with the grain off survives both background contracts', () => {
   it('the physical document parser accepts it (the live throw site)', () => {
     expect(() => parsePhysicPaintRotoPhysicalDocument(documentWith(GRAIN_OFF), 'runtime')).not.toThrow();
     expect(() => parsePhysicPaintRotoPhysicalDocument(documentWith(GRAIN_ON), 'runtime')).not.toThrow();
-    expect(parsePhysicPaintRotoPhysicalDocument(documentWith(GRAIN_OFF), 'runtime').background).toEqual(GRAIN_OFF);
+    expect(parsePhysicPaintRotoPhysicalDocument(documentWith(GRAIN_OFF), 'runtime').background).toEqual({ ...GRAIN_OFF, grainScale: 1 });
   });
 
   it('still refuses metadata that is not a paper state at all', () => {

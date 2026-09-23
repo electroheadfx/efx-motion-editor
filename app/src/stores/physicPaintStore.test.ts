@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, buildFrameBytesToken, clampPhysicPaintFrameCount } from '../types/physicPaint';
 import { resolveMissingRotoFrameDraw } from '../lib/rotoFrameDraw';
 import { frameLru } from '../lib/frameLru';
@@ -9,7 +12,7 @@ import {
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, resolveContentToken, _setPhysicPaintMarkDirtyCallback, registerRotoAlphaCanvasFrame, hasRotoAlphaCanvasFrame, renderBlendedRotoInterpolationFrame, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider, getFrameMediaVerdict, hasFrameMediaBytes, installFrameMediaBytes, registerBackgroundSourceImage, registerReferenceSourceImage, hydrateBackgroundSourceImages, hydrateReferenceSourceImages, prefetchNeighborFrames } from './physicPaintStore';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
-import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setActiveTrackId, setTrackVisible, setPhotoReferenceSource } from './efxPaintStore';
+import { getDocument as getEfxPaintDocument, registerDocument, reset as resetEfxPaintStore, setBackgroundFallback, setActiveTrackId, setTrackVisible, setPhotoReferenceSource } from './efxPaintStore';
 import { imageStore } from './imageStore';
 import { assetUrl } from '../lib/ipc';
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
@@ -222,6 +225,61 @@ describe('physicPaintStore', () => {
 
     expect(physicPaintVersion.value).toBe(before + 3);
     expect(dirtyCount).toBe(3);
+  });
+
+  // 260923-bcm Task 1 (RED): the idempotence guard must compare the NORMALIZED
+  // grain scale on both sides — otherwise a scale-only write (the only field
+  // the Tools control changes) early-returns and the new value is silently
+  // dropped from the track mirror.
+  it('260923-bcm: a scale-only metadata write is not early-returned by the idempotence guard', () => {
+    physicPaintStore.setRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID, {
+      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 1,
+    });
+    const before = physicPaintVersion.value;
+    physicPaintStore.setRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID, {
+      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2,
+    });
+    expect(physicPaintVersion.value).toBe(before + 1);
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID)?.grainScale).toBe(2);
+
+    // An identical write (same normalized scale) stays a revision-stable no-op.
+    const after = physicPaintVersion.value;
+    physicPaintStore.setRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID, {
+      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2,
+    });
+    expect(physicPaintVersion.value).toBe(after);
+  });
+
+  it('260923-bcm: getDocumentFondInstruction carries the grain scale from the mirror and the fallback', () => {
+    const mirrorLayer = 'layer-grain-fond-mirror';
+    const mirrorDoc = createEfxPaintDocument(mirrorLayer);
+    registerDocument(mirrorDoc);
+    physicPaintStore.setRotoBackgroundMetadata(mirrorLayer, mirrorDoc.activeTrackId, {
+      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2,
+    });
+    expect(physicPaintStore.getDocumentFondInstruction(mirrorLayer)).toMatchObject({ grainScale: 2 });
+
+    const fallbackLayer = 'layer-grain-fond-fallback';
+    registerDocument(createEfxPaintDocument(fallbackLayer));
+    expect(setBackgroundFallback(fallbackLayer, {
+      mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2,
+    }).ok).toBe(true);
+    expect(physicPaintStore.getDocumentFondInstruction(fallbackLayer)).toMatchObject({ grainScale: 2 });
+
+    // Absent member on the fallback normalizes to 1 (type-shape law).
+    const defaultLayer = 'layer-grain-fond-default';
+    registerDocument(createEfxPaintDocument(defaultLayer));
+    expect(setBackgroundFallback(defaultLayer, {
+      mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.45,
+    }).ok).toBe(true);
+    expect(physicPaintStore.getDocumentFondInstruction(defaultLayer)).toMatchObject({ grainScale: 1 });
+  });
+
+  it('260923-bcm: _fondSourceSignature includes the normalized grain scale', () => {
+    const storePath = resolve(dirname(fileURLToPath(import.meta.url)), './physicPaintStore.ts');
+    const storeSource = readFileSync(storePath, 'utf8');
+    const fnBody = storeSource.slice(storeSource.indexOf('function _fondSourceSignature'));
+    expect(fnBody).toContain('grainScale');
   });
 
   it('reports real-key, interpolation, and notification timing without changing the mutation', () => {
