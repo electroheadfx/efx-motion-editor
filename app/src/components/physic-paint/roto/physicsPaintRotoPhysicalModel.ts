@@ -53,6 +53,7 @@ import {
   hashCanonicalPhysicalValue,
   validatedBoolean,
 } from '../../../efx-paint/document/efxPaintCanonicalEncoder';
+import { isGrainScaleValue } from '../../../efx-paint/document/efxPaintDocument';
 import {
   parseFrameMediaReference,
   type FrameMediaReference,
@@ -465,7 +466,9 @@ const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
   'loopClips',
   'incomingInterpolationBreakKeyIds',
 ]);
-const PHYSIC_PAINT_ROTO_BACKGROUND_KEYS = new Set(['background', 'paperGrain', 'grainStrength', 'color']);
+// 260923-bcm: `grainScale` joins the optional background members (finite
+// in-range acceptance below; parse normalizes a missing member to 1).
+const PHYSIC_PAINT_ROTO_BACKGROUND_KEYS = new Set(['background', 'paperGrain', 'grainStrength', 'color', 'grainScale']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -524,7 +527,10 @@ function isPhysicPaintRotoBackground(value: unknown): value is PhysicPaintRotoBa
   // refusing it bricked every document read on such a layer (2026-09-22).
   if (typeof value.paperGrain !== 'string') return false;
   if (typeof value.grainStrength !== 'number' || !Number.isFinite(value.grainStrength) || value.grainStrength < 0 || value.grainStrength > 1) return false;
-  return value.color === undefined || typeof value.color === 'string';
+  if (value.color !== undefined && typeof value.color !== 'string') return false;
+  // 260923-bcm / T-260923-01: optional grain scale — absent OK, present must be
+  // finite and in range (fail-closed like grainStrength).
+  return value.grainScale === undefined || isGrainScaleValue(value.grainScale);
 }
 
 function hasOnlyAllowedKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
@@ -1530,7 +1536,11 @@ export function parsePhysicPaintRotoPhysicalDocument(
     // shapes are unsupported — no legacy acceptance, no migration.
     throw new Error('PhysicPaintRotoPhysicalDocument: canonical revision mismatch.');
   }
-  const background = value.background === null ? null : Object.freeze({ ...value.background }) as PhysicPaintRotoBackgroundMetadata;
+  // 260923-bcm: ALWAYS emit the normalized grain scale (the guard above
+  // already refused an out-of-range member, so only absence reaches ?? 1).
+  const background = value.background === null
+    ? null
+    : Object.freeze({ ...value.background, grainScale: (value.background as { grainScale?: number }).grainScale ?? 1 }) as PhysicPaintRotoBackgroundMetadata;
   return Object.freeze({
     capacity,
     realKeyRecords: state.realKeyRecords,
@@ -1553,5 +1563,7 @@ function encodeCanonicalBackground(value: PhysicPaintRotoBackgroundMetadata | nu
     encodeCanonicalString(value.paperGrain),
     encodeCanonicalNumber(value.grainStrength),
     value.color === undefined ? 'u;' : encodeCanonicalString(value.color),
+    // 260923-bcm: the scale is part of the persisted equality fingerprint.
+    encodeCanonicalNumber(value.grainScale ?? 1),
   ].join('');
 }

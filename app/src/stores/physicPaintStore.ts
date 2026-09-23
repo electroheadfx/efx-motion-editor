@@ -1552,6 +1552,9 @@ function _resolveFondSource(layerId: string, efxDocument: EfxPaintDocument): Fon
       background: fallback.texture,
       paperGrain: fallback.paperGrain ? fallback.texture : '',
       grainStrength: fallback.grainStrength,
+      // 260923-bcm: the fallback's scale rides the fond metadata (?? 1 for an
+      // absent member — optional-member idiom).
+      grainScale: fallback.grainScale ?? 1,
     },
   };
 }
@@ -1605,7 +1608,7 @@ function _fondSourceSignature(source: FondSource | null): string {
   if (!source) return 'none';
   if (source.kind === 'color') return `color:${source.color}`;
   const metadata = source.metadata;
-  return `paper:${metadata.background}:${metadata.paperGrain}:${metadata.grainStrength}:${metadata.color ?? ''}`;
+  return `paper:${metadata.background}:${metadata.paperGrain}:${metadata.grainStrength}:${metadata.color ?? ''}:${metadata.grainScale ?? 1}`;
 }
 
 function _rotateFlattenedMemoOnFondChange(layerId: string, efxDocument: EfxPaintDocument): void {
@@ -2850,7 +2853,11 @@ export const physicPaintStore = {
       && current.background === metadata.background
       && current.paperGrain === metadata.paperGrain
       && current.grainStrength === metadata.grainStrength
-      && current.color === metadata.color) return;
+      && current.color === metadata.color
+      // 260923-bcm: compare the NORMALIZED scale — without this a scale-only
+      // write (the only field the Tools control changes) early-returns and the
+      // new value is silently dropped from the mirror.
+      && (current.grainScale ?? 1) === (metadata.grainScale ?? 1)) return;
     _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...metadata });
     // 48-03 T-48-07: paper metadata is NOT part of the flattened key (the key's
     // config/content/clip terms never cover it), so a paper change must rotate

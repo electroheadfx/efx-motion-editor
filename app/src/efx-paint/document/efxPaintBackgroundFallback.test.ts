@@ -10,6 +10,13 @@ function documentWithFallback(fallback: unknown): Record<string, unknown> {
   return document;
 }
 
+/** Expected document with the fallback replaced (typed, avoids spreading unknown). */
+function withFallback(document: Record<string, unknown>, fallback: Record<string, unknown>): Record<string, unknown> {
+  const background = document.background as Record<string, unknown>;
+  const currentFallback = background.fallback as Record<string, unknown>;
+  return { ...document, background: { ...background, fallback: { ...currentFallback, ...fallback } } };
+}
+
 describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
   it('round-trips a paper fallback through JSON serialize/parse', () => {
     const document = documentWithFallback({
@@ -21,10 +28,7 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
     const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(document)));
     // 260923-bcm: the parser ALWAYS emits the normalized grain scale, so an
     // input without the member round-trips to grainScale 1.
-    expect(parsed).toEqual({
-      ...document,
-      background: { ...document.background, fallback: { ...document.background.fallback, grainScale: 1 } },
-    });
+    expect(parsed).toEqual(withFallback(document, { grainScale: 1 }));
     expect(parsed.background.fallback).toMatchObject({ grainScale: 1 });
   });
 
@@ -120,7 +124,10 @@ describe('BackgroundFallback grain edge validation (BKG-04 adjacency)', () => {
       paperGrain: false,
       grainStrength: 0,
     });
-    expect(parseEfxPaintDocument(JSON.parse(JSON.stringify(zeroGrain)))).toEqual(zeroGrain);
+    // 260923-bcm: the parser always emits the normalized grain scale (1 here).
+    expect(parseEfxPaintDocument(JSON.parse(JSON.stringify(zeroGrain)))).toEqual(
+      withFallback(zeroGrain, { grainScale: 1 }),
+    );
   });
 
   it('rejects negative, NaN, Infinity, and non-number grainStrength fail-closed', () => {

@@ -15,6 +15,7 @@
 
 import { signal } from '@preact/signals';
 import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
+import { isGrainScaleValue } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
 import type { PhysicPaintRotoLoopResolutionContext } from '../components/physic-paint/roto/physicsPaintRotoPhysicalResolver';
@@ -631,7 +632,9 @@ function _isValidFallback(fallback: BackgroundFallback): boolean {
       && typeof fallback.paperGrain === 'boolean'
       && typeof fallback.grainStrength === 'number'
       && Number.isFinite(fallback.grainStrength)
-      && fallback.grainStrength >= 0;
+      && fallback.grainStrength >= 0
+      // 260923-bcm: optional grain scale — absent OK, present must be in range.
+      && (fallback.grainScale === undefined || isGrainScaleValue(fallback.grainScale));
   }
   return false;
 }

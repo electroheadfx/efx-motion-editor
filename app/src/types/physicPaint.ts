@@ -1,4 +1,5 @@
 import type { EfxPaintDocument as EfxPaintDocumentPayload } from '../efx-paint/document/efxPaintDocument';
+import { isGrainScaleValue } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { FadeCurve } from './audio';
 import type { MceImageRef } from './project';
@@ -1803,6 +1804,11 @@ export interface PhysicPaintRotoBackgroundMetadata {
   paperGrain: string;
   grainStrength: number;
   color?: string;
+  /**
+   * 260923-bcm: paper pattern scale (1 = natural tile). OPTIONAL member —
+   * consumers normalize with `?? 1` (optional-member idiom).
+   */
+  grainScale?: number;
 }
 
 export interface PhysicPaintRotoPlaybackSettings {
@@ -2382,7 +2388,10 @@ export function isPhysicPaintRotoBackgroundMetadata(value: unknown): value is Ph
     Number.isFinite(value.grainStrength) &&
     value.grainStrength >= 0 &&
     value.grainStrength <= 1 &&
-    (value.color === undefined || typeof value.color === 'string')
+    (value.color === undefined || typeof value.color === 'string') &&
+    // 260923-bcm / T-260923-01: optional grain scale — absent OK, present must
+    // be finite and in range (fail-closed, same class as grainStrength).
+    (value.grainScale === undefined || isGrainScaleValue(value.grainScale))
   );
 }
 

@@ -23,7 +23,7 @@ export interface MissingRotoFrameResolveInput {
 
 export type MissingRotoFrameDrawInstruction =
   | { kind: 'transparent'; span: MissingRotoFrameSpan; materialize: false }
-  | { kind: 'background-only'; color: string; paperTexture?: string; paperGrain?: string; grainStrength?: number; span: MissingRotoFrameSpan; materialize: boolean };
+  | { kind: 'background-only'; color: string; paperTexture?: string; paperGrain?: string; grainStrength?: number; grainScale?: number; span: MissingRotoFrameSpan; materialize: boolean };
 
 export function getMissingRotoFrameSpan(frame: number, realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[] | readonly number[] = []): MissingRotoFrameSpan {
   const requestedFrame = Math.floor(frame);
@@ -70,6 +70,9 @@ export function resolveMissingRotoFrameDraw(
     paperTexture: metadata.background,
     paperGrain: metadata.paperGrain,
     grainStrength: metadata.grainStrength,
+    // 260923-bcm: emit the scale only when the metadata carries it so exact
+    // instruction pins on scale-less fixtures stay stable.
+    ...(metadata.grainScale !== undefined ? { grainScale: metadata.grainScale } : {}),
     span,
     materialize,
   };

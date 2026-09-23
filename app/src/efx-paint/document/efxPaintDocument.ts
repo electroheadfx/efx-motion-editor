@@ -19,6 +19,28 @@ export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
 /** Paper texture identifiers carried by the paper fallback arm (D-11). */
 export type PaperTexture = 'canvas1' | 'canvas2' | 'canvas3';
 
+/**
+ * Paper grain SCALE bounds (260923-bcm, T-260923-01): the pattern-transform
+ * multiplier accepted on the paper fallback / background metadata. Pure
+ * helpers — this module's only physical-model import is type-only, so the
+ * physical model can reuse these without a runtime cycle.
+ */
+export const GRAIN_SCALE_MIN = 0.1;
+export const GRAIN_SCALE_MAX = 10;
+
+/** Finite, in [GRAIN_SCALE_MIN, GRAIN_SCALE_MAX] — the fail-closed acceptance. */
+export function isGrainScaleValue(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= GRAIN_SCALE_MIN
+    && value <= GRAIN_SCALE_MAX;
+}
+
+/** Normalize a raw grain scale: in-range keeps its value, anything else → 1. */
+export function normalizeGrainScale(value: unknown): number {
+  return isGrainScaleValue(value) ? value : 1;
+}
+
 /** Document fallback revealed in Background gaps (D-08: transparent at creation). */
 export type BackgroundFallback =
   | { readonly mode: 'transparent' }
@@ -28,6 +50,12 @@ export type BackgroundFallback =
       readonly texture: PaperTexture;
       readonly paperGrain: boolean;
       readonly grainStrength: number;
+      /**
+       * 260923-bcm: paper pattern scale (1 = natural tile). OPTIONAL member —
+       * the parser always normalizes it (absent/invalid → 1); consumers fall
+       * back with `?? 1` (optional-member idiom, not legacy migration).
+       */
+      readonly grainScale?: number;
     };
 
 /** Repeat policy of a Background Loop Clip (spec sketch). */

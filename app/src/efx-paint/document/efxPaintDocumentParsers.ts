@@ -25,6 +25,7 @@ import {
   type FrameLoopClipRepeat,
   type FrameLoopClipScale,
   type InternalPaintTrack,
+  normalizeGrainScale,
   type PaperTexture,
   type PhotoReferenceTrack,
   type PhotoReferenceTransform,
@@ -60,7 +61,10 @@ const TRACK_KEYS = new Set(['id', 'name', 'order', 'visible', 'solo', 'opacity',
 const BACKGROUND_KEYS = new Set(['id', 'clips', 'fallback', 'visible', 'revision', 'transform', 'transformLocked']);
 const FALLBACK_TRANSPARENT_KEYS = new Set(['mode']);
 const FALLBACK_SOLID_KEYS = new Set(['mode', 'color']);
-const FALLBACK_PAPER_KEYS = new Set(['mode', 'texture', 'paperGrain', 'grainStrength']);
+// 260923-bcm: `grainScale` is OPTIONAL on input (normalized to 1 when
+// absent/invalid) — the required-members check below owns presence, the
+// allowlist owns shape.
+const FALLBACK_PAPER_KEYS = new Set(['mode', 'texture', 'paperGrain', 'grainStrength', 'grainScale']);
 const PAPER_TEXTURES = new Set(['canvas1', 'canvas2', 'canvas3']);
 const LOOP_CLIP_KEYS = new Set(['id', 'startFrame', 'sourceFrameRefs', 'repeat', 'sourceKind', 'revision', 'scale']);
 const REPEAT_FINITE_KEYS = new Set(['mode', 'count']);
@@ -270,8 +274,11 @@ function parseBackgroundFallback(value: unknown): BackgroundFallback {
     return Object.freeze({ mode: 'solid' as const, color: value.color });
   }
   if (value.mode === 'paper') {
-    if (!hasOnlyKeys(value, FALLBACK_PAPER_KEYS) || Object.keys(value).length !== FALLBACK_PAPER_KEYS.size) {
-      throw new Error('BackgroundTrack: paper fallback must contain exactly mode, texture, paperGrain, grainStrength.');
+    // 260923-bcm: allowlist-only membership (grainScale optional) + explicit
+    // required-members presence — no exact-count check any more.
+    const required: readonly string[] = ['mode', 'texture', 'paperGrain', 'grainStrength'];
+    if (!hasOnlyKeys(value, FALLBACK_PAPER_KEYS) || required.some((key) => !(key in value))) {
+      throw new Error('BackgroundTrack: paper fallback must contain mode, texture, paperGrain, grainStrength (grainScale optional) and no other members.');
     }
     if (typeof value.texture !== 'string' || !PAPER_TEXTURES.has(value.texture)) {
       throw new Error('BackgroundTrack: paper fallback texture must be canvas1, canvas2, or canvas3.');
@@ -287,6 +294,8 @@ function parseBackgroundFallback(value: unknown): BackgroundFallback {
       texture: value.texture as PaperTexture,
       paperGrain: value.paperGrain,
       grainStrength: value.grainStrength,
+      // T-260923-01: absent/invalid scale normalizes to 1 — never thrown, never NaN.
+      grainScale: normalizeGrainScale(value.grainScale),
     });
   }
   throw new Error('BackgroundTrack: fallback.mode must be transparent, solid, or paper.');

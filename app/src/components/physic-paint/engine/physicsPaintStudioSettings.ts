@@ -10,6 +10,8 @@ export type PhysicsPaintStudioSettings = {
   background: BgMode;
   paperGrain: string;
   grainStrength: number;
+  /** 260923-bcm: paper pattern scale (1 = natural tile) — REQUIRED, default 1. */
+  grainScale: number;
   edgeDetail: number;
   pickup: number;
   eraseStrength: number;
@@ -28,6 +30,7 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
     background: 'canvas1',
     paperGrain: 'canvas1',
     grainStrength: 0.45,
+    grainScale: 1,
     edgeDetail: 4,
     pickup: 0,
     eraseStrength: 50,
@@ -58,7 +61,7 @@ export type BackgroundSelectorMode = Exclude<BgMode, 'photo'>;
  */
 export function backgroundModeToFallback(
   mode: BackgroundSelectorMode,
-  settings: Pick<PhysicsPaintStudioSettings, 'paperGrain' | 'grainStrength'>,
+  settings: Pick<PhysicsPaintStudioSettings, 'paperGrain' | 'grainStrength' | 'grainScale'>,
 ): BackgroundFallback {
   if (mode === 'transparent') return { mode: 'transparent' };
   if (mode === 'white') return { mode: 'solid', color: '#ffffff' };
@@ -67,6 +70,7 @@ export function backgroundModeToFallback(
     texture: mode,
     paperGrain: settings.paperGrain === mode,
     grainStrength: settings.grainStrength,
+    grainScale: settings.grainScale,
   };
 }
 
@@ -89,6 +93,7 @@ export function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings
     background,
     paperGrain: settings.paperGrain,
     grainStrength: settings.grainStrength,
+    grainScale: settings.grainScale,
     ...(background === 'white' ? { color: '#ffffff' } : {}),
   };
 }
@@ -99,6 +104,7 @@ export function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoB
     background: metadata.background,
     paperGrain: metadata.paperGrain,
     grainStrength: metadata.grainStrength,
+    grainScale: metadata.grainScale ?? 1,
   };
 }
 
@@ -127,6 +133,7 @@ export function applyBackgroundFallbackToSettings(fallback: BackgroundFallback):
       background,
       paperGrain: fallback.paperGrain ? fallback.texture : '',
       grainStrength: fallback.grainStrength,
+      grainScale: fallback.grainScale ?? 1,
     };
   }
   return { ...initial, background };

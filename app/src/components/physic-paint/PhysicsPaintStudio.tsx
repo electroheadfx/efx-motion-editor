@@ -162,12 +162,14 @@ function fondInstructionToFondMetadata(
       background: instruction.paperTexture as PhysicPaintRotoBackgroundMetadata['background'],
       paperGrain: instruction.paperGrain ?? '',
       grainStrength: instruction.grainStrength ?? 0,
+      grainScale: instruction.grainScale ?? 1,
     };
   }
   return {
     background: 'white',
     paperGrain: '',
     grainStrength: 0,
+    grainScale: 1,
     color: instruction.color,
   };
 }
