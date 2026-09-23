@@ -16,6 +16,9 @@
     "ui_safety_gate": true
   },
   "granularity": "fine",
+  "git": {
+    "allow_default_branch_commits": true
+  },
   "mempalace": {
     "enabled": true
   }
