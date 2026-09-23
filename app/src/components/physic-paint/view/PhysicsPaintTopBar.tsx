@@ -215,6 +215,7 @@ export function PhysicsPaintTopBar({
             max={GRAIN_SCALE_MAX}
             ariaLabel="Grain scale"
             disabled={disabled}
+            freeEntry
             onChange={onGrainScaleChange}
             inputStyle={{
               flex: '0 0 auto',

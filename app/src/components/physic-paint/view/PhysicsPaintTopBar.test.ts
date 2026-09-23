@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { PhysicsPaintTopBar, grainScaleStep, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
-import { NumericStepper } from '../../shared/NumericStepper';
+import { NumericStepper, commitStepperInput, parseStepperInput } from '../../shared/NumericStepper';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -112,6 +112,8 @@ describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
     expect(stepper!.props.ariaLabel).toBe('Grain scale');
     expect(stepper!.props.resolveStep).toBe(grainScaleStep);
     expect(stepper!.props.onChange).toBe(props.onGrainScaleChange);
+    // Free typed entry: any in-range number, no step-grid snap.
+    expect(stepper!.props.freeEntry).toBe(true);
     // Beside the existing Grain strength / paper grain controls on the same Tools surface.
     expect(findByAria(tree, 'Grain strength')).toBeDefined();
     expect(findByAria(tree, 'Paper grain')).toBeDefined();
@@ -162,6 +164,30 @@ describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
     const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === NumericStepper) as AnyVNode | undefined;
     expect(stepper!.props.value).toBe(0.4);
     expect(stepper!.props.step).toBe(0.1);
+  });
+
+  // UAT follow-up 2: free typed numbers + the European decimal comma.
+  it('accepts a free typed number: 1.3 stays 1.3 instead of snapping to the 0.5 band', () => {
+    const grain = { step: 0.5, resolveStep: grainScaleStep, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX } as const;
+    expect(commitStepperInput('1.3', grain)).toBe(1.3);
+    expect(commitStepperInput('0.75', grain)).toBe(0.75);
+    // The snap path is still what non-free fields get.
+    expect(commitStepperInput('1.3', { step: 0.5, resolveStep: grainScaleStep, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBe(1.5);
+  });
+
+  it('accepts the European decimal comma: "2,2" commits 2.2', () => {
+    expect(parseStepperInput('2,2')).toBe(2.2);
+    expect(parseStepperInput('0,5')).toBe(0.5);
+    expect(parseStepperInput('2.2')).toBe(2.2);
+    expect(commitStepperInput('2,2', { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBe(2.2);
+    expect(Number.isNaN(parseStepperInput('abc'))).toBe(true);
+    expect(commitStepperInput('abc', { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBeNull();
+  });
+
+  it('free entries still clamp to the shared grain scale bounds', () => {
+    const grain = { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX } as const;
+    expect(commitStepperInput('0', grain)).toBe(GRAIN_SCALE_MIN);
+    expect(commitStepperInput('99', grain)).toBe(GRAIN_SCALE_MAX);
   });
 });
 

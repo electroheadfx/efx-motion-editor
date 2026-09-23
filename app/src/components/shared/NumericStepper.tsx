@@ -39,6 +39,8 @@ export interface NumericStepperProps {
    * Falls back to `step` when absent.
    */
   resolveStep?: (value: number) => number;
+  /** Typed commits clamp to min/max without snapping to the step grid (free numbers). */
+  freeEntry?: boolean;
   min?: number;
   max?: number;
   /** Display decimals for the default formatter (step >= 1 → integer, else up to 3). */
@@ -80,6 +82,44 @@ function clampToStep(value: number, step: number, min?: number, max?: number): n
   if (min != null) next = Math.max(min, next);
   if (max != null) next = Math.min(max, next);
   return next;
+}
+
+/**
+ * Parse a typed field value. European keyboards produce the decimal comma
+ * ("2,2") — normalize it to "2.2" before parseFloat, which would otherwise
+ * stop at the comma and silently truncate to 2. Unparseable → NaN.
+ */
+export function parseStepperInput(raw: string): number {
+  return parseFloat(raw.replace(',', '.'));
+}
+
+export interface StepperCommitOptions {
+  step: number;
+  resolveStep?: (value: number) => number;
+  /** Typed commits clamp to min/max WITHOUT the step-grid snap (grain scale). */
+  freeEntry?: boolean;
+  min?: number;
+  max?: number;
+}
+
+/**
+ * Resolve a typed field value to the number the field commits: comma-tolerant
+ * parse, then either free clamp (freeEntry) or the shared snap-to-step path
+ * (T-52.2-08). Unparseable input returns null so the caller can revert.
+ */
+export function commitStepperInput(raw: string, options: StepperCommitOptions): number | null {
+  const parsed = parseStepperInput(raw);
+  if (!Number.isFinite(parsed)) return null;
+  if (options.freeEntry) {
+    let next = parsed;
+    if (options.min != null) next = Math.max(options.min, next);
+    if (options.max != null) next = Math.min(options.max, next);
+    // Match the display rule (max 3 decimals) so the stored value never
+    // drifts from what the field shows after commit.
+    return Number(next.toFixed(3));
+  }
+  const effectiveStep = options.resolveStep ? options.resolveStep(parsed) : options.step;
+  return clampToStep(parsed, effectiveStep, options.min, options.max);
 }
 
 const WRAPPER_STYLE: JSX.CSSProperties = {
@@ -127,6 +167,7 @@ export function NumericStepper({
   onChange,
   step,
   resolveStep,
+  freeEntry,
   min,
   max,
   precision,
@@ -170,7 +211,7 @@ export function NumericStepper({
 
   /** Every emission route funnels through here: snap to step, clamp, compare. */
   const stepBy = (direction: 1 | -1) => {
-    const typed = parseFloat(inputRef.current?.value ?? '');
+    const typed = parseStepperInput(inputRef.current?.value ?? '');
     const base = Number.isFinite(typed) ? typed : value;
     const effectiveStep = resolveStep ? resolveStep(base) : step;
     const next = clampToStep(base + direction * effectiveStep, effectiveStep, min, max);
@@ -206,10 +247,8 @@ export function NumericStepper({
   };
 
   const commitInput = (element: HTMLInputElement) => {
-    const parsed = parseFloat(element.value);
-    if (Number.isFinite(parsed)) {
-      const effectiveStep = resolveStep ? resolveStep(parsed) : step;
-      const next = clampToStep(parsed, effectiveStep, min, max);
+    const next = commitStepperInput(element.value, { step, resolveStep, freeEntry, min, max });
+    if (next !== null) {
       if (next !== value) onChange(next);
       element.value = formatStepperValue(next, step, precision);
     } else {
