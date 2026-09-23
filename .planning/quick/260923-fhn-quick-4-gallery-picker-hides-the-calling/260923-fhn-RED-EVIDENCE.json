@@ -1,0 +1,16 @@
+{
+  "task": "quick-260923-fhn Task 1 \u2014 RED: parent-modal visibility at the PhysicsPaintStudioView seam",
+  "planBase": "2a6b22c8",
+  "headAtStart": "2a6b22c8cddf10e583611c903719643aa028dbc0",
+  "headAtEvidence": "cfa928f2284869346795ec915420cbf69238e25b",
+  "command": "pnpm --filter efx-motion-editor exec vitest run --reporter=tap src/components/physic-paint/view/PhysicsPaintStudioView.test.ts  (run against the pre-fix view from RED commit f335be71; committed GREEN view restored immediately after)",
+  "exitCode": 1,
+  "targetTest": "hides every parent modal while the background gallery picker is open",
+  "targetFile": "app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts",
+  "expected": "While backgroundPicker.open === true with referenceDialog/scriptPickerDialog/playScriptDialog all open, the returned vnode tree contains NO PhysicsPaintPhotoReferenceDialog, NO PhysicsPaintScriptPickerDialog and NO MemoizedPhysicsPaintPlayScriptDialog nodes, and exactly one BackgroundAssetPickerView overlay. Same for the reference-picker path (test 2) and both-pickers-open (test 4). Picker closed restores all three parents (test 3).",
+  "actual": "3 failed | 1 passed (4) at base. Tests 1, 2 and 4 fail at expectNoParentModals line 119 with AssertionError: expected 1 to be +0 (actual '1', expected '0') \u2014 a parent modal IS present while the picker is open, exactly the uncoordinated rendering the fix gates. Test 3 (closed-picker restoration) passes: green in the same run.",
+  "note": "Flattened leaf-level TAP from vitest --reporter=tap plus the node --test summary block vitest never emits (counts derived from the leaf lines; raw nested tap at /tmp/fhn-red.tap, default-reporter log at /tmp/fhn-red.log). Tooling-adapter precedent: 260923-bcm-RED-task1.json; prior quicks documented the missing summary as a classifier limitation, this record reconstructs it faithfully. The original default-reporter RED run (exit 1, 'Tests 3 failed | 1 passed (4)') was captured at RED-commit time before any production edit; this tap reproduction ran the byte-identical pre-fix view from f335be71 (committed GREEN view restored immediately after \u2014 git status clean). Commit ordering satisfies the gate: test commit f335be71 precedes feat commit cfa928f2.",
+  "output": "not ok 1 - hides every parent modal while the background gallery picker is open\nnot ok 2 - hides every parent modal while the reference gallery picker is open (Reveal nesting path)\nok 3 - restores every parent modal when no picker is open\nnot ok 4 - hides every parent modal when BOTH gallery pickers are open at once\n# tests 4\n# pass 1\n# fail 3\n",
+  "rawTapPath": "/tmp/fhn-red.tap",
+  "defaultReporterLogPath": "/tmp/fhn-red.log"
+}
