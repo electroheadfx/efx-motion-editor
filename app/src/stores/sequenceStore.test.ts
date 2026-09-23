@@ -3,6 +3,7 @@ import {redo, resetHistory, undo} from '../lib/history';
 import type {Layer} from '../types/layer';
 import {physicPaintStore} from './physicPaintStore';
 import {sequenceStore, _setSequenceProjectDimensionsProvider} from './sequenceStore';
+import * as sequenceStoreModule from './sequenceStore';
 import {registerDocument, reset as resetEfxPaintStore} from './efxPaintStore';
 import {createEfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
 import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
@@ -436,5 +437,91 @@ describe('sequence factory project dims (260918-ovi)', () => {
     const seq = sequenceStore.createSequence('Default');
     expect(seq.width).toBe(1920);
     expect(seq.height).toBe(1080);
+  });
+});
+
+describe('layer stack naming and placement (260923-kcs)', () => {
+  beforeEach(() => {
+    resetHistory();
+    sequenceStore.reset();
+  });
+
+  function makeStackLayer(id: string): Layer {
+    return {
+      id,
+      name: id,
+      type: 'paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, cropTop: 0, cropRight: 0, cropBottom: 0, cropLeft: 0 },
+      source: { type: 'paint', layerId: id },
+      isBase: false,
+    };
+  }
+
+  describe('nextFreeLayerName — first free Layer N index', () => {
+    // Namespace access so a missing export fails each pin as a named test
+    // failure instead of a module-load crash (RED evidence requires real tests).
+    const nextFreeLayerName = (sequenceStoreModule as Record<string, unknown>).nextFreeLayerName as
+      (sequences: ReadonlyArray<{ name: string }>) => string;
+
+    it('returns Layer 1 for an empty stack', () => {
+      expect(nextFreeLayerName([])).toBe('Layer 1');
+    });
+
+    it('returns the index after a dense Layer run (spec example)', () => {
+      expect(
+        nextFreeLayerName([{ name: 'Layer 1' }, { name: 'Layer 2' }, { name: 'Layer 3' }]),
+      ).toBe('Layer 4');
+    });
+
+    it('returns the first FREE index, not max+1', () => {
+      expect(nextFreeLayerName([{ name: 'Layer 1' }, { name: 'Layer 3' }])).toBe('Layer 2');
+    });
+
+    it('ignores names that do not match the Layer N pattern', () => {
+      expect(
+        nextFreeLayerName([{ name: 'Film Grain' }, { name: 'Sequence 3' }]),
+      ).toBe('Layer 1');
+    });
+  });
+
+  describe('top insert (position: top / content overlay)', () => {
+    it('createFxSequence with position top lands the new sequence at the head of the stack', () => {
+      const existing = sequenceStore.createFxSequence('Existing FX', makeStackLayer('existing-layer'), 100);
+      const created = sequenceStore.createFxSequence('New Top FX', makeStackLayer('new-layer'), 100, { position: 'top' });
+      const overlays = sequenceStore.getOverlaySequences();
+      expect(overlays[0].id).toBe(created.id);
+      expect(overlays[1].id).toBe(existing.id);
+    });
+
+    it('createContentOverlaySequence always lands at the head of the stack', () => {
+      const existing = sequenceStore.createFxSequence('Existing FX', makeStackLayer('existing-layer'), 100);
+      const created = sequenceStore.createContentOverlaySequence('overlay.png', makeStackLayer('overlay-layer'), 100);
+      const overlays = sequenceStore.getOverlaySequences();
+      expect(overlays[0].id).toBe(created.id);
+      expect(overlays[1].id).toBe(existing.id);
+    });
+  });
+
+  describe('rename hardening', () => {
+    it('rejects control characters fail-closed without changing the name or pushing undo', () => {
+      const seq = sequenceStore.createFxSequence('Original', makeStackLayer('layer-r'), 100);
+      sequenceStore.rename(seq.id, 'bad\x07name');
+      expect(sequenceStore.getById(seq.id)?.name).toBe('Original');
+      // No undo entry was pushed for the rejected rename: undo must still land
+      // on the sequence creation (which removes the sequence).
+      undo();
+      expect(sequenceStore.getById(seq.id)).toBeNull();
+    });
+
+    it('CONTROL: a renamed stack keeps its name across an FX reorder (green at base)', () => {
+      const a = sequenceStore.createFxSequence('Stack A', makeStackLayer('layer-a'), 100);
+      sequenceStore.createFxSequence('Stack B', makeStackLayer('layer-b'), 100);
+      sequenceStore.rename(a.id, 'Renamed');
+      sequenceStore.reorderFxSequences(0, 1);
+      expect(sequenceStore.getById(a.id)?.name).toBe('Renamed');
+    });
   });
 });

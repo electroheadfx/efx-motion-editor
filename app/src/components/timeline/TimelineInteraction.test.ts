@@ -119,3 +119,26 @@ describe('Motion Editor playhead scrub audio contract (TIME-03)', () => {
     expect(finalSyncIndex).toBeGreaterThan(releaseIndex);
   });
 });
+
+describe('FX stack one-gesture drop + inline rename wiring (260923-kcs)', () => {
+  it('routes the FX reorder commit through the insertion-point resolver and drops the length-1 clamp', () => {
+    // One-gesture bottom drop: the commit site must translate fxDropIndexFromY's
+    // [0, trackCount] insertion point via the pure resolver — the old
+    // Math.min(dropFxIdx, fxTracks.length - 1) re-clamp destroyed it.
+    expect(interaction).toContain('resolveFxReorderToIndex(');
+    expect(interaction).not.toContain('Math.min(dropFxIdx, fxTracks.length - 1)');
+  });
+
+  it('registers a double-click listener and drives the inline rename edit signal', () => {
+    // Inline double-click rename on the FX header name area — canvas overlay
+    // input, no dialog — with the commit path reachable from the interaction.
+    expect(interaction).toContain("addEventListener('dblclick'");
+    expect(interaction).toContain('fxRenameEdit');
+    expect(interaction).toContain('sequenceStore.rename(');
+  });
+
+  it('renders the inline rename input commit path on the canvas overlay', () => {
+    expect(canvas).toContain('fxRenameEdit');
+    expect(canvas).toContain('sequenceStore.rename(');
+  });
+});

@@ -420,6 +420,66 @@ describe('frameMap solid/transparent entries', () => {
   });
 });
 
+describe('FX stack header labels are identity, not position (260923-kcs)', () => {
+  beforeEach(() => {
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    registerDocument(makeTrackDocument('roto-layer'));
+  });
+
+  it('keeps each FX stack header label equal to its own sequence name through reverse and deletion', () => {
+    const physicLayer = (id: string): Layer => ({
+      id,
+      name: 'Physic Paint',
+      type: 'physic-paint',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'physic-paint', layerId: id },
+    });
+    const grainLayer: Layer = {
+      id: 'grain-layer',
+      name: 'Film Grain',
+      type: 'generator-grain',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'generator-grain', density: 0.3, size: 1, intensity: 0.5, lockSeed: true, seed: 42 },
+    };
+
+    const physicsA = makeFxSequence('physics-a', 'Physics A', physicLayer('physics-layer-a'));
+    const physicsB = makeFxSequence('physics-b', 'Physics B', physicLayer('physics-layer-b'));
+    const grain = makeFxSequence('grain', 'Grain Stack', grainLayer);
+
+    // Initial arrangement: every header shows its OWN stored name.
+    sequenceStore.sequences.value = [physicsA, physicsB, grain];
+    for (const row of fxTrackLayouts.value) {
+      expect(row.headerLabel).toBe(row.sequenceName);
+    }
+
+    // Reversed arrangement: the identity of each sequenceId's label is unchanged
+    // (the old positional law renumbered the physic rows to PPaint #1/#2).
+    sequenceStore.sequences.value = [grain, physicsB, physicsA];
+    const reversed = new Map(fxTrackLayouts.value.map((row) => [row.sequenceId, row]));
+    expect(reversed.get('physics-a')?.headerLabel).toBe('Physics A');
+    expect(reversed.get('physics-b')?.headerLabel).toBe('Physics B');
+    expect(reversed.get('grain')?.headerLabel).toBe('Grain Stack');
+    for (const row of fxTrackLayouts.value) {
+      expect(row.headerLabel).toBe(row.sequenceName);
+    }
+
+    // After deleting the first physic sequence, the survivor keeps its own name
+    // (the old positional law shifted it from PPaint #2 to PPaint #1).
+    sequenceStore.sequences.value = [grain, physicsB];
+    const survivor = fxTrackLayouts.value.find((row) => row.sequenceId === 'physics-b');
+    expect(survivor?.headerLabel).toBe('Physics B');
+    expect(survivor?.headerLabel).toBe(survivor?.sequenceName);
+  });
+});
+
 describe('paint enumeration (D-04/D-05)', () => {
   beforeEach(() => {
     sequenceStore.reset();
