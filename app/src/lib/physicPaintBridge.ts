@@ -182,8 +182,19 @@ interface TauriWindowApi {
       unminimize?: () => Promise<void>;
       show?: () => Promise<void>;
       setFocus?: () => Promise<void>;
+      outerPosition?: () => Promise<{ x: number; y: number }>;
+      innerSize?: () => Promise<{ width: number; height: number }>;
     } | null>;
   };
+}
+
+/** Mirror law (quick-260923-i17): the Studio window's geometry, read fresh at
+ * every open from the main window — outer origin + inner size, never persisted. */
+interface StudioWindowBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 interface TauriCoreApi {
@@ -3842,15 +3853,46 @@ function validateOpenRequest(request: PhysicPaintOpenRequest): Result<{ layer: L
   };
 }
 
+/**
+ * Reads the main window's current screen geometry (outer origin + inner size,
+ * physical px) at open time. quick-260923-i17 mirror law: fresh read every
+ * open, nothing cached or persisted; null on any failure so the caller can
+ * refuse instead of opening on unrelated geometry. Negative x/y (displays left
+ * of/above the primary) pass through verbatim.
+ */
+async function readMainWindowBounds(): Promise<StudioWindowBounds | null> {
+  try {
+    const windowApi = await import('@tauri-apps/api/window') as TauriWindowApi;
+    const mainWindow = await windowApi.Window?.getByLabel?.('main');
+    if (!mainWindow || typeof mainWindow.outerPosition !== 'function' || typeof mainWindow.innerSize !== 'function') return null;
+    const position = await mainWindow.outerPosition();
+    const size = await mainWindow.innerSize();
+    const { x, y, width, height } = { x: position.x, y: position.y, width: size.width, height: size.height };
+    if (![x, y, width, height].every((value) => Number.isFinite(value))) return null;
+    if (width < 1 || height < 1) return null;
+    return { x, y, width, height };
+  } catch {
+    return null;
+  }
+}
+
 async function tryOpenTauriPhysicPaintWindow(context: PhysicPaintLaunchContext): Promise<Result<TauriPhysicsPaintLaunchResult>> {
   try {
     const core = await import('@tauri-apps/api/core') as TauriCoreApi;
     if (!core.invoke) return { ok: false, error: 'Tauri invoke API unavailable' };
+    // Mirror law (quick-260923-i17): the Studio takes the main window's
+    // geometry — outer origin + inner size — read FRESH at every open and
+    // never persisted; a failed read refuses the open rather than launching
+    // on unrelated geometry.
+    const bounds = await readMainWindowBounds();
+    if (!bounds) {
+      return { ok: false, error: 'Could not read the main window geometry for the Studio window mirror' };
+    }
     // 52.1 (D-05): invoke serializes the context as JSON, which turns the
     // document's real-key `bytes` (Uint8Array) into index objects. Convert
     // bytes -> base64 so the child's launch validator sees the canonical
     // string form instead of a corrupted array.
-    const result = await core.invoke<TauriPhysicsPaintLaunchResult>('open_physics_paint_window', { context: toTransportPayload(context) });
+    const result = await core.invoke<TauriPhysicsPaintLaunchResult>('open_physics_paint_window', { context: toTransportPayload(context), bounds });
     if (!isTauriPhysicsPaintLaunchResult(result)) {
       return { ok: false, error: `Physics paint native command returned an invalid result: ${JSON.stringify(result)}` };
     }

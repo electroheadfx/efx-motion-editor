@@ -1481,6 +1481,18 @@ describe('physicPaintBridge', async () => {
       isTauri: () => true,
       invoke: vi.fn().mockRejectedValue(new Error('permission denied')),
     }));
+    vi.doMock('@tauri-apps/api/window', () => ({
+      Window: {
+        getByLabel: vi.fn(async (label: string) =>
+          label === 'main'
+            ? {
+                outerPosition: async () => ({ x: 10, y: 20 }),
+                innerSize: async () => ({ width: 1440, height: 900 }),
+              }
+            : null,
+        ),
+      },
+    }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
     const { registerDocument: registerFreshDocument } = await import('../stores/efxPaintStore');
     registerFreshDocument(makeTrackDocument('phys-layer-1'));
@@ -1513,6 +1525,18 @@ describe('physicPaintBridge', async () => {
       configurable: true,
     });
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
+    vi.doMock('@tauri-apps/api/window', () => ({
+      Window: {
+        getByLabel: vi.fn(async (label: string) =>
+          label === 'main'
+            ? {
+                outerPosition: async () => ({ x: 42, y: 24 }),
+                innerSize: async () => ({ width: 1440, height: 900 }),
+              }
+            : null,
+        ),
+      },
+    }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
     const { registerDocument: registerFreshDocument } = await import('../stores/efxPaintStore');
     registerFreshDocument(makeTrackDocument('phys-layer-1'));
@@ -1524,6 +1548,7 @@ describe('physicPaintBridge', async () => {
     expect(result.ok).toBe(true);
     expect(invoke).toHaveBeenCalledWith('open_physics_paint_window', {
       context: expect.objectContaining({ layerId: 'phys-layer-1', startFrame: 4 }),
+      bounds: { x: 42, y: 24, width: 1440, height: 900 },
     });
     expect(window.open).not.toHaveBeenCalled();
   });
@@ -1547,6 +1572,18 @@ describe('physicPaintBridge', async () => {
       configurable: true,
     });
     vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
+    vi.doMock('@tauri-apps/api/window', () => ({
+      Window: {
+        getByLabel: vi.fn(async (label: string) =>
+          label === 'main'
+            ? {
+                outerPosition: async () => ({ x: 7, y: 9 }),
+                innerSize: async () => ({ width: 1440, height: 900 }),
+              }
+            : null,
+        ),
+      },
+    }));
     const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
     const { registerDocument: registerFreshDocument } = await import('../stores/efxPaintStore');
     registerFreshDocument(makeTrackDocument('phys-layer-1'));

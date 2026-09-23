@@ -150,6 +150,17 @@ struct PhysicsPaintWindowLaunchResult {
     display_sleep_asserted: bool,
 }
 
+/// quick-260923-i17 mirror law: the Studio window takes the main window's
+/// geometry (outer origin + inner size) read fresh at every open — never
+/// persisted, never re-centred. Negative x/y (multi-monitor) pass through.
+#[derive(serde::Deserialize)]
+struct StudioWindowBounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
 #[tauri::command]
 async fn get_physics_paint_launch_context(state: tauri::State<'_, PhysicsPaintLaunchState>) -> Result<Option<PhysicsPaintLaunchContext>, String> {
     state.0.lock()
@@ -158,7 +169,7 @@ async fn get_physics_paint_launch_context(state: tauri::State<'_, PhysicsPaintLa
 }
 
 #[tauri::command]
-async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_, PhysicsPaintLaunchState>, context: PhysicsPaintLaunchContext) -> Result<PhysicsPaintWindowLaunchResult, String> {
+async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_, PhysicsPaintLaunchState>, context: PhysicsPaintLaunchContext, bounds: StudioWindowBounds) -> Result<PhysicsPaintWindowLaunchResult, String> {
     use tauri::{Emitter, Manager};
 
     let label = "efx-physic-paint";
@@ -191,16 +202,26 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         }
         window
     } else {
+        // quick-260923-i17: the builder takes LOGICAL pixels while `bounds`
+        // are physical — divide by the main window's own scale factor (the
+        // Studio mirrors onto that same screen, so same scale). The exact
+        // physical geometry is re-applied post-show below on BOTH arms.
+        let mirror_scale = app
+            .get_webview_window("main")
+            .and_then(|main| main.scale_factor().ok())
+            .unwrap_or(1.0);
         let window = tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::App(url.into()))
             // Title carries the build's commit hash (see build.rs): UAT must be
             // able to prove which build ran a crashing session.
             .title(format!("EFX Physics Paint [{}]", env!("GIT_SHA")))
-            .inner_size(1280.0, 900.0)
+            // quick-260923-i17: fresh-create arm places the Studio exactly on
+            // the main window's geometry (mirror law — no centred placement).
+            .position(bounds.x / mirror_scale, bounds.y / mirror_scale)
+            .inner_size(bounds.width / mirror_scale, bounds.height / mirror_scale)
             .min_inner_size(960.0, 640.0)
             .resizable(true)
             .visible(true)
             .focused(true)
-            .center()
             // 47-05: never suspend the paint webview when its window is
             // occluded/backgrounded (WKInactiveSchedulingPolicy::None). A
             // backgrounded WKWebView stops rAF and, after minutes, loses its
@@ -255,7 +276,11 @@ async fn open_physics_paint_window(app: tauri::AppHandle, state: tauri::State<'_
         window.unminimize().map_err(|error| format!("Could not unminimize physics paint window: {error}"))?;
     }
     window.show().map_err(|error| format!("Could not show physics paint window: {error}"))?;
-    window.center().map_err(|error| format!("Could not center physics paint window: {error}"))?;
+    // quick-260923-i17 mirror law: apply the main window's fresh bounds after
+    // show — this post-show application is what mirrors the REUSE arm (the
+    // builder above only covers fresh creation). No centred placement anywhere.
+    window.set_position(tauri::PhysicalPosition::new(bounds.x, bounds.y)).map_err(|error| format!("Could not position physics paint window: {error}"))?;
+    window.set_size(tauri::PhysicalSize::new(bounds.width, bounds.height)).map_err(|error| format!("Could not size physics paint window: {error}"))?;
     window.set_focus().map_err(|error| format!("Could not focus physics paint window: {error}"))?;
     // Single-window model: the Studio owns the layer session while open — hide
     // the main editor window so the two never present simultaneously. The main
