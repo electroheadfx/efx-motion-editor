@@ -59,7 +59,10 @@ coverage:
     human_judgment: false
   - id: D2
     description: "Native UAT (4 rows): photo-reference → gallery import hides parent and restores pick; Reveal → image-reference picker hides PlayScript; both parents open at once; cancel restores parents"
-    verification: []
+    verification:
+      - kind: other
+        ref: "Native UAT PASSED 2026-09-23 — all 4 rows approved live; one approved follow-up 608dbdbe (Import moved to the top bar, Confirm/Cancel to the footer, shared reference + background picker)"
+        status: pass
     human_judgment: true
     rationale: "Live WKWebView modal stacking and visual restoration are the reported defect surface; vitest's node environment cannot observe fixed z-70/72 overlays on a real canvas region. Native UAT is the user's — automated status only is claimed here."
 
@@ -133,9 +136,11 @@ None - plan executed exactly as written.
 
 None - no external service configuration required.
 
-## Native UAT (user, pending)
+## Native UAT (user, PASSED 2026-09-23)
 
-Automated status only — 4 rows owed (do not treat as passed):
+All 4 rows approved live 2026-09-23, with one approved follow-up: `608dbdbe` moved Import to the top bar and Confirm/Cancel to the footer (shared reference + background picker; targeted 176/176, full suite 4229 passed / 0 failed, tsc clean).
+
+Original rows:
 
 1. Photo-reference modal → gallery import → only gallery visible, photo-reference hidden → pick → photo-reference returns with the pick applied.
 2. Apply Script Reveal → image-reference picker → PlayScript hidden while picker open → pick → parent returns with pick applied.
