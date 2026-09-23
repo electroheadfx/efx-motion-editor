@@ -9,6 +9,7 @@ export interface PhysicsPaintTopBarProps {
   background: BgMode;
   paperGrain: string;
   grainStrength: number;
+  grainScale: number;
   ready: boolean;
   disabled?: boolean;
   onBrushSizeChange: (value: number) => void;
@@ -16,6 +17,7 @@ export interface PhysicsPaintTopBarProps {
   onBackgroundChange: (mode: BgMode) => void;
   onPaperGrainChange: (key: string) => void;
   onGrainStrengthChange: (value: number) => void;
+  onGrainScaleChange: (scale: number) => void;
 }
 
 const PAPER_TEXTURES = {
@@ -43,6 +45,15 @@ const GRAIN_STRENGTH_OPTIONS = [
   { label: 'Soft', value: 0.35 },
   { label: 'Med', value: 0.65 },
   { label: 'Hard', value: 0.95 },
+];
+
+/** Discrete grain scale steps — clean cache keys, default 1. */
+const GRAIN_SCALE_OPTIONS = [
+  { label: '0.5x', value: 0.5 },
+  { label: '0.75x', value: 0.75 },
+  { label: '1x', value: 1 },
+  { label: '1.5x', value: 1.5 },
+  { label: '2x', value: 2 },
 ];
 
 function clampTopBarValue(value: unknown, min: number, max: number): number {
@@ -113,6 +124,7 @@ export function PhysicsPaintTopBar({
   background,
   paperGrain,
   grainStrength,
+  grainScale,
   ready,
   disabled = false,
   onBrushSizeChange,
@@ -120,6 +132,7 @@ export function PhysicsPaintTopBar({
   onBackgroundChange,
   onPaperGrainChange,
   onGrainStrengthChange,
+  onGrainScaleChange,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
@@ -183,6 +196,23 @@ export function PhysicsPaintTopBar({
                 disabled={disabled}
                 class={segmentedButtonClass(grainStrength === option.value)}
                 onClick={() => onGrainStrengthChange(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div class="physics-paint-topbar-control">
+          <span>Grain scale</span>
+          <div class="physics-paint-segmented-row" role="group" aria-label="Grain scale">
+            {GRAIN_SCALE_OPTIONS.map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                disabled={disabled}
+                class={segmentedButtonClass(grainScale === option.value)}
+                onClick={() => onGrainScaleChange(option.value)}
               >
                 {option.label}
               </button>

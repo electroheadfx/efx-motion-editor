@@ -50,7 +50,7 @@ describe('subscribeRotoPlaybackBackground', () => {
       subscribePaperCanvas,
     });
 
-    expect(subscribePaperCanvas).toHaveBeenCalledWith('canvas2', 20, 10, expect.any(Function));
+    expect(subscribePaperCanvas).toHaveBeenCalledWith('canvas2', 20, 10, expect.any(Function), 1);
     expect(operations).toContain('draw:canvas2-raster:0,0,20,10');
     expect(operations).toContain('fill:2,5,1,1');
     expect(operations.indexOf('draw:canvas2-raster:0,0,20,10')).toBeLessThan(operations.indexOf('fill:2,5,1,1'));

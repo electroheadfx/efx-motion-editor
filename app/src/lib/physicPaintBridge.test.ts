@@ -1043,7 +1043,8 @@ describe('physicPaintBridge', async () => {
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
 
-    expect(carriedRotoPhysical(context).background).toEqual(metadata);
+    // 260923-bcm: the launch-context carry normalizes the optional scale to 1.
+    expect(carriedRotoPhysical(context).background).toEqual({ ...metadata, grainScale: 1 });
     expect(carriedRotoPhysical(context).background).not.toBe(metadata);
   });
 

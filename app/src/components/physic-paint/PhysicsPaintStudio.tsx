@@ -1235,6 +1235,7 @@ export function PhysicsPaintStudio() {
     setBackground,
     setPaperGrain,
     setGrainStrength,
+    setGrainScale,
     setEdgeDetail,
     setPickup,
     setSpread,
@@ -1254,6 +1255,21 @@ export function PhysicsPaintStudio() {
     const layerId = launchContext?.layerId;
     if (layerId && mode !== 'photo') {
       setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));
+    }
+  };
+  // 260923-bcm: one synchronous action — settings + track mirror + document
+  // fallback — so the scale reaches playback/fond the same render and survives
+  // reopen (settings hydrate only from document.background.fallback). No engine
+  // call: visible background is suppressed at PhysicsPaintCanvasMount.
+  const handleGrainScaleChange = (scale: number) => {
+    const layerId = launchContext?.layerId;
+    const nextSettings = { ...settings, grainScale: scale };
+    setGrainScale(scale);
+    if (layerId) {
+      physicPaintStore.setRotoBackgroundMetadata(layerId, studioActiveTrackId(), buildRotoBackgroundMetadata(nextSettings));
+    }
+    if (layerId && settings.background !== 'photo') {
+      setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
     }
   };
   const replacePhysicalRecordsWithOwnership = (
@@ -3299,12 +3315,13 @@ export function PhysicsPaintStudio() {
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, handleBackgroundChange, setPaperGrain, setGrainStrength], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, settings.grainScale, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, handleBackgroundChange, setPaperGrain, setGrainStrength, handleGrainScaleChange, setGrainScale], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     background: settings.background,
     paperGrain: settings.paperGrain,
     grainStrength: settings.grainStrength,
+    grainScale: settings.grainScale,
     ready: readyToApply,
     disabled: staticControlsLocked,
     onBrushSizeChange: setBrushSize,
@@ -3312,6 +3329,7 @@ export function PhysicsPaintStudio() {
     onBackgroundChange: handleBackgroundChange,
     onPaperGrainChange: setPaperGrain,
     onGrainStrengthChange: setGrainStrength,
+    onGrainScaleChange: handleGrainScaleChange,
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -3610,7 +3628,7 @@ export function PhysicsPaintStudio() {
     width: projectCanvasWidth,
     height: projectCanvasHeight,
     background: buildRotoBackgroundMetadata(settings),
-  } : null, [launchContext?.operationId, projectCanvasWidth, projectCanvasHeight, settings.background, settings.paperGrain, settings.grainStrength]);
+  } : null, [launchContext?.operationId, projectCanvasWidth, projectCanvasHeight, settings.background, settings.paperGrain, settings.grainStrength, settings.grainScale]);
   const onionOverlayUrlsRef = useRef<string[]>([]);
   const onionOverlay = useMemo(() => {
     onionOverlayUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -3703,7 +3721,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, isPlaying, efxPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a

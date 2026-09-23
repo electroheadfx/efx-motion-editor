@@ -1387,7 +1387,7 @@ describe('Physics Paint background swatch write-through (49-04 UAT fix)', () => 
     // The topBar consumes the wrapper, and the memo re-resolves with the new
     // handler identity (not the raw setBackground action).
     expect(studio).toContain('onBackgroundChange: handleBackgroundChange,');
-    expect(studio).toContain('handleBackgroundChange, setPaperGrain, setGrainStrength]');
+    expect(studio).toContain('handleBackgroundChange, setPaperGrain, setGrainStrength, handleGrainScaleChange, setGrainScale]');
   });
 });
 

@@ -191,12 +191,13 @@ describe('Play Script parent authority and complete-set bridge', async () => {
     expect(replace).toHaveBeenCalledOnce();
     expect(physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID)).toEqual([1, 4, 5]);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
-    expect(physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID).rotoPhysical?.background).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    // 260923-bcm: the document projection normalizes the optional scale to 1.
+    expect(physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID).rotoPhysical?.background).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, grainScale: 1 });
     expect(physicPaintStore.getRotoCacheFrames('layer-1', TEST_TRACK_ID).filter((candidate) => candidate.source === 'generated-interpolation')).toHaveLength(2);
   });
 
   it('keeps transparent background transparent through batch persistence', async () => {
-    const transparent = { background: 'transparent' as const, paperGrain: 'canvas1', grainStrength: 0 };
+    const transparent = { background: 'transparent' as const, paperGrain: 'canvas1', grainStrength: 0, grainScale: 1 };
     expect((await applyPhysicPaintPayload(batch({ rotoBackground: transparent }))).ok).toBe(true);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toEqual(transparent);
     expect(physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID).rotoPhysical?.background).toEqual(transparent);

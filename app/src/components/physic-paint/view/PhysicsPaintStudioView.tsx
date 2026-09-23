@@ -124,7 +124,7 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
       height: props.height,
       background: props.background,
     });
-  }, [props.background.background, props.background.color, props.background.grainStrength, props.background.paperGrain, props.height, props.width]);
+  }, [props.background.background, props.background.color, props.background.grainStrength, props.background.grainScale, props.background.paperGrain, props.height, props.width]);
 
   return <canvas class="physics-paint-cached-roto-playback-background" ref={canvasRef} width={props.width} height={props.height} aria-hidden="true" />;
 }

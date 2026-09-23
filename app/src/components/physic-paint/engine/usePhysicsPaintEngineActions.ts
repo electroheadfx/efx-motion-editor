@@ -61,6 +61,12 @@ export function createPhysicsPaintEngineActions(input: PhysicsPaintEngineActions
     updateSetting('grainStrength', grainStrength);
   };
 
+  // 260923-bcm: grain SCALE is project-side paper pattern only — engine
+  // visible background is suppressed (PhysicsPaintCanvasMount), so NO engine call.
+  const setGrainScale = (grainScale: number) => {
+    updateSetting('grainScale', grainScale);
+  };
+
   const setEdgeDetail = (edgeDetail: number) => {
     if (!canMutate()) return;
     input.engine!.setEdgeDetail(edgeDetail);
@@ -112,6 +118,7 @@ export function createPhysicsPaintEngineActions(input: PhysicsPaintEngineActions
     setBackground,
     setPaperGrain,
     setGrainStrength,
+    setGrainScale,
     setEdgeDetail,
     setPickup,
     setSpread,
