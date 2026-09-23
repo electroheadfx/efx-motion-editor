@@ -363,13 +363,16 @@ export const sequenceStore = {
       return acc;
     }, []);
     if (fromIndex < 0 || fromIndex >= fxIndices.length || toIndex < 0 || toIndex >= fxIndices.length) return;
-    // Swap the actual positions in the full array
+    // Swap the actual positions in the full array. toIndex is the desired FINAL
+    // overlay rank — resolveFxReorderToIndex already accounted for the removal,
+    // so subtracting again here would land every downward move one slot too high
+    // (260923-kcs UAT). In post-removal coordinates, splicing at actualTo places
+    // `moved` before overlay[toIndex] when moving up and after it when moving
+    // down (its slot shifted by the removal).
     const actualFrom = fxIndices[fromIndex];
     const actualTo = fxIndices[toIndex];
     const [moved] = all.splice(actualFrom, 1);
-    // After removal, adjust target index if needed
-    const adjustedTo = actualTo > actualFrom ? actualTo - 1 : actualTo;
-    all.splice(adjustedTo, 0, moved);
+    all.splice(actualTo, 0, moved);
     sequences.value = all;
     markDirty();
     const after = snapshot();
