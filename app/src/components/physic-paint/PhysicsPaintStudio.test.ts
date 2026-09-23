@@ -2042,8 +2042,9 @@ describe('Physics Paint Create Rail script picker (AM-3)', () => {
     // of the flow (the 52-05 comment), never code.
     expect(photoReferenceDialog.toLowerCase().match(/reveal/g)).toHaveLength(2);
     // The dialog is fed ONLY from the bundle above — a direct prop spread would
-    // escape the memo-input lock.
-    expect(studioView).toContain('{referenceDialog ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}');
+    // escape the memo-input lock. 260923-fhn: the render line additionally
+    // requires !pickerOpen (parents step aside while a gallery picker is open).
+    expect(studioView).toContain('{referenceDialog && !pickerOpen ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}');
   });
 
   it('routes the reveal creation entry through the picker one-shot only, cleared on both exits', () => {

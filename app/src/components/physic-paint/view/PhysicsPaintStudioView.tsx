@@ -305,6 +305,15 @@ export interface PhysicsPaintStudioViewProps {
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
   const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker } = props;
+  // 260923-fhn (Quick 4): while either gallery picker is open, every parent
+  // modal steps aside — the picker overlay is absolute z-20 inside the canvas
+  // region, the parents are fixed z-70/72, and stacked they fight for space.
+  // Plain render-time derivation from the existing controller props (no new
+  // signal, no writes); the parents' opener booleans live in the Studio and are
+  // never cleared here, so each returns with its prior state when the picker
+  // closes. Visibility orchestration only — opener wiring, import handlers,
+  // overlay order and stacking are untouched.
+  const pickerOpen = Boolean(backgroundPicker?.open || referencePicker?.open);
   return (
     <main class="demo-shell">
       <section
@@ -335,11 +344,11 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
           rightPanel={rightPanel}
         />
 
-        <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} />
+        {!pickerOpen ? <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} /> : null}
 
-        {referenceDialog ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
+        {referenceDialog && !pickerOpen ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
 
-        {scriptPickerDialog?.open ? <PhysicsPaintScriptPickerDialog {...scriptPickerDialog} /> : null}
+        {scriptPickerDialog?.open && !pickerOpen ? <PhysicsPaintScriptPickerDialog {...scriptPickerDialog} /> : null}
 
         <PhysicsPaintWorkflowStrip {...workflow} />
 
