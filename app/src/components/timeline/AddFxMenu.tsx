@@ -1,6 +1,6 @@
 import {useState, useEffect, useRef} from 'preact/hooks';
 import {Clapperboard, Sparkles} from 'lucide-preact';
-import {sequenceStore} from '../../stores/sequenceStore';
+import {sequenceStore, nextFreeLayerName} from '../../stores/sequenceStore';
 import {layerStore} from '../../stores/layerStore';
 import {paintStore} from '../../stores/paintStore';
 import {uiStore} from '../../stores/uiStore';
@@ -55,14 +55,15 @@ export function AddLayerMenu() {
     }
   }
 
-  const handleAddFxLayer = (type: LayerType, name: string, defaultBlend: BlendMode = 'normal') => {
+  const handleAddFxLayer = (type: LayerType, defaultBlend: BlendMode = 'normal') => {
     setMenuOpen(false);
     const layerId = crypto.randomUUID();
     const source = createDefaultFxSource(type);
+    const stackName = nextFreeLayerName(sequenceStore.sequences.peek());
 
     const fxLayer: Layer = {
       id: layerId,
-      name,
+      name: stackName,
       type,
       visible: true,
       opacity: 1,
@@ -73,9 +74,9 @@ export function AddLayerMenu() {
     };
 
     if (targetSequenceId) {
-      sequenceStore.createFxSequence(name, fxLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
+      sequenceStore.createFxSequence(stackName, fxLayer, totalFrames.peek(), { position: 'top', inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
     } else {
-      sequenceStore.createFxSequence(name, fxLayer, totalFrames.peek());
+      sequenceStore.createFxSequence(stackName, fxLayer, totalFrames.peek(), { position: 'top' });
     }
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
@@ -104,9 +105,10 @@ export function AddLayerMenu() {
   const handleAddPaintLayer = () => {
     setMenuOpen(false);
     const layerId = crypto.randomUUID();
+    const stackName = nextFreeLayerName(sequenceStore.sequences.peek());
     const paintLayer: Layer = {
       id: layerId,
-      name: 'Paint',
+      name: stackName,
       type: 'paint',
       visible: true,
       opacity: 1,
@@ -116,9 +118,9 @@ export function AddLayerMenu() {
       isBase: false,
     };
     if (targetSequenceId) {
-      sequenceStore.createFxSequence('Paint', paintLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
+      sequenceStore.createFxSequence(stackName, paintLayer, totalFrames.peek(), { position: 'top', inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
     } else {
-      sequenceStore.createFxSequence('Paint', paintLayer, totalFrames.peek());
+      sequenceStore.createFxSequence(stackName, paintLayer, totalFrames.peek(), { position: 'top' });
     }
     layerStore.setSelected(layerId);
     uiStore.selectLayer(layerId);
@@ -137,9 +139,10 @@ export function AddLayerMenu() {
   const handleAddPhysicPaintLayer = () => {
     setMenuOpen(false);
     const layerId = crypto.randomUUID();
+    const stackName = nextFreeLayerName(sequenceStore.sequences.peek());
     const physicPaintLayer: Layer = {
       id: layerId,
-      name: 'Physic Paint',
+      name: stackName,
       type: 'physic-paint',
       visible: true,
       opacity: 1,
@@ -149,9 +152,9 @@ export function AddLayerMenu() {
       isBase: false,
     };
     if (targetSequenceId) {
-      sequenceStore.createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
+      sequenceStore.createFxSequence(stackName, physicPaintLayer, totalFrames.peek(), { position: 'top', inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
     } else {
-      sequenceStore.createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek());
+      sequenceStore.createFxSequence(stackName, physicPaintLayer, totalFrames.peek(), { position: 'top' });
     }
     // v1.0 (DOC-01/DOC-02): one parent layer owns exactly one document with
     // one default Paint track + fixed Background track (transparent fallback).
@@ -222,35 +225,35 @@ export function AddLayerMenu() {
           <div class="px-3 py-1 text-[9px] text-(--color-text-dim) font-semibold">GENERATORS</div>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
-            onClick={() => handleAddFxLayer('generator-grain', 'Film Grain', 'screen')}
+            onClick={() => handleAddFxLayer('generator-grain', 'screen')}
           >
             <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
             Film Grain
           </button>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
-            onClick={() => handleAddFxLayer('generator-particles', 'Particles', 'screen')}
+            onClick={() => handleAddFxLayer('generator-particles', 'screen')}
           >
             <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
             Particles
           </button>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
-            onClick={() => handleAddFxLayer('generator-lines', 'Lines', 'screen')}
+            onClick={() => handleAddFxLayer('generator-lines', 'screen')}
           >
             <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
             Lines
           </button>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
-            onClick={() => handleAddFxLayer('generator-dots', 'Dots', 'screen')}
+            onClick={() => handleAddFxLayer('generator-dots', 'screen')}
           >
             <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
             Dots
           </button>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
-            onClick={() => handleAddFxLayer('generator-vignette', 'Vignette')}
+            onClick={() => handleAddFxLayer('generator-vignette')}
           >
             <span class="w-2 h-2 rounded-sm bg-[#EC4899] shrink-0" />
             Vignette
@@ -261,7 +264,7 @@ export function AddLayerMenu() {
           <div class="px-3 py-1 text-[9px] text-(--color-text-dim) font-semibold">ADJUSTMENTS</div>
           <button
             class="w-full text-left px-3 py-1.5 text-xs text-(--color-text-button) hover:bg-(--color-hover-overlay) flex items-center gap-2"
-            onClick={() => handleAddFxLayer('adjustment-blur', 'Blur')}
+            onClick={() => handleAddFxLayer('adjustment-blur')}
           >
             <span class="w-2 h-2 rounded-sm bg-[#F97316] shrink-0" />
             Blur

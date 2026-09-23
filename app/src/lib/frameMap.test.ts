@@ -355,7 +355,7 @@ describe('frameMap solid/transparent entries', () => {
     expect(fxTrackLayouts.value[0]).toEqual(expect.objectContaining({ sequenceId: 'fx-roto', inFrame: 0, outFrame: 9 }));
   });
 
-  it('renumbers only Physics Paint FX tracks after mixed-order reorder and deletion without changing sequence names', () => {
+  it('keeps Physics Paint FX header labels identity-stable across reorder and deletion', () => {
     const physicLayer = (id: string): Layer => ({
       id,
       name: 'Physic Paint',
@@ -392,30 +392,32 @@ describe('frameMap solid/transparent entries', () => {
     const paint = makeFxSequence('paint', 'Paint Sequence', paintLayer);
     const physicsC = makeFxSequence('physics-c', 'Persisted Physics C', physicLayer('physics-layer-c'));
 
+    // Identity law (260923-kcs): every header shows its OWN stored name —
+    // no positional PPaint #N renumbering exists in any arrangement.
     sequenceStore.sequences.value = [physicsA, grain, physicsB, paint, physicsC];
     expect(fxTrackLayouts.value.map(({ sequenceId, sequenceName, headerLabel }) => ({ sequenceId, sequenceName, headerLabel }))).toEqual([
-      { sequenceId: 'physics-a', sequenceName: 'Persisted Physics A', headerLabel: 'PPaint #1' },
+      { sequenceId: 'physics-a', sequenceName: 'Persisted Physics A', headerLabel: 'Persisted Physics A' },
       { sequenceId: 'grain', sequenceName: 'Film Grain Sequence', headerLabel: 'Film Grain Sequence' },
-      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #2' },
+      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'Persisted Physics B' },
       { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
-      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'PPaint #3' },
+      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'Persisted Physics C' },
     ]);
 
     sequenceStore.sequences.value = [physicsC, grain, physicsA, paint, physicsB];
     expect(fxTrackLayouts.value.map(({ sequenceId, sequenceName, headerLabel }) => ({ sequenceId, sequenceName, headerLabel }))).toEqual([
-      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'PPaint #1' },
+      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'Persisted Physics C' },
       { sequenceId: 'grain', sequenceName: 'Film Grain Sequence', headerLabel: 'Film Grain Sequence' },
-      { sequenceId: 'physics-a', sequenceName: 'Persisted Physics A', headerLabel: 'PPaint #2' },
+      { sequenceId: 'physics-a', sequenceName: 'Persisted Physics A', headerLabel: 'Persisted Physics A' },
       { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
-      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #3' },
+      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'Persisted Physics B' },
     ]);
 
     sequenceStore.sequences.value = [physicsC, grain, paint, physicsB];
     expect(fxTrackLayouts.value.map(({ sequenceId, sequenceName, headerLabel }) => ({ sequenceId, sequenceName, headerLabel }))).toEqual([
-      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'PPaint #1' },
+      { sequenceId: 'physics-c', sequenceName: 'Persisted Physics C', headerLabel: 'Persisted Physics C' },
       { sequenceId: 'grain', sequenceName: 'Film Grain Sequence', headerLabel: 'Film Grain Sequence' },
       { sequenceId: 'paint', sequenceName: 'Paint Sequence', headerLabel: 'Paint Sequence' },
-      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'PPaint #2' },
+      { sequenceId: 'physics-b', sequenceName: 'Persisted Physics B', headerLabel: 'Persisted Physics B' },
     ]);
   });
 });

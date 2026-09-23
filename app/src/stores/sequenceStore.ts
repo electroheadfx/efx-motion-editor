@@ -16,6 +16,33 @@ function genId(): string {
   return crypto.randomUUID();
 }
 
+// 260923-kcs: sequence names are identity, not position. Control-char guard is a
+// LOCAL duplicate of efxPaintStore.TRACK_NAME_CONTROL_CHAR (fail-closed ASVS V5
+// rejection) — deliberately not imported to avoid cross-store coupling.
+const SEQUENCE_NAME_CONTROL_CHAR = /[\x00-\x1f\x7f]/;
+
+/** First free `Layer N` auto-name for the + Layer stack menu (260923-kcs).
+ *  Mirrors efxPaintStore._nextPaintTrackNumber: the first positive integer not
+ *  taken by an existing `Layer N` name; non-matching names consume nothing. */
+export function nextFreeLayerName(sequences: ReadonlyArray<{ name: string }>): string {
+  const used = new Set<number>();
+  for (const sequence of sequences) {
+    const match = /^Layer (\d+)$/.exec(sequence.name);
+    if (match) used.add(Number(match[1]));
+  }
+  let n = 1;
+  while (used.has(n)) n += 1;
+  return `Layer ${n}`;
+}
+
+/** Insert a new sequence at the TOP of the FX stack: before the first non-content
+ *  sequence (FX-display order = non-content array order), or at the array end when
+ *  none exists. Content sequences (rendered on the content track) stay untouched. */
+function insertSequenceAtStackTop(all: Sequence[], seq: Sequence): Sequence[] {
+  const idx = all.findIndex((s) => s.kind !== 'content');
+  return idx === -1 ? [...all, seq] : [...all.slice(0, idx), seq, ...all.slice(idx)];
+}
+
 // NOTE: markDirty callback is set by projectStore via _setMarkDirtyCallback()
 // to avoid circular imports. See projectStore.ts initialization.
 // When Plan 03-02 adds projectStore.markDirty(), it should call:
@@ -237,8 +264,10 @@ export const sequenceStore = {
 
   // --- FX Sequence CRUD ---
 
-  /** Create an FX sequence with a single FX layer, positioned globally on the timeline */
-  createFxSequence(name: string, layer: Layer, totalFrames: number, opts?: { inFrame?: number; outFrame?: number }): Sequence {
+  /** Create an FX sequence with a single FX layer, positioned globally on the timeline.
+   *  opts.position 'top' lands the new sequence at the head of the stack (the + Layer
+   *  menu); default 'end' keeps existing opts-less callers (ShaderBrowser) appending. */
+  createFxSequence(name: string, layer: Layer, totalFrames: number, opts?: { inFrame?: number; outFrame?: number; position?: 'end' | 'top' }): Sequence {
     const before = snapshot();
 
     const seq: Sequence = {
@@ -252,7 +281,9 @@ export const sequenceStore = {
       inFrame: opts?.inFrame ?? 0,
       outFrame: opts?.outFrame ?? (totalFrames > 0 ? totalFrames : 100),
     };
-    sequences.value = [...sequences.value, seq];
+    sequences.value = opts?.position === 'top'
+      ? insertSequenceAtStackTop(sequences.value, seq)
+      : [...sequences.value, seq];
     markDirty();
 
     const after = snapshot();
@@ -282,7 +313,9 @@ export const sequenceStore = {
       inFrame: opts?.inFrame ?? 0,
       outFrame: opts?.outFrame ?? (totalFrames > 0 ? totalFrames : 100),
     };
-    sequences.value = [...sequences.value, seq];
+    // Content overlays land at the TOP of the stack (its only callers are the
+    // + Layer content flow — 260923-kcs).
+    sequences.value = insertSequenceAtStackTop(sequences.value, seq);
     markDirty();
 
     const after = snapshot();
@@ -383,8 +416,11 @@ export const sequenceStore = {
     return sequences.value.filter((s) => s.kind !== 'content');
   },
 
-  /** Update sequence name */
+  /** Update sequence name — fail-closed on control characters (ASVS V5): a name
+   *  matching SEQUENCE_NAME_CONTROL_CHAR returns BEFORE snapshot/dirty/undo, so
+   *  nothing changes and no undo entry is pushed (260923-kcs). */
   rename(id: string, name: string) {
+    if (SEQUENCE_NAME_CONTROL_CHAR.test(name)) return;
     const before = snapshot();
 
     sequences.value = sequences.value.map((s) =>

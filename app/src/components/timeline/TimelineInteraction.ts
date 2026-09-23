@@ -13,6 +13,7 @@ import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRA
 import type {TimelineRenderer} from './TimelineRenderer';
 import {isolationStore} from '../../stores/isolationStore';
 import {resolveFxSpanDragRange} from './timelineFxSpanDrag';
+import {resolveFxReorderToIndex} from '../../lib/fxReorder';
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
@@ -1083,15 +1084,14 @@ export class TimelineInteraction {
     // FX header reorder drag end
     if (this.isDraggingFxReorder) {
       if (this.fxReorderMoved) {
-        // Actual drag: reorder FX sequences
+        // Actual drag: reorder FX sequences. fxDropIndexFromY already returns
+        // an insertion point in [0, length] (past-end = final bottom slot);
+        // the pure resolver translates it without re-clamping to length-1
+        // (260923-kcs — one-gesture drop under the last row).
         const dropFxIdx = this.fxDropIndexFromY(e.clientY);
         const fxTracks = fxTrackLayouts.peek();
-        const clampedDrop = Math.max(0, Math.min(dropFxIdx, fxTracks.length - 1));
         const fromIndex = this.fxReorderFromIndex;
-        let toIndex = clampedDrop;
-        if (toIndex > fromIndex) {
-          toIndex -= 1; // Account for removed item shifting indices
-        }
+        const toIndex = resolveFxReorderToIndex(dropFxIdx, fromIndex, fxTracks.length);
         if (toIndex !== fromIndex) {
           sequenceStore.reorderFxSequences(fromIndex, toIndex);
         }

@@ -1243,8 +1243,10 @@ describe('45-05 Task 3: AddFxMenu registers the v1.0 document at layer creation'
     // The registration follows both layer-creation branches (isolated-range
     // and standard), so every creation path registers the document.
     const registration = source.indexOf('registerDocument(createEfxPaintDocument(layerId))');
-    const isolatedBranch = source.indexOf("createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek(), { inFrame: isolatedInFrame, outFrame: isolatedOutFrame })");
-    const standardBranch = source.indexOf("createFxSequence('Physic Paint', physicPaintLayer, totalFrames.peek())");
+    // 260923-kcs: both creation branches now pass the next free `Layer N` stack
+    // name and position:'top' — keep the registration-after-creation ordering pin.
+    const isolatedBranch = source.indexOf("createFxSequence(stackName, physicPaintLayer, totalFrames.peek(), { position: 'top', inFrame: isolatedInFrame, outFrame: isolatedOutFrame })");
+    const standardBranch = source.indexOf("createFxSequence(stackName, physicPaintLayer, totalFrames.peek(), { position: 'top' })");
     expect(registration).toBeGreaterThan(isolatedBranch);
     expect(registration).toBeGreaterThan(standardBranch);
   });
@@ -1270,7 +1272,9 @@ describe('45-05 Task 3: AddFxMenu registers the v1.0 document at layer creation'
     expect(source).toContain("type: 'physic-paint'");
     expect(source).toContain("source: { type: 'physic-paint', layerId } as LayerSourceData");
     expect(source).toContain('transform: defaultTransform()');
-    expect(source).toContain("name: 'Physic Paint'");
+    // 260923-kcs: stack names are identity (next free `Layer N`), not a fixed
+    // menu string — the old `name: 'Physic Paint'` law is dead.
+    expect(source).toContain('name: stackName');
   });
 });
 
