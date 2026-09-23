@@ -32,6 +32,13 @@ export interface NumericStepperProps {
   onChange: (value: number) => void;
   /** The field's own step (D-24: fps 0.5, everything else keeps its current step). */
   step: number;
+  /**
+   * Variable-step fields (grain scale): the effective step for each emission is
+   * resolved from the LIVE base value, so a hold-to-repeat crossing a band
+   * boundary switches step mid-hold instead of keeping the press-start step.
+   * Falls back to `step` when absent.
+   */
+  resolveStep?: (value: number) => number;
   min?: number;
   max?: number;
   /** Display decimals for the default formatter (step >= 1 → integer, else up to 3). */
@@ -119,6 +126,7 @@ export function NumericStepper({
   value,
   onChange,
   step,
+  resolveStep,
   min,
   max,
   precision,
@@ -164,7 +172,8 @@ export function NumericStepper({
   const stepBy = (direction: 1 | -1) => {
     const typed = parseFloat(inputRef.current?.value ?? '');
     const base = Number.isFinite(typed) ? typed : value;
-    const next = clampToStep(base + direction * step, step, min, max);
+    const effectiveStep = resolveStep ? resolveStep(base) : step;
+    const next = clampToStep(base + direction * effectiveStep, effectiveStep, min, max);
     if (next !== value) onChange(next);
   };
 
@@ -199,7 +208,8 @@ export function NumericStepper({
   const commitInput = (element: HTMLInputElement) => {
     const parsed = parseFloat(element.value);
     if (Number.isFinite(parsed)) {
-      const next = clampToStep(parsed, step, min, max);
+      const effectiveStep = resolveStep ? resolveStep(parsed) : step;
+      const next = clampToStep(parsed, effectiveStep, min, max);
       if (next !== value) onChange(next);
       element.value = formatStepperValue(next, step, precision);
     } else {

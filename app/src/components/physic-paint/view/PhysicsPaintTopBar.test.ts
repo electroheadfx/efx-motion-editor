@@ -3,8 +3,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
-import { PhysicsPaintTopBar, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
+import { PhysicsPaintTopBar, grainScaleStep, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import { NumericStepper } from '../../shared/NumericStepper';
+import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
 const css = () => readFileSync(cssPath, 'utf8');
@@ -69,18 +71,6 @@ function buttonsInGroup(tree: AnyVNode, groupLabel: string): AnyVNode[] {
   ) as AnyVNode[];
 }
 
-function textOf(node: unknown): string {
-  const parts: string[] = [];
-  const walk = (current: unknown) => {
-    if (typeof current === 'string' || typeof current === 'number') { parts.push(String(current)); return; }
-    if (!current || typeof current !== 'object') return;
-    if (Array.isArray(current)) { for (const child of current) walk(child); return; }
-    walk((current as AnyVNode).props?.children);
-  };
-  walk(node);
-  return parts.join('');
-}
-
 describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
   it('lets the studio top row grow beyond 58px so wrapped controls are never crushed', () => {
     // 47-01 UAT round 3: row 3 is `auto` — the workflow strip sets its own
@@ -104,43 +94,74 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
   });
 });
 
-// 260923-bcm Task 3 (RED): the Grain scale segmented control on the Tools
-// (TopBar) surface — five discrete options, default 1x, click routes to
-// onGrainScaleChange, and the existing grain strength / paper grain controls
-// remain intact beside it.
-describe('260923-bcm Grain scale control (Tools surface)', () => {
-  it('renders a Grain scale segmented control with 0.5x/0.75x/1x/1.5x/2x defaulting to 1x active', () => {
-    const tree = renderTopBar(baseTopBarProps());
-    const buttons = buttonsInGroup(tree, 'Grain scale');
-    expect(buttons.map((button) => textOf(button))).toEqual(['0.5x', '0.75x', '1x', '1.5x', '2x']);
-    const active = buttons.filter((button) => String(button.props.class ?? '').includes('active'));
-    expect(active.map((button) => textOf(button))).toEqual(['1x']);
-    // Beside the existing Grain strength control on the same Tools surface.
-    expect(findByAria(tree, 'Grain strength')).toBeDefined();
-    expect(findByAria(tree, 'Paper grain')).toBeDefined();
-  });
-
-  it('clicking 2x calls onGrainScaleChange(2) and leaves grain strength handlers intact', () => {
+// 260923-bcm UAT follow-up: Grain scale is a value stepper (− value +), not
+// preset buttons. The step rule is the contract: 0.5 strictly inside ]0.5, 2.0[,
+// 0.1 at/below 0.5 and at/above 2.0 — default 1.0 + → 1.5; 1.5 − − → 0.5;
+// 0.5 − → 0.4; 1.5 + → 2.0, 2.0 + → 2.1. Values live in the shared
+// [GRAIN_SCALE_MIN, GRAIN_SCALE_MAX] acceptance and route to onGrainScaleChange.
+describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
+  it('renders a NumericStepper bound to grainScale with the shared bounds and live change handler', () => {
     const props = baseTopBarProps();
     const tree = renderTopBar(props);
-    const twoX = buttonsInGroup(tree, 'Grain scale').find((button) => textOf(button) === '2x');
-    expect(twoX).toBeDefined();
-    twoX!.props.onClick();
-    expect(props.onGrainScaleChange).toHaveBeenCalledWith(2);
+    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === NumericStepper) as AnyVNode | undefined;
+    expect(stepper, 'Grain scale must render the shared NumericStepper').toBeDefined();
+    expect(stepper!.props.value).toBe(1);
+    expect(stepper!.props.step).toBe(0.5);
+    expect(stepper!.props.min).toBe(GRAIN_SCALE_MIN);
+    expect(stepper!.props.max).toBe(GRAIN_SCALE_MAX);
+    expect(stepper!.props.ariaLabel).toBe('Grain scale');
+    expect(stepper!.props.resolveStep).toBe(grainScaleStep);
+    expect(stepper!.props.onChange).toBe(props.onGrainScaleChange);
+    // Beside the existing Grain strength / paper grain controls on the same Tools surface.
+    expect(findByAria(tree, 'Grain strength')).toBeDefined();
+    expect(findByAria(tree, 'Paper grain')).toBeDefined();
+    // No preset button row remains for Grain scale.
+    expect(() => findByAria(tree, 'Grain scale')).toThrow();
+  });
 
-    // Grain on/off regression: strength buttons still fire unchanged.
+  it('step rule walks the user click sequences: 1.0 + → 1.5 → 2.0 → 2.1 and 1.5 − − → 0.5 − → 0.4', () => {
+    let up = 1;
+    up += grainScaleStep(up);
+    expect(up).toBe(1.5);
+    up += grainScaleStep(up);
+    expect(up).toBe(2);
+    up += grainScaleStep(up);
+    expect(up).toBe(2.1);
+
+    let down = 1.5;
+    down -= grainScaleStep(down);
+    expect(down).toBe(1);
+    down -= grainScaleStep(down);
+    expect(down).toBe(0.5);
+    down -= grainScaleStep(down);
+    expect(down).toBeCloseTo(0.4, 10);
+
+    // Boundaries: interior keeps 0.5, the edges drop to 0.1.
+    expect(grainScaleStep(0.6)).toBe(0.5);
+    expect(grainScaleStep(0.5)).toBe(0.1);
+    expect(grainScaleStep(0.4)).toBe(0.1);
+    expect(grainScaleStep(1.9)).toBe(0.5);
+    expect(grainScaleStep(2)).toBe(0.1);
+    expect(grainScaleStep(9)).toBe(0.1);
+  });
+
+  it('grain strength / paper grain buttons still route to their own handlers', () => {
+    const props = baseTopBarProps();
+    const tree = renderTopBar(props);
     const strength = buttonsInGroup(tree, 'Grain strength');
     expect(strength.length).toBeGreaterThan(0);
     strength[0].props.onClick();
     expect(props.onGrainStrengthChange).toHaveBeenCalled();
     expect(props.onPaperGrainChange).not.toHaveBeenCalled();
+    expect(props.onGrainScaleChange).not.toHaveBeenCalled();
   });
 
-  it('a non-default grainScale prop marks the matching option active', () => {
-    const props = { ...baseTopBarProps(), grainScale: 2 };
-    const buttons = buttonsInGroup(renderTopBar(props), 'Grain scale');
-    const active = buttons.filter((button) => String(button.props.class ?? '').includes('active'));
-    expect(active.map((button) => textOf(button))).toEqual(['2x']);
+  it('a non-default grainScale prop feeds the stepper value', () => {
+    const props = { ...baseTopBarProps(), grainScale: 0.4 };
+    const tree = renderTopBar(props);
+    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === NumericStepper) as AnyVNode | undefined;
+    expect(stepper!.props.value).toBe(0.4);
+    expect(stepper!.props.step).toBe(0.1);
   });
 });
 

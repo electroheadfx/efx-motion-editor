@@ -1,5 +1,6 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import { NumericStepper } from '../../shared/NumericStepper';
+import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 
@@ -47,14 +48,14 @@ const GRAIN_STRENGTH_OPTIONS = [
   { label: 'Hard', value: 0.95 },
 ];
 
-/** Discrete grain scale steps — clean cache keys, default 1. */
-const GRAIN_SCALE_OPTIONS = [
-  { label: '0.5x', value: 0.5 },
-  { label: '0.75x', value: 0.75 },
-  { label: '1x', value: 1 },
-  { label: '1.5x', value: 1.5 },
-  { label: '2x', value: 2 },
-];
+/**
+ * Grain scale step (UAT follow-up): 0.5 strictly inside ]0.5, 2.0[ — the default
+ * 1.0 walks 1.5 ⇄ 0.5 in 0.5 jumps — and 0.1 at/below 0.5 and at/above 2.0
+ * (0.5 − → 0.4, 2.0 + → 2.1). Pure so hold-to-repeat resolves it per emission.
+ */
+export function grainScaleStep(value: number): number {
+  return value > 0.5 && value < 2 ? 0.5 : 0.1;
+}
 
 function clampTopBarValue(value: unknown, min: number, max: number): number {
   const numeric = typeof value === 'number' ? value : Number(value);
@@ -205,19 +206,28 @@ export function PhysicsPaintTopBar({
 
         <div class="physics-paint-topbar-control">
           <span>Grain scale</span>
-          <div class="physics-paint-segmented-row" role="group" aria-label="Grain scale">
-            {GRAIN_SCALE_OPTIONS.map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                disabled={disabled}
-                class={segmentedButtonClass(grainScale === option.value)}
-                onClick={() => onGrainScaleChange(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <NumericStepper
+            class="physics-paint-topbar-number-stepper"
+            value={grainScale}
+            step={grainScaleStep(grainScale)}
+            resolveStep={grainScaleStep}
+            min={GRAIN_SCALE_MIN}
+            max={GRAIN_SCALE_MAX}
+            ariaLabel="Grain scale"
+            disabled={disabled}
+            onChange={onGrainScaleChange}
+            inputStyle={{
+              flex: '0 0 auto',
+              width: '46px',
+              height: '24px',
+              padding: '2px 4px',
+              backgroundColor: '#5a5c5f',
+              color: '#f8fafc',
+              fontSize: '12px',
+              fontWeight: 700,
+            }}
+            buttonStyle={{ width: '22px', height: '24px' }}
+          />
         </div>
       </div>
 
