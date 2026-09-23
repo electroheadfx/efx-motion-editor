@@ -102,12 +102,15 @@ None — no placeholder values, TODO/FIXME markers, or unwired data sources in a
 
 ## UAT Status
 
-**Automated-ready — NOT done.** Native UAT (5 rows in the plan) remains the user's after GREEN:
-1. Three stacks [1][2][3] → drag 1 under 3 in ONE gesture → [2][3][1], names still Layer 2 / Layer 3 / Layer 1
-2. Drag back to any order → names never reshuffle
-3. + Layer → lands on top, named with the next free index
-4. Double-click a name → edit → sticks across reorder + save/reopen
-5. Delete and select regression unchanged (FX header click-selection, visibility dot, layer deletion, LeftPanel LayerList)
+**Native UAT PASSED 2026-09-23 — all 5 rows approved; quick CLOSED.**
+
+Round 1 failed on downward drops: a double index adjustment (`resolveFxReorderToIndex` returns the final rank, but `reorderFxSequences` subtracted 1 again on downward moves) made drop-under-next a no-op, other downward drops land one slot high, and the bottom slot unreachable — upward moves unaffected. Fixed in 44df65ab (store splices at `actualTo` directly; the resolver owns the adjustment). Full suite 4254 passed, typecheck clean. User re-approved all rows after the fix.
+
+1. Three stacks [1][2][3] → drag 1 under 3 in ONE gesture → [2][3][1], names still Layer 2 / Layer 3 / Layer 1 — **PASSED**
+2. Drag back to any order → names never reshuffle — **PASSED**
+3. + Layer → lands on top, named with the next free index — **PASSED**
+4. Double-click a name → edit → sticks across reorder + save/reopen — **PASSED**
+5. Delete and select regression unchanged (FX header click-selection, visibility dot, layer deletion, LeftPanel LayerList) — **PASSED**
 
 ## Self-Check: PASSED
 
