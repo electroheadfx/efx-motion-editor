@@ -14,9 +14,10 @@ import type { PhysicPaintImageLibraryResult } from '../../../types/physicPaint';
  *
  * The controller is signal-driven (useSignal/useComputed only — no useState,
  * efx-preact-reactivity). The view is a presentational full-area swap of the
- * canvas region: bordered panel, top bar with the surface title and
- * Confirm/Cancel, an images-only multi-select grid, and an in-picker Import
- * button. No backdrop overlay, no Tab trap — a region swap, not a modal (D-01).
+ * canvas region: bordered panel, top bar with the surface title and the
+ * in-picker Import button, an images-only multi-select grid, and a footer with
+ * Confirm/Cancel. No backdrop overlay, no Tab trap — a region swap, not a modal
+ * (D-01).
  */
 
 export type BackgroundAssetPickerStatus =
@@ -164,10 +165,10 @@ export interface BackgroundAssetPickerViewProps {
 
 /**
  * S2 full-area swap: a bordered panel filling the canvas region with a top bar
- * (`Import background images` title + named Confirm/Cancel buttons) and an
- * images-only multi-select grid. `role="region"` with
- * `aria-label="Import background images"`; focus moves to the first actionable
- * control on open and Confirm/Cancel restore focus to the opener. No backdrop
+ * (`Import background images` title + Import button), an images-only
+ * multi-select grid, and a footer with named Confirm/Cancel buttons.
+ * `role="region"` with `aria-label="Import background images"`; focus moves to
+ * Confirm on open and Confirm/Cancel restore focus to the opener. No backdrop
  * overlay and no Tab trap (region swap, not a modal). The engine canvas stays
  * mounted underneath — this panel is an overlay, never a replacement.
  */
@@ -178,9 +179,9 @@ export function BackgroundAssetPickerView(props: BackgroundAssetPickerViewProps)
   useEffect(() => {
     if (props.open) {
       returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      // UI-SPEC: opening the picker moves focus to its FIRST actionable
-      // control (the Confirm button in the top bar); Cancel/Confirm restore
-      // focus to the Import control that opened the picker.
+      // UI-SPEC: opening the picker moves focus to Confirm (the completion
+      // action in the footer); Cancel/Confirm restore focus to the Import
+      // control that opened the picker.
       confirmButtonRef.current?.focus();
     } else if (returnFocusRef.current) {
       returnFocusRef.current.focus();
@@ -209,15 +210,11 @@ export function BackgroundAssetPickerView(props: BackgroundAssetPickerViewProps)
         <div class="physics-paint-background-picker-actions">
           <button
             type="button"
-            ref={confirmButtonRef}
-            class="physics-paint-background-picker-confirm"
-            disabled={props.selectedIds.length === 0}
-            onClick={handleConfirm}
+            class="physics-paint-background-picker-import"
+            disabled={props.importing}
+            onClick={props.onImport}
           >
-            Confirm
-          </button>
-          <button type="button" onClick={props.onCancel}>
-            Cancel
+            Import
           </button>
         </div>
       </div>
@@ -265,14 +262,20 @@ export function BackgroundAssetPickerView(props: BackgroundAssetPickerViewProps)
       </div>
 
       <div class="physics-paint-background-picker-footer">
-        <button
-          type="button"
-          class="physics-paint-background-picker-import"
-          disabled={props.importing}
-          onClick={props.onImport}
-        >
-          Import
-        </button>
+        <div class="physics-paint-background-picker-actions">
+          <button
+            type="button"
+            ref={confirmButtonRef}
+            class="physics-paint-background-picker-confirm"
+            disabled={props.selectedIds.length === 0}
+            onClick={handleConfirm}
+          >
+            Confirm
+          </button>
+          <button type="button" onClick={props.onCancel}>
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

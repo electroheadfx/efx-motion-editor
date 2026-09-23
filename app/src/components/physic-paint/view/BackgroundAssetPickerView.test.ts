@@ -249,10 +249,10 @@ describe('BackgroundAssetPickerView surface contract', () => {
     expect(code).not.toContain('role="dialog"');
   });
 
-  it('moves focus to the first actionable control (Confirm) on open and restores it on close (UI-SPEC)', () => {
+  it('moves focus to Confirm on open and restores it on close (UI-SPEC)', () => {
     const code = source();
-    // Opening the picker focuses the Confirm button (the first actionable
-    // control in the top bar); Cancel/Confirm restore focus to the opener.
+    // Opening the picker focuses the Confirm button (the completion action in
+    // the footer); Cancel/Confirm restore focus to the opener.
     expect(code).toContain('confirmButtonRef.current?.focus();');
     expect(code).toContain('ref={confirmButtonRef}');
     expect(code).toContain('returnFocusRef.current.focus();');
