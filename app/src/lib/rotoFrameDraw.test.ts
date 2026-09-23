@@ -139,6 +139,86 @@ describe('resolveMissingRotoFrameDraw', () => {
     });
   });
 
+  // 260923-bcm Task 2 (RED): instruction grainScale drives the paperTexture
+  // pattern transform; absent member draws at the default scale (no transform);
+  // a hostile instruction scale still draws with a floored tile step.
+  it('260923-bcm: applies the instruction grain scale to the paper texture pattern', () => {
+    const transforms: unknown[] = [];
+    const context = {
+      drawImage: () => {},
+      fillRect: () => {},
+      createPattern: () => ({
+        setTransform(matrix: unknown) {
+          transforms.push(matrix);
+        },
+      }),
+      save: () => {},
+      restore: () => {},
+      globalAlpha: 1,
+      fillStyle: '',
+    } as unknown as CanvasRenderingContext2D;
+
+    const scaled = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
+      mode: 'paper',
+      metadata: { background: 'canvas2', paperGrain: '', grainStrength: 0, grainScale: 2 },
+    });
+    if (scaled.kind !== 'background-only') throw new Error('expected paper background');
+    expect(scaled.grainScale).toBe(2);
+    drawRotoFrameComposite(context, scaled, 20, 10, { id: 'tex' } as unknown as CanvasImageSource, null, null);
+    expect(transforms).toEqual([{ a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 }]);
+  });
+
+  it('260923-bcm: defaults the draw scale to 1 when the instruction omits grainScale', () => {
+    const transforms: unknown[] = [];
+    const operations: string[] = [];
+    const context = {
+      drawImage: (_source: unknown, ...args: number[]) => operations.push(`draw:${args.join(',')}`),
+      fillRect: (...args: number[]) => operations.push(`fill:${args.join(',')}`),
+      createPattern: () => ({
+        setTransform(matrix: unknown) {
+          transforms.push(matrix);
+        },
+      }),
+      save: () => operations.push('save'),
+      restore: () => operations.push('restore'),
+      globalAlpha: 1,
+      fillStyle: '',
+    } as unknown as CanvasRenderingContext2D;
+
+    const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
+      mode: 'paper',
+      metadata: { background: 'canvas2', paperGrain: '', grainStrength: 0 },
+    });
+    if (instruction.kind !== 'background-only') throw new Error('expected paper background');
+    expect(instruction.grainScale).toBeUndefined();
+    drawRotoFrameComposite(context, instruction, 20, 10, { id: 'tex' } as unknown as CanvasImageSource, null, null);
+    expect(transforms).toEqual([]);
+    expect(operations).toContain('fill:0,0,20,10');
+  });
+
+  it('260923-bcm: a malformed instruction grain scale still draws (T-260923-01)', () => {
+    const operations: string[] = [];
+    const context = {
+      drawImage: () => operations.push('draw'),
+      fillRect: (...args: number[]) => operations.push(`fill:${args.join(',')}`),
+      createPattern: () => null,
+      save: () => {},
+      restore: () => {},
+      globalAlpha: 1,
+      fillStyle: '',
+    } as unknown as CanvasRenderingContext2D;
+
+    for (const grainScale of [0, -1, Number.NaN]) {
+      const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
+        mode: 'paper',
+        metadata: { background: 'canvas2', paperGrain: '', grainStrength: 0, grainScale },
+      });
+      if (instruction.kind !== 'background-only') throw new Error('expected paper background');
+      drawRotoFrameComposite(context, instruction, 20, 10, { id: 'tex' } as unknown as CanvasImageSource, null, null);
+    }
+    expect(operations.filter((op) => op.startsWith('fill')).length).toBeGreaterThan(0);
+  });
+
   it('keeps leading and trailing background-only frames dynamic and non-materializable', () => {
     const leading = resolveMissingRotoFrameDraw('phys-layer-1', 1, {
       backgroundState: {

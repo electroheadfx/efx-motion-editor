@@ -52,6 +52,15 @@ vi.mock('../lib/webpFrameCodec', () => ({
 // import must stay untouched.
 const { readFrameMediaMock } = vi.hoisted(() => ({ readFrameMediaMock: vi.fn() }));
 
+// 260923-bcm Task 2 (RED): the export-authority seam — the fond draw must pass
+// the instruction grain scale into getProjectPaperCanvas (not display-only).
+const { getProjectPaperCanvasMock } = vi.hoisted(() => ({ getProjectPaperCanvasMock: vi.fn() }));
+
+vi.mock('../lib/projectPaperRaster', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/projectPaperRaster')>()),
+  getProjectPaperCanvas: getProjectPaperCanvasMock,
+}));
+
 vi.mock('../lib/ipc', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/ipc')>()),
   ipcEfxPaintReadFrameMedia: readFrameMediaMock,
@@ -2353,6 +2362,28 @@ describe('physicPaintStore', () => {
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+    });
+
+    // 260923-bcm Task 2 (RED): the export-authority seam — the fond draw must
+    // pass the instruction grain scale into getProjectPaperCanvas (not
+    // display-only), so export/main-preview pixels honour the value.
+    it('260923-bcm: the fond draw passes the instruction grain scale into getProjectPaperCanvas', async () => {
+      getProjectPaperCanvasMock.mockClear();
+      registerDocument(flatDocument([flatTrack('track-a')], {
+        visible: false,
+        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2 },
+      }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], { background: null });
+
+      const instruction = physicPaintStore.getDocumentFondInstruction(FLAT_LAYER);
+      expect(instruction).toMatchObject({ kind: 'background-only', paperTexture: 'canvas1', grainScale: 2 });
+
+      const before = getProjectPaperCanvasMock.mock.calls.length;
+      const record = await flattenAfterDecode(FLAT_LAYER, 5);
+      expect(record).not.toBeNull();
+      const fondCalls = getProjectPaperCanvasMock.mock.calls.slice(before);
+      expect(fondCalls.length).toBeGreaterThan(0);
+      expect(fondCalls.some((args: unknown[]) => args[0] === 'canvas1' && args[3] === 2)).toBe(true);
     });
 
     it('k34-C (RED): an active-track switch resolves the new track\'s paper and rotates the flattened memo', async () => {
