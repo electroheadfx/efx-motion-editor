@@ -1,5 +1,7 @@
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fromTransportPayload, toTransportPayload } from './webpBytes';
 
@@ -7258,5 +7260,204 @@ describe('260921-c7x physical-edit settlement descriptors', async () => {
     // ride through the settle path as an unrecomputed echo.
     expect(childRevision(records, wireLoopClips([revealClip(6)])))
       .not.toBe(childRevision(records, wireLoopClips(stored)));
+  });
+});
+
+describe('Studio window opens on the main window geometry (quick 260923-i17)', () => {
+  interface ReportedGeometry { x: number; y: number; width: number; height: number }
+  interface OpenPayload {
+    context: { layerId: string; startFrame: number };
+    bounds?: ReportedGeometry;
+  }
+
+  beforeEach(() => {
+    physicPaintStore.reset();
+    resetEfxPaintStore();
+    resetPhysicPaintDocumentSyncFrameState();
+    _setPhysicPaintDocumentSyncFramePorts(null);
+    registerTrackDocument('phys-layer-1');
+    setParentSequence([physicLayer()], 600);
+    vi.resetModules();
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        open: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.doUnmock('@tauri-apps/api/core');
+    vi.doUnmock('@tauri-apps/api/window');
+    vi.resetModules();
+    projectStore.closeProject();
+    Object.defineProperty(globalThis, 'window', {
+      value: originalWindow,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  // Registers the Tauri window doMock from a mutable reported-geometry object:
+  // getByLabel('main') resolves a double whose outerPosition/innerSize read
+  // `reported.current` at call time (null => no main window), any other label
+  // resolves null. Mutating `reported.current` between opens proves the read
+  // is fresh per open (no cache, no persistence).
+  function doMockMainWindowGeometry(reported: { current: ReportedGeometry | null }): void {
+    vi.doMock('@tauri-apps/api/window', () => ({
+      Window: {
+        getByLabel: vi.fn(async (label: string) => {
+          if (label !== 'main') return null;
+          const geometry = reported.current;
+          if (!geometry) return null;
+          return {
+            outerPosition: async () => ({ x: geometry.x, y: geometry.y }),
+            innerSize: async () => ({ width: geometry.width, height: geometry.height }),
+          };
+        }),
+      },
+    }));
+  }
+
+  // Proven Tauri-branch harness (see 'opens Tauri physics paint through the
+  // native command'): window redefineProperty + core doMock (isTauri true) +
+  // window doMock + dynamic re-import of the bridge + fresh document +
+  // sequences copy into the fresh store instances.
+  async function openThroughTauri(reported: { current: ReportedGeometry | null }) {
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        ...window,
+        open: vi.fn(),
+        location: { origin: 'http://localhost:1420' },
+      },
+      writable: true,
+      configurable: true,
+    });
+    const invoke = vi.fn().mockResolvedValue({
+      label: 'efx-physic-paint',
+      visibleBefore: false,
+      minimizedBefore: false,
+      visible: true,
+      minimized: false,
+      displaySleepAsserted: true,
+    });
+    vi.doMock('@tauri-apps/api/core', () => ({ isTauri: () => true, invoke }));
+    doMockMainWindowGeometry(reported);
+    const { openPhysicPaintCanvas: openCanvas } = await import('./physicPaintBridge');
+    const { registerDocument: registerFreshDocument } = await import('../stores/efxPaintStore');
+    registerFreshDocument(makeTrackDocument('phys-layer-1'));
+    const { sequenceStore: nativeSequenceStore } = await import('../stores/sequenceStore');
+    nativeSequenceStore.sequences.value = sequenceStore.sequences.peek();
+    return { invoke, openCanvas };
+  }
+
+  function openWindowCalls(invoke: { mock: { calls: unknown[][] } }): OpenPayload[] {
+    return invoke.mock.calls
+      .filter(([command]) => command === 'open_physics_paint_window')
+      .map(([, args]) => args as OpenPayload);
+  }
+
+  // Reads the open_physics_paint_window region of the Rust source; both
+  // anchors must be found — a missing anchor fails as an assertion, never as
+  // a slice crash.
+  function readStudioOpenCommandRegion(): string {
+    const source = readFileSync(fileURLToPath(new URL('../../src-tauri/src/lib.rs', import.meta.url)), 'utf8');
+    const start = source.indexOf('async fn open_physics_paint_window');
+    const end = source.indexOf('fn physics_paint_url');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('control: the Tauri-branch open still carries the launch context', async () => {
+    const { invoke, openCanvas } = await openThroughTauri({
+      current: { x: 111, y: 222, width: 1440, height: 900 },
+    });
+
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(result.ok).toBe(true);
+    const payloads = openWindowCalls(invoke);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].context.layerId).toBe('phys-layer-1');
+    expect(payloads[0].context.startFrame).toBe(4);
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('passes the main window bounds read at open time to the native command', async () => {
+    const { invoke, openCanvas } = await openThroughTauri({
+      current: { x: 111, y: 222, width: 1440, height: 900 },
+    });
+
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(result.ok).toBe(true);
+    const payloads = openWindowCalls(invoke);
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].bounds).toEqual({ x: 111, y: 222, width: 1440, height: 900 });
+  });
+
+  it('re-reads the main window bounds on every open, including negative origins', async () => {
+    const reported: { current: ReportedGeometry | null } = {
+      current: { x: 111, y: 222, width: 1440, height: 900 },
+    };
+    const { invoke, openCanvas } = await openThroughTauri(reported);
+
+    const first = await openCanvas({ layer: physicLayer(), frame: 4 });
+    reported.current = { x: -1280, y: 64, width: 1024, height: 680 };
+    const second = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    const payloads = openWindowCalls(invoke);
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0].bounds).toEqual({ x: 111, y: 222, width: 1440, height: 900 });
+    expect(payloads[1].bounds).toEqual({ x: -1280, y: 64, width: 1024, height: 680 });
+  });
+
+  it('refuses to open when the main window geometry cannot be read', async () => {
+    const { invoke, openCanvas } = await openThroughTauri({ current: null });
+
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('main window geometry');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('refuses to open when the main window geometry reports a non-finite size', async () => {
+    const { invoke, openCanvas } = await openThroughTauri({
+      current: { x: 0, y: 0, width: Number.NaN, height: 600 },
+    });
+
+    const result = await openCanvas({ layer: physicLayer(), frame: 4 });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('main window geometry');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('the Rust command declares and applies the Studio window bounds', () => {
+    const region = readStudioOpenCommandRegion();
+    expect(region).toContain('StudioWindowBounds');
+    expect(region).toContain('set_position');
+    expect(region).toContain('set_size');
+  });
+
+  it('the Rust command performs no centred placement', () => {
+    const region = readStudioOpenCommandRegion();
+    // Deliberate in-test negative: the mirror law forbids centred placement
+    // anywhere in this command (both the builder arm and the post-show arm).
+    expect(region).not.toMatch(/center\s*\(/);
   });
 });
