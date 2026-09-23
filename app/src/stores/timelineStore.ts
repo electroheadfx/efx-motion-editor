@@ -17,6 +17,18 @@ const scrollY = signal(0);
 const viewportWidth = signal(0);
 const viewportHeight = signal(0);
 
+/** Open inline rename editor for an FX stack header (260923-kcs) — null = closed.
+ *  Rect coordinates are canvas-viewport pixels for the overlay <input>. */
+const fxRenameEdit = signal<{
+  sequenceId: string;
+  original: string;
+  value: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null>(null);
+
 const currentTime = computed(() => currentFrame.value / projectStore.fps.value);
 const displayTime = computed(() => displayFrame.value / projectStore.fps.value);
 const totalDuration = computed(() => totalFramesSignal.value / projectStore.fps.value);
@@ -66,6 +78,7 @@ export const timelineStore = {
   totalDuration,
   isAtMinZoom,
   isAtMaxZoom,
+  fxRenameEdit,
 
   setTimelineDragging(v: boolean) {
     timelineDragging.value = v;

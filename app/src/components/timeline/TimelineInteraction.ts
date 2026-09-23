@@ -80,6 +80,7 @@ export class TimelineInteraction {
   private handlePointerDown = this.onPointerDown.bind(this);
   private handlePointerMove = this.onPointerMove.bind(this);
   private handlePointerUp = this.onPointerUp.bind(this);
+  private handleDoubleClick = this.onDoubleClick.bind(this);
   private handleWheel = this.onWheel.bind(this);
   private handleGestureChange = this.onGestureChange.bind(this);
   private handleGestureStart = this.onGestureStart.bind(this);
@@ -91,6 +92,7 @@ export class TimelineInteraction {
     canvas.addEventListener('pointerdown', this.handlePointerDown);
     canvas.addEventListener('pointermove', this.handlePointerMove);
     canvas.addEventListener('pointerup', this.handlePointerUp);
+    canvas.addEventListener('dblclick', this.handleDoubleClick);
     canvas.addEventListener('wheel', this.handleWheel, {passive: false});
     // macOS pinch-to-zoom via gesture events
     canvas.addEventListener('gesturestart', this.handleGestureStart as EventListener);
@@ -104,9 +106,14 @@ export class TimelineInteraction {
     canvas.removeEventListener('pointerdown', this.handlePointerDown);
     canvas.removeEventListener('pointermove', this.handlePointerMove);
     canvas.removeEventListener('pointerup', this.handlePointerUp);
+    canvas.removeEventListener('dblclick', this.handleDoubleClick);
     canvas.removeEventListener('wheel', this.handleWheel);
     canvas.removeEventListener('gesturestart', this.handleGestureStart as EventListener);
     canvas.removeEventListener('gesturechange', this.handleGestureChange as EventListener);
+
+    // Unmount while an inline rename is open: blur may not fire — settle it
+    // so the committed name is never stranded.
+    this.settleFxRenameEdit();
 
     this.canvas = null;
     this.renderer = null;
@@ -202,6 +209,51 @@ export class TimelineInteraction {
     const fxCount = this.renderer.getFxTrackCount();
     const idx = Math.round(y / FX_TRACK_HEIGHT);
     return Math.max(0, Math.min(idx, fxCount));
+  }
+
+  /** Commit (if changed) and clear any open inline FX stack rename edit (260923-kcs).
+   *  Trim + nonempty + changed → sequenceStore.rename; a rejected/empty edit just
+   *  clears. Idempotent: a second call after clear is a no-op. */
+  private settleFxRenameEdit(): void {
+    const pending = timelineStore.fxRenameEdit.peek();
+    if (!pending) return;
+    const trimmed = pending.value.trim();
+    if (trimmed && trimmed !== pending.original) {
+      sequenceStore.rename(pending.sequenceId, trimmed);
+    }
+    timelineStore.fxRenameEdit.value = null;
+  }
+
+  /** Double-click on an FX header name area opens the inline rename overlay —
+   *  no dialog. x < 18 is the visibility dot and stays untouched; clicks outside
+   *  the header name area do nothing. The two pre-dblclick click cycles each
+   *  start/end a reorder drag with fxReorderMoved=false → no reorder, and
+   *  selection stays idempotent (260923-kcs). */
+  private onDoubleClick(e: MouseEvent) {
+    if (e.button !== 0) return;
+    // Blur usually settles a prior edit first; settle here too so a rapid
+    // second double-click never strands an uncommitted name.
+    this.settleFxRenameEdit();
+    if (!this.canvas) return;
+    if (!this.isInFxArea(e.clientY)) return;
+    const fxIdx = this.fxTrackIndexFromY(e.clientY);
+    const fxTracks = fxTrackLayouts.peek();
+    if (fxIdx < 0 || fxIdx >= fxTracks.length) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    if (localX < 18 || localX >= TRACK_HEADER_WIDTH) return;
+    const track = fxTracks[fxIdx];
+    const scrollY = this.renderer ? this.renderer.getScrollY() : timelineStore.scrollY.peek();
+    timelineStore.fxRenameEdit.value = {
+      sequenceId: track.sequenceId,
+      original: track.sequenceName,
+      value: track.sequenceName,
+      x: 18,
+      y: RULER_HEIGHT + fxIdx * FX_TRACK_HEIGHT - scrollY,
+      width: TRACK_HEADER_WIDTH - 18,
+      height: FX_TRACK_HEIGHT,
+    };
+    e.preventDefault();
   }
 
   /** Select the first layer in an FX or content-overlay sequence for property editing.

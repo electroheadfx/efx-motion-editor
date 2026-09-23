@@ -147,9 +147,55 @@ export function TimelineCanvas() {
     };
   }, []);
 
+  /** Commit the open inline FX rename (Enter/blur): trim, nonempty, changed →
+   *  sequenceStore.rename, then clear the edit signal. Reads the signal via
+   *  peek() so a double-fire (Enter then blur) can never rename twice (260923-kcs). */
+  const commitFxRename = () => {
+    const edit = timelineStore.fxRenameEdit.peek();
+    if (!edit) return;
+    const trimmed = edit.value.trim();
+    if (trimmed && trimmed !== edit.original) {
+      sequenceStore.rename(edit.sequenceId, trimmed);
+    }
+    timelineStore.fxRenameEdit.value = null;
+  };
+
+  const renameEdit = timelineStore.fxRenameEdit.value;
+
   return (
     <div class="flex-1 min-h-0 overflow-hidden relative" data-interactive>
       <canvas ref={canvasRef} class="w-full h-full" />
+      {renameEdit && (
+        <input
+          type="text"
+          class="absolute z-10 box-border px-1 bg-(--color-bg-input) text-(--color-text-primary) border border-(--color-border-subtle) rounded-sm outline-none"
+          style={{
+            left: `${renameEdit.x}px`,
+            top: `${renameEdit.y}px`,
+            width: `${renameEdit.width}px`,
+            height: `${renameEdit.height}px`,
+            fontSize: '9px',
+            fontFamily: 'system-ui',
+          }}
+          ref={(el) => {
+            if (el && document.activeElement !== el) el.focus();
+          }}
+          value={renameEdit.value}
+          onInput={(e) => {
+            const current = timelineStore.fxRenameEdit.peek();
+            if (!current) return;
+            timelineStore.fxRenameEdit.value = { ...current, value: e.currentTarget.value };
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              commitFxRename();
+            } else if (e.key === 'Escape') {
+              timelineStore.fxRenameEdit.value = null;
+            }
+          }}
+          onBlur={() => commitFxRename()}
+        />
+      )}
     </div>
   );
 }
