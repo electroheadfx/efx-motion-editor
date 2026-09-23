@@ -27,7 +27,12 @@ export async function createRotoScriptThumbnail(input: {
     : input.background.color ?? '#ffffff';
   context.fillRect(0, 0, width, height);
   if (input.background.background.startsWith('canvas')) {
-    const paper = await resolveProjectPaperCanvas(input.background.paperGrain || input.background.background, width, height);
+    const paper = await resolveProjectPaperCanvas(
+      input.background.paperGrain || input.background.background,
+      width,
+      height,
+      input.background.grainScale ?? 1,
+    );
     if (!paper) throw new Error('Required paper texture is unavailable');
     context.drawImage(paper, 0, 0, width, height);
   }
@@ -66,8 +71,13 @@ export async function measureRotoScriptWebpSupport(): Promise<{ supported: boole
   return { supported: blob.type === 'image/webp' && hasWebpSignature(bytes), mimeType: blob.type, size: bytes.length, signature: ascii(bytes.slice(0, 12)) };
 }
 
-function resolveProjectPaperCanvas(paperTexture: string, width: number, height: number): Promise<HTMLCanvasElement | null> {
-  const ready = getProjectPaperCanvas(paperTexture, width, height);
+function resolveProjectPaperCanvas(
+  paperTexture: string,
+  width: number,
+  height: number,
+  grainScale = 1,
+): Promise<HTMLCanvasElement | null> {
+  const ready = getProjectPaperCanvas(paperTexture, width, height, grainScale);
   if (ready) return Promise.resolve(ready);
   return new Promise((resolve) => {
     let settled = false;
@@ -84,7 +94,7 @@ function resolveProjectPaperCanvas(paperTexture: string, width: number, height: 
       window.clearTimeout(timeout);
       unsubscribe();
       resolve(canvas);
-    });
+    }, grainScale);
   });
 }
 

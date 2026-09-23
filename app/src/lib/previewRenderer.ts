@@ -179,9 +179,11 @@ export class PreviewRenderer {
   preloadPaperTextures(paperGrains: string[]): void {
     for (const paperGrain of paperGrains) {
       if (!getPaperTextureUrl(paperGrain) || this.paperTextureSubscriptions.has(paperGrain)) continue;
+      // Preload warms the natural-size texture entry only (scale 1); scaled
+      // prepared canvases are built on demand by the draw call sites.
       const unsubscribe = subscribeProjectPaperCanvas(paperGrain, projectStore.width.peek(), projectStore.height.peek(), (canvas) => {
         if (canvas) this.onImageLoaded?.();
-      });
+      }, 1);
       this.paperTextureSubscriptions.set(paperGrain, unsubscribe);
     }
   }

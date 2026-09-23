@@ -30,7 +30,7 @@ export function subscribeRotoPlaybackBackground({
   const unsubscribe = subscribePaperCanvas(instruction.paperTexture, width, height, (paperCanvas) => {
     context.clearRect(0, 0, width, height);
     drawRotoFrameComposite(context, instruction, width, height, null, paperCanvas, null);
-  });
+  }, background.grainScale ?? 1);
   let active = true;
   return () => {
     if (!active) return;

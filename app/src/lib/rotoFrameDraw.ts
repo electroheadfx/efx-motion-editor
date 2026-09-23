@@ -110,6 +110,12 @@ export function drawMissingRotoBackground(
     ctx.globalAlpha = previousAlpha * 0.18;
     const pattern = typeof ctx.createPattern === 'function' ? ctx.createPattern(paperTexture, 'repeat') : null;
     if (pattern) {
+      // Instruction grain scale rescales the paper texture; absent member keeps
+      // the natural-size path (no setTransform — byte-identical hot path).
+      const grainScale = instruction.grainScale ?? 1;
+      if (grainScale !== 1 && typeof (pattern as { setTransform?: unknown }).setTransform === 'function') {
+        pattern.setTransform({ a: grainScale, b: 0, c: 0, d: grainScale, e: 0, f: 0 });
+      }
       ctx.fillStyle = pattern;
       ctx.fillRect(0, 0, width, height);
     } else {

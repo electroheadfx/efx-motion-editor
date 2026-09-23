@@ -2632,7 +2632,12 @@ function _resolveFlattenedFrame(
     // subscription below rotates the flattened memo + bumps the paint clock
     // so every surface recomposites with the real texture on resolve.
     _ensureFondTextureSubscription(fondInstruction.paperTexture);
-    const fondPaperCanvas = getProjectPaperCanvas(fondInstruction.paperTexture, size.width, size.height);
+    const fondPaperCanvas = getProjectPaperCanvas(
+      fondInstruction.paperTexture,
+      size.width,
+      size.height,
+      fondInstruction.grainScale ?? 1,
+    );
     const fondCanvas = document.createElement('canvas');
     fondCanvas.width = size.width;
     fondCanvas.height = size.height;

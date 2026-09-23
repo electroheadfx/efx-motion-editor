@@ -9,11 +9,23 @@ const paperCanvasCache = new Map<string, HTMLCanvasElement>();
 const loadingTextures = new Map<string, HTMLImageElement>();
 const textureListeners = new Map<string, Set<() => void>>();
 
+/** Positive finite grain scale, else 1 (hostile input never hangs a tile loop). */
+function normalizeGrainScale(scale: number): number {
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+/** Tile step for the no-pattern fallback: floored at 1 so 0/negative/NaN still draw. */
+function flooredTileStep(base: number, scale: number): number {
+  const step = Math.floor(base * scale);
+  return Number.isFinite(step) && step >= 1 ? step : 1;
+}
+
 export function drawProjectPaperRaster(
   context: CanvasRenderingContext2D,
   texture: CanvasImageSource,
   width: number,
   height: number,
+  scale = 1,
 ): void {
   context.save();
   context.globalCompositeOperation = 'source-over';
@@ -23,12 +35,17 @@ export function drawProjectPaperRaster(
   context.globalAlpha = 0.18;
   const pattern = typeof context.createPattern === 'function' ? context.createPattern(texture, 'repeat') : null;
   if (pattern) {
+    // Scale 1 stays byte-identical to the natural-size hot path (no setTransform).
+    // Guard: some contexts (and fakes) return a bare pattern without setTransform.
+    if (scale !== 1 && typeof (pattern as { setTransform?: unknown }).setTransform === 'function') {
+      pattern.setTransform({ a: scale, b: 0, c: 0, d: scale, e: 0, f: 0 });
+    }
     context.fillStyle = pattern;
     context.fillRect(0, 0, width, height);
   } else {
     const source = texture as { width?: number; height?: number };
-    const textureWidth = source.width ?? width;
-    const textureHeight = source.height ?? height;
+    const textureWidth = flooredTileStep(source.width ?? width, scale);
+    const textureHeight = flooredTileStep(source.height ?? height, scale);
     for (let y = 0; y < height; y += textureHeight) {
       for (let x = 0; x < width; x += textureWidth) context.drawImage(texture, x, y);
     }
@@ -62,6 +79,7 @@ export function getProjectPaperCanvas(
   paperTexture: string | undefined,
   width: number,
   height: number,
+  scale = 1,
 ): HTMLCanvasElement | null {
   const url = paperTexture ? PAPER_TEXTURE_URLS[paperTexture] : undefined;
   if (!url || !paperTexture || width <= 0 || height <= 0) return null;
@@ -70,7 +88,9 @@ export function getProjectPaperCanvas(
     ensurePaperTextureLoading(paperTexture, url);
     return null;
   }
-  const cacheKey = `${paperTexture}:${width}x${height}`;
+  // Isolate prepared canvases by grain scale so a rescale never reuses a
+  // natural-size (or differently scaled) raster.
+  const cacheKey = `${paperTexture}:${width}x${height}:${normalizeGrainScale(scale)}`;
   const cached = paperCanvasCache.get(cacheKey);
   if (cached) return cached;
   const canvas = document.createElement('canvas');
@@ -78,7 +98,7 @@ export function getProjectPaperCanvas(
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) return null;
-  drawProjectPaperRaster(context, texture, width, height);
+  drawProjectPaperRaster(context, texture, width, height, scale);
   paperCanvasCache.set(cacheKey, canvas);
   return canvas;
 }
@@ -88,13 +108,14 @@ export function subscribeProjectPaperCanvas(
   width: number,
   height: number,
   listener: (canvas: HTMLCanvasElement | null) => void,
+  scale = 1,
 ): () => void {
   const url = paperTexture ? PAPER_TEXTURE_URLS[paperTexture] : undefined;
   if (!url || !paperTexture || width <= 0 || height <= 0) {
     listener(null);
     return () => {};
   }
-  const notify = () => listener(getProjectPaperCanvas(paperTexture, width, height));
+  const notify = () => listener(getProjectPaperCanvas(paperTexture, width, height, scale));
   const listeners = textureListeners.get(paperTexture) ?? new Set<() => void>();
   listeners.add(notify);
   textureListeners.set(paperTexture, listeners);
