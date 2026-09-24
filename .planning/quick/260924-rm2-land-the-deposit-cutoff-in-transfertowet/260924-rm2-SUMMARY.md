@@ -2,7 +2,7 @@
 phase: quick-260924-rm2
 plan: 260924-rm2
 title: Land the deposit cutoff in transferToWetLayerClipped — keep-gate tier 70
-status: automated-ready
+status: complete
 subsystem: packages/efx-physic-paint (core/wet-layer deposit gate)
 tags: [quick, physics-paint, footprint, deposit-cutoff, keep-gate, tdd-red-green, envelope, texture]
 requires: [260924-pyp, 260924-ort, 260924-nqe, 260924-m7w]
@@ -334,3 +334,19 @@ locked files untouched, bounds never loosened, no installs).
 
 *Phase: quick-260924-rm2*
 *Completed: 2026-09-24*
+
+## Native UAT: PASSED (2026-09-24) — CLOSED
+
+User approved all 6 rows live:
+
+1. Physics, default water → settled stroke matches preview ribbon side-by-side, taper visible — PASS
+2. Stroke body fully as opaque as before (no wash-out) — PASS
+3. Normal mode unchanged — PASS
+4. Two identical held-pose strokes → identical footprint (no boil) — PASS
+5. Wet edges + granulation present (not a hard stamp), cursor ring unchanged — PASS
+6. Non-goal: water does not change width (same as today) — confirmed no accidental change — PASS
+
+Quick 260924-rm2 CLOSED. The settled-footprint saga (m7w → nqe → ort → pyp → rm2)
+resolves here: envelope bound via include/exclude deposit cutoff at tier 70,
+opacity untouched, feather preserved on the production raster. PIN 2 water-monotone
+width stays DEFERRED (ledger entry 75) — future fluids.ts water-coupling feature.
