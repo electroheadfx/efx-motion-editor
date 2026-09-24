@@ -484,6 +484,20 @@ describe('physics settled footprint — contract pins', () => {
     }
   })
 
+  it('texture gate: default-water fluid settle still softens the edge — d(b) = W_settle - W_deposit >= 1', () => {
+    const { widths } = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
+    const db = widths.W_settle - widths.W_deposit
+    console.log(
+      `[260924-ort] texture gate @ water=50 dense: W_deposit=${widths.W_deposit} ` +
+      `W_settle=${widths.W_settle} d(b)=${db} (require >= 1 — the deposit cutoff must not hard-stamp the edge)`,
+    )
+    expect(
+      db,
+      `texture FAIL: d(b)=${db} < 1 at default water — fluid settle no longer softens the deposit edge ` +
+      `(W_deposit=${widths.W_deposit} → W_settle=${widths.W_settle}); a cutoff that lands here is a hard stamp`,
+    ).toBeGreaterThanOrEqual(1)
+  })
+
   it('PIN 3: identical deposit + settle inputs produce a byte-identical footprint (no boil)', () => {
     const runA = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
     const runB = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
