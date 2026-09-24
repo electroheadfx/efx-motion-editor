@@ -1,0 +1,49 @@
+{
+  "plan": "260924-d6l",
+  "task": 1,
+  "command": "pnpm --filter efx-motion-editor exec vitest run src/components/shared/NumericStepper.test.tsx.test.ts src/components/physic-paint/view/PhysicsPaintTopBar.test.ts",
+  "exitCode": 0,
+  "verdict": "PINS_GREEN_AT_BIRTH",
+  "targetFile": "app/src/components/shared/NumericStepper.test.tsx",
+  "pins": [
+    {
+      "id": "Pin 1 — classic constant-step field",
+      "targetTest": "260924-d6l — constraint-injection contract pins > Pin 1: a classic constant-step field moves by exactly its step inside the grain band",
+      "expected": "A stepper with only value/step 0.01/min 0/max 2 (no exception options) emits 1.01 on + at 1.00, 0.99 on − at 1.00, 0.51 on + at 0.50; blur-commit \"45.5\" on a step-1 field emits 46; blur-commit \"1.2345\" on the 0.01 field emits 1.23 (snap, never free entry).",
+      "actual": "PASS — all seven strict-equality emissions matched at birth (1.01, 0.99, 0.51, 46, 1.23).",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 1 — typed commits snap to grid",
+      "targetTest": "260924-d6l — constraint-injection contract pins > Pin 1: typed commits snap to the classic field grid — never free entry",
+      "expected": "Blur-commit on classic fields snaps to the declared step grid: 45.5 → 46 (step 1), 1.2345 → 1.23 (step 0.01).",
+      "actual": "PASS — both commits snapped to the grid at birth.",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 2 — grain live-value band presses",
+      "targetTest": "260924-d6l — constraint-injection contract pins > Pin 2: the grain option shape resolves the step from the live value on every press",
+      "expected": "Through the real press path with the grain option shape (grainScaleStep resolver + freeEntry + grain bounds): + at 1.0 → 1.5, + at 1.5 → 2.0, + at 2.0 → 2.1, − at 1.5 → 1.0, − at 0.5 → 0.4 — each press resolving the step from that live value (shipped 260923-bcm rule: 0.5 strictly inside ]0.5, 2.0[, 0.1 at/below 0.5 and at/above 2.0).",
+      "actual": "PASS — all five per-emission band resolutions matched at birth.",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 2 — grain free/comma/clamped typed commits",
+      "targetTest": "260924-d6l — constraint-injection contract pins > Pin 2: grain typed commits stay free, comma-tolerant, and clamped to the shared bounds",
+      "expected": "Through the component's blur-commit wiring: \"1.3\" stays 1.3 (no grid snap), \"2,2\" commits 2.2 (comma-tolerant), \"0\" clamps to GRAIN_SCALE_MIN.",
+      "actual": "PASS — all three free-entry commits matched at birth.",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 3 — call-site scope sweep",
+      "targetTest": "numericStepperSweep > scopes the exception options (resolveStep/freeEntry) to the paper-grain call site only",
+      "expected": "Every non-test .tsx under src containing a NumericStepper/NumericInput JSX instantiation carries resolveStep/freeEntry only in PhysicsPaintTopBar.tsx; the offender list is empty.",
+      "actual": "PASS — 12 call-site files scanned (matching the planning-time inventory); offenders = [] at birth; positive control confirms the scan sees the grain call site.",
+      "status": "pass"
+    }
+  ],
+  "expected": "Per the plan's TDD contract: at least one pin fails and its output names the located leak (verdict RED_EVIDENCE_OK), OR all three pins pass at birth (verdict PINS_GREEN_AT_BIRTH) — the planning-time static sweep over main predicted green-at-birth, and a passing pin must never be weakened to manufacture a red.",
+  "actual": "All three pins (five new tests) passed on first run: NumericStepper suite 23/23, PhysicsPaintTopBar suite 16/16, 39/39 total, exit code 0. Verdict PINS_GREEN_AT_BIRTH — consistent with the plan's diagnosis (all four leak hypotheses refuted statically at planning time). No production file was touched by Task 1. No red was manufactured: per plan, green-at-birth is the honest recorded outcome and Task 2 therefore proceeds with the documentation-only contract edit (no behavioural re-scope).",
+  "output": " RUN  v2.1.9 /Users/lmarques/Dev/efx-motion-editor/app\n\n ✓ src/components/physic-paint/view/PhysicsPaintTopBar.test.ts (16 tests) 7ms\n ✓ src/components/shared/NumericStepper.test.tsx.test.ts (23 tests) 23ms\n\n Test Files  2 passed (2)\n      Tests  39 passed (39)\n   Start at  10:13:08\n   Duration  493ms (transform 129ms, setup 0ms, collect 328ms, tests 46ms, environment 0ms, prepare 70ms)",
+  "recordedAt": "2026-09-24T10:13:08+02:00"
+}

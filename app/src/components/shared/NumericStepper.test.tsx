@@ -6,9 +6,11 @@
  * directly and its vnodes are walked, so handlers are driven with plain event
  * objects and the hold-to-repeat lifecycle is proven with fake timers.
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../efx-paint/document/efxPaintDocument';
+import { grainScaleStep } from '../physic-paint/view/PhysicsPaintTopBar';
 import {
   NUMERIC_STEPPER_REPEAT_DELAY_MS,
   NUMERIC_STEPPER_REPEAT_INTERVAL_MS,
@@ -280,6 +282,151 @@ describe('NumericStepper — shared − [field] + treatment (D-23/D-24)', () => 
 });
 
 /**
+ * 260924-d6l — constraint-injection contract pins.
+ *
+ * The 260923-bcm grain-scale exception (variable step + free typed entry) must
+ * live ONLY on the paper grain field. These pins lock the contract before any
+ * production edit:
+ *
+ * - Pin 1: a classic field given only value/step/min/max moves by exactly its
+ *   declared step — including at values inside the grain band ]0.5, 2.0[, where
+ *   an escaped adaptive policy would emit a band jump — and typed commits snap
+ *   to the field's grid (never free entry).
+ * - Pin 2: the grain field's exact option shape resolves its step from the LIVE
+ *   value on every emission and keeps free, comma-tolerant typed entry inside
+ *   the shared grain bounds (the shipped 260923-bcm rule: 0.5 strictly inside
+ *   ]0.5, 2.0[, 0.1 at/below 0.5 and at/above 2.0).
+ * - Pin 3 (in numericStepperSweep below): the exception-option identifiers
+ *   appear only at the paper-grain call site.
+ */
+describe('260924-d6l — constraint-injection contract pins', () => {
+  it('Pin 1: a classic constant-step field moves by exactly its step inside the grain band', () => {
+    // + at 1.00 (deliberately inside the grain band) must be 1.01, not a 0.5 band jump.
+    const up = vi.fn();
+    const plus = button(renderStepper({ value: 1, step: 0.01, min: 0, max: 2, onChange: up }), 'Increase Test value');
+    expect(plus).toBeDefined();
+    pointerDown(plus!);
+    expect(up).toHaveBeenCalledTimes(1);
+    expect(up.mock.calls[0][0]).toBe(1.01);
+
+    // − at 1.00 must be 0.99.
+    const down = vi.fn();
+    const minus = button(renderStepper({ value: 1, step: 0.01, min: 0, max: 2, onChange: down }), 'Decrease Test value');
+    expect(minus).toBeDefined();
+    pointerDown(minus!);
+    expect(down).toHaveBeenCalledTimes(1);
+    expect(down.mock.calls[0][0]).toBe(0.99);
+
+    // + at 0.50 (the band edge) must be 0.51, not a band jump.
+    const edge = vi.fn();
+    const edgePlus = button(renderStepper({ value: 0.5, step: 0.01, min: 0, max: 2, onChange: edge }), 'Increase Test value');
+    expect(edgePlus).toBeDefined();
+    pointerDown(edgePlus!);
+    expect(edge).toHaveBeenCalledTimes(1);
+    expect(edge.mock.calls[0][0]).toBe(0.51);
+  });
+
+  it('Pin 1: typed commits snap to the classic field grid — never free entry', () => {
+    // Step-1 field (Rot-like): "45.5" commits 46.
+    const rot = vi.fn();
+    const stepOne = input(renderStepper({ value: 45, step: 1, min: 0, max: 60, onChange: rot }));
+    expect(stepOne).toBeDefined();
+    (stepOne!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: '45.5' } });
+    expect(rot).toHaveBeenCalledTimes(1);
+    expect(rot.mock.calls[0][0]).toBe(46);
+
+    // Step-0.01 field (Scale-like): "1.2345" commits 1.23 — snapped, not free.
+    const scale = vi.fn();
+    const stepHundredth = input(renderStepper({ value: 1, step: 0.01, min: 0, max: 2, onChange: scale }));
+    expect(stepHundredth).toBeDefined();
+    (stepHundredth!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: '1.2345' } });
+    expect(scale).toHaveBeenCalledTimes(1);
+    expect(scale.mock.calls[0][0]).toBe(1.23);
+  });
+
+  /** The grain element's exact option shape (PhysicsPaintTopBar grain field). */
+  function renderGrainStepper(value: number, onChange: (next: number) => void): unknown {
+    return renderStepper({
+      value,
+      onChange,
+      step: grainScaleStep(value),
+      resolveStep: grainScaleStep,
+      freeEntry: true,
+      min: GRAIN_SCALE_MIN,
+      max: GRAIN_SCALE_MAX,
+    });
+  }
+
+  it('Pin 2: the grain option shape resolves the step from the live value on every press', () => {
+    // + at 1.0 → 1.5 (interior band: 0.5)
+    const upFromOne = vi.fn();
+    const plusOne = button(renderGrainStepper(1, upFromOne), 'Increase Test value');
+    expect(plusOne).toBeDefined();
+    pointerDown(plusOne!);
+    expect(upFromOne).toHaveBeenCalledTimes(1);
+    expect(upFromOne.mock.calls[0][0]).toBe(1.5);
+
+    // + at 1.5 → 2.0 (still interior: 0.5)
+    const upFromOneHalf = vi.fn();
+    const plusOneHalf = button(renderGrainStepper(1.5, upFromOneHalf), 'Increase Test value');
+    expect(plusOneHalf).toBeDefined();
+    pointerDown(plusOneHalf!);
+    expect(upFromOneHalf).toHaveBeenCalledTimes(1);
+    expect(upFromOneHalf.mock.calls[0][0]).toBe(2);
+
+    // + at 2.0 → 2.1 (edge: 0.1 — re-resolved from the live value, not the press-start step)
+    const upFromTwo = vi.fn();
+    const plusTwo = button(renderGrainStepper(2, upFromTwo), 'Increase Test value');
+    expect(plusTwo).toBeDefined();
+    pointerDown(plusTwo!);
+    expect(upFromTwo).toHaveBeenCalledTimes(1);
+    expect(upFromTwo.mock.calls[0][0]).toBe(2.1);
+
+    // − at 1.5 → 1.0 (interior: 0.5)
+    const downFromOneHalf = vi.fn();
+    const minusOneHalf = button(renderGrainStepper(1.5, downFromOneHalf), 'Decrease Test value');
+    expect(minusOneHalf).toBeDefined();
+    pointerDown(minusOneHalf!);
+    expect(downFromOneHalf).toHaveBeenCalledTimes(1);
+    expect(downFromOneHalf.mock.calls[0][0]).toBe(1);
+
+    // − at 0.5 → 0.4 (edge: 0.1)
+    const downFromHalf = vi.fn();
+    const minusHalf = button(renderGrainStepper(0.5, downFromHalf), 'Decrease Test value');
+    expect(minusHalf).toBeDefined();
+    pointerDown(minusHalf!);
+    expect(downFromHalf).toHaveBeenCalledTimes(1);
+    expect(downFromHalf.mock.calls[0][0]).toBe(0.4);
+  });
+
+  it('Pin 2: grain typed commits stay free, comma-tolerant, and clamped to the shared bounds', () => {
+    // "1.3" stays 1.3 — free entry, no grid snap to 1.5.
+    const free = vi.fn();
+    const freeField = input(renderGrainStepper(1, free));
+    expect(freeField).toBeDefined();
+    (freeField!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: '1.3' } });
+    expect(free).toHaveBeenCalledTimes(1);
+    expect(free.mock.calls[0][0]).toBe(1.3);
+
+    // "2,2" (decimal comma) commits 2.2.
+    const comma = vi.fn();
+    const commaField = input(renderGrainStepper(2, comma));
+    expect(commaField).toBeDefined();
+    (commaField!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: '2,2' } });
+    expect(comma).toHaveBeenCalledTimes(1);
+    expect(comma.mock.calls[0][0]).toBe(2.2);
+
+    // "0" clamps to the shared lower grain bound.
+    const clamped = vi.fn();
+    const clampedField = input(renderGrainStepper(1, clamped));
+    expect(clampedField).toBeDefined();
+    (clampedField!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: '0' } });
+    expect(clamped).toHaveBeenCalledTimes(1);
+    expect(clamped.mock.calls[0][0]).toBe(GRAIN_SCALE_MIN);
+  });
+});
+
+/**
  * D-23/D-24 adoption contract: the numeric-stepper sweep.
  *
  * Source-scan contract (same file-reading idiom as
@@ -319,6 +466,36 @@ function readSweptSource(relPath: string): string {
 /** Every `<NumericStepper ... />` element rendered by a swept file. */
 function stepperElements(source: string): string[] {
   return source.match(/<NumericStepper[\s\S]*?\/>/g) ?? [];
+}
+
+/** The sole allowed consumer of the exception options (260924-d6l Pin 3). */
+const GRAIN_CALL_SITE_REL = 'src/components/physic-paint/view/PhysicsPaintTopBar.tsx';
+
+/** The opt-in exception-option identifiers the paper grain field alone may pass. */
+const EXCEPTION_OPTION_IDENTIFIER = /\b(resolveStep|freeEntry)\b/;
+
+/** A file instantiating the shared stepper or its drag-to-scrub wrapper. */
+const STEPPER_CALL_SITE = /<NumericStepper\b|<NumericInput\b/;
+
+/** Recursive `src` walk: every non-test `.tsx` file, as `src/...` relative paths. */
+function listSourceTsx(dir: string, baseRel: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = `${baseRel}/${entry.name}`;
+    if (entry.isDirectory()) {
+      found.push(...listSourceTsx(resolve(dir, entry.name), rel));
+    } else if (entry.isFile() && entry.name.endsWith('.tsx') && !entry.name.includes('.test.')) {
+      found.push(rel);
+    }
+  }
+  return found;
+}
+
+/** Every non-test `.tsx` file under `src` with a NumericStepper/NumericInput JSX tag. */
+function stepperCallSites(): string[] {
+  return listSourceTsx(resolve(APP_ROOT, 'src'), 'src').filter((relPath) =>
+    STEPPER_CALL_SITE.test(readSweptSource(relPath)),
+  );
 }
 
 describe('numericStepperSweep', () => {
@@ -369,5 +546,24 @@ describe('numericStepperSweep', () => {
     );
     expect(fps, `No NumericStepper for "${STUDIO_FPS_ARIA_LABEL}" in ${relPath}`).toBeDefined();
     expect(fps, 'The fps field must keep step 0.5 (D-24)').toMatch(/step=\{0\.5\}/);
+  });
+
+  it('scopes the exception options (resolveStep/freeEntry) to the paper-grain call site only', () => {
+    const offenders = stepperCallSites().filter(
+      (relPath) =>
+        relPath !== GRAIN_CALL_SITE_REL &&
+        EXCEPTION_OPTION_IDENTIFIER.test(readSweptSource(relPath)),
+    );
+    // Positive control: the scan must actually see the grain call site, so an
+    // empty offender list can never come from a silently-empty candidate set.
+    expect(
+      stepperCallSites(),
+      'The call-site scan did not find the paper-grain NumericStepper element',
+    ).toContain(GRAIN_CALL_SITE_REL);
+    expect(
+      offenders,
+      `Exception options (resolveStep/freeEntry) leaked outside the paper-grain call site —\n` +
+        `they are opt-in per call site; omit them for the classic constant-step contract:\n${offenders.join('\n')}`,
+    ).toEqual([]);
   });
 });
