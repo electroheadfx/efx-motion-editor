@@ -85,8 +85,13 @@ const ALPHA_FLOOR = 125
 // === Sweep cells ===
 const WATERS = [10, 50, 90] as const
 const PAPERS = ['null', 'synthetic'] as const
-/** Task 1 measures the base keep-gate only; Task 2 adds the cutoff tiers. */
-const TIERS = [20] as const
+/**
+ * Cutoff tiers applied in-harness (zero profile alpha < tier before
+ * transfer — equivalent to raising transferToWetLayerClipped's keep-gate;
+ * `a` is read only after the gate for deposit math and wetness, so
+ * included pixels keep byte-identical base math). 20 = base keep-gate.
+ */
+const TIERS = [20, 200, 130, 70] as const
 const DENSE_SPACING = 3
 /** One production transfer per cell (mirrors a single finalize transfer) */
 const TRANSFER_COUNT = 1
@@ -636,7 +641,7 @@ describe('260924-pyp production-AA substrate — base tier (keep-gate 20)', () =
   })
 
   it('base-tier outcome table: 3 waters × 2 papers with PIN 0 / PIN 0b gates', () => {
-    const results = measureCells(TIERS)
+    const results = measureCells([20]) // base keep-gate only (Task 1 scope)
     logTable('260924-pyp BASE TIER TABLE', results)
     expect(results).toHaveLength(WATERS.length * PAPERS.length)
     for (const r of results) {
@@ -650,5 +655,29 @@ describe('260924-pyp production-AA substrate — base tier (keep-gate 20)', () =
     if (STOP_FINDINGS.length > 0) {
       console.log(`[260924-pyp] STOP findings so far: ${STOP_FINDINGS.length}`)
     }
+  })
+})
+
+describe('260924-pyp cutoff tier sweep — full outcome matrix', () => {
+  it('OUTCOME TABLE: waters x tiers x papers with per-cell PIN 0/0b, d(b), envelope', () => {
+    const results = measureCells(TIERS)
+    logTable('260924-pyp OUTCOME TABLE', results)
+
+    // Harness sanity: every cell measurable (stable exit state). Envelope /
+    // monotone pins are NOT asserted as pass/fail — this quick produces the
+    // table, not a fix.
+    expect(results).toHaveLength(TIERS.length * WATERS.length * PAPERS.length)
+    for (const r of results) {
+      expect(r.W_deposit, `W_deposit>0 tier=${r.tier} water=${r.water} paper=${r.paper}`).toBeGreaterThan(0)
+      expect(r.W_settle, `W_settle>0 tier=${r.tier} water=${r.water} paper=${r.paper}`).toBeGreaterThan(0)
+      expect(r.W_visible, `W_visible>0 tier=${r.tier} water=${r.water} paper=${r.paper}`).toBeGreaterThan(0)
+      expect(r.W_visible).toBeLessThanOrEqual(CANVAS_H)
+    }
+
+    // PIN 0 / PIN 0b HARD gates in every cell: violations are logged as
+    // STOP finding lines — bounds are never loosened to make a cell pass.
+    checkPinGates(results, /* assertMode */ false)
+    console.log(`[260924-pyp] total STOP findings: ${STOP_FINDINGS.length}`)
+    for (const f of STOP_FINDINGS) console.log(`[260924-pyp] ${f}`)
   })
 })
