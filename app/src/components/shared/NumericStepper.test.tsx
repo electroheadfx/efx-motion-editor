@@ -10,6 +10,9 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../efx-paint/document/efxPaintDocument';
+import { pushAction, resetHistory } from '../../lib/history';
+import { historyStore } from '../../stores/historyStore';
+import type { HistoryEntry } from '../../types/history';
 import { grainScaleStep } from '../physic-paint/view/PhysicsPaintTopBar';
 import {
   NUMERIC_STEPPER_REPEAT_DELAY_MS,
@@ -153,7 +156,7 @@ describe('NumericStepper — shared − [field] + treatment (D-23/D-24)', () => 
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('moves by exactly 0.5 when the field step is 0.5 (the fps field)', () => {
+  it('moves by exactly the declared subunit step when the field step is 0.5', () => {
     const up = vi.fn();
     const plus = button(renderStepper({ value: 23.5, step: 0.5, min: 1, max: 60, onChange: up }), 'Increase Test value');
     expect(plus).toBeDefined();
@@ -238,18 +241,22 @@ describe('NumericStepper — shared − [field] + treatment (D-23/D-24)', () => 
     expect(reverted).not.toHaveBeenCalled();
   });
 
-  it('clamps a typed out-of-range value and ignores unparseable text', () => {
+  it('clamps a typed out-of-range value and rejects unparseable text with a revert to the pre-edit value', () => {
     const clamped = vi.fn();
     const typed = input(renderStepper({ value: 12, max: 20, onChange: clamped }));
     expect(typed).toBeDefined();
     (typed!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: '99' } });
     expect(clamped).toHaveBeenCalledWith(20);
 
+    // 260924-ffd Pin 6 (locked decision): garbage rejects AND reverts the
+    // field to the pre-edit display text — no commit, no blanked input.
     const ignored = vi.fn();
     const garbage = input(renderStepper({ value: 12, onChange: ignored }));
     expect(garbage).toBeDefined();
-    (garbage!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: 'abc' } });
+    const garbageTarget = { value: 'abc' };
+    (garbage!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: garbageTarget });
     expect(ignored).not.toHaveBeenCalled();
+    expect(garbageTarget.value).toBe('12');
   });
 
   it('renders both buttons always, as first-class pointer targets', () => {
@@ -450,7 +457,7 @@ const SWEPT_COMPONENT_PATHS = [
   'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx',
 ];
 
-/** The Studio workflow strip keeps the fps field on a 0.5 step (D-24). */
+/** The Studio workflow strip fps field declares FPS_PRESETS preset mode (260924-ffd; D-24 fps 0.5 OBSOLETE). */
 const STUDIO_FPS_ARIA_LABEL = 'Cached Roto playback frames per second';
 
 /** The raw native numeric input element this sweep retires (D-23). */
@@ -526,26 +533,29 @@ describe('numericStepperSweep', () => {
     ).toEqual([]);
   });
 
-  it('declares an explicit step on every NumericStepper element in a swept file', () => {
+  it('declares an explicit step or presets on every NumericStepper element in a swept file', () => {
     const offenders: string[] = [];
     for (const relPath of scannedPaths) {
       for (const element of stepperElements(readSweptSource(relPath))) {
-        if (!/step=\{/.test(element)) offenders.push(`${relPath}: ${element.replace(/\s+/g, ' ')}`);
+        if (!/step=\{|presets=\{/.test(element)) offenders.push(`${relPath}: ${element.replace(/\s+/g, ' ')}`);
       }
     }
     expect(
       offenders,
-      `A swept field lost its own step (D-24: fps 0.5, everything else keeps its current step):\n${offenders.join('\n')}`,
+      `A swept field lost its own constraint declaration (step for classic fields, presets for preset menus):\n${offenders.join('\n')}`,
     ).toEqual([]);
   });
 
-  it('keeps the Studio fps field on a 0.5 step while other fields keep 1', () => {
+  it('Pin 5: the Studio fps field declares presets and no longer the obsolete D-24 step 0.5', () => {
     const relPath = 'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx';
-    const fps = stepperElements(readSweptSource(relPath)).find((element) =>
+    const source = readSweptSource(relPath);
+    const fps = stepperElements(source).find((element) =>
       element.includes(`ariaLabel="${STUDIO_FPS_ARIA_LABEL}"`),
     );
     expect(fps, `No NumericStepper for "${STUDIO_FPS_ARIA_LABEL}" in ${relPath}`).toBeDefined();
-    expect(fps, 'The fps field must keep step 0.5 (D-24)').toMatch(/step=\{0\.5\}/);
+    expect(fps, 'The fps field must declare presets (260924-ffd)').toMatch(/presets=\{/);
+    expect(fps, 'The fps field must not keep the obsolete D-24 step 0.5').not.toMatch(/step=\{0\.5\}/);
+    expect(source, 'The strip must import the shared FPS_PRESETS list').toContain('FPS_PRESETS');
   });
 
   it('scopes the exception options (resolveStep/freeEntry) to the paper-grain call site only', () => {
@@ -565,5 +575,263 @@ describe('numericStepperSweep', () => {
       `Exception options (resolveStep/freeEntry) leaked outside the paper-grain call site —\n` +
         `they are opt-in per call site; omit them for the classic constant-step contract:\n${offenders.join('\n')}`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * 260924-ffd — the three-tier numeric-stepper contract.
+ *
+ * - Classic default: a stepper given only value/onChange/ariaLabel (no step,
+ *   no presets) moves by exactly ±1 with an integer display.
+ * - Preset mode: a first-class `presets` menu walks list entries only, ends
+ *   clamp with visibly disabled buttons, typed commits snap nearest-ties-low,
+ *   off-list live values display as-is until the first +/− which snaps in the
+ *   direction of travel. Supersedes D-24 (fps step 0.5 → OBSOLETE).
+ * - Two-tier fps law: PROJECT fps (Settings / New Project) and STUDIO playback
+ *   fps (workflow strip) never cross-write — proven by source scan.
+ *
+ * These pins are RED-first: they must fail before the Task 2 production edit
+ * and go green with it (RED-EVIDENCE.json records the honest failing output).
+ */
+describe('260924-ffd — classic default + fps preset contract pins', () => {
+  /** The exact preset list from the plan (ascending — part of the contract). */
+  const FPS_WALK = [6, 12, 15, 24, 25, 50, 60] as const;
+
+  type BareOverrides = {
+    value?: number;
+    onChange?: (next: number) => void;
+    presets?: readonly number[];
+  };
+
+  /** Bare stepper: only value/onChange/ariaLabel (+ optional presets) — no step, no min/max. */
+  function renderBareStepper(overrides: BareOverrides = {}): unknown {
+    return materialize(
+      NumericStepper({
+        value: 12,
+        onChange: () => {},
+        ariaLabel: 'Test value',
+        ...overrides,
+      } as unknown as StepperProps),
+    );
+  }
+
+  /** The fps preset call-site shape: presets, no step. */
+  function renderPresetStepper(overrides: BareOverrides = {}): unknown {
+    return renderBareStepper({ presets: FPS_WALK, ...overrides });
+  }
+
+  it('Pin 1: classic default — no step, no presets steps by exactly ±1 with an integer display', () => {
+    const up = vi.fn();
+    const plus = button(renderBareStepper({ value: 12, onChange: up }), 'Increase Test value');
+    expect(plus).toBeDefined();
+    pointerDown(plus!);
+    expect(up).toHaveBeenCalledTimes(1);
+    expect(up).toHaveBeenCalledWith(13);
+
+    const down = vi.fn();
+    const minus = button(renderBareStepper({ value: 12, onChange: down }), 'Decrease Test value');
+    expect(minus).toBeDefined();
+    pointerDown(minus!);
+    expect(down).toHaveBeenCalledTimes(1);
+    expect(down).toHaveBeenCalledWith(11);
+
+    // Integer display for the default: no decimal point in the field.
+    const field = input(renderBareStepper({ value: 12 }));
+    expect(field).toBeDefined();
+    expect(field!.props.value).toBe('12');
+    expect(String(field!.props.value)).not.toContain('.');
+  });
+
+  it('Pin 2: preset walk — list entries only, integer display, ends visibly disabled with refusing handlers', () => {
+    // + from 24: 25 then 50 — never 24.5 or 30.
+    const up25 = vi.fn();
+    const plus24 = button(renderPresetStepper({ value: 24, onChange: up25 }), 'Increase Test value');
+    expect(plus24).toBeDefined();
+    pointerDown(plus24!);
+    expect(up25).toHaveBeenCalledTimes(1);
+    expect(up25).toHaveBeenCalledWith(25);
+
+    const up50 = vi.fn();
+    const plus25 = button(renderPresetStepper({ value: 25, onChange: up50 }), 'Increase Test value');
+    expect(plus25).toBeDefined();
+    pointerDown(plus25!);
+    expect(up50).toHaveBeenCalledTimes(1);
+    expect(up50).toHaveBeenCalledWith(50);
+
+    // − from 24: 15 then 12.
+    const down15 = vi.fn();
+    const minus24 = button(renderPresetStepper({ value: 24, onChange: down15 }), 'Decrease Test value');
+    expect(minus24).toBeDefined();
+    pointerDown(minus24!);
+    expect(down15).toHaveBeenCalledTimes(1);
+    expect(down15).toHaveBeenCalledWith(15);
+
+    const down12 = vi.fn();
+    const minus15 = button(renderPresetStepper({ value: 15, onChange: down12 }), 'Decrease Test value');
+    expect(minus15).toBeDefined();
+    pointerDown(minus15!);
+    expect(down12).toHaveBeenCalledTimes(1);
+    expect(down12).toHaveBeenCalledWith(12);
+
+    // Integer display forced in preset mode.
+    const field = input(renderPresetStepper({ value: 24 }));
+    expect(field).toBeDefined();
+    expect(field!.props.value).toBe('24');
+    expect(String(field!.props.value)).not.toContain('.');
+
+    // At 60: the + button is visibly disabled at render AND the handler refuses.
+    const atEndUp = vi.fn();
+    const endTree = renderPresetStepper({ value: 60, onChange: atEndUp });
+    const plusEnd = button(endTree, 'Increase Test value');
+    expect(plusEnd).toBeDefined();
+    expect(plusEnd!.props.disabled).toBe(true);
+    pointerDown(plusEnd!);
+    vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_DELAY_MS + NUMERIC_STEPPER_REPEAT_INTERVAL_MS * 3);
+    expect(atEndUp).not.toHaveBeenCalled();
+
+    // At 6: the − button is visibly disabled at render AND the handler refuses.
+    const atStartDown = vi.fn();
+    const startTree = renderPresetStepper({ value: 6, onChange: atStartDown });
+    const minusStart = button(startTree, 'Decrease Test value');
+    expect(minusStart).toBeDefined();
+    expect(minusStart!.props.disabled).toBe(true);
+    pointerDown(minusStart!);
+    vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_DELAY_MS + NUMERIC_STEPPER_REPEAT_INTERVAL_MS * 3);
+    expect(atStartDown).not.toHaveBeenCalled();
+  });
+
+  it('Pin 3: typed commit snaps nearest-ties-low; an off-list value displays as-is then snaps by direction of travel', () => {
+    // Nearest-entry snap, ties toward the lower entry.
+    const typedCases: Array<[string, number]> = [
+      ['30', 25],
+      ['5', 6],
+      ['999', 60],
+      ['24.5', 24],
+    ];
+    for (const [typed, expected] of typedCases) {
+      const onChange = vi.fn();
+      const field = input(renderPresetStepper({ value: 24, onChange }));
+      expect(field).toBeDefined();
+      (field!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: typed } });
+      expect(onChange, `typed "${typed}"`).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0], `typed "${typed}"`).toBe(expected);
+    }
+
+    // Off-list live value displays as-is after render — no snap on render.
+    const offList = input(renderPresetStepper({ value: 30 }));
+    expect(offList).toBeDefined();
+    expect(offList!.props.value).toBe('30');
+
+    // First press snaps to the nearest entry in the direction of travel.
+    const up = vi.fn();
+    const plus = button(renderPresetStepper({ value: 30, onChange: up }), 'Increase Test value');
+    expect(plus).toBeDefined();
+    pointerDown(plus!);
+    expect(up).toHaveBeenCalledTimes(1);
+    expect(up.mock.calls[0][0]).toBe(50);
+
+    const down = vi.fn();
+    const minus = button(renderPresetStepper({ value: 30, onChange: down }), 'Decrease Test value');
+    expect(minus).toBeDefined();
+    pointerDown(minus!);
+    expect(down).toHaveBeenCalledTimes(1);
+    expect(down.mock.calls[0][0]).toBe(25);
+  });
+
+  const STRIP_REL = 'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx';
+  const PLAYBACK_HOOK_REL = 'src/components/physic-paint/hooks/useRotoCachedPlayback.ts';
+  const SETTINGS_REL = 'src/components/views/SettingsView.tsx';
+  const NEW_PROJECT_REL = 'src/components/project/NewProjectDialog.tsx';
+
+  it('Pin 4: the Studio playback fps chain never references projectStore', () => {
+    expect(readSweptSource(STRIP_REL)).not.toContain('projectStore');
+    expect(readSweptSource(PLAYBACK_HOOK_REL)).not.toContain('projectStore');
+  });
+
+  it('Pin 4: no file under physic-paint calls projectStore.setFps', () => {
+    // Recursive scan over every .ts/.tsx under physic-paint (test files too —
+    // an import reference would be a coupling smell as well).
+    function listSourceFiles(dir: string): string[] {
+      const found: string[] = [];
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = resolve(dir, entry.name);
+        if (entry.isDirectory()) found.push(...listSourceFiles(full));
+        else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
+      }
+      return found;
+    }
+    const physicPaintRoot = resolve(APP_ROOT, 'src/components/physic-paint');
+    const files = listSourceFiles(physicPaintRoot);
+    // Positive control: the scan must actually see files, so an empty offender
+    // list can never come from a silently-empty candidate set.
+    expect(files.length).toBeGreaterThan(10);
+    const offenders = files.filter((file) => readFileSync(file, 'utf8').includes('projectStore.setFps'));
+    expect(
+      offenders.map((file) => file.replace(`${APP_ROOT}/`, '')),
+      'The STUDIO playback tier must never write the PROJECT fps store (two-tier isolation)',
+    ).toEqual([]);
+  });
+
+  it('Pin 4: the Settings Frame Rate control binds projectStore.setFps through the shared preset stepper', () => {
+    const source = readSweptSource(SETTINGS_REL);
+    expect(source).toContain('projectStore.setFps');
+    expect(source, 'Settings must import the shared FPS_PRESETS list').toContain('FPS_PRESETS');
+    expect(source, 'Settings Frame Rate must render the shared preset stepper').toMatch(/<NumericStepper/);
+    expect(source, 'the inline [15, 24] button row must be gone').not.toMatch(/\[15,\s*24\]/);
+  });
+
+  it('Pin 4: the New Project Frame Rate control binds local fps state through the shared preset stepper (never projectStore.setFps)', () => {
+    const source = readSweptSource(NEW_PROJECT_REL);
+    expect(source, 'New Project seeds the project store via createProject, never setFps directly').not.toContain(
+      'projectStore.setFps',
+    );
+    expect(source, 'New Project must import the shared FPS_PRESETS list').toContain('FPS_PRESETS');
+    expect(source, 'the fps seed default stays 24 (locked decision)').toContain('useState(24)');
+    expect(source, 'the inline 15/24 fps pills must be gone').not.toContain('setFps(15)');
+    expect(source, 'the inline 15/24 fps pills must be gone').not.toContain('setFps(24)');
+    expect(source, 'New Project Frame Rate must render the shared preset stepper').toMatch(
+      /ariaLabel="Frame Rate"/,
+    );
+  });
+
+  it('Hold-end coalescing: a preset hold that reaches the list end stops coalescing so the next action is its own undo entry', () => {
+    resetHistory();
+
+    // Walk to the end with a short press: 50 → 60.
+    const walk = vi.fn();
+    const plusAt50 = button(renderPresetStepper({ value: 50, onChange: walk }), 'Increase Test value');
+    expect(plusAt50).toBeDefined();
+    pointerDown(plusAt50!);
+    pointerUp(plusAt50!);
+    expect(walk).toHaveBeenCalledTimes(1);
+    expect(walk).toHaveBeenCalledWith(60);
+
+    // Hold + at the end (the app has re-rendered with value=60): the press
+    // must be refused at the disabled end, and no emission may escape even
+    // while the hold timers run.
+    const atEnd = vi.fn();
+    const plusAt60 = button(renderPresetStepper({ value: 60, onChange: atEnd }), 'Increase Test value');
+    expect(plusAt60).toBeDefined();
+    expect(plusAt60!.props.disabled).toBe(true);
+    pointerDown(plusAt60!);
+    vi.advanceTimersByTime(NUMERIC_STEPPER_REPEAT_DELAY_MS + NUMERIC_STEPPER_REPEAT_INTERVAL_MS * 3);
+    // Deliberately NO pointerUp: a button disabled mid-hold would swallow the
+    // release in the DOM, so cleanup inside the press path is the only thing
+    // that can keep module-global coalescing from stranding.
+    expect(atEnd).not.toHaveBeenCalled();
+
+    // An unrelated action after the ended hold must create its OWN undo entry
+    // (coalescing not stranded, no cross-action merge).
+    const entry = (n: number): HistoryEntry => ({
+      id: `ffd-${n}`,
+      description: `unrelated action ${n}`,
+      timestamp: n,
+      undo: () => {},
+      redo: () => {},
+    });
+    pushAction(entry(1));
+    pushAction(entry(2));
+    expect(historyStore.stack.value).toHaveLength(2);
+    resetHistory();
   });
 });
