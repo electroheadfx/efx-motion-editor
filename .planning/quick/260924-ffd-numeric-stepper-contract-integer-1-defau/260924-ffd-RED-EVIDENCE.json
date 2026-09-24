@@ -1,0 +1,98 @@
+{
+  "plan": "260924-ffd",
+  "task": 1,
+  "command": "pnpm --filter efx-motion-editor exec vitest run src/components/shared/NumericStepper.test.tsx.test.ts src/components/physic-paint/view/PhysicsPaintTopBar.test.ts",
+  "exitCode": 1,
+  "verdict": "RED_EVIDENCE_OK",
+  "targetFile": "app/src/components/shared/NumericStepper.test.tsx",
+  "pins": [
+    {
+      "id": "Pin 1 — classic default (±1, integer display)",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Pin 1: classic default — no step, no presets steps by exactly ±1 with an integer display",
+      "expected": "A stepper given only value/onChange/ariaLabel emits exactly 13 on + and 11 on − from 12, with an integer display.",
+      "actual": "FAIL — before the Task 2 edit, omitting `step` makes stepBy compute NaN (base + direction * undefined), so onChange receives NaN instead of 13/11; locus named by the strict toHaveBeenCalledWith assertions.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 2 — preset walk with disabled ends",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Pin 2: preset walk — list entries only, integer display, ends visibly disabled with refusing handlers",
+      "expected": "presets=[6,12,15,24,25,50,60] at 24: + → 25 → 50, − → 15 → 12; at 60 the + button renders disabled and its handler refuses; at 6 the − button likewise; integer display.",
+      "actual": "FAIL — the `presets` prop does not exist yet: emissions are NaN (never 25/50/15/12) and end buttons render with disabled=false (no per-direction end state), so both the walk assertions and the disabled-at-render assertions fail.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 3 — typed nearest-ties-low snap + direction-of-travel snap",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Pin 3: typed commit snaps nearest-ties-low; an off-list value displays as-is then snaps by direction of travel",
+      "expected": "Blur-commit \"30\"→25, \"5\"→6, \"999\"→60, \"24.5\"→24; value 30 displays \"30\"; first + from 30 emits 50, first − emits 25.",
+      "actual": "FAIL — commitStepperInput has no preset branch yet: \"30\" runs the classic step path with step undefined (emits 30, expected 25), and press emissions are NaN (expected 50/25). Locus named per-case by the typed \"…\" assertion messages.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 4 — two-tier isolation: playback chain has no projectStore",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Pin 4: the Studio playback fps chain never references projectStore",
+      "expected": "PhysicsPaintWorkflowStrip.tsx and useRotoCachedPlayback.ts contain no `projectStore` reference.",
+      "actual": "PASS at birth — the two-tier split already exists; this pin is a regression guard (plan: pin, don't refactor).",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 4 — two-tier isolation: no setFps caller under physic-paint",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Pin 4: no file under physic-paint calls projectStore.setFps",
+      "expected": "No .ts/.tsx file under src/components/physic-paint/ contains `projectStore.setFps` (positive control: scan sees >10 files).",
+      "actual": "PASS at birth — regression guard over the existing isolation.",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 4 — Settings fps binds setFps via shared preset stepper",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Pin 4: the Settings Frame Rate control binds projectStore.setFps through the shared preset stepper",
+      "expected": "SettingsView.tsx imports FPS_PRESETS, renders a NumericStepper for Frame Rate bound to projectStore.setFps, and no longer carries the inline [15, 24] button row.",
+      "actual": "FAIL — SettingsView still renders the old [15, 24] button row: FPS_PRESETS missing (toContain fails) and no <NumericStepper (toMatch fails). Locus: the Frame Rate section of SettingsView.tsx.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 4 — New Project fps binds local state via shared preset stepper",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Pin 4: the New Project Frame Rate control binds local fps state through the shared preset stepper (never projectStore.setFps)",
+      "expected": "NewProjectDialog.tsx imports FPS_PRESETS, renders a NumericStepper ariaLabel=\"Frame Rate\" on the local fps state (useState(24) seed preserved), with the inline setFps(15)/setFps(24) pills gone and no projectStore.setFps.",
+      "actual": "FAIL — NewProjectDialog still carries the inline pills: FPS_PRESETS missing and ariaLabel=\"Frame Rate\" absent (the not.toContain(\"setFps(15)\")/not.toContain(\"setFps(24)\") guards also fail on the pill literals). Locus: the FRAME RATE section of NewProjectDialog.tsx.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 5 — D-24 rewrite: strip declares presets, not step 0.5",
+      "targetTest": "numericStepperSweep > Pin 5: the Studio fps field declares presets and no longer the obsolete D-24 step 0.5",
+      "expected": "The strip fps element declares presets={…}, does NOT declare step={0.5}, and the file references FPS_PRESETS. The old \"keeps the Studio fps field on a 0.5 step (D-24)\" test and its :453 comment are gone (rewritten, not kept green).",
+      "actual": "FAIL — the call site still carries step={0.5} and no presets={…}/FPS_PRESETS: both the presets-toMatch and the not.toMatch(step={0.5}) assertions fail, naming the obsolete D-24 shape as the locus. The old D-24 test was removed in this same RED commit.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 6 — garbage typed commit reverts to pre-edit display",
+      "targetTest": "NumericStepper — shared − [field] + treatment (D-23/D-24) > clamps a typed out-of-range value and rejects unparseable text with a revert to the pre-edit value",
+      "expected": "\"abc\" on blur calls no onChange and restores element.value to the pre-edit display text (\"12\").",
+      "actual": "PASS — reject+revert was already implemented (locked decision, pinned by strengthening the existing test with the element.value assertion); green at birth by design.",
+      "status": "pass"
+    },
+    {
+      "id": "Hold-end coalescing — preset hold at the list end never strands coalescing",
+      "targetTest": "260924-ffd — classic default + fps preset contract pins > Hold-end coalescing: a preset hold that reaches the list end stops coalescing so the next action is its own undo entry",
+      "expected": "Walk 50 → 60 with a preset press; a subsequent hold + at 60 is refused (disabled end, no emission, timers run with no escape); two independent pushAction calls afterwards create two distinct undo entries.",
+      "actual": "FAIL — without preset mode the walk press emits NaN (expected 60), the end press is not refused, and cleanup inside the press path does not exist yet. Locus: the walk assertion (NaN vs 60) and the disabled/refusal assertions.",
+      "status": "fail"
+    },
+    {
+      "id": "Preserved — rewritten subunit-step pin (formerly the D-24 fps 0.5 test)",
+      "targetTest": "NumericStepper — shared − [field] + treatment (D-23/D-24) > moves by exactly the declared subunit step when the field step is 0.5",
+      "expected": "Explicit step={0.5} still emits ±0.5 — retargeted to a generic subunit-step pin with no fps framing.",
+      "actual": "PASS at birth — explicit decimal steps are untouched by this quick (must-have: unchanged).",
+      "status": "pass"
+    },
+    {
+      "id": "Preserved — 260924-d6l grain + classic constraint-injection pins",
+      "targetTest": "260924-d6l — constraint-injection contract pins (all) + PhysicsPaintTopBar.test.ts (16 tests)",
+      "expected": "Grain band/free-entry/comma pins and the classic constant-step pins stay green throughout, never rewritten to preset semantics.",
+      "actual": "PASS — all d6l pins in NumericStepper.test.tsx green; PhysicsPaintTopBar suite 16/16 green.",
+      "status": "pass"
+    }
+  ],
+  "expected": "Per the plan's TDD contract: the new-contract pins (classic default, preset walk, typed snap, disabled ends, strip-presets, Settings/New Project bindings, hold-end coalescing) must fail before implementation with output naming their locus (verdict RED_EVIDENCE_OK); the rewritten D-24 pin must be gone and replaced by the failing Pin 5; guards and preserved pins stay green. Never manufacture red by weakening a passing assertion.",
+  "actual": "7 failed | 40 passed (47 total): the 7 failures are exactly Pin 1, Pin 2, Pin 3, Pin 4-Settings, Pin 4-New Project, Pin 5 (D-24 rewrite), and the hold-end coalescing pin — each naming its locus (NaN vs expected entries, missing FPS_PRESETS/NumericStepper, step={0.5} still present). Passing: both two-tier isolation source-scan guards (green at birth by design), Pin 6 revert strengthening (already implemented), the rewritten subunit-step pin, all 260924-d6l grain/classic pins, the preserved T-52.2-08 clamp/hold/coalesce suite, and PhysicsPaintTopBar 16/16. The old D-24 tests (:156 fps framing, :453 comment, :542 keep-0.5) were rewritten/removed in this same commit. No production file touched; exit code 1 as expected for RED.",
+  "output": "Test Files  1 failed | 1 passed (2)\n      Tests  7 failed | 40 passed (47)\n   FAIL numericStepperSweep > Pin 5: the Studio fps field declares presets and no longer the obsolete D-24 step 0.5\n   FAIL 260924-ffd > Pin 1: classic default — no step, no presets steps by exactly ±1 with an integer display\n   FAIL 260924-ffd > Pin 2: preset walk — list entries only, integer display, ends visibly disabled with refusing handlers\n   FAIL 260924-ffd > Pin 3: typed commit snaps nearest-ties-low; an off-list value displays as-is then snaps by direction of travel\n   FAIL 260924-ffd > Pin 4: the Settings Frame Rate control binds projectStore.setFps through the shared preset stepper\n   FAIL 260924-ffd > Pin 4: the New Project Frame Rate control binds local fps state through the shared preset stepper (never projectStore.setFps)\n   FAIL 260924-ffd > Hold-end coalescing: a preset hold that reaches the list end stops coalescing so the next action is its own undo entry\n   ✓ src/components/physic-paint/view/PhysicsPaintTopBar.test.ts (16 tests)",
+  "recordedAt": "2026-09-24T09:54:35Z"
+}
