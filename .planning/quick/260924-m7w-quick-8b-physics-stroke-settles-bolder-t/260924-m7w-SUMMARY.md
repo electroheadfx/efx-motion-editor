@@ -225,3 +225,24 @@ inflation) remains the likely correct target for a follow-up fix — it never
 had the opacity bug. A retry must bound footprint WITHOUT scaling deposit
 alpha down (RED pin should include an opacity/visibility floor, not just
 width).
+
+## Closed: UAT-FAILED / REVERTED (2026-09-24)
+
+Verdict (user, live): hard regression — GREEN 24f40261 implemented the
+envelope bound as an ALPHA carry (lowered deposited alpha to hide the AA
+fringe) instead of clipping deposit GEOMETRY to the ribbon. Stroke body
+opacity crushed → near-invisible marks. Width pins passed while visibility
+was destroyed (harness blind to opacity).
+
+Disposition:
+- 24f40261 stays REVERTED (1648658b) — never modulate alpha for a width bound
+- eee2e629 (harness) + 98cb79c0 (pins) RESTORED at af621f91 — RED at base
+  (2 failed | 2 passed) is the correct TDD state for the redo
+- wet-layer.ts byte-identical to pre-task fdffc05f
+
+Carry-over for redo quick: diagnosis verdict (seam (a) =
+transferToWetLayerClipped, +2px of +3px) + harness reusable — cite, do not
+redo diagnosis. Redo order: (1) add MISSING opacity/visibility-floor RED pin
+first, (2) geometric deposit clip to ribbon, body alpha untouched,
+(3) water monotone law w10/w50/w90 = 6/8/9 stands, (4) preview untouched
+(260924-koa locked). STOP if a geometric clip hurts the wet look.
