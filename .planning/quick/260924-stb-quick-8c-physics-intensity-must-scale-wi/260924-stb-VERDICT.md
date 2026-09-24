@@ -133,3 +133,111 @@ Guardrail diffs must be empty for these; any appearance in the Task-3 diff is a 
 - **Calibration scratch:** all measurements above came from an uncommitted scratch test deleted before this commit; it must never be committed.
 - **Legacy-risk disclosure (honest):** the pyp production texture pin (`d(b) ≥ 1` at every water × both papers on the uniform-r3 production raster) is substrate-specific. The scratch's simplified uniform-r3 builder reproduces base `d(b) = 0` and therefore cannot oracle that pin. Task 3 runs the real harness; any regression there is the plan-defined STOP before GREEN, not something this verdict pre-approves.
 - **Pre-existing base state recorded at verdict time:** `productionAaSettleMeasurement.test.ts` 7/7 green; `physicsSettledFootprint.test.ts` 4 passed + 3 skipped (recorded deferred/dispositioned state).
+
+---
+
+# Re-calibration cycle (Option 1, 2026-09-24) — FALSIFIED: joint satisfiability FAILED
+
+Appended after the Task-3 STOP. The orchestrator authorized a fresh diagnosis cycle
+extending the measurement substrate to BOTH the r=10 scratch gesture AND the pyp
+production raster (brush radius 3, 6–7 px stroke), with the pyp texture pin promoted to
+a first-class pin (W6) in `physicsWidthScaling.test.ts` (RED committed as `30541402`
+before any re-calibration landed in code). This section records the derivation attempt
+and its outcome. Nothing above is rewritten.
+
+## Result
+
+**No bound pair satisfies the full pin set (W1–W6). Joint satisfiability FAILED —
+carrier (c)'s scalar law `f(run)` cannot serve both substrates.** Per the falsification
+honesty clause: W1/W3 were NOT weakened, no GREEN was made, and the cycle stops here.
+
+## Method
+
+All measurement ran through an identity-validated parameterized prototype
+(`__stb_recal_scratch.test.ts`, deleted before this append, never committed):
+
+- **V1:** prototype at the original bounds `(4,6,residual 0.25)` is byte-identical to
+  the production carrier in `fluids.ts` across every cell.
+- **V2:** prototype at `f ≡ 1` reproduces the documented base numbers (the original
+  VERDICT's base tables) exactly.
+
+Both validations passed, so sweep results are trustworthy proxies for production runs.
+
+Sweep families — **210 candidates total, every one evaluated against the FULL pin set**
+(W1 hairline tol 3.0, W2 thick floor, W3 monotone, W4 PIN 0/0b, W5 determinism,
+W6 production texture d(b) ≥ 1 at every water × both papers, plus envelope/determinism
+controls) over 12 gesture cells + 6 production cells:
+
+| Family | Grid | Candidates | Passing |
+| ------ | ---- | ---------- | ------- |
+| Classic `f(run)` | residual {0.25, 0.5, 0.75, 0.9} × wFloor 0–4 × wFull ≤ 6 | 68 | 0 |
+| FINE (near-miss knees) | residual 0.30–0.60 step 0.05 × 7 knees incl. wFull=7 | 49 | 0 |
+| HIGH (residual window close) | residual 0.65–0.90 step 0.05 × 9 knees incl. (5,7),(6,8) | 54 | 0 |
+| Frontier-exempt `f(run=0)=1` | residual {0.25, 0.5, 0.75} × wFloor 1–4 × wFull ≤ 6 | 39 | 0 |
+
+## Evidence — the two regimes never overlap
+
+- **Low residual (≤ 0.50):** W1, W2, W3, W4, W5 all PASS (thin pinned: maxThinExcess
+  1.975–2.975 ≤ 3.0; thick d(b) ≥ 1). **W6 fails in EVERY candidate — minProdDb = 0**
+  (production stroke settles to a hard stamp, W_deposit 6 → W_settle 6, at least
+  null/w90, usually all 6 cells).
+- **High residual (≥ 0.85):** W6 recovers (minProdDb = 1) but **W1 breaks**
+  (maxThinExcess 3.975 > 3.0) and W3 collapses (thin physics 0.988 vs thick 0.101).
+- **Nearest miss (5, 7, residual 0.75):** W1, W2, W4, W6, ENV all PASS
+  (maxThinExcess 2.975, minProdDb 1) — **W3 fails alone**: thin physics inflation
+  0.494 > thick 0.101–0.201 in 4+ cells. W3 is explicitly protected (no weakening).
+- **Nearest miss (4, 7, residual 0.50):** only W6 null/w90 + synthetic/w90 db = 0
+  (and W3 synthetic/w90) remain — production at water 90 is the last holdout, and the
+  residual needed to fix it (≥ 0.75) is exactly the residual that breaks W3.
+- **Frontier-exempt family:** fixes production texture at low residual but **W3 fails
+  in every candidate** — the hairline's run=0 frontier cells get f = 1 and inflate the
+  thin physics component to 0.494.
+
+## Structural impossibility (why no bound pair can pass)
+
+The equalization circulation on BOTH substrates is driven by low-run cells, and
+`f` is a scalar function of `run` alone:
+
+- **Production (r=3):** run histogram over the pyp local grid
+  `{0:911, 1:3, 2:10, 3:18, 4:92, 5:23, 6:324, 7:36}` — the ~146 inside cells
+  (run 1–6, ≈29%) plus the run=0 frontier carry the boundary height gradient; damping
+  them below the spread threshold (residual ≈ 0.25) kills texture (d(b)=0), while the
+  residual needed for texture (≥ 0.75) removes the damping the hairline pin needs.
+- **Hairline (r=10 gesture):** the thin stroke's source cells are run 0–2 as well
+  (stroke is ~2 px wide); pinning W1/W3 requires those cells at residual ≈ 0.25.
+
+`run = 0` means the same thing on both substrates (outside the deposit), so no
+`(wFloor, wFull, residual)` — and no frontier exemption — can give production's low-run
+cells full strength while keeping the hairline's low-run cells damped. A discriminating
+feature other than `run` (e.g. deposit density/alpha magnitude, substrate-local
+statistics) would be a **different carrier law → re-diagnosis (Rule 4), out of this
+cycle's scope.**
+
+## RED state left in place (honest, unchanged pins)
+
+Battery at cycle end (uncommitted `(4,6,0.25)` carrier in tree, no GREEN commit):
+
+| Pin | Result |
+| --- | ------ |
+| W1 hairline tol 3.0 | PASS |
+| W2 thick d(b) ≥ 1 (control) | PASS |
+| W3 monotone thin ≤ thick | PASS |
+| W4 PIN 0 / PIN 0b | PASS (ratio 1.0000; min body ratio ≥ 0.95× literals) |
+| W5 determinism | PASS (byte-identical) |
+| W6 production texture d(b) ≥ 1 | **FAIL — d(b)=0 in every cell** (null w10/50/90 + synthetic cells) |
+| pyp legacy texture pin | **FAIL — d(b)=0** (same cause) |
+| pyp other 6 tests / footprint 4+3sk | PASS |
+
+`physicsWidthScaling.test.ts` W6 and the pyp texture pin are RED against the only
+carrier ever written for this quick; W1–W5 tolerance values were never moved.
+
+## Options for continuation
+
+1. **Carrier revision (re-diagnosis):** discriminate hairline vs production low-run
+   cells on a feature other than `run` (deposit alpha magnitude, local density,
+   stroke-relative width) — new VERDICT, new RED, Rule 4.
+2. **Split the requirement:** keep carrier (c) at low residual (W1–W5 GREEN, ship the
+   hairline fix) and treat the production texture identity (W6/pyp) as an explicitly
+   deferred, ledgered regression with the user's sign-off.
+3. **Revert** the uncommitted `fluids.ts` carrier (Tasks 1/2/3-RED commits stand) and
+   re-plan the quick.
