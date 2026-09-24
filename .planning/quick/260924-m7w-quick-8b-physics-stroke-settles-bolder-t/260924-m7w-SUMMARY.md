@@ -2,7 +2,7 @@
 phase: quick-260924-m7w
 plan: 260924-m7w
 title: Diagnose and bound the physics settled-stroke footprint onto the preview ribbon
-status: complete
+status: incomplete
 subsystem: packages/efx-physic-paint (core/wet-layer, core/fluids, render/compositor)
 tags: [quick, physics-paint, footprint, diagnosis, tdd]
 requires: [260924-koa]
@@ -206,3 +206,22 @@ existing buffer write path (threat register T-m7w-02 mitigation satisfied by pin
 - FOUND commits: eee2e629 (Task 1), 98cb79c0 (RED), 24f40261 (GREEN)
 - Guardrail diff empty: canvas.ts, canvas.strokePreviewRibbon.test.ts, paint.ts, fluids.ts, compositor.ts
 - SUMMARY left uncommitted (orchestrator owns docs commit); status: complete
+
+## Post-UAT: REVERTED (live regression, 2026-09-24)
+
+Native UAT round 1 FAILED row 1/goal 2: the waterAmount^6 AA-fringe carry in
+`transferToWetLayerClipped` (24f40261) applied a large transparency — the
+settled stroke became quasi-invisible. The envelope was met by destroying
+deposit opacity, which the automated pins could not see (they measure width,
+not visibility).
+
+Reverted in 1648658b: 24f40261 + 98cb79c0 + eee2e629 all rolled back;
+`wet-layer.ts` is byte-identical to pre-task fdffc05f. Render restored.
+
+**Diagnosis verdict still stands** (harness evidence, commit eee2e629 in
+history): seam (a) deposit contributes +2px of the +3px inflation; fluid
+settle +1px; compositor 0. The dead `depositToWetLayer` (5/5/5, no
+inflation) remains the likely correct target for a follow-up fix — it never
+had the opacity bug. A retry must bound footprint WITHOUT scaling deposit
+alpha down (RED pin should include an opacity/visibility floor, not just
+width).
