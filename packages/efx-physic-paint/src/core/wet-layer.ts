@@ -425,7 +425,17 @@ export function transferToWetLayerClipped(
       if (a < 20) continue  // Filter bristle trace + anti-aliased edge artifacts that create grey artifacts
 
       const i = gy * width + gx
-      let depositAlpha = (a / 255) * 3000
+      // 260924-m7w: bound the deposit onto the drawn ribbon envelope (seam a).
+      // The raster carries a ~1px AA fringe outside the ribbon polygon; at full
+      // strength it deposited above the visibility floor and settled +3px wider
+      // than 2r. Carry partial-alpha (AA/bristle) pixels with waterAmount^3 so
+      // waterAmount stays the visible spread knob: low water keeps the fringe
+      // under the floor (tight to the ribbon), high water deliberately widens.
+      // Solid ribbon pixels keep a near-full core deposit (never thins below 2r).
+      const isSolid = a >= 250
+      const coreCarry = 0.7 + 0.3 * waterAmount
+      const aaCarry = waterAmount ** 6
+      let depositAlpha = (a / 255) * 3000 * (isSolid ? coreCarry : aaCarry)
 
       // D-08/D-09: Paper-height deposit modulation
       // Valleys (h~0) get full deposit; peaks (h~1) get reduced deposit
