@@ -221,6 +221,21 @@ function digestAlpha(wet: WetBuffers): number[] {
   return Array.from(wet.alpha)
 }
 
+// === Contract pins (Task 2 RED) ===
+/**
+ * Pin-1 tolerance calibrated from Task 1 measurements: plan example
+ * "<= 2px + antialiasing margin". Base W_visible = 9 at default water →
+ * 9 > 6 + 2 = 8 fails RED with the inflation visible in the message.
+ * Post-fix bound: RIBBON_W + PIN1_TOL = 8.
+ */
+const PIN1_TOL = 2
+const PIN1_BOUND = RIBBON_W + PIN1_TOL
+
+/** Production-path visible width at a given water level (dense, paper null) */
+function visibleWidthAtWater(water01: number): number {
+  return runCell('transfer', water01, SPACINGS[0].px, null).widths.W_visible
+}
+
 describe('physics settled footprint — stage-wise seam diagnosis', () => {
   it('measurement sweep: stage widths for every deposit × water × spacing × paper cell', () => {
     const results: CellResult[] = []
@@ -283,5 +298,57 @@ describe('physics settled footprint — stage-wise seam diagnosis', () => {
       expect(r.W_visible).toBeGreaterThan(0)
       expect(r.W_visible).toBeLessThanOrEqual(CANVAS_H)
     }
+  })
+})
+
+describe('physics settled footprint — contract pins', () => {
+  it('PIN 1: default-water W_visible stays within ribbon envelope + tolerance (2r + 2px)', () => {
+    const nullPaper = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
+    const synthPaper = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, makeSyntheticPaper())
+    const wNull = nullPaper.widths.W_visible
+    const wSynth = synthPaper.widths.W_visible
+    console.log(
+      `[260924-m7w] PIN 1 base-state expectation: ribbon 2r=${RIBBON_W}, bound=${PIN1_BOUND} (2r+${PIN1_TOL}px). ` +
+      `Measured @ water=50 dense: paper=null W_deposit=${nullPaper.widths.W_deposit} ` +
+      `W_settle=${nullPaper.widths.W_settle} W_visible=${wNull}; ` +
+      `paper=synthetic W_deposit=${synthPaper.widths.W_deposit} ` +
+      `W_settle=${synthPaper.widths.W_settle} W_visible=${wSynth}. ` +
+      `RED requires W_visible > bound (settled mark wider than the drawn ribbon).`,
+    )
+    expect(
+      wNull,
+      `PIN 1 FAIL base: default-water settled silhouette ${wNull}px exceeds ribbon envelope ` +
+      `${RIBBON_W}px + ${PIN1_TOL}px tolerance (bound ${PIN1_BOUND}px) — seam (a) deposit keeps ` +
+      `the raster AA fringe above the visibility floor`,
+    ).toBeLessThanOrEqual(PIN1_BOUND)
+    expect(
+      wSynth,
+      `PIN 1 FAIL base (synthetic paper): settled silhouette ${wSynth}px exceeds bound ${PIN1_BOUND}px`,
+    ).toBeLessThanOrEqual(PIN1_BOUND)
+  })
+
+  it('PIN 2: waterAmount is the monotonic spread control — width(90) > width(50) > width(10)', () => {
+    const w10 = visibleWidthAtWater(0.1)
+    const w50 = visibleWidthAtWater(0.5)
+    const w90 = visibleWidthAtWater(0.9)
+    console.log(
+      `[260924-m7w] PIN 2 base-state widths: water10=${w10} water50=${w50} water90=${w90} ` +
+      `(contract: 90 > 50 > 10 strictly)`,
+    )
+    expect(
+      w90,
+      `PIN 2: width(90)=${w90} must be > width(50)=${w50}`,
+    ).toBeGreaterThan(w50)
+    expect(
+      w50,
+      `PIN 2: width(50)=${w50} must be > width(10)=${w10}`,
+    ).toBeGreaterThan(w10)
+  })
+
+  it('PIN 3: identical deposit + settle inputs produce a byte-identical footprint (no boil)', () => {
+    const runA = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
+    const runB = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
+    expect(digestAlpha(runA.deposit)).toEqual(digestAlpha(runB.deposit))
+    expect(digestAlpha(runA.settled)).toEqual(digestAlpha(runB.settled))
   })
 })
