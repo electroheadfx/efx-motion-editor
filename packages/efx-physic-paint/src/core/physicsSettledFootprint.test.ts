@@ -19,9 +19,14 @@
 //    - transferToWetLayerClipped (PRODUCTION path — paint.ts raster →
 //      transfer; deposit = (rasterAlpha/255)*3000 gated at rasterAlpha >= 20)
 //  The synthetic raster models the production ribbon fill: solid rows
-//  29..34 (polygon [29,35) at r=3, y=32) plus a 1px AA fringe (alpha 80)
-//  at rows 28/35 — deterministic, no RNG (bristles/deform are random in
-//  production and are excluded for pin-3 determinism).
+//  29..34 (polygon [29,35) at r=3, y=32) plus a GRADUATED 3-row AA fringe
+//  per side (inner→outer 160/110/60 at rows 28/27/26 and mirrored
+//  35/36/37, all ≥ 20 so the base transfer keep-gate admits them) —
+//  260924-ort supersedes the old binary 1px fringe (alpha 80) so the
+//  width space is no longer two-valued {6,9} and a water-coupled deposit
+//  cutoff can select intermediate widths. Deterministic, no RNG
+//  (bristles/deform are random in production and are excluded for
+//  pin-3 determinism).
 //
 //  260924-nqe extension (redo of m7w UAT-failed alpha-carry): PIN 0/0b
 //  pin the stroke-BODY deposit/display opacity that m7w's GREEN destroyed.
@@ -110,20 +115,30 @@ const STROKE = { x0: 16, x1: 112, y: MID_Y }
 /**
  * Production ribbon raster model (paint.ts renderPaintStroke):
  * ribbon polygon at r=3 around y=32 covers rows 29..34 solidly; canvas-fill
- * AA leaves a ~1px fringe (alpha 80) at rows 28 and 35. transfer's a >= 20
- * gate keeps the fringe. Deterministic, no bristles/deform randomness.
+ * AA leaves a GRADUATED 3-row fringe per side — inner→outer 160/110/60
+ * (rows 28/27/26 top, mirrored 35/36/37 bottom), strictly decreasing
+ * toward the edge, all ≥ 20 so transfer's base keep-gate admits them.
+ * 260924-ort: intermediate fringe alphas make the deposit width space
+ * continuous (not {6,9}) so a water-coupled cutoff can carve it.
+ * Deterministic, no bristles/deform randomness.
  *
- * Interior row 31 is partial alpha (180): production grain/deform layers
+ * Interior row 31 is partial alpha (240): production grain/deform layers
  * accumulate at sub-255 alphas INSIDE the stroke — the population m7w's
  * alpha-carry GREEN crushed. PIN 0/0b assert over all of rows 29..34.
  */
 const BODY_ROWS = [29, 30, 31, 32, 33, 34] as const
 const PARTIAL_ALPHA_ROW = 31
 const PARTIAL_ALPHA = 240
+/** Graduated AA fringe (global rows → alpha); strictly decreasing outward */
+const FRINGE_ALPHA: Record<number, number> = {
+  26: 60, 27: 110, 28: 160, // top: outer → inner
+  35: 160, 36: 110, 37: 60, // bottom: inner → outer
+}
 /** runCell drives exactly one production transfer per cell */
 const TRANSFER_COUNT = 1
 
 function makeRasterBounds() {
+  // y 26..38 (h=13) covers the full graduated fringe (rows 26..37)
   return { x: STROKE.x0, y: MID_Y - 6, w: STROKE.x1 - STROKE.x0 + 1, h: 13 }
 }
 
@@ -133,7 +148,7 @@ function makeRasterImageData(bounds: { x: number; y: number; w: number; h: numbe
     const gy = bounds.y + ly
     let a = 0
     if (gy >= 29 && gy <= 34) a = gy === PARTIAL_ALPHA_ROW ? PARTIAL_ALPHA : 255 // ribbon interior (polygon [29,35)); one partial-alpha body row
-    else if (gy === 28 || gy === 35) a = 80 // 1px canvas AA fringe
+    else a = FRINGE_ALPHA[gy] ?? 0 // graduated 3-row-per-side canvas AA fringe
     for (let lx = 0; lx < bounds.w; lx++) {
       const i = (ly * bounds.w + lx) * 4
       data[i] = 255; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = a
@@ -284,13 +299,15 @@ function bodyMeanDisplay(wet: WetBuffers, paper: Float32Array | null): number {
 
 /**
  * Base-calibrated body means after K settle ticks (paper=null, dense) —
- * measured by PIN 0b at Task-1 RED (2026-09-24, raster with interior
- * a=240 row). Floors = 0.95 x these values: catches opacity destroyed
- * anywhere between deposit and display. These literals are the Task-1
- * base measurements and may NEVER be loosened to go green.
+ * measured by PIN 0b at Task-1 RED of 260924-ort (2026-09-24, GRADUATED
+ * 3-row-per-side fringe raster with interior a=240 row; supersedes the
+ * binary-fringe literals). Floors = 0.95 x these values: catches opacity
+ * destroyed anywhere between deposit and display. These literals are the
+ * graduated-raster base measurements of 260924-ort and may NEVER be
+ * loosened to go green.
  */
-const BASE_BODY_MEAN_ALPHA: Record<number, number> = { 10: 2622.31, 50: 2622.31, 90: 2638.37 }
-const BASE_BODY_MEAN_DISPLAY: Record<number, number> = { 10: 225.96, 50: 225.96, 90: 227.41 }
+const BASE_BODY_MEAN_ALPHA: Record<number, number> = { 10: 2678.14, 50: 2678.14, 90: 2679.67 }
+const BASE_BODY_MEAN_DISPLAY: Record<number, number> = { 10: 230.70, 50: 230.70, 90: 230.86 }
 
 // === Contract pins (Task 2 RED) ===
 /**
