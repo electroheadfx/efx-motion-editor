@@ -860,7 +860,7 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     ])
   })
 
-  it('draws queued points directly without smoothing or ribbon construction during the idle window', () => {
+  it('draws each queued stroke as its own sized ribbon during the idle window', () => {
     const { engine, enqueue } = createHarness()
     enqueue('brush-1')
     engine.pendingStrokeFinalizations[0].points = Object.freeze([
@@ -875,8 +875,8 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.drawQueuedStrokePreviews({} as CanvasRenderingContext2D)
 
     expect(drawQueuedStrokePreview).toHaveBeenCalledTimes(2)
-    expect(drawQueuedStrokePreview).toHaveBeenNthCalledWith(1, expect.anything(), engine.pendingStrokeFinalizations[0].points)
-    expect(drawQueuedStrokePreview).toHaveBeenNthCalledWith(2, expect.anything(), engine.pendingStrokeFinalizations[0].points)
+    expect(drawQueuedStrokePreview).toHaveBeenNthCalledWith(1, expect.anything(), engine.pendingStrokeFinalizations[0])
+    expect(drawQueuedStrokePreview).toHaveBeenNthCalledWith(2, expect.anything(), engine.pendingStrokeFinalizations[0])
   })
 
   it('lifecycle flush bypasses frame pacing and completes all accepted jobs', () => {

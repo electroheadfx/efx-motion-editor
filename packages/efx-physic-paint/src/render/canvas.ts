@@ -241,65 +241,81 @@ export interface StrokePreview {
   hasPenInput?: boolean
 }
 
+/** Style for a queued stroke's preview ribbon (its own brush size/color while finalizing). */
+export interface QueuedStrokePreviewStyle {
+  radius: number
+  hasPenInput: boolean
+  color: string
+  opacity: number
+}
+
+/**
+ * Fill a ribbon polygon as a single closed path — the one shared draw primitive
+ * for live and queued stroke previews (no stroke()/setLineDash() on this path).
+ */
+function fillRibbonPolygon(
+  displayCtx: CanvasRenderingContext2D,
+  poly: Array<[number, number]>,
+  color: string,
+  opacity: number,
+): void {
+  if (poly.length < 2) return
+  displayCtx.save()
+  displayCtx.beginPath()
+  displayCtx.moveTo(poly[0][0], poly[0][1])
+  for (let i = 1; i < poly.length; i++) displayCtx.lineTo(poly[i][0], poly[i][1])
+  displayCtx.closePath()
+  displayCtx.fillStyle = color
+  displayCtx.globalAlpha = opacity
+  displayCtx.fill()
+  displayCtx.restore()
+}
+
+/** smooth → resample → ribbon, the shared preview geometry (same shape family live and queued). */
+function buildPreviewRibbon(pts: readonly PenPoint[], radius: number, hasPenInput: boolean): Array<[number, number]> {
+  const sm = smooth(pts, 2)
+  const curve = resample(sm, Math.max(3, radius * 0.25))
+  if (curve.length < 3) return []
+  return ribbon(curve, radius, 0.8, hasPenInput)
+}
+
+/**
+ * Draw a queued stroke's preview on the display canvas as its own filled,
+ * brush-sized ribbon (pending opts radius, color, opacity, pressure mode).
+ *
+ * @param displayCtx - Display canvas context
+ * @param points - Queued stroke centerline samples
+ * @param style - The queued stroke's own brush style
+ */
+export function drawQueuedStrokePolyline(
+  displayCtx: CanvasRenderingContext2D,
+  points: readonly PenPoint[],
+  style: QueuedStrokePreviewStyle,
+): void {
+  fillRibbonPolygon(
+    displayCtx,
+    buildPreviewRibbon(points, style.radius, style.hasPenInput),
+    style.color,
+    style.opacity,
+  )
+}
+
 /**
  * Draw stroke preview on the display canvas.
- * Shows dashed outline of the stroke shape during painting.
- * From v3.html drawStrokePreview() line 2064
+ * Fills the brush-sized ribbon polygon (pressure-varying width) during painting.
  *
  * @param displayCtx - Display canvas context
  * @param preview - Preview data (null = no preview)
  */
-type PreviewPathPoint = readonly [number, number] | Pick<PenPoint, 'x' | 'y'>
-
-function pathX(point: PreviewPathPoint): number {
-  return 'x' in point ? point.x : point[0]
-}
-
-function pathY(point: PreviewPathPoint): number {
-  return 'y' in point ? point.y : point[1]
-}
-
-function drawDashedPath(
-  displayCtx: CanvasRenderingContext2D,
-  points: ReadonlyArray<PreviewPathPoint>,
-  closePath: boolean,
-): void {
-  if (points.length < 2) return
-  displayCtx.save()
-  displayCtx.lineWidth = 1.5
-  displayCtx.setLineDash([5, 5])
-  displayCtx.strokeStyle = 'rgba(0,0,0,0.55)'
-  displayCtx.lineDashOffset = 0
-  displayCtx.beginPath()
-  displayCtx.moveTo(pathX(points[0]), pathY(points[0]))
-  for (let i = 1; i < points.length; i++) displayCtx.lineTo(pathX(points[i]), pathY(points[i]))
-  if (closePath) displayCtx.closePath()
-  displayCtx.stroke()
-
-  displayCtx.strokeStyle = 'rgba(255,255,255,0.55)'
-  displayCtx.lineDashOffset = 5
-  displayCtx.beginPath()
-  displayCtx.moveTo(pathX(points[0]), pathY(points[0]))
-  for (let i = 1; i < points.length; i++) displayCtx.lineTo(pathX(points[i]), pathY(points[i]))
-  if (closePath) displayCtx.closePath()
-  displayCtx.stroke()
-  displayCtx.restore()
-}
-
-export function drawQueuedStrokePolyline(
-  displayCtx: CanvasRenderingContext2D,
-  points: readonly PenPoint[],
-): void {
-  drawDashedPath(displayCtx, points, false)
-}
-
 export function drawStrokePreview(
   displayCtx: CanvasRenderingContext2D,
   preview: StrokePreview | null,
 ): void {
   if (!preview || preview.pts.length < 3) return
-  const sm = smooth(preview.pts, 2)
-  const curve = resample(sm, Math.max(3, preview.radius * 0.25))
-  if (curve.length < 3) return
-  drawDashedPath(displayCtx, ribbon(curve, preview.radius, 0.8, preview.hasPenInput ?? false), true)
+  fillRibbonPolygon(
+    displayCtx,
+    buildPreviewRibbon(preview.pts, preview.radius, preview.hasPenInput ?? false),
+    preview.color,
+    preview.opacity,
+  )
 }

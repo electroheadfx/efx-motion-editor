@@ -1745,7 +1745,7 @@ export class EfxPaintEngine {
       // redraws every outline from scratch).
       const queued = this.getQueuedStrokePreviews()
       if (this.drawnQueuedOutlineCount < queued.length) {
-        for (let i = this.drawnQueuedOutlineCount; i < queued.length; i++) this.drawQueuedStrokePreview(displayCtx, queued[i].points)
+        for (let i = this.drawnQueuedOutlineCount; i < queued.length; i++) this.drawQueuedStrokePreview(displayCtx, queued[i])
         this.drawnQueuedOutlineCount = queued.length
       }
 
@@ -1882,7 +1882,7 @@ export class EfxPaintEngine {
     displayCtx.beginPath()
     displayCtx.rect(x0, y0, x1 - x0, y1 - y0)
     displayCtx.clip()
-    for (const pending of this.getQueuedStrokePreviews()) this.drawQueuedStrokePreview(displayCtx, pending.points)
+    for (const pending of this.getQueuedStrokePreviews()) this.drawQueuedStrokePreview(displayCtx, pending)
     if (this.previewStroke) drawStrokePreview(displayCtx, this.previewStroke)
     displayCtx.restore()
   }
@@ -2022,14 +2022,21 @@ export class EfxPaintEngine {
 
   private drawQueuedStrokePreview(
     displayCtx: CanvasRenderingContext2D,
-    points: readonly PenPoint[],
+    pending: DeferredStrokeFinalization,
   ): void {
-    drawQueuedStrokePolyline(displayCtx, points)
+    // Mirror the live previewStroke color/opacity rule so a queued stroke reads
+    // as the same object it was during the gesture (display overlay only).
+    drawQueuedStrokePolyline(displayCtx, pending.points, {
+      radius: brushRenderRadius(pending.opts),
+      hasPenInput: pending.hasPenInput,
+      color: pending.tool === 'paint' ? pending.color ?? '#000000' : pending.tool === 'erase' ? '#ff4444' : '#888888',
+      opacity: pending.tool === 'paint' ? (pending.opts.opacity ?? 100) / 100 : 0.3,
+    })
   }
 
   private drawQueuedStrokePreviews(displayCtx: CanvasRenderingContext2D): void {
     for (const pending of this.getQueuedStrokePreviews()) {
-      this.drawQueuedStrokePreview(displayCtx, pending.points)
+      this.drawQueuedStrokePreview(displayCtx, pending)
     }
   }
 
