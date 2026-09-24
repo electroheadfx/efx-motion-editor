@@ -1,8 +1,9 @@
 ---
 phase: quick-260924-ffd
 verified: 2026-09-24T10:27:30Z
-status: human_needed
+status: passed
 score: 6/6 must-haves verified
+human_verified: "2026-09-24 — all 8 native UAT rows approved live; approved follow-ups 54d15d6d (Settings + New Project fps click-button rows, Studio fps moved to the Tools popover Playback section) and d2c1b9ea (labels 'Frame rate (fps)')"
 covered_files:
   - ".planning/quick/260924-ffd-numeric-stepper-contract-integer-1-defau/260924-ffd-PLAN.md"
   - ".planning/quick/260924-ffd-numeric-stepper-contract-integer-1-defau/260924-ffd-RED-EVIDENCE.json"
