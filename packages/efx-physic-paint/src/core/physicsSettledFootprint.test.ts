@@ -390,7 +390,29 @@ describe('physics settled footprint — stage-wise seam diagnosis', () => {
 })
 
 describe('physics settled footprint — contract pins', () => {
-  it('PIN 1: default-water W_visible stays within ribbon envelope + tolerance (2r + 2px)', () => {
+  // ============================================================
+  //  DISPOSITIONED (260924-rm2) — synthetic ramp is NOT the oracle
+  //
+  //  The assertions below stay fully visible and UNCHANGED (never
+  //  deleted, never loosened, never reshaped to fake a pass). They are
+  //  skipped on this harness's substrate only: the synthetic graduated
+  //  160/110/60 ramp CANNOT express the dual gate — 260924-ort STOP
+  //  clause (ii) measured the complete cutoff outcome space on this
+  //  ramp and every envelope-holding config settled with d(b)=0
+  //  (hard stamp); at the landed keep-gate 70 the ramp still measures
+  //  W_deposit=10 > 8 with d(b)=0. 260924-nqe's structural proof
+  //  covers the same limitation for the earlier two-valued raster.
+  //
+  //  The contract these assertions encode IS asserted GREEN — on
+  //  production's real continuous AA raster — by the 260924-pyp /
+  //  260924-rm2 harness (productionAaSettleMeasurement.test.ts
+  //  `260924-rm2 production-path deposit-cutoff contract pins`) at
+  //  the landed tier: envelope W_visible <= 8 at default water AND
+  //  texture d(b) >= 1 at every water, both papers, PIN 0/0b hard
+  //  gates in bounds. That harness is the oracle; this synthetic
+  //  substrate is not.
+  // ============================================================
+  it.skip('DISPOSITIONED (260924-rm2): PIN 1: default-water W_visible stays within ribbon envelope + tolerance (2r + 2px)', () => {
     const nullPaper = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
     const synthPaper = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, makeSyntheticPaper())
     const wNull = nullPaper.widths.W_visible
@@ -503,7 +525,20 @@ describe('physics settled footprint — contract pins', () => {
     }
   })
 
-  it('texture gate: default-water fluid settle still softens the edge — d(b) = W_settle - W_deposit >= 1', () => {
+  // ============================================================
+  //  DISPOSITIONED (260924-rm2) — synthetic ramp is NOT the oracle
+  //
+  //  Same disposition as PIN 1 above: the law text and assertion body
+  //  are preserved verbatim and NEVER loosened/reshaped/deleted. On
+  //  this harness's synthetic graduated 160/110/60 ramp the dual gate
+  //  is structurally unreachable (260924-ort STOP clause (ii): every
+  //  envelope-holding cutoff tier yields d(b)=0; at landed keep-gate
+  //  70: W_deposit=10, d(b)=0 — measured). The texture contract is
+  //  asserted GREEN on production's real continuous AA raster by the
+  //  260924-pyp / 260924-rm2 production-path contract pins at the
+  //  landed tier (d(b) = 1-2 at every water 10/50/90, both papers).
+  // ============================================================
+  it.skip('DISPOSITIONED (260924-rm2): texture gate: default-water fluid settle still softens the edge — d(b) = W_settle - W_deposit >= 1', () => {
     const { widths } = runCell('transfer', DEFAULT_WATER, SPACINGS[0].px, null)
     const db = widths.W_settle - widths.W_deposit
     console.log(

@@ -395,6 +395,28 @@ export function transferToWetLayer(
 }
 
 /**
+ * Deposit keep-gate for transferToWetLayerClipped (260924-rm2).
+ *
+ * Include/exclude ONLY at the deposit gate: raster pixels with alpha
+ * below this tier never run; included pixels keep the exact base
+ * deposit math `(a / 255) * 3000` and the untouched D-08 paper
+ * adsorption, D-09 granulation, D-10 subtractive mixing, wetness
+ * write, and strokeOpacity. NEVER scale depositAlpha, wetness, or
+ * strokeOpacity with waterAmount, with tier, or with any other
+ * parameter (m7w failure 24f40261 / revert 1648658b: alpha-carry
+ * modulation produced a quasi-invisible stroke).
+ *
+ * Tier per the 260924-pyp OUTCOME TABLE (production continuous AA
+ * raster, 24 cells): tier 70 holds envelope W_visible <= 8 at default
+ * water with texture d(b) = 1-2 at all waters/papers (tier 130 =
+ * fallback only, same envelope); tier 200 is FORBIDDEN (proven hard
+ * stamp, d(b) = 0); base tier 20 fails the envelope on null paper
+ * (W_visible 9 > 8). Body plateau (~244) stays far above the gate —
+ * PIN 0 / PIN 0b assert zero body movement in both harnesses.
+ */
+const DEPOSIT_KEEP_TIER = 70
+
+/**
  * Clipped version of transferToWetLayer using bounds rect.
  * From v3.html transferToWetLayerClipped() lines 884-919
  */
@@ -422,7 +444,7 @@ export function transferToWetLayerClipped(
       if (gx < 0 || gx >= width) continue
       const pi = (ly * bounds.w + lx) * 4
       const a = offData[pi + 3]
-      if (a < 20) continue  // Filter bristle trace + anti-aliased edge artifacts that create grey artifacts
+      if (a < DEPOSIT_KEEP_TIER) continue  // 260924-rm2 deposit keep-gate: include/exclude only, never alpha modulation (filters bristle trace + AA edge artifacts)
 
       const i = gy * width + gx
       let depositAlpha = (a / 255) * 3000
