@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 3
 waived_count: 5
 fixed_count: 67
-total_count: 74
-last_updated: 2026-09-24T13:20:59.533Z
+total_count: 75
+last_updated: 2026-09-24T18:09:46.171Z
 ---
 
 # Broken Windows Ledger
@@ -89,6 +89,7 @@ last_updated: 2026-09-24T13:20:59.533Z
 | 72 | 43.2 | unmet-truth | app/src/components/physic-paint/roto/physicsPaintRotoPlayScriptController.ts |  | Frozen 69d07703 Regenerate retains deleted occurrences because reconstruction follows current visibleRanges instead of original Group extent | fixed |  | 2026-08-12T11:58:21.000Z | 2026-09-22T15:42:15.031Z |
 | 73 | 26 | deviation | app/src/stores/projectStore.efxPaintCutover.test.ts |  | Quick 260923-kcs: retargeted 45-05 Task 3 AddFxMenu source-shape pins (name: 'Physic Paint' -> name: stackName; old createFxSequence literals -> position:'top' shapes) — pre-existing pins encoded the fixed-name defect the quick kills; file was outside the plan's files_modified list (Rule 1, commit 39a60fd2) | open |  | 2026-09-23T14:17:20.987Z |  |
 | 74 | quick-260924-koa | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.liveAlphaCache.test.ts | 152 | Pre-existing package-suite failure (preserves displayed wet alpha when local pre-stroke preparation bakes a distant stroke) — reproduced at base f92254f7, out of scope for 260924-koa | open |  | 2026-09-24T13:20:59.533Z |  |
+| 75 | 260924-rm2 | skipped-test | packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts | 418 | PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today | open |  | 2026-09-24T18:09:46.171Z |  |
 
 ````json
 [
@@ -979,6 +980,19 @@ last_updated: 2026-09-24T13:20:59.533Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-24T13:20:59.533Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 75,
+    "kind": "skipped-test",
+    "phase": "260924-rm2",
+    "file": "packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts",
+    "line": 418,
+    "description": "PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-24T18:09:46.171Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }
