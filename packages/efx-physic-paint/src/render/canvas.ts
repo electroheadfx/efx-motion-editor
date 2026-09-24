@@ -273,7 +273,8 @@ function fillRibbonPolygon(
 
 /** smooth → resample → ribbon, the shared preview geometry (same shape family live and queued). */
 function buildPreviewRibbon(pts: readonly PenPoint[], radius: number, hasPenInput: boolean): Array<[number, number]> {
-  const sm = smooth(pts, 2)
+  // smooth() never mutates its input (builds fresh arrays) — the readonly pass-through is safe.
+  const sm = smooth(pts as PenPoint[], 2)
   const curve = resample(sm, Math.max(3, radius * 0.25))
   if (curve.length < 3) return []
   return ribbon(curve, radius, 0.8, hasPenInput)
