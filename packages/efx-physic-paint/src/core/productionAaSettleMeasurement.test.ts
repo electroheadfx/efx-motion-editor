@@ -681,3 +681,63 @@ describe('260924-pyp cutoff tier sweep — full outcome matrix', () => {
     for (const f of STOP_FINDINGS) console.log(`[260924-pyp] ${f}`)
   })
 })
+
+// ============================================================
+//  260924-rm2 — production-path deposit-cutoff CONTRACT pins
+//
+//  The contract the landed cutoff must satisfy on the PRODUCTION
+//  path: cells run with the RAW profile — no in-harness tier
+//  pre-filter (applyTier is a no-op for tier <= 20, so
+//  transferToWetLayerClipped's own deposit keep-gate decides
+//  inclusion; that no-op IS the integration path at whatever gate
+//  production applies). RED at base (keep-gate 20): envelope fails
+//  on null paper at default water (W_visible 9 > 8) and texture
+//  fails on synthetic paper at waters 10/50 (d(b) = 0) per the
+//  260924-pyp OUTCOME TABLE tier-20 rows. GREEN only after the
+//  cutoff lands in wet-layer.ts.
+//
+//  Cutoff = include/exclude at the deposit keep-gate ONLY. PIN 0 +
+//  PIN 0b are HARD gates over every production-path cell: any
+//  body-pixel movement fails the run (STOP — never loosen a bound;
+//  never modulate deposit alpha with water/tier — m7w 24f40261
+//  failure mode, reverted 1648658b).
+// ============================================================
+describe('260924-rm2 production-path deposit-cutoff contract pins', () => {
+  /** RAW profile cells — no in-harness tier pre-filter (applyTier no-op at tier 20). */
+  const productionPath = () => measureCells([20])
+
+  it('envelope: W_visible <= 8 at DEFAULT water 50, both papers', () => {
+    const results = productionPath()
+    logTable('260924-rm2 PRODUCTION PATH (raw profile, production keep-gate)', results)
+    for (const r of results) {
+      if (r.water !== 50) continue
+      expect(
+        r.W_visible,
+        `260924-rm2 envelope FAIL: paper=${r.paper} water=50 W_visible=${r.W_visible} > bound ${ENVELOPE_BOUND} ` +
+        `(ribbon 2r=${RIBBON_W} + 2px) — production keep-gate admits fringe pixels the deposit cutoff must exclude ` +
+        `(pyp OUTCOME TABLE: base tier 20 fails envelope on null paper)`,
+      ).toBeLessThanOrEqual(ENVELOPE_BOUND)
+    }
+  })
+
+  it('texture: d(b) = W_settle - W_deposit >= 1 at EVERY water {10, 50, 90}, both papers', () => {
+    const results = productionPath()
+    for (const r of results) {
+      const db = r.W_settle - r.W_deposit
+      expect(
+        db,
+        `260924-rm2 texture FAIL: paper=${r.paper} water=${r.water} d(b)=${db} < 1 ` +
+        `(W_deposit=${r.W_deposit} -> W_settle=${r.W_settle}) — a cutoff that lands here is a hard stamp ` +
+        `(d(b) must survive on the production raster at every water; exercises the D-08 synthetic-paper ` +
+        `adsorption path alongside null)`,
+      ).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it('PIN 0 + PIN 0b HARD gates over every production-path cell (any body movement fails the run)', () => {
+    const results = productionPath()
+    // assertMode true: violations are STOP findings AND assertion failures —
+    // bounds are never loosened to make a cell pass.
+    checkPinGates(results, /* assertMode */ true)
+  })
+})

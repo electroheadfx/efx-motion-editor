@@ -415,7 +415,26 @@ describe('physics settled footprint — contract pins', () => {
     ).toBeLessThanOrEqual(PIN1_BOUND)
   })
 
-  it('PIN 2: waterAmount is the monotonic spread control — width(90) > width(50) > width(10)', () => {
+  // ============================================================
+  //  DEFERRED — 260924-rm2 decision (user decision recorded in the plan)
+  //
+  //  Water-monotone width (strict: width(90) > width(50) > width(10))
+  //  is a KNOWN GAP deferred to a future fluids.ts water-coupling
+  //  feature. Structural evidence (260924-nqe): the local fluid path
+  //  has no water->settle coupling — localFluidPhysicsStep reads only
+  //  wet.alpha (height equalization, wetMask, advection); wetness is
+  //  passively advected and never feeds back; waterAmount reaches the
+  //  solver only via the deposit's wetness write and a +/-1px bbox
+  //  margin — so widths are IDENTICAL across waters at base today
+  //  (already true before any cutoff lands).
+  //
+  //  NOT part of this fix (260924-rm2 lands the deposit keep-gate
+  //  cutoff only). The strict-monotone law below must NOT be
+  //  loosened, reshaped, or faked green — the test body and assertion
+  //  text are preserved verbatim; future water-coupling work must
+  //  satisfy the text as written.
+  // ============================================================
+  it.skip('DEFERRED (260924-rm2): PIN 2: waterAmount is the monotonic spread control — width(90) > width(50) > width(10)', () => {
     const w10 = visibleWidthAtWater(0.1)
     const w50 = visibleWidthAtWater(0.5)
     const w90 = visibleWidthAtWater(0.9)
