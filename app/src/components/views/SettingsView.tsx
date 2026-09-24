@@ -6,6 +6,13 @@ import {ThemeSwitcher} from '../layout/ThemeSwitcher';
 // stays clamped. The source-scan contract (SettingsView.test.tsx) pins the
 // absence of any '3840' / '2160' / '4K' literal outside comments.
 import {CANVAS_FORMAT_PRESETS} from '../project/canvasFormatPresets';
+// 260924-ffd: the Frame Rate row is the shared preset stepper over the ONE
+// FPS_PRESETS list (D-24 fps 0.5 and the old two-button fps row → OBSOLETE).
+// This is the PROJECT tier: it writes only the project store's fps setter,
+// never the Studio playback store (two-tier fps law, pinned in
+// NumericStepper.test.tsx).
+import {FPS_PRESETS} from '../../lib/fpsPresets';
+import {NumericStepper} from '../shared/NumericStepper';
 
 export function SettingsView() {
   const currentResLabel = `${projectStore.width.value}x${projectStore.height.value}`;
@@ -27,23 +34,16 @@ export function SettingsView() {
       {/* Settings content */}
       <div class="flex-1 overflow-y-auto p-6">
         <div class="max-w-md space-y-6">
-          {/* FPS */}
+          {/* FPS (260924-ffd: preset stepper over the shared FPS_PRESETS list) */}
           <div class="space-y-2">
             <label class="text-xs font-semibold text-(--color-text-muted)">Frame Rate</label>
-            <div class="flex gap-2">
-              {[15, 24].map((rate) => (
-                <button
-                  key={rate}
-                  class={`px-4 py-2 rounded-[5px] text-sm transition-colors ${
-                    projectStore.fps.value === rate
-                      ? 'bg-(--color-accent) text-white'
-                      : 'bg-(--color-bg-settings) text-(--color-text-secondary) hover:bg-(--color-bg-input)'
-                  }`}
-                  onClick={() => projectStore.setFps(rate)}
-                >
-                  {rate} fps
-                </button>
-              ))}
+            <div class="flex gap-2 items-center">
+              <NumericStepper
+                value={projectStore.fps.value}
+                onChange={(rate) => projectStore.setFps(rate)}
+                presets={FPS_PRESETS}
+                ariaLabel="Frame Rate"
+              />
             </div>
           </div>
 

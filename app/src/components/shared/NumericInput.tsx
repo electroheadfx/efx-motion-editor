@@ -4,19 +4,39 @@ import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { NumericStepper } from './NumericStepper';
 
 /** Small numeric input with the shared − [field] + treatment (52.2-03 D-23/D-24).
- *  Label is draggable: click-drag left/right on the label to scrub the value by step increments.
+ *  Label is draggable: click-drag left/right on the label to scrub the value by step increments
+ *  (or, in preset mode — 260924-ffd — one list entry per 4 px, clamped at the ends).
  *  The field itself (display format, clamp, commit on Enter/blur) lives in NumericStepper. */
+
+/** Nearest list index to `value`, ties toward the lower entry (ascending list). */
+function nearestPresetIndex(presets: readonly number[], value: number): number {
+  let best = 0;
+  let bestDistance = Math.abs(presets[0] - value);
+  for (let index = 1; index < presets.length; index += 1) {
+    const distance = Math.abs(presets[index] - value);
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 export function NumericInput({
   label,
   value,
   step,
+  presets,
   min,
   max,
   onChange,
 }: {
   label: string;
   value: number;
-  step: number;
+  /** Classic constant step — optional since 260924-ffd (defaults to 1 in the arithmetic, never NaN). */
+  step?: number;
+  /** PRESET MODE (260924-ffd): the label scrub walks this list, one entry per 4 px, clamped at the ends. */
+  presets?: readonly number[];
   min?: number;
   max?: number;
   onChange: (val: number) => void;
@@ -38,15 +58,27 @@ export function NumericInput({
 
     const onMove = (ev: PointerEvent) => {
       const dx = ev.clientX - startX;
-      // Every 4px of movement = 1 step
+      // Every 4px of movement = 1 step (or 1 preset entry in preset mode)
       const steps = Math.trunc(dx / 4);
       if (steps !== 0) {
         startX += steps * 4;
-        let newVal = currentVal + steps * step;
-        // Round to avoid floating-point drift
-        newVal = Math.round(newVal / step) * step;
-        if (min != null) newVal = Math.max(min, newVal);
-        if (max != null) newVal = Math.min(max, newVal);
+        let newVal: number;
+        if (presets && presets.length > 0) {
+          // Preset mode (260924-ffd): index walk clamped at the list ends.
+          const index = Math.min(
+            presets.length - 1,
+            Math.max(0, nearestPresetIndex(presets, currentVal) + steps),
+          );
+          newVal = presets[index];
+        } else {
+          // Classic mode: default step 1 before the arithmetic (never NaN).
+          const effectiveStep = step ?? 1;
+          newVal = currentVal + steps * effectiveStep;
+          // Round to avoid floating-point drift
+          newVal = Math.round(newVal / effectiveStep) * effectiveStep;
+          if (min != null) newVal = Math.max(min, newVal);
+          if (max != null) newVal = Math.min(max, newVal);
+        }
         currentVal = newVal;
         onChange(newVal);
       }
@@ -61,7 +93,7 @@ export function NumericInput({
 
     target.addEventListener('pointermove', onMove);
     target.addEventListener('pointerup', onUp);
-  }, [value, step, min, max, onChange]);
+  }, [value, step, presets, min, max, onChange]);
 
   return (
     <div class="flex items-center gap-4 flex-1 min-w-0">
@@ -78,6 +110,7 @@ export function NumericInput({
         value={value}
         onChange={onChange}
         step={step}
+        presets={presets}
         min={min}
         max={max}
         ariaLabel={label}

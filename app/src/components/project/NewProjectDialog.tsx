@@ -5,6 +5,11 @@ import {projectStore} from '../../stores/projectStore';
 import {toPackageManifestPath} from '../../lib/openedProjectUrls';
 import {showProjectIoFailureDialog} from '../../lib/projectIoFailureDialog';
 import {NumericStepper} from '../shared/NumericStepper';
+// 260924-ffd: the Frame Rate control is the shared preset stepper over the ONE
+// FPS_PRESETS list (the inline 15/24 fps pills → OBSOLETE). PROJECT tier seed:
+// local fps state (default 24, locked decision) → createProject(name, fps, …),
+// never the project store's fps setter directly (two-tier fps law).
+import {FPS_PRESETS} from '../../lib/fpsPresets';
 import {
   CANVAS_FORMAT_PRESETS,
   CUSTOM_CANVAS_FORMAT_MAX_SIDE,
@@ -164,36 +169,18 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
           />
         </div>
 
-        {/* Frame Rate */}
+        {/* Frame Rate (260924-ffd: preset stepper over the shared FPS_PRESETS list) */}
         <div class="flex flex-col gap-2">
           <label class="text-[11px] font-semibold text-(--color-text-dim) tracking-wide">
             FRAME RATE
           </label>
           <div class="flex items-center gap-1 rounded-lg bg-(--color-bg-input) p-1 w-fit">
-            <div
-              class={`flex items-center rounded-md px-4 py-2 cursor-pointer transition-colors ${
-                fps === 15 ? 'bg-(--color-accent)' : ''
-              }`}
-              onClick={() => setFps(15)}
-            >
-              <span
-                class={`text-sm ${fps === 15 ? 'text-white font-medium' : 'text-(--color-text-secondary)'}`}
-              >
-                15 fps
-              </span>
-            </div>
-            <div
-              class={`flex items-center rounded-md px-4 py-2 cursor-pointer transition-colors ${
-                fps === 24 ? 'bg-(--color-accent)' : ''
-              }`}
-              onClick={() => setFps(24)}
-            >
-              <span
-                class={`text-sm ${fps === 24 ? 'text-white font-medium' : 'text-(--color-text-secondary)'}`}
-              >
-                24 fps
-              </span>
-            </div>
+            <NumericStepper
+              value={fps}
+              onChange={setFps}
+              presets={FPS_PRESETS}
+              ariaLabel="Frame Rate"
+            />
           </div>
         </div>
 

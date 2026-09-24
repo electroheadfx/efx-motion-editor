@@ -186,7 +186,11 @@ describe('NewProjectDialog canvas format (260918-ovi)', () => {
     (customPill!.props as { onClick: () => void }).onClick();
 
     const nextTree = renderDialog();
-    const steppers = findAll(nextTree, (vnode) => vnode.type === NumericStepper);
+    // 260924-ffd: the Frame Rate preset stepper also renders as a
+    // NumericStepper — scope this canvas-format assertion to W×H.
+    const steppers = findAll(nextTree, (vnode) => vnode.type === NumericStepper).filter((s) =>
+      /width|height/i.test(s.props.ariaLabel as string),
+    );
     expect(steppers).toHaveLength(2);
     for (const stepper of steppers) {
       expect(stepper.props.step).toBe(1);
@@ -298,7 +302,11 @@ describe('NewProjectDialog canvas format (260918-ovi)', () => {
     // Drive the two steppers: width to 1500, height attempts 2200 but the
     // stepper's own clampToStep emits 1920 (T-260918-ovi-01).
     tree = renderDialog();
-    const steppers = findAll(tree, (vnode) => vnode.type === NumericStepper);
+    // 260924-ffd: scope to the W×H steppers — the Frame Rate preset stepper
+    // is a third NumericStepper now.
+    const steppers = findAll(tree, (vnode) => vnode.type === NumericStepper).filter((s) =>
+      /width|height/i.test(s.props.ariaLabel as string),
+    );
     expect(steppers).toHaveLength(2);
     const widthStepper = steppers.find((s) => (s.props.ariaLabel as string).toLowerCase().includes('width'))!;
     const heightStepper = steppers.find((s) => (s.props.ariaLabel as string).toLowerCase().includes('height'))!;

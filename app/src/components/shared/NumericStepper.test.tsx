@@ -10,6 +10,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../efx-paint/document/efxPaintDocument';
+import { FPS_PRESETS } from '../../lib/fpsPresets';
 import { pushAction, resetHistory } from '../../lib/history';
 import { historyStore } from '../../stores/historyStore';
 import type { HistoryEntry } from '../../types/history';
@@ -455,6 +456,10 @@ const SWEPT_COMPONENT_PATHS = [
   'src/components/shared/ColorPickerModal.tsx',
   'src/components/physic-paint/view/PhysicsPaintTopBar.tsx',
   'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx',
+  // 260924-ffd: the two converted PROJECT-tier fps surfaces joined the sweep
+  // when they adopted the shared preset stepper (6 → 8, same commit).
+  'src/components/views/SettingsView.tsx',
+  'src/components/project/NewProjectDialog.tsx',
 ];
 
 /** The Studio workflow strip fps field declares FPS_PRESETS preset mode (260924-ffd; D-24 fps 0.5 OBSOLETE). */
@@ -510,7 +515,8 @@ describe('numericStepperSweep', () => {
 
   it('scans the expected swept component list', () => {
     expect(SWEPT_COMPONENT_PATHS.filter((relPath) => /\.test\.tsx$/.test(relPath))).toEqual([]);
-    expect(scannedPaths).toHaveLength(6);
+    // 8 = the 6 pre-260924-ffd surfaces + SettingsView + NewProjectDialog.
+    expect(scannedPaths).toHaveLength(8);
   });
 
   it('leaves no raw native numeric input on a swept surface', () => {
@@ -596,6 +602,12 @@ describe('numericStepperSweep', () => {
 describe('260924-ffd — classic default + fps preset contract pins', () => {
   /** The exact preset list from the plan (ascending — part of the contract). */
   const FPS_WALK = [6, 12, 15, 24, 25, 50, 60] as const;
+
+  it('FPS_PRESETS matches the contract list these pins walk', () => {
+    // Glue between the unit pins (literal list) and the shared constant all
+    // three surfaces import — a change to either side must fail here.
+    expect([...FPS_PRESETS]).toEqual([...FPS_WALK]);
+  });
 
   type BareOverrides = {
     value?: number;
@@ -701,20 +713,23 @@ describe('260924-ffd — classic default + fps preset contract pins', () => {
   });
 
   it('Pin 3: typed commit snaps nearest-ties-low; an off-list value displays as-is then snaps by direction of travel', () => {
-    // Nearest-entry snap, ties toward the lower entry.
-    const typedCases: Array<[string, number]> = [
-      ['30', 25],
-      ['5', 6],
-      ['999', 60],
-      ['24.5', 24],
+    // Nearest-entry snap, ties toward the lower entry. Each case renders from
+    // a value that differs from the expected result — the commit path never
+    // emits a no-op (T-52.2-08), so the "24.5" tie case starts at 25 to prove
+    // the tie resolves DOWN to 24 rather than staying on 25.
+    const typedCases: Array<[string, number, number]> = [
+      ['30', 25, 24],
+      ['5', 6, 24],
+      ['999', 60, 24],
+      ['24.5', 24, 25],
     ];
-    for (const [typed, expected] of typedCases) {
+    for (const [typed, expected, currentValue] of typedCases) {
       const onChange = vi.fn();
-      const field = input(renderPresetStepper({ value: 24, onChange }));
+      const field = input(renderPresetStepper({ value: currentValue, onChange }));
       expect(field).toBeDefined();
       (field!.props as { onBlur: (event: unknown) => void }).onBlur({ currentTarget: { value: typed } });
-      expect(onChange, `typed "${typed}"`).toHaveBeenCalledTimes(1);
-      expect(onChange.mock.calls[0][0], `typed "${typed}"`).toBe(expected);
+      expect(onChange, `typed "${typed}" from ${currentValue}`).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0], `typed "${typed}" from ${currentValue}`).toBe(expected);
     }
 
     // Off-list live value displays as-is after render — no snap on render.

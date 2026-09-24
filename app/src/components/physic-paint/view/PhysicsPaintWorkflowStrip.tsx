@@ -69,6 +69,7 @@ import {
   togglePushTool,
 } from './physicsPaintPushArmedTool';
 import { NumericStepper } from '../../shared/NumericStepper';
+import { FPS_PRESETS } from '../../../lib/fpsPresets';
 import { isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import { shouldRestoreOrphanedKeyRailFocus } from './physicsPaintKeyRailFocus';
@@ -1106,8 +1107,11 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
       window.removeEventListener('keydown', onEscapeKeyDown, true);
     };
   }, [toolboxOpen]);
-  // D-23/D-24: the shared − [field] + stepper owns the fps step 0.5 and its
-  // 1–60 clamp; this handler keeps the old finite-value guard.
+  // D-23, reshaped by 260924-ffd: the shared − [field] + stepper owns the fps
+  // PRESET menu (FPS_PRESETS, ends 6/60 clamp with disabled end buttons —
+  // D-24 fps 0.5 OBSOLETE); this handler keeps the old finite-value guard.
+  // STUDIO tier: writes only onPlaybackFpsChange → setRotoPlaybackFps → the
+  // playback hook — never the project store (two-tier fps law, pinned).
   function handleRotoPlaybackFpsChange(value: number) {
     if (Number.isFinite(value)) props.onPlaybackFpsChange?.(value);
   }
@@ -1191,8 +1195,8 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
         <label class="physics-paint-roto-fps-control"><span>fps</span><NumericStepper
           value={props.playbackFps || props.projectFps || 1}
           onChange={handleRotoPlaybackFpsChange}
-          step={0.5}
-          min={1}
+          presets={FPS_PRESETS}
+          min={6}
           max={60}
           disabled={!props.ready}
           ariaLabel="Cached Roto playback frames per second"
