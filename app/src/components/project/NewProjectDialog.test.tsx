@@ -186,8 +186,8 @@ describe('NewProjectDialog canvas format (260918-ovi)', () => {
     (customPill!.props as { onClick: () => void }).onClick();
 
     const nextTree = renderDialog();
-    // 260924-ffd: the Frame Rate preset stepper also renders as a
-    // NumericStepper — scope this canvas-format assertion to W×H.
+    // 260924-ffd UAT follow-up: Frame Rate is a click-button row (no
+    // NumericStepper) — the remaining steppers are the canvas W×H pair.
     const steppers = findAll(nextTree, (vnode) => vnode.type === NumericStepper).filter((s) =>
       /width|height/i.test(s.props.ariaLabel as string),
     );
@@ -302,8 +302,8 @@ describe('NewProjectDialog canvas format (260918-ovi)', () => {
     // Drive the two steppers: width to 1500, height attempts 2200 but the
     // stepper's own clampToStep emits 1920 (T-260918-ovi-01).
     tree = renderDialog();
-    // 260924-ffd: scope to the W×H steppers — the Frame Rate preset stepper
-    // is a third NumericStepper now.
+    // 260924-ffd UAT follow-up: scope to the W×H steppers — Frame Rate is a
+    // button row, not a NumericStepper.
     const steppers = findAll(tree, (vnode) => vnode.type === NumericStepper).filter((s) =>
       /width|height/i.test(s.props.ariaLabel as string),
     );

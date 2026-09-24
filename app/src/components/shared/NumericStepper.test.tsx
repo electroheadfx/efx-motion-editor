@@ -456,13 +456,13 @@ const SWEPT_COMPONENT_PATHS = [
   'src/components/shared/ColorPickerModal.tsx',
   'src/components/physic-paint/view/PhysicsPaintTopBar.tsx',
   'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx',
-  // 260924-ffd: the two converted PROJECT-tier fps surfaces joined the sweep
-  // when they adopted the shared preset stepper (6 → 8, same commit).
-  'src/components/views/SettingsView.tsx',
+  // 260924-ffd: NewProjectDialog joined the sweep with its W×H steppers.
+  // 260924-ffd UAT follow-up: SettingsView left again — its Frame Rate control
+  // is now a click-button row over FPS_PRESETS (no value stepper to sweep).
   'src/components/project/NewProjectDialog.tsx',
 ];
 
-/** The Studio workflow strip fps field declares FPS_PRESETS preset mode (260924-ffd; D-24 fps 0.5 OBSOLETE). */
+/** The Studio fps field — in the Tools popover since the 260924-ffd UAT follow-up — declares FPS_PRESETS preset mode (D-24 fps 0.5 OBSOLETE). */
 const STUDIO_FPS_ARIA_LABEL = 'Cached Roto playback frames per second';
 
 /** The raw native numeric input element this sweep retires (D-23). */
@@ -515,8 +515,9 @@ describe('numericStepperSweep', () => {
 
   it('scans the expected swept component list', () => {
     expect(SWEPT_COMPONENT_PATHS.filter((relPath) => /\.test\.tsx$/.test(relPath))).toEqual([]);
-    // 8 = the 6 pre-260924-ffd surfaces + SettingsView + NewProjectDialog.
-    expect(scannedPaths).toHaveLength(8);
+    // 7 = the 6 pre-260924-ffd surfaces + NewProjectDialog (SettingsView
+    // dropped in the UAT follow-up when Frame Rate became a button row).
+    expect(scannedPaths).toHaveLength(7);
   });
 
   it('leaves no raw native numeric input on a swept surface', () => {
@@ -552,7 +553,7 @@ describe('numericStepperSweep', () => {
     ).toEqual([]);
   });
 
-  it('Pin 5: the Studio fps field declares presets and no longer the obsolete D-24 step 0.5', () => {
+  it('Pin 5: the Studio fps field (Tools popover since the UAT follow-up) declares presets and no longer the obsolete D-24 step 0.5', () => {
     const relPath = 'src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx';
     const source = readSweptSource(relPath);
     const fps = stepperElements(source).find((element) =>
@@ -787,15 +788,20 @@ describe('260924-ffd — classic default + fps preset contract pins', () => {
     ).toEqual([]);
   });
 
-  it('Pin 4: the Settings Frame Rate control binds projectStore.setFps through the shared preset stepper', () => {
+  it('Pin 4: the Settings Frame Rate control is a click-button row over FPS_PRESETS binding projectStore.setFps (UAT follow-up: no value stepper)', () => {
     const source = readSweptSource(SETTINGS_REL);
     expect(source).toContain('projectStore.setFps');
     expect(source, 'Settings must import the shared FPS_PRESETS list').toContain('FPS_PRESETS');
-    expect(source, 'Settings Frame Rate must render the shared preset stepper').toMatch(/<NumericStepper/);
+    expect(source, 'Settings Frame Rate must map the shared FPS_PRESETS list into buttons').toMatch(
+      /FPS_PRESETS\.map\(/,
+    );
+    expect(source, 'Settings must not render a value stepper for Frame Rate (button row law)').not.toContain(
+      '<NumericStepper',
+    );
     expect(source, 'the inline [15, 24] button row must be gone').not.toMatch(/\[15,\s*24\]/);
   });
 
-  it('Pin 4: the New Project Frame Rate control binds local fps state through the shared preset stepper (never projectStore.setFps)', () => {
+  it('Pin 4: the New Project Frame Rate control is a click-button row over FPS_PRESETS seeding local fps (never projectStore.setFps)', () => {
     const source = readSweptSource(NEW_PROJECT_REL);
     expect(source, 'New Project seeds the project store via createProject, never setFps directly').not.toContain(
       'projectStore.setFps',
@@ -804,8 +810,11 @@ describe('260924-ffd — classic default + fps preset contract pins', () => {
     expect(source, 'the fps seed default stays 24 (locked decision)').toContain('useState(24)');
     expect(source, 'the inline 15/24 fps pills must be gone').not.toContain('setFps(15)');
     expect(source, 'the inline 15/24 fps pills must be gone').not.toContain('setFps(24)');
-    expect(source, 'New Project Frame Rate must render the shared preset stepper').toMatch(
-      /ariaLabel="Frame Rate"/,
+    expect(source, 'New Project Frame Rate must map the shared FPS_PRESETS list into buttons').toMatch(
+      /FPS_PRESETS\.map\(/,
+    );
+    expect(source, 'New Project must not pass presets to a value stepper (button row law)').not.toMatch(
+      /presets=\{FPS_PRESETS\}/,
     );
   });
 

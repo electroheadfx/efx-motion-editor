@@ -1192,33 +1192,10 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             <PhysicsPaintStyledTooltip visible={audioPreviewTooltip.visible} region="bottom">{props.audioPreviewEnabled ? 'Audio preview On — click to mute monitoring' : 'Audio preview Off — click to hear monitoring'}</PhysicsPaintStyledTooltip>
           </span>
         ) : null}
-        <label class="physics-paint-roto-fps-control"><span>fps</span><NumericStepper
-          value={props.playbackFps || props.projectFps || 1}
-          onChange={handleRotoPlaybackFpsChange}
-          presets={FPS_PRESETS}
-          min={6}
-          max={60}
-          disabled={!props.ready}
-          ariaLabel="Cached Roto playback frames per second"
-          class="physics-paint-roto-fps-stepper"
-          inputStyle={{
-            width: '40px',
-            height: '24px',
-            padding: '2px 4px',
-            border: '1px solid #747980',
-            borderRadius: '3px',
-            backgroundColor: '#5a5c5f',
-            color: '#f8fafc',
-            fontWeight: 700,
-          }}
-          buttonStyle={{
-            width: '22px',
-            height: '24px',
-            border: '1px solid #747980',
-            backgroundColor: '#5a5c5f',
-            color: '#f8fafc',
-          }}
-        /></label>
+        {/* 260924-ffd UAT follow-up: the playback fps value control moved out
+            of the strip into the Tools popover (Playback section). STUDIO tier
+            unchanged — onPlaybackFpsChange → setRotoPlaybackFps → playback
+            hook only; the PROJECT fps store is never touched here. */}
       </div>
       <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
       <span
@@ -1244,7 +1221,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           <span class="physics-paint-roto-key-icon-label">Tools</span>
         </button>
         <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
-          {buildGuardedActionTooltipCopy('Open timeline tools — Key Spacing and Actions.', null)}
+          {buildGuardedActionTooltipCopy('Open timeline tools — Playback fps, Key Spacing and Actions.', null)}
         </PhysicsPaintStyledTooltip>
       </span>
       {(props.onApplyScript || props.onDiscardScript) ? (
@@ -1255,6 +1232,40 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
               (the store coerces every blend state to duplicate). The retained
               interpolation props/handler stay wired on the static chrome for
               the re-introduction. */}
+          {/* 260924-ffd UAT follow-up: playback fps relocated here from the
+              strip's playback pill — preset stepper over FPS_PRESETS, STUDIO
+              preview tier only (the PROJECT fps store is never touched). */}
+          <div class="physics-paint-toolbox-section">
+            <div class="physics-paint-toolbox-section-heading">Playback</div>
+            <label class="physics-paint-roto-fps-control"><span>fps</span><NumericStepper
+              value={props.playbackFps || props.projectFps || 1}
+              onChange={handleRotoPlaybackFpsChange}
+              presets={FPS_PRESETS}
+              min={6}
+              max={60}
+              disabled={!props.ready}
+              ariaLabel="Cached Roto playback frames per second"
+              class="physics-paint-roto-fps-stepper"
+              inputStyle={{
+                width: '40px',
+                height: '24px',
+                padding: '2px 4px',
+                border: '1px solid #747980',
+                borderRadius: '3px',
+                backgroundColor: '#5a5c5f',
+                color: '#f8fafc',
+                fontWeight: 700,
+              }}
+              buttonStyle={{
+                width: '22px',
+                height: '24px',
+                border: '1px solid #747980',
+                backgroundColor: '#5a5c5f',
+                color: '#f8fafc',
+              }}
+            /></label>
+          </div>
+          <div class="physics-paint-toolbox-divider" />
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Key Spacing</div>
             {props.forceSpacingScopeLine ? (
