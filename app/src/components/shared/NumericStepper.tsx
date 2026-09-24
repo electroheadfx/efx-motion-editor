@@ -12,6 +12,15 @@ import { startCoalescing, stopCoalescing } from '../../lib/history';
  * press, repeat, or typed commit — passes the SAME clamp + round-to-step path
  * (T-52.2-08), so no path can produce an out-of-range or off-grid value.
  *
+ * Constraint-injection contract (260924-d6l): each call site injects the
+ * field's declared `min`/`max`/`step`, and those constraints are the whole
+ * contract by default. The variable-step resolver (`resolveStep`) and free
+ * typed entry (`freeEntry`) are OPT-IN per call site — omitting them yields
+ * the classic behaviour: every press moves by exactly the field's constant
+ * step, and typed commits snap to that step's grid. The paper grain scale
+ * (PhysicsPaintTopBar) is the only current consumer of the exception
+ * options; guarded by the contract pins in NumericStepper.test.tsx.
+ *
  * The press gesture is bracketed by `startCoalescing`/`stopCoalescing` so a
  * held button collapses to a single undo entry (same discipline as the label
  * drag-to-scrub in NumericInput).
@@ -30,16 +39,25 @@ export interface NumericStepperProps {
   value: number;
   /** Called once per committed step (button press, hold-repeat, or field commit). */
   onChange: (value: number) => void;
-  /** The field's own step (D-24: fps 0.5, everything else keeps its current step). */
+  /**
+   * The field's own step — the classic default (D-24: fps 0.5, everything
+   * else keeps its current step). When `resolveStep`/`freeEntry` are omitted,
+   * every press moves by exactly this step and typed commits snap to its grid.
+   */
   step: number;
   /**
-   * Variable-step fields (grain scale): the effective step for each emission is
-   * resolved from the LIVE base value, so a hold-to-repeat crossing a band
-   * boundary switches step mid-hold instead of keeping the press-start step.
-   * Falls back to `step` when absent.
+   * OPT-IN exception (sole consumer: paper grain scale) — the effective step
+   * for each emission is resolved from the LIVE base value, so a
+   * hold-to-repeat crossing a band boundary switches step mid-hold instead of
+   * keeping the press-start step. Falls back to `step` when absent (classic
+   * constant-step contract, 260924-d6l).
    */
   resolveStep?: (value: number) => number;
-  /** Typed commits clamp to min/max without snapping to the step grid (free numbers). */
+  /**
+   * OPT-IN exception (sole consumer: paper grain scale) — typed commits clamp
+   * to min/max without snapping to the step grid (free numbers). When absent,
+   * typed commits snap to the field's step grid (T-52.2-08).
+   */
   freeEntry?: boolean;
   min?: number;
   max?: number;
