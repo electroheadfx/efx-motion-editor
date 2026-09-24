@@ -172,9 +172,9 @@ export function NewProjectDialog({onClose}: NewProjectDialogProps) {
         {/* Frame Rate (260924-ffd follow-up: click buttons over the shared FPS_PRESETS list) */}
         <div class="flex flex-col gap-2">
           <label class="text-[11px] font-semibold text-(--color-text-dim) tracking-wide">
-            FRAME RATE
+            FRAME RATE (FPS)
           </label>
-          <div class="flex items-center gap-1 rounded-lg bg-(--color-bg-input) p-1 w-fit" role="group" aria-label="Frame Rate">
+          <div class="flex items-center gap-1 rounded-lg bg-(--color-bg-input) p-1 w-fit" role="group" aria-label="Frame rate (fps)">
             {FPS_PRESETS.map((rate) => (
               <div
                 key={rate}

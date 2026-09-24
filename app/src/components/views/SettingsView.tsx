@@ -35,8 +35,8 @@ export function SettingsView() {
         <div class="max-w-md space-y-6">
           {/* FPS (260924-ffd follow-up: click buttons over the shared FPS_PRESETS list) */}
           <div class="space-y-2">
-            <label class="text-xs font-semibold text-(--color-text-muted)">Frame Rate</label>
-            <div class="flex gap-2 items-center flex-wrap" role="group" aria-label="Frame Rate">
+            <label class="text-xs font-semibold text-(--color-text-muted)">Frame rate (fps)</label>
+            <div class="flex gap-2 items-center flex-wrap" role="group" aria-label="Frame rate (fps)">
               {FPS_PRESETS.map((rate) => (
                 <button
                   key={rate}
