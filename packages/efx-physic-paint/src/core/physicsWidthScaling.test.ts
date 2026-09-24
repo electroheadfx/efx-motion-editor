@@ -16,6 +16,16 @@
 //        (W_settle - W_deposit) / W_drawn, thin <= thick
 //    W4 PIN 0 ratio [0.99, 1.01] + PIN 0b >= 0.95 x base literals
 //    W5 byte-identical digests across two runs
+//    W6 production texture (pyp/rm2 idiom): d(b) >= 1 at EVERY water
+//        x both papers on the r=3 uniform production raster
+//
+//  W6 was appended by the orchestrator-authorized re-calibration cycle
+//  (Option 1, 2026-09-24): the pyp production-path texture pin became a
+//  first-class pin HERE, alongside W1-W5, BEFORE the f() knee was
+//  re-derived — so the new bounds are legal only if the FULL pin set
+//  (W1..W6) passes together. W1-W5 tolerances above are UNCHANGED by
+//  that cycle (no pin weakened); only the carrier's wFloor/wFull in
+//  fluids.ts were re-derived — see the VERDICT re-calibration section.
 //
 //  Substrate: pressure gesture r=10, pThin=0.1134 (drawn thin
 //  2.025 px @ x=44, drawn thick 19.865 px @ x=68), analytic coverage
@@ -23,7 +33,8 @@
 //  REAL transferToWetLayerClipped (keep-gate tier 70 + base deposit
 //  arithmetic), settled through the REAL localFluidPhysicsStep with
 //  engine defaults K_TICKS=3 and {viscosity:0.0001, omega_h:0.06,
-//  darkening:0.1}.
+//  darkening:0.1}. W6 additionally builds the pyp production substrate
+//  (uniform r=3, ribbon hasPenInput=false) in the same file.
 // ============================================================
 
 import { describe, expect, it, vi } from 'vitest'
@@ -56,6 +67,13 @@ const THIN_X = 44
 const THICK_X = 68
 const THIN_REGION: [number, number] = [40, 48]
 const THICK_REGION: [number, number] = [64, 76]
+
+// W6 production substrate (pyp/rm2 idiom): uniform r=3 brush, straight
+// dense stroke, hasPenInput=false — the real production-path raster
+// (brushRenderRadius(default size 6) = 3, ribbon width 2r = 6 px).
+const PROD_RADIUS = 3
+const PROD_MID_X = 64
+const PROD_SPACING = 3
 
 // VERDICT bounds — calibrated before RED, never re-calibrated
 const W1_TOL_PX = 3.0
@@ -196,11 +214,18 @@ interface Profile {
   data: Uint8ClampedArray
   curve: PenPoint[]
   radius: number
+  hasPenInput: boolean
 }
 
-function buildProfile(): Profile {
-  const radius = RADIUS
-  const curve = makePressureCurve(P_THIN)
+function makeUniformCurve(): PenPoint[] {
+  const pts: PenPoint[] = []
+  for (let x = 16; x <= 112; x += PROD_SPACING) {
+    pts.push({ x, y: MID_Y, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 })
+  }
+  return pts
+}
+
+function buildProfileFor(curve: PenPoint[], radius: number, hasPenInput: boolean): Profile {
   const variance = (1.5 + Math.sqrt(radius) * 0.9) * (ENGINE_EDGE_DETAIL / 50)
   const bounds = curveBounds(curve, radius + variance * 5, CANVAS_W, CANVAS_H)
   const buf = new Float32Array(bounds.w * bounds.h)
@@ -210,7 +235,7 @@ function buildProfile(): Profile {
     return seed / 0x100000000
   })
   try {
-    const base = ribbon(curve, radius, 0.8, true)
+    const base = ribbon(curve, radius, 0.8, hasPenInput)
     const baseD = deformN(base, 4, variance)
     const layers = Math.round((22 + 15) / 1)
     const lAlpha = Math.min(0.08, 3 / layers)
@@ -236,11 +261,26 @@ function buildProfile(): Profile {
     data[pi] = 255; data[pi + 1] = 0; data[pi + 2] = 0
     data[pi + 3] = Math.round(Math.min(1, Math.max(0, buf[i])) * 255)
   }
-  return { bounds, data, curve, radius }
+  return { bounds, data, curve, radius, hasPenInput }
+}
+
+/** Gesture substrate (W1-W5): pressure-varying r=10 stroke. */
+function buildProfile(): Profile {
+  return buildProfileFor(makePressureCurve(P_THIN), RADIUS, true)
+}
+
+/**
+ * Production substrate (W6): uniform r=3 straight stroke with
+ * hasPenInput=false — the pyp/rm2 production-path raster idiom
+ * (productionAaSettleMeasurement.test.ts buildProfile contract,
+ * self-contained per plan: no helper imports across test files).
+ */
+function buildProductionProfile(): Profile {
+  return buildProfileFor(makeUniformCurve(), PROD_RADIUS, false)
 }
 
 function drawnWidthAt(profile: Profile, col: number): number {
-  const poly = ribbon(profile.curve, profile.radius, 0.8, true)
+  const poly = ribbon(profile.curve, profile.radius, 0.8, profile.hasPenInput)
   const xc = col + 0.5
   const ys: number[] = []
   for (let i = 0; i < poly.length; i++) {
@@ -417,8 +457,15 @@ const PIN0B_LITERALS: Record<string, { thin: Literal; thick: Literal }> = {
 }
 
 // ============================================================
-//  The five contract pins
+//  The six contract pins (W6 added by the Option-1 re-calibration
+//  cycle — production-path texture pin, same file as W1-W5)
 // ============================================================
+
+let prodProfileCache: Profile | null = null
+function getProductionProfile(): Profile {
+  if (!prodProfileCache) prodProfileCache = buildProductionProfile()
+  return prodProfileCache
+}
 
 describe('260924-stb physics width scaling contract', () => {
   it(`W1 hairline: ${LAW} — thin settled visible width <= drawn + ${W1_TOL_PX}px in every cell`, () => {
@@ -510,6 +557,31 @@ describe('260924-stb physics width scaling contract', () => {
           Array.from(s1.alpha),
           `${LAW} — W5 FAIL paper=${paper} water=${water}: settled alpha digests diverge across identical runs (RNG/clock in the scaling path — stop-motion boil)`,
         ).toEqual(Array.from(s2.alpha))
+      }
+    }
+  })
+
+  it(`W6 production texture (pyp/rm2 idiom): ${LAW} — d(b) = W_settle - W_deposit >= 1 at EVERY water x both papers on the r=3 production raster`, () => {
+    // Law: the production raster must keep its Physics identity — the
+    // settled mark spreads/textures relative to its deposit (d(b) >= 1),
+    // never collapses to a hard stamp. This is the pyp production-path
+    // texture pin, first-class here alongside W1-W5 so the re-calibrated
+    // f() bounds must satisfy BOTH substrates together (Option 1).
+    const prod = getProductionProfile()
+    for (const paper of PAPERS) {
+      for (const water of WATERS) {
+        const paperArr = paper === 'synthetic' ? makeSyntheticPaper() : null
+        const deposit = depositRun(prod, water / 100, paperArr)
+        const settled = settleReal(prod, deposit, water / 100)
+        const wDep = widthFromAlpha(deposit, PROD_MID_X)
+        const wSet = widthFromAlpha(settled, PROD_MID_X)
+        const db = wSet - wDep
+        expect(
+          db,
+          `${LAW} — W6 FAIL paper=${paper} water=${water}: production d(b)=W_settle-W_deposit=${db} < 1 ` +
+          `(W_deposit=${wDep} -> W_settle=${wSet} at x=${PROD_MID_X}) — the r=3 production stroke settled to a hard ` +
+          `stamp (physics texture/spread identity lost on the production raster; pyp/rm2 texture law)`,
+        ).toBeGreaterThanOrEqual(1)
       }
     }
   })
