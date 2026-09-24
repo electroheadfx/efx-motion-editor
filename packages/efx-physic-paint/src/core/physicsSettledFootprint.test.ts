@@ -22,6 +22,13 @@
 //  29..34 (polygon [29,35) at r=3, y=32) plus a 1px AA fringe (alpha 80)
 //  at rows 28/35 — deterministic, no RNG (bristles/deform are random in
 //  production and are excluded for pin-3 determinism).
+//
+//  260924-nqe extension (redo of m7w UAT-failed alpha-carry): PIN 0/0b
+//  pin the stroke-BODY deposit/display opacity that m7w's GREEN destroyed.
+//  The body now includes an interior partial-alpha row (grain/deform
+//  layers accumulate at sub-255 alphas in production) so the pins cover
+//  the crushed population, not just solid a=255 rows. Never modulate
+//  deposit alpha to bound width — the bound must be geometric.
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
@@ -105,7 +112,17 @@ const STROKE = { x0: 16, x1: 112, y: MID_Y }
  * ribbon polygon at r=3 around y=32 covers rows 29..34 solidly; canvas-fill
  * AA leaves a ~1px fringe (alpha 80) at rows 28 and 35. transfer's a >= 20
  * gate keeps the fringe. Deterministic, no bristles/deform randomness.
+ *
+ * Interior row 31 is partial alpha (180): production grain/deform layers
+ * accumulate at sub-255 alphas INSIDE the stroke — the population m7w's
+ * alpha-carry GREEN crushed. PIN 0/0b assert over all of rows 29..34.
  */
+const BODY_ROWS = [29, 30, 31, 32, 33, 34] as const
+const PARTIAL_ALPHA_ROW = 31
+const PARTIAL_ALPHA = 240
+/** runCell drives exactly one production transfer per cell */
+const TRANSFER_COUNT = 1
+
 function makeRasterBounds() {
   return { x: STROKE.x0, y: MID_Y - 6, w: STROKE.x1 - STROKE.x0 + 1, h: 13 }
 }
@@ -115,7 +132,7 @@ function makeRasterImageData(bounds: { x: number; y: number; w: number; h: numbe
   for (let ly = 0; ly < bounds.h; ly++) {
     const gy = bounds.y + ly
     let a = 0
-    if (gy >= 29 && gy <= 34) a = 255       // solid ribbon interior (polygon [29,35))
+    if (gy >= 29 && gy <= 34) a = gy === PARTIAL_ALPHA_ROW ? PARTIAL_ALPHA : 255 // ribbon interior (polygon [29,35)); one partial-alpha body row
     else if (gy === 28 || gy === 35) a = 80 // 1px canvas AA fringe
     for (let lx = 0; lx < bounds.w; lx++) {
       const i = (ly * bounds.w + lx) * 4
@@ -220,6 +237,60 @@ function runCell(
 function digestAlpha(wet: WetBuffers): number[] {
   return Array.from(wet.alpha)
 }
+
+// === PIN 0 / 0b body-opacity floor (260924-nqe) ===
+/**
+ * Raster alpha for a body row (mirrors makeRasterImageData). Body rows are
+ * geometrically inside the ribbon polygon [29,35) — the population whose
+ * opacity m7w's alpha-carry GREEN crushed while width pins stayed green.
+ */
+function bodyRasterAlpha(gy: number): number {
+  if (gy >= 29 && gy <= 34) return gy === PARTIAL_ALPHA_ROW ? PARTIAL_ALPHA : 255
+  return 0
+}
+
+/** Unmodulated deposit expectation for a body pixel (paper=null transfer). */
+function expectedBodyDeposit(gy: number): number {
+  return (bodyRasterAlpha(gy) / 255) * 3000 * TRANSFER_COUNT
+}
+
+/** Mean wet.alpha over ALL in-ribbon body pixels (rows 29..34, stroke x-range). */
+function bodyMeanAlpha(wet: WetBuffers): number {
+  let sum = 0
+  let n = 0
+  for (const gy of BODY_ROWS) {
+    for (let gx = STROKE.x0; gx <= STROKE.x1; gx++) {
+      sum += wet.alpha[gy * CANVAS_W + gx]
+      n++
+    }
+  }
+  return sum / n
+}
+
+/** Mean wetDisplayAlpha over the same body pixels (display-stage visibility). */
+function bodyMeanDisplay(wet: WetBuffers, paper: Float32Array | null): number {
+  let sum = 0
+  let n = 0
+  for (const gy of BODY_ROWS) {
+    for (let gx = STROKE.x0; gx <= STROKE.x1; gx++) {
+      const i = gy * CANVAS_W + gx
+      const h = sampleH(paper, gx, gy, CANVAS_W, CANVAS_H)
+      sum += wetDisplayAlpha(wet.alpha[i], wet.strokeOpacity[i] || 0, h)
+      n++
+    }
+  }
+  return sum / n
+}
+
+/**
+ * Base-calibrated body means after K settle ticks (paper=null, dense) —
+ * measured by PIN 0b at Task-1 RED (2026-09-24, raster with interior
+ * a=240 row). Floors = 0.95 x these values: catches opacity destroyed
+ * anywhere between deposit and display. These literals are the Task-1
+ * base measurements and may NEVER be loosened to go green.
+ */
+const BASE_BODY_MEAN_ALPHA: Record<number, number> = { 10: 2622.31, 50: 2622.31, 90: 2638.37 }
+const BASE_BODY_MEAN_DISPLAY: Record<number, number> = { 10: 225.96, 50: 225.96, 90: 227.41 }
 
 // === Contract pins (Task 2 RED) ===
 /**
@@ -343,6 +414,57 @@ describe('physics settled footprint — contract pins', () => {
       w50,
       `PIN 2: width(50)=${w50} must be > width(10)=${w10}`,
     ).toBeGreaterThan(w10)
+  })
+
+  it('PIN 0: body deposit is unmodulated — every in-ribbon pixel lands at (a/255)*3000 within 1%', () => {
+    for (const water of WATERS) {
+      const { deposit } = runCell('transfer', water / 100, SPACINGS[0].px, null)
+      let minRatio = Infinity
+      let maxRatio = -Infinity
+      for (const gy of BODY_ROWS) {
+        const expected = expectedBodyDeposit(gy)
+        for (let gx = STROKE.x0; gx <= STROKE.x1; gx++) {
+          const ratio = deposit.alpha[gy * CANVAS_W + gx] / expected
+          if (ratio < minRatio) minRatio = ratio
+          if (ratio > maxRatio) maxRatio = ratio
+        }
+      }
+      console.log(
+        `[260924-nqe] PIN 0 water=${water}: body deposit ratio min=${minRatio.toFixed(4)} ` +
+        `max=${maxRatio.toFixed(4)} (unmodulated expectation = 1.0000 ±1%; rows=${BODY_ROWS.join(',')} incl. partial a=${PARTIAL_ALPHA})`,
+      )
+      expect(
+        minRatio,
+        `PIN 0 FAIL water=${water}: min body deposit ratio ${minRatio} < 0.99 — deposit alpha modulated on in-ribbon body pixels (width bound must be geometric, never alpha)`,
+      ).toBeGreaterThanOrEqual(0.99)
+      expect(
+        maxRatio,
+        `PIN 0 FAIL water=${water}: max body deposit ratio ${maxRatio} > 1.01 — deposit alpha inflated on in-ribbon body pixels`,
+      ).toBeLessThanOrEqual(1.01)
+    }
+  })
+
+  it('PIN 0b: post-settle body visibility stays >= 0.95x base-calibrated means (alpha AND display)', () => {
+    for (const water of WATERS) {
+      const { settled } = runCell('transfer', water / 100, SPACINGS[0].px, null)
+      const meanAlpha = bodyMeanAlpha(settled)
+      const meanDisplay = bodyMeanDisplay(settled, null)
+      const baseAlpha = BASE_BODY_MEAN_ALPHA[water]
+      const baseDisplay = BASE_BODY_MEAN_DISPLAY[water]
+      console.log(
+        `[260924-nqe] PIN 0b water=${water}: post-settle body meanAlpha=${meanAlpha.toFixed(2)} ` +
+        `meanDisplay=${meanDisplay.toFixed(2)} | baseAlpha=${baseAlpha.toFixed(2)} ` +
+        `baseDisplay=${baseDisplay.toFixed(2)} | floors(0.95x)=${(0.95 * baseAlpha).toFixed(2)}/${(0.95 * baseDisplay).toFixed(2)}`,
+      )
+      expect(
+        meanAlpha,
+        `PIN 0b FAIL water=${water}: post-settle body meanAlpha ${meanAlpha.toFixed(2)} < 0.95 x base ${baseAlpha.toFixed(2)} — stroke body opacity crushed between deposit and display`,
+      ).toBeGreaterThanOrEqual(0.95 * baseAlpha)
+      expect(
+        meanDisplay,
+        `PIN 0b FAIL water=${water}: post-settle body meanDisplay ${meanDisplay.toFixed(2)} < 0.95 x base ${baseDisplay.toFixed(2)} — stroke body display visibility crushed`,
+      ).toBeGreaterThanOrEqual(0.95 * baseDisplay)
+    }
   })
 
   it('PIN 3: identical deposit + settle inputs produce a byte-identical footprint (no boil)', () => {
