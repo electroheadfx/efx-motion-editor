@@ -2,9 +2,9 @@
 phase: quick-260925-b7c
 plan: 260925-b7c
 title: Recalibrate the Spread scale so the midpoint is the preview-matched width
-status: automated-ready
+status: complete
 subsystem: packages/efx-physic-paint (core spread law + engine-mirrored harnesses)
-tags: [quick, physic-paint, spread-scale, tdd, red-green, texture-gate-recalibration, native-uat-pending]
+tags: [quick, physic-paint, spread-scale, tdd, red-green, texture-gate-recalibration, native-uat-passed, closed]
 requires: [QUICK-260925-B7C]
 provides: []
 affects: [efx-physic-paint/spread-scale, efx-physic-paint/settle]
@@ -37,11 +37,11 @@ metrics:
 
 # Quick 260925-b7c: Recalibrate Spread scale — Summary
 
-**Spread slider recalibrated so the midpoint is the preview-matched width: new 50 = legacy 30 bitwise (spreadCurve 0.09), new 100 = legacy 100 (1.0), 0 = 0, monotone — one shared `spreadCurveFor` law consumed by both engine sites and all three harnesses; the 3 texture gates now assert at the spread-engaged setting Spread 80 (d(b) = 12 / 2–3, PASS) per the user's 2026-09-25 decision, every other law gate green at the default, guardrails all held. Automated-ready; the 7 native UAT rows below await the user's live check.**
+**Spread slider recalibrated so the midpoint is the preview-matched width: new 50 = legacy 30 bitwise (spreadCurve 0.09), new 100 = legacy 100 (1.0), 0 = 0, monotone — one shared `spreadCurveFor` law consumed by both engine sites and all three harnesses; the 3 texture gates now assert at the spread-engaged setting Spread 80 (d(b) = 12 / 2–3, PASS) per the user's 2026-09-25 decision, every other law gate green at the default, guardrails all held. Native UAT PASSED 7/7 2026-09-25 — CLOSED.**
 
-## Status: automated-ready — GREEN, native UAT pending (7 rows)
+## Status: CLOSED — native UAT PASSED 7/7 (2026-09-25)
 
-**Not done-claimed: the 7 native UAT rows are pending the user's live check (project law: no done claim before native UAT).**
+**Quick 260925-b7c is closed.** All 7 native UAT rows approved live by the user.
 
 ## User decision applied (2026-09-25 — binding)
 
@@ -151,17 +151,17 @@ What the harnesses **cannot** answer: they contain no Normal-mode render path �
 
 None.
 
-## Native UAT rows (7) — PENDING the user's live check
+## Native UAT rows (7) — PASSED 2026-09-25, CLOSED
 
-Status is automated-ready: GREEN shipped, tsc clean, guardrails held. **No live UAT claimed yet.**
+All 7 rows approved live by the user.
 
-1. Fresh stroke at default 50 → settled width matches the preview ribbon side-by-side (the "30" feel), pressure gesture intact
-2. Slider 100 → previous maximum bleed still reachable (visibly wetter/wider than default)
-3. Slider 0 → tight mark, minimal spread
-4. Pressure signature at default: hairlines clean, taper visible (260924-stb base no regression)
-5. Stroke body as opaque as before (no m7w wash-out)
-6. Monotone: raise Spread → wider settle, lower → tighter
-7. Normal mode unchanged
+1. ✓ Fresh stroke at default 50 → settled width matches the preview ribbon side-by-side (the "30" feel), pressure gesture intact
+2. ✓ Slider 100 → previous maximum bleed still reachable (visibly wetter/wider than default)
+3. ✓ Slider 0 → tight mark, minimal spread
+4. ✓ Pressure signature at default: hairlines clean, taper visible (260924-stb base no regression)
+5. ✓ Stroke body as opaque as before (no m7w wash-out)
+6. ✓ Monotone: raise Spread → wider settle, lower → tighter
+7. ✓ Normal mode unchanged
 
 ## Self-Check: PASSED
 
@@ -170,4 +170,4 @@ Status is automated-ready: GREEN shipped, tsc clean, guardrails held. **No live 
 - FOUND: commits 299cfc83, 7df3f525, 18306203, cde33bbf (git log verified)
 - FOUND: 4 target harnesses green (22 passed | 3 pre-existing skips); full package 1 failed = pre-existing liveAlphaCache only; tsc clean; app suite matches base
 - FOUND: locked-surface diff list empty; SPREAD_STRENGTH still 50; texture floors still >= 1
-- SUMMARY rewritten with `status: automated-ready` — 7 native UAT rows pending
+- SUMMARY closed: `status: complete`, native UAT PASSED 7/7 (2026-09-25)
