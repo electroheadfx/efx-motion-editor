@@ -24,6 +24,7 @@ import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
+import { applyPaperPass, getPaperPassTile } from '../lib/paperPass';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
@@ -2609,6 +2610,33 @@ function _resolveFlattenedFrame(
   };
 
   const result = compositeFrame(efxDocument, frame, size, ports);
+  // 260925-iy6: the dynamic post-bake paper pass — ONE seam for preview,
+  // program monitor, AND export (all three consume this record, so the paths
+  // cannot drift into a second implementation). It modulates the FLATTENED
+  // mixed paint (D-09: never per track/layer — stacking layers must not fill
+  // the tooth) and sits ABOVE the fond, which stays beneath in the block
+  // below. Invalidation needs no new code: setRotoBackgroundMetadata already
+  // clears both memos and _fondSourceSignature rotates on paper/grainStrength/
+  // grainScale, so a metadata change makes this build a memo MISS → a fresh
+  // record with a fresh tile key (paper / WxH / grainScale / strength).
+  const passSource = _resolveFondSource(layerId, efxDocument);
+  // Gate mirrors the fond grain gate (rotoFrameDraw): '' means grain off (CR-01)
+  // and strength None means no tooth — the pass is skipped untouched.
+  if (passSource?.kind === 'paper' && passSource.metadata.paperGrain && passSource.metadata.grainStrength > 0) {
+    const textureKey = passSource.metadata.background;
+    // Subscribe in BOTH branches (today only the fond branch does): a Studio
+    // monitor frame (includeFond=false) must also recomposite when a late
+    // texture arrives, or the pass would stay skipped forever there.
+    _ensureFondTextureSubscription(textureKey);
+    const passTile = getPaperPassTile(textureKey, size.width, size.height, passSource.metadata.grainScale ?? 1, passSource.metadata.grainStrength);
+    if (passTile) {
+      // compositeFrame's internal memo port is NOT wired here, so result.raster
+      // is THIS call's fresh canvas (safe to modulate in place); the routine
+      // writes back through the caller's own context and never a global one.
+      const passCtx = (result.raster as HTMLCanvasElement).getContext('2d');
+      if (passCtx) applyPaperPass(passCtx, size.width, size.height, passTile);
+    }
+  }
   // v1.0 rendering law (48-06 N1): the paper fond is the DOCUMENT FALLBACK —
   // like the solid-color fallback (compositeFrame step 1, unconditional), it
   // draws beneath EVERY frame's composite whenever a non-transparent paper
