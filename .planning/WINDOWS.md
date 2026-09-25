@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 3
+open_count: 5
 waived_count: 5
 fixed_count: 69
-total_count: 77
-last_updated: 2026-09-25T07:04:00.127Z
+total_count: 79
+last_updated: 2026-09-25T17:20:39.701Z
 ---
 
 # Broken Windows Ledger
@@ -92,6 +92,8 @@ last_updated: 2026-09-25T07:04:00.127Z
 | 75 | 260924-rm2 | skipped-test | packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts | 418 | PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today | open |  | 2026-09-24T18:09:46.171Z |  |
 | 76 | 260924-stb | deviation | packages/efx-physic-paint/src/core/fluids.ts |  | STOP before GREEN: calibrated f(run) bounds (4/6, floor 0.25) regress pyp texture pin d(b)>=1 to 0 in every cell on the r=3 production raster — SUPERSEDED: f(run) carrier discarded (210-candidate re-calibration FALSIFIED, run=0 ambiguous), replaced by neighborhood mean-thickness field; GREEN 6341afba all pins pass | fixed |  | 2026-09-24T19:52:16.867Z | 2026-09-25T00:10:00.000Z |
 | 77 | quick-260925-b7c | deviation | .planning/quick/260925-b7c-quick-8d-recalibrate-the-spread-scale-so/260925-b7c-SUMMARY.md |  | STOPPED at Task 3 law gate: texture-presence gates (stb W2/W6, rm2 texture) fail at the new default because spreadCurveFor(50)=0.09 derives K ticks=1 (was 3); 3 harness parity edits left uncommitted pending user decision | fixed |  | 2026-09-25T06:40:20.907Z | 2026-09-25T07:04:00.127Z |
+| 78 | quick-260925-iy6 | deviation | app/vite.config.ts |  | Chunk budget raised 1355 -> 1370 (measured 1355.02 kB) after the paper pass entered the main chunk; gate's own measured-raise protocol | open |  | 2026-09-25T16:28:07.934Z |  |
+| 79 | quick-260925-iy6 | unmet-truth | app/src/lib/paperPass.ts |  | CR-01 code-review BLOCKER: applyPaperPass washes partial-alpha paint (paint contribution lands at a^2 instead of a; the (1-a)*valley term washes the stroke toward the paper tone). Measured in app/src/lib/paperPass.composeLaw.test.ts (W3C software model, real pixels): paint [120,30,60] @ a=0.5 over a 230 valley produces [169,128,142] vs the law [108,27,54]. a=1.0 and a=0 are exact, so the full-opacity UAT row hides it - every AA edge and every track opacity < 1 is wrong (PIN 0 / 260924-m7w class). The directed fix (opaque tile as DESTINATION, paint as SOURCE) is PROVEN numerically identical to the shipped sequence (multiply is commutative; source-over adds the same (1-As)*Cb term). No GCO-only 5-draw sequence can yield (paint * valley) at alpha a: no GCO both multiplies two straight-alpha images and preserves source alpha. Frame-path guardrail forbids a per-pixel JS loop, so the fix is a GPU pass (WebGL fragment shader, one draw) or a deferred phase. Pinned as it.fails in paperPass.composeLaw.test.ts (flips red when a real fix lands). WR-02 (White + grain-on yields no tooth) PARKED as a separate pass by user decision - White is toothless by design per 260925-dso (no procedural fbm); the gate should stop promising tooth. | open |  | 2026-09-25T17:20:39.701Z |  |
 
 ````json
 [
@@ -1022,6 +1024,32 @@ last_updated: 2026-09-25T07:04:00.127Z
     "reason": "",
     "recorded_at": "2026-09-25T06:40:20.907Z",
     "resolved_at": "2026-09-25T07:04:00.127Z",
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 78,
+    "kind": "deviation",
+    "phase": "quick-260925-iy6",
+    "file": "app/vite.config.ts",
+    "line": null,
+    "description": "Chunk budget raised 1355 -> 1370 (measured 1355.02 kB) after the paper pass entered the main chunk; gate's own measured-raise protocol",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-25T16:28:07.934Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 79,
+    "kind": "unmet-truth",
+    "phase": "quick-260925-iy6",
+    "file": "app/src/lib/paperPass.ts",
+    "line": null,
+    "description": "CR-01 code-review BLOCKER: applyPaperPass washes partial-alpha paint (paint contribution lands at a^2 instead of a; the (1-a)*valley term washes the stroke toward the paper tone). Measured in app/src/lib/paperPass.composeLaw.test.ts (W3C software model, real pixels): paint [120,30,60] @ a=0.5 over a 230 valley produces [169,128,142] vs the law [108,27,54]. a=1.0 and a=0 are exact, so the full-opacity UAT row hides it - every AA edge and every track opacity < 1 is wrong (PIN 0 / 260924-m7w class). The directed fix (opaque tile as DESTINATION, paint as SOURCE) is PROVEN numerically identical to the shipped sequence (multiply is commutative; source-over adds the same (1-As)*Cb term). No GCO-only 5-draw sequence can yield (paint * valley) at alpha a: no GCO both multiplies two straight-alpha images and preserves source alpha. Frame-path guardrail forbids a per-pixel JS loop, so the fix is a GPU pass (WebGL fragment shader, one draw) or a deferred phase. Pinned as it.fails in paperPass.composeLaw.test.ts (flips red when a real fix lands). WR-02 (White + grain-on yields no tooth) PARKED as a separate pass by user decision - White is toothless by design per 260925-dso (no procedural fbm); the gate should stop promising tooth.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-25T17:20:39.701Z",
+    "resolved_at": null,
     "milestone": "v1.0.0"
   }
 ]

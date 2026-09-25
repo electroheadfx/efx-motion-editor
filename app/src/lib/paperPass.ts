@@ -32,6 +32,18 @@ const TILE_CACHE_ENTRY_LIMIT = 12;
 /** Footprint bound: 12 full-HD entries would be ~200MB in a WKWebView. */
 const TILE_CACHE_BYTE_BUDGET = 64 * 1024 * 1024;
 
+/**
+ * WR-01: strength > 1 walks the valley PAST the paper's own tint toward black
+ * (valley = 255 − v·(255 − tint) needs v ≤ 1), breaking the locked hole-color
+ * semantics. The UI presets live in [0, 1] but metadata is stored unvalidated,
+ * so the tile builder is the last line of defence. NaN/negative → 0 (a
+ * deterministic skip at the call site).
+ */
+function clampStrength(strength: number): number {
+  if (!Number.isFinite(strength)) return 0;
+  return strength < 0 ? 0 : strength > 1 ? 1 : strength;
+}
+
 interface CachedTile {
   readonly tile: PaperPassTile;
   /** width * height * 8 — valley + peak RGBA maps. */
@@ -79,11 +91,12 @@ export function encodePassTiles(
   strength: number,
   tint: { r: number; g: number; b: number },
 ): { valley: Uint8ClampedArray; peak: Uint8ClampedArray } {
+  const k = clampStrength(strength);
   const count = width * heightPx;
   const valley = new Uint8ClampedArray(count * 4);
   const peak = new Uint8ClampedArray(count * 4);
   for (let i = 0; i < count; i++) {
-    const s = (height[i] - 0.5) * 2 * strength;
+    const s = (height[i] - 0.5) * 2 * k;
     const v = s < 0 ? -s : 0;
     const u = s > 0 ? s : 0;
     const offset = i * 4;
@@ -128,11 +141,12 @@ export function getPaperPassTile(
   grainScale: number,
   strength: number,
 ): PaperPassTile | null {
-  if (!paperTexture || !(strength > 0) || width <= 0 || height <= 0) return null;
+  const k = clampStrength(strength);
+  if (!paperTexture || !(k > 0) || width <= 0 || height <= 0) return null;
   const image = getProjectPaperTextureImage(paperTexture);
   if (!image) return null;
   const scale = normalizeGrainScale(grainScale);
-  const key = `v1:${paperTexture}:${width}x${height}:${scale}:${strength}`;
+  const key = `v1:${paperTexture}:${width}x${height}:${scale}:${k}`;
   const cached = tileCache.get(key);
   if (cached) return cached.tile;
 
@@ -185,7 +199,7 @@ export function getPaperPassTile(
   }
   const conditioned = conditionHeightMap(raw);
   const tint = { r: redSum / count, g: greenSum / count, b: blueSum / count };
-  const { valley, peak } = encodePassTiles(conditioned, width, height, strength, tint);
+  const { valley, peak } = encodePassTiles(conditioned, width, height, k, tint);
   const valleyCanvas = mapToCanvas(width, height, valley);
   const peakCanvas = mapToCanvas(width, height, peak);
   if (!valleyCanvas || !peakCanvas) return null;

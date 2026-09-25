@@ -2876,6 +2876,16 @@ export const physicPaintStore = {
   },
 
   setRotoBackgroundMetadata(layerId: string, trackId: string, metadata: PhysicPaintRotoBackgroundMetadata): void {
+    // WR-01: strength is validated BEFORE it is stored. The UI presets live in
+    // [0, 1] (None/Soft/Med/Hard) but a hostile or host-written value must not
+    // reach the tile encode — valley = 255 − v·(255 − tint) walks PAST the
+    // paper's own tint toward black when v > 1, breaking the locked hole-color
+    // semantics. NaN/negative collapse to 0 (None).
+    const rawStrength = metadata.grainStrength;
+    const grainStrength = Number.isFinite(rawStrength)
+      ? (rawStrength < 0 ? 0 : rawStrength > 1 ? 1 : rawStrength)
+      : 0;
+    const next: PhysicPaintRotoBackgroundMetadata = { ...metadata, grainStrength };
     // Idempotence guard (47 leak fix): the Studio's settings-sync effect can
     // re-fire on unstable dep identities; a no-op write must not bump the
     // revision — the bump re-renders every version subscriber, which re-fires
@@ -2883,15 +2893,17 @@ export const physicPaintStore = {
     // paint window's WebContent process at 16 GB).
     const current = _rotoBackgroundMetadata.get(layerId)?.get(trackId);
     if (current
-      && current.background === metadata.background
-      && current.paperGrain === metadata.paperGrain
-      && current.grainStrength === metadata.grainStrength
-      && current.color === metadata.color
+      && current.background === next.background
+      && current.paperGrain === next.paperGrain
+      // Compare the CLAMPED strength so a clamped write cannot thrash the
+      // revision on every re-sync of the same out-of-range input.
+      && current.grainStrength === grainStrength
+      && current.color === next.color
       // 260923-bcm: compare the NORMALIZED scale — without this a scale-only
       // write (the only field the Tools control changes) early-returns and the
       // new value is silently dropped from the mirror.
-      && (current.grainScale ?? 1) === (metadata.grainScale ?? 1)) return;
-    _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...metadata });
+      && (current.grainScale ?? 1) === (next.grainScale ?? 1)) return;
+    _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, next);
     // 48-03 T-48-07: paper metadata is NOT part of the flattened key (the key's
     // config/content/clip terms never cover it), so a paper change must rotate
     // the per-track raster AND the flattened memo — a stale paper composite must

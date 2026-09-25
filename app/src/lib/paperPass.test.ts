@@ -357,3 +357,55 @@ describe('260925-iy6 P3 — applyPaperPass shared-routine contract', () => {
     expect(region).not.toMatch(PIXEL_ARRAY_API);
   });
 });
+
+// 260925-iy6 WR-01 — strength must never drive the valley BELOW the paper tint.
+// encodePassTiles is pure byte math, so this is unit-pinnable (unlike CR-01's
+// colour law, which needs real pixels — see paperPass.composeLaw.test.ts).
+//
+// The encode is valley = round(255 - v * (255 - tint)) with v = max(0, -s) and
+// s = (h - 0.5) * 2 * strength. v ≤ 1 keeps valley ≥ tint; v > 1 walks the
+// valley PAST the paper's own tone toward black, breaking the locked hole-color
+// semantics (holes read as the paper, never as black). The UI presets stay
+// inside [0, 1] (None 0 / Soft 0.35 / Med 0.65 / Hard 0.95) but
+// setRotoBackgroundMetadata stores whatever it is handed, so the tile builder
+// is the last line of defence and must clamp.
+describe('260925-iy6 WR-01 — strength clamp (valley floor is the paper tint, never black)', () => {
+  it('W1(a) encodePassTiles: strength 2 at h=0 must NOT push the valley below the paper tint', () => {
+    const { valley } = encodePassTiles(new Float32Array([0]), 1, 1, 2, TINT);
+    expect(valley[0]).toBeGreaterThanOrEqual(TINT.r);
+    expect(valley[1]).toBeGreaterThanOrEqual(TINT.g);
+    expect(valley[2]).toBeGreaterThanOrEqual(TINT.b);
+  });
+
+  it('W1(b) encodePassTiles: strength 1.25 at h=0.05 must NOT push the valley below the paper tint', () => {
+    // v = (0.5 - 0.05) * 2 * 1.25 = 1.125 → past the tint floor without a clamp.
+    const { valley } = encodePassTiles(new Float32Array([0.05]), 1, 1, 1.25, TINT);
+    expect(valley[0]).toBeGreaterThanOrEqual(TINT.r);
+    expect(valley[1]).toBeGreaterThanOrEqual(TINT.g);
+    expect(valley[2]).toBeGreaterThanOrEqual(TINT.b);
+  });
+
+  it('W1(c) encodePassTiles: strength 0.65 at h=0 is unchanged (the clamp must not soften Soft/Med/Hard)', () => {
+    const { valley } = encodePassTiles(new Float32Array([0]), 1, 1, 0.65, TINT);
+    expect(valley[0]).toBe(Math.round(255 - 0.65 * (255 - TINT.r)));
+    expect(valley[1]).toBe(Math.round(255 - 0.65 * (255 - TINT.g)));
+    expect(valley[2]).toBe(Math.round(255 - 0.65 * (255 - TINT.b)));
+  });
+
+  it('W1(d) getPaperPassTile entry clamps strength to [0, 1] — strength 5 builds the strength-1 tile', () => {
+    const harness = createHarness(variedData());
+    harness.preload('canvas2');
+    const clamped = getPaperPassTile('canvas2', 6, 6, 1, 1);
+    const overflow = getPaperPassTile('canvas2', 6, 6, 1, 5);
+    expect(overflow).not.toBeNull();
+    expect(overflow).toBe(clamped);
+  });
+
+  it('W1(e) getPaperPassTile entry treats NaN/negative strength as a deterministic skip', () => {
+    const harness = createHarness(variedData());
+    harness.preload('canvas2');
+    harness.clearLog();
+    expect(getPaperPassTile('canvas2', 6, 6, 1, Number.NaN)).toBeNull();
+    expect(getPaperPassTile('canvas2', 6, 6, 1, -1)).toBeNull();
+  });
+});
