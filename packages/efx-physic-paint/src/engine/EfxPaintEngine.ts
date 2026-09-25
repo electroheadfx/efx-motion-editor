@@ -41,6 +41,7 @@ import { physicsStep } from '../core/diffusion'
 import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
 import type { LocalFluidPhysicsContinuation } from '../core/fluids'
 import { loadPaperTexture, sampleH, ensureHeightMap } from '../core/paper'
+import { spreadCurveFor } from '../core/spreadScale'
 import { createPaintStrokeRasterContinuation, renderPaintStroke } from '../brush/paint'
 import type { PaintStrokeRasterContinuation } from '../brush/paint'
 import { applyEraseStroke } from '../brush/erase'
@@ -2256,8 +2257,7 @@ export class EfxPaintEngine {
           sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
         }
         const waterFrac = pending.opts.waterAmount / 100
-        const spreadFrac = this.state.localSpreadStrength / 100
-        const spreadCurve = spreadFrac * spreadFrac
+        const spreadCurve = spreadCurveFor(this.state.localSpreadStrength)
         const waterCurve = waterFrac * waterFrac
         const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
         active.fluid = createLocalFluidPhysicsContinuation(
@@ -2531,8 +2531,7 @@ export class EfxPaintEngine {
         }
         // D-06: margin and ticks scale with brush size, water, and spread
         const waterFrac = opts.waterAmount / 100
-        const spreadFrac = this.state.localSpreadStrength / 100
-        const spreadCurve = spreadFrac * spreadFrac
+        const spreadCurve = spreadCurveFor(this.state.localSpreadStrength)
         const waterCurve = waterFrac * waterFrac
         const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
         const bx0 = Math.max(0, Math.floor(sx0 - brushR - margin))
