@@ -8,7 +8,6 @@
 
 import { TEXTURE_SIZE } from '../types'
 import { lerp, clamp } from '../util/math'
-import { fbm } from '../util/noise'
 
 /**
  * Load a paper texture image, tile it across the canvas, and extract the red channel
@@ -47,17 +46,35 @@ export function loadPaperTexture(
       }
       try {
         const pd = tx.getImageData(0, 0, width, height).data
-        const heightMap = new Float32Array(width * height)
-        for (let i = 0; i < width * height; i++) heightMap[i] = pd[i * 4] / 255
+        const raw = new Float32Array(width * height)
+        for (let i = 0; i < width * height; i++) raw[i] = pd[i * 4] / 255
+        // 260925-dso: condition ONCE at load — mean-centre to 0.5, contrast
+        // clamped to +/-0.40. Every consumer shares this conditioned reference.
+        const heightMap = conditionHeightMap(raw)
         resolve({ heightMap, tiledCanvas: tc })
       } catch (e) {
-        // CORS on file:// -- reject so caller can fall back to procedural
+        // CORS on file:// -- reject so caller can fall back to a flat height
         reject(e)
       }
     }
     img.onerror = () => reject(new Error(`Failed to load paper texture: ${url}`))
     img.src = url
   })
+}
+
+/**
+ * Condition a raw paper height map: mean-centre to 0.5, then clamp contrast to
+ * +/-0.40, so the output band is [0.10, 0.90] (260925-dso locked decision —
+ * noticeable tooth in deposit adsorption without pixel jitter).
+ * Idempotent on its own output.
+ */
+export function conditionHeightMap(raw: Float32Array): Float32Array {
+  let sum = 0
+  for (let i = 0; i < raw.length; i++) sum += raw[i]
+  const mean = raw.length > 0 ? sum / raw.length : 0.5
+  const out = new Float32Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = clamp(0.5 + (raw[i] - mean), 0.1, 0.9)
+  return out
 }
 
 /**
@@ -100,29 +117,4 @@ export function sampleTexH(
     lerp(textureHeight[(iy + 1) * w + ix], textureHeight[(iy + 1) * w + ix + 1], fx),
     fy,
   )
-}
-
-/**
- * Creates heightmap from bgData if texHeight is null.
- * Generates procedural fine-grain + medium structure noise.
- * From v3.html ensureHeightMap() line 1763
- */
-export function ensureHeightMap(
-  texHeight: Float32Array | null,
-  _bgData: ImageData | null,
-  width: number,
-  height: number,
-): Float32Array {
-  if (texHeight) return texHeight
-  const paperHeight = new Float32Array(width * height)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      // Fine grain: high frequency noise simulating paper fiber/weave (~4-6px features)
-      const fine = fbm(x * 0.25, y * 0.25, 4)
-      // Medium structure: larger paper undulation
-      const med = fbm(x * 0.06, y * 0.06, 2) * 0.3
-      paperHeight[y * width + x] = clamp(fine * 0.7 + med + 0.15, 0, 1)
-    }
-  }
-  return paperHeight
 }

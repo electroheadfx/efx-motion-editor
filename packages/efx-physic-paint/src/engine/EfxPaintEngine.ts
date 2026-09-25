@@ -40,7 +40,7 @@ import { initDryingLUT, dryStep, forceDryAll } from '../core/drying'
 import { physicsStep } from '../core/diffusion'
 import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
 import type { LocalFluidPhysicsContinuation } from '../core/fluids'
-import { loadPaperTexture, sampleH, ensureHeightMap } from '../core/paper'
+import { loadPaperTexture, sampleH } from '../core/paper'
 import { spreadCurveFor } from '../core/spreadScale'
 import { createPaintStrokeRasterContinuation, renderPaintStroke } from '../brush/paint'
 import type { PaintStrokeRasterContinuation } from '../brush/paint'
@@ -1053,17 +1053,13 @@ export class EfxPaintEngine {
     // The paper height modulates the wet composite — re-composite the display.
     this.displayCompositeDirty = true
     this.currentPaperKey = key
+    // 260925-dso: pure lookup-or-null. Grain-off ('') and texture-load failure
+    // (key absent because loadPaperTexture rejected) both land on null → flat.
+    // No procedural height map ever.
     const tex = this.paperTextures.get(key)
-    if (tex) {
-      this.texHeight = tex.heightMap
-      this.paperHeight = tex.heightMap
-      this.physicsHeightMap = tex.heightMap
-    } else {
-      this.texHeight = null
-      // Generate procedural heightmap
-      this.paperHeight = ensureHeightMap(null, null, this.width, this.height)
-      this.physicsHeightMap = this.paperHeight
-    }
+    this.texHeight = tex?.heightMap ?? null
+    this.paperHeight = tex?.heightMap ?? null
+    this.physicsHeightMap = this.paperHeight
   }
 
   /** Set emboss strength (0-1) */
