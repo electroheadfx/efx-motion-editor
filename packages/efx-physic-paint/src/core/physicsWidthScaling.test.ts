@@ -27,6 +27,13 @@
 //  that cycle (no pin weakened); only the carrier's wFloor/wFull in
 //  fluids.ts were re-derived — see the VERDICT re-calibration section.
 //
+//  W7 (carrier-revision cycle, 2026-09-25): field-law pin locking the
+//  NEIGHBORHOOD mean-thickness law itself (mean min(h,v)-run over the
+//  5x5 Chebyshev box R=2, knee 4/6, residual 0.25). Bounds calibrated
+//  PRE-RED in the VERDICT re-diagnosis append: thick-edge min f >= 0.99,
+//  hairline cols 40-46 max f <= 0.30, production cols 40-90 min f >= 0.80.
+//  W1-W6 above remain byte-untouched.
+//
 //  Substrate: pressure gesture r=10, pThin=0.1134 (drawn thin
 //  2.025 px @ x=44, drawn thick 19.865 px @ x=68), analytic coverage
 //  raster (pyp idiom, LCG seed 123456789), deposited through the
@@ -39,7 +46,7 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import { createWetBuffers, transferToWetLayerClipped } from './wet-layer'
-import { localFluidPhysicsStep } from './fluids'
+import { IX, buildWidthScaleField, localFluidPhysicsStep } from './fluids'
 import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
 import { ribbon, deform, deformN } from '../brush/stroke'
@@ -80,6 +87,14 @@ const W1_TOL_PX = 3.0
 const W2_FLOOR_PX = 1
 const W2_DEFAULT_WATER = 50
 const W4_FLOOR = 0.95
+
+// W7 field-law bounds (VERDICT re-diagnosis append — calibrated PRE-RED,
+// never re-calibrated after this commit)
+const W7_THICK_EDGE_MIN_F = 0.99
+const W7_HAIRLINE_MAX_F = 0.30
+const W7_PROD_MIN_F = 0.80
+const W7_HAIRLINE_COLS: [number, number] = [40, 46]
+const W7_PROD_COLS: [number, number] = [40, 90]
 
 const WATERS = [10, 50, 90] as const
 const PAPERS = ['null', 'synthetic'] as const
@@ -583,6 +598,92 @@ describe('260924-stb physics width scaling contract', () => {
           `stamp (physics texture/spread identity lost on the production raster; pyp/rm2 texture law)`,
         ).toBeGreaterThanOrEqual(1)
       }
+    }
+  })
+
+  it(`W7 field law (neighborhood thickness): ${LAW} — thick-edge f >= ${W7_THICK_EDGE_MIN_F}, hairline cols ${W7_HAIRLINE_COLS[0]}-${W7_HAIRLINE_COLS[1]} max f <= ${W7_HAIRLINE_MAX_F}, production cols ${W7_PROD_COLS[0]}-${W7_PROD_COLS[1]} min f >= ${W7_PROD_MIN_F} (both papers, water ${W2_DEFAULT_WATER})`, () => {
+    // Law: the equalization multiplier f must be built from the NEIGHBORHOOD
+    // mean thickness (5x5 box, R=2), not the cell's own run — the property
+    // that makes hairline and production low-run cells discriminate (VERDICT
+    // re-diagnosis). Bounds calibrated PRE-RED in the VERDICT append; this
+    // pins the field itself, since W1-W6 are behavioral only.
+    const alphaAt = (wet: WetBuffers, cx: number, cy: number): number =>
+      cx < 0 || cy < 0 || cx >= CANVAS_W || cy >= CANVAS_H ? 0 : wet.alpha[cy * CANVAS_W + cx]
+
+    const buildField = (p: Profile, wet: WetBuffers) => {
+      const bbox = engineLocalBbox(p.curve, W2_DEFAULT_WATER / 100, p.radius)
+      const localW = bbox.x1 - bbox.x0 + 1
+      const localH = bbox.y1 - bbox.y0 + 1
+      const f = buildWidthScaleField(wet, bbox.x0, bbox.y0, bbox.x1, bbox.y1, localW, localH, CANVAS_W)
+      const fAt = (cx: number, cy: number): number =>
+        f[IX(localW, cx - bbox.x0 + 1, cy - bbox.y0 + 1)]
+      return { f, bbox, fAt }
+    }
+
+    for (const paper of PAPERS) {
+      const paperArr = paper === 'synthetic' ? makeSyntheticPaper() : null
+
+      // Gesture substrate — W7a (thick edge) + W7b (hairline core)
+      const deposit = depositRun(profile, W2_DEFAULT_WATER / 100, paperArr)
+      const g = buildField(profile, deposit)
+
+      // W7a: edge cells of the thick region — inside cell (alpha > 20) with a
+      // 4-neighbor at alpha <= 20 (or off-canvas) — must keep f >= 0.99
+      let edgeMin = Infinity
+      let edgeCount = 0
+      for (let cx = THICK_REGION[0]; cx <= THICK_REGION[1]; cx++) {
+        for (let cy = 0; cy < CANVAS_H; cy++) {
+          if (alphaAt(deposit, cx, cy) <= 20) continue
+          const isEdge = alphaAt(deposit, cx - 1, cy) <= 20 || alphaAt(deposit, cx + 1, cy) <= 20
+            || alphaAt(deposit, cx, cy - 1) <= 20 || alphaAt(deposit, cx, cy + 1) <= 20
+          if (!isEdge) continue
+          edgeCount++
+          edgeMin = Math.min(edgeMin, g.fAt(cx, cy))
+        }
+      }
+      expect(edgeCount, `${LAW} — W7a setup FAIL paper=${paper}: no thick-edge cells found (substrate broken)`).toBeGreaterThan(0)
+      expect(
+        edgeMin,
+        `${LAW} — W7a FAIL paper=${paper}: thick-stroke edge cells min f=${edgeMin} < ${W7_THICK_EDGE_MIN_F} ` +
+        `(physics intensity damped at the thick mark's edge — neighborhood field lost; ${edgeCount} edge cells)`,
+      ).toBeGreaterThanOrEqual(W7_THICK_EDGE_MIN_F)
+
+      // W7b: source cells (deposit alpha >= 1) in the hairline columns —
+      // the neighborhood mean must keep them damped (<= 0.30)
+      let hairMax = -Infinity
+      let hairCount = 0
+      for (let cx = W7_HAIRLINE_COLS[0]; cx <= W7_HAIRLINE_COLS[1]; cx++) {
+        for (let cy = 0; cy < CANVAS_H; cy++) {
+          if (alphaAt(deposit, cx, cy) < 1) continue
+          hairCount++
+          hairMax = Math.max(hairMax, g.fAt(cx, cy))
+        }
+      }
+      expect(hairCount, `${LAW} — W7b setup FAIL paper=${paper}: no hairline source cells in cols ${W7_HAIRLINE_COLS[0]}-${W7_HAIRLINE_COLS[1]} (substrate broken)`).toBeGreaterThan(0)
+      expect(
+        hairMax,
+        `${LAW} — W7b FAIL paper=${paper}: hairline source max f=${hairMax} > ${W7_HAIRLINE_MAX_F} ` +
+        `(hairline equalization no longer damped — thin stroke will inflate past its footprint; ${hairCount} source cells)`,
+      ).toBeLessThanOrEqual(W7_HAIRLINE_MAX_F)
+
+      // Production substrate — W7c: body cells must read "thick enough"
+      const prodDeposit = depositRun(getProductionProfile(), W2_DEFAULT_WATER / 100, paperArr)
+      const p = buildField(getProductionProfile(), prodDeposit)
+      let prodMin = Infinity
+      let prodCount = 0
+      for (let cx = W7_PROD_COLS[0]; cx <= W7_PROD_COLS[1]; cx++) {
+        for (let cy = 0; cy < CANVAS_H; cy++) {
+          if (alphaAt(prodDeposit, cx, cy) < 1) continue
+          prodCount++
+          prodMin = Math.min(prodMin, p.fAt(cx, cy))
+        }
+      }
+      expect(prodCount, `${LAW} — W7c setup FAIL paper=${paper}: no production source cells in cols ${W7_PROD_COLS[0]}-${W7_PROD_COLS[1]} (substrate broken)`).toBeGreaterThan(0)
+      expect(
+        prodMin,
+        `${LAW} — W7c FAIL paper=${paper}: production source min f=${prodMin} < ${W7_PROD_MIN_F} ` +
+        `(production body reads thin → W6 texture identity would die; ${prodCount} source cells)`,
+      ).toBeGreaterThanOrEqual(W7_PROD_MIN_F)
     }
   })
 })
