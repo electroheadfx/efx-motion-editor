@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1355 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 1370 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1355 desktop budget').toBe(1355);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1370 desktop budget').toBe(1370);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1355 desktop budget',
+    'emits no chunk-size warning at the 1370 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -235,11 +235,16 @@ describe('production vite build', () => {
       // image-import bridge pair (+3.38 kB vs the 1337.30 kB base; the request/
       // result guards, the main-realm install, and the Studio's requestImageImport
       // port). Budget raised 1340 → 1355 (measured value + ~14.3 kB headroom).
+      // Measured 2026-09-25: 1,355.02 kB after quick-260925-iy6's dynamic
+      // post-bake paper pass — paperPass.ts (tile builder + shared apply
+      // routine) and the single _resolveFlattenedFrame seam entered the main
+      // chunk; the gate was green at base (under 1355). Budget raised
+      // 1355 → 1370 (measured value + ~15 kB headroom) for the landed pass.
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1355 desktop budget',
+        'no chunk-size warning may be emitted at the 1370 desktop budget',
       ).toBe(0);
     },
   );
