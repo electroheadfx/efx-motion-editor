@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 3
 waived_count: 5
-fixed_count: 68
-total_count: 76
-last_updated: 2026-09-25T00:10:00.000Z
+fixed_count: 69
+total_count: 77
+last_updated: 2026-09-25T07:04:00.127Z
 ---
 
 # Broken Windows Ledger
@@ -91,6 +91,7 @@ last_updated: 2026-09-25T00:10:00.000Z
 | 74 | quick-260924-koa | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.liveAlphaCache.test.ts | 152 | Pre-existing package-suite failure (preserves displayed wet alpha when local pre-stroke preparation bakes a distant stroke) — reproduced at base f92254f7, out of scope for 260924-koa | open |  | 2026-09-24T13:20:59.533Z |  |
 | 75 | 260924-rm2 | skipped-test | packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts | 418 | PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today | open |  | 2026-09-24T18:09:46.171Z |  |
 | 76 | 260924-stb | deviation | packages/efx-physic-paint/src/core/fluids.ts |  | STOP before GREEN: calibrated f(run) bounds (4/6, floor 0.25) regress pyp texture pin d(b)>=1 to 0 in every cell on the r=3 production raster — SUPERSEDED: f(run) carrier discarded (210-candidate re-calibration FALSIFIED, run=0 ambiguous), replaced by neighborhood mean-thickness field; GREEN 6341afba all pins pass | fixed |  | 2026-09-24T19:52:16.867Z | 2026-09-25T00:10:00.000Z |
+| 77 | quick-260925-b7c | deviation | .planning/quick/260925-b7c-quick-8d-recalibrate-the-spread-scale-so/260925-b7c-SUMMARY.md |  | STOPPED at Task 3 law gate: texture-presence gates (stb W2/W6, rm2 texture) fail at the new default because spreadCurveFor(50)=0.09 derives K ticks=1 (was 3); 3 harness parity edits left uncommitted pending user decision | fixed |  | 2026-09-25T06:40:20.907Z | 2026-09-25T07:04:00.127Z |
 
 ````json
 [
@@ -1008,6 +1009,19 @@ last_updated: 2026-09-25T00:10:00.000Z
     "reason": "",
     "recorded_at": "2026-09-24T19:52:16.867Z",
     "resolved_at": "2026-09-25T00:10:00.000Z",
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 77,
+    "kind": "deviation",
+    "phase": "quick-260925-b7c",
+    "file": ".planning/quick/260925-b7c-quick-8d-recalibrate-the-spread-scale-so/260925-b7c-SUMMARY.md",
+    "line": null,
+    "description": "STOPPED at Task 3 law gate: texture-presence gates (stb W2/W6, rm2 texture) fail at the new default because spreadCurveFor(50)=0.09 derives K ticks=1 (was 3); 3 harness parity edits left uncommitted pending user decision",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-25T06:40:20.907Z",
+    "resolved_at": "2026-09-25T07:04:00.127Z",
     "milestone": "v1.0.0"
   }
 ]
