@@ -10,7 +10,7 @@ const loadingTextures = new Map<string, HTMLImageElement>();
 const textureListeners = new Map<string, Set<() => void>>();
 
 /** Positive finite grain scale, else 1 (hostile input never hangs a tile loop). */
-function normalizeGrainScale(scale: number): number {
+export function normalizeGrainScale(scale: number): number {
   return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
@@ -124,6 +124,16 @@ export function subscribeProjectPaperCanvas(
     listeners.delete(notify);
     if (listeners.size === 0) textureListeners.delete(paperTexture);
   };
+}
+
+/**
+ * 260925-iy6: the RAW decoded texture behind the decode-once cache — read-only
+ * getter for the paper-pass tile builder (build-time pixel probe only). Returns
+ * null while the texture is unresolved so callers can take their deterministic
+ * skip path; never triggers a load (the resolve subscription owns arrival).
+ */
+export function getProjectPaperTextureImage(paperTexture: string): HTMLImageElement | null {
+  return textureCache.get(paperTexture) ?? null;
 }
 
 export function isProjectPaperTextureResolved(paperTexture: string): boolean {
