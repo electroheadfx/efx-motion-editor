@@ -17,9 +17,8 @@
 //      the extra round(layers*0.2) soft passes at lAlpha*0.25);
 //      bristle traces are EXCLUDED (non-geometric low-alpha strokes that
 //      would pin on RNG call order, not on the ribbon fringe we measure);
-//      fillPolyGrain's grain modulation is INCLUDED on even layers
-//      (production fill parity); paper emboss is a no-op at raster time
-//      (paperHeight null — embossStrength path requires paper present).
+//      flat layer fills throughout (260925-dso: production deleted the
+//      even-layer grain modulation and the paper-emboss pass).
 //    - ONLY the Canvas2D fill primitive is replaced by analytic
 //      sub-pixel polygon coverage (nonzero-winding scanline, 16 y
 //      sub-samples/pixel with exact x-span coverage) — that primitive
@@ -57,7 +56,6 @@ import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
 import { ribbon, deform, deformN } from '../brush/stroke'
 import { curveBounds } from '../util/math'
-import { fbm } from '../util/noise'
 import { spreadCurveFor } from './spreadScale'
 import type { FluidConfig, PenPoint, WetBuffers } from '../types'
 
@@ -122,8 +120,6 @@ const ENGINE_EDGE_DETAIL = 4
 const VARIANCE = (1.5 + Math.sqrt(BRUSH_RADIUS) * 0.9) * (ENGINE_EDGE_DETAIL / 50)
 /** Scanline sub-samples per pixel row (analytic x-span coverage exact) */
 const SS = 16
-/** fillPolyGrain grain default in the raster loop */
-const GRAIN = 0.4
 
 interface Profile {
   bounds: { x0: number; y0: number; w: number; h: number }
@@ -237,7 +233,6 @@ function compositePolygon(
   poly: Array<[number, number]>,
   bounds: { x0: number; y0: number; w: number; h: number },
   layerAlpha: number,
-  grainFn: ((lx: number, ly: number) => number) | null,
 ): void {
   if (poly.length < 3) return
   let yMin = Infinity, yMax = -Infinity
@@ -287,7 +282,6 @@ function compositePolygon(
       const c = rowCov[lx] / SS
       if (c <= 0) continue
       let src = c * layerAlpha
-      if (grainFn) src *= grainFn(lx, ly)
       if (src <= 0) continue
       const i = ly * bounds.w + lx
       buf[i] = src + buf[i] * (1 - src)
@@ -318,18 +312,14 @@ function buildProfile(): Profile {
     const lAlpha = Math.min(0.08, 3 / layers)
     for (let i = 0; i < layers; i++) {
       const v = deform(baseD, VARIANCE * 0.2)
-      // even layers → fillPolyGrain(grain 0.4, emboss 0); odd → fillFlat
-      const grainFn = i % 2 === 0
-        ? (lx: number, ly: number) =>
-            1 - GRAIN * 0.5 * fbm((bounds.x0 + lx) * 0.08, (bounds.y0 + ly) * 0.08, 3)
-        : null
-      compositePolygon(buf, v, bounds, lAlpha, grainFn)
+      // every layer flat-fills (260925-dso: grain/emboss passes deleted)
+      compositePolygon(buf, v, bounds, lAlpha)
     }
-    // soft passes: round(layers * 0.2) at lAlpha * 0.25 (fillFlat, no grain)
+    // soft passes: round(layers * 0.2) at lAlpha * 0.25 (fillFlat)
     const soft = Math.round(layers * 0.2)
     for (let i = 0; i < soft; i++) {
       const v = deform(baseD, VARIANCE * 0.5)
-      compositePolygon(buf, v, bounds, lAlpha * 0.25, null)
+      compositePolygon(buf, v, bounds, lAlpha * 0.25)
     }
     // bristle traces EXCLUDED (documented in header)
   } finally {
@@ -602,9 +592,14 @@ describe('260924-pyp production-AA substrate — sanity', () => {
     expect(distinct.size, `MID_X column must show > 2 distinct alphas, got ${distinct.size}`).toBeGreaterThan(2)
 
     // Continuous multi-value AA fringe per side: from the body mid-row out
-    // to zero, each side must show >= 3 distinct sub-255 alpha levels.
-    // (A binary body+single-fringe raster yields at most 2 per side; the
-    // synthetic 160/110/60 ramp is rejected explicitly below.)
+    // to zero, the top side must show >= 3 distinct sub-255 alpha levels
+    // and the bottom side >= 2. (The synthetic 160/110/60 ramp is rejected
+    // explicitly below; binary rejection also rides on MID_X distinct > 2
+    // and the band richness floor.)
+    // 260925-dso recalibration: with the in-harness grain replication gone,
+    // the bottom side measures [65,245] (was [63,243,244] with grain — the
+    // third level was grain's +/-1 plateau jitter 243 vs 244, deleted with
+    // the pass); law intent (graduated fringe, not a hard cut) unchanged.
     const first = body.rows[0]
     const last = body.rows[body.rows.length - 1]
     const mid = body.rows[Math.floor(body.rows.length / 2)]
@@ -622,8 +617,8 @@ describe('260924-pyp production-AA substrate — sanity', () => {
     ).toBeGreaterThanOrEqual(3)
     expect(
       bottomLevels.length,
-      `bottom side must show >= 3 distinct sub-255 alpha levels (binary profile), got [${bottomLevels.join(',')}]`,
-    ).toBeGreaterThanOrEqual(3)
+      `bottom side must show >= 2 distinct sub-255 alpha levels (binary profile), got [${bottomLevels.join(',')}]`,
+    ).toBeGreaterThanOrEqual(2)
     // fringe rows exist outside the body on both sides (AA edge, not hard cut)
     expect(topFringe.length, 'top side must have at least one fringe row outside the body').toBeGreaterThanOrEqual(1)
     expect(bottomFringe.length, 'bottom side must have at least one fringe row outside the body').toBeGreaterThanOrEqual(1)
@@ -634,7 +629,7 @@ describe('260924-pyp production-AA substrate — sanity', () => {
       isLiteralRamp(topLevels) && isLiteralRamp(bottomLevels),
       'profile must not be the synthetic 160/110/60 ramp',
     ).toBe(false)
-    // whole-stroke edge band richness (grain + deform sub-pixel positions):
+    // whole-stroke edge band richness (deform sub-pixel positions):
     // several distinct intermediate alphas across the stroke's edges
     const band = new Set<number>()
     for (let i = 3; i < profile.data.length; i += 4) {

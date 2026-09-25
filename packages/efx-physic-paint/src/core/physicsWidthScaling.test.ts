@@ -61,7 +61,6 @@ import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
 import { ribbon, deform, deformN } from '../brush/stroke'
 import { curveBounds } from '../util/math'
-import { fbm } from '../util/noise'
 import { spreadCurveFor } from './spreadScale'
 import type { FluidConfig, PenPoint, WetBuffers } from '../types'
 
@@ -90,7 +89,6 @@ const ALPHA_FLOOR = 125
 const ENGINE_EDGE_DETAIL = 4
 const PROFILE_SEED = 123456789
 const SS = 16
-const GRAIN = 0.4
 
 // Gesture cross-sections (VERDICT substrate)
 const RADIUS = 10
@@ -191,7 +189,6 @@ function compositePolygon(
   poly: Array<[number, number]>,
   bounds: { x0: number; y0: number; w: number; h: number },
   layerAlpha: number,
-  grainFn: ((lx: number, ly: number) => number) | null,
 ): void {
   if (poly.length < 3) return
   let yMin = Infinity, yMax = -Infinity
@@ -241,7 +238,6 @@ function compositePolygon(
       const c = rowCov[lx] / SS
       if (c <= 0) continue
       let src = c * layerAlpha
-      if (grainFn) src *= grainFn(lx, ly)
       if (src <= 0) continue
       const i = ly * bounds.w + lx
       buf[i] = src + buf[i] * (1 - src)
@@ -281,16 +277,13 @@ function buildProfileFor(curve: PenPoint[], radius: number, hasPenInput: boolean
     const lAlpha = Math.min(0.08, 3 / layers)
     for (let i = 0; i < layers; i++) {
       const v = deform(baseD, variance * 0.2)
-      const grainFn = i % 2 === 0
-        ? (lx: number, ly: number) =>
-            1 - GRAIN * 0.5 * fbm((bounds.x0 + lx) * 0.08, (bounds.y0 + ly) * 0.08, 3)
-        : null
-      compositePolygon(buf, v, bounds, lAlpha, grainFn)
+      // every layer flat-fills (260925-dso: grain/emboss passes deleted)
+      compositePolygon(buf, v, bounds, lAlpha)
     }
     const soft = Math.round(layers * 0.2)
     for (let i = 0; i < soft; i++) {
       const v = deform(baseD, variance * 0.5)
-      compositePolygon(buf, v, bounds, lAlpha * 0.25, null)
+      compositePolygon(buf, v, bounds, lAlpha * 0.25)
     }
   } finally {
     spy.mockRestore()
