@@ -11,7 +11,9 @@
 //
 //  Test-only. Drives the real settle (localFluidPhysicsStep — the path
 //  EfxPaintEngine runs at finalize in the default 'local' physics mode,
-//  K = max(1, ceil(spreadCurve*10)) = 3 ticks at localSpreadStrength 50)
+//  K = max(1, ceil(spreadCurve*10)) = 1 tick at localSpreadStrength 50
+//  via spreadCurveFor — spreadCurveFor(50) = 0.09 under the 260925-b7c
+//  calibration law)
 //  and the real visibility function (wetDisplayAlpha, pure).
 //
 //  TWO deposit paths are measured because they are materially different:
@@ -41,6 +43,7 @@ import { createWetBuffers, depositToWetLayer, transferToWetLayerClipped } from '
 import { localFluidPhysicsStep } from './fluids'
 import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
+import { spreadCurveFor } from './spreadScale'
 import type { FluidConfig, PenPoint, WetBuffers } from '../types'
 
 // === Engine-mirrored defaults (EfxPaintEngine) ===
@@ -52,9 +55,9 @@ const MID_Y = 32
 const BRUSH_RADIUS = 3
 /** Preview ribbon contract: width = 2 * radius at uniform pressure */
 const RIBBON_W = 2 * BRUSH_RADIUS
-/** localSpreadStrength 50 → spreadCurve 0.25 → ticks = max(1, ceil(2.5)) = 3 */
+/** localSpreadStrength 50 → spreadCurveFor(50) = 0.09 (260925-b7c) → ticks = max(1, ceil(0.9)) = 1 */
 const SPREAD_STRENGTH = 50
-const K_TICKS = Math.max(1, Math.ceil((SPREAD_STRENGTH / 100) ** 2 * 10))
+const K_TICKS = Math.max(1, Math.ceil(spreadCurveFor(SPREAD_STRENGTH) * 10))
 /** Engine fluidConfig defaults (D-13 / D-02 / D-03) */
 const FLUID_CONFIG: FluidConfig = { viscosity: 0.0001, omega_h: 0.06, darkening: 0.1 }
 /** Brush defaults: opacity 100 → 1.0, waterAmount 50 → 0.5 (engine passes /100) */
@@ -169,7 +172,7 @@ function engineLocalBbox(curve: PenPoint[], water01: number) {
     sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
   }
   const waterCurve = water01 * water01
-  const spreadCurve = (SPREAD_STRENGTH / 100) ** 2
+  const spreadCurve = spreadCurveFor(SPREAD_STRENGTH)
   const margin = Math.ceil(2 + waterCurve * BRUSH_RADIUS * 0.6 + spreadCurve * BRUSH_RADIUS * 0.4)
   return {
     x0: Math.max(0, Math.floor(sx0 - BRUSH_RADIUS - margin)),

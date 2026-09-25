@@ -19,6 +19,14 @@
 //    W6 production texture (pyp/rm2 idiom): d(b) >= 1 at EVERY water
 //        x both papers on the r=3 uniform production raster
 //
+//  260925-b7c texture-law recalibration (user decision 2026-09-25):
+//  the two TEXTURE-PRESENCE gates (W2, W6) assert at the
+//  spread-ENGAGING setting Spread 80 — "texture is present when spread
+//  is engaged" — NOT at the preview-matched default (new 50 = old 30
+//  derives K = 1, which is by design a hard stamp: d(b) = 0 there).
+//  The floors themselves (d(b) >= 1) are NOT weakened. Every other gate
+//  (W1, W3, W4, W5, W7) still asserts at the default Spread 50.
+//
 //  W6 was appended by the orchestrator-authorized re-calibration cycle
 //  (Option 1, 2026-09-24): the pyp production-path texture pin became a
 //  first-class pin HERE, alongside W1-W5, BEFORE the f() knee was
@@ -39,7 +47,9 @@
 //  raster (pyp idiom, LCG seed 123456789), deposited through the
 //  REAL transferToWetLayerClipped (keep-gate tier 70 + base deposit
 //  arithmetic), settled through the REAL localFluidPhysicsStep with
-//  engine defaults K_TICKS=3 and {viscosity:0.0001, omega_h:0.06,
+//  engine defaults K_TICKS = max(1, ceil(spreadCurveFor(50)*10)) = 1
+//  (260925-b7c calibration law, spreadCurveFor(50) = 0.09) and
+//  {viscosity:0.0001, omega_h:0.06,
 //  darkening:0.1}. W6 additionally builds the pyp production substrate
 //  (uniform r=3, ribbon hasPenInput=false) in the same file.
 // ============================================================
@@ -52,13 +62,28 @@ import { sampleH } from './paper'
 import { ribbon, deform, deformN } from '../brush/stroke'
 import { curveBounds } from '../util/math'
 import { fbm } from '../util/noise'
+import { spreadCurveFor } from './spreadScale'
 import type { FluidConfig, PenPoint, WetBuffers } from '../types'
 
 const CANVAS_W = 128
 const CANVAS_H = 64
 const MID_Y = 32
 const SPREAD_STRENGTH = 50
-const K_TICKS = Math.max(1, Math.ceil((SPREAD_STRENGTH / 100) ** 2 * 10))
+/** Engine tick law (per spread strength): K = max(1, ceil(spreadCurve·10)). */
+const ticksForSpread = (strength: number): number =>
+  Math.max(1, Math.ceil(spreadCurveFor(strength) * 10))
+/** Engine-default mirror: Spread 50 → spreadCurveFor(50) = 0.09 → K = 1 tick (260925-b7c). */
+const K_TICKS = ticksForSpread(SPREAD_STRENGTH)
+/**
+ * 260925-b7c texture law (user decision 2026-09-25): texture presence is
+ * asserted when spread is ENGAGED — Spread 80 → spreadCurveFor(80) = 0.636
+ * → K = max(1, ceil(6.36)) = 7 ticks — never at the preview-matched
+ * default (default K = 1 leaves d(b) = 0 by design: new 50 = old-30
+ * physics, the point measured live as preview-matched). The d(b) >= 1
+ * assertion itself is unchanged — only the setting moves.
+ */
+const TEXTURE_SPREAD_STRENGTH = 80
+const TEXTURE_K_TICKS = ticksForSpread(TEXTURE_SPREAD_STRENGTH)
 const FLUID_CONFIG: FluidConfig = { viscosity: 0.0001, omega_h: 0.06, darkening: 0.1 }
 const VISIBLE_THRESH = 13
 const ALPHA_FLOOR = 125
@@ -131,14 +156,14 @@ function makeSyntheticPaper(): Float32Array {
   return h
 }
 
-function engineLocalBbox(curve: PenPoint[], water01: number, radius: number) {
+function engineLocalBbox(curve: PenPoint[], water01: number, radius: number, spreadStrength: number = SPREAD_STRENGTH) {
   let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
   for (const p of curve) {
     sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
     sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
   }
   const waterCurve = water01 * water01
-  const spreadCurve = (SPREAD_STRENGTH / 100) ** 2
+  const spreadCurve = spreadCurveFor(spreadStrength)
   const margin = Math.ceil(2 + waterCurve * radius * 0.6 + spreadCurve * radius * 0.4)
   return {
     x0: Math.max(0, Math.floor(sx0 - radius - margin)),
@@ -332,10 +357,16 @@ function freshCopy(deposit: WetBuffers): WetBuffers {
   return s
 }
 
-function settleReal(profile: Profile, deposit: WetBuffers, water01: number): WetBuffers {
+function settleReal(
+  profile: Profile,
+  deposit: WetBuffers,
+  water01: number,
+  spreadStrength: number = SPREAD_STRENGTH,
+  ticks: number = K_TICKS,
+): WetBuffers {
   const s = freshCopy(deposit)
   localFluidPhysicsStep(s, FLUID_CONFIG, CANVAS_W, CANVAS_H,
-    engineLocalBbox(profile.curve, water01, profile.radius), K_TICKS)
+    engineLocalBbox(profile.curve, water01, profile.radius, spreadStrength), ticks)
   return s
 }
 
@@ -496,14 +527,20 @@ describe('260924-stb physics width scaling contract', () => {
     })
   })
 
-  it(`W2 thick physics (control): ${LAW} — thick d(b) >= ${W2_FLOOR_PX}px at default water, both papers`, () => {
+  it(`W2 thick physics (control): ${LAW} — thick d(b) >= ${W2_FLOOR_PX}px at spread-engaged Spread ${TEXTURE_SPREAD_STRENGTH} (default water), both papers`, () => {
     // Law: physics must NOT be disabled on thick strokes — the control pin.
+    // 260925-b7c texture law: asserted at the spread-engaging setting
+    // (Spread 80, K=7), NOT at the preview-matched default (K=1 by design);
+    // floor unchanged (>= 1 px).
     for (const paper of PAPERS) {
       const cell = getCell(paper, W2_DEFAULT_WATER)
-      const db = widthFromAlpha(cell.settled, THICK_X) - widthFromAlpha(cell.deposit, THICK_X)
+      const settledTexture = settleReal(
+        profile, cell.deposit, W2_DEFAULT_WATER / 100, TEXTURE_SPREAD_STRENGTH, TEXTURE_K_TICKS,
+      )
+      const db = widthFromAlpha(settledTexture, THICK_X) - widthFromAlpha(cell.deposit, THICK_X)
       expect(
         db,
-        `${LAW} — W2 FAIL ${cellTag(cell)}: thick d(b)=W_settle-W_deposit=${db} < floor=${W2_FLOOR_PX} (physics disabled / thick no longer spreads or textures at default water)`,
+        `${LAW} — W2 FAIL ${cellTag(cell)} Spread=${TEXTURE_SPREAD_STRENGTH} K=${TEXTURE_K_TICKS}: thick d(b)=W_settle-W_deposit=${db} < floor=${W2_FLOOR_PX} (physics disabled / thick no longer spreads or textures at spread-engaged setting)`,
       ).toBeGreaterThanOrEqual(W2_FLOOR_PX)
     }
   })
@@ -576,26 +613,29 @@ describe('260924-stb physics width scaling contract', () => {
     }
   })
 
-  it(`W6 production texture (pyp/rm2 idiom): ${LAW} — d(b) = W_settle - W_deposit >= 1 at EVERY water x both papers on the r=3 production raster`, () => {
+  it(`W6 production texture (pyp/rm2 idiom): ${LAW} — d(b) = W_settle - W_deposit >= 1 at EVERY water x both papers on the r=3 production raster, at spread-engaged Spread ${TEXTURE_SPREAD_STRENGTH}`, () => {
     // Law: the production raster must keep its Physics identity — the
     // settled mark spreads/textures relative to its deposit (d(b) >= 1),
     // never collapses to a hard stamp. This is the pyp production-path
     // texture pin, first-class here alongside W1-W5 so the re-calibrated
     // f() bounds must satisfy BOTH substrates together (Option 1).
+    // 260925-b7c texture law: asserted at the spread-engaging setting
+    // (Spread 80, K=7), NOT at the preview-matched default (K=1 by design);
+    // floor unchanged (>= 1).
     const prod = getProductionProfile()
     for (const paper of PAPERS) {
       for (const water of WATERS) {
         const paperArr = paper === 'synthetic' ? makeSyntheticPaper() : null
         const deposit = depositRun(prod, water / 100, paperArr)
-        const settled = settleReal(prod, deposit, water / 100)
+        const settled = settleReal(prod, deposit, water / 100, TEXTURE_SPREAD_STRENGTH, TEXTURE_K_TICKS)
         const wDep = widthFromAlpha(deposit, PROD_MID_X)
         const wSet = widthFromAlpha(settled, PROD_MID_X)
         const db = wSet - wDep
         expect(
           db,
-          `${LAW} — W6 FAIL paper=${paper} water=${water}: production d(b)=W_settle-W_deposit=${db} < 1 ` +
+          `${LAW} — W6 FAIL paper=${paper} water=${water} Spread=${TEXTURE_SPREAD_STRENGTH} K=${TEXTURE_K_TICKS}: production d(b)=W_settle-W_deposit=${db} < 1 ` +
           `(W_deposit=${wDep} -> W_settle=${wSet} at x=${PROD_MID_X}) — the r=3 production stroke settled to a hard ` +
-          `stamp (physics texture/spread identity lost on the production raster; pyp/rm2 texture law)`,
+          `stamp at the spread-engaged setting (physics texture/spread identity lost on the production raster; pyp/rm2 texture law)`,
         ).toBeGreaterThanOrEqual(1)
       }
     }

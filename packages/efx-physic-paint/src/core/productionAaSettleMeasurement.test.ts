@@ -36,7 +36,8 @@
 //    tier before transfer ≡ raising transferToWetLayerClipped's keep-gate,
 //    exact because `a` is read only after the gate] → real
 //    transferToWetLayerClipped (base keep-gate 20, unchanged) → copy
-//    buffers → real localFluidPhysicsStep K=3 ticks with engineLocalBbox
+//    buffers → real localFluidPhysicsStep K = max(1, ceil(spreadCurveFor(50)*10)) = 1
+//    ticks with engineLocalBbox
 //    → widths via widthFromAlpha / widthVisible / wetDisplayAlpha at MID_X.
 //
 //  PIN 0: body deposit unmodulated — ratio ∈ [0.99, 1.01] of
@@ -57,6 +58,7 @@ import { sampleH } from './paper'
 import { ribbon, deform, deformN } from '../brush/stroke'
 import { curveBounds } from '../util/math'
 import { fbm } from '../util/noise'
+import { spreadCurveFor } from './spreadScale'
 import type { FluidConfig, PenPoint, WetBuffers } from '../types'
 
 // === Engine-mirrored defaults (EfxPaintEngine) ===
@@ -70,9 +72,19 @@ const BRUSH_RADIUS = 3
 const RIBBON_W = 2 * BRUSH_RADIUS
 /** Envelope bound: 2r + 2px antialiasing tolerance (PIN 1 contract) */
 const ENVELOPE_BOUND = RIBBON_W + 2 // = 8
-/** localSpreadStrength 50 → spreadCurve 0.25 → ticks = max(1, ceil(2.5)) = 3 */
+/** localSpreadStrength 50 → spreadCurveFor(50) = 0.09 (260925-b7c) → ticks = max(1, ceil(0.9)) = 1 */
 const SPREAD_STRENGTH = 50
-const K_TICKS = Math.max(1, Math.ceil((SPREAD_STRENGTH / 100) ** 2 * 10))
+const K_TICKS = Math.max(1, Math.ceil(spreadCurveFor(SPREAD_STRENGTH) * 10))
+/**
+ * 260925-b7c texture law (user decision 2026-09-25): the rm2 texture gate
+ * asserts texture presence at the spread-ENGAGING setting — Spread 80 →
+ * spreadCurveFor(80) = 0.636 → K = max(1, ceil(6.36)) = 7 ticks — never at
+ * the preview-matched default (default K = 1 leaves d(b) = 0 by design:
+ * new 50 = old-30 physics). The d(b) >= 1 assertion is unchanged; every
+ * other gate (envelope, PIN 0/0b) stays at the default Spread 50.
+ */
+const TEXTURE_SPREAD_STRENGTH = 80
+const TEXTURE_K_TICKS = Math.max(1, Math.ceil(spreadCurveFor(TEXTURE_SPREAD_STRENGTH) * 10))
 /** Engine fluidConfig defaults (D-13 / D-02 / D-03) */
 const FLUID_CONFIG: FluidConfig = { viscosity: 0.0001, omega_h: 0.06, darkening: 0.1 }
 
@@ -160,14 +172,14 @@ const STROKE = { x0: 16, x1: 112, y: MID_Y }
  * Engine local-mode bbox (applyStrokeToEngine / stepInteractivePaintFinalization):
  *   margin = ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
  */
-function engineLocalBbox(curve: PenPoint[], water01: number) {
+function engineLocalBbox(curve: PenPoint[], water01: number, spreadStrength: number = SPREAD_STRENGTH) {
   let sx0 = Infinity, sy0 = Infinity, sx1 = -Infinity, sy1 = -Infinity
   for (const p of curve) {
     sx0 = Math.min(sx0, p.x); sy0 = Math.min(sy0, p.y)
     sx1 = Math.max(sx1, p.x); sy1 = Math.max(sy1, p.y)
   }
   const waterCurve = water01 * water01
-  const spreadCurve = (SPREAD_STRENGTH / 100) ** 2
+  const spreadCurve = spreadCurveFor(spreadStrength)
   const margin = Math.ceil(2 + waterCurve * BRUSH_RADIUS * 0.6 + spreadCurve * BRUSH_RADIUS * 0.4)
   return {
     x0: Math.max(0, Math.floor(sx0 - BRUSH_RADIUS - margin)),
@@ -405,6 +417,8 @@ function runCell(
   tier: number,
   water01: number,
   paper: Float32Array | null,
+  spreadStrength: number = SPREAD_STRENGTH,
+  ticks: number = K_TICKS,
 ): { deposit: WetBuffers; settled: WetBuffers; widths: { W_deposit: number; W_settle: number; W_visible: number } } {
   const profile = applyTier(getProfile(), tier)
   const imageData = { data: profile.data, width: profile.bounds.w, height: profile.bounds.h }
@@ -425,7 +439,7 @@ function runCell(
 
   localFluidPhysicsStep(
     settled, FLUID_CONFIG, CANVAS_W, CANVAS_H,
-    engineLocalBbox(curve, water01), K_TICKS,
+    engineLocalBbox(curve, water01, spreadStrength), ticks,
   )
   const W_settle = widthFromAlpha(settled, MID_X)
   const W_visible = widthVisible(settled, MID_X, paper)
@@ -491,7 +505,11 @@ const BASE_BODY_MEAN_DISPLAY: Record<string, number> = {
 
 const STOP_FINDINGS: string[] = []
 
-function measureCells(tiers: readonly number[]): CellResult[] {
+function measureCells(
+  tiers: readonly number[],
+  spreadStrength: number = SPREAD_STRENGTH,
+  ticks: number = K_TICKS,
+): CellResult[] {
   const profile = getProfile()
   const body = bodyState(profile)
   const results: CellResult[] = []
@@ -500,7 +518,7 @@ function measureCells(tiers: readonly number[]): CellResult[] {
     for (const water of WATERS) {
       for (const paperKind of PAPERS) {
         const paper = paperKind === 'synthetic' ? makeSyntheticPaper() : null
-        const { deposit, settled, widths } = runCell(tier, water / 100, paper)
+        const { deposit, settled, widths } = runCell(tier, water / 100, paper, spreadStrength, ticks)
         const pin0 = pin0RatioRange(deposit, tiered, body, paper)
         const means = bodyMeans(settled, profile, body, paper)
         results.push({
@@ -720,16 +738,21 @@ describe('260924-rm2 production-path deposit-cutoff contract pins', () => {
     }
   })
 
-  it('texture: d(b) = W_settle - W_deposit >= 1 at EVERY water {10, 50, 90}, both papers', () => {
-    const results = productionPath()
+  // 260925-b7c texture law (user decision 2026-09-25): texture presence is
+  // asserted when spread is ENGAGED — Spread 80 (K=7), not the
+  // preview-matched default (K=1 → d(b) = 0 by design). The d(b) >= 1
+  // floor is unchanged; envelope + PIN 0/0b gates above/below stay at the
+  // default Spread 50.
+  it(`texture: d(b) = W_settle - W_deposit >= 1 at EVERY water {10, 50, 90}, both papers, at spread-engaged Spread ${TEXTURE_SPREAD_STRENGTH}`, () => {
+    const results = measureCells([20], TEXTURE_SPREAD_STRENGTH, TEXTURE_K_TICKS)
     for (const r of results) {
       const db = r.W_settle - r.W_deposit
       expect(
         db,
-        `260924-rm2 texture FAIL: paper=${r.paper} water=${r.water} d(b)=${db} < 1 ` +
+        `260924-rm2 texture FAIL: paper=${r.paper} water=${r.water} Spread=${TEXTURE_SPREAD_STRENGTH} K=${TEXTURE_K_TICKS} d(b)=${db} < 1 ` +
         `(W_deposit=${r.W_deposit} -> W_settle=${r.W_settle}) — a cutoff that lands here is a hard stamp ` +
-        `(d(b) must survive on the production raster at every water; exercises the D-08 synthetic-paper ` +
-        `adsorption path alongside null)`,
+        `(d(b) must survive on the production raster at every water at the spread-engaged setting; exercises the ` +
+        `D-08 synthetic-paper adsorption path alongside null)`,
       ).toBeGreaterThanOrEqual(1)
     }
   })
