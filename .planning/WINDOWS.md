@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 3
 waived_count: 5
-fixed_count: 67
-total_count: 75
-last_updated: 2026-09-24T18:09:46.171Z
+fixed_count: 68
+total_count: 76
+last_updated: 2026-09-25T00:10:00.000Z
 ---
 
 # Broken Windows Ledger
@@ -90,6 +90,7 @@ last_updated: 2026-09-24T18:09:46.171Z
 | 73 | 26 | deviation | app/src/stores/projectStore.efxPaintCutover.test.ts |  | Quick 260923-kcs: retargeted 45-05 Task 3 AddFxMenu source-shape pins (name: 'Physic Paint' -> name: stackName; old createFxSequence literals -> position:'top' shapes) — pre-existing pins encoded the fixed-name defect the quick kills; file was outside the plan's files_modified list (Rule 1, commit 39a60fd2) | open |  | 2026-09-23T14:17:20.987Z |  |
 | 74 | quick-260924-koa | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.liveAlphaCache.test.ts | 152 | Pre-existing package-suite failure (preserves displayed wet alpha when local pre-stroke preparation bakes a distant stroke) — reproduced at base f92254f7, out of scope for 260924-koa | open |  | 2026-09-24T13:20:59.533Z |  |
 | 75 | 260924-rm2 | skipped-test | packages/efx-physic-paint/src/core/physicsSettledFootprint.test.ts | 418 | PIN 2 water-monotone width DEFERRED (it.skip, law text preserved) — future fluids.ts water-coupling feature; nqe structural evidence: no water-settle coupling today | open |  | 2026-09-24T18:09:46.171Z |  |
+| 76 | 260924-stb | deviation | packages/efx-physic-paint/src/core/fluids.ts |  | STOP before GREEN: calibrated f(run) bounds (4/6, floor 0.25) regress pyp texture pin d(b)>=1 to 0 in every cell on the r=3 production raster — SUPERSEDED: f(run) carrier discarded (210-candidate re-calibration FALSIFIED, run=0 ambiguous), replaced by neighborhood mean-thickness field; GREEN 6341afba all pins pass | fixed |  | 2026-09-24T19:52:16.867Z | 2026-09-25T00:10:00.000Z |
 
 ````json
 [
@@ -994,6 +995,19 @@ last_updated: 2026-09-24T18:09:46.171Z
     "reason": "",
     "recorded_at": "2026-09-24T18:09:46.171Z",
     "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 76,
+    "kind": "deviation",
+    "phase": "260924-stb",
+    "file": "packages/efx-physic-paint/src/core/fluids.ts",
+    "line": null,
+    "description": "STOP before GREEN: calibrated f(run) bounds (4/6, floor 0.25) regress pyp texture pin d(b)>=1 to 0 in every cell on the r=3 production raster — SUPERSEDED: f(run) carrier discarded (210-candidate re-calibration FALSIFIED, run=0 ambiguous), replaced by neighborhood mean-thickness field; GREEN 6341afba all pins pass",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-24T19:52:16.867Z",
+    "resolved_at": "2026-09-25T00:10:00.000Z",
     "milestone": "v1.0.0"
   }
 ]
