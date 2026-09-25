@@ -55,6 +55,9 @@ function createHarness() {
     redoStack: [],
     allActions: [],
     state: { drawing: false, physicsMode: 'local' },
+    // CR-01: load() now reaches setPaperGrain (grain-off '' is no longer
+    // dropped), which looks up paperTextures — a real engine always has it.
+    paperTextures: new Map<string, { heightMap: Float32Array }>(),
     captureUndoSnapshot: vi.fn((mutationId: number) => makeSnapshot(mutationId, `before-${mutationId}`, mutationId * 10)),
     notifyCompletedMutation: vi.fn((_kind: string, id: number) => finalized.push(String(id))),
     recordPerformance: vi.fn(),

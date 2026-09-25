@@ -22,6 +22,15 @@ function createHarness() {
     texHeight: null,
     paperHeight: null,
     physicsHeightMap: null,
+    // save()/loadProjectData surface (documentFormat.test.ts harness precedent).
+    allActions: [],
+    state: { bgMode: 'canvas1', embossStrength: 0.45, wetPaper: true },
+    undoStack: [],
+    redoStack: [],
+    historyEntries: [],
+    historyIndex: 0,
+    notifyHistoryAvailability: vi.fn(),
+    redrawAll: vi.fn(),
   })
   return engine
 }
@@ -54,6 +63,30 @@ describe('260925-dso — physics height field is flat without a paper', () => {
     expect(engine.paperHeight).toBe(heightMap)
     expect(engine.texHeight).toBe(heightMap)
     expect(engine.physicsHeightMap).toBe(heightMap)
+  })
+
+  it("CR-01 round-trip: paperGrain '' (grain off) survives save → load — paperHeight stays null", () => {
+    // Authoring side: grain explicitly turned off, then the project serialized.
+    const source = createHarness()
+    source.setPaperGrain('')
+    expect(source.paperHeight).toBeNull()
+    const document = source.save()
+
+    // Reload side: a fresh engine that already applied its default paper
+    // (loadPaperTextures applies defaultPaper / first key unconditionally).
+    const reloaded = createHarness()
+    const defaultHeightMap = new Float32Array(16).fill(0.5)
+    reloaded.paperTextures.set('canvas1', { heightMap: defaultHeightMap })
+    reloaded.setPaperGrain('canvas1')
+    expect(reloaded.paperHeight).toBe(defaultHeightMap)
+
+    reloaded.loadProjectData(document)
+
+    // The grain-off encoding must be re-applied, not dropped by a truthy guard.
+    expect(reloaded.currentPaperKey).toBe('')
+    expect(reloaded.paperHeight).toBeNull()
+    expect(reloaded.texHeight).toBeNull()
+    expect(reloaded.physicsHeightMap).toBeNull()
   })
 
   it('source shape: the procedural fbm generator is gone from paper.ts and unimported by the engine', () => {

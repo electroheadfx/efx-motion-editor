@@ -2917,7 +2917,9 @@ export class EfxPaintEngine {
     // App-side documents carry no settings member; the engine keeps its own.
     const settings = activeTrack.settings
     if (settings) {
-      if (settings.paperGrain) this.setPaperGrain(settings.paperGrain)
+      // CR-01: '' is the grain-off encoding — a truthy guard dropped it and
+      // silently restored the default paper on save/load round-trips.
+      if (settings.paperGrain != null) this.setPaperGrain(settings.paperGrain)
       if (settings.embossStrength != null) this.state.embossStrength = settings.embossStrength
       if (settings.wetPaper != null) {
         this.state.wetPaper = settings.wetPaper
