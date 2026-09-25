@@ -2,7 +2,7 @@
 
 **Collected:** 2026-09-25
 **Owner of the queue:** user
-**Status:** CR-01 open (WINDOWS.md #79, NOT waived). WR-02 parked as a separate pass.
+**Status:** CR-01 open (WINDOWS.md #79, NOT waived). WR-02 parked as a separate pass. Product gap below awaits a decision (user leans to keeping 9b scoped).
 
 ---
 
@@ -87,3 +87,43 @@ toothless by design**.
 When this is picked up: make the gate stop promising tooth (align the gate's condition with what
 the probe can actually resolve) — do **not** add procedural height, do **not** add a synthetic
 grain for White.
+
+---
+
+## 3. PRODUCT DECISION — tooth on the active track's live canvas (PENDING, do not paper over)
+
+**"Tooth visible while painting" is impossible by construction today.** Not a 9b defect — a
+missing surface.
+
+The Studio paint canvas is two stacked surfaces (`PhysicsPaintProgramMonitor.tsx:12-23`, laws
+D-05 / T-48-16): the editing base = `getFlattenedFrameExcluding(active)` (routes through
+`_resolveFlattenedFrame`, so 9b's tooth DOES apply to every other track), plus the **live engine
+canvas** stacked above supplying the **active** track's in-progress pixels (so semi-transparent
+strokes never double-apply). That live canvas never reaches `_resolveFlattenedFrame`, so it never
+meets `applyPaperPass`.
+
+It has no grain of its own either: 260925-dso (9a) deleted `applyPaperEmboss` — the only visual
+grain the live brush ever had. `EfxPaintEngine.setPaperGrain()` now feeds only the **physics
+height field** (`texHeight` / `paperHeight` / `physicsHeightMap`, `null`/flat without a texture,
+"no procedural height map ever"), and `state.embossStrength` is consumed by **no render path**
+(settings serialization only). `rotoFrameDraw.drawDeterministicPaperGrain` is a faint procedural
+dot grid at `alpha ≤ 0.12` on the **fond** only.
+
+So: single-track painting = body 100% flat. Tooth appears only once the track is no longer active
+(UAT 1a), in playback (1b), or in the main window / export (1c).
+
+### The decision
+
+Is "tooth while painting" a wanted product behaviour?
+
+- **Option A (user's lean, 2026-09-25): keep 9b scoped** to the post-bake composite seam, exactly
+  as specced ("one pass after bake / after layer mix"). Tooth is a property of the composited
+  frame, not of the in-progress brush. This item then closes as "by design", and UAT row 1 is
+  judged on 1a/1b/1c.
+- **Option B: give the live engine display composite its own tooth** (the successor to
+  `applyPaperEmboss`). Hard constraint if B is chosen: **it must not fork a second modulation
+  implementation** — the one-shared-routine export law (and the whole reason 9a deleted the dual
+  pipeline) still binds. The engine display would have to consume the same precomputed tile /
+  the same modulation law as `applyPaperPass`, not a private emboss.
+
+Do not start B as a side effect of another quick. It is its own decision and its own scope.

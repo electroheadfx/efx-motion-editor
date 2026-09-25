@@ -100,7 +100,10 @@ Total: 5 GPU `drawImage` composites per rebuilt frame. `save`/`restore` bracket 
 
 ## Native UAT rows (PENDING — user must run live; vitest cannot judge rendering)
 
-1. **HOLES:** with a paper selected and a FULL-OPACITY baked stroke, the paint shows the paper's tooth through it — valleys darken toward the paper tone (not gray/black), fibers lift; compare against grain-off.
+1. **HOLES — JUDGE ON THE FLATTENED SURFACES, NOT THE LIVE PAINT CANVAS.** First judged on the Studio paint canvas and read as "nothing changed" (2026-09-25). That surface is **structurally excluded** from the pass — see "Product gap" below — so the row was being read on the one surface that cannot show tooth. Re-judge on these three, all of which route through `_resolveFlattenedFrame` → `applyPaperPass` (pinned by P4(a)/(b)/(f)):
+   - **1a — switch-track counter-test (cheapest).** Paint a full-opacity stroke on track A (single-track painting is 100% flat while A is active). Then activate track B. Track A's body must now show the tooth — valleys toward the paper tone (not gray/black), fibers lift. Grain-off for comparison.
+   - **1b — Play / playback.** The program monitor's playback mode reads `getFlattenedFrame` (full composite, active track included) → tooth must be on every track's body.
+   - **1c — main window / export.** Studio closed (main preview) or an exported frame: tooth on the body, matching 1a/1b.
 2. **LIVE RE-TEXTURE:** swap the paper on an already-baked layer → texture changes immediately, no repaint/re-bake; same for grain scale (density) and strength presets (None/Soft/Med/Hard visibly differ, None = flat).
 3. **EXPORT PARITY:** export the same frame and compare against a canvas capture of the same frame — tooth identical (shared routine, one seam).
 4. **REAL-TIME:** playback stays smooth with the pass active (no stutter — GPU draws only, per rebuilt frame).
@@ -109,6 +112,21 @@ Total: 5 GPU `drawImage` composites per rebuilt frame. `save`/`restore` bracket 
 7. **FOND INTACT:** paper background looks exactly as before (no double-texture over the fond; transparent tracks still show through between each other — v1 law). Check the Studio program monitor (`includeFond=false`) for the CSS-blend paper beneath — flag if it double-textures (open question 2).
 8. **LAWS:** stroke body opacity/footprint/thickness unchanged vs before this quick (PIN 0 / 260924-stb / 260925-b7c) — if any row regresses, report, do not tune.
 9. **PARTIAL-ALPHA WASH (CR-01 escalation trigger — the deliberate row).** Paint one stroke on a track at **opacity 0.5**, then **zoom in on an anti-aliased edge**. This is where the open CR-01 defect is spectacular: measured `paint [120,30,60] @ a=0.5` over a `230` valley renders as `[169,128,142]` instead of `[108,27,54]` — the stroke washes toward the paper tone and reads thinner than its alpha byte says. Judge **visibility**, not correctness (correctness is already known-broken): if you can see the wash at that zoom, **escalate immediately to the GPU pass** specced in `260925-iy6-deferred-items.md`. If it is not visible at that zoom, CR-01 stays open in WINDOWS.md #79 (do not waive) and the GPU quick waits in the queue. Do not judge this row on a full-opacity stroke — α = 1 is bit-exact and will hide the defect.
+
+## Product gap (surfaced, NOT papered over) — no grain path on the active track's live canvas
+
+**"Tooth visible while painting" is impossible by construction today.** This is a product decision, not a 9b defect.
+
+The Studio paint canvas is two stacked surfaces (`PhysicsPaintProgramMonitor.tsx:12-23`, laws D-05 / T-48-16):
+
+- the **editing base** = `getFlattenedFrameExcluding(active)` — routed through `_resolveFlattenedFrame`, so 9b's tooth **does** apply to every *other* track; and
+- the **live engine canvas** stacked above, which supplies the **active** track's in-progress pixels (so semi-transparent strokes never double-apply). That canvas never reaches `_resolveFlattenedFrame`, so it never meets `applyPaperPass`.
+
+And it has no grain of its own any more: 260925-dso (9a) deleted `applyPaperEmboss`, which was the **only** visual grain the live brush ever had. `EfxPaintEngine.setPaperGrain()` now feeds only the **physics height field** (`texHeight` / `paperHeight` / `physicsHeightMap` → `null` / flat when there is no texture — explicitly "no procedural height map ever"), and `state.embossStrength` survives only in settings serialization — **no render path consumes it**. `rotoFrameDraw.drawDeterministicPaperGrain` is a faint procedural dot grid at `alpha ≤ 0.12` on the **fond** only, not the paint body.
+
+Consequence: single-track painting = the body is 100% flat. The tooth appears only once the track is no longer the active one (1a), or in playback (1b), or in the main window / export (1c).
+
+**Decision needed (separate from 9b).** 9b is scoped to the post-bake composite seam as specced ("one pass after bake / after layer mix"). Restoring a live-canvas tooth is a **new product decision** — it would mean giving the engine display composite its own tooth (the successor to `applyPaperEmboss`), and it must not fork a second modulation implementation (the one-shared-routine law). User's lean (2026-09-25): **keep 9b scoped (option A) and decide separately.**
 
 ## Deviations from plan
 
