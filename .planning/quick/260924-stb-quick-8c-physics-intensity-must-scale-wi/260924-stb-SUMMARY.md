@@ -126,7 +126,7 @@ No other deviations. Architecture unchanged: equalization-only modulation inside
 
 None — no placeholder values, TODOs, or unwired data sources in the changed files.
 
-## Native UAT rows (deferred — automated-ready, live UAT not yet run)
+## Native UAT rows (PASSED 7/7 2026-09-25 — CLOSED)
 
 Native UAT rows from the plan, verbatim (automated gates all green; live rows pending):
 
@@ -138,7 +138,6 @@ Native UAT rows from the plan, verbatim (automated gates all green; live rows pe
 6. Body opacity unchanged — the stroke body is exactly as opaque as the pre-fix build (no wash-out; PIN 0 law)
 7. Normal mode unchanged; water behaves as before (water is still not a width control — the PIN 2 deferral stays)
 
-Status: **automated-ready** — all 7 contract pins + legacy harnesses green; no live UAT
-claimed (memory law: no done before live visible UAT).
+Status: **CLOSED** — native UAT PASSED 7/7 2026-09-25 (user approved): pressure gesture follows the ribbon silhouette (hairlines/tapers clean, thick parts paint-like), no speckled mush nor constant-minimum inflation, wet edges + granulation intact, gradient follows local width along the stroke, held-pose determinism (no boil), body opacity unchanged (PIN 0 law, no m7w wash-out), Normal mode + water unchanged (PIN 2 deferral stays).
 
 ## Self-Check: PASSED
