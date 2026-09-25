@@ -241,3 +241,185 @@ carrier ever written for this quick; W1–W5 tolerance values were never moved.
    deferred, ledgered regression with the user's sign-off.
 3. **Revert** the uncommitted `fluids.ts` carrier (Tasks 1/2/3-RED commits stand) and
    re-plan the quick.
+
+---
+
+# Re-diagnosis (carrier revision — Option 1, 2026-09-25) — neighborhood thickness field: joint satisfiability HOLDS
+
+Appended after the orchestrator resolved the falsification checkpoint with **carrier
+revision: neighborhood-scale thickness field** (VERDICT option 1, discriminating
+feature chosen). Nothing above is rewritten. Measurement again ran through an
+identity-validated parameterized prototype (`__stb_nb_scratch.test.ts`, deleted before
+this append, never committed).
+
+## Result
+
+**The new carrier answers "how thick is the stroke in this neighborhood?" instead of
+"how long is this scanline run?". Joint satisfiability of W1–W6 across BOTH substrates
+HOLDS on measurement: exactly 2 of 122 field candidates pass the full pin set.
+VERDICT: START — proceed to RED (W7) then GREEN.** No pin bound was moved.
+
+## Carrier — field construction
+
+```
+run(c)   = min(h-run, v-run) over inside ⇔ alpha > 20        (unchanged, bbox-bounded)
+T(c)     = MEAN of run(c') over inside cells c' in the Chebyshev box
+           |i'-i| ≤ R, |j'-j| ≤ R, clamped to the local grid interior   (R = 2)
+f(c)     = 0.25 + 0.75 * clamp((T(c) - 4) / (6 - 4), 0, 1)
+```
+
+applied per source cell at the height-equalization inputs (fluids.ts
+`addHeightEqualization`), computed ONCE per settle from the deposited raster before
+tick 0. `f ≡ 1` arithmetic stays byte-identical to the unmodulated law. Measured fact
+used by the construction: **every positive-alpha cell on both substrates is `inside`
+(alpha > 20) — no fringe band (1 ≤ alpha ≤ 20) exists**, so the source set and the
+field's support set coincide; `run = 0` cells are never sources and never counted by
+the mean (only `run > 0` cells enter the average).
+
+Why the mean and not the max: the mean is the only aggregate tested that both (a)
+lifts production's low-height cells that sit *next to* the full-height interior and
+(b) does not leak the gesture's taper thickness back into the hairline (the max
+propagates a single thick neighbor at full weight — see sweep evidence).
+
+## Support size R = 2 — calibration against BOTH substrates (pre-RED)
+
+R is the **unique** passing support in the swept grid {1..6} (with mean, knee 4/6):
+
+| R (mean agg) | Outcome |
+| --- | --- |
+| 1 | **W2 FAIL** (synthetic thick d(b)=0) — support too small: edge/transition cells of the thick stroke don't see the interior |
+| **2** | **PASS all W1–W6** (both residuals 0.25 and 0.5) |
+| 3–6 | **W3/W1 FAIL** — the 5×5+ box reaches the taper from the hairline cross-section (thin-region T max rises 4.94 → 6.58), lifting hairline cells above the knee → physics inflation 0.494 > thick 0.101 |
+
+Every `max`-aggregate candidate at every R ≥ 1 fails W1/W3 (taper leakage at full
+weight: gesture thin-region T reaches 8–11). Knee (5,7) fails W6 at every R (production
+mean T = 5.47 → f < 0.75 → texture dies — the falsification's measured threshold).
+Knees (2,4)/(3,5) fail W3 (hairline T@col44 = 3.29 sits above tFloor → partial hairline
+activity). The passing window is therefore exactly: **mean × R=2 × knee (4,6) ×
+residual ∈ {0.25, 0.5}** — residual **0.25** chosen (continuity with the original
+VERDICT's measured residual floor; stronger hairline damping, W2/W6 unaffected).
+
+Measured discriminator (both papers identical, null/w50 deposits):
+
+- Gesture hairline, cols ≤ 46: T ≤ 4 → **f = 0.25** (at the W1 cross-section col 44:
+  T ≤ 3.29 → f = 0.25); cols 47–49 ramp (their neighborhood contains the taper):
+  f = 0.35 / 0.59 / 0.90; col 50+ → f = 1.
+- Gesture thick region (cols 64–76), **including edge cells**: T ≥ 14.85 ≫ 6 → **f = 1.0**.
+- Production interior (cols 40–90): T ≥ 5.67 → f ≥ 0.875 (mean T = 5.47 whole-stroke);
+  end ramps (height-4 columns, e.g. cols 100–108) stay partially damped (caps f = 0.25).
+- Discriminating gap: hairline-core T ≤ 4 < tFloor, production-interior T ≥ 5.67 —
+  margin 0.71 px on the hairline side, 1.67 px on the production side.
+
+## The three neighborhood properties — stated and proved
+
+1. **Hairline (2 px): every cell's neighborhood sees a thin mark → damped.** Proved:
+   on the drawn hairline (p = pThin through x = 48) the 5×5 mean thickness never
+   reaches tFloor at cols ≤ 46 (f = residual 0.25, both papers); the last two hairline
+   columns (47–48) sit at f ≤ 0.60 because their neighborhood genuinely contains the
+   taper. **Behavioral consequence (the pins that matter): W1 excess 0.975–1.975 ≤ 3.0;
+   W3 thin physics inflation = −0.494…0 (zero — settle never inflates past deposit) in
+   every cell.**
+2. **Thick stroke (12–20 px): cells near the edge see the interior → physics
+   preserved.** Proved: every edge cell of the thick cross-section has T ≥ 14.85
+   (support radius 2 reaches 4 rows/columns into a 20-px body) → f = 1.0 exactly
+   (both papers). Behavioral: W2 thick d(b) = 1 (null) / 2 (synthetic) = base values,
+   no margin below the floor consumed.
+3. **pyp production substrate (r = 3, 6–7 px): body reads "thick enough" → d(b) ≥ 1.**
+   Proved: interior cells' neighborhoods average the full-height columns → f ≥ 0.875,
+   above the falsification's measured texture threshold (uniform residual ≥ 0.75
+   restored W6); behavioral: **W6 d(b) = 1 in all 6 cells** (base was 1/1/1, 2/2/1 —
+   the four zero-margin cells hold at exactly ≥ 1).
+
+## Identity validations (V1/V2) and corrections to the record
+
+- **V1:** prototype at R=0 (T ≡ run → the old `f(run)` law) with knee (4,6)/0.25 is
+  **byte-identical** to the in-tree `f(run)` carrier via the real
+  `localFluidPhysicsStep` on 4 cells (gesture + production × both waters) — the sweep
+  harness reproduces the carrier it replaces.
+- **V2:** prototype at residual 1 (f ≡ 1) is **byte-identical to authoritative HEAD
+  base** (real `localFluidPhysicsStep` with no carrier) on all 18 cells — base claims
+  below are measured, not inherited.
+- **Correction (honesty):** the previous SUMMARY's "committed tree has W1/W3/W6 RED"
+  was wrong about W6 — authoritative base run: **W6 is GREEN at base** (and legacy pyp
+  7/7 GREEN); W6 was RED only against the `f(run)` carrier. Base W1/W3 RED stand
+  (2 and 5 cells respectively).
+- **Correction:** the original §Pin-bounds excess list's 5th entry (synthetic/w50
+  1.975) contradicts its own visible-width table (5 → excess 2.975). Authoritative
+  base visible widths: null 6/4/5, synthetic 5/5/6 → excess 3.975/1.975/2.975/2.975/
+  2.975/3.975. W1's base-fail set (null/w10 + synthetic/w90) is unchanged.
+- Authoritative base production d(b) (both harness substrates, base tables match
+  cell-for-cell): null 1/1/1, synthetic 2/2/1 — **four cells with zero margin**; any
+  damping that costs 1 px of spread breaks W6. Hence the target: f ≈ 1 across the
+  production body.
+
+## Sweep evidence (every candidate scored on the FULL pin set W1–W6)
+
+122 candidates = {max, mean} × R{1–6} × knee{(2,4),(3,5),(4,6),(3,6),(5,7)} ×
+residual{0.25, 0.5}, plus 2 R=0 references, over 12 gesture cells + 6 production
+cells each (deposits cached; identity V1/V2 passed first):
+
+- **Passing: 2** — `mean, R=2, knee 4/6, res 0.25` (maxThinExcess 1.975, minProdDb 1,
+  minBody 0.9994) and the same at res 0.5 (minBody 0.9995).
+- **R=0 reference reproduces the falsified `f(run)` exactly**: W1–W5 pass, W6
+  d(b) = 0 in every null cell — harness sanity against the known RED state.
+- Failure structure: max-agg 0 pass; mean R=1 → W2 only; knee (5,7) → W6 only;
+  knees (2,4)/(3,5) → W3 only; R ≥ 3 → W3/W1 only (near-miss table: 60+ candidates
+  at n=4/5, each failing on exactly one pin family).
+
+## W7 — field-law pin (bounds calibrated HERE, pre-RED; never re-calibrated after)
+
+W1–W6 are behavioral and cannot distinguish *why* the winner passes; W7 locks the
+neighborhood law itself at the field level, encoding the three properties above. It
+imports the (now-exported) `buildWidthScaleField` from `fluids.ts` and asserts, on the
+REAL deposits (both papers, water 50):
+
+| Sub-pin | Assertion | Measured | Bound |
+| --- | --- | --- | --- |
+| W7a — thick edge keeps f high | min f over edge cells of the thick region ≥ 0.99 | 1.0 (both papers) | **0.99** |
+| W7b — hairline damped | max f over source cells, cols 40–46 (incl. W1 col 44) ≤ 0.30 | 0.25 (both papers) | **0.30** |
+| W7c — production body reads thick | min f over production source cells, cols 40–90 ≥ 0.80 | 0.875 (both papers) | **0.80** |
+
+RED at the current HEAD: `buildWidthScaleField` is not exported (import fails) — the
+classic missing-implementation RED; GREEN only when the carrier lands.
+
+## Joint satisfiability table (W1–W6, both substrates — base → winner)
+
+| Pin | Base (HEAD, authoritative) | Winner (mean/R2/4-6/0.25, prototype-measured) |
+| --- | --- | --- |
+| W1 hairline tol 3.0 | **RED** — excess up to 3.975 (2 cells) | **PASS** — excess 0.975–1.975 in all 6 cells |
+| W2 thick d(b) ≥ 1 @ w50 | PASS (null 1 / syn 2) | **PASS** (null 1 / syn 2 — base values) |
+| W3 monotone thin ≤ thick | **RED** — 5 of 6 cells | **PASS** — thinPhys −0.494…0 ≤ thickPhys 0.050–0.101, all cells |
+| W4 PIN 0 / 0b | PASS | **PASS** — deposit untouched (PIN 0 ratio 1.0000); minBody 0.9994 ≥ 0.95 |
+| W5 determinism | PASS | **PASS** — field is a pure function of the deposit; two independent runs byte-identical |
+| W6 production texture d(b) ≥ 1 | PASS (min 1, four zero-margin cells) | **PASS** — d(b) = 1 in all 6 cells |
+| W7 field law | RED (no export) | PASS (bounds table above) |
+| legacy pyp 7/7 + footprint 4+3sk | GREEN | substrate base tables identical to W6's → predicted GREEN; real harness runs at Task-3 GREEN with STOP semantics |
+
+Why the falsification no longer applies: `f` is no longer a scalar function of the
+cell's own `run`. `run = 0`/low-run means the same on both substrates, but the
+neighborhood mean does not — the hairline's box averages hairline-only cells
+(T ≤ 4) while the production body's box averages full-height neighbors
+(T ≥ 5.67) even inside its low-height end ramps. The two substrate classes sit on
+opposite sides of the knee with a measured 1.67 px gap.
+
+## Cost bound
+
+Field computed once per settle before tick 0: run extraction O(N) (two bbox-bounded
+passes), box-mean O(N · (2R+1)²) = **25N** simple adds at R=2 (N = local bbox cells —
+the same clip extent the solver itself uses; no unbounded loops, window clamped to the
+local grid), f-fold O(N). Peak scratch: `hRun`, `vRun` transient + `run` + `f`
+grid — same allocation class as the replaced carrier. No `Math.random`, no
+`Date`/`performance.now` input into any field value (stop-motion law).
+
+## Live-scope authorizations (carrier-revision cycle)
+
+- **Edit set:** `packages/efx-physic-paint/src/core/fluids.ts` (replace the `f(run)`
+  builder with the mean/R2 neighborhood law; export `buildWidthScaleField` for W7) +
+  `packages/efx-physic-paint/src/core/physicsWidthScaling.test.ts` (add W7 only —
+  W1–W6 tolerances byte-untouched). Nothing else.
+- The falsified `f(run)` carrier had been reverted to HEAD during the authoritative
+  base measurement (saved at /tmp, never committed); GREEN writes the new law from HEAD.
+- Locked files / STOP clauses unchanged from the section above: deposit arithmetic,
+  keep-gate 70, Normal mode, preview ribbon, no UI, no installs, no push.
+- STOP remains absolute: any PIN 0/0b movement, W2/W5 flip, W6/legacy regression, or
+  locked-file leak at the GREEN battery → halt and report.
