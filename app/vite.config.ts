@@ -258,7 +258,12 @@ export default defineConfig({
     // image-import bridge pair (+3.38 kB vs the 1337.30 kB base — the request/
     // result guards, the main-realm install, and the Studio's `requestImageImport`
     // port). Budget raised 1340 → 1355 (measured value + ~14.3 kB headroom).
-    chunkSizeWarningLimit: 1355,
+    // Measured 2026-09-25: 1,355.02 kB after quick-260925-iy6's dynamic
+    // post-bake paper pass — the paperPass tile builder + apply routine and the
+    // single _resolveFlattenedFrame seam entry entered the main chunk (the gate
+    // was green at base, under 1355). Budget raised 1355 → 1370 (measured value
+    // + ~15 kB headroom) for the landed pass, not anticipated code.
+    chunkSizeWarningLimit: 1370,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
