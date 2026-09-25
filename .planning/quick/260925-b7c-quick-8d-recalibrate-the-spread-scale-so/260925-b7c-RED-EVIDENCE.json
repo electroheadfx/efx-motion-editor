@@ -1,0 +1,44 @@
+{
+  "plan": "260925-b7c",
+  "task": 1,
+  "command": "../../app/node_modules/.bin/vitest run --reporter=tap src/core/spreadScale.test.ts (cwd: packages/efx-physic-paint)",
+  "exitCode": 1,
+  "verdict": "RED_EVIDENCE_OK",
+  "targetFile": "packages/efx-physic-paint/src/core/spreadScale.test.ts",
+  "targetTest": "Pin 1 (calibration): slider 50 == legacy 30 — curve, ticks, and margin bitwise at every grid cell",
+  "rawTapPath": "/tmp/b7c-red-tap-raw.txt",
+  "defaultReporterLogPath": "/tmp/b7c-red-default.log",
+  "headAtStart": "299cfc83 (refactor: extract spreadCurveFor seam, behavior-identical — curve NOT yet flipped)",
+  "pins": [
+    {
+      "id": "Pin 1 — calibration: slider 50 == legacy 30",
+      "targetTest": "260925-b7c — spread scale calibration pins > Pin 1 (calibration): slider 50 == legacy 30 — curve, ticks, and margin bitwise at every grid cell",
+      "expected": "spreadCurveFor(50) bitwise-equal legacy (30/100)^2 = 0.09, and derived ticks = max(1, ceil(curve·10)) plus margin = ceil(2 + (water/100)²·brushR·0.6 + curve·brushR·0.4) equal the legacy-30 values at every cell of brushR ∈ {2,8,16,32} × water ∈ {10,50,90}.",
+      "actual": "FAIL at base — the seam still implements the legacy law, so spreadCurveFor(50) = (50/100)² = 0.25 (expected 0.09): AssertionError `expected 0.25 to be 0.09 // Object.is equality` at spreadScale.test.ts:38 (actual 0.25, expected 0.09 in TAP error block). This failure IS the RED evidence for the calibration flip.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 2 — range: slider 100 == legacy 100",
+      "expected": "spreadCurveFor(100) = 1.0, ticks = 10, margins match legacy-100 on the grid.",
+      "actual": "PASS at base — the legacy law already satisfies the range endpoint (control, green at base by design).",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 3 — zero + clamp",
+      "expected": "spreadCurveFor(0) = 0, spreadCurveFor(-5) = 0, spreadCurveFor(150) = 1.",
+      "actual": "PASS at base — legacy law with the seam's [0,100] clamp already satisfies it (control, green at base by design).",
+      "status": "pass"
+    },
+    {
+      "id": "Pin 4 — monotone sweep",
+      "expected": "Curve non-decreasing across the whole 0–100 range.",
+      "actual": "PASS at base — (s/100)² is monotone (control, green at base by design).",
+      "status": "pass"
+    }
+  ],
+  "expected": "Per the plan's TDD contract: at base (seam = legacy law, curve NOT yet flipped) the 50→0.09 calibration pin must fail with output naming its locus (verdict RED_EVIDENCE_OK), while the range/zero/monotone control pins stay green. The full package suite must otherwise match base (sole other failure = pre-existing EfxPaintEngine.liveAlphaCache, ledger 74). Never manufacture red by weakening a passing assertion.",
+  "actual": "1 failed | 3 passed (4) in spreadScale.test.ts: the sole failure is Pin 1 with `expected 0.25 to be 0.09 // Object.is equality` at spreadScale.test.ts:38 — the target test named by the plan fails on a real assertion. Controls Pin 2/3/4 green. Full package suite: 2 failed | 16 passed (18 files), 159 passed | 3 skipped — the two failures are exactly the intentional RED Pin 1 plus the pre-existing liveAlphaCache; all other pre-existing tests at base results. Exit code 1 as expected for RED. Production at this point = behavior-identical seam extraction only (commit 299cfc83): spreadScale.ts implements today's (s/100)² law, both EfxPaintEngine sites call spreadCurveFor; no curve flip, no other engine lines changed.",
+  "output": "not ok 1 - Pin 1 (calibration): slider 50 == legacy 30 — curve, ticks, and margin bitwise at every grid cell\nok 2 - Pin 2 (range): slider 100 == legacy 100 — curve 1.0, ticks 10, margins match on the same grid\nok 3 - Pin 3 (zero): slider 0 = no spread; out-of-range inputs clamp to [0, 100]\nok 4 - Pin 4 (monotone): non-decreasing across 0..100 in 0.5 steps\n# tests 4\n# pass 3\n# fail 1\n",
+  "note": "Flattened leaf-level TAP from vitest --reporter=tap plus the node --test summary block vitest never emits (counts derived from the leaf lines; raw nested tap at /tmp/b7c-red-tap-raw.txt, default-reporter log at /tmp/b7c-red-default.log). Tooling-adapter precedent: 260923-fhn-RED-EVIDENCE.json. The default-reporter RED run (exit 1, 'Tests 1 failed | 3 passed (4)') shows the same locus: FAIL Pin 1, `expected 0.25 to be 0.09`. Commit ordering satisfies the gate: RED test commit follows refactor commit 299cfc83 and precedes any feat commit.",
+  "recordedAt": "2026-09-25T08:27:00Z"
+}
