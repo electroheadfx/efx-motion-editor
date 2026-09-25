@@ -218,22 +218,122 @@ export function densStep(
  * Van Laerhoven water-height equalization (D-02).
  * Adds velocity from height differences between neighboring cells.
  * Water flows from high to low, producing organic spreading.
+ *
+ * 260924-stb: optional per-source-cell multiplier `fScale` (local stroke
+ * width → physics intensity). When omitted, behavior is byte-identical to
+ * the unmodulated law (f ≡ 1: `omega_h * 1 * diff` ≡ `omega_h * diff`).
+ * The scale grid is a pure function of the deposited raster (no RNG/clock)
+ * — determinism/stop-motion law.
  */
 export function addHeightEqualization(
   W: number, H: number,
   u0: Float32Array, v0: Float32Array,
   waterHeight: Float32Array,
   omega_h: number,
+  fScale?: Float32Array,
 ): void {
   for (let j = 1; j <= H; j++) {
     for (let i = 1; i <= W; i++) {
       const idx = IX(W, i, j)
       if (waterHeight[idx] < 1) continue
+      const f = fScale ? fScale[idx] : 1
       // Height gradient drives flow: water moves from high to low
-      u0[idx] += omega_h * (waterHeight[IX(W, i - 1, j)] - waterHeight[IX(W, i + 1, j)])
-      v0[idx] += omega_h * (waterHeight[IX(W, i, j - 1)] - waterHeight[IX(W, i, j + 1)])
+      u0[idx] += omega_h * f * (waterHeight[IX(W, i - 1, j)] - waterHeight[IX(W, i + 1, j)])
+      v0[idx] += omega_h * f * (waterHeight[IX(W, i, j - 1)] - waterHeight[IX(W, i, j + 1)])
     }
   }
+}
+
+// === 260924-stb: neighborhood-scale width → physics intensity field ===
+//
+// Carrier (re-diagnosis, VERDICT append fcd0b0fe): f is built from the
+// MEAN min(h,v)-run of the cells in the Chebyshev box R=2 around each
+// source cell — NOT from the cell's own run (the falsified f(run) law
+// cannot discriminate a hairline body cell from a thick-stroke edge cell:
+// both have run = 0..2).
+//
+//   run(c) = min(h-run, v-run) over inside ⇔ alpha > 20 (bbox-bounded)
+//   T(c)   = mean of run(c') over run > 0 cells in |di|,|dj| ≤ R (R = 2,
+//            clamped to the local grid interior)
+//   f(c)   = 0.25 + 0.75 * clamp((T(c) - 4) / (6 - 4), 0, 1)
+//
+// Measured discriminator (both substrates, VERDICT re-diagnosis):
+// hairline-core T ≤ 4 → f = 0.25; production-interior T ≥ 5.67 → f ≥ 0.875;
+// thick-region (incl. edge cells) T ≥ 14.85 → f = 1. Bounds (knee 4/6,
+// residual 0.25, R = 2) calibrated PRE-RED — never re-calibrated.
+// Cost: run O(N) + box-mean O(25N), computed ONCE per settle before tick 0.
+// Pure/deterministic: reads only wet.alpha (no RNG/clock).
+const WIDTH_SCALE_T_FLOOR = 4
+const WIDTH_SCALE_T_FULL = 6
+const WIDTH_SCALE_RESIDUAL = 0.25
+const WIDTH_SCALE_RADIUS = 2
+
+/**
+ * 260924-stb: build the per-source-cell equalization multiplier grid from
+ * the deposited raster (neighborhood mean-thickness law above).
+ * Maps onto the local Stam grid (1-based interior).
+ */
+export function buildWidthScaleField(
+  wet: WetBuffers,
+  x0: number, y0: number, x1: number, y1: number,
+  localW: number, localH: number,
+  canvasW: number,
+): Float32Array {
+  const gridSize = (localW + 2) * (localH + 2)
+  const hRun = new Int32Array(gridSize)
+  const vRun = new Int32Array(gridSize)
+  const run = new Int32Array(gridSize)
+  const f = new Float32Array(gridSize)
+  const inside = (cx: number, cy: number) => wet.alpha[cy * canvasW + cx] > 20
+
+  // Horizontal runs, bounded to the bbox (out-of-bbox breaks runs)
+  for (let cy = y0; cy <= y1; cy++) {
+    let r = 0
+    for (let cx = x0; cx <= x1 + 1; cx++) {
+      if (cx <= x1 && inside(cx, cy)) { r++; continue }
+      for (let k = 1; k <= r; k++) hRun[IX(localW, cx - k - x0 + 1, cy - y0 + 1)] = r
+      r = 0
+    }
+  }
+  // Vertical runs, bounded to the bbox
+  for (let cx = x0; cx <= x1; cx++) {
+    let r = 0
+    for (let cy = y0; cy <= y1 + 1; cy++) {
+      if (cy <= y1 && inside(cx, cy)) { r++; continue }
+      for (let k = 1; k <= r; k++) vRun[IX(localW, cx - x0 + 1, cy - k - y0 + 1)] = r
+      r = 0
+    }
+  }
+  for (let j = 1; j <= localH; j++) {
+    for (let i = 1; i <= localW; i++) {
+      const idx = IX(localW, i, j)
+      run[idx] = Math.min(hRun[idx], vRun[idx])
+    }
+  }
+  // Neighborhood mean over run > 0 cells (Chebyshev box R, clamped)
+  const R = WIDTH_SCALE_RADIUS
+  for (let j = 1; j <= localH; j++) {
+    const jLo = Math.max(1, j - R)
+    const jHi = Math.min(localH, j + R)
+    for (let i = 1; i <= localW; i++) {
+      const iLo = Math.max(1, i - R)
+      const iHi = Math.min(localW, i + R)
+      let sum = 0
+      let cnt = 0
+      for (let jj = jLo; jj <= jHi; jj++) {
+        for (let ii = iLo; ii <= iHi; ii++) {
+          const v = run[IX(localW, ii, jj)]
+          if (v > 0) { sum += v; cnt++ }
+        }
+      }
+      const t = cnt === 0 ? 0
+        : sum <= WIDTH_SCALE_T_FLOOR * cnt ? 0
+        : sum >= WIDTH_SCALE_T_FULL * cnt ? 1
+        : (sum / cnt - WIDTH_SCALE_T_FLOOR) / (WIDTH_SCALE_T_FULL - WIDTH_SCALE_T_FLOOR)
+      f[IX(localW, i, j)] = WIDTH_SCALE_RESIDUAL + (1 - WIDTH_SCALE_RESIDUAL) * t
+    }
+  }
+  return f
 }
 
 /**
@@ -559,6 +659,12 @@ export function createLocalFluidPhysicsContinuation(
   })
   measurePrimitive(observePrimitive, 'paint-local-fluid-mask-blur', () => boxBlur3x3(localW, localH, wetMask, blurMask, 3))
 
+  // 260924-stb: neighborhood width → physics intensity multiplier, computed
+  // ONCE from the deposited raster before tick 0 (equalization sources only —
+  // darkening/advection untouched; pure function of wet.alpha → determinism).
+  const widthScale = measurePrimitive(observePrimitive, 'paint-local-fluid-width-field', () =>
+    buildWidthScaleField(wet, x0, y0, x1, y1, localW, localH, canvasW))
+
   for (let tick = 0; tick < ticks; tick++) {
     const tickStartedAt = observePrimitive ? performance.now() : 0
     // Clear velocity sources
@@ -575,7 +681,7 @@ export function createLocalFluidPhysicsContinuation(
     }
 
     // Height equalization on local grid
-    measurePrimitive(observePrimitive, 'paint-local-fluid-height-equalization', () => addHeightEqualization(localW, localH, u0, v0, waterHeight, config.omega_h))
+    measurePrimitive(observePrimitive, 'paint-local-fluid-height-equalization', () => addHeightEqualization(localW, localH, u0, v0, waterHeight, config.omega_h, widthScale))
 
     // Edge darkening on local grid
     measurePrimitive(observePrimitive, 'paint-local-fluid-edge-darkening', () => darkenEdges(localW, localH, wetMask, blurMask, u0, v0, config.darkening))
