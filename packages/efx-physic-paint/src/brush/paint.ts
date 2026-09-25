@@ -1,18 +1,16 @@
 // ============================================================
 //  Paint Brush Rendering
 //  Extracted from efx-paint-physic-v3.html lines 586-1051
-//  No module-level mutable state. genTexture + fillPolyGrain create
+//  No module-level mutable state. genTexture creates
 //  offscreen canvases for rendering (acceptable for render-path functions).
 // ============================================================
 
 import type { PenPoint, BrushOpts, WetBuffers, SavedWetBuffers, PaintPrimitiveTimingObserver } from '../types'
 import { hexRgb, rgbHex, mixSubtractive } from '../util/color'
 import { gauss, lerp, clamp, curveBounds } from '../util/math'
-import { polyBounds } from '../util/math'
 import { sampleH } from '../core/paper'
 import { transferToWetLayerClipped } from '../core/wet-layer'
 import { smooth, resample, ribbon, deform, deformN, avgPenData } from './stroke'
-import { fbm } from '../util/noise'
 
 function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
   if (!observer) return run()
@@ -41,66 +39,6 @@ function createIteratorContinuation(iterator: Generator<void, void, void>): Pain
       while (!complete) complete = iterator.next().done === true
     },
   }
-}
-
-/**
- * Fill polygon with grain/emboss modulation.
- * Creates an offscreen canvas for the polygon fill, applies grain/emboss per-pixel.
- * From v3.html fillPolyGrain() line 618
- */
-export function fillPolyGrain(
-  ctx: CanvasRenderingContext2D,
-  pts: Array<[number, number]>,
-  r: number,
-  g: number,
-  b: number,
-  alpha: number,
-  grain: number,
-  emboss: number,
-  paperHeight: Float32Array | null,
-  width: number,
-  height: number,
-  sampleHFn: (x: number, y: number) => number,
-  observePrimitive?: PaintPrimitiveTimingObserver,
-): void {
-  if (pts.length < 3) return
-  const bb = polyBounds(pts)
-  const pad = 4
-  const ox = bb.x0 - pad, oy = bb.y0 - pad
-  const bw = Math.ceil(bb.w + pad * 2), bh = Math.ceil(bb.h + pad * 2)
-  if (bw < 1 || bh < 1 || bw > 4000 || bh > 4000) return
-
-  const tc = document.createElement('canvas')
-  tc.width = bw; tc.height = bh
-  const tx = tc.getContext('2d', { willReadFrequently: true })!
-  tx.fillStyle = `rgba(${r},${g},${b},${alpha})`
-  tx.beginPath()
-  tx.moveTo(pts[0][0] - ox, pts[0][1] - oy)
-  for (let i = 1; i < pts.length; i++) tx.lineTo(pts[i][0] - ox, pts[i][1] - oy)
-  tx.closePath()
-  tx.fill()
-
-  if (grain > 0.01 || emboss > 0.01) {
-    const id = measurePrimitive(observePrimitive, 'paint-grain-readback', () => tx.getImageData(0, 0, bw, bh))
-    const d = id.data
-    measurePrimitive(observePrimitive, 'paint-grain-pixel-loop', () => {
-      for (let py = 0; py < bh; py++) for (let px = 0; px < bw; px++) {
-        const idx = (py * bw + px) * 4
-        if (d[idx + 3] < 1) continue
-        let mod = 1
-        if (grain > 0.01) mod *= 1 - grain * 0.5 * (1 - fbm((ox + px) * 0.08, (oy + py) * 0.08, 3))
-        if (emboss > 0.01) {
-          const hVal = sampleHFn(ox + px, oy + py)
-          // Adsorption: valleys hold paint (opaque), peaks paint is thin (transparent)
-          const embMod = 2 - hVal * 2 // 0 at peaks, 2 at valleys
-          mod *= clamp(lerp(1, embMod, emboss), 0.05, 2.0)
-        }
-        d[idx + 3] = Math.round(clamp(d[idx + 3] * mod, 0, 255))
-      }
-    })
-    measurePrimitive(observePrimitive, 'paint-grain-writeback', () => tx.putImageData(id, 0, 0))
-  }
-  measurePrimitive(observePrimitive, 'paint-grain-draw-image', () => ctx.drawImage(tc, ox, oy))
 }
 
 /**
@@ -258,80 +196,6 @@ export function buildCarriedColors(
 }
 
 /**
- * Apply paper emboss effect in bounding box.
- * From v3.html applyPaperEmboss() line 989
- */
-export function applyPaperEmboss(
-  ctx: CanvasRenderingContext2D,
-  bounds: { x: number; y: number; w: number; h: number },
-  paperHeight: Float32Array | null,
-  wetAlpha: Float32Array,
-  width: number,
-  _height: number,
-  embossStrength: number,
-  embossStack: number,
-  userOpacity: number = 0,
-  observePrimitive?: PaintPrimitiveTimingObserver,
-): void {
-  if (!paperHeight || embossStrength <= 0) return
-  const w = bounds.w
-  const h = bounds.h
-  const ox = bounds.x
-  const oy = bounds.y
-  const id = measurePrimitive(observePrimitive, 'paint-emboss-readback', () => ctx.getImageData(0, 0, w, h))
-  const d = id.data
-  const fullOpacity = userOpacity >= 0.99
-  measurePrimitive(observePrimitive, 'paint-emboss-pixel-loop', () => {
-    for (let ly = 0; ly < h; ly++) {
-      for (let lx = 0; lx < w; lx++) {
-        const pi = (ly * w + lx) * 4
-        if (d[pi + 3] < 2) continue
-        const gi = (oy + ly) * width + (ox + lx)
-        if (gi < 0 || gi >= width * _height) continue
-        const hVal = paperHeight[gi]
-
-        // Fade emboss with accumulated paint
-        const accumulated = wetAlpha[gi] / (3000 * embossStack * embossStack * embossStack)
-        const fadeout = clamp(1 - accumulated, 0.15, 1)
-        const strength = embossStrength * fadeout
-
-        const colorShift = (hVal - 0.5) * 2 * strength // -1 (valley) to +1 (peak)
-
-        if (fullOpacity) {
-          // 100% opacity: peak lightening only (paper grain texture)
-          // Skip alpha modulation (causes transparency) and valley darkening (compounds)
-          if (colorShift > 0) {
-            const lift = colorShift * 80
-            d[pi]     = Math.min(255, d[pi] + Math.round(lift))
-            d[pi + 1] = Math.min(255, d[pi + 1] + Math.round(lift))
-            d[pi + 2] = Math.min(255, d[pi + 2] + Math.round(lift))
-          }
-          continue
-        }
-
-        // Partial opacity: full emboss (alpha + color)
-        const embMod = 2 - hVal * 2
-        const alphaMod = clamp(lerp(1, embMod, strength), 0.05, 2.0)
-        d[pi + 3] = Math.round(clamp(d[pi + 3] * alphaMod, 0, 255))
-
-        if (colorShift > 0) {
-          const lift = colorShift * 80
-          d[pi]     = Math.min(255, d[pi] + Math.round(lift))
-          d[pi + 1] = Math.min(255, d[pi + 1] + Math.round(lift))
-          d[pi + 2] = Math.min(255, d[pi + 2] + Math.round(lift))
-        } else {
-          const darken = 1 + colorShift * 0.3 // 0.7 to 1.0
-          d[pi]     = Math.round(d[pi] * darken)
-          d[pi + 1] = Math.round(d[pi + 1] * darken)
-          d[pi + 2] = Math.round(d[pi + 2] * darken)
-        }
-      }
-    }
-  })
-  measurePrimitive(observePrimitive, 'paint-emboss-writeback', () => ctx.putImageData(id, 0, 0))
-}
-
-/**
  * Wet composite: mix source onto main canvas with watercolor blending.
  * From v3.html applyWetComposite() line 1056
  */
@@ -392,8 +256,8 @@ export function applyWetCompositeClipped(
 
 /**
  * MAIN paint stroke entry point.
- * Orchestrates smooth -> resample -> ribbon -> deformN -> fillPolyGrain
- * -> depositToWetLayer/transferToWetLayerClipped pipeline.
+ * Orchestrates smooth -> resample -> ribbon -> deformN -> flat layer fill
+ * -> transferToWetLayerClipped pipeline.
  * From v3.html renderPaintStroke() line 921
  */
 export function renderPaintStroke(
@@ -410,8 +274,6 @@ export function renderPaintStroke(
   height: number,
   hasPenInput: boolean,
   wetPaper: boolean,
-  embossStrength: number,
-  embossStack: number,
   waterAmount: number,
   sampleHFn: (x: number, y: number) => number,
   observePrimitive?: PaintPrimitiveTimingObserver,
@@ -433,7 +295,7 @@ export function renderPaintStroke(
 
   createPaintStrokeRasterContinuationFromCurve(
     curve, color, opts, ctx, wetBuffers, paperHeight, width, height,
-    hasPenInput, embossStrength, embossStack, waterAmount,
+    hasPenInput, waterAmount,
     sampleHFn, observePrimitive, radius, opac, wet, speedDeplete, pickupAmt,
   ).runToCompletion()
 }
@@ -448,8 +310,6 @@ export function createPaintStrokeRasterContinuation(
   width: number,
   height: number,
   hasPenInput: boolean,
-  embossStrength: number,
-  embossStack: number,
   waterAmount: number,
   sampleHFn: (x: number, y: number) => number,
   observePrimitive?: PaintPrimitiveTimingObserver,
@@ -468,7 +328,7 @@ export function createPaintStrokeRasterContinuation(
   const speedDeplete = hasPenInput ? clamp(1 + pen.spd * 0.003, 1, 1.5) : 1
   return createPaintStrokeRasterContinuationFromCurve(
     curve, color, opts, ctx, wetBuffers, paperHeight, width, height,
-    hasPenInput, embossStrength, embossStack, waterAmount,
+    hasPenInput, waterAmount,
     sampleHFn, observePrimitive, radius, opac, wet, speedDeplete, pickupAmt,
   )
 }
@@ -483,8 +343,6 @@ export function createPaintStrokeRasterContinuationFromCurve(
   width: number,
   height: number,
   hasPenInput: boolean,
-  embossStrength: number,
-  embossStack: number,
   waterAmount: number,
   sampleHFn: (x: number, y: number) => number,
   observePrimitive: PaintPrimitiveTimingObserver | undefined,
@@ -497,7 +355,6 @@ export function createPaintStrokeRasterContinuationFromCurve(
   void wet
   function* rasterize(): Generator<void, void, void> {
     if (pickupAmt < 0.01) {
-      const [cr, cg, cb] = hexRgb(color)
       const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
       const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
       const bounds = curveBounds(curve, radius + variance * 5, width, height)
@@ -511,10 +368,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
 
       for (let i = 0; i < layers; i++) {
         const v = deform(baseD, variance * 0.2)
-        measurePrimitive(observePrimitive, 'paint-raster-layers', () => {
-          if (i % 2 === 0) fillPolyGrain(oc, v, cr, cg, cb, lAlpha, 0.4, 0, paperHeight, width, height, sampleHFn, observePrimitive)
-          else fillFlat(oc, v, color, lAlpha)
-        })
+        measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc, v, color, lAlpha))
         yield
       }
       for (let i = 0; i < Math.round(layers * 0.2); i++) {
@@ -522,9 +376,6 @@ export function createPaintStrokeRasterContinuationFromCurve(
         yield
       }
       measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn))
-      yield
-      measurePrimitive(observePrimitive, 'paint-raster-paper-emboss', () => applyPaperEmboss(oc, { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h },
-        paperHeight, wetBuffers.alpha, width, height, embossStrength, embossStack, opts.opacity / 100, observePrimitive))
       yield
       measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
         { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
@@ -544,7 +395,6 @@ export function createPaintStrokeRasterContinuationFromCurve(
       const mid = Math.floor((start + end) / 2)
       const segColor = carriedColors[clamp(mid, 0, carriedColors.length - 1)]
       const segHex = rgbHex(segColor[0], segColor[1], segColor[2])
-      const [scr, scg, scb] = segColor
       const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
       const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
       const segBounds = curveBounds(seg, radius + variance * 5, width, height)
@@ -558,10 +408,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
 
       for (let i = 0; i < layers; i++) {
         const v = deform(baseD, variance * 0.2)
-        measurePrimitive(observePrimitive, 'paint-raster-layers', () => {
-          if (i % 2 === 0) fillPolyGrain(oc2, v, scr, scg, scb, lAlpha, 0.4, 0, paperHeight, width, height, sampleHFn, observePrimitive)
-          else fillFlat(oc2, v, segHex, lAlpha)
-        })
+        measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc2, v, segHex, lAlpha))
         yield
       }
       for (let i = 0; i < Math.round(layers * 0.1); i++) {
@@ -569,9 +416,6 @@ export function createPaintStrokeRasterContinuationFromCurve(
         yield
       }
       measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc2, seg, radius, segHex, opac, seg, hasPenInput, sampleHFn))
-      yield
-      measurePrimitive(observePrimitive, 'paint-raster-paper-emboss', () => applyPaperEmboss(oc2, { x: segBounds.x0, y: segBounds.y0, w: segBounds.w, h: segBounds.h },
-        paperHeight, wetBuffers.alpha, width, height, embossStrength, embossStack, opts.opacity / 100, observePrimitive))
       yield
       measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc2, wetBuffers, waterAmount,
         { x: segBounds.x0, y: segBounds.y0, w: segBounds.w, h: segBounds.h }, width, height,
@@ -600,15 +444,12 @@ export function renderPaintStrokeSingleColor(
   paperHeight: Float32Array | null,
   width: number,
   height: number,
-  embossStrength: number,
-  embossStack: number,
   wetPaper: boolean,
   hasPenInput: boolean,
   waterAmount: number,
   sampleHFn: (x: number, y: number) => number,
   observePrimitive?: PaintPrimitiveTimingObserver,
 ): void {
-  const [cr, cg, cb] = hexRgb(color)
   const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
   const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
 
@@ -627,16 +468,13 @@ export function renderPaintStrokeSingleColor(
   measurePrimitive(observePrimitive, 'paint-raster-layers', () => {
     for (let i = 0; i < layers; i++) {
       const v = deform(baseD, variance * 0.2)
-      if (i % 2 === 0) fillPolyGrain(oc, v, cr, cg, cb, lAlpha, 0.4, 0, paperHeight, width, height, sampleHFn, observePrimitive)
-      else fillFlat(oc, v, color, lAlpha)
+      fillFlat(oc, v, color, lAlpha)
     }
     for (let i = 0; i < Math.round(layers * 0.2); i++) {
       fillFlat(oc, deform(baseD, variance * 0.5), color, lAlpha * 0.25)
     }
   })
   measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn))
-  measurePrimitive(observePrimitive, 'paint-raster-paper-emboss', () => applyPaperEmboss(oc, { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h },
-    paperHeight, wetBuffers.alpha, width, height, embossStrength, embossStack, opts.opacity / 100, observePrimitive))
 
   // D-12: Unified render path. Transfer at FULL intensity to wet layer.
   measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,

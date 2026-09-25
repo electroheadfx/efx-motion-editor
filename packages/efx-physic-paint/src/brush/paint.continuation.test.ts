@@ -51,9 +51,9 @@ function run(resumable: boolean, pickup: number) {
     randomCalls.push(value)
     return value
   })
-  const args = [points, '#336699', opts, main.getContext('2d'), buffers, {} as any, new Float32Array(width * height), new Uint8Array(width * height), null, width, height, false, false, 0, 8, 0.5, () => 0.5] as const
+  const args = [points, '#336699', opts, main.getContext('2d'), buffers, {} as any, new Float32Array(width * height), new Uint8Array(width * height), null, width, height, false, false, 0.5, () => 0.5] as const
   if (resumable) {
-    const continuation = createPaintStrokeRasterContinuation(points, '#336699', opts, main.getContext('2d'), buffers, null, width, height, false, 0, 8, 0.5, () => 0.5)
+    const continuation = createPaintStrokeRasterContinuation(points, '#336699', opts, main.getContext('2d'), buffers, null, width, height, false, 0.5, () => 0.5)
     while (!continuation.step()) log.push('yield')
   } else {
     renderPaintStroke(...args)

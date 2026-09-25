@@ -62,7 +62,7 @@ function runRaster(pickup: number) {
     points, '#336699', opts, main.getContext('2d'), buffers, {} as any,
     new Float32Array(width * height), new Uint8Array(width * height),
     paperHeight, width, height,
-    false, false, 0.45, 8, 0.5, () => 0.5, observer,
+    false, false, 0.5, () => 0.5, observer,
   )
   return { stages, log }
 }

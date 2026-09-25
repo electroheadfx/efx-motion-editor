@@ -2204,7 +2204,6 @@ export class EfxPaintEngine {
         pending.points, pending.color!, renderOpts,
         this.dualCanvas.dryCtx, this.wet, this.paperHeight,
         this.width, this.height, pending.hasPenInput,
-        this.state.embossStrength, this.state.embossStack,
         pending.opts.waterAmount / 100, sampleHFn, observePrimitive,
       )
       active.phase = 'raster'
@@ -2481,7 +2480,6 @@ export class EfxPaintEngine {
         this.paperHeight,
         this.width, this.height,
         hasPenInput, this.state.wetPaper,
-        this.state.embossStrength, this.state.embossStack,
         opts.waterAmount / 100,
         sampleHFn,
         observePrimitive,
@@ -2560,7 +2558,6 @@ export class EfxPaintEngine {
         this.dualCanvas.dryCtx, this.wet,
         this.width, this.height,
         hasPenInput,
-        this.state.embossStrength,
         this.paperHeight,
         this.state.bgMode,
         this.getDryRestoreData(),

@@ -33,7 +33,6 @@ export function applyEraseStroke(
   width: number,
   height: number,
   hasPenInput: boolean,
-  embossStrength: number,
   paperHeight: Float32Array | null,
   bgMode: string,
   bgData: ImageData | null,
