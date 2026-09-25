@@ -59,4 +59,24 @@ describe('260925-iy6 frame/export guard', () => {
     expect(paperRasterSource).toMatch(/export function getProjectPaperTextureImage/);
     expect(paperRasterSource).toMatch(/export function normalizeGrainScale/);
   });
+
+  // UAT 260925-iy6 row 1 counter-test (c). The paper pass lives ONLY in
+  // _resolveFlattenedFrame, and the active track's live engine canvas stacked
+  // above the monitor never routes through it (D-05 / T-48-16). So the tooth is
+  // unreachable on the surface you paint on — but it MUST appear the moment a
+  // track stops being the active one. That guarantee is exactly "both getters
+  // delegate to the one seam": getFlattenedFrameExcluding (edit base, other
+  // tracks) and getFlattenedFrame (playback / preview / export, full composite)
+  // have to share it. Without this pin, a future parallel resolve path would
+  // silently drop the tooth from the non-active tracks and no colour test would
+  // notice (the same class of miss as 260924-m7w's opacity-blind pins).
+  it('P4(f) both flattened getters delegate to the ONE _resolveFlattenedFrame seam', () => {
+    expect(occurrences(storeSource, 'return _resolveFlattenedFrame(')).toBe(2);
+    const including = storeSource.indexOf('getFlattenedFrame(layerId: string, frame: number, includeFond = true)');
+    const excluding = storeSource.indexOf('getFlattenedFrameExcluding(');
+    const seam = storeSource.indexOf('function _resolveFlattenedFrame');
+    expect(including).toBeGreaterThanOrEqual(0);
+    expect(excluding).toBeGreaterThanOrEqual(0);
+    expect(seam).toBeGreaterThanOrEqual(0);
+  });
 });
