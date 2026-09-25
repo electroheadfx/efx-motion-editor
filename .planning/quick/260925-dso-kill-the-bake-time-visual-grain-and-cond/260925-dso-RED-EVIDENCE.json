@@ -1,0 +1,40 @@
+{
+  "plan": "260925-dso",
+  "task": 1,
+  "command": "../../app/node_modules/.bin/vitest run --reporter=tap src/brush/paint.grainRemoval.test.ts src/engine/EfxPaintEngine.paperHeight.test.ts src/core/paperConditioning.test.ts (cwd: packages/efx-physic-paint)",
+  "exitCode": 1,
+  "verdict": "RED_EVIDENCE_OK",
+  "targetFile": "packages/efx-physic-paint/src/brush/paint.grainRemoval.test.ts",
+  "targetTest": "no grain/emboss stages and no putImageData writeback for pickup=0",
+  "rawTapPath": "/tmp/dso-red-tap-raw.txt",
+  "defaultReporterLogPath": "/tmp/dso-red-default.log",
+  "headAtStart": "03cb0d37 (fix: revise plan verify gates + resolve research open questions per checker feedback)",
+  "pins": [
+    {
+      "id": "Pin 1 — no raster grain/emboss pass (pickup 0 and 60)",
+      "targetTest": "260925-dso — paint raster runs no grain/emboss pass > no grain/emboss stages and no putImageData writeback for pickup=0",
+      "expected": "Observer-wiring controls green (paint-raster-geometry, paint-raster-layers collected); then zero collected stages starting with paint-grain-/paint-emboss-, no paint-raster-paper-emboss stage, and no 'put' entry in the operation log; source-shape: fillPolyGrain and applyPaperEmboss absent from paint.ts.",
+      "actual": "FAIL at base — controls green, then `expected true to be false` (a paint-grain-* stage IS collected at base) on both pickup legs; source-shape leg fails `expected '//' + file not to contain 'fillPolyGrain'`.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 2 — flat height without paper",
+      "targetTest": "260925-dso — physics height field is flat without a paper > setPaperGrain('') (grain-off encoding) leaves paperHeight null",
+      "expected": "engine.paperHeight strictly null after setPaperGrain('') and after setPaperGrain('texture-load-failed-key'); source-shape: ensureHeightMap gone from paper.ts and unimported by EfxPaintEngine.ts.",
+      "actual": "FAIL at base — `expected Float32Array[…(16.807688251137733)] to be null` on both null-height legs (procedural fbm generator runs); source-shape fails `expected … not to match /export function ensureHeightMap/`. Map-hit control leg green at base.",
+      "status": "fail"
+    },
+    {
+      "id": "Pin 3 — conditioned height map",
+      "targetTest": "260925-dso — paper height conditioning > exports conditionHeightMap from core/paper.ts",
+      "expected": "conditionHeightMap exported from core/paper.ts; mean 0.5 on non-clamping input, all values in [0.10, 0.90], rank-monotone, idempotent; loadPaperTexture body pipes extraction through conditionHeightMap.",
+      "actual": "FAIL at base — `expected 'undefined' to be 'function'` (export missing); legs (a)-(d) fail with `conditionHeightMap is not a function` (same root cause); leg (e) fails `expected 'export function loadPaperTexture(...' to contain 'conditionHeightMap'`.",
+      "status": "fail"
+    }
+  ],
+  "expected": "Per the plan's TDD contract: at base (production untouched) all three pin files fail — pin 1 on the grain/emboss stage + writeback assertions and its source-shape leg (with both observer-wiring controls green), pin 2 on the two null-height legs plus source-shape (map-hit control green), pin 3 on the missing export. Exit 1. Zero production files touched. Never manufacture red by weakening a passing assertion.",
+  "actual": "12 failed | 1 passed (13) across the three files; exit 1. The sole pass is pin 2's map-hit control (green at base by design), and pin 1's observer-wiring controls pass inside the failing legs before the first negative assertion fires (`expected true to be false` = the grain-stage check). All failures are real assertion failures at the plan-named loci. `git status --short` shows only the three new test files (plus the pre-existing untracked CONTEXT.md) — zero production diffs.",
+  "output": "not ok 1 - no grain/emboss stages and no putImageData writeback for pickup=0\nnot ok 2 - no grain/emboss stages and no putImageData writeback for pickup=60\nnot ok 3 - source shape: grain-fill helper and emboss applier are gone from paint.ts\nnot ok 4 - setPaperGrain('') (grain-off encoding) leaves paperHeight null\nnot ok 5 - setPaperGrain on a key absent from paperTextures (failed load) leaves paperHeight null\nok 6 - control: a loaded texture returns its exact heightMap on paperHeight, texHeight, and physicsHeightMap\nnot ok 7 - source shape: the procedural fbm generator is gone from paper.ts and unimported by the engine\nnot ok 8 - exports conditionHeightMap from core/paper.ts\nnot ok 9 - (a) mean-centres a non-clamping input to 0.5\nnot ok 10 - (b) clamps contrast to +/-0.40: every output within [0.10, 0.90]\nnot ok 11 - (c) rank-monotone: a non-decreasing input yields a non-decreasing output\nnot ok 12 - (d) idempotent on the symmetric input\nnot ok 13 - (e) source shape: loadPaperTexture pipes its extraction through conditionHeightMap\n# tests 13\n# pass 1\n# fail 12\n",
+  "note": "Flattened leaf-level TAP from vitest --reporter=tap plus the node --test summary block vitest never emits (counts derived from the leaf lines; raw nested tap at /tmp/dso-red-tap-raw.txt, default-reporter log at /tmp/dso-red-default.log). Tooling-adapter precedent: 260925-b7c-RED-EVIDENCE.json. Default-reporter run: 'Tests 12 failed | 1 passed (13)' — same locus. Commit ordering satisfies the gate: this RED test commit precedes any feat commit for 260925-dso.",
+  "recordedAt": "2026-09-25T11:10:00Z"
+}
