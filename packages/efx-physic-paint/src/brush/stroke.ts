@@ -89,9 +89,61 @@ export function resample(pts: PenPoint[], spacing: number): PenPoint[] {
 }
 
 /**
+ * Creates the polygon from the centerline with varying width from
+ * pressure, together with the local-width SCALE of every vertex
+ * (260927-ton): s = w / halfWidth, i.e. the exact expression ribbon
+ * already used for w — one computation, so polygon geometry and
+ * scales can never diverge.
+ *
+ * Returns the closed polygon in [x,y] array form plus a scales array
+ * aligned to the polygon vertex order: vertex k < n maps to
+ * scales[k] (L side), vertex k >= n maps to scales[2n - 1 - k]
+ * (R was reversed).
+ *
+ * @param curve - Resampled pen points
+ * @param halfWidth - Half brush width (radius)
+ * @param tPow - Taper power (default 0.8)
+ * @param hasPenInput - Whether tablet pen is being used
+ */
+export function ribbonWithScales(
+  curve: PenPoint[],
+  halfWidth: number,
+  tPow: number = 0.8,
+  hasPenInput: boolean = false,
+): { poly: Array<[number, number]>; scales: number[] } {
+  if (curve.length < 2) return { poly: [], scales: [] }
+  const L: Array<[number, number]> = [], R: Array<[number, number]> = []
+  const scales: number[] = []
+  for (let i = 0; i < curve.length; i++) {
+    let tdx: number, tdy: number
+    if (i === 0) { tdx = curve[1].x - curve[0].x; tdy = curve[1].y - curve[0].y }
+    else if (i === curve.length - 1) { tdx = curve[i].x - curve[i - 1].x; tdy = curve[i].y - curve[i - 1].y }
+    else { tdx = curve[i + 1].x - curve[i - 1].x; tdy = curve[i + 1].y - curve[i - 1].y }
+    const l = Math.hypot(tdx, tdy) || 1, nx = -tdy / l, ny = tdx / l
+    const t = i / (curve.length - 1)
+
+    const endTaper = Math.pow(Math.sin(t * Math.PI), tPow) * 0.7 + 0.3
+    const s = Math.max(0.1, (hasPenInput ? curve[i].p : 1) * endTaper)
+    const w = halfWidth * s
+
+    const tiltAngle = (curve[i].tx || 0) * 0.015
+    const cosT = Math.cos(tiltAngle), sinT = Math.sin(tiltAngle)
+    const rnx = nx * cosT - ny * sinT, rny = nx * sinT + ny * cosT
+
+    L.push([curve[i].x + rnx * w, curve[i].y + rny * w])
+    R.push([curve[i].x - rnx * w, curve[i].y - rny * w])
+    scales.push(s)
+  }
+  return { poly: [...L, ...R.reverse()], scales: [...scales, ...scales.slice().reverse()] }
+}
+
+/**
  * Creates polygon from centerline with varying width from pressure.
  * Returns closed polygon as [x,y] array.
  * From v3.html ribbon() line 549
+ *
+ * Delegates to ribbonWithScales and returns only the polygon, so the
+ * ribbon geometry and the local-width scale channel are one code path.
  *
  * @param curve - Resampled pen points
  * @param halfWidth - Half brush width (radius)
@@ -104,28 +156,7 @@ export function ribbon(
   tPow: number = 0.8,
   hasPenInput: boolean = false,
 ): Array<[number, number]> {
-  if (curve.length < 2) return []
-  const L: Array<[number, number]> = [], R: Array<[number, number]> = []
-  for (let i = 0; i < curve.length; i++) {
-    let tdx: number, tdy: number
-    if (i === 0) { tdx = curve[1].x - curve[0].x; tdy = curve[1].y - curve[0].y }
-    else if (i === curve.length - 1) { tdx = curve[i].x - curve[i - 1].x; tdy = curve[i].y - curve[i - 1].y }
-    else { tdx = curve[i + 1].x - curve[i - 1].x; tdy = curve[i + 1].y - curve[i - 1].y }
-    const l = Math.hypot(tdx, tdy) || 1, nx = -tdy / l, ny = tdx / l
-    const t = i / (curve.length - 1)
-
-    const endTaper = Math.pow(Math.sin(t * Math.PI), tPow) * 0.7 + 0.3
-    const pr = (hasPenInput ? curve[i].p : 1) * endTaper
-    const w = halfWidth * Math.max(0.1, pr)
-
-    const tiltAngle = (curve[i].tx || 0) * 0.015
-    const cosT = Math.cos(tiltAngle), sinT = Math.sin(tiltAngle)
-    const rnx = nx * cosT - ny * sinT, rny = nx * sinT + ny * cosT
-
-    L.push([curve[i].x + rnx * w, curve[i].y + rny * w])
-    R.push([curve[i].x - rnx * w, curve[i].y - rny * w])
-  }
-  return [...L, ...R.reverse()]
+  return ribbonWithScales(curve, halfWidth, tPow, hasPenInput).poly
 }
 
 /**
@@ -150,4 +181,55 @@ export function deformN(poly: Array<[number, number]>, depth: number, variance: 
   let p = poly
   for (let d = 0; d < depth; d++) p = deform(p, variance / (1 + d * 0.65))
   return p
+}
+
+/**
+ * Scale-aware midpoint displacement for organic edges (260927-ton).
+ * Same algorithm as deform — for each edge push the original vertex
+ * then the displaced midpoint, gauss(0, variance) on x and y — except
+ * the midpoint is displaced by gauss(0, variance * sMid) where
+ * sMid = (sA + sB) / 2, so the deform amplitude follows the LOCAL
+ * ribbon width instead of the base-brush-radius variance uniformly.
+ * The output scales array carries [sA, sMid] per edge, aligned to the
+ * output polygon vertex order. gauss call count per polygon is
+ * unchanged from deform (two reads per edge).
+ */
+export function deformScaled(
+  poly: Array<[number, number]>,
+  scales: number[],
+  variance: number,
+): { poly: Array<[number, number]>; scales: number[] } {
+  const r: Array<[number, number]> = []
+  const rs: number[] = []
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length
+    const a = poly[i], b = poly[j]
+    const sA = scales[i], sB = scales[j]
+    const sMid = (sA + sB) / 2
+    r.push(a)
+    rs.push(sA)
+    r.push([(a[0] + b[0]) / 2 + gauss(0, variance * sMid), (a[1] + b[1]) / 2 + gauss(0, variance * sMid)])
+    rs.push(sMid)
+  }
+  return { poly: r, scales: rs }
+}
+
+/**
+ * Recursive scale-aware deform with decreasing variance — loops
+ * exactly like deformN with the same pass divisor (1 + d * 0.65),
+ * threading the local-width scales through every pass.
+ */
+export function deformNScaled(
+  poly: Array<[number, number]>,
+  scales: number[],
+  depth: number,
+  variance: number,
+): { poly: Array<[number, number]>; scales: number[] } {
+  let p = poly, s = scales
+  for (let d = 0; d < depth; d++) {
+    const out = deformScaled(p, s, variance / (1 + d * 0.65))
+    p = out.poly
+    s = out.scales
+  }
+  return { poly: p, scales: s }
 }
