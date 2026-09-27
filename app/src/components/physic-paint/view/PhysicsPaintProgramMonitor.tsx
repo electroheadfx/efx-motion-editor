@@ -91,6 +91,20 @@ export interface PhysicsPaintProgramMonitorProps {
    * undefined to disable the publication entirely.
    */
   readonly onMissingSourcesChange?: (summary: EfxPaintProgramMonitorMissingSummary | null) => void;
+  /**
+   * 260925-iy6 UAT follow-up: the active track's live dry canvas — composited
+   * into the flattened frame BEFORE the paper pass so the tooth lands ONCE on
+   * the mixed paint. Null when the engine surface is hidden or during playback
+   * (the store path is authoritative there).
+   */
+  readonly liveOverlay?: HTMLCanvasElement | null;
+  /**
+   * 260925-iy6 UAT fix: true when the active track's pixels must come from the
+   * liveOverlay (or be excluded because the track is hidden). False at Studio
+   * open before the engine hydrates — the monitor then includes the active
+   * track from the STORE so the paint is never absent.
+   */
+  readonly excludeActive?: boolean;
 }
 
 const EMPTY_EXCLUDED_TRACKS: ReadonlySet<string> = new Set();
@@ -132,19 +146,33 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     // 48-06 (UAT-C): the monitor reads the FOND-LESS composite — the paper is
     // drawn on a separate layer beneath the isolated tracks group, so the
     // active track's CSS blend (the engine shell above) never meets the fond.
+    // 260925-iy6 UAT fix: when the active track's pixels are NOT coming from a
+    // live overlay (engine not hydrated yet, or the track is hidden), fall back
+    // to the full including path so the paint is never absent from the monitor.
+    // When excludeActive is true, the active track is either in the liveOverlay
+    // or intentionally hidden — the store's copy is excluded either way.
     const record = props.isPlaying
       ? physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false)
-      : physicPaintStore.getFlattenedFrameExcluding(
-          layerId,
-          resolvedFrame,
-          props.activeTrackId ? new Set([props.activeTrackId]) : EMPTY_EXCLUDED_TRACKS,
-          false,
-        );
+      : props.excludeActive
+        ? physicPaintStore.getFlattenedFrameExcluding(
+            layerId,
+            resolvedFrame,
+            props.activeTrackId ? new Set([props.activeTrackId]) : EMPTY_EXCLUDED_TRACKS,
+            false,
+            props.liveOverlay ?? null,
+          )
+        : physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false);
     // Pending decode: the store returns null this tick. Keep the last drawn
     // frame — no flicker-to-blank; the next version-clock bump re-runs the
     // effect and draws the completed raster.
     if (!record) return;
-    const drawnKey = `${record.cacheKey}@${canvas.width}x${canvas.height}`;
+    // 260925-iy6 UAT fix: when the live overlay is present, the record's
+    // cacheKey does NOT rotate on wet→dry (the store updates ~6s later via the
+    // capture quiet-window). Include the paint version so each finalize
+    // produces a new drawn key and the guard lets the redraw through.
+    const drawnKey = props.liveOverlay
+      ? `${record.cacheKey}@${canvas.width}x${canvas.height}@live:${physicPaintVersion.value}`
+      : `${record.cacheKey}@${canvas.width}x${canvas.height}`;
     if (drawnKeyRef.current === drawnKey) return;
     // Mark the drawn key BEFORE the draw so a re-run can never double-draw,
     // and a stale async completion (fallback path) can never overwrite a newer
@@ -184,7 +212,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     // version clocks are read inside the effect's dep array (narrow leaf
     // subscription, never the Studio root); resolvedFrame is the exact
     // playback/editing frame this effect draws.
-  }, [props.layerId, resolvedFrame, props.isPlaying, props.activeTrackId, props.width, props.height, physicPaintVersion.value, efxPaintVersion.value]);
+  }, [props.layerId, resolvedFrame, props.isPlaying, props.activeTrackId, props.liveOverlay, props.width, props.height, physicPaintVersion.value, efxPaintVersion.value]);
 
   // Task 2 (D-09): the missing-source capsule publication — a narrow effect
   // (this leaf, never the Studio root render body) that reads the current

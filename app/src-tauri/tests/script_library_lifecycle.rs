@@ -8,7 +8,7 @@ use uuid::Uuid;
 fn document(id: &str, name: &str) -> Value {
     let encoded = encode_webp("lifecycle", 1, 1, 0.8, &[255; 4]).unwrap();
     json!({"kind":"efx-physics-paint-roto-script","schemaVersion":1,"id":id,"name":name,"createdAt":"2026-07-16T12:00:00Z","updatedAt":"2026-07-16T12:00:00Z",
-    "source":{"projectName":"P","layerId":"l","layerName":"L","sourceFrame":0,"displayFrame":0,"width":1,"height":1,"background":{"background":"white","paperGrain":"canvas1","grainStrength":0.0}},
+    "source":{"projectName":"P","layerId":"l","layerName":"L","sourceFrame":0,"displayFrame":0,"width":1,"height":1,"background":{"background":"white","grainStrength":0.0}},
     "thumbnail":{"mimeType":"image/webp","width":1,"height":1,"quality":0.8,"dataUrl":format!("data:image/webp;base64,{}",encoded["webpBase64"].as_str().unwrap())},
     "brushes":[{"primary":{"tool":"paint","points":[{"x":0,"y":0,"p":1,"tx":0,"ty":0,"tw":0,"spd":0}],"color":"#000000","params":{"size":1,"opacity":100,"pressure":100,"waterAmount":0,"dryAmount":0,"edgeDetail":0,"pickup":0,"eraseStrength":0,"antiAlias":0},"timestamp":0},"continuations":[]}]})
 }

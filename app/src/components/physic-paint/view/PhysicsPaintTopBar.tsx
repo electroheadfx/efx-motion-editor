@@ -8,7 +8,6 @@ export interface PhysicsPaintTopBarProps {
   brushSize: number;
   opacity: number;
   background: BgMode;
-  paperGrain: string;
   grainStrength: number;
   grainScale: number;
   ready: boolean;
@@ -16,7 +15,6 @@ export interface PhysicsPaintTopBarProps {
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
   onBackgroundChange: (mode: BgMode) => void;
-  onPaperGrainChange: (key: string) => void;
   onGrainStrengthChange: (value: number) => void;
   onGrainScaleChange: (scale: number) => void;
 }
@@ -30,12 +28,6 @@ const PAPER_TEXTURES = {
 const BACKGROUND_OPTIONS: { label: string; value: BgMode; swatch: string }[] = [
   { label: 'Transparent', value: 'transparent', swatch: 'repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px' },
   { label: 'White', value: 'white', swatch: '#fff' },
-  { label: 'Paper 1', value: 'canvas1', swatch: `url(${PAPER_TEXTURES.canvas1}) center / cover` },
-  { label: 'Paper 2', value: 'canvas2', swatch: `url(${PAPER_TEXTURES.canvas2}) center / cover` },
-  { label: 'Paper 3', value: 'canvas3', swatch: `url(${PAPER_TEXTURES.canvas3}) center / cover` },
-];
-
-const PAPER_GRAIN_OPTIONS = [
   { label: 'Paper 1', value: 'canvas1', swatch: `url(${PAPER_TEXTURES.canvas1}) center / cover` },
   { label: 'Paper 2', value: 'canvas2', swatch: `url(${PAPER_TEXTURES.canvas2}) center / cover` },
   { label: 'Paper 3', value: 'canvas3', swatch: `url(${PAPER_TEXTURES.canvas3}) center / cover` },
@@ -123,7 +115,6 @@ export function PhysicsPaintTopBar({
   brushSize,
   opacity,
   background,
-  paperGrain,
   grainStrength,
   grainScale,
   ready,
@@ -131,7 +122,6 @@ export function PhysicsPaintTopBar({
   onBrushSizeChange,
   onOpacityChange,
   onBackgroundChange,
-  onPaperGrainChange,
   onGrainStrengthChange,
   onGrainScaleChange,
 }: PhysicsPaintTopBarProps) {
@@ -163,25 +153,6 @@ export function PhysicsPaintTopBar({
                 onClick={() => onBackgroundChange(option.value)}
               >
                 <span class="physics-paint-paper-swatch" style={{ background: option.swatch }} />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div class="physics-paint-topbar-control">
-          <span>Paper grain</span>
-          <div class="physics-paint-segmented-row" role="group" aria-label="Paper grain">
-            {PAPER_GRAIN_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                disabled={disabled}
-                class={`${segmentedButtonClass(paperGrain === option.value)} physics-paint-swatch-button`}
-                title={option.label}
-                aria-label={option.label}
-                onClick={() => onPaperGrainChange(option.value)}
-              >
-                <span class="physics-paint-paper-swatch textured" style={{ background: option.swatch }} />
               </button>
             ))}
           </div>

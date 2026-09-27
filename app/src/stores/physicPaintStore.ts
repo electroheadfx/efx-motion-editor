@@ -1528,8 +1528,7 @@ function _trackContentRevision(layerId: string, trackId: string, frame: number):
  *     the track's own paper and governs; `background: 'transparent'` means the
  *     user chose no paper for that track → no fond (null, never a thrown error);
  *  2. no entry → the document fallback exactly as it resolves today:
- *     transparent → none, solid → the color, paper → paper + the
- *     `paperGrain ? texture : ''` mapping.
+ *     transparent → none, solid → the color, paper → paper.
  *
  * Visibility/solo are deliberately NOT consulted — the fond is composite-level
  * state, never track content, and the two solo systems are untouched.
@@ -1551,7 +1550,6 @@ function _resolveFondSource(layerId: string, efxDocument: EfxPaintDocument): Fon
     kind: 'paper',
     metadata: {
       background: fallback.texture,
-      paperGrain: fallback.paperGrain ? fallback.texture : '',
       grainStrength: fallback.grainStrength,
       // 260923-bcm: the fallback's scale rides the fond metadata (?? 1 for an
       // absent member — optional-member idiom).
@@ -1609,7 +1607,7 @@ function _fondSourceSignature(source: FondSource | null): string {
   if (!source) return 'none';
   if (source.kind === 'color') return `color:${source.color}`;
   const metadata = source.metadata;
-  return `paper:${metadata.background}:${metadata.paperGrain}:${metadata.grainStrength}:${metadata.color ?? ''}:${metadata.grainScale ?? 1}`;
+  return `paper:${metadata.background}:${metadata.grainStrength}:${metadata.color ?? ''}:${metadata.grainScale ?? 1}`;
 }
 
 function _rotateFlattenedMemoOnFondChange(layerId: string, efxDocument: EfxPaintDocument): void {
@@ -2524,6 +2522,7 @@ function _resolveFlattenedFrame(
   frame: number,
   excludeTrackIds: ReadonlySet<string>,
   includeFond = true,
+  liveOverlay?: HTMLCanvasElement | null,
 ): EfxPaintFlattenedFrameRecord | null {
   if (!Number.isInteger(frame) || frame < 0) return null;
   const efxDocument = getEfxPaintDocument(layerId);
@@ -2563,8 +2562,10 @@ function _resolveFlattenedFrame(
   });
 
   const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
-  const cached = flattenedMemo.get(flattenedKey);
-  if (cached) return cached;
+  if (!liveOverlay) {
+    const cached = flattenedMemo.get(flattenedKey);
+    if (cached) return cached;
+  }
 
   const trackRasterMemo = _getOrCreateCompositorMemo(_trackRasterMemo, layerId);
   const preResolved = new Map<string, EfxPaintTrackContentResolution>();
@@ -2610,6 +2611,37 @@ function _resolveFlattenedFrame(
   };
 
   const result = compositeFrame(efxDocument, frame, size, ports);
+  // 260925-iy6 UAT follow-up: the active track's live dry canvas — composited
+  // BEFORE the paper pass so the tooth lands ONCE on the mixed paint (one-sheet
+  // law). Only the Studio monitor passes this; export/preview read the store
+  // path (no live overlay) and stay structurally identical.
+  if (liveOverlay) {
+    const overlayCtx = (result.raster as HTMLCanvasElement).getContext('2d');
+    if (overlayCtx) {
+      // The overlay holds the active track's baked pixels at the engine's
+      // WORKING resolution, so it must scale to the composite size exactly like
+      // compositeFrame's track draw — a 3-arg natural-size drawImage covered
+      // only the top-left working-size block and left a hard seam at its edge.
+      //
+      // It also has to carry the active track's opacity/blend (D-01). Those used
+      // to ride the engine shell as CSS group opacity + mix-blend-mode; under
+      // .dry-live-overlay the baked canvases are opacity: 0 and these pixels come
+      // through here instead, so an unstyled drawImage silently dropped both.
+      // source-over when nothing was drawn below mirrors compositeFrame's
+      // firstTrack rule (a non-normal blend over transparency erases the stroke).
+      const overlayTrack = participatingPaintTracks(efxDocument)
+        .find((track) => excludeTrackIds.has(track.id)) ?? null;
+      const drewBelow = participating.some(
+        (track) => !result.missing.some((entry) => entry.trackId === track.id),
+      );
+      overlayCtx.save();
+      overlayCtx.globalAlpha = overlayTrack?.opacity ?? 1;
+      overlayCtx.globalCompositeOperation =
+        drewBelow && overlayTrack ? blendModeToCompositeOp(overlayTrack.blendMode) : 'source-over';
+      overlayCtx.drawImage(liveOverlay, 0, 0, size.width, size.height);
+      overlayCtx.restore();
+    }
+  }
   // 260925-iy6: the dynamic post-bake paper pass — ONE seam for preview,
   // program monitor, AND export (all three consume this record, so the paths
   // cannot drift into a second implementation). It modulates the FLATTENED
@@ -2622,7 +2654,7 @@ function _resolveFlattenedFrame(
   const passSource = _resolveFondSource(layerId, efxDocument);
   // Gate mirrors the fond grain gate (rotoFrameDraw): '' means grain off (CR-01)
   // and strength None means no tooth — the pass is skipped untouched.
-  if (passSource?.kind === 'paper' && passSource.metadata.paperGrain && passSource.metadata.grainStrength > 0) {
+  if (passSource?.kind === 'paper' && passSource.metadata.grainStrength > 0) {
     const textureKey = passSource.metadata.background;
     // Subscribe in BOTH branches (today only the fond branch does): a Studio
     // monitor frame (includeFond=false) must also recomposite when a late
@@ -2698,7 +2730,7 @@ function _resolveFlattenedFrame(
     },
     missing: result.missing,
   });
-  flattenedMemo.set(flattenedKey, record);
+  if (!liveOverlay) flattenedMemo.set(flattenedKey, record);
   return record;
 }
 
@@ -2760,8 +2792,9 @@ export const physicPaintStore = {
     frame: number,
     excludeTrackIds: ReadonlySet<string>,
     includeFond = true,
+    liveOverlay?: HTMLCanvasElement | null,
   ): EfxPaintFlattenedFrameRecord | null {
-    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond);
+    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond, liveOverlay);
   },
 
   /**
@@ -2894,7 +2927,6 @@ export const physicPaintStore = {
     const current = _rotoBackgroundMetadata.get(layerId)?.get(trackId);
     if (current
       && current.background === next.background
-      && current.paperGrain === next.paperGrain
       // Compare the CLAMPED strength so a clamped write cannot thrash the
       // revision on every re-sync of the same out-of-range input.
       && current.grainStrength === grainStrength

@@ -36,7 +36,7 @@ fn action_document(id: &str) -> Value {
         "name": "Action",
         "createdAt": "2026-08-11T00:00:00Z",
         "updatedAt": "2026-08-11T00:00:00Z",
-        "source": {"projectName":"Project","layerId":"layer-1","layerName":"Paint","sourceFrame":0,"displayFrame":0,"width":1,"height":1,"background":{"background":"white","paperGrain":"canvas1","grainStrength":0.0}},
+        "source": {"projectName":"Project","layerId":"layer-1","layerName":"Paint","sourceFrame":0,"displayFrame":0,"width":1,"height":1,"background":{"background":"white","grainStrength":0.0}},
         "thumbnail": {"mimeType":"image/webp","width":1,"height":1,"quality":0.8,"dataUrl":format!("data:image/webp;base64,{}", encode_base64(webp.as_ref()))},
         "brushes": [{"primary":{"tool":"paint","points":[{"x":0,"y":0,"p":1,"tx":0,"ty":0,"tw":0,"spd":0}],"color":"#000000","params":{"size":1,"opacity":100,"pressure":100,"waterAmount":0,"dryAmount":0,"edgeDetail":0,"pickup":0,"eraseStrength":0,"antiAlias":0},"timestamp":0},"continuations":[]}]
     })
@@ -157,6 +157,24 @@ fn canonical_physical_hash_matches_the_typescript_reference_vector() {
         efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
             .unwrap();
     assert_eq!(hash, "project-332-485be9b8");
+}
+
+// 260925-iy6: the Rust `canonical_background` was stale — it still encoded
+// `paperGrain` (dropped from the metadata) and missed `grainScale` (added in
+// 260923-bcm). This pin locks the non-null background arm so the two
+// encodings cannot drift again.
+#[test]
+fn canonical_physical_hash_encodes_grain_scale_for_non_null_background() {
+    let mut document = physical_document("physical-after");
+    document["background"] = json!({
+        "background": "canvas2",
+        "grainStrength": 0.65,
+        "grainScale": 1.5
+    });
+    let hash =
+        efx_motion_editor_lib::script_library_test_support::canonical_physical_hash(&document)
+            .unwrap();
+    assert_eq!(hash, "project-351-87bcacd8");
 }
 
 #[test]

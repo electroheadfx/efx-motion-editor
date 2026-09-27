@@ -629,7 +629,6 @@ function _isValidFallback(fallback: BackgroundFallback): boolean {
   if (fallback.mode === 'solid') return typeof fallback.color === 'string' && fallback.color.length > 0;
   if (fallback.mode === 'paper') {
     return (fallback.texture === 'canvas1' || fallback.texture === 'canvas2' || fallback.texture === 'canvas3')
-      && typeof fallback.paperGrain === 'boolean'
       && typeof fallback.grainStrength === 'number'
       && Number.isFinite(fallback.grainStrength)
       && fallback.grainStrength >= 0

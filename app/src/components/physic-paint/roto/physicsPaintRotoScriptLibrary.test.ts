@@ -7,7 +7,7 @@ import { createPersistedRotoScript, type PersistedRotoScriptThumbnailV1 } from '
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const context = (): PhysicPaintLaunchContext => ({ operationId: 'launch', layerId: 'layer-1', layerName: 'Ink', startFrame: 4, width: 1600, height: 900, project: { name: 'Project', saved: true, contextId: 'context-1' } });
-const row = (id: string, name: string, createdAt = '2026-07-16T12:00:00Z') => ({ id, revision: `rev-${id}`, integritySha256: 'a'.repeat(64), name, createdAt, updatedAt: createdAt, source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 });
+const row = (id: string, name: string, createdAt = '2026-07-16T12:00:00Z') => ({ id, revision: `rev-${id}`, integritySha256: 'a'.repeat(64), name, createdAt, updatedAt: createdAt, source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 4, width: 1600, height: 900, background: { background: 'white' as const, grainStrength: 0 } }, thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' }, brushCount: 1 });
 const result = (request: PhysicPaintScriptLibraryRequest, rows = [row('b', 'B'), row('a', 'A')], extra: Partial<PhysicPaintScriptLibraryResult> = {}): PhysicPaintScriptLibraryResult => ({ operationId: request.operationId, kind: request.kind, ok: true, rows, skippedInvalidCount: 0, diagnostics: [], ...extra });
 
 function harness(saved = true) {
@@ -99,6 +99,41 @@ describe('Roto script library controller', () => {
     expect(await test.controller.saveActiveFrame()).toBe(false);
     expect(test.controller.status.value).toBe('Save the project first.');
     expect(test.request).not.toHaveBeenCalled();
+  });
+
+  // 260925-iy6 UAT round 5 ("button are there but when I click, nothing happen
+  // with no error"): every saveActiveFrame exit wrote `status`, which has NO
+  // reader in the panel — so a rejected save looked like a dead button. The
+  // ports.log call is the rendered applyMessage channel; each exit must use it.
+  it('reports every saveActiveFrame failure through ports.log (the visible channel)', async () => {
+    const unsaved = harness(false);
+    await unsaved.controller.saveActiveFrame();
+    expect(unsaved.log).toHaveBeenCalledWith('Save the project first.', true);
+
+    const log = vi.fn();
+    const controller = createRotoScriptLibraryController({
+      request: vi.fn(async (input: PhysicPaintScriptLibraryRequest) => result(input)),
+      capturePersistence: vi.fn(async () => null), captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
+      getLaunchContext: context, log, publishScriptScope: vi.fn(),
+    });
+    await controller.saveActiveFrame();
+    expect(log).toHaveBeenCalledWith('Paint at least one brush on a real Roto key.', true);
+    expect(controller.status.value).toBe('Paint at least one brush on a real Roto key.');
+  });
+
+  // 260925-iy6 UAT round 6 ("no work, no log, fail in silent"): capturePersistence
+  // sat OUTSIDE the try, so a rejection escaped `saveActiveFrame`, hit `void onSave`,
+  // and vanished. Capture must run inside the try so the catch reports it.
+  it('reports a capturePersistence rejection through ports.log instead of swallowing it', async () => {
+    const log = vi.fn();
+    const controller = createRotoScriptLibraryController({
+      request: vi.fn(async (input: PhysicPaintScriptLibraryRequest) => result(input)),
+      capturePersistence: vi.fn(async () => { throw new Error('capture exploded'); }),
+      captureThumbnail: vi.fn(), replaceClipboard: vi.fn(),
+      getLaunchContext: context, log, publishScriptScope: vi.fn(),
+    });
+    await expect(controller.saveActiveFrame()).resolves.toBe(false);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('capture exploded'), true);
   });
 
   it('drives explicit scans, stable sorting, naming and expected revisions', async () => {

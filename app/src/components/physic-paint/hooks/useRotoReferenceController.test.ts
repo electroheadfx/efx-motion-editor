@@ -213,6 +213,44 @@ describe('Roto reference controller', () => {
     expect(engine.resetBackground).toHaveBeenCalledTimes(1);
   });
 
+  // 260925-iy6 UAT round 8 ("last stroke transparent for some seconds"): an
+  // acceptance reload paints bytes that already contain the dry strokes, and
+  // the paint is an ASYNC decode. A full clear() wiped dry first, so the baked
+  // overlay showed the stale base with an empty dry until the decode landed.
+  it('preserves dry across an acceptance swap and fully clears on a plain load', () => {
+    const acceptanceEngine = createEngine();
+    const acceptance = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames: new Set<number>(),
+      liveOverlayActionCounts: new Map<number, number>(),
+      getReferenceFrame: () => frame(4, 'real-key'),
+      setReferenceUrl: vi.fn(),
+      setRepaintBaseFrame: vi.fn(),
+      syncPending: vi.fn(),
+      setApplyMessage: vi.fn(),
+      replaceDirtyFrame: true,
+      generation: 12,
+    });
+    expect(acceptance.load(4, acceptanceEngine)).toBe(true);
+    expect(acceptanceEngine.clear).toHaveBeenCalledWith(true);
+
+    const plainEngine = createEngine();
+    const plain = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames: new Set<number>(),
+      liveOverlayActionCounts: new Map<number, number>(),
+      getReferenceFrame: () => frame(4, 'real-key'),
+      setReferenceUrl: vi.fn(),
+      setRepaintBaseFrame: vi.fn(),
+      syncPending: vi.fn(),
+      setApplyMessage: vi.fn(),
+    });
+    expect(plain.load(4, plainEngine)).toBe(true);
+    expect(plainEngine.clear).toHaveBeenCalledWith(false);
+  });
+
   it('excludes the loop placeholder variant from display/reference content (D-28, audit finding 6)', () => {
     const placeholderSource = {
       kind: 'loop-placeholder' as const,

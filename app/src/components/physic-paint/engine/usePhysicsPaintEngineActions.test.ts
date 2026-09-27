@@ -41,7 +41,6 @@ function invokeEveryMutation(actions: ReturnType<typeof createPhysicsPaintEngine
   actions.setBrushSize(17);
   actions.setBrushOpacity(63);
   actions.setBackground('white');
-  actions.setPaperGrain('canvas2');
   actions.setGrainStrength(0.65);
   actions.setEdgeDetail(71);
   actions.setPickup(29);
@@ -79,7 +78,6 @@ describe('Physics Paint engine actions', () => {
     expect(harness.engine.setBrushSize).toHaveBeenCalledWith(17);
     expect(harness.engine.setBrushOpacity).toHaveBeenNthCalledWith(2, 63);
     expect(harness.engine.setBgMode).toHaveBeenCalledWith('white');
-    expect(harness.engine.setPaperGrain).toHaveBeenCalledWith('canvas2');
     expect(harness.engine.setEmbossStrength).toHaveBeenCalledWith(0.65);
     expect(harness.engine.setEdgeDetail).toHaveBeenCalledWith(71);
     expect(harness.engine.setPickup).toHaveBeenCalledWith(29);
@@ -90,7 +88,7 @@ describe('Physics Paint engine actions', () => {
     expect(harness.engine.stopPhysics).toHaveBeenCalledTimes(1);
     expect(harness.getSettings()).toMatchObject({
       tool: 'erase', physicsMode: 'local', color: '#abcdef', opacity: 63, size: 17,
-      background: 'white', paperGrain: 'canvas2', grainStrength: 0.65,
+      background: 'white', grainStrength: 0.65,
       edgeDetail: 71, pickup: 29, spread: 36, smoothing: 3, eraseStrength: 88,
       activePhysicsAction: null,
     });

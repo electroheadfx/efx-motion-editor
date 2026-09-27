@@ -62,7 +62,7 @@ function makeSequence(layer: Layer): Sequence {
 
 function seedPhysicalRoto(
   keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>,
-  options: { interpolationEnabled?: boolean; background?: { background: 'canvas2'; paperGrain: string; grainStrength: number } | null } = {},
+  options: { interpolationEnabled?: boolean; background?: { background: 'canvas2'; grainStrength: number } | null } = {},
 ): void {
   const records = keys.map((key) => ({
     keyId: key.keyId,
@@ -177,9 +177,9 @@ describe('physics paint cache-first preview/export contract', () => {
   it('resolves persisted paper and canvas grain metadata for missing Roto frames without store mutation', () => {
     const setFrame = vi.spyOn(physicPaintStore, 'setFrame');
 
-    const result = resolveMissingRotoFrameDraw('phys-layer-1', 26, { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } });
+    const result = resolveMissingRotoFrameDraw('phys-layer-1', 26, { mode: 'paper', metadata: { background: 'canvas2', grainStrength: 0.65 } });
 
-    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
+    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', grainStrength: 0.65, span: { kind: 'no-real-keys' }, materialize: false });
     expect(setFrame).not.toHaveBeenCalled();
     expect(physicPaintStore.getRotoCacheFrames('phys-layer-1', TEST_TRACK_ID)).toEqual([]);
   });
@@ -190,7 +190,7 @@ describe('physics paint cache-first preview/export contract', () => {
     seedPhysicalRoto([
       { keyId: 'key-0', appFrame: 0, bytes: testWebpBytes('cmVhbC0w') },
       { keyId: 'key-2', appFrame: 2, bytes: testWebpBytes('cmVhbC0y') },
-    ], { interpolationEnabled: true, background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } });
+    ], { interpolationEnabled: true, background: { background: 'canvas2', grainStrength: 0.65 } });
     const preloadedFrames: PreviewPhysicPaintFrameSource[] = [];
     const renderer = {
       onImageLoaded: null,
@@ -224,7 +224,7 @@ describe('physics paint cache-first preview/export contract', () => {
         }),
       }),
     ]));
-    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, grainScale: 1 });
+    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas2', grainStrength: 0.65, grainScale: 1 });
     expect(physicPaintStore.getRotoPhysicalRenderSource('roto-layer', TEST_TRACK_ID, 1)).toMatchObject({ kind: 'generated', appFrame: 1, leftKeyId: 'key-0', rightKeyId: 'key-2' });
   });
 
@@ -395,11 +395,11 @@ describe('physics paint cache-first preview/export contract', () => {
     const before = physicPaintStore.extractRuntimeStateForDocument('phys-layer-1', TEST_TRACK_ID);
 
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 9, {
-      backgroundState: { mode: 'paper', metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } },
+      backgroundState: { mode: 'paper', metadata: { background: 'canvas2', grainStrength: 0.65 } },
       realKeyFrames: physicPaintStore.getRealRotoKeyFrames('phys-layer-1', TEST_TRACK_ID),
     });
 
-    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65, span: { kind: 'trailing', previousRealKeyFrame: 6 }, materialize: false });
+    expect(result).toEqual({ kind: 'background-only', color: '#ebe3d2', paperTexture: 'canvas2', grainStrength: 0.65, span: { kind: 'trailing', previousRealKeyFrame: 6 }, materialize: false });
     expect(physicPaintStore.getFrame('phys-layer-1', TEST_TRACK_ID, 9)).toBeNull();
     expect(physicPaintStore.extractRuntimeStateForDocument('phys-layer-1', TEST_TRACK_ID)).toEqual(before);
   });

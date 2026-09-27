@@ -143,7 +143,7 @@ function ports(): HookPorts {
     getSelection: () => ({ kind: 'real-key' as const, keyId: 'k96', appFrame: 96 }),
     getMotion: () => ({ deformation: 0, position: 0 }),
     getBrushColor: () => '#103c65',
-    getBackgroundMetadata: () => ({ background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 }),
+    getBackgroundMetadata: () => ({ background: 'canvas1', grainStrength: 0.45 }),
     getOperationLocked: () => false,
     getSize: () => ({ width: 1920, height: 1080 }),
     getRotoLoopClips: () => physicPaintStore.getRotoPhysicalLoopClips(LAYER_ID, TEST_TRACK_ID),

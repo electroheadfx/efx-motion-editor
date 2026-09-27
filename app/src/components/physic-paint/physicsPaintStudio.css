@@ -5918,6 +5918,16 @@ button.destructive {
   background-color: transparent;
 }
 
+/* 260925-iy6 UAT follow-up: the engine's previewBase (1st child) and dry (2nd
+   child) canvases are visually hidden so the monitor's live-overlay composite
+   shows through. opacity: 0 keeps pointer events (visibility: hidden would kill
+   them — the dry canvas is the interactive layer). The wet display (3rd child)
+   stays visible above. */
+.physics-paint-tracks-group.dry-live-overlay .demo-canvas-shell .paint-canvas > canvas:nth-child(1),
+.physics-paint-tracks-group.dry-live-overlay .demo-canvas-shell .paint-canvas > canvas:nth-child(2) {
+  opacity: 0;
+}
+
 /* 48-05 (D-05): the program monitor sits BELOW the engine canvas (the engine
    canvases are z-index 2/4) and BELOW the onion overlay (z-index 5): monitor <
    engine < onion. It draws the flattened composite only — pointer-events none

@@ -1040,7 +1040,7 @@ describe('physicPaintBridge', async () => {
   });
 
   it('includes a defensive copy of persisted Roto paper metadata for standalone reopen', async () => {
-    const metadata = { background: 'canvas2' as const, paperGrain: 'canvas3', grainStrength: 0.65 };
+    const metadata = { background: 'canvas2' as const, grainStrength: 0.65 };
     physicPaintStore.setRotoBackgroundMetadata('phys-layer-1', TEST_TRACK_ID, metadata);
 
     const context = createPhysicPaintLaunchContext(physicLayer({ name: 'Water smoke' }), 8, null, null);
@@ -3336,7 +3336,7 @@ describe('physicPaintBridge', async () => {
         },
       };
     });
-    const rotoBackground = { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 } as const;
+    const rotoBackground = { background: 'canvas1', grainStrength: 0.45 } as const;
     const result = await applyPhysicPaintPayload({
       kind: 'replace-roto-physical-map',
       trackId: TEST_TRACK_ID,
@@ -3426,11 +3426,11 @@ describe('physicPaintBridge', async () => {
 
     const result = await applyPhysicPaintPayload(applyCanvasPayload({
       operationId: 'apply-still-explicit-bg',
-      rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+      rotoBackground: { background: 'canvas2', grainStrength: 0.65 },
     }));
 
     expect(result).toMatchObject({ ok: true, operationId: 'apply-still-explicit-bg' });
-    expect(physicPaintStore.getRotoBackgroundMetadata('phys-layer-1', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(physicPaintStore.getRotoBackgroundMetadata('phys-layer-1', TEST_TRACK_ID)).toEqual({ background: 'canvas2', grainStrength: 0.65 });
   });
 
   it('publishes generated Roto cache and settings through close/apply for parent preview/export', async () => {

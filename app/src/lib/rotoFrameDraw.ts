@@ -23,7 +23,7 @@ export interface MissingRotoFrameResolveInput {
 
 export type MissingRotoFrameDrawInstruction =
   | { kind: 'transparent'; span: MissingRotoFrameSpan; materialize: false }
-  | { kind: 'background-only'; color: string; paperTexture?: string; paperGrain?: string; grainStrength?: number; grainScale?: number; span: MissingRotoFrameSpan; materialize: boolean };
+  | { kind: 'background-only'; color: string; paperTexture?: string; grainStrength?: number; grainScale?: number; span: MissingRotoFrameSpan; materialize: boolean };
 
 export function getMissingRotoFrameSpan(frame: number, realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[] | readonly number[] = []): MissingRotoFrameSpan {
   const requestedFrame = Math.floor(frame);
@@ -68,7 +68,6 @@ export function resolveMissingRotoFrameDraw(
     kind: 'background-only',
     color: metadata.color ?? backgroundColorForRotoMode(metadata.background),
     paperTexture: metadata.background,
-    paperGrain: metadata.paperGrain,
     grainStrength: metadata.grainStrength,
     // 260923-bcm: emit the scale only when the metadata carries it so exact
     // instruction pins on scale-less fixtures stay stable.
@@ -126,9 +125,6 @@ export function drawMissingRotoBackground(
     ctx.fillStyle = instruction.color;
     ctx.fillRect(0, 0, width, height);
   }
-  const grainStrength = instruction.grainStrength ?? 0;
-  if (!instruction.paperGrain || grainStrength <= 0) return;
-  drawDeterministicPaperGrain(ctx, instruction.paperGrain, grainStrength, width, height);
 }
 
 function backgroundColorForRotoMode(mode: PhysicPaintRotoBackgroundMetadata['background']): string {
@@ -139,18 +135,4 @@ function backgroundColorForRotoMode(mode: PhysicPaintRotoBackgroundMetadata['bac
     case 'canvas3': return '#ded2bc';
     case 'transparent': return 'transparent';
   }
-}
-
-function drawDeterministicPaperGrain(ctx: CanvasRenderingContext2D, paperGrain: string, grainStrength: number, width: number, height: number): void {
-  const step = paperGrain === 'canvas3' ? 5 : paperGrain === 'canvas2' ? 7 : 9;
-  const alpha = Math.max(0, Math.min(0.12, grainStrength * 0.12));
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#000000';
-  for (let y = 0; y < height; y += step) {
-    for (let x = (y / step) % 2 === 0 ? 0 : Math.floor(step / 2); x < width; x += step) {
-      ctx.fillRect(x, y, 1, 1);
-    }
-  }
-  ctx.restore();
 }

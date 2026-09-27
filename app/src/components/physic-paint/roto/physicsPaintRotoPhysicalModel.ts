@@ -468,7 +468,7 @@ const PHYSIC_PAINT_ROTO_PHYSICAL_DOCUMENT_KEYS = new Set([
 ]);
 // 260923-bcm: `grainScale` joins the optional background members (finite
 // in-range acceptance below; parse normalizes a missing member to 1).
-const PHYSIC_PAINT_ROTO_BACKGROUND_KEYS = new Set(['background', 'paperGrain', 'grainStrength', 'color', 'grainScale']);
+const PHYSIC_PAINT_ROTO_BACKGROUND_KEYS = new Set(['background', 'grainStrength', 'color', 'grainScale']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -520,12 +520,6 @@ function optionalDimension(value: unknown): boolean {
 function isPhysicPaintRotoBackground(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
   if (!isRecord(value) || !hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_BACKGROUND_KEYS)) return false;
   if (value.background !== 'transparent' && value.background !== 'white' && value.background !== 'canvas1' && value.background !== 'canvas2' && value.background !== 'canvas3') return false;
-  // '' is the app's own "paper with the grain off" encoding — `_resolveFondSource`
-  // produces it for a `paperGrain: false` fallback, the top bar's grain selector
-  // renders no selection for it, and every consumer falls back with
-  // `paperGrain || background`. A paper without grain is a legitimate state;
-  // refusing it bricked every document read on such a layer (2026-09-22).
-  if (typeof value.paperGrain !== 'string') return false;
   if (typeof value.grainStrength !== 'number' || !Number.isFinite(value.grainStrength) || value.grainStrength < 0 || value.grainStrength > 1) return false;
   if (value.color !== undefined && typeof value.color !== 'string') return false;
   // 260923-bcm / T-260923-01: optional grain scale — absent OK, present must be
@@ -1560,7 +1554,6 @@ function encodeCanonicalBackground(value: PhysicPaintRotoBackgroundMetadata | nu
   if (value === null) return 'null;';
   return [
     encodeCanonicalString(value.background),
-    encodeCanonicalString(value.paperGrain),
     encodeCanonicalNumber(value.grainStrength),
     value.color === undefined ? 'u;' : encodeCanonicalString(value.color),
     // 260923-bcm: the scale is part of the persisted equality fingerprint.

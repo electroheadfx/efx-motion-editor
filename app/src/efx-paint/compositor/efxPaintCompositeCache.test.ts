@@ -195,7 +195,7 @@ describe('deriveEfxPaintFlattenedCacheKey — CMP-04 dependency coverage (D-08)'
     // (a same-revision fallback-content change invalidates — BKG-09/CMP-04).
     const paperDoc = makeDocument([makeTrack('track-a')], {
       revision: 7,
-      fallback: { mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.18 },
+      fallback: { mode: 'paper', texture: 'canvas2', grainStrength: 0.18 },
     });
     expect(deriveEfxPaintFlattenedCacheKey({ ...base, document: paperDoc })).not.toBe(keyBase);
 

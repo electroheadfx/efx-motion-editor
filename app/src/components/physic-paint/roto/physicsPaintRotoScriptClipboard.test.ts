@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
-import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, type RecordedStrokeGroup, type RotoScriptActionAvailability, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
+import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoScriptActionAvailability, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import { createPersistedRotoScript } from './physicsPaintRotoScriptSchema';
@@ -102,7 +102,7 @@ function settingsActions(test: ReturnType<typeof harness>) {
   });
   const invokeEveryAction = () => {
     actions.selectTool('erase', 'local'); actions.setBrushColor('#abcdef', 42); actions.setBrushSize(17);
-    actions.setBrushOpacity(63); actions.setBackground('white'); actions.setPaperGrain('canvas2');
+    actions.setBrushOpacity(63); actions.setBackground('white');
     actions.setGrainStrength(0.65); actions.setEdgeDetail(71); actions.setPickup(29); actions.setSpread(36);
     actions.setSmoothing(3); actions.setEraseStrength(88); actions.startPhysics('all'); actions.stopPhysics();
   };
@@ -183,6 +183,28 @@ describe('Roto script clipboard controller', () => {
     expect(capture?.scriptAlphaCanvas).toEqual({ id: 'alpha' });
     expect(test.controller.clipboard.value).toBe(copied);
     expect(test.controller.availability.value.canApply).toBe(true);
+  });
+
+  // 260925-iy6 UAT round 5 ("button are there but when I click, nothing happen"):
+  // canCopy reads sourceHasBrushes, which is only written on mutation completion.
+  // A stroke added to the engine after the last refresh read as "no brushes" and
+  // capture bailed BEFORE drainAcceptedMutations could finish it. The gate must
+  // refresh first.
+  it('captures a stroke that landed after the last hasBrushes refresh', async () => {
+    const test = harness([]);
+    Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => ({ id: 'alpha' } as unknown as HTMLCanvasElement)) });
+    // Stroke lands on the engine with no observeCompletedMutation / notify —
+    // sourceHasBrushes is stale false at the gate.
+    test.setStrokes([stroke(1)]);
+    expect(test.controller.availability.value.canCopy).toBe(false);
+
+    const promise = test.controller.captureScriptForPersistence();
+    // The drain resolves the pending mutation the way the engine's flush does.
+    test.controller.observeCompletedMutation(test.engine, completion(1));
+    const capture = await promise;
+
+    expect(capture).not.toBeNull();
+    expect(capture?.script.brushes).toHaveLength(1);
   });
 
   it('loads a persisted deep clone without replay and keeps it independent and reusable', async () => {
@@ -560,7 +582,7 @@ describe('Roto script clipboard controller', () => {
     settings.invokeEveryAction();
     expect(settings.setSettings).not.toHaveBeenCalled();
     for (const method of [settings.engine.setTool, settings.engine.setPhysicsMode, settings.engine.setColorHex, settings.engine.setBrushOpacity,
-      settings.engine.setBrushSize, settings.engine.setBgMode, settings.engine.setPaperGrain, settings.engine.setEmbossStrength,
+      settings.engine.setBrushSize, settings.engine.setBgMode, settings.engine.setEmbossStrength,
       settings.engine.setEdgeDetail, settings.engine.setPickup, settings.engine.setLocalSpreadStrength, settings.engine.setAntiAlias,
       settings.engine.setEraseStrength, settings.engine.startPhysics, settings.engine.stopPhysics]) expect(method).not.toHaveBeenCalled();
 
@@ -1014,7 +1036,7 @@ function scopeLibraryRow(id: string, name: string, layerId: string, layerName: s
     updatedAt: '2026-07-16T12:00:00Z',
     source: {
       projectName: 'Project', layerId, layerName, sourceFrame: 4, displayFrame: 4, width: 1600, height: 900,
-      background: { background: 'white' as const, paperGrain: 'canvas1', grainStrength: 0 },
+      background: { background: 'white' as const, grainStrength: 0 },
     },
     thumbnail: { mimeType: 'image/webp' as const, width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' },
     brushCount: 1,
@@ -1159,6 +1181,24 @@ describe('quick-260922-al1 the layer filter is presentation-only (drift-proof pi
     expect(clipboardSource).toContain("'Apply Script could not prepare the physical destination'");
     expect(clipboardSource).toContain("'Apply Script could not prepare the destination as an accepted physical Roto key.'");
     expect(clipboardSource).not.toContain('buildRotoScriptApplyRefusalMessage');
+  });
+});
+
+// 260925-iy6 UAT round 6 ("no work, no log, fail in silent"): the engine's `|| 0`
+// round-trip (serializeProject / loadProjectData) stamps `diffusionFrames: 0` on
+// every restored stroke. normalizeLogicalBrushes routed those into the previous
+// group's `continuations`, and the schema then rejected the group (a continuation
+// must carry a positive count). Only positive counts are continuations.
+describe('normalizeLogicalBrushes continuation membership', () => {
+  it('drops a zero-diffusion phantom instead of filing it as a continuation', () => {
+    const groups = normalizeLogicalBrushes([
+      stroke(1),
+      { ...stroke(2), points: [], diffusionFrames: 0 },
+      { ...stroke(3), points: [], diffusionFrames: 4 },
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].continuations).toHaveLength(1);
+    expect(groups[0].continuations?.[0].diffusionFrames).toBe(4);
   });
 });
 

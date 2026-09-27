@@ -31,7 +31,7 @@ const documentWith = (background: unknown) => {
   };
 };
 
-const PAPER = { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 } as const;
+const PAPER = { background: 'canvas1', grainStrength: 0.45 } as const;
 
 describe('physical background grainScale member (260923-bcm)', () => {
   it('260923-bcm: the physical parser accepts an in-range grainScale and normalizes a missing one to 1', () => {

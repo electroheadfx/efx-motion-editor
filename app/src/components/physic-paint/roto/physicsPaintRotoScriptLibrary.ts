@@ -475,15 +475,21 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   }
   async function saveActiveFrame(): Promise<boolean> {
     const context = ports.getLaunchContext();
-    if (!context?.project?.saved) { status.value = 'Save the project first.'; return false; }
-    if (busy.peek()) return false;
+    // Every exit reports through ports.log (the rendered applyMessage channel).
+    // `status` alone has no reader in the panel, so a failure used to look like
+    // a dead button.
+    const fail = (message: string): false => { status.value = message; ports.log(message, true); return false; };
+    if (!context?.project?.saved) return fail('Save the project first.');
+    if (busy.peek()) return fail('Finish the current Action operation.');
     const acceptedContextGeneration = contextGeneration;
-    const captured = await ports.capturePersistence();
-    if (disposed || acceptedContextGeneration !== contextGeneration) return false;
-    if (!captured) { status.value = 'Paint at least one brush on a real Roto key.'; return false; }
     try {
+      // Inside the try: a rejection here (or from thumbnail capture) must reach
+      // the catch's ports.log, not escape into `void onSave` and vanish.
+      const captured = await ports.capturePersistence();
+      if (disposed || acceptedContextGeneration !== contextGeneration) return fail('Save cancelled — the project context changed.');
+      if (!captured) return fail('Paint at least one brush on a real Roto key.');
       const thumbnail = await ports.captureThumbnail(captured.scriptAlphaCanvas);
-      if (disposed || acceptedContextGeneration !== contextGeneration) return false;
+      if (disposed || acceptedContextGeneration !== contextGeneration) return fail('Save cancelled — the project context changed.');
       const scriptSnapshot = captured.script;
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -497,7 +503,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
           projectName: context.project.name, layerId: context.layerId, layerName: context.layerName ?? context.layerId,
           sourceFrame: scriptSnapshot.sourceFrame, displayFrame: scriptSnapshot.sourceDisplayFrame,
           width: context.width ?? 1000, height: context.height ?? 650,
-          background: getCarriedRotoPhysical(context)?.background ?? { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+          background: getCarriedRotoPhysical(context)?.background ?? { background: 'transparent', grainStrength: 0 },
         },
         thumbnail, brushes: scriptSnapshot.brushes,
       });

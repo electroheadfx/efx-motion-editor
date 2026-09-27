@@ -708,7 +708,7 @@ function harness(options: {
       records: nextRecords,
       interpolationEnabled: interpolation.enabled,
       interpolationMode: interpolation.mode,
-      rotoBackground: { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 },
+      rotoBackground: { background: 'canvas1', grainStrength: 0.45 },
       semanticDelta: {
         kind: 'play-script',
         affectedStartAppFrame: 8,
@@ -1112,8 +1112,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(await test.executePlayScript()).toBe(true);
     expect(test.getPayload()?.rotoBackground).toEqual({
       background: 'canvas1',
-      paperGrain: 'canvas2',
-      grainStrength: 0.45,
+            grainStrength: 0.45,
     });
     expect(test.getRecords().some((entry) => entry.keyId === 'Z')).toBe(false);
     test.coordinator.cancelPhysicalEdit('disposal');
@@ -1764,7 +1763,7 @@ async function settleGroupRepeatThroughPublicController(
     getSelection: () => ({ kind: 'empty', keyId: null, appFrame: setupHarness.getStudioSelection().cursorAppFrame }),
     getMotion: () => ({ deformation: 3, position: 2 }),
     getBrushColor: () => '#336699',
-    getBackgroundMetadata: () => ({ background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 }),
+    getBackgroundMetadata: () => ({ background: 'canvas1', grainStrength: 0.45 }),
     getOperationLocked: () => false,
     getSize: () => ({ width: 10, height: 10 }),
     getRotoLoopClips: () => {

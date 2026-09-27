@@ -57,7 +57,7 @@ function makeRow(id: string, name: string, brushCount: number): RotoScriptLibrar
       displayFrame: 1,
       width: 10,
       height: 10,
-      background: { background: 'transparent', paperGrain: 'none', grainStrength: 0 },
+      background: { background: 'transparent', grainStrength: 0 },
     },
     thumbnail: { mimeType: 'image/webp', width: 96, height: 64, quality: 80, dataUrl: `data:image/webp;base64,${id}` },
     brushCount,

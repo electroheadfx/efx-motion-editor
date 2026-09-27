@@ -200,7 +200,6 @@ export type BackgroundFallback =
   | {
       readonly mode: 'paper'
       readonly texture: 'canvas1' | 'canvas2' | 'canvas3'
-      readonly paperGrain: boolean
       readonly grainStrength: number
     }
 

@@ -48,7 +48,6 @@ export type BackgroundFallback =
   | {
       readonly mode: 'paper';
       readonly texture: PaperTexture;
-      readonly paperGrain: boolean;
       readonly grainStrength: number;
       /**
        * 260923-bcm: paper pattern scale (1 = natural tile). OPTIONAL member —

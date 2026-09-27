@@ -1,6 +1,6 @@
 /**
  * debug layer-2-gestures (2026-09-22): a physic-paint layer whose document
- * fallback has `paperGrain: false` resolves its fond to `paperGrain: ''` — the
+ * fallback has `` resolves its fond to `` — the
  * app's own "paper with the grain off" encoding (`_resolveFondSource`, the
  * missing-frame draw instruction, the top bar's grain selector, and the
  * `paperGrain || background` fallback every consumer uses).
@@ -21,8 +21,8 @@ import {
   parsePhysicPaintRotoPhysicalDocument,
 } from './physicsPaintRotoPhysicalModel';
 
-const GRAIN_OFF = { background: 'canvas3', paperGrain: '', grainStrength: 0.45 } as const;
-const GRAIN_ON = { background: 'canvas3', paperGrain: 'canvas1', grainStrength: 0.45 } as const;
+const GRAIN_OFF = { background: 'canvas3', grainStrength: 0.45 } as const;
+const GRAIN_ON = { background: 'canvas3', grainStrength: 0.45 } as const;
 
 const documentWith = (background: unknown) => {
   const realKeyRecords: unknown[] = [];
@@ -58,7 +58,7 @@ describe('paper with the grain off survives both background contracts', () => {
   it('still refuses metadata that is not a paper state at all', () => {
     expect(isPhysicPaintRotoBackgroundMetadata({ ...GRAIN_OFF, background: 'photo' })).toBe(false);
     expect(isPhysicPaintRotoBackgroundMetadata({ ...GRAIN_OFF, grainStrength: 2 })).toBe(false);
-    expect(isPhysicPaintRotoBackgroundMetadata({ ...GRAIN_OFF, paperGrain: null })).toBe(false);
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas3' })).toBe(false);
     expect(() => parsePhysicPaintRotoPhysicalDocument(documentWith({ ...GRAIN_OFF, background: 'photo' }), 'runtime')).toThrow(/invalid background metadata/);
   });
 });

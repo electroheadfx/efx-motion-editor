@@ -128,7 +128,7 @@ function harness(overrides: Partial<RotoPlayScriptControllerPorts> = {}) {
   const getMotion = vi.fn(() => ({ ...motion }));
   let brushColor = '#103c65';
   const getBrushColor = vi.fn(() => brushColor);
-  const getBackgroundMetadata = vi.fn(() => ({ background: 'canvas1' as const, paperGrain: 'canvas2' as const, grainStrength: 0.45 }));
+  const getBackgroundMetadata = vi.fn(() => ({ background: 'canvas1' as const, grainStrength: 0.45 }));
   const selectedIdSignal = signal<string | null>(selectedId);
   const selectedSignal = signal<{ id: string } | null>({ id: 'script-1' });
   const library = {
@@ -281,7 +281,7 @@ describe('createRotoPlayScriptController', () => {
     expect(publication.semanticDelta.freshKeyIds).toHaveLength(2);
     expect(publication.interpolationEnabled).toBe(true);
     expect(publication.interpolationMode).toBe('duplicate');
-    expect(publication.rotoBackground).toEqual({ background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 });
+    expect(publication.rotoBackground).toEqual({ background: 'canvas1', grainStrength: 0.45 });
     expect(publication.selectedAppFrame).toBe(4);
     expect(publication.selectedKeyId).toBe(publication.records[1].keyId);
     expect(test.stopPlayback).toHaveBeenCalledTimes(3);

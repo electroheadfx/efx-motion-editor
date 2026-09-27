@@ -130,7 +130,7 @@ describe('physic paint payload contracts', () => {
   });
 
   it('accepts Roto launch context, project identity, the v1.0 document carrier, and background metadata', () => {
-    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 24, project: { name: 'Project', saved: true, contextId: 'context-1' }, rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
+    expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 24, project: { name: 'Project', saved: true, contextId: 'context-1' }, rotoBackground: { background: 'canvas2', grainStrength: 0.65 } })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 0, document: createEfxPaintDocument('layer-1') })).toBe(true);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: -1 })).toBe(false);
     expect(isPhysicPaintLaunchContext({ operationId: 'op-1', layerId: 'layer-1', startFrame: 4, fps: 0 })).toBe(false);
@@ -149,15 +149,15 @@ describe('physic paint payload contracts', () => {
   it('validates Roto cache provenance and background metadata', () => {
     expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, bytes: webpBytes, source: 'generated-interpolation', nearestRealKeyFrame: 2 })).toBe(true);
     expect(isPhysicPaintRotoCacheFrame({ frameIndex: 0, appFrame: 4, bytes: new Uint8Array(0), source: 'background-only-support', backgroundOnly: true, nearestRealKeyFrame: 2 })).toBe(true);
-    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 })).toBe(true);
-    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'photo', paperGrain: 'canvas1', grainStrength: 0.5 })).toBe(false);
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'transparent', grainStrength: 0 })).toBe(true);
+    expect(isPhysicPaintRotoBackgroundMetadata({ background: 'photo', grainStrength: 0.5 })).toBe(false);
   });
 
   it('accepts still, interpolation, deletion, and authoritative real-key replacement payloads only', () => {
-    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'apply-canvas', trackId: TEST_TRACK_ID, operationId: 'op-1', layerId: 'layer-1', startFrame: 12, renderedFrame, rotoBackground: { background: 'transparent', grainStrength: 0 } })).toBe(true);
     expect(isPhysicPaintApplyPayload({ kind: 'update-roto-interpolation-settings', trackId: TEST_TRACK_ID, operationId: 'op-2', layerId: 'layer-1', startFrame: 12, settings: { enabled: true, inBetweenCount: 3, mode: 'duplicate', deform: 0, position: 0 } })).toBe(true);
     expect(isPhysicPaintApplyPayload({ kind: 'delete-roto-frame', trackId: TEST_TRACK_ID, operationId: 'op-3', layerId: 'layer-1', startFrame: 12 })).toBe(true);
-    expect(isPhysicPaintApplyPayload({ kind: 'replace-roto-key-frames', trackId: TEST_TRACK_ID, operationId: 'op-4', layerId: 'layer-1', startFrame: 12, frames: [{ ...renderedFrame, source: 'real-key', sourceFrame: 12 }], rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 } })).toBe(true);
+    expect(isPhysicPaintApplyPayload({ kind: 'replace-roto-key-frames', trackId: TEST_TRACK_ID, operationId: 'op-4', layerId: 'layer-1', startFrame: 12, frames: [{ ...renderedFrame, source: 'real-key', sourceFrame: 12 }], rotoBackground: { background: 'canvas2', grainStrength: 0.65 } })).toBe(true);
     expect(isPhysicPaintApplyPayload({ kind: ['apply', 'play', 'canvas'].join('-'), operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
   });
 
@@ -461,7 +461,7 @@ describe('physic paint payload contracts', () => {
         freshKeyIds: ['key-1'],
       },
     } as const;
-    const rotoBackground = { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 } as const;
+    const rotoBackground = { background: 'canvas1', grainStrength: 0.45 } as const;
 
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(playScript)).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...playScript, rotoBackground })).toBe(true);
@@ -969,6 +969,32 @@ describe('referenced Action transaction contracts', () => {
       incomingInterpolationBreakKeyIds: [],
     };
     expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-598-5cf0b794');
+  });
+
+  // 260925-iy6: the Rust `canonical_background` was stale — it still encoded
+  // `paperGrain` (dropped from the metadata) and missed `grainScale` (added in
+  // 260923-bcm). This pin locks the non-null background arm so the two
+  // encodings cannot drift again.
+  it('pins the canonical background encoding with grainScale for the Rust parity', () => {
+    const realKeyRecords = [
+      { kind: 'real-key', keyId: 'key-1', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },
+    ];
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const loopClips: never[] = [];
+    const document = {
+      capacity: 24,
+      realKeyRecords,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: { background: 'canvas2' as const, grainStrength: 0.65, grainScale: 1.5 },
+      selectedKeyId: null,
+      cursorAppFrame: 18,
+      revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, loopClips),
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+    };
+    expect(buildPhysicPaintRotoProjectEquality(document)).toBe('project-305-ed764eca');
   });
 
   it('distinguishes every durable journal and retained-history result state', () => {

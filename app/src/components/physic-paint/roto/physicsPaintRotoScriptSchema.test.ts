@@ -24,7 +24,7 @@ function stroke(overrides: Partial<PaintStroke> = {}): PaintStroke {
 function document(physicsMode: PaintStroke['physicsMode'] = 'local') {
   return createPersistedRotoScript({
     id, name: 'Preset', createdAt: '2026-07-16T12:00:00.000Z', updatedAt: '2026-07-16T12:00:00.000Z',
-    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12, width: 1920, height: 1080, background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.6 } },
+    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12, width: 1920, height: 1080, background: { background: 'canvas2', grainStrength: 0.6 } },
     thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp },
     brushes: [{ primary: stroke({ physicsMode }), continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 4 })] }],
   });
@@ -78,5 +78,46 @@ describe('durable Roto script schema', () => {
     ]) {
       const copy = structuredClone(value); mutate(copy); expect(isPersistedRotoScriptV1(copy)).toBe(false);
     }
+  });
+
+  // 260925-iy6 UAT round 4 ("je peux plus sauvegarder le script"): the engine's
+  // `|| 0` round-trip (serializeProject / loadProjectData) stamps
+  // `diffusionFrames: 0` on EVERY stroke, including primaries. The schema
+  // rejects a primary that carries the member at all, so createPersistedRotoScript
+  // threw "Captured Roto script is not persistable" on any session-restored
+  // stroke. The serializer must drop non-positive counts.
+  it('drops the engine round-trip diffusionFrames: 0 so primaries stay persistable', () => {
+    const value = createPersistedRotoScript({
+      id, name: 'Preset', createdAt: '2026-07-16T12:00:00.000Z', updatedAt: '2026-07-16T12:00:00.000Z',
+      source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12, width: 1920, height: 1080, background: { background: 'canvas2', grainStrength: 0.6 } },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp },
+      brushes: [{ primary: stroke({ diffusionFrames: 0 }), continuations: [] }],
+    });
+    expect(value.brushes[0].primary).not.toHaveProperty('diffusionFrames');
+    expect(isPersistedRotoScriptV1(value)).toBe(true);
+  });
+
+  // 260925-iy6 UAT round 6 ("I can't save script yet one time I did a paint"):
+  // `extractPenPoint` reports raw pointer data — native-pen tilt is never
+  // clamped and speed is `hypot/dt`, unbounded for a sub-millisecond sample.
+  // The schema rejects those ranges, so createPersistedRotoScript threw and the
+  // capture was lost. The serializer must project into the v1 contract.
+  it('projects raw engine pen values into the v1 point contract instead of rejecting them', () => {
+    const value = createPersistedRotoScript({
+      id, name: 'Preset', createdAt: '2026-07-16T12:00:00.000Z', updatedAt: '2026-07-16T12:00:00.000Z',
+      source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Ink', sourceFrame: 4, displayFrame: 12, width: 1920, height: 1080, background: { background: 'canvas2', grainStrength: 0.6 } },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp },
+      brushes: [{
+        primary: stroke({
+          points: [{ x: 1, y: 2, p: 1.4, tx: -95, ty: 120, tw: 400, spd: 240_000 }],
+          params: { size: 12, opacity: 90, pressure: 80, waterAmount: 70, dryAmount: 60, edgeDetail: 50, pickup: 40, eraseStrength: 30, antiAlias: 2.5 },
+        }),
+        continuations: [stroke({ mutationId: 10, points: [], diffusionFrames: 1200 })],
+      }],
+    });
+    expect(value.brushes[0].primary.points[0]).toEqual({ x: 1, y: 2, p: 1, tx: -90, ty: 90, tw: 360, spd: 100_000 });
+    expect(value.brushes[0].primary.params.antiAlias).toBe(3);
+    expect(value.brushes[0].continuations[0].diffusionFrames).toBe(600);
+    expect(isPersistedRotoScriptV1(value)).toBe(true);
   });
 });

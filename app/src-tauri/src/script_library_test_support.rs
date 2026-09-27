@@ -139,11 +139,52 @@ pub fn encode_webp(
     quality: f32,
     rgba: &[u8],
 ) -> Result<Value, String> {
-    encode_thumbnail_webp_for_test(
+    let mut value = encode_thumbnail_webp_for_test(
         operation_id.to_string(),
         width,
         height,
         quality,
         rgba.to_vec(),
-    )
+    )?;
+    // Test fixtures embed the thumbnail as a data URL and expect `webpBase64`.
+    // The command response carries raw `bytes` (a JSON array); convert here.
+    let bytes = value["bytes"]
+        .as_array()
+        .ok_or("Encoded thumbnail is missing bytes")?
+        .iter()
+        .map(|entry| {
+            entry
+                .as_u64()
+                .filter(|n| *n <= 255)
+                .map(|n| n as u8)
+                .ok_or_else(|| "Non-byte entry in encoded thumbnail".to_string())
+        })
+        .collect::<Result<Vec<u8>, String>>()?;
+    value["webpBase64"] = Value::String(base64_encode(&bytes));
+    Ok(value)
+}
+
+#[cfg(feature = "script-library-test-support")]
+fn base64_encode(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let value = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
+        output.push(ALPHABET[((value >> 18) & 63) as usize] as char);
+        output.push(ALPHABET[((value >> 12) & 63) as usize] as char);
+        output.push(if chunk.len() > 1 {
+            ALPHABET[((value >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        output.push(if chunk.len() > 2 {
+            ALPHABET[(value & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    output
 }

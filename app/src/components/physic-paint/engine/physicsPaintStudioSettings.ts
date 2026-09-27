@@ -8,7 +8,6 @@ export type PhysicsPaintStudioSettings = {
   size: number;
   opacity: number;
   background: BgMode;
-  paperGrain: string;
   grainStrength: number;
   /** 260923-bcm: paper pattern scale (1 = natural tile) — REQUIRED, default 1. */
   grainScale: number;
@@ -28,7 +27,6 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
     size: 11,
     opacity: 100,
     background: 'canvas1',
-    paperGrain: 'canvas1',
     grainStrength: 0.45,
     grainScale: 1,
     edgeDetail: 4,
@@ -52,23 +50,20 @@ export type BackgroundSelectorMode = Exclude<BgMode, 'photo'>;
 /**
  * 49-03 (S6): write-through — one selector mode → exactly one document fallback
  * record. White maps to the 49-01-gated solid `#ffffff` (no distinct 'white'
- * literal). Paper modes carry the current grain controls: the paperGrain
- * boolean is true when the current grain texture matches the selected paper
- * (round-trip stable with {@link reflectFallbackToBackgroundMode}), and
- * grainStrength is carried directly. Deterministic: same mode + same settings →
+ * literal). Paper modes carry the current grain controls (grainStrength is
+ * carried directly). Deterministic: same mode + same settings →
  * the same record, so a same-mode dispatch is a revision-stable no-op through
  * the store's setBackgroundFallback guard (BKG-09, the 1552-1569 lesson).
  */
 export function backgroundModeToFallback(
   mode: BackgroundSelectorMode,
-  settings: Pick<PhysicsPaintStudioSettings, 'paperGrain' | 'grainStrength' | 'grainScale'>,
+  settings: Pick<PhysicsPaintStudioSettings, 'grainStrength' | 'grainScale'>,
 ): BackgroundFallback {
   if (mode === 'transparent') return { mode: 'transparent' };
   if (mode === 'white') return { mode: 'solid', color: '#ffffff' };
   return {
     mode: 'paper',
     texture: mode,
-    paperGrain: settings.paperGrain === mode,
     grainStrength: settings.grainStrength,
     grainScale: settings.grainScale,
   };
@@ -91,7 +86,6 @@ export function buildRotoBackgroundMetadata(settings: PhysicsPaintStudioSettings
   const background = settings.background === 'photo' ? 'transparent' : settings.background;
   return {
     background,
-    paperGrain: settings.paperGrain,
     grainStrength: settings.grainStrength,
     grainScale: settings.grainScale,
     ...(background === 'white' ? { color: '#ffffff' } : {}),
@@ -102,7 +96,6 @@ export function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoB
   return {
     ...makeInitialPhysicsPaintStudioSettings(),
     background: metadata.background,
-    paperGrain: metadata.paperGrain,
     grainStrength: metadata.grainStrength,
     grainScale: metadata.grainScale ?? 1,
   };
@@ -110,7 +103,7 @@ export function applyRotoBackgroundMetadataToSettings(metadata: PhysicPaintRotoB
 
 export function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void {
   engine.setBgMode(metadata.background);
-  engine.setPaperGrain(metadata.paperGrain);
+  engine.setPaperGrain(metadata.background === 'canvas1' || metadata.background === 'canvas2' || metadata.background === 'canvas3' ? metadata.background : '');
   engine.setEmbossStrength(metadata.grainStrength);
 }
 
@@ -131,7 +124,6 @@ export function applyBackgroundFallbackToSettings(fallback: BackgroundFallback):
     return {
       ...initial,
       background,
-      paperGrain: fallback.paperGrain ? fallback.texture : '',
       grainStrength: fallback.grainStrength,
       grainScale: fallback.grainScale ?? 1,
     };
@@ -155,6 +147,6 @@ export function applyBackgroundFallbackToEngine(engine: EfxPaintEngine, fallback
     return;
   }
   engine.setBgMode(fallback.texture);
-  engine.setPaperGrain(fallback.paperGrain ? fallback.texture : '');
+  engine.setPaperGrain(fallback.texture);
   engine.setEmbossStrength(fallback.grainStrength);
 }

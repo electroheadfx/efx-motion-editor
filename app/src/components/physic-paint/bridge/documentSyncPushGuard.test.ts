@@ -7,7 +7,7 @@ import { createDocumentSyncPushGuard } from './documentSyncPushGuard';
 function paperVariant(doc: EfxPaintDocument): EfxPaintDocument {
   return {
     ...doc,
-    background: { ...doc.background, fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.1 } },
+    background: { ...doc.background, fallback: { mode: 'paper', texture: 'canvas1', grainStrength: 0.1 } },
   };
 }
 

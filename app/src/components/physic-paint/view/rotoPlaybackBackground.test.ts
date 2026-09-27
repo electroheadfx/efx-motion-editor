@@ -25,7 +25,7 @@ describe('subscribeRotoPlaybackBackground', () => {
       context,
       width: 1280,
       height: 720,
-      background: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+      background: { background: 'transparent', grainStrength: 0 },
       subscribePaperCanvas,
     });
 
@@ -34,7 +34,7 @@ describe('subscribeRotoPlaybackBackground', () => {
     expect(cleanup).toEqual(expect.any(Function));
   });
 
-  it('subscribes to the background texture while applying independent paper grain metadata', () => {
+  it('subscribes to the background texture with NO procedural grain (260925-dso)', () => {
     const { context, operations } = createContext();
     const paperCanvas = { id: 'canvas2-raster' } as unknown as HTMLCanvasElement;
     const subscribePaperCanvas = vi.fn((_paperTexture, _width, _height, listener) => {
@@ -46,14 +46,14 @@ describe('subscribeRotoPlaybackBackground', () => {
       context,
       width: 20,
       height: 10,
-      background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+      background: { background: 'canvas2', grainStrength: 0.65 },
       subscribePaperCanvas,
     });
 
     expect(subscribePaperCanvas).toHaveBeenCalledWith('canvas2', 20, 10, expect.any(Function), 1);
     expect(operations).toContain('draw:canvas2-raster:0,0,20,10');
-    expect(operations).toContain('fill:2,5,1,1');
-    expect(operations.indexOf('draw:canvas2-raster:0,0,20,10')).toBeLessThan(operations.indexOf('fill:2,5,1,1'));
+    // 260925-iy6: drawDeterministicPaperGrain is DELETED — no procedural dot grid.
+    expect(operations.filter((op) => op.startsWith('fill:'))).toEqual([]);
   });
 
   it('returns an idempotent raster cleanup for replacement or disposal', () => {
@@ -68,7 +68,7 @@ describe('subscribeRotoPlaybackBackground', () => {
       context,
       width: 20,
       height: 10,
-      background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+      background: { background: 'canvas2', grainStrength: 0.65 },
       subscribePaperCanvas,
     });
 

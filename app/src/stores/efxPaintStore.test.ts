@@ -1198,9 +1198,9 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     const solid = setBackgroundFallback(layerId, { mode: 'solid', color: '#123456' });
     expect(solid.ok).toBe(true);
     expect(getDocument(layerId)!.background.fallback).toEqual({ mode: 'solid', color: '#123456' });
-    const paper = setBackgroundFallback(layerId, { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.5 });
+    const paper = setBackgroundFallback(layerId, { mode: 'paper', texture: 'canvas1', grainStrength: 0.5 });
     expect(paper.ok).toBe(true);
-    expect(getDocument(layerId)!.background.fallback).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.5 });
+    expect(getDocument(layerId)!.background.fallback).toEqual({ mode: 'paper', texture: 'canvas1', grainStrength: 0.5 });
   });
 
   it('undo: every op emits an acceptance descriptor; record → undo → redo restores exact state for all seven kinds (BKG-08)', () => {

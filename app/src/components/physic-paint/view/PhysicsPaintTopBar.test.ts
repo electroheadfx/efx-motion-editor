@@ -32,14 +32,12 @@ function baseTopBarProps(): PhysicsPaintTopBarProps {
     brushSize: 11,
     opacity: 100,
     background: 'canvas1',
-    paperGrain: 'canvas1',
-    grainStrength: 0.45,
+        grainStrength: 0.45,
     grainScale: 1,
     ready: true,
     onBrushSizeChange: vi.fn(),
     onOpacityChange: vi.fn(),
     onBackgroundChange: vi.fn(),
-    onPaperGrainChange: vi.fn(),
     onGrainStrengthChange: vi.fn(),
     onGrainScaleChange: vi.fn(),
   };
@@ -114,9 +112,8 @@ describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
     expect(stepper!.props.onChange).toBe(props.onGrainScaleChange);
     // Free typed entry: any in-range number, no step-grid snap.
     expect(stepper!.props.freeEntry).toBe(true);
-    // Beside the existing Grain strength / paper grain controls on the same Tools surface.
+    // Beside the existing Grain strength control on the same Tools surface.
     expect(findByAria(tree, 'Grain strength')).toBeDefined();
-    expect(findByAria(tree, 'Paper grain')).toBeDefined();
     // No preset button row remains for Grain scale.
     expect(() => findByAria(tree, 'Grain scale')).toThrow();
   });
@@ -154,7 +151,6 @@ describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
     expect(strength.length).toBeGreaterThan(0);
     strength[0].props.onClick();
     expect(props.onGrainStrengthChange).toHaveBeenCalled();
-    expect(props.onPaperGrainChange).not.toHaveBeenCalled();
     expect(props.onGrainScaleChange).not.toHaveBeenCalled();
   });
 

@@ -228,6 +228,20 @@ export function getPaperPassTile(
  *      deposit laws untouched — no alpha math, no alpha-punch),
  *   5. copy the result back — writeback preserving that restored alpha.
  */
+// Reused across calls: allocating a fresh full-size canvas per frame was a
+// multi-megabyte churn on every monitor redraw (the live-overlay path recomposites
+// per finalize), which showed up as a stutter at stroke start.
+let passScratch: HTMLCanvasElement | null = null;
+
+function acquirePassScratch(width: number, height: number): CanvasRenderingContext2D | null {
+  if (!passScratch) passScratch = document.createElement('canvas');
+  // Assigning width/height resets (clears) the backing store — the scratch must
+  // start transparent every call, and this avoids a separate clearRect.
+  passScratch.width = width;
+  passScratch.height = height;
+  return passScratch.getContext('2d');
+}
+
 export function applyPaperPass(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -235,11 +249,9 @@ export function applyPaperPass(
   tile: PaperPassTile | null,
 ): void {
   if (!tile) return;
-  const scratch = document.createElement('canvas');
-  scratch.width = width;
-  scratch.height = height;
-  const scratchContext = scratch.getContext('2d');
+  const scratchContext = acquirePassScratch(width, height);
   if (!scratchContext) return;
+  const scratch = passScratch!;
 
   scratchContext.save();
   scratchContext.drawImage(ctx.canvas, 0, 0);

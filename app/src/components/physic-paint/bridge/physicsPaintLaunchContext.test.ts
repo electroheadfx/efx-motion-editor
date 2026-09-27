@@ -60,7 +60,7 @@ function makeContext(overrides: Partial<PhysicPaintLaunchContext> = {}): PhysicP
 describe('physicsPaintLaunchContext', () => {
   it('parses canonical encoded Roto launch envelopes while rejecting incomplete or flat input', () => {
     const envelope = makeLaunchEnvelope({
-      document: makeLaunchDocument(makeRotoPhysical({ background: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.6 } })),
+      document: makeLaunchDocument(makeRotoPhysical({ background: { background: 'canvas2', grainStrength: 0.6 } })),
     });
     expect(parsePhysicsPaintLaunchContext(makeLocation(`?context=${encode(envelope)}`))).toMatchObject({
       layerId: 'layer-1',

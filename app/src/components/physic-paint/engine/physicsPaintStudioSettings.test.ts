@@ -31,7 +31,7 @@ describe('Physics Paint Studio settings', () => {
   it('keeps the established painting defaults', () => {
     expect(makeInitialPhysicsPaintStudioSettings()).toMatchObject({
       tool: 'paint', color: '#103c65', size: 11, opacity: 100,
-      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45,
+      background: 'canvas1', grainStrength: 0.45,
       edgeDetail: 4, pickup: 0, eraseStrength: 50, smoothing: 0, spread: 50,
       physicsMode: 'local', activePhysicsAction: null,
     });
@@ -46,16 +46,16 @@ describe('Physics Paint Studio settings', () => {
 
     const scaled = { ...makeInitialPhysicsPaintStudioSettings(), grainScale: 2 };
     expect(buildRotoBackgroundMetadata(scaled)).toMatchObject({ grainScale: 2 });
-    expect(applyRotoBackgroundMetadataToSettings({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2 }).grainScale).toBe(2);
-    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2 }).grainScale).toBe(2);
+    expect(applyRotoBackgroundMetadataToSettings({ background: 'canvas1', grainStrength: 0.45, grainScale: 2 }).grainScale).toBe(2);
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale: 2 }).grainScale).toBe(2);
     // Absent member on hydration falls back to the type-shape default (1).
-    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45 }).grainScale).toBe(1);
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas1', grainStrength: 0.45 }).grainScale).toBe(1);
   });
 
   it('260923-bcm: the paper fallback write-through carries the grain scale and round-trips 2', () => {
     const settings = { ...makeInitialPhysicsPaintStudioSettings(), grainScale: 2 };
     const fallback = backgroundModeToFallback('canvas1', settings);
-    expect(fallback).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2 });
+    expect(fallback).toEqual({ mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale: 2 });
     expect(applyBackgroundFallbackToSettings(fallback).grainScale).toBe(2);
   });
 
@@ -63,7 +63,7 @@ describe('Physics Paint Studio settings', () => {
     const layerId = 'layer-grain-scale-validate';
     registerDocument(createEfxPaintDocument(layerId));
     const paper = (grainScale: unknown) => ({
-      mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale,
+      mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale,
     }) as unknown as Parameters<typeof setBackgroundFallback>[1];
     expect(setBackgroundFallback(layerId, paper(2)).ok).toBe(true);
     for (const bad of [0, -1, NaN, '2', 11]) {
@@ -87,17 +87,20 @@ describe('Physics Paint Studio settings', () => {
 
   it('preserves Roto paper metadata and maps photo to transparent', () => {
     const settings = makeInitialPhysicsPaintStudioSettings();
-    expect(buildRotoBackgroundMetadata({ ...settings, background: 'photo' })).toMatchObject({ background: 'transparent', paperGrain: 'canvas1', grainStrength: 0.45 });
+    expect(buildRotoBackgroundMetadata({ ...settings, background: 'photo' })).toMatchObject({ background: 'transparent', grainStrength: 0.45 });
     expect(buildRotoBackgroundMetadata({ ...settings, background: 'white' })).toMatchObject({ background: 'white', color: '#ffffff' });
-    expect(applyRotoBackgroundMetadataToSettings({ background: 'white', paperGrain: 'rough', grainStrength: 0.7, color: '#ffffff' })).toMatchObject({ background: 'white', paperGrain: 'rough', grainStrength: 0.7 });
+    expect(applyRotoBackgroundMetadataToSettings({ background: 'white', grainStrength: 0.7, color: '#ffffff' })).toMatchObject({ background: 'white', grainStrength: 0.7 });
   });
 
   it('applies Roto background metadata through the engine interface', () => {
     const engine = { setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn() };
-    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'transparent', paperGrain: 'canvas2', grainStrength: 0.9 });
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'transparent', grainStrength: 0.9 });
     expect(engine.setBgMode).toHaveBeenCalledWith('transparent');
-    expect(engine.setPaperGrain).toHaveBeenCalledWith('canvas2');
+    expect(engine.setPaperGrain).toHaveBeenCalledWith('');
     expect(engine.setEmbossStrength).toHaveBeenCalledWith(0.9);
+    // Paper background → the height field follows the visible paper texture.
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'canvas2', grainStrength: 0.65 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas2');
   });
 
   // 49-03 Task 2 (S6): the Background swatch selector is the document fallback
@@ -111,9 +114,9 @@ describe('Physics Paint Studio settings', () => {
     // Paper modes carry the current grain controls: paperGrain boolean = the
     // grain texture matches the selected paper; grainStrength carried directly;
     // grainScale carried directly (260923-bcm — same class as grainStrength).
-    expect(backgroundModeToFallback('canvas1', settings)).toEqual({ mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 1 });
-    expect(backgroundModeToFallback('canvas2', { paperGrain: 'canvas2', grainStrength: 0.65, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.65, grainScale: 1 });
-    expect(backgroundModeToFallback('canvas3', { paperGrain: 'canvas1', grainStrength: 0.35, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0.35, grainScale: 1 });
+    expect(backgroundModeToFallback('canvas1', settings)).toEqual({ mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale: 1 });
+    expect(backgroundModeToFallback('canvas2', { grainStrength: 0.65, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas2', grainStrength: 0.65, grainScale: 1 });
+    expect(backgroundModeToFallback('canvas3', { grainStrength: 0.35, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas3', grainStrength: 0.35, grainScale: 1 });
   });
 
   it('49-03 T2: the active segment resolves unambiguously from the document fallback (reflection)', () => {
@@ -122,7 +125,7 @@ describe('Physics Paint Studio settings', () => {
     // Solid non-white colors are not producible by the selector; the closest
     // locked treatment is White — never a blank selector.
     expect(reflectFallbackToBackgroundMode({ mode: 'solid', color: '#112233' })).toBe('white');
-    expect(reflectFallbackToBackgroundMode({ mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.18 })).toBe('canvas2');
+    expect(reflectFallbackToBackgroundMode({ mode: 'paper', texture: 'canvas2', grainStrength: 0.18 })).toBe('canvas2');
   });
 
   it('49-03 T3: dispatching the current mode is a revision-stable no-op (no documentRevision bump, no dirty callback)', () => {
@@ -158,8 +161,8 @@ describe('Physics Paint Studio settings', () => {
     expect(applyBackgroundFallbackToSettings({ mode: 'transparent' })).toMatchObject({ background: 'transparent' });
     expect(applyBackgroundFallbackToSettings({ mode: 'solid', color: '#ffffff' })).toMatchObject({ background: 'white' });
     // The paper arm carries its grain controls (paperGrain boolean → texture name).
-    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.65 })).toMatchObject({ background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0.65 });
-    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0.35 })).toMatchObject({ background: 'canvas3', paperGrain: '', grainStrength: 0.35 });
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas2', grainStrength: 0.65 })).toMatchObject({ background: 'canvas2', grainStrength: 0.65 });
+    expect(applyBackgroundFallbackToSettings({ mode: 'paper', texture: 'canvas3', grainStrength: 0.35 })).toMatchObject({ background: 'canvas3', grainStrength: 0.35 });
   });
 
   it('49-04: applies the document fallback to the engine bgMode (transparent/solid/paper)', () => {
@@ -168,7 +171,7 @@ describe('Physics Paint Studio settings', () => {
     expect(engine.setBgMode).toHaveBeenLastCalledWith('transparent');
     applyBackgroundFallbackToEngine(engine as never, { mode: 'solid', color: '#ffffff' });
     expect(engine.setBgMode).toHaveBeenLastCalledWith('white');
-    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45 });
+    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'canvas1', grainStrength: 0.45 });
     expect(engine.setBgMode).toHaveBeenLastCalledWith('canvas1');
     expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas1');
     expect(engine.setEmbossStrength).toHaveBeenLastCalledWith(0.45);
@@ -194,6 +197,6 @@ describe('Physics Paint Studio settings', () => {
     // The reflection never yields 'photo' either (typed out of the union).
     expect(reflectFallbackToBackgroundMode({ mode: 'transparent' }) as string).not.toBe('photo');
     expect(reflectFallbackToBackgroundMode({ mode: 'solid', color: '#ffffff' }) as string).not.toBe('photo');
-    expect(reflectFallbackToBackgroundMode({ mode: 'paper', texture: 'canvas3', paperGrain: false, grainStrength: 0 }) as string).not.toBe('photo');
+    expect(reflectFallbackToBackgroundMode({ mode: 'paper', texture: 'canvas3', grainStrength: 0 }) as string).not.toBe('photo');
   });
 });

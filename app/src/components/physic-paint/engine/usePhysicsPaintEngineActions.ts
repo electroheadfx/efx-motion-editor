@@ -49,12 +49,6 @@ export function createPhysicsPaintEngineActions(input: PhysicsPaintEngineActions
     updateSetting('background', background);
   };
 
-  const setPaperGrain = (paperGrain: string) => {
-    if (!canMutate()) return;
-    input.engine!.setPaperGrain(paperGrain);
-    updateSetting('paperGrain', paperGrain);
-  };
-
   const setGrainStrength = (grainStrength: number) => {
     if (!canMutate()) return;
     input.engine!.setEmbossStrength(grainStrength);
@@ -116,7 +110,6 @@ export function createPhysicsPaintEngineActions(input: PhysicsPaintEngineActions
     setBrushSize,
     setBrushOpacity,
     setBackground,
-    setPaperGrain,
     setGrainStrength,
     setGrainScale,
     setEdgeDetail,

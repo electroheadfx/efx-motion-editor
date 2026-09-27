@@ -430,9 +430,15 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   async function captureScriptForPersistence(): Promise<RotoScriptPersistenceCapture | null> {
-    if (disposed || disposalRequested || !availability.value.canCopy) return null;
+    if (disposed || disposalRequested) return null;
     const engine = engineState.peek();
     if (!engine) return null;
+    // Refresh BEFORE the canCopy gate: hasBrushes is only written on mutation
+    // completion, so a stroke that is still queued reads as "no brushes" and
+    // Save bails before the drain below can finish it (invisible failure — the
+    // library status is the only reporter and it has no reader).
+    refreshSourceHasBrushes(engine);
+    if (!availability.value.canCopy) return null;
     const source = sourceState.peek();
     const acceptedEngineGeneration = engineGeneration;
     const acceptedLaunchGeneration = launchGeneration;
@@ -914,7 +920,12 @@ export function normalizeLogicalBrushes(strokes: readonly PaintStroke[]): Readon
       groups.push({ primary: cloneStroke(stroke), continuations: [] });
       continue;
     }
-    if (stroke.diffusionFrames !== undefined && groups.length > 0) {
+    // A continuation must carry a POSITIVE diffusion count. A zero here is the
+    // engine's `|| 0` round-trip (loadProjectData / serializeProject) stamping
+    // the member onto every restored stroke — routing it into `continuations`
+    // makes the group unpersistable (serialize drops the zero, the schema then
+    // requires a positive count on every continuation).
+    if (typeof stroke.diffusionFrames === 'number' && stroke.diffusionFrames > 0 && groups.length > 0) {
       const current = groups[groups.length - 1];
       current.continuations = [...(current.continuations ?? []), cloneStroke(stroke)];
     }

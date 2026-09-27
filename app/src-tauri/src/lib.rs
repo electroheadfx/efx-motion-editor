@@ -985,7 +985,7 @@ mod tests {
             height: Some(650),
             fps: Some(24.0),
             document: Some(serde_json::json!({ "id": "layer-1", "version": 1, "activeTrackId": "track-1", "tracks": [] })),
-            roto_background: Some(serde_json::json!({ "background": "canvas2", "paperGrain": "canvas3", "grainStrength": 0.65 })),
+            roto_background: Some(serde_json::json!({ "background": "canvas2", "grainStrength": 0.65 })),
             roto_playback: None,
             cached_roto_frames: Vec::new(),
             roto_interpolation_settings: None,

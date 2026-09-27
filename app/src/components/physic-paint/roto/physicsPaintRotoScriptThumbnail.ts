@@ -28,7 +28,7 @@ export async function createRotoScriptThumbnail(input: {
   context.fillRect(0, 0, width, height);
   if (input.background.background.startsWith('canvas')) {
     const paper = await resolveProjectPaperCanvas(
-      input.background.paperGrain || input.background.background,
+      input.background.background,
       width,
       height,
       input.background.grainScale ?? 1,

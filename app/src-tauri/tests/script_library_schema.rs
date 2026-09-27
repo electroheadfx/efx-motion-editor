@@ -10,7 +10,7 @@ fn document(id: &str, webp_base64: &str) -> Value {
         "kind": "efx-physics-paint-roto-script", "schemaVersion": 1, "id": id, "name": "Preset",
         "createdAt": "2026-07-16T12:00:00Z", "updatedAt": "2026-07-16T12:00:00Z",
         "source": { "projectName": "Project", "layerId": "layer-1", "layerName": "Ink", "sourceFrame": 2, "displayFrame": 4, "width": 1920, "height": 1080,
-            "background": { "background": "transparent", "paperGrain": "canvas1", "grainStrength": 0.0 } },
+            "background": { "background": "transparent", "grainStrength": 0.0 } },
         "thumbnail": { "mimeType": "image/webp", "width": 2, "height": 2, "quality": 0.8, "dataUrl": format!("data:image/webp;base64,{webp_base64}") },
         "brushes": [{ "primary": { "tool": "paint", "points": [{"x":1.0,"y":2.0,"p":0.5,"tx":0.0,"ty":0.0,"tw":0.0,"spd":0.0}], "color":"#112233",
             "params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},
@@ -54,6 +54,21 @@ fn rejects_malformed_limits_dates_and_webp_metadata() {
     assert!(encode_webp("", 2, 2, 0.8, &[0; 16]).is_err());
     assert!(encode_webp("bad-size", 2, 2, 0.8, &[0; 15]).is_err());
     assert!(encode_webp("bad-quality", 2, 2, 0.5, &[0; 16]).is_err());
+}
+
+// 260925-iy6 UAT round 7 ("Invalid paperGrain"): the TS metadata dropped the
+// `paperGrain` field (clean break), but this validator still required it — so
+// every save was rejected with "Invalid paperGrain". The field must not be
+// required, and the optional `grainScale` (260923-bcm) must be accepted.
+#[test]
+fn accepts_background_without_paper_grain_and_with_grain_scale() {
+    let (_, base64) = webp();
+    let id = Uuid::new_v4().to_string();
+    let value = document(&id, &base64);
+    assert!(validate_document(value.clone(), Some(&id)).is_ok());
+    let mut with_scale = document(&id, &base64);
+    with_scale["source"]["background"]["grainScale"] = json!(1.5);
+    assert!(validate_document(with_scale, Some(&id)).is_ok());
 }
 
 #[test]

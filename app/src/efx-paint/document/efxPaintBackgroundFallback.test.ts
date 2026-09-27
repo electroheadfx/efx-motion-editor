@@ -22,8 +22,7 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
     const document = documentWithFallback({
       mode: 'paper',
       texture: 'canvas2',
-      paperGrain: true,
-      grainStrength: 0.5,
+            grainStrength: 0.5,
     });
     const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(document)));
     // 260923-bcm: the parser ALWAYS emits the normalized grain scale, so an
@@ -39,21 +38,19 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
     const scaled = documentWithFallback({
       mode: 'paper',
       texture: 'canvas2',
-      paperGrain: true,
-      grainStrength: 0.5,
+            grainStrength: 0.5,
       grainScale: 2,
     });
     const parsedScaled = parseEfxPaintDocument(JSON.parse(JSON.stringify(scaled)));
     expect(parsedScaled.background.fallback).toEqual({
-      mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.5, grainScale: 2,
+      mode: 'paper', texture: 'canvas2', grainStrength: 0.5, grainScale: 2,
     });
 
     for (const bad of [0, -1, NaN, '2', 11]) {
       const invalid = documentWithFallback({
         mode: 'paper',
         texture: 'canvas1',
-        paperGrain: true,
-        grainStrength: 0.5,
+                grainStrength: 0.5,
         grainScale: bad,
       });
       expect(parseEfxPaintDocument(JSON.parse(JSON.stringify(invalid))).background.fallback).toMatchObject({ grainScale: 1 });
@@ -62,8 +59,7 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
     const paper = (grainScale?: number): BackgroundFallback => ({
       mode: 'paper',
       texture: 'canvas1',
-      paperGrain: true,
-      grainStrength: 0.45,
+            grainStrength: 0.45,
       ...(grainScale === undefined ? {} : { grainScale }),
     });
     expect(encodeCanonicalBackgroundFallback(paper(2))).not.toBe(encodeCanonicalBackgroundFallback(paper(1)));
@@ -78,8 +74,7 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
     const withCanvas1 = documentWithFallback({
       mode: 'paper',
       texture: 'canvas1',
-      paperGrain: true,
-      grainStrength: 0.5,
+            grainStrength: 0.5,
     });
     const withCanvas3 = JSON.parse(JSON.stringify(withCanvas1));
     withCanvas3.background.fallback.texture = 'canvas3';
@@ -96,8 +91,7 @@ describe('BackgroundFallback paper mode round-trip (BKG-09)', () => {
     const unknownTexture = documentWithFallback({
       mode: 'paper',
       texture: 'canvas9',
-      paperGrain: true,
-      grainStrength: 0.5,
+            grainStrength: 0.5,
     });
     expect(() => parseEfxPaintDocument(unknownTexture)).toThrow(/texture/);
   });
@@ -121,8 +115,7 @@ describe('BackgroundFallback grain edge validation (BKG-04 adjacency)', () => {
     const zeroGrain = documentWithFallback({
       mode: 'paper',
       texture: 'canvas1',
-      paperGrain: false,
-      grainStrength: 0,
+            grainStrength: 0,
     });
     // 260923-bcm: the parser always emits the normalized grain scale (1 here).
     expect(parseEfxPaintDocument(JSON.parse(JSON.stringify(zeroGrain)))).toEqual(
@@ -136,8 +129,7 @@ describe('BackgroundFallback grain edge validation (BKG-04 adjacency)', () => {
       const badGrain = documentWithFallback({
         mode: 'paper',
         texture: 'canvas1',
-        paperGrain: true,
-        grainStrength: bad,
+                grainStrength: bad,
       });
       expect(() => parseEfxPaintDocument(badGrain)).toThrow(/grainStrength/);
     }
@@ -159,8 +151,7 @@ describe('BackgroundFallback reserved and unknown mode rejection (D-11)', () => 
     const extraMember = documentWithFallback({
       mode: 'paper',
       texture: 'canvas1',
-      paperGrain: true,
-      grainStrength: 0.5,
+            grainStrength: 0.5,
       extra: true,
     });
     expect(() => parseEfxPaintDocument(extraMember)).toThrow(/paper fallback must contain/);
@@ -172,8 +163,7 @@ describe('BackgroundFallback canonical revision stability (T-49-01-02)', () => {
     const document = documentWithFallback({
       mode: 'paper',
       texture: 'canvas1',
-      paperGrain: true,
-      grainStrength: 0.5,
+            grainStrength: 0.5,
     });
     const canonical = JSON.parse(JSON.stringify(document));
     const reordered = JSON.parse(JSON.stringify({
@@ -182,7 +172,7 @@ describe('BackgroundFallback canonical revision stability (T-49-01-02)', () => {
       background: {
         revision: 0,
         visible: true,
-        fallback: { grainStrength: 0.5, paperGrain: true, texture: 'canvas1', mode: 'paper' },
+        fallback: { grainStrength: 0.5, texture: 'canvas1', mode: 'paper' },
         clips: [],
         id: canonical.background.id,
       },

@@ -5,7 +5,7 @@ import { drawRotoFrameComposite, getMissingRotoFrameSpan, resolveMissingRotoFram
 const TEST_TRACK_ID = 'track-1';
 
 describe('drawRotoFrameComposite', () => {
-  it('applies independent positive-strength grain after a prepared background paper canvas', () => {
+  it('draws the prepared paper canvas with NO procedural grain (260925-dso: no procedural grain ever)', () => {
     const operations: string[] = [];
     const context = {
       drawImage: (source: { id?: string }, ...args: number[]) => operations.push(`draw:${source.id ?? 'source'}:${args.join(',')}`),
@@ -18,15 +18,15 @@ describe('drawRotoFrameComposite', () => {
     } as unknown as CanvasRenderingContext2D;
     const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
       mode: 'paper',
-      metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+      metadata: { background: 'canvas2', grainStrength: 0.65 },
     });
 
     if (instruction.kind !== 'background-only') throw new Error('expected paper background');
     drawRotoFrameComposite(context, instruction, 20, 10, null, { id: 'prepared-paper' } as unknown as HTMLCanvasElement, null);
 
     expect(operations).toContain('draw:prepared-paper:0,0,20,10');
-    expect(operations).toContain('fill:2,5,1,1');
-    expect(operations.indexOf('draw:prepared-paper:0,0,20,10')).toBeLessThan(operations.indexOf('fill:2,5,1,1'));
+    // 260925-iy6: drawDeterministicPaperGrain is DELETED — no procedural dot grid.
+    expect(operations.filter((op) => op.startsWith('fill:'))).toEqual([]);
   });
 
   it('composes persisted paper before transparent paint at authoritative project dimensions', () => {
@@ -42,7 +42,7 @@ describe('drawRotoFrameComposite', () => {
     } as unknown as CanvasRenderingContext2D;
     const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
       mode: 'paper',
-      metadata: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0 },
+      metadata: { background: 'canvas2', grainStrength: 0 },
     });
 
     if (instruction.kind !== 'background-only') throw new Error('expected paper background');
@@ -86,7 +86,7 @@ describe('resolveMissingRotoFrameDraw', () => {
     const result = resolveMissingRotoFrameDraw('phys-layer-1', 26, {
       backgroundState: {
         mode: 'paper',
-        metadata: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+        metadata: { background: 'canvas2', grainStrength: 0.65 },
       },
       realKeyFrames: [20, 30],
     });
@@ -95,8 +95,7 @@ describe('resolveMissingRotoFrameDraw', () => {
       kind: 'background-only',
       color: '#ebe3d2',
       paperTexture: 'canvas2',
-      paperGrain: 'canvas3',
-      grainStrength: 0.65,
+            grainStrength: 0.65,
       span: { kind: 'interior', previousRealKeyFrame: 20, nextRealKeyFrame: 30 },
       materialize: true,
     });
@@ -160,7 +159,7 @@ describe('resolveMissingRotoFrameDraw', () => {
 
     const scaled = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
       mode: 'paper',
-      metadata: { background: 'canvas2', paperGrain: '', grainStrength: 0, grainScale: 2 },
+      metadata: { background: 'canvas2', grainStrength: 0, grainScale: 2 },
     });
     if (scaled.kind !== 'background-only') throw new Error('expected paper background');
     expect(scaled.grainScale).toBe(2);
@@ -187,7 +186,7 @@ describe('resolveMissingRotoFrameDraw', () => {
 
     const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
       mode: 'paper',
-      metadata: { background: 'canvas2', paperGrain: '', grainStrength: 0 },
+      metadata: { background: 'canvas2', grainStrength: 0 },
     });
     if (instruction.kind !== 'background-only') throw new Error('expected paper background');
     expect(instruction.grainScale).toBeUndefined();
@@ -211,7 +210,7 @@ describe('resolveMissingRotoFrameDraw', () => {
     for (const grainScale of [0, -1, Number.NaN]) {
       const instruction = resolveMissingRotoFrameDraw('phys-layer-1', 12, {
         mode: 'paper',
-        metadata: { background: 'canvas2', paperGrain: '', grainStrength: 0, grainScale },
+        metadata: { background: 'canvas2', grainStrength: 0, grainScale },
       });
       if (instruction.kind !== 'background-only') throw new Error('expected paper background');
       drawRotoFrameComposite(context, instruction, 20, 10, { id: 'tex' } as unknown as CanvasImageSource, null, null);
@@ -223,14 +222,14 @@ describe('resolveMissingRotoFrameDraw', () => {
     const leading = resolveMissingRotoFrameDraw('phys-layer-1', 1, {
       backgroundState: {
         mode: 'paper',
-        metadata: { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.4 },
+        metadata: { background: 'canvas1', grainStrength: 0.4 },
       },
       realKeyFrames: [2, 6],
     });
     const trailing = resolveMissingRotoFrameDraw('phys-layer-1', 8, {
       backgroundState: {
         mode: 'paper',
-        metadata: { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.4 },
+        metadata: { background: 'canvas1', grainStrength: 0.4 },
       },
       realKeyFrames: [2, 6],
     });

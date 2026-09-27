@@ -237,8 +237,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     });
     physicPaintStore.setRotoBackgroundMetadata('canonical-target', TEST_TRACK_ID, {
       background: 'canvas2',
-      paperGrain: 'canvas3',
-      grainStrength: 0.65,
+            grainStrength: 0.65,
     });
     physicPaintStore.setFrame('canonical-survivor', TEST_TRACK_ID, 4, {
       frameIndex: 0,

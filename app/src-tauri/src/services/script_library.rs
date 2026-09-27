@@ -1284,23 +1284,25 @@ fn canonical_background(value: Option<&Value>) -> Result<String, String> {
                 .get("background")
                 .and_then(Value::as_str)
                 .ok_or("Target physical document background is malformed")?;
-            let paper_grain = object
-                .get("paperGrain")
-                .and_then(Value::as_str)
-                .ok_or("Target physical document paperGrain is malformed")?;
             let grain_strength = object
                 .get("grainStrength")
                 .and_then(Value::as_f64)
                 .ok_or("Target physical document grainStrength is malformed")?;
             let color = object.get("color").and_then(Value::as_str);
+            // 260923-bcm: the scale is part of the persisted equality fingerprint,
+            // mirroring `encodeCanonicalBackground` in physicsPaintRotoPhysicalModel.ts.
+            let grain_scale = object
+                .get("grainScale")
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0);
             let mut encoded = String::new();
             encoded.push_str(&canonical_string(background));
-            encoded.push_str(&canonical_string(paper_grain));
             encoded.push_str(&canonical_number(grain_strength));
             match color {
                 Some(color) => encoded.push_str(&canonical_string(color)),
                 None => encoded.push_str("u;"),
             }
+            encoded.push_str(&canonical_number(grain_scale));
             Ok(encoded)
         }
         Some(_) => Err("Target physical document background must be an object or null".to_string()),
@@ -2148,11 +2150,6 @@ fn validate_source(value: Option<&Value>) -> Result<(), String> {
         Some("transparent" | "white" | "canvas1" | "canvas2" | "canvas3") => {}
         _ => return Err("Invalid background mode".to_string()),
     }
-    bounded_text(
-        background.get("paperGrain"),
-        "paperGrain",
-        MAX_METADATA_CHARS,
-    )?;
     finite_range(background.get("grainStrength"), "grainStrength", 0.0, 1.0)?;
     if let Some(color) = background.get("color") {
         if !color.is_string() {

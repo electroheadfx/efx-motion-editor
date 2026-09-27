@@ -160,14 +160,12 @@ function fondInstructionToFondMetadata(
   if (instruction.paperTexture) {
     return {
       background: instruction.paperTexture as PhysicPaintRotoBackgroundMetadata['background'],
-      paperGrain: instruction.paperGrain ?? '',
       grainStrength: instruction.grainStrength ?? 0,
       grainScale: instruction.grainScale ?? 1,
     };
   }
   return {
     background: 'white',
-    paperGrain: '',
     grainStrength: 0,
     grainScale: 1,
     color: instruction.color,
@@ -1086,7 +1084,12 @@ export function PhysicsPaintStudio() {
     },
     replaceClipboard: rotoScript.replaceClipboardFromPersisted,
     getLaunchContext: () => launchContext,
-    log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
+    // 260925-iy6 UAT round 6 ("no work, no log, fail in silent"): the status
+    // capsule renders `applyStatus !== 'success' ? applyMessage : null`, so a
+    // message written while a prior apply left `applyStatus === 'success'` was
+    // stored and then filtered out. Every log must move applyStatus too, or a
+    // failure looks like a dead control.
+    log: (message, isError) => { setApplyMessage(message); setApplyStatus(isError ? 'error' : 'idle'); if (isError) setLastError(message); },
     // quick-260922-al1: the Studio supplies the OUTBOUND scope edge explicitly
     // (the adapter's default would serve just as well, but naming it here keeps
     // the one remaining port that leaves this realm visible at the wiring site).
@@ -1233,7 +1236,6 @@ export function PhysicsPaintStudio() {
     setBrushSize,
     setBrushOpacity,
     setBackground,
-    setPaperGrain,
     setGrainStrength,
     setGrainScale,
     setEdgeDetail,
@@ -1265,6 +1267,20 @@ export function PhysicsPaintStudio() {
     const layerId = launchContext?.layerId;
     const nextSettings = { ...settings, grainScale: scale };
     setGrainScale(scale);
+    if (layerId) {
+      physicPaintStore.setRotoBackgroundMetadata(layerId, studioActiveTrackId(), buildRotoBackgroundMetadata(nextSettings));
+    }
+    if (layerId && settings.background !== 'photo') {
+      setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
+    }
+  };
+  // 260925-iy6 UAT follow-up: same synchronous write-through as the scale —
+  // the strength must clear both flattened memos and bump the version clock in
+  // the same turn, not wait for the deferred useRotoBackgroundMetadataSync.
+  const handleGrainStrengthChange = (strength: number) => {
+    const layerId = launchContext?.layerId;
+    const nextSettings = { ...settings, grainStrength: strength };
+    setGrainStrength(strength);
     if (layerId) {
       physicPaintStore.setRotoBackgroundMetadata(layerId, studioActiveTrackId(), buildRotoBackgroundMetadata(nextSettings));
     }
@@ -2088,7 +2104,12 @@ export function PhysicsPaintStudio() {
     acceptedOutput: physicalEditCoordinator.acceptedOutput,
     failureOutput: physicalEditCoordinator.failureOutput,
     stopPlayback: rotoCachedPlayback.stop,
-    log: (message, isError) => { setApplyMessage(message); if (isError) setLastError(message); },
+    // 260925-iy6 UAT round 6 ("no work, no log, fail in silent"): the status
+    // capsule renders `applyStatus !== 'success' ? applyMessage : null`, so a
+    // message written while a prior apply left `applyStatus === 'success'` was
+    // stored and then filtered out. Every log must move applyStatus too, or a
+    // failure looks like a dead control.
+    log: (message, isError) => { setApplyMessage(message); setApplyStatus(isError ? 'error' : 'idle'); if (isError) setLastError(message); },
   }, bridgeMode);
   const clearRotoLoopSelection = useCallback(() => {
     // 43.6-06 (D-14): every rail-selection setter routes through this clear —
@@ -3315,11 +3336,10 @@ export function PhysicsPaintStudio() {
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.paperGrain, settings.grainStrength, settings.grainScale, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, handleBackgroundChange, setPaperGrain, setGrainStrength, handleGrainScaleChange, setGrainScale], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.grainStrength, settings.grainScale, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, setGrainScale], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     background: settings.background,
-    paperGrain: settings.paperGrain,
     grainStrength: settings.grainStrength,
     grainScale: settings.grainScale,
     ready: readyToApply,
@@ -3327,8 +3347,7 @@ export function PhysicsPaintStudio() {
     onBrushSizeChange: setBrushSize,
     onOpacityChange: setBrushOpacity,
     onBackgroundChange: handleBackgroundChange,
-    onPaperGrainChange: setPaperGrain,
-    onGrainStrengthChange: setGrainStrength,
+    onGrainStrengthChange: handleGrainStrengthChange,
     onGrainScaleChange: handleGrainScaleChange,
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
@@ -3505,6 +3524,13 @@ export function PhysicsPaintStudio() {
       rotoMoveHistory.reconcilePaintBarriers(availability);
       rotoScript.notifySourceRevision();
     });
+    // 260925-iy6 UAT round 8: the preview base lands on its own async decode.
+    // Bump here so the program monitor recomposites the atomic base swap
+    // (new base + dropped dry) the moment it applies — otherwise the monitor
+    // holds the pre-swap pixels until the next stroke.
+    readyEngine.onPreviewBaseSettled(() => {
+      physicPaintVersion.value++;
+    });
     handleEngineReady(readyEngine);
     rotoScript.updateEngine(readyEngine);
     if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);
@@ -3514,6 +3540,11 @@ export function PhysicsPaintStudio() {
   }, []);
   const canvasCompletedMutationImplRef = useRef<(mutation: CompletedPaintMutation, mutationEngine: EfxPaintEngine) => void>(() => {});
   canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {
+    // 260925-iy6 UAT follow-up: bump the paint version SYNCHRONOUSLY at finalize
+    // so the program monitor redraws its live-overlay composite in the same
+    // paint cycle as the engine's wet→dry handoff (no 1-frame hole). The async
+    // capture pipeline below still runs on its own quiet-window schedule.
+    physicPaintVersion.value++;
     rotoScript.observeCompletedMutation(mutationEngine, mutation);
     const { kind, isEmpty, mutationId } = mutation;
     rotoMoveHistory.observePaintMutation(mutationId, kind);
@@ -3628,7 +3659,7 @@ export function PhysicsPaintStudio() {
     width: projectCanvasWidth,
     height: projectCanvasHeight,
     background: buildRotoBackgroundMetadata(settings),
-  } : null, [launchContext?.operationId, projectCanvasWidth, projectCanvasHeight, settings.background, settings.paperGrain, settings.grainStrength, settings.grainScale]);
+  } : null, [launchContext?.operationId, projectCanvasWidth, projectCanvasHeight, settings.background, settings.grainStrength, settings.grainScale]);
   const onionOverlayUrlsRef = useRef<string[]>([]);
   const onionOverlay = useMemo(() => {
     onionOverlayUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -3721,7 +3752,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, engine, engine?.getAppliedPreviewBaseContentToken(), launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -3794,6 +3825,8 @@ export function PhysicsPaintStudio() {
         height: canvasHeight,
         playbackTick: rotoCachedPlayback.playbackTick,
         onMissingSourcesChange: handleProgramMonitorMissingChange,
+        liveOverlay: engineSurfaceHidden ? null : (engine?.getAppliedPreviewBaseContentToken() != null ? engine.getBakedCanvas() : null),
+        excludeActive: engineSurfaceHidden || (engine != null && engine.getAppliedPreviewBaseContentToken() != null),
       } : null,
       // 50-04 (S3): the reference ghost monitor-paint layer — concrete values
       // only. The ghost layer subscribes to the store version clocks in its OWN

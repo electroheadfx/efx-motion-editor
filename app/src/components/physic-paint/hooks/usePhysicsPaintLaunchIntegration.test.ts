@@ -54,7 +54,7 @@ describe('Physics Paint launch replacement coordinator', () => {
         operationId: 'old-operation',
         layerId: 'old-layer',
         cachedBase: null,
-        background: { background: 'transparent', paperGrain: 'watercolor', grainStrength: 0.5 },
+        background: { background: 'transparent', grainStrength: 0.5 },
       }),
       prepareTarget: async (current) => current.keyId ? { keyId: current.keyId, appFrame: current.appFrame } : null,
     });

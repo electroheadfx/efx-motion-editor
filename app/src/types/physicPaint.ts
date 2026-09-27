@@ -1801,7 +1801,6 @@ export type PhysicPaintRotoBackgroundMode = 'transparent' | 'white' | 'canvas1' 
 
 export interface PhysicPaintRotoBackgroundMetadata {
   background: PhysicPaintRotoBackgroundMode;
-  paperGrain: string;
   grainStrength: number;
   color?: string;
   /**
@@ -2381,9 +2380,6 @@ export function isPhysicPaintRotoBackgroundMetadata(value: unknown): value is Ph
   if (!isRecord(value)) return false;
   return (
     (value.background === 'transparent' || value.background === 'white' || value.background === 'canvas1' || value.background === 'canvas2' || value.background === 'canvas3') &&
-    // Mirrors the model contract: '' is "paper with the grain off", not a
-    // missing texture. See physicsPaintRotoPhysicalModel.ts's background guard.
-    typeof value.paperGrain === 'string' &&
     typeof value.grainStrength === 'number' &&
     Number.isFinite(value.grainStrength) &&
     value.grainStrength >= 0 &&

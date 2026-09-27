@@ -318,6 +318,7 @@ const baseProps = (overrides: Partial<PhysicsPaintProgramMonitorProps> = {}): Ph
   activeTrackId: 'track-a',
   width: 4,
   height: 3,
+  excludeActive: true,
   ...overrides,
 });
 

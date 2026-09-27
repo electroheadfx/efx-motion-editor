@@ -31,7 +31,7 @@ const state = (strokes: unknown[] = [], bgMode = 'transparent'): RotoEditableSta
     rotoPhysical: null,
     loopClips: [],
     strokes,
-    settings: { bgMode, paperGrain: 'canvas1', embossStrength: 0.45, wetPaper: true },
+    settings: { bgMode, embossStrength: 0.45, wetPaper: true },
   }],
   background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
   photoReference: null,

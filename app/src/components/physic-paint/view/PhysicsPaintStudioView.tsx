@@ -124,7 +124,7 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
       height: props.height,
       background: props.background,
     });
-  }, [props.background.background, props.background.color, props.background.grainStrength, props.background.grainScale, props.background.paperGrain, props.height, props.width]);
+  }, [props.background.background, props.background.color, props.background.grainStrength, props.background.grainScale, props.height, props.width]);
 
   return <canvas class="physics-paint-cached-roto-playback-background" ref={canvasRef} width={props.width} height={props.height} aria-hidden="true" />;
 }
@@ -204,7 +204,7 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
       {canvasBounds && props.programMonitor && props.showTransparencyCheckerboard ? (
         <div class="physics-paint-transparency-checkerboard" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }} aria-hidden="true" />
       ) : null}
-      <div class="physics-paint-tracks-group">
+      <div class={`physics-paint-tracks-group${props.programMonitor?.liveOverlay ? ' dry-live-overlay' : ''}`}>
         <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
         {canvasBounds && props.programMonitor ? (
           <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>

@@ -134,11 +134,11 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 8,
       renderedFrame: makeFrame(0, 8),
-      rotoBackground: { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 },
+      rotoBackground: { background: 'canvas2', grainStrength: 0.65 },
     });
 
     expect(result.ok).toBe(true);
-    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toEqual({ background: 'canvas2', grainStrength: 0.65 });
     // v1.0: applyCanvas publishes rendered frames only; the document projection
     // carries no rotoPhysical document until real key records exist.
     const projection = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
@@ -173,7 +173,7 @@ describe('physicPaintStore', () => {
       layerId: 'layer-1',
       startFrame: 1,
       renderedFrame: makeFrame(0, 1),
-      rotoBackground: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
+      rotoBackground: { background: 'canvas1', grainStrength: 0.45 },
     });
     physicPaintStore.applyCanvas({
       kind: 'apply-canvas',
@@ -186,9 +186,9 @@ describe('physicPaintStore', () => {
 
     const backgroundState = { mode: 'paper' as const, metadata: physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)! };
 
-    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
-    expect(resolveMissingRotoFrameDraw('layer-1', 2, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID) })).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'interior', previousRealKeyFrame: 1, nextRealKeyFrame: 3 }, materialize: true });
-    expect(resolveMissingRotoFrameDraw('layer-1', 4, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID) })).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 3 }, materialize: false });
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toEqual({ background: 'canvas1', grainStrength: 0.45 });
+    expect(resolveMissingRotoFrameDraw('layer-1', 2, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID) })).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', grainStrength: 0.45, span: { kind: 'interior', previousRealKeyFrame: 1, nextRealKeyFrame: 3 }, materialize: true });
+    expect(resolveMissingRotoFrameDraw('layer-1', 4, { backgroundState, realKeyFrames: physicPaintStore.getRealRotoKeyFrames('layer-1', TEST_TRACK_ID) })).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 3 }, materialize: false });
   });
 
 
@@ -230,7 +230,7 @@ describe('physicPaintStore', () => {
 
     physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 1, makeFrame(0, 1));
     physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 2, makeFrame(0, 2));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', grainStrength: 0.45 });
 
     expect(physicPaintVersion.value).toBe(before + 3);
     expect(dirtyCount).toBe(3);
@@ -242,11 +242,11 @@ describe('physicPaintStore', () => {
   // dropped from the track mirror.
   it('260923-bcm: a scale-only metadata write is not early-returned by the idempotence guard', () => {
     physicPaintStore.setRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID, {
-      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 1,
+      background: 'canvas1', grainStrength: 0.45, grainScale: 1,
     });
     const before = physicPaintVersion.value;
     physicPaintStore.setRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID, {
-      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2,
+      background: 'canvas1', grainStrength: 0.45, grainScale: 2,
     });
     expect(physicPaintVersion.value).toBe(before + 1);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID)?.grainScale).toBe(2);
@@ -254,7 +254,7 @@ describe('physicPaintStore', () => {
     // An identical write (same normalized scale) stays a revision-stable no-op.
     const after = physicPaintVersion.value;
     physicPaintStore.setRotoBackgroundMetadata('layer-grain-guard', TEST_TRACK_ID, {
-      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2,
+      background: 'canvas1', grainStrength: 0.45, grainScale: 2,
     });
     expect(physicPaintVersion.value).toBe(after);
   });
@@ -264,14 +264,14 @@ describe('physicPaintStore', () => {
     const mirrorDoc = createEfxPaintDocument(mirrorLayer);
     registerDocument(mirrorDoc);
     physicPaintStore.setRotoBackgroundMetadata(mirrorLayer, mirrorDoc.activeTrackId, {
-      background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, grainScale: 2,
+      background: 'canvas1', grainStrength: 0.45, grainScale: 2,
     });
     expect(physicPaintStore.getDocumentFondInstruction(mirrorLayer)).toMatchObject({ grainScale: 2 });
 
     const fallbackLayer = 'layer-grain-fond-fallback';
     registerDocument(createEfxPaintDocument(fallbackLayer));
     expect(setBackgroundFallback(fallbackLayer, {
-      mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2,
+      mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale: 2,
     }).ok).toBe(true);
     expect(physicPaintStore.getDocumentFondInstruction(fallbackLayer)).toMatchObject({ grainScale: 2 });
 
@@ -279,7 +279,7 @@ describe('physicPaintStore', () => {
     const defaultLayer = 'layer-grain-fond-default';
     registerDocument(createEfxPaintDocument(defaultLayer));
     expect(setBackgroundFallback(defaultLayer, {
-      mode: 'paper', texture: 'canvas2', paperGrain: true, grainStrength: 0.45,
+      mode: 'paper', texture: 'canvas2', grainStrength: 0.45,
     }).ok).toBe(true);
     expect(physicPaintStore.getDocumentFondInstruction(defaultLayer)).toMatchObject({ grainScale: 1 });
   });
@@ -660,7 +660,7 @@ describe('physicPaintStore', () => {
 
   it('v1.0 projection round-trips rendered frames without editable per-frame state', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 0, makeFrame(0, 0));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', grainStrength: 0.65 });
     physicPaintStore.replaceGeneratedRotoCache('layer-1', TEST_TRACK_ID, [
       { ...makeFrame(0, 1), source: 'generated-interpolation', nearestRealKeyFrame: 0 },
     ], { enabled: true, inBetweenCount: 1, mode: 'duplicate', deform: 5, position: 15 });
@@ -934,15 +934,15 @@ describe('physicPaintStore', () => {
   it('clears one layer and resets all output with version bumps', () => {
     physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 1, makeFrame(0, 1));
     physicPaintStore.setFrame('layer-2', TEST_TRACK_ID, 1, makeFrame(0, 1));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
-    physicPaintStore.setRotoBackgroundMetadata('layer-2', TEST_TRACK_ID, { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', grainStrength: 0.45 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-2', TEST_TRACK_ID, { background: 'canvas2', grainStrength: 0.65 });
     const afterSet = physicPaintVersion.value;
 
     physicPaintStore.clearLayer('layer-1');
     expect(physicPaintStore.hasOutput('layer-1', TEST_TRACK_ID)).toBe(false);
     expect(physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)).toBeNull();
     expect(physicPaintStore.hasOutput('layer-2', TEST_TRACK_ID)).toBe(true);
-    expect(physicPaintStore.getRotoBackgroundMetadata('layer-2', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    expect(physicPaintStore.getRotoBackgroundMetadata('layer-2', TEST_TRACK_ID)).toEqual({ background: 'canvas2', grainStrength: 0.65 });
     expect(physicPaintVersion.value).toBe(afterSet + 1);
 
     physicPaintStore.reset();
@@ -1006,7 +1006,7 @@ describe('physicPaintStore', () => {
     physicPaintStore.upsertRealRotoKeyFrame('target-layer', TEST_TRACK_ID, 0, targetOnly);
     physicPaintStore.upsertRealRotoKeyFrame('target-layer', TEST_TRACK_ID, 2, shared);
     physicPaintStore.setRotoInterpolationSettings('target-layer', TEST_TRACK_ID, { enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
-    physicPaintStore.setRotoBackgroundMetadata('target-layer', TEST_TRACK_ID, { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.setRotoBackgroundMetadata('target-layer', TEST_TRACK_ID, { background: 'canvas2', grainStrength: 0.65 });
     const outputBefore = physicPaintStore.extractRuntimeStateForDocument('target-layer', TEST_TRACK_ID);
     const cacheBefore = physicPaintStore.getRotoCacheFrames('target-layer', TEST_TRACK_ID);
     const snapshot = physicPaintStore.snapshotLayer('target-layer', TEST_TRACK_ID);
@@ -1031,7 +1031,7 @@ describe('physicPaintStore', () => {
       expect(physicPaintStore.extractRuntimeStateForDocument('target-layer', TEST_TRACK_ID)).toEqual(outputBefore);
       expect(physicPaintStore.getRotoCacheFrames('target-layer', TEST_TRACK_ID)).toEqual(cacheBefore);
       expect(physicPaintStore.getRotoInterpolationSettings('target-layer', TEST_TRACK_ID)).toEqual({ enabled: true, inBetweenCount: 1, mode: 'duplicate', position: 0, deform: 0 });
-      expect(physicPaintStore.getRotoBackgroundMetadata('target-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+      expect(physicPaintStore.getRotoBackgroundMetadata('target-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas2', grainStrength: 0.65 });
       drawCalls.length = 0;
       expect(renderBlendedRotoInterpolationFrame(targetOnly, shared, 1, 0.5, { enabled: true, inBetweenCount: 1, mode: 'blend', position: 0, deform: 0 })?.bytes).toEqual(testPngBytes('restored-alpha-blend'));
       expect(drawCalls).toEqual(['target-original', 'shared-current']);
@@ -1085,7 +1085,7 @@ describe('physicPaintStore', () => {
   it('generates alpha-only Roto interpolation cache across whole integer spans with real-key authority', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 1, makeAlphaFrame(0, 1, 'alpha-real-one'));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 4, makeAlphaFrame(0, 4, 'alpha-real-four'));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', grainStrength: 0.45 });
     physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [2, 3]);
     const before = physicPaintVersion.value;
 
@@ -1263,7 +1263,7 @@ describe('physicPaintStore', () => {
   it('D-07 projection carries bounded background-only support only inside real Roto key spans', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, makeFrame(0, 2));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, makeFrame(0, 6));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', grainStrength: 0.65 });
 
     const support = physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [4]);
 
@@ -1277,7 +1277,7 @@ describe('physicPaintStore', () => {
   it('D-05/D-06 does not keep leading or trailing background-only support', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, makeFrame(0, 2));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, makeFrame(0, 6));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', grainStrength: 0.65 });
 
     const before = physicPaintStore.extractRuntimeStateForDocument('layer-1', TEST_TRACK_ID);
     const support = physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [1, 8]);
@@ -1292,7 +1292,7 @@ describe('physicPaintStore', () => {
     physicPaintStore.setFrame('layer-1', TEST_TRACK_ID, 11, { ...makeFrame(0, 11), bytes: testWebpBytes('c3RhbGUtcGFpbnQ=') });
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 5, makeFrame(0, 5));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 7, makeFrame(0, 7));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', grainStrength: 0.45 });
 
     const result = resolveMissingRotoFrameDraw('layer-1', 11, {
       backgroundState: { mode: 'paper', metadata: physicPaintStore.getRotoBackgroundMetadata('layer-1', TEST_TRACK_ID)! },
@@ -1301,13 +1301,13 @@ describe('physicPaintStore', () => {
 
     expect(physicPaintStore.getFrame('layer-1', TEST_TRACK_ID, 11)).toBeNull();
     expect(physicPaintStore.getRotoFrame('layer-1', TEST_TRACK_ID, 11)).toBeNull();
-    expect(result).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 7 }, materialize: false });
+    expect(result).toEqual({ kind: 'background-only', color: '#f4efe3', paperTexture: 'canvas1', grainStrength: 0.45, span: { kind: 'trailing', previousRealKeyFrame: 7 }, materialize: false });
   });
 
   it('D-08/D-14/D-15 keeps derived support separate from editable real-key alpha content', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, { ...makeFrame(0, 2), bytes: testWebpBytes('cmVhbC0y') });
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, { ...makeFrame(0, 6), bytes: testWebpBytes('cmVhbC02') });
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas1', grainStrength: 0.45 });
 
     physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [4]);
 
@@ -1320,7 +1320,7 @@ describe('physicPaintStore', () => {
   it('36.11 merged repaint applyCanvas output stays a real-key alpha cache and not background-only support', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, makeFrame(0, 2));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, makeFrame(0, 6));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', grainStrength: 0.65 });
     physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [4]);
 
     const result = physicPaintStore.applyCanvas({
@@ -1354,7 +1354,7 @@ describe('physicPaintStore', () => {
   it('D-09 applyCanvas replaces only the same-frame background-only support with a real Roto key', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, makeFrame(0, 2));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, makeFrame(0, 6));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', paperGrain: 'canvas3', grainStrength: 0.65 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas2', grainStrength: 0.65 });
     physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [3, 4]);
 
     const result = physicPaintStore.applyCanvas({
@@ -1504,7 +1504,7 @@ describe('physicPaintStore', () => {
   it('D-10 replaceRotoKeyFrames removes stale support and recomputes only current bounded interiors', () => {
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 2, makeFrame(0, 2));
     physicPaintStore.upsertRealRotoKeyFrame('layer-1', TEST_TRACK_ID, 6, makeFrame(0, 6));
-    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas3', paperGrain: 'canvas3', grainStrength: 0.5 });
+    physicPaintStore.setRotoBackgroundMetadata('layer-1', TEST_TRACK_ID, { background: 'canvas3', grainStrength: 0.5 });
     physicPaintStore.recomputeBackgroundOnlyRotoSupport('layer-1', TEST_TRACK_ID, [4]);
 
     const result = physicPaintStore.replaceRotoKeyFrames({
@@ -1806,7 +1806,7 @@ describe('physicPaintStore', () => {
     function seedRoto(
       trackId: string,
       keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>,
-      options: { background?: { background: 'canvas1' | 'canvas2' | 'canvas3' | 'transparent'; paperGrain: string; grainStrength: number } | null; loopClips?: PhysicPaintRotoLoopClip[] } = {},
+      options: { background?: { background: 'canvas1' | 'canvas2' | 'canvas3' | 'transparent'; grainStrength: number } | null; loopClips?: PhysicPaintRotoLoopClip[] } = {},
       layerId = FLAT_LAYER,
     ): void {
       const records = keys.map((key) => ({
@@ -2183,10 +2183,10 @@ describe('physicPaintStore', () => {
       // is kept to prove the fallback is authoritative even when metadata exists.
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+        fallback: { mode: 'paper', texture: 'canvas1', grainStrength: 0 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
@@ -2208,13 +2208,13 @@ describe('physicPaintStore', () => {
         flatTrack('track-b', { order: 1 }),
       ], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+        fallback: { mode: 'paper', texture: 'canvas1', grainStrength: 0 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
@@ -2233,10 +2233,10 @@ describe('physicPaintStore', () => {
       // 49-03 (D-11): the fond comes from the DOCUMENT fallback (canvas1 paper).
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+        fallback: { mode: 'paper', texture: 'canvas1', grainStrength: 0 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
 
       const withFond = (await flattenAfterDecode(FLAT_LAYER, 5))!;
@@ -2266,7 +2266,7 @@ describe('physicPaintStore', () => {
         fallback: { mode: 'solid', color: '#ffffff' },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
@@ -2280,7 +2280,7 @@ describe('physicPaintStore', () => {
       const frameDataUrl = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas2', paperGrain: false, grainStrength: 0 },
+        fallback: { mode: 'paper', texture: 'canvas2', grainStrength: 0 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }]);
 
@@ -2309,7 +2309,7 @@ describe('physicPaintStore', () => {
         fallback: { mode: 'solid', color: '#ffffff' },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
 
       const withMetadata = (await flattenAfterDecode(FLAT_LAYER, 5))!;
@@ -2339,16 +2339,16 @@ describe('physicPaintStore', () => {
       // different paper (canvas2). The export must show canvas1 + grain.
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas2', paperGrain: false, grainStrength: 0 },
+        fallback: { mode: 'paper', texture: 'canvas2', grainStrength: 0 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
+        background: { background: 'canvas1', grainStrength: 0.45 },
       });
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       const log = decodeFlatLog((await record.encodeBytes()));
       expect(log).toContain('fill(#f4efe3,1,source-over)');
-      expect(log).toContain('fill(#000000,'); // the deterministic grain
+      expect(log).not.toContain('fill(#000000,'); // 260925-iy6: drawDeterministicPaperGrain deleted — no procedural grain
       expect(log).not.toContain('#ebe3d2');
       expect(log).toContain('draw(canvas,1,source-over)');
     });
@@ -2356,7 +2356,7 @@ describe('physicPaintStore', () => {
     it('k34-B (control, green): a track with no paper of its own still draws the document fond', async () => {
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0 },
+        fallback: { mode: 'paper', texture: 'canvas1', grainStrength: 0 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], { background: null });
 
@@ -2371,7 +2371,7 @@ describe('physicPaintStore', () => {
       getProjectPaperCanvasMock.mockClear();
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: true, grainStrength: 0.45, grainScale: 2 },
+        fallback: { mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale: 2 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], { background: null });
 
@@ -2394,10 +2394,10 @@ describe('physicPaintStore', () => {
         flatTrack('track-b', { order: 1 }),
       ]));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: makeFrame(1, 5).bytes }], {
-        background: { background: 'canvas3', paperGrain: 'canvas3', grainStrength: 0 },
+        background: { background: 'canvas3', grainStrength: 0 },
       });
 
       const trackARecord = (await flattenAfterDecode(FLAT_LAYER, 5))!;
@@ -2416,14 +2416,14 @@ describe('physicPaintStore', () => {
         fallback: { mode: 'solid', color: '#ffffff' },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
       registerDocument(flatDocument([flatTrack('track-a')], {
         visible: false,
         fallback: { mode: 'solid', color: '#ffffff' },
       }, 'flat-layer-b'));
       seedRoto('track-a', [{ keyId: 'kb', appFrame: 5, bytes: makeFrame(1, 5).bytes }], {
-        background: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0 },
+        background: { background: 'canvas2', grainStrength: 0 },
       }, 'flat-layer-b');
 
       const first = (await flattenAfterDecode(FLAT_LAYER, 5))!;
@@ -2440,13 +2440,13 @@ describe('physicPaintStore', () => {
         flatTrack('track-b', { order: 1 }),
       ], {
         visible: false,
-        fallback: { mode: 'paper', texture: 'canvas1', paperGrain: false, grainStrength: 0 },
+        fallback: { mode: 'paper', texture: 'canvas1', grainStrength: 0 },
       }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], {
-        background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 },
+        background: { background: 'canvas1', grainStrength: 0 },
       });
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: makeFrame(1, 5).bytes }], {
-        background: { background: 'canvas2', paperGrain: 'canvas2', grainStrength: 0 },
+        background: { background: 'canvas2', grainStrength: 0 },
       });
 
       const fondLog = async (): Promise<string> => {

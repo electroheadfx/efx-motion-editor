@@ -29,7 +29,9 @@ export type RotoReferenceFrame = PhysicPaintRenderedFrame & {
 
 export interface RotoReferenceEngine {
   setBgMode: (mode: BgMode) => void;
-  clear: () => void;
+  /** `preserveDry` = preview-base swap (acceptance reload): dry already lives
+   * inside the incoming bytes and must survive the base's async decode. */
+  clear: (preserveDry?: boolean) => void;
   setPreviewBaseImageUrl: (bytes: string, generation?: number, appFrame?: number) => void;
   clearPreviewBaseImage: () => void;
   resetBackground: () => void;
@@ -207,14 +209,20 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     input.setReferenceUrl(null);
     input.setRepaintBaseFrame(cachedFrame);
     engine.setBgMode(input.getSettingsBackground());
-    engine.clear();
     if (paintBytes) {
+      // Acceptance reloads (an explicit generation — the completion reconcile /
+      // guard repair) paint bytes that ALREADY contain the dry strokes. Wiping
+      // dry before the async decode lands made the last stroke disappear for
+      // the whole decode ("transparent for some seconds"). Preserve dry across
+      // the swap; the engine drops it atomically when the new base paints.
+      engine.clear(input.generation !== undefined);
       engine.setPreviewBaseImageUrl(getFrameBlobUrl(paintBytes), paintContentToken, appFrame);
       const wasDirty = input.dirtyFrames.delete(appFrame);
       const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
       if (wasDirty || hadLiveOverlay) input.syncPending();
       input.setApplyMessage(`Cache loaded at frame ${appFrame}. Add paint to update this key.`);
     } else {
+      engine.clear();
       engine.clearPreviewBaseImage();
       engine.resetBackground();
     }

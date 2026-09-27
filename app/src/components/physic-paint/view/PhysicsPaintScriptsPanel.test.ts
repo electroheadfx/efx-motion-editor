@@ -626,7 +626,7 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
     revision: 'revision-1',
     createdAt: '2026-08-11T00:00:00.000Z',
     updatedAt: '2026-08-11T00:00:00.000Z',
-    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Paint', sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } },
+    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Paint', sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', grainStrength: 0 } },
     thumbnail: { dataUrl: 'data:image/webp;base64,AA==', width: 48, height: 48 },
     brushCount: 2,
     integrity: '0'.repeat(64),
@@ -704,7 +704,7 @@ describe('Physics Paint Actions deletion disclosure contract (43.2-13)', () => {
 describe('Physics Paint Actions deletion lifecycle contract (43.2-13)', () => {
   const actionRow = {
     id: 'action-1', name: 'Walk Cycle', revision: 'revision-1', createdAt: '2026-08-11T00:00:00.000Z', updatedAt: '2026-08-11T00:00:00.000Z',
-    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Paint', sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } },
+    source: { projectName: 'Project', layerId: 'layer-1', layerName: 'Paint', sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', grainStrength: 0 } },
     thumbnail: { dataUrl: 'data:image/webp;base64,AA==', width: 48, height: 48 }, brushCount: 2, integrity: '0'.repeat(64),
   };
   const referenceImpact = {
@@ -1103,7 +1103,7 @@ describe('Physics Paint Actions layer scope (quick-260922-al1)', () => {
     revision: `revision-${id}`,
     createdAt: '2026-08-11T00:00:00.000Z',
     updatedAt: '2026-08-11T00:00:00.000Z',
-    source: { projectName: 'Project', layerId, layerName, sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 } },
+    source: { projectName: 'Project', layerId, layerName, sourceFrame: 0, displayFrame: 1, width: 1000, height: 650, background: { background: 'transparent', grainStrength: 0 } },
     thumbnail: { dataUrl: 'data:image/webp;base64,AA==', width: 48, height: 48 },
     brushCount: 2,
     integrity: '0'.repeat(64),

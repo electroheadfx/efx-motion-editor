@@ -766,6 +766,11 @@ export class EfxPaintEngine {
 
   /** Change background mode and replay strokes */
   setBgMode(mode: BgMode): void {
+    // Idempotent: applyBackgroundFallbackToEngine re-fires on every
+    // efxPaintVersion bump (grain strength/scale writes included). An unchanged
+    // mode must not pay the flush + full stroke replay — that was the
+    // grain-strength stall on a key that already carries paint.
+    if (this.state.bgMode === mode) return
     this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.state.bgMode = mode
@@ -1033,6 +1038,7 @@ export class EfxPaintEngine {
     this.requestRender()
     this.previewBaseRequestId += 1
     this.pendingExplicitPreviewBase = null
+    this.baseSwapDryClearPending = false
     this.previewBaseEnabled = false
     this.previewBackgroundSeparated = false
     this.previewBaseImage = null
@@ -1048,25 +1054,34 @@ export class EfxPaintEngine {
 
   /** Set paper grain for physics (key matches PaperConfig.name) */
   setPaperGrain(key: string): void {
+    // 260925-dso: pure lookup-or-null. Grain-off ('') and texture-load failure
+    // (key absent because loadPaperTexture rejected) both land on null → flat.
+    // No procedural height map ever.
+    //
+    // Idempotent on (key, resolved height map) — not key alone: a call made
+    // before loadPaperTexture resolves sets the key with a null map, and the
+    // post-load setPaperGrain must still land the real map.
+    const tex = this.paperTextures.get(key)
+    const heightMap = tex?.heightMap ?? null
+    if (this.currentPaperKey === key && this.paperHeight === heightMap) return
     this.requestRender()
     this.flushPendingStrokeFinalizations()
     // The paper height modulates the wet composite — re-composite the display.
     this.displayCompositeDirty = true
     this.currentPaperKey = key
-    // 260925-dso: pure lookup-or-null. Grain-off ('') and texture-load failure
-    // (key absent because loadPaperTexture rejected) both land on null → flat.
-    // No procedural height map ever.
-    const tex = this.paperTextures.get(key)
-    this.texHeight = tex?.heightMap ?? null
-    this.paperHeight = tex?.heightMap ?? null
+    this.texHeight = heightMap
+    this.paperHeight = heightMap
     this.physicsHeightMap = this.paperHeight
   }
 
   /** Set emboss strength (0-1) */
   setEmbossStrength(strength: number): void {
+    const next = clamp(strength, 0, 1)
+    if (this.state.embossStrength === next) return
+    // Pure state setter — no flush. Emboss is read at bake time; forcing every
+    // pending stroke to finalize on a slider tick was the grain-strength stall.
     this.requestRender()
-    this.flushPendingStrokeFinalizations()
-    this.state.embossStrength = clamp(strength, 0, 1)
+    this.state.embossStrength = next
   }
 
   /** Toggle wet/dry paper mode */
@@ -1396,8 +1411,17 @@ export class EfxPaintEngine {
     restoreScaledOrRaw(this.savedWet.strokeOpacity, snap.saved.so, 1 / UNDO_OPACITY_SCALE)
   }
 
-  /** Clear the canvas and all strokes */
-  clear(): void {
+  /**
+   * Clear the canvas and all strokes.
+   *
+   * `preserveDry` is the preview-base SWAP path (the acceptance reload that
+   * paints a render already containing the dry strokes). The loader issues an
+   * ASYNC image decode; wiping dry here left getBakedCanvas() = stale base +
+   * empty dry for the whole decode — the last stroke vanished "for some
+   * seconds" and only returned when the decode landed. Keep dry; it is
+   * dropped atomically by redrawPreviewBase() once the new base is on canvas.
+   */
+  clear(preserveDry = false): void {
     this.requestRender()
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
@@ -1424,10 +1448,14 @@ export class EfxPaintEngine {
     // Hard reset both canvases — putImageData overwrites all pixels including alpha
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawPreviewBase()
-    this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
-    if (!this.previewBaseEnabled) {
-      const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
-      this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
+    if (preserveDry) {
+      this.baseSwapDryClearPending = true
+    } else {
+      this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
+      if (!this.previewBaseEnabled) {
+        const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
+        this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
+      }
     }
     // The next render frame re-composites the cleared wet layer (the scratch
     // stays consistent — a direct display clearRect here would desync it).
@@ -1499,6 +1527,37 @@ export class EfxPaintEngine {
   getCanvas(): HTMLCanvasElement {
     this.flushPendingStrokeFinalizations()
     return this.dualCanvas.dryCanvas
+  }
+
+  /**
+   * Read the dry canvas WITHOUT flushing pending finalizations — the monitor's
+   * live-overlay path reads this every draw and must not force-complete
+   * in-flight strokes. Capture callers keep using getCanvas().
+   */
+  getDryCanvas(): HTMLCanvasElement {
+    return this.dualCanvas.dryCanvas
+  }
+
+  /**
+   * The active track's BAKED content: previewBase (applied frame) + dry
+   * (finalized strokes). This is what the monitor's live-overlay composite
+   * needs — getDryCanvas() alone misses the applied frame, so the tooth never
+   * reached the content the user is painting on top of.
+   */
+  private bakedScratchCanvas: HTMLCanvasElement | null = null
+
+  getBakedCanvas(): HTMLCanvasElement {
+    if (!this.bakedScratchCanvas) {
+      this.bakedScratchCanvas = document.createElement('canvas')
+      this.bakedScratchCanvas.width = this.width
+      this.bakedScratchCanvas.height = this.height
+    }
+    const ctx = this.bakedScratchCanvas.getContext('2d')
+    if (!ctx) return this.dualCanvas.dryCanvas
+    ctx.clearRect(0, 0, this.width, this.height)
+    ctx.drawImage(this.dualCanvas.previewBaseCanvas, 0, 0)
+    ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
+    return this.bakedScratchCanvas
   }
 
   /** Get the display canvas (overlay with wet compositing) */
@@ -1725,13 +1784,7 @@ export class EfxPaintEngine {
     // full-canvas upload churn that killed the WKWebView GPU process).
     if (this.displayCompositeDirty && performance.now() - this.lastDisplayCompositeTime >= DISPLAY_COMPOSITE_MIN_INTERVAL_MS) {
       this.compositeDisplayNow()
-      // The composite cleared the canvas — redraw every overlay on top.
-      this.drawQueuedStrokePreviews(displayCtx)
-      this.drawnQueuedOutlineCount = this.getQueuedStrokePreviews().length
-      drawStrokePreview(displayCtx, this.previewStroke)
-      this.lastPreviewBbox = this.previewStroke ? this.overlayBoundsForPreview(this.previewStroke) : null
-      drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
-      this.lastCursorRect = this.overlayBoundsForCursor()
+      this.redrawDisplayOverlays(displayCtx)
     } else {
       // When the composite is throttled, the overlays draw incrementally on
       // the previous composite — the stale wet pixels flush on the next
@@ -1842,6 +1895,16 @@ export class EfxPaintEngine {
     this.drawnQueuedOutlineCount = 0
     this.lastPreviewBbox = null
     this.lastCursorRect = null
+  }
+
+  /** Redraw every display overlay on top of a fresh composite. */
+  private redrawDisplayOverlays(displayCtx: CanvasRenderingContext2D): void {
+    this.drawQueuedStrokePreviews(displayCtx)
+    this.drawnQueuedOutlineCount = this.getQueuedStrokePreviews().length
+    drawStrokePreview(displayCtx, this.previewStroke)
+    this.lastPreviewBbox = this.previewStroke ? this.overlayBoundsForPreview(this.previewStroke) : null
+    drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+    this.lastCursorRect = this.overlayBoundsForCursor()
   }
 
   /**
@@ -2334,11 +2397,22 @@ export class EfxPaintEngine {
     return this.previewBaseEnabled ? null : this.bgData
   }
 
+  /** Set by clear(preserveDry) — dry holds strokes already baked into the
+   * pending preview base and must outlive the base's async decode. */
+  private baseSwapDryClearPending = false
+
   private redrawPreviewBase(): void {
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
     if (!this.previewBaseEnabled || !this.previewBaseImage) return
     if (!this.visibleBackgroundSuppressed) this.dualCanvas.previewBaseCtx.drawImage(this.bgCanvas, 0, 0)
     this.dualCanvas.previewBaseCtx.drawImage(this.previewBaseImage, 0, 0, this.width, this.height)
+    // Atomic base swap: the strokes are now baked into the painted base, so
+    // dry goes in the SAME turn — never a frame of new-base-plus-double-draw,
+    // and never an empty dry under a stale base.
+    if (this.baseSwapDryClearPending) {
+      this.baseSwapDryClearPending = false
+      this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
+    }
   }
 
   private resetReplaySurface(usePutImageData: boolean = false): void {

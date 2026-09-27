@@ -218,7 +218,7 @@ function makeRotoLayer(): Layer {
 
 function seedPhysicalRoto(
   keys: Array<{ keyId: string; appFrame: number; bytes: Uint8Array }>,
-  options: { interpolationEnabled?: boolean; background?: { background: 'canvas1'; paperGrain: string; grainStrength: number } | null } = {},
+  options: { interpolationEnabled?: boolean; background?: { background: 'canvas1'; grainStrength: number } | null } = {},
 ): void {
   const records = keys.map((key) => ({
     keyId: key.keyId,
@@ -247,8 +247,7 @@ function seedPhysicalRoto(
     const fallbackResult = setBackgroundFallback('roto-layer', {
       mode: 'paper',
       texture: options.background.background,
-      paperGrain: options.background.paperGrain === options.background.background,
-      grainStrength: options.background.grainStrength,
+            grainStrength: options.background.grainStrength,
     });
     if (!fallbackResult.ok) throw new Error(fallbackResult.reason);
   }
@@ -333,7 +332,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
       { keyId: 'key-3', appFrame: 3, bytes: testWebpBytes('cmVhbC0z') },
-    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    ], { background: { background: 'canvas1', grainStrength: 0 } });
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -361,7 +360,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
   it('a real Roto frame with paper metadata bakes paper + frame into ONE flattened raster (per-track parity)', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
-    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    ], { background: { background: 'canvas1', grainStrength: 0 } });
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -385,7 +384,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
       { keyId: 'key-3', appFrame: 3, bytes: testWebpBytes('cmVhbC0z') },
-    ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    ], { interpolationEnabled: true, background: { background: 'canvas1', grainStrength: 0 } });
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -397,7 +396,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'fillRect', fillStyle: '#f4efe3' }));
     expect(offscreenOperations).toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
     expect(offscreenOperations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0z') }));
-    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0, grainScale: 1 });
+    expect(physicPaintStore.getRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID)).toEqual({ background: 'canvas1', grainStrength: 0, grainScale: 1 });
     // Renderer-side: ONE flattened draw — the record's raster canvas itself
     // (G-52-8: no PNG round-trip) — no separate paper/content draws.
     const flattenedDraws = ctx.operations.filter((op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage');
@@ -410,7 +409,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
       { keyId: 'key-3', appFrame: 3, bytes: testWebpBytes('cmVhbC0z') },
-    ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    ], { interpolationEnabled: true, background: { background: 'canvas1', grainStrength: 0 } });
     const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer', TEST_TRACK_ID);
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('roto-layer', TEST_TRACK_ID, projection);
@@ -440,7 +439,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
       { keyId: 'key-2', appFrame: 2, bytes: testWebpBytes('cmVhbC0y') },
       { keyId: 'key-6', appFrame: 6, bytes: testWebpBytes('cmVhbC02') },
-    ], { interpolationEnabled: true, background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    ], { interpolationEnabled: true, background: { background: 'canvas1', grainStrength: 0 } });
     const projection = physicPaintStore.extractRuntimeStateForDocument('roto-layer', TEST_TRACK_ID);
     physicPaintStore.reset();
     physicPaintStore.installRuntimeStateFromDocument('roto-layer', TEST_TRACK_ID, projection);
@@ -467,7 +466,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
   it('36.11 bakes renderer-owned paper + merged real-key alpha repaint into ONE flattened raster', async () => {
     seedPhysicalRoto([
       { keyId: 'key-5', appFrame: 5, bytes: testWebpBytes('cmVhbC01') },
-    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 } });
+    ], { background: { background: 'canvas1', grainStrength: 0.45 } });
     const applied = physicPaintStore.applyCanvas({
       kind: 'apply-canvas',
       trackId: TEST_TRACK_ID,
@@ -475,7 +474,7 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
       layerId: 'roto-layer',
       startFrame: 5,
       renderedFrame: { frameIndex: 0, appFrame: 5, bytes: testWebpBytes('bWVyZ2VkLXJlcGFpbnQtYWxwaGE=') },
-      rotoBackground: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0.45 },
+      rotoBackground: { background: 'canvas1', grainStrength: 0.45 },
     });
     expect(applied.ok).toBe(true);
     const ctx = new RecordingCanvasContext();
@@ -603,7 +602,7 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
   it('renders an empty preview frame when the active track is hidden', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
-    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    ], { background: { background: 'canvas1', grainStrength: 0 } });
     const current = getDocument('roto-layer');
     expect(current).not.toBeNull();
     const track = current!.tracks[0];
@@ -620,7 +619,7 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
   it('draws the flattened raster when no solo is armed and the active track is visible', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
-    ], { background: { background: 'canvas1', paperGrain: 'canvas1', grainStrength: 0 } });
+    ], { background: { background: 'canvas1', grainStrength: 0 } });
     const ctx = new RecordingCanvasContext();
     const renderer = new PreviewRenderer(makeCanvas(ctx));
 
@@ -881,7 +880,7 @@ describe('260920-k34 fond preload gate (export parity)', () => {
   }
 
   it('k34-F (RED): the gate collects the document fond the draw uses when the track has no paper of its own', () => {
-    const result = setBackgroundFallback('roto-layer', { mode: 'paper', texture: 'canvas1', paperGrain: false, grainStrength: 0 });
+    const result = setBackgroundFallback('roto-layer', { mode: 'paper', texture: 'canvas1', grainStrength: 0 });
     expect(result.ok).toBe(true);
     const renderer = new PreviewRenderer(makeCanvas(new RecordingCanvasContext()));
 
@@ -891,13 +890,12 @@ describe('260920-k34 fond preload gate (export parity)', () => {
   });
 
   it('k34-G (RED): the gate collects exactly the texture the flattened draw uses — one resolution, two consumers', async () => {
-    const result = setBackgroundFallback('roto-layer', { mode: 'paper', texture: 'canvas1', paperGrain: false, grainStrength: 0 });
+    const result = setBackgroundFallback('roto-layer', { mode: 'paper', texture: 'canvas1', grainStrength: 0 });
     expect(result.ok).toBe(true);
     seedPhysicalRoto([{ keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') }]);
     physicPaintStore.setRotoBackgroundMetadata('roto-layer', TEST_TRACK_ID, {
       background: 'canvas2',
-      paperGrain: 'canvas3',
-      grainStrength: 0.65,
+            grainStrength: 0.65,
     });
     const renderer = new PreviewRenderer(makeCanvas(new RecordingCanvasContext()));
 

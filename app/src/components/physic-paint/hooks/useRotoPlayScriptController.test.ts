@@ -68,8 +68,8 @@ function ports(version: number): HookPorts {
     getMotion: () => ({ deformation: version * 10, position: version * 20 }),
     getBrushColor: () => (version === 1 ? '#103c65' : '#aa5500'),
     getBackgroundMetadata: () => version === 1
-      ? { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 }
-      : { background: 'transparent', paperGrain: 'canvas3', grainStrength: 0.2 },
+      ? { background: 'canvas1', grainStrength: 0.45 }
+      : { background: 'transparent', grainStrength: 0.2 },
     getOperationLocked: () => version === 2,
     getSize: () => ({ width: 100 + version, height: 200 + version }),
     getRotoLoopClips: () => [{
@@ -107,7 +107,7 @@ describe('useRotoPlayScriptController', () => {
     const hookPorts = ports(1);
     renderHook(hookPorts);
     const stablePorts = captured.ports!;
-    const rotoBackground = { background: 'canvas1', paperGrain: 'canvas2', grainStrength: 0.45 } as const;
+    const rotoBackground = { background: 'canvas1', grainStrength: 0.45 } as const;
 
     await stablePorts.commit({
       expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
@@ -169,7 +169,7 @@ describe('useRotoPlayScriptController', () => {
         records: [],
         interpolationEnabled: false,
         interpolationMode: 'duplicate',
-        rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+        rotoBackground: { background: 'transparent', grainStrength: 0 },
         semanticDelta: {
           kind: 'regenerate-group',
           groupId: 'loop-1',
@@ -218,7 +218,7 @@ describe('useRotoPlayScriptController', () => {
       records: [],
       interpolationEnabled: false,
       interpolationMode: 'duplicate',
-      rotoBackground: { background: 'transparent', paperGrain: 'canvas1', grainStrength: 0 },
+      rotoBackground: { background: 'transparent', grainStrength: 0 },
       semanticDelta: {
         kind: 'regenerate-group',
         groupId: 'loop-1',
@@ -260,7 +260,7 @@ describe('useRotoPlayScriptController', () => {
     expect(stablePorts.getLaunchContext()).toMatchObject({ layerId: 'layer-2', project: { contextId: 'context-2' } });
     expect(stablePorts.getMotion()).toEqual({ deformation: 20, position: 40 });
     expect(stablePorts.getBrushColor()).toBe('#aa5500');
-    expect(stablePorts.getBackgroundMetadata()).toEqual({ background: 'transparent', paperGrain: 'canvas3', grainStrength: 0.2 });
+    expect(stablePorts.getBackgroundMetadata()).toEqual({ background: 'transparent', grainStrength: 0.2 });
     expect(stablePorts.getOperationLocked()).toBe(true);
     expect(stablePorts.getSize()).toEqual({ width: 102, height: 202 });
     expect(stablePorts.getRotoLoopClips?.()).toEqual([{

@@ -186,7 +186,7 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     // mix-blend-mode to the monitor — the paper is outside the group's stacking
     // context, so the active track's blend never meets it.
     const fondIndex = view.indexOf('<div class="physics-paint-fond-layer"');
-    const groupIndex = view.indexOf('<div class="physics-paint-tracks-group">');
+    const groupIndex = view.indexOf('physics-paint-tracks-group');
     const mountIndex = view.indexOf('<MemoizedPhysicsPaintCanvasMount');
     const monitorIndex = view.indexOf('<div class="physics-paint-program-monitor"');
     expect(fondIndex).toBeGreaterThanOrEqual(0);
