@@ -110,6 +110,7 @@ import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPain
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
+import { installDh1CaptureHook } from './performance/depositSpeckleCapture';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -3534,6 +3535,13 @@ export function PhysicsPaintStudio() {
     handleEngineReady(readyEngine);
     rotoScript.updateEngine(readyEngine);
     if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);
+    // quick 260928-dh1 (DEV ONLY): one-shot deposit speckle capture —
+    // window.__EFX_DH1_CAPTURE__('red' | 'green'). Measurement-only pixel
+    // reader (see depositSpeckleCapture.ts header for the 260925-dso
+    // exemption); installs nothing in a production build. Wired in the
+    // engine-ready seam like the __EFX_PHYSICS_PAINT_PROFILE__ precedent —
+    // no effect, no signal, no component state.
+    if (import.meta.env.DEV) installDh1CaptureHook(readyEngine);
   };
   const handleCanvasEngineReady = useCallback((readyEngine: EfxPaintEngine) => {
     canvasEngineReadyImplRef.current(readyEngine);
