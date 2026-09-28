@@ -216,6 +216,49 @@ This revises "likely Stam advection speckle": advection is dissipative and is NO
 
 Code + pins landed. **Automated-ready.** The live four-seam re-run is the confirmation that `tornEdge` drops at post-display — native UAT stays deferred until lever 2 also lands (acceptance needs BOTH). Lever 2 (body speckle at post-raster, `paint.ts` 37 × `fillFlat` + real Canvas2D AA) stays queued and is not blocked.
 
+## Move 2 pin — extraction is CLEAN (the torn contour is real)
+
+**User call 2026-09-28:** one pin, no fix. Push a CLEAN synthetic dry layer (ideal AA edge, zero speckle) through the REAL `EfxPaintEngine.copyLiveAlphaCanvas` / dry-minus-background and read `tornEdge`. Discriminator: thousands → the ~12 200 post-display `tornEdge` is an ARTIFACT of the extraction and everything folds into lever 2; clean → the remaining interval suspects are real advection and `dryStep`'s `paperHeight` term. Do NOT write a third directed fix before this pin returns.
+
+Pin: `packages/efx-physic-paint/src/engine/copyLiveExtractionTornEdge.test.ts` (4/4). Input control scored `tornEdge = 0` before extraction, so the field really is clean.
+
+| cell | branch | tornEdge | bodyHardJumps | isolatedPx |
+|---|---|---|---|---|
+| clean AA over paper | background-subtraction | **0** | 0 | 0 |
+| paint-only AA ramp | separated | **0** | 0 | 0 |
+| paint-only AA ramp | background-subtraction | **0** | 0 | 0 |
+| input (pre-extraction) | — | **0** | 0 | 0 |
+
+**VERDICT: CLEAN.** The extraction is exonerated. `copyLiveAlphaCanvas` / dry-minus-background does not manufacture tears from a clean input, in either branch. The ~12 200 post-display `tornEdge` is therefore a REAL defect that arrives already formed at the extraction input. Per the call, the remaining interval suspects are real advection and `dryStep`'s `paperHeight` term — **decide on evidence, no third directed fix written.**
+
+## Lever 2 measure-first — REFUTED: the 37 × `fillFlat` layering is not the manufacturer
+
+**User call 2026-09-28:** code lever 2 (`paint.ts`) now — but measure first, same discipline: pin the 37 × `fillFlat` layering against a single equivalent fill on the 260924-pyp substrate, and **prove the AA layering manufactures the `bodyHardJumps` before changing it. Then the fix.**
+
+Pin: `packages/efx-physic-paint/src/brush/paint.layeringBodyJumps.test.ts` (1/1 measurement). Same deformN ribbon geometry in every cell (the comparison isolates the layering, not the shape). Mass comparable across cells (±2%). Bristles dropped (`stroke = no-op`) so the `fillFlat` schedule is the only contributor.
+
+| cell | what it is | tornEdge | bodyHardJumps | bodyHfEnergy | alphaMass |
+|---|---|---|---|---|---|
+| SINGLE | one `fillFlat` of the fixed ribbon polygon at `alpha = 1` | 21 | **148** | 41 003 | 546 336 |
+| STACKED_SAME | 37 × 0.08 + 7 × 0.02 of that SAME polygon | 26 | **94** | 23 100 | 546 069 |
+| STACKED_DEFORM | the production schedule with per-layer `deformScaled` | 27 | **100** | 24 205 | 546 211 |
+| PRODUCTION | real `createPaintStrokeRasterContinuation`, bristles dropped | 19 | **114** | 27 757 | 548 830 |
+
+**VERDICT: REFUTED.**
+
+1. The 37 × `fillFlat` layering does **NOT** manufacture `bodyHardJumps`. A single fill scores **more** (148) than the 37 + 7 stack (100) and more than the real continuation (114). Stacking the same coverage field is smooth source-over; per-layer deform adds only +6 over identical-path stacking. If anything the stack *reduces* the jumps versus one fill.
+2. The jumps are already in the SINGLE fill of the deformN ribbon: the AA edge of a wiggly polygon at ink-floor 4 counts concave AA pockets as interior hard jumps (`isInterior` accepts any neighbour `>= 4`, so a 1px AA ramp of 255→26 with a fully-enclosed fringe pixel is a `bodyHardJumps` pair).
+3. The 260924-pyp analytic AA **under-counts** real Canvas2D AA: live four-seam post-raster `bodyHardJumps` was **654** (heavy-slow), analytic PRODUCTION is **114**. This substrate cannot reproduce the live 654 and cannot prove a manufacturer that lives in real AA.
+
+**The paint.ts fix was NOT written.** The measure-first entry required proof before changing the code, and the proof failed. `paint.ts` stays untouched. A fix now would be a fourth directed change aimed at a mechanism the pixels just refuted.
+
+### What the refutation leaves standing
+
+- **The visible defect is still real and still at post-raster** (live heavy-slow `bodyHardJumps` 654 / `tornEdge` 33 before any physics). Its manufacturer is NOT the 37 × `fillFlat` schedule.
+- Candidates the pin did **not** isolate: real Canvas2D AA itself (the pyp substitute under-counts 114 vs 654), the bristle pass (dropped in this pin), and the deformN ribbon's concave AA pockets (already present in SINGLE — but `260927-ton` width-scaled deformN is KEEP UNCHANGED).
+- The gate-field diagnosis independently reports **BOTH FIELDS CLEAN at the gate** (`isolatedBefore = 0`, `isolatedAfter = 0`) with bristle tier-straddling confirmed (4 pixels) — a third refutation of "the deposit path sprays salt-and-pepper at the raster/gate seam".
+- Torn-contour interval suspects after Move 2's CLEAN verdict: real advection and `dryStep`'s `paperHeight` term. Not opened.
+
 ## Recalibration record (Task 2)
 
 `physicsWidthScaling`, `productionAaSettleMeasurement`, `physicsSettledFootprint`, `paint.continuation` — **all green at EXISTING bounds** (W1–W7, PIN 0/0b, envelope ≤ 8, texture d(b) ≥ 1, texture-at-Spread-80). Zero exact-value pins shifted → no re-records performed. No behavioral law bounds edited.
@@ -238,17 +281,17 @@ Code + pins landed. **Automated-ready.** The live four-seam re-run is the confir
 - `DRY_ALPHA_THRESHOLD = 1` stays as the dry-state machine cutoff; only the `sa > 0.005` transfer gates went continuous.
 - Tier-70 survival is decided by harness rows, with trace build-up in `paint.ts` as the only lever (`wet-layer.ts` is read-only).
 
-## Regression battery (2026-09-28, after lever 1)
+## Regression battery (2026-09-28, after move 1 + move 2 pins)
 
 | gate | result |
 |---|---|
-| Package vitest (`packages/efx-physic-paint`) | 28 files / 209 passed / 3 skipped / 0 failed |
+| Package vitest (`packages/efx-physic-paint`) | 30 files / 214 passed / 3 skipped / 0 failed |
 | App vitest (`app`) | 234 files / 4336 passed / 1 skipped / 101 todo / 0 failed |
 | Package `npm run check` (`tsc --noEmit`) | clean |
 | App `npm run typecheck` (`tsc --noEmit`) | clean |
-| New pins | `compositor.displayMapping.test.ts` 7/7, `fluids.premulRoundTrip.test.ts` 5/5, `depositSpeckleCapture.metrics.test.ts` 14/14 |
+| New pins | `compositor.displayMapping.test.ts` 7/7, `fluids.premulRoundTrip.test.ts` 5/5, `depositSpeckleCapture.metrics.test.ts` 14/14, `copyLiveExtractionTornEdge.test.ts` 4/4, `paint.layeringBodyJumps.test.ts` 1/1 (measurement) |
 | Existing law pins | `physicsWidthScaling` W1–W7, `physicsSettledFootprint` PIN 0/0b, `productionAaSettleMeasurement`, `drying.continuity`, `fluids.continuation` — **all green at EXISTING bounds** |
-| Scope gate (uncommitted) | `fluids.ts` (the lever, copy-back only), 2 new package tests, 1 new compositor pin (measurement only), capture harness + its metrics test, `export.rs` (user-fixed, whitelist) |
+| Scope gate | `fluids.ts` (lever 1, copy-back only — COMMITTED `c8a7a073`); 2 new measurement pins (this pass). `paint.ts` **untouched** (measure-first refuted). |
 | Locked surfaces touched | **none** — `wet-layer.ts`, `compositor.ts` (production), `paint.ts`, `drying.ts`, app UI, package.json ×3, pnpm-lock all untouched |
 | `savedWet` / `startPhysics` / `stopPhysics` | only **call sites** in `depositSpeckleCapture.ts` (Task 1 harness drives the apply-physics clicks). No semantics change. |
 
@@ -262,10 +305,11 @@ Any failure would have been reported as NEW (user-mandated posture). None occurr
 | `05a92f77` | `test(260928-dh1): RED — bristleSeed + drying continuity behavior pins` |
 | `3815e307` | `feat(260928-dh1): seeded deposit-time bristle pass — single trace generator` |
 | `9c4b6581` | `fix(260928-dh1): de-hardcut drying — continuous proportional transfer` |
+| `c8a7a073` | `fix(260928-dh1): lever 1 — shared premul recovery kills the a>0.5 stale pair` |
 
 ## Native visual UAT (pending — the oracle for the look)
 
-**Blocked on lever 2.** Acceptance is only met when BOTH levers land; fixing the round-trip alone will leave thin-stroke bodies dotted (body speckle is born at post-raster, `paint.ts` layering). The live four-seam re-run after lever 1 is the metric confirmation that `tornEdge` drops at post-display — that is a re-measure, not UAT.
+**Blocked.** Acceptance is only met when the defect the user sees is gone and judged on native UAT. Lever 1 (premul recovery) landed but does not move the visible surface on its own. Lever 2's claimed manufacturer (37 × `fillFlat` layering) is REFUTED — `paint.ts` was not changed. The live four-seam re-run after lever 1 is a re-measure, not UAT.
 
 | id | row | verdict |
 |---|---|---|
