@@ -259,6 +259,45 @@ Pin: `packages/efx-physic-paint/src/brush/paint.layeringBodyJumps.test.ts` (1/1 
 - The gate-field diagnosis independently reports **BOTH FIELDS CLEAN at the gate** (`isolatedBefore = 0`, `isolatedAfter = 0`) with bristle tier-straddling confirmed (4 pixels) — a third refutation of "the deposit path sprays salt-and-pepper at the raster/gate seam".
 - Torn-contour interval suspects after Move 2's CLEAN verdict: real advection and `dryStep`'s `paperHeight` term. Not opened.
 
+## Advection spray — CONFIRMED, then contained at f(0) = 0.5
+
+**User call 2026-09-28 (image evidence settles the site):** post-raster is a clean solid ribbon; post-display is the same ribbon wrapped in a DUST HALO of isolated pixels hugging the whole contour. The post-raster → post-display interval manufactures the visible defect. `paperHeight` is REFUTED by the paper-off 12 282 ~ paper-on 12 285 identity (grain would move those numbers). One suspect left: **fluid advection spraying the low-density fringe into dust.** It also explains the 1/2/3-click degradation (1 564 → 83 535). OPEN ADVECTION — ONE PIN, then a fix confined to fringe handling in the advection/copy-back path (continuous only; `velStep` / `project` / `diffuse` / solver physics quality LOCKED).
+
+Pin: `packages/efx-physic-paint/src/core/fluids.advectionSpray.test.ts`. CLEAN synthetic ribbon wet buffers (body 2882 + 4-ring monotonic fringe 400/200/100/50) through one production `fluidPhysicsStep` with the production velocity field (height equalization + edge darkening + `velStep`, blowDX/DY = 0). No Canvas2D dependency — `advect` is pure Float32Array math, so vitest can actually see this suspect (unlike the layering pin at 114 vs live 654).
+
+### Measure-first (RED, `f(0) = 1` / no mobility term)
+
+| cell | tornEdge | bodyHardJumps | isolatedPx | sprayOutside | alphaMass |
+|---|---|---|---|---|---|
+| INPUT (clean) | 0 | 128 | 0 | 0 | 206 180 |
+| 1 tick | 0 | 234 | 0 | 0 | 226 986 |
+| 3 ticks (= 3 clicks) | 0 | 311 | 0 | **212** | 302 146 |
+| 8 ticks (worst case) | 19 | 447 | 0 | **1 624** | 672 216 |
+
+**SPRAY CONFIRMED.** A CLEAN fringe does not survive advection intact. `sprayOutside` (ink pixels appearing outside the input footprint) accumulates 0 → 212 → 1 624 across 1/3/8 ticks and `alphaMass` inflates — the thin skirt rides the outward velocity (height equalization + edge darkening) into empty canvas and thins to dust. Matches the 1/2/3-click degradation. `erodedInside = 0` throughout: this is outward growth, not erosion. `isolatedPx = 0` in every cell — the spray is a connected halo at the ink floor, which reads as dust at zoom.
+
+### The fix — `applyFringeMobility` (one shared seam, both twins)
+
+Continuous `f(a) = (a + A0) / (a + A_HALF)` scaling the solver velocity into the wet-channel advection velocity. Solver `u`/`v` read-only (`velStep` / `project` / `diffuse` untouched). Dense body rides at ~full mobility (diffusion preserved); the thin skirt is damped; no include/exclude, no alpha/coverage cutoff (260928-dh1). Both `fluidPhysicsStep` and `createLocalFluidPhysicsContinuation` call it (260925-iy6 one-seam shape).
+
+### The hard tradeoff (measured, not guessed)
+
+| `f(0)` | `A0` | sprayOutside 3tk | 8tk | `d(b) >= 1` (260925-b7c Spread / 260924-rm2 / W6) |
+|---|---|---|---|---|
+| 1.0 (RED) | — | 212 | 1 624 | PASS |
+| **0.5 (SHIPPED)** | **200** | **134** | **887** | **PASS** |
+| 0.4 | 160 | 71 | — | **FAIL** (hard stamp) |
+| 0.25 | 100 | 10 | 619 | **FAIL** (hard stamp) |
+| 0.1 | 40 | 0 | 333 | **FAIL** (hard stamp) |
+
+`f(0) = 0.5` is the LOWEST value that keeps the Spread law green. It cuts the outward dust **~35–45%** (sprayOutside 212 → 134 at 3 ticks, 1 624 → 887 at 8; tornEdge 19 → 13 at 8; alphaMass inflation roughly halved). Pushing `f(0)` lower kills more dust but stamps the production raster (`W_deposit=6 → W_settle=6`, `d(b)=0`) — that is a KEEP UNCHANGED violation and therefore a **user decision**, not ours to take.
+
+**Status: automated-ready, acceptance NOT claimed.** The dust is reduced, not eliminated, on this pin. Whether the ~40% reduction reads as "the dust the user sees is gone" is a native-UAT judgment.
+
+### Scope split vs real-paint tranche 1 (record it)
+
+Real-paint tranche 1's "kill the salt-and-pepper" scope targets the **DEPOSIT** (structured bristle footprint, `brush/paint.ts`). The visible salt-and-pepper is **PHICS-born** per the seam dumps — the dust halo lives in `fluids.ts`. Different lines, no conflict. **Do NOT fold the halo into tranche 1's deposit scope.**
+
 ## Recalibration record (Task 2)
 
 `physicsWidthScaling`, `productionAaSettleMeasurement`, `physicsSettledFootprint`, `paint.continuation` — **all green at EXISTING bounds** (W1–W7, PIN 0/0b, envelope ≤ 8, texture d(b) ≥ 1, texture-at-Spread-80). Zero exact-value pins shifted → no re-records performed. No behavioral law bounds edited.
@@ -281,17 +320,17 @@ Pin: `packages/efx-physic-paint/src/brush/paint.layeringBodyJumps.test.ts` (1/1 
 - `DRY_ALPHA_THRESHOLD = 1` stays as the dry-state machine cutoff; only the `sa > 0.005` transfer gates went continuous.
 - Tier-70 survival is decided by harness rows, with trace build-up in `paint.ts` as the only lever (`wet-layer.ts` is read-only).
 
-## Regression battery (2026-09-28, after move 1 + move 2 pins)
+## Regression battery (2026-09-28, after the fringe-mobility fix)
 
 | gate | result |
 |---|---|
-| Package vitest (`packages/efx-physic-paint`) | 30 files / 214 passed / 3 skipped / 0 failed |
+| Package vitest (`packages/efx-physic-paint`) | 31 files / 216 passed / 3 skipped / 0 failed |
 | App vitest (`app`) | 234 files / 4336 passed / 1 skipped / 101 todo / 0 failed |
 | Package `npm run check` (`tsc --noEmit`) | clean |
 | App `npm run typecheck` (`tsc --noEmit`) | clean |
-| New pins | `compositor.displayMapping.test.ts` 7/7, `fluids.premulRoundTrip.test.ts` 5/5, `depositSpeckleCapture.metrics.test.ts` 14/14, `copyLiveExtractionTornEdge.test.ts` 4/4, `paint.layeringBodyJumps.test.ts` 1/1 (measurement) |
+| New pins | `compositor.displayMapping.test.ts` 7/7, `fluids.premulRoundTrip.test.ts` 5/5, `depositSpeckleCapture.metrics.test.ts` 14/14, `copyLiveExtractionTornEdge.test.ts` 4/4, `paint.layeringBodyJumps.test.ts` 1/1 (measurement), `fluids.advectionSpray.test.ts` 2/2 |
 | Existing law pins | `physicsWidthScaling` W1–W7, `physicsSettledFootprint` PIN 0/0b, `productionAaSettleMeasurement`, `drying.continuity`, `fluids.continuation` — **all green at EXISTING bounds** |
-| Scope gate | `fluids.ts` (lever 1, copy-back only — COMMITTED `c8a7a073`); 2 new measurement pins (this pass). `paint.ts` **untouched** (measure-first refuted). |
+| Scope gate | `fluids.ts` (lever 1 copy-back + `applyFringeMobility` seam). `paint.ts` **untouched** (measure-first refuted). `advect`/`velStep`/`project`/`diffuse` untouched. |
 | Locked surfaces touched | **none** — `wet-layer.ts`, `compositor.ts` (production), `paint.ts`, `drying.ts`, app UI, package.json ×3, pnpm-lock all untouched |
 | `savedWet` / `startPhysics` / `stopPhysics` | only **call sites** in `depositSpeckleCapture.ts` (Task 1 harness drives the apply-physics clicks). No semantics change. |
 
@@ -306,6 +345,7 @@ Any failure would have been reported as NEW (user-mandated posture). None occurr
 | `3815e307` | `feat(260928-dh1): seeded deposit-time bristle pass — single trace generator` |
 | `9c4b6581` | `fix(260928-dh1): de-hardcut drying — continuous proportional transfer` |
 | `c8a7a073` | `fix(260928-dh1): lever 1 — shared premul recovery kills the a>0.5 stale pair` |
+| `a1913f50` | `test(260928-dh1): move 1+2 measure-first pins — extraction CLEAN, layering REFUTED` |
 
 ## Native visual UAT (pending — the oracle for the look)
 

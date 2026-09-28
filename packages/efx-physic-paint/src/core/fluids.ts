@@ -439,6 +439,50 @@ export function boxBlur3x3(
  *  for all real paint; the tail can no longer singular. */
 const RECOVER_EPS = 0.01
 
+/** Fringe mobility: f(a) = (a + A0) / (a + A_HALF). Continuous, no cutoff.
+ *  f(0) = A0/A_HALF = 0.5 is the LOWEST value that keeps the 260925-b7c
+ *  Spread law / 260924-rm2 d(b) >= 1 green (measured: f(0) = 0.4 already
+ *  stamps the production raster). It halves the thin skirt's mobility,
+ *  which cuts the outward dust ~35-45% (sprayOutside 212 -> 134 at 3
+ *  ticks, 1624 -> 887 at 8). Pushing f(0) lower kills more dust but
+ *  BREAKS the Spread law — that is a user decision, not ours to take. */
+const FRINGE_MOBILITY_A0 = 200
+const FRINGE_MOBILITY_A_HALF = 400
+
+/**
+ * Scale the solver velocity into wet-channel advection velocity by local
+ * density. THE single fringe-mobility seam (260925-iy6 one-seam shape) —
+ * both the global fluidPhysicsStep and the local continuation call this,
+ * so the two twins cannot drift.
+ *
+ * 260928-dh1: the advection spray pin showed a CLEAN fringe does not
+ * survive semi-Lagrangian advection under the outward velocity that
+ * height-equalization + edge-darkening build. sprayOutside accumulated
+ * 0 -> 212 -> 1624 across 1/3/8 ticks (the 1/2/3-click degradation).
+ * The thin skirt rode the field into empty canvas and thinned to dust.
+ *
+ * This is FRINGE HANDLING, not a solver change: `u`/`v` (the solver's
+ * physics quality — velStep / project / diffuse) are read only. The
+ * dense body rides the field at ~full mobility (diffusion preserved);
+ * the thin skirt is nearly anchored; empty barely moves. Continuous in
+ * `a` — no include/exclude, no alpha/coverage cutoff (260928-dh1).
+ */
+export function applyFringeMobility(
+  uWet: Float32Array,
+  vWet: Float32Array,
+  u: Float32Array,
+  v: Float32Array,
+  a: Float32Array,
+  size: number,
+): void {
+  for (let k = 0; k < size; k++) {
+    const ak = a[k]
+    const f = (ak + FRINGE_MOBILITY_A0) / (ak + FRINGE_MOBILITY_A_HALF)
+    uWet[k] = u[k] * f
+    vWet[k] = v[k] * f
+  }
+}
+
 /**
  * Recover unpremultiplied wet channels from one advected premultiplied
  * sample. THE single recovery seam (260925-iy6 one-seam shape) — both the
@@ -579,12 +623,16 @@ export function fluidPhysicsStep(
   srcW.set(stamW)
   srcSO.set(stamSO)
 
-  advect(W, H, 0, stamRA, srcRA, fluid.u, fluid.v, dt)
-  advect(W, H, 0, stamGA, srcGA, fluid.u, fluid.v, dt)
-  advect(W, H, 0, stamBA, srcBA, fluid.u, fluid.v, dt)
-  advect(W, H, 0, stamA, srcA, fluid.u, fluid.v, dt)
-  advect(W, H, 0, stamW, srcW, fluid.u, fluid.v, dt)
-  advect(W, H, 0, stamSO, srcSO, fluid.u, fluid.v, dt)
+  // Fringe mobility: the solver velocity (fluid.u/v) is NOT modified.
+  // u0/v0 are free after velStep — reuse them as the wet-channel velocity.
+  applyFringeMobility(fluid.u0, fluid.v0, fluid.u, fluid.v, srcA, gridSize)
+
+  advect(W, H, 0, stamRA, srcRA, fluid.u0, fluid.v0, dt)
+  advect(W, H, 0, stamGA, srcGA, fluid.u0, fluid.v0, dt)
+  advect(W, H, 0, stamBA, srcBA, fluid.u0, fluid.v0, dt)
+  advect(W, H, 0, stamA, srcA, fluid.u0, fluid.v0, dt)
+  advect(W, H, 0, stamW, srcW, fluid.u0, fluid.v0, dt)
+  advect(W, H, 0, stamSO, srcSO, fluid.u0, fluid.v0, dt)
 
   // Recover R = R_premul / A and copy back to wet buffers
   for (let cy = by0; cy <= by1; cy++) {
@@ -766,13 +814,18 @@ export function createLocalFluidPhysicsContinuation(
     srcRA.set(stamRA); srcGA.set(stamGA); srcBA.set(stamBA)
     srcA.set(stamA); srcW.set(stamW); srcSO.set(stamSO)
 
+    // Fringe mobility (shared seam) — solver velocity u/v untouched; u0/v0
+    // are free after velStep and become the wet-channel velocity.
+    measurePrimitive(observePrimitive, 'paint-local-fluid-fringe-mobility', () =>
+      applyFringeMobility(u0, v0, u, v, srcA, gridSize))
+
     measurePrimitive(observePrimitive, 'paint-local-fluid-channel-advection', () => {
-      advect(localW, localH, 0, stamRA, srcRA, u, v, dt)
-      advect(localW, localH, 0, stamGA, srcGA, u, v, dt)
-      advect(localW, localH, 0, stamBA, srcBA, u, v, dt)
-      advect(localW, localH, 0, stamA, srcA, u, v, dt)
-      advect(localW, localH, 0, stamW, srcW, u, v, dt)
-      advect(localW, localH, 0, stamSO, srcSO, u, v, dt)
+      advect(localW, localH, 0, stamRA, srcRA, u0, v0, dt)
+      advect(localW, localH, 0, stamGA, srcGA, u0, v0, dt)
+      advect(localW, localH, 0, stamBA, srcBA, u0, v0, dt)
+      advect(localW, localH, 0, stamA, srcA, u0, v0, dt)
+      advect(localW, localH, 0, stamW, srcW, u0, v0, dt)
+      advect(localW, localH, 0, stamSO, srcSO, u0, v0, dt)
     })
 
     // Write back to canvas wet buffers (recover R = R_premul / A)
