@@ -54,7 +54,7 @@ plan_head_before: 4484aec88700aa471771e3d10f664a4d9acb248a
 
 **Shape-detail (`edgeDetail`) deform amplitude now follows the local ribbon width (`gauss(0, variance * s)`) instead of the base brush radius applied uniformly — thick parts keep the natural organic edge, hairlines and tapers keep their silhouette, and one gesture shows the gradient.**
 
-**Verdict: automated-ready — native UAT pending.** Live visible UAT has NOT run; nothing here is "done/verified" until the user's native pass below.
+**Verdict: CLOSED — native UAT PASSED 2026-09-28.** User approved all 7 rows live (thick organic edge, hairline/taper silhouette, width gradient along one gesture, low-value no pixel noise, erase consistency, 260924-stb + 260925-b7c regressions, 260925-dso + 260924-m7w regressions).
 
 ## What landed
 
@@ -160,7 +160,7 @@ Options presented; **user selected the origin-t reading** (2026-09-28):
 - Stale `.git/worktrees/agent-af0041cdcc05012e3/index.lock` blocked the Task 3 commit (no holder per `lsof`, no live git process) — removed the lock only, retried, commit succeeded (CLAUDE.md recovery protocol).
 - Worktree had no `node_modules`/`dist` at first; `pnpm install --frozen-lockfile` + `tsup` build were required before the app suite and `tsc` could resolve `@efxlab/efx-physic-paint`. Not a code issue.
 
-## Native UAT rows (PENDING — user must run live; vitest cannot judge edges)
+## Native UAT rows (PASSED 2026-09-28 — user approved all 7 live)
 
 1. **THICK ORGANIC.** Draw a thick downstroke with `Shape detail` at a **high** value. The body edge must read as a natural organic edge (the feature's purpose), not as destruction or a uniform saw-tooth.
 2. **HAIRLINE SILHOUETTE.** On the **same** project/settings, draw a hairline (light pressure or thin size) and a tapering stroke. Thin parts must keep a clean silhouette — no eaten hairline, no wobble that eats the 2px core. Compare against a `Shape detail = 0` hairline: the silhouette should be close, not chewed.
