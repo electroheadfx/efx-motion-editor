@@ -10,7 +10,7 @@ import { hexRgb, rgbHex, mixSubtractive } from '../util/color'
 import { gauss, lerp, clamp, curveBounds } from '../util/math'
 import { sampleH } from '../core/paper'
 import { transferToWetLayerClipped } from '../core/wet-layer'
-import { smooth, resample, ribbon, deform, deformN, avgPenData } from './stroke'
+import { smooth, resample, ribbonWithScales, deformNScaled, deformScaled, avgPenData } from './stroke'
 
 function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
   if (!observer) return run()
@@ -256,8 +256,8 @@ export function applyWetCompositeClipped(
 
 /**
  * MAIN paint stroke entry point.
- * Orchestrates smooth -> resample -> ribbon -> deformN -> flat layer fill
- * -> transferToWetLayerClipped pipeline.
+ * Orchestrates smooth -> resample -> ribbonWithScales -> deformNScaled
+ * -> flat layer fill -> transferToWetLayerClipped pipeline.
  * From v3.html renderPaintStroke() line 921
  */
 export function renderPaintStroke(
@@ -362,17 +362,19 @@ export function createPaintStrokeRasterContinuationFromCurve(
       off.width = bounds.w; off.height = bounds.h
       const oc = off.getContext('2d', { willReadFrequently: true })!
       oc.translate(-bounds.x0, -bounds.y0)
-      const base = ribbon(curve, radius, 0.8, hasPenInput), baseD = deformN(base, 4, variance)
+      const { poly: base, scales: baseS } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
+      const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, variance)
       const layers = Math.round((22 + 15) / (speedDeplete || 1))
       const lAlpha = Math.min(0.08, 3 / layers)
 
       for (let i = 0; i < layers; i++) {
-        const v = deform(baseD, variance * 0.2)
+        const { poly: v } = deformScaled(baseD, baseDS, variance * 0.2)
         measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc, v, color, lAlpha))
         yield
       }
       for (let i = 0; i < Math.round(layers * 0.2); i++) {
-        measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc, deform(baseD, variance * 0.5), color, lAlpha * 0.25))
+        const { poly: v } = deformScaled(baseD, baseDS, variance * 0.5)
+        measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc, v, color, lAlpha * 0.25))
         yield
       }
       measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn))
@@ -402,17 +404,19 @@ export function createPaintStrokeRasterContinuationFromCurve(
       off2.width = segBounds.w; off2.height = segBounds.h
       const oc2 = off2.getContext('2d', { willReadFrequently: true })!
       oc2.translate(-segBounds.x0, -segBounds.y0)
-      const base = ribbon(seg, radius, 0.8, hasPenInput), baseD = deformN(base, 4, variance)
+      const { poly: base, scales: baseS } = ribbonWithScales(seg, radius, 0.8, hasPenInput)
+      const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, variance)
       const layers = Math.round((22 + opac * 15) / speedDeplete)
       const lAlpha = Math.min(0.065, 3 / layers) * opac
 
       for (let i = 0; i < layers; i++) {
-        const v = deform(baseD, variance * 0.2)
+        const { poly: v } = deformScaled(baseD, baseDS, variance * 0.2)
         measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc2, v, segHex, lAlpha))
         yield
       }
       for (let i = 0; i < Math.round(layers * 0.1); i++) {
-        measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc2, deform(baseD, variance * 0.5), segHex, lAlpha * 0.2))
+        const { poly: v } = deformScaled(baseD, baseDS, variance * 0.5)
+        measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc2, v, segHex, lAlpha * 0.2))
         yield
       }
       measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc2, seg, radius, segHex, opac, seg, hasPenInput, sampleHFn))
@@ -460,18 +464,20 @@ export function renderPaintStrokeSingleColor(
   const oc = off.getContext('2d', { willReadFrequently: true })!
   oc.translate(-bounds.x0, -bounds.y0) // shift so curve coords work directly
 
-  const base = ribbon(curve, radius, 0.8, hasPenInput), baseD = deformN(base, 4, variance)
+  const { poly: base, scales: baseS } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
+  const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, variance)
   // Render layers at full intensity — opacity applied as post-multiply
   const layers = Math.round((22 + 15) / (speedDeplete || 1))
   const lAlpha = Math.min(0.08, 3 / layers)
 
   measurePrimitive(observePrimitive, 'paint-raster-layers', () => {
     for (let i = 0; i < layers; i++) {
-      const v = deform(baseD, variance * 0.2)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.2)
       fillFlat(oc, v, color, lAlpha)
     }
     for (let i = 0; i < Math.round(layers * 0.2); i++) {
-      fillFlat(oc, deform(baseD, variance * 0.5), color, lAlpha * 0.25)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.5)
+      fillFlat(oc, v, color, lAlpha * 0.25)
     }
   })
   measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn))

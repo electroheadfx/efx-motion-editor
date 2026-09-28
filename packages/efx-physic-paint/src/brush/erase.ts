@@ -16,12 +16,14 @@ function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined,
   }
 }
 import { lerp, clamp, curveBounds } from '../util/math'
-import { smooth, resample, ribbon, deform, deformN } from './stroke'
+import { smooth, resample, ribbonWithScales, deformNScaled, deformScaled } from './stroke'
 import { fillFlat } from './paint'
 
 /**
- * Stroke-completion erase -- uses same ribbon+deform polygon as paint brush.
- * Erases by drawing transparent circles on dry canvas and clearing wet layer in area.
+ * Stroke-completion erase -- uses the same scale-aware ribbon+deform
+ * polygon as the paint brush (260927-ton: the erase mask follows the
+ * local-width law so a hairline erase cannot clear a full-variance
+ * wobble band outside the painted silhouette).
  * Uses `globalCompositeOperation = 'destination-out'` for transparent erase.
  * From v3.html applyEraseStroke() line 1214
  */
@@ -60,8 +62,8 @@ export function applyEraseStroke(
   const oc = off.getContext('2d', { willReadFrequently: true })!
   oc.translate(-bounds.x0, -bounds.y0)
 
-  const base = ribbon(curve, radius, 0.8, hasPenInput)
-  const baseD = deformN(base, 4, variance)
+  const { poly: base, scales: baseS } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
+  const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, variance)
   // More layers at higher strength for denser mask coverage
   // Fixed light mask for shape -- strMul controls actual removal amount
   const layers = 15
@@ -69,11 +71,12 @@ export function applyEraseStroke(
 
   measurePrimitive(observePrimitive, 'erase-mask-raster', () => {
     for (let i = 0; i < layers; i++) {
-      const v = deform(baseD, variance * 0.2)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.2)
       fillFlat(oc, v, '#fff', lAlpha)
     }
     for (let i = 0; i < Math.round(layers * 0.2); i++) {
-      fillFlat(oc, deform(baseD, variance * 0.5), '#fff', lAlpha * 0.5)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.5)
+      fillFlat(oc, v, '#fff', lAlpha * 0.5)
     }
   })
 
