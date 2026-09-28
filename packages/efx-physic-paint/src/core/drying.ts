@@ -97,9 +97,12 @@ export function dryStep(
       const sa = densityAlpha * pixelOpacity
       const pi = ((py - by0) * rectW + (px - bx0)) * 4
       const ma = d[pi + 3] / 255
-      if (sa > 0.005) {
+      // 260928-dh1: continuous proportional transfer — any sa > 0
+      // transfers proportionally (the old sub-gate dropped residue
+      // without transfer = the drain-without-transfer cliff).
+      if (sa > 0) {
         const oa = Math.min(1, ma + sa * (1 - ma))
-        const bt = sa / Math.max(0.005, oa)
+        const bt = sa / oa
         d[pi]     = Math.round(clamp(lerp(d[pi],     wet.r[i], bt), 0, 255))
         d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], wet.g[i], bt), 0, 255))
         d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], wet.b[i], bt), 0, 255))
@@ -123,8 +126,10 @@ export function dryStep(
     const pixelOpacity = wet.strokeOpacity ? wet.strokeOpacity[i] : 1.0
     let sa = (drain / 800) * pixelOpacity
 
-    // Paper texture modulation — skip at full opacity for solid coverage
-    if (paperHeight && pixelOpacity < 0.99) {
+    // Paper texture modulation — continuous multiplicative, applies at
+    // EVERY opacity (260928-dh1: the old full-opacity bypass was a
+    // per-pixel on/off discontinuity at 0.99).
+    if (paperHeight) {
       const ph = paperHeight[i]
       sa *= clamp(1.4 - ph * 0.8, 0.3, 1.4)
     }
@@ -132,9 +137,10 @@ export function dryStep(
     const pi = ((py - by0) * rectW + (px - bx0)) * 4
     const ma = d[pi + 3] / 255
 
-    if (sa > 0.005) {
+    // Continuous proportional transfer — no sub-gate cutoff (260928-dh1).
+    if (sa > 0) {
       const oa = Math.min(1, ma + sa * (1 - ma))
-      const bt = sa / Math.max(0.005, oa)
+      const bt = sa / oa
       d[pi]     = Math.round(clamp(lerp(d[pi],     wet.r[i], bt), 0, 255))
       d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], wet.g[i], bt), 0, 255))
       d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], wet.b[i], bt), 0, 255))
@@ -213,9 +219,11 @@ export function forceDryAll(
     const pi = ((py - by0) * rectW + (px - bx0)) * 4
     const ma = d[pi + 3] / 255
 
-    if (sa > 0.005) {
+    // Continuous proportional transfer — same de-hardcut as dryStep
+    // (260928-dh1): any sa > 0 transfers proportionally.
+    if (sa > 0) {
       const oa = Math.min(1, ma + sa * (1 - ma))
-      const bt = sa / Math.max(0.005, oa)
+      const bt = sa / oa
       d[pi]     = Math.round(clamp(lerp(d[pi],     wet.r[i], bt), 0, 255))
       d[pi + 1] = Math.round(clamp(lerp(d[pi + 1], wet.g[i], bt), 0, 255))
       d[pi + 2] = Math.round(clamp(lerp(d[pi + 2], wet.b[i], bt), 0, 255))
