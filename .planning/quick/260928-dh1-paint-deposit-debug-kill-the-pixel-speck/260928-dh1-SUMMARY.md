@@ -294,6 +294,49 @@ Continuous `f(a) = (a + A0) / (a + A_HALF)` scaling the solver velocity into the
 
 **Status: automated-ready, acceptance NOT claimed.** The dust is reduced, not eliminated, on this pin. Whether the ~40% reduction reads as "the dust the user sees is gone" is a native-UAT judgment.
 
+## Width-scale f discriminator — SPRAY SCALES WITH f (2026-09-28 UAT FAIL follow-up)
+
+**Native UAT on freehand: FAIL.** Thin strokes (cursive, loops) CLEAN and shippable; thick strokes (zigzag, scribble) FILTHY — salt-and-pepper around the whole contour and inside the body. **ACCEPTANCE = "a thick stroke must render as clean as a thin one"** — not a percentage. `applyFringeMobility` `f(0)=0.5` is NOT enough (settled: do not re-judge it with another capture). Option 3 answered. Option 2 confirmed.
+
+**Discriminator (FACT from code):** `buildWidthScaleField` (fluids.ts:258) gives `f = 0.25` for hairline cores and `f = 1` for thick regions (`T >= 14.85`) — 4x the physics intensity on exactly the strokes that break. `f` multiplies the `addHeightEqualization` force (fluids.ts:239-242).
+
+Pin: same ribbon geometry at **both** width-scale levels through `localFluidPhysicsStep` (the apply-physics path) via a test-only `fScaleValue` seam. Hairline control (`fScale = 0.25`) is the UAT-clean cell and must STAY good.
+
+| cell | sprayOutside | tail d1 | d2 | **d3+** | maxDist | tornEdge |
+|---|---|---|---|---|---|---|
+| f=0.25 3tk (hairline) | 0 | 0 | 0 | **0** | 0 | 0 |
+| f=0.25 8tk (hairline) | 164 | 148 | 16 | **0** | **2** | 2 |
+| f=1 3tk (thick) | 72 | 72 | 0 | **0** | 1 | 0 |
+| f=1 8tk (thick) | 722 | 164 | 172 | **386** | **5** | 6 |
+
+**VERDICT: SPRAY SCALES WITH f.** thick/hairline ratio 72x at 3tk, 4.4x at 8tk. The intensity multiplier is the amplifier. **The long-travel tail is the discriminator:** hairline keeps `d3+ = 0` / `maxDist <= 2` and renders CLEAN; thick flies to `maxDist 5` / `d3+ = 386` and renders FILTHY. Causal link settled.
+
+### The separating mechanism — OPEN (travel cap has an EMPTY window)
+
+The authorized direction was "cut the long travel tail while leaving the f law intact". Measured: **a blunt displacement cap has no window.**
+
+| cap `M` (cells/tick) | `d(b) >= 1` (260925-b7c) | thick `d3+` at 8tk |
+|---|---|---|
+| uncapped | **PASS** | 386 |
+| 1.5 (hyperbolic) | **FAIL** | 327 |
+| 0.60 (hyperbolic) | **FAIL** | 157 |
+| 0.30 (tanh) | **FAIL** | **0** |
+| source-weighted (body 2.0 / fringe 0.25) | **FAIL** | 323 |
+
+`d(b) >= 1` needs `M >= 1.5`; `d3+ = 0` needs `M <= 0.3`. **No overlap.** The mechanism: the 1px edge growth and the 3-5px dust flight both read the body through a long backtrace — capping the backtrace starves the growth (the growth cell samples the thin AA edge instead of the body and stays below the visible threshold) while the tail is the same long backtrace carrying fringe values. The source-weighted variant (budget from the SOURCE density at the backtrace) self-grants the body budget to the tail (the uncapped backtrace that creates the tail lands in the body) and still stamps `d(b)`.
+
+**Shipped state stays dest-density mobility alone (`f(0) = 0.5`) — law-green, insufficient.** Triple criterion is **NOT met** (halo not killed). Acceptance NOT claimed.
+
+Candidate that is NOT a travel cap (needs a Go): damp the **arrived** density in copy-back when a cell receives a low-density increment — the separator there is arrival density (growth lands at body density, dust lands at fringe density), which is continuous-multiplicative and lives in the copy-back path. Risk: it can lighten the hairline, which the UAT says is currently GOOD — that is a look trade the user must authorize.
+
+### Triple success criterion (all three, no tradeoffs)
+
+1. thick-stroke dust halo killed at 8 ticks (`sprayOutside` tail `d3+` ~ 0) — **NOT MET** (386)
+2. Spread law `d(b) >= 1` green (260925-b7c) — **GREEN** (do NOT relax)
+3. width-scale `f` law green (260924-stb) — **GREEN** (do NOT flatten)
+
+Hairline control: `d3+ = 0`, `maxDist <= 2`, `isolatedPx = 0` at both tick counts — **stays GOOD**. Any mechanism that dirties it is rejected.
+
 ### Scope split vs real-paint tranche 1 (record it)
 
 Real-paint tranche 1's "kill the salt-and-pepper" scope targets the **DEPOSIT** (structured bristle footprint, `brush/paint.ts`). The visible salt-and-pepper is **PHICS-born** per the seam dumps — the dust halo lives in `fluids.ts`. Different lines, no conflict. **Do NOT fold the halo into tranche 1's deposit scope.**

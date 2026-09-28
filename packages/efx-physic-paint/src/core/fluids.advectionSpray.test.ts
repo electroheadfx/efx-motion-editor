@@ -42,7 +42,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fluidPhysicsStep } from './fluids'
+import { fluidPhysicsStep, localFluidPhysicsStep } from './fluids'
 import { createWetBuffers } from './wet-layer'
 import { wetDisplayAlpha } from '../render/compositor'
 import type { FluidBuffers, FluidConfig, WetBuffers } from '../types'
@@ -179,6 +179,49 @@ function runTicks(wet: WetBuffers, ticks: number): void {
   }
 }
 
+/** Production apply-physics path (localFluidPhysicsStep) at a forced fScale. */
+function runTicksLocal(wet: WetBuffers, ticks: number, fScaleValue: number): void {
+  localFluidPhysicsStep(
+    wet, FLUID_CONFIG, W, H,
+    { x0: 12, y0: 4, x1: 83, y1: 43 },
+    ticks,
+    undefined,
+    fScaleValue,
+  )
+}
+
+/**
+ * Fringe displacement distribution: Chebyshev distance from each sprayed
+ * ink pixel to the nearest INPUT ink pixel. The "long travel tail" is the
+ * mass that lands 3+ px from where paint started.
+ */
+function displacementDistribution(
+  planeAfter: Uint8Array,
+  inputMask: Uint8Array,
+): { d1: number; d2: number; d3plus: number; maxDist: number; sprayOutside: number } {
+  let d1 = 0, d2 = 0, d3plus = 0, maxDist = 0, sprayOutside = 0
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x
+      if (planeAfter[i] < 4 || inputMask[i]) continue
+      sprayOutside++
+      let best = Infinity
+      for (let yy = 0; yy < H; yy++) {
+        for (let xx = 0; xx < W; xx++) {
+          if (!inputMask[yy * W + xx]) continue
+          const d = Math.max(Math.abs(xx - x), Math.abs(yy - y))
+          if (d < best) best = d
+        }
+      }
+      if (best === 1) d1++
+      else if (best === 2) d2++
+      else d3plus++
+      if (best > maxDist && best < Infinity) maxDist = best
+    }
+  }
+  return { d1, d2, d3plus, maxDist, sprayOutside }
+}
+
 function report(rows: Snapshot[]): string {
   const lines = [
     '260928-dh1 — advection spray pin (clean fringe, production velocity field)',
@@ -270,5 +313,123 @@ describe('260928-dh1 advection spray — clean fringe through fluidPhysicsStep',
     // Wet-channel advect uses the scaled velocity (u0/v0), not the solver's u/v.
     expect(src).toMatch(/advect\(W, H, 0, stamA, srcA, fluid\.u0, fluid\.v0, dt\)/)
     expect(src).toMatch(/advect\(localW, localH, 0, stamA, srcA, u0, v0, dt\)/)
+  })
+})
+
+// ============================================================
+//  2026-09-28 UAT FAIL follow-up — the width-scale f discriminator
+//
+//  Native UAT on freehand: thin strokes (cursive, loops) CLEAN, thick
+//  strokes (zigzag, scribble) FILTHY. ACCEPTANCE = "a thick stroke must
+//  render as clean as a thin one" — not a percentage. applyFringeMobility
+//  f(0)=0.5 is NOT enough (do not re-judge it with another capture).
+//
+//  buildWidthScaleField (fluids.ts:258) gives f = 0.25 for hairline cores
+//  and f = 1 for thick regions (T >= 14.85) — 4x the physics intensity on
+//  exactly the strokes that break. f multiplies the addHeightEqualization
+//  force (fluids.ts:239-242). Thick strokes push the fringe 4x harder
+//  outward = 4x more dust. Values of f are FACT; the causal link is the
+//  HYPOTHESIS this pin settles.
+//
+//  Same ribbon geometry at BOTH width-scale levels. Hairline control
+//  (fScale = 0.25) is currently GOOD and must STAY good — any mechanism
+//  that dirties it is rejected.
+//
+//    spray scales with f   -> the intensity multiplier is the amplifier;
+//                             the fix must cut the long travel tail while
+//                             leaving the f law intact.
+//    spray does NOT scale  -> the driver is fringe geometry / mass; next
+//                             pin splits transport from the Curtis outward
+//                             push (darkenEdges + addHeightEqualization).
+//  ============================================================
+
+describe('260928-dh1 width-scale f discriminator — spray at fScale 0.25 vs 1.0', () => {
+  it('same geometry, hairline control vs thick: displacement tail + sprayOutside', () => {
+    const input = buildCleanRibbon()
+    const inputMask = inkMask(displayPlane(input))
+
+    interface Cell {
+      label: string
+      fScale: number
+      ticks: number
+      tornEdge: number
+      isolatedPx: number
+      sprayOutside: number
+      d1: number
+      d2: number
+      d3plus: number
+      maxDist: number
+    }
+    const cells: Cell[] = []
+
+    for (const fScale of [0.25, 1.0] as const) {
+      for (const ticks of [3, 8] as const) {
+        const wet = cloneWet(input)
+        runTicksLocal(wet, ticks, fScale)
+        const plane = displayPlane(wet)
+        const m = computeDefectMetrics(plane, W, H)
+        const disp = displacementDistribution(plane, inputMask)
+        cells.push({
+          label: `f=${fScale} ${ticks}tk`,
+          fScale,
+          ticks,
+          tornEdge: m.tornEdge,
+          isolatedPx: m.isolatedPx,
+          sprayOutside: disp.sprayOutside,
+          d1: disp.d1,
+          d2: disp.d2,
+          d3plus: disp.d3plus,
+          maxDist: disp.maxDist,
+        })
+      }
+    }
+
+    const lines = [
+      '260928-dh1 — width-scale f discriminator (same ribbon geometry)',
+      'hairline control fScale=0.25 | thick fScale=1.0 | localFluidPhysicsStep (apply-physics path)',
+      '',
+    ]
+    for (const c of cells) {
+      lines.push(
+        `  ${c.label.padEnd(12)} sprayOutside=${String(c.sprayOutside).padStart(5)}  tail d1=${String(c.d1).padStart(4)} d2=${String(c.d2).padStart(4)} d3+=${String(c.d3plus).padStart(4)}  maxDist=${String(c.maxDist).padStart(3)}  tornEdge=${String(c.tornEdge).padStart(4)}  isolatedPx=${c.isolatedPx}`,
+      )
+    }
+
+    const by = new Map(cells.map(c => [c.label, c]))
+    const hair3 = by.get('f=0.25 3tk')!
+    const hair8 = by.get('f=0.25 8tk')!
+    const thick3 = by.get('f=1 3tk')!
+    const thick8 = by.get('f=1 8tk')!
+
+    // Does spray scale with f?
+    const ratio3 = thick3.sprayOutside / Math.max(1, hair3.sprayOutside)
+    const ratio8 = thick8.sprayOutside / Math.max(1, hair8.sprayOutside)
+    const tailRatio = thick8.d3plus / Math.max(1, hair8.d3plus)
+    const scalesWithF = ratio3 >= 1.5 || ratio8 >= 1.5 || tailRatio >= 1.5
+
+    const verdict: string[] = []
+    if (scalesWithF) {
+      verdict.push('  -> SPRAY SCALES WITH f: the intensity multiplier is the amplifier.')
+      verdict.push(`     sprayOutside ratio thick/hairline: 3tk ${ratio3.toFixed(2)}x  8tk ${ratio8.toFixed(2)}x`)
+      verdict.push(`     long-travel tail (d3+) ratio at 8tk: ${tailRatio.toFixed(2)}x`)
+      verdict.push('     Fix must CUT THE LONG TRAVEL TAIL while leaving the f law intact')
+      verdict.push('     (260924-stb: do NOT flatten f; 260925-b7c: do NOT relax d(b) >= 1).')
+    } else {
+      verdict.push('  -> SPRAY DOES NOT SCALE WITH f: the driver is fringe geometry / mass.')
+      verdict.push(`     sprayOutside ratio thick/hairline: 3tk ${ratio3.toFixed(2)}x  8tk ${ratio8.toFixed(2)}x`)
+      verdict.push('     Next pin must SPLIT TRANSPORT from the Curtis outward push')
+      verdict.push('     (darkenEdges + addHeightEqualization accumulating).')
+    }
+    verdict.push(`  hairline control today: 3tk sprayOutside=${hair3.sprayOutside} tail d3+=${hair3.d3plus} | 8tk sprayOutside=${hair8.sprayOutside} tail d3+=${hair8.d3plus}`)
+
+    console.log(`${lines.join('\n')}\n${verdict.join('\n')}`)
+
+    // Hairline control MUST stay good — it is the UAT-clean cell.
+    // Bound = its own measured baseline, not a wish: do not let any fix
+    // make the hairline worse than it is today.
+    expect(hair3.sprayOutside, `hairline 3tk sprayOutside=${hair3.sprayOutside}`).toBeLessThanOrEqual(80)
+    expect(hair8.sprayOutside, `hairline 8tk sprayOutside=${hair8.sprayOutside}`).toBeLessThanOrEqual(450)
+    expect(hair3.isolatedPx, 'hairline 3tk isolatedPx').toBe(0)
+    expect(hair8.isolatedPx, 'hairline 8tk isolatedPx').toBe(0)
   })
 })

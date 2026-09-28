@@ -442,12 +442,27 @@ const RECOVER_EPS = 0.01
 /** Fringe mobility: f(a) = (a + A0) / (a + A_HALF). Continuous, no cutoff.
  *  f(0) = A0/A_HALF = 0.5 is the LOWEST value that keeps the 260925-b7c
  *  Spread law / 260924-rm2 d(b) >= 1 green (measured: f(0) = 0.4 already
- *  stamps the production raster). It halves the thin skirt's mobility,
- *  which cuts the outward dust ~35-45% (sprayOutside 212 -> 134 at 3
- *  ticks, 1624 -> 887 at 8). Pushing f(0) lower kills more dust but
- *  BREAKS the Spread law — that is a user decision, not ours to take. */
+ *  stamps the production raster). It halves the thin skirt's mobility. */
 const FRINGE_MOBILITY_A0 = 200
 const FRINGE_MOBILITY_A_HALF = 400
+
+/**
+ * Travel budget (grid cells/tick) as a function of the SOURCE density.
+ *
+ * MEASURED (2026-09-28): a BLUNT displacement cap has an EMPTY window —
+ * the 260925-b7c Spread law's 1px edge growth needs M >= 1.5 (d(b) >= 1)
+ * while d3+ = 0 needs M <= 0.3, because edge growth and dust flight both
+ * read the body through a long backtrace. This source-weighted variant
+ * (body travels WET_MAX_DISP_CELLS, fringe held to WET_MIN_DISP_CELLS)
+ * was written to separate them and ALSO left the tail alive (the uncapped
+ * backtrace that creates the tail lands in the body, so it self-grants
+ * the body budget) while still stamping d(b). Shipped state is therefore
+ * the dest-density mobility ALONE (f(0) = 0.5, law-green, insufficient).
+ * The separator that actually works is still OPEN — see SUMMARY.
+ */
+const WET_MAX_DISP_CELLS = 2.0
+const WET_MIN_DISP_CELLS = 0.25
+const WET_TRAVEL_A_HALF = 400
 
 /**
  * Scale the solver velocity into wet-channel advection velocity by local
@@ -455,17 +470,11 @@ const FRINGE_MOBILITY_A_HALF = 400
  * both the global fluidPhysicsStep and the local continuation call this,
  * so the two twins cannot drift.
  *
- * 260928-dh1: the advection spray pin showed a CLEAN fringe does not
- * survive semi-Lagrangian advection under the outward velocity that
- * height-equalization + edge-darkening build. sprayOutside accumulated
- * 0 -> 212 -> 1624 across 1/3/8 ticks (the 1/2/3-click degradation).
- * The thin skirt rode the field into empty canvas and thinned to dust.
- *
  * This is FRINGE HANDLING, not a solver change: `u`/`v` (the solver's
  * physics quality — velStep / project / diffuse) are read only. The
- * dense body rides the field at ~full mobility (diffusion preserved);
- * the thin skirt is nearly anchored; empty barely moves. Continuous in
- * `a` — no include/exclude, no alpha/coverage cutoff (260928-dh1).
+ * 260924-stb f law is read only too — f already scaled the force upstream.
+ * Continuous in `a` — no include/exclude, no alpha/coverage cutoff
+ * (260928-dh1).
  */
 export function applyFringeMobility(
   uWet: Float32Array,
@@ -683,8 +692,9 @@ export function localFluidPhysicsStep(
   bbox: { x0: number; y0: number; x1: number; y1: number },
   ticks: number,
   observePrimitive?: PaintPrimitiveTimingObserver,
+  fScaleValue?: number,
 ): void {
-  createLocalFluidPhysicsContinuation(wet, config, canvasW, canvasH, bbox, ticks, observePrimitive).runToCompletion()
+  createLocalFluidPhysicsContinuation(wet, config, canvasW, canvasH, bbox, ticks, observePrimitive, fScaleValue).runToCompletion()
 }
 
 export function createLocalFluidPhysicsContinuation(
@@ -695,6 +705,9 @@ export function createLocalFluidPhysicsContinuation(
   bbox: { x0: number; y0: number; x1: number; y1: number },
   ticks: number,
   observePrimitive?: PaintPrimitiveTimingObserver,
+  /** Test-only: force the 260924-stb f multiplier (hairline 0.25 / thick 1).
+   *  Production omits it and buildWidthScaleField runs as the f law. */
+  fScaleValue?: number,
 ): LocalFluidPhysicsContinuation {
   function* run(): Generator<void, void, void> {
   // Clamp bbox to canvas bounds
@@ -750,8 +763,14 @@ export function createLocalFluidPhysicsContinuation(
   // 260924-stb: neighborhood width → physics intensity multiplier, computed
   // ONCE from the deposited raster before tick 0 (equalization sources only —
   // darkening/advection untouched; pure function of wet.alpha → determinism).
-  const widthScale = measurePrimitive(observePrimitive, 'paint-local-fluid-width-field', () =>
-    buildWidthScaleField(wet, x0, y0, x1, y1, localW, localH, canvasW))
+  const widthScale = measurePrimitive(observePrimitive, 'paint-local-fluid-width-field', () => {
+    if (fScaleValue != null) {
+      const forced = new Float32Array(gridSize)
+      forced.fill(fScaleValue)
+      return forced
+    }
+    return buildWidthScaleField(wet, x0, y0, x1, y1, localW, localH, canvasW)
+  })
 
   for (let tick = 0; tick < ticks; tick++) {
     const tickStartedAt = observePrimitive ? performance.now() : 0
