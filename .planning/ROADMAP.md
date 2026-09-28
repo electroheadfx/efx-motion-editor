@@ -464,6 +464,31 @@ Plans:
 - [x] 52-04-PLAN.md — "Reveal with script…" modal entry
 - [x] 52-05-PLAN.md — Reveal leak contract (RVL-05 token allow-list)
 
+### Phase 52.4: Real-paint kill the salt-and-pepper (INSERTED)
+
+**Goal:** Replace the salt-and-pepper bristle deposit with a structured, contained bristle footprint — coherent translucent streaks laid along the ribbon, build-up by overlap (R1) — deleting the `h > 0.72` paper cut with `drawBristleTraces`, and ship the one-routine two-tier deposit (R6, mandatory per D-05) where the live tier is display-only and a single full-N finalize deposit feeds wet/physics (D-07).
+**Requirements**: TBD (SPEC labels: R1, R6 per 52.4-SPEC.md SCOPE LOCK)
+**Depends on:** Phase 52
+**Plans:** 4 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 52.4-01-PLAN.md — Tracer: delete `drawBristleTraces` + `h > 0.72` paper cut + the 37x `fillFlat` layering (D-04/D-14, integration R3); install `drawBristleFootprint(curve, params, tier)` at all deposit sites; thread `tier` through paint.ts + engine (D-05); wire D-07 single-deposit; retarget bristleSeed pins
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 52.4-02-PLAN.md — Look geometry (TDD): Poisson-disk tips (D-13), baked lateral density profile (D-02), `nW` bounds (D-12), uniform base color + single constant alpha (D-09/D-10/D-11), DiVerdi §4.1 live ¼ tier (D-05) — PIN 0 saturation by overlap, no fill safety net (D-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 52.4-03-PLAN.md — Tier-parity capture-pin (TDD): extend `depositSpeckleCapture` (D-08) — identical gap positions, same silhouette under §4.1 thickness tolerance, settle adds only detail
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 52.4-04-PLAN.md — Source-shape pins + acceptance battery (TDD): footprint pins (no non-seeded RNG / per-pixel pass / non-constant alpha / paper read), invariant battery (PIN 0/0b, envelope ≤ 8, keep-tier, W1–W7), dh1 rows a–i at existing bounds
+
 ### Phase 52.3: Paint content export — per-frame compositor enumeration (INSERTED)
 
 **Goal:** Any project containing paint exports its painted frames — PNG sequence, paint-only and mixed projects alike, both canvas orientations. Exporting a paint-only project renders every frame of the export range through the compositor; the "No frames to export (timeline is empty)" refusal becomes unreachable for paint content. (User-driven insert; every step gated: discuss → context → plan → execute.)
