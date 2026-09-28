@@ -17,7 +17,10 @@ pub fn export_create_dir(base_dir: String) -> Result<String, String> {
 /// Write PNG bytes to disk with atomic temp+rename pattern (same as project_io)
 #[command]
 pub fn export_write_png(dir_path: String, filename: String, data: Vec<u8>) -> Result<(), String> {
-    let path = Path::new(&dir_path).join(&filename);
+    let dir = Path::new(&dir_path);
+    std::fs::create_dir_all(dir)
+        .map_err(|e| format!("Failed to create PNG directory: {e}"))?;
+    let path = dir.join(&filename);
     let tmp_path = path.with_extension("png.tmp");
     std::fs::write(&tmp_path, &data)
         .map_err(|e| format!("Failed to write PNG: {e}"))?;

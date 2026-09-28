@@ -430,6 +430,54 @@ export function boxBlur3x3(
  * @param physicsMode - 'last' or 'all' mode
  * @param sampleHFn - Paper height sampling function (unused here but kept for API compat)
  */
+
+/** Soft unpremultiply floor (wet-density units). `sqrt(a² + ε²)` is smooth
+ *  in a and equals `a` for every visible pixel (ε = 0.01 is five orders
+ *  below the body plateau of ~2882 and two below the dimmest fringe that
+ *  clears the ink floor of 4 display-alpha ≈ 40 wet units), while capping
+ *  the 1/a gain at 1/ε in the vanishing tail. Identity recovery is exact
+ *  for all real paint; the tail can no longer singular. */
+const RECOVER_EPS = 0.01
+
+/**
+ * Recover unpremultiplied wet channels from one advected premultiplied
+ * sample. THE single recovery seam (260925-iy6 one-seam shape) — both the
+ * global fluidPhysicsStep and the local continuation copy-back call this,
+ * so the two twins cannot drift.
+ *
+ * 260928-dh1: continuous in `a`, no include/exclude.
+ *   - Every pixel is written. The old `a > 0.5` gate left r/g/b and
+ *     strokeOpacity STALE below the line while alpha was written, so the
+ *     fringe became advected scattered alpha beside leftover body colour
+ *     (the torn contour's parasitic pixels). That branch is gone — this
+ *     is the fix: always-write keeps premul consistent across ticks, so
+ *     the 1/a amplifier never gets an inconsistent pair to blow up.
+ *   - The denominator `sqrt(a² + ε²)` is smooth and bounds the near-zero
+ *     singularity. For every a above the ink floor the recovery is the
+ *     exact premul/a.
+ */
+export function recoverWetFromPremultiplied(
+  wet: WetBuffers,
+  i: number,
+  a: number,
+  premulR: number,
+  premulG: number,
+  premulB: number,
+  premulSO: number,
+  wetness: number,
+): void {
+  const safeA = Math.sqrt(a * a + RECOVER_EPS * RECOVER_EPS)
+  const inv = 1 / safeA
+  wet.r[i] = Math.min(255, Math.max(0, premulR * inv))
+  wet.g[i] = Math.min(255, Math.max(0, premulG * inv))
+  wet.b[i] = Math.min(255, Math.max(0, premulB * inv))
+  if (wet.strokeOpacity) {
+    wet.strokeOpacity[i] = Math.min(1, Math.max(0, premulSO * inv))
+  }
+  wet.alpha[i] = Math.min(200000, Math.max(0, a))
+  wet.wetness[i] = Math.max(0, wetness)
+}
+
 export function fluidPhysicsStep(
   wet: WetBuffers,
   fluid: FluidBuffers,
@@ -543,20 +591,12 @@ export function fluidPhysicsStep(
     for (let cx = bx0; cx <= bx1; cx++) {
       const canvasIdx = cy * canvasW + cx
       const stamIdx = IX(W, cx + 1, cy + 1)
-      const a = stamA[stamIdx]
-      if (a > 0.5) {
-        const invA = 1.0 / a
-        // Clamp RGB to 0-255: prevents cumulative channel erosion
-        wet.r[canvasIdx] = Math.min(255, Math.max(0, stamRA[stamIdx] * invA))
-        wet.g[canvasIdx] = Math.min(255, Math.max(0, stamGA[stamIdx] * invA))
-        wet.b[canvasIdx] = Math.min(255, Math.max(0, stamBA[stamIdx] * invA))
-        // Recover strokeOpacity = premul / A, clamp to 0-1
-        if (wet.strokeOpacity) {
-          wet.strokeOpacity[canvasIdx] = Math.min(1, Math.max(0, stamSO[stamIdx] * invA))
-        }
-      }
-      wet.alpha[canvasIdx] = Math.min(200000, Math.max(0, a))
-      wet.wetness[canvasIdx] = Math.max(0, stamW[stamIdx])
+      recoverWetFromPremultiplied(
+        wet, canvasIdx,
+        stamA[stamIdx],
+        stamRA[stamIdx], stamGA[stamIdx], stamBA[stamIdx],
+        stamSO[stamIdx], stamW[stamIdx],
+      )
     }
   }
 
@@ -741,18 +781,12 @@ export function createLocalFluidPhysicsContinuation(
       for (let cx = x0; cx <= x1; cx++) {
         const canvasIdx = cy * canvasW + cx
         const stamIdx = IX(localW, cx - x0 + 1, cy - y0 + 1)
-        const a = stamA[stamIdx]
-        if (a > 0.5) {
-          const invA = 1.0 / a
-          wet.r[canvasIdx] = Math.min(255, Math.max(0, stamRA[stamIdx] * invA))
-          wet.g[canvasIdx] = Math.min(255, Math.max(0, stamGA[stamIdx] * invA))
-          wet.b[canvasIdx] = Math.min(255, Math.max(0, stamBA[stamIdx] * invA))
-          if (wet.strokeOpacity) {
-            wet.strokeOpacity[canvasIdx] = Math.min(1, Math.max(0, stamSO[stamIdx] * invA))
-          }
-        }
-        wet.alpha[canvasIdx] = Math.min(200000, Math.max(0, a))
-        wet.wetness[canvasIdx] = Math.max(0, stamW[stamIdx])
+        recoverWetFromPremultiplied(
+          wet, canvasIdx,
+          stamA[stamIdx],
+          stamRA[stamIdx], stamGA[stamIdx], stamBA[stamIdx],
+          stamSO[stamIdx], stamW[stamIdx],
+        )
       }
     }
     })
