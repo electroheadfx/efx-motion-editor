@@ -213,12 +213,12 @@ Not applicable — this phase installs **no external packages**. All work uses e
 | A3 | Compositor display thresholds (compositor.ts:35/:89) do not contribute visible speckle | B | May need a display-side pass; harness row would reveal it |
 | A4 | Installing LCG over Math.random in the harness does not change pointer/engine timing enough to alter velocity | E | Baseline matrix skewed; validate with recorded timeStamp assertions |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Hard-rule granularity for dryStep "continuous"** — does `DRY_ALPHA_THRESHOLD = 1` (an integer alpha state cutoff, not a coverage cutoff) count as a forbidden hard cutoff? It gates the dry-state machine, not pixel alpha visibility.
-   - Recommendation: keep it (state machine, not deposit modulation) and make the `sa > 0.005` transfer gates continuous; document in Task 2.
+   - **RESOLVED (PLAN Task 2):** keep it — `DRY_ALPHA_THRESHOLD = 1` STAYS as the dry-state machine cutoff, not a deposit/coverage modulation; the `sa > 0.005` transfer gates become continuous/proportional and the `pixelOpacity < 0.99` discontinuity is removed — continuous multiplicative modulation only.
 2. **Bristle count vs tier-70** — with containment clamped and alphas in the 0.015–0.06 range, will traces ever reach offscreen alpha ≥ 70 to survive the keep-gate?
-   - Recommendation: build-up by overlap (locked requirement #2) — many low-alpha strokes over the layer body accumulate; harness RED/GREEN rows decide. If traces inside the body are dropped, the fix is stacking, never lowering the tier.
+   - **RESOLVED (PLAN Tasks 2–3):** tier-70 survival is decided by the harness RED/GREEN rows, with trace build-up (overlap passes / density in paint.ts) as the only fix lever — `DEPOSIT_KEEP_TIER = 70` stays fixed as include/exclude; stacking, never lowering the tier.
 
 ## Sources
 
