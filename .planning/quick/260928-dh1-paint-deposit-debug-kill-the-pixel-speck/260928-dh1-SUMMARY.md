@@ -1,9 +1,42 @@
 # Quick Task 260928-dh1: Paint-deposit debug — kill the pixel speckle - Summary
 
-**Status:** automated-ready
+**Status:** SUPERSEDED (2026-09-28) — not "done" (native UAT FAIL: "C'est affreux"), not "abandoned" (its landings are real and tranche 1a requires them). Closed in favour of **real-paint tranche 1a (phase 52.4, R1 only)**.
 **Completed:** 2026-09-28
-**Commits:** `329051f1` (Task 1 harness), `05a92f77` (RED pins), `3815e307` (seeded bristle pass), `9c4b6581` (drying de-hardcut)
+**Commits:** `329051f1` (Task 1 harness), `05a92f77` (RED pins), `3815e307` (seeded bristle pass), `9c4b6581` (drying de-hardcut), `c8a7a073` (lever 1 premul recovery), `a1913f50` (move 1+2 pins), `2b94d3ed` (fringe mobility), `1bdf4667` (f discriminator)
 **Scope-gate base:** `25bd6d87`
+
+## CLOSE-OUT (2026-09-28, user decision) — PIVOT to real-paint tranche 1a
+
+**Verdict: SUPERSEDED.** The visible defect (edge salt-and-pepper) is manufactured in `brush/paint.ts`, not `fluids.ts` — verified live: `paint.ts:177` `paperSkip = sampleHFn(bx, by) > 0.72 && seededDraw(...) > 0.3`, bristles at alpha 0.015–0.06 (`paint.ts:123`). `SPECS/real-paint/04-integration.md` names it verbatim as "the source of the edge salt-and-pepper". Three mechanisms tried in `fluids.ts` (fringe mobility, travel cap, arrival-density damper) all target a SECONDARY dust. The thin/thick split in the UAT capture follows directly: bristle count `N = radius * 0.5`, so thick strokes draw more bristles and therefore more skips.
+
+The travel-cap family is a **structural dead end** and the mechanism family stops here: `d(b) >= 1` needs `M >= 1.5` and `d3+ = 0` needs `M <= 0.3` — no `M` satisfies both. The source-weighted variant self-grants the body budget to the tail. The arrival-density damper is a third mechanism in the same wrong file, with a stated risk of lightening the hairline — which is GOOD today. Spec 01 replaces the footprint geometry, which changes what the fringe IS: taming the spray against the old geometry is work to be redone. Spec Q10 says exactly this ("one deposit, physics diffuses the bristles — measure before revisiting").
+
+**CANCELLED:** the separator program ("Move 1 fix", "Triple criterion"). Not abandoned — the triple criterion is **deferred to spec Q10**, after the footprint geometry changes.
+
+**Fold into tranche 1a's acceptance:** dh1's remaining UAT rows (below). Per `SPECS/real-paint/00-overview.md` sequencing constraint: "Do not run both as independent work — they edit the same lines of `brush/paint.ts`."
+
+### Landed and KEPT (tranche 1a requires these)
+
+| landing | where | why it stays |
+|---|---|---|
+| Seeded trace RNG | `util/traceSeed.ts` | tranche 1a's structured bristle footprint is keyed on it |
+| Seeded deposit-time bristle pass | `brush/paint.ts` (`drawBristleTraces`) | the single trace generator spec 01 replaces geometry *on top of* |
+| `dryStep` de-hardcut (continuous transfer) | `core/drying.ts` | real hard-cut fix; continuous-modulation law |
+| `recoverWetFromPremultiplied` | `core/fluids.ts` | real stale-pair defect (215-unit parasitic colour pair); real fix |
+| `applyFringeMobility` `f(0) = 0.5` | `core/fluids.ts` | real spray reduction, law-green. **NOT counted toward acceptance** |
+| Deposit speckle capture harness | `app/.../depositSpeckleCapture.ts` | the four-seam measurement tool |
+| Pin battery | `compositor.displayMapping`, `fluids.premulRoundTrip`, `copyLiveExtractionTornEdge`, `paint.layeringBodyJumps`, `fluids.advectionSpray`, `depositSpeckleCapture.metrics` | mechanism record + regression |
+| PNG-writer fix | `app/src-tauri/src/commands/export.rs`, `depositSpeckleCapture.ts` | `create_dir_all` + `safeInvoke` result check |
+
+### Carry-ins recorded for 52.4 (tranche 1a / spec Q10)
+
+- **Advection spray finding + `fluids.advectionSpray.test.ts`** → measured **LATER under spec Q10**. Do **not** resume the separator program now. The f discriminator (hairline `d3+ = 0` CLEAN / thick `d3+ = 386` FILTHY) is the recorded acceptance shape: *a thick stroke must render as clean as a thin one*.
+- **Kept, NOT counted toward acceptance:** `recoverWetFromPremultiplied`, `applyFringeMobility` `f(0) = 0.5` (real defects, real fixes, not the visible cause).
+- **Deferred:** `savedWet` / physics-button one-shot-vs-dose. **Excluded:** post-dry probe. **mixbox rejected** (CC BY-NC; clean-room kmerp = spec 03).
+
+### Phase creation is the user's hand
+
+Do **not** start `discuss-phase` until the phase directory and `52.4-SPEC.md` exist. The arrival-density damper is **NOT authorized**. No further separator pin.
 
 ## Outcome
 
@@ -390,19 +423,22 @@ Any failure would have been reported as NEW (user-mandated posture). None occurr
 | `c8a7a073` | `fix(260928-dh1): lever 1 — shared premul recovery kills the a>0.5 stale pair` |
 | `a1913f50` | `test(260928-dh1): move 1+2 measure-first pins — extraction CLEAN, layering REFUTED` |
 
-## Native visual UAT (pending — the oracle for the look)
+## Native visual UAT — **FOLDED INTO TRANCHE 1A** (2026-09-28)
 
-**Blocked.** Acceptance is only met when the defect the user sees is gone and judged on native UAT. Lever 1 (premul recovery) landed but does not move the visible surface on its own. Lever 2's claimed manufacturer (37 × `fillFlat` layering) is REFUTED — `paint.ts` was not changed. The live four-seam re-run after lever 1 is a re-measure, not UAT.
+**UAT verdict on the current brush: FAIL.** Freehand: "C'est affreux." Thin strokes (cursive, loops) CLEAN and shippable; thick strokes (zigzag, scribble) FILTHY — salt-and-pepper around the whole contour and inside the body. **ACCEPTANCE = "a thick stroke must render as clean as a thin one"** — not a percentage.
 
-| id | row | verdict |
+These rows now belong to **real-paint tranche 1a (phase 52.4, R1 only)** and are judged there against the new footprint geometry (`SPECS/real-paint/00-overview.md`: "Do not run both as independent work — they edit the same lines of `brush/paint.ts`").
+
+| id | row | folded into tranche 1a |
 |---|---|---|
-| a | zero isolated pixels at stroke edges in the final render | pending (lever 2) |
-| b | falloff continuous, no salt-and-pepper at 0/1/2/3 clicks | pending (lever 2) |
-| c | traces fine, contained, semi-transparent, following gesture direction | pending |
-| d | light pressure clearly lighter than heavy | pending |
-| e | fast stroke clearly more depleted than slow | pending |
-| f | regression 260925-iy6 paper tooth unchanged | pending |
-| g | regression 260924-stb / 260925-b7c / 260925-dso / 260927-ton unchanged | pending |
-| h | Apply/Clear button semantics unchanged (`savedWet` deferred) | pending |
+| a | zero isolated pixels at stroke edges in the final render | **carry** — spec 01 footprint (replaces `paperSkip` at `paint.ts:177` + bristle alpha 0.015–0.06) |
+| b | falloff continuous, no salt-and-pepper at 0/1/2/3 clicks | **carry** |
+| c | traces fine, contained, semi-transparent, following gesture direction | **carry** — spec 01 structured bristle footprint |
+| d | light pressure clearly lighter than heavy | **carry** |
+| e | fast stroke clearly more depleted than slow | **carry** |
+| f | regression 260925-iy6 paper tooth unchanged | **carry** (regression) |
+| g | regression 260924-stb / 260925-b7c / 260925-dso / 260927-ton unchanged | **carry** (regression) |
+| h | Apply/Clear button semantics unchanged (`savedWet` deferred) | **carry** — stays DEFERRED |
+| i | **NEW (from the UAT capture): thick stroke renders as clean as a thin one** | **carry** — the acceptance criterion the metrics never gave |
 
 Artifacts for UAT: `/tmp/efx-dh1/red/` vs `/tmp/efx-dh1/green/` (5 PNGs each, zoom 4) and the two manifests in `/tmp/efx-stall-capture-dh1-{red,green}.json`.
