@@ -59,7 +59,7 @@ import { createWetBuffers, transferToWetLayerClipped } from './wet-layer'
 import { IX, buildWidthScaleField, localFluidPhysicsStep } from './fluids'
 import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
-import { ribbon, deform, deformN } from '../brush/stroke'
+import { ribbon, ribbonWithScales, deformNScaled, deformScaled } from '../brush/stroke'
 import { curveBounds } from '../util/math'
 import { spreadCurveFor } from './spreadScale'
 import type { FluidConfig, PenPoint, WetBuffers } from '../types'
@@ -271,18 +271,18 @@ function buildProfileFor(curve: PenPoint[], radius: number, hasPenInput: boolean
     return seed / 0x100000000
   })
   try {
-    const base = ribbon(curve, radius, 0.8, hasPenInput)
-    const baseD = deformN(base, 4, variance)
+    const { poly: base, scales: baseS } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
+    const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, variance)
     const layers = Math.round((22 + 15) / 1)
     const lAlpha = Math.min(0.08, 3 / layers)
     for (let i = 0; i < layers; i++) {
-      const v = deform(baseD, variance * 0.2)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.2)
       // every layer flat-fills (260925-dso: grain/emboss passes deleted)
       compositePolygon(buf, v, bounds, lAlpha)
     }
     const soft = Math.round(layers * 0.2)
     for (let i = 0; i < soft; i++) {
-      const v = deform(baseD, variance * 0.5)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.5)
       compositePolygon(buf, v, bounds, lAlpha * 0.25)
     }
   } finally {

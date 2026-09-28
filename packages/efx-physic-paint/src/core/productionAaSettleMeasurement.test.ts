@@ -7,7 +7,7 @@
 //
 //  Measurement only. This harness derives the raster profile from the
 //  real rasterizer's own inputs:
-//    - production ribbon()/deformN()/deform() geometry imported from
+//    - production ribbonWithScales()/deformNScaled()/deformScaled() geometry imported from
 //      brush/stroke.ts (straight dense stroke x 16..112 step 3, y 32,
 //      Math.random stubbed by an LCG seed for PIN 3 determinism —
 //      precedent: paint.continuation.test.ts run());
@@ -54,7 +54,7 @@ import { createWetBuffers, transferToWetLayerClipped } from './wet-layer'
 import { localFluidPhysicsStep } from './fluids'
 import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
-import { ribbon, deform, deformN } from '../brush/stroke'
+import { ribbonWithScales, deformNScaled, deformScaled } from '../brush/stroke'
 import { curveBounds } from '../util/math'
 import { spreadCurveFor } from './spreadScale'
 import type { FluidConfig, PenPoint, WetBuffers } from '../types'
@@ -290,9 +290,9 @@ function compositePolygon(
 }
 
 /**
- * Build the production-AA profile: ribbon(curve, 3, 0.8, false) →
- * deformN depth 4 → production layer schedule → analytic coverage fills.
- * Deterministic under the LCG stub (gauss in deform/deformN reads
+ * Build the production-AA profile: ribbonWithScales(curve, 3, 0.8, false) →
+ * deformNScaled depth 4 → production layer schedule → analytic coverage fills.
+ * Deterministic under the LCG stub (gauss in deformScaled/deformNScaled reads
  * Math.random only during this build).
  */
 function buildProfile(): Profile {
@@ -305,20 +305,20 @@ function buildProfile(): Profile {
     return seed / 0x100000000
   })
   try {
-    const base = ribbon(curve, BRUSH_RADIUS, 0.8, false)
-    const baseD = deformN(base, 4, VARIANCE)
+    const { poly: base, scales: baseS } = ribbonWithScales(curve, BRUSH_RADIUS, 0.8, false)
+    const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, VARIANCE)
     // pickup-0 branch schedule: speedDeplete = 1 (no pen input)
     const layers = Math.round((22 + 15) / 1)
     const lAlpha = Math.min(0.08, 3 / layers)
     for (let i = 0; i < layers; i++) {
-      const v = deform(baseD, VARIANCE * 0.2)
+      const { poly: v } = deformScaled(baseD, baseDS, VARIANCE * 0.2)
       // every layer flat-fills (260925-dso: grain/emboss passes deleted)
       compositePolygon(buf, v, bounds, lAlpha)
     }
     // soft passes: round(layers * 0.2) at lAlpha * 0.25 (fillFlat)
     const soft = Math.round(layers * 0.2)
     for (let i = 0; i < soft; i++) {
-      const v = deform(baseD, VARIANCE * 0.5)
+      const { poly: v } = deformScaled(baseD, baseDS, VARIANCE * 0.5)
       compositePolygon(buf, v, bounds, lAlpha * 0.25)
     }
     // bristle traces EXCLUDED (documented in header)

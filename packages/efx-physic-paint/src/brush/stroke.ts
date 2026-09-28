@@ -160,30 +160,6 @@ export function ribbon(
 }
 
 /**
- * Midpoint displacement for organic edges.
- * From v3.html deform() line 574
- */
-export function deform(poly: Array<[number, number]>, variance: number): Array<[number, number]> {
-  const r: Array<[number, number]> = []
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length]
-    r.push(a)
-    r.push([(a[0] + b[0]) / 2 + gauss(0, variance), (a[1] + b[1]) / 2 + gauss(0, variance)])
-  }
-  return r
-}
-
-/**
- * Recursive deform with decreasing variance.
- * From v3.html deformN() line 580
- */
-export function deformN(poly: Array<[number, number]>, depth: number, variance: number): Array<[number, number]> {
-  let p = poly
-  for (let d = 0; d < depth; d++) p = deform(p, variance / (1 + d * 0.65))
-  return p
-}
-
-/**
  * Scale-aware midpoint displacement for organic edges (260927-ton).
  * Same algorithm as deform — for each edge push the original vertex
  * then the displaced midpoint, gauss(0, variance) on x and y — except

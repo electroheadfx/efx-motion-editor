@@ -20,8 +20,10 @@ import { smooth, resample, ribbonWithScales, deformNScaled, deformScaled } from 
 import { fillFlat } from './paint'
 
 /**
- * Stroke-completion erase -- uses same ribbon+deform polygon as paint brush.
- * Erases by drawing transparent circles on dry canvas and clearing wet layer in area.
+ * Stroke-completion erase -- uses the same scale-aware ribbon+deform
+ * polygon as the paint brush (260927-ton: the erase mask follows the
+ * local-width law so a hairline erase cannot clear a full-variance
+ * wobble band outside the painted silhouette).
  * Uses `globalCompositeOperation = 'destination-out'` for transparent erase.
  * From v3.html applyEraseStroke() line 1214
  */
