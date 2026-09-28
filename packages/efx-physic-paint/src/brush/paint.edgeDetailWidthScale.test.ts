@@ -30,6 +30,14 @@
 //  Control expectation at base: tests 2, 4, 5 pass; tests 1 and 3
 //  fail with the measured ratio printed — those failures ARE the
 //  RED evidence.
+//
+//  Region filter (260927-ton gate resolution): ORIGIN-T, not x-window.
+//  A post-deform x-window admits vertices the deform itself pushed
+//  out of band (constant-stub displacements run ~6-8 px), inflating
+//  the taper reading past its structural value. originTOfFillVertex
+//  maps each fill index back through the 5-pass deform chain to the
+//  curve t it came from — the amplitude-vs-local-width law is about
+//  where a vertex originated, not where it landed.
 // ============================================================
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -68,25 +76,40 @@ function buildGeometry(): { curve: PenPoint[]; boundary: FillPath } {
   return { curve, boundary }
 }
 
-/** x-window of the curve points selected by a p/t predicate. */
-function regionWindow(curve: PenPoint[], pred: (p: number, t: number) => boolean, label: string): [number, number] {
-  const n = curve.length
-  let minX = Infinity
-  let maxX = -Infinity
-  let count = 0
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1)
-    if (pred(curve[i].p, t)) {
-      count++
-      minX = Math.min(minX, curve[i].x)
-      maxX = Math.max(maxX, curve[i].x)
-    }
-  }
-  expect(count, `${label} predicate selected ${count} curve points (need >= 1)`).toBeGreaterThan(0)
-  return [minX, maxX]
+const inRange = (t: number, lo: number, hi: number) => t >= lo && t <= hi
+
+// ------------------------------------------------------------
+//  Structural origin-t of a captured fill vertex.
+//
+//  The capture is fills[0] = the first layer polygon, whose vertex
+//  order is exactly the deform chain output (fillFlat does
+//  moveTo pts[0] / lineTo rest, no reordering). The chain is
+//  deformNScaled depth 4 over ribbonWithScales (2n vertices) plus
+//  one layer deformScaled = 5 passes, so fill vertex k sits at
+//  parameter u = k / 32 along the CLOSED base polygon.
+//
+//  Base polygon order is [...L, ...R.reverse()]: vertex v < n is
+//  L[v] at curve t = v/(n-1); vertex v >= n is R[2n-1-v] at curve
+//  t = (2n-1-v)/(n-1). Interpolating t along the base edge gives
+//  the origin-t of any displaced midpoint without a nearest-neighbour
+//  guess — this is the 260927-ton "origin-t reading": filter by
+//  where a vertex CAME FROM, not by where the deform pushed it
+//  (the x-window recipe admitted vertices displaced out of band).
+// ------------------------------------------------------------
+function tOfBaseVertex(v: number, n: number): number {
+  const ci = v < n ? v : 2 * n - 1 - v
+  return n > 1 ? ci / (n - 1) : 0
 }
 
-const inRange = (t: number, lo: number, hi: number) => t >= lo && t <= hi
+function originTOfFillVertex(k: number, n: number): number {
+  const P = 2 * n
+  const u = k / 32
+  const e = Math.floor(u) % P
+  const frac = u - Math.floor(u)
+  const t0 = tOfBaseVertex(e, n)
+  const t1 = tOfBaseVertex((e + 1) % P, n)
+  return t0 + (t1 - t0) * frac
+}
 
 // ------------------------------------------------------------
 //  Capture harness (paint.continuation.test.ts precedent):
@@ -170,14 +193,19 @@ function distToClosedPoly(v: [number, number], poly: FillPath): number {
   return best
 }
 
-function regionMax(fill: FillPath, boundary: FillPath, win: [number, number]): number {
+/** Region max over fill vertices whose STRUCTURAL origin-t is in [tLo, tHi]. */
+function regionMaxByT(fill: FillPath, boundary: FillPath, n: number, tLo: number, tHi: number, label: string): number {
   let max = 0
-  for (const v of fill) {
-    if (v[0] >= win[0] && v[0] <= win[1]) {
-      const d = distToClosedPoly(v, boundary)
+  let count = 0
+  for (let k = 0; k < fill.length; k++) {
+    const t = originTOfFillVertex(k, n)
+    if (t >= tLo && t <= tHi) {
+      count++
+      const d = distToClosedPoly(fill[k], boundary)
       if (d > max) max = d
     }
   }
+  expect(count, `${label} origin-t band [${tLo},${tHi}] selected ${count} fill vertices (need >= 1)`).toBeGreaterThan(0)
   return max
 }
 
@@ -193,12 +221,9 @@ let cached: Measurement | null = null
 function measure(): Measurement {
   if (cached) return cached
   const { curve, boundary } = buildGeometry()
-  const hairlineWin = regionWindow(curve, (p, t) => p <= 0.1001 && inRange(t, 0.68, 0.88), 'hairline')
-  const thickWin = regionWindow(curve, (p, t) => p >= 0.999 && inRange(t, 0.30, 0.40), 'thick')
-  const taperWin = regionWindow(curve, (p, t) => p >= 0.999 && inRange(t, 0.06, 0.14), 'taper')
+  const n = curve.length
 
   // Substrate validity: undeformed ribbon width inside the hairline window.
-  const n = boundary.length / 2
   let hairlineWidth = 0
   for (let i = 0; i < curve.length; i++) {
     const t = i / (curve.length - 1)
@@ -211,9 +236,9 @@ function measure(): Measurement {
 
   const fill = captureFirstFill()
   cached = {
-    hairline: regionMax(fill, boundary, hairlineWin),
-    thick: regionMax(fill, boundary, thickWin),
-    taper: regionMax(fill, boundary, taperWin),
+    hairline: regionMaxByT(fill, boundary, n, 0.68, 0.88, 'hairline'),
+    thick: regionMaxByT(fill, boundary, n, 0.30, 0.40, 'thick'),
+    taper: regionMaxByT(fill, boundary, n, 0.06, 0.14, 'taper'),
     hairlineWidth,
   }
   return cached
