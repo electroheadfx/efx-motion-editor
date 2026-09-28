@@ -121,6 +121,9 @@ type StrokeApplicationOptions = {
   startNaturalDrying?: boolean
   hasPenInput?: boolean
   physicsMode?: PhysicsMode
+  // 260928-dh1: seeds the deposit-time bristle pass (traceSeed) — one
+  // parameter threaded through, no pipeline change.
+  mutationId?: number
 }
 
 type ActiveStrokeFinalization = {
@@ -1748,7 +1751,7 @@ export class EfxPaintEngine {
     for (const { stroke: a, pointCount } of strokeData) {
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
       const completeStroke = pointCount >= a.points.length
-      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
+      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
       if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
@@ -2229,6 +2232,7 @@ export class EfxPaintEngine {
         startNaturalDrying: true,
         hasPenInput: pending.hasPenInput,
         physicsMode: pending.physicsMode,
+        mutationId: pending.mutationId,
       })
     }
     this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId: pending.mutationId })
@@ -2268,6 +2272,7 @@ export class EfxPaintEngine {
         this.dualCanvas.dryCtx, this.wet, this.paperHeight,
         this.width, this.height, pending.hasPenInput,
         pending.opts.waterAmount / 100, sampleHFn, observePrimitive,
+        pending.mutationId,
       )
       active.phase = 'raster'
       return
@@ -2510,7 +2515,7 @@ export class EfxPaintEngine {
 
   private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, physicsMode, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
     const applyStartedAt = this.performanceListener ? performance.now() : 0
-    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput, physicsMode })
+    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput, physicsMode, mutationId })
     this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId })
     this.recordPerformance('stroke-finalization', 'sync-cpu', finalizationStartedAt, { mutationId })
     this.notifyCompletedMutation(tool, mutationId)
@@ -2557,6 +2562,7 @@ export class EfxPaintEngine {
         opts.waterAmount / 100,
         sampleHFn,
         observePrimitive,
+        options.mutationId,
       )
       // Edge feathering on wet layer for anti-aliased brush edges
       if (opts.antiAlias > 0) {
@@ -2885,7 +2891,7 @@ export class EfxPaintEngine {
 
     for (let i = 0; i < replayCount; i++) {
       const a = this.allActions[i]
-      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode })
+      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 

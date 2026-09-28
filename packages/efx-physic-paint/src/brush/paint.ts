@@ -7,7 +7,8 @@
 
 import type { PenPoint, BrushOpts, WetBuffers, SavedWetBuffers, PaintPrimitiveTimingObserver } from '../types'
 import { hexRgb, rgbHex, mixSubtractive } from '../util/color'
-import { gauss, lerp, clamp, curveBounds } from '../util/math'
+import { lerp, clamp, curveBounds } from '../util/math'
+import { hashMutationId, seededDraw, arcSlot, traceShapeNoise } from '../util/traceSeed'
 import { sampleH } from '../core/paper'
 import { transferToWetLayerClipped } from '../core/wet-layer'
 import { smooth, resample, ribbonWithScales, deformNScaled, deformScaled, avgPenData } from './stroke'
@@ -66,6 +67,21 @@ export function fillFlat(
 /**
  * Draw bristle traces along stroke for natural brush appearance.
  * From v3.html drawBristleTraces() line 657
+ *
+ * 260928-dh1: SINGLE seeded deposit-time trace generator.
+ * - Per-bristle parameters, wobble phase, skip draws and per-sample shape
+ *   noise are all keyed by (mutationId seed, arc-length) — deterministic
+ *   replay, stable across resample/chunking.
+ * - Shape noise is fbm (util/noise.ts) with pressure-scaled amplitude
+ *   (v11 limit #2 fixed: modulation varies along the stroke, amplitude
+ *   grows with pressure).
+ * - Lateral offset scales with the LOCAL ribbon scale, so deformation
+ *   variance is pressure-dependent with no pressure-independent floor
+ *   (v11 limit #1 fixed), and every offset is clamped to the same
+ *   ribbonWithScales half-width (geometry clamp only — never alpha).
+ * - ctx.stroke() geometry only; per-sample width/alpha are written every
+ *   sample and the path is flushed at run boundaries (20% relative change)
+ *   so the modulation actually renders.
  */
 export function drawBristleTraces(
   ctx: CanvasRenderingContext2D,
@@ -76,31 +92,51 @@ export function drawBristleTraces(
   penData: PenPoint[],
   hasPenInput: boolean,
   sampleHFn: (x: number, y: number) => number,
+  mutationId?: number,
 ): void {
+  void penData
   if (curve.length < 2) return
   const [cr, cg, cb] = hexRgb(color)
   const darker = rgbHex(cr * 0.7, cg * 0.7, cb * 0.7)
   const lighter = rgbHex(Math.min(255, cr * 1.4), Math.min(255, cg * 1.4), Math.min(255, cb * 1.4))
+  const strokeSeed = hashMutationId(mutationId)
+
+  // Containment + taper: the SAME ribbon scale the ribbon polygon uses
+  // (ribbonWithScales / stroke.ts endTaper) — first curve.length entries
+  // map to curve points in order. No second inline scale math.
+  const { scales } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
+
+  // Arc-length table (px) — wobble phase and noise are keyed on arc,
+  // never sample index (resample/chunking stability).
+  const arc: number[] = [0]
+  for (let i = 1; i < curve.length; i++) {
+    arc[i] = arc[i - 1] + Math.hypot(curve[i].x - curve[i - 1].x, curve[i].y - curve[i - 1].y)
+  }
+
   const count = Math.max(4, Math.floor(radius * 0.5))
   const bristles: Array<{ offset: number; width: number; alpha: number; dark: boolean; wFreq: number; wAmp: number }> = []
   for (let i = 0; i < count; i++) {
+    const slot = `b${i}`
     bristles.push({
-      offset: (i / (count - 1)) * 2 - 1 + gauss(0, 0.03),
-      width: 0.4 + Math.random() * 1.8,
-      alpha: 0.015 + Math.random() * 0.06,
-      dark: Math.random() > 0.5,
-      wFreq: 0.04 + Math.random() * 0.08,
-      wAmp: 0.3 + Math.random() * 1.2,
+      offset: (i / (count - 1)) * 2 - 1 + (seededDraw(strokeSeed, slot, 'offset') - 0.5) * 0.06,
+      width: 0.4 + seededDraw(strokeSeed, slot, 'width') * 1.8,
+      alpha: 0.015 + seededDraw(strokeSeed, slot, 'alpha') * 0.045,
+      dark: seededDraw(strokeSeed, slot, 'dark') > 0.5,
+      wFreq: 0.04 + seededDraw(strokeSeed, slot, 'wFreq') * 0.08,
+      wAmp: 0.3 + seededDraw(strokeSeed, slot, 'wAmp') * 1.2,
     })
   }
-  for (const b of bristles) {
+  for (let bi = 0; bi < bristles.length; bi++) {
+    const b = bristles[bi]
     ctx.save()
-    ctx.globalAlpha = b.alpha * opac
     ctx.strokeStyle = b.dark ? darker : lighter
-    ctx.lineWidth = b.width
     ctx.lineCap = 'round'
     ctx.beginPath()
     let on = false
+    let lastX = 0
+    let lastY = 0
+    let runLW = -1
+    let runGA = -1
     for (let ci = 0; ci < curve.length; ci++) {
       const p = curve[ci]
       let tx2: number, ty2: number
@@ -110,28 +146,60 @@ export function drawBristleTraces(
       const l = Math.hypot(tx2, ty2) || 1
       let nx = -ty2 / l, ny = tx2 / l
 
-      const t = ci / (curve.length - 1)
-      const pr = hasPenInput ? p.p * 0.7 + 0.3 : Math.pow(Math.sin(t * Math.PI), 0.8) * 0.7 + 0.3
-
       const tiltAngle = (p.tx || 0) * 0.015
       const cosT = Math.cos(tiltAngle), sinT = Math.sin(tiltAngle)
       const rnx = nx * cosT - ny * sinT, rny = nx * sinT + ny * cosT
 
-      const wobble = Math.sin(ci * b.wFreq) * b.wAmp
-      const off = (b.offset + wobble * 0.015) * radius * pr
+      // Local ribbon half-width — deformation scales with it (pressure-
+      // dependent variance, no pressure-independent floor) and the offset
+      // is clamped to it (traces can never escape the footprint).
+      const halfW = radius * scales[ci]
+      const lim = Math.max(0, halfW - 1e-3)
+      const wobble = Math.sin(arc[ci] * b.wFreq) * b.wAmp
+      const off = clamp((b.offset + wobble * 0.015) * halfW, -lim, lim)
       const bx = p.x + rnx * off, by = p.y + rny * off
 
-      const skipChance = hasPenInput ? clamp(p.spd * 0.002, 0, 0.15) : 0.025
-      const hVal = sampleHFn(bx, by)
-      if (hVal > 0.72 && Math.random() > 0.3) { on = false; continue }
-      if (Math.random() < skipChance) { on = false; continue }
-
+      // Per-sample shape parameters — fbm keyed by (seed, arc, bristle,
+      // channel), amplitude scaled by pressure (v11 limit #2).
+      const pressure = hasPenInput ? p.p : 1
+      const ampW = 0.2 + 0.6 * pressure
+      const ampA = 0.25 + 0.75 * pressure
+      const nW = traceShapeNoise(strokeSeed, arc[ci], bi, 0)
+      const nA = traceShapeNoise(strokeSeed, arc[ci], bi, 1)
       const pMod = hasPenInput ? 0.5 + p.p * 1.0 : 1
-      ctx.lineWidth = b.width * pMod
+      const pressureMod = hasPenInput ? 0.3 + p.p * 0.7 : 1
+      const lw = b.width * pMod * (1 + (nW - 0.5) * ampW)
+      const ga = b.alpha * opac * pressureMod * (1 + (nA - 0.5) * ampA)
+
+      // Velocity: faster strokes skip more samples (v11 reference kept).
+      const skipChance = hasPenInput ? clamp(p.spd * 0.002, 0, 0.15) : 0.025
+      const slot = arcSlot(arc[ci])
+      const paperSkip = sampleHFn(bx, by) > 0.72 && seededDraw(strokeSeed, slot, `paper${bi}`) > 0.3
+      const chanceSkip = seededDraw(strokeSeed, slot, `skip${bi}`) < skipChance
+      const skip = paperSkip || chanceSkip
+
+      // Run boundary: relative width/alpha change > 20% — flush the run
+      // with the PREVIOUS sample's state (written last iteration), then
+      // restart the path re-emitting the shared vertex.
+      const boundary = on && (runLW > 0) && (Math.abs(lw - runLW) > 0.2 * runLW || Math.abs(ga - runGA) > 0.2 * runGA)
+      if (on && (boundary || skip)) {
+        ctx.stroke()
+        ctx.beginPath()
+        if (boundary && !skip) { ctx.moveTo(lastX, lastY) } else { on = false }
+      }
+
+      // One shape-parameter write per curve sample (both channels).
+      ctx.lineWidth = lw
+      ctx.globalAlpha = ga
+      if (skip) continue
 
       if (!on) { ctx.moveTo(bx, by); on = true } else ctx.lineTo(bx, by)
+      lastX = bx
+      lastY = by
+      runLW = lw
+      runGA = ga
     }
-    ctx.stroke()
+    if (on) ctx.stroke()
     ctx.restore()
   }
 }
@@ -277,6 +345,7 @@ export function renderPaintStroke(
   waterAmount: number,
   sampleHFn: (x: number, y: number) => number,
   observePrimitive?: PaintPrimitiveTimingObserver,
+  mutationId?: number,
 ): void {
   const radius = opts.size || 24
   const wet = waterAmount
@@ -297,6 +366,7 @@ export function renderPaintStroke(
     curve, color, opts, ctx, wetBuffers, paperHeight, width, height,
     hasPenInput, waterAmount,
     sampleHFn, observePrimitive, radius, opac, wet, speedDeplete, pickupAmt,
+    mutationId,
   ).runToCompletion()
 }
 
@@ -313,6 +383,7 @@ export function createPaintStrokeRasterContinuation(
   waterAmount: number,
   sampleHFn: (x: number, y: number) => number,
   observePrimitive?: PaintPrimitiveTimingObserver,
+  mutationId?: number,
 ): PaintStrokeRasterContinuation {
   const radius = opts.size || 24
   const wet = waterAmount
@@ -330,6 +401,7 @@ export function createPaintStrokeRasterContinuation(
     curve, color, opts, ctx, wetBuffers, paperHeight, width, height,
     hasPenInput, waterAmount,
     sampleHFn, observePrimitive, radius, opac, wet, speedDeplete, pickupAmt,
+    mutationId,
   )
 }
 
@@ -351,6 +423,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
   wet: number,
   speedDeplete: number,
   pickupAmt: number,
+  mutationId?: number,
 ): PaintStrokeRasterContinuation {
   void wet
   function* rasterize(): Generator<void, void, void> {
@@ -377,7 +450,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
         measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc, v, color, lAlpha * 0.25))
         yield
       }
-      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn))
+      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn, mutationId))
       yield
       measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
         { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
@@ -419,7 +492,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
         measurePrimitive(observePrimitive, 'paint-raster-layers', () => fillFlat(oc2, v, segHex, lAlpha * 0.2))
         yield
       }
-      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc2, seg, radius, segHex, opac, seg, hasPenInput, sampleHFn))
+      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc2, seg, radius, segHex, opac, seg, hasPenInput, sampleHFn, mutationId))
       yield
       measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc2, wetBuffers, waterAmount,
         { x: segBounds.x0, y: segBounds.y0, w: segBounds.w, h: segBounds.h }, width, height,
@@ -453,6 +526,7 @@ export function renderPaintStrokeSingleColor(
   waterAmount: number,
   sampleHFn: (x: number, y: number) => number,
   observePrimitive?: PaintPrimitiveTimingObserver,
+  mutationId?: number,
 ): void {
   const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
   const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
@@ -480,7 +554,7 @@ export function renderPaintStrokeSingleColor(
       fillFlat(oc, v, color, lAlpha * 0.25)
     }
   })
-  measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn))
+  measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleTraces(oc, curve, radius, color, 1, curve, hasPenInput, sampleHFn, mutationId))
 
   // D-12: Unified render path. Transfer at FULL intensity to wet layer.
   measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
