@@ -14,8 +14,14 @@ import { smooth, resample, ribbonWithScales, avgPenData } from './stroke'
 import {
   buildBristleLanes,
   STREAK_ALPHA,
+  SOFT_EDGE_ALPHA,
   WIDTH_FLOOR,
   MAX_TRACE_WIDTH,
+  CORE_MAX_TRACE_WIDTH,
+  SOFT_WIDTH_MUL,
+  HAIRLINE_RADIUS,
+  BODY_WIDTH_MIN,
+  BODY_WIDTH_MAX,
   NW_AMPLITUDE,
   NW_ARC_SCALE,
 } from './footprintLanes'
@@ -99,8 +105,13 @@ const FOOTPRINT_SKIP_RATE = 0.05
 
 /**
  * Seeded deposit-time bristle footprint — the ONE routine behind both the
- * live preview and the final deposit (52.4-01 D-05).
+ * live preview and the final deposit (52.4-01 D-05, 260929-j47 two-pass).
  *
+ * - Two pass-blocks per brin on ONE seeded path: the wide soft-under
+ *   pass (SOFT_EDGE_ALPHA) renders first, the narrow core pass
+ *   (STREAK_ALPHA, clamped to CORE_MAX_TRACE_WIDTH) second — composite
+ *   body opacity comes from overlap (PIN 0, k_body >= 4), never from a
+ *   single near-opaque lane.
  * - Lane layout (buildBristleLanes), skip draws and per-sample gauge
  *   noise are all keyed by (hashMutationId seed, arc-length) —
  *   deterministic replay, stable across resample/chunking, identical
@@ -108,10 +119,13 @@ const FOOTPRINT_SKIP_RATE = 0.05
  * - ribbonWithScales is THE scale expression: every lateral offset is
  *   clamped to its local half-width (geometry clamp only, never alpha).
  * - Per-sample width is modulated by channel-0 fbm with pressure-scaled
- *   amplitude (pressure = SIZE lever only); streak alpha is ONE constant
- *   (D-10/D-11 — no pressure/velocity/arc/noise alpha term).
- * - Geometry only: no paper sampler, no 0.72 cut, no per-pixel reads,
- *   no non-seeded RNG (D-14).
+ *   amplitude (pressure = SIZE lever only); each pass alpha is ONE
+ *   constant (D-10/D-11 — no pressure/velocity/arc/noise alpha term).
+ * - Hairline regime: radius below HAIRLINE_RADIUS draws 1-3 seeded
+ *   continuous streaks (two-pass, no skip stream, no run-break) instead
+ *   of the lane field.
+ * - Geometry only: no height sampler, no threshold cut, no per-pixel
+ *   reads, no non-seeded RNG (D-14).
  */
 export function drawBristleFootprint(
   curve: PenPoint[],
@@ -134,22 +148,19 @@ export function drawBristleFootprint(
     arc[i] = arc[i - 1] + Math.hypot(curve[i].x - curve[i - 1].x, curve[i].y - curve[i - 1].y)
   }
 
-  // Tier-independent seeded lane layout (D-05/D-13/D-02): one shared
-  // Poisson-gap + baked-profile pass at full count; the live tier
-  // merely SELECTS a subset (lowest liveRank) and thickens it
-  // (DiVerdi 4.1). Spec R6: full N ~ radius, as the saturation pin
-  // requires.
-  const count = Math.max(4, Math.floor(radius))
-  const lanes = buildBristleLanes(strokeSeed, count)
-  const selected = tier === 'final'
-    ? lanes.map((lane, bi) => ({ lane, bi }))
-    : lanes
-      .map((lane, bi) => ({ lane, bi, liveRank: seededDraw(strokeSeed, `b${bi}`, 'liveRank') }))
-      .sort((x, y) => x.liveRank - y.liveRank)
-      .slice(0, Math.ceil(count / LIVE_TIER_DIVISOR))
-      .map(({ lane, bi }) => ({ lane, bi }))
-
-  for (const { lane, bi } of selected) {
+  // ONE pass-block (save .. restore) on the brin's seeded path. Two
+  // call sites per brin — soft-under first, core second — each with its
+  // OWN clamp ceiling and its OWN constant alpha (two-literal-else form;
+  // no ternary, no intermediate alpha variable). `breaks` gates the skip
+  // stream and run-boundary flush: the lane-field path keeps them
+  // (velocity-free deposit, D-09), the hairline path disables them so
+  // each pass renders as one unbroken path.
+  const drawPass = (
+    lane: { offset: number; width: number },
+    bi: number,
+    pass: 'soft' | 'core',
+    breaks: boolean,
+  ): void => {
     ctx.save()
     ctx.strokeStyle = color
     ctx.lineCap = 'round'
@@ -180,36 +191,43 @@ export function drawBristleFootprint(
       const bx = p.x + rnx * off, by = p.y + rny * off
 
       // Per-sample width: lane base x pMod (the pressure SIZE lever) x
-      // channel-0 arc-keyed gauge (D-12(a), low frequency), clamped to
-      // [WIDTH_FLOOR, MAX_TRACE_WIDTH] on the final tier (D-12(b);
-      // clamp AFTER pMod so the floor holds at every pressure), then
+      // channel-0 arc-keyed gauge (D-12(a), low frequency), then the
+      // per-pass clamp — soft pass: raw x SOFT_WIDTH_MUL into
+      // [WIDTH_FLOOR, MAX_TRACE_WIDTH]; core pass: raw into
+      // [WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH] (D-12(b) two-tier, clamp
+      // AFTER pMod so the floor holds at every pressure), then
       // x LIVE_WIDTH_MUL at tier=live (D-05 thickness-up). Pressure
       // never touches alpha (D-10/D-11).
       const pMod = hasPenInput ? 0.5 + p.p * 1.0 : 1
       const gauge = 1 + (traceShapeNoise(strokeSeed, arc[ci] * NW_ARC_SCALE, bi, 0) - 0.5) * NW_AMPLITUDE
-      const lwFinal = clamp(lane.width * pMod * gauge, WIDTH_FLOOR, MAX_TRACE_WIDTH)
+      const raw = lane.width * pMod * gauge
+      const lwFinal = pass === 'soft'
+        ? clamp(raw * SOFT_WIDTH_MUL, WIDTH_FLOOR, MAX_TRACE_WIDTH)
+        : clamp(raw, WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)
       const lw = tier === 'live' ? lwFinal * LIVE_WIDTH_MUL : lwFinal
 
       // Seeded skip stream, arc-keyed — velocity no longer changes the
-      // deposit (D-09): speed is not an input anywhere below.
+      // deposit (D-09): speed is not an input anywhere below. Inactive
+      // on the hairline path (breaks = false -> one unbroken streak).
       const slot = arcSlot(arc[ci])
-      const skip = seededDraw(strokeSeed, slot, `skip${bi}`) < FOOTPRINT_SKIP_RATE
+      const skip = breaks && seededDraw(strokeSeed, slot, `skip${bi}`) < FOOTPRINT_SKIP_RATE
 
       // Run boundary: relative width change > 20% — flush the run with
       // the PREVIOUS sample's state, then restart re-emitting the shared
       // vertex.
-      const boundary = on && (runLW > 0) && Math.abs(lw - runLW) > 0.2 * runLW
+      const boundary = breaks && on && (runLW > 0) && Math.abs(lw - runLW) > 0.2 * runLW
       if (on && (boundary || skip)) {
         ctx.stroke()
         ctx.beginPath()
         if (boundary && !skip) { ctx.moveTo(lastX, lastY) } else { on = false }
       }
 
-      // One shape-parameter write per curve sample: width varies, streak
-      // alpha is one constant (written every sample, before the skip
+      // One shape-parameter write per curve sample: width varies, the
+      // pass alpha is one constant (written every sample, before the skip
       // continue, so the modulation actually renders).
       ctx.lineWidth = lw
-      ctx.globalAlpha = STREAK_ALPHA * opac
+      if (pass === 'soft') ctx.globalAlpha = SOFT_EDGE_ALPHA * opac
+      else ctx.globalAlpha = STREAK_ALPHA * opac
       if (skip) continue
 
       if (!on) { ctx.moveTo(bx, by); on = true } else ctx.lineTo(bx, by)
@@ -219,6 +237,41 @@ export function drawBristleFootprint(
     }
     if (on) ctx.stroke()
     ctx.restore()
+  }
+
+  // Hairline regime (260929-j47): below HAIRLINE_RADIUS there is no lane
+  // field — 1-3 seeded continuous streaks instead, both passes kept,
+  // skip stream and run-break inactive (breaks = false), the same
+  // ribbon containment clamp and per-pass ceilings.
+  if (radius < HAIRLINE_RADIUS) {
+    const streakCount = 1 + Math.floor(seededDraw(strokeSeed, 'hairline', 'count') * 3)
+    for (let j = 0; j < streakCount; j++) {
+      const offset = seededDraw(strokeSeed, `hs${j}`, 'lane') * 2 - 1
+      const width = BODY_WIDTH_MIN + seededDraw(strokeSeed, `hw${j}`, 'lane') * (BODY_WIDTH_MAX - BODY_WIDTH_MIN)
+      drawPass({ offset, width }, j, 'soft', false)
+      drawPass({ offset, width }, j, 'core', false)
+    }
+    return
+  }
+
+  // Tier-independent seeded lane layout (D-05/D-13/D-02): one shared
+  // overlap-packed body + Poisson-gap rim pass at full count; the live
+  // tier merely SELECTS a subset (lowest liveRank) and thickens it
+  // (DiVerdi 4.1). Spec R6: full N ~ radius, as the saturation pin
+  // requires.
+  const count = Math.max(4, Math.floor(radius))
+  const lanes = buildBristleLanes(strokeSeed, count)
+  const selected = tier === 'final'
+    ? lanes.map((lane, bi) => ({ lane, bi }))
+    : lanes
+      .map((lane, bi) => ({ lane, bi, liveRank: seededDraw(strokeSeed, `b${bi}`, 'liveRank') }))
+      .sort((x, y) => x.liveRank - y.liveRank)
+      .slice(0, Math.ceil(lanes.length / LIVE_TIER_DIVISOR))
+      .map(({ lane, bi }) => ({ lane, bi }))
+
+  for (const { lane, bi } of selected) {
+    drawPass(lane, bi, 'soft', true)
+    drawPass(lane, bi, 'core', true)
   }
 }
 
