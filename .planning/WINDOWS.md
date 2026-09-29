@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 7
+open_count: 8
 waived_count: 5
 fixed_count: 69
-total_count: 81
-last_updated: 2026-09-29T06:47:34.944Z
+total_count: 82
+last_updated: 2026-09-29T08:18:02.500Z
 ---
 
 # Broken Windows Ledger
@@ -96,6 +96,7 @@ last_updated: 2026-09-29T06:47:34.944Z
 | 79 | quick-260925-iy6 | unmet-truth | app/src/lib/paperPass.ts |  | CR-01 code-review BLOCKER: applyPaperPass washes partial-alpha paint (paint contribution lands at a^2 instead of a; the (1-a)*valley term washes the stroke toward the paper tone). Measured in app/src/lib/paperPass.composeLaw.test.ts (W3C software model, real pixels): paint [120,30,60] @ a=0.5 over a 230 valley produces [169,128,142] vs the law [108,27,54]. a=1.0 and a=0 are exact, so the full-opacity UAT row hides it - every AA edge and every track opacity < 1 is wrong (PIN 0 / 260924-m7w class). The directed fix (opaque tile as DESTINATION, paint as SOURCE) is PROVEN numerically identical to the shipped sequence (multiply is commutative; source-over adds the same (1-As)*Cb term). No GCO-only 5-draw sequence can yield (paint * valley) at alpha a: no GCO both multiplies two straight-alpha images and preserves source alpha. Frame-path guardrail forbids a per-pixel JS loop, so the fix is a GPU pass (WebGL fragment shader, one draw) or a deferred phase. Pinned as it.fails in paperPass.composeLaw.test.ts (flips red when a real fix lands). WR-02 (White + grain-on yields no tooth) PARKED as a separate pass by user decision - White is toothless by design per 260925-dso (no procedural fbm); the gate should stop promising tooth. | open |  | 2026-09-25T17:20:39.701Z |  |
 | 80 | 52.4 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.cooperativeFinalization.contract.red.test.ts |  | Undeclared engine contract test repaired for the plan-mandated 'finalize' phase (raster-completion assertion); not in plan files_modified | open |  | 2026-09-29T06:47:34.799Z |  |
 | 81 | 52.4 | deviation | packages/efx-physic-paint |  | Package vitest gate runs via local ../../app/node_modules/.bin/vitest path; pnpm --filter efx-physic-paint exec vitest fails (vitest not resolvable in package) | open |  | 2026-09-29T06:47:34.944Z |  |
+| 82 | 52.4 | deviation | packages/efx-physic-paint/src/brush/footprintLanes.ts |  | Plan-literal RSA placement replaced by seeded two-band stratified jitter (car-parking jam + FP ratio trap); D-13/D-02 laws hold by construction, documented in header and 52.4-02-SUMMARY | open |  | 2026-09-29T08:18:02.500Z |  |
 
 ````json
 [
@@ -1077,6 +1078,19 @@ last_updated: 2026-09-29T06:47:34.944Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-29T06:47:34.944Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 82,
+    "kind": "deviation",
+    "phase": "52.4",
+    "file": "packages/efx-physic-paint/src/brush/footprintLanes.ts",
+    "line": null,
+    "description": "Plan-literal RSA placement replaced by seeded two-band stratified jitter (car-parking jam + FP ratio trap); D-13/D-02 laws hold by construction, documented in header and 52.4-02-SUMMARY",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-29T08:18:02.500Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }

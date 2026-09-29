@@ -3,19 +3,19 @@ gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.4"
-current_phase_name: Real-paint kill the salt-and-pepper
+current_phase_name: Real-paint kill the salt-and-pepper (INSERTED)
 status: executing
-stopped_at: Completed 52.4-01-PLAN.md
-last_updated: "2026-09-29T06:48:04.368Z"
+stopped_at: Completed 52.4-02-PLAN.md
+last_updated: "2026-09-29T08:18:34.253Z"
 last_activity: 2026-09-29
 last_activity_desc: Phase 52.4 execution started
-state_head: f18d1c34f7413738c214f147e7955c8b34ed2d74
+state_head: 1934db0be62a069995a60f820343c75cd52e5508
 progress:
   total_phases: 13
   completed_phases: 19
   total_plans: 72
-  completed_plans: 69
-  percent: 96
+  completed_plans: 70
+  percent: 97
 ---
 
 # Project State
@@ -25,16 +25,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52.4 — Real-paint kill the salt-and-pepper
+**Current focus:** Phase 52.4 — Real-paint kill the salt-and-pepper (INSERTED)
 
 ## Current Position
 
-Phase: 52.4 (Real-paint kill the salt-and-pepper) — EXECUTING
+Phase: 52.4 (Real-paint kill the salt-and-pepper (INSERTED)) — EXECUTING
 Plan: 2 of 4
 Status: Ready to execute
 Last activity: 2026-09-29 — Phase 52.4 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 96%)
+Progress: [████████████████████] 49/49 plans ([█████████░] 97%)
 
 ## Performance Metrics
 
@@ -131,6 +131,7 @@ Progress: [████████████████████] 49/49 p
 | Phase quick-260923-bcm P260923-bcm | 40min | 3 tasks | 34 files |
 | Phase quick-260924-d6l P260924-d6l | 9min | 3 tasks | 3 files |
 | Phase 52.4 P01 | 47min | 3 tasks | 10 files |
+| Phase 52.4 P02 | 68min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -356,6 +357,9 @@ Recent decisions affecting current work:
 - [Phase 52.4]: 52.4-01: live display = dry-canvas blit at tier=live + engine bbox snapshot/putImageData restore before the finalize deposit (replace-not-stack, no ghost density)
 - [Phase 52.4]: 52.4-01 shipped constants: LIVE_TIER_DIVISOR=4, LIVE_WIDTH_MUL=1.6, STREAK_ALPHA=0.4 (keep-gate: 0.30 -> 76.5/255 >= 70); values tunable in plan 02, architecture never reopened
 - [Phase 52.4]: 52.4-01: engine gained a 'finalize' phase (raster -> finalize -> post-raster) as the single tier=final deposit site, generation-guarded phase-machine pattern
+- [Phase 52.4]: 52.4-02 placement: plan-literal RSA provably jams below required count and undershoots D-02 density ratio; shipped seeded two-band stratified jitter (gap law + density by construction, mutationId-keyed) — documented in footprintLanes header
+- [Phase 52.4]: 52.4-02 shipped look constants: STREAK_ALPHA 0.995 (FP margin at k=1), POISSON_FILL 0.7, BODY_BAND 0.52, BODY_WIDTH 1.3-1.6, RIM 0.5-0.9, NW_AMPLITUDE 0.4, NW_ARC_SCALE 0.1, WIDTH_FLOOR 0.5, MAX_TRACE_WIDTH 2, POISSON_MAX_ATTEMPTS 24, LIVE_WIDTH_MUL 4 — Claude's Discretion, judged at UAT
+- [Phase 52.4]: 52.4-02 gauge: raw-arc keying aliased at 10px sampling into per-sample edge chatter; NW_ARC_SCALE 0.1 keys the D-12(a) gauge on slowed arc — production fix, pin threshold untouched
 
 ### Pending Todos
 
@@ -447,6 +451,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-29T06:47:48.434Z
-Stopped at: Completed 52.4-01-PLAN.md
+Last session: 2026-09-29T08:18:27.581Z
+Stopped at: Completed 52.4-02-PLAN.md
 Resume file: None

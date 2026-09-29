@@ -469,7 +469,7 @@ Plans:
 **Goal:** Replace the salt-and-pepper bristle deposit with a structured, contained bristle footprint — coherent translucent streaks laid along the ribbon, build-up by overlap (R1) — deleting the `h > 0.72` paper cut with `drawBristleTraces`, and ship the one-routine two-tier deposit (R6, mandatory per D-05) where the live tier is display-only and a single full-N finalize deposit feeds wet/physics (D-07).
 **Requirements**: TBD (SPEC labels: R1, R6 per 52.4-SPEC.md SCOPE LOCK)
 **Depends on:** Phase 52
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 
@@ -479,7 +479,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 52.4-02-PLAN.md — Look geometry (TDD): Poisson-disk tips (D-13), baked lateral density profile (D-02), `nW` bounds (D-12), uniform base color + single constant alpha (D-09/D-10/D-11), DiVerdi §4.1 live ¼ tier (D-05) — PIN 0 saturation by overlap, no fill safety net (D-01)
+- [x] 52.4-02-PLAN.md — Look geometry (TDD): Poisson-disk tips (D-13), baked lateral density profile (D-02), `nW` bounds (D-12), uniform base color + single constant alpha (D-09/D-10/D-11), DiVerdi §4.1 live ¼ tier (D-05) — PIN 0 saturation by overlap, no fill safety net (D-01)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
