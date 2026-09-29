@@ -67,7 +67,7 @@ import { mkdir } from '@tauri-apps/plugin-fs';
 import { exportWritePng } from '../../../lib/ipc';
 import { canvasToPngBytes } from '../../../lib/rotoAlphaCanvasRegistry';
 
-export type Dh1RunLabel = 'red' | 'green' | 'seams';
+export type Dh1RunLabel = 'red' | 'green' | 'seams' | 'tier-parity';
 
 export const DH1_CAPTURE_LCG_SEED = 123456789;
 export const DH1_CAPTURE_ZOOM = 4;
@@ -1159,6 +1159,16 @@ interface SeamField {
   alpha: Uint8Array;
 }
 
+/** A full-canvas alpha read of a tier plane, in canvas coords (x/y =
+ *  the translate-hook origin of the offscreen it was read from). */
+interface TierPlaneField {
+  alpha: Uint8Array;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+}
+
 interface SeamProbeState {
   tag: string | null;
   /** True only while a stroke finalize is in flight — keeps harness-owned
@@ -1170,6 +1180,17 @@ interface SeamProbeState {
   capturedRasterForTag: Set<string>;
   pendingPostGate: boolean;
   pendingPostDry: boolean;
+  /** Most recent offscreen canvas whose ctx.translate ran (the raster-offscreen
+   *  signature paint.ts uses) — the surface the live tier draws into. */
+  lastRasterCanvas: HTMLCanvasElement | null;
+  /** Live-tier plane captured at stroke-first-raster-publication (D-08). */
+  livePlane: TierPlaneField | null;
+  /** Set only while the harness performs the publication-stage live read —
+   *  the captured read must not consume the post-raster seam slot (that slot
+   *  belongs to the final tier's transfer). */
+  capturingLive: boolean;
+  /** One-shot resolver for the runner's live-plane promise. */
+  liveResolve: ((plane: TierPlaneField | null) => void) | null;
 }
 
 function recordSeamField(
@@ -1248,18 +1269,30 @@ function installSeamProbes(eng: EngineInternals, state: SeamProbeState): () => v
       c2d.translate = (tx: number, ty: number) => {
         // paint.ts: oc.translate(-bounds.x0, -bounds.y0) → canvas origin.
         origins.set(canvas, { x: -tx, y: -ty });
+        // The most recently translated offscreen IS the raster offscreen —
+        // the surface the tier=live footprint draws into (52.4-03 D-08).
+        state.lastRasterCanvas = canvas;
         return originalTranslate(tx, ty);
       };
       c2d.getImageData = (sx: number, sy: number, sw: number, sh: number) => {
         const image = originalGet(sx, sy, sw, sh);
+        const fullCanvas = sx === 0 && sy === 0 && sw === canvas.width && sh === canvas.height;
+        // Publication-stage live read FIRST: capture the live-tier plane and
+        // return WITHOUT consuming the post-raster seam slot — that slot
+        // belongs to the final tier's transfer at the finalize phase.
+        if (state.capturingLive && fullCanvas && offscreens.has(canvas)) {
+          const origin = origins.get(canvas) ?? { x: 0, y: 0 };
+          state.livePlane = { alpha: alphaFromImageData(image), width: sw, height: sh, x: origin.x, y: origin.y };
+          state.capturingLive = false;
+          state.liveResolve?.(state.livePlane);
+          state.liveResolve = null;
+          return image;
+        }
         if (
           state.tag
           && state.expectRaster
           && offscreens.has(canvas)
-          && sx === 0
-          && sy === 0
-          && sw === canvas.width
-          && sh === canvas.height
+          && fullCanvas
         ) {
           const origin = origins.get(canvas) ?? { x: 0, y: 0 };
           recordSeamField(state, 'post-raster', {
@@ -1304,6 +1337,24 @@ function installSeamProbes(eng: EngineInternals, state: SeamProbeState): () => v
 
   eng.setPerformanceListener((sample) => {
     previousListener?.(sample as Parameters<typeof previousListener>[0]);
+    // D-08 live plane: the moment the live-tier raster continuation completes
+    // — after tier=live finished drawing into the offscreen, before the
+    // finalize phase deposits. Synchronous read through the wrapped
+    // getImageData (capturingLive branch above).
+    if (sample.stage === 'stroke-first-raster-publication' && state.tag && !state.livePlane) {
+      state.capturingLive = true;
+      const raster = state.lastRasterCanvas;
+      if (raster) {
+        raster.getContext('2d')?.getImageData(0, 0, raster.width, raster.height);
+      }
+      state.capturingLive = false;
+      if (!state.livePlane) {
+        // Never a silently-zeroed row — missing evidence stays visibly null.
+        console.warn('[dh1] tier-parity: live plane not captured');
+        state.liveResolve?.(null);
+        state.liveResolve = null;
+      }
+    }
     if (sample.stage === 'paint-transfer-pixel-loop' && state.tag && state.pendingPostGate) {
       recordSeamField(state, 'post-gate', {
         alpha: wetAlphaToPlane(eng.wet.alpha),
@@ -1427,6 +1478,10 @@ export async function runDepositSpeckleCapture(
     capturedRasterForTag: new Set(),
     pendingPostGate: false,
     pendingPostDry: false,
+    lastRasterCanvas: null,
+    livePlane: null,
+    capturingLive: false,
+    liveResolve: null,
   };
 
   const originalRandom = Math.random;
@@ -1532,6 +1587,168 @@ export async function runDepositSpeckleCapture(
 }
 
 // ---------------------------------------------------------------------------
+// D-08 tier-parity capture runner — one scripted stroke observed through the
+// ENGINE's own tier passes: the live-tier plane at stroke-first-raster-
+// publication, the final-tier plane at the finalize transfer's post-raster
+// read. MEASUREMENT-ONLY: the runner writes nothing to wet/physics itself.
+//
+// Order note (capture mechanics, Claude's Discretion): the flush drives
+// prepare -> raster -> publication (live read happens synchronously inside
+// the listener, before the finalize phase can touch anything) -> finalize
+// (final-plane post-raster record). Awaiting the live promise BEFORE the
+// flush would rely on the scheduled interactive drain (400 ms idle gate, one
+// phase step per frame) to fire the publication — flushing first resolves the
+// promise deterministically with the same capture instant.
+// ---------------------------------------------------------------------------
+
+export async function runTierParityCapture(engine: EfxPaintEngine): Promise<Dh1Manifest> {
+  const eng = asInternals(engine);
+  const pngDir = `${DH1_CAPTURE_BASE_DIR}/tier-parity`;
+  try {
+    await mkdir(pngDir, { recursive: true });
+  } catch (error) {
+    console.warn('[dh1] png dir ensure failed (continuing)', error);
+  }
+
+  const canvas = eng.getCanvas();
+  const width = canvas.width;
+  const height = canvas.height;
+  const regions = laneRegions(width, height);
+  const contentSpec = buildContentSpec(width, height);
+  const rows: Dh1ManifestRow[] = [];
+  const seamState: SeamProbeState = {
+    tag: null,
+    expectRaster: false,
+    fields: [],
+    rectByTag: new Map(),
+    capturedRasterForTag: new Set(),
+    pendingPostGate: false,
+    pendingPostDry: false,
+    lastRasterCanvas: null,
+    livePlane: null,
+    capturingLive: false,
+    liveResolve: null,
+  };
+
+  const originalRandom = Math.random;
+  let seed = DH1_CAPTURE_LCG_SEED;
+  const previousPaperKey = eng.currentPaperKey;
+  const originalPointerCapture = canvas.setPointerCapture;
+  const originalReleaseCapture = canvas.releasePointerCapture;
+  let brushSpec: Record<string, number> = { ...eng.state.brushOpts };
+  let uninstallSeamProbes: (() => void) | null = null;
+
+  try {
+    // LCG over Math.random for the run duration (grainRemoval test precedent).
+    Math.random = () => {
+      seed = (1664525 * seed + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+    canvas.setPointerCapture = () => {};
+    canvas.releasePointerCapture = () => {};
+    uninstallSeamProbes = installSeamProbes(eng, seamState);
+
+    // Normalize: stop physics, deterministic brush state, paper OFF, empty
+    // frame (scratch work — the hook contract).
+    if (eng.state.physicsRunning) eng.stopPhysics();
+    eng.flushPendingStrokeFinalizations();
+    brushSpec = forceDeterministicEngineState(eng);
+    eng.setPaperGrain('');
+    eng.clear();
+    eng.flushPendingStrokeFinalizations();
+
+    // ONE scripted stroke — the 'heavy-slow' variant (one stroke, one settle).
+    const variant = contentSpec.variants.find((v) => v.name === 'heavy-slow');
+    if (!variant) throw new Error('dh1 tier-parity: heavy-slow variant missing from content spec');
+    seamState.tag = 'tier-parity';
+    seamState.expectRaster = true;
+    const livePromise = new Promise<TierPlaneField | null>((resolve) => {
+      seamState.liveResolve = resolve;
+    });
+    drawScriptedStroke(eng, canvas, variant.points);
+    // Drives prepare -> raster -> publication (live plane captured inside the
+    // listener) -> finalize (final tier's transfer records post-raster for
+    // the same tag) -> post-raster.
+    eng.flushPendingStrokeFinalizations();
+    seamState.expectRaster = false;
+    // The live plane is captured synchronously inside the publication listener
+    // during the flush above; this race only bounds the wait if that capture
+    // never fired. The comparison reads seamState.livePlane below.
+    await Promise.race([livePromise, sleep(1500).then(() => null)]);
+    seamState.liveResolve = null;
+    seamState.tag = null;
+    await sleep(SETTLE_AFTER_STROKES_MS);
+    rows.push(await snapshotRow(eng, pngDir, 'tier-parity', regions));
+  } finally {
+    uninstallSeamProbes?.();
+    Math.random = originalRandom;
+    canvas.setPointerCapture = originalPointerCapture;
+    canvas.releasePointerCapture = originalReleaseCapture;
+    eng.setPaperGrain(previousPaperKey);
+    seamState.liveResolve = null;
+    seamState.capturingLive = false;
+  }
+
+  const seams = await flushSeamDumps(seamState, pngDir);
+
+  // --- D-08: align both tier planes onto their common rect, then compare ----
+  let tierParity: Dh1TierParityDump | null = null;
+  const finalField = seamState.fields.find((f) => f.tag === 'tier-parity' && f.seam === 'post-raster');
+  const livePlane = seamState.livePlane;
+  if (!livePlane || !finalField) {
+    // Missing evidence is visibly null, never a silently-zeroed row.
+    console.warn('[dh1] tier-parity: tier plane missing — emitting tierParity null', {
+      live: Boolean(livePlane),
+      final: Boolean(finalField),
+    });
+  } else {
+    const x0 = Math.max(livePlane.x, finalField.x);
+    const y0 = Math.max(livePlane.y, finalField.y);
+    const x1 = Math.min(livePlane.x + livePlane.width, finalField.x + finalField.width);
+    const y1 = Math.min(livePlane.y + livePlane.height, finalField.y + finalField.height);
+    if (x1 > x0 && y1 > y0) {
+      const commonWidth = x1 - x0;
+      const commonHeight = y1 - y0;
+      const liveCrop = cropAlphaPlane(livePlane.alpha, livePlane.width, livePlane.height, livePlane.x, livePlane.y, {
+        x: x0 - livePlane.x,
+        y: y0 - livePlane.y,
+        width: commonWidth,
+        height: commonHeight,
+      });
+      const finalCrop = cropAlphaPlane(finalField.alpha, finalField.width, finalField.height, finalField.x, finalField.y, {
+        x: x0 - finalField.x,
+        y: y0 - finalField.y,
+        width: commonWidth,
+        height: commonHeight,
+      });
+      const metrics = computeTierParityMetrics(liveCrop.alpha, finalCrop.alpha, commonWidth, commonHeight);
+      const livePngPath = await writeAlphaPlanePng(liveCrop, pngDir, 'tier-parity-live');
+      const finalPngPath = await writeAlphaPlanePng(finalCrop, pngDir, 'tier-parity-final');
+      tierParity = { livePngPath, finalPngPath, metrics, pass: tierParityPasses(metrics) };
+    } else {
+      console.warn('[dh1] tier-parity: tier planes do not overlap — emitting tierParity null');
+    }
+  }
+
+  const manifest = buildDh1Manifest({
+    runLabel: 'tier-parity',
+    capturedAt: new Date().toISOString(),
+    lcgSeed: DH1_CAPTURE_LCG_SEED,
+    zoom: DH1_CAPTURE_ZOOM,
+    canvas: { width, height },
+    clearedAtStart: true,
+    brushSpec,
+    paper: { offKey: '', onKey: null, paperHeightActive: false },
+    contentSpec,
+    rows,
+    seams,
+    tierParity,
+  });
+  await writeManifest(manifest, 'tier-parity');
+  return manifest;
+}
+
+// ---------------------------------------------------------------------------
 // DEV hook installation (mirrors the __EFX_PHYSICS_PAINT_PROFILE__ precedent)
 // ---------------------------------------------------------------------------
 
@@ -1544,12 +1761,15 @@ export function installDh1CaptureHook(engine: EfxPaintEngine): void {
   Object.defineProperty(window, '__EFX_DH1_CAPTURE__', {
     configurable: true,
     value: (label: Dh1RunLabel) => {
-      if (label !== 'red' && label !== 'green' && label !== 'seams') {
+      if (label !== 'red' && label !== 'green' && label !== 'seams' && label !== 'tier-parity') {
         return Promise.reject(new Error(`dh1 capture: unknown label ${String(label)}`));
       }
       const existing = dh1Runs.get(label);
       if (existing) return existing;
-      const run = runDepositSpeckleCapture(engine, { runLabel: label }).catch((error) => {
+      const run = (label === 'tier-parity'
+        ? runTierParityCapture(engine)
+        : runDepositSpeckleCapture(engine, { runLabel: label })
+      ).catch((error) => {
         console.error('[dh1] capture failed', error);
         return null;
       });
