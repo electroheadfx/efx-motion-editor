@@ -420,6 +420,99 @@ export function computeDefectMetrics(
 }
 
 // ---------------------------------------------------------------------------
+// Tier-parity capture pin (D-08) — two-plane comparison + manifest row.
+//
+// Evidence for D-08's three invariants across the real settle:
+//   (a) identical gap positions (the shared skip stream is the oracle),
+//   (b) same silhouette under the DiVerdi 4.1 thickness tolerance — NEVER
+//       strict pixel containment (live is fewer-but-thicker),
+//   (c) the settle adds only detail (count x thickness), never a new hole
+//       or a shift.
+// The row is acceptance evidence reported beside the R1 rows — never a gate
+// on the look (D-08). Measurement-only: these are pure functions of their
+// two plane inputs; no pixel writes, no package imports.
+// ---------------------------------------------------------------------------
+
+/** Gap-position matching tolerance (px, center distance) — Claude's
+ *  Discretion, judged at UAT. Single source: read by the metric AND the
+ *  pass helper, never re-derived inline. */
+export const TIER_PARITY_GAP_TOLERANCE_PX = 3;
+/** The DiVerdi 4.1 thickness tolerance — the only silhouette assertion
+ *  allowed (never strict pixel containment). */
+export const TIER_PARITY_SILHOUETTE_TOLERANCE_PX = 4;
+/** No-shift bound for the settle (alpha-weighted centroid). */
+export const TIER_PARITY_CENTROID_TOLERANCE_PX = 2;
+
+export interface Dh1TierParityMetrics {
+  /** Row-gaps + live-only enclosed holes with no counterpart in the other
+   *  tier within tolerance. 0 = every gap in live is the same gap in final. */
+  gapMismatch: number;
+  /** Max row-extent / per-row endpoint drift between the two silhouettes. */
+  silhouetteDriftPx: number;
+  /** Enclosed 8/8 holes present only in the FINAL plane — the settle must
+   *  never add one. */
+  newHoleCount: number;
+  /** Alpha-weighted centroid distance between the two planes. */
+  centroidDriftPx: number;
+  /** Plain alpha sum of the live plane. */
+  liveMass: number;
+  /** Plain alpha sum of the final plane. */
+  finalMass: number;
+}
+
+export interface Dh1TierParityDump {
+  livePngPath: string | null;
+  finalPngPath: string | null;
+  metrics: Dh1TierParityMetrics;
+  pass: boolean;
+}
+
+export const DH1_TIER_PARITY_KEYS = [
+  'livePngPath',
+  'finalPngPath',
+  'metrics',
+  'pass',
+] as const;
+
+export const DH1_TIER_PARITY_METRIC_KEYS = [
+  'gapMismatch',
+  'silhouetteDriftPx',
+  'newHoleCount',
+  'centroidDriftPx',
+  'liveMass',
+  'finalMass',
+] as const;
+
+/** D-08 tier-parity metric over two pre-aligned same-size alpha planes
+ *  (ink = alpha >= DH1_INK_FLOOR). RED stub: returns zeros so the capture-pin
+ *  tests compile and fail on their assertions; Task 2 implements. */
+export function computeTierParityMetrics(
+  _live: ArrayLike<number>,
+  _finalPlane: ArrayLike<number>,
+  _width: number,
+  _height: number,
+): Dh1TierParityMetrics {
+  return {
+    gapMismatch: 0,
+    silhouetteDriftPx: 0,
+    newHoleCount: 0,
+    centroidDriftPx: 0,
+    liveMass: 0,
+    finalMass: 0,
+  };
+}
+
+/** The D-08 assertion helper — one threshold source, never a second literal. */
+export function tierParityPasses(m: Dh1TierParityMetrics): boolean {
+  return (
+    m.gapMismatch === 0
+    && m.newHoleCount === 0
+    && m.silhouetteDriftPx <= TIER_PARITY_SILHOUETTE_TOLERANCE_PX
+    && m.centroidDriftPx <= TIER_PARITY_CENTROID_TOLERANCE_PX
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Manifest shape (parity between the RED and GREEN runs is judged on these)
 // ---------------------------------------------------------------------------
 
@@ -499,6 +592,8 @@ export interface Dh1Manifest {
   contentSpec: Dh1ContentSpec;
   rows: Dh1ManifestRow[];
   seams: Dh1SeamDump[];
+  /** D-08 tier-parity dump — null for red/green/seams (they capture no tiers). */
+  tierParity: Dh1TierParityDump | null;
 }
 
 export const DH1_MANIFEST_ROW_KEYS = [
@@ -545,6 +640,7 @@ export const DH1_MANIFEST_KEYS = [
   'contentSpec',
   'rows',
   'seams',
+  'tierParity',
 ] as const;
 
 export function buildDh1Manifest(fields: {
@@ -559,8 +655,11 @@ export function buildDh1Manifest(fields: {
   contentSpec: Dh1ContentSpec;
   rows: Dh1ManifestRow[];
   seams: Dh1SeamDump[];
+  /** Optional so red/green/seams call sites stay valid; normalized to an
+   *  explicit null — every run label carries the key. */
+  tierParity?: Dh1TierParityDump | null;
 }): Dh1Manifest {
-  return { ...fields };
+  return { ...fields, tierParity: fields.tierParity ?? null };
 }
 
 // ---------------------------------------------------------------------------
@@ -1238,6 +1337,9 @@ export async function runDepositSpeckleCapture(
     contentSpec,
     rows,
     seams,
+    // This runner captures no tier planes — the tier-parity row belongs to
+    // runTierParityCapture (52.4-03 Task 3).
+    tierParity: null,
   });
   await writeManifest(manifest, runLabel);
   return manifest;

@@ -3,19 +3,29 @@ import {
   DH1_CAPTURE_LCG_SEED,
   DH1_CAPTURE_ZOOM,
   DH1_DEFECT_METRIC_KEYS,
+  DH1_INK_FLOOR,
   DH1_MANIFEST_KEYS,
   DH1_MANIFEST_ROW_KEYS,
   DH1_SEAM_KEYS,
   DH1_SEAM_ORDER,
+  DH1_TIER_PARITY_KEYS,
+  DH1_TIER_PARITY_METRIC_KEYS,
+  TIER_PARITY_GAP_TOLERANCE_PX,
+  TIER_PARITY_SILHOUETTE_TOLERANCE_PX,
+  TIER_PARITY_CENTROID_TOLERANCE_PX,
   alphaFromRgba,
   buildDh1Manifest,
   computeDefectMetrics,
   computeRegionAlphaMass,
   computeSpeckleMetrics,
+  computeTierParityMetrics,
   cropAlphaPlane,
+  tierParityPasses,
   wetAlphaToPlane,
   type Dh1ManifestRow,
   type Dh1SeamDump,
+  type Dh1TierParityDump,
+  type Dh1TierParityMetrics,
 } from './depositSpeckleCapture';
 
 function plane(width: number, height: number, fill: (x: number, y: number) => number): Uint8Array {
@@ -241,5 +251,149 @@ describe('dh1 manifest shape', () => {
     expect(DH1_SEAM_ORDER).toEqual(['post-raster', 'post-gate', 'post-dry', 'post-display']);
     expect(DH1_CAPTURE_LCG_SEED).toBe(123456789);
     expect(DH1_CAPTURE_ZOOM).toBe(4);
+  });
+});
+
+describe('dh1 tier-parity capture pin (D-08)', () => {
+  const TP_W = 52;
+  const TP_H = 14;
+
+  /** Horizontal band fixture with an optional full-band interior gap and an
+   *  optional single-pixel enclosed hole. Ink = 200 (>= DH1_INK_FLOOR). */
+  function tpBand(
+    y0: number,
+    y1: number,
+    x0: number,
+    x1: number,
+    gapCols?: readonly [number, number],
+    hole?: readonly [number, number],
+  ): Uint8Array {
+    return plane(TP_W, TP_H, (x, y) => {
+      if (y < y0 || y > y1 || x < x0 || x > x1) return 0;
+      if (gapCols && x >= gapCols[0] && x <= gapCols[1]) return 0;
+      if (hole && x === hole[0] && y === hole[1]) return 0;
+      return 200;
+    });
+  }
+
+  it('Test 1 (identical): shared-gap planes score all zeros and pass', () => {
+    const live = tpBand(3, 8, 0, 39, [18, 21]);
+    const finalPlane = tpBand(3, 8, 0, 39, [18, 21]);
+    const m = computeTierParityMetrics(live, finalPlane, TP_W, TP_H);
+    expect(m.gapMismatch).toBe(0);
+    expect(m.silhouetteDriftPx).toBe(0);
+    expect(m.newHoleCount).toBe(0);
+    expect(m.centroidDriftPx).toBe(0);
+    expect(tierParityPasses(m)).toBe(true);
+  });
+
+  it('Test 2 (fewer-but-thicker): passes under the 4.1 tolerance while strict containment is FALSE', () => {
+    // live = rows 3..8 x 0..39 (thicker), final = rows 4..7 x 0..38, same
+    // gap columns where both tiers ink — the D-08 capture-pin form.
+    const live = tpBand(3, 8, 0, 39, [18, 21]);
+    const finalPlane = tpBand(4, 7, 0, 38, [18, 21]);
+    const m = computeTierParityMetrics(live, finalPlane, TP_W, TP_H);
+    expect(tierParityPasses(m)).toBe(true);
+    // Strict "final covers live" would false-fail here — prove it evaluates
+    // false right next to the passing parity (never strict containment).
+    let covered = true;
+    for (let i = 0; i < live.length; i++) {
+      if (live[i] >= DH1_INK_FLOOR && finalPlane[i] < DH1_INK_FLOOR) {
+        covered = false;
+        break;
+      }
+    }
+    expect(covered).toBe(false);
+  });
+
+  it('Test 3 (new hole at settle): a final-only enclosed 8/8 hole fails the pin', () => {
+    const live = tpBand(3, 8, 0, 39, [18, 21]);
+    const finalPlane = tpBand(3, 8, 0, 39, [18, 21], [30, 5]);
+    const m = computeTierParityMetrics(live, finalPlane, TP_W, TP_H);
+    expect(m.newHoleCount).toBeGreaterThanOrEqual(1);
+    expect(tierParityPasses(m)).toBe(false);
+  });
+
+  it('Test 4 (tier-local gap / moved skip): a gap shifted beyond tolerance fails the pin', () => {
+    const live = tpBand(3, 8, 0, 39, [18, 21]);
+    // Gap shifted +5 px — strictly greater than TIER_PARITY_GAP_TOLERANCE_PX.
+    const finalPlane = tpBand(3, 8, 0, 39, [23, 26]);
+    expect(24.5 - 19.5).toBeGreaterThan(TIER_PARITY_GAP_TOLERANCE_PX);
+    const m = computeTierParityMetrics(live, finalPlane, TP_W, TP_H);
+    expect(m.gapMismatch).toBeGreaterThanOrEqual(1);
+    expect(tierParityPasses(m)).toBe(false);
+  });
+
+  it('Test 5 (shift): a 6 px-translated final plane fails silhouette + centroid', () => {
+    const live = tpBand(3, 8, 0, 39);
+    const finalPlane = tpBand(3, 8, 6, 45);
+    const m = computeTierParityMetrics(live, finalPlane, TP_W, TP_H);
+    expect(m.silhouetteDriftPx).toBeGreaterThanOrEqual(6);
+    expect(m.silhouetteDriftPx).toBeGreaterThan(TIER_PARITY_SILHOUETTE_TOLERANCE_PX);
+    expect(m.centroidDriftPx).toBeGreaterThanOrEqual(6);
+    expect(m.centroidDriftPx).toBeGreaterThan(TIER_PARITY_CENTROID_TOLERANCE_PX);
+    expect(tierParityPasses(m)).toBe(false);
+  });
+
+  it('Test 6 (manifest shape): tierParity key set, stub coverage, default null, isolation violations', () => {
+    // DH1_MANIFEST_KEYS carries tierParity (the existing shape test iterates it).
+    expect(DH1_MANIFEST_KEYS).toContain('tierParity');
+    // Every pinned metric key exists on a stub metrics object.
+    const stubMetrics: Dh1TierParityMetrics = {
+      gapMismatch: 0,
+      silhouetteDriftPx: 0,
+      newHoleCount: 0,
+      centroidDriftPx: 0,
+      liveMass: 1000,
+      finalMass: 900,
+    };
+    for (const key of DH1_TIER_PARITY_METRIC_KEYS) {
+      expect(stubMetrics, `missing tier-parity metric ${key}`).toHaveProperty(key);
+    }
+    const stubDump: Dh1TierParityDump = {
+      livePngPath: '/tmp/efx-dh1/tier-parity/tier-parity-live.png',
+      finalPngPath: '/tmp/efx-dh1/tier-parity/tier-parity-final.png',
+      metrics: stubMetrics,
+      pass: true,
+    };
+    for (const key of DH1_TIER_PARITY_KEYS) {
+      expect(stubDump, `missing tier-parity dump key ${key}`).toHaveProperty(key);
+    }
+    // buildDh1Manifest without tierParity returns an explicit null.
+    const manifest = buildDh1Manifest({
+      runLabel: 'red',
+      capturedAt: '2026-09-29T00:00:00.000Z',
+      lcgSeed: DH1_CAPTURE_LCG_SEED,
+      zoom: DH1_CAPTURE_ZOOM,
+      canvas: { width: 100, height: 80 },
+      clearedAtStart: true,
+      brushSpec: { size: 16, opacity: 100 },
+      paper: { offKey: '', onKey: null, paperHeightActive: false },
+      contentSpec: {
+        basePolyline: [[0.08, 0.5]],
+        sampleStepPx: 12,
+        laneY: [0.18, 0.5, 0.82],
+        ySpread: 0.24,
+        variants: [],
+      },
+      rows: [],
+      seams: [],
+    });
+    expect(manifest.tierParity).toBeNull();
+    expect(manifest).toHaveProperty('tierParity');
+    // Each invariant violated in isolation trips the pass helper.
+    expect(tierParityPasses({ ...stubMetrics, gapMismatch: 1 })).toBe(false);
+    expect(tierParityPasses({ ...stubMetrics, newHoleCount: 1 })).toBe(false);
+    expect(tierParityPasses({ ...stubMetrics, silhouetteDriftPx: TIER_PARITY_SILHOUETTE_TOLERANCE_PX + 1 })).toBe(false);
+    expect(tierParityPasses({ ...stubMetrics, centroidDriftPx: TIER_PARITY_CENTROID_TOLERANCE_PX + 1 })).toBe(false);
+    expect(tierParityPasses(stubMetrics)).toBe(true);
+  });
+
+  it('Test 6b (metric-driven violation): computeTierParityMetrics over a shifted pair makes tierParityPasses false', () => {
+    const live = tpBand(3, 8, 0, 39);
+    const finalPlane = tpBand(3, 8, 6, 45);
+    const m = computeTierParityMetrics(live, finalPlane, TP_W, TP_H);
+    expect(m.silhouetteDriftPx).toBeGreaterThan(TIER_PARITY_SILHOUETTE_TOLERANCE_PX);
+    expect(tierParityPasses(m)).toBe(false);
   });
 });
