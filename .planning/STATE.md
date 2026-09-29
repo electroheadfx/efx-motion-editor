@@ -5,17 +5,17 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.4"
 current_phase_name: Real-paint kill the salt-and-pepper
 status: executing
-stopped_at: Phase 52.4 context gathered
-last_updated: "2026-09-29T04:44:24.186Z"
+stopped_at: Completed 52.4-01-PLAN.md
+last_updated: "2026-09-29T06:48:04.368Z"
 last_activity: 2026-09-29
 last_activity_desc: Phase 52.4 execution started
-state_head: ec79a7507f858c3dcc58432189e6a220ccc99fc0
+state_head: f18d1c34f7413738c214f147e7955c8b34ed2d74
 progress:
   total_phases: 13
   completed_phases: 19
   total_plans: 72
-  completed_plans: 68
-  percent: 94
+  completed_plans: 69
+  percent: 96
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 ## Current Position
 
 Phase: 52.4 (Real-paint kill the salt-and-pepper) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 52.4
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-09-29 — Phase 52.4 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 94%)
+Progress: [████████████████████] 49/49 plans ([█████████░] 96%)
 
 ## Performance Metrics
 
@@ -130,6 +130,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 260921-bjm P260921-bjm | 12min | 3 tasks | 11 files |
 | Phase quick-260923-bcm P260923-bcm | 40min | 3 tasks | 34 files |
 | Phase quick-260924-d6l P260924-d6l | 9min | 3 tasks | 3 files |
+| Phase 52.4 P01 | 47min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -351,6 +352,10 @@ Recent decisions affecting current work:
 - [Phase 53]: canvasStack memo gains settings.grainScale and physicPaintVersion.value as the convergence door for flattened fond rotation.
 - [Phase 53]: Pattern scale: setTransform only when scale !== 1 (with typeof guard); tile step floored >= 1; cache key includes normalized scale.
 - [Phase 53]: quick-260924-d6l: three contract pins green at birth (PINS_GREEN_AT_BIRTH honest verdict); conditional re-scope not triggered, only the explicit classic-default contract docs shipped in NumericStepper.tsx; grain rule frozen as 260923-bcm shipped (0.5 interior / 0.1 edges)
+- [Phase 52.4]: 52.4-01: D-05/D-07/D-14 locked one-way (shared tier-independent seeded stream = deposit contract; single finalize deposit; no paper height in footprint); D-01/D-04 costly-but-ungated
+- [Phase 52.4]: 52.4-01: live display = dry-canvas blit at tier=live + engine bbox snapshot/putImageData restore before the finalize deposit (replace-not-stack, no ghost density)
+- [Phase 52.4]: 52.4-01 shipped constants: LIVE_TIER_DIVISOR=4, LIVE_WIDTH_MUL=1.6, STREAK_ALPHA=0.4 (keep-gate: 0.30 -> 76.5/255 >= 70); values tunable in plan 02, architecture never reopened
+- [Phase 52.4]: 52.4-01: engine gained a 'finalize' phase (raster -> finalize -> post-raster) as the single tier=final deposit site, generation-guarded phase-machine pattern
 
 ### Pending Todos
 
@@ -442,6 +447,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-28T20:02:14.947Z
-Stopped at: Phase 52.4 context gathered
-Resume file: .planning/phases/52.4-real-paint-kill-the-salt-and-pepper/52.4-CONTEXT.md
+Last session: 2026-09-29T06:47:48.434Z
+Stopped at: Completed 52.4-01-PLAN.md
+Resume file: None

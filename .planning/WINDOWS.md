@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 7
 waived_count: 5
 fixed_count: 69
-total_count: 79
-last_updated: 2026-09-25T17:20:39.701Z
+total_count: 81
+last_updated: 2026-09-29T06:47:34.944Z
 ---
 
 # Broken Windows Ledger
@@ -94,6 +94,8 @@ last_updated: 2026-09-25T17:20:39.701Z
 | 77 | quick-260925-b7c | deviation | .planning/quick/260925-b7c-quick-8d-recalibrate-the-spread-scale-so/260925-b7c-SUMMARY.md |  | STOPPED at Task 3 law gate: texture-presence gates (stb W2/W6, rm2 texture) fail at the new default because spreadCurveFor(50)=0.09 derives K ticks=1 (was 3); 3 harness parity edits left uncommitted pending user decision | fixed |  | 2026-09-25T06:40:20.907Z | 2026-09-25T07:04:00.127Z |
 | 78 | quick-260925-iy6 | deviation | app/vite.config.ts |  | Chunk budget raised 1355 -> 1370 (measured 1355.02 kB) after the paper pass entered the main chunk; gate's own measured-raise protocol | open |  | 2026-09-25T16:28:07.934Z |  |
 | 79 | quick-260925-iy6 | unmet-truth | app/src/lib/paperPass.ts |  | CR-01 code-review BLOCKER: applyPaperPass washes partial-alpha paint (paint contribution lands at a^2 instead of a; the (1-a)*valley term washes the stroke toward the paper tone). Measured in app/src/lib/paperPass.composeLaw.test.ts (W3C software model, real pixels): paint [120,30,60] @ a=0.5 over a 230 valley produces [169,128,142] vs the law [108,27,54]. a=1.0 and a=0 are exact, so the full-opacity UAT row hides it - every AA edge and every track opacity < 1 is wrong (PIN 0 / 260924-m7w class). The directed fix (opaque tile as DESTINATION, paint as SOURCE) is PROVEN numerically identical to the shipped sequence (multiply is commutative; source-over adds the same (1-As)*Cb term). No GCO-only 5-draw sequence can yield (paint * valley) at alpha a: no GCO both multiplies two straight-alpha images and preserves source alpha. Frame-path guardrail forbids a per-pixel JS loop, so the fix is a GPU pass (WebGL fragment shader, one draw) or a deferred phase. Pinned as it.fails in paperPass.composeLaw.test.ts (flips red when a real fix lands). WR-02 (White + grain-on yields no tooth) PARKED as a separate pass by user decision - White is toothless by design per 260925-dso (no procedural fbm); the gate should stop promising tooth. | open |  | 2026-09-25T17:20:39.701Z |  |
+| 80 | 52.4 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.cooperativeFinalization.contract.red.test.ts |  | Undeclared engine contract test repaired for the plan-mandated 'finalize' phase (raster-completion assertion); not in plan files_modified | open |  | 2026-09-29T06:47:34.799Z |  |
+| 81 | 52.4 | deviation | packages/efx-physic-paint |  | Package vitest gate runs via local ../../app/node_modules/.bin/vitest path; pnpm --filter efx-physic-paint exec vitest fails (vitest not resolvable in package) | open |  | 2026-09-29T06:47:34.944Z |  |
 
 ````json
 [
@@ -1049,6 +1051,32 @@ last_updated: 2026-09-25T17:20:39.701Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-25T17:20:39.701Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 80,
+    "kind": "deviation",
+    "phase": "52.4",
+    "file": "packages/efx-physic-paint/src/engine/EfxPaintEngine.cooperativeFinalization.contract.red.test.ts",
+    "line": null,
+    "description": "Undeclared engine contract test repaired for the plan-mandated 'finalize' phase (raster-completion assertion); not in plan files_modified",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-29T06:47:34.799Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 81,
+    "kind": "deviation",
+    "phase": "52.4",
+    "file": "packages/efx-physic-paint",
+    "line": null,
+    "description": "Package vitest gate runs via local ../../app/node_modules/.bin/vitest path; pnpm --filter efx-physic-paint exec vitest fails (vitest not resolvable in package)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-29T06:47:34.944Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }
