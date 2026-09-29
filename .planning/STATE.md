@@ -5,17 +5,17 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.4"
 current_phase_name: Real-paint kill the salt-and-pepper (INSERTED)
 status: executing
-stopped_at: Completed 52.4-02-PLAN.md
-last_updated: "2026-09-29T08:18:34.253Z"
+stopped_at: Completed 52.4-03-PLAN.md
+last_updated: "2026-09-29T09:07:28.978Z"
 last_activity: 2026-09-29
 last_activity_desc: Phase 52.4 execution started
-state_head: 1934db0be62a069995a60f820343c75cd52e5508
+state_head: c54680bfe6f2e864e6a038681d0742cc761e1049
 progress:
   total_phases: 13
   completed_phases: 19
   total_plans: 72
-  completed_plans: 70
-  percent: 97
+  completed_plans: 71
+  percent: 99
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 ## Current Position
 
 Phase: 52.4 (Real-paint kill the salt-and-pepper (INSERTED)) — EXECUTING
-Plan: 2 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-29 — Phase 52.4 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 97%)
+Progress: [████████████████████] 49/49 plans ([█████████░] 99%)
 
 ## Performance Metrics
 
@@ -132,6 +132,7 @@ Progress: [████████████████████] 49/49 p
 | Phase quick-260924-d6l P260924-d6l | 9min | 3 tasks | 3 files |
 | Phase 52.4 P01 | 47min | 3 tasks | 10 files |
 | Phase 52.4 P02 | 68min | 3 tasks | 4 files |
+| Phase 52.4 P03 | 30min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -360,6 +361,9 @@ Recent decisions affecting current work:
 - [Phase 52.4]: 52.4-02 placement: plan-literal RSA provably jams below required count and undershoots D-02 density ratio; shipped seeded two-band stratified jitter (gap law + density by construction, mutationId-keyed) — documented in footprintLanes header
 - [Phase 52.4]: 52.4-02 shipped look constants: STREAK_ALPHA 0.995 (FP margin at k=1), POISSON_FILL 0.7, BODY_BAND 0.52, BODY_WIDTH 1.3-1.6, RIM 0.5-0.9, NW_AMPLITUDE 0.4, NW_ARC_SCALE 0.1, WIDTH_FLOOR 0.5, MAX_TRACE_WIDTH 2, POISSON_MAX_ATTEMPTS 24, LIVE_WIDTH_MUL 4 — Claude's Discretion, judged at UAT
 - [Phase 52.4]: 52.4-02 gauge: raw-arc keying aliased at 10px sampling into per-sample edge chatter; NW_ARC_SCALE 0.1 keys the D-12(a) gauge on slowed arc — production fix, pin threshold untouched
+- [Phase 52.4]: 52.4-03: Tier-parity tolerances shipped 3/4/2 px (gap/silhouette/centroid) — silhouette 4 px carries the DiVerdi 4.1 fewer-but-thicker delta; strict containment deliberately rejected (Test 2 pins FALSE beside a pass)
+- [Phase 52.4]: 52.4-03: flush-before-await ordering — publication fires synchronously inside flushPendingStrokeFinalizations; awaiting the live promise first risks the 400ms raf idle gate (deadlock headless); 1500ms race bounds a failed capture -> tierParity null, never zeros
+- [Phase 52.4]: 52.4-03: both tiers observed through the engine's own tier passes (publication-stage offscreen read via translate-hook lastRasterCanvas) — package entry does not export drawBristleFootprint and the zero-diff lock forbids adding it
 
 ### Pending Todos
 
@@ -451,6 +455,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-29T08:18:27.581Z
-Stopped at: Completed 52.4-02-PLAN.md
+Last session: 2026-09-29T09:07:27.524Z
+Stopped at: Completed 52.4-03-PLAN.md
 Resume file: None

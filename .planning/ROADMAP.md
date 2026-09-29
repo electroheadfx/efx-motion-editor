@@ -469,7 +469,7 @@ Plans:
 **Goal:** Replace the salt-and-pepper bristle deposit with a structured, contained bristle footprint — coherent translucent streaks laid along the ribbon, build-up by overlap (R1) — deleting the `h > 0.72` paper cut with `drawBristleTraces`, and ship the one-routine two-tier deposit (R6, mandatory per D-05) where the live tier is display-only and a single full-N finalize deposit feeds wet/physics (D-07).
 **Requirements**: TBD (SPEC labels: R1, R6 per 52.4-SPEC.md SCOPE LOCK)
 **Depends on:** Phase 52
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 
@@ -483,7 +483,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 52.4-03-PLAN.md — Tier-parity capture-pin (TDD): extend `depositSpeckleCapture` (D-08) — identical gap positions, same silhouette under §4.1 thickness tolerance, settle adds only detail
+- [x] 52.4-03-PLAN.md — Tier-parity capture-pin (TDD): extend `depositSpeckleCapture` (D-08) — identical gap positions, same silhouette under §4.1 thickness tolerance, settle adds only detail
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
