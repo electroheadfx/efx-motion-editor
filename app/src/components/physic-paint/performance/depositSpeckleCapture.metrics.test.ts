@@ -3,6 +3,7 @@ import {
   DH1_CAPTURE_LCG_SEED,
   DH1_CAPTURE_ZOOM,
   DH1_DEFECT_METRIC_KEYS,
+  DH1_HARD_JUMP,
   DH1_INK_FLOOR,
   DH1_MANIFEST_KEYS,
   DH1_MANIFEST_ROW_KEYS,
@@ -395,5 +396,58 @@ describe('dh1 tier-parity capture pin (D-08)', () => {
     const m = computeTierParityMetrics(live, finalPlane, TP_W, TP_H);
     expect(m.silhouetteDriftPx).toBeGreaterThan(TIER_PARITY_SILHOUETTE_TOLERANCE_PX);
     expect(tierParityPasses(m)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------
+// dh1 row i — the headless form of the "thick renders as clean as
+// thin" acceptance (260928-dh1 rows table: hairline CLEAN / thick
+// FILTHY was the failure shape). Thin and thick bands share one
+// construction, so the ONLY difference under test is thickness —
+// same DH1 constants both ways, no width-dependent threshold to
+// hide behind. Capture rows a-i themselves run at user-side UAT.
+// ---------------------------------------------------------------
+
+describe('dh1 row i — thick renders as clean as thin (headless discriminator)', () => {
+  const RI_W = 44;
+  const RI_H = 22;
+  const RI_X0 = 6;
+  const RI_X1 = 37;
+  /** Body alpha shared by every band (matches the rectangle pins above). */
+  const RI_BODY = 200;
+  /** Near-zero salt cell — crosses DH1_HARD_JUMP against RI_BODY. */
+  const RI_SALT = 5;
+  /** 1px AA falloff ring, BELOW DH1_INK_FLOOR so it never enters an ink
+   *  run or interiority — the identical edge profile for both widths. */
+  const RI_FALLOFF = 3;
+
+  /** Thin = rows 4..6, thick = rows 4..16; both share the same falloff ring. */
+  function rowIBand(y0: number, y1: number, salt = false): Uint8Array {
+    return plane(RI_W, RI_H, (x, y) => {
+      const inBody = y >= y0 && y <= y1 && x >= RI_X0 && x <= RI_X1;
+      if (inBody) return salt && (x + y) % 2 === 1 ? RI_SALT : RI_BODY;
+      const inRing = y >= y0 - 1 && y <= y1 + 1 && x >= RI_X0 - 1 && x <= RI_X1 + 1;
+      return inRing ? RI_FALLOFF : 0;
+    });
+  }
+
+  it('(a) thin and thick smooth bands both score zero defects under the SAME constants', () => {
+    expect(RI_FALLOFF).toBeLessThan(DH1_INK_FLOOR);
+    const thin = computeDefectMetrics(rowIBand(4, 6), RI_W, RI_H);
+    const thick = computeDefectMetrics(rowIBand(4, 16), RI_W, RI_H);
+    for (const m of [thin, thick]) {
+      expect(m.tornEdge).toBe(0);
+      expect(m.bodyHardJumps).toBe(0);
+      expect(m.bodyHfEnergy).toBe(0);
+      expect(m.isolatedPx).toBe(0);
+    }
+  });
+
+  it('(b) salt-and-pepper injected into the THICK band trips bodyHardJumps and bodyHfEnergy with the same DH1 constants', () => {
+    // The salt crosses the exact jump threshold the thin case measured against.
+    expect(RI_BODY - RI_SALT).toBeGreaterThanOrEqual(DH1_HARD_JUMP);
+    const salted = computeDefectMetrics(rowIBand(4, 16, true), RI_W, RI_H);
+    expect(salted.bodyHardJumps).toBeGreaterThan(0);
+    expect(salted.bodyHfEnergy).toBeGreaterThan(0);
   });
 });
