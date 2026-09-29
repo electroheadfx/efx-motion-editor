@@ -62,7 +62,7 @@ function runRaster(pickup: number) {
     points, '#336699', opts, main.getContext('2d'), buffers, {} as any,
     new Float32Array(width * height), new Uint8Array(width * height),
     paperHeight, width, height,
-    false, false, 0.5, () => 0.5, observer,
+    false, false, 0.5, 'final', observer,
   )
   return { stages, log }
 }
@@ -80,7 +80,9 @@ describe('260925-dso — paint raster runs no grain/emboss pass', () => {
 
     // Observer-wiring controls — must be green at base (prove the harness works).
     expect(stages).toContain('paint-raster-geometry')
-    expect(stages).toContain('paint-raster-layers')
+    // 52.4-01: the 37x layering stages are retired with the layering blocks —
+    // the bristle stage is the observer-wiring control that replaced them.
+    expect(stages).toContain('paint-raster-bristles')
 
     // The four negative behaviors — RED at base.
     expect(stages.some((stage) => stage.startsWith('paint-grain-'))).toBe(false)

@@ -130,10 +130,15 @@ type ActiveStrokeFinalization = {
   pending: DeferredStrokeFinalization
   generation: number
   finalizationStartedAt: number
-  phase: 'prepare' | 'raster' | 'post-raster' | 'fluid' | 'continuation' | 'complete'
+  // 52.4-01 (D-07): 'finalize' sits between raster (tier=live display) and
+  // post-raster (feather/savedWet/fluid) — it restores the pre-stroke dry
+  // snapshot, then runs the single tier=final deposit into wet.
+  phase: 'prepare' | 'raster' | 'finalize' | 'post-raster' | 'fluid' | 'continuation' | 'complete'
   raster: PaintStrokeRasterContinuation | null
   fluid: LocalFluidPhysicsContinuation | null
   continuationFrame: number
+  liveSnapshot: ImageData | null
+  liveBounds: { x0: number; y0: number; w: number; h: number } | null
 }
 
 export type PaintPerformanceCategory = 'sync-cpu' | 'scheduled-wait' | 'async-elapsed' | 'input-delay'
@@ -2187,6 +2192,8 @@ export class EfxPaintEngine {
       raster: null,
       fluid: null,
       continuationFrame: 0,
+      liveSnapshot: null,
+      liveBounds: null,
     }
   }
 
@@ -2262,16 +2269,24 @@ export class EfxPaintEngine {
   private stepInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
     const { pending } = active
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
-    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
     const renderOpts = { ...pending.opts, size: brushRenderRadius(pending.opts) }
 
     if (active.phase === 'prepare') {
       this.prepareWetLayerForStroke(pending.points[0], pending.opts, pending.physicsMode)
+      // 52.4-01 (D-07 live display): snapshot the dry bbox AFTER the
+      // pre-stroke bake — the tier=live raster blits into this rect for
+      // immediate display; finalize restores it before the final deposit.
+      const snapR = brushRenderRadius(pending.opts)
+      const snapEdgeMul = (pending.opts.edgeDetail != null ? pending.opts.edgeDetail : 50) / 50
+      const snapVar = (1.5 + Math.sqrt(snapR) * 0.9) * snapEdgeMul
+      const snapBounds = curveBounds(pending.points, snapR + snapVar * 5 + 32, this.width, this.height)
+      active.liveBounds = { x0: snapBounds.x0, y0: snapBounds.y0, w: snapBounds.w, h: snapBounds.h }
+      active.liveSnapshot = this.dualCanvas.dryCtx.getImageData(snapBounds.x0, snapBounds.y0, snapBounds.w, snapBounds.h)
       active.raster = createPaintStrokeRasterContinuation(
         pending.points, pending.color!, renderOpts,
         this.dualCanvas.dryCtx, this.wet, this.paperHeight,
         this.width, this.height, pending.hasPenInput,
-        pending.opts.waterAmount / 100, sampleHFn, observePrimitive,
+        pending.opts.waterAmount / 100, 'live', observePrimitive,
         pending.mutationId,
       )
       active.phase = 'raster'
@@ -2280,9 +2295,33 @@ export class EfxPaintEngine {
 
     if (active.phase === 'raster') {
       if (active.raster!.step()) {
-        active.phase = 'post-raster'
+        active.phase = 'finalize'
         this.recordPerformance('stroke-first-raster-publication', 'scheduled-wait', pending.queuedAt, { mutationId: pending.mutationId })
       }
+      return
+    }
+
+    if (active.phase === 'finalize') {
+      // Undo the tier=live dry blits, then run the ONE tier=final deposit
+      // that feeds wet/physics (D-07: exactly one finalize deposit).
+      if (active.liveSnapshot && active.liveBounds) {
+        this.dualCanvas.dryCtx.putImageData(active.liveSnapshot, active.liveBounds.x0, active.liveBounds.y0)
+        active.liveSnapshot = null
+        active.liveBounds = null
+      }
+      renderPaintStroke(
+        pending.points, pending.color!, renderOpts,
+        this.dualCanvas.dryCtx, this.wet, this.savedWet,
+        this.drying.dryPos, this.lastStrokeMask,
+        this.paperHeight,
+        this.width, this.height,
+        pending.hasPenInput, this.state.wetPaper,
+        pending.opts.waterAmount / 100,
+        'final',
+        observePrimitive,
+        pending.mutationId,
+      )
+      active.phase = 'post-raster'
       return
     }
 
@@ -2542,7 +2581,6 @@ export class EfxPaintEngine {
     if (points.length === 0) return
     this.displayCompositeDirty = true
 
-    const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     const hasPenInput = options.hasPenInput ?? this.state.hasPenInput
     const renderOpts = { ...opts, size: brushRenderRadius(opts) }
@@ -2560,7 +2598,7 @@ export class EfxPaintEngine {
         this.width, this.height,
         hasPenInput, this.state.wetPaper,
         opts.waterAmount / 100,
-        sampleHFn,
+        'final',
         observePrimitive,
         options.mutationId,
       )

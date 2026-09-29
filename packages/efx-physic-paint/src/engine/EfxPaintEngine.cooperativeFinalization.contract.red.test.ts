@@ -826,7 +826,9 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     now = 1_650
     EfxPaintEngine.prototype.stepInteractivePaintFinalization.call(engine, active)
 
-    expect(active.phase).toBe('post-raster')
+    // 52.4-01 (D-07): raster completion now transitions to 'finalize' — the
+    // snapshot restore + single tier=final deposit — before 'post-raster'.
+    expect(active.phase).toBe('finalize')
     expect(engine.recordPerformance).toHaveBeenCalledWith(
       'stroke-first-raster-publication',
       'scheduled-wait',

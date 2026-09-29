@@ -1,32 +1,34 @@
 // ============================================================
 //  260928-dh1 lever 2 — measure-first pin (NO fix)
 //
-//  Question: does the 37 x fillFlat layering (paint.ts:440-452,
+//  Question: does the 37 x fillFlat layering (the retired schedule:
 //  layers = round((22+15)/speedDeplete) = 37 at speedDeplete 1,
 //  lAlpha = min(0.08, 3/37) = 0.08, plus round(37*0.2) = 7 soft
 //  layers at lAlpha*0.25) manufacture the bodyHardJumps that the
 //  four-seam run CONFIRMED at post-raster (heavy-slow 654)?
 //
-//  Compare on the 260924-pyp analytic substrate (real
-//  createPaintStrokeRasterContinuation, Canvas2D AA modelled as
-//  coverage source-over — no node-canvas, 260924-pyp law):
+//  Compare on the 260924-pyp analytic substrate (Canvas2D AA modelled
+//  as coverage source-over — no node-canvas, 260924-pyp law):
 //
 //    SINGLE        one fillFlat of the fixed ribbon polygon
 //    STACKED_SAME  37+7 x fillFlat of that SAME polygon
 //                  (isolates pure alpha stacking)
-//    STACKED_DEFORM the production schedule, per-layer deformScaled
-//                  (the real layering + AA)
-//    PRODUCTION    createPaintStrokeRasterContinuation, bristles
-//                  dropped (stroke no-op) so the fillFlat schedule
-//                  is the only contributor
+//    STACKED_DEFORM the retired schedule, per-layer deformScaled
+//                  (the real layering + AA, kept as analytic reference)
+//    PRODUCTION    createPaintStrokeRasterContinuation as shipped by
+//                  52.4-01: the layering blocks are DELETED, so this
+//                  cell now measures the drawBristleFootprint deposit
+//                  (streak strokes composited by the analytic stroke()
+//                  model — capsules, source-over, same law as fills)
 //
-//  If STACKED_DEFORM / PRODUCTION score bodyHardJumps > 0 while
-//  SINGLE and STACKED_SAME score 0, the AA layering is proven as
-//  the manufacturer BEFORE a line of fix code.
+//  If STACKED_DEFORM scores bodyHardJumps > 0 while SINGLE and
+//  STACKED_SAME score 0, the AA layering is proven as the
+//  manufacturer (the fix already deleted it in 52.4-01 — this pin
+//  keeps the measurement record).
 //
-//  Constraints the fix will live under (pinned here as comments,
-//  not code): wet-layer.ts LOCKED, DEPOSIT_KEEP_TIER untouched,
-//  no per-pixel loop in the production stroke raster (260925-dso).
+//  Constraints the fix lives under (pinned here as comments, not
+//  code): wet-layer.ts LOCKED, DEPOSIT_KEEP_TIER untouched, no
+//  per-pixel loop in the production stroke raster (260925-dso).
 //  ============================================================
 
 import { describe, expect, it, vi } from 'vitest'
@@ -48,7 +50,7 @@ const WATER_01 = 0.5
 const OPAC = 1
 const SPEED_DEPLETE = 1
 
-/** Production layer schedule (paint.ts:440-452) at speedDeplete = 1. */
+/** Retired production layer schedule (deleted by 52.4-01) at speedDeplete = 1 — kept as the analytic reference schedule. */
 const LAYERS = Math.round((22 + 15) / SPEED_DEPLETE) // 37
 const LALPHA = Math.min(0.08, 3 / LAYERS)            // 0.08
 const SOFT_LAYERS = Math.round(LAYERS * 0.2)         // 7
@@ -71,6 +73,8 @@ function accumulateOverlap(row: Float32Array, from: number, to: number, w: numbe
 }
 
 const SS = 16
+/** Supersampling grid (per axis) for the analytic stroke() capsule model. */
+const SS2 = 4
 
 function compositePolygon(
   buf: Float32Array,
@@ -181,7 +185,58 @@ function makeFillCanvas(): RasterCanvas {
     lineTo(x: number, y: number) { path.push([x + tx, y + ty]) },
     closePath() {},
     fill() { compositePolygon(buf, path, bounds, state.globalAlpha) },
-    stroke() { /* bristles dropped — isolate the fillFlat schedule */ },
+    // 52.4-01: the PRODUCTION cell deposits streak strokes (the layering
+    // fills are gone), so stroke() must rasterize: coverage of the stroked
+    // polyline = supersampled distance-from-pixel-center to any segment
+    // <= lineWidth/2 (capsule = round caps/joins, matching lineCap round),
+    // composited source-over with state.globalAlpha — the same coverage
+    // law compositePolygon applies to fills.
+    stroke() {
+      const lw = state.lineWidth
+      const alpha = state.globalAlpha
+      if (!(lw > 0) || alpha <= 0 || path.length < 2) return
+      const half = lw / 2
+      const half2 = half * half
+      let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity
+      for (const p of path) {
+        if (p[0] < bx0) bx0 = p[0]
+        if (p[0] > bx1) bx1 = p[0]
+        if (p[1] < by0) by0 = p[1]
+        if (p[1] > by1) by1 = p[1]
+      }
+      const lx0 = Math.max(0, Math.floor(bx0 - half))
+      const ly0 = Math.max(0, Math.floor(by0 - half))
+      const lx1 = Math.min(w - 1, Math.ceil(bx1 + half))
+      const ly1 = Math.min(h - 1, Math.ceil(by1 + half))
+      for (let gy = ly0; gy <= ly1; gy++) {
+        for (let gx = lx0; gx <= lx1; gx++) {
+          let hits = 0
+          for (let sy = 0; sy < SS2; sy++) {
+            for (let sx = 0; sx < SS2; sx++) {
+              const px = gx + (sx + 0.5) / SS2
+              const py = gy + (sy + 0.5) / SS2
+              let best2 = Infinity
+              for (let i = 0; i + 1 < path.length; i++) {
+                const a = path[i], b = path[i + 1]
+                const vx = b[0] - a[0], vy = b[1] - a[1]
+                const len2 = vx * vx + vy * vy
+                let t = len2 > 0 ? ((px - a[0]) * vx + (py - a[1]) * vy) / len2 : 0
+                if (t < 0) t = 0; else if (t > 1) t = 1
+                const dx = px - (a[0] + t * vx)
+                const dy = py - (a[1] + t * vy)
+                const d2 = dx * dx + dy * dy
+                if (d2 < best2) best2 = d2
+              }
+              if (best2 <= half2) hits++
+            }
+          }
+          const src = (hits / (SS2 * SS2)) * alpha
+          if (src <= 0) continue
+          const i = gy * w + gx
+          buf[i] = src + buf[i] * (1 - src)
+        }
+      }
+    },
     getImageData(x: number, y: number, rw: number, rh: number) {
       const data = new Uint8ClampedArray(rw * rh * 4)
       for (let yy = 0; yy < rh; yy++) {
@@ -280,7 +335,7 @@ function metricsOf(label: string, raster: RasterCanvas): Cell {
 function report(cells: Cell[]): string {
   const lines = ['260928-dh1 lever 2 — 37 x fillFlat layering vs single equivalent fill']
   lines.push(`schedule: ${LAYERS} x lAlpha ${LALPHA.toFixed(3)} + ${SOFT_LAYERS} x ${LALPHA * 0.25}`)
-  lines.push(`canvas ${CANVAS_W}x${CANVAS_H}, radius ${BRUSH_RADIUS}, edgeDetail ${ENGINE_EDGE_DETAIL}, stroke = no-op (bristles dropped)`)
+  lines.push(`canvas ${CANVAS_W}x${CANVAS_H}, radius ${BRUSH_RADIUS}, edgeDetail ${ENGINE_EDGE_DETAIL}, PRODUCTION = drawBristleFootprint streak deposit (52.4-01)`)
   lines.push('')
   for (const c of cells) {
     lines.push(
@@ -319,8 +374,9 @@ describe('260928-dh1 lever 2 measure-first — does 37 x fillFlat manufacture bo
       cells.push(metricsOf('STACKED_SAME', raster))
     }
 
-    // --- STACKED_DEFORM: the production schedule (paint.ts:443-452) with
-    //     per-layer deformScaled. This is the claimed manufacturer.
+    // --- STACKED_DEFORM: the retired schedule with per-layer
+    //     deformScaled. This was the claimed manufacturer (analytic
+    //     reference kept after 52.4-01 deleted the production blocks).
     {
       const raster = makeFillCanvas()
       const ctx = beginFill(raster, g.bounds)
@@ -336,9 +392,10 @@ describe('260928-dh1 lever 2 measure-first — does 37 x fillFlat manufacture bo
       cells.push(metricsOf('STACKED_DEFORM', raster))
     }
 
-    // --- PRODUCTION: the real createPaintStrokeRasterContinuation,
-    //     bristles dropped (stroke no-op) so the fillFlat schedule is the
-    //     only contributor. Captured at transferToWetLayerClipped.getImageData.
+    // --- PRODUCTION: the real createPaintStrokeRasterContinuation as
+    //     shipped by 52.4-01 — layering deleted, so the cell scores the
+    //     drawBristleFootprint streak deposit (tier=final) composited by
+    //     the analytic stroke() model. Captured at the wet transfer read.
     {
       const raster = makeFillCanvas()
       const wetBuffers: WetBuffers = createWetBuffers(CANVAS_W * CANVAS_H)
@@ -371,7 +428,7 @@ describe('260928-dh1 lever 2 measure-first — does 37 x fillFlat manufacture bo
           CANVAS_H,
           true,
           WATER_01,
-          () => 0.5,
+          'final',
           undefined,
           MUTATION_ID,
         ).runToCompletion()
@@ -415,9 +472,13 @@ describe('260928-dh1 lever 2 measure-first — does 37 x fillFlat manufacture bo
     for (const c of cells) {
       expect(c.alphaMass, `${c.label} alphaMass`).toBeGreaterThan(0)
     }
-    // Fair comparison: all four cells deposit the same mass (±2%).
-    const minMass = Math.min(...cells.map(c => c.alphaMass))
-    const maxMass = Math.max(...cells.map(c => c.alphaMass))
+    // Fair comparison: the three ANALYTIC cells deposit the same mass
+    // (±2%). PRODUCTION is excluded since 52.4-01 — it now deposits
+    // streak strokes (capsule coverage), not the polygon fill schedule,
+    // so its mass is inherently a different measure (still > 0 above).
+    const analytic = cells.filter((c) => c.label !== 'PRODUCTION')
+    const minMass = Math.min(...analytic.map(c => c.alphaMass))
+    const maxMass = Math.max(...analytic.map(c => c.alphaMass))
     expect(maxMass / minMass, `mass spread ${minMass}..${maxMass}`).toBeLessThan(1.02)
     // isolatedPx is CROSS-CHECK ONLY (it under-counts torn contours) but a
     // non-zero isolated count here would mean the substrate sprays crumbs

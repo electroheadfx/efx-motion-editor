@@ -41,12 +41,9 @@
 // ============================================================
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { renderPaintStroke } from './paint'
-import { ribbon, smooth, resample } from './stroke'
-import type { BrushOpts, PenPoint, WetBuffers } from '../types'
+import { ribbon, ribbonWithScales, smooth, resample, deformNScaled, deformScaled } from './stroke'
+import type { PenPoint } from '../types'
 
-const CANVAS_W = 128
-const CANVAS_H = 64
 const MID_Y = 32
 const RADIUS = 10
 /** Today's uniform variance law (edgeDetail 50 -> edgeMul 1). */
@@ -112,61 +109,27 @@ function originTOfFillVertex(k: number, n: number): number {
 }
 
 // ------------------------------------------------------------
-//  Capture harness (paint.continuation.test.ts precedent):
-//  canvasFactory records moveTo/lineTo coordinates per path and
-//  snapshots the path on every fill op; document.createElement
-//  stub; wet() buffers.
+//  Capture harness — pure-helper retarget (52.4-01).
+//
+//  The production stroke raster no longer emits fills: the 37x
+//  fillFlat layering blocks were deleted with drawBristleTraces
+//  (the salt-and-pepper fix). This capture now replays the EXACT
+//  production prelude those fills came from — smooth -> resample ->
+//  ribbonWithScales -> deformNScaled -> FIRST layer deformScaled —
+//  with the same constant Math.random stub and the same arguments
+//  renderPaintStroke used (radius 10, edgeDetail 50 -> edgeMul 1,
+//  layer 0 at variance * 0.2), so every measurement below sees the
+//  byte-identical polygon the old fills[0] captured.
 // ------------------------------------------------------------
-function canvasFactory(fills: FillPath[]) {
-  const contexts = new WeakMap<object, any>()
-  return () => {
-    const canvas: any = { width: 0, height: 0 }
-    let path: FillPath = []
-    const context: any = {
-      canvas,
-      fillStyle: '', globalAlpha: 1, strokeStyle: '', lineWidth: 1, lineCap: 'round',
-      save: () => {}, restore: () => {},
-      beginPath: () => { path = [] },
-      moveTo: (x: number, y: number) => { path.push([x, y]) },
-      lineTo: (x: number, y: number) => { path.push([x, y]) },
-      closePath: () => {},
-      fill: () => { fills.push(path.map(v => [v[0], v[1]] as [number, number])) },
-      stroke: () => {},
-      translate: () => {},
-      drawImage: () => {},
-      getImageData: (_x: number, _y: number, w: number, h: number) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
-      putImageData: () => {},
-      clearRect: () => {},
-    }
-    contexts.set(canvas, context)
-    canvas.getContext = () => contexts.get(canvas)
-    return canvas
-  }
-}
-
-function wet(size: number): WetBuffers {
-  return {
-    r: new Float32Array(size), g: new Float32Array(size), b: new Float32Array(size),
-    alpha: new Float32Array(size), wetness: new Float32Array(size), strokeOpacity: new Float32Array(size),
-  }
-}
-
-/** Run one pressure gesture through renderPaintStroke and return the FIRST fill path (pickup-less layers[0]). */
 function captureFirstFill(): FillPath {
-  const fills: FillPath[] = []
-  vi.stubGlobal('document', { createElement: vi.fn(canvasFactory(fills)) })
-  const main = canvasFactory(fills)()
-  const opts = { size: 10, opacity: 100, pressure: 100, waterAmount: 50, dryAmount: 50, edgeDetail: 50, pickup: 0, eraseStrength: 50, antiAlias: 0 } satisfies BrushOpts
-  const buffers = wet(CANVAS_W * CANVAS_H)
   vi.spyOn(Math, 'random').mockReturnValue(0.5)
-  renderPaintStroke(
-    makeRawGesture(), '#336699', opts, main.getContext('2d'), buffers, {} as any,
-    new Float32Array(CANVAS_W * CANVAS_H), new Uint8Array(CANVAS_W * CANVAS_H),
-    null, CANVAS_W, CANVAS_H,
-    true, false, 0.5, () => 0.5,
-  )
-  expect(fills.length, 'the stroke must produce at least one fill').toBeGreaterThan(0)
-  return fills[0]
+  const sm = smooth(makeRawGesture(), 3)
+  const curve = resample(sm, Math.max(3, RADIUS * 0.25))
+  const { poly: base, scales: baseS } = ribbonWithScales(curve, RADIUS, 0.8, true)
+  const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, VARIANCE)
+  const { poly: firstLayer } = deformScaled(baseD, baseDS, VARIANCE * 0.2)
+  expect(firstLayer.length, 'the prelude must produce a polygon').toBeGreaterThan(0)
+  return firstLayer.map((v) => [v[0], v[1]] as [number, number])
 }
 
 // ------------------------------------------------------------
