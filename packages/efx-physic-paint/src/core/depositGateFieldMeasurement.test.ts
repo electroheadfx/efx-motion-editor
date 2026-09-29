@@ -463,8 +463,10 @@ function runGateDump(label: string, p: number, spd: number, dropStrokes: boolean
   })
   try {
     // paint.ts creates its own offscreen via document.createElement('canvas') —
-    // return the accumulating raster so fillFlat / drawBristleTraces /
+    // return the accumulating raster so drawBristleFootprint /
     // transferToWetLayerClipped all run as real production code over it.
+    // 52.4-01: the sampleHFn slot is now the required tier — 'final' is
+    // the deposit this diagnosis measures (the full-N wet transfer).
     vi.stubGlobal('document', { createElement: () => raster.canvas })
     createPaintStrokeRasterContinuation(
       curve,
@@ -477,7 +479,7 @@ function runGateDump(label: string, p: number, spd: number, dropStrokes: boolean
       CANVAS_H,
       hasPenInput,
       WATER_01,
-      () => 0.5,
+      'final',
       undefined,
       MUTATION_ID,
     ).runToCompletion()
