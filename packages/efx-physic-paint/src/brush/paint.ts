@@ -11,6 +11,14 @@ import { lerp, clamp, curveBounds } from '../util/math'
 import { hashMutationId, seededDraw, arcSlot, traceShapeNoise } from '../util/traceSeed'
 import { transferToWetLayerClipped } from '../core/wet-layer'
 import { smooth, resample, ribbonWithScales, avgPenData } from './stroke'
+import {
+  buildBristleLanes,
+  STREAK_ALPHA,
+  WIDTH_FLOOR,
+  MAX_TRACE_WIDTH,
+  NW_AMPLITUDE,
+  NW_ARC_SCALE,
+} from './footprintLanes'
 
 function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
   if (!observer) return run()
@@ -83,20 +91,20 @@ export interface FootprintParams {
 }
 
 const LIVE_TIER_DIVISOR = 4
-const LIVE_WIDTH_MUL = 1.6
-// One constant streak alpha for every sample and both tiers (D-10/D-11):
-// 0.4 x default pickup opacity 0.75 -> 0.30 -> 76.5/255, above the
-// DEPOSIT_KEEP_TIER gate (70/255) at single coverage.
-const STREAK_ALPHA = 0.4
+// DiVerdi 4.1 thickness-up-as-count-down (D-05): live draws 1/4 of the
+// lanes from the shared layout, thickened by this factor so lateral ink
+// (sum of mid-stroke widths) stays within 15% of the final tier.
+const LIVE_WIDTH_MUL = 4
 const FOOTPRINT_SKIP_RATE = 0.05
 
 /**
  * Seeded deposit-time bristle footprint — the ONE routine behind both the
  * live preview and the final deposit (52.4-01 D-05).
  *
- * - Lanes, wobble phase, skip draws and per-sample shape noise are all
- *   keyed by (hashMutationId seed, arc-length) — deterministic replay,
- *   stable across resample/chunking, identical for a given mutationId.
+ * - Lane layout (buildBristleLanes), skip draws and per-sample gauge
+ *   noise are all keyed by (hashMutationId seed, arc-length) —
+ *   deterministic replay, stable across resample/chunking, identical
+ *   for a given mutationId.
  * - ribbonWithScales is THE scale expression: every lateral offset is
  *   clamped to its local half-width (geometry clamp only, never alpha).
  * - Per-sample width is modulated by channel-0 fbm with pressure-scaled
@@ -126,30 +134,22 @@ export function drawBristleFootprint(
     arc[i] = arc[i - 1] + Math.hypot(curve[i].x - curve[i - 1].x, curve[i].y - curve[i - 1].y)
   }
 
-  // Tier-independent seeded lane layout: built at full count for every
-  // tier; the live tier merely SELECTS a subset (lowest liveRank) and
-  // thickens it for visibility.
-  const count = Math.max(4, Math.floor(radius * 0.5))
-  const bristles: Array<{ offset: number; width: number; wFreq: number; wAmp: number; liveRank: number }> = []
-  for (let i = 0; i < count; i++) {
-    const slot = `b${i}`
-    bristles.push({
-      offset: (i / (count - 1)) * 2 - 1 + (seededDraw(strokeSeed, slot, 'offset') - 0.5) * 0.06,
-      width: 0.4 + seededDraw(strokeSeed, slot, 'width') * 1.8,
-      wFreq: 0.04 + seededDraw(strokeSeed, slot, 'wFreq') * 0.08,
-      wAmp: 0.3 + seededDraw(strokeSeed, slot, 'wAmp') * 1.2,
-      liveRank: seededDraw(strokeSeed, slot, 'liveRank'),
-    })
-  }
+  // Tier-independent seeded lane layout (D-05/D-13/D-02): one shared
+  // Poisson-gap + baked-profile pass at full count; the live tier
+  // merely SELECTS a subset (lowest liveRank) and thickens it
+  // (DiVerdi 4.1). Spec R6: full N ~ radius, as the saturation pin
+  // requires.
+  const count = Math.max(4, Math.floor(radius))
+  const lanes = buildBristleLanes(strokeSeed, count)
   const selected = tier === 'final'
-    ? bristles.map((b, i) => ({ b, bi: i }))
-    : bristles
-      .map((b, i) => ({ b, bi: i }))
-      .sort((x, y) => x.b.liveRank - y.b.liveRank)
+    ? lanes.map((lane, bi) => ({ lane, bi }))
+    : lanes
+      .map((lane, bi) => ({ lane, bi, liveRank: seededDraw(strokeSeed, `b${bi}`, 'liveRank') }))
+      .sort((x, y) => x.liveRank - y.liveRank)
       .slice(0, Math.ceil(count / LIVE_TIER_DIVISOR))
-  const widthMul = tier === 'live' ? LIVE_WIDTH_MUL : 1
+      .map(({ lane, bi }) => ({ lane, bi }))
 
-  for (const { b, bi } of selected) {
+  for (const { lane, bi } of selected) {
     ctx.save()
     ctx.strokeStyle = color
     ctx.lineCap = 'round'
@@ -176,18 +176,19 @@ export function drawBristleFootprint(
       // is clamped to it (traces can never escape the footprint).
       const halfW = radius * scales[ci]
       const lim = Math.max(0, halfW - 1e-3)
-      const wobble = Math.sin(arc[ci] * b.wFreq) * b.wAmp
-      const off = clamp((b.offset + wobble * 0.015) * halfW, -lim, lim)
+      const off = clamp(lane.offset * halfW, -lim, lim)
       const bx = p.x + rnx * off, by = p.y + rny * off
 
-      // Per-sample shape parameters — channel-0 fbm keyed by (seed, arc,
-      // bristle), amplitude scaled by pressure (width-only modulation;
-      // pressure never touches alpha, D-10).
-      const pressure = hasPenInput ? p.p : 1
-      const ampW = 0.2 + 0.6 * pressure
-      const nW = traceShapeNoise(strokeSeed, arc[ci], bi, 0)
+      // Per-sample width: lane base x pMod (the pressure SIZE lever) x
+      // channel-0 arc-keyed gauge (D-12(a), low frequency), clamped to
+      // [WIDTH_FLOOR, MAX_TRACE_WIDTH] on the final tier (D-12(b);
+      // clamp AFTER pMod so the floor holds at every pressure), then
+      // x LIVE_WIDTH_MUL at tier=live (D-05 thickness-up). Pressure
+      // never touches alpha (D-10/D-11).
       const pMod = hasPenInput ? 0.5 + p.p * 1.0 : 1
-      const lw = b.width * pMod * (1 + (nW - 0.5) * ampW) * widthMul
+      const gauge = 1 + (traceShapeNoise(strokeSeed, arc[ci] * NW_ARC_SCALE, bi, 0) - 0.5) * NW_AMPLITUDE
+      const lwFinal = clamp(lane.width * pMod * gauge, WIDTH_FLOOR, MAX_TRACE_WIDTH)
+      const lw = tier === 'live' ? lwFinal * LIVE_WIDTH_MUL : lwFinal
 
       // Seeded skip stream, arc-keyed — velocity no longer changes the
       // deposit (D-09): speed is not an input anywhere below.

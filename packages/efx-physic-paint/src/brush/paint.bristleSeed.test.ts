@@ -246,6 +246,14 @@ function spread(values: number[]): number {
   return Math.sqrt(variance) / mean
 }
 
+/** Absolute standard deviation — the pressure SIZE lever changes the
+ *  scale of lw, so dispersion must be measured unscaled (52.4-02). */
+function stdev(values: number[]): number {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length
+  return Math.sqrt(variance)
+}
+
 function verticesOf(log: string[]): Array<[number, number]> {
   const out: Array<[number, number]> = []
   for (const entry of log) {
@@ -436,20 +444,33 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
       expect(lwHeavy.length).toBe(41)
       expect(gaHeavy.length).toBe(41)
 
-      // Width varies along the stroke: adjacent samples differ, distant
-      // samples differ more than adjacent ones (fbm, channel 0).
-      expect(meanAbsDelta(lwLight)).toBeGreaterThan(0)
-      expect(meanDistantAbsDelta(lwLight, gap)).toBeGreaterThan(meanAbsDelta(lwLight))
-
-      // Amplitude strictly increases with pressure for the same (seed, arc).
-      expect(spread(lwHeavy)).toBeGreaterThan(spread(lwLight))
-
       // D-10 / D-11: ONE constant streak alpha — same value every sample and
       // at both pressures (no pressure/velocity/arc/noise alpha term).
       expect(new Set(gaLight).size).toBe(1)
       expect(new Set(gaHeavy).size).toBe(1)
       expect(gaLight[0]).toBe(gaHeavy[0])
     }
+
+    // 52.4-02 contract rewrite (sanctioned: the tracer's unclamped widths
+    // are gone — rim lanes at p=0.2 can sit on WIDTH_FLOOR, and floor
+    // transitions pollute adjacent deltas — so the low-frequency ordering
+    // is asserted on body lanes (never floor-clamped at p=0.2: raw >=
+    // BODY_WIDTH_MIN x 0.7 x 0.8 > WIDTH_FLOOR), and the pressure lever is
+    // measured in ABSOLUTE dispersion: spread() is scale-invariant, so the
+    // old relative-spread ordering can never hold under a pure width lever).
+    const varying = light.filter((b) => meanAbsDelta(valueSeq(b, 'lw:')) > 0)
+    expect(varying.length).toBeGreaterThan(0)
+    const lightCurve = straightCurve(0.2, 0)
+    const lightOffsets = laneOffsets(extractLanes(lightLog), lightCurve, radius)
+    const bodyIdx = lightOffsets.map((o, i) => ({ o, i })).filter(({ o }) => Math.abs(o) <= BODY_BAND).map(({ i }) => i)
+    expect(bodyIdx.length).toBeGreaterThan(0)
+    for (const i of bodyIdx) {
+      const lws = valueSeq(light[i], 'lw:')
+      expect(meanDistantAbsDelta(lws, gap)).toBeGreaterThan(meanAbsDelta(lws))
+    }
+    const flatLight = light.flatMap((b) => valueSeq(b, 'lw:'))
+    const flatHeavy = heavy.flatMap((b) => valueSeq(b, 'lw:'))
+    expect(stdev(flatHeavy)).toBeGreaterThan(stdev(flatLight))
   })
 
   it('deformation variance: light(p=0.2)/heavy(p=0.9) wobble-excursion ratio of central bristles <= 0.35', () => {
