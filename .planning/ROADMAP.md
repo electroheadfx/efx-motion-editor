@@ -469,7 +469,7 @@ Plans:
 **Goal:** Replace the salt-and-pepper bristle deposit with a structured, contained bristle footprint — coherent translucent streaks laid along the ribbon, build-up by overlap (R1) — deleting the `h > 0.72` paper cut with `drawBristleTraces`, and ship the one-routine two-tier deposit (R6, mandatory per D-05) where the live tier is display-only and a single full-N finalize deposit feeds wet/physics (D-07).
 **Requirements**: TBD (SPEC labels: R1, R6 per 52.4-SPEC.md SCOPE LOCK)
 **Depends on:** Phase 52
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans executed
 
 Plans:
 
@@ -487,7 +487,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 52.4-04-PLAN.md — Source-shape pins + acceptance battery (TDD): footprint pins (no non-seeded RNG / per-pixel pass / non-constant alpha / paper read), invariant battery (PIN 0/0b, envelope ≤ 8, keep-tier, W1–W7), dh1 rows a–i at existing bounds
+- [x] 52.4-04-PLAN.md — Source-shape pins + acceptance battery (TDD): footprint pins (no non-seeded RNG / per-pixel pass / non-constant alpha / paper read), invariant battery (PIN 0/0b, envelope ≤ 8, keep-tier, W1–W7), dh1 rows a–i at existing bounds
 
 ### Phase 52.3: Paint content export — per-frame compositor enumeration (INSERTED)
 

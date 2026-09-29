@@ -4,18 +4,18 @@ milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.4"
 current_phase_name: Real-paint kill the salt-and-pepper (INSERTED)
-status: executing
-stopped_at: Completed 52.4-03-PLAN.md
-last_updated: "2026-09-29T09:07:28.978Z"
+status: verifying
+stopped_at: Completed 52.4-04-PLAN.md
+last_updated: "2026-09-29T11:00:41.831Z"
 last_activity: 2026-09-29
 last_activity_desc: Phase 52.4 execution started
-state_head: c54680bfe6f2e864e6a038681d0742cc761e1049
+state_head: 29415c797df79321038ad579b77ac60f7d655fa4
 progress:
   total_phases: 13
   completed_phases: 19
   total_plans: 72
-  completed_plans: 71
-  percent: 99
+  completed_plans: 72
+  percent: 100
 ---
 
 # Project State
@@ -31,10 +31,10 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 
 Phase: 52.4 (Real-paint kill the salt-and-pepper (INSERTED)) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-29 — Phase 52.4 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 99%)
+Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
 ## Performance Metrics
 
@@ -133,6 +133,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.4 P01 | 47min | 3 tasks | 10 files |
 | Phase 52.4 P02 | 68min | 3 tasks | 4 files |
 | Phase 52.4 P03 | 30min | 3 tasks | 3 files |
+| Phase 52.4 P04 | 98min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -364,6 +365,11 @@ Recent decisions affecting current work:
 - [Phase 52.4]: 52.4-03: Tier-parity tolerances shipped 3/4/2 px (gap/silhouette/centroid) — silhouette 4 px carries the DiVerdi 4.1 fewer-but-thicker delta; strict containment deliberately rejected (Test 2 pins FALSE beside a pass)
 - [Phase 52.4]: 52.4-03: flush-before-await ordering — publication fires synchronously inside flushPendingStrokeFinalizations; awaiting the live promise first risks the 400ms raf idle gate (deadlock headless); 1500ms race bounds a failed capture -> tierParity null, never zeros
 - [Phase 52.4]: 52.4-03: both tiers observed through the engine's own tier passes (publication-stage offscreen read via translate-hook lastRasterCanvas) — package entry does not export drawBristleFootprint and the zero-diff lock forbids adding it
+- [Phase 52.4]: Source-shape gates are region-scoped and never widen: G2/G3/G4 scan only the drawBristleFootprint body slice + footprintLanes.ts (paint.ts whole-file is never scanned for getImageData/paper), G1 covers paint.ts whole-file + lanes, G5 footprint body, G6 the per-file constant literals — real sources pass at birth and the scope cannot silently expand
+- [Phase 52.4]: Row i fixture: both bands share one construction (constant body 200 + identical 1px falloff ring at value 3 below DH1_INK_FLOOR so it never enters ink runs or interiority) so the only difference under test is thickness; the salt checkerboard uses 200/5 (|200-5|=195 >= DH1_HARD_JUMP=32) with BOTH cells above the ink floor so interiority survives and the jump detector fires
+- [Phase 52.4]: R2 velocity scope lock: heavyFast asserts byte-equality with the heavy-slow op log instead of an ink inequality — tranche 1a carries no velocity deposit term; the inequality returns when R2 lands in 53.1+
+- [Phase 52.4]: ABA determinism (7 -> 99 -> 7): first and third logs byte-identical proves no module-level seed-state leak while a different id proves the seed is consumed; replaces same-run repetition
+- [Phase 52.4]: Green-at-birth recorded honestly: the six real-source gates passed against the 52.4-01/02 implementation and were never manufactured red; the RED phase is the six negative controls failing against the zero-stub (RED_EVIDENCE_OK, re-verified at SUMMARY time)
 
 ### Pending Todos
 
@@ -455,6 +461,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-09-29T09:07:27.524Z
-Stopped at: Completed 52.4-03-PLAN.md
+Last session: 2026-09-29T11:00:40.473Z
+Stopped at: Completed 52.4-04-PLAN.md
 Resume file: None
