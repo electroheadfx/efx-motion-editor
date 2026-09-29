@@ -8,18 +8,15 @@
 import type { PenPoint, BrushOpts, WetBuffers, SavedWetBuffers, PaintPrimitiveTimingObserver } from '../types'
 import { hexRgb, rgbHex, mixSubtractive } from '../util/color'
 import { lerp, clamp, curveBounds } from '../util/math'
-import { hashMutationId, seededDraw, arcSlot, traceShapeNoise } from '../util/traceSeed'
+import { hashMutationId, seededDraw, traceShapeNoise } from '../util/traceSeed'
 import { transferToWetLayerClipped } from '../core/wet-layer'
 import { smooth, resample, ribbonWithScales, avgPenData } from './stroke'
 import {
   buildBristleLanes,
   STREAK_ALPHA,
-  SOFT_EDGE_ALPHA,
   WIDTH_FLOOR,
-  MAX_TRACE_WIDTH,
   CORE_MAX_TRACE_WIDTH,
-  SOFT_WIDTH_MUL,
-  HAIRLINE_RADIUS,
+  THIN_HALF_W,
   BODY_WIDTH_MIN,
   BODY_WIDTH_MAX,
   NW_AMPLITUDE,
@@ -82,7 +79,7 @@ export function fillFlat(
  * - 'live'  — display-only preview while the stroke is in flight: fewer,
  *   wider lanes (never writes the wet layer, D-07).
  * - 'final' — the single full deposit that feeds wet/physics on finalize.
- * The seeded layout (lanes + arc-keyed skip stream) is tier-INDEPENDENT;
+ * The seeded layout (lane field + thin family) is tier-INDEPENDENT;
  * only count x thickness differs between tiers (D-05).
  */
 export type FootprintTier = 'live' | 'final'
@@ -101,29 +98,40 @@ const LIVE_TIER_DIVISOR = 4
 // lanes from the shared layout, thickened by this factor so lateral ink
 // (sum of mid-stroke widths) stays within 15% of the final tier.
 const LIVE_WIDTH_MUL = 4
-const FOOTPRINT_SKIP_RATE = 0.05
 
 /**
- * Seeded deposit-time bristle footprint — the ONE routine behind both the
- * live preview and the final deposit (52.4-01 D-05, 260929-j47 two-pass).
+ * Seeded deposit-time bristle footprint — the ONE routine behind both
+ * the live preview and the final deposit (52.4-01 D-05, R7 fibre
+ * coverage contract 260929-m2z).
  *
- * - Two pass-blocks per brin on ONE seeded path: the wide soft-under
- *   pass (SOFT_EDGE_ALPHA) renders first, the narrow core pass
- *   (STREAK_ALPHA, clamped to CORE_MAX_TRACE_WIDTH) second — composite
- *   body opacity comes from overlap (PIN 0, k_body >= 4), never from a
- *   single near-opaque lane.
- * - Lane layout (buildBristleLanes), skip draws and per-sample gauge
- *   noise are all keyed by (hashMutationId seed, arc-length) —
- *   deterministic replay, stable across resample/chunking, identical
- *   for a given mutationId.
- * - ribbonWithScales is THE scale expression: every lateral offset is
- *   clamped to its local half-width (geometry clamp only, never alpha).
- * - Per-sample width is modulated by channel-0 fbm with pressure-scaled
- *   amplitude (pressure = SIZE lever only); each pass alpha is ONE
- *   constant (D-10/D-11 — no pressure/velocity/arc/noise alpha term).
- * - Hairline regime: radius below HAIRLINE_RADIUS draws 1-3 seeded
- *   continuous streaks (two-pass, no skip stream, no run-break) instead
- *   of the lane field.
+ * - R7 coverage: ONE transparent closed FILLED outline per fibre —
+ *   beginPath, left boundary forward, end-cap arc (lineTo only),
+ *   right boundary backward, start-cap arc, closePath, fill. The soft
+ *   edge is the fill anti-aliasing of that SINGLE fibre boundary
+ *   (R7c); there is no stroked path, no wide low-alpha under-pass and
+ *   no skip/run-flush dashing anywhere (R7b — gaps come only from the
+ *   charge/deposit model). Composite body opacity comes from overlap
+ *   (PIN 0: k_body >= 4 fills, 1-prod(1-ga) >= 0.99), never from a
+ *   single near-opaque fill.
+ * - R7 thin regime keys on the LOCAL ribbon half-width
+ *   halfW = radius * scales[ci] against THIN_HALF_W (never brush
+ *   radius alone): contiguous locally-thin spans draw the seeded 1-3
+ *   thin-family outlines, contiguous locally-thick spans draw the
+ *   lane field — a fat brush at light pressure or on a taper takes the
+ *   thin path wherever it is locally thin.
+ * - Lane layout (buildBristleLanes) and per-sample gauge noise are
+ *   keyed by (hashMutationId seed, arc-length) — deterministic
+ *   replay, stable across resample/chunking, identical for a given
+ *   mutationId.
+ * - ribbonWithScales is THE scale expression: every boundary vertex
+ *   is clamped so the outline stays inside the local half-width
+ *   (geometry clamp only, never alpha).
+ * - Per-sample outline width = lane base x pMod (the pressure SIZE
+ *   lever) x channel-0 arc-keyed gauge, single-clamped to
+ *   [WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH] (D-12), then x LIVE_WIDTH_MUL
+ *   at tier=live (D-05). One constant fill alpha
+ *   (STREAK_ALPHA x opac) per outline — no pressure/velocity/arc/noise
+ *   alpha term (D-10/D-11).
  * - Geometry only: no height sampler, no threshold cut, no per-pixel
  *   reads, no non-seeded RNG (D-14).
  */
@@ -141,117 +149,125 @@ export function drawBristleFootprint(
   // map to curve points in order. No second inline scale math.
   const { scales } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
 
-  // Arc-length table (px) — wobble phase and noise are keyed on arc,
-  // never sample index (resample/chunking stability).
+  // Arc-length table (px) — gauge noise is keyed on arc, never sample
+  // index (resample/chunking stability).
   const arc: number[] = [0]
   for (let i = 1; i < curve.length; i++) {
     arc[i] = arc[i - 1] + Math.hypot(curve[i].x - curve[i - 1].x, curve[i].y - curve[i - 1].y)
   }
 
-  // ONE pass-block (save .. restore) on the brin's seeded path. Two
-  // call sites per brin — soft-under first, core second — each with its
-  // OWN clamp ceiling and its OWN constant alpha (two-literal-else form;
-  // no ternary, no intermediate alpha variable). `breaks` gates the skip
-  // stream and run-boundary flush: the lane-field path keeps them
-  // (velocity-free deposit, D-09), the hairline path disables them so
-  // each pass renders as one unbroken path.
-  const drawPass = (
+  // Per-sample R7 regime from the LOCAL half-width (never radius).
+  const thin = (ci: number): boolean => radius * scales[ci] < THIN_HALF_W
+
+  // Contiguous regime spans with a +-1 sample overlap at internal
+  // transitions, so a regime boundary never leaves an undrawn seam.
+  interface RegimeSpan { start: number; end: number; isThin: boolean }
+  const runs: RegimeSpan[] = []
+  for (let i = 0; i < curve.length; ) {
+    const t = thin(i)
+    let j = i + 1
+    while (j < curve.length && thin(j) === t) j++
+    runs.push({ start: i, end: j - 1, isThin: t })
+    i = j
+  }
+  const spans: RegimeSpan[] = runs.map((run, r) => ({
+    start: r > 0 ? run.start - 1 : run.start,
+    end: r < runs.length - 1 ? run.end + 1 : run.end,
+    isThin: run.isThin,
+  }))
+
+  // ONE closed filled outline per fibre over one regime span
+  // (save .. restore). The path: left boundary forward (one lineWidth
+  // observability write per sample, ascending), end-cap polyline
+  // (lineTo only), right boundary backward, start-cap polyline,
+  // closePath, fill. Vertex pairs at equal x bracket the fibre
+  // centreline; cap x's sit off the sample lattice so they never
+  // pair. Pressure never touches alpha (D-10/D-11).
+  const drawOutline = (
     lane: { offset: number; width: number },
     bi: number,
-    pass: 'soft' | 'core',
-    breaks: boolean,
+    span: RegimeSpan,
   ): void => {
+    interface SampleGeom {
+      cx: number; cy: number
+      nx: number; ny: number
+      tx: number; ty: number
+      halfW: number; w: number
+    }
+    const samples: SampleGeom[] = []
     ctx.save()
-    ctx.strokeStyle = color
-    ctx.lineCap = 'round'
+    ctx.fillStyle = color
+    ctx.globalAlpha = STREAK_ALPHA * opac
     ctx.beginPath()
-    let on = false
-    let lastX = 0
-    let lastY = 0
-    let runLW = -1
-    for (let ci = 0; ci < curve.length; ci++) {
-      const p = curve[ci]
+
+    // Left boundary forward (ascending samples) + per-sample geometry
+    // for the backward right pass.
+    for (let si = span.start; si <= span.end; si++) {
+      const p = curve[si]
       let tx2: number, ty2: number
-      if (ci === 0) { tx2 = curve[1].x - curve[0].x; ty2 = curve[1].y - curve[0].y }
-      else if (ci === curve.length - 1) { tx2 = p.x - curve[ci - 1].x; ty2 = p.y - curve[ci - 1].y }
-      else { tx2 = curve[ci + 1].x - curve[ci - 1].x; ty2 = curve[ci + 1].y - curve[ci - 1].y }
+      if (si === 0) { tx2 = curve[1].x - curve[0].x; ty2 = curve[1].y - curve[0].y }
+      else if (si === curve.length - 1) { tx2 = p.x - curve[si - 1].x; ty2 = p.y - curve[si - 1].y }
+      else { tx2 = curve[si + 1].x - curve[si - 1].x; ty2 = curve[si + 1].y - curve[si - 1].y }
       const l = Math.hypot(tx2, ty2) || 1
-      let nx = -ty2 / l, ny = tx2 / l
+      const nx = -ty2 / l, ny = tx2 / l
 
       const tiltAngle = (p.tx || 0) * 0.015
       const cosT = Math.cos(tiltAngle), sinT = Math.sin(tiltAngle)
       const rnx = nx * cosT - ny * sinT, rny = nx * sinT + ny * cosT
+      const rtx = tx2 / l * cosT - ty2 / l * sinT, rty = tx2 / l * sinT + ty2 / l * cosT
 
-      // Local ribbon half-width — deformation scales with it (pressure-
-      // dependent variance, no pressure-independent floor) and the offset
-      // is clamped to it (traces can never escape the footprint).
-      const halfW = radius * scales[ci]
-      const lim = Math.max(0, halfW - 1e-3)
-      const off = clamp(lane.offset * halfW, -lim, lim)
-      const bx = p.x + rnx * off, by = p.y + rny * off
-
-      // Per-sample width: lane base x pMod (the pressure SIZE lever) x
-      // channel-0 arc-keyed gauge (D-12(a), low frequency), then the
-      // per-pass clamp — soft pass: raw x SOFT_WIDTH_MUL into
-      // [WIDTH_FLOOR, MAX_TRACE_WIDTH]; core pass: raw into
-      // [WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH] (D-12(b) two-tier, clamp
-      // AFTER pMod so the floor holds at every pressure), then
-      // x LIVE_WIDTH_MUL at tier=live (D-05 thickness-up). Pressure
-      // never touches alpha (D-10/D-11).
+      // Local ribbon half-width — the outline centreline offset is
+      // clamped so the full outline width stays inside it (traces can
+      // never escape the footprint).
+      const halfW = radius * scales[si]
       const pMod = hasPenInput ? 0.5 + p.p * 1.0 : 1
-      const gauge = 1 + (traceShapeNoise(strokeSeed, arc[ci] * NW_ARC_SCALE, bi, 0) - 0.5) * NW_AMPLITUDE
+      const gauge = 1 + (traceShapeNoise(strokeSeed, arc[si] * NW_ARC_SCALE, bi, 0) - 0.5) * NW_AMPLITUDE
       const raw = lane.width * pMod * gauge
-      const lwFinal = pass === 'soft'
-        ? clamp(raw * SOFT_WIDTH_MUL, WIDTH_FLOOR, MAX_TRACE_WIDTH)
-        : clamp(raw, WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)
-      const lw = tier === 'live' ? lwFinal * LIVE_WIDTH_MUL : lwFinal
+      const wFinal = clamp(raw, WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)
+      const w = tier === 'live' ? wFinal * LIVE_WIDTH_MUL : wFinal
+      const lim = Math.max(0, halfW - w / 2 - 1e-3)
+      const c = clamp(lane.offset * halfW, -lim, lim)
 
-      // Seeded skip stream, arc-keyed — velocity no longer changes the
-      // deposit (D-09): speed is not an input anywhere below. Inactive
-      // on the hairline path (breaks = false -> one unbroken streak).
-      const slot = arcSlot(arc[ci])
-      const skip = breaks && seededDraw(strokeSeed, slot, `skip${bi}`) < FOOTPRINT_SKIP_RATE
-
-      // Run boundary: relative width change > 20% — flush the run with
-      // the PREVIOUS sample's state, then restart re-emitting the shared
-      // vertex.
-      const boundary = breaks && on && (runLW > 0) && Math.abs(lw - runLW) > 0.2 * runLW
-      if (on && (boundary || skip)) {
-        ctx.stroke()
-        ctx.beginPath()
-        if (boundary && !skip) { ctx.moveTo(lastX, lastY) } else { on = false }
-      }
-
-      // One shape-parameter write per curve sample: width varies, the
-      // pass alpha is one constant (written every sample, before the skip
-      // continue, so the modulation actually renders).
-      ctx.lineWidth = lw
-      if (pass === 'soft') ctx.globalAlpha = SOFT_EDGE_ALPHA * opac
-      else ctx.globalAlpha = STREAK_ALPHA * opac
-      if (skip) continue
-
-      if (!on) { ctx.moveTo(bx, by); on = true } else ctx.lineTo(bx, by)
-      lastX = bx
-      lastY = by
-      runLW = lw
+      // One width write per sample (ascending, left pass) — the
+      // observability seam the look-geometry pins read; the outline
+      // itself is deposited by the single fill below.
+      ctx.lineWidth = w
+      const vx = p.x + rnx * c - rnx * (w / 2)
+      const vy = p.y + rny * c - rny * (w / 2)
+      if (si === span.start) ctx.moveTo(vx, vy)
+      else ctx.lineTo(vx, vy)
+      samples.push({ cx: p.x + rnx * c, cy: p.y + rny * c, nx: rnx, ny: rny, tx: rtx, ty: rty, halfW, w })
     }
-    if (on) ctx.stroke()
+
+    // End-cap polyline (lineTo only): quarter-circle approximation
+    // around the last sample from the left boundary to the right —
+    // the fill AA of this one fibre boundary is the soft edge (R7c).
+    const capRad = Math.SQRT1_2
+    const end = samples[samples.length - 1]
+    ctx.lineTo(end.cx - end.nx * (end.w / 2) * capRad + end.tx * (end.w / 2) * capRad,
+      end.cy - end.ny * (end.w / 2) * capRad + end.ty * (end.w / 2) * capRad)
+    ctx.lineTo(end.cx + end.tx * (end.w / 2), end.cy + end.ty * (end.w / 2))
+    ctx.lineTo(end.cx + end.nx * (end.w / 2) * capRad + end.tx * (end.w / 2) * capRad,
+      end.cy + end.ny * (end.w / 2) * capRad + end.ty * (end.w / 2) * capRad)
+
+    // Right boundary backward (descending samples) — same geometry,
+    // no second width write.
+    for (let si = samples.length - 1; si >= 0; si--) {
+      const g = samples[si]
+      ctx.lineTo(g.cx + g.nx * (g.w / 2), g.cy + g.ny * (g.w / 2))
+    }
+
+    // Start-cap polyline back to the first left-boundary vertex.
+    const start = samples[0]
+    ctx.lineTo(start.cx + start.nx * (start.w / 2) * capRad - start.tx * (start.w / 2) * capRad,
+      start.cy + start.ny * (start.w / 2) * capRad - start.ty * (start.w / 2) * capRad)
+    ctx.lineTo(start.cx - start.tx * (start.w / 2), start.cy - start.ty * (start.w / 2))
+    ctx.lineTo(start.cx - start.nx * (start.w / 2) * capRad - start.tx * (start.w / 2) * capRad,
+      start.cy - start.ny * (start.w / 2) * capRad - start.ty * (start.w / 2) * capRad)
+
+    ctx.closePath()
+    ctx.fill()
     ctx.restore()
-  }
-
-  // Hairline regime (260929-j47): below HAIRLINE_RADIUS there is no lane
-  // field — 1-3 seeded continuous streaks instead, both passes kept,
-  // skip stream and run-break inactive (breaks = false), the same
-  // ribbon containment clamp and per-pass ceilings.
-  if (radius < HAIRLINE_RADIUS) {
-    const streakCount = 1 + Math.floor(seededDraw(strokeSeed, 'hairline', 'count') * 3)
-    for (let j = 0; j < streakCount; j++) {
-      const offset = seededDraw(strokeSeed, `hs${j}`, 'lane') * 2 - 1
-      const width = BODY_WIDTH_MIN + seededDraw(strokeSeed, `hw${j}`, 'lane') * (BODY_WIDTH_MAX - BODY_WIDTH_MIN)
-      drawPass({ offset, width }, j, 'soft', false)
-      drawPass({ offset, width }, j, 'core', false)
-    }
-    return
   }
 
   // Tier-independent seeded lane layout (D-05/D-13/D-02): one shared
@@ -269,9 +285,24 @@ export function drawBristleFootprint(
       .slice(0, Math.ceil(lanes.length / LIVE_TIER_DIVISOR))
       .map(({ lane, bi }) => ({ lane, bi }))
 
-  for (const { lane, bi } of selected) {
-    drawPass(lane, bi, 'soft', true)
-    drawPass(lane, bi, 'core', true)
+  // Thin family (1-3 seeded outlines), drawn over every locally-thin
+  // span; the lane field over every locally-thick span (R7 regime
+  // follows the local half-width down tapers and light pressure).
+  const thinCount = 1 + Math.floor(seededDraw(strokeSeed, 'hairline', 'count') * 3)
+  const thinLanes = Array.from({ length: thinCount }, (_, j) => ({
+    lane: {
+      offset: seededDraw(strokeSeed, `hs${j}`, 'lane') * 2 - 1,
+      width: BODY_WIDTH_MIN + seededDraw(strokeSeed, `hw${j}`, 'lane') * (BODY_WIDTH_MAX - BODY_WIDTH_MIN),
+    },
+    bi: j,
+  }))
+
+  for (const span of spans) {
+    if (span.isThin) {
+      for (const { lane, bi } of thinLanes) drawOutline(lane, bi, span)
+    } else {
+      for (const { lane, bi } of selected) drawOutline(lane, bi, span)
+    }
   }
 }
 

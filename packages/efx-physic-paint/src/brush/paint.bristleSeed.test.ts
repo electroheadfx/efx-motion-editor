@@ -391,7 +391,7 @@ function laneFromBlock(
   // lw writes: one per sample on the left pass, ascending — pair k is
   // sample k (cap vertices pair with nothing, so indices stay aligned).
   const lwMid = lws.length > 0 ? lws[Math.min(Math.floor(pairs.length / 2), lws.length - 1)] : Number.NaN
-  return { xMid: mid.x, yMid: mid.y, lwMid, gaMid: ga, xFirst: pairs[0].x, xLast: pairs[pairs.length - 1].x }
+  return { xMid: mid.x, yMid: mid.yc, lwMid, gaMid: ga, xFirst: pairs[0].x, xLast: pairs[pairs.length - 1].x }
 }
 
 // ------------------------------------------------------------
