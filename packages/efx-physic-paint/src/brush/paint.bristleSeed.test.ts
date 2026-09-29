@@ -3,6 +3,13 @@ import { readFileSync } from 'node:fs'
 import * as paint from './paint'
 import { createPaintStrokeRasterContinuation } from './paint'
 import { ribbonWithScales } from './stroke'
+import {
+  STREAK_ALPHA,
+  WIDTH_FLOOR,
+  MAX_TRACE_WIDTH,
+  POISSON_FILL,
+  BODY_BAND,
+} from './footprintLanes'
 import type { BrushOpts, PenPoint, WetBuffers } from '../types'
 
 // 52.4-01 (tracer, retargeted from 260928-dh1) — seeded deposit-time bristle
@@ -262,6 +269,80 @@ function inkOf(log: string[]): number {
   return ink
 }
 
+// ------------------------------------------------------------
+// 52.4-02 look-geometry harness — makeLineCurve / extractLanes.
+// ------------------------------------------------------------
+
+const LINE_SPACING = 2
+
+/** Dense straight horizontal stroke at y = 16 (length radius x 10 px).
+ *  Spacing 2 px keeps mid-stroke extraction (vertex near t = 0.5) stable
+ *  and the arc-keyed gauge smooth between consecutive samples. */
+function makeLineCurve(radius: number, p: number, spd: number): PenPoint[] {
+  const n = Math.round((radius * 10) / LINE_SPACING) + 1
+  return Array.from({ length: n }, (_, i) => ({ x: i * LINE_SPACING, y: 16, p, tx: 0, ty: 0, tw: 0, spd }))
+}
+
+interface ExtractedLane {
+  xMid: number
+  yMid: number
+  lwMid: number
+}
+
+/** Parse the op log into per-lane mid-stroke records: one save...restore
+ *  block per lane, stateful walk pairing each vertex with the lw write that
+ *  preceded it (skip samples write lw but no vertex; a run-boundary flush
+ *  re-emits the shared vertex under the PREVIOUS sample's lw — both stay
+ *  correctly paired). Reads op-log strings only — no getImageData, no
+ *  pixel reads (52.4-02 acceptance). */
+function extractLanes(log: string[]): ExtractedLane[] {
+  const lanes: ExtractedLane[] = []
+  let cur: Array<{ x: number; y: number; lw: number }> | null = null
+  let lw = Number.NaN
+  for (const entry of log) {
+    if (entry === 'save') {
+      cur = []
+      lw = Number.NaN
+      continue
+    }
+    if (entry === 'restore' && cur) {
+      if (cur.length > 0) {
+        const mid = cur[Math.floor(cur.length / 2)]
+        lanes.push({ xMid: mid.x, yMid: mid.y, lwMid: mid.lw })
+      }
+      cur = null
+      continue
+    }
+    if (!cur) continue
+    if (entry.startsWith('lw:')) {
+      lw = Number(entry.slice(3))
+      continue
+    }
+    if (entry.startsWith('m:') || entry.startsWith('l:')) {
+      const [x, y] = entry.slice(2).split(',').map(Number)
+      cur.push({ x, y, lw })
+    }
+  }
+  return lanes
+}
+
+/** Normalized lateral offsets of extracted lanes: (y - 16) / (radius x
+ *  scales[idx]). Scales come from ribbonWithScales itself, so the pair is
+ *  exact for the GREEN footprint (no wobble) and recovers the tracer's
+ *  base offset within its wobble bound. */
+function laneOffsets(lanes: ExtractedLane[], curve: PenPoint[], radius: number): number[] {
+  const { scales } = ribbonWithScales(curve, radius, 0.8, true)
+  return lanes.map((lane) => {
+    const idx = Math.min(Math.round(lane.xMid / LINE_SPACING), scales.length - 1)
+    return (lane.yMid - 16) / (radius * scales[idx])
+  })
+}
+
+/** Every lineWidth write in the run, in order. */
+function lwSeq(log: string[]): number[] {
+  return log.filter((e) => e.startsWith('lw:')).map((e) => Number(e.slice(3)))
+}
+
 describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -452,5 +533,133 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     const final = runRasterObserve('final')
     expect(final.stages.filter((s) => s === 'paint-wet-transfer-composition')).toHaveLength(1)
     expect(final.buffers.alpha.some((v) => v !== 0)).toBe(true)
+  })
+
+  // ------------------------------------------------------------
+  // 52.4-02 look-geometry pins (RED first — fail against the tracer's
+  // uniform lateral offsets + unclamped widths before Task 2 installs
+  // buildBristleLanes). Named targets: Poisson (1), profile (2),
+  // floor/ceiling (3), saturation (7).
+  // ------------------------------------------------------------
+
+  it('Poisson placement (D-13): adjacent normalized gaps >= POISSON_FILL x lattice spacing, non-lattice (max deviation > 0.05), same mutationId identical, different id differs', () => {
+    const radius = 40
+    const curve = makeLineCurve(radius, 1, 0)
+    const offA = laneOffsets(extractLanes(bristleRun(curve, radius, 7)), curve, radius).sort((a, b) => a - b)
+    const offB = laneOffsets(extractLanes(bristleRun(curve, radius, 7)), curve, radius).sort((a, b) => a - b)
+    const offC = laneOffsets(extractLanes(bristleRun(curve, radius, 999)), curve, radius).sort((a, b) => a - b)
+    expect(offA.length).toBeGreaterThanOrEqual(4)
+
+    // Same mutationId reproduces identical offsets; a different id differs.
+    expect(offB).toEqual(offA)
+    expect(offC).not.toEqual(offA)
+
+    const count = offA.length
+    const spacing = 2 / (count - 1)
+    for (let i = 1; i < count; i++) {
+      expect(offA[i] - offA[i - 1]).toBeGreaterThanOrEqual(POISSON_FILL * spacing)
+    }
+
+    // Non-lattice: at least one lane more than 0.05 off the uniform lattice.
+    const maxDev = Math.max(...offA.map((o, i) => Math.abs(o - (-1 + i * spacing))))
+    expect(maxDev).toBeGreaterThan(0.05)
+  })
+
+  it('baked lateral profile (D-02): body/rim lane-count density ratio >= 1.5 and mean body lane width > mean rim lane width', () => {
+    const radius = 40
+    const curve = makeLineCurve(radius, 1, 0)
+    const lanes = extractLanes(bristleRun(curve, radius, 7))
+    const offs = laneOffsets(lanes, curve, radius)
+    const body = lanes.filter((_, i) => Math.abs(offs[i]) <= BODY_BAND)
+    const rim = lanes.filter((_, i) => Math.abs(offs[i]) > BODY_BAND)
+    expect(body.length).toBeGreaterThan(0)
+    expect(rim.length).toBeGreaterThan(0)
+
+    const densityRatio = (body.length / (2 * BODY_BAND)) / (rim.length / (2 * (1 - BODY_BAND)))
+    expect(densityRatio).toBeGreaterThanOrEqual(1.5)
+
+    // Mid-sample lw / pMod(p=1) = lane base width (pMod cancels in the
+    // comparison; dividing keeps the mean in px as the D-02 law words it).
+    const PMOD_P1 = 1.5 // hasPenInput pMod = 0.5 + p * 1.0 at p = 1
+    const meanBody = body.reduce((s, l) => s + l.lwMid / PMOD_P1, 0) / body.length
+    const meanRim = rim.reduce((s, l) => s + l.lwMid / PMOD_P1, 0) / rim.length
+    expect(meanBody).toBeGreaterThan(meanRim)
+  })
+
+  it('width bounds (D-12b): every final-tier lw lies in [WIDTH_FLOOR, MAX_TRACE_WIDTH] at p=0.2 and at p=1', () => {
+    const radius = 20
+    const lightLws = lwSeq(bristleRun(makeLineCurve(radius, 0.2, 0), radius, 7))
+    expect(lightLws.length).toBeGreaterThan(0)
+    expect(Math.min(...lightLws)).toBeGreaterThanOrEqual(WIDTH_FLOOR)
+
+    const heavyLws = lwSeq(bristleRun(makeLineCurve(radius, 1, 0), radius, 7))
+    expect(heavyLws.length).toBeGreaterThan(0)
+    expect(Math.max(...heavyLws)).toBeLessThanOrEqual(MAX_TRACE_WIDTH)
+  })
+
+  it('low-frequency gauge (D-12a): within each lane segment at constant pressure, consecutive lw deltas are <= 10% relative', () => {
+    const radius = 20
+    const blocks = bristleBlocks(bristleRun(makeLineCurve(radius, 1, 0), radius, 7))
+    expect(blocks.length).toBeGreaterThan(0)
+    for (const block of blocks) {
+      const lws = valueSeq(block, 'lw:')
+      expect(lws.length).toBeGreaterThanOrEqual(30)
+      let maxRel = 0
+      for (let i = 1; i < lws.length; i++) {
+        const rel = Math.abs(lws[i] - lws[i - 1]) / lws[i - 1]
+        if (rel > maxRel) maxRel = rel
+      }
+      expect(maxRel).toBeLessThanOrEqual(0.1)
+    }
+  })
+
+  it('single alpha + uniform base color (D-09/D-10/D-11): exactly one distinct globalAlpha (STREAK_ALPHA x opac) and one distinct strokeStyle at both tiers', () => {
+    const radius = 20
+    const curve = makeLineCurve(radius, 1, 0)
+    const expectedGa = `ga:${(STREAK_ALPHA * 1).toFixed(4)}` // bristleRun opac = 1
+    for (const tier of ['final', 'live'] as const) {
+      const log = bristleRun(curve, radius, 7, true, tier)
+      const alphas = new Set(log.filter((e) => e.startsWith('ga:')))
+      expect(alphas).toEqual(new Set([expectedGa]))
+      const styles = new Set(log.filter((e) => e.startsWith('ss:')))
+      expect(styles).toEqual(new Set(['ss:#336699']))
+    }
+  })
+
+  it('no fill body (D-01): the direct-draw footprint op log contains zero fill operations — saturation may only come from lane overlap', () => {
+    const log = bristleRun(makeLineCurve(20, 1, 0), 20, 7)
+    expect(log.filter((e) => e === 'fill')).toHaveLength(0)
+  })
+
+  it('PIN 0 saturation by overlap (D-01/D-02): body-band coverage 1-(1-STREAK_ALPHA)^k >= 0.99 at radii 16 and 32, tier=final', () => {
+    for (const radius of [16, 32]) {
+      const lanes = extractLanes(bristleRun(makeLineCurve(radius, 1, 0), radius, 7))
+      expect(lanes.length).toBeGreaterThan(0)
+      // Straight horizontal stroke, normal = (0, 1): lateral center in px.
+      const centers = lanes.map((l) => l.yMid - 16)
+      const band = BODY_BAND * radius // body band |offset| <= BODY_BAND, scales ~ 1 at mid-stroke
+      for (let x = -band; x <= band + 1e-9; x += 0.25) {
+        let k = 0
+        for (let i = 0; i < lanes.length; i++) {
+          if (Math.abs(x - centers[i]) <= lanes[i].lwMid / 2) k++
+        }
+        expect(1 - Math.pow(1 - STREAK_ALPHA, k)).toBeGreaterThanOrEqual(0.99)
+      }
+    }
+  })
+
+  it('4.1 ink preservation (D-05): live tier draws ceil(N / LIVE_TIER_DIVISOR) lanes and its mid-stroke lw sum is within 15% of the final sum', () => {
+    const radius = 20
+    const curve = makeLineCurve(radius, 1, 0)
+    const finalLanes = extractLanes(bristleRun(curve, radius, 7, true, 'final'))
+    const liveLanes = extractLanes(bristleRun(curve, radius, 7, true, 'live'))
+    const LIVE_TIER_DIVISOR = 4 // mirrors the non-exported paint.ts constant
+    expect(liveLanes.length).toBe(Math.ceil(finalLanes.length / LIVE_TIER_DIVISOR))
+
+    const finalSum = finalLanes.reduce((s, l) => s + l.lwMid, 0)
+    const liveSum = liveLanes.reduce((s, l) => s + l.lwMid, 0)
+    const ratio = liveSum / finalSum
+    expect(ratio).toBeGreaterThanOrEqual(0.85)
+    expect(ratio).toBeLessThanOrEqual(1.15)
   })
 })
