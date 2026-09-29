@@ -483,22 +483,208 @@ export const DH1_TIER_PARITY_METRIC_KEYS = [
   'finalMass',
 ] as const;
 
+/** Per-plane scanline summary: row endpoints, interior row-gaps and the
+ *  mass/centroid accumulators — everything the parity comparison reads. */
+interface TierScan {
+  firstInk: Int32Array;
+  lastInk: Int32Array;
+  gaps: Array<{ y: number; center: number }>;
+  holes: Array<{ x: number; y: number }>;
+  mass: number;
+  sumX: number;
+  sumY: number;
+  minRow: number;
+  maxRow: number;
+}
+
+/** Scan one plane exactly like computeDefectMetrics does (ink =
+ *  alpha >= DH1_INK_FLOOR): maximal runs per row, interior empty spans
+ *  strictly between the row's first and last ink recorded as {y, center},
+ *  enclosed 8/8 holes, plain alpha mass and the alpha-weighted sums. */
+function scanTierPlane(
+  alpha: ArrayLike<number>,
+  width: number,
+  height: number,
+): TierScan {
+  const at = (x: number, y: number): number => alpha[y * width + x];
+  const ink = (x: number, y: number): boolean => at(x, y) >= DH1_INK_FLOOR;
+
+  const firstInk = new Int32Array(height).fill(-1);
+  const lastInk = new Int32Array(height).fill(-1);
+  const gaps: Array<{ y: number; center: number }> = [];
+  const holes: Array<{ x: number; y: number }> = [];
+  let mass = 0;
+  let sumX = 0;
+  let sumY = 0;
+  let minRow = -1;
+  let maxRow = -1;
+
+  // --- maximal ink runs per row: endpoints + interior gaps ------------------
+  for (let y = 0; y < height; y++) {
+    const runs: Array<{ start: number; end: number }> = [];
+    let x = 0;
+    while (x < width) {
+      if (!ink(x, y)) {
+        x++;
+        continue;
+      }
+      let end = x;
+      while (end + 1 < width && ink(end + 1, y)) end++;
+      runs.push({ start: x, end });
+      x = end + 1;
+    }
+    if (runs.length === 0) continue;
+    firstInk[y] = runs[0].start;
+    lastInk[y] = runs[runs.length - 1].end;
+    if (minRow < 0) minRow = y;
+    maxRow = y;
+    for (let r = 0; r + 1 < runs.length; r++) {
+      // Interior empty span strictly between two runs of this row.
+      const gapStart = runs[r].end + 1;
+      const gapEnd = runs[r + 1].start - 1;
+      gaps.push({ y, center: (gapStart + gapEnd) / 2 });
+    }
+  }
+
+  // --- enclosed 8/8 holes + mass/centroid ----------------------------------
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const a = at(x, y);
+      if (a > 0) {
+        mass += a;
+        sumX += a * x;
+        sumY += a * y;
+      }
+      if (a >= DH1_INK_FLOOR || x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
+      let inkN = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          if (ink(x + dx, y + dy)) inkN++;
+        }
+      }
+      if (inkN === 8) holes.push({ x, y });
+    }
+  }
+
+  return { firstInk, lastInk, gaps, holes, mass, sumX, sumY, minRow, maxRow };
+}
+
 /** D-08 tier-parity metric over two pre-aligned same-size alpha planes
- *  (ink = alpha >= DH1_INK_FLOOR). RED stub: returns zeros so the capture-pin
- *  tests compile and fail on their assertions; Task 2 implements. */
+ *  (ink = alpha >= DH1_INK_FLOOR). Pure: reads the two planes, writes
+ *  nothing. Deterministic greedy matching — gaps sorted by (y, center),
+ *  nearest-match within TIER_PARITY_GAP_TOLERANCE_PX on the same row;
+ *  enclosed holes matched with |dx| and |dy| within the same tolerance. */
 export function computeTierParityMetrics(
-  _live: ArrayLike<number>,
-  _finalPlane: ArrayLike<number>,
-  _width: number,
-  _height: number,
+  live: ArrayLike<number>,
+  finalPlane: ArrayLike<number>,
+  width: number,
+  height: number,
 ): Dh1TierParityMetrics {
+  const scanLive = scanTierPlane(live, width, height);
+  const scanFinal = scanTierPlane(finalPlane, width, height);
+
+  let gapMismatch = 0;
+  let newHoleCount = 0;
+
+  // --- (a) row-gap matching: ONLY rows inked in both tiers -----------------
+  // (Rows inked in just one tier feed silhouette drift, never gap matching —
+  //  a vertically thicker live tier must not read as a missing-gap row.)
+  const rowsInBoth = (y: number): boolean =>
+    scanLive.firstInk[y] >= 0 && scanFinal.firstInk[y] >= 0;
+  const liveGaps = scanLive.gaps
+    .filter((g) => rowsInBoth(g.y))
+    .slice()
+    .sort((a, b) => (a.y - b.y) || (a.center - b.center));
+  const finalGaps = scanFinal.gaps
+    .filter((g) => rowsInBoth(g.y))
+    .slice()
+    .sort((a, b) => (a.y - b.y) || (a.center - b.center));
+  const finalGapMatched = new Array<boolean>(finalGaps.length).fill(false);
+  for (const lg of liveGaps) {
+    let best = -1;
+    let bestDist = Infinity;
+    for (let j = 0; j < finalGaps.length; j++) {
+      if (finalGapMatched[j]) continue;
+      const fg = finalGaps[j];
+      if (fg.y !== lg.y) continue;
+      const dist = Math.abs(fg.center - lg.center);
+      if (dist <= TIER_PARITY_GAP_TOLERANCE_PX && dist < bestDist) {
+        best = j;
+        bestDist = dist;
+      }
+    }
+    if (best >= 0) finalGapMatched[best] = true;
+    else gapMismatch++; // a gap in live that final does not have
+  }
+  for (let j = 0; j < finalGaps.length; j++) {
+    if (!finalGapMatched[j]) gapMismatch++; // a gap born at the settle
+  }
+
+  // --- enclosed holes: final-only = new hole, live-only = mismatch ---------
+  const liveHoleMatched = new Array<boolean>(scanLive.holes.length).fill(false);
+  for (const fh of scanFinal.holes) {
+    let matched = false;
+    for (let i = 0; i < scanLive.holes.length; i++) {
+      if (liveHoleMatched[i]) continue;
+      const lh = scanLive.holes[i];
+      if (
+        Math.abs(lh.x - fh.x) <= TIER_PARITY_GAP_TOLERANCE_PX
+        && Math.abs(lh.y - fh.y) <= TIER_PARITY_GAP_TOLERANCE_PX
+      ) {
+        liveHoleMatched[i] = true;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) newHoleCount++; // the settle must never add a hole
+  }
+  for (let i = 0; i < scanLive.holes.length; i++) {
+    if (!liveHoleMatched[i]) gapMismatch++; // a hole in live must be a hole in final
+  }
+
+  // --- (b) silhouette drift = row-extent term + per-row endpoint deltas -----
+  let silhouetteDriftPx = 0;
+  const liveHasInk = scanLive.minRow >= 0;
+  const finalHasInk = scanFinal.minRow >= 0;
+  if (liveHasInk !== finalHasInk) {
+    // One-sided empty plane: no shared rows — report an unbounded drift so
+    // the pin fails loudly instead of reading as parity.
+    silhouetteDriftPx = Math.max(width, height);
+  } else if (liveHasInk && finalHasInk) {
+    silhouetteDriftPx = Math.max(
+      Math.abs(scanLive.minRow - scanFinal.minRow),
+      Math.abs(scanLive.maxRow - scanFinal.maxRow),
+    );
+    for (let y = 0; y < height; y++) {
+      if (!rowsInBoth(y)) continue;
+      silhouetteDriftPx = Math.max(
+        silhouetteDriftPx,
+        Math.abs(scanLive.firstInk[y] - scanFinal.firstInk[y]),
+        Math.abs(scanLive.lastInk[y] - scanFinal.lastInk[y]),
+      );
+    }
+  }
+
+  // --- (c) alpha-weighted centroid distance --------------------------------
+  let centroidDriftPx = 0;
+  if (scanLive.mass > 0 && scanFinal.mass > 0) {
+    const liveCx = scanLive.sumX / scanLive.mass;
+    const liveCy = scanLive.sumY / scanLive.mass;
+    const finalCx = scanFinal.sumX / scanFinal.mass;
+    const finalCy = scanFinal.sumY / scanFinal.mass;
+    centroidDriftPx = Math.hypot(liveCx - finalCx, liveCy - finalCy);
+  }
+  // Both masses 0 (or one-sided empty): drift stays 0 — the gap and extent
+  // terms above catch the empty plane.
+
   return {
-    gapMismatch: 0,
-    silhouetteDriftPx: 0,
-    newHoleCount: 0,
-    centroidDriftPx: 0,
-    liveMass: 0,
-    finalMass: 0,
+    gapMismatch,
+    silhouetteDriftPx,
+    newHoleCount,
+    centroidDriftPx,
+    liveMass: scanLive.mass,
+    finalMass: scanFinal.mass,
   };
 }
 
