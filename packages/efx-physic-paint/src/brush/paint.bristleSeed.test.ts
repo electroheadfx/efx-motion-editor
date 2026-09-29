@@ -4,57 +4,65 @@ import * as paint from './paint'
 import { createPaintStrokeRasterContinuation } from './paint'
 import { ribbonWithScales } from './stroke'
 import {
+  buildBristleLanes,
   STREAK_ALPHA,
-  SOFT_EDGE_ALPHA,
+  THIN_HALF_W,
   CORE_MAX_TRACE_WIDTH,
   WIDTH_FLOOR,
-  MAX_TRACE_WIDTH,
   POISSON_FILL,
   BODY_BAND,
 } from './footprintLanes'
+import { hashMutationId } from '../util/traceSeed'
 import type { BrushOpts, PenPoint, WetBuffers } from '../types'
 
-// 52.4-01 (tracer, retargeted from 260928-dh1) — seeded deposit-time bristle
-// footprint pins. Harness mirrored from paint.continuation.test.ts (canvasFactory
-// stub + document stub + LCG Math.random + wet() + 4-point PenPoint array), except
-// the context records lineWidth / globalAlpha / strokeStyle WRITES with their
-// values and vertex coordinates, so the footprint geometry and per-sample shape
-// parameters are observable, and getImageData returns alpha-255 pixels so the
-// DEPOSIT_KEEP_TIER gate (70/255) lets a tier=final transfer reach the wet
-// buffer (D-07 gate test).
+// 260929-m2z (R7 rewrite) — fibre coverage contract pins
+// (SPECS/real-paint/01-brush-footprint.md R7, USER SPEC ACT 2026-09-29).
+// Harness inherited from 52.4-01/02 + 260929-j47 (canvasFactory op-log stub
+// + document stub + LCG Math.random + wet() + 4-point PenPoint array); the
+// coverage model the pins encode changed from the two-pass stroked-line
+// model to the R7 filled-outline model:
 //
-// Behaviors pinned (PLAN Task 2 <behavior>):
+//   R7 coverage = ONE transparent closed filled outline per fibre. The soft
+//   edge is the fill anti-aliasing of that SINGLE fibre boundary (R7c) —
+//   there is no wide low-alpha under-pass (its constant is gone from the
+//   imports; the honest Number() pattern below makes the pin fail on VALUE
+//   if it ever returns), no stroked path anywhere in the coverage run, and
+//   exactly ONE globalAlpha (STREAK_ALPHA x opac) + ONE fillStyle.
+//   R7 thin regime keys on the LOCAL ribbon half-width halfW (tested
+//   against THIN_HALF_W via ribbonWithScales), never on brush radius alone.
+//   R7b continuity: every block is one contiguous subpath — exactly one
+//   moveTo + one fill, block count = selected fibre count. The seeded skip
+//   stream and the >20% run-flush are deleted from the coverage path, so
+//   gaps can only come from the charge/deposit model.
+//   PIN 0 stays COMPOSITE: k_body = count of covering fills >= 4 AND
+//   1-prod(1-ga) >= 0.99 at every body sample at radii 16 and 32 under the
+//   single fill alpha (user authority — never a near-opaque single fill).
+//
+// Behaviors pinned:
 //   1. export/tier            — drawBristleFootprint exported, (curve, params,
 //                               tier), tier in {live, final}, FootprintParams
 //                               carries ctx/radius/color/opac/hasPenInput/mutationId
 //   2. determinism            — same mutationId -> identical op logs, different
 //                               mutationId -> different, undefined mutationId
 //                               (disk replay) -> byte-identical across runs
-//   3. containment            — every vertex within the local ribbon half-width
-//                               (end taper included)
+//   3. containment            — every boundary vertex within the local ribbon
+//                               half-width (end taper included; final-tier end
+//                               caps may bulge <= 1 px tangentially)
 //   4. source shape           — body slice: ribbonWithScales + hashMutationId,
 //                               no paper sampler / 0.72 / non-seeded RNG /
-//                               removed alpha terms (nA / pressureMod / ch-1)
+//                               removed alpha terms / skip machinery / stroke
 //   5. stage pin              — observed run emits ZERO paint-raster-layers
 //                               stages (retired with the 37x layering blocks)
 //   6. D-07 gate              — tier=live: zero wet-transfer stages, wet.alpha
 //                               untouched; tier=final: exactly one, mutates
-//   legacy rewrites           — width-only SIZE modulation + ONE constant
-//                               streak alpha; pressure ordering; velocity no
-//                               longer changes the deposit; wobble variance
-//
-// 260929-j47 (RED rewrite) — two-pass low-alpha contract on top of the
-// above: PIN 0 = COMPOSITE body opacity with core-pass overlap
-// `k_body >= 4` (user authority — a single near-opaque lane can never
-// satisfy it), exactly TWO distinct globalAlpha constants (soft-under
-// SOFT_EDGE_ALPHA x opac under core STREAK_ALPHA x opac), the hairline
-// regime (radius-3 continuous streaks, no skip/run-break), and the
-// core sub-2 px ceiling CORE_MAX_TRACE_WIDTH. D-13's body-band gap
-// floor is superseded: the Poisson pin keeps the rim gap floor and
-// asserts k_body overlap over the body band instead.
-//
-// Forward-declared casts (below) let the RED run call the future signatures
-// before the implementation exists without failing tsc on excess arguments.
+//   R7 structure              — filled-outline, halfW regime, radius-3 thin
+//                               family, R7b continuity, single-alpha,
+//                               saturation-by-overlap
+//   laws kept at BOUNDS       — determinism ABA, containment, SIZE <= 0.35,
+//                               velocity scope lock, density ratio >= 1.5,
+//                               gauge <= 10%, ink +/- 15%, live divisor 4,
+//                               rim Poisson gap floor, width [WIDTH_FLOOR,
+//                               CORE_MAX_TRACE_WIDTH], composite 0.99 / k 4
 
 const LCG_START = 123456789
 
@@ -108,15 +116,12 @@ function installLcg(): void {
   })
 }
 
-// Forward-declared signature: the tier parameter is what Task 2 threads
-// through, so the RED run can call it before the implementation exists without
-// failing tsc on excess arguments (sampleHFn slot replaced by required tier).
+// Forward-declared signature so the RED run can call the contract before any
+// signature change lands without failing tsc on excess arguments.
 const startContinuation = createPaintStrokeRasterContinuation as unknown as (
   ...args: unknown[]
 ) => { runToCompletion(): void }
 
-// Future footprint contract, declared locally so the RED test compiles before
-// paint.ts exports the real FootprintParams / FootprintTier types.
 type FootprintTierShape = 'live' | 'final'
 interface FootprintParamsShape {
   ctx: CanvasRenderingContext2D
@@ -199,8 +204,8 @@ function straightCurve(p: number, spd: number, n = 41, spacing = 10): PenPoint[]
 function bristleRun(curve: PenPoint[], radius: number, mutationId: number, hasPenInput = true, tier: FootprintTierShape = 'final'): string[] {
   const log: string[] = []
   const canvas = canvasFactory(log)()
-  // LCG over Math.random so any BASE (unseeded) draws are identical across the
-  // light/heavy and slow/fast runs of a pin. The GREEN footprint ignores
+  // LCG over Math.random so any BASE (unseeded) draws are identical across
+  // the light/heavy and slow/fast runs of a pin. The GREEN footprint ignores
   // Math.random entirely (source-shape pin).
   installLcg()
   try {
@@ -215,8 +220,9 @@ function bristleRun(curve: PenPoint[], radius: number, mutationId: number, hasPe
   return log
 }
 
-/** Split the op log into per-bristle blocks (save ... restore blocks that
- *  contain at least one stroke — fillFlat blocks never stroke). */
+/** Split the op log into per-fibre coverage blocks (save ... restore blocks
+ *  that contain at least one fill — R7: coverage IS the fill; the old
+ *  stroke-detection flip is retired with the stroked-line model). */
 function bristleBlocks(log: string[]): string[][] {
   const blocks: string[][] = []
   let cur: string[] | null = null
@@ -224,7 +230,7 @@ function bristleBlocks(log: string[]): string[][] {
     if (entry === 'save') { cur = [entry]; continue }
     if (entry === 'restore' && cur) {
       cur.push(entry)
-      if (cur.some((e) => e === 'stroke')) blocks.push(cur)
+      if (cur.some((e) => e === 'fill')) blocks.push(cur)
       cur = null
       continue
     }
@@ -250,12 +256,6 @@ function meanDistantAbsDelta(values: number[], gap: number): number {
   let n = 0
   for (let i = 0; i + gap < values.length; i++) { sum += Math.abs(values[i + gap] - values[i]); n++ }
   return n ? sum / n : 0
-}
-
-function spread(values: number[]): number {
-  const mean = values.reduce((a, b) => a + b, 0) / values.length
-  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length
-  return Math.sqrt(variance) / mean
 }
 
 /** Absolute standard deviation — the pressure SIZE lever changes the
@@ -307,79 +307,115 @@ interface ExtractedLane {
   xMid: number
   yMid: number
   lwMid: number
-  /** The block's constant globalAlpha — two-pass: soft-under
-   *  (SOFT_EDGE_ALPHA x opac) or core (STREAK_ALPHA x opac). */
+  /** The block's constant globalAlpha — R7: ONE fill alpha
+   *  (STREAK_ALPHA x opac), written once per block. */
   gaMid: number
+  /** First / last paired side-vertex x — the fibre's longitudinal span
+   *  (lane-field fibres span the thick region; thin-family fibres span
+   *  each locally-thin region). */
+  xFirst: number
+  xLast: number
 }
 
-/** Parse the op log into per-lane mid-stroke records: one save...restore
- *  block per pass (260929-j47: soft-under pass, then core pass, per brin),
- *  stateful walk pairing each vertex with the lw AND ga writes that
- *  preceded it (skip samples write lw/ga but no vertex; a run-boundary
- *  flush re-emits the shared vertex under the PREVIOUS sample's state —
- *  both stay correctly paired). Reads op-log strings only — no
- *  getImageData, no pixel reads (52.4-02 acceptance). */
+/**
+ * Parse the op log into per-fibre mid-stroke records (R7 filled-outline
+ * extraction). One save...restore block per fibre; the block's path is
+ * left side (ascending x) -> end-cap polyline -> right side (descending x)
+ * -> start-cap polyline -> close. Pairing: split at the first x-decrease
+ * (the first right-side vertex), then pair each left vertex with the
+ * same-x right vertex — cap vertices sit on non-lattice x beyond the end
+ * samples, so they never pair. yMid = mean of the pair = the fibre
+ * CENTRE (not a boundary vertex); lwMid = the sample's lineWidth write
+ * (one per sample, left pass, in ascending order); gaMid = the block's
+ * single alpha. Reads op-log strings only — no getImageData (52.4-02).
+ */
 function extractLanes(log: string[]): ExtractedLane[] {
   const lanes: ExtractedLane[] = []
-  let cur: Array<{ x: number; y: number; lw: number; ga: number }> | null = null
-  let lw = Number.NaN
+  let verts: Array<{ x: number; y: number }> | null = null
+  let lws: number[] = []
   let ga = Number.NaN
+  let lw = Number.NaN
   for (const entry of log) {
     if (entry === 'save') {
-      cur = []
-      lw = Number.NaN
+      verts = []
+      lws = []
       ga = Number.NaN
+      lw = Number.NaN
       continue
     }
-    if (entry === 'restore' && cur) {
-      if (cur.length > 0) {
-        const mid = cur[Math.floor(cur.length / 2)]
-        lanes.push({ xMid: mid.x, yMid: mid.y, lwMid: mid.lw, gaMid: mid.ga })
-      }
-      cur = null
+    if (entry === 'restore' && verts) {
+      const lane = laneFromBlock(verts, lws, ga)
+      if (lane) lanes.push(lane)
+      verts = null
       continue
     }
-    if (!cur) continue
-    if (entry.startsWith('lw:')) {
-      lw = Number(entry.slice(3))
-      continue
-    }
-    if (entry.startsWith('ga:')) {
-      ga = Number(entry.slice(3))
-      continue
-    }
+    if (!verts) continue
+    if (entry.startsWith('lw:')) { lw = Number(entry.slice(3)); lws.push(lw); continue }
+    if (entry.startsWith('ga:')) { ga = Number(entry.slice(3)); continue }
     if (entry.startsWith('m:') || entry.startsWith('l:')) {
       const [x, y] = entry.slice(2).split(',').map(Number)
-      cur.push({ x, y, lw, ga })
+      verts.push({ x, y })
     }
   }
   return lanes
 }
 
-// ------------------------------------------------------------
-// Two-pass contract helpers (260929-j47).
-// ------------------------------------------------------------
-
-/** The two whitelisted alphas as logged strings (bristleRun opac = 1).
- *  Number() keeps the RED run honest: importing SOFT_EDGE_ALPHA before
- *  it exists yields undefined -> "ga:NaN", so the pin fails on the VALUE
- *  instead of crashing on a missing export. */
-function twoAlphaStrings(): Set<string> {
-  return new Set([STREAK_ALPHA, SOFT_EDGE_ALPHA].map((a) => `ga:${Number(a).toFixed(4)}`))
+/** Pair one block's vertices into the mid-stroke lane record (see
+ *  extractLanes). Returns null for non-outline blocks (no x-decrease —
+ *  the BASE stroke model's single ascending polyline, or an empty block). */
+function laneFromBlock(
+  verts: Array<{ x: number; y: number }>,
+  lws: number[],
+  ga: number,
+): ExtractedLane | null {
+  if (verts.length < 2) return null
+  let r = -1
+  for (let i = 1; i < verts.length; i++) {
+    if (verts[i].x < verts[i - 1].x - 1e-9) { r = i; break }
+  }
+  if (r < 0) return null
+  const left = verts.slice(0, r)
+  const right = verts.slice(r)
+  const rightByKey = new Map<string, number>()
+  for (const v of right) {
+    const key = v.x.toFixed(3)
+    if (!rightByKey.has(key)) rightByKey.set(key, v.y)
+  }
+  const pairs: Array<{ x: number; yc: number }> = []
+  for (const v of left) {
+    const ry = rightByKey.get(v.x.toFixed(3))
+    if (ry !== undefined) pairs.push({ x: v.x, yc: (v.y + ry) / 2 })
+  }
+  if (pairs.length === 0) return null
+  const mid = pairs[Math.floor(pairs.length / 2)]
+  // lw writes: one per sample on the left pass, ascending — pair k is
+  // sample k (cap vertices pair with nothing, so indices stay aligned).
+  const lwMid = lws.length > 0 ? lws[Math.min(Math.floor(pairs.length / 2), lws.length - 1)] : Number.NaN
+  return { xMid: mid.x, yMid: mid.y, lwMid, gaMid: ga, xFirst: pairs[0].x, xLast: pairs[pairs.length - 1].x }
 }
 
-/** Numeric alpha whitelist per pass-block, rounded the way the op log
- *  rounds (toFixed(4)) — membership assertions fail on value, and the
- *  (not-yet-exported at RED) soft constant is filtered, not crashed on. */
+// ------------------------------------------------------------
+// R7 coverage contract helpers (260929-m2z).
+// ------------------------------------------------------------
+
+/** The ONE whitelisted alpha as a logged string (bristleRun opac = 1).
+ *  Number() keeps the RED run honest: the value tracks STREAK_ALPHA
+ *  through the co-design, and the under-pass constant is no longer in the
+ *  imports at all — if it ever reappears in the run it fails on VALUE. */
+function singleAlphaStrings(): Set<string> {
+  return new Set([`ga:${Number(STREAK_ALPHA).toFixed(4)}`])
+}
+
+/** Numeric alpha whitelist — membership assertions fail on value; only
+ *  the single fill constant qualifies (the soft-under constant is gone). */
 function allowedAlphaValues(): number[] {
-  return [STREAK_ALPHA, SOFT_EDGE_ALPHA]
+  return [STREAK_ALPHA]
     .filter((a): a is number => typeof a === 'number' && !Number.isNaN(a))
     .map((a) => Number(a.toFixed(4)))
 }
 
-/** Dedupe the two-pass duplicate offsets (soft + core share ONE seeded
- *  path, so their normalized offsets are identical) at the op-log vertex
- *  rounding (toFixed(3)), then sort ascending. */
+/** Normalized offsets of extracted fibres, deduped at the op-log vertex
+ *  rounding (one pass per fibre now — kept as a safety net) then sorted. */
 function uniqueSortedOffsets(offsets: number[]): number[] {
   const seen = new Set<string>()
   const out: number[] = []
@@ -393,30 +429,35 @@ function uniqueSortedOffsets(offsets: number[]): number[] {
 }
 
 /** Worst-case body-band coverage over samples x = -band..band step 0.25
- *  (straight horizontal stroke, lateral center in px = yMid - 16):
- *  - minKBody: fewest core-pass lanes (ga == STREAK_ALPHA x opac)
- *    covering any sample — the `k_body >= 4` overlap law;
- *  - minComposite: 1 - prod(1 - ga_i) over ALL covering lanes
- *    (soft-under + core) — the composite PIN 0 opacity law (user
- *    authority: 1-(1-alpha)^k, never a single near-opaque lane). */
+ *  (straight horizontal stroke, lateral center in px = yMid - 16), R7
+ *  single-fill-alpha form:
+ *  - kBody = count of covering FILLS (every fill is core coverage now —
+ *    one transparent outline per fibre); the `k_body >= 4` overlap law;
+ *  - composite = 1 - prod(1 - ga_i) over covering fills — the composite
+ *    PIN 0 opacity law (user authority: 1-(1-alpha)^k, never a
+ *    near-opaque single lane/fill).
+ *  When midX is given, only fibres whose longitudinal span covers it are
+ *  counted — thin-family fibres over the end spans of a mixed curve are
+ *  not present mid-stroke and must not inflate the count. */
 function worstBodyCoverage(
-  lanes: { yMid: number; lwMid: number; gaMid: number }[],
+  lanes: { yMid: number; lwMid: number; gaMid: number; xFirst: number; xLast: number }[],
   radius: number,
+  midX?: number,
 ): { minKBody: number; minComposite: number } {
-  const coreGa = STREAK_ALPHA
-  const centers = lanes.map((l) => l.yMid - 16)
+  const covering = midX === undefined
+    ? lanes
+    : lanes.filter((l) => l.xFirst <= midX && l.xLast >= midX)
+  const centers = covering.map((l) => l.yMid - 16)
   const band = BODY_BAND * radius // body band |offset| <= BODY_BAND, scales ~ 1 at mid-stroke
   let minKBody = Number.POSITIVE_INFINITY
   let minComposite = Number.POSITIVE_INFINITY
   for (let x = -band; x <= band + 1e-9; x += 0.25) {
     let kBody = 0
     let prod = 1
-    for (let i = 0; i < lanes.length; i++) {
-      if (Math.abs(x - centers[i]) <= lanes[i].lwMid / 2) {
-        // toFixed(4) log rounding tolerance (5e-5); the two pass alphas
-        // are far apart, so 1e-4 classifies unambiguously.
-        if (Math.abs(lanes[i].gaMid - coreGa) < 1e-4) kBody++
-        prod *= 1 - lanes[i].gaMid
+    for (let i = 0; i < covering.length; i++) {
+      if (Math.abs(x - centers[i]) <= covering[i].lwMid / 2) {
+        kBody++
+        prod *= 1 - covering[i].gaMid
       }
     }
     if (kBody < minKBody) minKBody = kBody
@@ -426,10 +467,9 @@ function worstBodyCoverage(
   return { minKBody, minComposite }
 }
 
-/** Normalized lateral offsets of extracted lanes: (y - 16) / (radius x
+/** Normalized lateral offsets of extracted fibres: (y - 16) / (radius x
  *  scales[idx]). Scales come from ribbonWithScales itself, so the pair is
- *  exact for the GREEN footprint (no wobble) and recovers the tracer's
- *  base offset within its wobble bound. */
+ *  exact for the GREEN footprint (no wobble). */
 function laneOffsets(lanes: ExtractedLane[], curve: PenPoint[], radius: number): number[] {
   const { scales } = ribbonWithScales(curve, radius, 0.8, true)
   return lanes.map((lane) => {
@@ -443,10 +483,68 @@ function lwSeq(log: string[]): number[] {
   return log.filter((e) => e.startsWith('lw:')).map((e) => Number(e.slice(3)))
 }
 
+/** Longitudinal mid of a straight pin curve (the x a fibre must cover to
+ *  count toward the mid-stroke body coverage). */
+function midXOf(curve: PenPoint[]): number {
+  return ((curve.length - 1) * LINE_SPACING) / 2
+}
+
 describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('filled-outline coverage (R7): straight pin curve at radii 16/20/32, both tiers — every coverage block is exactly one moveTo + one fill (single closed subpath), the run contains no stroked path, exactly ONE globalAlpha (STREAK_ALPHA x opac) and ONE fillStyle', () => {
+    for (const radius of [16, 20, 32]) {
+      const curve = makeLineCurve(radius, 1, 0)
+      for (const tier of ['final', 'live'] as const) {
+        const log = bristleRun(curve, radius, 7, true, tier)
+        const ctx = `radius ${radius} tier ${tier}`
+
+        // R7c: no stroked path anywhere — coverage is the fill AA of ONE
+        // fibre boundary; a stroke (or a wide under-pass) is forbidden.
+        expect(log.filter((e) => e === 'stroke'), `${ctx} must contain no stroked path`).toHaveLength(0)
+
+        const blocks = bristleBlocks(log)
+        expect(blocks.length, `${ctx} must emit coverage blocks`).toBeGreaterThan(0)
+        for (const block of blocks) {
+          // Single closed subpath: one moveTo, one fill, no interior breaks.
+          expect(block.filter((e) => e === 'fill'), `${ctx} block fill count`).toHaveLength(1)
+          expect(block.filter((e) => e.startsWith('m:')), `${ctx} block moveTo count`).toHaveLength(1)
+        }
+
+        // Exactly ONE alpha (the under-pass constant is gone from the
+        // imports — its logged value would be NaN and fail on value) and
+        // ONE fill style.
+        const alphas = new Set(log.filter((e) => e.startsWith('ga:')))
+        expect(alphas, `${ctx} distinct globalAlpha`).toEqual(singleAlphaStrings())
+        const styles = new Set(log.filter((e) => e.startsWith('fs:')))
+        expect(styles, `${ctx} distinct fillStyle`).toEqual(new Set(['fs:#336699']))
+      }
+    }
+  })
+
+  it('thin regime keys on local halfW (R7): radius 40 at p = 0.15 computes mid-stroke halfW = radius * scales via ribbonWithScales, asserts halfW < THIN_HALF_W, then the run emits only the 1-3 thin family; radius 40 at p = 1 asserts halfW >= THIN_HALF_W and the full lane family (> 3 blocks)', () => {
+    const radius = 40
+
+    // Light pressure: LOCAL half-width decides the regime — compute it
+    // first so the pin can never pass vacuously on block counts alone.
+    const thinCurve = makeLineCurve(radius, 0.15, 0)
+    const { scales: thinScales } = ribbonWithScales(thinCurve, radius, 0.8, true)
+    const halfW = radius * thinScales[Math.floor(thinCurve.length / 2)]
+    expect(halfW).toBeLessThan(THIN_HALF_W)
+    const thinBlocks = bristleBlocks(bristleRun(thinCurve, radius, 7, true, 'final'))
+    expect(thinBlocks.length).toBeGreaterThanOrEqual(1)
+    expect(thinBlocks.length).toBeLessThanOrEqual(3)
+
+    // Heavy pressure: the same radius is locally thick — full lane family.
+    const thickCurve = makeLineCurve(radius, 1, 0)
+    const { scales: thickScales } = ribbonWithScales(thickCurve, radius, 0.8, true)
+    const halfWThick = radius * thickScales[Math.floor(thickCurve.length / 2)]
+    expect(halfWThick).toBeGreaterThanOrEqual(THIN_HALF_W)
+    const thickBlocks = bristleBlocks(bristleRun(thickCurve, radius, 7, true, 'final'))
+    expect(thickBlocks.length).toBeGreaterThan(3)
   })
 
   it('export/tier: drawBristleFootprint is exported as (curve, params, tier) with tier in {live, final} and FootprintParams carrying ctx/radius/color/opac/hasPenInput/mutationId', () => {
@@ -489,12 +587,18 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(e).toEqual(d)
   })
 
-  it('containment: every bristle vertex lies within the local ribbon half-width (ribbonWithScales s x radius, end taper included)', () => {
+  it('containment: every bristle boundary vertex lies within the local ribbon half-width (ribbonWithScales s x radius, end taper included; final-tier end caps may bulge at most 1 px tangentially)', () => {
     const radius = 20
     const curve = straightCurve(0.5, 0)
     const { scales } = ribbonWithScales(curve, radius, 0.8, true)
     const vertices = verticesOf(bristleRun(curve, radius, 7))
     expect(vertices.length).toBeGreaterThan(0)
+
+    // Final tier clamps every fibre width to CORE_MAX_TRACE_WIDTH = 2, so
+    // the lineTo-only endpoint caps (arc approximations) bulge at most
+    // half a fibre width = 1 px beyond the end sample along the tangent.
+    // The LATERAL bound — the actual containment law — is unchanged.
+    const capBulgeMax = CORE_MAX_TRACE_WIDTH / 2 + 1e-6
 
     for (const [vx, vy] of vertices) {
       const contained = curve.some((pt, idx) => {
@@ -511,59 +615,56 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
         const dy = vy - pt.y
         const tangential = Math.abs(dx * (tx / l) + dy * (ty / l))
         const lateral = Math.abs(dx * nx + dy * ny)
-        return tangential < 1e-6 && lateral <= radius * scales[idx] + 1e-6
+        return tangential <= capBulgeMax && lateral <= radius * scales[idx] + 1e-6
       })
       expect(contained).toBe(true)
     }
   })
 
   it('shape noise: per-sample width modulation varies along the stroke and grows with pressure; streak alpha is one constant for both pressures', () => {
-    const radius = 20
+    const radius = 32
     const lightLog = bristleRun(straightCurve(0.2, 0), radius, 7)
     const heavyLog = bristleRun(straightCurve(0.9, 0), radius, 7)
     const light = bristleBlocks(lightLog)
     const heavy = bristleBlocks(heavyLog)
     expect(light.length).toBeGreaterThan(0)
-    expect(heavy.length).toBe(light.length)
+    expect(heavy.length).toBeGreaterThan(0)
+    // R7 halfW regime: the BLOCK COUNT legitimately differs by pressure
+    // (p = 0.2 is locally thin -> thin family; p = 0.9 is thick -> lane
+    // field). What must hold at both pressures: one alpha, per-sample
+    // width writes, low-frequency gauge, pressure as SIZE lever.
 
     const gap = 10 // >= 25% of the 400px stroke -> "distant" arc-length pairs
-    for (let i = 0; i < light.length; i++) {
-      const lwLight = valueSeq(light[i], 'lw:')
-      const gaLight = valueSeq(light[i], 'ga:')
-      const lwHeavy = valueSeq(heavy[i], 'lw:')
-      const gaHeavy = valueSeq(heavy[i], 'ga:')
-
-      // One shape-parameter write per curve sample — not constant per bristle.
-      expect(lwLight.length).toBe(41)
-      expect(gaLight.length).toBe(41)
-      expect(lwHeavy.length).toBe(41)
-      expect(gaHeavy.length).toBe(41)
-
-      // D-10 / D-11: ONE constant alpha per pass-block — same value every
-      // sample and at both pressures (no pressure/velocity/arc/noise alpha
-      // term), and the value must be one of the two-pass whitelist
-      // (SOFT_EDGE_ALPHA x opac under STREAK_ALPHA x opac — 260929-j47).
-      expect(new Set(gaLight).size).toBe(1)
-      expect(new Set(gaHeavy).size).toBe(1)
-      expect(gaLight[0]).toBe(gaHeavy[0])
-      expect(allowedAlphaValues()).toContain(gaLight[0])
+    for (const block of light) {
+      const lws = valueSeq(block, 'lw:')
+      const ga = valueSeq(block, 'ga:')
+      // One width write per curve sample — not constant per fibre.
+      expect(lws.length).toBe(41)
+      // D-10 / D-11 + R7: ONE constant alpha written once per block —
+      // same value at both pressures (no pressure/velocity/arc/noise
+      // alpha term), from the single-fill whitelist.
+      expect(ga.length).toBe(1)
+      expect(allowedAlphaValues()).toContain(ga[0])
     }
+    for (const block of heavy) {
+      expect(valueSeq(block, 'lw:').length).toBe(41)
+      const ga = valueSeq(block, 'ga:')
+      expect(ga.length).toBe(1)
+      expect(allowedAlphaValues()).toContain(ga[0])
+    }
+    const lightAlphas = new Set(lightLog.filter((e) => e.startsWith('ga:')))
+    const heavyAlphas = new Set(heavyLog.filter((e) => e.startsWith('ga:')))
+    expect(lightAlphas).toEqual(singleAlphaStrings())
+    expect(heavyAlphas).toEqual(lightAlphas)
 
-    // 52.4-02 contract rewrite (sanctioned: the tracer's unclamped widths
-    // are gone — rim lanes at p=0.2 can sit on WIDTH_FLOOR, and floor
-    // transitions pollute adjacent deltas — so the low-frequency ordering
-    // is asserted on body lanes (never floor-clamped at p=0.2: raw >=
-    // BODY_WIDTH_MIN x 0.7 x 0.8 > WIDTH_FLOOR), and the pressure lever is
-    // measured in ABSOLUTE dispersion: spread() is scale-invariant, so the
-    // old relative-spread ordering can never hold under a pure width lever).
+    // Low-frequency gauge: within each fibre, the distant arc-length
+    // delta dominates the adjacent delta (thin-family fibres are all
+    // body-width at p = 0.2 — never floor-clamped: raw >= BODY_WIDTH_MIN
+    // x 0.7 x 0.8 > WIDTH_FLOOR — so every light block is eligible).
     const varying = light.filter((b) => meanAbsDelta(valueSeq(b, 'lw:')) > 0)
     expect(varying.length).toBeGreaterThan(0)
-    const lightCurve = straightCurve(0.2, 0)
-    const lightOffsets = laneOffsets(extractLanes(lightLog), lightCurve, radius)
-    const bodyIdx = lightOffsets.map((o, i) => ({ o, i })).filter(({ o }) => Math.abs(o) <= BODY_BAND).map(({ i }) => i)
-    expect(bodyIdx.length).toBeGreaterThan(0)
-    for (const i of bodyIdx) {
-      const lws = valueSeq(light[i], 'lw:')
+    for (const block of light) {
+      const lws = valueSeq(block, 'lw:')
       expect(meanDistantAbsDelta(lws, gap)).toBeGreaterThan(meanAbsDelta(lws))
     }
     const flatLight = light.flatMap((b) => valueSeq(b, 'lw:'))
@@ -577,11 +678,9 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
   })
 
   it('SIZE-extent law: light(p=0.2)/heavy(p=0.9) RMS lateral excursion over ALL lanes <= 0.35 with one constant streak alpha', () => {
-    // 52.4-04 rewrite: no uniform-index central-bristle selection — Poisson
-    // lanes from buildBristleLanes have no uniform index mapping — so the
-    // RMS lateral excursion |y - 16| / radius is computed over ALL vertices
-    // of ALL stroke blocks of each run. Existing bound kept: never retuned.
-    const radius = 20
+    // RMS lateral excursion |y - 16| / radius over ALL vertices of ALL
+    // coverage blocks of each run (bounds never retuned).
+    const radius = 32
 
     const excursion = (p: number): { rms: number; ga: Set<string> } => {
       const log = bristleRun(straightCurve(p, 0), radius, 7)
@@ -605,10 +704,10 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     const heavy = excursion(0.9)
     expect(heavy.rms).toBeGreaterThan(0)
     expect(light.rms / heavy.rms).toBeLessThanOrEqual(0.35)
-    // D-10/D-11 + 260929-j47: EXACTLY the two pass alphas, identical in
+    // D-10/D-11 + R7: EXACTLY the single fill alpha, identical in
     // both runs — no pressure/velocity/arc/noise alpha term anywhere.
-    expect(light.ga).toEqual(twoAlphaStrings())
-    expect(heavy.ga).toEqual(twoAlphaStrings())
+    expect(light.ga).toEqual(singleAlphaStrings())
+    expect(heavy.ga).toEqual(singleAlphaStrings())
     expect(light.ga).toEqual(heavy.ga)
   })
 
@@ -622,7 +721,7 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
 
     expect(light).toBeGreaterThan(0)
     expect(heavy).toBeGreaterThan(0)
-    // Constant per-pass ga makes inkOf a width-mass measure — pressure
+    // Constant per-block ga makes inkOf a width-mass measure — pressure
     // affects SIZE only (D-10/D-11: no pressure alpha term).
     expect(light).toBeLessThan(heavy)
     // Velocity carries no deposit term in tranche 1a: R2 gesture
@@ -631,7 +730,7 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(heavyFastLog).toEqual(heavyLog)
   })
 
-  it('source shape: the footprint is seeded geometry-only (ribbonWithScales + hashMutationId) with no paper sampler, 0.72 threshold, non-seeded RNG or removed alpha terms', () => {
+  it('source shape: the footprint is seeded geometry-only (ribbonWithScales + hashMutationId) with no paper sampler, 0.72 threshold, non-seeded RNG, skip machinery, removed alpha terms or stroked-path emission', () => {
     const src = readFileSync(new URL('./paint.ts', import.meta.url), 'utf8')
     const start = src.indexOf('export function drawBristleFootprint')
     expect(start).toBeGreaterThan(-1)
@@ -651,6 +750,11 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(body).not.toMatch(/\bnA\b/)
     expect(body).not.toContain('pressureMod')
     expect(body).not.toMatch(/traceShapeNoise\([^)]*,\s*1\s*\)/)
+    // R7: the coverage path has no dashing mechanism and no stroked
+    // emission — no skip rate, no under-pass constant, no ctx.stroke.
+    expect(body).not.toContain('FOOTPRINT_SKIP_RATE')
+    expect(body).not.toContain('SOFT_EDGE_ALPHA')
+    expect(body).not.toMatch(/ctx\.stroke\s*\(/)
   })
 
   it('stage pin: an observed continuation run emits zero paint-raster-layers stages and still reports paint-raster-bristles', () => {
@@ -670,10 +774,8 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
   })
 
   // ------------------------------------------------------------
-  // 52.4-02 look-geometry pins (RED first — fail against the tracer's
-  // uniform lateral offsets + unclamped widths before Task 2 installs
-  // buildBristleLanes). Named targets: Poisson (1), profile (2),
-  // floor/ceiling (3), saturation (7).
+  // Look-geometry pins (52.4-02, R7-adapted structure):
+  // centre-based pairing, one block per fibre, mid-span coverage.
   // ------------------------------------------------------------
 
   it('Poisson placement (D-13, body superseded per user authority): rim adjacent gaps >= POISSON_FILL x spacing, body band k_body >= 4 overlap, non-lattice (max deviation > 0.05), same mutationId identical, different id differs', () => {
@@ -682,7 +784,6 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     const lanesA = extractLanes(bristleRun(curve, radius, 7))
     const lanesB = extractLanes(bristleRun(curve, radius, 7))
     const lanesC = extractLanes(bristleRun(curve, radius, 999))
-    // Dedupe the two-pass duplicate offsets (soft + core share a path).
     const offA = uniqueSortedOffsets(laneOffsets(lanesA, curve, radius))
     const offB = uniqueSortedOffsets(laneOffsets(lanesB, curve, radius))
     const offC = uniqueSortedOffsets(laneOffsets(lanesC, curve, radius))
@@ -708,8 +809,8 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(rimPairs).toBeGreaterThan(0)
 
     // Body band asserts the overlap law instead of a gap floor: at every
-    // body sample at radius 40, >= 4 core-pass lanes cover (k_body).
-    const { minKBody, minComposite } = worstBodyCoverage(lanesA, radius)
+    // body sample at radius 40 (mid-stroke coverage), >= 4 covering fills.
+    const { minKBody, minComposite } = worstBodyCoverage(lanesA, radius, midXOf(curve))
     expect(minKBody, `k_body at radius ${radius}`).toBeGreaterThanOrEqual(4)
     expect(minComposite, `composite coverage at radius ${radius}`).toBeGreaterThanOrEqual(0.99)
 
@@ -739,45 +840,40 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(meanBody).toBeGreaterThan(meanRim)
   })
 
-  it('width bounds (D-12b two-tier): CORE_MAX_TRACE_WIDTH = 2 and MAX_TRACE_WIDTH (soft ceiling) > core ceiling, every final-tier lw in [WIDTH_FLOOR, MAX_TRACE_WIDTH] at p=0.2 and p=1', () => {
-    // User authority (D-12b): the visible core stays sub-2 px while the
-    // raised soft ceiling admits the wide soft-under pass.
+  it('width bounds (D-12b R7 single-clamp): CORE_MAX_TRACE_WIDTH = 2 and every final-tier fibre width in [WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH] at p=0.2 and p=1', () => {
+    // R7 single-clamp law: one clamp pair — the soft-under ceiling is
+    // retired with the under-pass. The visible fibre stays sub-2 px.
     expect(CORE_MAX_TRACE_WIDTH).toBe(2)
-    expect(MAX_TRACE_WIDTH).toBeGreaterThan(CORE_MAX_TRACE_WIDTH)
 
-    const radius = 20
+    const radius = 32
     const lightLws = lwSeq(bristleRun(makeLineCurve(radius, 0.2, 0), radius, 7))
     expect(lightLws.length).toBeGreaterThan(0)
     expect(Math.min(...lightLws)).toBeGreaterThanOrEqual(WIDTH_FLOOR)
+    expect(Math.max(...lightLws)).toBeLessThanOrEqual(CORE_MAX_TRACE_WIDTH)
 
     const heavyLws = lwSeq(bristleRun(makeLineCurve(radius, 1, 0), radius, 7))
     expect(heavyLws.length).toBeGreaterThan(0)
-    expect(Math.max(...heavyLws)).toBeLessThanOrEqual(MAX_TRACE_WIDTH)
+    expect(Math.min(...heavyLws)).toBeGreaterThanOrEqual(WIDTH_FLOOR)
+    expect(Math.max(...heavyLws)).toBeLessThanOrEqual(CORE_MAX_TRACE_WIDTH)
   })
 
-  it('core sub-2 px (D-12b): core-pass lanes (ga = STREAK_ALPHA x opac) have lw <= CORE_MAX_TRACE_WIDTH at p=0.2 and p=1', () => {
-    const radius = 20
+  it('core sub-2 px (D-12b): every fibre lane has lw <= CORE_MAX_TRACE_WIDTH at p=0.2 and p=1 (all coverage is core — there is no second pass)', () => {
+    const radius = 32
     for (const p of [0.2, 1]) {
       const lanes = extractLanes(bristleRun(makeLineCurve(radius, p, 0), radius, 7))
       expect(lanes.length).toBeGreaterThan(0)
-      let coreLanes = 0
       for (const lane of lanes) {
         expect(lane.lwMid).toBeGreaterThanOrEqual(WIDTH_FLOOR)
-        expect(lane.lwMid).toBeLessThanOrEqual(MAX_TRACE_WIDTH)
-        if (Math.abs(lane.gaMid - STREAK_ALPHA * 1) < 1e-4) {
-          coreLanes++
-          expect(
-            lane.lwMid,
-            `core lw ${lane.lwMid} (p=${p}) must stay <= CORE_MAX_TRACE_WIDTH`,
-          ).toBeLessThanOrEqual(CORE_MAX_TRACE_WIDTH)
-        }
+        expect(
+          lane.lwMid,
+          `fibre lw ${lane.lwMid} (p=${p}) must stay <= CORE_MAX_TRACE_WIDTH`,
+        ).toBeLessThanOrEqual(CORE_MAX_TRACE_WIDTH)
       }
-      expect(coreLanes).toBeGreaterThan(0)
     }
   })
 
-  it('low-frequency gauge (D-12a): within each lane segment at constant pressure, consecutive lw deltas are <= 10% relative', () => {
-    const radius = 20
+  it('low-frequency gauge (D-12a): within each fibre at constant pressure, consecutive lw deltas are <= 10% relative', () => {
+    const radius = 32
     const blocks = bristleBlocks(bristleRun(makeLineCurve(radius, 1, 0), radius, 7))
     expect(blocks.length).toBeGreaterThan(0)
     for (const block of blocks) {
@@ -792,77 +888,103 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     }
   })
 
-  it('two-alpha + uniform base color (D-09/D-10/D-11, 260929-j47): exactly two distinct globalAlpha values (SOFT_EDGE_ALPHA x opac and STREAK_ALPHA x opac) and one distinct strokeStyle at both tiers', () => {
+  it('single-alpha + uniform base color (R7c/D-09/D-10/D-11): exactly ONE distinct globalAlpha (STREAK_ALPHA x opac) and ONE distinct fillStyle at both tiers — the soft-under silhouette pass is gone', () => {
     const radius = 20
     const curve = makeLineCurve(radius, 1, 0)
-    // bristleRun opac = 1 — the two pass constants, nothing else.
-    const expectedGa = new Set(
-      [STREAK_ALPHA, SOFT_EDGE_ALPHA].map((a) => `ga:${Number(a).toFixed(4)}`),
-    )
+    const expectedGa = singleAlphaStrings()
     for (const tier of ['final', 'live'] as const) {
       const log = bristleRun(curve, radius, 7, true, tier)
       const alphas = new Set(log.filter((e) => e.startsWith('ga:')))
       expect(alphas).toEqual(expectedGa)
-      const styles = new Set(log.filter((e) => e.startsWith('ss:')))
-      expect(styles).toEqual(new Set(['ss:#336699']))
+      const styles = new Set(log.filter((e) => e.startsWith('fs:')))
+      expect(styles).toEqual(new Set(['fs:#336699']))
     }
   })
 
-  it('no fill body (D-01): the direct-draw footprint op log contains zero fill operations — saturation may only come from lane overlap', () => {
+  it('saturation-by-overlap (D-01 rewrite): coverage happens only through transparent fills at the single whitelisted alpha — near-opaque single-fibre fills are structurally impossible and saturation is proven solely by the composite pin', () => {
     const log = bristleRun(makeLineCurve(20, 1, 0), 20, 7)
-    expect(log.filter((e) => e === 'fill')).toHaveLength(0)
+    // Coverage IS the fill (the old zero-fill / stroke-only law retired).
+    const fills = log.filter((e) => e === 'fill')
+    expect(fills.length).toBeGreaterThan(0)
+    // Only the single whitelisted alpha may deposit anything...
+    const alphas = log.filter((e) => e.startsWith('ga:'))
+    expect(new Set(alphas)).toEqual(singleAlphaStrings())
+    // ...and it can never be near-opaque: the locked [0.4, 0.55] band
+    // tops out at 0.55, so a single fibre alone can never saturate —
+    // body opacity comes only from overlap (the composite pin below).
+    for (const entry of alphas) {
+      expect(Number(entry.slice(3))).toBeLessThanOrEqual(0.55)
+    }
   })
 
-  it('PIN 0 composite saturation by overlap (D-01/D-02, user authority): body-band core coverage k_body >= 4 AND composite 1-prod(1-ga) >= 0.99 at every sample at radii 16 and 32, tier=final', () => {
+  it('PIN 0 composite saturation by overlap (D-01/D-02, user authority): body-band covering-fill count k_body >= 4 AND composite 1-prod(1-ga) >= 0.99 at every sample at radii 16 and 32, tier=final', () => {
     for (const radius of [16, 32]) {
-      const lanes = extractLanes(bristleRun(makeLineCurve(radius, 1, 0), radius, 7))
+      const curve = makeLineCurve(radius, 1, 0)
+      const lanes = extractLanes(bristleRun(curve, radius, 7))
       expect(lanes.length).toBeGreaterThan(0)
-      const { minKBody, minComposite } = worstBodyCoverage(lanes, radius)
-      // (a) genuine overlap: >= 4 core-pass lanes cover EVERY body sample —
-      // a single near-opaque lane can never satisfy the pin again.
+      const { minKBody, minComposite } = worstBodyCoverage(lanes, radius, midXOf(curve))
+      // (a) genuine overlap: >= 4 covering fills EVERY body sample —
+      // a single near-opaque fill can never satisfy the pin again.
       expect(minKBody, `k_body at radius ${radius}`).toBeGreaterThanOrEqual(4)
-      // (b) composite body opacity over core + soft-under lanes.
+      // (b) composite body opacity under the single fill alpha.
       expect(minComposite, `composite coverage at radius ${radius}`).toBeGreaterThanOrEqual(0.99)
     }
   })
 
-  it('hairline regime (260929-j47): at radius 3 the footprint draws 1-3 continuous seeded streaks — two pass-blocks per streak, each block exactly one moveTo..stroke (no skip gap, no run-boundary break), both whitelisted alphas present', () => {
+  it('R7b continuity / no-dash: every coverage block is one contiguous subpath (exactly one moveTo, one fill) and the block count equals the selected fibre count — no skip or run-flush fragmentation anywhere', () => {
+    // Pure-thick lane field (radius 32 at p = 1 is locally thick at every
+    // sample): block count must equal the shared lane layout exactly.
+    const radius = 32
+    const curve = makeLineCurve(radius, 1, 0)
+    const log = bristleRun(curve, radius, 7, true, 'final')
+    const blocks = bristleBlocks(log)
+    const expectedFibres = buildBristleLanes(hashMutationId(7), Math.max(4, Math.floor(radius))).length
+    expect(blocks.length).toBe(expectedFibres)
+    for (const block of blocks) {
+      expect(block.filter((e) => e.startsWith('m:'))).toHaveLength(1)
+      expect(block.filter((e) => e === 'fill')).toHaveLength(1)
+    }
+
+    // A curve thin everywhere draws only the seeded 1-3 thin family —
+    // still one contiguous subpath per fibre, never fragmented.
+    const thinBlocks = bristleBlocks(bristleRun(makeLineCurve(radius, 0.15, 0), radius, 7, true, 'final'))
+    expect(thinBlocks.length).toBeGreaterThanOrEqual(1)
+    expect(thinBlocks.length).toBeLessThanOrEqual(3)
+    for (const block of thinBlocks) {
+      expect(block.filter((e) => e.startsWith('m:'))).toHaveLength(1)
+      expect(block.filter((e) => e === 'fill')).toHaveLength(1)
+    }
+  })
+
+  it('radius-3 thin family: 1-3 coverage blocks, each exactly one moveTo + one fill at the whitelisted alpha, no interior path breaks', () => {
     const radius = 3
     const log = bristleRun(makeLineCurve(radius, 1, 0), radius, 7, true, 'final')
 
-    // Both passes always draw: exactly the two whitelisted alphas.
     const alphas = new Set(log.filter((e) => e.startsWith('ga:')))
-    expect(alphas).toEqual(twoAlphaStrings())
+    expect(alphas).toEqual(singleAlphaStrings())
 
     const blocks = bristleBlocks(log)
-    // 1-3 streaks x 2 pass-blocks (soft-under then core per streak).
-    expect(blocks.length).toBeGreaterThanOrEqual(2)
-    expect(blocks.length).toBeLessThanOrEqual(6)
-    expect(blocks.length % 2).toBe(0)
-
+    expect(blocks.length).toBeGreaterThanOrEqual(1)
+    expect(blocks.length).toBeLessThanOrEqual(3)
     for (const block of blocks) {
-      // One unbroken moveTo..stroke sequence per pass-path: zero interior
-      // moveTo (no skip stream gap, no run-boundary break on this path).
-      expect(block.filter((e) => e.startsWith('m:')).length).toBe(1)
-      expect(block.filter((e) => e === 'stroke').length).toBe(1)
+      expect(block.filter((e) => e.startsWith('m:'))).toHaveLength(1)
+      expect(block.filter((e) => e === 'fill')).toHaveLength(1)
       const gaValues = valueSeq(block, 'ga:')
-      expect(gaValues.length).toBeGreaterThan(0)
-      // One constant alpha per pass, drawn from the two-pass whitelist.
-      expect(new Set(gaValues).size).toBe(1)
+      expect(gaValues.length).toBe(1)
       expect(allowedAlphaValues()).toContain(gaValues[0])
     }
   })
 
-  it('4.1 ink preservation (D-05): live tier draws ceil(N / LIVE_TIER_DIVISOR) brins x 2 passes and its mid-stroke lw sum is within 15% of the final sum', () => {
-    const radius = 20
+  it('4.1 ink preservation (D-05): live tier draws ceil(N / LIVE_TIER_DIVISOR) fibres (one block per fibre) and its mid-stroke lw sum is within 15% of the final sum', () => {
+    const radius = 32
     const curve = makeLineCurve(radius, 1, 0)
     const finalLanes = extractLanes(bristleRun(curve, radius, 7, true, 'final'))
     const liveLanes = extractLanes(bristleRun(curve, radius, 7, true, 'live'))
     const LIVE_TIER_DIVISOR = 4 // mirrors the non-exported paint.ts constant
-    // Two-pass: final = N brins x 2 pass-blocks; live = ceil(N / divisor)
-    // selected brins x 2 pass-blocks = 2 * ceil(final / 2 / divisor).
-    expect(finalLanes.length).toBe(2 * Math.ceil(finalLanes.length / 2))
-    expect(liveLanes.length).toBe(2 * Math.ceil(finalLanes.length / 2 / LIVE_TIER_DIVISOR))
+    // R7 one-block-per-fibre: final = N fibres; live = ceil(N / divisor)
+    // selected fibres (the x2 two-pass factor is retired).
+    expect(finalLanes.length).toBeGreaterThan(0)
+    expect(liveLanes.length).toBe(Math.ceil(finalLanes.length / LIVE_TIER_DIVISOR))
 
     const finalSum = finalLanes.reduce((s, l) => s + l.lwMid, 0)
     const liveSum = liveLanes.reduce((s, l) => s + l.lwMid, 0)

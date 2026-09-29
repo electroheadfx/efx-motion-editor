@@ -13,18 +13,20 @@
 //                               and pickup-snapshot getImageData sites
 //                               are never scanned)
 //    G3 non-constant-alpha    — every globalAlpha RHS in the footprint
-//                               body + lane builder must be the
-//                               two-alpha whitelist (SOFT_EDGE_ALPHA x
-//                               opac under STREAK_ALPHA x opac) only
-//                               (D-11 source shape, 260929-j47)
+//                               body + lane builder must be the SINGLE
+//                               fill whitelist (STREAK_ALPHA x opac) only;
+//                               the under-pass constant (SOFT_EDGE_ALPHA)
+//                               is a violation (R7c: one fill alpha, the
+//                               silhouette under-pass is gone — 260929-m2z
+//                               amendment of the 260929-j47 two-alpha rule)
 //    G4 paper-read            — no sampleH/sampleHFn/0.72/paper token
 //                               in footprint body or lane builder (D-14)
-//    G5 width-gauge-shape     — two-clamp width law: WIDTH_FLOOR +
-//                               MAX_TRACE_WIDTH present, plus
-//                               CORE_MAX_TRACE_WIDTH once the
-//                               SOFT_EDGE_ALPHA pass exists, and
-//                               traceShapeNoise channel 0 only, gauge
-//                               arc-keyed (D-12 a/b, 260929-j47)
+//    G5 width-gauge-shape     — R7 single-clamp width law: WIDTH_FLOOR +
+//                               CORE_MAX_TRACE_WIDTH present, the soft-pass
+//                               tokens (SOFT_EDGE_ALPHA / MAX_TRACE_WIDTH)
+//                               absent, and traceShapeNoise channel 0 only,
+//                               gauge arc-keyed (D-12 a/b; 260929-m2z
+//                               amendment of the 260929-j47 two-clamp rule)
 //    G6 deposit-law-constant  — wet-layer.ts keeps const
 //                               DEPOSIT_KEEP_TIER = 70, drying.ts
 //                               keeps const DRY_ALPHA_THRESHOLD = 1
@@ -40,6 +42,11 @@
 //  GREEN (Task 2): the rule engine is implemented inline; all six
 //  negative controls flag their synthetic violations and every
 //  real-source gate stays green.
+//
+//  260929-m2z (R7 amendment): G3/G5 moved from the 260929-j47
+//  two-pass/two-clamp rules to the R7 single-fill / single-clamp
+//  rules — at RED the amended G3/G5 fail against the still-stroked
+//  production body; G1/G2/G4/G6 test code is byte-unchanged.
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
@@ -141,20 +148,21 @@ function splitTopLevelArgs(src: string): string[] {
 }
 
 /**
- * G5 — width-gauge shape (D-12 a/b): the WIDTH_FLOOR + MAX_TRACE_WIDTH
- * clamp must be present, every traceShapeNoise call must read channel 0
- * (never the alpha channel 1), and the gauge key must be the arc table
- * (or arcSlot) — never the sample index.
+ * G5 — width-gauge shape (D-12 a/b, R7 single-clamp law 260929-m2z):
+ * the WIDTH_FLOOR + CORE_MAX_TRACE_WIDTH clamp pair must be present, the
+ * soft-pass tokens (SOFT_EDGE_ALPHA under-pass / MAX_TRACE_WIDTH soft
+ * ceiling) are violations — coverage is one filled outline per fibre with
+ * ONE clamp — every traceShapeNoise call must read channel 0 (never the
+ * alpha channel 1), and the gauge key must be the arc table (or arcSlot)
+ * — never the sample index.
  */
 function widthGaugeViolated(body: string): boolean {
-  if (!body.includes('WIDTH_FLOOR') || !body.includes('MAX_TRACE_WIDTH')) return true
-  // Two-clamp law (260929-j47): once the soft-under pass (SOFT_EDGE_ALPHA)
-  // exists in the body, the core pass must carry its own
-  // CORE_MAX_TRACE_WIDTH clamp alongside the two shared tokens. Conditional
-  // so the real gate reads the body's actual two-pass shape: a one-pass body
-  // with no soft pass is not yet a two-pass violation, while a two-pass body
-  // missing the core clamp is.
-  if (body.includes('SOFT_EDGE_ALPHA') && !body.includes('CORE_MAX_TRACE_WIDTH')) return true
+  if (!body.includes('WIDTH_FLOOR') || !body.includes('CORE_MAX_TRACE_WIDTH')) return true
+  // Single-clamp law (R7): the soft-under pass is gone, so its constant
+  // and its raised ceiling may not appear in the footprint body at all.
+  // Word-boundary regex: plain includes() would match the
+  // CORE_MAX_TRACE_WIDTH substring.
+  if (body.includes('SOFT_EDGE_ALPHA') || /\bMAX_TRACE_WIDTH\b/.test(body)) return true
   const re = /traceShapeNoise\s*\(/g
   let m: RegExpExecArray | null
   while ((m = re.exec(body)) !== null) {
@@ -179,13 +187,15 @@ function widthGaugeViolated(body: string): boolean {
  * G3 — every globalAlpha assignment RHS must consist only of the
  * STREAK_ALPHA / opac whitelist (digits, parentheses and `*` allowed).
  * Any pressure, velocity, arc-length or noise identifier in an RHS is
- * D-11's forbidden source shape.
+ * D-11's forbidden source shape, and the under-pass constant
+ * (SOFT_EDGE_ALPHA) is forbidden outright — R7: ONE fill alpha (the
+ * silhouette under-pass is gone, 260929-m2z).
  */
 function alphaRhsViolated(body: string): boolean {
-  // Two-alpha whitelist (260929-j47): the soft-under pass constant joins
-  // the core streak constant — nothing else may form an alpha RHS
-  // (digits / parens / '*' allowed as glue only).
-  const whitelist = /^(?:\s*(?:STREAK_ALPHA|SOFT_EDGE_ALPHA|params\.opac|opac|\d+(?:\.\d+)?|[()*]))+$/
+  // Single-fill whitelist (R7): only the core streak constant may form
+  // an alpha RHS (digits / parens / '*' allowed as glue only). The
+  // 260929-j47 two-alpha whitelist is retired with the under-pass.
+  const whitelist = /^(?:\s*(?:STREAK_ALPHA|params\.opac|opac|\d+(?:\.\d+)?|[()*]))+$/
   for (const m of body.matchAll(/globalAlpha\s*=\s*([^;\n}]+)/g)) {
     if (!whitelist.test(m[1].trim())) return true
   }
@@ -283,7 +293,7 @@ describe('deposit source-shape gates — real sources', () => {
     expect(violations).toEqual([])
   })
 
-  it('G3 constant alpha (two-alpha): every globalAlpha RHS in the footprint body and lane builder is the SOFT_EDGE_ALPHA/STREAK_ALPHA/opac whitelist only', () => {
+  it('G3 constant alpha (single-fill, R7): every globalAlpha RHS in the footprint body and lane builder is the STREAK_ALPHA/opac whitelist only — the under-pass constant is a violation', () => {
     const violations = collectShapeViolations(readRealEntries()).filter((l) => l === 'non-constant-alpha')
     expect(violations).toEqual([])
   })
@@ -293,7 +303,7 @@ describe('deposit source-shape gates — real sources', () => {
     expect(violations).toEqual([])
   })
 
-  it('G5 width-gauge shape (two-clamp): WIDTH_FLOOR + MAX_TRACE_WIDTH clamp present, CORE_MAX_TRACE_WIDTH once the SOFT_EDGE_ALPHA pass exists, traceShapeNoise channel 0 only, gauge arc-keyed (D-12 a/b)', () => {
+  it('G5 width-gauge shape (R7 single-clamp): WIDTH_FLOOR + CORE_MAX_TRACE_WIDTH clamp present, soft-pass tokens absent, traceShapeNoise channel 0 only, gauge arc-keyed (D-12 a/b)', () => {
     const violations = collectShapeViolations(readRealEntries()).filter((l) => l === 'width-gauge-shape')
     expect(violations).toEqual([])
   })
@@ -331,7 +341,7 @@ describe('deposit source-shape negative controls (gate teeth)', () => {
     expect(write).toContain('per-pixel-write')
   })
 
-  it('G3 control: a non-whitelisted globalAlpha RHS yields non-constant-alpha; the STREAK_ALPHA x opac whitelist yields none', () => {
+  it('G3 control: a non-whitelisted globalAlpha RHS yields non-constant-alpha, the under-pass constant (the old two-alpha good-case) now FAILS, and the STREAK_ALPHA x opac whitelist yields none', () => {
     const bad = collectShapeViolations([
       { label: 'drawBristleFootprint', body: 'ctx.globalAlpha = STREAK_ALPHA * opac * noiseAmt' },
     ])
@@ -340,9 +350,14 @@ describe('deposit source-shape negative controls (gate teeth)', () => {
       { label: 'footprintLanes.ts', body: 'ctx.globalAlpha = 0.5 * pressure' },
     ])
     expect(pressure).toContain('non-constant-alpha')
+    // R7 (260929-m2z): the under-pass RHS was the j47 GOOD case — it is
+    // now the failing control (the silhouette under-pass is forbidden).
+    const underPass = collectShapeViolations([
+      { label: 'drawBristleFootprint', body: 'ctx.globalAlpha = SOFT_EDGE_ALPHA * opac' },
+    ])
+    expect(underPass).toContain('non-constant-alpha')
     const good = collectShapeViolations([
       { label: 'drawBristleFootprint', body: 'ctx.globalAlpha = STREAK_ALPHA * opac' },
-      { label: 'drawBristleFootprint', body: 'ctx.globalAlpha = SOFT_EDGE_ALPHA * opac' },
       { label: 'footprintLanes.ts', body: 'ctx.globalAlpha = params.opac' },
     ])
     expect(good.filter((l) => l === 'non-constant-alpha')).toEqual([])
@@ -357,30 +372,31 @@ describe('deposit source-shape negative controls (gate teeth)', () => {
     }
   })
 
-  it('G5 control: a body missing the width clamp, a two-pass body missing the CORE clamp, a channel-1 noise call and a non-arc gauge key each yield width-gauge-shape', () => {
+  it('G5 control: a body missing the width clamp pair, a body keeping a soft-pass token, a channel-1 noise call and a non-arc gauge key each yield width-gauge-shape; the single-clamp form yields none', () => {
     const noClamp = collectShapeViolations([
       { label: 'drawBristleFootprint', body: 'const lw = clamp(value, 0.5, 2)' },
     ])
     expect(noClamp).toContain('width-gauge-shape')
-    // Three-token two-pass form: shared tokens present, soft pass present,
-    // CORE clamp missing -> still a width-gauge-shape violation.
-    const softNoCore = collectShapeViolations([
-      { label: 'drawBristleFootprint', body: 'const s = clamp(raw * SOFT_EDGE_ALPHA, WIDTH_FLOOR, MAX_TRACE_WIDTH)' },
-    ])
-    expect(softNoCore).toContain('width-gauge-shape')
-    const twoClamp = collectShapeViolations([
+    // R7 single-clamp (260929-m2z): the soft-under ceiling is forbidden —
+    // a body that still clamps into MAX_TRACE_WIDTH (even with the core
+    // pair present) is a width-gauge-shape violation.
+    const softCeiling = collectShapeViolations([
       {
         label: 'drawBristleFootprint',
         body: 'const s = clamp(raw, WIDTH_FLOOR, MAX_TRACE_WIDTH)\nconst c = clamp(raw, WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)',
       },
     ])
-    expect(twoClamp.filter((l) => l === 'width-gauge-shape')).toEqual([])
+    expect(softCeiling).toContain('width-gauge-shape')
+    const singleClamp = collectShapeViolations([
+      { label: 'drawBristleFootprint', body: 'const c = clamp(raw, WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)' },
+    ])
+    expect(singleClamp.filter((l) => l === 'width-gauge-shape')).toEqual([])
     const channel1 = collectShapeViolations([
-      { label: 'drawBristleFootprint', body: 'const g = clamp(lw * traceShapeNoise(seed, arc[ci] * NW_ARC_SCALE, bi, 1), WIDTH_FLOOR, MAX_TRACE_WIDTH)' },
+      { label: 'drawBristleFootprint', body: 'const g = clamp(lw * traceShapeNoise(seed, arc[ci] * NW_ARC_SCALE, bi, 1), WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)' },
     ])
     expect(channel1).toContain('width-gauge-shape')
     const sampleIndexKey = collectShapeViolations([
-      { label: 'drawBristleFootprint', body: 'const g = clamp(lw * traceShapeNoise(seed, ci * NW_ARC_SCALE, bi, 0), WIDTH_FLOOR, MAX_TRACE_WIDTH)' },
+      { label: 'drawBristleFootprint', body: 'const g = clamp(lw * traceShapeNoise(seed, ci * NW_ARC_SCALE, bi, 0), WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)' },
     ])
     expect(sampleIndexKey).toContain('width-gauge-shape')
   })
