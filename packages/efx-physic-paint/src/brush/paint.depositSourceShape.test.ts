@@ -31,9 +31,11 @@
 //  forbidden term — fails against the zero-stub (valid RED),
 //  proves the gate has teeth (threat T-52.4-04-02).
 //
-//  RED state (Task 1): collectShapeViolations is a zero-stub
-//  returning [] — real gates pass, negative controls fail.
-//  GREEN (Task 2): the rule engine is implemented inline.
+//  RED state (Task 1): collectShapeViolations was a zero-stub
+//  returning [] — real gates passed, negative controls failed.
+//  GREEN (Task 2): the rule engine is implemented inline; all six
+//  negative controls flag their synthetic violations and every
+//  real-source gate stays green.
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
@@ -113,22 +115,119 @@ function sliceFunctionBody(src: string, exportName: string): string {
 }
 
 /**
- * The rule engine: stripComments over each entry body, apply the
- * six rules by entry label, return every violated stable label.
- *
- * RED zero-stub (Task 1): returns [] so every real-source gate
- * compiles and passes while only the negative controls fail.
- * GREEN (Task 2): the rules below are implemented in the body.
+ * Split a call's argument list on top-level commas (paren/bracket
+ * aware) — used by the G5 traceShapeNoise argument rules.
+ */
+function splitTopLevelArgs(src: string): string[] {
+  const out: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const ch of src) {
+    if (ch === '(' || ch === '[') depth++
+    else if (ch === ')' || ch === ']') depth--
+    if (ch === ',' && depth === 0) {
+      out.push(cur)
+      cur = ''
+    } else {
+      cur += ch
+    }
+  }
+  out.push(cur)
+  return out
+}
+
+/**
+ * G5 — width-gauge shape (D-12 a/b): the WIDTH_FLOOR + MAX_TRACE_WIDTH
+ * clamp must be present, every traceShapeNoise call must read channel 0
+ * (never the alpha channel 1), and the gauge key must be the arc table
+ * (or arcSlot) — never the sample index.
+ */
+function widthGaugeViolated(body: string): boolean {
+  if (!body.includes('WIDTH_FLOOR') || !body.includes('MAX_TRACE_WIDTH')) return true
+  const re = /traceShapeNoise\s*\(/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(body)) !== null) {
+    let depth = 1
+    let j = m.index + m[0].length
+    while (j < body.length && depth > 0) {
+      if (body[j] === '(') depth++
+      else if (body[j] === ')') depth--
+      j++
+    }
+    const inner = body.slice(m.index + m[0].length, depth === 0 ? j - 1 : body.length)
+    const args = splitTopLevelArgs(inner)
+    const key = (args[1] ?? '').trim()
+    const channel = (args[3] ?? '').trim()
+    if (channel !== '0') return true
+    if (!/arc\s*\[/.test(key) && !/arcSlot/.test(key)) return true
+  }
+  return false
+}
+
+/**
+ * G3 — every globalAlpha assignment RHS must consist only of the
+ * STREAK_ALPHA / opac whitelist (digits, parentheses and `*` allowed).
+ * Any pressure, velocity, arc-length or noise identifier in an RHS is
+ * D-11's forbidden source shape.
+ */
+function alphaRhsViolated(body: string): boolean {
+  const whitelist = /^(?:\s*(?:STREAK_ALPHA|params\.opac|opac|\d+(?:\.\d+)?|\(|\)|\*))+$/
+  for (const m of body.matchAll(/globalAlpha\s*=\s*([^;\n}]+)/g)) {
+    if (!whitelist.test(m[1].trim())) return true
+  }
+  return false
+}
+
+/**
+ * The rule engine: stripComments over each entry body, apply the six
+ * rules scoped to the entry's source identity, return every violated
+ * stable label.
  *
  * Entry labels (source identity): 'paint.ts', 'drawBristleFootprint',
  * 'footprintLanes.ts', 'wet-layer.ts', 'drying.ts'.
  * Violation labels: non-seeded-rng, per-pixel-read, per-pixel-write,
  * non-constant-alpha, paper-read, width-gauge-shape,
  * deposit-law-constant.
+ *
+ * Region scoping (never widen): G2/G3/G4 scan only the footprint body
+ * slice and footprintLanes.ts — paint.ts's pre-existing wet-composite
+ * and pickup-snapshot getImageData sites are out of scope, and the
+ * paper rule never scans paint.ts whole-file (paperHeight plumbing
+ * lives outside the footprint). G5 is footprint-body only. G1 covers
+ * paint.ts whole-file (which includes the footprint body) + lanes.
  */
 function collectShapeViolations(input: { label: string; body: string }[]): string[] {
-  void input // RED zero-stub — replaced by the rule engine in Task 2
-  return []
+  const out: string[] = []
+  for (const { label, body: raw } of input) {
+    const body = stripComments(raw)
+
+    // G1 — non-seeded RNG (paint.ts whole file + footprint body + lanes)
+    if (label === 'paint.ts' || label === 'drawBristleFootprint' || label === 'footprintLanes.ts') {
+      if (/Math\.random\s*\(/.test(body)) out.push('non-seeded-rng')
+    }
+
+    // G2 + G3 + G4 — region-scoped to the footprint body and lane builder
+    if (label === 'drawBristleFootprint' || label === 'footprintLanes.ts') {
+      if (/\bgetImageData\s*\(/.test(body)) out.push('per-pixel-read')
+      if (/\bputImageData\s*\(/.test(body)) out.push('per-pixel-write')
+      if (alphaRhsViolated(body)) out.push('non-constant-alpha')
+      if (/\bsampleH\b|\bsampleHFn\b|0\.72|\bpaper/.test(body)) out.push('paper-read')
+    }
+
+    // G5 — width-gauge shape (footprint body only)
+    if (label === 'drawBristleFootprint' && widthGaugeViolated(body)) {
+      out.push('width-gauge-shape')
+    }
+
+    // G6 — deposit-law constants (D-08 keep-gate, dry threshold)
+    if (label === 'wet-layer.ts' && !/const\s+DEPOSIT_KEEP_TIER\s*=\s*70\b/.test(body)) {
+      out.push('deposit-law-constant')
+    }
+    if (label === 'drying.ts' && !/const\s+DRY_ALPHA_THRESHOLD\s*=\s*1\b/.test(body)) {
+      out.push('deposit-law-constant')
+    }
+  }
+  return out
 }
 
 // ---------------------------------------------------------------

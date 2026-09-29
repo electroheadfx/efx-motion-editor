@@ -382,15 +382,18 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(sig).toContain('tier')
   })
 
-  it('determinism: same mutationId gives byte-identical continuation op logs, different mutationId gives different logs, undefined mutationId replays byte-identical', () => {
-    const a = runRasterLog(7)
-    const b = runRasterLog(7)
-    const c = runRasterLog(99)
+  it('determinism (ABA): same mutationId byte-identical across an intervening different-id run, different mutationId differs, undefined mutationId replays byte-identical', () => {
+    // ABA pattern (52.4-04 R5 hardening): run id 7, then 99, then 7 — the
+    // first and third logs must be byte-identical (no module-level
+    // seed-state leak survives the intervening different-id run).
+    const first = runRasterLog(7)
+    const second = runRasterLog(99)
+    const third = runRasterLog(7)
     const d = runRasterLog(undefined)
     const e = runRasterLog(undefined)
 
-    expect(b).toEqual(a)
-    expect(c).not.toEqual(a)
+    expect(third).toEqual(first)
+    expect(second).not.toEqual(first)
     expect(e).toEqual(d)
   })
 
@@ -470,52 +473,65 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     }
     const flatLight = light.flatMap((b) => valueSeq(b, 'lw:'))
     const flatHeavy = heavy.flatMap((b) => valueSeq(b, 'lw:'))
+    // Pressure SIZE lever (52.4-04): mean lw at p=0.9 > mean lw at p=0.2 —
+    // pressure scales the width, never the alpha (D-10/D-11).
+    const meanLight = flatLight.reduce((a, b) => a + b, 0) / flatLight.length
+    const meanHeavy = flatHeavy.reduce((a, b) => a + b, 0) / flatHeavy.length
+    expect(meanHeavy).toBeGreaterThan(meanLight)
     expect(stdev(flatHeavy)).toBeGreaterThan(stdev(flatLight))
   })
 
-  it('deformation variance: light(p=0.2)/heavy(p=0.9) wobble-excursion ratio of central bristles <= 0.35', () => {
+  it('SIZE-extent law: light(p=0.2)/heavy(p=0.9) RMS lateral excursion over ALL lanes <= 0.35 with one constant streak alpha', () => {
+    // 52.4-04 rewrite: no uniform-index central-bristle selection — Poisson
+    // lanes from buildBristleLanes have no uniform index mapping — so the
+    // RMS lateral excursion |y - 16| / radius is computed over ALL vertices
+    // of ALL stroke blocks of each run. Existing bound kept: never retuned.
     const radius = 20
-    const count = Math.max(4, Math.floor(radius * 0.5))
-    // Central bristles by construction: |base offset| = |i/(count-1)*2-1| <= 0.4
-    const central = Array.from({ length: count }, (_, i) => i)
-      .filter((i) => Math.abs((i / (count - 1)) * 2 - 1) <= 0.4)
 
-    const excursion = (p: number): number => {
-      const blocks = bristleBlocks(bristleRun(straightCurve(p, 0), radius, 7))
+    const excursion = (p: number): { rms: number; ga: Set<string> } => {
+      const log = bristleRun(straightCurve(p, 0), radius, 7)
+      const blocks = bristleBlocks(log)
+      expect(blocks.length).toBeGreaterThan(0)
       let sumSq = 0
       let n = 0
-      for (const idx of central) {
-        const block = blocks[idx]
-        expect(block).toBeTruthy()
-        // >= 30: the arc-length skip stream may drop some samples (and a run
-        // boundary may re-emit the shared vertex) — duplicate sample positions
-        // only, never missing lanes.
+      for (const block of blocks) {
         const ys = verticesOf(block).map(([, y]) => y)
-        expect(ys.length).toBeGreaterThanOrEqual(30)
-        const mean = ys.reduce((a, b) => a + b, 0) / ys.length
-        for (const y of ys) { sumSq += (y - mean) ** 2; n++ }
+        expect(ys.length).toBeGreaterThan(0)
+        for (const y of ys) { sumSq += (y - 16) ** 2; n++ }
       }
-      return Math.sqrt(sumSq / n) / radius
+      expect(n).toBeGreaterThan(0)
+      return {
+        rms: Math.sqrt(sumSq / n) / radius,
+        ga: new Set(log.filter((e) => e.startsWith('ga:'))),
+      }
     }
 
     const light = excursion(0.2)
     const heavy = excursion(0.9)
-    expect(heavy).toBeGreaterThan(0)
-    expect(light / heavy).toBeLessThanOrEqual(0.35)
+    expect(heavy.rms).toBeGreaterThan(0)
+    expect(light.rms / heavy.rms).toBeLessThanOrEqual(0.35)
+    // D-10/D-11: streak alpha is ONE constant in both runs.
+    expect(light.ga.size).toBe(1)
+    expect(heavy.ga.size).toBe(1)
+    expect(light.ga).toEqual(heavy.ga)
   })
 
-  it('pressure/velocity ordering (control): light ink < heavy ink and velocity no longer changes the deposit (heavy-fast ink equals heavy-slow ink)', () => {
+  it('pressure SIZE ordering + no velocity term (scope lock): light ink < heavy ink and the heavy-fast op log byte-equals the heavy-slow op log', () => {
     const radius = 20
-    const light = inkOf(bristleRun(straightCurve(0.2, 1), radius, 7))
-    const heavy = inkOf(bristleRun(straightCurve(0.9, 1), radius, 7))
-    const heavyFast = inkOf(bristleRun(straightCurve(0.9, 60), radius, 7))
+    const lightLog = bristleRun(straightCurve(0.2, 1), radius, 7)
+    const heavyLog = bristleRun(straightCurve(0.9, 1), radius, 7)
+    const heavyFastLog = bristleRun(straightCurve(0.9, 60), radius, 7)
+    const light = inkOf(lightLog)
+    const heavy = inkOf(heavyLog)
 
     expect(light).toBeGreaterThan(0)
     expect(heavy).toBeGreaterThan(0)
+    // Constant ga makes inkOf pure width mass — pressure affects SIZE only.
     expect(light).toBeLessThan(heavy)
-    // D-09/D-10: velocity terms (chanceSkip) are deleted — the seeded layout
-    // is keyed by arc-length, so speed cannot change the deposit.
-    expect(heavyFast).toBe(heavy)
+    // Velocity carries no deposit term in tranche 1a: R2 gesture
+    // translucency is scope-deferred (row e rides R2 in 53.1+), so an
+    // spd-only difference must produce identical footprint output.
+    expect(heavyFastLog).toEqual(heavyLog)
   })
 
   it('source shape: the footprint is seeded geometry-only (ribbonWithScales + hashMutationId) with no paper sampler, 0.72 threshold, non-seeded RNG or removed alpha terms', () => {
