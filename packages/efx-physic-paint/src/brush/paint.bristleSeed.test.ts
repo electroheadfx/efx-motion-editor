@@ -1,28 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { createPaintStrokeRasterContinuation, drawBristleTraces } from './paint'
+import * as paint from './paint'
+import { createPaintStrokeRasterContinuation } from './paint'
 import { ribbonWithScales } from './stroke'
 import type { BrushOpts, PenPoint, WetBuffers } from '../types'
 
-// 260928-dh1 — seeded deposit-time bristle pass pins.
-// Harness mirrored from paint.continuation.test.ts (canvasFactory stub +
-// document stub + LCG Math.random + wet() + 4-point PenPoint array), except
+// 52.4-01 (tracer, retargeted from 260928-dh1) — seeded deposit-time bristle
+// footprint pins. Harness mirrored from paint.continuation.test.ts (canvasFactory
+// stub + document stub + LCG Math.random + wet() + 4-point PenPoint array), except
 // the context records lineWidth / globalAlpha / strokeStyle WRITES with their
-// values and vertex coordinates, so the bristle geometry and per-sample shape
-// parameters are observable.
+// values and vertex coordinates, so the footprint geometry and per-sample shape
+// parameters are observable, and getImageData returns alpha-255 pixels so the
+// DEPOSIT_KEEP_TIER gate (70/255) lets a tier=final transfer reach the wet
+// buffer (D-07 gate test).
 //
 // Behaviors pinned (PLAN Task 2 <behavior>):
-//   1. bristleSeed determinism       — same mutationId -> identical op logs,
-//                                      different mutationId -> different logs
-//   2. containment                   — every vertex within the local ribbon
-//                                      half-width (end taper included)
-//   3. fbm shape noise               — per-sample width/alpha modulation varies
-//                                      along the stroke; amplitude grows with
-//                                      pressure (v11 limit #2)
-//   4. deformation variance          — light/heavy wobble-excursion ratio
-//                                      <= 0.35 (v11 limit #1, base ~0.47)
-//   5. pressure/velocity ordering    — control
-//   6. source shape                  — no Math.random/gauss in the generator
+//   1. export/tier            — drawBristleFootprint exported, (curve, params,
+//                               tier), tier in {live, final}, FootprintParams
+//                               carries ctx/radius/color/opac/hasPenInput/mutationId
+//   2. determinism            — same mutationId -> identical op logs, different
+//                               mutationId -> different, undefined mutationId
+//                               (disk replay) -> byte-identical across runs
+//   3. containment            — every vertex within the local ribbon half-width
+//                               (end taper included)
+//   4. source shape           — body slice: ribbonWithScales + hashMutationId,
+//                               no paper sampler / 0.72 / non-seeded RNG /
+//                               removed alpha terms (nA / pressureMod / ch-1)
+//   5. stage pin              — observed run emits ZERO paint-raster-layers
+//                               stages (retired with the 37x layering blocks)
+//   6. D-07 gate              — tier=live: zero wet-transfer stages, wet.alpha
+//                               untouched; tier=final: exactly one, mutates
+//   legacy rewrites           — width-only SIZE modulation + ONE constant
+//                               streak alpha; pressure ordering; velocity no
+//                               longer changes the deposit; wobble variance
+//
+// Forward-declared casts (below) let the RED run call the future signatures
+// before the implementation exists without failing tsc on excess arguments.
 
 const LCG_START = 123456789
 
@@ -50,7 +63,9 @@ function canvasFactory(log: string[]) {
       lineTo: (x: number, y: number) => log.push(`l:${x.toFixed(3)},${y.toFixed(3)}`),
       fill: () => log.push('fill'), stroke: () => log.push('stroke'),
       translate: () => log.push('translate'), drawImage: () => log.push('draw'),
-      getImageData: (_x: number, _y: number, w: number, h: number) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+      // Opaque pixels: the deposit keep-gate (a < 70/255) must let a
+      // tier=final transfer through so the D-07 pin can observe wet writes.
+      getImageData: (_x: number, _y: number, w: number, h: number) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4).fill(255) }),
       putImageData: () => log.push('put'), clearRect: () => {},
     }
     contexts.set(canvas, context)
@@ -74,47 +89,86 @@ function installLcg(): void {
   })
 }
 
-// Forward-declared signature: the mutationId parameter is what Task 2 threads
+// Forward-declared signature: the tier parameter is what Task 2 threads
 // through, so the RED run can call it before the implementation exists without
-// failing tsc on excess arguments.
+// failing tsc on excess arguments (sampleHFn slot replaced by required tier).
 const startContinuation = createPaintStrokeRasterContinuation as unknown as (
   ...args: unknown[]
 ) => { runToCompletion(): void }
 
-const draw = drawBristleTraces as unknown as (
-  ctx: CanvasRenderingContext2D,
+// Future footprint contract, declared locally so the RED test compiles before
+// paint.ts exports the real FootprintParams / FootprintTier types.
+type FootprintTierShape = 'live' | 'final'
+interface FootprintParamsShape {
+  ctx: CanvasRenderingContext2D
+  radius: number
+  color: string
+  opac: number
+  hasPenInput: boolean
+  mutationId?: number
+}
+
+const draw = (paint as unknown as Record<string, unknown>).drawBristleFootprint as unknown as (
   curve: PenPoint[],
-  radius: number,
-  color: string,
-  opac: number,
-  penData: PenPoint[],
-  hasPenInput: boolean,
-  sampleHFn: (x: number, y: number) => number,
-  mutationId?: number,
+  params: FootprintParamsShape,
+  tier: FootprintTierShape,
 ) => void
 
-function runRasterLog(mutationId: number): string[] {
+const CONTINUATION_POINTS: PenPoint[] = [
+  { x: 5, y: 8, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.2 },
+  { x: 14, y: 12, p: 0.6, tx: 0, ty: 0, tw: 0, spd: 0.2 },
+  { x: 24, y: 14, p: 0.7, tx: 0, ty: 0, tw: 0, spd: 0.2 },
+  { x: 34, y: 18, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.2 },
+]
+
+function runRasterLog(mutationId: number | undefined): string[] {
   const width = 48, height = 32
   const log: string[] = []
   vi.stubGlobal('document', { createElement: vi.fn(canvasFactory(log)) })
   const main = canvasFactory(log)()
-  const points: PenPoint[] = [
-    { x: 5, y: 8, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.2 },
-    { x: 14, y: 12, p: 0.6, tx: 0, ty: 0, tw: 0, spd: 0.2 },
-    { x: 24, y: 14, p: 0.7, tx: 0, ty: 0, tw: 0, spd: 0.2 },
-    { x: 34, y: 18, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.2 },
-  ]
+  const points = CONTINUATION_POINTS
   const opts = { size: 6, opacity: 75, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 60, eraseStrength: 50, antiAlias: 0 } satisfies BrushOpts
   const buffers = wet(width * height)
   installLcg()
-  const continuation = startContinuation(
-    points, '#336699', opts, main.getContext('2d'), buffers, null,
-    width, height, false, 0.5, () => 0.5, undefined, mutationId,
-  )
-  continuation.runToCompletion()
-  vi.restoreAllMocks()
-  vi.unstubAllGlobals()
+  try {
+    const continuation = startContinuation(
+      points, '#336699', opts, main.getContext('2d'), buffers, null,
+      width, height, false, 0.5, 'final', undefined, mutationId,
+    )
+    continuation.runToCompletion()
+  } finally {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  }
   return log
+}
+
+/**
+ * Observed continuation run for the stage pin (5) and D-07 gate (6).
+ * Fresh-deposit config (pickup 0) so one run has exactly one transfer site;
+ * the pickup path's per-segment transfers all happen inside the single
+ * tier=final raster (D-07's law is live-writes-nothing, not segment count).
+ */
+function runRasterObserve(tier: FootprintTierShape): { stages: string[]; buffers: WetBuffers } {
+  const width = 48, height = 32
+  const stages: string[] = []
+  vi.stubGlobal('document', { createElement: vi.fn(canvasFactory([])) })
+  const main = canvasFactory([])()
+  const opts = { size: 6, opacity: 75, pressure: 70, waterAmount: 50, dryAmount: 30, edgeDetail: 4, pickup: 0, eraseStrength: 50, antiAlias: 0 } satisfies BrushOpts
+  const buffers = wet(width * height)
+  installLcg()
+  try {
+    const continuation = startContinuation(
+      CONTINUATION_POINTS, '#336699', opts, main.getContext('2d'), buffers, null,
+      width, height, false, 0.5, tier,
+      (stage: string) => { stages.push(stage) }, 7,
+    )
+    continuation.runToCompletion()
+  } finally {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  }
+  return { stages, buffers }
 }
 
 /** Straight horizontal stroke — normals are exact verticals, so a vertex's
@@ -123,15 +177,19 @@ function straightCurve(p: number, spd: number, n = 41, spacing = 10): PenPoint[]
   return Array.from({ length: n }, (_, i) => ({ x: i * spacing, y: 16, p, tx: 0, ty: 0, tw: 0, spd }))
 }
 
-function bristleRun(curve: PenPoint[], radius: number, mutationId: number, hasPenInput = true): string[] {
+function bristleRun(curve: PenPoint[], radius: number, mutationId: number, hasPenInput = true, tier: FootprintTierShape = 'final'): string[] {
   const log: string[] = []
   const canvas = canvasFactory(log)()
-  // LCG over Math.random so the BASE (unseeded gauss/Math.random) draws are
-  // identical across the light/heavy and slow/fast runs of a pin — the plan's
-  // "same LCG draws both runs". The GREEN generator ignores Math.random.
+  // LCG over Math.random so any BASE (unseeded) draws are identical across the
+  // light/heavy and slow/fast runs of a pin. The GREEN footprint ignores
+  // Math.random entirely (source-shape pin).
   installLcg()
   try {
-    draw(canvas.getContext('2d'), curve, radius, '#336699', 1, curve, hasPenInput, () => 0.5, mutationId)
+    draw(
+      curve,
+      { ctx: canvas.getContext('2d'), radius, color: '#336699', opac: 1, hasPenInput, mutationId },
+      tier,
+    )
   } finally {
     vi.restoreAllMocks()
   }
@@ -210,13 +268,41 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     vi.unstubAllGlobals()
   })
 
-  it('determinism: same mutationId gives byte-identical raster-continuation op logs, different mutationId gives different logs', () => {
+  it('export/tier: drawBristleFootprint is exported as (curve, params, tier) with tier in {live, final} and FootprintParams carrying ctx/radius/color/opac/hasPenInput/mutationId', () => {
+    const fp = (paint as unknown as Record<string, unknown>).drawBristleFootprint
+    expect(typeof fp).toBe('function')
+
+    const src = readFileSync(new URL('./paint.ts', import.meta.url), 'utf8')
+    expect(src).toMatch(/export type FootprintTier\s*=\s*'live'\s*\|\s*'final'/)
+
+    const ifaceStart = src.indexOf('export interface FootprintParams')
+    expect(ifaceStart).toBeGreaterThan(-1)
+    const ifaceEnd = src.indexOf('}', ifaceStart)
+    const iface = src.slice(ifaceStart, ifaceEnd)
+    for (const field of ['ctx', 'radius', 'color', 'opac', 'hasPenInput', 'mutationId']) {
+      expect(iface).toMatch(new RegExp(`\\b${field}\\b`))
+    }
+
+    const fnStart = src.indexOf('export function drawBristleFootprint')
+    expect(fnStart).toBeGreaterThan(-1)
+    const sigEnd = src.indexOf('):', fnStart)
+    expect(sigEnd).toBeGreaterThan(-1)
+    const sig = src.slice(fnStart, sigEnd)
+    expect(sig).toContain('curve')
+    expect(sig).toContain('params')
+    expect(sig).toContain('tier')
+  })
+
+  it('determinism: same mutationId gives byte-identical continuation op logs, different mutationId gives different logs, undefined mutationId replays byte-identical', () => {
     const a = runRasterLog(7)
     const b = runRasterLog(7)
     const c = runRasterLog(99)
+    const d = runRasterLog(undefined)
+    const e = runRasterLog(undefined)
 
     expect(b).toEqual(a)
     expect(c).not.toEqual(a)
+    expect(e).toEqual(d)
   })
 
   it('containment: every bristle vertex lies within the local ribbon half-width (ribbonWithScales s x radius, end taper included)', () => {
@@ -228,7 +314,7 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
 
     for (const [vx, vy] of vertices) {
       const contained = curve.some((pt, idx) => {
-        // Tangent exactly as drawBristleTraces / ribbonWithScales compute it
+        // Tangent exactly as drawBristleFootprint / ribbonWithScales compute it
         // (endpoint-aware central difference; tilt is 0 on this curve).
         let tx: number, ty: number
         if (idx === 0) { tx = curve[1].x - curve[0].x; ty = curve[1].y - curve[0].y }
@@ -247,7 +333,7 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     }
   })
 
-  it('fbm shape noise: per-sample width/alpha modulation varies along the stroke and its amplitude strictly increases with pressure', () => {
+  it('shape noise: per-sample width modulation varies along the stroke and grows with pressure; streak alpha is one constant for both pressures', () => {
     const radius = 20
     const lightLog = bristleRun(straightCurve(0.2, 0), radius, 7)
     const heavyLog = bristleRun(straightCurve(0.9, 0), radius, 7)
@@ -269,17 +355,19 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
       expect(lwHeavy.length).toBe(41)
       expect(gaHeavy.length).toBe(41)
 
-      // Adjacent arc-length samples differ.
+      // Width varies along the stroke: adjacent samples differ, distant
+      // samples differ more than adjacent ones (fbm, channel 0).
       expect(meanAbsDelta(lwLight)).toBeGreaterThan(0)
-      expect(meanAbsDelta(gaLight)).toBeGreaterThan(0)
-
-      // Distant samples differ more than adjacent ones.
       expect(meanDistantAbsDelta(lwLight, gap)).toBeGreaterThan(meanAbsDelta(lwLight))
-      expect(meanDistantAbsDelta(gaLight, gap)).toBeGreaterThan(meanAbsDelta(gaLight))
 
       // Amplitude strictly increases with pressure for the same (seed, arc).
       expect(spread(lwHeavy)).toBeGreaterThan(spread(lwLight))
-      expect(spread(gaHeavy)).toBeGreaterThan(spread(gaLight))
+
+      // D-10 / D-11: ONE constant streak alpha — same value every sample and
+      // at both pressures (no pressure/velocity/arc/noise alpha term).
+      expect(new Set(gaLight).size).toBe(1)
+      expect(new Set(gaHeavy).size).toBe(1)
+      expect(gaLight[0]).toBe(gaHeavy[0])
     }
   })
 
@@ -297,10 +385,11 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
       for (const idx of central) {
         const block = blocks[idx]
         expect(block).toBeTruthy()
-        // >= 41: a run boundary may re-emit the shared vertex (moveTo of the
-        // next run) — duplicate sample positions only, never extra samples.
+        // >= 30: the arc-length skip stream may drop some samples (and a run
+        // boundary may re-emit the shared vertex) — duplicate sample positions
+        // only, never missing lanes.
         const ys = verticesOf(block).map(([, y]) => y)
-        expect(ys.length).toBeGreaterThanOrEqual(41)
+        expect(ys.length).toBeGreaterThanOrEqual(30)
         const mean = ys.reduce((a, b) => a + b, 0) / ys.length
         for (const y of ys) { sumSq += (y - mean) ** 2; n++ }
       }
@@ -313,7 +402,7 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(light / heavy).toBeLessThanOrEqual(0.35)
   })
 
-  it('pressure/velocity ordering (control): light ink < heavy ink and heavy-fast ink < heavy-slow ink', () => {
+  it('pressure/velocity ordering (control): light ink < heavy ink and velocity no longer changes the deposit (heavy-fast ink equals heavy-slow ink)', () => {
     const radius = 20
     const light = inkOf(bristleRun(straightCurve(0.2, 1), radius, 7))
     const heavy = inkOf(bristleRun(straightCurve(0.9, 1), radius, 7))
@@ -322,19 +411,46 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(light).toBeGreaterThan(0)
     expect(heavy).toBeGreaterThan(0)
     expect(light).toBeLessThan(heavy)
-    expect(heavyFast).toBeLessThan(heavy)
+    // D-09/D-10: velocity terms (chanceSkip) are deleted — the seeded layout
+    // is keyed by arc-length, so speed cannot change the deposit.
+    expect(heavyFast).toBe(heavy)
   })
 
-  it('source shape: the generator is seeded (no Math.random / gauss) and containment reads ribbonWithScales', () => {
+  it('source shape: the footprint is seeded geometry-only (ribbonWithScales + hashMutationId) with no paper sampler, 0.72 threshold, non-seeded RNG or removed alpha terms', () => {
     const src = readFileSync(new URL('./paint.ts', import.meta.url), 'utf8')
-    const start = src.indexOf('export function drawBristleTraces')
+    const start = src.indexOf('export function drawBristleFootprint')
     expect(start).toBeGreaterThan(-1)
     const end = src.indexOf('\nexport function', start + 10)
     const body = src.slice(start, end > -1 ? end : undefined)
 
-    expect(body).not.toContain('Math.random')
-    expect(body).not.toContain('gauss(')
     expect(body).toContain('ribbonWithScales')
     expect(body).toContain('hashMutationId')
+    // D-14: no paper sampler, no Curtis h > 0.72 cut.
+    expect(body).not.toMatch(/\bsampleH\b/)
+    expect(body).not.toContain('0.72')
+    // No non-seeded RNG / per-pixel reads in the footprint.
+    expect(body).not.toContain('Math.random')
+    expect(body).not.toContain('gauss(')
+    expect(body).not.toContain('getImageData')
+    // D-11: no removed alpha terms — nA channel read, pressureMod, channel 1.
+    expect(body).not.toMatch(/\bnA\b/)
+    expect(body).not.toContain('pressureMod')
+    expect(body).not.toMatch(/traceShapeNoise\([^)]*,\s*1\s*\)/)
+  })
+
+  it('stage pin: an observed continuation run emits zero paint-raster-layers stages and still reports paint-raster-bristles', () => {
+    const { stages } = runRasterObserve('final')
+    expect(stages.filter((s) => s === 'paint-raster-layers')).toHaveLength(0)
+    expect(stages).toContain('paint-raster-bristles')
+  })
+
+  it('D-07 gate: tier=live emits zero wet-transfer stages and leaves wet.alpha untouched; tier=final emits exactly one and mutates wet.alpha', () => {
+    const live = runRasterObserve('live')
+    expect(live.stages.filter((s) => s === 'paint-wet-transfer-composition')).toHaveLength(0)
+    expect(live.buffers.alpha.every((v) => v === 0)).toBe(true)
+
+    const final = runRasterObserve('final')
+    expect(final.stages.filter((s) => s === 'paint-wet-transfer-composition')).toHaveLength(1)
+    expect(final.buffers.alpha.some((v) => v !== 0)).toBe(true)
   })
 })
