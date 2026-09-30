@@ -35,7 +35,7 @@ import {
 } from '../types'
 import { clamp, distXY, curveBounds } from '../util/math'
 import { lerp } from '../util/math'
-import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges } from '../core/wet-layer'
+import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges, snapshotWetAlpha, projectWetIntoEnvelope } from '../core/wet-layer'
 import { initDryingLUT, dryStep, forceDryAll } from '../core/drying'
 import { physicsStep } from '../core/diffusion'
 import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
@@ -136,6 +136,9 @@ type ActiveStrokeFinalization = {
   phase: 'prepare' | 'raster' | 'finalize' | 'post-raster' | 'fluid' | 'continuation' | 'complete'
   raster: PaintStrokeRasterContinuation | null
   fluid: LocalFluidPhysicsContinuation | null
+  // R8 (260930-dy0): pre-solver wet-alpha envelope — projected back after
+  // the solver so spread can never widen the stroke.
+  envelope?: Float32Array | null
   continuationFrame: number
   liveSnapshot: ImageData | null
   liveBounds: { x0: number; y0: number; w: number; h: number } | null
@@ -2362,6 +2365,7 @@ export class EfxPaintEngine {
         const spreadCurve = spreadCurveFor(this.state.localSpreadStrength)
         const waterCurve = waterFrac * waterFrac
         const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
+        active.envelope = snapshotWetAlpha(this.wet)
         active.fluid = createLocalFluidPhysicsContinuation(
           this.wet, this.fluidConfig, this.width, this.height,
           {
@@ -2381,6 +2385,10 @@ export class EfxPaintEngine {
     }
 
     if (active.phase === 'fluid' && active.fluid?.step()) {
+      if (active.envelope) {
+        projectWetIntoEnvelope(this.wet, active.envelope)
+        active.envelope = null
+      }
       this.startNaturalDrying()
       this.finishInteractivePaintFinalization(active)
       return
@@ -2654,6 +2662,7 @@ export class EfxPaintEngine {
         const localBounds = { x0: bx0, y0: by0, x1: bx1, y1: by1 }
         const ticks = Math.max(1, Math.ceil(spreadCurve * 10))
         const localPhysicsStartedAt = observePrimitive ? performance.now() : 0
+        const envelope = snapshotWetAlpha(this.wet)
         localFluidPhysicsStep(
           this.wet, this.fluidConfig,
           this.width, this.height,
@@ -2661,6 +2670,7 @@ export class EfxPaintEngine {
           observePrimitive,
         )
         if (observePrimitive) observePrimitive('paint-local-fluid-total', performance.now() - localPhysicsStartedAt)
+        projectWetIntoEnvelope(this.wet, envelope)
       }
 
       // Bake to canvas — in local mode, keep wet for stroke interaction

@@ -19,10 +19,16 @@ function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined,
 }
 
 /**
- * Edge feathering on the wet layer within bounds.
- * Extends paint edges by averaging alpha + color into neighboring empty pixels.
- * Creates smooth sub-pixel transitions at brush boundaries.
- * @param passes - Number of feathering passes (1=soft, 2=med, 3=high)
+ * Boundary anti-aliasing on the wet layer within bounds (R8 envelope law,
+ * 260930-dy0 — the R7(c) companion at the wet layer).
+ *
+ * AA of the EXISTING boundary only: painted pixels with at least one empty
+ * orthogonal neighbor blend their alpha toward the 4-neighbor mean (empty
+ * neighbors contribute 0) at frac 0.35. Pixels with four painted neighbors
+ * are untouched; every pre-empty pixel is never read for write and never
+ * written — no alpha, no color, no wetness, no strokeOpacity, no halo.
+ * This is NOT an outward grower: the silhouette cannot widen here.
+ * @param passes - Number of AA passes (1=soft, 2=med, 3=high)
  */
 export function featherWetEdges(
   wet: WetBuffers,
@@ -39,38 +45,80 @@ export function featherWetEdges(
 
   for (let pass = 0; pass < passes; pass++) {
     measurePrimitive(observePrimitive, 'paint-edge-feather-pass', () => {
-      // Expand: for empty pixels adjacent to paint, set them to averaged neighbor values
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
           const i = y * width + x
-          if (wet.alpha[i] > 1) continue // skip painted pixels
+          const a = wet.alpha[i]
+          if (a <= 1) continue // empty pixels are never written (no grower)
 
-          // Count painted neighbors and accumulate their values
-          let sumA = 0, sumR = 0, sumG = 0, sumB = 0, sumSO = 0, count = 0
           const neighbors = [i - 1, i + 1, i - width, i + width]
+          let sum = 0
+          let empty = 0
           for (const ni of neighbors) {
-            if (wet.alpha[ni] > 1) {
-              sumA += wet.alpha[ni]
-              sumR += wet.r[ni]
-              sumG += wet.g[ni]
-              sumB += wet.b[ni]
-              sumSO += wet.strokeOpacity ? wet.strokeOpacity[ni] : 1
-              count++
-            }
+            const na = wet.alpha[ni]
+            if (na <= 1) empty++
+            sum += na
           }
-          if (count === 0) continue // no painted neighbors
+          if (empty === 0) continue // deep interior — untouched
 
-          // Set this pixel to a fraction of neighbor averages (feathered edge)
-          const frac = 0.35 // how much of neighbor intensity to inherit
-          wet.alpha[i] = (sumA / count) * frac
-          wet.r[i] = sumR / count
-          wet.g[i] = sumG / count
-          wet.b[i] = sumB / count
-          if (wet.strokeOpacity) wet.strokeOpacity[i] = sumSO / count
-          wet.wetness[i] = Math.max(wet.wetness[i], 100)
+          // Alpha-only boundary AA toward the 4-neighbor mean (empty = 0).
+          const mean4 = sum / 4
+          wet.alpha[i] = a + 0.35 * (mean4 - a)
         }
       }
     })
+  }
+}
+
+/**
+ * Full-frame pre-solver wet-alpha snapshot — the R8 pressure envelope.
+ * Take it strictly BEFORE the solver runs; projectWetIntoEnvelope applies
+ * the hard ceiling strictly AFTER (a reversed order snapshots the grown
+ * state and legitimizes the growth).
+ */
+export function snapshotWetAlpha(wet: WetBuffers): Float32Array {
+  return wet.alpha.slice()
+}
+
+/**
+ * R8 envelope law (USER DESIGN ACT 2026-09-30): the pressure-defined stroke
+ * thickness is the MAXIMUM thickness. Mass the solver grew past the
+ * pre-solver envelope is renormalized back inside — interior contrast rises,
+ * width does not. Accepted tradeoff (spec 01 R8): a hard envelope removes
+ * watercolour bleed past the stroke (capillary wicking); if wanted later it
+ * is a separate gesture-driven lever in 52.5, never a passive spread growth.
+ */
+export function projectWetIntoEnvelope(wet: WetBuffers, envelope: Float32Array): void {
+  const n = envelope.length
+  const escaped: number[] = []
+  let escapedTotal = 0
+  for (let i = 0; i < n; i++) {
+    if (envelope[i] <= 1 && wet.alpha[i] > 1) {
+      escaped.push(i)
+      escapedTotal += wet.alpha[i]
+    }
+  }
+  if (escapedTotal <= 0) return // identity — zero writes, no float drift
+
+  let interiorSum = 0
+  const interior: number[] = []
+  for (let i = 0; i < n; i++) {
+    if (envelope[i] > 1 && wet.alpha[i] > 1) {
+      interior.push(i)
+      interiorSum += wet.alpha[i]
+    }
+  }
+  if (interiorSum > 0) {
+    for (const i of interior) {
+      wet.alpha[i] = Math.min(200000, wet.alpha[i] + escapedTotal * (wet.alpha[i] / interiorSum))
+    }
+  }
+  // The ceiling is hard: escaped pixels are zeroed even if there is no
+  // interior to renormalize onto.
+  for (const i of escaped) {
+    wet.alpha[i] = 0
+    wet.wetness[i] = 0
+    wet.strokeOpacity[i] = 0
   }
 }
 import { hexRgb, mixSubtractive } from '../util/color'
