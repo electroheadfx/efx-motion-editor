@@ -16,9 +16,6 @@ import {
   STREAK_ALPHA,
   WIDTH_FLOOR,
   CORE_MAX_TRACE_WIDTH,
-  THIN_HALF_W,
-  BODY_WIDTH_MIN,
-  BODY_WIDTH_MAX,
   NW_AMPLITUDE,
   NW_ARC_SCALE,
 } from './footprintLanes'
@@ -79,7 +76,7 @@ export function fillFlat(
  * - 'live'  — display-only preview while the stroke is in flight: fewer,
  *   wider lanes (never writes the wet layer, D-07).
  * - 'final' — the single full deposit that feeds wet/physics on finalize.
- * The seeded layout (lane field + thin family) is tier-INDEPENDENT;
+ * The seeded layout (one shared continuous lane field) is tier-INDEPENDENT;
  * only count x thickness differs between tiers (D-05).
  */
 export type FootprintTier = 'live' | 'final'
@@ -91,6 +88,10 @@ export interface FootprintParams {
   opac: number
   hasPenInput: boolean
   mutationId?: number
+  /** Global t range [t0, t1] this call's curve covers within the whole
+   *  stroke (260929-t2o, R7 amended) — endTaper then dips only at true
+   *  stroke ends, never at an internal re-slice boundary. */
+  tSpan?: [number, number]
 }
 
 const LIVE_TIER_DIVISOR = 4
@@ -101,53 +102,57 @@ const LIVE_WIDTH_MUL = 4
 
 /**
  * Seeded deposit-time bristle footprint — the ONE routine behind both
- * the live preview and the final deposit (52.4-01 D-05, R7 fibre
- * coverage contract 260929-m2z).
+ * the live preview and the final deposit (52.4-01 D-05, R7 amended
+ * 2026-09-29b, 260929-t2o).
  *
- * - R7 coverage: ONE transparent closed FILLED outline per fibre —
- *   beginPath, left boundary forward, end-cap arc (lineTo only),
- *   right boundary backward, start-cap arc, closePath, fill. The soft
- *   edge is the fill anti-aliasing of that SINGLE fibre boundary
- *   (R7c); there is no stroked path, no wide low-alpha under-pass and
- *   no skip/run-flush dashing anywhere (R7b — gaps come only from the
- *   charge/deposit model). Composite body opacity comes from overlap
- *   (PIN 0: k_body >= 4 fills, 1-prod(1-ga) >= 0.99), never from a
- *   single near-opaque fill.
- * - R7 thin regime keys on the LOCAL ribbon half-width
- *   halfW = radius * scales[ci] against THIN_HALF_W (never brush
- *   radius alone): contiguous locally-thin spans draw the seeded 1-3
- *   thin-family outlines, contiguous locally-thick spans draw the
- *   lane field — a fat brush at light pressure or on a taper takes the
- *   thin path wherever it is locally thin.
+ * - R7-amended coverage: ONE transparent round-cap capsule sweep per
+ *   fibre (width = W(t) per short step) — one CONVEX capsule subpath
+ *   per consecutive sample pair (the convex hull of the two sample
+ *   discs: external tangent sides plus lineTo-only inscribed cap
+ *   arcs), every capsule wound the same direction, ONE fill per fibre
+ *   (nonzero union). A self-intersecting whole-fibre outline is
+ *   forbidden — it cancels winding and punches holes. The soft edge is
+ *   the fill anti-aliasing of that ONE fibre boundary (R7c); gaps come
+ *   only from the charge/deposit model (R7b). Composite body opacity
+ *   comes from overlap (PIN 0: k_body >= 4 fills, 1-prod(1-ga) >= 0.99),
+ *   never from a single near-opaque fill.
+ * - Continuous field (260929-t2o): the separate thin family is
+ *   DISSOLVED — every sample draws the same tier-selected lane layout;
+ *   lane density and spacing scale with the local ribbon half-width
+ *   halfW = radius * scales[ci] through the offset x halfW mapping, so
+ *   coverage is continuous by construction at every width (no family
+ *   switch).
  * - Lane layout (buildBristleLanes) and per-sample gauge noise are
  *   keyed by (hashMutationId seed, arc-length) — deterministic
  *   replay, stable across resample/chunking, identical for a given
  *   mutationId.
- * - ribbonWithScales is THE scale expression: every boundary vertex
- *   is clamped so the outline stays inside the local half-width
- *   (geometry clamp only, never alpha).
+ * - ribbonWithScales is THE scale expression: capsule vertices stay
+ *   inside the local half-width (geometry clamp only, never alpha).
+ *   params.tSpan keeps endTaper at true stroke ends when this call
+ *   draws a re-sliced interior segment of a longer stroke.
  * - Per-sample outline width = lane base x pMod (the pressure SIZE
  *   lever) x channel-0 arc-keyed gauge, single-clamped to
  *   [WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH] (D-12), then x LIVE_WIDTH_MUL
  *   at tier=live (D-05). One constant fill alpha
- *   (STREAK_ALPHA x opac) per outline — no pressure/velocity/arc/noise
+ *   (STREAK_ALPHA x opac) per fibre — no pressure/velocity/arc/noise
  *   alpha term (D-10/D-11).
- * - Geometry only: no height sampler, no threshold cut, no per-pixel
- *   reads, no non-seeded RNG (D-14).
+ * - Geometry only: no height sampler, no threshold cut, no bitmap
+ *   readbacks, no non-seeded RNG (D-14).
  */
 export function drawBristleFootprint(
   curve: PenPoint[],
   params: FootprintParams,
   tier: FootprintTier,
 ): void {
-  const { ctx, radius, color, opac, hasPenInput, mutationId } = params
+  const { ctx, radius, color, opac, hasPenInput, mutationId, tSpan } = params
   if (curve.length < 2) return
   const strokeSeed = hashMutationId(mutationId)
 
   // Containment + taper: the SAME ribbon scale the ribbon polygon uses
   // (ribbonWithScales / stroke.ts endTaper) — first curve.length entries
-  // map to curve points in order. No second inline scale math.
-  const { scales } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
+  // map to curve points in order. No second inline scale math. tSpan
+  // (260929-t2o) keeps endTaper at true stroke ends for re-sliced runs.
+  const { scales } = ribbonWithScales(curve, radius, 0.8, hasPenInput, tSpan)
 
   // Arc-length table (px) — gauge noise is keyed on arc, never sample
   // index (resample/chunking stability).
@@ -156,116 +161,114 @@ export function drawBristleFootprint(
     arc[i] = arc[i - 1] + Math.hypot(curve[i].x - curve[i - 1].x, curve[i].y - curve[i - 1].y)
   }
 
-  // Per-sample R7 regime from the LOCAL half-width (never radius).
-  const thin = (ci: number): boolean => radius * scales[ci] < THIN_HALF_W
+  // Per-sample ribbon half-width — the continuous density field thins
+  // through offset x halfW (260929-t2o). The lane centreline offset is
+  // clamped per step so the full capsule width stays inside the local
+  // ribbon (geometry clamp only, never alpha).
+  const halfWs: number[] = []
+  for (let si = 0; si < curve.length; si++) halfWs[si] = radius * scales[si]
 
-  // Contiguous regime spans with a +-1 sample overlap at internal
-  // transitions, so a regime boundary never leaves an undrawn seam.
-  interface RegimeSpan { start: number; end: number; isThin: boolean }
-  const runs: RegimeSpan[] = []
-  for (let i = 0; i < curve.length; ) {
-    const t = thin(i)
-    let j = i + 1
-    while (j < curve.length && thin(j) === t) j++
-    runs.push({ start: i, end: j - 1, isThin: t })
-    i = j
-  }
-  const spans: RegimeSpan[] = runs.map((run, r) => ({
-    start: r > 0 ? run.start - 1 : run.start,
-    end: r < runs.length - 1 ? run.end + 1 : run.end,
-    isThin: run.isThin,
-  }))
-
-  // ONE closed filled outline per fibre over one regime span
-  // (save .. restore). The path: left boundary forward (one lineWidth
-  // observability write per sample, ascending), end-cap polyline
-  // (lineTo only), right boundary backward, start-cap polyline,
-  // closePath, fill. Vertex pairs at equal x bracket the fibre
-  // centreline; cap x's sit off the sample lattice so they never
-  // pair. Pressure never touches alpha (D-10/D-11).
-  const drawOutline = (
+  // ONE round-cap capsule sweep per fibre (R7 amended 2026-09-29b):
+  // one CONVEX capsule subpath per short step — the convex hull of the
+  // two sample discs (equal radii: external tangent sides at +-/û with
+  // û = R(PI/2)d, lineTo-only inscribed cap arcs, 3 interior points per
+  // 180deg cap). Every capsule is wound the same direction by
+  // construction (rotation-equivariant ordering), so the nonzero union
+  // of the ONE fill can never cancel — a self-intersecting whole-fibre
+  // outline is exactly what punched the winding holes. On straight
+  // equal-width steps the hull vertices coincide with the per-sample
+  // normal points. Pressure never touches alpha (D-10/D-11).
+  const drawFibre = (
     lane: { offset: number; width: number },
     bi: number,
-    span: RegimeSpan,
   ): void => {
-    interface SampleGeom {
-      cx: number; cy: number
-      nx: number; ny: number
-      tx: number; ty: number
-      halfW: number; w: number
-    }
-    const samples: SampleGeom[] = []
+    const n = curve.length
+    const ws: number[] = new Array(n)
+    interface SampleGeom { x: number; y: number; nx: number; ny: number }
+    const geom: SampleGeom[] = new Array(n)
     ctx.save()
     ctx.fillStyle = color
     ctx.globalAlpha = STREAK_ALPHA * opac
-    ctx.beginPath()
 
-    // Left boundary forward (ascending samples) + per-sample geometry
-    // for the backward right pass.
-    for (let si = span.start; si <= span.end; si++) {
+    // Per-sample geometry + one ascending lineWidth write per sample
+    // (the observability seam the look-geometry pins read).
+    for (let si = 0; si < n; si++) {
       const p = curve[si]
       let tx2: number, ty2: number
       if (si === 0) { tx2 = curve[1].x - curve[0].x; ty2 = curve[1].y - curve[0].y }
-      else if (si === curve.length - 1) { tx2 = p.x - curve[si - 1].x; ty2 = p.y - curve[si - 1].y }
+      else if (si === n - 1) { tx2 = p.x - curve[si - 1].x; ty2 = p.y - curve[si - 1].y }
       else { tx2 = curve[si + 1].x - curve[si - 1].x; ty2 = curve[si + 1].y - curve[si - 1].y }
       const l = Math.hypot(tx2, ty2) || 1
       const nx = -ty2 / l, ny = tx2 / l
-
       const tiltAngle = (p.tx || 0) * 0.015
       const cosT = Math.cos(tiltAngle), sinT = Math.sin(tiltAngle)
-      const rnx = nx * cosT - ny * sinT, rny = nx * sinT + ny * cosT
-      const rtx = tx2 / l * cosT - ty2 / l * sinT, rty = tx2 / l * sinT + ty2 / l * cosT
-
-      // Local ribbon half-width — the outline centreline offset is
-      // clamped so the full outline width stays inside it (traces can
-      // never escape the footprint).
-      const halfW = radius * scales[si]
+      geom[si] = {
+        x: p.x,
+        y: p.y,
+        nx: nx * cosT - ny * sinT,
+        ny: nx * sinT + ny * cosT,
+      }
       const pMod = hasPenInput ? 0.5 + p.p * 1.0 : 1
       const gauge = 1 + (traceShapeNoise(strokeSeed, arc[si] * NW_ARC_SCALE, bi, 0) - 0.5) * NW_AMPLITUDE
       const raw = lane.width * pMod * gauge
       const wFinal = clamp(raw, WIDTH_FLOOR, CORE_MAX_TRACE_WIDTH)
       const w = tier === 'live' ? wFinal * LIVE_WIDTH_MUL : wFinal
-      const lim = Math.max(0, halfW - w / 2 - 1e-3)
-      const c = clamp(lane.offset * halfW, -lim, lim)
-
-      // One width write per sample (ascending, left pass) — the
-      // observability seam the look-geometry pins read; the outline
-      // itself is deposited by the single fill below.
       ctx.lineWidth = w
-      const vx = p.x + rnx * c - rnx * (w / 2)
-      const vy = p.y + rny * c - rny * (w / 2)
-      if (si === span.start) ctx.moveTo(vx, vy)
-      else ctx.lineTo(vx, vy)
-      samples.push({ cx: p.x + rnx * c, cy: p.y + rny * c, nx: rnx, ny: rny, tx: rtx, ty: rty, halfW, w })
+      ws[si] = w
     }
 
-    // End-cap polyline (lineTo only): quarter-circle approximation
-    // around the last sample from the left boundary to the right —
-    // the fill AA of this one fibre boundary is the soft edge (R7c).
-    const capRad = Math.SQRT1_2
-    const end = samples[samples.length - 1]
-    ctx.lineTo(end.cx - end.nx * (end.w / 2) * capRad + end.tx * (end.w / 2) * capRad,
-      end.cy - end.ny * (end.w / 2) * capRad + end.ty * (end.w / 2) * capRad)
-    ctx.lineTo(end.cx + end.tx * (end.w / 2), end.cy + end.ty * (end.w / 2))
-    ctx.lineTo(end.cx + end.nx * (end.w / 2) * capRad + end.tx * (end.w / 2) * capRad,
-      end.cy + end.ny * (end.w / 2) * capRad + end.ty * (end.w / 2) * capRad)
-
-    // Right boundary backward (descending samples) — same geometry,
-    // no second width write.
-    for (let si = samples.length - 1; si >= 0; si--) {
-      const g = samples[si]
-      ctx.lineTo(g.cx + g.nx * (g.w / 2), g.cy + g.ny * (g.w / 2))
+    ctx.beginPath()
+    for (let si = 0; si + 1 < n; si++) {
+      // Step-local lateral offset shared by both ends — the capsule
+      // stays inside min(halfW) of the step (containment law).
+      const halfS = Math.min(halfWs[si], halfWs[si + 1])
+      const wS = ws[si]
+      const r = wS / 2
+      const lim = Math.max(0, halfS - r - 1e-3)
+      const c = clamp(lane.offset * halfS, -lim, lim)
+      const a = geom[si], b = geom[si + 1]
+      const q0x = a.x + a.nx * c, q0y = a.y + a.ny * c
+      const q1x = b.x + b.nx * c, q1y = b.y + b.ny * c
+      const dx = q1x - q0x, dy = q1y - q0y
+      const lS = Math.hypot(dx, dy)
+      // Steps shorter than 0.05 px are one disc geometrically (the fibre
+      // centre parked on the curvature centre); emitting the hull would
+      // leave near-duplicate tangent points whose turn is below the
+      // vertex-rounding floor. Disc polygon at the step midpoint, wound
+      // like every capsule.
+      if (!(lS > 0.05)) {
+        const mx = (q0x + q1x) / 2, my = (q0y + q1y) / 2
+        ctx.moveTo(mx + r * Math.SQRT1_2, my + r * Math.SQRT1_2)
+        for (let k = 1; k < 8; k++) {
+          const aa = Math.PI / 4 - (k * Math.PI) / 4
+          ctx.lineTo(mx + r * Math.cos(aa), my + r * Math.sin(aa))
+        }
+        ctx.closePath()
+        continue
+      }
+      // Equal-radius hull: tangent points at q +/- r*û with û = R(PI/2)d,
+      // cap interiors at R(PI/4), R(0), R(-PI/4) forward and R(-3PI/4),
+      // R(-PI), R(-5PI/4) back. R(A)d = cos A * d + sin A * û.
+      const ddx = dx / lS, ddy = dy / lS
+      const ux = -ddy, uy = ddx
+      const capRot = (aa: number): [number, number] => {
+        const ca = Math.cos(aa), sa = Math.sin(aa)
+        return [ca * ddx + sa * ux, ca * ddy + sa * uy]
+      }
+      const f1 = capRot(Math.PI / 4), f2 = capRot(0), f3 = capRot(-Math.PI / 4)
+      const b1 = capRot(-3 * Math.PI / 4), b2 = capRot(-Math.PI), b3 = capRot(-5 * Math.PI / 4)
+      ctx.moveTo(q0x + r * ux, q0y + r * uy)
+      ctx.lineTo(q1x + r * ux, q1y + r * uy)
+      ctx.lineTo(q1x + r * f1[0], q1y + r * f1[1])
+      ctx.lineTo(q1x + r * f2[0], q1y + r * f2[1])
+      ctx.lineTo(q1x + r * f3[0], q1y + r * f3[1])
+      ctx.lineTo(q1x - r * ux, q1y - r * uy)
+      ctx.lineTo(q0x - r * ux, q0y - r * uy)
+      ctx.lineTo(q0x + r * b1[0], q0y + r * b1[1])
+      ctx.lineTo(q0x + r * b2[0], q0y + r * b2[1])
+      ctx.lineTo(q0x + r * b3[0], q0y + r * b3[1])
+      ctx.closePath()
     }
-
-    // Start-cap polyline back to the first left-boundary vertex.
-    const start = samples[0]
-    ctx.lineTo(start.cx + start.nx * (start.w / 2) * capRad - start.tx * (start.w / 2) * capRad,
-      start.cy + start.ny * (start.w / 2) * capRad - start.ty * (start.w / 2) * capRad)
-    ctx.lineTo(start.cx - start.tx * (start.w / 2), start.cy - start.ty * (start.w / 2))
-    ctx.lineTo(start.cx - start.nx * (start.w / 2) * capRad - start.tx * (start.w / 2) * capRad,
-      start.cy - start.ny * (start.w / 2) * capRad - start.ty * (start.w / 2) * capRad)
-
-    ctx.closePath()
     ctx.fill()
     ctx.restore()
   }
@@ -274,7 +277,9 @@ export function drawBristleFootprint(
   // overlap-packed body + Poisson-gap rim pass at full count; the live
   // tier merely SELECTS a subset (lowest liveRank) and thickens it
   // (DiVerdi 4.1). Spec R6: full N ~ radius, as the saturation pin
-  // requires.
+  // requires. R7-amended continuous field (260929-t2o): the same
+  // layout at EVERY width — density scales with local halfW through
+  // the offset x halfW mapping, never a family switch.
   const count = Math.max(4, Math.floor(radius))
   const lanes = buildBristleLanes(strokeSeed, count)
   const selected = tier === 'final'
@@ -285,25 +290,7 @@ export function drawBristleFootprint(
       .slice(0, Math.ceil(lanes.length / LIVE_TIER_DIVISOR))
       .map(({ lane, bi }) => ({ lane, bi }))
 
-  // Thin family (1-3 seeded outlines), drawn over every locally-thin
-  // span; the lane field over every locally-thick span (R7 regime
-  // follows the local half-width down tapers and light pressure).
-  const thinCount = 1 + Math.floor(seededDraw(strokeSeed, 'hairline', 'count') * 3)
-  const thinLanes = Array.from({ length: thinCount }, (_, j) => ({
-    lane: {
-      offset: seededDraw(strokeSeed, `hs${j}`, 'lane') * 2 - 1,
-      width: BODY_WIDTH_MIN + seededDraw(strokeSeed, `hw${j}`, 'lane') * (BODY_WIDTH_MAX - BODY_WIDTH_MIN),
-    },
-    bi: j,
-  }))
-
-  for (const span of spans) {
-    if (span.isThin) {
-      for (const { lane, bi } of thinLanes) drawOutline(lane, bi, span)
-    } else {
-      for (const { lane, bi } of selected) drawOutline(lane, bi, span)
-    }
-  }
+  for (const { lane, bi } of selected) drawFibre(lane, bi)
 }
 
 /**
@@ -572,7 +559,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
       off2.width = segBounds.w; off2.height = segBounds.h
       const oc2 = off2.getContext('2d', { willReadFrequently: true })!
       oc2.translate(-segBounds.x0, -segBounds.y0)
-      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(seg, { ctx: oc2, radius, color: segHex, opac, hasPenInput, mutationId }, tier))
+      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(seg, { ctx: oc2, radius, color: segHex, opac, hasPenInput, mutationId, tSpan: [start / (curve.length - 1), (end - 1) / (curve.length - 1)] }, tier))
       yield
       // D-07 (same law as the fresh branch): live blits for display, exactly
       // one final transfer per segment on the finalize tier.

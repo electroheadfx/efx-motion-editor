@@ -104,12 +104,18 @@ export function resample(pts: PenPoint[], spacing: number): PenPoint[] {
  * @param halfWidth - Half brush width (radius)
  * @param tPow - Taper power (default 0.8)
  * @param hasPenInput - Whether tablet pen is being used
+ * @param tSpan - Optional global t range [t0, t1] this slice covers within
+ *   the whole stroke (260929-t2o, R7 amended). endTaper then runs over the
+ *   GLOBAL t so a mid-stroke slice keeps full lateral extent at its ends —
+ *   taper belongs at true stroke ends, never at an internal re-slice
+ *   boundary. Omitted = current per-slice behavior (byte-identical).
  */
 export function ribbonWithScales(
   curve: PenPoint[],
   halfWidth: number,
   tPow: number = 0.8,
   hasPenInput: boolean = false,
+  tSpan?: [number, number],
 ): { poly: Array<[number, number]>; scales: number[] } {
   if (curve.length < 2) return { poly: [], scales: [] }
   const L: Array<[number, number]> = [], R: Array<[number, number]> = []
@@ -120,7 +126,8 @@ export function ribbonWithScales(
     else if (i === curve.length - 1) { tdx = curve[i].x - curve[i - 1].x; tdy = curve[i].y - curve[i - 1].y }
     else { tdx = curve[i + 1].x - curve[i - 1].x; tdy = curve[i + 1].y - curve[i - 1].y }
     const l = Math.hypot(tdx, tdy) || 1, nx = -tdy / l, ny = tdx / l
-    const t = i / (curve.length - 1)
+    const u = i / (curve.length - 1)
+    const t = tSpan ? tSpan[0] + (tSpan[1] - tSpan[0]) * u : u
 
     const endTaper = Math.pow(Math.sin(t * Math.PI), tPow) * 0.7 + 0.3
     const s = Math.max(0.1, (hasPenInput ? curve[i].p : 1) * endTaper)
