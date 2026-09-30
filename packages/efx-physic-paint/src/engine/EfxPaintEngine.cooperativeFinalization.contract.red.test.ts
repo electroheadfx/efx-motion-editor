@@ -500,7 +500,6 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     engine.allActions = [{ mutationId: 1 }]
     engine.undoStack = [{ mutationId: 1 }]
     engine.redoStack = [{ mutationId: 0 }]
-    engine.stopNaturalDrying = vi.fn()
     engine.wet = {
       r: new Float32Array(1), g: new Float32Array(1), b: new Float32Array(1),
       alpha: new Float32Array(1), wetness: new Float32Array(1), strokeOpacity: new Float32Array(1),
@@ -566,7 +565,6 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     enqueue('brush-1')
     engine.rafId = 0
     engine.physicsInterval = null
-    engine.stopNaturalDrying = vi.fn()
     engine.dualCanvas = { dryCanvas: { removeEventListener: vi.fn() } }
     engine.boundPointerDown = vi.fn(); engine.boundPointerMove = vi.fn(); engine.boundPointerUp = vi.fn()
     engine.boundPointerLeave = vi.fn(); engine.boundTouchStart = vi.fn()
@@ -939,7 +937,6 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
         physicsRunning: false,
         brushOpts: {},
         physicsStrength: 50,
-        drySpeed: 10,
         bgMode: 'transparent',
         embossStrength: 0,
         wetPaper: false,

@@ -178,7 +178,6 @@ describe('EfxPaintEngine preview base image decode cache (38.1-07)', () => {
   it('clears the decoded-image cache on destroy', () => {
     const engine = makeEngine({
       flushPendingStrokeFinalizations: vi.fn(),
-      stopNaturalDrying: vi.fn(),
       rafId: 0,
       strokeFinalizationScheduled: false,
       physicsInterval: null,

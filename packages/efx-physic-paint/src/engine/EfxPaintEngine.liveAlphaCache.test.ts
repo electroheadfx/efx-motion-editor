@@ -138,7 +138,6 @@ describe('EfxPaintEngine live alpha cache boundary', () => {
       drying: { dryPos: new Float32Array(1) },
       state: { physicsMode: 'local' },
       performanceListener: null,
-      stopNaturalDrying: vi.fn(),
       // 52.1 scoped the pre-stroke readback to the previous-stroke bbox ∪ the
       // keepR box around the new start; with a 1x1 canvas and a start at
       // (100,100) that union clamps empty. A prior stroke's bounds keeps the

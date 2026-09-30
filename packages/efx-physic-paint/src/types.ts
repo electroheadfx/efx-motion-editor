@@ -323,7 +323,6 @@ export interface EngineState {
   wetPaper: boolean
   drawing: boolean
   brushOpts: BrushOpts
-  drySpeed: number         // 10-100, derived from dryAmount slider: 10 + (dryAmount/100)*90
   physicsStrength: number
   physicsRunning: boolean
   physicsMode: PhysicsMode

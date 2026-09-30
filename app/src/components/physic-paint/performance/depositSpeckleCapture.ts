@@ -122,7 +122,6 @@ function forceDeterministicEngineState(eng: EngineInternals): Record<string, num
   eng.setEdgeDetail(4);
   eng.setAntiAlias(0);
   eng.setPickup(0);
-  eng.setDrySpeed(100);
   eng.setPhysicsStrength(0.2);
   return { ...eng.state.brushOpts };
 }
@@ -891,7 +890,6 @@ interface EngineInternals {
   setEdgeDetail(detail: number): void;
   setAntiAlias(value: number): void;
   setPickup(pickup: number): void;
-  setDrySpeed(speed: number): void;
   setPhysicsStrength(strength: number): void;
   setPaperGrain(key: string): void;
   startPhysics(mode: 'local' | 'last' | 'all'): void;

@@ -37,7 +37,7 @@ import {
 import { clamp, distXY, curveBounds } from '../util/math'
 import { lerp } from '../util/math'
 import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges } from '../core/wet-layer'
-import { initDryingLUT, dryStep, forceDryAll } from '../core/drying'
+import { initDryingLUT, forceDryAll } from '../core/drying'
 import { physicsStep } from '../core/diffusion'
 import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
 import type { LocalFluidPhysicsContinuation } from '../core/fluids'
@@ -119,7 +119,6 @@ type PaintHistoryEntry = {
 }
 
 type StrokeApplicationOptions = {
-  startNaturalDrying?: boolean
   hasPenInput?: boolean
   physicsMode?: PhysicsMode
   // 260928-dh1: seeds the deposit-time bristle pass (traceSeed) — one
@@ -300,14 +299,6 @@ export type InputActivityKind = 'down' | 'move' | 'up' | 'cancel'
 // a full 1s stop (the 52.1 slow-stroke trace's all-at-once landing).
 const STROKE_FINALIZATION_IDLE_MS = 400
 // 52.1 (2nd-stroke freeze): natural drying is cosmetic evaporation; every
-// dryStep reads back + writes back the dry canvas region (a long stroke's bbox
-// is large) and blocks the thread for ~87ms on the GPU semaphore. The user's
-// inter-stroke pause (~1s) let the old 1000ms gate fire between strokes and the
-// whole session crawled at ~8fps. Only evaporate at a genuine stop (matching
-// the capture/documentSync quiet windows); residual wet is handled by the next
-// stroke's prepareWetLayerForStroke + finalize, so skipping drying mid-train is
-// safe.
-const DRYING_QUIET_MS = 2500
 // 52.1 (2nd-stroke freeze): while a paint train is this recent, a fresh-key base
 // apply must not upload its 8.3MB texture (see applyPreviewBaseImage) — existing
 // keys never re-upload during painting, which is why they stay perfect.
@@ -617,7 +608,6 @@ export class EfxPaintEngine {
   private physicsInterval: ReturnType<typeof setInterval> | null = null
   private physicsTickCount: number = 0
   private savedPhysicsMode: PhysicsMode = null
-  private dryingInterval: ReturnType<typeof setInterval> | null = null
   private rafId: number = 0
   private destroyed: boolean = false
   private inputLocked: boolean = false
@@ -740,7 +730,6 @@ export class EfxPaintEngine {
         eraseStrength: 50,
         antiAlias: 1,
       },
-      drySpeed: 100, // Fixed fast drying
       physicsStrength: 0.2,
       physicsRunning: false,
       physicsMode: 'local',
@@ -830,11 +819,6 @@ export class EfxPaintEngine {
   /** Set water amount (0-100) */
   setWaterAmount(amount: number): void {
     this.state.brushOpts.waterAmount = clamp(amount, 0, 100)
-  }
-
-  /** Set dry speed slider (0-100) — maps to internal drySpeed 10-100 */
-  setDrySpeed(speed: number): void {
-    this.state.drySpeed = 10 + (clamp(speed, 0, 100) / 100) * 90
   }
 
   /** Set edge detail (0-100) */
@@ -931,7 +915,6 @@ export class EfxPaintEngine {
     const image = new Image()
     image.onload = () => {
       if (requestId !== this.previewBackgroundRequestId || this.destroyed || this.animationMode || this.state.drawing) return
-      this.stopNaturalDrying()
       this.bgCtx.clearRect(0, 0, this.width, this.height)
       this.bgCtx.drawImage(image, 0, 0, this.width, this.height)
       this.bgData = this.bgCtx.getImageData(0, 0, this.width, this.height)
@@ -1280,7 +1263,7 @@ export class EfxPaintEngine {
         this.fluid, this.fluidConfig,
         this.blowDX, this.blowDY,
         this.width, this.height,
-        this.state.physicsStrength, this.state.drySpeed,
+        this.state.physicsStrength, 100, // fixed LUT advance (260930-wm6: the dry-speed state field died; cadence not retuned)
         this.state.physicsMode, this.lastStrokeBounds,
         this.physicsTickCount, sampleHFn, this.paperHeight,
       )
@@ -1381,7 +1364,6 @@ export class EfxPaintEngine {
   forceDry(): void {
     this.requestRender()
     this.flushPendingStrokeFinalizations()
-    this.stopNaturalDrying()
     forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight)
     // Clear savedWet — dried paint is permanent, won't be lifted by future physics
     this.savedWet.r.fill(0)
@@ -1396,45 +1378,10 @@ export class EfxPaintEngine {
     this.fluid.p.fill(0); this.fluid.div.fill(0)
   }
 
-  /** Start gradual natural drying (research: evaporation over time) */
-  private startNaturalDrying(): void {
-    if (this.dryingInterval) return // already drying
-    this.requestRender()
-    this.dryingInterval = setInterval(() => {
-      // 52.1: each dryStep does a full-frame getImageData on the GPU-backed dry
-      // canvas — a synchronous IPC wait that flushes the drawing queue. While
-      // the user is painting or just lifted the pen, that queue still holds
-      // the last stroke's commands, so the 10fps readback parks the main
-      // thread for hundreds of ms and starves the next stroke's input (the
-      // 2nd-stroke freeze). Drying is cosmetic (seconds-scale evaporation):
-      // skip ticks until the gesture has been quiet for the idle window.
-      if (this.state.drawing) return
-      const lastInteractionTime = Math.max(this.lastPointerInputTime, this.lastStrokeHandoffTime)
-      if (performance.now() - lastInteractionTime < DRYING_QUIET_MS) return
-      // Check if there's still wet paint
-      let hasWet = false
-      for (let i = 0; i < this.size; i += 64) {
-        if (this.wet.alpha[i] > 1) { hasWet = true; break }
-      }
-      if (!hasWet) {
-        this.stopNaturalDrying()
-        return
-      }
-      dryStep(this.wet, this.drying, this.dualCanvas.dryCtx,
-        this.width, this.height, this.state.drySpeed, this.paperHeight, undefined, this.lastStrokeBounds)
-      // Each drying step changes the visible wet — re-composite the display.
-      this.displayCompositeDirty = true
-      this.requestRender()
-    }, 100) // 10fps drying
-  }
-
-  /** Stop natural drying timer */
-  private stopNaturalDrying(): void {
-    if (this.dryingInterval) {
-      clearInterval(this.dryingInterval)
-      this.dryingInterval = null
-    }
-  }
+  // 260930-wm6 — the post-stroke cooking window (natural-drying timer,
+  // its quiet-period constant, its interval field) is deleted. The
+  // stroke freezes on what the solver produced at lift; every existing
+  // flush point persists wet through the one look law.
 
   /** Undo last accepted stroke without forcing deferred work to finalize first. */
   undo(): boolean {
@@ -1564,7 +1511,6 @@ export class EfxPaintEngine {
     this.strokeFinalizationGeneration++
     this.activeStrokeFinalization = null
     this.activeMutationId = null
-    this.stopNaturalDrying()
     this.allActions = []
     this.undoStack = []
     this.redoStack = []
@@ -1626,7 +1572,6 @@ export class EfxPaintEngine {
       // the prime suspect for a constant-rate JS heap leak.
       loopActive: this.rafId !== 0 ? 1 : 0,
       physicsRunning: this.state.physicsRunning ? 1 : 0,
-      dryingActive: this.dryingInterval !== null ? 1 : 0,
       strokes: this.getStrokes().length,
     }
   }
@@ -1644,7 +1589,6 @@ export class EfxPaintEngine {
     if (this.rafId) cancelAnimationFrame(this.rafId)
     // Clear intervals
     this.strokeFinalizationScheduled = false
-    this.stopNaturalDrying()
     if (this.physicsInterval !== null) {
       clearInterval(this.physicsInterval)
       this.physicsInterval = null
@@ -1890,7 +1834,7 @@ export class EfxPaintEngine {
     for (const { stroke: a, pointCount } of strokeData) {
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
       const completeStroke = pointCount >= a.points.length
-      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
+      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
       if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
@@ -2011,7 +1955,6 @@ export class EfxPaintEngine {
     // the user is away. A long-idle session must not keep the WKWebView
     // compositor busy (the sustained-load black window).
     if (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization !== null) return true
-    if (this.dryingInterval) return true
     if (performance.now() - this.lastRenderActivityTime >= RENDER_IDLE_MS) return false
     if (this.previewStroke !== null) return true
     if (this.getQueuedStrokePreviews().length > 0) return true
@@ -2615,7 +2558,6 @@ export class EfxPaintEngine {
     const applyStartedAt = this.performanceListener ? performance.now() : 0
     if (pending.tool !== 'paint' || !pending.color) {
       this.applyStrokeToEngine(pending.tool, pending.points, pending.color, pending.opts, {
-        startNaturalDrying: true,
         hasPenInput: pending.hasPenInput,
         physicsMode: pending.physicsMode,
         mutationId: pending.mutationId,
@@ -2772,7 +2714,8 @@ export class EfxPaintEngine {
     }
 
     if (active.phase === 'fluid' && active.fluid?.step()) {
-      this.startNaturalDrying()
+      // 260930-wm6 — no natural-drying timer starts here: the finalization
+      // simply finishes. Wet stays live until the next flush point.
       this.finishInteractivePaintFinalization(active)
       return
     }
@@ -2851,7 +2794,6 @@ export class EfxPaintEngine {
   }
 
   private resetReplaySurface(usePutImageData: boolean = false): void {
-    this.stopNaturalDrying()
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
     this.redrawPreviewBase()
     this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
@@ -2936,7 +2878,6 @@ export class EfxPaintEngine {
         this.dualCanvas.dryCtx.putImageData(id, rx0, ry0)
         if (observePrimitive) observePrimitive('paint-pre-stroke-local-writeback', performance.now() - writebackStartedAt)
       }
-      this.stopNaturalDrying()
       return
     }
 
@@ -2945,7 +2886,7 @@ export class EfxPaintEngine {
 
   private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, physicsMode, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
     const applyStartedAt = this.performanceListener ? performance.now() : 0
-    this.applyStrokeToEngine(tool, points, color, opts, { startNaturalDrying: true, hasPenInput, physicsMode, mutationId })
+    this.applyStrokeToEngine(tool, points, color, opts, { hasPenInput, physicsMode, mutationId })
     this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId })
     this.recordPerformance('stroke-finalization', 'sync-cpu', finalizationStartedAt, { mutationId })
     this.notifyCompletedMutation(tool, mutationId)
@@ -3063,10 +3004,9 @@ export class EfxPaintEngine {
         this.beginBakeParityTransfer(points, opts)
         forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(points, opts))
         this.endBakeParityTransfer()
-      } else if (options.startNaturalDrying) {
-        // Start natural drying timer (research: paint dries over time via evaporation)
-        this.startNaturalDrying()
       }
+      // 260930-wm6 — local mode previously started the natural-drying
+      // timer here; the cooking window is deleted, no replacement timer.
     } else if (tool === 'erase') {
       applyEraseStroke(
         points, renderOpts,
@@ -3327,7 +3267,7 @@ export class EfxPaintEngine {
 
     for (let i = 0; i < replayCount; i++) {
       const a = this.allActions[i]
-      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { startNaturalDrying: false, hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
+      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
@@ -3353,7 +3293,7 @@ export class EfxPaintEngine {
       this.fluid, this.fluidConfig,
       this.blowDX, this.blowDY,
       this.width, this.height,
-      this.state.physicsStrength, this.state.drySpeed,
+      this.state.physicsStrength, 100, // fixed LUT advance (260930-wm6: same literal as the live tick)
       physicsMode, this.lastStrokeBounds,
       frame, sampleHFn, this.paperHeight,
     )
