@@ -1,0 +1,66 @@
+{
+  "quick_id": "260929-t2o",
+  "gate": "RED",
+  "command": "cd packages/efx-physic-paint && ../../app/node_modules/.bin/vitest run src/brush/paint.bristleSeed.test.ts",
+  "exit_code": 1,
+  "tests_total": 26,
+  "tests_failed": 10,
+  "tests_passed": 16,
+  "failure_class": "AssertionError only (0 ReferenceError / TypeError / SyntaxError) — fails on assertions against the current raster, not on crashes or zero-test discovery",
+  "target_pins": [
+    {
+      "pin": "capsule-sweep coverage (R7 amended)",
+      "assertion": "radius 16 tier final capsule subpath count = curve.length - 1: expected 1 to be 80",
+      "reads": "one whole-fibre outline = one subpath; capsule contract wants one convex capsule per short step"
+    },
+    {
+      "pin": "no-parcellaire curl (R7 amended)",
+      "assertion": "curl subpath 0 must be convex — non-convex means the whole-fibre outline self-intersects (parcellaire: winding cancellation, holes/hollow tube): expected false to be true",
+      "reads": "the measured 260929-m2z FAIL condition reproduced at base: w/2 >= rho self-intersection"
+    },
+    {
+      "pin": "continuous field, no family switch (R7)",
+      "assertion": "radius 40 p 0.15: block count = shared lane layout, never a family switch: expected 1 to be 379",
+      "reads": "thin family draws 1-3 where the dissolved field must draw the full layout"
+    },
+    {
+      "pin": "tSpan endTaper at true stroke ends (R7 amended)",
+      "assertion": "expected 0.3 to be close to 0.9724548038900482 (the interior scale at global t = 0.4)",
+      "reads": "no fifth parameter exists yet — the slice end dips to the 0.3 endTaper floor"
+    },
+    {
+      "pin": "rim-width >= 1 px (R7(a))",
+      "assertion": "rim fibres must READ — never sub-pixel: expected 0.5 to be greater than or equal to 1",
+      "reads": "RIM_WIDTH_MIN = 0.5 at base"
+    },
+    {
+      "pin": "clamp-surviving W(t) (R7(a))",
+      "assertion": "some body block must contain a width write strictly below the 2 px clamp — W(t) variation must survive the clamp: expected false to be true",
+      "reads": "every body width clamps to exactly 2 at p = 1 (raw min = 1.7 x 1.5 x 0.8 = 2.04 > 2)"
+    }
+  ],
+  "law_pins_red_via_extraction": [
+    {
+      "pin": "Poisson placement (D-13)",
+      "assertion": "expected 0.002574999999999994 to be greater than or equal to 0.0037037037037037034",
+      "note": "RED via the capsule-subpath extraction rewrite (shared parser point of failure) — bounds unchanged"
+    },
+    {
+      "pin": "PIN 0 composite saturation by overlap",
+      "assertion": "k_body at radius 16: expected 3 to be greater than or equal to 4",
+      "note": "RED via extraction; bound 0.99 / k_body 4 unchanged"
+    },
+    {
+      "pin": "R7b continuity / no-dash",
+      "assertion": "p=0.15: block count = layout: expected 1 to be 304",
+      "note": "continuity pin rewritten to the dissolved field — RED on the family switch"
+    },
+    {
+      "pin": "radius-3 full field",
+      "assertion": "expected 1 to be 40",
+      "note": "radius-3 family pin rewritten to full-field — RED on the family switch"
+    }
+  ],
+  "bounds_moved": "none",
+  "production_files_edited": "none"
+}
