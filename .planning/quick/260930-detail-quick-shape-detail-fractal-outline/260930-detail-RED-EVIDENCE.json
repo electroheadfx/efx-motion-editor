@@ -1,0 +1,29 @@
+{
+  "quick": "260930-detail",
+  "plan": "shape-detail (R10 fractal brush-shape noise)",
+  "date": "2026-09-30",
+  "command": "vitest run src/brush/shapeDetail.test.ts",
+  "tests": 10,
+  "failed": 7,
+  "passed": 3,
+  "crashes": 0,
+  "failure_kind": "AssertionError only (0 crashes, 0 TypeErrors)",
+  "target_pins": [
+    { "pin": "gauss-draws-from-rng", "assertion": "expected 0 to be 2 (rng draws per gauss call)" },
+    { "pin": "seededRng-on-traceSeed", "assertion": "expected 'undefined' to be 'function'" },
+    { "pin": "deform-wired-into-footprint", "assertion": "expected 0 to be 1 (deformSampleSides( in paint.ts)" },
+    { "pin": "variance-scales-amplitude", "assertion": "expected logs not to equal (variance 20 run identical to variance 0 — variance is still bounds padding only)" },
+    { "pin": "velocity-scales-amplitude", "assertion": "expected logs not to equal (spd 300 run identical to spd 0)" },
+    { "pin": "deform-draws-seeded", "assertion": "expected 0 to be 1 (seededRng( in paint.ts)" },
+    { "pin": "default-50", "assertion": "expected engine source to contain 'edgeDetail: 50' (it is 4)" }
+  ],
+  "passed_at_base": [
+    "look-continuity-presence (law — no if (variance gate exists; variance-0 extent on the ribbon)",
+    "held-pose-byte-identical (law — seeded lane layout + gauge already deterministic)",
+    "unseeded-deform-absent (law — zero Math.random() calls in paint/erase/stroke)"
+  ],
+  "bounds_moved": "none",
+  "production_files_edited": "none",
+  "battery_files_edited": "none",
+  "stop_rule": "not triggered"
+}
