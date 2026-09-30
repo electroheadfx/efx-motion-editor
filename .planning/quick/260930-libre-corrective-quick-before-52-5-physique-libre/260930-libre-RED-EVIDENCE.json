@@ -1,0 +1,59 @@
+{
+  "phase": "quick-260930-libre",
+  "plan": "260930-libre",
+  "gate": "RED",
+  "date": "2026-09-30",
+  "command": "vitest run src/core/wet-layer.libre.test.ts",
+  "tests": 12,
+  "failed": 4,
+  "passed": 8,
+  "crashes": 0,
+  "failure_kind": "AssertionError only",
+  "target_pins_red": [
+    {
+      "pin": "helpers-deleted",
+      "assertion": "expected 'function' to be 'undefined' (snapshotWetAlpha / projectWetIntoEnvelope / stampRibbonIntoEnvelope still exported from wet-layer.ts)"
+    },
+    {
+      "pin": "engine-zero-mask",
+      "assertion": "expected 3 to be +0 (snapshotWetAlpha still referenced in EfxPaintEngine.ts, imports included)"
+    },
+    {
+      "pin": "envelope-gone",
+      "assertion": "expected 13 to be +0 (envelope state/local/comments still present in EfxPaintEngine.ts)"
+    },
+    {
+      "pin": "room-lever-2x",
+      "assertion": "expected 0.363 to be close to 0.5 (g(sc) = sc at base — not the 2x-thinner form)"
+    }
+  ],
+  "passed_at_base": [
+    "feather-empty-pixels (law)",
+    "boundary-aa (law)",
+    "deposit-is-reduced-clone (law — size: depositR x2 already landed in 260930-espace)",
+    "engine-room-lever (law — depositRoom( x2 already landed in 260930-espace)",
+    "solver-wired (law)",
+    "ticks-unchanged (law)",
+    "margin-formula (law)",
+    "feather-wired (law)"
+  ],
+  "deleted_pins": [
+    "projectWetIntoEnvelope exported",
+    "renormalized",
+    "identity",
+    "never-clip-to-deposit",
+    "clip-past-ribbon",
+    "existing-mass-kept",
+    "stampRibbonIntoEnvelope exported",
+    "stamp-marks-ribbon",
+    "stamp-preserves-outside",
+    "engine-stamped",
+    "engine-wired",
+    "snapshot-before",
+    "stamp-before"
+  ],
+  "deleted_test_file": "src/core/wet-layer.envelope.test.ts (masking pins retired with the masking helpers)",
+  "bounds_moved": "none",
+  "production_files_edited": "none",
+  "stop_rule": "not triggered"
+}
