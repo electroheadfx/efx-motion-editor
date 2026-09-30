@@ -1,0 +1,70 @@
+{
+  "quick": "260930-continuity",
+  "plan": "spread-continuity (R9 solver-tick floor)",
+  "date": "2026-09-30",
+  "command": "vitest run src/core/spreadScale.ticks.test.ts src/core/wet-layer.libre.test.ts",
+  "tests": 18,
+  "failed": 7,
+  "passed": 11,
+  "crashes": 0,
+  "failure_kind": "AssertionError only (0 crashes, 0 TypeErrors — every target pin fails on its first typeof/count assertion)",
+  "target_pins": [
+    {
+      "pin": "tick-floor-lever",
+      "file": "spreadScale.ticks.test.ts",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "chalk-floor",
+      "file": "spreadScale.ticks.test.ts",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "approved-range-identical",
+      "file": "spreadScale.ticks.test.ts",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "never-reduces",
+      "file": "spreadScale.ticks.test.ts",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "floor-band",
+      "file": "spreadScale.ticks.test.ts",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "monotone",
+      "file": "spreadScale.ticks.test.ts",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "ticks-law-wired",
+      "file": "wet-layer.libre.test.ts",
+      "assertion": "expected +0 to be 2 (physicsTicks( count at the engine)"
+    }
+  ],
+  "passed_at_base": [
+    "feather-empty-pixels (law)",
+    "boundary-aa (law)",
+    "helpers-deleted (260930-libre)",
+    "engine-zero-mask (260930-libre)",
+    "envelope-gone (260930-libre)",
+    "room-lever-2x (260930-libre)",
+    "deposit-is-reduced-clone (law)",
+    "engine-room-lever (law)",
+    "solver-wired (law)",
+    "margin-formula (law)",
+    "feather-wired (law)"
+  ],
+  "reworked_pin": {
+    "from": "ticks-unchanged (ceil(spreadCurve * 10) x2 — 3 at 60, 4 at 65, 1 at 50)",
+    "to": "ticks-law-wired (physicsTicks( x2; Math.ceil(spreadCurve * 10) x0)",
+    "reason": "R9 moves the tick law into spreadScale.physicsTicks; the '1 at 50' assertion documented the chalk defect and is superseded"
+  },
+  "bounds_moved": "none",
+  "production_files_edited": "none",
+  "battery_files_edited": "none",
+  "stop_rule": "not triggered"
+}

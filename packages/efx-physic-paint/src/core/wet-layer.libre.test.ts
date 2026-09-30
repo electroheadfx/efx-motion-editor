@@ -17,8 +17,10 @@
 //       ("2x thinner", à estimer), g never exceeds 0.5;
 //   (3) featherWetEdges stays boundary-AA only (the solver
 //       supplies the organic edge);
-//   (4) solver ticks / margin arithmetic stay byte-unchanged
-//       (#144 organic look — never reduced to hold a width).
+//   (4) margin arithmetic stays byte-unchanged; the solver tick law
+//       moved to spreadScale.physicsTicks (R9 2026-09-30d: tick floor
+//       3 — a look lever scales amplitude, never presence; the count
+//       is never reduced to hold a width).
 // ============================================================
 
 import { describe, it, expect } from 'vitest'
@@ -178,11 +180,9 @@ describe('free physics (R8 revised — reduced clone, no masking, 260930-libre)'
 
   // --- kept law: the #144 organic look (ticks / margin / feather) ---
 
-  it('ticks-unchanged: ceil(spreadCurve * 10) x2 — 3 at 60, 4 at 65, 1 at 50', () => {
-    expect(countOcc(engineSrc, 'Math.ceil(spreadCurve * 10)')).toBe(2)
-    expect(Math.max(1, Math.ceil(spreadCurveFor(60) * 10))).toBe(3)
-    expect(Math.max(1, Math.ceil(spreadCurveFor(65) * 10))).toBe(4)
-    expect(Math.max(1, Math.ceil(spreadCurveFor(50) * 10))).toBe(1)
+  it('ticks-law-wired: physicsTicks( x2 at the engine — the tick law lives in spreadScale (R9, one lever, one place)', () => {
+    expect(countOcc(engineSrc, 'physicsTicks(')).toBe(2)
+    expect(countOcc(engineSrc, 'Math.ceil(spreadCurve * 10)')).toBe(0)
   })
 
   it('margin-formula: compute-window expression byte-unchanged x2', () => {
