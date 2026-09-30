@@ -1,14 +1,16 @@
 // ============================================================
-//  260930-q6t Addendum B (B1) — forceDryAll bbox-loss proof
+//  260930-wm6 re-pin — forceDryAll bbox-loss proof under the
+//  ONE LOOK LAW
 //
-//  Task 1 refuted the /800-vs-Beer-Lambert premise (dry transfer
-//  is denser than display on 44/54 samples, never lighter — a
-//  transfer that only increases alpha cannot lighten anything).
-//  The prime suspect is now LOST MASS: physics-drifted wet sitting
-//  OUTSIDE `dryRegionForStroke` is never touched by the bbox-
-//  clamped forceDryAll (core/drying.ts:197-240 loops only bx0..bx1
-//  / by0..by1), so it stays wet until the engine clears on
-//  leave/close and is then destroyed.
+//  Transfer alpha = wetDisplayAlpha(alpha, pixelOpacity,
+//  sampleH(...)) / 255 — the display law is the ONLY transfer
+//  law (no /800, no carve). The bbox-loss mechanism proof is
+//  unchanged; only the expected bytes moved to the new law.
+//
+//  Physics-drifted wet sitting OUTSIDE `dryRegionForStroke` is
+//  never touched by the bbox-clamped forceDryAll (core/drying.ts
+//  loops only bx0..bx1 / by0..by1), so it stays wet until the
+//  engine clears on leave/close and is then destroyed.
 //
 //  This file is the deterministic mechanism proof:
 //    (i)   wet mass INSIDE bounds transfers to dry
@@ -17,20 +19,21 @@
 //    (iii) dry's gained alpha equals EXACTLY the inside-bbox
 //          transferred alpha — the outside mass is unaccounted for
 //
-//  Seeded grid (W=20 x H=10):
-//    inside  (cols 6..9, rows 3..6): 16 px @ alpha 400, op 1
-//      -> per-px transfer round(min(1,400/800)*1*255) = 128
-//      -> dry gained total 16 * 128 = 2048
-//    drift   (cols 10..11, rows 3..6): 8 px @ alpha 700, op 1
+//  Seeded grid (W=20 x H=10), op 1 = display fast path (paper
+//  ignored; the forceDryAll call passes paper = null):
+//    inside  (cols 6..9, rows 3..6): 16 px @ alpha 400
+//      -> per-px transfer round(wetDisplayAlpha(400, 1, ·)) = 40
+//      -> dry gained total 16 * 40 = 640
+//    drift   (cols 10..11, rows 3..6): 8 px @ alpha 700
 //      -> stranded wet 8 * 700 = 5600 alpha units
 //      -> would-be transfer if bbox were full-frame:
-//         8 * round(700/800*255) = 8 * 223 = 1784
+//         8 * round(wetDisplayAlpha(700, 1, ·)) = 8 * 70 = 560
 //    wet total before = 16*400 + 8*700 = 12000 (outside = 46.67%)
 //
-//  Second block (instrumentation commit): the paper-gap pure helper
-//  bakeParityPaperMods is unit-checked AGAINST compositor.ts's
-//  paperMod through wetDisplayAlpha — compositor is imported and
-//  read, NEVER edited.
+//  Second block: the paper-gap pure helper bakeParityPaperMods is
+//  unit-checked AGAINST compositor.ts's paper response through
+//  wetDisplayAlpha — compositor is imported and read, NEVER
+//  edited.
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
@@ -58,11 +61,13 @@ const INSIDE_ALPHA = 400
 const OUTSIDE_ALPHA = 700
 const OPACITY = 1
 
-// /800 law for the seeded alphas (characterized by drying.parity.test.ts pin A).
-const EXPECTED_INSIDE_TRANSFER = Math.round(Math.min(1, INSIDE_ALPHA / 800) * OPACITY * 255) // 128
-const EXPECTED_DRY_GAIN = INSIDE_PX * EXPECTED_INSIDE_TRANSFER // 2048
+// One look law for the seeded alphas — fast path (op 1) ignores paper,
+// so the sampleH(null) baseline 0.5 is irrelevant to the byte:
+//   round(wetDisplayAlpha(400, 1, 0.5)) = 40, round(wetDisplayAlpha(700, 1, 0.5)) = 70
+const EXPECTED_INSIDE_TRANSFER = Math.round(wetDisplayAlpha(INSIDE_ALPHA, OPACITY, 0.5)) // 40
+const EXPECTED_DRY_GAIN = INSIDE_PX * EXPECTED_INSIDE_TRANSFER // 640
 const EXPECTED_WOULD_BE_OUTSIDE_TRANSFER =
-  OUTSIDE_PX * Math.round(Math.min(1, OUTSIDE_ALPHA / 800) * OPACITY * 255) // 1784
+  OUTSIDE_PX * Math.round(wetDisplayAlpha(OUTSIDE_ALPHA, OPACITY, 0.5)) // 560
 
 const WET_TOTAL_ALPHA = INSIDE_PX * INSIDE_ALPHA + OUTSIDE_PX * OUTSIDE_ALPHA // 12000
 const WET_OUTSIDE_ALPHA = OUTSIDE_PX * OUTSIDE_ALPHA // 5600
@@ -147,12 +152,18 @@ interface RunResult {
   dry: Uint8ClampedArray
 }
 
-/** One forceDryAll run over the seeded buffers with the narrow bounds. */
+/**
+ * One forceDryAll run over the seeded buffers with the narrow bounds.
+ * Call form is the GREEN A signature: paperHeight (null — op 1 is the
+ * fast path so paper cannot matter), observePrimitive, stagePrefix,
+ * bounds. RED runs this against the pre-GREEN signature where the extra
+ * args land in the old slots — the assertions below are the RED gate.
+ */
 function runForceDryAll(): RunResult {
   const wet = makeWet()
   const dry = new Uint8ClampedArray(SIZE * 4)
   const ctx = makeDryCtx(dry)
-  forceDryAll(wet, makeSaved(), makeDrying(), ctx, W, H, undefined, 'bbox-loss', { ...BOUNDS })
+  forceDryAll(wet, makeSaved(), makeDrying(), ctx, W, H, null, undefined, 'bbox-loss', { ...BOUNDS })
   return { wet, dry }
 }
 
@@ -161,14 +172,14 @@ function dryAlphaAt(dry: Uint8ClampedArray, x: number, y: number): number {
 }
 
 describe('260930-q6t Addendum B — forceDryAll drops wet mass outside its bounds', () => {
-  it('(i) inside-bounds wet transfers to dry: every inside px lands at exactly 128 and its wet alpha is zeroed', () => {
+  it('(i) inside-bounds wet transfers to dry: every inside px lands at exactly 40 (one look law) and its wet alpha is zeroed', () => {
     const { wet, dry } = runForceDryAll()
     for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++) {
       for (let x = BOUNDS.x0; x <= BOUNDS.x1; x++) {
         const i = y * W + x
         expect(
           dryAlphaAt(dry, x, y),
-          `inside px (${x},${y}): dry alpha ${dryAlphaAt(dry, x, y)}, /800 law expects ${EXPECTED_INSIDE_TRANSFER}`,
+          `inside px (${x},${y}): dry alpha ${dryAlphaAt(dry, x, y)}, one look law expects ${EXPECTED_INSIDE_TRANSFER}`,
         ).toBe(EXPECTED_INSIDE_TRANSFER)
         expect(wet.alpha[i], `inside px (${x},${y}): wet alpha must be zeroed after transfer`).toBe(0)
         expect(wet.strokeOpacity[i], `inside px (${x},${y}): strokeOpacity must be zeroed`).toBe(0)
@@ -222,16 +233,18 @@ describe('260930-q6t Addendum B — forceDryAll drops wet mass outside its bound
       return sum
     })()
 
-    // Exact numbers recorded for 260930-q6t-MEASURE-EVIDENCE.json:
-    //   inside transferred per px = 128, dry gained total = 2048
+    // Exact one-look-law numbers for the seeded grid:
+    //   inside transferred per px = 40, dry gained total = 640
     //   wet total before = 12000, wet outside = 5600 (46.67%)
-    //   would-be outside transfer (full-frame bbox) = 1784
+    //   would-be outside transfer (full-frame bbox) = 560
     expect(dryTotal, `dry gained ${dryTotal} alpha units, expected ${EXPECTED_DRY_GAIN}`).toBe(EXPECTED_DRY_GAIN)
     expect(dryOutside, `dry outside-bbox gained ${dryOutside}, expected 0 (outside mass unaccounted)`).toBe(0)
     expect(WET_TOTAL_ALPHA).toBe(12000)
     expect(WET_OUTSIDE_ALPHA).toBe(5600)
-    expect(EXPECTED_DRY_GAIN).toBe(2048)
-    expect(EXPECTED_WOULD_BE_OUTSIDE_TRANSFER).toBe(1784)
+    // Literal pins — the law's constants, independent of the derivation.
+    expect(EXPECTED_INSIDE_TRANSFER).toBe(40)
+    expect(EXPECTED_DRY_GAIN).toBe(640)
+    expect(EXPECTED_WOULD_BE_OUTSIDE_TRANSFER).toBe(560)
     expect(WET_OUTSIDE_ALPHA / WET_TOTAL_ALPHA).toBeCloseTo(5600 / 12000, 10)
   })
 })
@@ -241,7 +254,7 @@ describe('260930-q6t Addendum B — forceDryAll drops wet mass outside its bound
 // wetDisplayAlpha (compositor is imported and read, never edited).
 // ---------------------------------------------------------------------------
 
-describe('260930-q6t Addendum B — bakeParityPaperMods vs the display/transfer paper laws', () => {
+describe('260930-wm6 — bakeParityPaperMods under the one look law', () => {
   const SLOW_OPS = [0.4, 0.85]
   const PH_SAMPLES = [0, 0.3, 0.5, 0.7, 1]
   const ALPHA_SAMPLES = [40, 120, 300, 800, 1500]
@@ -274,18 +287,38 @@ describe('260930-q6t Addendum B — bakeParityPaperMods vs the display/transfer 
     }
   })
 
-  it('transfer mod follows clamp(1.4 - ph*0.8, 0.3, 1.4) (drying.ts:132-135); forceDryAll mod is 1 everywhere', () => {
-    // toBeCloseTo: the literals are the law, the last bits are float noise
-    // (e.g. 1.4 - 0.4 === 0.9999999999999999).
-    expect(bakeParityPaperMods(300, 1, 0, 0).transfer).toBeCloseTo(1.4, 10)
-    expect(bakeParityPaperMods(300, 1, 0.5, 0.5).transfer).toBeCloseTo(1.0, 10)
-    expect(bakeParityPaperMods(300, 1, 1, 1).transfer).toBeCloseTo(0.6, 10)
-    expect(bakeParityPaperMods(300, 1, 1, 2).transfer).toBeCloseTo(0.3, 10) // clamp floor
-    // No paper map -> dryStep's `if (paperHeight)` branch is skipped -> 1.
-    expect(bakeParityPaperMods(300, 1, 0.5, null).transfer).toBe(1)
+  it('transfer mod IS the display law paper response — no carve (RED at base); forceDryAll parity mod stays 1', () => {
+    // One look law: dryStep's paper response is wetDisplayAlpha's paper
+    // response, byte-identical to display. toBeCloseTo: the ratio and the
+    // direct paperMod form differ only in float noise.
+    for (const alpha of ALPHA_SAMPLES) {
+      for (const op of SLOW_OPS) {
+        const base = wetDisplayAlpha(alpha, op, 0)
+        expect(base, `slow-path base must be > 0 for alpha=${alpha} op=${op}`).toBeGreaterThan(0)
+        for (const ph of PH_SAMPLES) {
+          const expected = wetDisplayAlpha(alpha, op, ph) / base
+          const helper = bakeParityPaperMods(alpha, op, ph, ph)
+          expect(
+            helper.transfer,
+            `alpha=${alpha} op=${op} ph=${ph}: transfer mod ${helper.transfer}, display-law response ${expected}`,
+          ).toBeCloseTo(expected, 10)
+        }
+        // No paper map: the transfer samples sampleH(null) = 0.5 — the
+        // display baseline for a missing map, not 1.
+        const noMap = wetDisplayAlpha(alpha, op, 0.5) / base
+        expect(bakeParityPaperMods(alpha, op, 0.5, null).transfer).toBeCloseTo(noMap, 10)
+      }
+    }
+
+    // Fast path (pixelOpacity >= 0.90): NO paper on the transfer either —
+    // the carve used to fire here regardless of opacity.
     for (const ph of PH_SAMPLES) {
-      const mods = bakeParityPaperMods(300, 1, ph, ph)
-      expect(mods.forceDryAll, `forceDryAll applies no paper at all (ph=${ph})`).toBe(1)
+      expect(bakeParityPaperMods(300, 1, ph, ph).transfer).toBe(1)
+      expect(bakeParityPaperMods(300, 1, ph, null).transfer).toBe(1)
+      expect(
+        bakeParityPaperMods(300, 1, ph, ph).forceDryAll,
+        `forceDryAll parity mod stays 1 (ph=${ph})`,
+      ).toBe(1)
     }
   })
 })
