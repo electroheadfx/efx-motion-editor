@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { signal } from '@preact/signals';
@@ -541,5 +542,15 @@ describe('PhysicsPaintRightPanel scroll hierarchy (260905-epb)', () => {
     expect(scrollAreaVnode).toBeDefined();
     const content = childrenOf(scrollAreaVnode).find((node) => hasClass(node, 'physics-paint-right-pane-content'));
     expect(content).toBeDefined();
+  });
+});
+
+describe('Physics Paint right panel pickup label (260930-ni6)', () => {
+  it('labels the pickup slider Blending and keeps the physics-pickup control wiring', () => {
+    const panelSrc = readFileSync(new URL('./PhysicsPaintRightPanel.tsx', import.meta.url), 'utf8');
+    // Presence of the new label proves the rename (the label prop holds exactly one value).
+    expect(panelSrc).toContain('label="Blending"');
+    // The id pin guards the control wiring — value/onChange stay on the same element.
+    expect(panelSrc).toContain('id="physics-pickup"');
   });
 });
