@@ -38,3 +38,17 @@ export const spreadCurveFor = (strength: number): number => {
  */
 export const depositRoom = (spreadCurve: number): number =>
   0.5 * Math.min(1, spreadCurve / spreadCurveFor(65))
+
+/**
+ * R9 tick floor (260930-continuity, USER DESIGN ACT 2026-09-30d): a look
+ * lever scales the AMPLITUDE of one always-on process, never its presence.
+ * `physicsTicks = max(TICK_FLOOR, ceil(spreadCurve*10))` — the floor sits at
+ * or below the approved-range values (3 at 60-61, 4 at 62-65), so spread
+ * 60-65 is byte-identical to the pre-floor law. `TICK_FLOOR = 3` is the UAT
+ * look lever (à estimer) for "below 50 reads the same look, finer, harder"
+ * instead of chalk. The count is never reduced to hold a width.
+ */
+export const TICK_FLOOR = 3
+
+export const physicsTicks = (spreadCurve: number): number =>
+  Math.max(TICK_FLOOR, Math.ceil(spreadCurve * 10))

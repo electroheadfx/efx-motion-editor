@@ -41,7 +41,7 @@ import { physicsStep } from '../core/diffusion'
 import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
 import type { LocalFluidPhysicsContinuation } from '../core/fluids'
 import { loadPaperTexture, sampleH } from '../core/paper'
-import { spreadCurveFor, depositRoom } from '../core/spreadScale'
+import { spreadCurveFor, depositRoom, physicsTicks } from '../core/spreadScale'
 import { createPaintStrokeRasterContinuation, renderPaintStroke } from '../brush/paint'
 import type { PaintStrokeRasterContinuation } from '../brush/paint'
 import { applyEraseStroke } from '../brush/erase'
@@ -2377,7 +2377,7 @@ export class EfxPaintEngine {
             x1: Math.min(this.width - 1, Math.ceil(sx1 + brushR + margin)),
             y1: Math.min(this.height - 1, Math.ceil(sy1 + brushR + margin)),
           },
-          Math.max(1, Math.ceil(spreadCurve * 10)), observePrimitive,
+          physicsTicks(spreadCurve), observePrimitive,
         )
         active.phase = 'fluid'
         return
@@ -2662,7 +2662,7 @@ export class EfxPaintEngine {
         const by1 = Math.min(this.height - 1, Math.ceil(sy1 + brushR + margin))
 
         const localBounds = { x0: bx0, y0: by0, x1: bx1, y1: by1 }
-        const ticks = Math.max(1, Math.ceil(spreadCurve * 10))
+        const ticks = physicsTicks(spreadCurve)
         const localPhysicsStartedAt = observePrimitive ? performance.now() : 0
         localFluidPhysicsStep(
           this.wet, this.fluidConfig,
