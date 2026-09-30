@@ -607,7 +607,7 @@ export class EfxPaintEngine {
         pressure: 70,
         waterAmount: 50,
         dryAmount: 30,
-        edgeDetail: 50,
+        edgeDetail: 20,
         pickup: 0,
         eraseStrength: 50,
         antiAlias: 0,

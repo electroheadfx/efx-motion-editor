@@ -29,7 +29,7 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
     background: 'canvas1',
     grainStrength: 0.45,
     grainScale: 1,
-    edgeDetail: 50,
+    edgeDetail: 20,
     pickup: 0,
     eraseStrength: 50,
     smoothing: 0,
