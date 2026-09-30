@@ -126,10 +126,12 @@ export function dryStep(
     const pixelOpacity = wet.strokeOpacity ? wet.strokeOpacity[i] : 1.0
     let sa = (drain / 800) * pixelOpacity
 
-    // Paper texture modulation — continuous multiplicative, applies at
-    // EVERY opacity (260928-dh1: the old full-opacity bypass was a
-    // per-pixel on/off discontinuity at 0.99).
-    if (paperHeight) {
+    // Paper texture modulation — skip at full opacity for solid coverage
+    // (260930-q6t PROBE: restored main's exact line. 260928-dh1 had widened
+    // this to every opacity, which carved a 0.6x hole in solid paint's dry
+    // transfer at full paper while the display fast path (pixelOpacity >= 0.90)
+    // applied no paper at all — the wet overlay hid it until leave/close.)
+    if (paperHeight && pixelOpacity < 0.99) {
       const ph = paperHeight[i]
       sa *= clamp(1.4 - ph * 0.8, 0.3, 1.4)
     }
