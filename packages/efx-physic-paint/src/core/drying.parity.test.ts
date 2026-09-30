@@ -1,21 +1,28 @@
 // ============================================================
-//  260930-q6t Task 1 (RED) — bake parity: display law vs dry law
+//  260930-wm6 Task 1 (RED) — the one look law, byte-for-byte
 //
-//  The wet display overlay renders through the Beer-Lambert
-//  wetDisplayAlpha (render/compositor.ts:29-43) while the dry
-//  transfer runs the linear /800 model (core/drying.ts:95/:127/:216,
-//  forceDryAll without paper modulation). This file pins BOTH
-//  current laws in pixels over one sample grid:
+//  THE ONE LOOK LAW (non-negotiable): at every wet-to-dry transfer
+//  the transfer alpha must be exactly
+//      wetDisplayAlpha(alpha, pixelOpacity,
+//                      sampleH(paperHeight, x, y, w, h)) / 255
+//  from render/compositor.ts (fast path included). No /800, no
+//  separate paper carve, no third law. WYSIWYG by construction.
 //
-//    pin A (green at base) — forceDryAll transfers exactly
-//      round(min(1, alpha/800) * pixelOpacity * 255)
+//  This file pins BOTH sides over one sample grid:
+//
 //    pin B (green at base) — compositeWetLayer displays exactly
-//      round(wetDisplayAlpha(alpha, pixelOpacity, paperHeight))
-//    pin C (green at base) — the per-sample display-vs-dry alpha
-//      delta clears the recorded floor, with direction recorded
-//    parity target (RED at base) — forceDryAll's transferred alpha
-//      equals the display alpha within 1 unit for EVERY sample:
-//      "what you see is what persists" at leave/close
+//      round(wetDisplayAlpha(alpha, pixelOpacity, paperHeight)):
+//      the display law is pinned as-is.
+//    one-look-law target (RED at base) — forceDryAll's transferred
+//      dry byte over an empty dry base equals the compositeWetLayer
+//      display byte EXACTLY for every sample. Fails at base because
+//      forceDryAll transfers through the linear /800 model and has
+//      no paper input at all.
+//
+//  The old /800 characterization pin and the old divergence-floor
+//  pin are DELETED — they pinned the dying law and would be a
+//  second competing parity target. Parity is the ONLY parity target
+//  in the suite.
 //
 //  Sample grid: alpha {40,120,300,800,1500,2600} x pixelOpacity
 //  {0.4, 0.85, 1.0} x paperHeight {0, 0.5, 1.0} = 54 samples.
@@ -112,7 +119,14 @@ function displayAlphas(): number[] {
   })
 }
 
-/** Dry-side bytes: what forceDryAll writes over an empty dry buffer. */
+/**
+ * Dry-side bytes: what forceDryAll writes over an empty dry buffer.
+ *
+ * Task 1 calls the CURRENT signature (no paper argument yet) so the
+ * RED is an assertion failure on real pixels, not a crash. The paper
+ * argument joins the call form in Task 2's RED sub-step when the
+ * signature gains the parameter.
+ */
 function dryAlphas(): number[] {
   const wet = makeWet()
   const data = new Uint8ClampedArray(W * H * 4)
@@ -125,19 +139,8 @@ function dryAlphas(): number[] {
   return SAMPLES.map((s) => data[s.index * 4 + 3])
 }
 
-describe('260930-q6t bake parity — display law vs dry transfer law', () => {
-  it('pin A: forceDryAll currently transfers via the /800 law (characterization, green at base)', () => {
-    const dry = dryAlphas()
-    for (const s of SAMPLES) {
-      const expected = Math.round(Math.min(1, s.alpha / 800) * s.pixelOpacity * 255)
-      expect(
-        dry[s.index],
-        `alpha=${s.alpha} op=${s.pixelOpacity}: forceDryAll transferred ${dry[s.index]}, /800 law expects ${expected}`,
-      ).toBe(expected)
-    }
-  })
-
-  it('pin B: compositeWetLayer currently displays via wetDisplayAlpha (characterization, green at base)', () => {
+describe('260930-wm6 one look law — display law vs dry transfer law', () => {
+  it('pin B: compositeWetLayer displays exactly wetDisplayAlpha(alpha, op, ph) (green at base)', () => {
     const display = displayAlphas()
     for (const s of SAMPLES) {
       const expected = Math.round(wetDisplayAlpha(s.alpha, s.pixelOpacity, s.paperHeight))
@@ -148,39 +151,17 @@ describe('260930-q6t bake parity — display law vs dry transfer law', () => {
     }
   })
 
-  it('pin C: display-vs-dry alpha delta clears the recorded floor, direction recorded (green at base)', () => {
+  it('one-look-law target: forceDryAll transferred byte equals the display byte EXACTLY for every sample (RED at base)', () => {
     const display = displayAlphas()
     const dry = dryAlphas()
-    const deltas = SAMPLES.map((s) => display[s.index] - dry[s.index])
-    const maxAbs = Math.max(...deltas.map((d) => Math.abs(d)))
-    const dryDenser = deltas.filter((d) => d < 0).length
-    const overOneUnit = deltas.filter((d) => Math.abs(d) > 1).length
-
-    // Floors asserted FROM the measured values at base (see RED-EVIDENCE.json
-    // for the per-sample table): max |delta| = 175, dry-denser in 47/54,
-    // |delta| > 1 in 44/54.
-    expect(maxAbs, `max |display-dry| delta was ${maxAbs}, floor 150`).toBeGreaterThanOrEqual(150)
-    expect(dryDenser, `dry-denser samples ${dryDenser}/54, floor 40`).toBeGreaterThanOrEqual(40)
-    expect(overOneUnit, `samples over 1 alpha unit ${overOneUnit}/54, floor 30`).toBeGreaterThanOrEqual(30)
-  })
-
-  it('parity target: forceDryAll transferred alpha equals display alpha within 1 unit for every sample (RED at base)', () => {
-    const display = displayAlphas()
-    const dry = dryAlphas()
-    const mismatches: string[] = []
     for (const s of SAMPLES) {
       const d = display[s.index]
       const r = dry[s.index]
-      if (Math.abs(d - r) > 1) {
-        mismatches.push(
-          `alpha=${s.alpha} op=${s.pixelOpacity} ph=${s.paperHeight}: display=${d} dry=${r} delta=${d - r}`,
-        )
-      }
+      expect(
+        r,
+        `alpha=${s.alpha} op=${s.pixelOpacity} ph=${s.paperHeight}: forceDryAll transferred byte ${r}, ` +
+          `display byte ${d} — the one look law (wetDisplayAlpha) must be the ONLY transfer law`,
+      ).toBe(d)
     }
-    expect(
-      mismatches,
-      `bake parity broken at base: ${mismatches.length}/54 samples differ by more than 1 alpha unit ` +
-        `(dry transfer and display disagree) — first mismatches: ${mismatches.slice(0, 5).join('; ')}`,
-    ).toEqual([])
   })
 })
