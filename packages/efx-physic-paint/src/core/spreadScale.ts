@@ -28,10 +28,13 @@ export const spreadCurveFor = (strength: number): number => {
 }
 
 /**
- * R8 room lever (260930-espace, USER DESIGN ACT 2026-09-30b): `g` in
- * `depositRadius = brushR * (1 - g(spreadCurve))`. `g(0) = 0` — at rest the
- * deposit is full pressure width. The solver gets `g` of the radius as room
- * to transport mass into; that transport IS the #144 painterly relief.
+ * R8 look lever (260930-libre, USER DESIGN ACT 2026-09-30c): `g` in
+ * `depositRadius = brushR * (1 - g(spreadCurve))`. The physics clone is the
+ * ONLY deposit the solver sees, and the solver runs UNCONSTRAINED.
+ * `g(0) = 0` — at rest the deposit is full pressure width (matches the
+ * fullR live preview). `g` reaches 0.5 at the working spread 65 ("2x
+ * thinner", à estimer) and never exceeds it — the deposit cannot invert.
  * UAT look lever — tune here, never at the engine sites.
  */
-export const depositRoom = (spreadCurve: number): number => spreadCurve
+export const depositRoom = (spreadCurve: number): number =>
+  0.5 * Math.min(1, spreadCurve / spreadCurveFor(65))

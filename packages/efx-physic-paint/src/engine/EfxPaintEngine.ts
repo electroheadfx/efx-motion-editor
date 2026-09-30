@@ -35,7 +35,7 @@ import {
 } from '../types'
 import { clamp, distXY, curveBounds } from '../util/math'
 import { lerp } from '../util/math'
-import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges, snapshotWetAlpha, projectWetIntoEnvelope, stampRibbonIntoEnvelope } from '../core/wet-layer'
+import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges } from '../core/wet-layer'
 import { initDryingLUT, dryStep, forceDryAll } from '../core/drying'
 import { physicsStep } from '../core/diffusion'
 import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
@@ -43,7 +43,6 @@ import type { LocalFluidPhysicsContinuation } from '../core/fluids'
 import { loadPaperTexture, sampleH } from '../core/paper'
 import { spreadCurveFor, depositRoom } from '../core/spreadScale'
 import { createPaintStrokeRasterContinuation, renderPaintStroke } from '../brush/paint'
-import { smooth, resample, ribbonWithScales } from '../brush/stroke'
 import type { PaintStrokeRasterContinuation } from '../brush/paint'
 import { applyEraseStroke } from '../brush/erase'
 import { compositeWetLayer, wetDisplayAlpha } from '../render/compositor'
@@ -137,9 +136,6 @@ type ActiveStrokeFinalization = {
   phase: 'prepare' | 'raster' | 'finalize' | 'post-raster' | 'fluid' | 'continuation' | 'complete'
   raster: PaintStrokeRasterContinuation | null
   fluid: LocalFluidPhysicsContinuation | null
-  // R8 (260930-dy0): pre-solver wet-alpha envelope — projected back after
-  // the solver so spread can never widen the stroke.
-  envelope?: Float32Array | null
   continuationFrame: number
   liveSnapshot: ImageData | null
   liveBounds: { x0: number; y0: number; w: number; h: number } | null
@@ -2273,9 +2269,10 @@ export class EfxPaintEngine {
   private stepInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
     const { pending } = active
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
-    // R8 revised (260930-espace): the envelope is a ROOM, not a clip. The live
-    // tier keeps the FULL radius (silhouette = the pressure envelope); only the
-    // tier=final wet deposit is reduced so the solver has room inside it.
+    // R8 revised (260930-libre): physics runs on a reduced clone and is never
+    // masked. The live tier keeps the FULL radius (the pressure geometry is
+    // the gesture record); only the tier=final wet deposit is reduced — that
+    // reduced clone is the ONLY deposit the solver sees (D-07).
     const fullR = brushRenderRadius(pending.opts)
     const depositR = fullR * (1 - depositRoom(spreadCurveFor(this.state.localSpreadStrength)))
     const renderOpts = { ...pending.opts, size: fullR }
@@ -2372,15 +2369,6 @@ export class EfxPaintEngine {
         const spreadCurve = spreadCurveFor(this.state.localSpreadStrength)
         const waterCurve = waterFrac * waterFrac
         const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
-        active.envelope = snapshotWetAlpha(this.wet)
-        // Room = union(pre-solver mass, the geometric pressure ribbon at FULL
-        // width). The same smooth+resample as the deposit, so the ribbon always
-        // contains the reduced deposit.
-        const envCurve = resample(smooth(pending.points, 3), Math.max(3, depositR * 0.25))
-        if (envCurve.length >= 2) {
-          const { poly } = ribbonWithScales(envCurve, brushR, 0.8, pending.hasPenInput)
-          stampRibbonIntoEnvelope(active.envelope, poly, this.width, this.height)
-        }
         active.fluid = createLocalFluidPhysicsContinuation(
           this.wet, this.fluidConfig, this.width, this.height,
           {
@@ -2400,10 +2388,6 @@ export class EfxPaintEngine {
     }
 
     if (active.phase === 'fluid' && active.fluid?.step()) {
-      if (active.envelope) {
-        projectWetIntoEnvelope(this.wet, active.envelope)
-        active.envelope = null
-      }
       this.startNaturalDrying()
       this.finishInteractivePaintFinalization(active)
       return
@@ -2613,8 +2597,8 @@ export class EfxPaintEngine {
     try {
     if (tool === 'paint' && color) {
       this.prepareWetLayerForStroke(points[0], opts)
-      // R8 revised (260930-espace): the tier=final deposit is reduced so the
-      // solver gets room inside the pressure ribbon (the envelope is a room).
+      // R8 revised (260930-libre): the reduced clone is the ONLY deposit the
+      // solver sees; the solver runs UNCONSTRAINED (no masking, no projection).
       const depositR = brushRenderRadius(opts) * (1 - depositRoom(spreadCurveFor(this.state.localSpreadStrength)))
       renderPaintStroke(
         points, color, { ...opts, size: depositR },
@@ -2680,14 +2664,6 @@ export class EfxPaintEngine {
         const localBounds = { x0: bx0, y0: by0, x1: bx1, y1: by1 }
         const ticks = Math.max(1, Math.ceil(spreadCurve * 10))
         const localPhysicsStartedAt = observePrimitive ? performance.now() : 0
-        const envelope = snapshotWetAlpha(this.wet)
-        // Room = union(pre-solver mass, the geometric pressure ribbon at FULL
-        // width) — the same smooth+resample as the deposit.
-        const envCurve = resample(smooth(points, 3), Math.max(3, depositR * 0.25))
-        if (envCurve.length >= 2) {
-          const { poly } = ribbonWithScales(envCurve, brushR, 0.8, hasPenInput)
-          stampRibbonIntoEnvelope(envelope, poly, this.width, this.height)
-        }
         localFluidPhysicsStep(
           this.wet, this.fluidConfig,
           this.width, this.height,
@@ -2695,7 +2671,6 @@ export class EfxPaintEngine {
           observePrimitive,
         )
         if (observePrimitive) observePrimitive('paint-local-fluid-total', performance.now() - localPhysicsStartedAt)
-        projectWetIntoEnvelope(this.wet, envelope)
       }
 
       // Bake to canvas — in local mode, keep wet for stroke interaction
