@@ -35,14 +35,15 @@ import {
 } from '../types'
 import { clamp, distXY, curveBounds } from '../util/math'
 import { lerp } from '../util/math'
-import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges, snapshotWetAlpha, projectWetIntoEnvelope } from '../core/wet-layer'
+import { createWetBuffers, createSavedWetBuffers, createTmpBuffers, clearWetLayer, featherWetEdges, snapshotWetAlpha, projectWetIntoEnvelope, stampRibbonIntoEnvelope } from '../core/wet-layer'
 import { initDryingLUT, dryStep, forceDryAll } from '../core/drying'
 import { physicsStep } from '../core/diffusion'
 import { createLocalFluidPhysicsContinuation, localFluidPhysicsStep } from '../core/fluids'
 import type { LocalFluidPhysicsContinuation } from '../core/fluids'
 import { loadPaperTexture, sampleH } from '../core/paper'
-import { spreadCurveFor } from '../core/spreadScale'
+import { spreadCurveFor, depositRoom } from '../core/spreadScale'
 import { createPaintStrokeRasterContinuation, renderPaintStroke } from '../brush/paint'
+import { smooth, resample, ribbonWithScales } from '../brush/stroke'
 import type { PaintStrokeRasterContinuation } from '../brush/paint'
 import { applyEraseStroke } from '../brush/erase'
 import { compositeWetLayer, wetDisplayAlpha } from '../render/compositor'
@@ -2272,7 +2273,13 @@ export class EfxPaintEngine {
   private stepInteractivePaintFinalization(active: ActiveStrokeFinalization): void {
     const { pending } = active
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
-    const renderOpts = { ...pending.opts, size: brushRenderRadius(pending.opts) }
+    // R8 revised (260930-espace): the envelope is a ROOM, not a clip. The live
+    // tier keeps the FULL radius (silhouette = the pressure envelope); only the
+    // tier=final wet deposit is reduced so the solver has room inside it.
+    const fullR = brushRenderRadius(pending.opts)
+    const depositR = fullR * (1 - depositRoom(spreadCurveFor(this.state.localSpreadStrength)))
+    const renderOpts = { ...pending.opts, size: fullR }
+    const depositOpts = { ...pending.opts, size: depositR }
 
     if (active.phase === 'prepare') {
       this.prepareWetLayerForStroke(pending.points[0], pending.opts, pending.physicsMode)
@@ -2313,7 +2320,7 @@ export class EfxPaintEngine {
         active.liveBounds = null
       }
       renderPaintStroke(
-        pending.points, pending.color!, renderOpts,
+        pending.points, pending.color!, depositOpts,
         this.dualCanvas.dryCtx, this.wet, this.savedWet,
         this.drying.dryPos, this.lastStrokeMask,
         this.paperHeight,
@@ -2366,6 +2373,14 @@ export class EfxPaintEngine {
         const waterCurve = waterFrac * waterFrac
         const margin = Math.ceil(2 + waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4)
         active.envelope = snapshotWetAlpha(this.wet)
+        // Room = union(pre-solver mass, the geometric pressure ribbon at FULL
+        // width). The same smooth+resample as the deposit, so the ribbon always
+        // contains the reduced deposit.
+        const envCurve = resample(smooth(pending.points, 3), Math.max(3, depositR * 0.25))
+        if (envCurve.length >= 2) {
+          const { poly } = ribbonWithScales(envCurve, brushR, 0.8, pending.hasPenInput)
+          stampRibbonIntoEnvelope(active.envelope, poly, this.width, this.height)
+        }
         active.fluid = createLocalFluidPhysicsContinuation(
           this.wet, this.fluidConfig, this.width, this.height,
           {
@@ -2598,8 +2613,11 @@ export class EfxPaintEngine {
     try {
     if (tool === 'paint' && color) {
       this.prepareWetLayerForStroke(points[0], opts)
+      // R8 revised (260930-espace): the tier=final deposit is reduced so the
+      // solver gets room inside the pressure ribbon (the envelope is a room).
+      const depositR = brushRenderRadius(opts) * (1 - depositRoom(spreadCurveFor(this.state.localSpreadStrength)))
       renderPaintStroke(
-        points, color, renderOpts,
+        points, color, { ...opts, size: depositR },
         this.dualCanvas.dryCtx, this.wet, this.savedWet,
         this.drying.dryPos, this.lastStrokeMask,
         this.paperHeight,
@@ -2663,6 +2681,13 @@ export class EfxPaintEngine {
         const ticks = Math.max(1, Math.ceil(spreadCurve * 10))
         const localPhysicsStartedAt = observePrimitive ? performance.now() : 0
         const envelope = snapshotWetAlpha(this.wet)
+        // Room = union(pre-solver mass, the geometric pressure ribbon at FULL
+        // width) — the same smooth+resample as the deposit.
+        const envCurve = resample(smooth(points, 3), Math.max(3, depositR * 0.25))
+        if (envCurve.length >= 2) {
+          const { poly } = ribbonWithScales(envCurve, brushR, 0.8, hasPenInput)
+          stampRibbonIntoEnvelope(envelope, poly, this.width, this.height)
+        }
         localFluidPhysicsStep(
           this.wet, this.fluidConfig,
           this.width, this.height,

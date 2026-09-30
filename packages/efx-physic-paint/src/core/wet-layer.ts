@@ -121,6 +121,62 @@ export function projectWetIntoEnvelope(wet: WetBuffers, envelope: Float32Array):
     wet.strokeOpacity[i] = 0
   }
 }
+
+/**
+ * Stamp the geometric pressure ribbon into an envelope mask (R8 revised,
+ * 260930-espace — the envelope is a ROOM, not a clip). Nonzero-winding
+ * scanline fill of `poly` (the `ribbonWithScales` outline at FULL pressure
+ * width). Pixels inside get `mark` (default 2 — the `> 1` inside test of
+ * projectWetIntoEnvelope); pixels outside are NEVER touched, so an envelope
+ * built from `snapshotWetAlpha` keeps grandfathering earlier strokes' mass
+ * (the room is `union(pre-solver mass, this stroke's ribbon)`).
+ */
+export function stampRibbonIntoEnvelope(
+  envelope: Float32Array,
+  poly: Array<[number, number]>,
+  width: number,
+  height: number,
+  mark: number = 2,
+): void {
+  const n = poly.length
+  if (n < 3) return
+  let minY = Infinity, maxY = -Infinity
+  let minX = Infinity, maxX = -Infinity
+  for (let k = 0; k < n; k++) {
+    const [x, y] = poly[k]
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+  }
+  const y0 = Math.max(0, Math.floor(minY))
+  const y1 = Math.min(height - 1, Math.ceil(maxY))
+  const x0 = Math.max(0, Math.floor(minX))
+  const x1 = Math.min(width - 1, Math.ceil(maxX))
+  const crossings: Array<{ x: number; dir: number }> = []
+  for (let y = y0; y <= y1; y++) {
+    const yc = y + 0.5
+    crossings.length = 0
+    for (let k = 0; k < n; k++) {
+      const ax = poly[k][0], ay = poly[k][1]
+      const bx = poly[(k + 1) % n][0], by = poly[(k + 1) % n][1]
+      if ((ay <= yc && by > yc) || (by <= yc && ay > yc)) {
+        const t = (yc - ay) / (by - ay)
+        crossings.push({ x: ax + (bx - ax) * t, dir: by > ay ? 1 : -1 })
+      }
+    }
+    if (crossings.length < 2) continue
+    crossings.sort((a, b) => a.x - b.x)
+    let winding = 0
+    for (let k = 0; k < crossings.length - 1; k++) {
+      winding += crossings[k].dir
+      if (winding === 0) continue
+      const sx = Math.max(x0, Math.ceil(crossings[k].x - 0.5))
+      const ex = Math.min(x1, Math.floor(crossings[k + 1].x - 0.5))
+      for (let x = sx; x <= ex; x++) envelope[y * width + x] = mark
+    }
+  }
+}
 import { hexRgb, mixSubtractive } from '../util/color'
 
 /**

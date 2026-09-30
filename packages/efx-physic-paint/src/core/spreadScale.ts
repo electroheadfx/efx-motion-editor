@@ -26,3 +26,12 @@ export const spreadCurveFor = (strength: number): number => {
   const s = clampStrength(strength)
   return s <= 50 ? 0.09 * (s / 50) : 0.09 + 0.91 * ((s - 50) / 50)
 }
+
+/**
+ * R8 room lever (260930-espace, USER DESIGN ACT 2026-09-30b): `g` in
+ * `depositRadius = brushR * (1 - g(spreadCurve))`. `g(0) = 0` — at rest the
+ * deposit is full pressure width. The solver gets `g` of the radius as room
+ * to transport mass into; that transport IS the #144 painterly relief.
+ * UAT look lever — tune here, never at the engine sites.
+ */
+export const depositRoom = (spreadCurve: number): number => spreadCurve
