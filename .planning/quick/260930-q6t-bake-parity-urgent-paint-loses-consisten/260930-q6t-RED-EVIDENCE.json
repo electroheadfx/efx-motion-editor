@@ -1,0 +1,141 @@
+{
+  "quick": "260930-q6t",
+  "plan": "bake-parity (URGENT - paint loses consistency after leave/close)",
+  "date": "2026-09-30",
+  "command": "cd packages/efx-physic-paint && ../../app/node_modules/.bin/vitest run src/core/drying.parity.test.ts",
+  "exit_code": 1,
+  "tests": 4,
+  "failed": 1,
+  "passed": 3,
+  "crashes": 0,
+  "failure_kind": "AssertionError only (the parity target fails on its toEqual([]) assertion with a 44-item mismatch list; 0 crashes, 0 TypeErrors, 4 tests discovered)",
+  "target_pins": [
+    {
+      "pin": "parity-target",
+      "file": "drying.parity.test.ts",
+      "assertion": "AssertionError: bake parity broken at base: 44/54 samples differ by more than 1 alpha unit (dry transfer and display disagree) - first mismatches: alpha=40 op=0.85 ph=1: display=8 dry=11 delta=-3; alpha=40 op=1 ph=0: display=4 dry=13 delta=-9; alpha=40 op=1 ph=0.5: display=4 dry=13 delta=-9; alpha=40 op=1 ph=1: display=4 dry=13 delta=-9; alpha=120 op=0.4 ph=0.5: display=13 dry=15 delta=-2: expected [ ...(44) ] to deeply equal []"
+    }
+  ],
+  "passed_at_base": [
+    "pin A: forceDryAll transfers exactly round(min(1, alpha/800) * pixelOpacity * 255) - 54/54 samples (characterization of the /800 law)",
+    "pin B: compositeWetLayer displays exactly round(wetDisplayAlpha(alpha, pixelOpacity, paperHeight)) - 54/54 samples (characterization of the Beer-Lambert law)",
+    "pin C: divergence floors cleared from measured values - max |delta| 175 (floor 150), dry-denser 47/54 (floor 40), |delta|>1 in 44/54 (floor 30)"
+  ],
+  "measurement_summary": {
+    "samples": 54,
+    "delta_sign_convention": "delta = displayAlpha - dryAlpha; negative = dry side denser (more opaque) than what the display showed",
+    "dry_denser": 47,
+    "display_denser": 0,
+    "equal": 7,
+    "parity_mismatches_over_1_unit": 44,
+    "max_abs_delta": 175,
+    "worst_sample": "alpha=800, pixelOpacity=1.0, any paperHeight: display=80 (wetDisplayAlpha fast path, round(800/3000*300)) vs dry=255 (min(1,800/800)*1*255) = -175",
+    "direction": "dry >= display at EVERY sample; the /800 transfer is denser than the wet display overlay everywhere on the grid, never lighter"
+  },
+  "samples": [
+    {"alpha": 40, "pixelOpacity": 0.4, "paperHeight": 0, "displayAlpha": 5, "dryAlpha": 5, "delta": 0},
+    {"alpha": 40, "pixelOpacity": 0.4, "paperHeight": 0.5, "displayAlpha": 5, "dryAlpha": 5, "delta": 0},
+    {"alpha": 40, "pixelOpacity": 0.4, "paperHeight": 1, "displayAlpha": 4, "dryAlpha": 5, "delta": -1},
+    {"alpha": 40, "pixelOpacity": 0.85, "paperHeight": 0, "displayAlpha": 11, "dryAlpha": 11, "delta": 0},
+    {"alpha": 40, "pixelOpacity": 0.85, "paperHeight": 0.5, "displayAlpha": 10, "dryAlpha": 11, "delta": -1},
+    {"alpha": 40, "pixelOpacity": 0.85, "paperHeight": 1, "displayAlpha": 8, "dryAlpha": 11, "delta": -3},
+    {"alpha": 40, "pixelOpacity": 1, "paperHeight": 0, "displayAlpha": 4, "dryAlpha": 13, "delta": -9},
+    {"alpha": 40, "pixelOpacity": 1, "paperHeight": 0.5, "displayAlpha": 4, "dryAlpha": 13, "delta": -9},
+    {"alpha": 40, "pixelOpacity": 1, "paperHeight": 1, "displayAlpha": 4, "dryAlpha": 13, "delta": -9},
+    {"alpha": 120, "pixelOpacity": 0.4, "paperHeight": 0, "displayAlpha": 15, "dryAlpha": 15, "delta": 0},
+    {"alpha": 120, "pixelOpacity": 0.4, "paperHeight": 0.5, "displayAlpha": 13, "dryAlpha": 15, "delta": -2},
+    {"alpha": 120, "pixelOpacity": 0.4, "paperHeight": 1, "displayAlpha": 12, "dryAlpha": 15, "delta": -3},
+    {"alpha": 120, "pixelOpacity": 0.85, "paperHeight": 0, "displayAlpha": 32, "dryAlpha": 33, "delta": -1},
+    {"alpha": 120, "pixelOpacity": 0.85, "paperHeight": 0.5, "displayAlpha": 29, "dryAlpha": 33, "delta": -4},
+    {"alpha": 120, "pixelOpacity": 0.85, "paperHeight": 1, "displayAlpha": 25, "dryAlpha": 33, "delta": -8},
+    {"alpha": 120, "pixelOpacity": 1, "paperHeight": 0, "displayAlpha": 12, "dryAlpha": 38, "delta": -26},
+    {"alpha": 120, "pixelOpacity": 1, "paperHeight": 0.5, "displayAlpha": 12, "dryAlpha": 38, "delta": -26},
+    {"alpha": 120, "pixelOpacity": 1, "paperHeight": 1, "displayAlpha": 12, "dryAlpha": 38, "delta": -26},
+    {"alpha": 300, "pixelOpacity": 0.4, "paperHeight": 0, "displayAlpha": 34, "dryAlpha": 38, "delta": -4},
+    {"alpha": 300, "pixelOpacity": 0.4, "paperHeight": 0.5, "displayAlpha": 30, "dryAlpha": 38, "delta": -8},
+    {"alpha": 300, "pixelOpacity": 0.4, "paperHeight": 1, "displayAlpha": 27, "dryAlpha": 38, "delta": -11},
+    {"alpha": 300, "pixelOpacity": 0.85, "paperHeight": 0, "displayAlpha": 71, "dryAlpha": 81, "delta": -10},
+    {"alpha": 300, "pixelOpacity": 0.85, "paperHeight": 0.5, "displayAlpha": 64, "dryAlpha": 81, "delta": -17},
+    {"alpha": 300, "pixelOpacity": 0.85, "paperHeight": 1, "displayAlpha": 56, "dryAlpha": 81, "delta": -25},
+    {"alpha": 300, "pixelOpacity": 1, "paperHeight": 0, "displayAlpha": 30, "dryAlpha": 96, "delta": -66},
+    {"alpha": 300, "pixelOpacity": 1, "paperHeight": 0.5, "displayAlpha": 30, "dryAlpha": 96, "delta": -66},
+    {"alpha": 300, "pixelOpacity": 1, "paperHeight": 1, "displayAlpha": 30, "dryAlpha": 96, "delta": -66},
+    {"alpha": 800, "pixelOpacity": 0.4, "paperHeight": 0, "displayAlpha": 67, "dryAlpha": 102, "delta": -35},
+    {"alpha": 800, "pixelOpacity": 0.4, "paperHeight": 0.5, "displayAlpha": 62, "dryAlpha": 102, "delta": -40},
+    {"alpha": 800, "pixelOpacity": 0.4, "paperHeight": 1, "displayAlpha": 57, "dryAlpha": 102, "delta": -45},
+    {"alpha": 800, "pixelOpacity": 0.85, "paperHeight": 0, "displayAlpha": 142, "dryAlpha": 217, "delta": -75},
+    {"alpha": 800, "pixelOpacity": 0.85, "paperHeight": 0.5, "displayAlpha": 132, "dryAlpha": 217, "delta": -85},
+    {"alpha": 800, "pixelOpacity": 0.85, "paperHeight": 1, "displayAlpha": 122, "dryAlpha": 217, "delta": -95},
+    {"alpha": 800, "pixelOpacity": 1, "paperHeight": 0, "displayAlpha": 80, "dryAlpha": 255, "delta": -175},
+    {"alpha": 800, "pixelOpacity": 1, "paperHeight": 0.5, "displayAlpha": 80, "dryAlpha": 255, "delta": -175},
+    {"alpha": 800, "pixelOpacity": 1, "paperHeight": 1, "displayAlpha": 80, "dryAlpha": 255, "delta": -175},
+    {"alpha": 1500, "pixelOpacity": 0.4, "paperHeight": 0, "displayAlpha": 88, "dryAlpha": 102, "delta": -14},
+    {"alpha": 1500, "pixelOpacity": 0.4, "paperHeight": 0.5, "displayAlpha": 86, "dryAlpha": 102, "delta": -16},
+    {"alpha": 1500, "pixelOpacity": 0.4, "paperHeight": 1, "displayAlpha": 84, "dryAlpha": 102, "delta": -18},
+    {"alpha": 1500, "pixelOpacity": 0.85, "paperHeight": 0, "displayAlpha": 187, "dryAlpha": 217, "delta": -30},
+    {"alpha": 1500, "pixelOpacity": 0.85, "paperHeight": 0.5, "displayAlpha": 182, "dryAlpha": 217, "delta": -35},
+    {"alpha": 1500, "pixelOpacity": 0.85, "paperHeight": 1, "displayAlpha": 178, "dryAlpha": 217, "delta": -39},
+    {"alpha": 1500, "pixelOpacity": 1, "paperHeight": 0, "displayAlpha": 150, "dryAlpha": 255, "delta": -105},
+    {"alpha": 1500, "pixelOpacity": 1, "paperHeight": 0.5, "displayAlpha": 150, "dryAlpha": 255, "delta": -105},
+    {"alpha": 1500, "pixelOpacity": 1, "paperHeight": 1, "displayAlpha": 150, "dryAlpha": 255, "delta": -105},
+    {"alpha": 2600, "pixelOpacity": 0.4, "paperHeight": 0, "displayAlpha": 99, "dryAlpha": 102, "delta": -3},
+    {"alpha": 2600, "pixelOpacity": 0.4, "paperHeight": 0.5, "displayAlpha": 96, "dryAlpha": 102, "delta": -6},
+    {"alpha": 2600, "pixelOpacity": 0.4, "paperHeight": 1, "displayAlpha": 94, "dryAlpha": 102, "delta": -8},
+    {"alpha": 2600, "pixelOpacity": 0.85, "paperHeight": 0, "displayAlpha": 210, "dryAlpha": 217, "delta": -7},
+    {"alpha": 2600, "pixelOpacity": 0.85, "paperHeight": 0.5, "displayAlpha": 205, "dryAlpha": 217, "delta": -12},
+    {"alpha": 2600, "pixelOpacity": 0.85, "paperHeight": 1, "displayAlpha": 199, "dryAlpha": 217, "delta": -18},
+    {"alpha": 2600, "pixelOpacity": 1, "paperHeight": 0, "displayAlpha": 255, "dryAlpha": 255, "delta": 0},
+    {"alpha": 2600, "pixelOpacity": 1, "paperHeight": 0.5, "displayAlpha": 255, "dryAlpha": 255, "delta": 0},
+    {"alpha": 2600, "pixelOpacity": 1, "paperHeight": 1, "displayAlpha": 255, "dryAlpha": 255, "delta": 0}
+  ],
+  "attribution": {
+    "verdict": "halt",
+    "i_characterization_pins": "green at base: pin A 54/54 (/800 law), pin B 54/54 (Beer-Lambert law), pin C floors cleared (max |delta| 175, dry-denser 47/54, >1 unit 44/54)",
+    "ii_persistence_is_raster_byte_path": "CONFIRMED by code trace",
+    "code_trace": {
+      "leave_chain": [
+        "app/src/components/physic-paint/hooks/useRotoPersistenceIntegration.ts:75 navigateToSyncedFrame",
+        "useRotoPersistenceIntegration.ts:80 input.engine?.flushPendingStrokeFinalizations()",
+        "useRotoPersistenceIntegration.ts:82 await input.flushFramePublication(sourceFrame) (capture+publish runs AFTER the flush)",
+        "useRotoPersistenceIntegration.ts:90 engine.clear() runs only after publication returns"
+      ],
+      "close_chain": [
+        "app/src/components/physic-paint/PhysicsPaintStudio.tsx:2014 runStudioFlush step 1: engineRef.current?.flushPendingStrokeFinalizations()",
+        "PhysicsPaintStudio.tsx:2015 runStudioFlush step 2: rotoPersistence.flushLivePixels(currentFrame)"
+      ],
+      "flush_to_transfer": [
+        "packages/efx-physic-paint/src/engine/EfxPaintEngine.ts:2162 flushPendingStrokeFinalizations()",
+        "EfxPaintEngine.ts:2385 forceDryAll(..., 'paint-final-force-dry', dryRegionForStroke(...)) - flush-time wet-to-dry transfer",
+        "other forceDryAll sites: EfxPaintEngine.ts:1230 (bake), :1257 (forceDry), :2559 (pre-stroke), :2678 (paint final), :2695 (erase final)"
+      ],
+      "capture": [
+        "EfxPaintEngine.ts:1584-1596 exportCompositeCanvas: flush at :1585, drawImage dry at :1592, drawImage display at :1593 (dry THEN display - wet display is NOT dropped)",
+        "EfxPaintEngine.ts:1632 copyLiveAlphaCanvas (live-pixel capture): dry written first, drawImage displayCanvas at :1685",
+        "EfxPaintEngine.ts:1557-1569 getBakedCanvas is dry-only (previewBase + dry) but is used ONLY for the monitor live-overlay at PhysicsPaintStudio.tsx:3836, never for frame publication"
+      ],
+      "codec": [
+        "app/src/lib/webpFrameCodec.ts:46-56 encodeWebpFrame via Rust encode_webp_frame - WebP-lossless bytes",
+        "webpFrameCodec.ts:83 encodeCanvasAsWebp documents the same lossless contract",
+        "reloaded render = decoded bytes, bit-exact; no stroke re-render on reload"
+      ]
+    },
+    "iii_direction_check": {
+      "question": "Is the measured dry-vs-display delta capable of explaining the reported end-of-bake -> after-leave change?",
+      "measured": "delta = display - dry is <= 0 at all 54 samples (dry denser 47, equal 7, display denser 0); worst -175 alpha units at alpha=800/op=1.0 (display 80 vs dry 255). forceDryAll sa >= wetDisplayAlpha/255 everywhere, so flushing a wet pixel INCREASES its alpha relative to what the overlay displayed - the flush can only densify (move toward full paint-color opacity), never alpha-lighten.",
+      "reported_symptom": "lightening after leave/close (plan <context> line 'the reported symptom is lightening' and the STOP condition 'the live symptom is lightening')",
+      "conclusion": "NOT capable: a lightening symptom requires the dry side to land LIGHTER than the display showed; the measured direction is denser-or-equal across the entire sample grid. The /800-vs-Beer-Lambert transfer mismatch therefore is not the loss mechanism for a lightening symptom.",
+      "stop_condition_triggered": "STOP CONDITION (Task 1) - 'the measured deltas show the dry side denser than the display across the sample grid while the live symptom is lightening (then the /800-vs-Beer-Lambert mismatch is not the loss mechanism)' - BOTH antecedents hold (47/54 dry-denser, 0/54 display-denser; symptom recorded as lightening)."
+    },
+    "candidate_causes_for_user_direction": [
+      "Ruled out - capture path dropping wet display: exportCompositeCanvas (:1592-1593) and copyLiveAlphaCanvas (:1685) both draw dry THEN display; the dry-only getBakedCanvas (:1557) is monitor-overlay-only (PhysicsPaintStudio.tsx:3836).",
+      "Ruled out - reload re-renders from strokes: persistence is WebP-lossless byte round-trip (webpFrameCodec.ts:46-56/:83).",
+      "Open - dryStep's divergent paper formula (core/drying.ts:127-135): fractional transfer multiplies by clamp(1.4 - ph*0.8, 0.3, 1.4), i.e. 0.6x at full paper, while the display fast path (pixelOpacity >= 0.90, compositor.ts:35-36) applies NO paper modulation at all - during-bake dry accumulation and displayed wet disagree about paper; candidate for look drift between judged-bake and settled content.",
+      "Open - bbox-scoped flush transfer (EfxPaintEngine.ts:2385 + dryRegionForStroke): forceDryAll's loop is bbox-scoped and does NOT zero wet outside the stroke bbox; physics-drifted wet outside dryRegionForStroke stays wet until a later differently-bounded forceDryAll (:2559 lastStrokeBounds, :1257 full frame) or clear - a possible seam after leave.",
+      "Open - perceptual direction caveat: higher transferred alpha APPEARS lighter when the paint color is lighter than the substrate (more of the light paint color over the background). If the user's reported 'lightening' is this solidification of light paint, the measured delta DOES explain it and the verdict would flip to proceed; per the plan's STOP condition (dry-denser + lightening = not the mechanism) the executor halts for the user to confirm the observed direction.",
+      "Per plan STOP list - actual measured mechanism: forceDryAll/dryStep transfer alpha is systematically HIGHER than the wet display overlay alpha (max +175 at alpha=800/op=1; /800 saturates at alpha=800 while wetDisplayAlpha fast path saturates at alpha=2550), so flush INCREASES opacity toward the paint color; there is no alpha-lightening anywhere on the grid."
+    ]
+  },
+  "production_files_edited": "none",
+  "battery_files_edited": "none",
+  "stop_rule": "triggered - Task 2 precondition reads 'halt': no production code (drying.ts, EfxPaintEngine.ts, compositor.ts) is edited; Task 3 timing commit also withheld per 'commit nothing beyond the evidence file'"
+}
