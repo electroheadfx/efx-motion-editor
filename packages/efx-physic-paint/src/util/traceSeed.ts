@@ -41,6 +41,24 @@ export function hashMutationId(mutationId: number | undefined): number {
   return avalanche(fnv1a(`mutation:${mutationId ?? 0}`))
 }
 
+/**
+ * Deterministic sequential rng (mulberry32) keyed by (strokeSeed, streamKey).
+ * R10 (260930-detail): the deform path's ONLY randomness source — the
+ * held-pose determinism law forbids `Math.random` there. The stream key
+ * separates roles ('shape-detail' vs 'erase-shape') so erase never lands
+ * on the painted mark's pattern (R4).
+ */
+export function seededRng(strokeSeed: number, streamKey: string): () => number {
+  let a = avalanche(fnv1a(`${strokeSeed}|${streamKey}`))
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 /** Arc-length slot format — 4 decimals so identical physical positions
  *  map to identical keys after resample/chunking. */
 export function arcSlot(arcLength: number): string {

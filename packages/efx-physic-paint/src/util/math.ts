@@ -9,10 +9,12 @@ import type { PenPoint } from '../types'
 /**
  * Gaussian random number via Box-Muller transform.
  * From v3.html gauss(m,s) — line 433
+ * R10 (260930-detail): draws come from the injected rng so the deposit
+ * path can pass a traceSeed-seeded stream (held-pose determinism law).
  */
-export function gauss(mean: number = 0, stddev: number = 1): number {
-  return Math.sqrt(-2 * Math.log(Math.random())) *
-    Math.cos(2 * Math.PI * Math.random()) * stddev + mean
+export function gauss(mean: number = 0, stddev: number = 1, rng: () => number = Math.random): number {
+  return Math.sqrt(-2 * Math.log(rng())) *
+    Math.cos(2 * Math.PI * rng()) * stddev + mean
 }
 
 /**

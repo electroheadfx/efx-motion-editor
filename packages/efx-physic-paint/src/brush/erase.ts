@@ -16,6 +16,7 @@ function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined,
   }
 }
 import { lerp, clamp, curveBounds } from '../util/math'
+import { hashMutationId, seededRng } from '../util/traceSeed'
 import { smooth, resample, ribbonWithScales, deformNScaled, deformScaled } from './stroke'
 import { fillFlat } from './paint'
 
@@ -39,6 +40,7 @@ export function applyEraseStroke(
   bgMode: string,
   bgData: ImageData | null,
   observePrimitive?: PaintPrimitiveTimingObserver,
+  mutationId?: number,
 ): void {
   if (rawPts.length < 3) return
   const { size } = opts
@@ -63,7 +65,11 @@ export function applyEraseStroke(
   oc.translate(-bounds.x0, -bounds.y0)
 
   const { poly: base, scales: baseS } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
-  const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, variance)
+  // R10 (260930-detail): seeded deform draws — the erase stream is keyed
+  // separately ('erase-shape') so the pattern never aligns with the erased
+  // mark (R4). Held-pose determinism: no Math.random in the deform path.
+  const shapeRng = seededRng(hashMutationId(mutationId), 'erase-shape')
+  const { poly: baseD, scales: baseDS } = deformNScaled(base, baseS, 4, variance, shapeRng)
   // More layers at higher strength for denser mask coverage
   // Fixed light mask for shape -- strMul controls actual removal amount
   const layers = 15
@@ -71,11 +77,11 @@ export function applyEraseStroke(
 
   measurePrimitive(observePrimitive, 'erase-mask-raster', () => {
     for (let i = 0; i < layers; i++) {
-      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.2)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.2, shapeRng)
       fillFlat(oc, v, '#fff', lAlpha)
     }
     for (let i = 0; i < Math.round(layers * 0.2); i++) {
-      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.5)
+      const { poly: v } = deformScaled(baseD, baseDS, variance * 0.5, shapeRng)
       fillFlat(oc, v, '#fff', lAlpha * 0.5)
     }
   })

@@ -181,6 +181,7 @@ export function deformScaled(
   poly: Array<[number, number]>,
   scales: number[],
   variance: number,
+  rng: () => number = Math.random,
 ): { poly: Array<[number, number]>; scales: number[] } {
   const r: Array<[number, number]> = []
   const rs: number[] = []
@@ -191,7 +192,7 @@ export function deformScaled(
     const sMid = (sA + sB) / 2
     r.push(a)
     rs.push(sA)
-    r.push([(a[0] + b[0]) / 2 + gauss(0, variance * sMid), (a[1] + b[1]) / 2 + gauss(0, variance * sMid)])
+    r.push([(a[0] + b[0]) / 2 + gauss(0, variance * sMid, rng), (a[1] + b[1]) / 2 + gauss(0, variance * sMid, rng)])
     rs.push(sMid)
   }
   return { poly: r, scales: rs }
@@ -207,12 +208,89 @@ export function deformNScaled(
   scales: number[],
   depth: number,
   variance: number,
+  rng: () => number = Math.random,
 ): { poly: Array<[number, number]>; scales: number[] } {
   let p = poly, s = scales
   for (let d = 0; d < depth; d++) {
-    const out = deformScaled(p, s, variance / (1 + d * 0.65))
+    const out = deformScaled(p, s, variance / (1 + d * 0.65), rng)
     p = out.poly
     s = out.scales
   }
   return { poly: p, scales: s }
+}
+
+/**
+ * Per-sample ribbon side offsets from the deformed contour (R10,
+ * 260930-detail). Runs the deformNScaled midpoint law (gauss(0, variance *
+ * sMid) — the 260927-ton local-width amplitude — with the v11 octave decay
+ * 1/(1 + d * 0.65)) on the ribbonWithScales polygon, then folds each
+ * deformed chain back onto the capsule lattice: per sample, the mean
+ * perpendicular deviation of the inserted contour vertices in the two
+ * adjacent chain segments (the ribbon polygon's two cap edges are never
+ * folded). Positive = outward. Velocity multiplies the amplitude via
+ * speedAtT (the existing speed law: clamp(1 + spd * 0.003, 1, 1.5)).
+ * `variance = 0` = identity displacement (the pipeline still runs — the
+ * look-continuity law: amplitude, never presence).
+ */
+export function deformSampleSides(
+  curve: PenPoint[],
+  halfWidth: number,
+  tPow: number = 0.8,
+  hasPenInput: boolean = false,
+  tSpan?: [number, number],
+  variance: number = 0,
+  depth: number = 4,
+  rng: () => number = Math.random,
+): { leftOff: number[]; rightOff: number[] } {
+  const n = curve.length
+  const leftOff = new Array<number>(n).fill(0)
+  const rightOff = new Array<number>(n).fill(0)
+  if (n < 2) return { leftOff, rightOff }
+
+  const { poly: base, scales: baseS } = ribbonWithScales(curve, halfWidth, tPow, hasPenInput, tSpan)
+  const { poly: def } = deformNScaled(base, baseS, depth, variance, rng)
+  const stride = 2 ** depth
+
+  // Per-sample outward normal — rotated exactly like ribbonWithScales.
+  const normals: Array<[number, number]> = []
+  for (let si = 0; si < n; si++) {
+    let tx: number, ty: number
+    if (si === 0) { tx = curve[1].x - curve[0].x; ty = curve[1].y - curve[0].y }
+    else if (si === n - 1) { tx = curve[si].x - curve[si - 1].x; ty = curve[si].y - curve[si - 1].y }
+    else { tx = curve[si + 1].x - curve[si - 1].x; ty = curve[si + 1].y - curve[si - 1].y }
+    const l = Math.hypot(tx, ty) || 1
+    const nx = -ty / l, ny = tx / l
+    const tiltAngle = (curve[si].tx || 0) * 0.015
+    const cosT = Math.cos(tiltAngle), sinT = Math.sin(tiltAngle)
+    normals[si] = [nx * cosT - ny * sinT, nx * sinT + ny * cosT]
+  }
+
+  const inL = (v: number): boolean => v <= n - 1
+  const inR = (v: number): boolean => v >= n
+  const fold = (si: number, bi: number, sign: number): number => {
+    const [nx, ny] = normals[si]
+    let sum = 0
+    let count = 0
+    for (const a of [bi - 1, bi]) {
+      const b = a + 1
+      if (a < 0 || b > base.length - 1) continue
+      if (!(inL(a) && inL(b)) && !(inR(a) && inR(b))) continue
+      const ax = base[a][0], ay = base[a][1], bx = base[b][0], by = base[b][1]
+      for (let k = a * stride + 1; k < (a + 1) * stride; k++) {
+        const t = (k - a * stride) / stride
+        const cx = ax + (bx - ax) * t
+        const cy = ay + (by - ay) * t
+        sum += sign * ((def[k][0] - cx) * nx + (def[k][1] - cy) * ny)
+        count++
+      }
+    }
+    return count > 0 ? sum / count : 0
+  }
+
+  for (let si = 0; si < n; si++) {
+    const vScale = clamp(1 + speedAtT(curve, si / (n - 1)) * 0.003, 1, 1.5)
+    leftOff[si] = fold(si, si, 1) * vScale
+    rightOff[si] = fold(si, 2 * n - 1 - si, -1) * vScale
+  }
+  return { leftOff, rightOff }
 }

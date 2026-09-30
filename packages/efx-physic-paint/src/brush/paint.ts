@@ -8,9 +8,9 @@
 import type { PenPoint, BrushOpts, WetBuffers, SavedWetBuffers, PaintPrimitiveTimingObserver } from '../types'
 import { hexRgb, rgbHex, mixSubtractive } from '../util/color'
 import { lerp, clamp, curveBounds } from '../util/math'
-import { hashMutationId, seededDraw, traceShapeNoise } from '../util/traceSeed'
+import { hashMutationId, seededDraw, seededRng, traceShapeNoise } from '../util/traceSeed'
 import { transferToWetLayerClipped } from '../core/wet-layer'
-import { smooth, resample, ribbonWithScales, avgPenData } from './stroke'
+import { smooth, resample, ribbonWithScales, avgPenData, deformSampleSides } from './stroke'
 import {
   buildBristleLanes,
   STREAK_ALPHA,
@@ -92,6 +92,10 @@ export interface FootprintParams {
    *  stroke (260929-t2o, R7 amended) — endTaper then dips only at true
    *  stroke ends, never at an internal re-slice boundary. */
   tSpan?: [number, number]
+  /** Shape-detail deform variance (R10 260930-detail) — reaches the drawn
+   *  outline (it used to be curveBounds padding only). 0 = identity
+   *  displacement; the pipeline still runs (look-continuity law). */
+  variance?: number
 }
 
 const LIVE_TIER_DIVISOR = 4
@@ -144,7 +148,7 @@ export function drawBristleFootprint(
   params: FootprintParams,
   tier: FootprintTier,
 ): void {
-  const { ctx, radius, color, opac, hasPenInput, mutationId, tSpan } = params
+  const { ctx, radius, color, opac, hasPenInput, mutationId, tSpan, variance } = params
   if (curve.length < 2) return
   const strokeSeed = hashMutationId(mutationId)
 
@@ -153,6 +157,32 @@ export function drawBristleFootprint(
   // map to curve points in order. No second inline scale math. tSpan
   // (260929-t2o) keeps endTaper at true stroke ends for re-sliced runs.
   const { scales } = ribbonWithScales(curve, radius, 0.8, hasPenInput, tSpan)
+
+  // R10 (260930-detail): deformNScaled on the ribbon contour — variance
+  // reaches the drawn outline (it used to be curveBounds padding only).
+  // Draw source: traceSeed.seededRng (held-pose determinism). Amplitude =
+  // variance x local width (260927-ton) x velocity (speedAtT). The deform
+  // displaces the per-sample frames ONLY — the capsule-sweep raster stays
+  // byte-unchanged (260929-t2o LOCKED). Runs at EVERY variance (0 =
+  // identity displacement — the look-continuity law: amplitude, never
+  // presence).
+  const { leftOff, rightOff } = deformSampleSides(
+    curve, radius, 0.8, hasPenInput, tSpan, variance ?? 0, 4,
+    seededRng(strokeSeed, 'shape-detail'),
+  )
+  curve = curve.map((p, si) => {
+    let tx: number, ty: number
+    if (si === 0) { tx = curve[1].x - curve[0].x; ty = curve[1].y - curve[0].y }
+    else if (si === curve.length - 1) { tx = p.x - curve[si - 1].x; ty = p.y - curve[si - 1].y }
+    else { tx = curve[si + 1].x - curve[si - 1].x; ty = curve[si + 1].y - curve[si - 1].y }
+    const l = Math.hypot(tx, ty) || 1
+    const nx = -ty / l, ny = tx / l
+    const tiltAngle = (p.tx || 0) * 0.015
+    const cosT = Math.cos(tiltAngle), sinT = Math.sin(tiltAngle)
+    const rnx = nx * cosT - ny * sinT, rny = nx * sinT + ny * cosT
+    const uC = (leftOff[si] - rightOff[si]) / 2
+    return { ...p, x: p.x + rnx * uC, y: p.y + rny * uC }
+  })
 
   // Arc-length table (px) — gauge noise is keyed on arc, never sample
   // index (resample/chunking stability).
@@ -164,9 +194,12 @@ export function drawBristleFootprint(
   // Per-sample ribbon half-width — the continuous density field thins
   // through offset x halfW (260929-t2o). The lane centreline offset is
   // clamped per step so the full capsule width stays inside the local
-  // ribbon (geometry clamp only, never alpha).
+  // ribbon (geometry clamp only, never alpha). R10: the deformed contour
+  // widens/narrows each sample by the mean side offset.
   const halfWs: number[] = []
-  for (let si = 0; si < curve.length; si++) halfWs[si] = radius * scales[si]
+  for (let si = 0; si < curve.length; si++) {
+    halfWs[si] = radius * scales[si] + (leftOff[si] + rightOff[si]) / 2
+  }
 
   // ONE round-cap capsule sweep per fibre (R7 amended 2026-09-29b):
   // one CONVEX capsule subpath per short step — the convex hull of the
@@ -525,7 +558,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
       off.width = bounds.w; off.height = bounds.h
       const oc = off.getContext('2d', { willReadFrequently: true })!
       oc.translate(-bounds.x0, -bounds.y0)
-      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId }, tier))
+      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId, variance }, tier))
       yield
       // D-07: tier=live writes NOTHING to the wet layer — the footprint is
       // blitted straight to the dry canvas for immediate display. Exactly
@@ -559,7 +592,7 @@ export function createPaintStrokeRasterContinuationFromCurve(
       off2.width = segBounds.w; off2.height = segBounds.h
       const oc2 = off2.getContext('2d', { willReadFrequently: true })!
       oc2.translate(-segBounds.x0, -segBounds.y0)
-      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(seg, { ctx: oc2, radius, color: segHex, opac, hasPenInput, mutationId, tSpan: [start / (curve.length - 1), (end - 1) / (curve.length - 1)] }, tier))
+      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(seg, { ctx: oc2, radius, color: segHex, opac, hasPenInput, mutationId, tSpan: [start / (curve.length - 1), (end - 1) / (curve.length - 1)], variance }, tier))
       yield
       // D-07 (same law as the fresh branch): live blits for display, exactly
       // one final transfer per segment on the finalize tier.
@@ -612,7 +645,7 @@ export function renderPaintStrokeSingleColor(
   const oc = off.getContext('2d', { willReadFrequently: true })!
   oc.translate(-bounds.x0, -bounds.y0) // shift so curve coords work directly
 
-  measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId }, tier))
+  measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId, variance }, tier))
 
   // D-07: live = dry blit only; final = the single wet deposit (D-12).
   if (tier === 'live') {

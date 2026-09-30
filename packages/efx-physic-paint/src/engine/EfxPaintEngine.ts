@@ -607,7 +607,7 @@ export class EfxPaintEngine {
         pressure: 70,
         waterAmount: 50,
         dryAmount: 30,
-        edgeDetail: 4,
+        edgeDetail: 50,
         pickup: 0,
         eraseStrength: 50,
         antiAlias: 0,
@@ -2690,6 +2690,7 @@ export class EfxPaintEngine {
         this.state.bgMode,
         this.getDryRestoreData(),
         observePrimitive,
+        this.activeMutationId ?? this.lastCompletedMutationId ?? undefined,
       )
       forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'erase-final-force-dry', this.lastStrokeBounds)
     }
