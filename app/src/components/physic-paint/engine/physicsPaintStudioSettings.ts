@@ -32,8 +32,8 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
     edgeDetail: 20,
     pickup: 0,
     eraseStrength: 50,
-    smoothing: 0,
-    spread: 50,
+    smoothing: 1,
+    spread: 60,
     physicsMode: 'local',
     activePhysicsAction: null,
   };

@@ -610,13 +610,13 @@ export class EfxPaintEngine {
         edgeDetail: 20,
         pickup: 0,
         eraseStrength: 50,
-        antiAlias: 0,
+        antiAlias: 1,
       },
       drySpeed: 100, // Fixed fast drying
       physicsStrength: 0.2,
       physicsRunning: false,
       physicsMode: 'local',
-      localSpreadStrength: 50,
+      localSpreadStrength: 60,
       hasPenInput: false,
       diffusionFramesSinceLastStroke: 0,
     }
