@@ -33,7 +33,7 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
     pickup: 0,
     eraseStrength: 50,
     smoothing: 1,
-    spread: 60,
+    spread: 65,
     physicsMode: 'local',
     activePhysicsAction: null,
   };

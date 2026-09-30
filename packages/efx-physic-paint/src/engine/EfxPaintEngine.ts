@@ -616,7 +616,7 @@ export class EfxPaintEngine {
       physicsStrength: 0.2,
       physicsRunning: false,
       physicsMode: 'local',
-      localSpreadStrength: 60,
+      localSpreadStrength: 65,
       hasPenInput: false,
       diffusionFramesSinceLastStroke: 0,
     }

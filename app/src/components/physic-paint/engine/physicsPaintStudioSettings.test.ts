@@ -32,7 +32,7 @@ describe('Physics Paint Studio settings', () => {
     expect(makeInitialPhysicsPaintStudioSettings()).toMatchObject({
       tool: 'paint', color: '#103c65', size: 11, opacity: 100,
       background: 'canvas1', grainStrength: 0.45,
-      edgeDetail: 20, pickup: 0, eraseStrength: 50, smoothing: 1, spread: 60,
+      edgeDetail: 20, pickup: 0, eraseStrength: 50, smoothing: 1, spread: 65,
       physicsMode: 'local', activePhysicsAction: null,
     });
   });
@@ -41,7 +41,7 @@ describe('Physics Paint Studio settings', () => {
   // engine (setSmoothing→setAntiAlias / setSpread / setEdgeDetail fire only on
   // user change) — the engine initial state IS the fresh-open behavior. This
   // source pin is the permanent drift detector for the app↔engine mirror.
-  it('260930-ni6: engine initial state mirrors the fresh-open defaults (edgeDetail 20, antiAlias 1, localSpreadStrength 60)', () => {
+  it('260930-ni6: engine initial state mirrors the fresh-open defaults (edgeDetail 20, antiAlias 1, localSpreadStrength 65)', () => {
     const enginePath = new URL('../../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url);
     const engineSrc = readFileSync(enginePath, 'utf8');
     const initState = engineSrc.slice(
@@ -50,7 +50,7 @@ describe('Physics Paint Studio settings', () => {
     );
     expect(initState).toContain('edgeDetail: 20');
     expect(initState).toContain('antiAlias: 1');
-    expect(initState).toContain('localSpreadStrength: 60');
+    expect(initState).toContain('localSpreadStrength: 65');
   });
 
   // 260923-bcm Task 1 (RED): the paper grain SCALE is a REQUIRED settings
