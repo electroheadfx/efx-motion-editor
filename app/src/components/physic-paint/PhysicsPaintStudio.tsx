@@ -2472,15 +2472,6 @@ export function PhysicsPaintStudio() {
       const nextSelectedKeyId = selectedRecord?.keyId ?? null;
       if (selectedKeyId.peek() !== nextSelectedKeyId) selectedKeyId.value = nextSelectedKeyId;
       physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, studioActiveTrackId(), selectedKeyId.value, frame);
-      // 260930-q6t (settle-through gate): this path used to run
-      // flushPendingStrokeFinalizations + snapshotLivePixels in the SAME tick, so
-      // a still-cooking bake was snapshotted mid-settle and the reloaded frame
-      // came back lighter than the end-of-bake look (premature commit). The
-      // Studio close path already drains through flushPipeline before its steps;
-      // navigation bypassed it entirely. Drain first so the snapshot lands on
-      // settled pixels. Best-effort and never unawaited-throwing: a drain
-      // failure must not block navigation from saving whatever is there.
-      await flushPipeline.flush({ steps: [] }).catch(() => undefined);
       const flushFinalizationsStartedAtMs = performance.now();
       engine?.flushPendingStrokeFinalizations();
       recordPhysicsPaintPerformance({ stage: 'nav.flushStrokeFinalizations', category: 'sync-cpu', durationMs: performance.now() - flushFinalizationsStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
