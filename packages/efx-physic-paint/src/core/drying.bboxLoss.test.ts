@@ -27,14 +27,16 @@
 //         8 * round(700/800*255) = 8 * 223 = 1784
 //    wet total before = 16*400 + 8*700 = 12000 (outside = 46.67%)
 //
-//  (A second describe block, added with the instrumentation commit,
-//  unit-checks the paper-gap pure helper bakeParityPaperMods against
-//  compositor.ts's paperMod through wetDisplayAlpha — compositor is
-//  imported and read, NEVER edited.)
+//  Second block (instrumentation commit): the paper-gap pure helper
+//  bakeParityPaperMods is unit-checked AGAINST compositor.ts's
+//  paperMod through wetDisplayAlpha — compositor is imported and
+//  read, NEVER edited.
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
 import { forceDryAll, initDryingLUT } from './drying'
+import { wetDisplayAlpha } from '../render/compositor'
+import { bakeParityPaperMods } from '../engine/EfxPaintEngine'
 import { createWetBuffers } from './wet-layer'
 import { LUT_SIZE } from '../types'
 import type { DryingLUT, SavedWetBuffers, WetBuffers } from '../types'
@@ -231,5 +233,59 @@ describe('260930-q6t Addendum B — forceDryAll drops wet mass outside its bound
     expect(EXPECTED_DRY_GAIN).toBe(2048)
     expect(EXPECTED_WOULD_BE_OUTSIDE_TRANSFER).toBe(1784)
     expect(WET_OUTSIDE_ALPHA / WET_TOTAL_ALPHA).toBeCloseTo(5600 / 12000, 10)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Paper-gap helper — unit-checked against compositor.ts's paperMod THROUGH
+// wetDisplayAlpha (compositor is imported and read, never edited).
+// ---------------------------------------------------------------------------
+
+describe('260930-q6t Addendum B — bakeParityPaperMods vs the display/transfer paper laws', () => {
+  const SLOW_OPS = [0.4, 0.85]
+  const PH_SAMPLES = [0, 0.3, 0.5, 0.7, 1]
+  const ALPHA_SAMPLES = [40, 120, 300, 800, 1500]
+
+  it('display mod equals wetDisplayAlpha(alpha, op, ph) / wetDisplayAlpha(alpha, op, 0) on the slow path', () => {
+    for (const alpha of ALPHA_SAMPLES) {
+      for (const op of SLOW_OPS) {
+        const base = wetDisplayAlpha(alpha, op, 0)
+        expect(base, `slow-path base alpha must be > 0 for alpha=${alpha} op=${op}`).toBeGreaterThan(0)
+        for (const ph of PH_SAMPLES) {
+          const withPaper = wetDisplayAlpha(alpha, op, ph)
+          const helper = bakeParityPaperMods(alpha, op, ph, ph)
+          expect(
+            withPaper / base,
+            `alpha=${alpha} op=${op} ph=${ph}: compositor paperMod ratio ${withPaper / base}, helper display ${helper.display}`,
+          ).toBeCloseTo(helper.display, 10)
+        }
+      }
+    }
+  })
+
+  it('display mod is exactly 1 for pixelOpacity >= 0.90 — the compositor fast path applies NO paper', () => {
+    for (const alpha of ALPHA_SAMPLES) {
+      for (const ph of PH_SAMPLES) {
+        const base = wetDisplayAlpha(alpha, 1, 0)
+        const withPaper = wetDisplayAlpha(alpha, 1, ph)
+        expect(withPaper, `fast path must ignore paper (alpha=${alpha} ph=${ph})`).toBe(base)
+        expect(bakeParityPaperMods(alpha, 1, ph, ph).display).toBe(1)
+      }
+    }
+  })
+
+  it('transfer mod follows clamp(1.4 - ph*0.8, 0.3, 1.4) (drying.ts:132-135); forceDryAll mod is 1 everywhere', () => {
+    // toBeCloseTo: the literals are the law, the last bits are float noise
+    // (e.g. 1.4 - 0.4 === 0.9999999999999999).
+    expect(bakeParityPaperMods(300, 1, 0, 0).transfer).toBeCloseTo(1.4, 10)
+    expect(bakeParityPaperMods(300, 1, 0.5, 0.5).transfer).toBeCloseTo(1.0, 10)
+    expect(bakeParityPaperMods(300, 1, 1, 1).transfer).toBeCloseTo(0.6, 10)
+    expect(bakeParityPaperMods(300, 1, 1, 2).transfer).toBeCloseTo(0.3, 10) // clamp floor
+    // No paper map -> dryStep's `if (paperHeight)` branch is skipped -> 1.
+    expect(bakeParityPaperMods(300, 1, 0.5, null).transfer).toBe(1)
+    for (const ph of PH_SAMPLES) {
+      const mods = bakeParityPaperMods(300, 1, ph, ph)
+      expect(mods.forceDryAll, `forceDryAll applies no paper at all (ph=${ph})`).toBe(1)
+    }
   })
 })

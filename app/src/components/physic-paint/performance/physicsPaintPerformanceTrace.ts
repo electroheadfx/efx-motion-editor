@@ -2,6 +2,63 @@ import { FRAME_LRU_BYTE_CEILING, frameLru } from '../../../lib/frameLru';
 
 export type PhysicsPaintPerformanceCategory = 'sync-cpu' | 'scheduled-wait' | 'async-elapsed' | 'input-delay';
 
+// ---------------------------------------------------------------------------
+// 260930-q6t Addendum B — bake-parity flush capture (MEASURE-ONLY).
+// Mirror of the engine-side payload types (packages/efx-physic-paint
+// src/engine/EfxPaintEngine.ts) — the package index does not re-export them;
+// keep these shapes in sync with the source.
+// ---------------------------------------------------------------------------
+
+export type PhysicsPaintBakeParityBounds = { x0: number; y0: number; x1: number; y1: number };
+
+export interface PhysicsPaintBakeParityPaperGap {
+  pixels: number;
+  transfer_paper_mod_sum: number;
+  display_paper_mod_sum: number;
+  paper_gap_sum: number;
+  forceDryAll_paper_mod_sum: number;
+}
+
+export interface PhysicsPaintBakeParityFlushCapture {
+  captureId: number;
+  timestamp: number;
+  frameId: number | null;
+  paperStrength: number | null;
+  paperGrainKey: string;
+  paperHeightMapPresent: boolean;
+  bbox: PhysicsPaintBakeParityBounds;
+  bboxSource: 'dryRegionForStroke' | 'lastStrokeBounds' | 'full-frame';
+  wet_total_alpha: number;
+  wet_total_pixels: number;
+  wet_inside_alpha: number;
+  wet_inside_pixels: number;
+  wet_outside_alpha: number;
+  wet_outside_pixels: number;
+  dry_alpha_before: number;
+  dry_alpha_after: number;
+  dry_alpha_outside_before: number;
+  dry_alpha_outside_after: number;
+  wet_after_flush_outside_alpha: number;
+  forceDryAll_ran: boolean;
+  transfer_bbox: PhysicsPaintBakeParityBounds | null;
+  transfer_dry_alpha_before: number | null;
+  transfer_dry_alpha_after: number | null;
+  paper_gap: PhysicsPaintBakeParityPaperGap;
+}
+
+export interface PhysicsPaintBakeParityExportCapture {
+  captureId: number;
+  export_sampled_at: 'exportCompositeCanvas' | 'copyLiveAlphaCanvas';
+  export_composite_alpha_in_bbox_region: number;
+  export_composite_alpha_outside_bbox_region: number;
+  display_alpha_outside_bbox_region: number;
+  export_composite_includes_outside_mass: boolean;
+}
+
+export type PhysicsPaintBakeParitySample =
+  | { kind: 'flush'; capture: PhysicsPaintBakeParityFlushCapture }
+  | { kind: 'export'; capture: PhysicsPaintBakeParityExportCapture };
+
 export interface PhysicsPaintPerformanceSample {
   stage: string;
   category: PhysicsPaintPerformanceCategory;
@@ -11,6 +68,7 @@ export interface PhysicsPaintPerformanceSample {
   sourceFrame?: number;
   branch?: string;
   outcome?: string;
+  bakeParity?: PhysicsPaintBakeParitySample;
 }
 
 export interface PhysicsPaintPerformanceStageSummary {
@@ -116,10 +174,70 @@ function percentile(sorted: number[], proportion: number): number {
 
 export function recordPhysicsPaintPerformance(sample: PhysicsPaintPerformanceSample): void {
   if (!profilingEnabled() || !Number.isFinite(sample.durationMs) || sample.durationMs < 0) return;
+  // 260930-q6t Addendum B — bake-parity captures never enter the timing rings.
+  if (sample.bakeParity) {
+    recordBakeParitySample(sample.bakeParity);
+    return;
+  }
   samples.push({ ...sample, durationMs: rounded(sample.durationMs) });
   while (samples.length > MAX_SAMPLES) {
     const removable = samples.findIndex((candidate) => !CRITICAL_STAGES.has(candidate.stage));
     samples.splice(removable >= 0 ? removable : 0, 1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 260930-q6t Addendum B — bake-parity capture file (MEASURE-ONLY).
+//
+// One leave/close round-trip = one flush sample + one export sample (paired
+// by captureId). When both land, the merged record is written to
+// /tmp/efx-bake-parity-capture.json so Claude reads it from disk (the
+// established app-writes-/tmp convention — never console-copy).
+// ---------------------------------------------------------------------------
+
+export const BAKE_PARITY_CAPTURE_PATH = '/tmp/efx-bake-parity-capture.json';
+
+let bakeParityPendingFlush: PhysicsPaintBakeParityFlushCapture | null = null;
+
+function recordBakeParitySample(payload: PhysicsPaintBakeParitySample): void {
+  if (payload.kind === 'flush') {
+    bakeParityPendingFlush = payload.capture;
+    return;
+  }
+  const flush = bakeParityPendingFlush;
+  if (!flush || flush.captureId !== payload.capture.captureId) return;
+  bakeParityPendingFlush = null;
+  void writeBakeParityCapture(flush, payload.capture);
+}
+
+async function writeBakeParityCapture(
+  flush: PhysicsPaintBakeParityFlushCapture,
+  exported: PhysicsPaintBakeParityExportCapture,
+): Promise<void> {
+  try {
+    const outsideShare = flush.wet_total_alpha > 0 ? flush.wet_outside_alpha / flush.wet_total_alpha : 0;
+    const payload = {
+      schema: 'efx-bake-parity-capture/1',
+      quick: '260930-q6t',
+      addendum: 'B',
+      writtenAt: new Date().toISOString(),
+      flush,
+      export: exported,
+      wet_outside_share_of_total: outsideShare,
+      decision_rule:
+        'wet_outside_alpha < 5% of wet_total_alpha -> bbox hypothesis NOT the loss mechanism: halt, reopen the paper-gap branch with flush.paper_gap; >= 5% -> bbox hypothesis stands (report, await direction)',
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(payload, null, 2));
+    const { exportWritePng } = await import('../../../lib/ipc');
+    // export_write_png writes arbitrary bytes to dir/filename (atomic
+    // tmp+rename) — the one existing command that can produce the plan's
+    // exact path (write_debug_capture is hard-prefixed to
+    // efx-stall-capture-{name}.json and cannot emit this filename).
+    const result = await exportWritePng('/tmp', 'efx-bake-parity-capture.json', Array.from(bytes));
+    if (result.ok) console.log(`[efx-perf] bake-parity capture written to ${BAKE_PARITY_CAPTURE_PATH}`);
+    else console.warn('[efx-perf] bake-parity capture write failed', result.error);
+  } catch (error) {
+    console.warn('[efx-perf] bake-parity capture dump failed', error);
   }
 }
 
@@ -538,6 +656,9 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
       stop: stopPhysicsPaintStallDiagnostics,
       capture: capturePhysicsPaintStallDiagnostics,
       dump: dumpPhysicsPaintStallDiagnostics,
+      // 260930-q6t Addendum B — the engine's bake-parity capture gate reads
+      // this (EfxPaintEngine.bakeParityProfilingEnabled); nothing runs when off.
+      enabled: isPhysicsPaintProfilingEnabled,
     },
   });
 }
@@ -556,6 +677,7 @@ declare global {
       stop: () => void;
       capture: (options?: PhysicsPaintStallCaptureOptions) => PhysicsPaintStallCapture;
       dump: (options?: PhysicsPaintStallCaptureOptions, name?: string) => Promise<string | null>;
+      enabled: () => boolean;
     };
   }
 }

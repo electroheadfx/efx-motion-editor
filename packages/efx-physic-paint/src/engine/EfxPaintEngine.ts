@@ -32,6 +32,7 @@ import {
   DEFAULT_WIDTH,
   DEFAULT_HEIGHT,
   LUT_SIZE,
+  DENSITY_NORM,
 } from '../types'
 import { clamp, distXY, curveBounds } from '../util/math'
 import { lerp } from '../util/math'
@@ -151,6 +152,127 @@ export type PaintPerformanceSample = {
   mutationId?: number
   branch?: string
   outcome?: string
+  /** 260930-q6t Addendum B — bake-parity flush capture payload (MEASURE-ONLY). */
+  bakeParity?: BakeParitySamplePayload
+}
+
+// ============================================================
+//  260930-q6t Addendum B — bake-parity flush capture (MEASURE-ONLY)
+//
+//  Quantifies the two candidate loss mechanisms at leave/close:
+//  (A) bbox flush loss — physics-drifted wet OUTSIDE the
+//      dryRegionForStroke bbox is never transferred by the bbox-
+//      clamped forceDryAll, then destroyed when the engine clears;
+//  (B) paper-modulation gap — transfer-side clamp(1.4 - ph*0.8,
+//      0.3, 1.4) vs the display's paperMod (compositor.ts:40-41),
+//      with forceDryAll applying no paper at all.
+//
+//  Capture ONLY: no transfer, composite, or timing expression is
+//  altered. Runs only when the profiling surface is on
+//  (window.__EFX_PHYSICS_PAINT_PROFILE__.enabled) and a
+//  performanceListener is installed; zero cost otherwise.
+// ============================================================
+
+export type BakeParityBounds = { x0: number; y0: number; x1: number; y1: number }
+
+export type BakeParityPaperGap = {
+  /** Wet stroke-region pixels the sums cover (alpha >= 1, strokeOpacity >= 0.001). */
+  pixels: number
+  /** Σ clamp(1.4 - ph*0.8, 0.3, 1.4) — dryStep's fractional-branch paper factor (drying.ts:132-135). */
+  transfer_paper_mod_sum: number
+  /** Σ compositor paperMod as applied by wetDisplayAlpha (slow path; fast path = 1). */
+  display_paper_mod_sum: number
+  /** display_paper_mod_sum - transfer_paper_mod_sum */
+  paper_gap_sum: number
+  /** Σ 1.0 — forceDryAll applies no paper at all (always = pixels). */
+  forceDryAll_paper_mod_sum: number
+}
+
+export type BakeParityFlushCapture = {
+  captureId: number
+  timestamp: number
+  /** Engine carries no frame identity — always null; recorded for the plan's field list. */
+  frameId: number | null
+  /** Engine paper-emboss strength setting (state.embossStrength — the engine has no field literally named paperStrength). */
+  paperStrength: number | null
+  paperGrainKey: string
+  paperHeightMapPresent: boolean
+  /** The flush's stroke bbox (clamped like forceDryAll). */
+  bbox: BakeParityBounds
+  bboxSource: 'dryRegionForStroke' | 'lastStrokeBounds' | 'full-frame'
+  wet_total_alpha: number
+  wet_total_pixels: number
+  wet_inside_alpha: number
+  wet_inside_pixels: number
+  wet_outside_alpha: number
+  wet_outside_pixels: number
+  dry_alpha_before: number
+  dry_alpha_after: number
+  dry_alpha_outside_before: number
+  dry_alpha_outside_after: number
+  wet_after_flush_outside_alpha: number
+  forceDryAll_ran: boolean
+  /** Bounds of the forceDryAll call(s) that ran during the flush (dryRegionForStroke of the pending stroke). */
+  transfer_bbox: BakeParityBounds | null
+  transfer_dry_alpha_before: number | null
+  transfer_dry_alpha_after: number | null
+  paper_gap: BakeParityPaperGap
+}
+
+export type BakeParityExportCapture = {
+  captureId: number
+  export_sampled_at: 'exportCompositeCanvas' | 'copyLiveAlphaCanvas'
+  export_composite_alpha_in_bbox_region: number
+  export_composite_alpha_outside_bbox_region: number
+  /** Supporting: display-overlay alpha OUTSIDE the bbox at export time (is the drifted wet still drawn?). */
+  display_alpha_outside_bbox_region: number
+  /** wet_outside_alpha > 0 at flush AND the display overlay still carries alpha outside the bbox at export. */
+  export_composite_includes_outside_mass: boolean
+}
+
+export type BakeParitySamplePayload =
+  | { kind: 'flush'; capture: BakeParityFlushCapture }
+  | { kind: 'export'; capture: BakeParityExportCapture }
+
+/**
+ * 260930-q6t Addendum B — PURE paper-mod arithmetic for the paper-gap
+ * measurement (MEASURE-ONLY; no look path uses this).
+ *
+ * - `transfer`: dryStep's fractional-branch paper factor
+ *   clamp(1.4 - ph*0.8, 0.3, 1.4) (drying.ts:132-135); null = no paper
+ *   map, the branch is skipped -> 1.
+ * - `display`: compositor.ts's paperMod
+ *   `1 - (0.05 + 0.20*(1 - min(1, d*2))) * ph` as applied by
+ *   wetDisplayAlpha's SLOW path; the fast path (pixelOpacity >= 0.90)
+ *   applies NO paper -> 1.
+ * - `forceDryAll`: forceDryAll applies no paper at all -> always 1.
+ *
+ * Unit-checked against wetDisplayAlpha in drying.bboxLoss.test.ts —
+ * compositor.ts is imported and read, NEVER edited.
+ */
+export function bakeParityPaperMods(
+  densityAlpha: number,
+  pixelOpacity: number,
+  displayPaperUnit: number,
+  transferPaperUnit: number | null,
+): { transfer: number; display: number; forceDryAll: number } {
+  const density = densityAlpha / DENSITY_NORM
+  const paperStrength = 0.05 + 0.20 * (1 - Math.min(1, density * 2))
+  const slowMod = 1.0 - paperStrength * displayPaperUnit
+  return {
+    transfer: transferPaperUnit === null ? 1 : clamp(1.4 - transferPaperUnit * 0.8, 0.3, 1.4),
+    display: pixelOpacity >= 0.90 ? 1 : slowMod,
+    forceDryAll: 1,
+  }
+}
+
+/** Same bbox clamp forceDryAll applies (drying.ts:197-200) — capture reads regions through it. */
+function clampBakeParityBounds(b: BakeParityBounds, width: number, height: number): BakeParityBounds {
+  const x0 = Math.max(0, Math.min(width - 1, b.x0))
+  const y0 = Math.max(0, Math.min(height - 1, b.y0))
+  const x1 = Math.max(x0, Math.min(width - 1, b.x1))
+  const y1 = Math.max(y0, Math.min(height - 1, b.y1))
+  return { x0, y0, x1, y1 }
 }
 
 export type CompletedPaintMutation = {
@@ -515,6 +637,10 @@ export class EfxPaintEngine {
   private completedMutationListener: ((mutation: CompletedPaintMutation) => void) | null = null
   private historyAvailabilityListener: ((availability: PaintHistoryAvailability) => void) | null = null
   private performanceListener: ((sample: PaintPerformanceSample) => void) | null = null
+  // 260930-q6t Addendum B — bake-parity flush capture state (MEASURE-ONLY).
+  private bakeParitySeq = 0
+  private bakeParityActive: BakeParityFlushCapture | null = null
+  private bakeParityAwaitingExport: BakeParityFlushCapture | null = null
   /** 52.1: pointer-input activity callback for the Studio's gesture-idle scheduler. */
   public onInputActivity: ((kind: InputActivityKind, pointerId: number) => void) | null = null
   private nextMutationId: number = 1
@@ -1591,6 +1717,9 @@ export class EfxPaintEngine {
     ctx.clearRect(0, 0, this.width, this.height)
     ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
     ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
+    // 260930-q6t Addendum B — capture-only: sample this export composite for
+    // the pending bake-parity flush capture (no-op when profiling is off).
+    this.sampleBakeParityExport(canvas, 'exportCompositeCanvas')
     return canvas
   }
 
@@ -1684,6 +1813,9 @@ export class EfxPaintEngine {
     const drawDisplayStartedAt = this.performanceListener ? performance.now() : 0
     ctx.drawImage(this.dualCanvas.displayCanvas, 0, 0)
     this.recordPerformance('live-alpha-draw-display', 'sync-cpu', drawDisplayStartedAt, { mutationId, branch })
+    // 260930-q6t Addendum B — capture-only: the close-path live-pixel capture
+    // pairs with the flush that just ran (no-op when profiling is off).
+    this.sampleBakeParityExport(canvas, 'copyLiveAlphaCanvas')
     return canvas
   }
 
@@ -2159,12 +2291,257 @@ export class EfxPaintEngine {
     }
   }
 
+  // ============================================================
+  //  260930-q6t Addendum B — bake-parity flush capture (MEASURE-ONLY)
+  //
+  //  Snapshots the leave/close flush to the performance listener so the
+  //  app side can write /tmp/efx-bake-parity-capture.json. Capture ONLY:
+  //  no transfer, composite, or timing expression below is altered.
+  //  Gated on the profiling surface — zero work when off.
+  // ============================================================
+
+  /** Capture gate — the existing profiling surface (isPhysicsPaintProfilingEnabled). */
+  private bakeParityProfilingEnabled(): boolean {
+    if (typeof window === 'undefined') return false
+    const hook = (window as unknown as { __EFX_PHYSICS_PAINT_PROFILE__?: { enabled?: () => boolean } })
+      .__EFX_PHYSICS_PAINT_PROFILE__
+    return typeof hook?.enabled === 'function' && hook.enabled()
+  }
+
+  private emitBakeParitySample(payload: BakeParitySamplePayload): void {
+    if (!this.performanceListener) return
+    this.performanceListener({
+      stage: payload.kind === 'flush' ? 'bake-parity-flush' : 'bake-parity-export',
+      category: 'sync-cpu',
+      durationMs: 0,
+      timestamp: performance.now(),
+      bakeParity: payload,
+    })
+  }
+
+  /** Whole wet buffer split against the flush bbox (alpha >= 1 = wet, the forceDryAll threshold). */
+  private measureBakeParityWetSplit(b: BakeParityBounds): {
+    totalAlpha: number; totalPixels: number
+    insideAlpha: number; insidePixels: number
+    outsideAlpha: number; outsidePixels: number
+  } {
+    let totalAlpha = 0, totalPixels = 0
+    let insideAlpha = 0, insidePixels = 0
+    let outsideAlpha = 0, outsidePixels = 0
+    for (let y = 0; y < this.height; y++) {
+      const rowBase = y * this.width
+      const rowInside = y >= b.y0 && y <= b.y1
+      for (let x = 0; x < this.width; x++) {
+        const a = this.wet.alpha[rowBase + x]
+        if (a < 1) continue
+        totalPixels++; totalAlpha += a
+        if (rowInside && x >= b.x0 && x <= b.x1) {
+          insidePixels++; insideAlpha += a
+        } else {
+          outsidePixels++; outsideAlpha += a
+        }
+      }
+    }
+    return { totalAlpha, totalPixels, insideAlpha, insidePixels, outsideAlpha, outsidePixels }
+  }
+
+  /** Dry-canvas alpha sum split against the bbox (one full-frame readback). */
+  private measureBakeParityDrySplit(b: BakeParityBounds): { inside: number; outside: number } {
+    const id = this.dualCanvas.dryCtx.getImageData(0, 0, this.width, this.height)
+    const d = id.data
+    let inside = 0
+    let outside = 0
+    for (let y = 0; y < this.height; y++) {
+      const rowBase = y * this.width
+      const rowInside = y >= b.y0 && y <= b.y1
+      for (let x = 0; x < this.width; x++) {
+        const a = d[(rowBase + x) * 4 + 3]
+        if (a === 0) continue
+        if (rowInside && x >= b.x0 && x <= b.x1) inside += a
+        else outside += a
+      }
+    }
+    return { inside, outside }
+  }
+
+  /** Paper-gap sums over the stroke region currently holding wet (see bakeParityPaperMods). */
+  private measureBakeParityPaperGap(b: BakeParityBounds): BakeParityPaperGap {
+    let pixels = 0
+    let transferSum = 0
+    let displaySum = 0
+    for (let y = b.y0; y <= b.y1; y++) {
+      const rowBase = y * this.width
+      for (let x = b.x0; x <= b.x1; x++) {
+        const i = rowBase + x
+        const a = this.wet.alpha[i]
+        if (a < 1) continue
+        const pixelOpacity = this.wet.strokeOpacity[i]
+        if (pixelOpacity < 0.001) continue
+        const mods = bakeParityPaperMods(
+          a,
+          pixelOpacity,
+          sampleH(this.paperHeight, x, y, this.width, this.height),
+          this.paperHeight ? this.paperHeight[i] : null,
+        )
+        pixels++
+        transferSum += mods.transfer
+        displaySum += mods.display
+      }
+    }
+    return {
+      pixels,
+      transfer_paper_mod_sum: transferSum,
+      display_paper_mod_sum: displaySum,
+      paper_gap_sum: displaySum - transferSum,
+      forceDryAll_paper_mod_sum: pixels,
+    }
+  }
+
+  /** Arm the capture at flush entry — wet split, dry split, paper gap (bbox = the stroke region the flush will force-dry). */
+  private beginBakeParityFlushCapture(): void {
+    if (!this.performanceListener || !this.bakeParityProfilingEnabled()) return
+    const pending = this.pendingStrokeFinalizations[0]
+    let bbox: BakeParityBounds
+    let bboxSource: BakeParityFlushCapture['bboxSource']
+    if (pending && pending.tool === 'paint' && pending.color) {
+      bbox = this.dryRegionForStroke(pending.points, pending.opts)
+      bboxSource = 'dryRegionForStroke'
+    } else if (this.lastStrokeBounds) {
+      bbox = clampBakeParityBounds(this.lastStrokeBounds, this.width, this.height)
+      bboxSource = 'lastStrokeBounds'
+    } else {
+      bbox = { x0: 0, y0: 0, x1: this.width - 1, y1: this.height - 1 }
+      bboxSource = 'full-frame'
+    }
+    const wet = this.measureBakeParityWetSplit(bbox)
+    const dry = this.measureBakeParityDrySplit(bbox)
+    this.bakeParityActive = {
+      captureId: ++this.bakeParitySeq,
+      timestamp: Date.now(),
+      frameId: null,
+      paperStrength: typeof this.state.embossStrength === 'number' ? this.state.embossStrength : null,
+      paperGrainKey: this.currentPaperKey,
+      paperHeightMapPresent: this.paperHeight !== null,
+      bbox,
+      bboxSource,
+      wet_total_alpha: wet.totalAlpha,
+      wet_total_pixels: wet.totalPixels,
+      wet_inside_alpha: wet.insideAlpha,
+      wet_inside_pixels: wet.insidePixels,
+      wet_outside_alpha: wet.outsideAlpha,
+      wet_outside_pixels: wet.outsidePixels,
+      dry_alpha_before: dry.inside,
+      dry_alpha_after: dry.inside,
+      dry_alpha_outside_before: dry.outside,
+      dry_alpha_outside_after: dry.outside,
+      wet_after_flush_outside_alpha: wet.outsideAlpha,
+      forceDryAll_ran: false,
+      transfer_bbox: null,
+      transfer_dry_alpha_before: null,
+      transfer_dry_alpha_after: null,
+      paper_gap: this.measureBakeParityPaperGap(bbox),
+    }
+  }
+
+  /** Around a forceDryAll call site (the :2385/:2678 wraps) — records the bounds actually used + dry before. */
+  private beginBakeParityTransfer(points: readonly PenPoint[], opts: BrushOpts): void {
+    const cap = this.bakeParityActive
+    if (!cap || !this.performanceListener) return
+    const bbox = clampBakeParityBounds(this.dryRegionForStroke(points, opts), this.width, this.height)
+    cap.forceDryAll_ran = true
+    cap.transfer_bbox = bbox
+    cap.transfer_dry_alpha_before = this.measureBakeParityDrySplit(bbox).inside
+  }
+
+  /** Post-forceDryAll half of the transfer wrap — dry alpha after the transfer. */
+  private endBakeParityTransfer(): void {
+    const cap = this.bakeParityActive
+    if (!cap || !cap.transfer_bbox || !this.performanceListener) return
+    cap.transfer_dry_alpha_after = this.measureBakeParityDrySplit(cap.transfer_bbox).inside
+  }
+
+  /** Complete at flush exit — re-measure wet/dry after every queued forceDryAll ran, then emit. */
+  private completeBakeParityFlushCapture(): void {
+    const cap = this.bakeParityActive
+    this.bakeParityActive = null
+    if (!cap || !this.performanceListener) return
+    const wet = this.measureBakeParityWetSplit(cap.bbox)
+    const dry = this.measureBakeParityDrySplit(cap.bbox)
+    cap.wet_after_flush_outside_alpha = wet.outsideAlpha
+    cap.dry_alpha_after = dry.inside
+    cap.dry_alpha_outside_after = dry.outside
+    this.bakeParityAwaitingExport = cap
+    this.emitBakeParitySample({ kind: 'flush', capture: cap })
+  }
+
+  /**
+   * Sample the export composite (dry + display) for the pending capture —
+   * answers whether the outside-bbox wet mass still appears in what gets
+   * persisted. Called from exportCompositeCanvas / copyLiveAlphaCanvas.
+   */
+  private sampleBakeParityExport(
+    canvas: HTMLCanvasElement,
+    at: BakeParityExportCapture['export_sampled_at'],
+  ): void {
+    const cap = this.bakeParityAwaitingExport
+    if (!cap) return
+    if (!this.performanceListener || !this.bakeParityProfilingEnabled()) {
+      this.bakeParityAwaitingExport = null
+      return
+    }
+    this.bakeParityAwaitingExport = null
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return
+    const b = cap.bbox
+    const id = ctx.getImageData(0, 0, this.width, this.height)
+    const d = id.data
+    let inside = 0
+    let outside = 0
+    for (let y = 0; y < this.height; y++) {
+      const rowBase = y * this.width
+      const rowInside = y >= b.y0 && y <= b.y1
+      for (let x = 0; x < this.width; x++) {
+        const a = d[(rowBase + x) * 4 + 3]
+        if (a === 0) continue
+        if (rowInside && x >= b.x0 && x <= b.x1) inside += a
+        else outside += a
+      }
+    }
+    let displayOutside = 0
+    try {
+      const disp = this.dualCanvas.displayCtx.getImageData(0, 0, this.width, this.height)
+      for (let y = 0; y < this.height; y++) {
+        if (y >= b.y0 && y <= b.y1) continue
+        const rowBase = y * this.width
+        for (let x = 0; x < this.width; x++) {
+          if (x >= b.x0 && x <= b.x1) continue
+          displayOutside += disp.data[(rowBase + x) * 4 + 3]
+        }
+      }
+    } catch {
+      // Detached display canvas — export still records the composite sums.
+    }
+    this.emitBakeParitySample({
+      kind: 'export',
+      capture: {
+        captureId: cap.captureId,
+        export_sampled_at: at,
+        export_composite_alpha_in_bbox_region: inside,
+        export_composite_alpha_outside_bbox_region: outside,
+        display_alpha_outside_bbox_region: displayOutside,
+        export_composite_includes_outside_mass: cap.wet_outside_alpha > 0 && displayOutside > 0,
+      },
+    })
+  }
+
   public flushPendingStrokeFinalizations(): void {
+    this.beginBakeParityFlushCapture()
     this.requestRender()
     while (this.pendingStrokeFinalizations.length > 0 || this.activeStrokeFinalization) {
       this.runStrokeFinalizationTurn(true, Infinity, Infinity)
     }
     this.strokeFinalizationScheduled = false
+    this.completeBakeParityFlushCapture()
   }
 
   private startNextStrokeFinalization(): ActiveStrokeFinalization | null {
@@ -2382,7 +2759,12 @@ export class EfxPaintEngine {
         active.phase = 'fluid'
         return
       }
+      // 260930-q6t Addendum B — capture-only wrap: records the bounds this
+      // forceDryAll actually used + the dry alpha before/after (no-op unless
+      // a flush capture is armed). The transfer line itself is untouched.
+      this.beginBakeParityTransfer(active.pending.points, active.pending.opts)
       forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(active.pending.points, active.pending.opts))
+      this.endBakeParityTransfer()
       this.finishInteractivePaintFinalization(active)
       return
     }
@@ -2675,7 +3057,10 @@ export class EfxPaintEngine {
 
       // Bake to canvas — in local mode, keep wet for stroke interaction
       if (this.state.physicsMode !== 'local') {
+        // 260930-q6t Addendum B — capture-only wrap (see :2385 site above).
+        this.beginBakeParityTransfer(points, opts)
         forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(points, opts))
+        this.endBakeParityTransfer()
       } else if (options.startNaturalDrying) {
         // Start natural drying timer (research: paint dries over time via evaporation)
         this.startNaturalDrying()

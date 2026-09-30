@@ -1,0 +1,116 @@
+{
+  "quick": "260930-q6t",
+  "plan": "bake-parity (URGENT - paint loses consistency after leave/close)",
+  "addendum": "B — mechanism measurement (MEASURE-ONLY)",
+  "date": "2026-09-30",
+  "status": "headless-done / pending-live",
+
+  "headless_bbox_loss": {
+    "proof": "packages/efx-physic-paint/src/core/drying.bboxLoss.test.ts (deterministic vitest)",
+    "command": "cd packages/efx-physic-paint && ../../app/node_modules/.bin/vitest run src/core/drying.bboxLoss.test.ts",
+    "result": "6/6 passed",
+    "grid": {
+      "W": 20,
+      "H": 10,
+      "bounds": { "x0": 6, "y0": 3, "x1": 9, "y1": 6 },
+      "inside_pixels": 16,
+      "drift_pixels_outside": 8,
+      "drift_zone": "cols 10-11, rows 3-6"
+    },
+    "seeds": {
+      "inside_alpha_each": 400,
+      "outside_alpha_each": 700,
+      "stroke_opacity": 1
+    },
+    "numbers": {
+      "inside_transfer_per_px": 128,
+      "inside_transfer_law": "round(min(1, 400/800) * 1 * 255) = 128",
+      "dry_gained_total": 2048,
+      "dry_gained_outside_bbox": 0,
+      "wet_total_alpha_before": 12000,
+      "wet_outside_alpha_stranded": 5600,
+      "wet_outside_share_of_total": 0.4666666667,
+      "would_be_outside_transfer_if_full_frame_bbox": 1784
+    },
+    "assertions": [
+      "(i) inside-bounds wet transfers to dry: every inside px lands at exactly 128; wet alpha/strokeOpacity/wetness zeroed",
+      "(ii) outside-bounds wet does NOT transfer: dry stays 0 outside; all 8 drift px keep full alpha 700 (total 5600)",
+      "(iii) dry gained alpha equals exactly the inside-bbox transfer (2048); outside mass unaccounted for in dry"
+    ],
+    "interpretation": "Mechanism proof: forceDryAll is bbox-clamped (drying.ts:197-240 loops only bx0..bx1/by0..by1), so physics-drifted wet outside dryRegionForStroke is never transferred. The engine then clears the wet buffer on leave/close -> that mass is destroyed. In this synthetic seed the stranded share is 46.67% (well over the 5% halt threshold); the LIVE share is what decides the hypothesis."
+  },
+
+  "paper_gap_helper_unit_checks": {
+    "helper": "bakeParityPaperMods(alpha, pixelOpacity, displayPaperUnit, transferPaperUnit) exported from engine/EfxPaintEngine.ts — pure, unit-checked against compositor.ts's paperMod THROUGH wetDisplayAlpha (compositor imported and read, never edited)",
+    "test": "drying.bboxLoss.test.ts second describe block (3 tests, green)",
+    "checks": [
+      "display mod = wetDisplayAlpha(a,op,ph) / wetDisplayAlpha(a,op,0) on the slow path (op 0.4/0.85), toBeCloseTo 10 — matches compositor paperMod exactly",
+      "display mod = 1 for pixelOpacity >= 0.90 (fast path applies NO paper)",
+      "transfer mod = clamp(1.4 - ph*0.8, 0.3, 1.4): ph 0 -> 1.4, ph 0.5 -> 1.0, ph 1 -> 0.6, ph 2 -> 0.3 (floor); transferPaperUnit null -> 1 (no paper map)",
+      "forceDryAll mod = 1 everywhere (it applies NO paper)"
+    ]
+  },
+
+  "live_capture": {
+    "state": "pending-live — instrumentation committed, capture file not yet populated",
+    "path": "/tmp/efx-bake-parity-capture.json",
+    "route": "User runs the app in DEV with localStorage efx.physicsPaint.profile = '1' (profiling surface), paints a medium/dark navy pigment stroke on light paper, then leaves the painted key or closes Studio. The leave/close flush + export emit a paired bake-parity sample; the app writes the JSON to /tmp. Claude reads it from disk.",
+    "gating": "window.__EFX_PHYSICS_PAINT_PROFILE__.enabled() && performanceListener present — zero cost when profiling is off; capture runs only at flush/export time, never in the hot loop",
+    "fields_pending": {
+      "flush": [
+        "captureId, timestamp, frameId (null — engine carries no frame identity), paperStrength (mapped from state.embossStrength), paperGrainKey, paperHeightMapPresent",
+        "bbox (dryRegionForStroke bounds actually used) + bboxSource",
+        "wet_total_alpha, wet_total_pixels (whole wet buffer, alpha >= 1)",
+        "wet_inside_alpha, wet_inside_pixels (within bbox)",
+        "wet_outside_alpha, wet_outside_pixels (outside bbox — the candidate lost mass)",
+        "dry_alpha_before, dry_alpha_after (full frame)",
+        "dry_alpha_outside_before, dry_alpha_outside_after",
+        "wet_after_flush_outside_alpha (is outside mass still in wet after forceDryAll?)",
+        "forceDryAll_ran, transfer_bbox, transfer_dry_alpha_before, transfer_dry_alpha_after (actual transfer site :2385/:2678)",
+        "paper_gap: transfer_paper_mod_sum (clamp(1.4 - ph*0.8, 0.3, 1.4)), display_paper_mod_sum (compositor paperMod law), paper_gap_sum = display - transfer, forceDryAll_paper_mod_sum (= 1.0)"
+      ],
+      "export": [
+        "captureId (pairs with flush), export_sampled_at (exportCompositeCanvas | copyLiveAlphaCanvas)",
+        "export_composite_alpha_in_bbox_region",
+        "export_composite_alpha_outside_bbox_region",
+        "display_alpha_outside_bbox_region (display canvas alone, outside bbox)",
+        "export_composite_includes_outside_mass (boolean: wet_outside_alpha > 0 && displayOutside > 0)"
+      ],
+      "top_level": [
+        "schema: efx-bake-parity-capture/1, quick, addendum, writtenAt",
+        "wet_outside_share_of_total = flush.wet_outside_alpha / flush.wet_total_alpha",
+        "decision_rule: >= 0.05 -> bbox hypothesis stands (report, await direction); < 0.05 -> HALT, reopen paper-gap with flush.paper_gap numbers"
+      ]
+    }
+  },
+
+  "decision_rule": {
+    "threshold": "wet_outside_alpha < 5% of wet_total_alpha at leave/close",
+    "status": "PENDING-LIVE",
+    "if_ge_5pct": "bbox hypothesis stands — report the numbers and await direction on the fix (do NOT implement)",
+    "if_lt_5pct": "bbox hypothesis NOT the loss mechanism — halt, reopen the paper-gap branch using paper_gap numbers already in the same capture file",
+    "alpha_model_unification": "NOT implemented — stays gated on this measurement (Plan A Task 2)"
+  },
+
+  "guardrails": {
+    "compositor_ts": "byte-untouched (absent from diff)",
+    "drying_ts_alpha_math": "byte-untouched (absent from diff)",
+    "spreadScale_fluids_diffusion": "absent from diff",
+    "guard_literals": { "}, 16)": 1, "drySpeed: 100": 1 },
+    "guard_battery": "compositor.displayMapping / spreadScale / physicsSettledFootprint / productionAaSettleMeasurement / copyLiveExtractionTornEdge — green with zero edits",
+    "engine_diff": "capture-only: types + pure helper + flush/transfer/export sampling wrapped around existing calls; forceDryAll call lines byte-identical",
+    "scope_diff_files": [
+      "packages/efx-physic-paint/src/core/drying.bboxLoss.test.ts",
+      "packages/efx-physic-paint/src/engine/EfxPaintEngine.ts",
+      "app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.ts",
+      ".planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-MEASURE-EVIDENCE.json"
+    ]
+  },
+
+  "verification": {
+    "bboxLoss_test": "6/6 passed",
+    "full_package_suite": "286 passed, 3 skipped, 1 failed — the failure is drying.parity.test.ts, Plan A Task 1's intentional RED at base (gated, pre-existing, not in guard battery)",
+    "package_check": "pnpm --filter @efxlab/efx-physic-paint check — pass (tsc --noEmit)",
+    "app_typecheck": "pnpm --filter efx-motion-editor typecheck — pass"
+  }
+}
