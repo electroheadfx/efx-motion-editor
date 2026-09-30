@@ -172,9 +172,9 @@ describe('R10 shape detail (260930-detail — fractal brush-shape noise)', () =>
     expect(countOcc(eraseSrc, 'seededRng(')).toBeGreaterThanOrEqual(1)
   })
 
-  it('default-50: edgeDetail default is 50 at the engine and at app settings (v11 radius*0.25 ~= edgeMul 1)', () => {
-    expect(engineSrc).toContain('edgeDetail: 50')
-    expect(appSettingsSrc).toContain('edgeDetail: 50')
+  it('default-20: edgeDetail default is 20 at the engine and at app settings (tuned look default, 260930-ni6)', () => {
+    expect(engineSrc).toContain('edgeDetail: 20')
+    expect(appSettingsSrc).toContain('edgeDetail: 20')
   })
 
   it('held-pose-byte-identical: same mutationId + curve + variance replays byte-identical (stop-motion law)', () => {

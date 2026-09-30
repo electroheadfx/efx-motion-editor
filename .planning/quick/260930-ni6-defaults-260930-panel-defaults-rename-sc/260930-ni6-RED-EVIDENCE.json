@@ -1,0 +1,34 @@
+{
+  "plan": "260930-ni6",
+  "task": 1,
+  "command": "vitest run --reporter=tap src/brush/shapeDetail.test.ts (cwd: packages/efx-physic-paint) && vitest run --reporter=tap src/components/physic-paint/engine/physicsPaintStudioSettings.test.ts (cwd: app)",
+  "exitCode": 1,
+  "targetFile": "packages/efx-physic-paint/src/brush/shapeDetail.test.ts",
+  "targetTest": "default-20: edgeDetail default is 20 at the engine and at app settings (tuned look default, 260930-ni6)",
+  "verdict": "RED_EVIDENCE_OK",
+  "reason": "target_test_failed",
+  "rawTapPath": "/tmp/ni6-red-shape.log",
+  "defaultReporterLogPath": "/tmp/ni6-red-settings.log",
+  "headAtStart": "c10d9a3d",
+  "recordedAt": "2026-09-30T15:40:00Z",
+  "note": "Flattened TAP leaf lines (vitest TAP reporter indents nested test lines and omits the # tests/# pass/# fail trailer; raw tap preserved at rawTapPath for the shape run and at defaultReporterLogPath for the settings run). Task 1 RED: only the two test files were edited — zero production edits. Pin A (shapeDetail default-20 source pin) fails against both default sites still reading edgeDetail: 50 (EfxPaintEngine.ts:610, physicsPaintStudioSettings.ts:32). Pin B (settings defaults contract) fails as the NEW contract — expected 20, got 50 — folding the pre-existing stale edgeDetail: 4 pin from 260930-detail into this rebase. Both are assertion failures on real tests: 10/15 tests discovered, 9+14 passing, no crash, no zero-test discovery.",
+  "pins": [
+    {
+      "id": "Pin A — shapeDetail default-20 source pin (engine + app sites)",
+      "targetTest": "default-20: edgeDetail default is 20 at the engine and at app settings (tuned look default, 260930-ni6)",
+      "expected": "engineSrc contains 'edgeDetail: 20' and appSettingsSrc contains 'edgeDetail: 20'.",
+      "actual": "FAIL — both default sites still read 50: toContain('edgeDetail: 20') fails at shapeDetail.test.ts:176 (engine edgeDetail: 50 at EfxPaintEngine.ts:610; app edgeDetail: 50 at physicsPaintStudioSettings.ts:32). 1 failed | 9 passed (10).",
+      "status": "fail"
+    },
+    {
+      "id": "Pin B — settings defaults contract rebased to edgeDetail 20",
+      "targetTest": "Physics Paint Studio settings > keeps the established painting defaults",
+      "expected": "makeInitialPhysicsPaintStudioSettings() returns edgeDetail 20 in the defaults object.",
+      "actual": "FAIL — new-contract failure (not the stale expected-4/got-50 from 260930-detail): toMatchObject received \"edgeDetail\": 50 while expecting 20 (diff at physicsPaintStudioSettings.test.ts:32). 1 failed | 14 passed (15).",
+      "status": "fail"
+    }
+  ],
+  "expected": "Per the plan's TDD contract: with only the two test files edited (zero production edits), both rebased pins must fail on assertions naming their locus — expected 20, got 50 — no crashes, no zero-test discovery (verdict RED_EVIDENCE_OK). The pre-existing stale edgeDetail: 4 pin is folded into this rebase: its evidence is the same assertion failing as expected-20/got-50, not the old expected-4/got-50.",
+  "actual": "Both target files fail exactly on the rebased assertions: shapeDetail.test.ts:176 toContain('edgeDetail: 20') against engine source holding 50, and physicsPaintStudioSettings.test.ts:32 toMatchObject receiving edgeDetail 50 while expecting 20. Test counts intact (10 and 15 tests discovered, 9+14 passing). No production file touched — git diff shows only the two test files.",
+  "output": "not ok 1 - R10 shape detail (260930-detail — fractal brush-shape noise)\nnot ok 8 - default-20: edgeDetail default is 20 at the engine and at app settings (tuned look default, 260930-ni6)\nexpected: \"edgeDetail: 20\" // toContain fails: engine source carries edgeDetail: 50 at EfxPaintEngine.ts:610\nnot ok 1 - Physics Paint Studio settings\nnot ok 1 - keeps the established painting defaults\n- \"edgeDetail\": 20,\n+ \"edgeDetail\": 50,\n# tests 25\n# pass 23\n# fail 2\n"
+}
