@@ -2,11 +2,20 @@
 //  LUT-driven drying system
 //  Extracted from efx-paint-physic-v3.html lines 260-284, 1654-1724, 2526-2554
 //  No module-level mutable state. No DOM access (ctx passed as arg).
+//
+//  260930-wm6 — THE ONE LOOK LAW: every transfer alpha in this file
+//  is exactly wetDisplayAlpha(alpha, pixelOpacity,
+//  sampleH(paperHeight, x, y, w, h)) / 255 from render/compositor.ts
+//  (fast path included). No linear density divisor, no separate paper
+//  carve — paper lives inside wetDisplayAlpha only. WYSIWYG by
+//  construction.
 // ============================================================
 
 import type { WetBuffers, SavedWetBuffers, DryingLUT, PaintPrimitiveTimingObserver } from '../types'
 import { LUT_SIZE } from '../types'
 import { lerp, clamp } from '../util/math'
+import { wetDisplayAlpha } from '../render/compositor'
+import { sampleH } from './paper'
 
 function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined, stage: string, run: () => T): T {
   if (!observer) return run()
@@ -90,11 +99,12 @@ export function dryStep(
     const prevPos = drying.dryPos[i]
     drying.dryPos[i] = Math.min(LUT_SIZE, drying.dryPos[i] + drySpeed)
 
-    // Fully dry: transfer everything remaining
+    // Fully dry: transfer everything remaining — 260930-wm6 one look
+    // law: the finalize byte IS the display byte (wetDisplayAlpha).
     if (drying.dryPos[i] >= LUT_SIZE) {
-      const densityAlpha = Math.min(1, wet.alpha[i] / 800)
       const pixelOpacity = wet.strokeOpacity ? wet.strokeOpacity[i] : 1.0
-      const sa = densityAlpha * pixelOpacity
+      const sa =
+        wetDisplayAlpha(wet.alpha[i], pixelOpacity, sampleH(paperHeight, px, py, width, height)) / 255
       const pi = ((py - by0) * rectW + (px - bx0)) * 4
       const ma = d[pi + 3] / 255
       // 260928-dh1: continuous proportional transfer — any sa > 0
@@ -116,25 +126,24 @@ export function dryStep(
       continue
     }
 
-    // LUT-driven fractional transfer
+    // LUT-driven fractional transfer — 260930-wm6 one look law: the
+    // step transfers exactly the telescoping display-law delta
+    // f(before) − f(after), f = wetDisplayAlpha/255, so the sum over
+    // the dry clock telescopes to the full-dry byte. dh1's continuous
+    // proportional transfer holds — any sa > 0 transfers, no sub-gate.
     const frac = drying.dryLUT[Math.floor(drying.dryPos[i])]
     const prevFrac = drying.dryLUT[Math.floor(prevPos)]
     const df = frac - prevFrac
     if (df < 0.0001) continue
 
-    const drain = wet.alpha[i] * df
+    const alphaBefore = wet.alpha[i]
+    const drain = alphaBefore * df
+    const alphaAfter = alphaBefore - drain
     const pixelOpacity = wet.strokeOpacity ? wet.strokeOpacity[i] : 1.0
-    let sa = (drain / 800) * pixelOpacity
-
-    // Paper texture modulation — skip at full opacity for solid coverage
-    // (260930-q6t PROBE: restored main's exact line. 260928-dh1 had widened
-    // this to every opacity, which carved a 0.6x hole in solid paint's dry
-    // transfer at full paper while the display fast path (pixelOpacity >= 0.90)
-    // applied no paper at all — the wet overlay hid it until leave/close.)
-    if (paperHeight && pixelOpacity < 0.99) {
-      const ph = paperHeight[i]
-      sa *= clamp(1.4 - ph * 0.8, 0.3, 1.4)
-    }
+    const paperUnit = sampleH(paperHeight, px, py, width, height)
+    const sa =
+      wetDisplayAlpha(alphaBefore, pixelOpacity, paperUnit) / 255 -
+      wetDisplayAlpha(alphaAfter, pixelOpacity, paperUnit) / 255
 
     const pi = ((py - by0) * rectW + (px - bx0)) * 4
     const ma = d[pi + 3] / 255
@@ -150,7 +159,7 @@ export function dryStep(
       changed = true
     }
 
-    wet.alpha[i] -= drain
+    wet.alpha[i] = alphaAfter
     wet.wetness[i] = Math.max(0, wet.wetness[i] * (1 - df))
 
     if (wet.alpha[i] < DRY_ALPHA_THRESHOLD) {
@@ -168,8 +177,10 @@ export function dryStep(
 
 /**
  * Instantly transfer all wet paint to the dry canvas and clear wet layer.
- * Uses a=min(wetAlpha/800,1) opacity formula (the "sacred" /800).
- * From v3.html forceDryAll() line 2526
+ * 260930-wm6 — one look law: the transferred alpha is exactly
+ * wetDisplayAlpha(alpha, pixelOpacity, sampleH(paperHeight, x, y,
+ * width, height)) / 255 — the SAME byte the wet overlay displays.
+ * From v3.html forceDryAll() line 2526 (law replaced 2026-09-30).
  */
 export interface DryRegionBounds {
   x0: number;
@@ -185,6 +196,7 @@ export function forceDryAll(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
+  paperHeight: Float32Array | null,
   observePrimitive?: PaintPrimitiveTimingObserver,
   stagePrefix: string = 'force-dry',
   bounds?: DryRegionBounds | null,
@@ -213,11 +225,12 @@ export function forceDryAll(
     const i = rowBase + px
     if (wet.alpha[i] < 1) continue
 
-    // Sacred /800 divisor — calibrated for sparse paper-height deposits (D-06)
-    // dryStep also uses /800 — must stay consistent
-    const densityAlpha = Math.min(1, wet.alpha[i] / 800)
+    // 260930-wm6 — one look law: forceDryAll transfers EXACTLY the
+    // display byte. wetDisplayAlpha is the only transfer law, shared
+    // with dryStep and the wet overlay (fast path included).
     const pixelOpacity = wet.strokeOpacity ? wet.strokeOpacity[i] : 1.0
-    const sa = densityAlpha * pixelOpacity
+    const sa =
+      wetDisplayAlpha(wet.alpha[i], pixelOpacity, sampleH(paperHeight, px, py, width, height)) / 255
     const pi = ((py - by0) * rectW + (px - bx0)) * 4
     const ma = d[pi + 3] / 255
 

@@ -25,7 +25,10 @@
 //  in the suite.
 //
 //  Sample grid: alpha {40,120,300,800,1500,2600} x pixelOpacity
-//  {0.4, 0.85, 1.0} x paperHeight {0, 0.5, 1.0} = 54 samples.
+//  {0.4, 0.85, 1.0} x paperHeight {0, 0.5, 1.0} = 54 samples on
+//  row 0 of a H=2 grid — sampleH clamps iy to height-2, so a
+//  1-row grid with a non-null paper map would read row -1 (NaN).
+//  Row 1 carries paper only (its wet alpha stays 0).
 //  No production file is edited for this pin.
 // ============================================================
 
@@ -56,7 +59,7 @@ for (const alpha of ALPHAS) {
   }
 }
 const W = SAMPLES.length // 54
-const H = 1
+const H = 2 // row 0 = samples, row 1 = paper carrier (see header)
 
 function makeWet(): WetBuffers {
   const wet = createWetBuffers(W * H)
@@ -69,6 +72,16 @@ function makeWet(): WetBuffers {
     wet.wetness[s.index] = 1
   }
   return wet
+}
+
+/** Paper map over both rows — row 1 mirrors row 0 so sampleH's bilinear tap stays finite. */
+function makePaper(): Float32Array {
+  const paper = new Float32Array(W * H)
+  for (const s of SAMPLES) {
+    paper[s.index] = s.paperHeight
+    paper[W + s.index] = s.paperHeight
+  }
+  return paper
 }
 
 function makeDrying(): DryingLUT {
@@ -107,7 +120,9 @@ function displayAlphas(): number[] {
     wet,
     W,
     H,
-    (x, y) => SAMPLES[y * W + x].paperHeight,
+    // Row 1 mirrors row 0 (only row 0 holds wet, so this is the
+    // carrier row — kept sample-exact for safety).
+    (x, y) => SAMPLES[(y * W + x) % W].paperHeight,
   )
   expect(placed).not.toBeNull()
   const p = placed!
@@ -122,10 +137,9 @@ function displayAlphas(): number[] {
 /**
  * Dry-side bytes: what forceDryAll writes over an empty dry buffer.
  *
- * Task 1 calls the CURRENT signature (no paper argument yet) so the
- * RED is an assertion failure on real pixels, not a crash. The paper
- * argument joins the call form in Task 2's RED sub-step when the
- * signature gains the parameter.
+ * GREEN A call form: the paper map joins the signature right after
+ * height — the same map the display samples, so both sides read
+ * identical paper units through the one look law.
  */
 function dryAlphas(): number[] {
   const wet = makeWet()
@@ -135,7 +149,7 @@ function dryAlphas(): number[] {
       ({ width: w, height: h, data }),
     putImageData: () => {},
   } as unknown as CanvasRenderingContext2D
-  forceDryAll(wet, makeSaved(), makeDrying(), ctx, W, H)
+  forceDryAll(wet, makeSaved(), makeDrying(), ctx, W, H, makePaper())
   return SAMPLES.map((s) => data[s.index * 4 + 3])
 }
 

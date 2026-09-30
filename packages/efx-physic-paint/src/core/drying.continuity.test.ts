@@ -131,9 +131,11 @@ describe('260930-wm6 one look law — dryStep/forceDryAll transfer pins', () => 
         `px${px} alpha=${before[px]}: transferred byte ${h.data[px * 4 + 3]}, ` +
           `one look law expects ${expected}`,
       ).toBe(expected)
-      // ... while the wet side drained by exactly the LUT fraction.
+      // ... while the wet side drained by exactly the LUT fraction
+      // (wet.alpha is a Float32Array — the store rounds to f32, so
+      // pin through Math.fround for an exact match).
       const drain = before[px] * h.df
-      expect(h.wet.alpha[px]).toBeCloseTo(before[px] - drain, 10)
+      expect(h.wet.alpha[px]).toBe(Math.fround(before[px] - drain))
     }
 
     // Strictly monotone in the seeded load — sub-gate residue still transfers.

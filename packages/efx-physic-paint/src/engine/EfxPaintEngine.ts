@@ -157,15 +157,16 @@ export type PaintPerformanceSample = {
 }
 
 // ============================================================
-//  260930-q6t Addendum B — bake-parity flush capture (MEASURE-ONLY)
+//  Bake-parity flush capture (MEASURE-ONLY)
 //
-//  Quantifies the two candidate loss mechanisms at leave/close:
+//  Quantifies the loss mechanisms at leave/close:
 //  (A) bbox flush loss — physics-drifted wet OUTSIDE the
 //      dryRegionForStroke bbox is never transferred by the bbox-
 //      clamped forceDryAll, then destroyed when the engine clears;
-//  (B) paper-modulation gap — transfer-side clamp(1.4 - ph*0.8,
-//      0.3, 1.4) vs the display's paperMod (compositor.ts:40-41),
-//      with forceDryAll applying no paper at all.
+//  (B) paper-modulation gap — transfer-side paper response vs the
+//      display's paperMod. 260930-wm6: both sides run the one look
+//      law (wetDisplayAlpha), so this gap is 0 by construction —
+//      the capture keeps reporting it as a live invariant.
 //
 //  Capture ONLY: no transfer, composite, or timing expression is
 //  altered. Runs only when the profiling surface is on
@@ -178,7 +179,7 @@ export type BakeParityBounds = { x0: number; y0: number; x1: number; y1: number 
 export type BakeParityPaperGap = {
   /** Wet stroke-region pixels the sums cover (alpha >= 1, strokeOpacity >= 0.001). */
   pixels: number
-  /** Σ clamp(1.4 - ph*0.8, 0.3, 1.4) — dryStep's fractional-branch paper factor (drying.ts:132-135). */
+  /** Σ wetDisplayAlpha's paper response at the transfer site (one look law — 260930-wm6). */
   transfer_paper_mod_sum: number
   /** Σ compositor paperMod as applied by wetDisplayAlpha (slow path; fast path = 1). */
   display_paper_mod_sum: number
@@ -235,17 +236,18 @@ export type BakeParitySamplePayload =
   | { kind: 'export'; capture: BakeParityExportCapture }
 
 /**
- * 260930-q6t Addendum B — PURE paper-mod arithmetic for the paper-gap
- * measurement (MEASURE-ONLY; no look path uses this).
+ * PURE paper-mod arithmetic for the paper-gap measurement
+ * (MEASURE-ONLY; no look path uses this).
  *
- * - `transfer`: dryStep's fractional-branch paper factor
- *   clamp(1.4 - ph*0.8, 0.3, 1.4) (drying.ts:132-135); null = no paper
- *   map, the branch is skipped -> 1.
- * - `display`: compositor.ts's paperMod
- *   `1 - (0.05 + 0.20*(1 - min(1, d*2))) * ph` as applied by
- *   wetDisplayAlpha's SLOW path; the fast path (pixelOpacity >= 0.90)
- *   applies NO paper -> 1.
- * - `forceDryAll`: forceDryAll applies no paper at all -> always 1.
+ * 260930-wm6 — one look law: `transfer` and `display` are now the
+ * SAME law — wetDisplayAlpha's paper response
+ * `1 - (0.05 + 0.20*(1 - min(1, d*2))) * unit` on the slow path; the
+ * fast path (pixelOpacity >= 0.90) applies NO paper -> 1. A null
+ * transfer unit samples sampleH(null) = 0.5, the display baseline
+ * for a missing map. The paper-gap sum is therefore 0 by
+ * construction once the transfer runs the display law.
+ *
+ * `forceDryAll` stays the capture's parity reference at 1.
  *
  * Unit-checked against wetDisplayAlpha in drying.bboxLoss.test.ts —
  * compositor.ts is imported and read, NEVER edited.
@@ -258,10 +260,10 @@ export function bakeParityPaperMods(
 ): { transfer: number; display: number; forceDryAll: number } {
   const density = densityAlpha / DENSITY_NORM
   const paperStrength = 0.05 + 0.20 * (1 - Math.min(1, density * 2))
-  const slowMod = 1.0 - paperStrength * displayPaperUnit
+  const response = (unit: number) => (pixelOpacity >= 0.90 ? 1 : 1.0 - paperStrength * unit)
   return {
-    transfer: transferPaperUnit === null ? 1 : clamp(1.4 - transferPaperUnit * 0.8, 0.3, 1.4),
-    display: pixelOpacity >= 0.90 ? 1 : slowMod,
+    transfer: response(transferPaperUnit ?? 0.5),
+    display: response(displayPaperUnit),
     forceDryAll: 1,
   }
 }
@@ -1353,7 +1355,7 @@ export class EfxPaintEngine {
     }
 
     // Bake diffused paint back to canvas
-    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight)
     this.displayCompositeDirty = true
 
     // Record physics run as action for deterministic replay
@@ -1380,7 +1382,7 @@ export class EfxPaintEngine {
     this.requestRender()
     this.flushPendingStrokeFinalizations()
     this.stopNaturalDrying()
-    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height)
+    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight)
     // Clear savedWet — dried paint is permanent, won't be lifted by future physics
     this.savedWet.r.fill(0)
     this.savedWet.g.fill(0)
@@ -2763,7 +2765,7 @@ export class EfxPaintEngine {
       // forceDryAll actually used + the dry alpha before/after (no-op unless
       // a flush capture is armed). The transfer line itself is untouched.
       this.beginBakeParityTransfer(active.pending.points, active.pending.opts)
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(active.pending.points, active.pending.opts))
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(active.pending.points, active.pending.opts))
       this.endBakeParityTransfer()
       this.finishInteractivePaintFinalization(active)
       return
@@ -2938,7 +2940,7 @@ export class EfxPaintEngine {
       return
     }
 
-    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-pre-stroke-force-dry', this.lastStrokeBounds)
+    forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight, observePrimitive, 'paint-pre-stroke-force-dry', this.lastStrokeBounds)
   }
 
   private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, physicsMode, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
@@ -3059,7 +3061,7 @@ export class EfxPaintEngine {
       if (this.state.physicsMode !== 'local') {
         // 260930-q6t Addendum B — capture-only wrap (see :2385 site above).
         this.beginBakeParityTransfer(points, opts)
-        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(points, opts))
+        forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight, observePrimitive, 'paint-final-force-dry', this.dryRegionForStroke(points, opts))
         this.endBakeParityTransfer()
       } else if (options.startNaturalDrying) {
         // Start natural drying timer (research: paint dries over time via evaporation)
@@ -3077,7 +3079,7 @@ export class EfxPaintEngine {
         observePrimitive,
         this.activeMutationId ?? this.lastCompletedMutationId ?? undefined,
       )
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, observePrimitive, 'erase-final-force-dry', this.lastStrokeBounds)
+      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight, observePrimitive, 'erase-final-force-dry', this.lastStrokeBounds)
     }
 
     // Compute last stroke bounding box for physics "Last" mode
