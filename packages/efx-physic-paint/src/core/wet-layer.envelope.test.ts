@@ -1,14 +1,18 @@
 // ============================================================
-//  Envelope-law contract pins (260930-dy0, R8 USER DESIGN ACT
-//  2026-09-30 — SPECS/real-paint/01-brush-footprint.md).
+//  Envelope-law contract pins (R8 revised 2026-09-30b —
+//  260930-espace "enveloppe-espace".
+//  SPECS/real-paint/01-brush-footprint.md).
 //
+//  THE ENVELOPE IS A ROOM, NOT A CLIP.
 //  The pressure-defined stroke thickness is the MAXIMUM thickness.
-//  Spread redistributes mass inside the envelope; it never widens
-//  the stroke. Three laws pinned here:
-//   (1) featherWetEdges is boundary AA only — never an outward
-//       grower (no EMPTY-pixel writes);
-//   (2) projectWetIntoEnvelope is a HARD ceiling — solver growth
-//       past the pre-solver envelope is renormalized back inside
+//  The envelope is the GEOMETRIC pressure ribbon (ribbonWithScales at
+//  FULL pressure width) — a room the solver fills from a REDUCED
+//  deposit. Clip ONLY past the ribbon (rare), NEVER to the deposit.
+//   (1) featherWetEdges is boundary AA only — never an outward grower
+//       (no EMPTY-pixel writes);
+//   (2) projectWetIntoEnvelope is a HARD ceiling past the ROOM — mass
+//       the solver carried INTO the room survives (that transport IS
+//       the look); mass past the ribbon is renormalized back inside
 //       (interior contrast rises, width does not);
 //   (3) solver ticks / margin arithmetic stay byte-unchanged
 //       (#144 organic look — never reduced to hold the envelope).
@@ -18,14 +22,15 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createWetBuffers, featherWetEdges } from './wet-layer'
 import * as wetLayerNs from './wet-layer'
-import { spreadCurveFor } from './spreadScale'
+import * as spreadScaleNs from './spreadScale'
 import type { WetBuffers } from '../types'
 
 const api = wetLayerNs as Record<string, unknown>
+const spreadApi = spreadScaleNs as Record<string, unknown>
+const spreadCurveFor = spreadScaleNs.spreadCurveFor
 
 const W = 32
 const H = 32
-const FRAC = 0.35
 
 function idx(x: number, y: number): number {
   return y * W + x
@@ -69,6 +74,13 @@ function snapshotBuffers(wet: WetBuffers): {
   }
 }
 
+/** Mark a square room (the pressure-ribbon stand-in) inside an envelope mask. */
+function markRoom(envelope: Float32Array, x0: number, y0: number, x1: number, y1: number): void {
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) envelope[idx(x, y)] = 2
+  }
+}
+
 const engineSrc = readFileSync(
   new URL('../engine/EfxPaintEngine.ts', import.meta.url),
   'utf8',
@@ -93,7 +105,7 @@ function nthIndex(s: string, needle: string, n: number): number {
   return i
 }
 
-describe('envelope law (R8, 260930-dy0)', () => {
+describe('envelope law (R8 revised — the room, 260930-espace)', () => {
   it('feather-empty-pixels: featherWetEdges never writes a pre-empty pixel (all six buffers)', () => {
     const wet = makeBlob()
     const emptyIdx: number[] = []
@@ -197,6 +209,122 @@ describe('envelope law (R8, 260930-dy0)', () => {
     expect(Array.from(wet.strokeOpacity)).toEqual(Array.from(before.strokeOpacity))
   })
 
+  // --- the room contract (the anti-dy0 pins) ---
+
+  it('never-clip-to-deposit: mass the solver carried INTO the room survives (that transport IS the look)', () => {
+    expect(typeof api.projectWetIntoEnvelope).toBe('function')
+    const project = api.projectWetIntoEnvelope as (w: WetBuffers, e: Float32Array) => void
+
+    const wet = makeBlob() // deposit at 10..21
+    const envelope = wet.alpha.slice()
+    // The pressure ribbon is LARGER than the deposit — 8..23 is the room.
+    markRoom(envelope, 8, 8, 23, 23)
+    // Solver growth in the room: between the deposit edge and the ribbon.
+    wet.alpha[idx(9, 10)] = 300
+    wet.wetness[idx(9, 10)] = 200
+    wet.strokeOpacity[idx(9, 10)] = 0.4
+
+    project(wet, envelope)
+
+    // MUST survive. Zeroing it is the 260930-dy0 regression.
+    expect(wet.alpha[idx(9, 10)]).toBe(300)
+    expect(wet.wetness[idx(9, 10)]).toBe(200)
+    expect(wet.strokeOpacity[idx(9, 10)]).toBeCloseTo(0.4, 6)
+  })
+
+  it('clip-past-ribbon: mass past the pressure ribbon is clipped (rare)', () => {
+    expect(typeof api.projectWetIntoEnvelope).toBe('function')
+    const project = api.projectWetIntoEnvelope as (w: WetBuffers, e: Float32Array) => void
+
+    const wet = makeBlob()
+    const envelope = wet.alpha.slice()
+    markRoom(envelope, 8, 8, 23, 23)
+    // Growth PAST the ribbon.
+    wet.alpha[idx(5, 5)] = 300
+    wet.wetness[idx(5, 5)] = 200
+    wet.strokeOpacity[idx(5, 5)] = 0.4
+
+    project(wet, envelope)
+
+    expect(wet.alpha[idx(5, 5)]).toBe(0)
+    expect(wet.wetness[idx(5, 5)]).toBe(0)
+    expect(wet.strokeOpacity[idx(5, 5)]).toBe(0)
+  })
+
+  it('existing-mass-kept: pre-solver mass outside the ribbon is grandfathered (union), not clipped', () => {
+    expect(typeof api.projectWetIntoEnvelope).toBe('function')
+    const project = api.projectWetIntoEnvelope as (w: WetBuffers, e: Float32Array) => void
+
+    const wet = createWetBuffers(W * H)
+    // An earlier stroke's wet mass, far outside this stroke's ribbon.
+    wet.alpha[idx(2, 2)] = 1000
+    wet.wetness[idx(2, 2)] = 500
+    wet.strokeOpacity[idx(2, 2)] = 0.8
+    // envelope = union(pre-solver mass, ribbon): the snapshot grandfathers (2,2).
+    const envelope = wet.alpha.slice()
+    markRoom(envelope, 8, 8, 23, 23)
+
+    project(wet, envelope)
+
+    expect(wet.alpha[idx(2, 2)]).toBe(1000)
+    expect(wet.wetness[idx(2, 2)]).toBe(500)
+    expect(wet.strokeOpacity[idx(2, 2)]).toBeCloseTo(0.8, 6)
+  })
+
+  // --- the room mechanism (new code) ---
+
+  it('stampRibbonIntoEnvelope: exported as a function', () => {
+    expect(typeof api.stampRibbonIntoEnvelope).toBe('function')
+  })
+
+  it('stamp-marks-ribbon: nonzero fill marks the ribbon interior, leaves the outside', () => {
+    expect(typeof api.stampRibbonIntoEnvelope).toBe('function')
+    const stamp = api.stampRibbonIntoEnvelope as (
+      e: Float32Array, p: Array<[number, number]>, w: number, h: number, m?: number,
+    ) => void
+
+    const envelope = new Float32Array(W * H)
+    const poly: Array<[number, number]> = [[10, 10], [21, 10], [21, 21], [10, 21]]
+    stamp(envelope, poly, W, H)
+
+    expect(envelope[idx(15, 15)]).toBeGreaterThan(1)
+    expect(envelope[idx(10, 10)]).toBeGreaterThan(1)
+    expect(envelope[idx(5, 5)]).toBeLessThanOrEqual(1)
+    expect(envelope[idx(25, 25)]).toBeLessThanOrEqual(1)
+  })
+
+  it('stamp-preserves-outside: stamping the ribbon never clears pre-existing envelope mass (grandfathering)', () => {
+    expect(typeof api.stampRibbonIntoEnvelope).toBe('function')
+    const stamp = api.stampRibbonIntoEnvelope as (
+      e: Float32Array, p: Array<[number, number]>, w: number, h: number, m?: number,
+    ) => void
+
+    const envelope = new Float32Array(W * H)
+    envelope[idx(2, 2)] = 1000 // an earlier stroke, far from this ribbon
+    const poly: Array<[number, number]> = [[10, 10], [21, 10], [21, 21], [10, 21]]
+    stamp(envelope, poly, W, H)
+
+    expect(envelope[idx(2, 2)]).toBe(1000)
+  })
+
+  it('depositRoom: exported; g(0) = 0; g(sc) = sc (the UAT look lever)', () => {
+    expect(typeof spreadApi.depositRoom).toBe('function')
+    const g = spreadApi.depositRoom as (sc: number) => number
+    expect(g(0)).toBe(0)
+    expect(g(0.09)).toBeCloseTo(0.09, 10)
+    expect(g(0.363)).toBeCloseTo(0.363, 10)
+  })
+
+  // --- engine wiring ---
+
+  it('engine-stamped: stampRibbonIntoEnvelope( called twice (both local-physics sites)', () => {
+    expect(countOcc(engineSrc, 'stampRibbonIntoEnvelope(')).toBe(2)
+  })
+
+  it('engine-room-lever: depositRoom( called twice (one deposit reduction per site)', () => {
+    expect(countOcc(engineSrc, 'depositRoom(')).toBe(2)
+  })
+
   it('engine-wired: snapshotWetAlpha( and projectWetIntoEnvelope( each called twice', () => {
     expect(countOcc(engineSrc, 'snapshotWetAlpha(')).toBe(2)
     expect(countOcc(engineSrc, 'projectWetIntoEnvelope(')).toBe(2)
@@ -214,6 +342,25 @@ describe('envelope law (R8, 260930-dy0)', () => {
     expect(c1).toBeLessThan(p1)
     expect(p1).toBeLessThan(s2)
     expect(s2).toBeLessThan(l1)
+    expect(l1).toBeLessThan(p2)
+  })
+
+  it('stamp-before: the ribbon is stamped after the snapshot and strictly before the solver, at both sites', () => {
+    const s1 = nthIndex(engineSrc, 'snapshotWetAlpha(', 1)
+    const t1 = nthIndex(engineSrc, 'stampRibbonIntoEnvelope(', 1)
+    const c1 = nthIndex(engineSrc, 'createLocalFluidPhysicsContinuation(', 1)
+    const p1 = nthIndex(engineSrc, 'projectWetIntoEnvelope(', 1)
+    const s2 = nthIndex(engineSrc, 'snapshotWetAlpha(', 2)
+    const t2 = nthIndex(engineSrc, 'stampRibbonIntoEnvelope(', 2)
+    const l1 = nthIndex(engineSrc, 'localFluidPhysicsStep(', 1)
+    const p2 = nthIndex(engineSrc, 'projectWetIntoEnvelope(', 2)
+    for (const v of [s1, t1, c1, p1, s2, t2, l1, p2]) expect(v).toBeGreaterThan(-1)
+    expect(s1).toBeLessThan(t1)
+    expect(t1).toBeLessThan(c1)
+    expect(c1).toBeLessThan(p1)
+    expect(p1).toBeLessThan(s2)
+    expect(s2).toBeLessThan(t2)
+    expect(t2).toBeLessThan(l1)
     expect(l1).toBeLessThan(p2)
   })
 

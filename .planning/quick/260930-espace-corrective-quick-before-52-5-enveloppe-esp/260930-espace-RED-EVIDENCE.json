@@ -1,0 +1,59 @@
+{
+  "quick": "260930-espace",
+  "gate": "RED",
+  "date": "2026-09-30",
+  "file": "packages/efx-physic-paint/src/core/wet-layer.envelope.test.ts",
+  "total": 20,
+  "passed": 13,
+  "failed": 7,
+  "crashes": 0,
+  "failure_kind": "AssertionError only",
+  "bounds_moved": "none",
+  "production_files_edited": "none",
+  "stop_rule": "not triggered",
+  "failed_pins": [
+    {
+      "pin": "stampRibbonIntoEnvelope: exported as a function",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "stamp-marks-ribbon: nonzero fill marks the ribbon interior, leaves the outside",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "stamp-preserves-outside: stamping the ribbon never clears pre-existing envelope mass (grandfathering)",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "depositRoom: exported; g(0) = 0; g(sc) = sc (the UAT look lever)",
+      "assertion": "expected 'undefined' to be 'function'"
+    },
+    {
+      "pin": "engine-stamped: stampRibbonIntoEnvelope( called twice (both local-physics sites)",
+      "assertion": "expected +0 to be 2"
+    },
+    {
+      "pin": "engine-room-lever: depositRoom( called twice (one deposit reduction per site)",
+      "assertion": "expected +0 to be 2"
+    },
+    {
+      "pin": "stamp-before: the ribbon is stamped after the snapshot and strictly before the solver, at both sites",
+      "assertion": "expected -1 to be greater than -1"
+    }
+  ],
+  "passed_pins_at_base": [
+    "feather-empty-pixels (law)",
+    "boundary-aa (law)",
+    "projectWetIntoEnvelope: exported as a function",
+    "renormalized: escaped mass is zeroed and conserved onto the interior",
+    "identity: zero escape leaves every buffer byte-identical",
+    "never-clip-to-deposit (anti-dy0 law — room mass survives)",
+    "clip-past-ribbon (law)",
+    "existing-mass-kept (law — union grandfathering)",
+    "engine-wired: snapshotWetAlpha( / projectWetIntoEnvelope( x2",
+    "snapshot-before: snapshot strictly before the solver",
+    "ticks-unchanged (law)",
+    "margin-formula (law)",
+    "feather-wired (law)"
+  ]
+}
