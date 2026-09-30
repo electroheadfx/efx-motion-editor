@@ -1244,8 +1244,6 @@ export function PhysicsPaintStudio() {
     setSpread,
     setSmoothing,
     setEraseStrength,
-    startPhysics,
-    stopPhysics,
   } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });
   // 49-04 UAT fix: the swatch click must ALSO write the document fallback so
   // the monitor fond layer resolves the paper/solid/transparent record. The
@@ -2436,10 +2434,6 @@ export function PhysicsPaintStudio() {
     if (isPhysicalMutationLocked() || !engine || !launchContextRef.current) return;
     if (rotoFrameEditingRef.current.clearCurrentFrame()) rotoScript.notifySourceRevision();
   }, [engine, rotoScript]);
-  const dryPaint = useCallback(() => {
-    if (isPhysicalMutationLocked()) return;
-    engine?.forceDry();
-  }, [engine, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -3357,19 +3351,15 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.activePhysicsAction, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, startPhysics, stopPhysics, dryPaint], () => ({
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource], () => ({
     activeTool: settings.tool,
     physicsMode: settings.physicsMode,
-    activePhysicsAction: settings.activePhysicsAction,
     historyAvailability,
     disabled: !engine || staticControlsLocked,
     onSelectTool: selectTool,
     onUndo: undo,
     onRedo: redo,
     onClearFrame: clearActiveSource,
-    onPhysicsStart: startPhysics,
-    onPhysicsStop: stopPhysics,
-    onDryPaint: dryPaint,
   }));
   // 38-11: the right panel props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
