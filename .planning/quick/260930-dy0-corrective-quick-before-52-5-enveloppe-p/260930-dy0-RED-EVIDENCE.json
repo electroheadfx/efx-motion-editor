@@ -1,0 +1,57 @@
+{
+  "quick": "260930-dy0",
+  "phase": "RED",
+  "date": "2026-09-30",
+  "command": "cd packages/efx-physic-paint && ../../app/node_modules/.bin/vitest run src/core/wet-layer.envelope.test.ts",
+  "exit_code": 1,
+  "tests_total": 10,
+  "tests_failed": 7,
+  "tests_passed": 3,
+  "crashes": 0,
+  "failure_class": "AssertionError only",
+  "target_pins_red": [
+    {
+      "name": "feather-empty-pixels",
+      "assertion": "expected 1.8382656574249268 to be +0 // Object.is equality",
+      "mechanism": "base featherWetEdges writes the frac=0.35 halo into pre-empty pixels (alpha propagates outward over passes)"
+    },
+    {
+      "name": "boundary-aa",
+      "assertion": "expected 1000 to be less than 1000",
+      "mechanism": "base feather never touches painted pixels — no boundary AA exists"
+    },
+    {
+      "name": "projectWetIntoEnvelope",
+      "assertion": "expected 'undefined' to be 'function' // Object.is equality",
+      "mechanism": "projection not yet exported (typeof-first guard -> assertion, not crash)"
+    },
+    {
+      "name": "renormalized",
+      "assertion": "expected 'undefined' to be 'function' // Object.is equality",
+      "mechanism": "projection not yet exported"
+    },
+    {
+      "name": "identity",
+      "assertion": "expected 'undefined' to be 'function' // Object.is equality",
+      "mechanism": "projection not yet exported"
+    },
+    {
+      "name": "engine-wired",
+      "assertion": "expected +0 to be 2 // Object.is equality",
+      "mechanism": "snapshotWetAlpha( / projectWetIntoEnvelope( not yet called in EfxPaintEngine.ts"
+    },
+    {
+      "name": "snapshot-before",
+      "assertion": "expected -1 to be greater than -1",
+      "mechanism": "call sites absent — nth-occurrence chain cannot resolve"
+    }
+  ],
+  "law_pins_green_at_base": [
+    "ticks-unchanged (Math.ceil(spreadCurve * 10) x2; 3@60 / 4@65 / 1@50)",
+    "margin-formula (waterCurve * brushR * 0.6 + spreadCurve * brushR * 0.4 x2)",
+    "feather-wired (featherWetEdges( x2)"
+  ],
+  "bounds_moved": "none",
+  "production_files_edited": "none",
+  "stop_rule": "not triggered"
+}
