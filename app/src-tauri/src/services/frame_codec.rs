@@ -90,6 +90,40 @@ mod tests {
     }
 
     #[test]
+    fn round_trip_preserves_semi_transparent_pixel() {
+        // 261001-cache3: the two tests above only use alpha 0 and 255 — the
+        // exact alphas where a premultiply/un-premultiply asymmetry is the
+        // IDENTITY. A codec that un-premultiplied its input would pass them
+        // both and still wash every grain pixel. Alpha 71 (the keep-gate-floor
+        // display byte) is the discriminating case: if encode or decode
+        // premultiplies out of step, this pixel comes back brighter at the
+        // same alpha — the user's "cache less dense than fresh paint".
+        let codec = WebPLosslessCodec;
+
+        let rgba = vec![
+            240, 15, 200, 71,  // semi-transparent grain pixel
+            240, 15, 200, 255, // opaque control (premul identity)
+        ];
+
+        let encoded = codec.encode_rgba(&rgba, 2, 1).unwrap();
+        let (width, height, decoded) = codec.decode_rgba(&encoded).unwrap();
+
+        assert_eq!(width, 2);
+        assert_eq!(height, 1);
+        assert_eq!(decoded.len(), 2 * 1 * 4);
+
+        // Straight RGBA in == straight RGBA out. No premultiply step anywhere.
+        assert_eq!(decoded[0], 240, "R must survive a semi-transparent round-trip");
+        assert_eq!(decoded[1], 15, "G must survive a semi-transparent round-trip");
+        assert_eq!(decoded[2], 200, "B must survive a semi-transparent round-trip");
+        assert_eq!(decoded[3], 71, "alpha must survive a semi-transparent round-trip");
+        assert_eq!(decoded[4], 240);
+        assert_eq!(decoded[5], 15);
+        assert_eq!(decoded[6], 200);
+        assert_eq!(decoded[7], 255);
+    }
+
+    #[test]
     fn encode_returns_webp_riff_header() {
         let codec = WebPLosslessCodec;
         let rgba = vec![0u8; 4]; // 1x1
