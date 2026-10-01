@@ -362,6 +362,8 @@ export function buildCarriedColors(
   pickup: number,
   canvasSnap: ImageData,
   radius: number,
+  snapOriginX: number = 0,
+  snapOriginY: number = 0,
 ): Array<[number, number, number]> {
   const [pr, pg, pb] = hexRgb(pickerColor)
   let carried: [number, number, number] = [pr, pg, pb]
@@ -370,7 +372,7 @@ export function buildCarriedColors(
 
   for (let i = 0; i < curve.length; i++) {
     const p = curve[i]
-    const surface = sampleAreaColor(canvasSnap, p.x, p.y, radius)
+    const surface = sampleAreaColor(canvasSnap, p.x - snapOriginX, p.y - snapOriginY, radius)
 
     if (surface && pickup > 0) {
       const blended = mixSubtractive(carried, surface, pickupRate)
@@ -573,8 +575,26 @@ export function createPaintStrokeRasterContinuationFromCurve(
       return
     }
 
-    const canvasSnap = ctx.getImageData(0, 0, width, height)
-    const carriedColors = buildCarriedColors(curve, color, pickupAmt, canvasSnap, radius)
+    // 260930-wm6 R2 — measure-first verdict: this WAS ctx.getImageData(0, 0,
+    // width, height) — a whole-source-canvas readback (2,073,600px at 1080p,
+    // the ~83ms synchronous main-thread read the 52.1 notes already blame for
+    // frame stutter) paid before a single segment rasterizes. Its only consumer
+    // is sampleAreaColor's ceil(radius/2) disc around each curve point, so the
+    // snapshot is scoped to that footprint plus the disc radius.
+    const snapPad = Math.ceil(radius * 0.5) + 1
+    let snapMinX = Infinity, snapMinY = Infinity, snapMaxX = -Infinity, snapMaxY = -Infinity
+    for (const p of curve) {
+      if (p.x < snapMinX) snapMinX = p.x
+      if (p.y < snapMinY) snapMinY = p.y
+      if (p.x > snapMaxX) snapMaxX = p.x
+      if (p.y > snapMaxY) snapMaxY = p.y
+    }
+    const snapX = Math.max(0, Math.floor(snapMinX - snapPad))
+    const snapY = Math.max(0, Math.floor(snapMinY - snapPad))
+    const snapW = Math.max(1, Math.min(width, Math.ceil(snapMaxX + snapPad)) - snapX)
+    const snapH = Math.max(1, Math.min(height, Math.ceil(snapMaxY + snapPad)) - snapY)
+    const canvasSnap = measurePrimitive(observePrimitive, 'paint-pickup-canvas-snap', () => ctx.getImageData(snapX, snapY, snapW, snapH))
+    const carriedColors = measurePrimitive(observePrimitive, 'paint-pickup-carried-colors', () => buildCarriedColors(curve, color, pickupAmt, canvasSnap, radius, snapX, snapY))
     const segLen = Math.max(8, Math.floor(curve.length / Math.max(1, Math.floor(curve.length / 15))))
     const overlap = Math.floor(segLen * 0.3)
 
