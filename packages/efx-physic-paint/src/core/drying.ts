@@ -205,13 +205,40 @@ export function forceDryAll(
   // the WHOLE full-frame 1920×1080 RGBA (8.3MB each). The stroke-1 finalize
   // queued that writeback; stroke 2's synchronous getImageData had to flush it,
   // parking the thread on the GPU semaphore ~1s (fresh-key only — existing
-  // canvas content was already flushed). The wet pixels of one finalized stroke
-  // are bounded by the stroke bbox, so clamp every canvas op to it: the
-  // readback loops only the rect, the writeback uploads only the rect.
-  const bx0 = bounds ? Math.max(0, Math.min(width - 1, bounds.x0)) : 0;
-  const by0 = bounds ? Math.max(0, Math.min(height - 1, bounds.y0)) : 0;
-  const bx1 = bounds ? Math.max(bx0, Math.min(width - 1, bounds.x1)) : width - 1;
-  const by1 = bounds ? Math.max(by0, Math.min(height - 1, bounds.y1)) : height - 1;
+  // canvas content was already flushed). So clamp every canvas op to a rect.
+  //
+  // 260930-wm6 R3b — that clamp must be the WET extent, not the caller's
+  // stroke bbox. The caller passes dryRegionForStroke = point-bbox +/-
+  // brushRenderRadius, but the solver solves +/-(brushR + margin)
+  // (EfxPaintEngine stepInteractivePaintFinalization). The margin ring holds
+  // VISIBLE paint (wetDisplayAlpha > 0) that never landed in dry, and
+  // getBakedCanvas is previewBase + dry with no wet overlay — so it read as a
+  // TRUE WHITE hole whose boundary is the bbox rectangle: the "full block
+  // outline" and its four horizontal/vertical sides. Widening the rect to the
+  // real wet extent keeps the 52.1 bounded-readback law (it is still the wet
+  // footprint, never the full frame) while letting every solved pixel land.
+  let bx0 = bounds ? Math.max(0, Math.min(width - 1, bounds.x0)) : 0;
+  let by0 = bounds ? Math.max(0, Math.min(height - 1, bounds.y0)) : 0;
+  let bx1 = bounds ? Math.max(bx0, Math.min(width - 1, bounds.x1)) : width - 1;
+  let by1 = bounds ? Math.max(by0, Math.min(height - 1, bounds.y1)) : height - 1;
+  {
+    // Same O(W*H) Float32 scan compositeWetLayer already does per composite.
+    let wx0 = width, wy0 = height, wx1 = -1, wy1 = -1;
+    const size = width * height;
+    for (let i = 0; i < size; i++) {
+      if (wet.alpha[i] < 1) continue;
+      const x = i % width;
+      const y = (i / width) | 0;
+      if (x < wx0) wx0 = x;
+      if (x > wx1) wx1 = x;
+      if (y < wy0) wy0 = y;
+      if (y > wy1) wy1 = y;
+    }
+    if (wx1 >= 0) {
+      bx0 = Math.min(bx0, wx0); by0 = Math.min(by0, wy0);
+      bx1 = Math.max(bx1, wx1); by1 = Math.max(by1, wy1);
+    }
+  }
   const rectW = Math.max(1, bx1 - bx0 + 1);
   const rectH = Math.max(1, by1 - by0 + 1);
   const id = measurePrimitive(observePrimitive, `${stagePrefix}-readback`, () => ctx.getImageData(bx0, by0, rectW, rectH))

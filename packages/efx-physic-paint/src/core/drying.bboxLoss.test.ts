@@ -4,30 +4,34 @@
 //
 //  Transfer alpha = wetDisplayAlpha(alpha, pixelOpacity,
 //  sampleH(...)) / 255 — the display law is the ONLY transfer
-//  law (no /800, no carve). The bbox-loss mechanism proof is
-//  unchanged; only the expected bytes moved to the new law.
+//  law (no /800, no carve).
 //
-//  Physics-drifted wet sitting OUTSIDE `dryRegionForStroke` is
-//  never touched by the bbox-clamped forceDryAll (core/drying.ts
-//  loops only bx0..bx1 / by0..by1), so it stays wet until the
-//  engine clears on leave/close and is then destroyed.
+//  260930-wm6 R3b — the bbox-loss half of this proof is now a
+//  PIN OF THE FIX, not of the defect. Physics-drifted wet sitting
+//  OUTSIDE the caller's `dryRegionForStroke` used to be untouched
+//  by the bbox-clamped forceDryAll and was destroyed on
+//  leave/close — and because getBakedCanvas is previewBase + dry
+//  with no wet overlay, it read as a TRUE WHITE hole along the
+//  bbox rectangle (the "full block outline" and its four sides).
+//  forceDryAll now widens its clamp to the real wet extent, so
+//  every visible solved pixel lands in dry.
 //
 //  This file is the deterministic mechanism proof:
-//    (i)   wet mass INSIDE bounds transfers to dry
-//    (ii)  wet mass OUTSIDE bounds does NOT transfer and stays in
-//          the wet buffer
-//    (iii) dry's gained alpha equals EXACTLY the inside-bbox
-//          transferred alpha — the outside mass is unaccounted for
+//    (i)   wet mass INSIDE the caller's bounds transfers to dry
+//    (ii)  wet mass OUTSIDE the caller's bounds ALSO transfers —
+//          it is no longer stranded (R3b fix)
+//    (iii) dry's gained alpha equals inside + outside transfer,
+//          so NO visible mass is unaccounted for
 //
 //  Seeded grid (W=20 x H=10), op 1 = display fast path (paper
 //  ignored; the forceDryAll call passes paper = null):
 //    inside  (cols 6..9, rows 3..6): 16 px @ alpha 400
 //      -> per-px transfer round(wetDisplayAlpha(400, 1, ·)) = 40
-//      -> dry gained total 16 * 40 = 640
+//      -> inside transfer 16 * 40 = 640
 //    drift   (cols 10..11, rows 3..6): 8 px @ alpha 700
-//      -> stranded wet 8 * 700 = 5600 alpha units
-//      -> would-be transfer if bbox were full-frame:
-//         8 * round(wetDisplayAlpha(700, 1, ·)) = 8 * 70 = 560
+//      -> per-px transfer round(wetDisplayAlpha(700, 1, ·)) = 70
+//      -> outside transfer 8 * 70 = 560 (was the loss)
+//    dry total after = 640 + 560 = 1200
 //    wet total before = 16*400 + 8*700 = 12000 (outside = 46.67%)
 //
 //  Second block: the paper-gap pure helper bakeParityPaperMods is
@@ -65,9 +69,10 @@ const OPACITY = 1
 // so the sampleH(null) baseline 0.5 is irrelevant to the byte:
 //   round(wetDisplayAlpha(400, 1, 0.5)) = 40, round(wetDisplayAlpha(700, 1, 0.5)) = 70
 const EXPECTED_INSIDE_TRANSFER = Math.round(wetDisplayAlpha(INSIDE_ALPHA, OPACITY, 0.5)) // 40
-const EXPECTED_DRY_GAIN = INSIDE_PX * EXPECTED_INSIDE_TRANSFER // 640
-const EXPECTED_WOULD_BE_OUTSIDE_TRANSFER =
-  OUTSIDE_PX * Math.round(wetDisplayAlpha(OUTSIDE_ALPHA, OPACITY, 0.5)) // 560
+const EXPECTED_OUTSIDE_TRANSFER = Math.round(wetDisplayAlpha(OUTSIDE_ALPHA, OPACITY, 0.5)) // 70
+const EXPECTED_INSIDE_GAIN = INSIDE_PX * EXPECTED_INSIDE_TRANSFER // 640
+const EXPECTED_OUTSIDE_GAIN = OUTSIDE_PX * EXPECTED_OUTSIDE_TRANSFER // 560 — was the loss, now lands
+const EXPECTED_DRY_GAIN = EXPECTED_INSIDE_GAIN + EXPECTED_OUTSIDE_GAIN // 1200
 
 const WET_TOTAL_ALPHA = INSIDE_PX * INSIDE_ALPHA + OUTSIDE_PX * OUTSIDE_ALPHA // 12000
 const WET_OUTSIDE_ALPHA = OUTSIDE_PX * OUTSIDE_ALPHA // 5600
@@ -171,7 +176,7 @@ function dryAlphaAt(dry: Uint8ClampedArray, x: number, y: number): number {
   return dry[(y * W + x) * 4 + 3]
 }
 
-describe('260930-q6t Addendum B — forceDryAll drops wet mass outside its bounds', () => {
+describe('260930-q6t Addendum B / 260930-wm6 R3b — forceDryAll must not drop visible wet mass', () => {
   it('(i) inside-bounds wet transfers to dry: every inside px lands at exactly 40 (one look law) and its wet alpha is zeroed', () => {
     const { wet, dry } = runForceDryAll()
     for (let y = BOUNDS.y0; y <= BOUNDS.y1; y++) {
@@ -188,38 +193,25 @@ describe('260930-q6t Addendum B — forceDryAll drops wet mass outside its bound
     }
   })
 
-  it('(ii) outside-bounds wet does NOT transfer: dry stays 0 and the wet buffer keeps the full drifted mass', () => {
+  it('(ii) outside-bounds wet ALSO transfers (R3b) — the drift band lands at exactly 70 and is cleared, never stranded', () => {
     const { wet, dry } = runForceDryAll()
-    let outsideAlphaAfter = 0
-    let outsidePixelsWithMass = 0
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        if (isInside(x, y)) continue
-        const i = y * W + x
-        expect(dryAlphaAt(dry, x, y), `outside px (${x},${y}): dry gained ${dryAlphaAt(dry, x, y)}, expected 0`).toBe(0)
-        if (wet.alpha[i] > 0) {
-          outsidePixelsWithMass++
-          outsideAlphaAfter += wet.alpha[i]
-        }
-      }
-    }
-    expect(
-      outsidePixelsWithMass,
-      `drift pixels still wet after forceDryAll: ${outsidePixelsWithMass}, seeded ${OUTSIDE_PX}`,
-    ).toBe(OUTSIDE_PX)
-    expect(
-      outsideAlphaAfter,
-      `wet alpha stranded outside bounds after forceDryAll: ${outsideAlphaAfter}, seeded ${WET_OUTSIDE_ALPHA}`,
-    ).toBe(WET_OUTSIDE_ALPHA)
-    // The adjacent drift rows kept their exact seeded alpha — no partial drain.
     for (const y of DRIFT_ROWS) {
       for (const x of DRIFT_COLS) {
-        expect(wet.alpha[y * W + x], `drift px (${x},${y}) must keep alpha ${OUTSIDE_ALPHA}`).toBe(OUTSIDE_ALPHA)
+        const i = y * W + x
+        expect(
+          dryAlphaAt(dry, x, y),
+          `drift px (${x},${y}): dry alpha ${dryAlphaAt(dry, x, y)}, one look law expects ${EXPECTED_OUTSIDE_TRANSFER}`,
+        ).toBe(EXPECTED_OUTSIDE_TRANSFER)
+        expect(wet.alpha[i], `drift px (${x},${y}): wet must be cleared after transfer`).toBe(0)
       }
     }
+    // Nothing anywhere may survive as stranded wet — that is the true hole.
+    let stranded = 0
+    for (let i = 0; i < SIZE; i++) if (wet.alpha[i] > 0) stranded++
+    expect(stranded, `${stranded} wet pixel(s) survive forceDryAll — visible ones would read as true holes on getBakedCanvas`).toBe(0)
   })
 
-  it("(iii) dry's gained alpha equals exactly the inside-bbox transferred alpha — outside mass is unaccounted for", () => {
+  it("(iii) dry's gained alpha equals inside + outside transfer — no visible mass is unaccounted for", () => {
     const { dry } = runForceDryAll()
     let dryTotal = 0
     for (let i = 3; i < dry.length; i += 4) dryTotal += dry[i]
@@ -234,17 +226,19 @@ describe('260930-q6t Addendum B — forceDryAll drops wet mass outside its bound
     })()
 
     // Exact one-look-law numbers for the seeded grid:
-    //   inside transferred per px = 40, dry gained total = 640
-    //   wet total before = 12000, wet outside = 5600 (46.67%)
-    //   would-be outside transfer (full-frame bbox) = 560
+    //   inside transfer  = 16 * 40 = 640
+    //   outside transfer =  8 * 70 = 560 (this WAS the bbox loss)
+    //   dry total        = 1200 — the whole visible mass lands
     expect(dryTotal, `dry gained ${dryTotal} alpha units, expected ${EXPECTED_DRY_GAIN}`).toBe(EXPECTED_DRY_GAIN)
-    expect(dryOutside, `dry outside-bbox gained ${dryOutside}, expected 0 (outside mass unaccounted)`).toBe(0)
+    expect(dryOutside, `drift band gained ${dryOutside}, expected ${EXPECTED_OUTSIDE_GAIN} (R3b: it must land)`).toBe(EXPECTED_OUTSIDE_GAIN)
     expect(WET_TOTAL_ALPHA).toBe(12000)
     expect(WET_OUTSIDE_ALPHA).toBe(5600)
     // Literal pins — the law's constants, independent of the derivation.
     expect(EXPECTED_INSIDE_TRANSFER).toBe(40)
-    expect(EXPECTED_DRY_GAIN).toBe(640)
-    expect(EXPECTED_WOULD_BE_OUTSIDE_TRANSFER).toBe(560)
+    expect(EXPECTED_OUTSIDE_TRANSFER).toBe(70)
+    expect(EXPECTED_DRY_GAIN).toBe(1200)
+    expect(EXPECTED_INSIDE_GAIN).toBe(640)
+    expect(EXPECTED_OUTSIDE_GAIN).toBe(560)
     expect(WET_OUTSIDE_ALPHA / WET_TOTAL_ALPHA).toBeCloseTo(5600 / 12000, 10)
   })
 })
