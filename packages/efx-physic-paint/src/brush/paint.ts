@@ -560,16 +560,16 @@ export function createPaintStrokeRasterContinuationFromCurve(
       oc.translate(-bounds.x0, -bounds.y0)
       measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId, variance }, tier))
       yield
-      // D-07: tier=live writes NOTHING to the wet layer — the footprint is
-      // blitted straight to the dry canvas for immediate display. Exactly
-      // one tier=final transfer feeds wet/physics (engine finalize phase).
-      if (tier === 'live') {
-        ctx.drawImage(off, bounds.x0, bounds.y0)
-      } else {
-        measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
-          { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
-          paperHeight, 0.8, 1.2, opac, observePrimitive))
-      }
+      // 260930-wm6 ONE PIPELINE (user decision 2026-10-01): there is no
+      // second render path. The footprint is deposited into the wet layer
+      // through transferToWetLayerClipped — the SAME transfer the solver,
+      // the screen (wetDisplayAlpha) and the cache all read — so preview
+      // == settled == persisted by construction. The old tier=live raw
+      // blit straight onto the dry canvas (dense, solid, full-radius) was
+      // a third law that only the preview ever produced; it is deleted.
+      measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
+        { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
+        paperHeight, undefined, undefined, opac, observePrimitive))
       return
     }
 
@@ -594,15 +594,10 @@ export function createPaintStrokeRasterContinuationFromCurve(
       oc2.translate(-segBounds.x0, -segBounds.y0)
       measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(seg, { ctx: oc2, radius, color: segHex, opac, hasPenInput, mutationId, tSpan: [start / (curve.length - 1), (end - 1) / (curve.length - 1)], variance }, tier))
       yield
-      // D-07 (same law as the fresh branch): live blits for display, exactly
-      // one final transfer per segment on the finalize tier.
-      if (tier === 'live') {
-        ctx.drawImage(off2, segBounds.x0, segBounds.y0)
-      } else {
-        measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc2, wetBuffers, waterAmount,
-          { x: segBounds.x0, y: segBounds.y0, w: segBounds.w, h: segBounds.h }, width, height,
-          paperHeight, 0.8, 1.2, opac, observePrimitive))
-      }
+      // 260930-wm6 ONE PIPELINE: same single deposit path as the fresh branch.
+      measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc2, wetBuffers, waterAmount,
+        { x: segBounds.x0, y: segBounds.y0, w: segBounds.w, h: segBounds.h }, width, height,
+        paperHeight, undefined, undefined, opac, observePrimitive))
       yield
     }
   }
@@ -647,12 +642,8 @@ export function renderPaintStrokeSingleColor(
 
   measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId, variance }, tier))
 
-  // D-07: live = dry blit only; final = the single wet deposit (D-12).
-  if (tier === 'live') {
-    ctx.drawImage(off, bounds.x0, bounds.y0)
-  } else {
-    measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
-      { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
-      paperHeight, 0.8, 1.2, opac, observePrimitive))
-  }
+  // 260930-wm6 ONE PIPELINE: the single wet deposit (D-12), never a dry blit.
+  measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
+    { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
+    paperHeight, undefined, undefined, opac, observePrimitive))
 }

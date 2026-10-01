@@ -966,14 +966,17 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     expect(stages).toContain('paint-raster-bristles')
   })
 
-  it('D-07 gate: tier=live emits zero wet-transfer stages and leaves wet.alpha untouched; tier=final emits exactly one and mutates wet.alpha', () => {
-    const live = runRasterObserve('live')
-    expect(live.stages.filter((s) => s === 'paint-wet-transfer-composition')).toHaveLength(0)
-    expect(live.buffers.alpha.every((v) => v === 0)).toBe(true)
-
-    const final = runRasterObserve('final')
-    expect(final.stages.filter((s) => s === 'paint-wet-transfer-composition')).toHaveLength(1)
-    expect(final.buffers.alpha.some((v) => v !== 0)).toBe(true)
+  it('one pipeline (260930-wm6): EVERY tier emits exactly one wet-transfer stage and mutates wet.alpha — there is no live-writes-nothing branch', () => {
+    // The old D-07 gate (tier=live emits zero wet-transfer stages and leaves
+    // wet.alpha untouched) pinned the third render path: a raw dry-canvas
+    // blit the preview showed and no settled path could reproduce. Deleted
+    // 2026-10-01 (user decision) — preview must BE the settled pipeline, so
+    // both tiers deposit through transferToWetLayerClipped.
+    for (const tier of ['live', 'final'] as const) {
+      const run = runRasterObserve(tier)
+      expect(run.stages.filter((s) => s === 'paint-wet-transfer-composition'), `tier=${tier}`).toHaveLength(1)
+      expect(run.buffers.alpha.some((v) => v !== 0), `tier=${tier} must deposit into wet`).toBe(true)
+    }
   })
 
   // ------------------------------------------------------------

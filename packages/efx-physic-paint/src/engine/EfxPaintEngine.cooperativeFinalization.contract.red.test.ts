@@ -824,9 +824,11 @@ describe('EfxPaintEngine cooperative finalization contracts', () => {
     now = 1_650
     EfxPaintEngine.prototype.stepInteractivePaintFinalization.call(engine, active)
 
-    // 52.4-01 (D-07): raster completion now transitions to 'finalize' — the
-    // snapshot restore + single tier=final deposit — before 'post-raster'.
-    expect(active.phase).toBe('finalize')
+    // 260930-wm6 (user decision 2026-10-01): the two-pass 'finalize' phase —
+    // live-blot snapshot restore + a second tier=final deposit — is deleted.
+    // The single deposit IS the raster continuation, so raster completion
+    // goes straight to 'post-raster' (feather, savedWet, solver).
+    expect(active.phase).toBe('post-raster')
     expect(engine.recordPerformance).toHaveBeenCalledWith(
       'stroke-first-raster-publication',
       'scheduled-wait',

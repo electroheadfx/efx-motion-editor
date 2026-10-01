@@ -133,12 +133,10 @@ type ActiveStrokeFinalization = {
   // 52.4-01 (D-07): 'finalize' sits between raster (tier=live display) and
   // post-raster (feather/savedWet/fluid) — it restores the pre-stroke dry
   // snapshot, then runs the single tier=final deposit into wet.
-  phase: 'prepare' | 'raster' | 'finalize' | 'post-raster' | 'fluid' | 'continuation' | 'complete'
+  phase: 'prepare' | 'raster' | 'post-raster' | 'fluid' | 'continuation' | 'complete'
   raster: PaintStrokeRasterContinuation | null
   fluid: LocalFluidPhysicsContinuation | null
   continuationFrame: number
-  liveSnapshot: ImageData | null
-  liveBounds: { x0: number; y0: number; w: number; h: number } | null
 }
 
 export type PaintPerformanceCategory = 'sync-cpu' | 'scheduled-wait' | 'async-elapsed' | 'input-delay'
@@ -1705,6 +1703,15 @@ export class EfxPaintEngine {
 
   /** Copy the completed live paint only, excluding preview base and paper/background. */
   copyLiveAlphaCanvas(): HTMLCanvasElement {
+    // 260930-wm6 (user decision 2026-10-01): a capture that reads while the
+    // deposit/solver is mid-flight freezes a state that is NOT the settled
+    // look — the user's "the cache stores the wrong image state". Settle
+    // in-flight finalization first. CONDITIONAL so the idle resolve path
+    // stays the 52.1 fast copy (the no-eager-flush pin): when the queue is
+    // empty this is a no-op and the drain cost is not paid at all.
+    if ((this.pendingStrokeFinalizations?.length ?? 0) > 0 || this.activeStrokeFinalization) {
+      this.flushPendingStrokeFinalizations()
+    }
     const mutationId = this.activeMutationId ?? this.lastCompletedMutationId ?? undefined
     const branch = this.previewBackgroundSeparated ? 'separated' : 'background-subtraction'
 
@@ -2514,8 +2521,6 @@ export class EfxPaintEngine {
       raster: null,
       fluid: null,
       continuationFrame: 0,
-      liveSnapshot: null,
-      liveBounds: null,
     }
   }
 
@@ -2591,30 +2596,25 @@ export class EfxPaintEngine {
     const { pending } = active
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     // R8 revised (260930-libre): physics runs on a reduced clone and is never
-    // masked. The live tier keeps the FULL radius (the pressure geometry is
-    // the gesture record); only the tier=final wet deposit is reduced — that
-    // reduced clone is the ONLY deposit the solver sees (D-07).
+    // masked. That reduced clone is the ONLY deposit (D-07) — the solver sees
+    // it, the screen (wetDisplayAlpha) sees it and the cache reads it.
+    //
+    // 260930-wm6 ONE PIPELINE (user decision 2026-10-01): the old tier=live
+    // full-radius dry blit + its snapshot/restore is deleted. It was a second
+    // render path whose look (dense, solid, full-width) no settled path could
+    // reproduce — the user watched it get replaced and called it "the initial
+    // stroke render is altered with time". Preview is now the settled deposit.
     const fullR = brushRenderRadius(pending.opts)
     const depositR = fullR * (1 - depositRoom(spreadCurveFor(this.state.localSpreadStrength)))
-    const renderOpts = { ...pending.opts, size: fullR }
     const depositOpts = { ...pending.opts, size: depositR }
 
     if (active.phase === 'prepare') {
       this.prepareWetLayerForStroke(pending.points[0], pending.opts, pending.physicsMode)
-      // 52.4-01 (D-07 live display): snapshot the dry bbox AFTER the
-      // pre-stroke bake — the tier=live raster blits into this rect for
-      // immediate display; finalize restores it before the final deposit.
-      const snapR = brushRenderRadius(pending.opts)
-      const snapEdgeMul = (pending.opts.edgeDetail != null ? pending.opts.edgeDetail : 50) / 50
-      const snapVar = (1.5 + Math.sqrt(snapR) * 0.9) * snapEdgeMul
-      const snapBounds = curveBounds(pending.points, snapR + snapVar * 5 + 32, this.width, this.height)
-      active.liveBounds = { x0: snapBounds.x0, y0: snapBounds.y0, w: snapBounds.w, h: snapBounds.h }
-      active.liveSnapshot = this.dualCanvas.dryCtx.getImageData(snapBounds.x0, snapBounds.y0, snapBounds.w, snapBounds.h)
       active.raster = createPaintStrokeRasterContinuation(
-        pending.points, pending.color!, renderOpts,
+        pending.points, pending.color!, depositOpts,
         this.dualCanvas.dryCtx, this.wet, this.paperHeight,
         this.width, this.height, pending.hasPenInput,
-        pending.opts.waterAmount / 100, 'live', observePrimitive,
+        pending.opts.waterAmount / 100, 'final', observePrimitive,
         pending.mutationId,
       )
       active.phase = 'raster'
@@ -2623,33 +2623,9 @@ export class EfxPaintEngine {
 
     if (active.phase === 'raster') {
       if (active.raster!.step()) {
-        active.phase = 'finalize'
+        active.phase = 'post-raster'
         this.recordPerformance('stroke-first-raster-publication', 'scheduled-wait', pending.queuedAt, { mutationId: pending.mutationId })
       }
-      return
-    }
-
-    if (active.phase === 'finalize') {
-      // Undo the tier=live dry blits, then run the ONE tier=final deposit
-      // that feeds wet/physics (D-07: exactly one finalize deposit).
-      if (active.liveSnapshot && active.liveBounds) {
-        this.dualCanvas.dryCtx.putImageData(active.liveSnapshot, active.liveBounds.x0, active.liveBounds.y0)
-        active.liveSnapshot = null
-        active.liveBounds = null
-      }
-      renderPaintStroke(
-        pending.points, pending.color!, depositOpts,
-        this.dualCanvas.dryCtx, this.wet, this.savedWet,
-        this.drying.dryPos, this.lastStrokeMask,
-        this.paperHeight,
-        this.width, this.height,
-        pending.hasPenInput, this.state.wetPaper,
-        pending.opts.waterAmount / 100,
-        'final',
-        observePrimitive,
-        pending.mutationId,
-      )
-      active.phase = 'post-raster'
       return
     }
 
