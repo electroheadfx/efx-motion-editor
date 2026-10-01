@@ -166,3 +166,162 @@ None — no new network endpoints, auth paths, file-access patterns, or trust-bo
 - 7/7 key files found on disk (including this SUMMARY)
 - 5/5 commits found in history (`f44ef3b4`, `cfdffe46`, `3e8009b4`, `289ab25a`, `591ec5cc`)
 - `commits: 5` measured via `git rev-list --count f0ad0c10..HEAD` (ledger on disk), not narrated
+
+---
+
+# Revision R1 — preview == settled (2026-10-01)
+
+**Trigger: native UAT FAILED.** The one look law unified the wet layer's two
+OUTPUT paths (display + dry transfer). It never touched the INPUT side, where
+a THIRD path was still lying to the eye. The user reported "it's not fixed, and
+stroke seem cooking again… the initial stroke render is altered with time, and
+the cache seem store the wrong image state", with two screenshots — shot 1
+dense and solid, shot 2 light and skeletal.
+
+## Diagnosis: three render paths, and the eye judged the wrong one
+
+| | radius | raster | alpha law | physics |
+|---|---|---|---|---|
+| `tier='live'` (the preview) | `fullR` | `drawBristleFootprint` blitted **straight onto the dry canvas**, `LIVE_WIDTH_MUL=4`, no keep-gate | raw canvas alpha | none |
+| `tier='final'` (what persists) | `depositR = fullR·(1−depositRoom)` (half at Spread 65, R8) | `transferToWetLayerClipped`, `DEPOSIT_KEEP_TIER=70`, D-08 paper adsorption | `wetDisplayAlpha` | R9 `physicsTicks` solver |
+
+The engine *showed* the first and *persisted* the second. On finalize it
+restored `active.liveSnapshot`, erasing the blit, then deposited the reduced
+clone. Which look the cache captured depended on when the capture ran relative
+to that swap — hence "the cache stores the wrong image state". And the swap
+being deferred read as "altered with time" / "cooking again".
+
+Neither screenshot is the target. Shot 1 is the solid raw blit (that is
+Paint's job, via `paint-width`); shot 2 is the strangled deposit.
+
+## User decision (2026-10-01) — the binding scope
+
+> Keep the physics pipeline intact (R8 `depositRoom`, `physicsTicks` Stam
+> solver, `wetDisplayAlpha` READ-ONLY, `spreadScale.ts` byte-untouched). Tune
+> only the three knobs that strangle the deposit **before** the solver:
+> keep-gate 70 → lower, deposit scale → higher, D-08 paper adsorption →
+> tuned. Target look = dense + physics texture (not the solid raw blit).
+>
+> Preview, screen-at-lift, cache and reload must all show that one look.
+> Preview goes through the same pipeline as settled (required for the
+> byte-equal digest). The timing + cache-capture fixes land regardless.
+>
+> Acceptance is native UAT by eye (no metric gate on the look). The byte-equal
+> digest preview == cache == reloaded is the standing mechanical gate.
+>
+> Tradeoff accepted: one eye-tuned pass on three knobs, and the result is
+> dense + physics texture — never the solid raw blit of screenshot 1. That
+> solid look is Paint's job.
+
+Answering the user's explicit question ("does this address the
+`preview==settled` equality or just the timing?"): **both.** Timing alone was
+never going to be enough — it only moves the surprise.
+
+## What R1 changed
+
+**Three named deposit knobs** (`core/wet-layer.ts`, the only look levers):
+
+| lever | was | now | why |
+|---|---|---|---|
+| `DEPOSIT_KEEP_TIER` | `70` | `40` | it ate the bristle speckle → "lost consistency" |
+| `DEPOSIT_DENSITY_SCALE` | bare `(a/255)*3000` | named, `4500` | thin mid-tones |
+| D-08 adsorption | floor `userOpacity²`, `gamma 0.8` | floor `userOpacity` (linear), `gamma 0.5`, `delta 1.2` named | 50% opacity deposited 25% |
+
+All four deposit functions share the named levers. `compositor.ts`'s
+`DENSITY_NORM` is the DISPLAY normalizer and is untouched — the scale changes
+only what the deposit WRITES, so a denser deposit is what the solver spreads.
+
+**One pipeline** — the raw blit third path is deleted. Every deposit goes
+`transferToWetLayerClipped` → R9 solver → `wetDisplayAlpha`, on the R8-reduced
+clone. `ctx.drawImage` is gone from `paint.ts`; `active.liveSnapshot` /
+`liveBounds` and their restore are gone from the engine; the separate second
+`renderPaintStroke` pass is gone (the raster continuation IS the deposit).
+
+**One landing** — revealed only in `completeActiveStrokeFinalization`, after
+the `physicsTicks` solver has finished. Step turns leave `displayCompositeDirty`
+alone, so no half-deposited or mid-solver state is ever painted.
+
+**Cache capture** — `copyLiveAlphaCanvas` settles in-flight finalization before
+reading pixels, *conditionally* so the 52.1 idle resolve path stays a fast
+copy (the no-eager-flush pin is preserved).
+
+## Standing mechanical gate
+
+`core/lookLawDigest.test.ts` — **19 pins, green.** At settle, the paint bytes
+are identical whether read from the screen export, the cache capture, or a
+reload of that cache. Byte-equal. The four invariants it stands over:
+
+1. **one pipeline** — raster never writes the dry canvas; engine never takes
+   `tier='live'`; no `liveSnapshot`; every raster branch deposits through the
+   one transfer; the live raster writes paint into the wet buffers
+2. **one landing** — `stepInteractivePaintFinalization` never marks the display
+   dirty; the solver completes before `finishInteractivePaintFinalization`;
+   `completeActiveStrokeFinalization` is what reveals
+3. **cache == preview** — `copyLiveAlphaCanvas` composes dry-then-display
+   exactly like `exportCompositeCanvas`; flushes when work is queued; stays a
+   fast copy when idle; background subtraction only zeros pixels equal to the
+   background on all four channels
+4. **three knobs** — keep-gate `< 70`, density scale `> 3000`, linear
+   `userOpacity` floor, named gamma/delta not hardcoded at `paint.ts` call
+   sites
+
+## Pin re-points (laws kept, calibration unhardcoded)
+
+None of these touched R8/R9 or the display law. Each pin's *law* survives; only
+the now-tunable literal moved.
+
+- `physicsSettledFootprint` / `physicsWidthScaling` / `productionAaSettleMeasurement`
+  — **PIN 0 "body deposit is UNMODULATED by tier/water"** recomputes its
+  expectation from `DEPOSIT_DENSITY_SCALE` + `PAPER_ADSORPTION_*` instead of
+  `3000`/`0.8`/`1.2`. The anti-modulation guard (m7w 24f40261 / revert 1648658b)
+  stays armed; the bound is still ratio ∈ [0.99, 1.01].
+- `paint.depositSourceShape` **G6** — now pins the keep tier's *shape* (a named
+  integer `const`, never inlined or computed); `DRY_ALPHA_THRESHOLD = 1` stays
+  pinned to the byte (not a look lever). Value bound lives in `lookLawDigest`.
+- `paint.bristleSeed` **D-07 gate** — was "tier=live emits zero wet-transfer
+  stages", the exact third path. Now "EVERY tier emits exactly one wet-transfer
+  and mutates wet.alpha" (one pipeline).
+- `cooperativeFinalization.contract.red` — the two-pass `'finalize'` phase is
+  deleted; raster completion goes straight to `'post-raster'`.
+- `depositGateFieldMeasurement` — `GATE_TIER` reads `DEPOSIT_KEEP_TIER` rather
+  than mirroring `70`, so the diagnosis tracks the lever.
+
+## Verification (R1)
+
+- Full package suite: **38 files, 306 passed, 3 skipped** (`vitest run`)
+- `lookLawDigest.test.ts`: **19/19**
+- Both typechecks clean
+- **`spreadScale.ts` and `compositor.ts` `git diff --stat` EMPTY** — byte-untouched
+
+## Commit series (R1, 3 commits)
+
+| # | Hash | Message |
+|---|------|---------|
+| 1 | `fa91ade5` | test(260930-wm6): RED — look-law digest gate, preview == cache == reloaded |
+| 2 | `b61358bc` | feat(260930-wm6): three named deposit knobs — the only look levers |
+| 3 | `26e89093` | feat(260930-wm6): one pipeline, one landing — delete the raw blit third path |
+
+Ordering guard satisfied: RED precedes both GREEN slices.
+
+## Status after R1: automated-ready — look NOT judged
+
+The mechanical gate is green and the two UAT-critical promises hold by
+construction (`preview == settled == persisted == reloaded`, byte-equal). The
+**look itself is unjudged** — the three knob values are a first eye-tuned pass
+and will need a native UAT pass to accept or re-tune.
+
+**Native UAT rows (all PENDING, nothing is `done`):**
+- **(a)** the settled look reads **dense + physics texture** (by eye) — the three
+  knobs are the levers if not
+- **(b)** preview at lift == after leave/return == after Studio close (the
+  byte-equal digest is the mechanical gate; this is the eye's confirmation)
+- **(c)** no post-stroke change after the look lands (one landing, by eye)
+- **(d)** already-dried content still renders (clean break, no migration)
+
+**Do not reopen:** the 260928-dh1 paper hunt, bbox flush-loss, the leave-key
+settle-through gate, the /800-vs-Beer-Lambert unification, the bake-speed
+question (it dies with the cook).
+
+**Sequence unchanged (do not reorder):** 1 `sans-cuisson` (this) → 2
+`paint-width` → 3 `06-libmypaint-rasterizer` → 4 `08-retire-fluids` finished →
+5 `07-paint-script`.
