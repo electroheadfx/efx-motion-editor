@@ -469,3 +469,154 @@ settle-through gate, the /800-vs-Beer-Lambert unification, the bake-speed questi
 
 Ordering guard satisfied: the RED pin commit precedes both GREEN fix slices
 (S3 flips GREEN with commit 2; the two mirrored (c) pins flip GREEN with commit 3).
+
+---
+
+# Revision R3b — residual white seams are TRUE HOLES (paper exonerated)
+
+Date: 2026-10-01 · branch `feat/v1.0.0-new-brush` · one fix only
+
+## Context carried in
+
+R2's paper-tile mirror landed and the user **still** sees seams. A separate,
+unrelated defect ("come back on the key and the paint looks faded and poor") was
+already fixed in the working tree as `EfxPaintEngine.ts` +
+`EfxPaintEngine.previewBaseStaleCtx.test.ts` (uncommitted, 111/111 + 104/104
+green). **That fix stays exactly as it is and is NOT part of these commits** —
+it is the user's own UAT subject, separate from this quick.
+
+## STEP 1 — discriminating measurement (user observation, before any fix)
+
+The physics question is decisive: **can the paper height map punch a white hole?**
+
+| Fact | Value | Source |
+|---|---|---|
+| `paperStrength` band | `[0.05, 0.25]` | `compositor.ts:40` |
+| `conditionHeightMap` clamp on `h` | `[0.10, 0.90]` | `paper.ts:90` |
+| `paperMod` band | `[0.775, 0.995]` | `1 − paperStrength·h` |
+| fast path | `pixelOpacity >= 0.90` → **no paperMod at all** | `compositor.ts:35-36` |
+| deposit floor at 100% | `Math.max(userOpacity, adsorption)` = full coverage | `wet-layer.ts` |
+
+→ Paper can **lighten at most ~22%** and **can never reach 0**. At 100% brush
+opacity the paper path is entirely out of the loop.
+
+**User answers (2026-10-01):**
+- line character = **True white hole** (background shows through, alpha ≈ 0)
+- brush opacity = **100%**
+- A/B 100% vs 70% = not tried (the first two answers are already decisive)
+
+**→ Paper path EXONERATED. `paper.ts` stays byte-untouched.**
+Measured in `whiteSeamHoleWriter.test.ts`: `min(paperMod applied) = 0.7756`,
+paper never forced alpha to 0 while the no-paper path stayed lit, and
+`wetDisplayAlpha(706, 1.0, 0.9) === wetDisplayAlpha(706, 1.0, 0.1) === 71`.
+
+This goes STEP 2-ALT: re-open (a) and (d) as hole writers.
+
+## THE INVARIANT
+
+> **No VISIBLE wet pixel may vanish without landing in dry.**
+
+Anything else is a true hole: `getBakedCanvas()` is `previewBaseCanvas +
+dryCanvas` (`EfxPaintEngine.ts:1644-1646`) and carries **no wet overlay**, so
+wet that never lands in dry is invisible on the monitor. "Visible" means
+`wetDisplayAlpha(...) > 0` — a byte the display law would have shown.
+
+## Verdicts
+
+| Suspect | Verdict | Evidence |
+|---|---|---|
+| **(a)** footprint clipped by `segBounds` | **CLEAN** | Re-run at **production extremes** the R2 pin missed: `edgeDetail 100` → `edgeMul 2`, radius 8/32/64, `deformSampleSides` depth 4, **interior** offscreens (394×286 / 589×484 / 796×696). **60828 / 88160 / 84700** hull verts, `clippedVerts = 0`. `curveBounds`'s `2*(radius + variance*5) + 10` padding covers the deform at every extreme. |
+| **(d1)** `forceDryAll` `sa==0` clear-without-transfer | **CLEAN** | Mechanism is real: `DENSITY_NORM = 3000` → `sa = round(alpha/10)/255` at op 1, so `wet.alpha` 1–4 rounds to 0 and is zeroed with `dryA = 0`. **But those bytes render 0 on the wet overlay TOO** — destroying them is the one look law being honest. Measured: **0 visible pixels destroyed**, 4 invisible destroyed (correct). |
+| **(d2)** bbox clamp drops the solver margin ring | **THE WRITER** | **384 VISIBLE pixels (`sa = 71`)** placed outside `dryRegionForStroke` survive `forceDryAll` untouched (`ringTransferred = 0`) and never land in dry. The bbox rectangle is the **"full block outline"**; its four sides are the **horizontal/vertical white cuts**. |
+
+**The disproven assumption** — `drying.ts:208-210` (52.1), verbatim:
+
+> *"The wet pixels of one finalized stroke are bounded by the stroke bbox, so
+> clamp every canvas op to it."*
+
+They are not. `dryRegionForStroke` = `point-bbox ± brushRenderRadius` (= `size/2`,
+`EfxPaintEngine.ts:323-325`, `:2728-2731`) but the solver solves `± (brushR +
+margin)` (`:2680-2684`) where `margin = ceil(2 + waterCurve·brushR·0.6 +
+spreadCurve·brushR·0.4)` (10px/side at `brushR=16 water=50 spread=65`, scaling
+with brushR). The overflow band holds visible paint the clamp never transfers.
+
+## The one fix — widen `forceDryAll`'s clamp to the wet extent
+
+`drying.ts` `forceDryAll` now unions the caller's bounds with the **actual wet
+bounding box** (the same `O(W·H)` Float32 scan `compositeWetLayer` already does
+per composite). Every solved pixel lands in dry and is cleared.
+
+The 52.1 bounded-readback law **holds** — the rect is still the wet footprint,
+never the full frame. Only the false assumption is replaced.
+
+Measured effect: `ring pixels written to dry` **0 → 384**; `visible pixels absent
+from dry` **384 → 0**.
+
+**Why the fix lives in `drying.ts` and not `EfxPaintEngine.ts`:** widening
+`dryRegionForStroke` would be the other valid fix, but `EfxPaintEngine.ts` carries
+the uncommitted previewBase fix that must stay out of this quick's commits.
+
+## `drying.bboxLoss.test.ts` — the characterization pin flips
+
+`260930-q6t Addendum B` pinned the bbox loss as **documented behavior** ("(ii)
+outside-bounds wet does NOT transfer… (iii) outside mass is unaccounted for").
+That is exactly what R3b removes, so the pin now gates the fix:
+
+- (i) unchanged — inside transfers at exactly 40 (one look law)
+- (ii) **the drift band also transfers** at exactly 70 and is cleared; **nothing
+  survives as stranded wet**
+- (iii) dry gains **640 + 560 = 1200** — no visible mass unaccounted
+
+## Verification (R3b)
+
+- `whiteSeamHoleWriter.test.ts`: **9/9** GREEN (RED at `c5914ff6`: (d2) GUILTY, 1 failed / 8 passed)
+- `drying.bboxLoss.test.ts`: **6/6** GREEN under the new invariant
+- Full package suite: **42 files, 334 passed, 3 skipped**
+- `pnpm --filter @efxlab/efx-physic-paint check` + `pnpm --filter efx-motion-editor typecheck`: **clean**
+- App suite: **4346 passed**, 1 pre-existing failure (`physicsPaintPerformanceTrace.test.ts`
+  "retains the existing native profiler object…", the superseded-q6t `enabled` key,
+  in `deferred-items.md` — out of scope)
+- **Guardrails held:** `spreadScale.ts` / `compositor.ts` / `wet-layer.ts` / `paper.ts`
+  `git diff --stat` **EMPTY**
+- **Look knobs stand:** `DEPOSIT_KEEP_TIER = 40`, `DEPOSIT_DENSITY_SCALE = 4500`,
+  `PAPER_ADSORPTION_GAMMA = 0.5` (asserted in-test)
+
+## Status after R3b: automated-ready — native UAT PENDING
+
+Nothing is `done`. The pin is green; the eye decides.
+
+**Native UAT rows (all PENDING):**
+- **(a)** no more true-white holes: no horizontal/vertical white cuts through the
+  paint, no more full block outlines.
+- **(b)** the accepted look is unchanged: dense + physics texture, knobs 40/4500/0.5.
+- **(c)** preview == cache == reloaded still byte-equal (`lookLawDigest.test.ts` stays green).
+- **(d)** performance holds — the fix must not reintroduce the 52.1 2nd-stroke
+  freeze (the clamp is still bounded by the wet footprint, but judge it live).
+- **(e)** the **previewBase stale-ctx fix** (uncommitted, separate) is judged on its
+  own rows: returning to a key no longer shows faded/poor paint.
+
+**Named but NOT fixed (the next suspect only if (a) fails):**
+- (d1) `sa==0` clear-without-transfer — structurally WYSIWYG-correct today, but it
+  is the last remaining destroy-without-transfer site. Harmless while
+  `wetDisplayAlpha` rounds those bytes to 0.
+
+**Do not reopen:** the 260928-dh1 paper hunt, the leave-key settle-through gate,
+the /800-vs-Beer-Lambert unification, the bake-speed question.
+**Narrowly reopened by R3b scope and now closed again:** bbox flush-loss — the
+display-side hole is fixed; the save-path (leave/close) half of Addendum B is
+whatever `forceDryAll` now does, which is the fix.
+
+**Sequence unchanged (do not reorder):** 1 `sans-cuisson` (this) → 2
+`paint-width` → 3 `06-libmypaint-rasterizer` → 4 `08-retire-fluids` finished →
+5 `07-paint-script`.
+
+## Commit series (R3b, 2 commits)
+
+| # | Hash | Message |
+|---|------|---------|
+| 1 | `c5914ff6` | test(260930-wm6-r3b): RED — true-white hole writer pin (paper exonerated) |
+| 2 | `70d79adf` | fix(260930-wm6-r3b): widen forceDryAll's clamp to the wet extent |
+
+Ordering guard satisfied: the RED pin commit lands on an **unfixed** tree where
+(d2) reports `384 VISIBLE pixels` and fails; commit 2 flips it GREEN and flips the
+`drying.bboxLoss.test.ts` characterization to the new invariant in the same slice.
