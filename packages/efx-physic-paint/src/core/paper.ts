@@ -36,12 +36,26 @@ export function loadPaperTexture(
         reject(new Error('Failed to get 2D context for paper texture'))
         return
       }
-      // Tile the image across the canvas
+      // Tile the image across the canvas, MIRRORING alternate cells.
+      // 260930-wm6 R2 seam pin: a plain repeat of a photographed paper_*.jpg
+      // steps 0.80 at every tile boundary (its left edge != its right edge),
+      // and sampleH hands that height step to wetDisplayAlpha's paperMod and to
+      // D-08's adsorption — the horizontal/vertical white cuts through the paint
+      // and the "full block outline" of one tile. Mirroring makes both sides of
+      // a shared boundary read the same source pixels, so ANY source tiles
+      // seam-free. It also removes the fractional-tileScale seam, where each
+      // cell's own drawImage resample would otherwise clamp at that cell's edge.
       const tileWidth = Math.max(1, img.width * tileScale)
       const tileHeight = Math.max(1, img.height * tileScale)
-      for (let y = 0; y < height; y += tileHeight) {
-        for (let x = 0; x < width; x += tileWidth) {
-          tx.drawImage(img, x, y, tileWidth, tileHeight)
+      for (let iy = 0, y = 0; y < height; iy++, y += tileHeight) {
+        for (let ix = 0, x = 0; x < width; ix++, x += tileWidth) {
+          const flipX = ix % 2 === 1
+          const flipY = iy % 2 === 1
+          tx.save()
+          tx.translate(flipX ? x + tileWidth : x, flipY ? y + tileHeight : y)
+          tx.scale(flipX ? -1 : 1, flipY ? -1 : 1)
+          tx.drawImage(img, 0, 0, tileWidth, tileHeight)
+          tx.restore()
         }
       }
       try {
