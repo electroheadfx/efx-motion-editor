@@ -1121,6 +1121,14 @@ export class EfxPaintEngine {
     }
     if (explicit) this.inFlightExplicitPreviewBase = false
     if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return false
+    // The 52.1 paint-train skip assumes previewBaseCtx ALREADY shows this base
+    // (only the image FIELD changes while a stroke is live over the same blank
+    // base). clear()/clearPreviewBaseImage() empty that ctx, so a cache-hit
+    // apply inside the skip window — navigation clicks always land within
+    // PAINT_TRAIN_BASE_DRAW_MS — would leave the cached paint undrawn: the
+    // "come back on the key and it looks faded" hole. A stale ctx must draw
+    // the base even mid-train; only the stroke replay stays skippable.
+    const baseCtxWasCurrent = this.previewBaseEnabled && this.previewBaseImage !== null
     this.previewBaseImage = image
     this.previewBaseEnabled = true
     this.previewBackgroundSeparated = true
@@ -1128,7 +1136,9 @@ export class EfxPaintEngine {
     this.appliedPreviewBaseGeneration = generation
     this.appliedPreviewBaseAppFrame = appFrame ?? null
     this.appliedPreviewBaseExplicit = explicit
-    if (skipFullReplay || performance.now() - this.lastPointerInputTime < PAINT_TRAIN_BASE_DRAW_MS) {
+    const inPaintTrain = skipFullReplay || performance.now() - this.lastPointerInputTime < PAINT_TRAIN_BASE_DRAW_MS
+    if (!baseCtxWasCurrent || !inPaintTrain) this.redrawPreviewBase()
+    if (inPaintTrain) {
       // 52.1 (2nd-stroke freeze): a fresh key's acceptance base apply used to
       // redrawPreviewBase() + redrawAll() — the FIRST drawImage of the new base
       // image uploads an 8.3MB texture to the GPU process, a multi-hundred-ms
@@ -1141,7 +1151,6 @@ export class EfxPaintEngine {
       // the next genuine redraw (a real stop or navigation).
       return true
     }
-    this.redrawPreviewBase()
     this.redrawAll()
     return true
   }
