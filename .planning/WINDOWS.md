@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 8
+open_count: 10
 waived_count: 5
 fixed_count: 69
-total_count: 82
-last_updated: 2026-09-29T08:18:02.500Z
+total_count: 84
+last_updated: 2026-09-30T22:48:01.109Z
 ---
 
 # Broken Windows Ledger
@@ -97,6 +97,8 @@ last_updated: 2026-09-29T08:18:02.500Z
 | 80 | 52.4 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.cooperativeFinalization.contract.red.test.ts |  | Undeclared engine contract test repaired for the plan-mandated 'finalize' phase (raster-completion assertion); not in plan files_modified | open |  | 2026-09-29T06:47:34.799Z |  |
 | 81 | 52.4 | deviation | packages/efx-physic-paint |  | Package vitest gate runs via local ../../app/node_modules/.bin/vitest path; pnpm --filter efx-physic-paint exec vitest fails (vitest not resolvable in package) | open |  | 2026-09-29T06:47:34.944Z |  |
 | 82 | 52.4 | deviation | packages/efx-physic-paint/src/brush/footprintLanes.ts |  | Plan-literal RSA placement replaced by seeded two-band stratified jitter (car-parking jam + FP ratio trap); D-13/D-02 laws hold by construction, documented in header and 52.4-02-SUMMARY | open |  | 2026-09-29T08:18:02.500Z |  |
+| 83 | quick-260930-q6t | deviation | .planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-SUMMARY.md |  | 260930-q6t halted at Task 1 attribution gate (dry denser than display, symptom lightening); Tasks 2-3 not run, awaiting user direction | open |  | 2026-09-30T17:49:23.603Z |  |
+| 84 | quick-260930-wm6 | deviation | app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.test.ts | 236 | Pre-existing full-app-suite failure: native-profile pin missing the enabled key added by superseded q6t 4e064c41; out of scope for 260930-wm6, logged in deferred-items.md | open |  | 2026-09-30T22:48:01.109Z |  |
 
 ````json
 [
@@ -1091,6 +1093,32 @@ last_updated: 2026-09-29T08:18:02.500Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-29T08:18:02.500Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 83,
+    "kind": "deviation",
+    "phase": "quick-260930-q6t",
+    "file": ".planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-SUMMARY.md",
+    "line": null,
+    "description": "260930-q6t halted at Task 1 attribution gate (dry denser than display, symptom lightening); Tasks 2-3 not run, awaiting user direction",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-30T17:49:23.603Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 84,
+    "kind": "deviation",
+    "phase": "quick-260930-wm6",
+    "file": "app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.test.ts",
+    "line": 236,
+    "description": "Pre-existing full-app-suite failure: native-profile pin missing the enabled key added by superseded q6t 4e064c41; out of scope for 260930-wm6, logged in deferred-items.md",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-30T22:48:01.109Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }
