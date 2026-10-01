@@ -325,3 +325,147 @@ question (it dies with the cook).
 **Sequence unchanged (do not reorder):** 1 `sans-cuisson` (this) → 2
 `paint-width` → 3 `06-libmypaint-rasterizer` → 4 `08-retire-fluids` finished →
 5 `07-paint-script`.
+
+---
+
+# Revision R2 — gesture stall + white seam (measure-first, one fix per defect)
+
+Look UAT on R1 **PASSED** (Option 3 accepted: dense + physics texture, stable).
+Knobs `DEPOSIT_KEEP_TIER 40` / `DEPOSIT_DENSITY_SCALE 4500` / `PAPER_ADSORPTION_GAMMA 0.5`
+**stand** — not re-tuned here. Two pre-existing defects were scoped for R2 with a
+binding order: **measure first, then one fix per defect.** `spreadScale.ts` and
+`compositor.ts` stay byte-untouched.
+
+## Defect 1 — mid-stroke gesture stall
+
+**Named suspects (user's order):** (S1) previous-stroke finalize/solver drain
+competing with the next gesture; (S2) `getImageData` per `transferToWetLayerClipped`;
+(S3) full-canvas `getImageData` on the pickup path (`paint.ts:576`); (S4) R1 made
+finalize heavier.
+
+### The targeted log — `core/gestureStallMeasurement.test.ts`
+
+Every readback the real raster+transfer path performs is counted (calls, pixels,
+whether it reads the WHOLE source canvas) alongside the `measurePrimitive` stage
+table. The engine-side hot path is inventoried the same way.
+
+**Verdicts:**
+
+| Suspect | Verdict | Evidence |
+|---|---|---|
+| **S3 pickup snapshot** | **THE WRITER — fixed** | Exactly **1 whole-source-canvas readback** on the pickup path: `paint-pickup-canvas-snap`, `getImageData(0, 0, width, height)` = **2,073,600px at 1080p**, paid before a single segment rasterizes. Its only consumer is `sampleAreaColor`'s `ceil(radius/2)` disc around each curve point. |
+| S2 per-transfer readback | not the stall | 7 bounded `getImageData(0, 0, bounds.w, bounds.h)` reads, 22k–27k px each (~1.2% of a 1080p readback). Bounded by design. |
+| S1 in-gesture preview | **EXONERATED** | `drawStrokePreview` = 0.030 / 0.033 / 0.078 / **0.310 ms/move** at n = 16 / 64 / 256 / 1024. Cheap and sub-linear. |
+| S1 finalize drain | **NAMED, NOT FIXED** (one-fix-per-defect) | See below. |
+| S4 finalize weight | folded into S1 | The full-canvas readbacks at finalize start (`captureUndoSnapshot`) and cache capture (`copyLiveAlphaCanvas`) are in the inventory; the R1 one-deposit change did not add a new one. |
+
+**Hot-path inventory (12 full-canvas `getImageData` sites):** `seededRng` ×2,
+`setBackgroundImageUrl`, `startPhysics`, `clearWetLayer`, `copyLiveAlphaCanvas` ×2,
+`captureUndoSnapshot`, `measureBakeParityDrySplit`, `sampleBakeParityExport` ×2,
+`resetReplaySurface`. Plus bounded rects in `prepareWetLayerForStroke` and the
+transfer paths, and a 1px probe in `warmCanvasSurfaces`.
+
+**S1 finalize drain — the named-but-not-fixed finding (the next suspect if the
+stall survives UAT):**
+
+- `runScheduledStrokeFinalizationFrame` **is** idle-gated
+  (`state.drawing || idle < STROKE_FINALIZATION_IDLE_MS(400) || hasPendingInput()`).
+- `flushPendingStrokeFinalizations()` is an **unbounded** `while (pending || active)
+  runStrokeFinalizationTurn(true, Infinity, Infinity)`.
+- `hasPendingInput()` reads `navigator.scheduling?.isInputPending?.({ includeContinuous: true }) ?? false`.
+  **`navigator.scheduling` is absent in WKWebView (Tauri/macOS)** → always `false`
+  → the cooperative turn can never yield to input on the native target.
+
+So every `flushPendingStrokeFinalizations()` call site is an unbounded synchronous
+drain that cannot see the next gesture arriving. This is logged with source pins;
+it is **not** changed here because the rule is one fix per defect and S3 is the
+measured writer on this path.
+
+### Fix 1 (the one fix) — scope the pickup snapshot to the curve footprint
+
+`paint.ts`: `paint-pickup-canvas-snap` now reads `getImageData(snapX, snapY, snapW, snapH)`
+— the curve bbox ± `ceil(radius/2)+1` (the disc `sampleAreaColor` actually samples) —
+and `buildCarriedColors` takes the snap origin so `sampleAreaColor` indexes into the
+scoped buffer. Measured effect on the harness (320×160): whole-source readbacks
+**1 → 0**; the snap is now 250×46 = 11,500px (**~0.6%** of a 1080p readback, was 100%).
+Stage `paint-pickup-canvas-snap` drops 0.32ms → 0.09ms in the harness.
+
+## Defect 2 — white cuts / full block outline through the paint
+
+**Named suspects (user's order):** (a) bbox clipping on the segmented pickup path
+(`paint.ts:581-601`, 30% overlap, per-segment `segBounds` offscreen — "that rectangle
+matches the trace of a block"); (b) `copyLiveAlphaCanvas` torn extraction (pinned,
+never fixed — `copyLiveExtractionTornEdge.test.ts`); (c) paper tile seams.
+
+### The source pin — `core/whiteSeamSourcePin.test.ts`
+
+`detectCuts(alpha, w, h)` reports axis-aligned cut runs (the visible symptom). Each
+suspect is probed so the failure mode names the writer.
+
+**Verdicts:**
+
+| Suspect | Verdict | Evidence |
+|---|---|---|
+| (a) bbox / offscreen clip | **EXONERATED** | Real `drawBristleFootprint` hull vertices recorded per offscreen: **94,710 verts (pickup=60) / 76,230 (pickup=0), clippedVerts = 0**. The canvas never hard-clips a vertex — the "block outline" is not `segBounds`. |
+| (b) torn extraction | not re-derived | `copyLiveExtractionTornEdge.test.ts` already feeds a CLEAN dry layer through the real `copyLiveAlphaCanvas` and scores `tornEdge=0`. Its numbers exonerate the extraction for clean input. |
+| **(c) paper tile seams** | **THE WRITER — fixed** | A plain repeat of a photographed `paper_*.jpg` steps **0.8000** at every tile boundary vs **0.0323** interior. That step IS the horizontal+vertical cut grid and one tile's block outline. Fractional `tileScale` (2048/1920) steps **0.0686** vs 0.0457 interior even on a seamless source. |
+| (d) solver vs dry region | logged, NOT the writer | `brushR=16 water=50 spread=65` → `dryHalf=16`, `solverHalf=26`, overflow band 10px/side. The pin's own note: *"an orphaned wet ring shows as a HALO (extra paint), not a white cut."* |
+
+**Why (c) writes a white cut:** `loadPaperTexture` tiles the source with plain
+`drawImage` repeat. A photographed tile's left edge ≠ its right edge, so `sampleH`
+hands a height **step** to `wetDisplayAlpha`'s `paperMod` and to D-08's adsorption at
+every tile boundary — a brightness cut through the paint, in a grid, one tile's
+outline. The fractional-`tileScale` case adds a second seam: each cell's own
+`drawImage` resample clamps at that cell's edge.
+
+### Fix 2 (the one fix) — mirror-tile the paper
+
+`paper.ts`: `loadPaperTexture` now mirrors alternate cells (`flipX = ix % 2 === 1`,
+`flipY = iy % 2 === 1`, `tx.scale(±1, ±1)`). Both sides of a shared boundary read the
+same source pixels, so **ANY** source tiles seam-free — and the fractional-tileScale
+resample seam goes with it. `conditionHeightMap` and `sampleH` unchanged.
+
+Measured effect: non-seamless boundary step **0.8000 → 0.0000**; fractional
+boundary step **0.0686 → 0.0198** (below the 0.0457 interior floor).
+
+## Verification (R2)
+
+- Two harnesses: **15/15** (`gestureStallMeasurement` 7, `whiteSeamSourcePin` 8)
+- Full package suite: **40 files, 321 passed, 3 skipped**
+- `pnpm --filter @efxlab/efx-physic-paint check` + `pnpm --filter efx-motion-editor typecheck`: **clean**
+- App suite: **4346 passed**, 1 pre-existing failure (`physicsPaintPerformanceTrace.test.ts:236`,
+  the superseded-q6t `enabled` key, in `deferred-items.md` — out of scope)
+- **Guardrails held:** `spreadScale.ts` / `compositor.ts` / `wet-layer.ts` `git diff --stat` **EMPTY**
+- **Look knobs stand:** `DEPOSIT_KEEP_TIER = 40`, `DEPOSIT_DENSITY_SCALE = 4500`, `PAPER_ADSORPTION_GAMMA = 0.5`
+  (asserted by a "look knobs stand" test in both harnesses)
+
+## Status after R2: automated-ready — native UAT PENDING
+
+Nothing is `done`. The two fixes are in and the pins are green; the eye decides.
+
+**Native UAT rows (all PENDING):**
+- **(a)** mid-stroke: the brush no longer stalls and the gesture completes. If the
+  stall persists, the logged S1 drain structure (unbounded `flushPendingStrokeFinalizations`
+  + dead `hasPendingInput` in WKWebView) is the next named suspect.
+- **(b)** no more horizontal/vertical white cuts through the paint; no more full
+  block outlines (the paper-tile mirror is the fix).
+- **(c)** the accepted look is unchanged: dense + physics texture, knobs 40/4500/0.5.
+- **(d)** preview == cache == reloaded still byte-equal (`lookLawDigest.test.ts` stays green).
+
+**Do not reopen:** the 260928-dh1 paper hunt, bbox flush-loss, the leave-key
+settle-through gate, the /800-vs-Beer-Lambert unification, the bake-speed question.
+
+**Sequence unchanged (do not reorder):** 1 `sans-cuisson` (this) → 2
+`paint-width` → 3 `06-libmypaint-rasterizer` → 4 `08-retire-fluids` finished →
+5 `07-paint-script`.
+
+## Commit series (R2, 3 commits)
+
+| # | Hash | Message |
+|---|------|---------|
+| 1 | `4699fe02` | test(260930-wm6-r2): RED — measure-first gesture log + white-seam source pin |
+| 2 | `dc87ee6e` | fix(260930-wm6-r2): scope the pickup snapshot to the curve footprint |
+| 3 | `295c5e9f` | fix(260930-wm6-r2): mirror-tile paper so height map has no tile-boundary step |
+
+Ordering guard satisfied: the RED pin commit precedes both GREEN fix slices
+(S3 flips GREEN with commit 2; the two mirrored (c) pins flip GREEN with commit 3).
