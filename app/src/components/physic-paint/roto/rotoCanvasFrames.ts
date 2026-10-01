@@ -59,7 +59,10 @@ async function decodeRotoWebpOffMainThread(bytes: Uint8Array): Promise<DecodedRo
   const blob = new Blob([bytes.slice()], { type: 'image/webp' });
   if (typeof createImageBitmap === 'function') {
     try {
-      const bitmap = await createImageBitmap(blob);
+      // 261001-cache3: premultiply AT bitmap creation (the 52.1 wash law).
+      // drawImage consumes premultiplied data — an un-flagged bitmap drawn
+      // as-if premultiplied washes every semi-transparent grain pixel.
+      const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'premultiply' });
       return { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() };
     } catch {
       // Fall through to the forced-decode Image path.

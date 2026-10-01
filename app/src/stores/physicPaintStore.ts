@@ -1467,7 +1467,9 @@ async function _decodeWebpToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch
 
 async function _decodePngBytesToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch'): Promise<ImageBitmap> {
   const startedAt = performance.now();
-  const bitmap = await createImageBitmap(new Blob([bytes.slice()], { type: 'image/png' }));
+  // 261001-cache3: premultiply AT bitmap creation (the 52.1 wash law) — see
+  // _decodeWebpToBitmap above. This is the display-only PNG leg; same rule.
+  const bitmap = await createImageBitmap(new Blob([bytes.slice()], { type: 'image/png' }), { premultiplyAlpha: 'premultiply' });
   recordPhysicsPaintDecodeSample({
     path: 'png',
     origin,

@@ -38,5 +38,10 @@ export async function mergeRotoAlphaCanvases(
 }
 
 function loadCachedRotoBaseImage(bytes: Uint8Array): Promise<ImageBitmap> {
-  return createImageBitmap(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/webp' }));
+  // 261001-cache3: pin premultiply AT bitmap creation, same as the 52.1 fix in
+  // physicPaintStore._decodeWebpToBitmap. drawImage only ever consumes
+  // premultiplied data; a 'default'/'none'-flagged bitmap is drawn AS IF
+  // premultiplied and every semi-transparent grain pixel washes toward white
+  // at the same alpha. Harmless where the UA already premultiplies.
+  return createImageBitmap(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/webp' }), { premultiplyAlpha: 'premultiply' });
 }
