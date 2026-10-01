@@ -50,7 +50,7 @@
 // ============================================================
 
 import { describe, expect, it, vi } from 'vitest'
-import { createWetBuffers, transferToWetLayerClipped } from './wet-layer'
+import { createWetBuffers, transferToWetLayerClipped, DEPOSIT_DENSITY_SCALE, PAPER_ADSORPTION_GAMMA, PAPER_ADSORPTION_DELTA } from './wet-layer'
 import { localFluidPhysicsStep } from './fluids'
 import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
@@ -386,16 +386,16 @@ function bodyState(profile: Profile): BodyState {
  * paper=null → exact (profileAlpha/255)*3000.
  * paper present → times the documented D-08 adsorption factor
  * max(floor, adsorption) recomputed from paper height (wetness = 0 at
- * first transfer; floor = userOpacity^2 = 1). Production reads this
+ * first transfer; floor = userOpacity = 1). Production reads this
  * same formula inside transferToWetLayerClipped — the pin still detects
  * any tier/water alpha modulation because the factor is recomputed here,
  * never read back from the deposit.
  */
 function expectedDeposit(profileAlpha: number, gx: number, gy: number, paper: Float32Array | null): number {
-  let expected = (profileAlpha / 255) * 3000 * TRANSFER_COUNT
+  let expected = (profileAlpha / 255) * DEPOSIT_DENSITY_SCALE * TRANSFER_COUNT
   if (paper) {
     const h = sampleH(paper, gx, gy, CANVAS_W, CANVAS_H)
-    const adsorption = (1 - 0) * (1 - h * 0.8) * 1.2 // wFrac = 0, gamma 0.8, delta 1.2
+    const adsorption = (1 - 0) * (1 - h * PAPER_ADSORPTION_GAMMA) * PAPER_ADSORPTION_DELTA // wFrac = 0
     expected *= Math.max(1, adsorption)
   }
   return expected

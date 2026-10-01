@@ -167,8 +167,8 @@ export function depositToWetLayer(
   width: number,
   height: number,
   paperHeight: Float32Array | null = null,  // D-08: paper-height deposit modulation
-  gamma: number = 0.8,                       // D-09: granulation
-  delta: number = 1.2,                       // D-09: density
+  gamma: number = PAPER_ADSORPTION_GAMMA,
+  delta: number = PAPER_ADSORPTION_DELTA,
   userOpacity: number = 1.0,                 // D-01: stroke opacity for Porter-Duff accumulation
 ): void {
   const [cr, cg, cb] = hexRgb(color)
@@ -205,8 +205,7 @@ export function depositToWetLayer(
           const h = paperHeight[idx]
           const wFrac = Math.min(1, wetBuffers.wetness[idx] / 1000)
           const adsorption = (1 - wFrac) * (1 - h * gamma) * delta
-          const floor = userOpacity * userOpacity
-          depositAlpha *= Math.max(floor, adsorption)
+          depositAlpha *= Math.max(userOpacity, adsorption)
         }
 
         const existingA = wetBuffers.alpha[idx]
@@ -255,8 +254,8 @@ export function depositToWetLayerWithColors(
   width: number,
   height: number,
   paperHeight: Float32Array | null = null,  // D-08: paper-height deposit modulation
-  gamma: number = 0.8,                       // D-09: granulation
-  delta: number = 1.2,                       // D-09: density
+  gamma: number = PAPER_ADSORPTION_GAMMA,
+  delta: number = PAPER_ADSORPTION_DELTA,
   userOpacity: number = 1.0,                 // D-01: stroke opacity for Porter-Duff accumulation
 ): void {
   const depositStrength = opacity * 1.2
@@ -291,8 +290,7 @@ export function depositToWetLayerWithColors(
           const h = paperHeight[idx]
           const wFrac = Math.min(1, wetBuffers.wetness[idx] / 1000)
           const adsorption = (1 - wFrac) * (1 - h * gamma) * delta
-          const floor = userOpacity * userOpacity
-          depositAlpha *= Math.max(floor, adsorption)
+          depositAlpha *= Math.max(userOpacity, adsorption)
         }
 
         const existingA = wetBuffers.alpha[idx]
@@ -337,8 +335,8 @@ export function transferToWetLayer(
   width: number,
   height: number,
   paperHeight: Float32Array | null = null,  // D-08: paper-height deposit modulation
-  gamma: number = 0.8,                       // D-09: granulation
-  delta: number = 1.2,                       // D-09: density
+  gamma: number = PAPER_ADSORPTION_GAMMA,
+  delta: number = PAPER_ADSORPTION_DELTA,
   userOpacity: number = 1.0,                 // D-01: stroke opacity for Porter-Duff accumulation
 ): void {
   const offData = offCtx.getImageData(0, 0, width, height).data
@@ -348,7 +346,7 @@ export function transferToWetLayer(
     const a = offData[pi + 3]
     if (a < 20) continue  // Filter bristle trace + anti-aliased edge artifacts
 
-    let depositAlpha = (a / 255) * 3000
+    let depositAlpha = (a / 255) * DEPOSIT_DENSITY_SCALE
 
     // D-08/D-09: Paper-height deposit modulation
     // Floor scales with userOpacity² so 100% opacity → full coverage
@@ -356,8 +354,7 @@ export function transferToWetLayer(
       const h = paperHeight[i]
       const wFrac = Math.min(1, wetBuffers.wetness[i] / 1000)
       const adsorption = (1 - wFrac) * (1 - h * gamma) * delta
-      const floor = userOpacity * userOpacity
-      depositAlpha *= Math.max(floor, adsorption)
+      depositAlpha *= Math.max(userOpacity, adsorption)
     }
 
     const existingA = wetBuffers.alpha[i]
@@ -396,22 +393,44 @@ export function transferToWetLayer(
  *
  * Include/exclude ONLY at the deposit gate: raster pixels with alpha
  * below this tier never run; included pixels keep the exact base
- * deposit math `(a / 255) * 3000` and the untouched D-08 paper
- * adsorption, D-09 granulation, D-10 subtractive mixing, wetness
- * write, and strokeOpacity. NEVER scale depositAlpha, wetness, or
- * strokeOpacity with waterAmount, with tier, or with any other
- * parameter (m7w failure 24f40261 / revert 1648658b: alpha-carry
- * modulation produced a quasi-invisible stroke).
+ * deposit math and the untouched D-08 paper adsorption, D-09
+ * granulation, D-10 subtractive mixing, wetness write, and
+ * strokeOpacity. NEVER scale depositAlpha, wetness, or strokeOpacity
+ * with waterAmount, with tier, or with any other parameter (m7w
+ * failure 24f40261 / revert 1648658b: alpha-carry modulation produced
+ * a quasi-invisible stroke).
  *
- * Tier per the 260924-pyp OUTCOME TABLE (production continuous AA
- * raster, 24 cells): tier 70 holds envelope W_visible <= 8 at default
- * water with texture d(b) = 1-2 at all waters/papers (tier 130 =
- * fallback only, same envelope); tier 200 is FORBIDDEN (proven hard
- * stamp, d(b) = 0); base tier 20 fails the envelope on null paper
- * (W_visible 9 > 8). Body plateau (~244) stays far above the gate —
- * PIN 0 / PIN 0b assert zero body movement in both harnesses.
+ * 260930-wm6 look lever (user decision 2026-10-01, native UAT by eye
+ * — no metric gate on the look): 70 -> LOWER. The 260924-rm2 value
+ * dropped the faint footprint pixels that carry the bristle speckle,
+ * which read as "lost consistency" once the settled look replaced the
+ * raw blit. Body plateau (~244) stays far above the gate — PIN 0 /
+ * PIN 0b assert zero body movement in both harnesses.
+ *
+ * History: 20 = base (failed the 260924-pyp W_visible envelope);
+ * 70 = 260924-rm2 (held that envelope); 40 = 260930-wm6 (density pass
+ * — keeps the speckle the gate was eating).
  */
-const DEPOSIT_KEEP_TIER = 70
+export const DEPOSIT_KEEP_TIER = 40
+
+/**
+ * 260930-wm6 look lever (user decision 2026-10-01): deposit scale,
+ * was the bare literal `(a / 255) * 3000`. 3000 -> HIGHER so kept
+ * mid-tone pixels read dense instead of thin. DENSITY_NORM (types.ts)
+ * is the DISPLAY normalizer inside wetDisplayAlpha and is untouched —
+ * this constant scales only what the deposit WRITES, so a denser
+ * deposit is what the solver then spreads.
+ */
+export const DEPOSIT_DENSITY_SCALE = 4500
+
+/**
+ * D-08 paper adsorption levers (260930-wm6 look pass). gamma softens
+ * the peak carve (0.8 -> 0.5), delta keeps the valley floor. Named
+ * here — never hardcoded at the paint.ts call sites — so there is
+ * exactly one place to eye-tune.
+ */
+export const PAPER_ADSORPTION_GAMMA = 0.5
+export const PAPER_ADSORPTION_DELTA = 1.2
 
 /**
  * Clipped version of transferToWetLayer using bounds rect.
@@ -425,8 +444,8 @@ export function transferToWetLayerClipped(
   width: number,
   height: number,
   paperHeight: Float32Array | null = null,  // D-08: paper-height deposit modulation
-  gamma: number = 0.8,                       // D-09: granulation
-  delta: number = 1.2,                       // D-09: density
+  gamma: number = PAPER_ADSORPTION_GAMMA,
+  delta: number = PAPER_ADSORPTION_DELTA,
   userOpacity: number = 1.0,                 // D-01: stroke opacity for Porter-Duff accumulation
   observePrimitive?: PaintPrimitiveTimingObserver,
 ): void {
@@ -444,17 +463,19 @@ export function transferToWetLayerClipped(
       if (a < DEPOSIT_KEEP_TIER) continue  // 260924-rm2 deposit keep-gate: include/exclude only, never alpha modulation (filters bristle trace + AA edge artifacts)
 
       const i = gy * width + gx
-      let depositAlpha = (a / 255) * 3000
+      let depositAlpha = (a / 255) * DEPOSIT_DENSITY_SCALE
 
       // D-08/D-09: Paper-height deposit modulation
-      // Valleys (h~0) get full deposit; peaks (h~1) get reduced deposit
-      // Floor scales with userOpacity² so 100% opacity → full coverage (no paper holes)
+      // Valleys (h~0) get full deposit; peaks (h~1) get reduced deposit.
+      // 260930-wm6 look lever (user decision 2026-10-01): the floor was
+      // userOpacity² (50% opacity deposited 25% — the squared floor
+      // strangled partial-opacity paint). It is LINEAR now, so the floor
+      // tracks the stroke opacity the display law already applies.
       if (paperHeight) {
         const h = paperHeight[i]
         const wFrac = Math.min(1, wetBuffers.wetness[i] / 1000)
         const adsorption = (1 - wFrac) * (1 - h * gamma) * delta
-        const floor = userOpacity * userOpacity  // 100%→1.0, 50%→0.25, 30%→0.09
-        depositAlpha *= Math.max(floor, adsorption)
+        depositAlpha *= Math.max(userOpacity, adsorption)
       }
 
       const existingA = wetBuffers.alpha[i]

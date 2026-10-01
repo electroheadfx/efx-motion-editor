@@ -243,8 +243,14 @@ function collectShapeViolations(input: { label: string; body: string }[]): strin
       out.push('width-gauge-shape')
     }
 
-    // G6 — deposit-law constants (D-08 keep-gate, dry threshold)
-    if (label === 'wet-layer.ts' && !/const\s+DEPOSIT_KEEP_TIER\s*=\s*70\b/.test(body)) {
+    // G6 — deposit-law constants (D-08 keep-gate, dry threshold).
+    // 260930-wm6: DEPOSIT_KEEP_TIER's VALUE is now a named look lever
+    // (user decision 2026-10-01 — one eye-tuned pass, native UAT by eye),
+    // so G6 pins its SHAPE (a named const holding an integer literal —
+    // never inlined at call sites, never a computed expression). The value
+    // bound lives in core/lookLawDigest.test.ts. DRY_ALPHA_THRESHOLD is
+    // not a look lever and stays pinned to the byte.
+    if (label === 'wet-layer.ts' && !/const\s+DEPOSIT_KEEP_TIER\s*=\s*\d+\b/.test(body)) {
       out.push('deposit-law-constant')
     }
     if (label === 'drying.ts' && !/const\s+DRY_ALPHA_THRESHOLD\s*=\s*1\b/.test(body)) {
@@ -308,7 +314,7 @@ describe('deposit source-shape gates — real sources', () => {
     expect(violations).toEqual([])
   })
 
-  it('G6 deposit-law constants: wet-layer.ts keeps const DEPOSIT_KEEP_TIER = 70 and drying.ts keeps const DRY_ALPHA_THRESHOLD = 1', () => {
+  it('G6 deposit-law constants: wet-layer.ts keeps const DEPOSIT_KEEP_TIER as a named integer lever and drying.ts keeps const DRY_ALPHA_THRESHOLD = 1', () => {
     const violations = collectShapeViolations(readRealEntries()).filter((l) => l === 'deposit-law-constant')
     expect(violations).toEqual([])
   })
@@ -401,15 +407,19 @@ describe('deposit source-shape negative controls (gate teeth)', () => {
     expect(sampleIndexKey).toContain('width-gauge-shape')
   })
 
-  it('G6 control: a wet-layer source without the keep tier or a drying source with a changed dry-alpha threshold yields deposit-law-constant', () => {
+  it('G6 control: a wet-layer source without a named keep tier, or one holding a computed value, or a drying source with a changed dry-alpha threshold yields deposit-law-constant', () => {
     const wet = collectShapeViolations([
       { label: 'wet-layer.ts', body: 'export function transfer() {\n  return 1\n}' },
     ])
     expect(wet).toContain('deposit-law-constant')
-    const wetChanged = collectShapeViolations([
-      { label: 'wet-layer.ts', body: 'const DEPOSIT_KEEP_TIER = 80' },
+    const wetComputed = collectShapeViolations([
+      { label: 'wet-layer.ts', body: 'const DEPOSIT_KEEP_TIER = computeTier()' },
     ])
-    expect(wetChanged).toContain('deposit-law-constant')
+    expect(wetComputed).toContain('deposit-law-constant')
+    const wetLet = collectShapeViolations([
+      { label: 'wet-layer.ts', body: 'let DEPOSIT_KEEP_TIER = 70' },
+    ])
+    expect(wetLet).toContain('deposit-law-constant')
     const dryChanged = collectShapeViolations([
       { label: 'drying.ts', body: 'const DRY_ALPHA_THRESHOLD = 2' },
     ])

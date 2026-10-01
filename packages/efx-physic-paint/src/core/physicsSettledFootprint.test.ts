@@ -39,7 +39,7 @@
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
-import { createWetBuffers, depositToWetLayer, transferToWetLayerClipped } from './wet-layer'
+import { createWetBuffers, depositToWetLayer, transferToWetLayerClipped, DEPOSIT_DENSITY_SCALE } from './wet-layer'
 import { localFluidPhysicsStep } from './fluids'
 import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
@@ -269,7 +269,7 @@ function bodyRasterAlpha(gy: number): number {
 
 /** Unmodulated deposit expectation for a body pixel (paper=null transfer). */
 function expectedBodyDeposit(gy: number): number {
-  return (bodyRasterAlpha(gy) / 255) * 3000 * TRANSFER_COUNT
+  return (bodyRasterAlpha(gy) / 255) * DEPOSIT_DENSITY_SCALE * TRANSFER_COUNT
 }
 
 /** Mean wet.alpha over ALL in-ribbon body pixels (rows 29..34, stroke x-range). */
@@ -477,7 +477,7 @@ describe('physics settled footprint — contract pins', () => {
     ).toBeGreaterThan(w10)
   })
 
-  it('PIN 0: body deposit is unmodulated — every in-ribbon pixel lands at (a/255)*3000 within 1%', () => {
+  it('PIN 0: body deposit is unmodulated — every in-ribbon pixel lands at (a/255)*DEPOSIT_DENSITY_SCALE within 1%', () => {
     for (const water of WATERS) {
       const { deposit } = runCell('transfer', water / 100, SPACINGS[0].px, null)
       let minRatio = Infinity

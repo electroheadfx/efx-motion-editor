@@ -24,7 +24,7 @@
  * The entry point is the REAL createPaintStrokeRasterContinuation, called with
  * the engine's own argument convention (EfxPaintEngine.stepInteractivePaint
  * Finalization: opts.size is already brushRenderRadius, waterAmount is /100).
- * The real transferToWetLayerClipped applies the real `a < 70` cut.
+ * The real transferToWetLayerClipped applies the real `a < DEPOSIT_KEEP_TIER` cut.
  * wet-layer.ts is NOT edited. The BEFORE field is the exact `offData` that
  * function reads (captured at its getImageData call). The AFTER keep-field is
  * `a >= 70` on those same bytes — the gate is a pure threshold.
@@ -41,7 +41,7 @@ import { deflateSync } from 'node:zlib'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { createPaintStrokeRasterContinuation } from '../brush/paint'
 import { curveBounds } from '../util/math'
-import { createWetBuffers } from './wet-layer'
+import { createWetBuffers, DEPOSIT_KEEP_TIER } from './wet-layer'
 import type { BrushOpts, PenPoint, WetBuffers } from '../types'
 
 // === Substrate constants (mirrored from the dh1 capture harness + EfxPaintEngine) ===
@@ -65,7 +65,7 @@ const OPAC = 1
  * from the captured BEFORE bytes — never written into wet-layer.ts. The real
  * transferToWetLayerClipped applies its own copy of this threshold.
  */
-const GATE_TIER = 70
+const GATE_TIER = DEPOSIT_KEEP_TIER
 
 const OUT_DIR = '/tmp/efx-dh1-gate'
 
@@ -580,7 +580,7 @@ describe('260928-dh1 deposit keep-gate field diagnosis', () => {
 
     const report: string[] = []
     report.push('260928-dh1 — deposit keep-gate field diagnosis')
-    report.push(`gate tier = ${GATE_TIER} (wet-layer.ts:447, READ-ONLY — not edited)`)
+    report.push(`gate tier = ${GATE_TIER} (wet-layer.ts DEPOSIT_KEEP_TIER — the 260930-wm6 named look lever)`)
     report.push(`canvas ${CANVAS_W}x${CANVAS_H}, radius ${BRUSH_RADIUS}, edgeDetail ${ENGINE_EDGE_DETAIL}, mutationId ${MUTATION_ID}, paperHeight null`)
     report.push('entry = createPaintStrokeRasterContinuation (engine convention: opts.size IS radius, waterAmount/100)')
     report.push('BEFORE = exact offData alpha at transferToWetLayerClipped.getImageData')

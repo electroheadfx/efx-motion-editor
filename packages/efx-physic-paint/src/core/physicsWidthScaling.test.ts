@@ -55,7 +55,7 @@
 // ============================================================
 
 import { describe, expect, it, vi } from 'vitest'
-import { createWetBuffers, transferToWetLayerClipped } from './wet-layer'
+import { createWetBuffers, transferToWetLayerClipped, DEPOSIT_DENSITY_SCALE, PAPER_ADSORPTION_GAMMA, PAPER_ADSORPTION_DELTA } from './wet-layer'
 import { IX, buildWidthScaleField, localFluidPhysicsStep } from './fluids'
 import { wetDisplayAlpha } from '../render/compositor'
 import { sampleH } from './paper'
@@ -412,10 +412,10 @@ function pin0Ratio(wet: WetBuffers, body: RegionState, paper: Float32Array | nul
   let min = Infinity
   let max = -Infinity
   for (const p of body.pixels) {
-    let expected = (p.profileAlpha / 255) * 3000
+    let expected = (p.profileAlpha / 255) * DEPOSIT_DENSITY_SCALE
     if (paper) {
       const h = sampleH(paper, p.gx, p.gy, CANVAS_W, CANVAS_H)
-      expected *= Math.max(1, (1 - 0) * (1 - h * 0.8) * 1.2)
+      expected *= Math.max(1, (1 - 0) * (1 - h * PAPER_ADSORPTION_GAMMA) * PAPER_ADSORPTION_DELTA)
     }
     const ratio = wet.alpha[p.gy * CANVAS_W + p.gx] / expected
     if (ratio < min) min = ratio
