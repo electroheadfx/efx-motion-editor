@@ -187,58 +187,18 @@ export function recordPhysicsPaintPerformance(sample: PhysicsPaintPerformanceSam
 }
 
 // ---------------------------------------------------------------------------
-// 260930-q6t Addendum B — bake-parity capture file (MEASURE-ONLY).
+// 260930-q6t Addendum B — bake-parity capture file. RETIRED 2026-10-02.
 //
-// One leave/close round-trip = one flush sample + one export sample (paired
-// by captureId). When both land, the merged record is written to
-// /tmp/efx-bake-parity-capture.json so Claude reads it from disk (the
-// established app-writes-/tmp convention — never console-copy).
+// The quick was superseded and its own decision rule already concluded
+// ("wet_outside_alpha = 0 -> bbox hypothesis NOT the loss mechanism: halt").
+// The auto-write is gone: it logged on every leave/close round-trip and
+// marshalled `Array.from(bytes)` over IPC to do it — the exact JSON
+// number-array cost this codebase keeps hunting. The engine may still attach
+// a `bakeParity` sample to a perf record; it is dropped here, silently.
 // ---------------------------------------------------------------------------
 
-export const BAKE_PARITY_CAPTURE_PATH = '/tmp/efx-bake-parity-capture.json';
-
-let bakeParityPendingFlush: PhysicsPaintBakeParityFlushCapture | null = null;
-
-function recordBakeParitySample(payload: PhysicsPaintBakeParitySample): void {
-  if (payload.kind === 'flush') {
-    bakeParityPendingFlush = payload.capture;
-    return;
-  }
-  const flush = bakeParityPendingFlush;
-  if (!flush || flush.captureId !== payload.capture.captureId) return;
-  bakeParityPendingFlush = null;
-  void writeBakeParityCapture(flush, payload.capture);
-}
-
-async function writeBakeParityCapture(
-  flush: PhysicsPaintBakeParityFlushCapture,
-  exported: PhysicsPaintBakeParityExportCapture,
-): Promise<void> {
-  try {
-    const outsideShare = flush.wet_total_alpha > 0 ? flush.wet_outside_alpha / flush.wet_total_alpha : 0;
-    const payload = {
-      schema: 'efx-bake-parity-capture/1',
-      quick: '260930-q6t',
-      addendum: 'B',
-      writtenAt: new Date().toISOString(),
-      flush,
-      export: exported,
-      wet_outside_share_of_total: outsideShare,
-      decision_rule:
-        'wet_outside_alpha < 5% of wet_total_alpha -> bbox hypothesis NOT the loss mechanism: halt, reopen the paper-gap branch with flush.paper_gap; >= 5% -> bbox hypothesis stands (report, await direction)',
-    };
-    const bytes = new TextEncoder().encode(JSON.stringify(payload, null, 2));
-    const { exportWritePng } = await import('../../../lib/ipc');
-    // export_write_png writes arbitrary bytes to dir/filename (atomic
-    // tmp+rename) — the one existing command that can produce the plan's
-    // exact path (write_debug_capture is hard-prefixed to
-    // efx-stall-capture-{name}.json and cannot emit this filename).
-    const result = await exportWritePng('/tmp', 'efx-bake-parity-capture.json', Array.from(bytes));
-    if (result.ok) console.log(`[efx-perf] bake-parity capture written to ${BAKE_PARITY_CAPTURE_PATH}`);
-    else console.warn('[efx-perf] bake-parity capture write failed', result.error);
-  } catch (error) {
-    console.warn('[efx-perf] bake-parity capture dump failed', error);
-  }
+function recordBakeParitySample(_payload: PhysicsPaintBakeParitySample): void {
+  // retired — see the header
 }
 
 export function recordPhysicsPaintPerformanceCounter(
