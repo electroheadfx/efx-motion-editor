@@ -49,6 +49,8 @@ import { applyEraseStroke } from '../brush/erase'
 import { compositeWetLayer, wetDisplayAlpha } from '../render/compositor'
 import { drawBg, drawBrushCursor, drawQueuedStrokePolyline, drawStrokePreview, setupDualCanvas } from '../render/canvas'
 import type { StrokePreview, DualCanvas } from '../render/canvas'
+import { createLookDeltaProbe, readStudioPixel } from './lookDeltaProbe'
+import type { LookDeltaProbe, LookDeltaReport } from './lookDeltaProbe'
 
 /**
  * Quantized undo snapshot — the wet/saved buffers are stored at reduced
@@ -633,6 +635,11 @@ export class EfxPaintEngine {
   private bakeParityAwaitingExport: BakeParityFlushCapture | null = null
   /** 52.1: pointer-input activity callback for the Studio's gesture-idle scheduler. */
   public onInputActivity: ((kind: InputActivityKind, pointerId: number) => void) | null = null
+  // 261002 look-delta — MEASURE-ONLY, throwaway. Nothing is built until a
+  // reporter is attached, so an un-instrumented engine pays zero cost.
+  private lookDelta: LookDeltaProbe | null = null
+  private lookDeltaScratch: HTMLCanvasElement | null = null
+  public onLookDeltaReport: ((report: LookDeltaReport) => void) | null = null
   private nextMutationId: number = 1
   private activeMutationId: number | null = null
   private lastCompletedMutationId: number | null = null
@@ -1098,8 +1105,43 @@ export class EfxPaintEngine {
   }
 
   private notifyPreviewBaseSettled(dataUrl: string, outcome: 'applied' | 'dropped', generation?: number): void {
+    // 261002 look-delta m5 — the key's own cache landing after a leave. Runs
+    // BEFORE the listener early-return so a quiet engine still records it.
+    if (outcome === 'applied') {
+      this.lookDelta?.markReturnApplied({
+        appFrame: this.appliedPreviewBaseAppFrame,
+        generation: generation ?? this.appliedPreviewBaseGeneration,
+        explicit: this.appliedPreviewBaseExplicit,
+      })
+    }
     if (!this.previewBaseSettledListeners || this.previewBaseSettledListeners.size === 0) return
     for (const listener of [...this.previewBaseSettledListeners]) listener(dataUrl, outcome, generation)
+  }
+
+  /** 261002 look-delta — lazily build the read-only probe on first attach. */
+  private ensureLookDelta(): LookDeltaProbe {
+    if (this.lookDelta) return this.lookDelta
+    if (!this.lookDeltaScratch) {
+      this.lookDeltaScratch = document.createElement('canvas')
+      this.lookDeltaScratch.width = 1
+      this.lookDeltaScratch.height = 1
+    }
+    this.lookDelta = createLookDeltaProbe({
+      readPixel: (x, y) => readStudioPixel(this.lookDeltaScratch!, this.dualCanvas, x, y),
+      // Any pointer activity inside m4's 2 s window flags the sample — the
+      // window must be provably input-free to rule a post-land writer.
+      readInputClock: () => Math.max(this.lastPointerInputTime, this.lastStrokeInputTime),
+      now: () => performance.now(),
+      onReport: (report) => { this.onLookDeltaReport?.(report) },
+    })
+    return this.lookDelta
+  }
+
+  /** 261002 look-delta — attach/detach the measure-only reporter. */
+  setLookDeltaReporter(fn: ((report: LookDeltaReport) => void) | null): void {
+    this.onLookDeltaReport = fn
+    if (fn) this.ensureLookDelta()
+    else { this.lookDelta?.dispose(); this.lookDelta = null }
   }
 
   private nextPreviewBaseContentToken(): number {
@@ -1161,6 +1203,7 @@ export class EfxPaintEngine {
   // writes (previewBaseEnabled=false, previewBaseImage=null, generation reset)
   // still happen.
   clearPreviewBaseImage(skipRedraw = false): void {
+    this.lookDelta?.noteBaseCleared()
     this.requestRender()
     this.previewBaseRequestId += 1
     this.pendingExplicitPreviewBase = null
@@ -1937,6 +1980,10 @@ export class EfxPaintEngine {
       }
     }
 
+    // 261002 look-delta m2 — every queued outline is drawn by the overlay pass
+    // above; this is the "outline on screen" frame.
+    if (this.lookDelta && this.getQueuedStrokePreviews().length > 0) this.lookDelta.markOutlineLook()
+
     // Finalized pixels yield to active input and preview rendering. Advance at most
     // one retained FIFO continuation after the visible frame has been drawn.
     this.runScheduledStrokeFinalizationFrame()
@@ -1996,6 +2043,9 @@ export class EfxPaintEngine {
     this.drawnQueuedOutlineCount = 0
     this.lastPreviewBbox = null
     this.lastCursorRect = null
+    // 261002 look-delta m3 — the settled wet composite just landed, BEFORE the
+    // overlay pass redraws the cursor on top of the pinned pixel.
+    this.lookDelta?.onCompositeLanded()
   }
 
   /** Redraw every display overlay on top of a fresh composite. */
@@ -2593,6 +2643,7 @@ export class EfxPaintEngine {
     // 30ms composite throttle merges strokes completed in one turn into a
     // single canvas update (the standalone's stroke-group feel).
     this.displayCompositeDirty = true
+    this.lookDelta?.armSettled(pending.mutationId)
     this.recordPerformance('stroke-finalization', 'sync-cpu', active.finalizationStartedAt, { mutationId: pending.mutationId })
     const historyEntry = this.undoStack.find((entry) => entry.mutationId === pending.mutationId)
     if (historyEntry) historyEntry.deferred = null
@@ -3106,6 +3157,23 @@ export class EfxPaintEngine {
     this.state.drawing = false
     this.previewStroke = null
     this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
+    // 261002 look-delta m1 — "end-of-gesture ribbon". previewStroke = null only
+    // affects the NEXT render; the display backing store still holds the live
+    // ribbon, so this read is the first moment. Pin the densest stroke sample.
+    // READ-ONLY: backing-store getImageData into a probe-owned 1x1 scratch.
+    if (this.lookDelta && this.rawPts.length >= 3) {
+      let pin = this.rawPts[0]
+      for (const candidate of this.rawPts) if (candidate.p > pin.p) pin = candidate
+      const playFrame = this.getStrokeMetadata?.()?.playFrame
+      this.lookDelta.beginStroke(pin.x, pin.y, {
+        appFrame: Number.isInteger(playFrame) ? playFrame ?? null : null,
+        mutationId,
+        strokePointCount: this.rawPts.length,
+        brushRadius: brushRenderRadius(this.state.brushOpts),
+        physicsMode: this.state.tool === 'paint' && this.state.physicsMode === 'local' ? 'local' : null,
+        localSpreadStrength: this.state.localSpreadStrength,
+      })
+    }
     // Apply any explicit completion paint deferred while the stroke was active.
     const pending = this.pendingExplicitPreviewBase
     if (pending) {

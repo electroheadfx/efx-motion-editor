@@ -111,6 +111,7 @@ import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchI
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
 import { installDh1CaptureHook } from './performance/depositSpeckleCapture';
+import { installLookDeltaCapture } from './performance/lookDeltaCapture';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -3532,6 +3533,10 @@ export function PhysicsPaintStudio() {
     // engine-ready seam like the __EFX_PHYSICS_PAINT_PROFILE__ precedent —
     // no effect, no signal, no component state.
     if (import.meta.env.DEV) installDh1CaptureHook(readyEngine);
+    // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —
+    // one pinned pixel at m1 ribbon / m2 outline / m3 settled / m4 +2s /
+    // m5 on-return, written to /tmp/efx-look-delta.json. No product change.
+    installLookDeltaCapture(readyEngine);
   };
   const handleCanvasEngineReady = useCallback((readyEngine: EfxPaintEngine) => {
     canvasEngineReadyImplRef.current(readyEngine);
