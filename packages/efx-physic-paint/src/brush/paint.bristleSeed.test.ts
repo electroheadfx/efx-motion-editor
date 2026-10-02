@@ -690,16 +690,17 @@ describe('260928-dh1 bristleSeed — seeded deposit-time trace generator', () =>
     const withoutSpan = bristleRun(slice, 40, 7, true, 'final')
     expect(extentAt(withoutSpan, slice[0].x), 'without tSpan the slice ends collapse toward the 0.3 floor').toBeLessThan(0.5 * 40)
 
-    // (3) source pins: FootprintParams declares tSpan; the pickup call
-    // site passes tSpan with the segment's global range.
+    // (3) source pin: FootprintParams declares tSpan. RETIRED (261002-fpi,
+    // approved gate amendment A): the companion call-site text pin
+    // `drawBristleFootprint(seg, ...)` hard-coded the legacy per-segment
+    // pickup loop that the unified single-footprint pipeline deleted — a
+    // text pin on deleted implementation, not a behavior law. The tSpan
+    // interface pin above and every footprint-body pin stay.
     const src = readFileSync(new URL('./paint.ts', import.meta.url), 'utf8')
     const ifaceStart = src.indexOf('export interface FootprintParams')
     expect(ifaceStart).toBeGreaterThan(-1)
     const ifaceEnd = src.indexOf('}', ifaceStart)
     expect(src.slice(ifaceStart, ifaceEnd)).toMatch(/\btSpan\b/)
-    const segCall = src.indexOf('drawBristleFootprint(seg')
-    expect(segCall, 'pickup call site drawBristleFootprint(seg, ...) must exist').toBeGreaterThan(-1)
-    expect(src.slice(segCall, segCall + 500), 'pickup call site must pass tSpan').toMatch(/tSpan\s*:/)
   })
 
   it('rim-width >= 1 px (R7(a)): RIM_WIDTH_MIN >= 1 and RIM_WIDTH_MAX >= RIM_WIDTH_MIN; at p = 1 every emitted final-tier rim-lane width (|offset| > BODY_BAND) is in [1, CORE_MAX_TRACE_WIDTH] with visible variation (stdev > 0)', () => {

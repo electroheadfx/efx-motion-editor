@@ -552,74 +552,109 @@ export function createPaintStrokeRasterContinuationFromCurve(
   void wet
   void speedDeplete
   function* rasterize(): Generator<void, void, void> {
-    if (pickupAmt < 0.01) {
-      const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
-      const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
-      const bounds = curveBounds(curve, radius + variance * 5, width, height)
-      const off = document.createElement('canvas')
-      off.width = bounds.w; off.height = bounds.h
-      const oc = off.getContext('2d', { willReadFrequently: true })!
-      oc.translate(-bounds.x0, -bounds.y0)
-      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId, variance }, tier))
-      yield
-      // 260930-wm6 ONE PIPELINE (user decision 2026-10-01): there is no
-      // second render path. The footprint is deposited into the wet layer
-      // through transferToWetLayerClipped — the SAME transfer the solver,
-      // the screen (wetDisplayAlpha) and the cache all read — so preview
-      // == settled == persisted by construction. The old tier=live raw
-      // blit straight onto the dry canvas (dense, solid, full-radius) was
-      // a third law that only the preview ever produced; it is deleted.
-      measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
-        { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
-        paperHeight, undefined, undefined, opac, observePrimitive))
-      return
+    const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
+    const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
+    const bounds = curveBounds(curve, radius + variance * 5, width, height)
+
+    // 261002-fpi (QUICK 8e) — ONE PIPELINE at every pickup value: the
+    // whole curve rasterizes as ONE offscreen + ONE footprint + ONE
+    // transfer. pickup > 0 computes the scoped snapshot + carried colours
+    // as a pure DATA pass before the footprint (both measurePrimitive
+    // stage names kept verbatim — gestureStall S3 pins them); pickup
+    // exactly 0 skips it because the carried series is provably constant
+    // pure picker — a constant-colour INPUT shortcut, never a second
+    // rendering family (the old `pickupAmt < 0.01` family threshold and
+    // the per-segment stamp loop are gone: the periodic segment stamp WAS
+    // the beaded repeating motif at Blending > 0).
+    let carried: Array<[number, number, number]> | null = null
+    if (pickupAmt > 0) {
+      // 260930-wm6 R2 — measure-first verdict: this WAS ctx.getImageData(0,
+      // 0, width, height) — a whole-source-canvas readback (2,073,600px at
+      // 1080p, the ~83ms synchronous main-thread read the 52.1 notes
+      // already blame for frame stutter). Its only consumer is
+      // sampleAreaColor's ceil(radius/2) disc around each curve point, so
+      // the snapshot is scoped to that footprint plus the disc radius.
+      const snapPad = Math.ceil(radius * 0.5) + 1
+      let snapMinX = Infinity, snapMinY = Infinity, snapMaxX = -Infinity, snapMaxY = -Infinity
+      for (const p of curve) {
+        if (p.x < snapMinX) snapMinX = p.x
+        if (p.y < snapMinY) snapMinY = p.y
+        if (p.x > snapMaxX) snapMaxX = p.x
+        if (p.y > snapMaxY) snapMaxY = p.y
+      }
+      const snapX = Math.max(0, Math.floor(snapMinX - snapPad))
+      const snapY = Math.max(0, Math.floor(snapMinY - snapPad))
+      const snapW = Math.max(1, Math.min(width, Math.ceil(snapMaxX + snapPad)) - snapX)
+      const snapH = Math.max(1, Math.min(height, Math.ceil(snapMaxY + snapPad)) - snapY)
+      const canvasSnap = measurePrimitive(observePrimitive, 'paint-pickup-canvas-snap', () => ctx.getImageData(snapX, snapY, snapW, snapH))
+      carried = measurePrimitive(observePrimitive, 'paint-pickup-carried-colors', () => buildCarriedColors(curve, color, pickupAmt, canvasSnap, radius, snapX, snapY))
     }
 
-    // 260930-wm6 R2 — measure-first verdict: this WAS ctx.getImageData(0, 0,
-    // width, height) — a whole-source-canvas readback (2,073,600px at 1080p,
-    // the ~83ms synchronous main-thread read the 52.1 notes already blame for
-    // frame stutter) paid before a single segment rasterizes. Its only consumer
-    // is sampleAreaColor's ceil(radius/2) disc around each curve point, so the
-    // snapshot is scoped to that footprint plus the disc radius.
-    const snapPad = Math.ceil(radius * 0.5) + 1
-    let snapMinX = Infinity, snapMinY = Infinity, snapMaxX = -Infinity, snapMaxY = -Infinity
-    for (const p of curve) {
-      if (p.x < snapMinX) snapMinX = p.x
-      if (p.y < snapMinY) snapMinY = p.y
-      if (p.x > snapMaxX) snapMaxX = p.x
-      if (p.y > snapMaxY) snapMaxY = p.y
-    }
-    const snapX = Math.max(0, Math.floor(snapMinX - snapPad))
-    const snapY = Math.max(0, Math.floor(snapMinY - snapPad))
-    const snapW = Math.max(1, Math.min(width, Math.ceil(snapMaxX + snapPad)) - snapX)
-    const snapH = Math.max(1, Math.min(height, Math.ceil(snapMaxY + snapPad)) - snapY)
-    const canvasSnap = measurePrimitive(observePrimitive, 'paint-pickup-canvas-snap', () => ctx.getImageData(snapX, snapY, snapW, snapH))
-    const carriedColors = measurePrimitive(observePrimitive, 'paint-pickup-carried-colors', () => buildCarriedColors(curve, color, pickupAmt, canvasSnap, radius, snapX, snapY))
-    const segLen = Math.max(8, Math.floor(curve.length / Math.max(1, Math.floor(curve.length / 15))))
-    const overlap = Math.floor(segLen * 0.3)
+    const off = document.createElement('canvas')
+    off.width = bounds.w; off.height = bounds.h
+    const oc = off.getContext('2d', { willReadFrequently: true })!
+    oc.translate(-bounds.x0, -bounds.y0)
+    // Footprint opac is fixed at 1 (the fresh-path law): body coverage
+    // comes from overlap at the single STREAK_ALPHA, never from the
+    // stroke opac — the stroke opac is applied at TRANSFER (userOpacity).
+    measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(curve, { ctx: oc, radius, color, opac: 1, hasPenInput, mutationId, variance }, tier))
+    yield
 
-    for (let start = 0; start < curve.length - 2; start += segLen - overlap) {
-      const end = Math.min(start + segLen, curve.length)
-      const seg = curve.slice(start, end)
-      if (seg.length < 3) continue
-      const mid = Math.floor((start + end) / 2)
-      const segColor = carriedColors[clamp(mid, 0, carriedColors.length - 1)]
-      const segHex = rgbHex(segColor[0], segColor[1], segColor[2])
-      const edgeMul = (opts.edgeDetail != null ? opts.edgeDetail : 50) / 50
-      const variance = (1.5 + Math.sqrt(radius) * 0.9) * edgeMul
-      const segBounds = curveBounds(seg, radius + variance * 5, width, height)
-      const off2 = document.createElement('canvas')
-      off2.width = segBounds.w; off2.height = segBounds.h
-      const oc2 = off2.getContext('2d', { willReadFrequently: true })!
-      oc2.translate(-segBounds.x0, -segBounds.y0)
-      measurePrimitive(observePrimitive, 'paint-raster-bristles', () => drawBristleFootprint(seg, { ctx: oc2, radius, color: segHex, opac, hasPenInput, mutationId, tSpan: [start / (curve.length - 1), (end - 1) / (curve.length - 1)], variance }, tier))
-      yield
-      // 260930-wm6 ONE PIPELINE: same single deposit path as the fresh branch.
-      measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc2, wetBuffers, waterAmount,
-        { x: segBounds.x0, y: segBounds.y0, w: segBounds.w, h: segBounds.h }, width, height,
-        paperHeight, undefined, undefined, opac, observePrimitive))
-      yield
+    if (carried) {
+      // 261002-fpi — carried-colour recolour: colour-only source-atop
+      // pass over the drawn silhouette, AFTER the footprint and BEFORE
+      // the transfer reads the offscreen back (reversed order silently
+      // deposits the un-coloured silhouette). source-atop with an opaque
+      // source preserves destination ALPHA — the recolour never touches
+      // depositAlpha or body coverage; it only replaces RGB with the
+      // continuous buildCarriedColors series, one patch per curve sample
+      // in curve order so the colour evolves continuously along the arc
+      // (the old per-segment FLAT midpoint colour — the beaded chain —
+      // is gone). Each patch half-width >= the footprint's per-sample
+      // lateral reach (ribbon scale + deformed side displacement +
+      // margin) so the whole local silhouette is covered; outside the
+      // silhouette source-atop is a no-op by construction.
+      const { scales } = ribbonWithScales(curve, radius, 0.8, hasPenInput)
+      const series = carried
+      oc.save()
+      oc.globalCompositeOperation = 'source-atop'
+      oc.globalAlpha = 1
+      for (let si = 0; si < curve.length; si++) {
+        const p = curve[si]
+        // Patch half-width: ribbon taper-aware scale + the SAME lateral
+        // reach bound curveBounds pads the offscreen by (variance * 5)
+        // + a gauge margin. deformSampleSides is deliberately NOT called
+        // a second time here — its count is pinned at exactly 1 (inside
+        // drawBristleFootprint) and a duplicate seeded draw would break
+        // the shape-detail law; the production pad bound already covers
+        // the fold()'s mean perpendicular displacement (CLT-reduced well
+        // below variance * 5), and outside the silhouette source-atop is
+        // a no-op anyway.
+        const patchR = radius * scales[si] + variance * 5 + 4
+        const [cr, cg, cb] = series[si]
+        oc.fillStyle = rgbHex(cr, cg, cb)
+        oc.beginPath()
+        oc.moveTo(p.x + patchR, p.y)
+        for (let k = 1; k < 12; k++) {
+          const a = (k * Math.PI * 2) / 12
+          oc.lineTo(p.x + patchR * Math.cos(a), p.y + patchR * Math.sin(a))
+        }
+        oc.closePath()
+        oc.fill()
+      }
+      oc.restore()
     }
+
+    // 260930-wm6 ONE PIPELINE (user decision 2026-10-01): there is no
+    // second render path. The footprint is deposited into the wet layer
+    // through transferToWetLayerClipped — the SAME transfer the solver,
+    // the screen (wetDisplayAlpha) and the cache all read — so preview
+    // == settled == persisted by construction. 261002-fpi: the pickup
+    // path takes this identical single deposit (the per-segment transfers
+    // are gone with the segment stamps).
+    measurePrimitive(observePrimitive, 'paint-wet-transfer-composition', () => transferToWetLayerClipped(oc, wetBuffers, waterAmount,
+      { x: bounds.x0, y: bounds.y0, w: bounds.w, h: bounds.h }, width, height,
+      paperHeight, undefined, undefined, opac, observePrimitive))
   }
   return createIteratorContinuation(rasterize())
 }

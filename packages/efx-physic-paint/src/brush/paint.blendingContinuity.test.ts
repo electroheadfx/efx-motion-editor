@@ -9,9 +9,9 @@
 //  a second rendering family (look-continuity violation).
 //
 //  This file pins the TARGET invariants (one pipeline, continuous
-//  colour, monotone amplitude) which are RED against the segmented
-//  raster, plus a RED characterization block (probe teeth) that is
-//  DELETED together with the segmentation in Task 2 (GREEN).
+//  colour, monotone amplitude). RED evidence (commit 2d05b1d6) also
+//  carried a characterization block of the legacy split — deleted
+//  here together with the segmentation it characterized (Task 2).
 //
 //  Hard guardrails: no depositRoom / spreadCurveFor / physicsTicks /
 //  shape-detail deform changes; this test only OBSERVES the raster
@@ -312,9 +312,8 @@ function meanDeviation(applied: Array<[number, number, number]>): number {
 //  Thresholds pinned in this RED test
 // ------------------------------------------------------------
 
-/** Legacy periodicity: the peak at the step lag must stand out this far. */
-const LEGACY_PEAK_MIN = 0.3
-/** Continuous colour: no lag may stand out this far above the others. */
+/** Continuous colour: no lag may stand out this far above the others
+ *  (RED measured peakDelta=0.513 at the legacy step lag 12). */
 const CONTINUOUS_PEAK_MAX = 0.3
 /** Continuity: no single-sample colour jump above 12/255 luminance. */
 const MAX_SAMPLE_JUMP = 12
@@ -325,51 +324,9 @@ afterEach(() => {
 })
 
 // ============================================================
-//  RED characterization — the legacy two-family split. This
-//  block PASSES at RED (the probe has teeth) and is DELETED in
-//  Task 2 together with the segmentation it characterizes.
-// ============================================================
-
-describe('261002-fpi RED characterization (deleted at GREEN)', () => {
-  it('probe has teeth: pickup 60 stamps >1 offscreen / footprint / transfer while pickup 0 is exactly (1,1,1)', () => {
-    const fresh = run(0)
-    const picked = run(60)
-    expect(fresh.shape, 'pickup 0 is the fresh single-family path').toEqual({ offscreen: 1, footprint: 1, transfer: 1 })
-    expect(picked.shape.offscreen, 'pickup 60 must show the segmented family (>1 offscreen)').toBeGreaterThan(1)
-    expect(picked.shape.footprint, 'pickup 60 must show the segmented family (>1 footprint)').toBeGreaterThan(1)
-    expect(picked.shape.transfer, 'pickup 60 must show the segmented family (>1 transfer)').toBeGreaterThan(1)
-  })
-
-  it('the 0.01 family threshold shows as a pipeline-shape change between pickup 0.5 and pickup 1', () => {
-    const below = run(0.5) // pickupAmt 0.005 < 0.01 -> fresh family
-    const above = run(1) // pickupAmt 0.01 >= 0.01 -> segmented family
-    expect(below.shape).toEqual({ offscreen: 1, footprint: 1, transfer: 1 })
-    expect(above.shape, 'the 0.01 boundary must be visible as a shape change').not.toEqual(below.shape)
-  })
-
-  it('beaded periodicity: at pickup 60 the applied-colour first-difference autocorrelation peaks at the legacy segment-step lag', () => {
-    const r = run(60)
-    const { segLen, overlap, step, segs } = oracleSegments(r.curve.length)
-    expect(segs.length, 'the test curve must actually segment (probe teeth)').toBeGreaterThan(1)
-    const d = firstDiff(r.applied)
-    const { rLag, medianOthers, peakDelta } = periodicity(d, step)
-    const jump = maxJump(d)
-    console.log(
-      `[fpi] RED legacy periodicity: curveLen=${r.curve.length} segLen=${segLen} overlap=${overlap} ` +
-      `step=${step} segs=${segs.length} r[lag]=${rLag.toFixed(3)} medianOthers=${medianOthers.toFixed(3)} ` +
-      `peakDelta=${peakDelta.toFixed(3)} maxJump=${jump.toFixed(2)} offscreens=${r.shape.offscreen}`,
-    )
-    expect(
-      peakDelta,
-      `the segmented stamp must produce a periodic peak at the legacy step lag ${step} ` +
-      `(measured peakDelta=${peakDelta.toFixed(3)}, r[lag]=${rLag.toFixed(3)}, median=${medianOthers.toFixed(3)})`,
-    ).toBeGreaterThanOrEqual(LEGACY_PEAK_MIN)
-  })
-})
-
-// ============================================================
-//  TARGET invariants — RED at base, GREEN on one continuous
-//  pipeline (Task 2).
+//  TARGET invariants — RED at base (2d05b1d6: legacy periodicity
+//  peakDelta=0.513 at step lag 12, shape (8,8,8) at pickup 1,
+//  no recolour pass), GREEN on one continuous pipeline.
 // ============================================================
 
 describe('261002-fpi target invariants — one continuous pipeline', () => {

@@ -50,6 +50,15 @@ interface ReadRec {
   h: number
   /** reads the WHOLE source canvas (CANVAS_W x CANVAS_H) — the metric that matters */
   readsWholeSourceCanvas: boolean
+  /**
+   * 261002-fpi gate amendment B (detector scope change): which canvas this
+   * getImageData was issued against. S3's backstop counts SOURCE-canvas
+   * reads only — the offscreen transfer readback (transferToWetLayerClipped
+   * reading its own bounds off the raster offscreen) is the same bounded
+   * read the pickup-0 fresh path has always performed and is NOT the stall
+   * suspect S3 was written to catch.
+   */
+  onSourceCanvas: boolean
   edgeInk: number
 }
 
@@ -67,8 +76,12 @@ interface RasterCanvas {
  * Canvas2D substitute that records every getImageData the production path
  * performs. fill/stroke accumulate coverage so the pixel loop has real work;
  * the diagnostic payload is the readback SIZES, not the raster itself.
+ *
+ * `onSourceCanvas` tags which canvas issued the read: true for the surface
+ * (the real source canvas), false for a raster offscreen. S3 counts only
+ * source-canvas reads (261002-fpi gate amendment B).
  */
-function makeCountingCanvas(reads: ReadRec[]): RasterCanvas {
+function makeCountingCanvas(reads: ReadRec[], onSourceCanvas: boolean): RasterCanvas {
   let w = 0
   let h = 0
   let buf = new Float32Array(0)
@@ -153,6 +166,7 @@ function makeCountingCanvas(reads: ReadRec[]): RasterCanvas {
         w: rw,
         h: rh,
         readsWholeSourceCanvas: rw === CANVAS_W && rh === CANVAS_H,
+        onSourceCanvas,
         edgeInk,
       })
       return { width: rw, height: rh, data }
@@ -208,6 +222,9 @@ interface RunResult {
   totalReadPixels: number
   fullCanvasReads: number
   fullCanvasPixels: number
+  /** whole-canvas reads issued against the SOURCE canvas (offscreen transfer readback excluded) */
+  sourceFullCanvasReads: number
+  sourceFullCanvasPixels: number
   segCount: number
 }
 
@@ -215,7 +232,7 @@ function runRaster(pickup: number): RunResult {
   const reads: ReadRec[] = []
   const stages = new Map<string, StageRec>()
   const created: RasterCanvas[] = []
-  const surface = makeCountingCanvas(reads)
+  const surface = makeCountingCanvas(reads, true)
   surface.canvas.width = CANVAS_W
   surface.canvas.height = CANVAS_H
 
@@ -226,11 +243,13 @@ function runRaster(pickup: number): RunResult {
   })
   try {
     // paint.ts builds its own offscreen per bounds via document.createElement.
-    // A FRESH canvas per call is mandatory: the pickup path allocates one per
-    // segment, and reusing one would collapse the per-segment readback sizes.
+    // A FRESH canvas per call keeps the offscreen-allocation count honest (it
+    // is the log's `offscreen canvases allocated` figure).
     vi.stubGlobal('document', {
       createElement: () => {
-        const rc = makeCountingCanvas(reads)
+        // Raster offscreens are NOT the source canvas: reads they issue
+        // (the transfer readback) are tagged offscreen for S3's scope.
+        const rc = makeCountingCanvas(reads, false)
         created.push(rc)
         return rc.canvas
       },
@@ -264,11 +283,19 @@ function runRaster(pickup: number): RunResult {
   let totalReadPixels = 0
   let fullCanvasReads = 0
   let fullCanvasPixels = 0
+  let sourceFullCanvasReads = 0
+  let sourceFullCanvasPixels = 0
   for (const r of reads) {
     totalReadPixels += r.pixels
     if (r.readsWholeSourceCanvas) {
       fullCanvasReads++
       fullCanvasPixels += r.pixels
+      // S3 scope (261002-fpi amendment B): only reads issued against the
+      // SOURCE canvas count as the stall suspect.
+      if (r.onSourceCanvas) {
+        sourceFullCanvasReads++
+        sourceFullCanvasPixels += r.pixels
+      }
     }
   }
   return {
@@ -277,6 +304,8 @@ function runRaster(pickup: number): RunResult {
     totalReadPixels,
     fullCanvasReads,
     fullCanvasPixels,
+    sourceFullCanvasReads,
+    sourceFullCanvasPixels,
     segCount: created.length,
   }
 }
@@ -287,11 +316,15 @@ function logResult(label: string, r: RunResult): void {
   console.log(`[gesture] offscreen canvases allocated: ${r.segCount}`)
   console.log(`[gesture] getImageData calls: ${r.reads.length}  total pixels: ${r.totalReadPixels}`)
   console.log(`[gesture] whole-source-canvas readbacks: ${r.fullCanvasReads}  pixels: ${r.fullCanvasPixels}`)
+  console.log(
+    `[gesture]   of which on the SOURCE canvas (S3 scope): ${r.sourceFullCanvasReads}  pixels: ${r.sourceFullCanvasPixels}`,
+  )
   for (let i = 0; i < r.reads.length; i++) {
     const rec = r.reads[i]
     const nativeCost = ((rec.pixels / nativePx) * 100).toFixed(1)
     console.log(
       `[gesture]   read#${i} ${rec.w}x${rec.h} px=${rec.pixels} wholeSource=${rec.readsWholeSourceCanvas} ` +
+        `onSource=${rec.onSourceCanvas} ` +
         `edgeInk=${rec.edgeInk} (~${nativeCost}% of a ${NATIVE_W}x${NATIVE_H} readback)`,
     )
   }
@@ -374,10 +407,21 @@ describe('260930-wm6 R2 — gesture stall: readback accounting (measure-first)',
     ).not.toMatch(/paint-pickup-canvas-snap[\s\S]{0,200}?getImageData\(\s*0\s*,\s*0\s*,\s*width\s*,\s*height\s*\)/)
 
     const pickup = runRaster(60)
+    // DETECTOR SCOPE (261002-fpi approved gate amendment B): this backstop
+    // counts SOURCE-canvas reads only. The unified path's transfer readback
+    // (transferToWetLayerClipped reading its own bounds off the raster
+    // offscreen) is full-canvas here only because curveBounds clamps to this
+    // 320x160 harness canvas — on a native 1920x1080 canvas it is a bounded
+    // rect, and it is byte-identical to the read the pickup-0 fresh path has
+    // always performed. The old per-segment transfers were partial-width and
+    // therefore dodged this pin; excluding the offscreen readback restores
+    // the pin to what it was written to catch — an unscoped read of the
+    // SOURCE canvas. The bbox-scoped snapshot assertion is KEPT as the stall
+    // backstop; it is not removed, weakened, or bypassed.
     expect(
-      pickup.fullCanvasReads,
-      `${pickup.fullCanvasReads} whole-source-canvas readback(s) remain on the pickup path ` +
-        `(${pickup.fullCanvasPixels}px). The snapshot must be bbox-scoped.`,
+      pickup.sourceFullCanvasReads,
+      `${pickup.sourceFullCanvasReads} whole-source-canvas readback(s) on the SOURCE canvas remain on the pickup path ` +
+        `(${pickup.sourceFullCanvasPixels}px). The snapshot must be bbox-scoped.`,
     ).toBe(0)
   })
 
