@@ -1,4 +1,5 @@
 import { createFinalizationQueue } from '../pilot/finalizationQueue';
+import { startMainThreadGapProbe, type MainThreadGapSummary } from '../performance/mainThreadGapProbe';
 
 /**
  * 52.1 (Part 3): a capture produces its capture→encode→commit pipeline only
@@ -92,6 +93,27 @@ function matchesIdentity(expected: RotoLivePixelIdentity, current: RotoLivePixel
     && current.appFrame === expected.appFrame;
 }
 
+/**
+ * 261002 B1 split-measure. `cache-main-thread-gap-max` is the decisive read:
+ * ~300 ms means the block is inside the produce span (and the webp-invoke /
+ * webp-to-uint8 split names which sub-span owns it); ~10 ms means the 329 ms
+ * input delay is outside this span and the 329 ≈ 340 match is coincidence.
+ * `cache-main-thread-gap-p50` is the free-main-thread control.
+ */
+function recordMainThreadGapSamples(
+  recordPerformance: RotoLivePixelCapture<unknown>['recordPerformance'],
+  summary: MainThreadGapSummary | undefined,
+  mutationId: number | undefined,
+  sourceFrame: number,
+): void {
+  if (!recordPerformance || !summary) return;
+  for (const gap of summary.gapsOver50Ms) {
+    recordPerformance({ stage: 'cache-main-thread-gap', category: 'sync-cpu', durationMs: gap.gapMs, timestamp: gap.endedAtMs, mutationId, sourceFrame, outcome: 'over-50' });
+  }
+  recordPerformance({ stage: 'cache-main-thread-gap-max', category: 'sync-cpu', durationMs: summary.maxGapMs, timestamp: summary.maxGapEndedAtMs, mutationId, sourceFrame, outcome: `${summary.pingCount} pings` });
+  recordPerformance({ stage: 'cache-main-thread-gap-p50', category: 'sync-cpu', durationMs: summary.p50GapMs, timestamp: summary.maxGapEndedAtMs, mutationId, sourceFrame, outcome: `${summary.pingCount} pings` });
+}
+
 export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransactions {
   const revisions = new Map<string, number>();
   const pending = new Map<string, Promise<boolean>>();
@@ -146,8 +168,14 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
           produce: async () => {
             const producerStartedAt = input.recordPerformance ? performance.now() : 0;
             input.recordPerformance?.({ stage: 'cache-task-handoff', category: 'scheduled-wait', durationMs: producerStartedAt - queuedAt, timestamp: producerStartedAt, mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
+            // 261002 B1 split-measure: the heartbeat answers whether the main
+            // thread is blocked INSIDE this span. `cache-producer` is
+            // async-elapsed (wall clock around the await) and cannot tell a
+            // 275 ms free await from a 275 ms sync block; maxGapMs can.
+            const stopGapProbe = input.recordPerformance ? startMainThreadGapProbe() : null;
             const snapshot = snapshots.get(key) as Promise<T> | T | undefined;
             const value = await (snapshot ?? input.produce());
+            recordMainThreadGapSamples(input.recordPerformance, stopGapProbe?.(), input.mutationId, input.identity.appFrame);
             input.recordPerformance?.({ stage: 'cache-producer', category: 'async-elapsed', durationMs: performance.now() - producerStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame });
             return value;
           },

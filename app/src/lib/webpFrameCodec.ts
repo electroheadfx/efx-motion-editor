@@ -43,15 +43,53 @@ export function toUint8Array(value: unknown): Uint8Array {
 }
 
 /**
+ * 261002 B1 split-measure — MEASURE-ONLY. Names which leg of `encodeWebpFrame`
+ * owns its wall clock, and which transport shape the invoke result arrived in
+ * (`arraybuffer` = custom-protocol fetch Path A, `array` = postMessage Path B's
+ * JSON number array). Decisive on its own, independent of the console.
+ */
+export type EncodeWebpResultShape = 'uint8array' | 'arraybuffer' | 'array' | 'other';
+
+export interface EncodeWebpProfile {
+  readonly invokeMs: number;
+  readonly toUint8Ms: number;
+  readonly invokeEndedAtMs: number;
+  readonly toUint8EndedAtMs: number;
+  readonly resultShape: EncodeWebpResultShape;
+}
+
+export function classifyEncodeResultShape(value: unknown): EncodeWebpResultShape {
+  if (value instanceof Uint8Array) return 'uint8array';
+  if (value instanceof ArrayBuffer) return 'arraybuffer';
+  if (Array.isArray(value)) return 'array';
+  return 'other';
+}
+
+/**
  * Encode an RGBA buffer to WebP-lossless frame bytes via the Rust
  * `encode_webp_frame` command. Raw `Uint8Array` crosses the Tauri boundary as
  * bytes — never base64 (unlike `emitTo` JSON events).
  */
-export async function encodeWebpFrame(args: { rgba: Uint8Array; width: number; height: number }): Promise<Uint8Array> {
+export async function encodeWebpFrame(
+  args: { rgba: Uint8Array; width: number; height: number },
+  onProfile?: (profile: EncodeWebpProfile) => void,
+): Promise<Uint8Array> {
+  const invokeStartedAt = onProfile ? performance.now() : 0;
   const result = await invoke('encode_webp_frame', args.rgba, {
     headers: { width: String(args.width), height: String(args.height) },
   });
+  const invokeEndedAt = onProfile ? performance.now() : 0;
   const bytes = toUint8Array(result);
+  const toUint8EndedAt = onProfile ? performance.now() : 0;
+  if (onProfile) {
+    onProfile({
+      invokeMs: invokeEndedAt - invokeStartedAt,
+      toUint8Ms: toUint8EndedAt - invokeEndedAt,
+      invokeEndedAtMs: invokeEndedAt,
+      toUint8EndedAtMs: toUint8EndedAt,
+      resultShape: classifyEncodeResultShape(result),
+    });
+  }
   return bytes;
 }
 

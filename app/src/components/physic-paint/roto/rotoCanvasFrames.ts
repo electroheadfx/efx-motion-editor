@@ -179,7 +179,17 @@ async function encodeCanvasAsWebp(canvas: HTMLCanvasElement, sourceFrame: number
   const readbackAt = profiling ? performance.now() : 0;
   if (profiling) recordPhysicsPaintPerformance({ stage: 'webp-get-image-data', category: 'async-elapsed', durationMs: readbackAt - encodingStartedAt, timestamp: readbackAt, mutationId, sourceFrame });
   try {
-    const bytes = await encodeWebpFrame({ rgba: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength), width: canvas.width, height: canvas.height });
+    const bytes = await encodeWebpFrame(
+      { rgba: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength), width: canvas.width, height: canvas.height },
+      profiling ? (profile) => {
+        // 261002 B1 split-measure: names the transport path (resultShape) and
+        // which leg of the invoke owns the wall clock. `webp-encode-total` below
+        // still spans both legs plus the readback, for the whole-pipeline view.
+        recordPhysicsPaintPerformance({ stage: 'webp-result-shape', category: 'async-elapsed', durationMs: 0, timestamp: profile.toUint8EndedAtMs, mutationId, sourceFrame, branch: profile.resultShape });
+        recordPhysicsPaintPerformance({ stage: 'webp-invoke-total', category: 'async-elapsed', durationMs: profile.invokeMs, timestamp: profile.invokeEndedAtMs, mutationId, sourceFrame });
+        recordPhysicsPaintPerformance({ stage: 'webp-to-uint8', category: 'async-elapsed', durationMs: profile.toUint8Ms, timestamp: profile.toUint8EndedAtMs, mutationId, sourceFrame });
+      } : undefined,
+    );
     const completedAt = profiling ? performance.now() : 0;
     if (profiling) recordPhysicsPaintPerformance({ stage: 'webp-encode-total', category: 'async-elapsed', durationMs: completedAt - encodingStartedAt, timestamp: completedAt, mutationId, sourceFrame });
     return bytes;
