@@ -242,6 +242,9 @@ describe('Physics Paint performance trace', () => {
       stop: expect.any(Function),
       capture: expect.any(Function),
       dump: expect.any(Function),
+      // added alongside snapshot/delta by 260930-q6t (source at :661); the
+      // pin below is exact (`toEqual`) so the key must be named here too.
+      enabled: expect.any(Function),
     });
     nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.clear();
     const before = nativeWindow.__EFX_PHYSICS_PAINT_PROFILE__?.snapshot();

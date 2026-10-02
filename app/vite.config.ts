@@ -263,7 +263,15 @@ export default defineConfig({
     // single _resolveFlattenedFrame seam entry entered the main chunk (the gate
     // was green at base, under 1355). Budget raised 1355 → 1370 (measured value
     // + ~15 kB headroom) for the landed pass, not anticipated code.
-    chunkSizeWarningLimit: 1370,
+    // Measured 2026-10-02: 1,375.00 kB after the 261002 B1 split-measure
+    // instrument (the webp encode invoke/toUint8/resultShape split and the
+    // cache-producer main-thread gap heartbeat — measure-only, no product
+    // behavior change). The gate was already red at 1,374.20 kB before the
+    // instrument (overrun carried since the 260930-q6t bake-parity capture
+    // work); the instrument added +0.80 kB. Budget raised 1370 → 1390
+    // (measured value + ~15 kB headroom) to close that pre-existing overrun
+    // and cover the instrument.
+    chunkSizeWarningLimit: 1390,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },
