@@ -57,8 +57,7 @@ completed: 2026-10-02
 Blending value, with carried colour applied as a continuous per-sample source-atop
 recolour instead of a flat stamp per fixed segment.**
 
-**VERDICT: automated-ready.** NOT done. Native UAT has not run; the four visual rows
-(a)-(d) below are PENDING.
+**VERDICT: done.** Native UAT passed 2026-10-02 — all four visual rows (a)-(d) approved.
 
 ## Why
 
@@ -255,19 +254,17 @@ two approved amendments.
 
 None. No placeholder values, no TODO/FIXME introduced, no unwired data source.
 
-## Native UAT — PENDING (verbatim, must pass before this is "done")
+## Native UAT — PASSED 2026-10-02 (all rows approved)
 
-- **(a)** Blending raised smoothly mixes stroke and surface color — no periodic beads along the stroke.
-- **(b)** Result is irregular/natural, not a repeating stamp.
-- **(c)** Blending 0 to 100 is monotone: more mixing, never a different artifact.
-- **(d)** Blending 0 = identical to today's clean single-color look.
+- **(a)** Blending raised smoothly mixes stroke and surface color — no periodic beads along the stroke. **PASSED**
+- **(b)** Result is irregular/natural, not a repeating stamp. **PASSED**
+- **(c)** Blending 0 to 100 is monotone: more mixing, never a different artifact. **PASSED**
+- **(d)** Blending 0 = identical to today's clean single-color look. **PASSED**
 
 ## Next Phase Readiness
 
-Automated gates are green; the look itself is unverified until the four rows above are
-judged live in the native app. The recolour patch half-width is the one under-coverage
-risk that only native UAT can see (under-coverage shows as picker-coloured streaks inside
-the stroke).
+Native UAT approved 2026-10-02. The recolour patch half-width under-coverage risk
+(picker-coloured streaks inside the stroke) was judged live and did not appear.
 
 ## Self-Check: PASSED
 
