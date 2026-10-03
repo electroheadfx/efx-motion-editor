@@ -159,13 +159,18 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       input.setRepaintBaseFrame(null);
       return false;
     }
-    if (input.dirtyFrames.has(appFrame) && !input.replaceDirtyFrame) {
+    const isDirtyRefusal = input.dirtyFrames.has(appFrame) && !input.replaceDirtyFrame;
+    const cachedFrame = input.getReferenceFrame(appFrame);
+    const paintBytes = input.explicitBytes ?? cachedFrame?.bytes ?? null;
+    // 261003-erase-uat (C): a dirty key with NO cached bytes still refuses (nothing
+    // to show). A dirty key WITH cached bytes falls through and paints them —
+    // navigation already engine.clear()'d, so the cache is the best surviving
+    // representation and refusing would leave bare paper (the wipe).
+    if (isDirtyRefusal && !paintBytes) {
       input.setReferenceUrl(null);
       input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
       return false;
     }
-    const cachedFrame = input.getReferenceFrame(appFrame);
-    const paintBytes = input.explicitBytes ?? cachedFrame?.bytes ?? null;
     // regression-refresh-multi-paint (3rd+4th rejection): a PLAIN effect-driven
     // reload — no explicit generation AND no explicitDataUrl, REGARDLESS of
     // replaceDirtyFrame — must never clobber a completion-settled preview base.
@@ -217,10 +222,16 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       // the swap; the engine drops it atomically when the new base paints.
       engine.clear(input.generation !== undefined);
       engine.setPreviewBaseImageUrl(getFrameBlobUrl(paintBytes), paintContentToken, appFrame);
-      const wasDirty = input.dirtyFrames.delete(appFrame);
-      const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
-      if (wasDirty || hadLiveOverlay) input.syncPending();
-      input.setApplyMessage(`Cache loaded at frame ${appFrame}. Add paint to update this key.`);
+      if (isDirtyRefusal) {
+        // Keep dirty — a later capture commit can still clear it. Do not
+        // syncPending: nothing about the dirty set changed.
+        input.setApplyMessage(`Cache restored at frame ${appFrame}.`);
+      } else {
+        const wasDirty = input.dirtyFrames.delete(appFrame);
+        const hadLiveOverlay = input.liveOverlayActionCounts.delete(appFrame);
+        if (wasDirty || hadLiveOverlay) input.syncPending();
+        input.setApplyMessage(`Cache loaded at frame ${appFrame}. Add paint to update this key.`);
+      }
     } else {
       engine.clear();
       engine.clearPreviewBaseImage();

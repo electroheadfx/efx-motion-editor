@@ -511,6 +511,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     // applied the pending rasters (queue empty -> fast copy).
     liveAlphaCanvas: HTMLCanvasElement | (() => HTMLCanvasElement);
     cachedBase: RenderedFramePayload | null;
+    /** 261003-erase-uat (B): engine's erased copy of the cached paint (null when
+     * no pixel erase ran). When set, the merge draws it instead of cachedBase
+     * bytes so the capture records the removal. */
+    baseCanvas?: HTMLCanvasElement | null;
     size: { width: number; height: number };
     mutationId?: number;
     interpolationSettings?: PhysicPaintRotoInterpolationSettings;
@@ -552,8 +556,8 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
           ? capture.liveAlphaCanvas()
           : capture.liveAlphaCanvas;
-        return capture.cachedBase
-          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId)
+        return capture.cachedBase || capture.baseCanvas
+          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas)
           : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
       },
       commit: async (rendered, current) => {

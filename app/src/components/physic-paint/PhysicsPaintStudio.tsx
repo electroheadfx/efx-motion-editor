@@ -3607,7 +3607,11 @@ export function PhysicsPaintStudio() {
           rotoPersistence.invalidateLivePixels(appFrame);
           rotoPersistence.upsertCachedFrame(cachedRotoRepaintBaseFrame, false);
         } else {
-          rotoPersistence.removeCachedFrame(appFrame);
+          // 261003-erase-uat (C): engine-empty ≠ key-empty. `kind === 'clear'`
+          // already early-returns above, so an isEmpty here is an undo/erase
+          // that emptied allActions — the persisted cache may still hold the
+          // base paint. Never destroy it from this path.
+          rotoPersistence.invalidateLivePixels(appFrame);
         }
         return;
       }
@@ -3625,6 +3629,9 @@ export function PhysicsPaintStudio() {
         appFrame,
         liveAlphaCanvas,
         cachedBase,
+        // 261003-erase-uat (B): a pixel erase punches the engine's copy of the
+        // cached paint — merge against that, never the original cached bytes.
+        baseCanvas: (mutationEngine as EfxPaintEngine & { getPreviewBasePaintCanvas?: () => HTMLCanvasElement | null }).getPreviewBasePaintCanvas?.() ?? null,
         background: publicationIdentity?.background,
         size: { width: canvasWidth, height: canvasHeight },
         mutationId,

@@ -134,7 +134,19 @@ export function exportTransparentStrokeCanvas(engine: EfxPaintEngine): HTMLCanva
   try {
     engine.setBgMode('transparent');
     const canvas = engine.exportCompositeCanvas();
-    return canvas;
+    // 261003-erase-uat (B): exportCompositeCanvas is dry+display only. On a
+    // cached key the paint lives on the preview-base layer, so an Update-frame
+    // capture dropped it — and a pixel erase on it never reached the bytes.
+    const basePaint = (engine as EfxPaintEngine & { getPreviewBasePaintSource?: () => CanvasImageSource | null }).getPreviewBasePaintSource?.() ?? null;
+    if (!basePaint) return canvas;
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const ctx = out.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return canvas;
+    ctx.drawImage(basePaint, 0, 0, out.width, out.height);
+    ctx.drawImage(canvas, 0, 0, out.width, out.height);
+    return out;
   } finally {
     engine.setBgMode(background);
     engine.load(state);

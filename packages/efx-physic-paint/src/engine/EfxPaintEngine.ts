@@ -126,6 +126,8 @@ type StrokeApplicationOptions = {
   mutationId?: number
   /** 261003-hpi: live finalize path enables whole-stroke wet-target detection + entry removal. Replay paths default to pixel-only erase. */
   liveErase?: boolean
+  /** 261003-erase-uat: rebuild/replay reconstructs deposits only — skips prepareWetLayerForStroke so keep-box/force-dry side effects cannot bake surviving strokes. */
+  replay?: boolean
 }
 
 type ActiveStrokeFinalization = {
@@ -539,6 +541,11 @@ export class EfxPaintEngine {
    */
   private visibleBackgroundSuppressed: boolean = false
   private previewBaseImage: HTMLImageElement | null = null
+  // 261003-erase-uat (B): the cached raster's editable PAINT layer. Materialized
+  // on the first pixel erase over a preview base (drawImage of previewBaseImage);
+  // redrawPreviewBase prefers it so an erase survives the next base repaint.
+  // Null until an erase needs it — the un-erased path keeps using the Image.
+  private previewBasePaintCanvas: HTMLCanvasElement | null = null
   // 38.1-07: decoded-Image cache keyed by dataUrl — a frame revisit applies
   // the already-decoded image synchronously (zero new decode round-trips).
   // FIFO-capped; populated ONLY by actual setPreviewBaseImageUrl loads (no
@@ -1103,6 +1110,21 @@ export class EfxPaintEngine {
     return this.appliedPreviewBaseAppFrame
   }
 
+  /** 261003-erase-uat (B): the editable paint layer of the applied preview base
+   * (null when no base, or when no pixel erase has materialized it). Capture must
+   * merge against THIS, not the original cached bytes — otherwise the capture
+   * resurrects the paint a pixel erase just removed. */
+  getPreviewBasePaintCanvas(): HTMLCanvasElement | null {
+    return this.previewBasePaintCanvas
+  }
+
+  /** 261003-erase-uat (B): the effective cached-paint source (erased copy once a
+   * pixel erase has run, else the original image). Null with no preview base. */
+  getPreviewBasePaintSource(): CanvasImageSource | null {
+    if (!this.previewBaseEnabled) return null
+    return this.previewBasePaintCanvas ?? this.previewBaseImage
+  }
+
   /** True when the applied preview base was settled by an EXPLICIT-generation
    * paint (a completion reconcile) rather than an auto-assigned one
    * (navigation/editing refresh). The caller-side loader uses this to no-op a
@@ -1184,6 +1206,8 @@ export class EfxPaintEngine {
     }
     if (explicit) this.inFlightExplicitPreviewBase = false
     if (generation < (this.appliedPreviewBaseGeneration ?? 0)) return false
+    // 261003-erase-uat (B): a new base supersedes any erased copy of the old one.
+    this.previewBasePaintCanvas = null
     // The 52.1 paint-train skip assumes previewBaseCtx ALREADY shows this base
     // (only the image FIELD changes while a stroke is live over the same blank
     // base). clear()/clearPreviewBaseImage() empty that ctx, so a cache-hit
@@ -1232,6 +1256,7 @@ export class EfxPaintEngine {
     this.previewBaseEnabled = false
     this.previewBackgroundSeparated = false
     this.previewBaseImage = null
+    this.previewBasePaintCanvas = null
     this.appliedPreviewBaseDataUrl = null
     // The canvas no longer holds any preview base — the next paint is a fresh
     // generation again (the applied-generation gate resets with the canvas).
@@ -1577,6 +1602,12 @@ export class EfxPaintEngine {
    */
   clear(preserveDry = false): void {
     this.requestRender()
+    // 261003-erase-uat (C): reset in-flight gesture state too — a mid-drag
+    // clear (navigation) left state.drawing stuck true, which parked/dropped
+    // the return-path preview-base paint ("all paint gone, bare paper").
+    this.state.drawing = false
+    this.rawPts = []
+    this.previewStroke = null
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
     this.strokeFinalizationGeneration++
@@ -1914,7 +1945,7 @@ export class EfxPaintEngine {
     for (const { stroke: a, pointCount } of strokeData) {
       const pts = pointCount >= a.points.length ? a.points : a.points.slice(0, pointCount)
       const completeStroke = pointCount >= a.points.length
-      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
+      this.applyStrokeToEngine(a.tool, pts, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId, replay: true })
       if (completeStroke) this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
@@ -2839,9 +2870,10 @@ export class EfxPaintEngine {
 
   private redrawPreviewBase(): void {
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
-    if (!this.previewBaseEnabled || !this.previewBaseImage) return
+    const paintSource = this.previewBasePaintCanvas ?? this.previewBaseImage
+    if (!this.previewBaseEnabled || !paintSource) return
     if (!this.visibleBackgroundSuppressed) this.dualCanvas.previewBaseCtx.drawImage(this.bgCanvas, 0, 0)
-    this.dualCanvas.previewBaseCtx.drawImage(this.previewBaseImage, 0, 0, this.width, this.height)
+    this.dualCanvas.previewBaseCtx.drawImage(paintSource, 0, 0, this.width, this.height)
     // Atomic base swap: the strokes are now baked into the painted base, so
     // dry goes in the SAME turn — never a frame of new-base-plus-double-draw,
     // and never an empty dry under a stale base.
@@ -2961,7 +2993,7 @@ export class EfxPaintEngine {
     return stroke.hasPenInput ?? stroke.points.some(p => p.p !== 0.5)
   }
 
-  /** 261003-hpi W-S: remove paint strokes whose ribbon intersects the gesture AND still has wet deposit. Splices primary + zero-point continuations from allActions and matching undoStack entries together. Returns the number of strokes removed. */
+  /** 261003-erase-uat W-S: remove paint strokes whose ribbon intersects the gesture. Hit-test is purely geometric against allActions — a stroke baked dry by a later stroke's keep-box is still a valid target (order-independent). Splices primary + zero-point continuations from allActions and matching undoStack entries together. Returns the number of strokes removed. */
   private removeWetIntersectedStrokes(gesturePoints: PenPoint[], gestureOpts: BrushOpts): number {
     const eraseR = brushRenderRadius(gestureOpts)
     const targets: number[] = []
@@ -2969,12 +3001,13 @@ export class EfxPaintEngine {
       const a = this.allActions[i]
       if (a.tool !== 'paint' || a.points.length === 0) continue
       const strokeR = brushRenderRadius(a.params)
-      const threshold = strokeR + eraseR + 5
+      // True ribbon overlap (brush-disk vs brush-disk). The old +5 slop was
+      // survivable behind the wet-pixel gate but deleted neighbouring strokes
+      // once the hit-test went geometric.
+      const threshold = strokeR + eraseR
       let hit = false
       for (const gp of gesturePoints) {
-        if (pointToPolylineDist(gp.x, gp.y, a.points) > threshold) continue
-        const idx = Math.round(gp.y) * this.width + Math.round(gp.x)
-        if (idx >= 0 && idx < this.size && this.wet.alpha[idx] >= 1) { hit = true; break }
+        if (pointToPolylineDist(gp.x, gp.y, a.points) <= threshold) { hit = true; break }
       }
       if (hit && a.mutationId != null) targets.push(a.mutationId)
     }
@@ -3015,7 +3048,7 @@ export class EfxPaintEngine {
 
     try {
     if (tool === 'paint' && color) {
-      this.prepareWetLayerForStroke(points[0], opts)
+      if (!options.replay) this.prepareWetLayerForStroke(points[0], opts)
       // R8 revised (260930-libre): the reduced clone is the ONLY deposit the
       // solver sees; the solver runs UNCONSTRAINED (no masking, no projection).
       const depositR = brushRenderRadius(opts) * (1 - depositRoom(spreadCurveFor(this.state.localSpreadStrength)))
@@ -3111,6 +3144,38 @@ export class EfxPaintEngine {
         if (rebuilt) this.redrawAll()
       }
       if (!rebuilt) {
+        // 261003-erase-uat (B): cached paint lives on the preview-base paint
+        // layer, not dryCtx — a dry-only erase was invisible on a returned key.
+        // Materialize the editable copy, punch IT (and dry for new strokes).
+        if (this.previewBaseEnabled && this.previewBaseImage && (opts.eraseStrength ?? 50) > 0) {
+          if (!this.previewBasePaintCanvas) {
+            const paint = document.createElement('canvas')
+            paint.width = this.width
+            paint.height = this.height
+            const paintCtx = paint.getContext('2d', { willReadFrequently: true })
+            if (paintCtx) {
+              paintCtx.drawImage(this.previewBaseImage, 0, 0, this.width, this.height)
+              this.previewBasePaintCanvas = paint
+            }
+          }
+          if (this.previewBasePaintCanvas) {
+            const paintCtx = this.previewBasePaintCanvas.getContext('2d', { willReadFrequently: true })
+            if (paintCtx) {
+              applyEraseStroke(
+                points, renderOpts,
+                paintCtx, this.wet,
+                this.width, this.height,
+                hasPenInput,
+                this.paperHeight,
+                'transparent',
+                null,
+                observePrimitive,
+                options.mutationId ?? this.activeMutationId ?? this.lastCompletedMutationId ?? undefined,
+              )
+              this.redrawPreviewBase()
+            }
+          }
+        }
         applyEraseStroke(
           points, renderOpts,
           this.dualCanvas.dryCtx, this.wet,
@@ -3387,7 +3452,7 @@ export class EfxPaintEngine {
 
     for (let i = 0; i < replayCount; i++) {
       const a = this.allActions[i]
-      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId })
+      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId, replay: true })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
@@ -3515,6 +3580,10 @@ export class EfxPaintEngine {
       timestamp: s.time,
       hasPenInput: s.hasPenInput,
       diffusionFrames: s.diffusionFrames || 0,
+      // 261003-erase-uat (A′): serialized strokes carry no mutationId. Assign
+      // fresh ids on load — removeWetIntersectedStrokes requires a non-null id,
+      // so dropping it here made whole-stroke erase dead after every save/load.
+      mutationId: this.nextMutationId++,
       ...(Number.isInteger(s.playFrame) && s.playFrame !== undefined && s.playFrame >= 0 ? { playFrame: s.playFrame } : {}),
       ...(s.physicsMode === 'local' || s.physicsMode === 'last' || s.physicsMode === 'all'
         ? { physicsMode: s.physicsMode }

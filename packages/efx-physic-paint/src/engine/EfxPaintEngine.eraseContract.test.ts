@@ -461,21 +461,40 @@ describe('W-P: wet buffers never pixel-lightened', () => {
   })
 })
 
-// ─── D-S: dry pixel cell never mutates entries ──────────────
+// ─── D-S: pixel cell never mutates entries ──────────────────
+// 261003-erase-uat: a gesture that hits NO stroke takes the pixel path and
+// must leave every entry intact. A gesture that hits a stroke (wet OR baked)
+// takes the whole-stroke path — see eraseUatDebug (A).
 
-describe('D-S: dry pixel cell never mutates entries', () => {
-  it('gesture over baked paint leaves entry count and history coherent', () => {
+describe('D-S: pixel cell never mutates entries', () => {
+  const V_ERASE_EMPTY: PenPoint[] = [
+    { x: 50, y: 50, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 },
+    { x: 55, y: 52, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 },
+    { x: 60, y: 54, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 },
+  ]
+
+  it('gesture over empty canvas adds only the erase entry and leaves paint intact', () => {
     const engine = createHarness()
-    addPaintStroke(engine, H_LINE_A, defaultOpts, 1, false) // baked
+    addPaintStroke(engine, H_LINE_A, defaultOpts, 1, false) // baked, far away
     const countBefore = engine.getStrokeCount()
     const histBefore = engine.getHistoryAvailability()
-    eraseGesture(engine, V_ERASE_CROSSES_A, 50)
+    eraseGesture(engine, V_ERASE_EMPTY, 50)
     // Only the erase gesture's own entry added
     expect(engine.getStrokeCount()).toBe(countBefore + 1)
     expect(engine.getHistoryAvailability().undo).toBe(histBefore.undo + 1)
     // Paint entry still present
     const ids = engine.getStrokes().map((s: any) => s.mutationId)
     expect(ids).toContain(1)
+  })
+
+  it('gesture over baked paint whole-stroke-removes it (order-independent)', () => {
+    const engine = createHarness()
+    addPaintStroke(engine, H_LINE_A, defaultOpts, 1, false) // baked
+    addPaintStroke(engine, H_LINE_B, defaultOpts, 2, false) // baked, not crossed
+    eraseGesture(engine, V_ERASE_CROSSES_A, 50)
+    const ids = engine.getStrokes().map((s: any) => s.mutationId)
+    expect(ids).not.toContain(1)
+    expect(ids).toContain(2)
   })
 })
 

@@ -7,13 +7,14 @@ export interface RotoAlphaMergeSize {
 }
 
 export async function mergeCachedRotoAlphaFrame(
-  baseFrame: PhysicPaintRenderedFrame,
+  baseFrame: Pick<PhysicPaintRenderedFrame, 'bytes'> | null,
   liveAlphaCanvas: HTMLCanvasElement,
   appFrame: number,
   size: RotoAlphaMergeSize,
   mutationId?: number,
+  baseCanvas?: HTMLCanvasElement | null,
 ): Promise<PhysicPaintRenderedFrame> {
-  const output = await mergeRotoAlphaCanvases(baseFrame, liveAlphaCanvas, size);
+  const output = await mergeRotoAlphaCanvases(baseFrame, liveAlphaCanvas, size, baseCanvas);
   return encodeRotoFrameFromCanvas(output, appFrame, undefined, mutationId);
 }
 
@@ -21,6 +22,10 @@ export async function mergeRotoAlphaCanvases(
   baseFrame: Pick<PhysicPaintRenderedFrame, 'bytes'> | null,
   scriptAlphaCanvas: HTMLCanvasElement,
   size: RotoAlphaMergeSize,
+  // 261003-erase-uat (B): the engine's ERASED copy of the cached paint. When a
+  // pixel erase punched the preview base, merging the original cached bytes
+  // resurrects the removed paint — draw the erased layer instead.
+  baseCanvas?: HTMLCanvasElement | null,
 ): Promise<HTMLCanvasElement> {
   const output = document.createElement('canvas');
   output.width = size.width;
@@ -29,7 +34,9 @@ export async function mergeRotoAlphaCanvases(
   if (!context) throw new Error('Could not merge Roto alpha frames: 2D context unavailable.');
 
   context.clearRect(0, 0, size.width, size.height);
-  if (baseFrame) {
+  if (baseCanvas) {
+    context.drawImage(baseCanvas, 0, 0, size.width, size.height);
+  } else if (baseFrame) {
     const baseImage = await loadCachedRotoBaseImage(baseFrame.bytes);
     context.drawImage(baseImage, 0, 0, size.width, size.height);
   }

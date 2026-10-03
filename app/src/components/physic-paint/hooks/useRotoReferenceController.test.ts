@@ -128,7 +128,11 @@ describe('Roto reference controller', () => {
     })).toBeNull();
   });
 
-  it('refuses dirty frames without clearing their repaint base, then loads a clean base through explicit engine operations', () => {
+  it('refuses a dirty frame with no cached bytes, restores a dirty frame that has cache, then loads a clean base', () => {
+    // 261003-erase-uat (C): navigation engine.clear()'s first, so a dirty key
+    // WITH cached bytes must restore that cache (the wipe) and keep dirty —
+    // refusing would leave bare paper. A dirty key with NOTHING cached still
+    // refuses and preserves whatever repaint base is on screen.
     const engine = createEngine();
     const dirtyFrames = new Set([4]);
     const setReferenceUrl = vi.fn();
@@ -148,19 +152,40 @@ describe('Roto reference controller', () => {
       setApplyMessage,
     });
 
-    expect(loader.load(4, engine)).toBe(false);
+    // Nothing cached → refuse, preserve the repaint base, never clear.
+    const emptyLoader = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames,
+      liveOverlayActionCounts: new Map([[4, 1]]),
+      getReferenceFrame: () => null,
+      setReferenceUrl,
+      setRepaintBaseFrame,
+      syncPending,
+      setApplyMessage,
+    });
+    expect(emptyLoader.load(4, engine)).toBe(false);
     expect(setRepaintBaseFrame).toHaveBeenLastCalledWith(expect.any(Function));
     const preserveCurrent = setRepaintBaseFrame.mock.calls[setRepaintBaseFrame.mock.calls.length - 1]?.[0] as (value: RotoReferenceFrame | null) => RotoReferenceFrame | null;
     expect(preserveCurrent(frame(4, 'real-key', testWebpBytes('old')))).toMatchObject({ bytes: testWebpBytes('old') });
     expect(engine.clear).not.toHaveBeenCalled();
 
+    // Cached bytes exist on a dirty key → restore them, keep dirty, no syncPending.
+    expect(loader.load(4, engine)).toBe(true);
+    expect(dirtyFrames.has(4)).toBe(true);
+    expect(engine.clear).toHaveBeenCalledTimes(1);
+    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith(getFrameBlobUrl(cached.bytes), undefined, 4);
+    expect(syncPending).not.toHaveBeenCalled();
+    expect(setApplyMessage).toHaveBeenCalledWith('Cache restored at frame 4.');
+
+    // Clean → normal load.
     dirtyFrames.clear();
     expect(loader.load(4, engine)).toBe(true);
     expect(setReferenceUrl).toHaveBeenLastCalledWith(null);
     expect(setRepaintBaseFrame).toHaveBeenLastCalledWith(cached);
     expect(engine.setBgMode).toHaveBeenCalledWith('white');
-    expect(engine.clear).toHaveBeenCalledTimes(1);
-    expect(engine.setPreviewBaseImageUrl).toHaveBeenCalledWith(getFrameBlobUrl(cached.bytes), undefined, 4);
+    expect(engine.clear).toHaveBeenCalledTimes(2);
+    expect(engine.setPreviewBaseImageUrl).toHaveBeenLastCalledWith(getFrameBlobUrl(cached.bytes), undefined, 4);
     expect(syncPending).toHaveBeenCalledTimes(1);
     expect(setApplyMessage).toHaveBeenCalledWith('Cache loaded at frame 4. Add paint to update this key.');
   });
