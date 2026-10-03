@@ -2158,11 +2158,12 @@ export class EfxPaintEngine {
 
   private overlayBoundsForCursor(): { x0: number; y0: number; x1: number; y1: number } | null {
     if (this.cursorX < 0) return null
-    // 261003-ud9: pointer glyph — the arrow's tip sits AT the cursor and its
-    // body (11.5 × 18.8 + 3px under-stroke) extends down-right; the restore box
-    // must fully contain it or the incremental erase clips the tail.
+    // 261003-ud9: pointer glyph — the hand's fingertip sits AT the cursor and
+    // its body (23 × 31 + 3px under-stroke) extends down, thumb left and
+    // knuckles right; the restore box must fully contain it or the incremental
+    // erase clips the thumb or the wrist.
     if (this.eraseHoverTargetId != null) {
-      return { x0: this.cursorX - 2, y0: this.cursorY - 2, x1: this.cursorX + 14, y1: this.cursorY + 21 }
+      return { x0: this.cursorX - 10, y0: this.cursorY - 3, x1: this.cursorX + 19, y1: this.cursorY + 34 }
     }
     const r = brushRenderRadius(this.state.brushOpts)
     // The dual-ring cursor (radius + 3px stroke width) and the 6px crosshair
@@ -3097,7 +3098,7 @@ export class EfxPaintEngine {
     if (!this.state.drawing) this.previewStroke = null
   }
 
-  /** 261003-ud9: cursor glyph — arrow while a fresh stroke is hovered under the erase cursor, ring/crosshair otherwise. */
+  /** 261003-ud9: cursor glyph — pointing hand while a fresh stroke is hovered under the erase cursor, ring/crosshair otherwise. */
   private cursorGlyphMode(): 'brush' | 'pointer' {
     return this.eraseHoverTargetId != null ? 'pointer' : 'brush'
   }

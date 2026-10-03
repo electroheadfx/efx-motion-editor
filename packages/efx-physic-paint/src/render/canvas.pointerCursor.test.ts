@@ -2,8 +2,9 @@
 //  Erase pointer-delete (261003-ud9) — CURSOR GLYPH cell
 //
 //  - CURSOR GLYPH: with a recording 2D context, drawBrushCursor in pointer
-//    mode draws the arrow polyline with the dual dark/white treatment (two
-//    offset passes), while brush mode still draws the ring/crosshair as today.
+//    mode draws the pointing-hand polyline with the dual dark/white treatment
+//    (two offset passes), while brush mode still draws the ring/crosshair as
+//    today.
 // ============================================================
 
 import { describe, expect, it } from 'vitest'
@@ -41,14 +42,14 @@ const DARK = 'rgba(17,17,17,0.9)'
 const LIGHT = 'rgba(255,255,255,0.95)'
 
 describe('drawBrushCursor glyph modes', () => {
-  it('CURSOR GLYPH: pointer mode draws the arrow polyline with the dual dark/white treatment (two offset passes)', () => {
+  it('CURSOR GLYPH: pointer mode draws the pointing-hand polyline with the dual dark/white treatment (two offset passes)', () => {
     const { ctx, calls } = recordingCtx()
 
     drawBrushCursor(ctx, 40, 25, 6, 'erase', 100, 100, 'pointer')
 
     const fills = calls.filter((c) => c.op === 'fill')
     const strokes = calls.filter((c) => c.op === 'stroke')
-    // Arrow only — the brush ring must not appear in pointer mode.
+    // Hand only — the brush ring must not appear in pointer mode.
     expect(calls.some((c) => c.op === 'arc')).toBe(false)
     // Two offset passes: dark under-pass (outline + fill), then white over-pass.
     expect(fills.length).toBe(2)
@@ -57,7 +58,7 @@ describe('drawBrushCursor glyph modes', () => {
     expect(strokes.length).toBeGreaterThanOrEqual(1)
     expect(strokes[0].strokeStyle).toBe(DARK)
     expect(strokes[0].lineWidth).toBe(3)
-    // Arrow tip anchored exactly at the cursor point, body extending down-right.
+    // Fingertip anchored exactly at the cursor point, body extending down (thumb left, knuckles right).
     expect(calls[0]).toBeDefined()
     const firstMove = calls.find((c) => c.op === 'moveTo')
     expect(firstMove).toMatchObject({ x: 40, y: 25 })

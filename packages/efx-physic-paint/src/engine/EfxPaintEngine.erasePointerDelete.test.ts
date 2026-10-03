@@ -10,7 +10,7 @@
 //  - HOVER POINTER CURSOR: in the same hover state, drawBrushCursor is invoked in pointer mode; with no hover target, off the stroke, after onPointerLeave, after setTool('paint'), while drawing, or at eraseStrength 0 — brush mode (or no hover target) — FAILS at RED.
 //  - HOVER scope: paint with no recorded entry under the pointer never becomes a hover target; while state.drawing is true the hover is not computed and previewStroke is owned by the gesture (null at down, ribbon only once the gesture has its own samples).
 //  - DRAG GUARD: a multi-sample erase drag still whole-stroke-removes a fresh stroke and still pixel-erases baked paint with the force law (guard pins riding the existing cells' shape).
-//  - CURSOR GLYPH (canvas.pointerCursor.test.ts): with a recording 2D context, drawBrushCursor in pointer mode draws the arrow polyline with the dual dark/white treatment (two offset passes), while brush mode still draws the ring/crosshair as today.
+//  - CURSOR GLYPH (canvas.pointerCursor.test.ts): with a recording 2D context, drawBrushCursor in pointer mode draws the pointing-hand polyline with the dual dark/white treatment (two offset passes), while brush mode still draws the ring/crosshair as today.
 //
 //  Every cell drives the REAL pointer handlers (onPointerDown / onPointerMove /
 //  onPointerUp / onPointerLeave / setTool) — never the private removal method —

@@ -149,8 +149,9 @@ export function drawBg(
  * crosshair for smaller radii. Never dashed, no blend modes, no sampling.
  *
  * mode 'pointer' (261003-ud9): with a fresh stroke hovered under the erase
- * cursor, draw the arrow glyph instead — tip anchored at the cursor, body
- * extending down-right, same dual dark/white treatment as the ring.
+ * cursor, draw the pointing-hand glyph instead — fingertip anchored at the
+ * cursor, body extending down (thumb left, knuckles right), same dual
+ * dark/white treatment as the ring.
  *
  * @param displayCtx - Display canvas context
  * @param cursorX - Cursor X in canvas space
@@ -159,7 +160,7 @@ export function drawBg(
  * @param _tool - Current tool (reserved for future per-tool cursor style)
  * @param _width - Canvas width (reserved)
  * @param _height - Canvas height (reserved)
- * @param mode - 'brush' ring/crosshair (default) | 'pointer' arrow glyph
+ * @param mode - 'brush' ring/crosshair (default) | 'pointer' hand glyph
  */
 export function drawBrushCursor(
   displayCtx: CanvasRenderingContext2D,
@@ -178,8 +179,8 @@ export function drawBrushCursor(
   displayCtx.setLineDash([])
 
   if (mode === 'pointer') {
-    // Arrow glyph — the brush ring must not appear in pointer mode.
-    strokePointerArrow(displayCtx, cursorX, cursorY)
+    // Pointing-hand glyph — the brush ring must not appear in pointer mode.
+    strokePointerHand(displayCtx, cursorX, cursorY)
   } else if (radius >= 4) {
     // True-size ring: dark under-stroke + white over-stroke on the same arc.
     // The white hairline flanked by black reads on light AND dark backgrounds.
@@ -241,15 +242,28 @@ function strokeDualLine(
   ctx.stroke()
 }
 
-/** Classic pointer arrow outline: tip at the origin, body extending down-right (11.5 × 18.8 engine units). */
-const POINTER_ARROW: ReadonlyArray<readonly [number, number]> = [
-  [0, 0],       // tip — anchored exactly at the cursor point
-  [0, 16.9],    // left edge
-  [4.3, 13.1],  // inner notch
-  [7.3, 18.8],  // tail, bottom-left
-  [9.9, 17.6],  // tail, bottom-right
-  [7.1, 12.0],  // inner notch
-  [11.5, 12.0], // right wingtip
+/**
+ * Pointing-hand ("pointer" / link) outline: index fingertip at the origin,
+ * body extending down — thumb out left, three knuckle bumps right.
+ * 23 × 31 engine units: clearly bigger than a select arrow so the affordance
+ * reads at a glance while hovering a deletable stroke.
+ */
+const POINTER_HAND: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],       // index fingertip — hotspot, anchored exactly at the cursor
+  [0, 14],      // index finger, left edge
+  [-3, 16],     // thumb knuckle
+  [-7, 22],     // thumb tip
+  [-3, 26],     // under the thumb
+  [0, 25],      // palm, left
+  [1, 31],      // wrist, bottom-left
+  [12, 31],     // wrist, bottom-right
+  [15, 25],     // outer pinky
+  [16, 19],     // ring-finger knuckle
+  [13, 15],     // valley
+  [16, 11],     // middle-finger knuckle
+  [12, 8],      // valley
+  [8, 8],       // base of the index finger, right
+  [7, 0],       // index fingertip, right edge
 ]
 
 /**
@@ -257,16 +271,16 @@ const POINTER_ARROW: ReadonlyArray<readonly [number, number]> = [
  * as two offset passes — dark under-pass (outline width 3 + fill), then the
  * white fill on top. Reads on light AND dark backgrounds.
  */
-function strokePointerArrow(
+function strokePointerHand(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
 ): void {
   const trace = () => {
     ctx.beginPath()
-    ctx.moveTo(x + POINTER_ARROW[0][0], y + POINTER_ARROW[0][1])
-    for (let i = 1; i < POINTER_ARROW.length; i++) {
-      ctx.lineTo(x + POINTER_ARROW[i][0], y + POINTER_ARROW[i][1])
+    ctx.moveTo(x + POINTER_HAND[0][0], y + POINTER_HAND[0][1])
+    for (let i = 1; i < POINTER_HAND.length; i++) {
+      ctx.lineTo(x + POINTER_HAND[i][0], y + POINTER_HAND[i][1])
     }
     ctx.closePath()
   }
