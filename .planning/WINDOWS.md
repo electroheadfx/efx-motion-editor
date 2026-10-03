@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 10
+open_count: 11
 waived_count: 5
 fixed_count: 69
-total_count: 84
-last_updated: 2026-09-30T22:48:01.109Z
+total_count: 85
+last_updated: 2026-10-03T21:44:41.596Z
 ---
 
 # Broken Windows Ledger
@@ -99,6 +99,7 @@ last_updated: 2026-09-30T22:48:01.109Z
 | 82 | 52.4 | deviation | packages/efx-physic-paint/src/brush/footprintLanes.ts |  | Plan-literal RSA placement replaced by seeded two-band stratified jitter (car-parking jam + FP ratio trap); D-13/D-02 laws hold by construction, documented in header and 52.4-02-SUMMARY | open |  | 2026-09-29T08:18:02.500Z |  |
 | 83 | quick-260930-q6t | deviation | .planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-SUMMARY.md |  | 260930-q6t halted at Task 1 attribution gate (dry denser than display, symptom lightening); Tasks 2-3 not run, awaiting user direction | open |  | 2026-09-30T17:49:23.603Z |  |
 | 84 | quick-260930-wm6 | deviation | app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.test.ts | 236 | Pre-existing full-app-suite failure: native-profile pin missing the enabled key added by superseded q6t 4e064c41; out of scope for 260930-wm6, logged in deferred-items.md | open |  | 2026-09-30T22:48:01.109Z |  |
+| 85 | quick-261003-vos | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | 261003-vos: sync force bypasses both gates (inFlight + dedupe) and mount takes a deps getter — documented interpretations of the plan's literal wording, see 261003-vos-SUMMARY.md Deviations | open |  | 2026-10-03T21:44:41.596Z |  |
 
 ````json
 [
@@ -1119,6 +1120,19 @@ last_updated: 2026-09-30T22:48:01.109Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-09-30T22:48:01.109Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 85,
+    "kind": "deviation",
+    "phase": "quick-261003-vos",
+    "file": "app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts",
+    "line": null,
+    "description": "261003-vos: sync force bypasses both gates (inFlight + dedupe) and mount takes a deps getter — documented interpretations of the plan's literal wording, see 261003-vos-SUMMARY.md Deviations",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-03T21:44:41.596Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }
