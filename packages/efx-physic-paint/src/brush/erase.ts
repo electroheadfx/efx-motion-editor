@@ -32,7 +32,7 @@ export function applyEraseStroke(
   rawPts: PenPoint[],
   opts: BrushOpts,
   ctx: CanvasRenderingContext2D,
-  wetBuffers: WetBuffers,
+  _wetBuffers: WetBuffers,
   width: number,
   height: number,
   hasPenInput: boolean,
@@ -92,9 +92,11 @@ export function applyEraseStroke(
   const cd = cid.data
   const bd = bgData ? bgData.data : null
 
-  // Strength multiplier: at 100% a mask alpha of 128 should fully erase
-  // Cubic: 0%=none, 30%~10%, 50%~25%, 70%~55%, 90%~full
-  const strMul = eraseStr * eraseStr * eraseStr * 5 + eraseStr * 0.3
+  // 261003-hpi erase contract: per-pass removal >= force/100 of remaining
+  // alpha at full mask coverage.  ERASE_FORCE_SCALE normalises the ~0.49 peak
+  // mask alpha (15 layers @ 0.04 + 3 @ 0.02 source-over) so force 100 clamps
+  // to a full clear and 25/50/75 stay strictly monotone below 1.
+  const ERASE_FORCE_SCALE = 2.7
 
   measurePrimitive(observePrimitive, 'erase-pixel-loop', () => {
   for (let ly = 0; ly < bounds.h; ly++) {
@@ -107,19 +109,12 @@ export function applyEraseStroke(
       const maskAlpha = maskData[li + 3] / 255 // 0-1 from offscreen shape
       if (maskAlpha < 0.01) continue
 
-      const eraseMask = clamp(maskAlpha * strMul * pMod, 0, 1)
+      const eraseMask = clamp(maskAlpha * ERASE_FORCE_SCALE * eraseStr * pMod, 0, 1)
       const keep = 1 - eraseMask
       const i = gy * width + gx
 
-      // Erase from wet layer
-      wetBuffers.alpha[i] *= keep
-      wetBuffers.wetness[i] *= keep
-      if (wetBuffers.alpha[i] < 1) {
-        wetBuffers.alpha[i] = 0
-        wetBuffers.r[i] = 0; wetBuffers.g[i] = 0; wetBuffers.b[i] = 0
-      }
-
-      // Erase from main canvas
+      // Erase from main canvas (dry pixel cell — wet is owned by the engine's
+      // whole-stroke path; zero wet writes here per the erase contract W-P cell)
       if (bgMode === 'transparent') {
         // Transparent mode: just reduce alpha (don't lerp RGB toward black)
         cd[li + 3] = Math.round(cd[li + 3] * keep)

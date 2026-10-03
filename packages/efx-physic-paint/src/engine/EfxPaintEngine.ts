@@ -123,9 +123,9 @@ type PaintHistoryEntry = {
 type StrokeApplicationOptions = {
   hasPenInput?: boolean
   physicsMode?: PhysicsMode
-  // 260928-dh1: seeds the deposit-time bristle pass (traceSeed) — one
-  // parameter threaded through, no pipeline change.
   mutationId?: number
+  /** 261003-hpi: live finalize path enables whole-stroke wet-target detection + entry removal. Replay paths default to pixel-only erase. */
+  liveErase?: boolean
 }
 
 type ActiveStrokeFinalization = {
@@ -324,6 +324,27 @@ const RENDER_IDLE_MS = 4000
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
+}
+
+function pointToPolylineDist(px: number, py: number, points: readonly PenPoint[]): number {
+  if (points.length === 0) return Infinity
+  if (points.length === 1) return Math.hypot(px - points[0].x, py - points[0].y)
+  let min = Infinity
+  for (let i = 0; i < points.length - 1; i++) {
+    const x1 = points[i].x, y1 = points[i].y, x2 = points[i + 1].x, y2 = points[i + 1].y
+    const dx = x2 - x1, dy = y2 - y1
+    const lenSq = dx * dx + dy * dy
+    let dist: number
+    if (lenSq === 0) {
+      dist = Math.hypot(px - x1, py - y1)
+    } else {
+      let t = ((px - x1) * dx + (py - y1) * dy) / lenSq
+      t = Math.max(0, Math.min(1, t))
+      dist = Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+    }
+    if (dist < min) min = dist
+  }
+  return min
 }
 
 // === v1.0 DOCUMENT CONTRACT (D-03) ===
@@ -2625,6 +2646,7 @@ export class EfxPaintEngine {
         hasPenInput: pending.hasPenInput,
         physicsMode: pending.physicsMode,
         mutationId: pending.mutationId,
+        liveErase: true,
       })
     }
     this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId: pending.mutationId })
@@ -2922,7 +2944,7 @@ export class EfxPaintEngine {
 
   private applyFinalizedStroke({ tool, points, color, opts, hasPenInput, physicsMode, mutationId }: DeferredStrokeFinalization, finalizationStartedAt: number): void {
     const applyStartedAt = this.performanceListener ? performance.now() : 0
-    this.applyStrokeToEngine(tool, points, color, opts, { hasPenInput, physicsMode, mutationId })
+    this.applyStrokeToEngine(tool, points, color, opts, { hasPenInput, physicsMode, mutationId, liveErase: true })
     this.recordPerformance('stroke-apply', 'sync-cpu', applyStartedAt, { mutationId })
     this.recordPerformance('stroke-finalization', 'sync-cpu', finalizationStartedAt, { mutationId })
     this.notifyCompletedMutation(tool, mutationId)
@@ -2937,6 +2959,42 @@ export class EfxPaintEngine {
 
   private strokeHasPenInput(stroke: PaintStroke): boolean {
     return stroke.hasPenInput ?? stroke.points.some(p => p.p !== 0.5)
+  }
+
+  /** 261003-hpi W-S: remove paint strokes whose ribbon intersects the gesture AND still has wet deposit. Splices primary + zero-point continuations from allActions and matching undoStack entries together. Returns the number of strokes removed. */
+  private removeWetIntersectedStrokes(gesturePoints: PenPoint[], gestureOpts: BrushOpts): number {
+    const eraseR = brushRenderRadius(gestureOpts)
+    const targets: number[] = []
+    for (let i = this.allActions.length - 1; i >= 0; i--) {
+      const a = this.allActions[i]
+      if (a.tool !== 'paint' || a.points.length === 0) continue
+      const strokeR = brushRenderRadius(a.params)
+      const threshold = strokeR + eraseR + 5
+      let hit = false
+      for (const gp of gesturePoints) {
+        if (pointToPolylineDist(gp.x, gp.y, a.points) > threshold) continue
+        const idx = Math.round(gp.y) * this.width + Math.round(gp.x)
+        if (idx >= 0 && idx < this.size && this.wet.alpha[idx] >= 1) { hit = true; break }
+      }
+      if (hit && a.mutationId != null) targets.push(a.mutationId)
+    }
+    let removed = 0
+    for (const mid of targets) {
+      const idx = this.allActions.findIndex(a => a.mutationId === mid)
+      if (idx < 0) continue
+      let end = idx + 1
+      while (end < this.allActions.length && this.allActions[end].points.length === 0) end++
+      this.allActions.splice(idx, end - idx)
+      const hIdx = this.undoStack.findIndex(e => e.mutationId === mid)
+      if (hIdx >= 0) this.undoStack.splice(hIdx, 1)
+      removed++
+    }
+    if (removed > 0) {
+      this.historyEntries = [...this.undoStack]
+      this.historyIndex = this.undoStack.length
+      this.notifyHistoryAvailability()
+    }
+    return removed
   }
 
   private applyStrokeToEngine(
@@ -3044,18 +3102,27 @@ export class EfxPaintEngine {
       // 260930-wm6 — local mode previously started the natural-drying
       // timer here; the cooking window is deleted, no replacement timer.
     } else if (tool === 'erase') {
-      applyEraseStroke(
-        points, renderOpts,
-        this.dualCanvas.dryCtx, this.wet,
-        this.width, this.height,
-        hasPenInput,
-        this.paperHeight,
-        this.state.bgMode,
-        this.getDryRestoreData(),
-        observePrimitive,
-        this.activeMutationId ?? this.lastCompletedMutationId ?? undefined,
-      )
-      forceDryAll(this.wet, this.savedWet, this.drying, this.dualCanvas.dryCtx, this.width, this.height, this.paperHeight, observePrimitive, 'erase-final-force-dry', this.lastStrokeBounds)
+      // 261003-hpi erase contract: W-S whole-stroke removal (live only) +
+      // D-P dry pixel eraser.  The blanket erase-final force-dry is deleted
+      // (W-P: untouched wet survives byte-identical).
+      let rebuilt = false
+      if (options.liveErase && (opts.eraseStrength ?? 50) > 0) {
+        rebuilt = this.removeWetIntersectedStrokes(points, opts) > 0
+        if (rebuilt) this.redrawAll()
+      }
+      if (!rebuilt) {
+        applyEraseStroke(
+          points, renderOpts,
+          this.dualCanvas.dryCtx, this.wet,
+          this.width, this.height,
+          hasPenInput,
+          this.paperHeight,
+          this.state.bgMode,
+          this.getDryRestoreData(),
+          observePrimitive,
+          options.mutationId ?? this.activeMutationId ?? this.lastCompletedMutationId ?? undefined,
+        )
+      }
     }
 
     // Compute last stroke bounding box for physics "Last" mode

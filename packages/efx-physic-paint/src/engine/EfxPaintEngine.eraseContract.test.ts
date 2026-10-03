@@ -159,7 +159,7 @@ vi.mock('../brush/paint', async (importOriginal) => {
       _s: unknown, _d: unknown, _m: unknown, _p: unknown,
       width: number, height: number,
     ) => {
-      depositAlongPath(wet.alpha, points, width, height, Math.max(3, (opts.size || 12) / 2 + 2), 500)
+      depositAlongPath(wet.alpha, points, width, height, 6, 500)
     },
   }
 })
