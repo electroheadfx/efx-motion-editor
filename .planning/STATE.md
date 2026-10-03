@@ -2,20 +2,20 @@
 gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: "52.4"
-current_phase_name: Real-paint kill the salt-and-pepper (INSERTED)
-status: verifying
-stopped_at: Completed quick 260930-wm6 revision R3b (residual white seams are TRUE HOLES) — measure-first, paper exonerated, one fix (automated-ready, native UAT PENDING)
-last_updated: "2026-10-01T17:10:00.000Z"
-last_activity: 2026-10-01
-last_activity_desc: Quick 260930-wm6 revision R3b — residual white seams are TRUE HOLES (measure-first, paper exonerated, one fix)
-state_head: 70d79adf
+current_phase: 53
+current_phase_name: Integrated v1.0.0 Acceptance
+status: planning
+stopped_at: Phase 52.4 complete, ready to plan Phase 53
+last_updated: "2026-10-03T10:34:40.444Z"
+last_activity: 2026-10-03
+last_activity_desc: Phase 52.4 complete, transitioned to Phase 53
+state_head: bdb16165090ab72a9a2babfadc366b04ff32618a
 progress:
   total_phases: 13
   completed_phases: 19
   total_plans: 72
   completed_plans: 72
-  percent: 100
+  percent: 95
 ---
 
 # Project State
@@ -29,18 +29,18 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 
 ## Current Position
 
-Phase: 52.4 (Real-paint kill the salt-and-pepper (INSERTED)) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-10-02 — Quick 261002-fpi UAT PASSED and CLOSED. quick 8e color blending repetitive motif: one continuous pipeline (segmentation + pickupAmt<0.01 family switch deleted; carried colour = continuous per-sample source-atop recolour). RED 2d05b1d6 → GREEN 75706546. All four native UAT rows approved (no periodic beads; irregular/natural; monotone 0-100; blending 0 identical).
+Phase: 53 — Integrated v1.0.0 Acceptance
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-03 — Phase 52.4 complete, transitioned to Phase 53
 
-Progress: [████████████████████] 49/49 plans ([██████████] 100%)
+Progress: [████████████████████] 49/49 plans ([█████████░] 95%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 48 for v0.9.0 (12 phases, shipped 2026-08-21)
+- Total plans completed: 52 for v0.9.0 (12 phases, shipped 2026-08-21)
 - Average duration: N/A
 - Total execution time: N/A
 
@@ -61,6 +61,7 @@ Progress: [████████████████████] 49/49 p
 | 49 | 6 | - | - |
 | 52 | 6 | - | - |
 | 52.3 | 3 | - | - |
+| 52.4 | 4 | - | - |
 
 **Recent Trend:**
 
@@ -481,5 +482,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-10-01T17:10:00.000Z
-Stopped at: Completed quick 260930-wm6 revision R3b — residual white seams are TRUE HOLES (measure-first, paper exonerated, one fix; automated-ready, native UAT PENDING)
+Stopped at: Phase 52.4 complete, ready to plan Phase 53
 Resume file: None
