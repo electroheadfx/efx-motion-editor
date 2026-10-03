@@ -71,7 +71,13 @@ import { mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptC
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
-import { findAdjacentRealKeyFrame } from './view/physicsPaintStudioKeyboard';
+import { findAdjacentRealKeyFrame, isPhysicsPaintShortcutTarget } from './view/physicsPaintStudioKeyboard';
+import {
+  mountPhysicsPaintTemporaryErase,
+  syncTemporaryErase,
+  temporaryErase,
+  type TemporaryEraseDeps,
+} from './view/physicsPaintTemporaryErase';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
 import { deriveSoloContentStart, deriveSoloPlaybackWindow, type SoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
@@ -1141,6 +1147,42 @@ export function PhysicsPaintStudio() {
       disarmSolo();
     };
   }, [mutationLocked]);
+  // quick-261003-vos: Alt = temporary erase — ONE module signal plus gated
+  // window listeners (physicsPaintTemporaryErase). The deps live behind a
+  // render-body ref (canvasEngineReadyImplRef precedent) so the
+  // once-installed listeners always read the LATEST settings/tool,
+  // engineRef, mutation lock and shortcut target — never the first render's
+  // closures. No useState, no new UI, no edit to selectTool or the dispatcher.
+  const temporaryEraseDepsRef = useRef<TemporaryEraseDeps>({
+    getSelectedTool: () => 'paint',
+    getEngine: () => null,
+    isMutationLocked: () => true,
+    isShortcutTarget: () => false,
+  });
+  temporaryEraseDepsRef.current = {
+    getSelectedTool: () => settings.tool,
+    getEngine: () => engineRef.current,
+    isMutationLocked: isPhysicalMutationLocked,
+    isShortcutTarget: isPhysicsPaintShortcutTarget,
+  };
+  // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
+  // getter reads the ref at event time (ref-read deps). Window-level because
+  // the dispatcher is element-level and the keydown target can be `body` when
+  // the canvas has focus.
+  useEffect(
+    () => mountPhysicsPaintTemporaryErase({ window, document }, () => temporaryEraseDepsRef.current),
+    [],
+  );
+  // Armed-guarded re-apply: engine re-create or a rail tool switch while Alt
+  // is held must land the EFFECTIVE tool (force bypasses the last-applied
+  // dedupe — selectTool and the canvas mount write the engine behind our
+  // back). Disarmed = byte-identical no-op for every existing flow, including
+  // engine re-creation which force-sets 'paint' at PhysicsPaintCanvasMount:104.
+  // temporaryErase is peeked, never subscribed — no render path changes.
+  useEffect(() => {
+    if (!temporaryErase.peek()) return;
+    syncTemporaryErase(temporaryEraseDepsRef.current, { force: true });
+  }, [engine, settings.tool]);
   // Navigation already locks the engine input and navigation coordinator. Keep
   // the static Studio controls keyed only to real script mutations so the
   // navigation lock's true/false pulse cannot invalidate their memo props.
