@@ -148,6 +148,10 @@ export function drawBg(
  * Solid dual-stroke ring (dark under, white over) for radius >= 4, or a fixed
  * crosshair for smaller radii. Never dashed, no blend modes, no sampling.
  *
+ * mode 'pointer' (261003-ud9): with a fresh stroke hovered under the erase
+ * cursor, draw the arrow glyph instead — tip anchored at the cursor, body
+ * extending down-right, same dual dark/white treatment as the ring.
+ *
  * @param displayCtx - Display canvas context
  * @param cursorX - Cursor X in canvas space
  * @param cursorY - Cursor Y in canvas space
@@ -155,6 +159,7 @@ export function drawBg(
  * @param _tool - Current tool (reserved for future per-tool cursor style)
  * @param _width - Canvas width (reserved)
  * @param _height - Canvas height (reserved)
+ * @param mode - 'brush' ring/crosshair (default) | 'pointer' arrow glyph
  */
 export function drawBrushCursor(
   displayCtx: CanvasRenderingContext2D,
@@ -164,6 +169,7 @@ export function drawBrushCursor(
   _tool: ToolType,
   _width: number,
   _height: number,
+  mode: 'brush' | 'pointer' = 'brush',
 ): void {
   if (cursorX < 0) return
 
@@ -171,7 +177,10 @@ export function drawBrushCursor(
   // Guarantee solid strokes regardless of any dash state left by the caller.
   displayCtx.setLineDash([])
 
-  if (radius >= 4) {
+  if (mode === 'pointer') {
+    // Arrow glyph — the brush ring must not appear in pointer mode.
+    strokePointerArrow(displayCtx, cursorX, cursorY)
+  } else if (radius >= 4) {
     // True-size ring: dark under-stroke + white over-stroke on the same arc.
     // The white hairline flanked by black reads on light AND dark backgrounds.
     strokeDualRing(displayCtx, cursorX, cursorY, radius)
@@ -230,6 +239,48 @@ function strokeDualLine(
   ctx.strokeStyle = 'rgba(255,255,255,0.95)'
   ctx.lineWidth = 1
   ctx.stroke()
+}
+
+/** Classic pointer arrow outline: tip at the origin, body extending down-right (11.5 × 18.8 engine units). */
+const POINTER_ARROW: ReadonlyArray<readonly [number, number]> = [
+  [0, 0],       // tip — anchored exactly at the cursor point
+  [0, 16.9],    // left edge
+  [4.3, 13.1],  // inner notch
+  [7.3, 18.8],  // tail, bottom-left
+  [9.9, 17.6],  // tail, bottom-right
+  [7.1, 12.0],  // inner notch
+  [11.5, 12.0], // right wingtip
+]
+
+/**
+ * Pointer glyph (261003-ud9): the same dual dark/white treatment as the ring,
+ * as two offset passes — dark under-pass (outline width 3 + fill), then the
+ * white fill on top. Reads on light AND dark backgrounds.
+ */
+function strokePointerArrow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+): void {
+  const trace = () => {
+    ctx.beginPath()
+    ctx.moveTo(x + POINTER_ARROW[0][0], y + POINTER_ARROW[0][1])
+    for (let i = 1; i < POINTER_ARROW.length; i++) {
+      ctx.lineTo(x + POINTER_ARROW[i][0], y + POINTER_ARROW[i][1])
+    }
+    ctx.closePath()
+  }
+  // Dark under-pass: outline + silhouette fill.
+  trace()
+  ctx.strokeStyle = 'rgba(17,17,17,0.9)'
+  ctx.lineWidth = 3
+  ctx.stroke()
+  ctx.fillStyle = 'rgba(17,17,17,0.9)'
+  ctx.fill()
+  // White over-pass: the body, leaving a dark rim of the under-stroke visible.
+  trace()
+  ctx.fillStyle = 'rgba(255,255,255,0.95)'
+  ctx.fill()
 }
 
 /** Stroke preview data for display overlay */

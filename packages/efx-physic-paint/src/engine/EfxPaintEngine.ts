@@ -629,6 +629,8 @@ export class EfxPaintEngine {
   private lastPointerSampleTimeStamp: number = Number.NEGATIVE_INFINITY
   private lastAcceptedPointerSampleTimeStamp: number = Number.NEGATIVE_INFINITY
   private previewStroke: StrokePreview | null = null
+  /** 261003-ud9: mutationId of the fresh stroke under the erase cursor — drives the hover preview ribbon and the pointer glyph. */
+  private eraseHoverTargetId: number | null = null
   private lastStrokeBounds: { x0: number; y0: number; x1: number; y1: number } | null = null
   private color: string = '#103c65'
 
@@ -818,6 +820,8 @@ export class EfxPaintEngine {
 
   /** Set the active tool */
   setTool(tool: ToolType): void {
+    // 261003-ud9: the hover target only exists for the erase tool.
+    if (tool !== 'erase') this.clearEraseHover()
     this.state.tool = tool
     this.requestRender()
   }
@@ -871,6 +875,8 @@ export class EfxPaintEngine {
   /** Set erase strength (0-100) */
   setEraseStrength(strength: number): void {
     this.state.brushOpts.eraseStrength = clamp(strength, 0, 100)
+    // 261003-ud9: a force-0 erase can delete nothing — no hover target either.
+    if (this.state.brushOpts.eraseStrength <= 0) this.clearEraseHover()
   }
 
   /** Set physics strength (0-100) — maps to internal 0-1 range */
@@ -2023,7 +2029,7 @@ export class EfxPaintEngine {
       if (cursorRect) {
         if (!this.lastCursorRect || cursorRect.x0 !== this.lastCursorRect.x0 || cursorRect.y0 !== this.lastCursorRect.y0 || cursorRect.x1 !== this.lastCursorRect.x1 || cursorRect.y1 !== this.lastCursorRect.y1) {
           if (this.lastCursorRect) this.restoreDisplayRect(this.lastCursorRect)
-          drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+          drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
           this.lastCursorRect = cursorRect
         }
       } else if (this.lastCursorRect) {
@@ -2106,7 +2112,7 @@ export class EfxPaintEngine {
     this.drawnQueuedOutlineCount = this.getQueuedStrokePreviews().length
     drawStrokePreview(displayCtx, this.previewStroke)
     this.lastPreviewBbox = this.previewStroke ? this.overlayBoundsForPreview(this.previewStroke) : null
-    drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height)
+    drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
     this.lastCursorRect = this.overlayBoundsForCursor()
   }
 
@@ -2152,6 +2158,12 @@ export class EfxPaintEngine {
 
   private overlayBoundsForCursor(): { x0: number; y0: number; x1: number; y1: number } | null {
     if (this.cursorX < 0) return null
+    // 261003-ud9: pointer glyph — the arrow's tip sits AT the cursor and its
+    // body (11.5 × 18.8 + 3px under-stroke) extends down-right; the restore box
+    // must fully contain it or the incremental erase clips the tail.
+    if (this.eraseHoverTargetId != null) {
+      return { x0: this.cursorX - 2, y0: this.cursorY - 2, x1: this.cursorX + 14, y1: this.cursorY + 21 }
+    }
     const r = brushRenderRadius(this.state.brushOpts)
     // The dual-ring cursor (radius + 3px stroke width) and the 6px crosshair
     // arms both fit inside a r+7 box.
@@ -2995,22 +3007,7 @@ export class EfxPaintEngine {
 
   /** 261003-erase-uat W-S: remove paint strokes whose ribbon intersects the gesture. Hit-test is purely geometric against allActions — a stroke baked dry by a later stroke's keep-box is still a valid target (order-independent). Splices primary + zero-point continuations from allActions and matching undoStack entries together. Returns the number of strokes removed. */
   private removeWetIntersectedStrokes(gesturePoints: PenPoint[], gestureOpts: BrushOpts): number {
-    const eraseR = brushRenderRadius(gestureOpts)
-    const targets: number[] = []
-    for (let i = this.allActions.length - 1; i >= 0; i--) {
-      const a = this.allActions[i]
-      if (a.tool !== 'paint' || a.points.length === 0) continue
-      const strokeR = brushRenderRadius(a.params)
-      // True ribbon overlap (brush-disk vs brush-disk). The old +5 slop was
-      // survivable behind the wet-pixel gate but deleted neighbouring strokes
-      // once the hit-test went geometric.
-      const threshold = strokeR + eraseR
-      let hit = false
-      for (const gp of gesturePoints) {
-        if (pointToPolylineDist(gp.x, gp.y, a.points) <= threshold) { hit = true; break }
-      }
-      if (hit && a.mutationId != null) targets.push(a.mutationId)
-    }
+    const targets = this.resolveEraseTargetIds(gesturePoints, gestureOpts)
     let removed = 0
     for (const mid of targets) {
       const idx = this.allActions.findIndex(a => a.mutationId === mid)
@@ -3028,6 +3025,81 @@ export class EfxPaintEngine {
       this.notifyHistoryAvailability()
     }
     return removed
+  }
+
+  /**
+   * 261003-ud9: the ONE erase detection law — purely geometric hit-test of the
+   * gesture points against recorded paint strokes (261003-hpi: ribbon overlap,
+   * brush-disk vs brush-disk, newest-first, NO wetness/dirty gates). Serves the
+   * hover preview, the pointer-click delete and the drag whole-stroke removal
+   * alike; firstOnly stops at the newest hit (hover/click target lookup).
+   */
+  private resolveEraseTargetIds(gesturePoints: PenPoint[], gestureOpts: BrushOpts, firstOnly: boolean = false): number[] {
+    const eraseR = brushRenderRadius(gestureOpts)
+    const targets: number[] = []
+    for (let i = this.allActions.length - 1; i >= 0; i--) {
+      const a = this.allActions[i]
+      if (a.tool !== 'paint' || a.points.length === 0) continue
+      const strokeR = brushRenderRadius(a.params)
+      // True ribbon overlap (brush-disk vs brush-disk). The old +5 slop was
+      // survivable behind the wet-pixel gate but deleted neighbouring strokes
+      // once the hit-test went geometric.
+      const threshold = strokeR + eraseR
+      let hit = false
+      for (const gp of gesturePoints) {
+        if (pointToPolylineDist(gp.x, gp.y, a.points) <= threshold) { hit = true; break }
+      }
+      if (hit && a.mutationId != null) {
+        targets.push(a.mutationId)
+        if (firstOnly) break
+      }
+    }
+    return targets
+  }
+
+  /**
+   * 261003-ud9: recompute the hover target from the cursor position (called on
+   * pointer move while NOT drawing). Pixel-only paint has no recorded entry, so
+   * it never becomes a target — the same entry-gated law as the click path.
+   */
+  private updateEraseHover(): void {
+    if (this.state.tool !== 'erase' || (this.state.brushOpts.eraseStrength ?? 50) <= 0 || this.cursorX < 0) {
+      this.clearEraseHover()
+      return
+    }
+    const probe: PenPoint = { x: this.cursorX, y: this.cursorY, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }
+    const targets = this.resolveEraseTargetIds([probe], this.state.brushOpts, true)
+    const targetId = targets[0] ?? null
+    const stroke = targetId != null ? this.allActions.find(a => a.mutationId === targetId && a.tool === 'paint') : undefined
+    if (targetId == null || !stroke) {
+      this.clearEraseHover()
+      return
+    }
+    this.eraseHoverTargetId = targetId
+    // Preview the target stroke's OWN geometry (identity: same points array) —
+    // what a click would remove, shown before the click.
+    this.previewStroke = {
+      pts: stroke.points,
+      color: '#ff4444',
+      radius: brushRenderRadius(stroke.params),
+      opacity: 0.3,
+      hasPenInput: this.state.hasPenInput,
+    }
+    this.requestRender()
+  }
+
+  /**
+   * 261003-ud9: drop the hover target. The preview ribbon belongs to the
+   * gesture while a stroke is being drawn — leave it alone then.
+   */
+  private clearEraseHover(): void {
+    this.eraseHoverTargetId = null
+    if (!this.state.drawing) this.previewStroke = null
+  }
+
+  /** 261003-ud9: cursor glyph — arrow while a fresh stroke is hovered under the erase cursor, ring/crosshair otherwise. */
+  private cursorGlyphMode(): 'brush' | 'pointer' {
+    return this.eraseHoverTargetId != null ? 'pointer' : 'brush'
   }
 
   private applyStrokeToEngine(
@@ -3237,6 +3309,9 @@ export class EfxPaintEngine {
     this.lastStrokeInputTime = handlerStartedAt
     this.lastRenderActivityTime = performance.now()
     this.dualCanvas.dryCanvas.setPointerCapture(e.pointerId)
+    // 261003-ud9: the gesture owns previewStroke from here on — drop the hover
+    // target BEFORE drawing flips true (clearEraseHover then nulls the preview).
+    this.clearEraseHover()
     this.state.drawing = true
     this.rawPts = []
     this.lastPointerSampleTimeStamp = Number.NEGATIVE_INFINITY
@@ -3253,7 +3328,12 @@ export class EfxPaintEngine {
     this.lastPointerInputTime = performance.now()
     this.lastRenderActivityTime = this.lastPointerInputTime
 
-    if (!this.state.drawing) return
+    if (!this.state.drawing) {
+      // 261003-ud9: hover preview + pointer-glyph target (erase tool only —
+      // updateEraseHover clears everything else).
+      this.updateEraseHover()
+      return
+    }
     e.preventDefault()
     this.onInputActivity?.('move', e.pointerId)
     this.lastStrokeInputTime = performance.now()
@@ -3320,7 +3400,26 @@ export class EfxPaintEngine {
     }
 
     if (this.rawPts.length < 3) {
+      const clickPts = this.rawPts
       this.rawPts = []
+      // 261003-ud9: one click on a fresh stroke deletes it — same detection
+      // law as drag (resolveEraseTargetIds), one point instead of a gesture.
+      // Drain FIRST: a queued stroke's entry already exists but its deposit
+      // pixels do not — removing before the flush would orphan them.
+      if (this.state.tool === 'erase' && (this.state.brushOpts.eraseStrength ?? 50) > 0 && clickPts.length > 0) {
+        this.flushPendingStrokeFinalizations()
+        const removed = this.removeWetIntersectedStrokes([clickPts[clickPts.length - 1]], { ...this.state.brushOpts })
+        if (removed > 0) {
+          this.clearEraseHover()
+          this.displayCompositeDirty = true
+          this.redrawAll()
+          this.notifyCompletedMutation('erase', mutationId)
+          this.recordPerformance('pointer-up', 'sync-cpu', pointerUpStartedAt, { mutationId, outcome: 'pointer-delete' })
+          return
+        }
+      }
+      // No target (or not the erase tool / force 0): the tap stays a tap —
+      // today's short-stroke discard, no pixel erase on click.
       this.recordPerformance('pointer-up', 'sync-cpu', pointerUpStartedAt, { mutationId, outcome: 'discarded-short-stroke' })
       return
     }
@@ -3347,6 +3446,9 @@ export class EfxPaintEngine {
 
   private onPointerLeave(e: PointerEvent): void {
     this.cursorX = -1
+    // 261003-ud9: off-canvas — no hover target (no-op while drawing; the
+    // gesture's own preview is nulled by onPointerUp below).
+    this.clearEraseHover()
     if (this.state.drawing) this.onPointerUp(e)
     else this.requestRender()
   }
