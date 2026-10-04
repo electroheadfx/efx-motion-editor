@@ -23,13 +23,20 @@ import type { ToolType } from '@efxlab/efx-physic-paint';
  *     engine's own handler) makes the tool provably correct at every gesture
  *     START — a lost Alt keyup, Alt+Tab blur, or hidden window can never leave
  *     the Studio stuck erasing.
- *  3. Selected-tool authority: resolveEffectiveTool is the ONE combination
- *     point — armed + selected 'paint' resolves to 'erase'; an armed 'erase'
+ *  3. Selected-tool authority: combineEffectiveTool is the ONE combination
+ *     rule — armed + selected 'paint' resolves to 'erase'; an armed 'erase'
  *     selection stays 'erase' (never flips back), and the selected tool is
- *     never written by this module.
+ *     never written by this module. resolveEffectiveTool (non-subscribing, for
+ *     the engine sync) and readEffectiveTool (subscribing, for UI leaves) are
+ *     its two readers.
  */
 
-/** The arm state. Read via .peek() — no component subscribes, so no render path changes. */
+/**
+ * The arm state. Engine paths read it via .peek() (no subscription). UI leaves
+ * read it through readEffectiveTool so an Alt press re-renders only that leaf —
+ * never Studio's render body (skill rule 5: a .value read subscribes the whole
+ * component, and Studio is a 4.7k-line tree).
+ */
 export const temporaryErase = signal(false);
 
 /** The slice of the engine this feature touches — engine.setTool and nothing else. */
@@ -59,12 +66,26 @@ export interface TemporaryEraseMountTargets {
 }
 
 /**
- * The ONE combination point: 'erase' only when armed AND the selected tool is
+ * The ONE combination rule: 'erase' only when armed AND the selected tool is
  * paint. A selected 'erase' wins (no flip-back); a disarmed selection passes
  * through untouched. Never mutates its input.
  */
+export function combineEffectiveTool(armed: boolean, selected: ToolType): ToolType {
+  return armed && selected === 'paint' ? 'erase' : selected;
+}
+
+/** Non-subscribing read — for engine paths (handlers, sync) that must not own a render. */
 export function resolveEffectiveTool(selected: ToolType): ToolType {
-  return temporaryErase.peek() && selected === 'paint' ? 'erase' : selected;
+  return combineEffectiveTool(temporaryErase.peek(), selected);
+}
+
+/**
+ * Subscribing read — for UI leaves (rail button, tool slider row) that must
+ * flip their display when the arm state changes. Keep every call site a narrow
+ * leaf, never a large container.
+ */
+export function readEffectiveTool(selected: ToolType): ToolType {
+  return combineEffectiveTool(temporaryErase.value, selected);
 }
 
 /** True while a pointer gesture is live — arm/disarm applies defer to the boundary. */

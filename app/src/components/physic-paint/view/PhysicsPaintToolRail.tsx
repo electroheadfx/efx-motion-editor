@@ -7,6 +7,7 @@ import eraserIcon from '../../../assets/physics-paint-ui/icons/LineiconsEraser.s
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import { readEffectiveTool } from './physicsPaintTemporaryErase';
 
 export type PhysicsPaintRailAction =
   | 'paint'
@@ -97,6 +98,9 @@ function PhysicsPaintToolRailImpl({
   onClearFrame,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
+  // Held-Alt display only: this narrow read re-renders just this rail (6
+  // buttons) so the active highlight can show Erase while Paint stays selected.
+  const displayTool = readEffectiveTool(activeTool);
   const runAction = (item: PhysicsPaintToolRailItem) => {
     if (disabled) return;
     if (item.id === 'paint') onSelectTool('paint', null);
@@ -120,7 +124,7 @@ function PhysicsPaintToolRailImpl({
           );
         }
 
-        const active = isItemActive(item, activeTool, physicsMode);
+        const active = isItemActive(item, displayTool, physicsMode);
         const className = `physics-paint-icon-button${active ? ' active' : ''}`;
 
         return (
