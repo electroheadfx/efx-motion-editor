@@ -54,13 +54,13 @@ describe('paintStore fg/bg swatch (quick-261004-hwa)', () => {
     expect(paintStore.brushColor.value).toBe(BG);
   });
 
-  it('a rapid double swap returns the original colors and original brushColor', () => {
-    const originalBrush = paintStore.brushColor.value;
+  it('a rapid double swap returns the original swatch colors and re-points brushColor at the foreground', () => {
     paintStore.swapFgBg();
     paintStore.swapFgBg();
     expect(paintStore.foregroundColor.value).toBe(FG);
     expect(paintStore.backgroundColorSwatch.value).toBe(BG);
-    expect(paintStore.brushColor.value).toBe(originalBrush);
+    // brushColor tracks the active (front) slot after every swap — not the pre-session pref color
+    expect(paintStore.brushColor.value).toBe(paintStore.foregroundColor.value);
   });
 
   it('setActiveFromBackground promotes background to front and keeps the old foreground as background', () => {
