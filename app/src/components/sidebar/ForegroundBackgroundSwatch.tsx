@@ -15,17 +15,16 @@ export function ForegroundBackgroundSwatch({ onActiveColorChanged }: {
   const bg = paintStore.backgroundColorSwatch.value;
 
   const squareBase: Record<string, string> = {
-    width: '18px',
-    height: '18px',
+    width: '24px',
+    height: '24px',
     padding: '0',
     borderRadius: '3px',
-    border: '1px solid var(--color-border-subtle)',
     cursor: 'pointer',
   };
 
   return (
-    <div class="relative shrink-0" style={{width: '32px', height: '32px'}}>
-      {/* Background slot — behind, offset down-right */}
+    <div class="relative shrink-0" style={{width: '34px', height: '34px'}}>
+      {/* Background slot — behind, offset down-right so it peeks out at the corner */}
       <button
         type="button"
         class="absolute"
@@ -34,6 +33,7 @@ export function ForegroundBackgroundSwatch({ onActiveColorChanged }: {
           backgroundColor: bg,
           right: '0',
           bottom: '0',
+          border: '1px solid #aaa',
           zIndex: 1,
         }}
         title="Background color"
@@ -42,7 +42,7 @@ export function ForegroundBackgroundSwatch({ onActiveColorChanged }: {
           onActiveColorChanged?.(paintStore.foregroundColor.peek());
         }}
       />
-      {/* Foreground slot — on top, offset up-left */}
+      {/* Foreground slot — on top, offset up-left; white border marks it as the active/picker target */}
       <button
         type="button"
         class="absolute"
@@ -51,6 +51,7 @@ export function ForegroundBackgroundSwatch({ onActiveColorChanged }: {
           backgroundColor: fg,
           left: '0',
           top: '0',
+          border: '2px solid #fff',
           zIndex: 2,
         }}
         title="Foreground color"

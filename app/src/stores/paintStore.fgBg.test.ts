@@ -33,7 +33,7 @@ vi.mock('../lib/paintPreferences', () => ({
 import {paintStore} from './paintStore';
 import {saveBrushColor} from '../lib/paintPreferences';
 
-const FG = '#000000';
+const FG = '#103c65';
 const BG = '#ffffff';
 
 beforeEach(() => {
@@ -42,7 +42,7 @@ beforeEach(() => {
 });
 
 describe('paintStore fg/bg swatch (quick-261004-hwa)', () => {
-  it('starts with a black foreground and white background after reset', () => {
+  it('starts with the default dark-blue foreground and white background after reset', () => {
     expect(paintStore.foregroundColor.value).toBe(FG);
     expect(paintStore.backgroundColorSwatch.value).toBe(BG);
   });
@@ -79,7 +79,7 @@ describe('paintStore fg/bg swatch (quick-261004-hwa)', () => {
   });
 
   it('setForeground does not clobber the background swatch (picker pick targets top only)', () => {
-    paintStore.swapFgBg(); // background is now '#000000'
+    paintStore.swapFgBg(); // background is now the default foreground
     const bgBefore = paintStore.backgroundColorSwatch.value;
     paintStore.setForeground('#123456');
     expect(paintStore.foregroundColor.value).toBe('#123456');

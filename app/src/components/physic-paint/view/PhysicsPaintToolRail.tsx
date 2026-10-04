@@ -158,7 +158,7 @@ function PhysicsPaintToolRailImpl({
           </button>
         );
       })}
-      <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
+      <div style={{ marginTop: '8px' }}>
         <ForegroundBackgroundSwatch onActiveColorChanged={onActiveColorChanged} />
       </div>
     </nav>
