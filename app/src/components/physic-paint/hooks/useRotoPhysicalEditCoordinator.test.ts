@@ -98,6 +98,27 @@ function record(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
   };
 }
 
+/**
+ * studio-track-physical-edits: a reference-only (52.2-02 D-07) record carries a
+ * `media` reference and NO inline bytes — the exact shape the live project held
+ * for the record that failed staging.
+ */
+function referenceOnlyRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
+  return {
+    kind: 'real-key',
+    keyId,
+    appFrame,
+    payload: {
+      frameIndex: 0,
+      appFrame,
+      media: {
+        relativePath: `frames/layer-1/${keyId}.webp`,
+        digest: 'ab'.repeat(32),
+      },
+    },
+  };
+}
+
 function groupLifecycleDocument(options: {
   gapAt?: number;
   existingOverride?: boolean;
@@ -171,13 +192,17 @@ function groupLifecycleDocument(options: {
   });
 }
 
-function fixture() {
+function fixture(options: { referenceOnlyKeyIds?: readonly string[] } = {}) {
+  const referenceOnly = new Set(options.referenceOnlyKeyIds ?? []);
+  const makeRecord = (keyId: string, appFrame: number) => referenceOnly.has(keyId)
+    ? referenceOnlyRecord(keyId, appFrame)
+    : record(keyId, appFrame);
   const records = [
-    record('A', 0),
-    record('B', 1),
-    record('C', 2),
-    record('X', 6),
-    record('Y', 7),
+    makeRecord('A', 0),
+    makeRecord('B', 1),
+    makeRecord('C', 2),
+    makeRecord('X', 6),
+    makeRecord('Y', 7),
   ];
   const loopClips: readonly PhysicPaintRotoLoopClip[] = [
     {
@@ -233,8 +258,9 @@ function harness(options: {
   transportRejects?: boolean;
   flushLivePixels?: (appFrame?: number) => Promise<void>;
   launchRotoPhysical?: { selectedKeyId: string | null; cursorAppFrame: number };
+  referenceOnlyKeyIds?: readonly string[];
 } = {}) {
-  const initial = fixture();
+  const initial = fixture({ referenceOnlyKeyIds: options.referenceOnlyKeyIds });
   let records: readonly PhysicPaintRotoRealKeyRecord[] = initial.records;
   let groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [];
   let loopClips: readonly PhysicPaintRotoLoopClip[] = initial.loopClips;
@@ -307,6 +333,7 @@ function harness(options: {
   const reconcileCurrentFrame = vi.fn();
   const setCachedReference = vi.fn();
   const setConciseMessage = vi.fn();
+  const logDiagnostic = vi.fn();
   const flushLivePixels = vi.fn(options.flushLivePixels ?? (async () => { leaseOrder.push('flush-live'); }));
   const sharedCacheFact = Object.freeze({ owner: 'shared-source', sourceKeyIds: ['A', 'B'] as const });
   const frameStates = new Map<number, unknown>([[0, sharedCacheFact]]);
@@ -465,7 +492,7 @@ function harness(options: {
       setApplyStatus: vi.fn(),
       setConciseMessage,
       setLastError: vi.fn(),
-      logDiagnostic: vi.fn(),
+      logDiagnostic,
     },
   };
   const coordinator = useRotoPhysicalEditCoordinator(ports);
@@ -833,6 +860,7 @@ function harness(options: {
     reconcileCurrentFrame,
     setCachedReference,
     setConciseMessage,
+    logDiagnostic,
     acquireLease,
     releaseLease,
     transferLeaseToRecovery,
@@ -1399,6 +1427,40 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.getLoopClips()).toEqual(test.initial.loopClips);
     expect(test.coordinator.acceptedOutput.value).toBeNull();
     expect(test.coordinator.failureOutput.value).toBeNull();
+  });
+
+  // studio-track-physical-edits: a track whose record collection holds a
+  // reference-only record (media carrier, no inline bytes — legal per 52.2-02
+  // D-07) must still stage and transport physical edits. The staged rebuild
+  // must preserve the payload's own raster carrier instead of hardcoding
+  // `bytes`, otherwise the record parses as malformed and every edit on that
+  // track dies at the record-validation barrier ("No state was changed.").
+  it('stages and sends an edit when the collection holds a reference-only record', async () => {
+    const test = harness({ referenceOnlyKeyIds: ['A'] });
+
+    expect(await test.execute()).toBe(true);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledOnce();
+    expect(test.coordinator.failureOutput.value).toBeNull();
+    expect(test.setConciseMessage).not.toHaveBeenCalledWith(
+      'Roto physical edit barriers failed. No state was changed.',
+    );
+    expect(test.logDiagnostic).not.toHaveBeenCalledWith(
+      expect.stringContaining('malformed real-key record'),
+    );
+
+    const sent = test.getPayload();
+    expect(sent).not.toBeNull();
+    const sentRecordA = sent!.records.find((entry) => entry.keyId === 'A');
+    expect(sentRecordA).toBeDefined();
+    const payloadA = sentRecordA!.payload as {
+      bytes?: Uint8Array;
+      media?: { relativePath: string; digest: string };
+    };
+    expect(payloadA.media).toEqual({
+      relativePath: 'frames/layer-1/A.webp',
+      digest: 'ab'.repeat(32),
+    });
+    expect(payloadA.bytes).toBeUndefined();
   });
 
   it('authorizes a matched move-rails intent and rejects a mismatched one before staging', async () => {

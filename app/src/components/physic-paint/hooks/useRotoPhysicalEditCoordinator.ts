@@ -98,6 +98,7 @@ import {
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { isWebpBytes } from '../../../types/physicPaint';
 import { buildFrameBytesToken } from '../../../lib/webpBytes';
+import { capturePhysicalEdit, summarizeRealKeyRecordsForCapture } from '../../../lib/physicalEditCapture';
 import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
@@ -597,13 +598,12 @@ function clonePayloadAtFrame(
   payload: PhysicPaintRotoRealKeyRecord['payload'],
   appFrame: number,
 ): PhysicPaintRotoRealKeyRecord['payload'] {
-  return {
-    frameIndex: payload.frameIndex,
-    appFrame,
-    bytes: payload.bytes,
-    ...(payload.width !== undefined ? { width: payload.width } : {}),
-    ...(payload.height !== undefined ? { height: payload.height } : {}),
-  };
+  // studio-track-physical-edits: preserve the payload's own raster carrier.
+  // A reference-only record carries `media` and no `bytes`; rebuilding with a
+  // hardcoded `bytes` field produced a payload with NEITHER carrier, which the
+  // runtime guard rejects as "malformed real-key record" and every later
+  // physical edit on that track died at the record-validation barrier.
+  return { ...payload, appFrame };
 }
 
 function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicPaintRotoRealKeyRecord[] {
@@ -611,13 +611,8 @@ function cloneRecords(records: readonly PhysicPaintRotoRealKeyRecord[]): PhysicP
     kind: 'real-key' as const,
     keyId: record.keyId,
     appFrame: record.appFrame,
-    payload: {
-      frameIndex: record.payload.frameIndex,
-      appFrame: record.payload.appFrame,
-      bytes: record.payload.bytes,
-      ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
-      ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
-    },
+    // Carrier-preserving: spread keeps `media`-only payloads intact.
+    payload: { ...record.payload },
   }));
 }
 
@@ -970,13 +965,8 @@ function recordsToApplyPayloadRecords(records: readonly PhysicPaintRotoRealKeyRe
   return records.map((record) => ({
     keyId: record.keyId,
     appFrame: record.appFrame,
-    payload: {
-      frameIndex: record.payload.frameIndex,
-      appFrame: record.payload.appFrame,
-      bytes: record.payload.bytes,
-      ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
-      ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
-    },
+    // Carrier-preserving: `media`-only payloads must ride the wire intact.
+    payload: { ...record.payload },
   }));
 }
 
@@ -1401,6 +1391,14 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       portsRef.current.status.setLastError(message);
       if (error !== undefined) {
         const detail = error instanceof Error ? error.message : String(error);
+        capturePhysicalEdit('studio', 'edit-failed', {
+          reason,
+          detail,
+          operationId: pending.operationId,
+          operationKind: pending.operationKind,
+          layerId: pending.layerId,
+          startFrame: pending.startFrame,
+        });
         portsRef.current.status.logDiagnostic(`Roto physical edit failed (${reason}): ${detail}`);
       }
       clearPendingOnce();
@@ -1532,18 +1530,39 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         || settledLeaseRef.current
         || recoveryLeaseSignal.peek()
       ) {
+        capturePhysicalEdit('studio', 'execute-rejected-serialize', {
+          operationKind: input.operationKind,
+          expectedLayerId: input.expectedLaunch.layerId,
+        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
         return false;
       }
       const launch = portsRef.current.launch.getLaunchContext();
       if (!launch || launch.layerId !== input.expectedLaunch.layerId || launch.operationId !== input.expectedLaunch.operationId) {
+        capturePhysicalEdit('studio', 'execute-rejected-launch-mismatch', {
+          operationKind: input.operationKind,
+          expectedLayerId: input.expectedLaunch.layerId,
+          expectedOperationId: input.expectedLaunch.operationId,
+          liveLayerId: launch?.layerId ?? null,
+          liveOperationId: launch?.operationId ?? null,
+        });
         return false;
       }
       const bridgeMode = portsRef.current.bridge.getBridgeMode();
       if (bridgeMode === 'Unavailable') {
+        capturePhysicalEdit('studio', 'execute-rejected-bridge-unavailable', {
+          operationKind: input.operationKind,
+          layerId: launch.layerId,
+        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
+      capturePhysicalEdit('studio', 'execute-enter', {
+        operationKind: input.operationKind,
+        layerId: launch.layerId,
+        operationId: launch.operationId,
+        activeTrackId: portsRef.current.launch.getActiveTrackId(launch.layerId),
+      });
       const isInterpolationEnabledChange = input.operationKind === 'set-interpolation-enabled';
       const isInterpolationModeChange = input.operationKind === 'set-interpolation-mode';
       const isInterpolationChange = isInterpolationEnabledChange || isInterpolationModeChange;
@@ -1957,6 +1976,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             || invalidModeChange
             || targetSelectedKeyId !== currentSelectedKeyId
             || targetSelectedAppFrame !== currentSelectedAppFrame) {
+            // studio-track-physical-edits: this gate used to fail silently —
+            // name the failing sub-check so the next live capture can tell a
+            // carrier mismatch (recordsEqual) from a stale selection/target.
+            portsRef.current.status.logDiagnostic(
+              !interpolationInput || !target
+                ? 'Roto interpolation barrier: missing interpolation input or target.'
+                : !recordsEqual(interpolationInput.records, currentRecords)
+                  ? 'Roto interpolation barrier: staged records do not equal current records (carrier or content mismatch).'
+                  : invalidEnabledChange || invalidModeChange
+                    ? 'Roto interpolation barrier: target interpolation does not differ from current.'
+                    : 'Roto interpolation barrier: selection identity/frame changed before staging.',
+            );
             portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
             clearPendingOnce();
             return false;
@@ -2004,6 +2035,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
                   ? buildStagedRecords(currentRecords, proposal, capacity)
                   : null;
         if (stagedRecords === null) {
+          capturePhysicalEdit('studio', 'barrier-staged-records-null', {
+            operationKind: input.operationKind,
+            layerId: revalidatedLaunch.layerId,
+            capacity,
+            currentRecordCount: currentRecords.length,
+            hasProposal: proposal !== null,
+            isReplay,
+            hasReplayTarget: replayTarget !== null,
+          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2071,6 +2111,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           const detail = error instanceof Error
             ? error.message
             : 'Invalid staged real-key records.';
+          capturePhysicalEdit('studio', 'record-validation-failed', {
+            operationKind: input.operationKind,
+            layerId: revalidatedLaunch.layerId,
+            capacity,
+            detail,
+            stagedCount: stagedRecords.length,
+            stagedSummaries: summarizeRealKeyRecordsForCapture(stagedRecords),
+            currentCount: currentRecords.length,
+            currentSummaries: summarizeRealKeyRecordsForCapture(currentRecords),
+          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           portsRef.current.status.logDiagnostic(`Roto physical record validation failed: ${detail}`);
           clearPendingOnce();
@@ -2227,6 +2277,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           return false;
         }
         const pending = createPendingPhysicalEdit(payload, stagedRevision, deferredDocument);
+        capturePhysicalEdit('studio', 'payload-send', {
+          operationKind: input.operationKind,
+          layerId: payload.layerId,
+          payloadTrackId: payload.trackId,
+          leaseTrackId: leaseToken.trackId,
+          capacity,
+          expectedRevision,
+          stagedRevision,
+          operationId: payload.operationId,
+          recordCount: validatedStagedRecords.length,
+          recordSummaries: summarizeRealKeyRecordsForCapture(validatedStagedRecords),
+        });
         beforeRef.current = before;
         pendingRef.current = pending;
         pendingOperationIdSignal.value = operationId;
@@ -2400,13 +2462,8 @@ function buildReplayRecords(
       kind: 'real-key',
       keyId: record.keyId,
       appFrame: record.appFrame,
-      payload: {
-        frameIndex: record.payload.frameIndex,
-        appFrame: record.payload.appFrame,
-        bytes: record.payload.bytes,
-        ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
-        ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
-      },
+      // Carrier-preserving: replay must not turn a media record carrier-less.
+      payload: { ...record.payload },
     });
   }
   staged.sort((a, b) => a.appFrame - b.appFrame);

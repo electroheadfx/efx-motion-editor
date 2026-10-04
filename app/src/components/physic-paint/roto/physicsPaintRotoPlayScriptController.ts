@@ -1814,13 +1814,9 @@ function buildPhysicalPublication(input: {
 }
 
 function clonePhysicalPayload(payload: PhysicPaintRotoPhysicalEditRecord['payload']): PhysicPaintRotoPhysicalEditRecord['payload'] {
-  return {
-    frameIndex: payload.frameIndex,
-    appFrame: payload.appFrame,
-    bytes: payload.bytes,
-    ...(payload.width !== undefined ? { width: payload.width } : {}),
-    ...(payload.height !== undefined ? { height: payload.height } : {}),
-  };
+  // Carrier-preserving (studio-track-physical-edits): spread keeps media-only
+  // payloads intact instead of rebuilding a bytes-only shape.
+  return { ...payload };
 }
 
 function toPhysicalEditRecord(record: PhysicPaintRotoRealKeyRecord): PhysicPaintRotoPhysicalEditRecord {

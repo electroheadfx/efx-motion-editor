@@ -137,11 +137,9 @@ export function buildCanonicalMoveGroupOverrideRecords(input: {
       ...record,
       appFrame: stagedAppFrame,
       payload: {
-        frameIndex: record.payload.frameIndex,
+        // Carrier-preserving: keep `media` on reference-only override records.
+        ...record.payload,
         appFrame: stagedAppFrame,
-        bytes: record.payload.bytes,
-        ...(record.payload.width !== undefined ? { width: record.payload.width } : {}),
-        ...(record.payload.height !== undefined ? { height: record.payload.height } : {}),
       },
     } as PhysicPaintRotoRealKeyRecord;
   });
@@ -483,13 +481,9 @@ function clonePayloadAtFrame(
   payload: PhysicPaintRotoRealKeyPayload,
   appFrame: number,
 ): PhysicPaintRotoRealKeyPayload {
-  return Object.freeze({
-    frameIndex: payload.frameIndex,
-    appFrame,
-    bytes: payload.bytes,
-    ...(payload.width !== undefined ? { width: payload.width } : {}),
-    ...(payload.height !== undefined ? { height: payload.height } : {}),
-  }) as PhysicPaintRotoRealKeyPayload;
+  // Carrier-preserving (studio-track-physical-edits): a media-only payload
+  // must stay media-only; hardcoding `bytes` dropped the sole carrier.
+  return Object.freeze({ ...payload, appFrame }) as PhysicPaintRotoRealKeyPayload;
 }
 
 function payloadEqualsAtFrame(
