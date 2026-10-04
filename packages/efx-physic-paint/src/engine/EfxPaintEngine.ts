@@ -762,7 +762,7 @@ export class EfxPaintEngine {
         dryAmount: 30,
         edgeDetail: 20,
         pickup: 0,
-        eraseStrength: 50,
+        eraseStrength: 100,
         antiAlias: 1,
       },
       physicsStrength: 0.2,

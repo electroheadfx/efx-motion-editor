@@ -32,7 +32,7 @@ describe('Physics Paint Studio settings', () => {
     expect(makeInitialPhysicsPaintStudioSettings()).toMatchObject({
       tool: 'paint', color: '#103c65', size: 11, opacity: 100,
       background: 'canvas1', grainStrength: 0.45,
-      edgeDetail: 20, pickup: 0, eraseStrength: 50, smoothing: 1, spread: 65,
+      edgeDetail: 20, pickup: 0, eraseStrength: 100, smoothing: 1, spread: 65,
       physicsMode: 'local', activePhysicsAction: null,
     });
   });

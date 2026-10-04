@@ -31,7 +31,7 @@ export function makeInitialPhysicsPaintStudioSettings(): PhysicsPaintStudioSetti
     grainScale: 1,
     edgeDetail: 20,
     pickup: 0,
-    eraseStrength: 50,
+    eraseStrength: 100,
     smoothing: 1,
     spread: 65,
     physicsMode: 'local',
