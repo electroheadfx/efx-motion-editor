@@ -76,6 +76,7 @@ import {
   mountPhysicsPaintTemporaryErase,
   syncTemporaryErase,
   temporaryErase,
+  temporaryMove,
   type TemporaryEraseDeps,
 } from './view/physicsPaintTemporaryErase';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
@@ -819,6 +820,12 @@ export function PhysicsPaintStudio() {
   }, []);
   const playButtonRef = useRef<HTMLButtonElement>(null);
   const historyAvailability = useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 });
+  // quick 261004-dn5: the Move rail icon is enabled only while a stroke script
+  // is in memory (the engine has at least one recorded entry to translate).
+  // Written from the EXISTING history-availability listener below — that one
+  // fires on attach and on every allActions change (load/accept/undo/redo/
+  // clear/erase), so it needs no second listener. Signal, never useState.
+  const strokeScriptInMemory = useSignal(false);
   const [onion, setOnionState] = useState<PhysicsPaintOnionState>(() => ({
     ...DEFAULT_ONION_STATE,
     opacity: Math.round(paintStore.onionSkinOpacity.value * 100),
@@ -1173,14 +1180,14 @@ export function PhysicsPaintStudio() {
     () => mountPhysicsPaintTemporaryErase({ window, document }, () => temporaryEraseDepsRef.current),
     [],
   );
-  // Armed-guarded re-apply: engine re-create or a rail tool switch while Alt
-  // is held must land the EFFECTIVE tool (force bypasses the last-applied
+  // Armed-guarded re-apply: engine re-create or a rail tool switch while an
+  // arm is held must land the EFFECTIVE tool (force bypasses the last-applied
   // dedupe — selectTool and the canvas mount write the engine behind our
   // back). Disarmed = byte-identical no-op for every existing flow, including
   // engine re-creation which force-sets 'paint' at PhysicsPaintCanvasMount:104.
-  // temporaryErase is peeked, never subscribed — no render path changes.
+  // Both arms are peeked, never subscribed — no render path changes.
   useEffect(() => {
-    if (!temporaryErase.peek()) return;
+    if (!temporaryErase.peek() && !temporaryMove.peek()) return;
     syncTemporaryErase(temporaryEraseDepsRef.current, { force: true });
   }, [engine, settings.tool]);
   // Navigation already locks the engine input and navigation coordinator. Keep
@@ -3394,10 +3401,11 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource], () => ({
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, strokeScriptInMemory], () => ({
     activeTool: settings.tool,
     physicsMode: settings.physicsMode,
     historyAvailability,
+    strokeScriptInMemory,
     disabled: !engine || staticControlsLocked,
     onSelectTool: selectTool,
     onUndo: undo,
@@ -3557,6 +3565,10 @@ export function PhysicsPaintStudio() {
     readyEngine.setHistoryAvailabilityListener((availability) => {
       rotoMoveHistory.reconcilePaintBarriers(availability);
       rotoScript.notifySourceRevision();
+      // quick 261004-dn5: same listener drives the Move icon's enable gate —
+      // it fires on attach and on every allActions change, so no second
+      // listener is needed to know a script is in memory.
+      strokeScriptInMemory.value = readyEngine.getStrokeCount() > 0;
     });
     // 260925-iy6 UAT round 8: the preview base lands on its own async decode.
     // Bump here so the program monitor recomposites the atomic base swap

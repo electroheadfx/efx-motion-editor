@@ -181,7 +181,12 @@ class TestHTMLElement {
     this.isContentEditable = false;
     this.ownerDocument = { querySelector: () => null };
   }
-  closest(): Element | null {
+  closest(selector?: string): Element | null {
+    // The dispatcher's Select All is workflow-strip scoped (Pitfall 5): the
+    // fake target stands in for a strip-focused element so the meta+A cell
+    // reaches its action. Every other selector (input guards, rail targets)
+    // keeps the plain null answer.
+    if (selector === '.physics-paint-workflow-strip') return {} as Element;
     return null;
   }
 }
@@ -486,7 +491,11 @@ describe('event hygiene — preserved Cmd chords (EVENT HYGIENE)', () => {
     const { actions, preventDefault, stopPropagation } = dispatcherDispatch('z', { metaKey: true });
 
     expect(actions.undo).toHaveBeenCalled();
-    expect(preventDefault).not.toHaveBeenCalled();
+    // Exactly one preventDefault, the dispatcher's OWN pre-existing meta+z
+    // branch (browser-undo suppression) — the arm handlers never saw this
+    // event, so nothing the quick added consumed it. stopPropagation stays
+    // at zero: the dispatcher never calls it.
+    expect(preventDefault).toHaveBeenCalledTimes(1);
     expect(stopPropagation).not.toHaveBeenCalled();
   });
 

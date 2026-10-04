@@ -2,16 +2,26 @@ import { signal } from '@preact/signals';
 import type { ToolType } from '@efxlab/efx-physic-paint';
 
 /**
- * quick 261003-vos — Alt = temporary erase in the Physics Paint Studio window.
+ * quick 261003-vos — Alt = temporary erase + quick 261004-dn5 — Cmd = temporary
+ * Move, both in the Physics Paint Studio window (the dual-arm module).
  *
- * Session-only arm: while Alt is held (gated — Paint tool selected, Studio
+ * DUAL-ARM OWNERSHIP: this module owns BOTH temporary tools. Alt arms the
+ * existing erase contract (quicks 261003-hpi/261003-ud9); Cmd/Meta arms the
+ * move tool (quick 261004-dn5). When both are held over the paint tool, MOVE
+ * WINS — combineEffectiveTool is the ONE combination rule and it ranks move
+ * above erase. The Alt-arm behaviour is byte-identical to the UAT-closed
+ * version: its handlers keep the same gates, the same unconditional release
+ * and the same never-consume-the-event hygiene.
+ *
+ * Session-only arms: while a key is held (gated — Paint tool selected, Studio
  * shortcut target, engine mounted, not mutation-locked, no key repeat) the
- * NEXT gesture erases through the engine's EXISTING erase contract (quicks
- * 261003-hpi/261003-ud9). The selected tool itself never changes and nothing
- * is persisted — the feature's ONLY engine interaction is engine.setTool, so
- * packages/** stays untouched and zero erase logic is forked here.
+ * NEXT gesture runs through the engine's EXISTING tool contract. The selected
+ * tool itself never changes and nothing is persisted — the features' ONLY
+ * engine interaction is engine.setTool, so packages/** stays untouched and no
+ * erase/move logic is forked here.
  *
- * Three invariants (see physicsPaintTemporaryErase.test.ts for the contract):
+ * Three invariants (see physicsPaintTemporaryErase.test.ts for the Alt contract
+ * and physicsPaintTemporaryMove.test.ts for the dual-arm contract):
  *
  *  1. Preserved Alt: the keydown/keyup/blur/visibility handlers never call
  *     preventDefault or stopPropagation, so every existing Alt exclusion in
@@ -24,11 +34,11 @@ import type { ToolType } from '@efxlab/efx-physic-paint';
  *     START — a lost Alt keyup, Alt+Tab blur, or hidden window can never leave
  *     the Studio stuck erasing.
  *  3. Selected-tool authority: combineEffectiveTool is the ONE combination
- *     rule — armed + selected 'paint' resolves to 'erase'; an armed 'erase'
- *     selection stays 'erase' (never flips back), and the selected tool is
- *     never written by this module. resolveEffectiveTool (non-subscribing, for
- *     the engine sync) and readEffectiveTool (subscribing, for UI leaves) are
- *     its two readers.
+ *     rule — moveArmed + selected 'paint' resolves to 'move', armed + selected
+ *     'paint' resolves to 'erase', a selected 'erase' is never flipped (never
+ *     moves back either), and the selected tool is never written by this
+ *     module. resolveEffectiveTool (non-subscribing, for the engine sync) and
+ *     readEffectiveTool (subscribing, for UI leaves) are its two readers.
  */
 
 /**
@@ -38,6 +48,13 @@ import type { ToolType } from '@efxlab/efx-physic-paint';
  * component, and Studio is a 4.7k-line tree).
  */
 export const temporaryErase = signal(false);
+
+/**
+ * quick 261004-dn5 — the Cmd/Meta arm: temporary Move. Same shape and the same
+ * read rules as temporaryErase (engine paths .peek(), UI leaves read through
+ * readEffectiveTool) so an arm flip re-renders only the rail's move button.
+ */
+export const temporaryMove = signal(false);
 
 /** The slice of the engine this feature touches — engine.setTool and nothing else. */
 export interface TemporaryEraseEngine {
@@ -66,17 +83,23 @@ export interface TemporaryEraseMountTargets {
 }
 
 /**
- * The ONE combination rule: 'erase' only when armed AND the selected tool is
- * paint. A selected 'erase' wins (no flip-back); a disarmed selection passes
- * through untouched. Never mutates its input.
+ * The ONE combination rule (261004-dn5: dual-arm). Move outranks erase —
+ * 'move' only when the move arm is up AND the selected tool is paint, then
+ * 'erase' under the same condition for the erase arm. A selected 'erase' wins
+ * (no flip-back, and never a silent flip to move); a disarmed selection passes
+ * through untouched. The third argument defaults to false so the pre-existing
+ * 2-argument call form (and its test cells) behaves exactly as before.
+ * Never mutates its input.
  */
-export function combineEffectiveTool(armed: boolean, selected: ToolType): ToolType {
+export function combineEffectiveTool(armed: boolean, selected: ToolType, moveArmed: boolean = false): ToolType {
+  if (armed && moveArmed && selected === 'paint') return 'move';
   return armed && selected === 'paint' ? 'erase' : selected;
 }
 
 /** Non-subscribing read — for engine paths (handlers, sync) that must not own a render. */
 export function resolveEffectiveTool(selected: ToolType): ToolType {
-  return combineEffectiveTool(temporaryErase.peek(), selected);
+  const moveArmed = temporaryMove.peek();
+  return combineEffectiveTool(temporaryErase.peek() || moveArmed, selected, moveArmed);
 }
 
 /**
@@ -85,7 +108,8 @@ export function resolveEffectiveTool(selected: ToolType): ToolType {
  * leaf, never a large container.
  */
 export function readEffectiveTool(selected: ToolType): ToolType {
-  return combineEffectiveTool(temporaryErase.value, selected);
+  const moveArmed = temporaryMove.value;
+  return combineEffectiveTool(temporaryErase.value || moveArmed, selected, moveArmed);
 }
 
 /** True while a pointer gesture is live — arm/disarm applies defer to the boundary. */
@@ -151,16 +175,47 @@ export function handleTemporaryEraseKeyUp(event: KeyboardEvent, deps: TemporaryE
   syncTemporaryErase(deps);
 }
 
-/** Window blur disarms unconditionally (Alt+Tab to the main window, closed popover…). */
-export function handleTemporaryEraseBlur(deps: TemporaryEraseDeps): void {
-  temporaryErase.value = false;
+/**
+ * Arm on a gated Cmd/Meta keydown (261004-dn5). Every gate mirrors the Alt arm
+ * exactly — only the key differs — so a Cmd press behaves like a tool switch
+ * that never touches the tool state. Key repeat is ignored (a held Cmd that
+ * re-fires keydown adds no extra apply), and arming syncs (deferring to the
+ * boundary when a gesture is in flight).
+ */
+export function handleTemporaryMoveKeyDown(event: KeyboardEvent, deps: TemporaryEraseDeps): void {
+  if (event.key !== 'Meta' || event.repeat) return;
+  if (!deps.isShortcutTarget(event.target)) return;
+  if (deps.getSelectedTool() !== 'paint') return;
+  if (deps.getEngine() === null) return;
+  if (deps.isMutationLocked()) return;
+  temporaryMove.value = true;
   syncTemporaryErase(deps);
 }
 
-/** visibilitychange-to-hidden disarms; to-visible does NOT (it never armed anything). */
+/**
+ * Meta keyup disarms the move arm UNCONDITIONALLY — no gate may suppress a
+ * release (a keyup inside an input, after a tool switch, or while locked still
+ * clears), so a stuck arm can never survive a lost key combination. The event
+ * is never consumed: every existing Cmd chord keeps working.
+ */
+export function handleTemporaryMoveKeyUp(event: KeyboardEvent, deps: TemporaryEraseDeps): void {
+  if (event.key !== 'Meta') return;
+  temporaryMove.value = false;
+  syncTemporaryErase(deps);
+}
+
+/** Window blur disarms BOTH arms unconditionally (Alt+Tab to the main window, closed popover…). */
+export function handleTemporaryEraseBlur(deps: TemporaryEraseDeps): void {
+  temporaryErase.value = false;
+  temporaryMove.value = false;
+  syncTemporaryErase(deps);
+}
+
+/** visibilitychange-to-hidden disarms BOTH arms; to-visible does NOT (it never armed anything). */
 export function handleTemporaryEraseVisibilityChange(deps: TemporaryEraseDeps, visibilityState: DocumentVisibilityState): void {
   if (visibilityState !== 'hidden') return;
   temporaryErase.value = false;
+  temporaryMove.value = false;
   syncTemporaryErase(deps);
 }
 
@@ -193,8 +248,18 @@ export function mountPhysicsPaintTemporaryErase(
   targets: TemporaryEraseMountTargets,
   getDeps: () => TemporaryEraseDeps,
 ): () => void {
-  const onKeyDown = (event: Event) => handleTemporaryEraseKeyDown(event as KeyboardEvent, getDeps());
-  const onKeyUp = (event: Event) => handleTemporaryEraseKeyUp(event as KeyboardEvent, getDeps());
+  // BOTH arms dispatch from the same listener (erase first, then move) —
+  // neither consumes the event, so the dispatcher still sees every chord.
+  const onKeyDown = (event: Event) => {
+    const keyboardEvent = event as KeyboardEvent;
+    handleTemporaryEraseKeyDown(keyboardEvent, getDeps());
+    handleTemporaryMoveKeyDown(keyboardEvent, getDeps());
+  };
+  const onKeyUp = (event: Event) => {
+    const keyboardEvent = event as KeyboardEvent;
+    handleTemporaryEraseKeyUp(keyboardEvent, getDeps());
+    handleTemporaryMoveKeyUp(keyboardEvent, getDeps());
+  };
   const onBlur = () => handleTemporaryEraseBlur(getDeps());
   const onVisibilityChange = () => handleTemporaryEraseVisibilityChange(getDeps(), targets.document.visibilityState ?? 'visible');
   // Capture: true so the force-sync precedes the engine's canvas pointerdown.
@@ -223,13 +288,15 @@ export function mountPhysicsPaintTemporaryErase(
     targets.document.removeEventListener('visibilitychange', onVisibilityChange);
     // Unmount never leaves the window armed (Studio reopen always starts as brush).
     temporaryErase.value = false;
+    temporaryMove.value = false;
     inFlight = false;
   };
 }
 
-/** Test-only full reset — signal, deferral flag and last-applied identity. */
+/** Test-only full reset — both arm signals, the deferral flag and last-applied identity. */
 export function resetTemporaryEraseForTests(): void {
   temporaryErase.value = false;
+  temporaryMove.value = false;
   inFlight = false;
   lastApplied = null;
 }
