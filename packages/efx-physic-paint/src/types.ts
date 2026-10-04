@@ -54,9 +54,10 @@ export interface NativePenInput {
 }
 
 // === TOOL TYPES ===
-// v3 has only paint and erase active (D-12)
+// paint / erase are the D-12 drawing tools; 'move' (261004-dn5) is the
+// script-backed stroke translation tool — it never paints and never erases.
 
-export type ToolType = 'paint' | 'erase'
+export type ToolType = 'paint' | 'erase' | 'move'
 
 // === BRUSH OPTIONS ===
 
