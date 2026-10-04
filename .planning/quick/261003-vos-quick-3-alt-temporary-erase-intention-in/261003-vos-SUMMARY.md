@@ -59,9 +59,12 @@ coverage:
   - id: D2
     description: "Live modifier feel in the Studio: hover/click/drag erase under held Alt in Normal and Physics modes, release restores paint, lost-keyup safety, mid-stroke ownership, zero new UI"
     requirement: QUICK-261003-VOS
-    verification: []
+    verification:
+      - kind: uat
+        ref: "native UAT rows (a)-(e) — user-approved 2026-10-04, plus the follow-up amendments (rail shows Erase while Alt is held 63c54685; erase strength default 100 + label 'Erase' 674b1f54)"
+        status: pass
     human_judgment: true
-    rationale: "Modifier timing, cursor feel, mode parity and mid-stroke behavior live only in the native Studio webview — vitest is blind to them (node env, no DOM); five native UAT rows (a)-(e) are pending"
+    rationale: "Modifier timing, cursor feel, mode parity and mid-stroke behavior live only in the native Studio webview — vitest is blind to them (node env, no DOM); five native UAT rows (a)-(e) passed live 2026-10-04"
 
 # Metrics
 duration: 14min
@@ -184,7 +187,11 @@ None. No placeholder values, no TODO/FIXME, no unwired component, no skipped or 
 
 None — no new surface beyond the plan's `<threat_model>` (T-vos-01..04 cover the keyboard→engine-tool trust boundary, dispatcher coexistence, cross-window isolation and ungated arm; T-vos-SC: no installs). No installs were performed.
 
-## Pending Native UAT (verdict: automated-ready — NEVER claim done before live UAT)
+## Native UAT — APPROVED 2026-10-04 (all rows passed live)
+
+Follow-up amendments approved with the same UAT pass: the tool rail now shows **Erase** highlighted while Alt is held (63c54685 — narrow signal read confined to the 6-button rail; `settings.tool` still 'paint'), and the `physics-erase-strength` slider defaults to **100** with the label **"Erase"** (674b1f54 — app settings + engine initial state moved in lockstep per the 260930-ni6 mirror; no new UI).
+
+Original rows:
 
 **(a)** Studio window, Paint tool selected in Normal mode: press and hold Alt — hover previews the fresh stroke with the pointer glyph, the next click whole-stroke-deletes it and dragging pixel-erases baked paint, exactly like choosing the Erase tool, while the rail keeps Paint (Normal) highlighted the whole time.
 
