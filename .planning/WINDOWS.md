@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 11
+open_count: 14
 waived_count: 5
 fixed_count: 69
-total_count: 85
-last_updated: 2026-10-03T21:44:41.596Z
+total_count: 88
+last_updated: 2026-10-04T09:42:45.463Z
 ---
 
 # Broken Windows Ledger
@@ -100,6 +100,9 @@ last_updated: 2026-10-03T21:44:41.596Z
 | 83 | quick-260930-q6t | deviation | .planning/quick/260930-q6t-bake-parity-urgent-paint-loses-consisten/260930-q6t-SUMMARY.md |  | 260930-q6t halted at Task 1 attribution gate (dry denser than display, symptom lightening); Tasks 2-3 not run, awaiting user direction | open |  | 2026-09-30T17:49:23.603Z |  |
 | 84 | quick-260930-wm6 | deviation | app/src/components/physic-paint/performance/physicsPaintPerformanceTrace.test.ts | 236 | Pre-existing full-app-suite failure: native-profile pin missing the enabled key added by superseded q6t 4e064c41; out of scope for 260930-wm6, logged in deferred-items.md | open |  | 2026-09-30T22:48:01.109Z |  |
 | 85 | quick-261003-vos | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | 261003-vos: sync force bypasses both gates (inFlight + dedupe) and mount takes a deps getter — documented interpretations of the plan's literal wording, see 261003-vos-SUMMARY.md Deviations | open |  | 2026-10-03T21:44:41.596Z |  |
+| 86 | quick-261004-dn5 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.moveTranslate.test.ts |  | Task 2: engine test mock deposits color hex + alpha 5000 (harness parity with live rasterizer saturating regime) | open |  | 2026-10-04T09:42:45.168Z |  |
+| 87 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | Task 3: combineEffectiveTool first arg = some-arm-held (resolve/read pass erase\|\|move) — honors committed precedence cell over plan literal rule | open |  | 2026-10-04T09:42:45.318Z |  |
+| 88 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts |  | Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest | open |  | 2026-10-04T09:42:45.463Z |  |
 
 ````json
 [
@@ -1133,6 +1136,45 @@ last_updated: 2026-10-03T21:44:41.596Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-03T21:44:41.596Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 86,
+    "kind": "deviation",
+    "phase": "quick-261004-dn5",
+    "file": "packages/efx-physic-paint/src/engine/EfxPaintEngine.moveTranslate.test.ts",
+    "line": null,
+    "description": "Task 2: engine test mock deposits color hex + alpha 5000 (harness parity with live rasterizer saturating regime)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-04T09:42:45.168Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 87,
+    "kind": "deviation",
+    "phase": "quick-261004-dn5",
+    "file": "app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts",
+    "line": null,
+    "description": "Task 3: combineEffectiveTool first arg = some-arm-held (resolve/read pass erase||move) — honors committed precedence cell over plan literal rule",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-04T09:42:45.318Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 88,
+    "kind": "deviation",
+    "phase": "quick-261004-dn5",
+    "file": "app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts",
+    "line": null,
+    "description": "Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-04T09:42:45.463Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }
