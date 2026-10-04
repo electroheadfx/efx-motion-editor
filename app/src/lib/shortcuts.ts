@@ -463,6 +463,14 @@ export function mountShortcuts(): () => void {
       paintStore.setTool('pen');
     },
 
+    // Swap foreground/background -- bare X key, paint edit mode only (quick-261004-hwa)
+    'x': (e: KeyboardEvent) => {
+      if (shouldSuppressShortcut(e)) return;
+      if (isFullscreen.peek()) return;
+      if (!isPaintEditMode()) return;
+      paintStore.swapFgBg();
+    },
+
     // Solo toggle -- Alt+S
     'Alt+s': (e: KeyboardEvent) => {
       if (shouldSuppressShortcut(e)) return;
