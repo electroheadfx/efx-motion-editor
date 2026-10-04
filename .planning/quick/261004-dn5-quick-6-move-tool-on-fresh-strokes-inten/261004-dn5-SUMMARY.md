@@ -64,8 +64,8 @@ coverage:
     requirement: QUICK-261004-DN5
     verification:
       - kind: uat
-        ref: "native UAT rows (a)-(e) — PENDING (see Native UAT section)"
-        status: pending
+        ref: "native UAT rows (a)-(e) — approved 2026-10-04 (see Native UAT section)"
+        status: pass
     human_judgment: true
     rationale: "Modifier timing, hover/drag feel, Save/reopen fidelity and look parity live only in the native Studio webview — vitest is blind to them (node env, no DOM)"
 
@@ -78,7 +78,7 @@ plan_head_before: 41fbd6e523fa0cb23117a0b4ba164e3930c2996a
 
 # Phase quick-261004-dn5: Move tool on fresh strokes Summary
 
-**Status: automated-ready — native UAT rows (a)-(e) PENDING (NOT done until the user passes live UAT).**
+**Status: CLOSED — native UAT approved 2026-10-04 (rows a–e all passed live).**
 
 **A Move tool now sits directly under Erase in the Physics Paint Studio rail, enabled only while a stroke script is in memory: selecting it (or holding Cmd in Paint mode as a temporary arm) lets one click-drag rigidly translate a whole fresh stroke — hover previews it, release commits, the in-memory script is refreshed so Save writes the moved coordinates — while baked/pixel paint, the frozen look constants and every existing Cmd chord stay byte-for-byte untouched.**
 
@@ -247,9 +247,9 @@ None. No placeholder values, no TODO/FIXME, no unwired prop (`strokeScriptInMemo
 
 None — no new surface beyond the plan's `<threat_model>` (T-dn5-01..05 cover the Cmd-chord trust boundary, frozen look constants, Save fidelity, cross-window isolation and scope; T-dn5-SC: no installs). No installs were performed. No new network endpoints, auth paths or schema changes.
 
-## Native UAT — PENDING (automation complete; live rows below)
+## Native UAT — PASSED 2026-10-04
 
-**automated-ready** — all gates green, awaiting the five native UAT rows:
+**All five rows approved live** (user verdict 2026-10-04):
 
 **(a)** Move icon greyed on an empty frame, enabled after painting one stroke; icon sits directly under Erase.
 
