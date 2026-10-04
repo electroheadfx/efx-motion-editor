@@ -5,7 +5,7 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick 261004-hwa (Photoshop fg/bg swatch) — native UAT pending
+stopped_at: Completed quick 261004-hwa (Photoshop fg/bg swatch) — native UAT approved
 last_updated: "2026-10-04T11:42:33.609Z"
 last_activity: 2026-10-04
 last_activity_desc: "Quick 261003-vos native UAT approved — Alt temporary erase CLOSED (rail Erase cue + erase default 100/\"Erase\")"
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-04 — Completed quick task 261004-hwa: Quick 7 Photoshop foreground/background swatch
+Last activity: 2026-10-04 — quick 261004-hwa native UAT approved and CLOSED (Photoshop fg/bg swatch in Studio tool rail: two overlapping squares, X swaps, back-click promotes, sidebar picker syncs to top swatch; default #103c65)
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
@@ -487,5 +487,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-10-04T11:38:34.670Z
-Stopped at: Completed quick 261004-hwa (Photoshop fg/bg swatch) — native UAT pending
+Stopped at: Completed quick 261004-hwa (Photoshop fg/bg swatch) — native UAT approved
 Resume file: None

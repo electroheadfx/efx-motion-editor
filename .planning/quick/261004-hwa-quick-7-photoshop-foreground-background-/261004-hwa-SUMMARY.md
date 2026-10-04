@@ -58,7 +58,7 @@ coverage:
         status: pass
       - kind: manual_procedural
         ref: "Native UAT: open a paint session, confirm swatch footer placement/PS layout"
-        status: unknown
+        status: pass
     human_judgment: true
     rationale: Visual placement and PS layout fidelity require live native UAT (no Chrome DevTools MCP per project rule)
   - id: D2
@@ -70,7 +70,7 @@ coverage:
         status: pass
       - kind: manual_procedural
         ref: "Native UAT: pick a color, confirm front swatch + hex labels update"
-        status: unknown
+        status: pass
     human_judgment: true
     rationale: End-to-end picker→swatch wiring is DOM behavior verified in live UAT
   - id: D3
@@ -82,7 +82,7 @@ coverage:
         status: pass
       - kind: manual_procedural
         ref: "Native UAT: press X in paint mode (swaps), in an input (typing works), outside paint mode (no-op)"
-        status: unknown
+        status: pass
     human_judgment: true
     rationale: Keystroke gating across live contexts (inputs, fullscreen) needs native UAT
   - id: D4
@@ -94,7 +94,7 @@ coverage:
         status: pass
       - kind: manual_procedural
         ref: "Native UAT: click back square, confirm promote + picker opens"
-        status: unknown
+        status: pass
     human_judgment: true
     rationale: Click routing and picker-open behavior is live DOM behavior
   - id: D5
