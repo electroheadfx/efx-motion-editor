@@ -376,6 +376,7 @@ export function CanvasArea() {
               opacity={paintStore.brushOpacity.value}
               onChange={(color: string, opacity: number) => {
                 paintStore.setBrushColor(color);
+                paintStore.setForeground(color);  // keep the stacked-on-top swatch in sync (quick-261004-hwa)
                 paintStore.setBrushOpacity(opacity);
                 // Live-update selected strokes
                 const sel = paintStore.selectedStrokeIds.peek();
