@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 14
+open_count: 15
 waived_count: 5
 fixed_count: 69
-total_count: 88
-last_updated: 2026-10-04T09:42:45.463Z
+total_count: 89
+last_updated: 2026-10-04T11:38:08.668Z
 ---
 
 # Broken Windows Ledger
@@ -103,6 +103,7 @@ last_updated: 2026-10-04T09:42:45.463Z
 | 86 | quick-261004-dn5 | deviation | packages/efx-physic-paint/src/engine/EfxPaintEngine.moveTranslate.test.ts |  | Task 2: engine test mock deposits color hex + alpha 5000 (harness parity with live rasterizer saturating regime) | open |  | 2026-10-04T09:42:45.168Z |  |
 | 87 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | Task 3: combineEffectiveTool first arg = some-arm-held (resolve/read pass erase\|\|move) — honors committed precedence cell over plan literal rule | open |  | 2026-10-04T09:42:45.318Z |  |
 | 88 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts |  | Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest | open |  | 2026-10-04T09:42:45.463Z |  |
+| 89 | quick-261004-hwa | deviation | app/src/stores/paintStore.fgBg.test.ts |  | Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec) | open |  | 2026-10-04T11:38:08.668Z |  |
 
 ````json
 [
@@ -1175,6 +1176,19 @@ last_updated: 2026-10-04T09:42:45.463Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-04T09:42:45.463Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 89,
+    "kind": "deviation",
+    "phase": "quick-261004-hwa",
+    "file": "app/src/stores/paintStore.fgBg.test.ts",
+    "line": null,
+    "description": "Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-04T11:38:08.668Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }

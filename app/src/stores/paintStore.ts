@@ -28,6 +28,9 @@ const brushFxParams = signal<BrushFxParams>({});
 /** Per-layer active paint mode (flat or FX) -- inferred from frame, not persisted globally */
 const activePaintMode = signal<PaintMode>('flat');
 const paintBgColor = signal(DEFAULT_PAINT_BG_COLOR);
+/** Photoshop-style swatch slots (session-only, never persisted). Front slot = active picker target. */
+const foregroundColor = signal('#000000');
+const backgroundColorSwatch = signal('#ffffff');
 const selectedStrokeIds = signal<Set<string>>(new Set());
 const isRenderingFx = signal(false);
 const showFlatPreview = signal(false);
@@ -74,6 +77,24 @@ function _notifyVisualChange(layerId: string, frame: number): void {
   _markProjectDirty?.();
 }
 
+/** Refresh the active frame's FX canvas after brushColor changed (flat mode needs nothing). */
+function _refreshFxForActiveFrame(): void {
+  if (activePaintMode.peek() === 'fx-paint' && paintMode.peek()) {
+    Promise.all([
+      import('./layerStore'),
+      import('./timelineStore'),
+    ]).then(([{layerStore: ls}, {timelineStore: ts}]) => {
+      const layerId = ls.selectedLayerId.peek();
+      if (layerId) {
+        const frame = ts.currentFrame.peek();
+        paintStore.invalidateFrameFxCache(layerId, frame);
+        paintStore.refreshFrameFx(layerId, frame);
+        paintVersion.value++;  // Trigger preview re-render after FX cache refresh
+      }
+    });
+  }
+}
+
 // --- Store ---
 
 export const paintStore = {
@@ -93,6 +114,8 @@ export const paintStore = {
   brushFxParams,
   activePaintMode,
   paintBgColor,
+  foregroundColor,
+  backgroundColorSwatch,
   selectedStrokeIds,
   isRenderingFx,
   showFlatPreview,
@@ -459,6 +482,8 @@ export const paintStore = {
     brushStyle.value = 'flat';
     brushFxParams.value = {};
     paintBgColor.value = DEFAULT_PAINT_BG_COLOR;
+    foregroundColor.value = '#000000';
+    backgroundColorSwatch.value = '#ffffff';
     selectedStrokeIds.value = new Set();
     isRenderingFx.value = false;
     showFlatPreview.value = false;
@@ -539,21 +564,37 @@ export const paintStore = {
   setBrushColor(color: string): void {
     brushColor.value = color;
     saveBrushColor(color);
-    // Refresh FX canvas when color changes in FX mode
-    if (activePaintMode.peek() === 'fx-paint' && paintMode.peek()) {
-      Promise.all([
-        import('./layerStore'),
-        import('./timelineStore'),
-      ]).then(([{layerStore: ls}, {timelineStore: ts}]) => {
-        const layerId = ls.selectedLayerId.peek();
-        if (layerId) {
-          const frame = ts.currentFrame.peek();
-          paintStore.invalidateFrameFxCache(layerId, frame);
-          paintStore.refreshFrameFx(layerId, frame);
-          paintVersion.value++;  // Trigger preview re-render after FX cache refresh
-        }
-      });
-    }
+    _refreshFxForActiveFrame();
+  },
+
+  // --- Foreground/background swatch (quick-261004-hwa) ---
+  // Session-only state: never written by saveBrushColor / paintPreferences.
+
+  /** Picker picked a color — write it to the stacked-on-top (foreground) swatch only. */
+  setForeground(color: string): void {
+    if (foregroundColor.peek() === color) return;
+    foregroundColor.value = color;
+  },
+
+  /** Photoshop X: swap the two slots and make the new foreground the active paint color. */
+  swapFgBg(): void {
+    const fg = foregroundColor.peek();
+    const bg = backgroundColorSwatch.peek();
+    foregroundColor.value = bg;
+    backgroundColorSwatch.value = fg;
+    // brushColor drives picker + hex labels + FX refresh — one write syncs the sidebar.
+    brushColor.value = bg;
+    _refreshFxForActiveFrame();
+  },
+
+  /** Back-swatch click: promote background to front (old foreground becomes the background). */
+  setActiveFromBackground(): void {
+    const fg = foregroundColor.peek();
+    const bg = backgroundColorSwatch.peek();
+    foregroundColor.value = bg;
+    backgroundColorSwatch.value = fg;
+    brushColor.value = bg;
+    _refreshFxForActiveFrame();
   },
 
   setBrushOpacity(opacity: number): void {
