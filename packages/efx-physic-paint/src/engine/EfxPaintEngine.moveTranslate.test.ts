@@ -179,13 +179,28 @@ vi.mock('../brush/paint', async (importOriginal) => {
   return {
     ...actual,
     renderPaintStroke: (
-      points: Array<{ x: number; y: number }>, _c: string | null,
-      _opts: { size?: number }, _ctx: unknown, wet: { alpha: Float32Array; strokeOpacity: Float32Array },
+      points: Array<{ x: number; y: number }>, color: string | null,
+      _opts: { size?: number }, _ctx: unknown,
+      wet: { alpha: Float32Array; strokeOpacity: Float32Array; r: Float32Array; g: Float32Array; b: Float32Array },
       _s: unknown, _d: unknown, _m: unknown, _p: unknown,
       width: number, height: number,
     ) => {
-      depositAlongPath(wet.alpha, points, width, height, 6, 500)
+      // The live rasterizer accumulates several overlapping deposits per pixel
+      // (alpha lands in the thousands); one flat 500 leaves forceDryAll's
+      // transfer under-saturated and the replay renders a different color than
+      // the live stroke. 5000 keeps the mock in the same saturating regime.
+      depositAlongPath(wet.alpha, points, width, height, 6, 5000)
       depositAlongPath(wet.strokeOpacity, points, width, height, 6, 1)
+      // Color channels too: forceDryAll transfers toward wet.r/g/b, so a replay
+      // that left them at 0 would paint black where the LIVE rasterizer painted
+      // the stroke color — DEPOSIT FOLLOWS pins live/replay look parity.
+      const hex = color ? /^#?([0-9a-f]{6})$/i.exec(color.trim()) : null
+      if (hex) {
+        const rgb = parseInt(hex[1], 16)
+        depositAlongPath(wet.r, points, width, height, 6, (rgb >> 16) & 255)
+        depositAlongPath(wet.g, points, width, height, 6, (rgb >> 8) & 255)
+        depositAlongPath(wet.b, points, width, height, 6, rgb & 255)
+      }
     },
   }
 })

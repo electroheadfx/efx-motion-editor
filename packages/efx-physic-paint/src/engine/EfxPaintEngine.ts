@@ -120,6 +120,21 @@ type PaintHistoryEntry = {
   deferred: DeferredStrokeFinalization | null
 }
 
+/**
+ * 261004-dn5: one live move gesture. `stroke` is the LIVE allActions entry (not
+ * a copy) so the commit translates the exact object Save serializes; dx/dy are
+ * the absolute delta from the press point, which is what makes the translation
+ * rigid and re-derivable on every pointermove.
+ */
+type MoveGesture = {
+  stroke: PaintStroke
+  mutationId: number
+  startX: number
+  startY: number
+  dx: number
+  dy: number
+}
+
 type StrokeApplicationOptions = {
   hasPenInput?: boolean
   physicsMode?: PhysicsMode
@@ -631,6 +646,10 @@ export class EfxPaintEngine {
   private previewStroke: StrokePreview | null = null
   /** 261003-ud9: mutationId of the fresh stroke under the erase cursor — drives the hover preview ribbon and the pointer glyph. */
   private eraseHoverTargetId: number | null = null
+  /** 261004-dn5: mutationId of the fresh stroke under the move cursor — drives the move hover preview and the pointer glyph. */
+  private moveHoverTargetId: number | null = null
+  /** 261004-dn5: the live click-drag translation of one script-backed stroke (null when no move gesture is in flight). */
+  private moveGesture: MoveGesture | null = null
   private lastStrokeBounds: { x0: number; y0: number; x1: number; y1: number } | null = null
   private color: string = '#103c65'
 
@@ -822,6 +841,9 @@ export class EfxPaintEngine {
   setTool(tool: ToolType): void {
     // 261003-ud9: the hover target only exists for the erase tool.
     if (tool !== 'erase') this.clearEraseHover()
+    // 261004-dn5: same law for the move tool — its hover target only exists
+    // while the move tool is selected.
+    if (tool !== 'move') this.clearMoveHover()
     this.state.tool = tool
     this.requestRender()
   }
@@ -1614,6 +1636,10 @@ export class EfxPaintEngine {
     this.state.drawing = false
     this.rawPts = []
     this.previewStroke = null
+    // 261004-dn5: a mid-drag clear (navigation) must not leave a move gesture
+    // pointing at an entry the clear just dropped.
+    this.moveGesture = null
+    this.moveHoverTargetId = null
     this.pendingStrokeFinalizations = []
     this.strokeFinalizationScheduled = false
     this.strokeFinalizationGeneration++
@@ -2161,8 +2187,9 @@ export class EfxPaintEngine {
     // 261003-ud9: pointer glyph — the hand's fingertip sits AT the cursor and
     // its body (23 × 31 + 3px under-stroke) extends down, thumb left and
     // knuckles right; the restore box must fully contain it or the incremental
-    // erase clips the thumb or the wrist.
-    if (this.eraseHoverTargetId != null) {
+    // erase clips the thumb or the wrist. 261004-dn5: the move hover uses the
+    // same glyph, so it needs the same box.
+    if (this.eraseHoverTargetId != null || this.moveHoverTargetId != null) {
       return { x0: this.cursorX - 10, y0: this.cursorY - 3, x1: this.cursorX + 19, y1: this.cursorY + 34 }
     }
     const r = brushRenderRadius(this.state.brushOpts)
@@ -3098,9 +3125,156 @@ export class EfxPaintEngine {
     if (!this.state.drawing) this.previewStroke = null
   }
 
-  /** 261003-ud9: cursor glyph — pointing hand while a fresh stroke is hovered under the erase cursor, ring/crosshair otherwise. */
+  /**
+   * 261004-dn5: recompute the move hover target from the cursor position
+   * (pointer move while NOT drawing). Detection is the ONE law shared with the
+   * erase hover/click/drag — resolveEraseTargetIds, geometric ribbon overlap,
+   * newest-first, firstOnly — never a second hit test.
+   */
+  private updateMoveHover(): void {
+    // Leaving the tool drops ONLY the move target. The preview ribbon belongs
+    // to the tool that owns the current gesture (updateEraseHover sets its own
+    // just before this call), so wiping previewStroke here would steal it.
+    if (this.state.tool !== 'move') {
+      this.moveHoverTargetId = null
+      return
+    }
+    if (this.cursorX < 0) {
+      this.clearMoveHover()
+      return
+    }
+    const probe: PenPoint = { x: this.cursorX, y: this.cursorY, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }
+    const targets = this.resolveEraseTargetIds([probe], this.state.brushOpts, true)
+    const targetId = targets[0] ?? null
+    const stroke = targetId != null ? this.allActions.find(a => a.mutationId === targetId && a.tool === 'paint') : undefined
+    if (targetId == null || !stroke) {
+      this.clearMoveHover()
+      return
+    }
+    this.moveHoverTargetId = targetId
+    // Preview the target stroke's OWN geometry and color — what a drag would
+    // move, shown before the press.
+    this.previewStroke = {
+      pts: stroke.points,
+      color: stroke.color ?? '#888888',
+      radius: brushRenderRadius(stroke.params),
+      opacity: 0.6,
+      hasPenInput: this.state.hasPenInput,
+    }
+    this.requestRender()
+  }
+
+  /** 261004-dn5: drop the move hover target. The preview ribbon belongs to the gesture while one is in flight — leave it alone then. */
+  private clearMoveHover(): void {
+    this.moveHoverTargetId = null
+    if (!this.state.drawing) this.previewStroke = null
+  }
+
+  /**
+   * 261004-dn5: pointerdown with the move tool — begin a rigid translation of
+   * the script-backed stroke under the press, or decline it as a pure no-op
+   * (no drawing flag, no rawPts, no acceptStroke, no mutation).
+   */
+  private startMoveGesture(e: PointerEvent): void {
+    const r = this.dualCanvas.dryCanvas.getBoundingClientRect()
+    this.cursorX = (e.clientX - r.left) * (this.width / r.width)
+    this.cursorY = (e.clientY - r.top) * (this.height / r.height)
+    const probe: PenPoint = { x: this.cursorX, y: this.cursorY, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }
+    const targets = this.resolveEraseTargetIds([probe], this.state.brushOpts, true)
+    const targetId = targets[0] ?? null
+    const stroke = targetId != null ? this.allActions.find(a => a.mutationId === targetId && a.tool === 'paint') : undefined
+    if (targetId == null || !stroke) {
+      this.moveGesture = null
+      this.clearMoveHover()
+      try {
+        this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
+      } catch {
+        // Capture may already be gone (e.g. a pointerup that raced us).
+      }
+      return
+    }
+    this.moveGesture = { stroke, mutationId: targetId, startX: this.cursorX, startY: this.cursorY, dx: 0, dy: 0 }
+    this.moveHoverTargetId = null
+    this.previewStroke = null
+    this.state.drawing = true
+    this.rawPts = []
+    this.lastPointerSampleTimeStamp = Number.NEGATIVE_INFINITY
+    this.lastAcceptedPointerSampleTimeStamp = Number.NEGATIVE_INFINITY
+  }
+
+  /** 261004-dn5: live rigid-translation preview — the whole stroke shifted by the absolute gesture delta, re-derived from the original points every move. */
+  private updateMoveGesture(): void {
+    const gesture = this.moveGesture
+    if (!gesture) return
+    gesture.dx = this.cursorX - gesture.startX
+    gesture.dy = this.cursorY - gesture.startY
+    this.previewStroke = {
+      pts: gesture.stroke.points.map(p => ({ ...p, x: p.x + gesture.dx, y: p.y + gesture.dy })),
+      color: gesture.stroke.color ?? '#888888',
+      radius: brushRenderRadius(gesture.stroke.params),
+      opacity: 0.6,
+      hasPenInput: this.state.hasPenInput,
+    }
+    this.requestRender()
+  }
+
+  /** 261004-dn5: pointerup — end the gesture; commit only when the drag cleared the sub-pixel floor. */
+  private finishMoveGesture(e: PointerEvent): void {
+    const gesture = this.moveGesture
+    const r = this.dualCanvas.dryCanvas.getBoundingClientRect()
+    this.cursorX = (e.clientX - r.left) * (this.width / r.width)
+    this.cursorY = (e.clientY - r.top) * (this.height / r.height)
+    this.lastPointerInputTime = performance.now()
+    this.lastStrokeInputTime = this.lastPointerInputTime
+    this.lastRenderActivityTime = this.lastPointerInputTime
+    this.state.drawing = false
+    this.previewStroke = null
+    this.rawPts = []
+    this.moveGesture = null
+    try {
+      this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
+    } catch {
+      // The browser auto-releases capture on pointerup; the release may already be gone.
+    }
+    if (!gesture) {
+      this.updateMoveHover()
+      return
+    }
+    if (Math.abs(gesture.dx) < 1 && Math.abs(gesture.dy) < 1) {
+      // Sub-pixel press/release: a plain click — silent discard, no mutation
+      // and no redraw.
+      this.updateMoveHover()
+      return
+    }
+    this.commitMoveGesture(gesture)
+  }
+
+  /**
+   * 261004-dn5: commit the drag — translate the LIVE allActions entry in place
+   * (a new array of new point objects: stored points are frozen). No undo
+   * checkpoint, no new entry: the undo entry holds the SAME object, so Undo and
+   * Redo follow the translation for free. A stale redo would repaint pre-move
+   * pixels, so the redo stack dies here.
+   */
+  private commitMoveGesture(gesture: MoveGesture): void {
+    // Drain FIRST: a still-queued stroke's entry already exists but its deposit
+    // pixels do not — the replay below must see the flushed canvas.
+    this.flushPendingStrokeFinalizations()
+    const index = this.allActions.findIndex(a => a.mutationId === gesture.mutationId && a.tool === 'paint')
+    if (index < 0) return
+    const entry = this.allActions[index]
+    entry.points = entry.points.map(p => ({ ...p, x: p.x + gesture.dx, y: p.y + gesture.dy }))
+    this.redoStack = []
+    this.notifyHistoryAvailability()
+    this.displayCompositeDirty = true
+    this.redrawAll()
+    this.notifyCompletedMutation('move', gesture.mutationId)
+    this.updateMoveHover()
+  }
+
+  /** 261003-ud9: cursor glyph — pointing hand while a fresh stroke is hovered under the erase OR move cursor, ring/crosshair otherwise. */
   private cursorGlyphMode(): 'brush' | 'pointer' {
-    return this.eraseHoverTargetId != null ? 'pointer' : 'brush'
+    return this.eraseHoverTargetId != null || this.moveHoverTargetId != null ? 'pointer' : 'brush'
   }
 
   private applyStrokeToEngine(
@@ -3313,6 +3487,12 @@ export class EfxPaintEngine {
     // 261003-ud9: the gesture owns previewStroke from here on — drop the hover
     // target BEFORE drawing flips true (clearEraseHover then nulls the preview).
     this.clearEraseHover()
+    // 261004-dn5: the move tool never starts a stroke — it starts (or declines)
+    // a rigid translation of the script-backed stroke under the press.
+    if (this.state.tool === 'move') {
+      this.startMoveGesture(e)
+      return
+    }
     this.state.drawing = true
     this.rawPts = []
     this.lastPointerSampleTimeStamp = Number.NEGATIVE_INFINITY
@@ -3333,11 +3513,21 @@ export class EfxPaintEngine {
       // 261003-ud9: hover preview + pointer-glyph target (erase tool only —
       // updateEraseHover clears everything else).
       this.updateEraseHover()
+      // 261004-dn5: the move tool's own hover, AFTER erase so the tool that
+      // owns the preview writes it last.
+      this.updateMoveHover()
       return
     }
     e.preventDefault()
     this.onInputActivity?.('move', e.pointerId)
     this.lastStrokeInputTime = performance.now()
+
+    // 261004-dn5: the move gesture translates a committed stroke — it never
+    // samples pointer history into a stroke of its own.
+    if (this.state.tool === 'move') {
+      this.updateMoveGesture()
+      return
+    }
 
     // Handle coalesced events for smooth strokes
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : null
@@ -3359,6 +3549,13 @@ export class EfxPaintEngine {
     if (!this.state.drawing) return
     this.onInputActivity?.('up', e.pointerId)
     this.requestRender()
+    // 261004-dn5: the move gesture owns its own commit — return BEFORE the
+    // mutation-id allocation and the stroke-acceptance block so a move can
+    // never become a stroke.
+    if (this.state.tool === 'move') {
+      this.finishMoveGesture(e)
+      return
+    }
     const pointerUpStartedAt = this.performanceListener ? performance.now() : 0
     const mutationId = this.nextMutationId++
     this.lastPointerInputTime = performance.now()
@@ -3450,6 +3647,7 @@ export class EfxPaintEngine {
     // 261003-ud9: off-canvas — no hover target (no-op while drawing; the
     // gesture's own preview is nulled by onPointerUp below).
     this.clearEraseHover()
+    this.clearMoveHover()
     if (this.state.drawing) this.onPointerUp(e)
     else this.requestRender()
   }
@@ -3461,6 +3659,8 @@ export class EfxPaintEngine {
     this.state.drawing = false
     this.previewStroke = null
     this.rawPts = []
+    // 261004-dn5: a cancelled move gesture dies with the pointer it was bound to.
+    this.moveGesture = null
     try {
       this.dualCanvas.dryCanvas.releasePointerCapture(e.pointerId)
     } catch {
