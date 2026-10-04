@@ -10,7 +10,6 @@ import { SidebarFxProperties } from '../sidebar/SidebarFxProperties';
 import { TransitionProperties } from '../sidebar/TransitionProperties';
 import { AudioProperties } from '../sidebar/AudioProperties';
 import { PaintProperties } from '../sidebar/PaintProperties';
-import { ForegroundBackgroundSwatch } from '../sidebar/ForegroundBackgroundSwatch';
 import { PhysicPaintProperties } from '../sidebar/PhysicPaintProperties';
 import { audioStore } from '../../stores/audioStore';
 import { paintStore } from '../../stores/paintStore';
@@ -326,13 +325,6 @@ export function LeftPanel() {
           )}
         </CollapsibleSection>
       </div>
-
-      {/* FG/BG swatch footer — same paint-context gate as PaintProperties (quick-261004-hwa) */}
-      {!transitionSel && selectedLayer && !isFx && selectedLayer.type === 'paint' && paintStore.paintMode.value && (
-        <div class="flex justify-center shrink-0" style={{ paddingTop: '8px' }}>
-          <ForegroundBackgroundSwatch />
-        </div>
-      )}
     </div>
   );
 }

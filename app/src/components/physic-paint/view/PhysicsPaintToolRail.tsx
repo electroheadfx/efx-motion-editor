@@ -7,6 +7,7 @@ import eraserIcon from '../../../assets/physics-paint-ui/icons/LineiconsEraser.s
 import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
+import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { readEffectiveTool } from './physicsPaintTemporaryErase';
 
@@ -47,6 +48,8 @@ export interface PhysicsPaintToolRailProps {
   onUndo: () => void;
   onRedo: () => void;
   onClearFrame: () => void;
+  /** Fired after a swatch swap/promote with the new foreground hex so the engine color follows. */
+  onActiveColorChanged?: (color: string) => void;
 }
 
 function isItemActive(
@@ -103,6 +106,7 @@ function PhysicsPaintToolRailImpl({
   onUndo,
   onRedo,
   onClearFrame,
+  onActiveColorChanged,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
   // Held-Alt/Cmd display only: this narrow read re-renders just this rail (7
@@ -154,6 +158,9 @@ function PhysicsPaintToolRailImpl({
           </button>
         );
       })}
+      <div style={{ marginTop: 'auto', paddingTop: '8px' }}>
+        <ForegroundBackgroundSwatch onActiveColorChanged={onActiveColorChanged} />
+      </div>
     </nav>
   );
 }

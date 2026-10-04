@@ -3078,6 +3078,10 @@ export function PhysicsPaintStudio() {
       copyRotoKey: copyRotoFrame,
       cutRotoKey: cutRotoFrame,
       pasteRotoKey: pasteRotoFrame,
+      swapFgBg: () => {
+        paintStore.swapFgBg();
+        setBrushColor(paintStore.foregroundColor.peek(), settings.opacity);
+      },
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
@@ -3401,7 +3405,7 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, strokeScriptInMemory], () => ({
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, strokeScriptInMemory, setBrushColor], () => ({
     activeTool: settings.tool,
     physicsMode: settings.physicsMode,
     historyAvailability,
@@ -3411,6 +3415,7 @@ export function PhysicsPaintStudio() {
     onUndo: undo,
     onRedo: redo,
     onClearFrame: clearActiveSource,
+    onActiveColorChanged: (color: string) => setBrushColor(color, settings.opacity),
   }));
   // 38-11: the right panel props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -3518,7 +3523,10 @@ export function PhysicsPaintStudio() {
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
     // to Track option and a Bg rail selection opens the Background option tab.
     toolTab: rightPanelToolTab,
-    onColorChange: setBrushColor,
+    onColorChange: (color: string, opacity: number) => {
+      setBrushColor(color, opacity);
+      paintStore.setForeground(color);
+    },
     onEdgeDetailChange: setEdgeDetail,
     onPickupChange: setPickup,
     onSpreadChange: setSpread,

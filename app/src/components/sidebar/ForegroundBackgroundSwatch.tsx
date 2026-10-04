@@ -5,10 +5,12 @@ import {paintStore} from '../../stores/paintStore';
  *
  * Two overlapping squares: back (background) offset down-right behind,
  * front (foreground) on top offset up-left. Front is the active picker target.
- * Session-only colors — no persistence, no second picker (opens the existing
- * sidebar InlineColorPicker).
+ * Session-only colors — no persistence, no second picker.
  */
-export function ForegroundBackgroundSwatch() {
+export function ForegroundBackgroundSwatch({ onActiveColorChanged }: {
+  /** Called with the new foreground hex after swap or promote so the engine's brush color can follow. */
+  onActiveColorChanged?: (color: string) => void;
+} = {}) {
   const fg = paintStore.foregroundColor.value;
   const bg = paintStore.backgroundColorSwatch.value;
 
@@ -37,10 +39,7 @@ export function ForegroundBackgroundSwatch() {
         title="Background color"
         onClick={() => {
           paintStore.setActiveFromBackground();
-          // Make the just-promoted color immediately editable (open, never close)
-          if (!paintStore.showInlineColorPicker.peek()) {
-            paintStore.toggleInlineColorPicker();
-          }
+          onActiveColorChanged?.(paintStore.foregroundColor.peek());
         }}
       />
       {/* Foreground slot — on top, offset up-left */}
@@ -55,7 +54,7 @@ export function ForegroundBackgroundSwatch() {
           zIndex: 2,
         }}
         title="Foreground color"
-        onClick={() => paintStore.toggleInlineColorPicker()}
+        onClick={() => onActiveColorChanged?.(paintStore.foregroundColor.peek())}
       />
     </div>
   );

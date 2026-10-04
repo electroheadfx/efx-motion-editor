@@ -31,6 +31,8 @@ export interface PhysicsPaintStudioKeyboardActions {
   copyRotoKey?: () => void;
   cutRotoKey?: () => void;
   pasteRotoKey?: () => void;
+  /** quick-261004-hwa: Photoshop X — swap foreground/background swatch. */
+  swapFgBg?: () => void;
   deleteRotoKey?: () => void;
   /** 49-06 UAT: delete the selected Background clip (timeline Delete/Backspace). */
   deleteBackgroundClip?: () => void;
@@ -294,6 +296,11 @@ export function dispatchPhysicsPaintStudioKeyDown(
     if (key === 'o') {
       event.preventDefault();
       actions.toggleOnion();
+      return;
+    }
+    if (key === 'x' && actions.swapFgBg) {
+      event.preventDefault();
+      actions.swapFgBg();
       return;
     }
     if (event.key === '[' || event.key === ']') {
