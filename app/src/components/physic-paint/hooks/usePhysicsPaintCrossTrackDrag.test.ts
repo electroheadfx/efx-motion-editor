@@ -352,7 +352,7 @@ describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05
     expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
     // The commit carries the PREVIEWED insertion frame (47 close-out UAT round
     // 2): clientX 306 - contentLeft 270 = 36px → frame 2 at the 18px pitch.
-    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1'], 2);
+    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1'], 2, true);
     expect(harness.document.sourceKeys).toEqual([]);
     expect(harness.document.destinationKeys).toEqual(['key-1-fresh']);
     expect(harness.publishStatus).toHaveBeenCalledWith('Moved 1 key to another track.');
@@ -373,7 +373,7 @@ describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05
     // starts exactly at the line the user saw.
     harness.windowLike.emit('pointermove', pointerEvent({ clientX: 342, clientY: 45 }));
     harness.windowLike.emit('pointerup', pointerEvent({ clientX: 342, clientY: 45 }));
-    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1'], 4);
+    expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1'], 4, true);
   });
 
   it('a rejected move leaves both rows byte-identical and publishes the specific English reason with the red warning triangle (D-17)', async () => {

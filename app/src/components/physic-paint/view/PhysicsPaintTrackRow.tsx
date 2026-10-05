@@ -539,6 +539,13 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
   // with onSelectTrackFrame wired the SAME click also selects the frame/key —
   // one click, never two.
   const handleRowClick = (event: MouseEvent) => {
+    // A crossed cross-track drag ends with a browser click on the source
+    // cell/rail — swallow it so it never re-activates the source track over the
+    // drop's destination activation.
+    if (consumeCrossTrackClickSuppression?.()) {
+      event.stopPropagation();
+      return;
+    }
     const target = event.target as HTMLElement | null;
     const cell = target?.closest?.('[data-roto-app-frame]') as HTMLElement | null;
     const frame = cell ? Number(cell.dataset.rotoAppFrame) : NaN;
@@ -575,6 +582,12 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
         >
           {frameCells.map((frame) => {
             const state = resolveTrackRowCellState(layerId, trackId, frame);
+            // studio-realm-divergence: a real key's cell carries its identity so
+            // a key grab starts here (the same concept as a rail grab — no need
+            // to activate this track first). The cross-track resolver reads it.
+            const keyRecord = kind === 'paint' && layerId
+              ? physicPaintStore.getRotoRealKeyRecordByAppFrame(layerId, trackId, frame)
+              : null;
             // UAT round 10: linked-loop cells carry the same repeat/source
             // classes as the active lane — the repeat design (gray + dot)
             // never changes when the track is selected or not.
@@ -590,6 +603,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
                 key={frame}
                 className={cellClass}
                 data-roto-app-frame={frame}
+                data-roto-key-id={keyRecord?.keyId}
                 aria-hidden="true"
               >
                 {frame}

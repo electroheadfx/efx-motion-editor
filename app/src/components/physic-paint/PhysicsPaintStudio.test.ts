@@ -271,8 +271,11 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     // whole Studio per paint event. The live active-track id is a memo key too
     // (studio-realm-divergence): the throttled revisions lag 1-2s behind
     // setActiveTrackId, which left the rich lane painting the previous track's
-    // keys at the new row until the throttle fired.
-    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, activeTrackIdForReads) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, activeTrackIdForReads, throttledPaintRevision.value, throttledEfxRevision.value]);');
+    // keys at the new row until the throttle fired. rotoPhysicalRevision is the
+    // STRUCTURAL clock (record/loop/break replacement only, never stroke frame
+    // writes) — a move/cut/paste repaints the lane immediately instead of
+    // sitting in the stroke throttle's 1s stale window.
+    expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, activeTrackIdForReads) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, activeTrackIdForReads, rotoPhysicalRevision.value, throttledPaintRevision.value, throttledEfxRevision.value]);');
     expect(studio).toContain('getRotoPhysicalDocument: (layerId, trackId) => physicPaintStore.getRotoPhysicalDocument(layerId, trackId),');
     expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, trackId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, appFrame),');
     expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
@@ -334,7 +337,7 @@ describe('Physics Paint Group and Action cross-selection (43.2-15)', () => {
     expect(studio).toContain('.filter((loopClip) => loopClip.scriptId === actionId)');
     expect(studio).toContain('if (!groupsById.has(loopClip.loopId)) groupsById.set(loopClip.loopId, loopClip);');
     expect(studio).toContain('left.placementStart - right.placementStart || left.loopId.localeCompare(right.loopId)');
-    expect(studio).toContain('[launchContext?.layerId, activeTrackIdForReads, throttledPaintRevision.value, throttledEfxRevision.value]');
+    expect(studio).toContain('[launchContext?.layerId, activeTrackIdForReads, rotoPhysicalRevision.value, throttledPaintRevision.value, throttledEfxRevision.value]');
   });
 
   it('reveals only an available source Action when a stable Group is selected', () => {

@@ -4637,12 +4637,16 @@ export const physicPaintStore = {
     }
     const copied = this.copyTrackSelection(layerId, trackId, keyIds);
     if (!copied.ok) return copied;
+    // Same copy/delete coherence as moveTrackItems: the payload carries exactly
+    // the grabbed keys (narrowed off the rail-atomic segment expansion) and the
+    // removal deletes exactly those.
+    const exactPayload = _narrowRailSetCopyPayloadToKeyIds(copied.payload, keyIdSet);
     const carriedLoopIds = new Set(
-      copied.payload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
+      exactPayload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
     );
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, trackId, keyIdSet, carriedLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
-    return { ok: true, payload: copied.payload };
+    return { ok: true, payload: exactPayload };
   },
 
   /**
@@ -4741,9 +4745,20 @@ export const physicPaintStore = {
    * frames; a partially-overlapping Hold fails the move before anything is
    * written (the same guard as cut).
    */
-  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame?: number): RotoTrackPasteResult {
+  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame?: number, removeFromSource = true): RotoTrackPasteResult {
     if (!layerId || !fromTrackId || !toTrackId) return { ok: false, reason: 'track-missing' };
-    if (fromTrackId === toTrackId) return { ok: false, reason: 'duplicate-destination-frame' };
+    // studio-realm-divergence: a same-track drop is a within-track slide (the
+    // row-grab path lands a key/rail on any frame of its own track in one
+    // gesture). copy-paste-delete covers it — the paste lands at the previewed
+    // frame, the delete removes the source keys. An overlapping slide rejects
+    // cleanly ('duplicate-destination-frame') because the source keys still
+    // occupy the target frames at propose time.
+    //
+    // `removeFromSource = false` is the cross-track KEY-grab contract: the key
+    // is DUPLICATED onto the destination and the origin rail stays intact
+    // (grabbing one key out of a rail must never shrink or break that rail).
+    // A whole-rail grab and a same-track slide keep the move form (the source
+    // keys are removed).
     const sourceDocument = this.getRotoPhysicalDocument(layerId, fromTrackId);
     if (!sourceDocument) return { ok: false, reason: 'track-missing' };
     if (!Array.isArray(keys) || keys.length === 0) return { ok: false, reason: 'empty-set' };
@@ -4764,6 +4779,12 @@ export const physicPaintStore = {
     }
     const copied = this.copyTrackSelection(layerId, fromTrackId, keys);
     if (!copied.ok) return copied;
+    // studio-realm-divergence: copy-and-delete exactly the grabbed keys. The
+    // shared builder is rail-atomic (a member carries its whole derived
+    // segment); narrowing keeps the move's two halves coherent so a one-key
+    // grab never leaves the rail's other keys on the source while their copies
+    // land on the destination.
+    const exactPayload = _narrowRailSetCopyPayloadToKeyIds(copied.payload, keyIdSet);
     const destinationDocument = this.getRotoPhysicalDocument(layerId, toTrackId);
     if (!destinationDocument) return { ok: false, reason: 'track-missing' };
     // Paste half FIRST. Default (paste/cut parity): the payload's own anchor —
@@ -4775,23 +4796,76 @@ export const physicPaintStore = {
     // whole move with the source untouched.
     const pasted = proposeRails({
       document: destinationDocument,
-      payload: copied.payload,
+      payload: exactPayload,
       placementMode: 'paste',
-      destinationAppFrame: destinationAppFrame ?? copied.payload.anchorAppFrame,
+      destinationAppFrame: destinationAppFrame ?? exactPayload.anchorAppFrame,
       targetTrackId: toTrackId,
     });
     if (!pasted.ok) return { ok: false, reason: pasted.reason };
     const applied = _applyRotoTrackPaste(this, layerId, toTrackId, destinationDocument, pasted.proposal);
     if (!applied.ok) return { ok: false, reason: applied.reason };
-    // Delete half second: the source loses the moved items exactly like a cut.
+    if (!removeFromSource) return { ok: true, impact: pasted.impact };
+    // Delete half second: the source loses exactly the moved items.
     const carriedLoopIds = new Set(
-      copied.payload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
+      exactPayload.members.filter((member) => member.kind === 'loop').map((member) => member.loopId),
     );
     const removed = _applyRotoTrackSelectionRemoval(this, layerId, fromTrackId, keyIdSet, carriedLoopIds);
     if (!removed.ok) return { ok: false, reason: 'apply-failed' };
     return { ok: true, impact: pasted.impact };
   },
 };
+
+/**
+ * studio-realm-divergence (nature: contract): narrow a rail-set copy payload to
+ * exactly the grabbed key identities. `buildRotoRailSetCopyPayload` is
+ * rail-atomic (a `key-rail` member carries its whole derived segment), but
+ * cut/move must copy and delete EXACTLY the caller's keys — expanding left the
+ * rest of the rail on the source while its copy landed on the destination
+ * ("moved the rail but duplicated on the origin track too"). Loop members ride
+ * along untouched (the caller already gated partial-loop overlap).
+ */
+function _narrowRailSetCopyPayloadToKeyIds<
+  T extends {
+    readonly anchorAppFrame: number;
+    readonly sourceTrackId: string;
+    readonly members: readonly (
+      | { readonly kind: 'key-rail'; readonly firstKeyId: string; readonly firstKeyFrame: number; readonly entries: readonly { readonly sourceKeyId: string; readonly sourceAppFrame: number; readonly payload: PhysicPaintRotoRealKeyPayload; readonly ownsIncomingBreak: boolean }[]; readonly firstKeyOwnsIncomingBreak: boolean }
+      | { readonly kind: 'loop'; readonly placementStart: number }
+    )[];
+  },
+>(payload: T, keyIdSet: ReadonlySet<string>): T {
+  const members: T['members'][number][] = [];
+  for (const member of payload.members) {
+    if (member.kind !== 'key-rail') {
+      members.push(member);
+      continue;
+    }
+    const entries = member.entries.filter((entry) => keyIdSet.has(entry.sourceKeyId));
+    if (entries.length === 0) continue;
+    members.push(Object.freeze({
+      kind: 'key-rail' as const,
+      firstKeyId: entries[0].sourceKeyId,
+      firstKeyFrame: entries[0].sourceAppFrame,
+      entries: Object.freeze(entries),
+      firstKeyOwnsIncomingBreak: entries[0].ownsIncomingBreak,
+    }));
+  }
+  if (members.length === 0) return payload;
+  let anchorAppFrame = payload.anchorAppFrame;
+  let first = true;
+  for (const member of members) {
+    const frame = member.kind === 'key-rail' ? member.firstKeyFrame : member.placementStart;
+    if (first || frame < anchorAppFrame) {
+      anchorAppFrame = frame;
+      first = false;
+    }
+  }
+  return Object.freeze({
+    anchorAppFrame,
+    members: Object.freeze(members),
+    sourceTrackId: payload.sourceTrackId,
+  }) as T;
+}
 
 /**
  * 46-03 shared removal transaction for cut/clear/move: deletes the selected

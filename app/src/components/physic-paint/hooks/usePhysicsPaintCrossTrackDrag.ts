@@ -46,6 +46,15 @@ export interface CrossTrackRowBounds {
 export interface CrossTrackDragSource {
   readonly fromTrackId: string;
   readonly keyIds: readonly string[];
+  /** studio-realm-divergence: true when the grab started on a read-only row's
+   *  rail/key (the row has no same-row drag of its own), so this hook also owns
+   *  the within-row slide to any frame — not just the cross-row move. */
+  readonly rowSource?: boolean;
+  /** studio-realm-divergence: 'copy' = a single-key grab (the key is duplicated
+   *  onto the destination, the origin rail stays intact); 'move' (or absent) =
+   *  a whole-rail grab (the rail leaves the source). Same-track slides always
+   *  move. */
+  readonly mode?: 'copy' | 'move';
 }
 
 /** The status-capsule tone the strip's action bundle accepts. */
@@ -95,7 +104,7 @@ export interface CrossTrackDragInput {
    *  round 2 — the rail lands where released, never at the source frames).
    *  Async (studio-realm-divergence): the strip ships the moved tracks to the
    *  main window before resolving, so the gesture cannot race a stale parent. */
-  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame: number): Promise<CrossTrackMoveResult>;
+  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame: number, removeFromSource: boolean): Promise<CrossTrackMoveResult>;
   /** The status-capsule publication the outcome maps to. */
   readonly publishStatus: (message: string) => void;
   /** Marks the capsule error tone for rejections (red warning triangle). */
@@ -111,6 +120,9 @@ export interface CrossTrackDragApi {
   readonly insertionFrame: Signal<number | null>;
   /** True only while the pointer is over a row different from the source. */
   readonly isCrossing: Signal<boolean>;
+  /** studio-realm-divergence: true while a read-only-row grab slides within its
+   *  own row (the insertion line shows on the source row). */
+  readonly isSliding: Signal<boolean>;
   /** Rows-region pointerdown entry point — the ONLY way a session starts. */
   onPointerDown(event: PointerEvent): void;
   /** Returns true exactly once for the browser click dispatched after a crossed
@@ -124,8 +136,9 @@ export interface CrossTrackDragApi {
  * The success capsule line for a committed cross-track move (D-17), mirroring
  * the Phase 46 paste summaries ('Pasted the copied Rails.') with a count.
  */
-export function buildCrossTrackMoveSuccessMessage(keyCount: number): string {
-  return keyCount === 1 ? 'Moved 1 key to another track.' : `Moved ${keyCount} keys to another track.`;
+export function buildCrossTrackMoveSuccessMessage(keyCount: number, copied = false): string {
+  const verb = copied ? 'Copied' : 'Moved';
+  return keyCount === 1 ? `${verb} 1 key to another track.` : `${verb} ${keyCount} keys to another track.`;
 }
 
 /** Fixed English reason map — every store rejection surfaces a specific line
@@ -146,8 +159,12 @@ export function mapCrossTrackMoveRejection(reason: string | undefined): string {
 interface CrossTrackDragSession {
   readonly pointerId: number;
   readonly source: CrossTrackDragSource;
-  /** True once the rows-region holds pointer capture (crossing happened). */
+  /** Pointer x at pointerdown — the horizontal slide threshold reference. */
+  readonly originX: number;
+  /** True once the rows-region holds pointer capture (crossing or sliding). */
   started: boolean;
+  /** True once the pointer travelled horizontally past the slide threshold. */
+  slidHorizontally: boolean;
 }
 
 /**
@@ -198,6 +215,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
   const destinationTrackId = useSignal<string | null>(null);
   const insertionFrame = useSignal<number | null>(null);
   const isCrossing = useSignal(false);
+  const isSliding = useSignal(false);
   const sessionRef = useRef<CrossTrackDragSession | null>(null);
   const suppressNextClickRef = useRef(false);
   const inputRef = useRef(input);
@@ -219,6 +237,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     destinationTrackId.value = null;
     insertionFrame.value = null;
     isCrossing.value = false;
+    isSliding.value = false;
   };
 
   const cleanup = (session: CrossTrackDragSession) => {
@@ -259,12 +278,39 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     if (!session || moveEvent.pointerId !== session.pointerId) return;
     markInteractionActive();
     const active = inputRef.current;
+    if (Math.abs(moveEvent.clientX - session.originX) > 4) {
+      session.slidHorizontally = true;
+    }
     const destination = computeCrossTrackDestination(
       active.getRowBounds(),
       moveEvent.clientY,
       session.source.fromTrackId,
     );
     if (destination === null || destination === session.source.fromTrackId) {
+      // On the source row (or outside the rows). A read-only-row grab OWNS the
+      // within-row slide too (the row has no same-row drag of its own), so a
+      // horizontal move keeps the insertion line on the source row.
+      if (session.source.rowSource && session.slidHorizontally) {
+        if (!session.started) {
+          const captureElement = active.getCaptureElement();
+          if (captureElement) {
+            captureElement.setPointerCapture(moveEvent.pointerId);
+            session.started = true;
+            suppressNextClickRef.current = true;
+          }
+        }
+        destinationTrackId.value = session.source.fromTrackId;
+        insertionFrame.value = computeInsertionFrame(
+          moveEvent.clientX - active.getContentLeft(),
+          active.getScrollLeft(),
+          active.zoom ?? 1,
+          active.framePitch,
+        );
+        isSliding.value = true;
+        isCrossing.value = false;
+        moveEvent.preventDefault();
+        return;
+      }
       // On the source row (or outside the rows): the feedback clears, the
       // takeover capture stays (a re-cross re-arms the signals instantly).
       clearSignals();
@@ -286,6 +332,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     }
     destinationTrackId.value = destination;
     isCrossing.value = true;
+    isSliding.value = false;
     insertionFrame.value = computeInsertionFrame(
       moveEvent.clientX - active.getContentLeft(),
       active.getScrollLeft(),
@@ -306,34 +353,46 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
         upEvent.clientY,
         session.source.fromTrackId,
       );
-      if (destination !== null && destination !== session.source.fromTrackId) {
+      const insertionFrameAtRelease = computeInsertionFrame(
+        upEvent.clientX - active.getContentLeft(),
+        active.getScrollLeft(),
+        active.zoom ?? 1,
+        active.framePitch,
+      );
+      const commitMove = (toTrackId: string) => {
         // The single commit path (D-17): the store port runs exactly once per
-        // crossed release with the captured destination — copy-paste-delete
-        // semantics live in moveTrackItems, never here (D-09). The commit
-        // lands the payload's anchor at the SAME frame the insertion preview
-        // showed (preview-is-the-commit, 47 close-out UAT round 2): the rail
-        // drops where released, not at the source frames.
-        // studio-realm-divergence: the move ships both tracks to the main
-        // window before it resolves, so the status line waits for it too.
+        // release with the captured destination. A same-track slide always
+        // MOVES (the key is re-timed); a cross-track KEY grab COPIES (the key
+        // is duplicated onto the destination, the origin rail stays intact) and
+        // a cross-track RAIL grab MOVES (the rail leaves the source).
+        const removeFromSource = toTrackId === session.source.fromTrackId
+          || session.source.mode !== 'copy';
         void active.moveTrackItems(
           active.layerId,
           session.source.fromTrackId,
-          destination,
+          toTrackId,
           session.source.keyIds,
-          computeInsertionFrame(
-            upEvent.clientX - active.getContentLeft(),
-            active.getScrollLeft(),
-            active.zoom ?? 1,
-            active.framePitch,
-          ),
+          insertionFrameAtRelease,
+          removeFromSource,
         ).then((result) => {
           if (result.ok) {
-            active.publishStatus(buildCrossTrackMoveSuccessMessage(session.source.keyIds.length));
+            active.publishStatus(buildCrossTrackMoveSuccessMessage(
+              session.source.keyIds.length,
+              !removeFromSource,
+            ));
           } else {
             active.setApplyStatus?.('error');
             active.publishStatus(mapCrossTrackMoveRejection(result.reason));
           }
         });
+      };
+      if (destination !== null && destination !== session.source.fromTrackId) {
+        commitMove(destination);
+      } else if (session.source.rowSource && session.slidHorizontally) {
+        // studio-realm-divergence: a within-row slide on a read-only row — the
+        // key/rail lands on the previewed frame of its OWN track, and the
+        // move's onSelectTrack activates that track (auto-select).
+        commitMove(session.source.fromTrackId);
       }
     }
     cleanup(session);
@@ -367,7 +426,9 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     const session: CrossTrackDragSession = {
       pointerId: event.pointerId,
       source,
+      originX: event.clientX,
       started: false,
+      slidHorizontally: false,
     };
     sessionRef.current = session;
     win.addEventListener('pointermove', handlePointerMove);
@@ -380,6 +441,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     destinationTrackId,
     insertionFrame,
     isCrossing,
+    isSliding,
     onPointerDown,
     consumeClickSuppression,
   };

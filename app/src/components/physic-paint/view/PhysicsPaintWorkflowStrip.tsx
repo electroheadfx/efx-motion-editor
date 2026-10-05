@@ -2424,7 +2424,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!fromTrackId) return null;
     const keyCell = target.closest<HTMLElement>('[data-roto-key-id]');
     const keyId = keyCell?.dataset.rotoKeyId;
-    if (keyId) return { fromTrackId, keyIds: [keyId] };
+    // studio-realm-divergence: a grab inside a read-only row is a row source —
+    // this hook owns the within-row slide as well as the cross-row move (the
+    // row has no same-row drag of its own). The active lane (`.physics-paint-lane`)
+    // keeps its own same-row drags.
+    const rowSource = target.closest('.physics-paint-track-row') !== null;
+    // studio-realm-divergence: a single-key grab COPIES across tracks (the key
+    // is duplicated onto the destination, the origin rail stays intact); a
+    // whole-rail grab MOVES (the rail leaves the source).
+    if (keyId) return { fromTrackId, keyIds: [keyId], rowSource, mode: 'copy' };
     const rail = target.closest<HTMLElement>('[data-rail-first-frame]');
     if (!rail) return null;
     const firstFrame = Number(rail.dataset.railFirstFrame);
@@ -2438,23 +2446,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (rowKeyIds !== undefined) {
       const keyIds = rowKeyIds.split(',').filter(Boolean);
       if (keyIds.length === 0) return null;
-      return { fromTrackId, keyIds };
+      return { fromTrackId, keyIds, rowSource: true, mode: 'move' };
     }
     if (rail.classList.contains('physics-paint-loop-clip-rail-target')) {
       const range = loopResolutionContext?.ranges.find((candidate) => candidate.placementStart === firstFrame);
       if (!range) return null;
       if (railSetMoveMemberLoopIds.includes(range.loopId)) {
-        return { fromTrackId, keyIds: collectRailSetMembers() };
+        return { fromTrackId, keyIds: collectRailSetMembers(), mode: 'move' };
       }
-      return { fromTrackId, keyIds: range.sourceKeyIds };
+      return { fromTrackId, keyIds: range.sourceKeyIds, mode: 'move' };
     }
     if (rail.classList.contains('physics-paint-key-rail-target')) {
       const segment = keyRailSegments.find((candidate) => candidate.firstKeyFrame === firstFrame);
       if (!segment) return null;
       if (railSetMoveMemberKeyRailIds.includes(segment.firstKeyId)) {
-        return { fromTrackId, keyIds: collectRailSetMembers() };
+        return { fromTrackId, keyIds: collectRailSetMembers(), mode: 'move' };
       }
-      return { fromTrackId, keyIds: segment.keyIds };
+      return { fromTrackId, keyIds: segment.keyIds, mode: 'move' };
     }
     return null;
   }, [keyRailSegments, loopResolutionContext, railSetMoveMemberKeyRailIds, railSetMoveMemberLoopIds, collectRailSetMembers]);
@@ -2489,8 +2497,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // activates the destination track (47 close-out UAT) through the same
     // onSelectTrack route a row click uses — the drop lands where the user
     // is looking, with the canvas and lane following the new active track.
-    moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {
-      const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame);
+    moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame, removeFromSource) => {
+      const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame, removeFromSource);
       if (!result.ok) return result;
       props.onSelectTrack?.(toTrackId);
       // Ship the two mutated tracks to the main window before the gesture
@@ -4399,7 +4407,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           // live insertion preview. The gesture never mutates
                           // the row; these props are presentation only.
                           crossDestination={crossTrackDrag.destinationTrackId.value === track.id && crossTrackDrag.isCrossing.value}
-                          crossInsertionFrame={crossTrackDrag.isCrossing.value && crossTrackDrag.destinationTrackId.value === track.id
+                          crossInsertionFrame={crossTrackDrag.destinationTrackId.value === track.id
+                            && (crossTrackDrag.isCrossing.value || crossTrackDrag.isSliding.value)
                             ? crossTrackDrag.insertionFrame.value
                             : null}
                           onSelectTrack={props.onSelectTrack}

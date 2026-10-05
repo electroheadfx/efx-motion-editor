@@ -14,7 +14,6 @@ import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoord
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
 import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';
-import { capturePhysicalEdit } from '../../../lib/physicalEditCapture';
 
 /** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
  * (superseded by a mid-sequence revision advance, or the frame vanished), the
@@ -368,19 +367,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         // (e.g. the row blend button's focus switch) drops the previous track's
         // pixels — the child keeps the painted bytes and the parent never gets
         // them, which is the child/parent divergence behind "revision became
-        // stale before commit". MEASURE-ONLY: never throws into the edit path.
-        capturePhysicalEdit('studio', 'live-pixel-delivery-dropped', {
-          layerId: identity.layerId,
-          keyId: identity.keyId,
-          identityAppFrame: identity.appFrame,
-          identityContentRevision: identity.contentRevision,
-          resolvedTrackId: trackId,
-          hasRecord: currentRecord !== null,
-          recordAppFrame: currentRecord?.appFrame ?? null,
-          currentTrackRevision: currentRevision,
-          launchMatch: Boolean(launch && launch.operationId === identity.launchId && launch.layerId === identity.layerId),
-          payloadKind: payload.kind,
-        });
+        // stale before commit".
         return;
       }
       await inputRef.current.sendCachePayload(payload);
@@ -474,17 +461,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // studio-blend-off-corruption: a live-pixel local commit skipped because
       // the ACTIVE track (re-resolved now) doesn't own the transaction's
       // expected revision — the cross-track effect of an active-track switch
-      // racing a pending flush. MEASURE-ONLY, never throws.
-      capturePhysicalEdit('studio', 'live-pixel-local-skip', {
-        layerId,
-        activeTrackId: trackId,
-        appFrame: renderedFrame.appFrame,
-        expectedKeyId: expectedKeyId ?? null,
-        expectedContentRevision: expectedContentRevision ?? null,
-        activeDocumentRevision: document?.revision ?? null,
-        hasDocument: document !== null,
-        hasContentRevision: Boolean(contentRevision),
-      });
+      // racing a pending flush.
       return false;
     }
     const route = await routeRotoPhysicalPaintFrame({
