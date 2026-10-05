@@ -129,6 +129,11 @@ export interface PhysicsPaintTrackRowProps {
   /** One-click rail selection on a non-active row: activates the track and
    *  selects the clicked Key Rail / Loop Clip rail in the same click. */
   readonly onSelectTrackRail?: (trackId: string, rail: TrackRowRailSelection) => void;
+  /** studio-realm-divergence: consumes the post-cross-track-drag click. A rail
+   *  grab can now START on this read-only row; after a crossed drop the
+   *  browser still clicks the source rail, and that click must not
+   *  re-activate the SOURCE track over the drop's destination activation. */
+  readonly consumeCrossTrackClickSuppression?: () => boolean;
   /** 49-06 (UAT round 2): clicking an EMPTY Background row cell is the
    *  placement gesture — it selects the target frame (the import icon then
    *  imports AT that frame) and clears any selected Bg clip so the right-panel
@@ -204,6 +209,10 @@ interface TrackRowLoopLine {
    *  the row classifies it so the reveal green line reads on every track. */
   readonly railKind: RotoRailKind;
   readonly unresolved: boolean;
+  /** studio-realm-divergence: the loop's source key identities, carried on the
+   *  rail DOM so a cross-track drag from a NON-active row resolves without the
+   *  active lane's loop context. */
+  readonly sourceKeyIds: readonly string[];
 }
 
 /**
@@ -316,6 +325,7 @@ function resolveTrackRowLoopVisuals(
       mode: clip?.mode ?? 'progressive',
       railKind: classifyRotoRailKind(clip?.railKind),
       unresolved: Boolean(continuousRange.unresolved),
+      sourceKeyIds: range.sourceKeyIds,
     });
   }
   // Per-frame linked-loop cell classes — the same mapping the active lane's
@@ -494,6 +504,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     onNavigateToFrame,
     onSelectTrackFrame,
     onSelectTrackRail,
+    consumeCrossTrackClickSuppression,
     onSelectBackgroundFrame,
     onSelectBackgroundClip,
     selectedBackgroundClipId = null,
@@ -596,6 +607,9 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           <span
             key={segment.firstKeyId}
             class="physics-paint-track-row-rail physics-paint-rail-target boundary-start boundary-cell-start boundary-end boundary-cell-end"
+            data-rail-first-frame={segment.firstKeyFrame}
+            data-rail-kind="key"
+            data-rail-key-ids={segment.keyIds.join(',')}
             style={{
               left: `${segment.firstKeyFrame * ROW_CELL_WIDTH_PX}px`,
               width: `${(segment.lastKeyFrame + 1 - segment.firstKeyFrame) * ROW_CELL_WIDTH_PX}px`,
@@ -603,6 +617,13 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
             role="button"
             aria-label={`Key Rail frames ${segment.firstKeyFrame}–${segment.lastKeyFrame}`}
             onClick={(event) => {
+              // A crossed cross-track drag ends with a browser click on this
+              // source rail — swallow it so it never re-activates the source
+              // track over the drop's destination activation.
+              if (consumeCrossTrackClickSuppression?.()) {
+                event.stopPropagation();
+                return;
+              }
               // Only consume the click when the selection intent is wired —
               // otherwise let it bubble to the row's cell click (a rail click
               // without a handler must never be a dead click).
@@ -623,10 +644,17 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
           <span
             key={line.loopId}
             class={`physics-paint-track-row-rail physics-paint-rail-target physics-paint-loop-clip-rail-target mode-${line.mode}${line.railKind === 'reveal' ? ' rail-kind-reveal' : ''}${line.unresolved ? ' unresolved' : ''} boundary-start boundary-cell-start boundary-end boundary-cell-end`}
+            data-rail-first-frame={line.placementFrame}
+            data-rail-kind="loop"
+            data-rail-key-ids={line.sourceKeyIds.join(',')}
             style={{ left: `${line.left}px`, width: `${line.width}px` }}
             role="button"
             aria-label={`${getRotoRailKindLabel(line.railKind)} rail at frame ${line.placementFrame}`}
             onClick={(event) => {
+              if (consumeCrossTrackClickSuppression?.()) {
+                event.stopPropagation();
+                return;
+              }
               // Same as the key-rail wrapper: only consume when wired.
               if (!onSelectTrackRail) return;
               event.stopPropagation();

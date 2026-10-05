@@ -113,6 +113,11 @@ export interface CrossTrackDragApi {
   readonly isCrossing: Signal<boolean>;
   /** Rows-region pointerdown entry point — the ONLY way a session starts. */
   onPointerDown(event: PointerEvent): void;
+  /** Returns true exactly once for the browser click dispatched after a crossed
+   *  drag. A rail's click-select must swallow that click — otherwise it
+   *  re-activates the SOURCE track and undoes the drop's destination
+   *  activation (studio-realm-divergence). */
+  consumeClickSuppression(): boolean;
 }
 
 /**
@@ -194,8 +199,15 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
   const insertionFrame = useSignal<number | null>(null);
   const isCrossing = useSignal(false);
   const sessionRef = useRef<CrossTrackDragSession | null>(null);
+  const suppressNextClickRef = useRef(false);
   const inputRef = useRef(input);
   inputRef.current = input;
+
+  const consumeClickSuppression = () => {
+    if (!suppressNextClickRef.current) return false;
+    suppressNextClickRef.current = false;
+    return true;
+  };
 
   /** Test-injectable window surface; the strip mounts with `undefined` and
    *  the hook falls back to the real window (node-env contract tests render
@@ -230,6 +242,12 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
           // The pointer already ended — the capture was auto-released.
         }
       }
+      // The browser still dispatches a click after a crossed drag. Keep the
+      // suppression through that click (the rail's click-select consumes it),
+      // then drop it so a later genuine click is never swallowed.
+      setTimeout(() => {
+        suppressNextClickRef.current = false;
+      }, 0);
     }
     if (sessionRef.current === session) sessionRef.current = null;
     clearSignals();
@@ -264,6 +282,7 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
       }
       captureElement.setPointerCapture(moveEvent.pointerId);
       session.started = true;
+      suppressNextClickRef.current = true;
     }
     destinationTrackId.value = destination;
     isCrossing.value = true;
@@ -362,5 +381,6 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
     insertionFrame,
     isCrossing,
     onPointerDown,
+    consumeClickSuppression,
   };
 }

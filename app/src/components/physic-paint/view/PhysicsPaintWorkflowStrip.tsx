@@ -2429,6 +2429,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!rail) return null;
     const firstFrame = Number(rail.dataset.railFirstFrame);
     if (!Number.isInteger(firstFrame)) return null;
+    // studio-realm-divergence: a NON-active row's rail carries its full key
+    // identity on the DOM (the row derives its own segments). The active
+    // lane's rails carry only the first frame and resolve against the lane's
+    // segments below. A press on a read-only row must resolve WITHOUT
+    // activating the source track first — the whole point of the grab.
+    const rowKeyIds = rail.dataset.railKeyIds;
+    if (rowKeyIds !== undefined) {
+      const keyIds = rowKeyIds.split(',').filter(Boolean);
+      if (keyIds.length === 0) return null;
+      return { fromTrackId, keyIds };
+    }
     if (rail.classList.contains('physics-paint-loop-clip-rail-target')) {
       const range = loopResolutionContext?.ranges.find((candidate) => candidate.placementStart === firstFrame);
       if (!range) return null;
@@ -4395,6 +4406,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           onNavigateToFrame={props.onNavigateToSyncedFrame}
                           onSelectTrackFrame={props.onSelectTrackFrame}
                           onSelectTrackRail={props.onSelectTrackRail}
+                          consumeCrossTrackClickSuppression={crossTrackDrag.consumeClickSuppression}
                         />
                       ),
                   )}
