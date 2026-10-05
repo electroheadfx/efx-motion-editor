@@ -4,6 +4,7 @@ import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
+import { capturePhysicalEdit, summarizeRealKeyRecordsForCapture } from './physicalEditCapture';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
@@ -1668,8 +1669,30 @@ async function applyPhysicPaintRotoPhysicalMap(
   // immediately.
   await awaitPendingPhysicPaintRuntimeMirror();
   const reject = (error: string, stagedRevision?: string) => {
+    capturePhysicalEdit('main', 'apply-reject', {
+      error,
+      operationKind: payload.operationKind,
+      operationId: payload.operationId,
+      layerId: payload.layerId,
+      payloadTrackId: payload.trackId,
+      leaseTrackId: payload.leaseToken?.trackId ?? null,
+      parentActiveTrackId: getEfxPaintDocument(payload.layerId)?.activeTrackId ?? null,
+      expectedRevision: payload.expectedRevision,
+      stagedRevision: stagedRevision ?? null,
+      recordCount: payload.records.length,
+    });
     return physicalEditResult(payload, { ok: false, error, stagedRevision });
   };
+  capturePhysicalEdit('main', 'apply-received', {
+    operationKind: payload.operationKind,
+    operationId: payload.operationId,
+    layerId: payload.layerId,
+    payloadTrackId: payload.trackId,
+    leaseTrackId: payload.leaseToken?.trackId ?? null,
+    parentActiveTrackId: getEfxPaintDocument(payload.layerId)?.activeTrackId ?? null,
+    expectedRevision: payload.expectedRevision,
+    recordCount: payload.records.length,
+  });
   const isPlayScript = payload.operationKind === 'play-script';
   if (isPlayScript && (!projectStore.filePath.peek() || !projectStore.scriptLibraryAuthority.peek())) {
     return reject('Save the project first.');
@@ -1722,6 +1745,28 @@ async function applyPhysicPaintRotoPhysicalMap(
   // physical-map apply, so a "revision became stale" reject can be attributed to
   // the exact diverging field (records vs interpolation vs loopClips vs breaks
   // vs overrides) by diffing against the child's payload-send components.
+  capturePhysicalEdit('main', 'parent-revision-state', {
+    operationKind: payload.operationKind,
+    operationId: payload.operationId,
+    layerId: payload.layerId,
+    payloadTrackId: payload.trackId,
+    parentRevision: currentRevision,
+    recordCount: currentRecords.length,
+    interpolationEnabled: currentInterpolation.enabled,
+    interpolationMode: currentInterpolation.mode,
+    loopClipCount: currentLoopClips.length,
+    incomingBreakCount: currentIncomingInterpolationBreakKeyIds.length,
+    overrideCount: currentGroupOverrideRecords.length,
+    capacity,
+    docRevision: currentDocument?.revision ?? null,
+    selectedKeyId: currentDocument?.selectedKeyId ?? null,
+    cursorAppFrame: currentDocument?.cursorAppFrame ?? null,
+    payloadInterpolationEnabled: payload.interpolationEnabled,
+    payloadInterpolationMode: payload.interpolationMode,
+    payloadLoopClipCount: payload.loopClips?.length ?? null,
+    payloadIncomingBreakCount: payload.incomingInterpolationBreakKeyIds?.length ?? null,
+    payloadOverrideCount: payload.groupOverrideRecords?.length ?? null,
+  });
   const parentEndExclusive = getTimelineRangeEndExclusive(layer);
   if (payload.intent !== undefined && parentEndExclusive === null) {
     return reject('Physics Paint layer has no authoritative parent timeline range.');
@@ -1759,6 +1804,17 @@ async function applyPhysicPaintRotoPhysicalMap(
       : replayEntry.before;
     if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot)) {
       debugReplaySnapshotDiff(liveSourceSnapshot, expectedSourceSnapshot);
+      capturePhysicalEdit('main', 'replay-snapshot-mismatch', {
+        operationId: payload.operationId,
+        layerId: payload.layerId,
+        payloadTrackId: payload.trackId,
+        liveRevision: liveSourceSnapshot.revision,
+        expectedRevision: expectedSourceSnapshot.revision,
+        liveRecordCount: liveSourceSnapshot.records.length,
+        expectedRecordCount: expectedSourceSnapshot.records.length,
+        liveRecordSummaries: summarizeRealKeyRecordsForCapture(liveSourceSnapshot.records),
+        expectedRecordSummaries: summarizeRealKeyRecordsForCapture(expectedSourceSnapshot.records),
+      });
       return reject('Roto physical replay source snapshot does not match the original accepted command.');
     }
   }
@@ -2048,6 +2104,16 @@ async function applyPhysicPaintRotoPhysicalMap(
     selectedKeyId: acceptedSelectedKeyId,
     selectedAppFrame: acceptedSelectedAppFrame,
     cursorAppFrame: acceptedDocument.cursorAppFrame,
+  });
+  capturePhysicalEdit('main', 'apply-accepted', {
+    operationKind: payload.operationKind,
+    operationId: payload.operationId,
+    layerId: payload.layerId,
+    payloadTrackId: payload.trackId,
+    acceptedRevision: acceptedDocument.revision,
+    recordCount: acceptedDocument.realKeyRecords.length,
+    // studio-realm-divergence proof: the settlement return leg's own weight.
+    resultPayloadBytes: JSON.stringify(result).length,
   });
   return result;
 }
@@ -3417,6 +3483,7 @@ export async function preserveMirroredInlineBytes(
   layerId: string,
   trackId: string,
   document: PhysicPaintRotoPhysicalDocument,
+  bytesByDigest?: ReadonlyMap<string, Uint8Array>,
 ): Promise<PhysicPaintRotoPhysicalDocument> {
   const preserveCollection = async (
     records: readonly PhysicPaintRotoRealKeyRecord[],
@@ -3428,7 +3495,19 @@ export async function preserveMirroredInlineBytes(
       const current = media === undefined
         ? null
         : physicPaintStore.getRotoRealKeyRecord(layerId, trackId, record.keyId);
-      const bytes = current?.payload.bytes;
+      // studio-realm-divergence (nature: contract): fall back to a layer-wide
+      // digest lookup. The wire is reference-shaped by design (52.2-10 D-12),
+      // and a cross-track drag copies a key to a NEW keyId on a NEW track — so
+      // the track-scoped lookup misses even though the old track still holds
+      // these exact bytes. Left as media, the parent's revision hashes
+      // `m<path><digest>;` while the child hashes `d<len><head><tail>;` for the
+      // same pixels (the encoder is not carrier-shape-invariant) and every
+      // later physical edit on that track is rejected "Roto physical revision
+      // became stale before commit" (measured: child `physical-1090-a6297079`
+      // vs parent `physical-778-cb0f65eb` on a Studio-added track, same 3
+      // records, same counts, stable for minutes).
+      let bytes = current?.payload.bytes;
+      if (bytes === undefined && media !== undefined) bytes = bytesByDigest?.get(media.digest);
       if (media === undefined || bytes === undefined || await frameDigestForInlineBytes(bytes) !== media.digest) {
         preserved.push(record);
         continue;
@@ -3480,14 +3559,57 @@ function scheduleMirrorOfSyncedDocument(document: EfxPaintDocument): void {
 }
 
 async function mirrorSyncedTrackDocuments(document: EfxPaintDocument): Promise<void> {
+  // studio-realm-divergence (nature: contract): layer-wide digest → bytes map,
+  // built BEFORE any install so a track processed earlier cannot already have
+  // swapped the source bytes for the wire's media shape. This is what lets a
+  // cross-track drag (new keyId, same pixels) reconstruct a byte-shaped record.
+  const bytesByDigest = new Map<string, Uint8Array>();
+  for (const track of document.tracks) {
+    for (const record of physicPaintStore.getRotoRealKeyRecords(document.parentLayerId, track.id)) {
+      const bytes = record.payload.bytes;
+      if (bytes instanceof Uint8Array) bytesByDigest.set(await frameDigestForInlineBytes(bytes), bytes);
+    }
+    for (const record of physicPaintStore.getRotoGroupOverrideRecords(document.parentLayerId, track.id)) {
+      const bytes = record.payload.bytes;
+      if (bytes instanceof Uint8Array) bytesByDigest.set(await frameDigestForInlineBytes(bytes), bytes);
+    }
+  }
   for (const track of document.tracks) {
     if (!track.rotoPhysical) continue;
+    // studio-realm-divergence (nature: contract): the wire's content revision IS
+    // the change detector — compare nothing else. A record-set-only gate
+    // (keyId + appFrame) missed exactly the two cases that leave the parent
+    // permanently stale, and both are the "a track with an empty key freezes"
+    // symptom:
+    //   1. a payload-only change. Painting into an `addEmptyKey` blank keeps the
+    //      same keyId and appFrame while the raster goes 128 → 30356 bytes
+    //      (measured in /tmp/efx-physical-edit-studio.json: keyId
+    //      3fd78ce7-… at frame 17). The child's revision moved to
+    //      physical-762-… while the parent stayed on physical-553-…, so every
+    //      later physical edit (blend toggle = set-interpolation-enabled, drag =
+    //      move-key-rail) was rejected with "Roto physical revision became stale
+    //      before commit".
+    //   2. a brand-new empty track. Both record sets are empty, so the gate said
+    //      "unchanged" and the parent never learned the track existed
+    //      (getRotoPhysicalContentRevision → null) — every edit on it failed the
+    //      same way.
     if (physicPaintStore.getRotoPhysicalContentRevision(document.parentLayerId, track.id) === track.rotoPhysical.revision) continue;
-    const value = await preserveMirroredInlineBytes(document.parentLayerId, track.id, track.rotoPhysical);
+    // studio-realm-divergence (nature: contract): RECONSTRUCT the byte-shaped
+    // runtime the child hashed — never adopt a reference-shaped wire projection.
+    // A sync withholds a key's `bytes` once the apply channel already delivered
+    // them (the LEG 5 / layer-2-ref-mismatch contract), so the wire record
+    // arrives media-only while the child's runtime — and its expectedRevision —
+    // are still bytes. preserveMirroredInlineBytes puts the parent's own
+    // digest-verified bytes back and recomputes the revision over the preserved
+    // collection, so the apply gate's hash equals the child's and the launch
+    // pack carries the raster with no file read. A record the parent holds no
+    // matching bytes for keeps the wire's carrier untouched (a mixed child
+    // stays mixed, which is the shape it hashed).
+    const preserved = await preserveMirroredInlineBytes(document.parentLayerId, track.id, track.rotoPhysical, bytesByDigest);
     const result = physicPaintStore.mirrorRotoPhysicalDocument(
       document.parentLayerId,
       track.id,
-      value,
+      preserved,
     );
     if (!result.ok) {
       console.warn(`[physicPaintBridge] EFX Paint runtime mirror skipped for track ${track.id}: ${result.error}`);

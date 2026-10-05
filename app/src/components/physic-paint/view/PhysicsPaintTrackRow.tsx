@@ -969,7 +969,16 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
               title={blendEnabled ? `Disable frame blending for ${label}` : `Enable frame blending for ${label}`}
               onClick={(event) => {
                 event.stopPropagation();
+                // studio-realm-divergence (nature: UX): a double-click on this
+                // control is the row's rename gesture (see the header's
+                // onDblClick), not two toggles. Skip the second click so the
+                // gesture opens rename instead of flickering the blend state.
+                if (event.detail > 1) return;
                 onToggleBlend?.(trackId);
+              }}
+              onDblClick={(event) => {
+                event.stopPropagation();
+                if (!editing) onStartRename?.(trackId);
               }}
             >
               <Blend size={12} aria-hidden="true" />

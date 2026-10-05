@@ -7,6 +7,7 @@ import { useRotoCachedPlayback, type RotoCachedPlaybackFrame } from './useRotoCa
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
 import type { SoloPlaybackWindow } from '../roto/physicsPaintRotoSoloWindow';
 import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
+import { capturePhysicalEdit } from '../../../lib/physicalEditCapture';
 
 interface RotoNavigationRuntimePort {
   navigateToSyncedFrame: (frame: number) => Promise<boolean>;
@@ -123,6 +124,11 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
       // studio-realm-divergence probe: a cross-track click already wrote the
       // document cursor to targetFrame BEFORE this gate — an abort here skips
       // the whole navigation (including startFrame propagation).
+      capturePhysicalEdit('studio', 'nav-aborted', {
+        reason: 'before-navigation',
+        targetFrame,
+        currentFrame: inputRef.current.playback.getCurrentAppFrame?.() ?? null,
+      });
       return false;
     }
     try {
