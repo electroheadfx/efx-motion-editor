@@ -119,7 +119,12 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
   const requestNavigation = useCallback(async (targetFrame: number) => {
     if (!Number.isInteger(targetFrame) || targetFrame < 0) return false;
     const { beforeNavigation, afterNavigation } = inputRef.current;
-    if (beforeNavigation && !await beforeNavigation(targetFrame)) return false;
+    if (beforeNavigation && !await beforeNavigation(targetFrame)) {
+      // studio-realm-divergence probe: a cross-track click already wrote the
+      // document cursor to targetFrame BEFORE this gate — an abort here skips
+      // the whole navigation (including startFrame propagation).
+      return false;
+    }
     try {
       return await runtimePortRef.current.navigateToSyncedFrame(targetFrame);
     } finally {

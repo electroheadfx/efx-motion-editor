@@ -426,7 +426,12 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     const selection = studio.slice(selectionStart, selectionEnd);
     expect(selectionStart).toBeGreaterThanOrEqual(0);
     expect(selection).toContain('selectedKeyId.value = null;');
-    expect(selection).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        trackIdOfLaunch(launchContext),\n        null,\n        currentFrame,\n      );');
+    expect(selection).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        studioActiveTrackId(),\n        null,\n        currentFrame,\n      );');
+    // studio-realm-divergence: a selection write must follow the LIVE active
+    // track (the clicked row), never the frozen launch snapshot — a Paint n
+    // write to trackIdOfLaunch left the target track's selection stale and the
+    // group-lifecycle stale-doc barrier rejected every later delete there.
+    expect(selection).not.toContain('setRotoPhysicalSelection(\n        launchContext.layerId,\n        trackIdOfLaunch(launchContext),');
     expect(selection).toContain('selectedKeyIds.value = [];\n    selectionAnchorKeyId.value = null;\n    rotoSpacingSelection.value = null;');
 
     const clearPrimaryIndex = selection.indexOf('selectedKeyId.value = null;');
@@ -446,7 +451,7 @@ describe('Physics Paint Roto rail and physical spacing selection wiring', () => 
     const selectAll = studio.slice(selectAllStart, selectAllEnd);
     expect(selectAllStart).toBeGreaterThanOrEqual(0);
     expect(selectAll).toContain('selectedKeyId.value = null;');
-    expect(selectAll).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        trackIdOfLaunch(launchContext),\n        null,\n        currentFrame,\n      );');
+    expect(selectAll).toContain('physicPaintStore.setRotoPhysicalSelection(\n        launchContext.layerId,\n        studioActiveTrackId(),\n        null,\n        currentFrame,\n      );');
     expect(selectAll).toContain('selectAllRotoKeyIds(\n      orderedRealKeyIds,\n      null,\n    );');
     expect(selectAll).toContain('rotoSpacingSelection.value = null;');
     expect(selectAll).toContain('selectedLoopClipIds.value = [];');

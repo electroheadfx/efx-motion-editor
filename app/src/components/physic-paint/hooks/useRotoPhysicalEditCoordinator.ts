@@ -97,8 +97,6 @@ import {
   validatePhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import { isWebpBytes } from '../../../types/physicPaint';
-import { buildFrameBytesToken } from '../../../lib/webpBytes';
-import { capturePhysicalEdit, summarizeRealKeyRecordsForCapture } from '../../../lib/physicalEditCapture';
 import { getCarriedRotoPhysical } from '../roto/rotoLaunchHydration';
 import type {
   PendingPhysicPaintRotoPhysicalEdit,
@@ -115,8 +113,13 @@ const PHYSICAL_EDIT_PENDING_MESSAGE = 'Applying Roto physical edit...';
 const PHYSICAL_EDIT_ACCEPTED_MESSAGE = 'Roto physical edit applied.';
 const PHYSICAL_EDIT_FAILED_MESSAGE = 'Apply failed — see LOG';
 const PHYSICAL_EDIT_TRANSPORT_MESSAGE = 'Could not send the Roto physical edit. The previous state was restored.';
-const PHYSICAL_EDIT_TIMEOUT_MESSAGE = 'Roto physical edit timed out. The previous state was restored.';
-const PHYSICAL_EDIT_MISMATCH_MESSAGE = 'Roto physical edit settlement mismatch. The previous state was restored.';
+// studio-realm-divergence (nature: contract): a timeout past a possible parent
+// commit must fail LOUD about an unknown outcome. The old copy claimed "the
+// previous state was restored", which sent the user back to edit against a
+// parent that had already committed (the apply lands in single-digit ms; the
+// settlement is what gets lost). Never assert a rollback here.
+const PHYSICAL_EDIT_TIMEOUT_MESSAGE = 'Roto physical edit timed out. The result is unknown — the edit may already be applied. Continue from the current layer/frame.';
+const PHYSICAL_EDIT_MISMATCH_MESSAGE = 'Roto physical edit settlement mismatch. The result is uncertain — continue from the current layer/frame.';
 const PHYSICAL_EDIT_BARRIER_MESSAGE = 'Roto physical edit barriers failed. No state was changed.';
 const PHYSICAL_EDIT_SERIALIZE_MESSAGE = 'A Roto physical edit is already in flight.';
 const PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE = 'Ignored mismatched physics paint physical edit result. Try the action again.';
@@ -443,9 +446,22 @@ function createAuthorizedPhysicalEditPayload(
   }
 }
 
-function payloadBytesEqual(left: unknown, right: unknown): boolean {
-  if (!(left instanceof Uint8Array) || !(right instanceof Uint8Array)) return false;
-  return buildFrameBytesToken(left) === buildFrameBytesToken(right);
+/**
+ * studio-blend-off-corruption: payload equality must be CARRIER-TOTAL — the
+ * same oracle as the resolver's `payloadEqualsAtFrame` (52.2-02 D-07). The old
+ * bytes-only comparison returned false for two byte-identical reference-only
+ * records (`media` carrier, `bytes === undefined`), so `recordsEqual` failed
+ * against ITSELF on any track whose document held a media record — killing the
+ * blend toggle (interpolation barrier) and rail delete/paste/group (stale-doc
+ * barrier) while staged state equaled current state. The byte branch of the
+ * content token is byte-for-byte `buildFrameBytesToken`, so bytes-vs-bytes
+ * behavior is unchanged; media-vs-media becomes digest equality.
+ */
+function payloadContentEqual(
+  left: PhysicPaintRotoRealKeyPayload,
+  right: PhysicPaintRotoRealKeyPayload,
+): boolean {
+  return buildPhysicPaintRotoPayloadContentToken(left) === buildPhysicPaintRotoPayloadContentToken(right);
 }
 
 function semanticDeltaEquals(
@@ -529,7 +545,7 @@ function semanticDeltaEquals(
         || leftEntry.newKeyId !== rightEntry.newKeyId
         || leftEntry.payload.frameIndex !== rightEntry.payload.frameIndex
         || leftEntry.payload.appFrame !== rightEntry.payload.appFrame
-        || !payloadBytesEqual(leftEntry.payload.bytes, rightEntry.payload.bytes)
+        || !payloadContentEqual(leftEntry.payload, rightEntry.payload)
         || leftEntry.payload.width !== rightEntry.payload.width
         || leftEntry.payload.height !== rightEntry.payload.height) {
         return false;
@@ -545,7 +561,7 @@ function semanticDeltaEquals(
     && left.newKeyId === right.newKeyId
     && leftPayload.frameIndex === rightPayload.frameIndex
     && leftPayload.appFrame === rightPayload.appFrame
-    && payloadBytesEqual(leftPayload.bytes, rightPayload.bytes)
+    && payloadContentEqual(leftPayload, rightPayload)
     && leftPayload.width === rightPayload.width
     && leftPayload.height === rightPayload.height;
 }
@@ -567,28 +583,38 @@ function transitionPhysicalEditResult(
 ): PhysicalEditResultTransition {
   if (!detail || !pending) return { type: 'ignore' };
   if (detail.operationId !== pending.operationId) return { type: 'ignore' };
-  if (
-    detail.kind !== 'replace-roto-physical-map'
-    || detail.operationKind !== pending.operationKind
-    || detail.layerId !== pending.layerId
-    || detail.startFrame !== pending.startFrame
-    || detail.launchOperationId !== pending.launchOperationId
-    || (pending.projectContextId === null ? detail.projectContextId !== undefined : detail.projectContextId !== pending.projectContextId)
-    || detail.expectedRevision !== pending.expectedRevision
-    || detail.stagedRevision !== pending.stagedRevision
-    || detail.interpolationMode !== pending.interpolationMode
-    || detail.selectedKeyId !== pending.selectedKeyId
-    || detail.selectedAppFrame !== pending.selectedAppFrame
-    || detail.cursorAppFrame !== pending.cursorAppFrame
-    || detail.appliedFrameCount !== (detail.ok ? pending.appliedFrameCount : 0)
-    || !semanticDeltaEquals(detail.semanticDelta, pending.semanticDelta)
-    || !replayProvenanceEquals(detail.historyProvenance, pending.historyProvenance)
-    || (detail.ok && !stringArraysEqual(
-      detail.incomingInterpolationBreakKeyIds ?? [],
-      pending.deferredDocument.incomingInterpolationBreakKeyIds,
-    ))
-    || (detail.ok ? detail.acceptedRevision !== pending.stagedRevision : detail.acceptedRevision !== null)
-  ) {
+  // studio-realm-divergence: same comparisons in the same order as the
+  // original single guard, but each failure is NAMED so the live capture says
+  // WHICH correlated field diverged (revision / selection / cursor / delta /
+  // accepted revision) instead of only that a mismatch happened.
+  const failedFields: string[] = [];
+  if (detail.kind !== 'replace-roto-physical-map') failedFields.push('kind');
+  if (detail.operationKind !== pending.operationKind) failedFields.push('operationKind');
+  if (detail.layerId !== pending.layerId) failedFields.push('layerId');
+  if (detail.startFrame !== pending.startFrame) failedFields.push('startFrame');
+  if (detail.launchOperationId !== pending.launchOperationId) failedFields.push('launchOperationId');
+  if (pending.projectContextId === null ? detail.projectContextId !== undefined : detail.projectContextId !== pending.projectContextId) {
+    failedFields.push('projectContextId');
+  }
+  if (detail.expectedRevision !== pending.expectedRevision) failedFields.push('expectedRevision');
+  if (detail.stagedRevision !== pending.stagedRevision) failedFields.push('stagedRevision');
+  if (detail.interpolationMode !== pending.interpolationMode) failedFields.push('interpolationMode');
+  if (detail.selectedKeyId !== pending.selectedKeyId) failedFields.push('selectedKeyId');
+  if (detail.selectedAppFrame !== pending.selectedAppFrame) failedFields.push('selectedAppFrame');
+  if (detail.cursorAppFrame !== pending.cursorAppFrame) failedFields.push('cursorAppFrame');
+  if (detail.appliedFrameCount !== (detail.ok ? pending.appliedFrameCount : 0)) failedFields.push('appliedFrameCount');
+  if (!semanticDeltaEquals(detail.semanticDelta, pending.semanticDelta)) failedFields.push('semanticDelta');
+  if (!replayProvenanceEquals(detail.historyProvenance, pending.historyProvenance)) failedFields.push('historyProvenance');
+  if (detail.ok && !stringArraysEqual(
+    detail.incomingInterpolationBreakKeyIds ?? [],
+    pending.deferredDocument.incomingInterpolationBreakKeyIds,
+  )) {
+    failedFields.push('incomingInterpolationBreakKeyIds');
+  }
+  if (detail.ok ? detail.acceptedRevision !== pending.stagedRevision : detail.acceptedRevision !== null) {
+    failedFields.push('acceptedRevision');
+  }
+  if (failedFields.length > 0) {
     return { type: 'mismatch', message: PHYSICAL_EDIT_RESULT_MISMATCH_MESSAGE };
   }
   return { type: 'accepted', ok: detail.ok, detail };
@@ -690,7 +716,7 @@ function recordsEqual(
       || leftRecord.appFrame !== rightRecord.appFrame
       || leftRecord.payload.frameIndex !== rightRecord.payload.frameIndex
       || leftRecord.payload.appFrame !== rightRecord.payload.appFrame
-      || !payloadBytesEqual(leftRecord.payload.bytes, rightRecord.payload.bytes)
+      || !payloadContentEqual(leftRecord.payload, rightRecord.payload)
       || leftRecord.payload.width !== rightRecord.payload.width
       || leftRecord.payload.height !== rightRecord.payload.height) return false;
   }
@@ -709,7 +735,7 @@ function applyPayloadRecordsEqual(
       && record.appFrame === candidate.appFrame
       && record.payload.frameIndex === candidate.payload.frameIndex
       && record.payload.appFrame === candidate.payload.appFrame
-      && payloadBytesEqual(record.payload.bytes, candidate.payload.bytes)
+      && payloadContentEqual(record.payload, candidate.payload)
       && record.payload.width === candidate.payload.width
       && record.payload.height === candidate.payload.height;
   });
@@ -786,7 +812,7 @@ function railSetCopyKeyRailMemberEqual(
       || entry.ownsIncomingBreak !== other.ownsIncomingBreak) return false;
     return entry.payload.frameIndex === other.payload.frameIndex
       && entry.payload.appFrame === other.payload.appFrame
-      && payloadBytesEqual(entry.payload.bytes, other.payload.bytes)
+      && payloadContentEqual(entry.payload, other.payload)
       && entry.payload.width === other.payload.width
       && entry.payload.height === other.payload.height;
   });
@@ -1322,6 +1348,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         historyProvenance: detail.historyProvenance ?? null,
         ...(pending.semanticDelta ? { semanticDelta: pending.semanticDelta } : {}),
       };
+      // studio-realm-divergence proof: the settle landmark. Settle time is
+      // `settled.t - payload-send.t` for the same operationId in the capture —
+      // the symptom's own quantity, read off disk rather than a console probe.
       failureSignal.value = null;
       presentationSignal.value = { status: 'accepted', conciseMessage: PHYSICAL_EDIT_ACCEPTED_MESSAGE };
       portsRef.current.status.setApplyStatus('success');
@@ -1351,7 +1380,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         readonly transferLeaseToRecovery?: boolean;
       } = {},
     ) => {
-      const shouldRestore = options.restoreDeferred === true;
+      // studio-realm-divergence (nature: contract): a rollback is legal ONLY on
+      // positive evidence the parent did not commit. A timeout is not evidence —
+      // the parent applies in single-digit ms and the settlement can be lost on
+      // the return leg. Rolling the child back over a committed parent is what
+      // poisons every later edit against a parent that is already ahead.
+      const parentDidNotCommit = reason === 'transport' || reason === 'parent-rejection';
+      const shouldRestore = options.restoreDeferred === true && parentDidNotCommit;
       const restored = shouldRestore ? restoreSnapshot(before, true) : true;
       if (!restored) {
         portsRef.current.status.logDiagnostic('Roto physical edit rollback failed: launch context changed before restore.');
@@ -1391,14 +1426,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       portsRef.current.status.setLastError(message);
       if (error !== undefined) {
         const detail = error instanceof Error ? error.message : String(error);
-        capturePhysicalEdit('studio', 'edit-failed', {
-          reason,
-          detail,
-          operationId: pending.operationId,
-          operationKind: pending.operationKind,
-          layerId: pending.layerId,
-          startFrame: pending.startFrame,
-        });
         portsRef.current.status.logDiagnostic(`Roto physical edit failed (${reason}): ${detail}`);
       }
       clearPendingOnce();
@@ -1530,39 +1557,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         || settledLeaseRef.current
         || recoveryLeaseSignal.peek()
       ) {
-        capturePhysicalEdit('studio', 'execute-rejected-serialize', {
-          operationKind: input.operationKind,
-          expectedLayerId: input.expectedLaunch.layerId,
-        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_SERIALIZE_MESSAGE);
         return false;
       }
       const launch = portsRef.current.launch.getLaunchContext();
       if (!launch || launch.layerId !== input.expectedLaunch.layerId || launch.operationId !== input.expectedLaunch.operationId) {
-        capturePhysicalEdit('studio', 'execute-rejected-launch-mismatch', {
-          operationKind: input.operationKind,
-          expectedLayerId: input.expectedLaunch.layerId,
-          expectedOperationId: input.expectedLaunch.operationId,
-          liveLayerId: launch?.layerId ?? null,
-          liveOperationId: launch?.operationId ?? null,
-        });
         return false;
       }
       const bridgeMode = portsRef.current.bridge.getBridgeMode();
       if (bridgeMode === 'Unavailable') {
-        capturePhysicalEdit('studio', 'execute-rejected-bridge-unavailable', {
-          operationKind: input.operationKind,
-          layerId: launch.layerId,
-        });
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
-      capturePhysicalEdit('studio', 'execute-enter', {
-        operationKind: input.operationKind,
-        layerId: launch.layerId,
-        operationId: launch.operationId,
-        activeTrackId: portsRef.current.launch.getActiveTrackId(launch.layerId),
-      });
       const isInterpolationEnabledChange = input.operationKind === 'set-interpolation-enabled';
       const isInterpolationModeChange = input.operationKind === 'set-interpolation-mode';
       const isInterpolationChange = isInterpolationEnabledChange || isInterpolationModeChange;
@@ -1824,6 +1830,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             || currentDocument.interpolation.mode !== currentInterpolation.mode
             || currentDocument.selectedKeyId !== currentSelectedKeyIdForEdit
             || currentDocument.cursorAppFrame !== currentAppFrameForEdit) {
+            // studio-blend-off-corruption: name the failing sub-checks so the
+            // live capture says WHICH comparison went stale (doc revision vs
+            // ports records vs selection identity/frame), not just that one did.
             portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
             portsRef.current.status.logDiagnostic('Group lifecycle physical document became stale before proposal staging.');
             clearPendingOnce();
@@ -1976,6 +1985,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             || invalidModeChange
             || targetSelectedKeyId !== currentSelectedKeyId
             || targetSelectedAppFrame !== currentSelectedAppFrame) {
+            // studio-blend-off-corruption: capture both record lists' shape at
+            // the barrier — length mismatch means the active track re-resolved
+            // to a different track than the staged input; equal length with a
+            // summary diff means the pre-staging flush mutated the records.
             // studio-track-physical-edits: this gate used to fail silently —
             // name the failing sub-check so the next live capture can tell a
             // carrier mismatch (recordsEqual) from a stale selection/target.
@@ -2035,15 +2048,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
                   ? buildStagedRecords(currentRecords, proposal, capacity)
                   : null;
         if (stagedRecords === null) {
-          capturePhysicalEdit('studio', 'barrier-staged-records-null', {
-            operationKind: input.operationKind,
-            layerId: revalidatedLaunch.layerId,
-            capacity,
-            currentRecordCount: currentRecords.length,
-            hasProposal: proposal !== null,
-            isReplay,
-            hasReplayTarget: replayTarget !== null,
-          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           clearPendingOnce();
           return false;
@@ -2111,16 +2115,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           const detail = error instanceof Error
             ? error.message
             : 'Invalid staged real-key records.';
-          capturePhysicalEdit('studio', 'record-validation-failed', {
-            operationKind: input.operationKind,
-            layerId: revalidatedLaunch.layerId,
-            capacity,
-            detail,
-            stagedCount: stagedRecords.length,
-            stagedSummaries: summarizeRealKeyRecordsForCapture(stagedRecords),
-            currentCount: currentRecords.length,
-            currentSummaries: summarizeRealKeyRecordsForCapture(currentRecords),
-          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           portsRef.current.status.logDiagnostic(`Roto physical record validation failed: ${detail}`);
           clearPendingOnce();
@@ -2277,18 +2271,6 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           return false;
         }
         const pending = createPendingPhysicalEdit(payload, stagedRevision, deferredDocument);
-        capturePhysicalEdit('studio', 'payload-send', {
-          operationKind: input.operationKind,
-          layerId: payload.layerId,
-          payloadTrackId: payload.trackId,
-          leaseTrackId: leaseToken.trackId,
-          capacity,
-          expectedRevision,
-          stagedRevision,
-          operationId: payload.operationId,
-          recordCount: validatedStagedRecords.length,
-          recordSummaries: summarizeRealKeyRecordsForCapture(validatedStagedRecords),
-        });
         beforeRef.current = before;
         pendingRef.current = pending;
         pendingOperationIdSignal.value = operationId;

@@ -4,7 +4,6 @@ import type { Layer } from '../types/layer';
 import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
-import { capturePhysicalEdit, summarizeRealKeyRecordsForCapture } from './physicalEditCapture';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
 import { recordPhysicsPaintPerformance } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import type { MceImageRef } from '../types/project';
@@ -1346,7 +1345,14 @@ function physicalEditResult(
     ...(options.error !== undefined ? { error: options.error } : {}),
     ...(payload.semanticDelta ? { semanticDelta: payload.semanticDelta } : {}),
     ...(payload.historyProvenance ? { historyProvenance: payload.historyProvenance } : {}),
-    ...(payload.loopClips !== undefined ? { loopClips: payload.loopClips } : {}),
+    // studio-realm-divergence (nature: contract) — the settlement return leg
+    // must never carry frame bytes. It used to echo `payload.loopClips` (each
+    // clip carries its WebP `bytes`/`onionBytes`), so a `paste` settlement was
+    // megabytes of base64 through Tauri `emitTo` JSON and could not land inside
+    // PHYSICAL_EDIT_TIMEOUT_MS — the parent had already committed (3-8ms) while
+    // the child timed out at exactly 5000ms, 9/9 pastes. The settlement
+    // comparator reads semanticDelta / historyProvenance / break ids only — it
+    // never reads loopClips, so nothing is lost by dropping the echo.
     ...(payload.incomingInterpolationBreakKeyIds !== undefined
       ? { incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds }
       : {}),
@@ -1651,31 +1657,19 @@ async function applyPhysicPaintRotoPhysicalMap(
   payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>,
   publicationLeaseToken?: PhysicPaintRotoPhysicalOperationLeaseToken,
 ): Promise<PhysicPaintRotoPhysicalEditApplyResult> {
+  // studio-realm-divergence: apply validation resolves record refs and the
+  // expected revision against THIS runtime's records, which the document-sync
+  // mirror updates asynchronously. A cross-track move mutates two tracks in
+  // the child and ships them via document sync rather than applyPayload (the
+  // coordinator's delete-rails cannot express its exact-key delete half), so a
+  // physical edit arriving right after the move would validate against the
+  // pre-move records and reject. Let the queued mirror land first — it is
+  // revision-guarded and silent, so when nothing is pending this resolves
+  // immediately.
+  await awaitPendingPhysicPaintRuntimeMirror();
   const reject = (error: string, stagedRevision?: string) => {
-    capturePhysicalEdit('main', 'apply-reject', {
-      error,
-      operationKind: payload.operationKind,
-      operationId: payload.operationId,
-      layerId: payload.layerId,
-      payloadTrackId: payload.trackId,
-      leaseTrackId: payload.leaseToken?.trackId ?? null,
-      parentActiveTrackId: getEfxPaintDocument(payload.layerId)?.activeTrackId ?? null,
-      expectedRevision: payload.expectedRevision,
-      stagedRevision: stagedRevision ?? null,
-      recordCount: payload.records.length,
-    });
     return physicalEditResult(payload, { ok: false, error, stagedRevision });
   };
-  capturePhysicalEdit('main', 'apply-received', {
-    operationKind: payload.operationKind,
-    operationId: payload.operationId,
-    layerId: payload.layerId,
-    payloadTrackId: payload.trackId,
-    leaseTrackId: payload.leaseToken?.trackId ?? null,
-    parentActiveTrackId: getEfxPaintDocument(payload.layerId)?.activeTrackId ?? null,
-    expectedRevision: payload.expectedRevision,
-    recordCount: payload.records.length,
-  });
   const isPlayScript = payload.operationKind === 'play-script';
   if (isPlayScript && (!projectStore.filePath.peek() || !projectStore.scriptLibraryAuthority.peek())) {
     return reject('Save the project first.');
@@ -1724,6 +1718,10 @@ async function applyPhysicPaintRotoPhysicalMap(
     currentGroupOverrideRecords,
   );
   const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId, payload.trackId);
+  // studio-blend-off-corruption: log the PARENT's revision components for every
+  // physical-map apply, so a "revision became stale" reject can be attributed to
+  // the exact diverging field (records vs interpolation vs loopClips vs breaks
+  // vs overrides) by diffing against the child's payload-send components.
   const parentEndExclusive = getTimelineRangeEndExclusive(layer);
   if (payload.intent !== undefined && parentEndExclusive === null) {
     return reject('Physics Paint layer has no authoritative parent timeline range.');
@@ -1761,17 +1759,6 @@ async function applyPhysicPaintRotoPhysicalMap(
       : replayEntry.before;
     if (!sameAcceptedPhysicalCommandSnapshot(liveSourceSnapshot, expectedSourceSnapshot)) {
       debugReplaySnapshotDiff(liveSourceSnapshot, expectedSourceSnapshot);
-      capturePhysicalEdit('main', 'replay-snapshot-mismatch', {
-        operationId: payload.operationId,
-        layerId: payload.layerId,
-        payloadTrackId: payload.trackId,
-        liveRevision: liveSourceSnapshot.revision,
-        expectedRevision: expectedSourceSnapshot.revision,
-        liveRecordCount: liveSourceSnapshot.records.length,
-        expectedRecordCount: expectedSourceSnapshot.records.length,
-        liveRecordSummaries: summarizeRealKeyRecordsForCapture(liveSourceSnapshot.records),
-        expectedRecordSummaries: summarizeRealKeyRecordsForCapture(expectedSourceSnapshot.records),
-      });
       return reject('Roto physical replay source snapshot does not match the original accepted command.');
     }
   }
@@ -2054,15 +2041,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     }));
   }
 
-  capturePhysicalEdit('main', 'apply-accepted', {
-    operationKind: payload.operationKind,
-    operationId: payload.operationId,
-    layerId: payload.layerId,
-    payloadTrackId: payload.trackId,
-    acceptedRevision: acceptedDocument.revision,
-    recordCount: acceptedDocument.realKeyRecords.length,
-  });
-  return physicalEditResult(payload, {
+  const result = physicalEditResult(payload, {
     ok: true,
     stagedRevision,
     acceptedRevision: acceptedDocument.revision,
@@ -2070,6 +2049,7 @@ async function applyPhysicPaintRotoPhysicalMap(
     selectedAppFrame: acceptedSelectedAppFrame,
     cursorAppFrame: acceptedDocument.cursorAppFrame,
   });
+  return result;
 }
 
 const PHYSIC_PAINT_ROTO_GROUP_FRAME_PAINT_REQUEST_KEYS = new Set([

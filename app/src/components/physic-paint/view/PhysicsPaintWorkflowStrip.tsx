@@ -277,6 +277,14 @@ export interface PhysicsPaintWorkflowStripProps {
   onDeleteRotoFrame?: () => void;
   /** Stable physical timeline action bundle (D-05/D-06/D-09). */
   rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
+  /**
+   * studio-realm-divergence: force the document sync to the main window and
+   * resolve once it has been sent. A cross-track move mutates two tracks in
+   * this realm without an applyPayload (the coordinator's delete-rails cannot
+   * express its exact-key delete half), so it must ship via document sync or
+   * the parent's records go stale and every later physical edit is rejected.
+   */
+  publishDocumentSync?: () => Promise<void>;
   /** Controller-owned multi-selection set (37-02 signal). The strip never mutates or reorders it (D-05). */
   rotoSelectedKeyIds?: readonly string[];
   /** Nullable primary real-key identity; absent after replacement-style Select All. */
@@ -2470,9 +2478,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // activates the destination track (47 close-out UAT) through the same
     // onSelectTrack route a row click uses — the drop lands where the user
     // is looking, with the canvas and lane following the new active track.
-    moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {
+    moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {
       const result = physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame);
-      if (result.ok) props.onSelectTrack?.(toTrackId);
+      if (!result.ok) return result;
+      props.onSelectTrack?.(toTrackId);
+      // Ship the two mutated tracks to the main window before the gesture
+      // returns (studio-realm-divergence). The parent's apply path awaits the
+      // queued mirror, so a physical edit right after this resolves against
+      // the post-move records.
+      await props.publishDocumentSync?.();
       return result;
     },
     publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message),

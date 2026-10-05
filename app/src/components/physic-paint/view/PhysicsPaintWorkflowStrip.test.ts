@@ -2299,9 +2299,22 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
   it('routes the crossed release through physicPaintStore.moveTrackItems and publishes through the action bundle (D-17)', () => {
     const strip = source();
     expect(strip).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame)');
-    expect(strip).toContain('moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) =>');
+    expect(strip).toContain('moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) =>');
     expect(strip).toContain('publishStatus: (message) => props.rotoPhysicalActions?.publishStatus?.(message)');
     expect(strip).toContain('setApplyStatus: (status) => props.rotoPhysicalActions?.setApplyStatus?.(status)');
+  });
+
+  it('ships the two moved tracks to the main window before the gesture resolves (studio-realm-divergence)', () => {
+    // moveTrackItems mutates BOTH tracks in this realm with no applyPayload —
+    // the coordinator's delete-rails cannot express its exact-key delete half.
+    // Without this ship the parent's records go stale and every later physical
+    // edit is rejected ("Roto physical record ref ... no longer matches").
+    const strip = source();
+    expect(strip).toContain('publishDocumentSync?: () => Promise<void>');
+    const portStart = strip.indexOf('moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {');
+    const portEnd = strip.indexOf('publishStatus: (message)', portStart);
+    const port = strip.slice(portStart, portEnd);
+    expect(port).toContain('await props.publishDocumentSync?.()');
   });
 
   it('wires one-click cross-track frame/rail selection through the rows (47 close-out UAT round 5)', () => {
@@ -2344,11 +2357,12 @@ describe('PhysicsPaintWorkflowStrip cross-track commit wiring (47-05 Task 2)', (
     // The commit wrapper activates the destination through the same
     // onSelectTrack route a row click uses — only on success, never on a
     // rejection (the source track stays active on a failed move).
-    const portStart = strip.indexOf('moveTrackItems: (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {');
+    const portStart = strip.indexOf('moveTrackItems: async (layerId, fromTrackId, toTrackId, keys, destinationAppFrame) => {');
     const portEnd = strip.indexOf('publishStatus: (message)', portStart);
     const port = strip.slice(portStart, portEnd);
     expect(port).toContain('physicPaintStore.moveTrackItems(layerId, fromTrackId, toTrackId, keys, destinationAppFrame)');
-    expect(port).toContain('if (result.ok) props.onSelectTrack?.(toTrackId)');
+    expect(port).toContain('if (!result.ok) return result;');
+    expect(port).toContain('props.onSelectTrack?.(toTrackId)');
   });
 
   it('keeps the header reorder grab release completely outside the cross-track commit (D-18)', () => {

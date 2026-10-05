@@ -481,7 +481,7 @@ describe('physic paint payload contracts', () => {
   it('accepts a lifecycle-complete Group Paint payload and exact settlement result', () => {
     const payload = groupLifecycleApplyPayload();
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
-    expect(isPhysicPaintRotoPhysicalEditApplyResult({
+    const settlement = {
       operationId: payload.operationId,
       kind: payload.kind,
       operationKind: payload.operationKind,
@@ -498,8 +498,13 @@ describe('physic paint payload contracts', () => {
       appliedFrameCount: 1,
       ok: true,
       semanticDelta: payload.semanticDelta,
-      loopClips: payload.loopClips,
-    })).toBe(true);
+    };
+    // studio-realm-divergence (nature: contract): the settlement return leg is
+    // the correlation contract, not a document channel — a clean result is
+    // valid, and one that echoes the loopClips byte carriers is rejected at the
+    // boundary instead of being shipped.
+    expect(isPhysicPaintRotoPhysicalEditApplyResult(settlement)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyResult({ ...settlement, loopClips: payload.loopClips })).toBe(false);
   });
 
   it.each([

@@ -1304,8 +1304,11 @@ export interface PhysicPaintRotoPhysicalEditApplyResult {
   readonly error?: string;
   readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
-  /** Echo of the submitted loopClips collection when the payload carried one. */
-  readonly loopClips?: readonly PhysicPaintRotoLoopClip[];
+  // studio-realm-divergence (nature: contract): the settlement return leg is
+  // the correlation contract, not a document channel. It MUST NOT carry frame
+  // bytes — `loopClips` used to be echoed here and made every `paste` settlement
+  // too large to land inside PHYSICAL_EDIT_TIMEOUT_MS. The validator rejects a
+  // result that carries it, so the contract fails loud at the boundary.
   /** Echo of the submitted incoming break collection when the payload carried one. */
   readonly incomingInterpolationBreakKeyIds?: readonly string[];
 }
@@ -1760,7 +1763,10 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
  */
 export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value is PhysicPaintRotoPhysicalEditApplyResult {
   if (!isRecord(value)) return false;
-  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return false;
+  // studio-realm-divergence (nature: contract): `loopClips` is deliberately NOT
+  // an allowed key. A settlement result carrying frame bytes is a contract
+  // violation and is rejected here rather than shipped (fail loud at the edge).
+  if (!hasOnlyKeys(value, ['operationId', 'kind', 'operationKind', 'layerId', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'stagedRevision', 'acceptedRevision', 'interpolationMode', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'appliedFrameCount', 'ok', 'error', 'semanticDelta', 'historyProvenance', 'incomingInterpolationBreakKeyIds'])) return false;
   if (value.kind !== 'replace-roto-physical-map') return false;
   if (!isNonEmptyString(value.operationId)) return false;
   if (!isPhysicPaintRotoPhysicalEditOperationKind(value.operationKind)) return false;
@@ -1779,7 +1785,6 @@ export function isPhysicPaintRotoPhysicalEditApplyResult(value: unknown): value 
   if (!isNonNegativeInteger(value.appliedFrameCount)) return false;
   if (typeof value.ok !== 'boolean') return false;
   if (value.error !== undefined && typeof value.error !== 'string') return false;
-  if (value.loopClips !== undefined && (!Array.isArray(value.loopClips) || !value.loopClips.every(isLifecycleCompletePhysicPaintRotoLoopClip))) return false;
   if (value.incomingInterpolationBreakKeyIds !== undefined && (!Array.isArray(value.incomingInterpolationBreakKeyIds) || !value.incomingInterpolationBreakKeyIds.every(isBoundedPhysicalKeyId))) return false;
   if (value.ok && value.acceptedRevision === null) return false;
   if (!value.ok && value.acceptedRevision !== null) return false;

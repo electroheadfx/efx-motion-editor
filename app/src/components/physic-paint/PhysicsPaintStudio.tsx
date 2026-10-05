@@ -572,6 +572,9 @@ export function PhysicsPaintStudio() {
         // first click selected, the reseed cleared, only the second click on
         // the same frame survived — startFrame unchanged, no reseed branch).
         const liveTrackId = getEfxPaintDocument(next.layerId)?.activeTrackId ?? trackIdOfLaunch(next);
+        // studio-realm-divergence probe: startFrame landed (propagation made
+        // it through) — record where the document cursor stood BEFORE this
+        // reseed closes the gap.
         selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
         physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, selectedKeyId.value, next.startFrame);
         const spacingSelection = rotoSpacingSelection.peek();
@@ -770,7 +773,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
-        trackIdOfLaunch(launchContext),
+        studioActiveTrackId(),
         null,
         currentFrame,
       );
@@ -1559,7 +1562,7 @@ export function PhysicsPaintStudio() {
         armRotoCompletionPaintGuard({
           engine: engineRef.current as PreviewBackgroundEngine | null,
           appFrame,
-          intendedDataUrl: intendedFrame ? getFrameBlobUrl(intendedFrame.bytes) : null,
+          intendedDataUrl: intendedFrame ? (getFrameBlobUrl(intendedFrame.bytes) || null) : null,
           intendedBytes: intendedFrame?.bytes ?? new Uint8Array(0),
           intendedGeneration: generation,
           getCurrentAppFrame: () => launchContextRef.current?.startFrame ?? 0,
@@ -1609,9 +1612,13 @@ export function PhysicsPaintStudio() {
     },
     status: {
       setApplyStatus,
-      setConciseMessage: (message) => { setApplyMessage(message); },
+      setConciseMessage: (message) => {
+        setApplyMessage(message);
+      },
       setLastError,
-      logDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
+      logDiagnostic: (message) => {
+        console.error('[PhysicsPaintStudio] physical edit:', message);
+      },
     },
   });
   groupFramePaintExecuteRef.current = (executeInput) => (
@@ -1870,7 +1877,7 @@ export function PhysicsPaintStudio() {
       buildBlankRotoFrame: async (frame): Promise<PhysicPaintRotoCacheFrame> => ({ ...(await buildBlankRotoFrame(canvasWidth, canvasHeight, frame)), source: 'real-key' }),
       setDirtyFrames: (frames) => { dirtyRotoFramesRef.current = frames; },
       syncPendingRotoFrames,
-      showCachedReference: (frame) => setCachedRotoReferenceUrl(getFrameBlobUrl(frame.bytes)),
+      showCachedReference: (frame) => setCachedRotoReferenceUrl(getFrameBlobUrl(frame.bytes) || null),
       clearGeneratedFrame: (frame) => { if (launchContext) physicPaintStore.removeFrameRange(launchContext.layerId, studioActiveTrackId(), frame, 1); },
       clearDeletedFrame: (frame) => { if (launchContext) physicPaintStore.removeRealRotoKeyFrame(launchContext.layerId, studioActiveTrackId(), frame); },
       setApplyMessage,
@@ -2208,7 +2215,7 @@ export function PhysicsPaintStudio() {
       if (launchContext) {
         physicPaintStore.setRotoPhysicalSelection(
           launchContext.layerId,
-          trackIdOfLaunch(launchContext),
+          studioActiveTrackId(),
           null,
           currentFrame,
         );
@@ -2226,7 +2233,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
-        trackIdOfLaunch(launchContext),
+        studioActiveTrackId(),
         null,
         currentFrame,
       );
@@ -2277,7 +2284,7 @@ export function PhysicsPaintStudio() {
       if (launchContext) {
         physicPaintStore.setRotoPhysicalSelection(
           launchContext.layerId,
-          trackIdOfLaunch(launchContext),
+          studioActiveTrackId(),
           null,
           currentFrame,
         );
@@ -2319,7 +2326,7 @@ export function PhysicsPaintStudio() {
     if (launchContext) {
       physicPaintStore.setRotoPhysicalSelection(
         launchContext.layerId,
-        trackIdOfLaunch(launchContext),
+        studioActiveTrackId(),
         null,
         currentFrame,
       );
@@ -2542,6 +2549,9 @@ export function PhysicsPaintStudio() {
       try {
         await flushPromise;
       } catch {
+        // studio-realm-divergence probe: the doc cursor was ALREADY written to
+        // `frame` above, but this abort skips the startFrame propagation below
+        // — the two cursors diverge for the rest of the session.
         setApplyStatus('error');
         setApplyMessage(`Could not save Roto frame ${currentFrame} before navigation.`);
         return false;
@@ -2549,7 +2559,9 @@ export function PhysicsPaintStudio() {
       // 38.1 D-05: superseded navigation — a newer intent owns the canvas. The
       // paint above already happened, but a superseded navigation never
       // propagates and never repaints.
-      if (!rotoNavigationGeneration.isLatest(generation)) return false;
+      if (!rotoNavigationGeneration.isLatest(generation)) {
+        return false;
+      }
       // 38.1-07: post-flush neighbor pickup — a generated destination repaints
       // once so it picks up the just-flushed neighbor key pixels. The kind
       // check reads the O(1) cached projection — never
@@ -2642,6 +2654,10 @@ export function PhysicsPaintStudio() {
     if (visible) {
       loadCachedRotoReferenceFrame(currentFrame, engine);
     }
+    // studio-realm-divergence probe: at every real track-switch commit record
+    // the armed cross-track guard, the document cursor and the launch cursor —
+    // the stale-doc barrier compares exactly these two cursors, and this is
+    // the ONE place they are re-synchronized on a switch.
     // Re-seed the studio selection on the newly active track at the cursor —
     // the same resets the launch-replacement path applies, for an in-place
     // track switch (a stale key/rail selection must never leak across tracks).
@@ -3301,6 +3317,9 @@ export function PhysicsPaintStudio() {
   const handleSelectTrackFrame = useCallback((trackId: string, frame: number) => {
     const layerId = launchContext?.layerId;
     if (!layerId) return;
+    // studio-realm-divergence probe: which route armed the cross-track guard,
+    // and did it actually change the active track (a same-track arm is never
+    // consumed until a LATER switch's display-state change).
     setActiveTrackId(layerId, trackId);
     crossTrackSelectionPendingRef.current = true;
     handleNavigateToSyncedFrame(frame);
@@ -3335,7 +3354,7 @@ export function PhysicsPaintStudio() {
     selectionAnchorKeyId.value = null;
     rotoSpacingSelection.value = null;
     if (launchContext) {
-      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackIdOfLaunch(launchContext), null, currentFrame);
+      physicPaintStore.setRotoPhysicalSelection(launchContext.layerId, trackId, null, currentFrame);
     }
     selectedLoopClipIds.value = [rail.loopId];
     loopSelectionAnchorId.value = rail.loopId;
@@ -3999,8 +4018,11 @@ export function PhysicsPaintStudio() {
       return;
     }
     const result = commitDeleteTrack(layerId, trackId, true);
+    // studio-realm-divergence probe (row: track churn): record what the
+    // deletion left behind — active track before/after and remaining ids — so
+    // a later blend-toggle failure can be correlated with the churn state.
     if (!result.ok) setApplyMessage(result.error);
-  }, [launchContext?.layerId]);
+  }, [launchContext?.layerId, currentFrame]);
   // 47-02 Task 2: 'S' solo toggle and header-drag reorder routing — both write
   // the child document through the 47-01 store ops (setTrackSolo writes the
   // solo display property; reorderTrack writes ONLY the order field, never the
@@ -4027,6 +4049,10 @@ export function PhysicsPaintStudio() {
     if (physicalEditCoordinator.pendingOperationId.value !== null) return;
     const document = getEfxPaintDocument(layerId);
     if (!document) return;
+    // studio-blend-off-corruption: record the focus switch the row blend button
+    // performs — active track before/after, staged record count, current
+    // enabled — so the capture can correlate the switch with live-pixel
+    // delivery drops and with the staged-records barrier downstream.
     if (document.activeTrackId !== trackId) setActiveTrackId(layerId, trackId);
     const trackDocument = physicPaintStore.getRotoPhysicalDocument(layerId, trackId);
     const current = physicPaintStore.getRotoPhysicalInterpolationState(layerId, trackId);
@@ -4692,7 +4718,10 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
+          documentSyncDirty.value = true;
+          await flushDocumentSyncRef.current();
+        }, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'loop'; loopId: string } => member.kind === 'loop')
           .map((member) => member.loopId), railSetAnchorLoopId: effectiveRailSetMembers[0]?.kind === 'loop' ? effectiveRailSetMembers[0].loopId : null, railSetMemberKeyRailIds: effectiveRailSetMembers
           .filter((member): member is { kind: 'key-rail'; firstKeyId: string } => member.kind === 'key-rail')

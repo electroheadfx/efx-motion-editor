@@ -126,8 +126,12 @@ function groupLifecycleDocument(options: {
   cursorAppFrame?: number;
   sharedSourceOwner?: boolean;
   sharedOverrideReference?: boolean;
+  referenceOnlyKeyIds?: readonly string[];
 } = {}) {
-  const records = [record('A', 0), record('B', 1)];
+  const makeRecord = (keyId: string, appFrame: number) => options.referenceOnlyKeyIds?.includes(keyId)
+    ? referenceOnlyRecord(keyId, appFrame)
+    : record(keyId, appFrame);
+  const records = [makeRecord('A', 0), makeRecord('B', 1)];
   const groupOverrideRecords = options.existingOverride ? [record('override-4', 0)] : [];
   const visibleRanges = options.gapAt === undefined
     ? [{ start: 0, endExclusive: 6 }]
@@ -785,7 +789,6 @@ function harness(options: {
       ok: true,
       semanticDelta: payload.semanticDelta,
       historyProvenance: payload.historyProvenance,
-      loopClips: payload.loopClips,
       incomingInterpolationBreakKeyIds: payload.incomingInterpolationBreakKeyIds,
       ...overrides,
     };
@@ -1461,6 +1464,63 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       digest: 'ab'.repeat(32),
     });
     expect(payloadA.bytes).toBeUndefined();
+  });
+
+  // studio-blend-off-corruption: the per-track row blend button stages the
+  // CURRENT records and toggles interpolation. The coordinator's payload
+  // comparison was bytes-only (payloadBytesEqual), so a collection holding a
+  // single reference-only record failed recordsEqual against ITSELF —
+  // payloadBytesEqual(undefined, undefined) is false — and every blend toggle
+  // died at the interpolation barrier ("staged records do not equal current
+  // records") on any track whose document held a media record. Equality must
+  // be carrier-total, matching the resolver's payloadEqualsAtFrame oracle.
+  it('stages and sends a blend toggle when the collection holds a reference-only record', async () => {
+    const test = harness({ referenceOnlyKeyIds: ['A'] });
+    const current = test.getCanonicalDocument().interpolation;
+
+    expect(await test.coordinator.executePhysicalEdit({
+      operationKind: 'set-interpolation-enabled',
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      records: test.getRecords(),
+      targetInterpolation: { enabled: !current.enabled, mode: current.mode },
+      selectedKeyId: null,
+      selectedAppFrame: null,
+    })).toBe(true);
+
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledOnce();
+    expect(test.getPayload()?.interpolationEnabled).toBe(!current.enabled);
+    expect(test.coordinator.failureOutput.value).toBeNull();
+    expect(test.setConciseMessage).not.toHaveBeenCalledWith(
+      'Roto physical edit barriers failed. No state was changed.',
+    );
+    expect(test.logDiagnostic).not.toHaveBeenCalledWith(
+      expect.stringContaining('staged records do not equal current records'),
+    );
+  });
+
+  // studio-blend-off-corruption: the SAME carrier-total recordsEqual guards the
+  // stale-doc barrier for rail-delete/paste/group ops. The bytes-only compare
+  // read a document holding a reference-only record as stale against ITSELF, so
+  // rail delete failed with "Group lifecycle physical document became stale
+  // before proposal staging." even when nothing had changed since the last
+  // accept.
+  it('stages and sends a rail delete when the document holds a reference-only record', async () => {
+    const test = harness();
+    const before = groupLifecycleDocument({ sharedSourceOwner: true, referenceOnlyKeyIds: ['A'] });
+    test.seedGroupDocument(before);
+
+    expect(await test.executeDeleteRails([{ kind: 'loop', loopId: 'group-1' }])).toBe(true);
+    expect(test.getPayload()).toMatchObject({
+      operationKind: 'delete-rails',
+      expectedRevision: before.revision,
+      semanticDelta: {
+        kind: 'delete-rails',
+        members: [{ kind: 'loop', loopId: 'group-1' }],
+      },
+    });
+    expect(test.setConciseMessage).not.toHaveBeenCalledWith(
+      'Roto physical edit barriers failed. No state was changed.',
+    );
   });
 
   it('authorizes a matched move-rails intent and rejects a mismatched one before staging', async () => {

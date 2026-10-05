@@ -12,7 +12,14 @@ import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPrese
  * Absorbed by the LRU in Plan 04.
  */
 const _frameBlobUrlCache = new Map<string, string>();
-export function getFrameBlobUrl(bytes: Uint8Array): string {
+export function getFrameBlobUrl(bytes: Uint8Array | null | undefined): string {
+  // studio-realm-divergence (nature: defensive guard): a frame record whose
+  // byte carrier never materialized (a media ref, or a capture that settled
+  // without bytes) reaches the reconcile as `undefined`, and
+  // `buildFrameBytesToken` does `bytes.subarray` unconditionally —
+  // "TypeError: undefined is not an object (evaluating 'bytes.subarray')".
+  // Same failing path, no crash: return '' and let the caller skip the paint.
+  if (!(bytes instanceof Uint8Array) || bytes.length === 0) return '';
   const token = buildFrameBytesToken(bytes);
   const cached = _frameBlobUrlCache.get(token);
   if (cached) return cached;

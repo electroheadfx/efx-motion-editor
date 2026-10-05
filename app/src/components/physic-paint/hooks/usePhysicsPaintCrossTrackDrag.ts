@@ -92,8 +92,10 @@ export interface CrossTrackDragInput {
   /** The single commit path — the strip wires it to physicPaintStore.moveTrackItems.
    *  `destinationAppFrame` is the previewed insertion frame: the commit lands
    *  the payload's anchor exactly where the preview line was (47 close-out UAT
-   *  round 2 — the rail lands where released, never at the source frames). */
-  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame: number): CrossTrackMoveResult;
+   *  round 2 — the rail lands where released, never at the source frames).
+   *  Async (studio-realm-divergence): the strip ships the moved tracks to the
+   *  main window before resolving, so the gesture cannot race a stale parent. */
+  moveTrackItems(layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], destinationAppFrame: number): Promise<CrossTrackMoveResult>;
   /** The status-capsule publication the outcome maps to. */
   readonly publishStatus: (message: string) => void;
   /** Marks the capsule error tone for rejections (red warning triangle). */
@@ -292,7 +294,9 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
         // lands the payload's anchor at the SAME frame the insertion preview
         // showed (preview-is-the-commit, 47 close-out UAT round 2): the rail
         // drops where released, not at the source frames.
-        const result = active.moveTrackItems(
+        // studio-realm-divergence: the move ships both tracks to the main
+        // window before it resolves, so the status line waits for it too.
+        void active.moveTrackItems(
           active.layerId,
           session.source.fromTrackId,
           destination,
@@ -303,13 +307,14 @@ export function usePhysicsPaintCrossTrackDrag(input: CrossTrackDragInput): Cross
             active.zoom ?? 1,
             active.framePitch,
           ),
-        );
-        if (result.ok) {
-          active.publishStatus(buildCrossTrackMoveSuccessMessage(session.source.keyIds.length));
-        } else {
-          active.setApplyStatus?.('error');
-          active.publishStatus(mapCrossTrackMoveRejection(result.reason));
-        }
+        ).then((result) => {
+          if (result.ok) {
+            active.publishStatus(buildCrossTrackMoveSuccessMessage(session.source.keyIds.length));
+          } else {
+            active.setApplyStatus?.('error');
+            active.publishStatus(mapCrossTrackMoveRejection(result.reason));
+          }
+        });
       }
     }
     cleanup(session);

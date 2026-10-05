@@ -360,7 +360,16 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         || launch.layerId !== identity.layerId
         || !currentRecord
         || currentRecord.appFrame !== identity.appFrame
-        || currentRevision !== identity.contentRevision) return;
+        || currentRevision !== identity.contentRevision) {
+        // studio-blend-off-corruption: this gate SILENTLY drops a pending
+        // parent delivery. It re-resolves the track from the LIVE active track,
+        // so an active-track switch between the local write and this delivery
+        // (e.g. the row blend button's focus switch) drops the previous track's
+        // pixels — the child keeps the painted bytes and the parent never gets
+        // them, which is the child/parent divergence behind "revision became
+        // stale before commit". MEASURE-ONLY: never throws into the edit path.
+        return;
+      }
       await inputRef.current.sendCachePayload(payload);
       // 52.2-10 (D-12, T-52.2-35): the frame's bytes just reached the main
       // window through the apply channel, so the sender's claim about the
@@ -448,7 +457,13 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     if (!layerId || !launchId || !projectContextId) return false;
     const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
     const contentRevision = expectedContentRevision ?? inputRef.current.store.getRotoPhysicalContentRevision(layerId, trackId);
-    if (!document || !contentRevision || document.revision !== contentRevision) return false;
+    if (!document || !contentRevision || document.revision !== contentRevision) {
+      // studio-blend-off-corruption: a live-pixel local commit skipped because
+      // the ACTIVE track (re-resolved now) doesn't own the transaction's
+      // expected revision — the cross-track effect of an active-track switch
+      // racing a pending flush. MEASURE-ONLY, never throws.
+      return false;
+    }
     const route = await routeRotoPhysicalPaintFrame({
       document,
       projectContextId,

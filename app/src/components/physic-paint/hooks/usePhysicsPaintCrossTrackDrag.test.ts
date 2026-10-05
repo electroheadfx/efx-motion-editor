@@ -136,7 +136,7 @@ function createHarness(options: {
   const windowLike = new WindowDouble();
   const capture = new CaptureDouble();
   const document = new DocumentDouble();
-  const moveTrackItems = vi.fn((_layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], _destinationAppFrame: number) => {
+  const moveTrackItems = vi.fn(async (_layerId: string, fromTrackId: string, toTrackId: string, keys: readonly string[], _destinationAppFrame: number) => {
     if (options.rejection) return options.rejection;
     document.move(fromTrackId, toTrackId, keys);
     return { ok: true as const };
@@ -339,12 +339,15 @@ describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05
     vi.clearAllMocks();
   });
 
-  it('commits the move through moveTrackItems exactly once on a crossed release — source loses the items, the destination gains fresh identities (D-09)', () => {
+  it('commits the move through moveTrackItems exactly once on a crossed release — source loses the items, the destination gains fresh identities (D-09)', async () => {
     const harness = createHarness();
     const api = harness.render();
     api.onPointerDown(pointerEvent({ clientY: 15 }));
     harness.windowLike.emit('pointermove', pointerEvent({ clientX: 306, clientY: 45 }));
     harness.windowLike.emit('pointerup', pointerEvent({ clientX: 306, clientY: 45 }));
+    // studio-realm-divergence: the move ships both tracks before resolving, so
+    // the status capsule settles a microtask after the release.
+    await Promise.resolve();
 
     expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
     // The commit carries the PREVIEWED insertion frame (47 close-out UAT round
@@ -373,7 +376,7 @@ describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05
     expect(harness.moveTrackItems).toHaveBeenCalledWith('layer-1', 'track-a', 'track-b', ['key-1'], 4);
   });
 
-  it('a rejected move leaves both rows byte-identical and publishes the specific English reason with the red warning triangle (D-17)', () => {
+  it('a rejected move leaves both rows byte-identical and publishes the specific English reason with the red warning triangle (D-17)', async () => {
     const harness = createHarness({ rejection: { ok: false, reason: 'partial-loop-overlap' } });
     const api = harness.render();
     const snapshotBefore = harness.document.snapshot();
@@ -381,6 +384,9 @@ describe('usePhysicsPaintCrossTrackDrag commit + rejection (47-05 Task 2, TML-05
     api.onPointerDown(pointerEvent({ clientY: 15 }));
     harness.windowLike.emit('pointermove', pointerEvent({ clientY: 45 }));
     harness.windowLike.emit('pointerup', pointerEvent({ clientY: 45 }));
+    // studio-realm-divergence: the rejection tone settles a microtask after the
+    // release (the move's ship step runs before the outcome is published).
+    await Promise.resolve();
 
     expect(harness.moveTrackItems).toHaveBeenCalledTimes(1);
     expect(harness.document.snapshot()).toBe(snapshotBefore);
