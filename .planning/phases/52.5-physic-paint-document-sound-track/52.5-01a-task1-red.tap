@@ -1,0 +1,204 @@
+TAP version 13
+1..2
+not ok 1 - src/lib/efxPaintPersistence.test.ts # time=44.48ms {
+    1..5
+    not ok 1 - savePackage / loadEfxPaintPackage # time=30.95ms {
+        1..25
+        ok 1 - round-trips a document through staging/commit and restores identity on load # time=5.00ms
+        ok 2 - a key whose payload carries its media reference is referenced, never staged or bound (F: the save that follows an open) # time=1.79ms
+        ok 3 - round-trips reference-only media in BOTH roto collections with no raster payload in the staged sub-file (52.2 D-07, Law 1) # time=8.21ms
+        ok 4 - refuses a keyId shared by the two roto collections BEFORE any media write (D-09) # time=0.78ms
+        ok 5 - loads refs only — the cache file is never read on open, and an absent one is not an error (D-08, D-14) # time=0.21ms
+        ok 6 - recomputes no location when the machine cache root is unavailable (D-14) # time=0.13ms
+        ok 7 - fails closed when the persisted document has unknown members # time=0.16ms
+        ok 8 - refuses a manifest index entry whose layer file is missing — never a silently empty layer # time=0.11ms
+        ok 9 - refuses a layer file that escapes layers/ BEFORE any read # time=0.30ms
+        ok 10 - returns an empty map when the manifest indexes no layers # time=0.10ms
+        ok 11 - the machine-relative guard accepts produced references and rejects traversal # time=0.15ms
+        ok 12 - saving the same unchanged document twice writes NOTHING on the second save (D-11, T-52.2-23) # time=0.56ms
+        ok 13 - rolls back BOTH staged generations and keeps the prior committed bytes when the package publish is refused # time=3.60ms
+        ok 14 - embeds the trackId in the machine-relative cache reference and the guard accepts it # time=0.12ms
+        ok 15 - stages two tracks at the same appFrame without collision and loads both back # time=0.48ms
+        ok 16 - loads per-track locations with validated cache paths # time=0.16ms
+        ok 17 - fails closed when a persisted track frame cachePath is unsafe # time=0.18ms
+        ok 18 - stableSegment is deterministic, collision-resistant, and sanitized # time=0.17ms
+        ok 19 - re-stages only changed frames and hardlinks unchanged frames (52.1 a2) # time=0.55ms
+        ok 20 - falls back to full re-stage when hardlink fails (52.1 a2) # time=0.86ms
+        ok 21 - a refused cache staging preparation degrades the leg and never fails the save (D-14) # time=0.51ms
+        ok 22 - a rejected staging command degrades the leg the same way (transport failure is cache-side) # time=0.25ms
+        ok 23 - a refused cache publication is recorded softly and leaves the canonical generation alone (D-14) # time=0.23ms
+        ok 24 - a cache rollback failure never masks the authoritative save failure (D-14) # time=0.29ms
+        not ok 25 - document sound member persistence (52.5-01a, PERSIST-01, T-52.5-09) # time=5.61ms {
+            1..5
+            not ok 1 - round-trips the sound reference through layers/<layerId>.json with in/out intact # time=3.68ms
+                ---
+                error:
+                    name: "Error"
+                    message: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+                at: "/Users/lmarques/Dev/efx-motion-editor/app/src/efx-paint/document/efxPaintDocumentParsers.ts:434:11"
+                ...
+            not ok 2 - refuses an absolute path as the sound relativePath at save time # time=1.08ms
+                ---
+                error:
+                    name: "AssertionError"
+                    message: "expected [Function] to throw error matching /sound relativePath/ but got 'EfxPaintDocument: unknown members; ex…'"
+                at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/efxPaintPersistence.test.ts:1281:7"
+                actual: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+                expected: "/sound relativePath/"
+                ...
+            not ok 3 - refuses a package traversal as the sound relativePath at save time # time=0.28ms
+                ---
+                error:
+                    name: "AssertionError"
+                    message: "expected [Function] to throw error matching /sound relativePath/ but got 'EfxPaintDocument: unknown members; ex…'"
+                at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/efxPaintPersistence.test.ts:1281:7"
+                actual: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+                expected: "/sound relativePath/"
+                ...
+            not ok 4 - refuses a path outside audio/ as the sound relativePath at save time # time=0.20ms
+                ---
+                error:
+                    name: "AssertionError"
+                    message: "expected [Function] to throw error matching /sound relativePath/ but got 'EfxPaintDocument: unknown members; ex…'"
+                at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/efxPaintPersistence.test.ts:1281:7"
+                actual: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+                expected: "/sound relativePath/"
+                ...
+            not ok 5 - refuses a layer file whose sound relativePath escapes the package on load # time=0.29ms
+                ---
+                error:
+                    name: "AssertionError"
+                    message: "expected [Function] to throw error matching /sound relativePath/ but got 'EfxPaintDocument: unknown members; ex…'"
+                at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/efxPaintPersistence.test.ts:1289:7"
+                actual: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+                expected: "/sound relativePath/"
+                ...
+        }
+    }
+    ok 2 - 52.2-07 Task 2: the machine-relative derived-frame cache reference (D-05) # time=1.45ms {
+        1..6
+        ok 1 - the cache-path guard accepts machine-relative references and refuses the legacy package-relative shape # time=0.16ms
+        ok 2 - resolves a produced reference to the same machine-local identity across two calls # time=0.09ms
+        ok 3 - stages and publishes the derived-frame cache against the machine cache root, never the project directory # time=0.48ms
+        ok 4 - skips the derived-frame cache leg when no cache root is supplied (D-14 best-effort) # time=0.31ms
+        ok 5 - refuses a layer document carrying a legacy package-relative cache reference before staging it # time=0.18ms
+        ok 6 - refuses a deletion directory that is not machine-relative # time=0.18ms
+    }
+    ok 3 - the package transaction transport (52.2-05 Task 3) # time=9.44ms {
+        1..3
+        ok 1 - binds the staged file set over the package root and the staging basename # time=8.06ms
+        ok 2 - publishes, settles and recovers over the package root with no caller-supplied destination root # time=0.53ms
+        ok 3 - addresses the machine cache root and carries a soft failure as a non-fatal field # time=0.81ms
+    }
+    ok 4 - the staged package save seam (52.2-05 Task 3) # time=1.60ms {
+        1..4
+        ok 1 - mints a Rust-shaped staging basename and keeps the literal in sync with the Rust prefix # time=0.57ms
+        ok 2 - writes the manifest at the derived staged path and binds it as a one-entry set # time=0.26ms
+        ok 3 - expresses an already-staged file set as the same one-entry-set call # time=0.10ms
+        ok 4 - reports the authoritative save as committed when the cache leg soft-fails (D-14) # time=0.64ms
+    }
+    ok 5 - per-file change tokens (52.2-07 Task 1, D-11) # time=0.82ms {
+        1..11
+        ok 1 - keys the token space frame:<layerId>:<keyId>, layer:<layerId>, manifest # time=0.06ms
+        ok 2 - a keyId placed at two different appFrames yields ONE token and ONE media write # time=0.08ms
+        ok 3 - a group-override keyId yields the same frame token shape as a real key, with no collection marker # time=0.06ms
+        ok 4 - refuses a keyId shared by the two roto collections of one document, naming the keyId # time=0.09ms
+        ok 5 - changing one group override returns exactly its media token plus its layer token # time=0.09ms
+        ok 6 - returns only the entries whose token value differs, sorted by token # time=0.06ms
+        ok 7 - the first save against an empty token map returns the complete set # time=0.05ms
+        ok 8 - a second save with identical input returns an empty set # time=0.07ms
+        ok 9 - changing one key bytes returns exactly its media token plus its layer token # time=0.05ms
+        ok 10 - renaming a track inside one layer returns exactly that layer token, never the manifest # time=0.06ms
+        ok 11 - the token map survives a settle and is dropped on rollback, so a failed save re-writes what it staged # time=0.10ms
+    }
+}
+not ok 2 - src/efx-paint/document/efxPaintDocumentParsers.test.ts # time=14.87ms {
+    1..8
+    ok 1 - PhotoReferenceTrack round-trip, encoder, and fail-closed parse # time=3.22ms {
+        1..3
+        ok 1 - round-trips a valid PhotoReferenceTrack through serialize/parse (REF-05) # time=1.58ms
+        ok 2 - opacity does not change the canonical revision (D-12) # time=0.87ms
+        ok 3 - throws fail-closed on missing sourceFrameRefs and negative revision (ASVS V5) # time=0.51ms
+    }
+    ok 2 - PhotoReferenceTrack edge cases # time=1.01ms {
+        1..3
+        ok 1 - round-trips boundary opacity and rejects out-of-range/non-finite/non-number (D-12) # time=0.49ms
+        ok 2 - round-trips negative scale and rotation, rejects missing rotation and non-finite x (D-13) # time=0.24ms
+        ok 3 - revision is stable under field reordering; null photoReference parses to null (D-07) # time=0.24ms
+    }
+    ok 3 - persisted-shape parse mode: media references (52.2-02, D-02 / D-07) # time=2.43ms {
+        1..11
+        ok 1 - accepts a real-key record carrying a validated media reference and fabricates no bytes # time=1.17ms
+        ok 2 - keeps width/height optional on a media reference and requires positive integers when present # time=0.33ms
+        ok 3 - refuses a traversal-shaped relativePath in persisted mode # time=0.10ms
+        ok 4 - refuses an absolute relativePath in persisted mode # time=0.08ms
+        ok 5 - refuses a relativePath outside the frames tree in persisted mode # time=0.07ms
+        ok 6 - refuses a digest that is not 64 hex characters in persisted mode # time=0.07ms
+        ok 7 - refuses an upper-case digest in persisted mode # time=0.07ms
+        ok 8 - refuses an unknown media member in persisted mode # time=0.06ms
+        ok 9 - refuses a missing digest in persisted mode # time=0.07ms
+        ok 10 - refuses a non-record reference in persisted mode # time=0.07ms
+        ok 11 - refuses a record carrying an inline raster payload (Law 1) # time=0.27ms
+    }
+    ok 4 - runtime payload mode stays the default (52.2-02, T-52.2-08) # time=0.57ms {
+        1..3
+        ok 1 - still accepts a bytes-only record carrying no media # time=0.16ms
+        ok 2 - accepts a media-only record and refuses a record carrying neither or both # time=0.28ms
+        ok 3 - refuses an unknown payload member in both modes # time=0.11ms
+    }
+    ok 5 - group overrides share the record type, parser and mode (52.2-02, D-06) # time=1.06ms {
+        1..4
+        ok 1 - accepts a group override carrying a validated media reference in persisted mode # time=0.45ms
+        ok 2 - refuses a group override carrying an inline raster payload in persisted mode (Law 1) # time=0.21ms
+        ok 3 - refuses a group override whose media reference escapes frames/ or whose digest is malformed # time=0.21ms
+        ok 4 - moves the content revision when only a group override media digest changes # time=0.15ms
+    }
+    ok 6 - the shared content encoding is total over both record shapes (52.2-02) # time=0.29ms {
+        1..2
+        ok 1 - revisions and project-equality fingerprints a reference-only record set without reading payload bytes # time=0.16ms
+        ok 2 - keeps the persisted allowlist free of the inline raster key while the runtime allowlist admits it # time=0.11ms
+    }
+    ok 7 - the on-disk door selects the persisted mode (52.2-02, plan 09 reads through it) # time=1.16ms {
+        1..3
+        ok 1 - accepts a layer file whose real-key records carry media references # time=0.11ms
+        ok 2 - refuses a layer file carrying an inline raster payload in either collection (Law 1) # time=0.87ms
+        ok 3 - keeps the runtime default for a live in-memory document carrying inline payloads # time=0.14ms
+    }
+    not ok 8 - DocumentSoundClip singleton member, fail-closed parse (52.5-01a, D-01, A2) # time=4.71ms {
+        1..4
+        not ok 1 - round-trips a full sound record through serialize/parse # time=2.75ms
+            ---
+            error:
+                name: "Error"
+                message: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/efx-paint/document/efxPaintDocumentParsers.ts:434:11"
+            ...
+        not ok 2 - normalizes an absent member to null and keeps sound: null null (A2, no version bump) # time=0.61ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected undefined to be null"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/efx-paint/document/efxPaintDocumentParsers.test.ts:487:49"
+            actual: "undefined"
+            expected: "null"
+            ...
+        not ok 3 - lists `sound` in the expected-keys message when an unknown top-level member is present # time=1.01ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected [Function] to throw error matching /EfxPaintDocument: unknown members; ex…/ but got 'EfxPaintDocument: unknown members; ex…'"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/efx-paint/document/efxPaintDocumentParsers.test.ts:496:51"
+            actual: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+            expected: "/EfxPaintDocument: unknown members; expected exactly.*sound/"
+            ...
+        not ok 4 - throws the SOUND_KEYS message for a sound record carrying one extra unknown key # time=0.31ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected [Function] to throw error matching /DocumentSoundClip: unknown members/ but got 'EfxPaintDocument: unknown members; ex…'"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/efx-paint/document/efxPaintDocumentParsers.test.ts:504:79"
+            actual: "EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision."
+            expected: "/DocumentSoundClip: unknown members/"
+            ...
+    }
+}

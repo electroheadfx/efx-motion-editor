@@ -441,3 +441,68 @@ describe('the on-disk door selects the persisted mode (52.2-02, plan 09 reads th
     expect(parsed.tracks[0].rotoPhysical?.realKeyRecords[0].payload.bytes).toBeInstanceOf(Uint8Array);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 52.5-01a Task 1 (D-01, A2, PERSIST-01): the singleton document sound member —
+// a top-level sibling of background/photoReference, fail-closed against the
+// SOUND_KEYS allowlist, optional (absent parses to sound === null with no
+// EFX_PAINT_DOCUMENT_VERSION bump).
+// ---------------------------------------------------------------------------
+
+function validSoundClip(): Record<string, unknown> {
+  return {
+    id: 'sound-clip-1',
+    sourceId: 'asset-audio-1',
+    relativePath: 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav',
+    sourceRevision: 3,
+    startFrame: 48,
+    inFrame: 12,
+    outFrame: 108,
+    volume: 80,
+    fadeInFrames: 6,
+    fadeOutFrames: 12,
+    fadeInCurve: 'exponential',
+    fadeOutCurve: 'linear',
+    soundInOutput: true,
+    previewMainApp: false,
+  };
+}
+
+function documentWithSound(clip: Record<string, unknown> | null = validSoundClip()): Record<string, unknown> {
+  const document = JSON.parse(JSON.stringify(createEfxPaintDocument('layer-abc'))) as Record<string, unknown>;
+  document.sound = clip;
+  return document;
+}
+
+describe('DocumentSoundClip singleton member, fail-closed parse (52.5-01a, D-01, A2)', () => {
+  it('round-trips a full sound record through serialize/parse', () => {
+    const document = documentWithSound();
+    const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(document)));
+    expect(parsed).toEqual(document);
+    expect(parsed.sound).not.toBeNull();
+  });
+
+  it('normalizes an absent member to null and keeps sound: null null (A2, no version bump)', () => {
+    const absent = JSON.parse(JSON.stringify(createEfxPaintDocument('layer-abc')));
+    expect(parseEfxPaintDocument(absent).sound).toBeNull();
+    expect(parseEfxPaintDocument(documentWithSound(null)).sound).toBeNull();
+    expect(createEfxPaintDocument('layer-abc').sound).toBeNull();
+    expect(parseEfxPaintDocument(absent).version).toBe(1);
+  });
+
+  it('lists `sound` in the expected-keys message when an unknown top-level member is present', () => {
+    const document = documentWithSound(null);
+    document.bogusMember = 1;
+    expect(() => parseEfxPaintDocument(document)).toThrow(
+      /EfxPaintDocument: unknown members; expected exactly.*sound/,
+    );
+  });
+
+  it('throws the SOUND_KEYS message for a sound record carrying one extra unknown key', () => {
+    const document = documentWithSound();
+    (document.sound as Record<string, unknown>).bogusClipKey = true;
+    expect(() => parseEfxPaintDocument(JSON.parse(JSON.stringify(document)))).toThrow(
+      /DocumentSoundClip: unknown members/,
+    );
+  });
+});

@@ -1216,6 +1216,79 @@ describe('savePackage / loadEfxPaintPackage', () => {
     expect(warnings.some((line) => line.includes('cache rollback refused'))).toBe(true);
     warn.mockRestore();
   });
+
+  // 52.5-01a Task 1 (D-01, PERSIST-01, T-52.5-09): the document sound member
+  // rides layers/<layerId>.json as a path-safe audio/ reference — no bytes
+  // inlined, and neither door (save staging or load) accepts an absolute,
+  // traversing, or non-audio/ relativePath.
+  describe('document sound member persistence (52.5-01a, PERSIST-01, T-52.5-09)', () => {
+    const SOUND_RELATIVE_PATH = 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav';
+
+    function soundClip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'sound-clip-1',
+        sourceId: 'asset-audio-1',
+        relativePath: SOUND_RELATIVE_PATH,
+        sourceRevision: 3,
+        startFrame: 48,
+        inFrame: 12,
+        outFrame: 108,
+        volume: 80,
+        fadeInFrames: 6,
+        fadeOutFrames: 12,
+        fadeInCurve: 'exponential',
+        fadeOutCurve: 'linear',
+        soundInOutput: true,
+        previewMainApp: true,
+        ...overrides,
+      };
+    }
+
+    function documentWithSound(clip: Record<string, unknown>): EfxPaintDocument {
+      return { ...createEfxPaintDocument('layer-sound'), sound: clip } as unknown as EfxPaintDocument;
+    }
+
+    it('round-trips the sound reference through layers/<layerId>.json with in/out intact', async () => {
+      const document = documentWithSound(soundClip());
+      const documents = new Map<string, EfxPaintDocumentSaveInput>([
+        ['layer-sound', { document, frames: new Map() }],
+      ]);
+
+      await saveIntoPackage(documents);
+
+      const layerJson = lastStagedWrite(buildLayerFileRelativePath('layer-sound'));
+      const persisted = JSON.parse(layerJson) as Record<string, Record<string, unknown>>;
+      expect(persisted.sound.relativePath).toBe(SOUND_RELATIVE_PATH);
+      expect(persisted.sound.inFrame).toBe(12);
+      expect(persisted.sound.outFrame).toBe(108);
+      // Reference only (52.2): the layer sub-file never carries audio bytes.
+      expect(persisted.sound).not.toHaveProperty('bytes');
+      expect(typeof persisted.sound.relativePath).toBe('string');
+
+      const loaded = await loadFromPackage(PACKAGE_DIR, ['layer-sound']);
+      const restored = loaded.get('layer-sound')!.document;
+      expect(restored.sound).toEqual(document.sound);
+    });
+
+    it.each([
+      ['an absolute path', '/var/tmp/sound.wav'],
+      ['a package traversal', '../escape.wav'],
+      ['a path outside audio/', 'images/sound.wav'],
+    ])('refuses %s as the sound relativePath at save time', async (_label, relativePath) => {
+      const documents = new Map<string, EfxPaintDocumentSaveInput>([
+        ['layer-sound', { document: documentWithSound(soundClip({ relativePath })), frames: new Map() }],
+      ]);
+      await expect(saveIntoPackage(documents)).rejects.toThrow(/sound relativePath/);
+    });
+
+    it('refuses a layer file whose sound relativePath escapes the package on load', async () => {
+      writeLayerFile(PACKAGE_DIR, 'layer-sound-bad', {
+        ...createEfxPaintDocument('layer-sound-bad'),
+        sound: soundClip({ relativePath: '../escape.wav' }),
+      });
+      await expect(loadFromPackage(PACKAGE_DIR, ['layer-sound-bad'])).rejects.toThrow(/sound relativePath/);
+    });
+  });
 });
 
 describe('52.2-07 Task 2: the machine-relative derived-frame cache reference (D-05)', () => {
