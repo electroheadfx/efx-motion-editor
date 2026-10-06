@@ -5,10 +5,10 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick 261006-bdk (layer-stack top insert) — native UAT approved
+stopped_at: Completed quick 261006-dfy (physics paint sidebar row identity) — native UAT approved
 last_updated: "2026-10-06T08:49:00.182Z"
 last_activity: 2026-10-06
-last_activity_desc: Quick 261006-bdk native UAT approved — layer-stack top insert CLOSED (createFxSequence default → insertSequenceAtStackTop)
+last_activity_desc: Quick 261006-dfy native UAT approved — physics paint sidebar row identity CLOSED (display name, no output block, body dblclick opens Studio, accent-blue timeline FX row)
 state_head: 30f26b6373a980193a2bf55a2ee34498455d18db
 progress:
   total_phases: 13
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-06 — Completed quick task 261006-dfy: Physics paint layer row in the main app left sidebar — visual identity and entry points (display name, remove output block, dblclick body opens Studio, accent color)
+Last activity: 2026-10-06 — quick 261006-dfy native UAT approved and CLOSED (physics paint sidebar row identity and entry points; accent-blue timeline FX row)
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 

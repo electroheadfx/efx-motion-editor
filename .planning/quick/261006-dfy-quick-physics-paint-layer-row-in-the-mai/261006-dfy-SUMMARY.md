@@ -83,9 +83,12 @@ coverage:
         status: pass
     human_judgment: false
   - id: D6
-    description: "Native UAT: row shows display name (blank → 'Physics paint N', no UUID anywhere incl. hover), output block gone with open/delete feedback still live, body dblclick opens Studio while name dblclick does not and timeline FX rename still works, row carries the menu's accent-blue left bar"
+    description: "Native UAT: row shows display name (blank → 'Physics paint N', no UUID anywhere incl. hover), output block gone with open/delete feedback still live, body dblclick opens Studio while name dblclick does not and timeline FX rename still works, physic-paint layer carries the menu's accent blue (sidebar card left bar + timeline FX row)"
     requirement: QUICK-261006-DFY
-    verification: []
+    verification:
+      - kind: manual
+        ref: "User native UAT 2026-10-06, 4/4 rows approved (display name, output block gone, body dblclick opens Studio, accent blue). Row 4 initially failed — the timeline FX row rendered gray; amended by 3a1c3119 and re-approved."
+        status: pass
     human_judgment: true
     rationale: "Native sidebar visuals and window-launch gestures cannot be judged by source-contract tests — vitest only pins source strings; the user runs the native UAT (no Chrome DevTools MCP)"
 
@@ -111,7 +114,11 @@ status: complete
 - `pnpm --filter efx-motion-editor exec vitest run` (full app suite) → 235/238 files green, 4434 tests passed; 1 pre-existing module-load failure (see Deferred), 2 skipped files — no NEW failures.
 - Diff boundary: `git diff 1c55a78e..HEAD --name-only` → only `app/src/components/sidebar/PhysicPaintProperties.tsx` (+26/−29) and `app/src/components/sidebar/PhysicPaintProperties.test.ts` (+36). LayerList.tsx, AddFxMenu.tsx, TimelineInteraction.ts, timelineStore, sequenceStore, LeftPanel.tsx, the bridge untouched.
 - Persistence audit: `grep -n "layer.id" PhysicPaintProperties.tsx` → 8 hits, all handler/store/lookup/comment uses (sourceLayerId, parent-sequence find, ordinal findIndex, console.info, updateLayerVisual ×2); zero JSX text renders remain.
-- Native visual UAT: **PENDING — user** (see coverage D6).
+- Native visual UAT: **APPROVED — user, 2026-10-06** (4/4 rows; see coverage D6).
+
+## Amendment (post-plan, UAT-driven)
+
+- **261006-dfy row 4 → timeline FX row accent (`3a1c3119`):** the plan applied `var(--color-accent)` to the sidebar card's left border only. UAT rejected that reading of "color the physic paint layer blue" — the visible gray surface was the **timeline FX row**, which fell through `FX_TRACK_COLORS` (no `'physic-paint'` entry) to `FX_DEFAULT_COLOR '#888888'`. Fix maps `'physic-paint'` → `'var(--color-accent)'` in app/src/lib/frameMap.ts and resolves the sentinel through `getThemeColors().accent` in `TimelineRenderer.resolveTrackColor` (Canvas 2D cannot read `var(...)`), same pattern as the content-overlay colors; the reorder-ghost dot now routes through `resolveTrackColor` too. Reuses the AddFxMenu swatch token — no new color. Scope: 2 files, +5/−2. 28/28 timeline+sidebar tests and 791 lib tests green; the 3 `tsc` errors in `physicsPaintTemporaryErase.ts` / `PhysicsPaintToolRail.tsx` are pre-existing (unchanged with the fix stashed).
 
 ## Deviations from Plan
 
