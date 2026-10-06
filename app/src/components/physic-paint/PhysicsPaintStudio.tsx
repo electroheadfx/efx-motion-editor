@@ -3202,15 +3202,22 @@ export function PhysicsPaintStudio() {
   // re-running on unrelated Studio renders. What it computes is unchanged.
   const rotoOnionPreviewFrames = rotoPreviewFramesRef.current;
   const rotoOnionDirtyFrames = dirtyRotoFramesRef.current;
+  // studio-onion-skinning: render sources resolve on the LIVE active track
+  // (activeTrackIdForReads, a memo key) — the same authority rotoKeyRecords
+  // reads. The launch snapshot's trackIdOfLaunch froze the seam at the
+  // launch-time track, so after an in-Studio track switch (row click / add /
+  // duplicate) every candidate failed the keyId match in rotoOnionPreview and
+  // the projection dropped to []. Same rule as navigation (47 close-out: live
+  // active track, never the launch snapshot).
   const onionPreviewFrames = useMemo(() => projectRotoOnionPreviewFrames({
     currentFrame,
     isPlaying,
     onion,
     realKeyRecords: rotoKeyRecords,
-    getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,
+    getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, activeTrackIdForReads, appFrame) : null,
     previewFrames: rotoOnionPreviewFrames,
     dirtyFrames: rotoOnionDirtyFrames,
-  }), [currentFrame, isPlaying, onion, rotoKeyRecords, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);
+  }), [currentFrame, isPlaying, onion, rotoKeyRecords, activeTrackIdForReads, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);
   const rotoCachedPlaybackAvailable = selectRotoPlaybackAvailable({
     workflowMode,
     hasLaunchContext: Boolean(launchContext),

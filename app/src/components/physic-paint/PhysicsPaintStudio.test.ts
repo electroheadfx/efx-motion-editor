@@ -278,7 +278,14 @@ describe('Physics Paint canonical Group authority boundary (43.2-17, D-05/D-38)'
     expect(studio).toContain('const rotoLoopClips = useMemo(() => launchContext ? physicPaintStore.getRotoPhysicalLoopClips(launchContext.layerId, activeTrackIdForReads) : PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, [launchContext?.layerId, activeTrackIdForReads, rotoPhysicalRevision.value, throttledPaintRevision.value, throttledEfxRevision.value]);');
     expect(studio).toContain('getRotoPhysicalDocument: (layerId, trackId) => physicPaintStore.getRotoPhysicalDocument(layerId, trackId),');
     expect(studio).toContain('getRotoPhysicalRenderSource: (layerId, trackId, appFrame) => physicPaintStore.getRotoPhysicalRenderSource(layerId, trackId, appFrame),');
-    expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
+    // studio-onion-skinning: the onion memo must resolve render sources on the
+    // LIVE active track (the same authority rotoKeyRecords reads) — the launch
+    // snapshot's activeTrackId is frozen at launch, so trackIdOfLaunch here
+    // dropped every candidate after an in-Studio track switch (keyId mismatch
+    // at rotoOnionPreview.ts:124 → empty projection → no onion).
+    expect(studio).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, activeTrackIdForReads, appFrame) : null,');
+    expect(studio).toContain('}), [currentFrame, isPlaying, onion, rotoKeyRecords, activeTrackIdForReads, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);');
+    expect(studio.includes('getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame)')).toBe(false);
 
     for (const secondAuthority of [
       'useSignal<readonly PhysicPaintRotoLoopClip',

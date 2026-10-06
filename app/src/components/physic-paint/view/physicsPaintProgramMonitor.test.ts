@@ -667,14 +667,19 @@ describe('PhysicsPaintProgramMonitor', () => {
     it('(e) onion ghosts stay above the monitor and source the active track raw frames', () => {
       // D-06: the onion projection's getRenderSource reads the ACTIVE track's
       // RAW frames via getRotoPhysicalRenderSource(launchContext.layerId,
-      // trackIdOfLaunch(launchContext), appFrame) — the ghost projection is NOT
-      // re-sourced through the flattened path.
+      // activeTrackIdForReads, appFrame) — the LIVE active track, the same
+      // authority rotoKeyRecords reads (studio-onion-skinning: the launch
+      // snapshot's trackIdOfLaunch froze the seam at the launch-time track and
+      // dropped every onion candidate after an in-Studio track switch) — and
+      // the ghost projection is NOT re-sourced through the flattened path.
       const onionProjection = resolveBlock(
         studio,
         'const onionPreviewFrames = useMemo(() => projectRotoOnionPreviewFrames({',
         'const rotoCachedPlaybackAvailable =',
       );
-      expect(onionProjection).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, trackIdOfLaunch(launchContext), appFrame) : null,');
+      expect(onionProjection).toContain('getRenderSource: (appFrame) => launchContext ? physicPaintStore.getRotoPhysicalRenderSource(launchContext.layerId, activeTrackIdForReads, appFrame) : null,');
+      expect(onionProjection).toContain('activeTrackIdForReads, launchContext, rotoOnionPreviewFrames, rotoOnionDirtyFrames]);');
+      expect(onionProjection).not.toContain('trackIdOfLaunch');
       expect(onionProjection).not.toContain('getFlattenedFrame');
 
       // z-order pin: program monitor (z-index 0) below the engine canvases
