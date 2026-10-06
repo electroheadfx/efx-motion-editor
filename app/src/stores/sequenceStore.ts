@@ -265,8 +265,11 @@ export const sequenceStore = {
   // --- FX Sequence CRUD ---
 
   /** Create an FX sequence with a single FX layer, positioned globally on the timeline.
-   *  opts.position 'top' lands the new sequence at the head of the stack (the + Layer
-   *  menu); default 'end' keeps existing opts-less callers (ShaderBrowser) appending. */
+   *  PLACEMENT LAW (261006-bdk): every layer type lands at the head of the stack —
+   *  the timeline's first non-content sequence row — unless the caller explicitly
+   *  passes position: 'end'. The default (opts-less, e.g. the Shader Browser's
+   *  generator/adjustment apply) therefore top-inserts via insertSequenceAtStackTop,
+   *  so a future layer type cannot silently fall back to append. */
   createFxSequence(name: string, layer: Layer, totalFrames: number, opts?: { inFrame?: number; outFrame?: number; position?: 'end' | 'top' }): Sequence {
     const before = snapshot();
 
@@ -281,9 +284,9 @@ export const sequenceStore = {
       inFrame: opts?.inFrame ?? 0,
       outFrame: opts?.outFrame ?? (totalFrames > 0 ? totalFrames : 100),
     };
-    sequences.value = opts?.position === 'top'
-      ? insertSequenceAtStackTop(sequences.value, seq)
-      : [...sequences.value, seq];
+    sequences.value = opts?.position === 'end'
+      ? [...sequences.value, seq]
+      : insertSequenceAtStackTop(sequences.value, seq);
     markDirty();
 
     const after = snapshot();
