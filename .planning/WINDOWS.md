@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 15
+open_count: 16
 waived_count: 5
 fixed_count: 69
-total_count: 89
-last_updated: 2026-10-04T11:38:08.668Z
+total_count: 90
+last_updated: 2026-10-06T07:22:49.055Z
 ---
 
 # Broken Windows Ledger
@@ -104,6 +104,7 @@ last_updated: 2026-10-04T11:38:08.668Z
 | 87 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryErase.ts |  | Task 3: combineEffectiveTool first arg = some-arm-held (resolve/read pass erase\|\|move) — honors committed precedence cell over plan literal rule | open |  | 2026-10-04T09:42:45.318Z |  |
 | 88 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts |  | Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest | open |  | 2026-10-04T09:42:45.463Z |  |
 | 89 | quick-261004-hwa | deviation | app/src/stores/paintStore.fgBg.test.ts |  | Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec) | open |  | 2026-10-04T11:38:08.668Z |  |
+| 90 | quick-261006-bdk | deviation | app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts |  | Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md | open |  | 2026-10-06T07:22:49.055Z |  |
 
 ````json
 [
@@ -1189,6 +1190,19 @@ last_updated: 2026-10-04T11:38:08.668Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-04T11:38:08.668Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 90,
+    "kind": "deviation",
+    "phase": "quick-261006-bdk",
+    "file": "app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts",
+    "line": null,
+    "description": "Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-06T07:22:49.055Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }
