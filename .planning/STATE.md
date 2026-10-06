@@ -6,10 +6,10 @@ current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
 stopped_at: Completed quick 261006-bdk (layer-stack top insert) — native UAT approved
-last_updated: "2026-10-06T07:27:54.934Z"
+last_updated: "2026-10-06T08:49:00.182Z"
 last_activity: 2026-10-06
-last_activity_desc: "Quick 261006-bdk native UAT approved — layer-stack top insert CLOSED (createFxSequence default → insertSequenceAtStackTop)"
-state_head: a9479fe6b15c6a540998efc41e7788db4ce1b816
+last_activity_desc: Quick 261006-bdk native UAT approved — layer-stack top insert CLOSED (createFxSequence default → insertSequenceAtStackTop)
+state_head: 30f26b6373a980193a2bf55a2ee34498455d18db
 progress:
   total_phases: 13
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-06 — quick 261006-bdk native UAT approved and CLOSED (new layers go to the top of the layer stack for every layer type; createFxSequence default → insertSequenceAtStackTop)
+Last activity: 2026-10-06 — Completed quick task 261006-dfy: Physics paint layer row in the main app left sidebar — visual identity and entry points (display name, remove output block, dblclick body opens Studio, accent color)
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
@@ -463,6 +463,7 @@ None yet.
 | 261004-dn5 | Quick 6: Move tool on fresh strokes. Intention: add a Move capability for fresh (editable) strokes. Add a Move tool icon to the left vertical tool palette, placed directly under the Erase tool. The icon is enabled only when a stroke script is in memory (greyed out / disabled otherwise). Two entry points: select the Move tool directly, or hold Cmd in brush mode as a temporary move. With move active (tool selected, or Cmd held), hovering a fresh stroke previews it and one click-drag translates that whole stroke (entry + deposit); release commits. Selecting the Move tool alone is enough to move strokes — no Cmd needed. Baked/pixel paint keeps today's behavior, unchanged. Moving a fresh stroke must refresh the in-memory paint script so Save writes the script with the moved coordinates — do not break stroke/pointer script handling. Guardrails: rigid translate of the existing rendered stroke (entry + deposit), never re-simulate, pixel-identical look (frozen look law); reuse existing geometric hit-test and whole-stroke replay rebuild; one stroke per drag, no multi-select, no selection overlay; Cmd-hold is temporary move only while held and must not break existing Cmd-modified shortcuts; global shortcuts.ts gated on isPaintEditMode() where applicable; Move icon enabled state driven by the in-memory stroke script only. Status: **native UAT approved 2026-10-04** — (a) Move icon gated on stroke script + under Erase, (b) Move tool click-drag translates whole stroke with Save/reopen fidelity, (c) Cmd temporary move + chords unaffected, (d) baked/pixel paint unchanged, (e) look parity (no re-simulation) + Undo honesty. Quick 261004-dn5 **CLOSED** | 2026-10-04 | ed68704d | [261004-dn5-quick-6-move-tool-on-fresh-strokes-inten](./quick/261004-dn5-quick-6-move-tool-on-fresh-strokes-inten/) |
 | 261004-hwa | Quick 7: Photoshop foreground/background swatch — two overlapping squares at bottom of left sidebar, X swaps, back-click promotes, sidebar picker syncs to top swatch | 2026-10-04 | 33738ffa | [261004-hwa-quick-7-photoshop-foreground-background-](./quick/261004-hwa-quick-7-photoshop-foreground-background-/) |
 | 261006-bdk | New layers go to the top of the layer stack for every layer type — createFxSequence default routes through insertSequenceAtStackTop (explicit position:'end' remains the only append); Shader Browser opts-less apply now lands at stack head without editing ShaderBrowser.tsx; reorderFxSequences / resolveFxReorderToIndex untouched (260923-kcs single-adjustment contract); regression pin added. Native UAT pending | 2026-10-06 | a9479fe6 | [261006-bdk-quick-new-layers-go-to-the-top-of-the-la](./quick/261006-bdk-quick-new-layers-go-to-the-top-of-the-la/) |
+| 261006-dfy | Physics paint layer row in the main app left sidebar — visual identity and entry points (display name, remove output block, dblclick body opens Studio, accent color) | 2026-10-06 | 30f26b63 | [261006-dfy-quick-physics-paint-layer-row-in-the-mai](./quick/261006-dfy-quick-physics-paint-layer-row-in-the-mai/) |
 
 ### Roadmap Evolution
 
