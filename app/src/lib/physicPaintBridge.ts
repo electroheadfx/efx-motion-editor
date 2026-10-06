@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
@@ -72,6 +72,9 @@ import { imageStore } from '../stores/imageStore';
 import { tempProjectDir } from './projectDir';
 import { resolveSequenceTimelineRange, trackLayouts } from './frameMap';
 import { assetUrl, scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
+// 52.5-01a (T-52.5-09): the sound relativePath must resolve inside the package
+// `audio/` directory at BOTH the save/load edge and this assetUrl build.
+import { isSafeAudioRelativePath } from './efxPaintPersistence';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
@@ -2529,6 +2532,8 @@ export async function applyPhysicPaintScriptLibraryRequest(value: unknown): Prom
 export interface PhysicPaintImageLibraryStatePorts {
   readonly getImages: () => MceImageRef[];
   readonly getProjectDir: () => string;
+  /** 52.5-01a (Q2): kind 'audio' listing — package-relative `audio/` asset refs. */
+  readonly getAudioAssets?: () => PhysicPaintAudioAssetRef[];
 }
 
 export function applyPhysicPaintImageLibraryRequest(
@@ -2540,6 +2545,11 @@ export function applyPhysicPaintImageLibraryRequest(
   if (!request) return { operationId, ok: false, images: [], projectDir: '', error: 'Invalid image library request' };
   const projectDir = state.getProjectDir();
   if (!projectDir) return { operationId, ok: false, images: [], projectDir: '', error: 'No project directory is open.' };
+  // 52.5-01a (Q2, D-03): the discriminator selects the LISTING SOURCE only —
+  // same validated request pair, same main-realm authority, no parallel channel.
+  if (request.kind === 'audio') {
+    return { operationId, ok: true, images: [], projectDir, audioAssets: state.getAudioAssets?.() ?? [] };
+  }
   return { operationId, ok: true, images: state.getImages(), projectDir };
 }
 
@@ -2558,6 +2568,13 @@ export interface PhysicPaintImageImportStatePorts {
   readonly getImages: () => MceImageRef[];
   readonly getProjectDir: () => string;
   readonly importImages: (paths: readonly string[], projectDir: string) => Promise<readonly string[] | null>;
+  /**
+   * 52.5-01a (Q2, T-52.5-07): kind 'audio' copy target inside the SAME
+   * main-realm handler — same validation, copy+dedupe, and package semantics
+   * as images. Returns the copied asset refs, or null when the copy could not
+   * be performed at all.
+   */
+  readonly importAudio?: (paths: readonly string[], projectDir: string) => Promise<{ refs: PhysicPaintAudioAssetRef[]; errors: readonly string[] } | null>;
 }
 
 export async function applyPhysicPaintImageImportRequest(
@@ -2571,6 +2588,23 @@ export async function applyPhysicPaintImageImportRequest(
   if (!request) return { operationId, ok: false, images: [], errors: [], error: 'Invalid image import request' };
   const projectDir = state.getProjectDir();
   if (!projectDir) return { operationId, ok: false, images: [], errors: [], error: 'No project directory is open.' };
+  const isAudio = request.kind === 'audio';
+  // 52.5-01a (Q2, D-03, T-52.5-07): the discriminator selects the copy target
+  // INSIDE this main-realm handler — audio rides the same validation and
+  // package reference semantics; no parallel import path exists.
+  if (isAudio && !state.importAudio) {
+    return { operationId, ok: false, images: [], errors: [], error: 'Audio import is unavailable' };
+  }
+  if (isAudio) {
+    let imported: { refs: PhysicPaintAudioAssetRef[]; errors: readonly string[] } | null;
+    try {
+      imported = await state.importAudio!(request.paths, projectDir);
+    } catch (error) {
+      return { operationId, ok: false, images: [], errors: [], error: `Audio import failed: ${String(error)}` };
+    }
+    if (imported === null) return { operationId, ok: false, images: [], errors: [], error: 'Audio import failed' };
+    return { operationId, ok: true, images: [], errors: [...imported.errors], audioAssets: imported.refs };
+  }
   let errors: readonly string[] | null;
   try {
     errors = await state.importImages(request.paths, projectDir);
@@ -2588,6 +2622,12 @@ export async function applyPhysicPaintImageImportRequest(
  * `imageStore.importFiles`, and the post-import library read. `importFiles`
  * returns the IPC outcome; the port hands the handler the per-file error
  * strings in the store's existing `${path}: ${error}` shape.
+ *
+ * 52.5-01a (Q2): `importAudio` mirrors the ImportedView copy+dedupe block into
+ * the package `audio/` directory (mkdir, copyFile, skip when the destination
+ * path already present) and registers the record in the main realm's own
+ * imageStore.audioAssets — the same realm whose records the manifest and
+ * reopen hydration read (quick-260921-bjm authority).
  */
 export function createPhysicPaintImageImportStatePorts(): PhysicPaintImageImportStatePorts {
   return {
@@ -2596,6 +2636,44 @@ export function createPhysicPaintImageImportStatePorts(): PhysicPaintImageImport
     importImages: async (paths, projectDir) => {
       const result = await imageStore.importFiles([...paths], projectDir);
       return result ? result.errors.map((error) => `${error.path}: ${error.error}`) : null;
+    },
+    importAudio: async (paths, projectDir) => {
+      try {
+        const { copyFile, mkdir } = await import('@tauri-apps/plugin-fs');
+        const audioDir = `${projectDir}/audio`;
+        const refs: PhysicPaintAudioAssetRef[] = [];
+        const errors: string[] = [];
+        for (const filePath of paths) {
+          const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? '';
+          const relativePath = `audio/${filename}`;
+          // The package edge only ever accepts safe audio/ references — a
+          // hostile basename never escapes the audio directory (T-52.5-09).
+          if (!filename || !isSafeAudioRelativePath(relativePath)) {
+            errors.push(`${filePath}: unsafe audio filename`);
+            continue;
+          }
+          const destPath = `${audioDir}/${filename}`;
+          const existing = imageStore.audioAssets.value.find((asset) => asset.path === destPath);
+          if (existing) {
+            refs.push({ id: existing.id, name: existing.name, relativePath });
+            continue;
+          }
+          try {
+            await mkdir(audioDir, { recursive: true });
+            await copyFile(filePath, destPath);
+          } catch (error) {
+            errors.push(`${filePath}: ${String(error)}`);
+            continue;
+          }
+          const asset = { id: crypto.randomUUID(), name: filename, path: destPath };
+          imageStore.addAudioAsset(asset);
+          refs.push({ id: asset.id, name: asset.name, relativePath });
+        }
+        return { refs, errors };
+      } catch (error) {
+        console.error('Failed to copy audio:', error);
+        return null;
+      }
     },
   };
 }
@@ -2719,6 +2797,20 @@ export async function installPhysicPaintImageLibraryListener(): Promise<() => vo
   const state: PhysicPaintImageLibraryStatePorts = {
     getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? ''),
     getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? '',
+    // 52.5-01a (Q2): kind 'audio' listing — only assets inside the project's
+    // audio/ directory ship, as package-relative refs (never absolute paths).
+    getAudioAssets: () => {
+      const projectDir = projectStore.dirPath.value ?? tempProjectDir.value ?? '';
+      if (!projectDir) return [];
+      const prefix = `${projectDir}/audio/`;
+      return imageStore.audioAssets.value
+        .filter((asset) => asset.path.startsWith(prefix))
+        .map((asset) => ({
+          id: asset.id,
+          name: asset.name,
+          relativePath: `audio/${asset.path.slice(prefix.length)}`,
+        }));
+    },
   };
   if (isTauriRuntime()) {
     const eventApi = await import('@tauri-apps/api/event');
@@ -2913,6 +3005,28 @@ export async function installPhysicPaintProjectContextRequestListener(): Promise
  * fires even with zero tracks: deleting the last track while EFX Paint is
  * open must reach the child (AUDIO-04).
  */
+/**
+ * 52.5-01a (Q1, T-52.5-08): post-register documentAudio push — rides the SAME
+ * PHYSIC_PAINT_AUDIO_CONTEXT_EVENT emit path (emitTo window-label + CustomEvent
+ * + opener.postMessage fallbacks) with the closed documentAudio section as the
+ * payload; `null` clears the child's store (clip removed). The payload key sets
+ * are disjoint ({revision,fps,tracks} vs {revision,clipId,assetUrl}), so the
+ * child's audioPreview funnel drops this shape and vice versa — task 3 wires
+ * the documentAudio side of this event.
+ */
+export async function publishPhysicPaintDocumentAudioContext(layerId: string): Promise<void> {
+  const section = buildPhysicPaintDocumentAudioSection(layerId);
+  if (isTauriRuntime()) {
+    const eventApi = await import('@tauri-apps/api/event');
+    await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, section);
+  }
+  if (typeof window !== 'undefined') {
+    const message = { type: PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, payload: section };
+    window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, { detail: section }));
+    window.opener?.postMessage?.(message, window.location.origin);
+  }
+}
+
 export async function publishPhysicPaintAudioContext(): Promise<void> {
   const section = buildPhysicPaintAudioPreviewSection();
   if (isTauriRuntime()) {
@@ -3603,11 +3717,19 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // the guard below would otherwise return before the byte channel is read.
       applyDocumentSyncFrameMedia(document, incoming.changedBytes);
       const current = getEfxPaintDocument(document.parentLayerId);
+      // 52.5-01a (Q1, T-52.5-08): sound contributes no documentRevision term
+      // until the `|sound:` fingerprint term ships in slice 01b, so the sound
+      // member is compared directly here — a sound-only change must register
+      // AND trigger the documentAudio push even when the fingerprint below
+      // would early-return. Parser-produced members have stable key order, so
+      // JSON.stringify is an exact member comparison.
+      const soundChanged = JSON.stringify(current?.sound ?? null) !== JSON.stringify(document.sound);
       // The sync fingerprint (canonical revision + photo-reference display
       // preferences): a display-only change never bumps the revision but is
       // persisted content, so it must still register here.
-      if (current && buildEfxPaintDocumentSyncFingerprint(current) === buildEfxPaintDocumentSyncFingerprint(document)) return;
+      if (current && !soundChanged && buildEfxPaintDocumentSyncFingerprint(current) === buildEfxPaintDocumentSyncFingerprint(document)) return;
       registerEfxPaintDocument(document);
+      if (soundChanged) void publishPhysicPaintDocumentAudioContext(document.parentLayerId);
       // 47-01 UAT round 8: mirror the child's live runtime into the main
       // window's runtime maps (rotoPhysical only — frame bytes stay owned by
       // the bridge applies) so the apply validation and the save projection
@@ -3745,6 +3867,36 @@ export function buildPhysicPaintAudioPreviewSection(): EfxPaintAudioPreviewConte
   };
 }
 
+/**
+ * 52.5-01a (Q1, T-52.5-08): monotonic revision counter for the CLOSED
+ * documentAudio section — same ownership style as nextAudioPreviewRevision:
+ * bumped exactly once per built section, total ordering across launch embed
+ * and the post-register push. The section names the document's `sound` member
+ * by ref only (clipId + efxasset:// URL) — never bytes, never a filePath.
+ */
+let nextDocumentAudioRevision = 1;
+
+/**
+ * Build the launch/push section from `getEfxPaintDocument(layerId)?.sound`
+ * ALONE (Q1 guardrail: this must never read audioStore.tracks — a zero-main-
+ * audio project still transports its clip). Absent sound -> null (section
+ * absent); an unsafe relativePath -> null (fail closed, T-52.5-09: the same
+ * guard refuses the package at save/load).
+ */
+export function buildPhysicPaintDocumentAudioSection(layerId: string): PhysicPaintDocumentAudioSection | null {
+  const sound = getEfxPaintDocument(layerId)?.sound;
+  if (!sound) return null;
+  // Same project-root fallback as the gallery import copy target
+  // (`dirPath ?? tempProjectDir`) so an unsaved project's clip still resolves.
+  const projectDir = projectStore.dirPath.peek() ?? tempProjectDir.peek();
+  if (!projectDir || !isSafeAudioRelativePath(sound.relativePath)) return null;
+  return {
+    revision: nextDocumentAudioRevision++,
+    clipId: sound.id,
+    assetUrl: assetUrl(`${projectDir}/${sound.relativePath}`),
+  };
+}
+
 export function createPhysicPaintLaunchContext(
   layer: Layer,
   frame: number,
@@ -3832,6 +3984,10 @@ export function createPhysicPaintLaunchContext(
     loop: false,
     fps: Math.max(1, Math.min(60, isFinitePositiveNumber(fps) ? fps : 12)),
   };
+  // 52.5-01a (Q1, T-52.5-08): the embed keys on the document's sound member
+  // ALONE — never on audioStore.tracks (a zero-main-audio project still
+  // transports its clip). Absent sound = absent section = byte-stable launch.
+  const documentAudio = buildPhysicPaintDocumentAudioSection(layerId);
   const context: PhysicPaintLaunchContext = {
     operationId: `physic-paint-${Date.now()}-${crypto.randomUUID()}`,
     layerId,
@@ -3850,6 +4006,8 @@ export function createPhysicPaintLaunchContext(
     rotoPlayback: playbackSettings,
     // Absent section = no audio; keeps existing audio-less launches byte-stable.
     ...(audioStore.tracks.peek().length > 0 ? { audioPreview: buildPhysicPaintAudioPreviewSection() } : {}),
+    // 52.5-01a: absent section = no document sound clip (keys on sound only).
+    ...(documentAudio ? { documentAudio } : {}),
     document: carrier,
   };
   const validated = parseCanonicalPhysicsPaintLaunchValue(context);

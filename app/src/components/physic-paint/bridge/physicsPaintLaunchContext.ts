@@ -2,6 +2,7 @@ import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import {
   isEfxPaintAudioPreviewContext,
   isEfxPaintAudioPreviewTrack,
+  isPhysicPaintDocumentAudioSection,
   isPhysicPaintLaunchContext,
 } from '../../../types/physicPaint';
 import { parseEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocumentParsers';
@@ -11,8 +12,10 @@ export interface PhysicsPaintLaunchStateSetters<Settings> {
   setSettings: (settings: Settings) => void;
 }
 
-const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'document', 'rotoPlayback', 'audioPreview']);
+const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'document', 'rotoPlayback', 'audioPreview', 'documentAudio']);
 const AUDIO_PREVIEW_KEYS = new Set(['revision', 'fps', 'tracks']);
+// 52.5-01a (Q1, T-52.5-08): the closed documentAudio section key set.
+const DOCUMENT_AUDIO_KEYS = new Set(['revision', 'clipId', 'assetUrl']);
 const AUDIO_PREVIEW_TRACK_KEYS = new Set(['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve']);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -62,6 +65,10 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
     if (!isEfxPaintAudioPreviewContext(value.audioPreview)) return null;
     if (!value.audioPreview.tracks.every((track) => isPlainRecord(track) && hasOnlyKeys(track, AUDIO_PREVIEW_TRACK_KEYS) && isEfxPaintAudioPreviewTrack(track))) return null;
   }
+  if (value.documentAudio !== undefined) {
+    if (!isPlainRecord(value.documentAudio) || !hasOnlyKeys(value.documentAudio, DOCUMENT_AUDIO_KEYS)) return null;
+    if (!isPhysicPaintDocumentAudioSection(value.documentAudio)) return null;
+  }
   try {
     // Fail-closed document validation: unknown members, wrong version, or a
     // dangling active track all refuse the launch (no partial hydration).
@@ -86,6 +93,15 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
               revision: value.audioPreview.revision,
               fps: value.audioPreview.fps,
               tracks: value.audioPreview.tracks.map((track) => ({ ...track })),
+            },
+          }
+        : {}),
+      ...(value.documentAudio !== undefined
+        ? {
+            documentAudio: {
+              revision: value.documentAudio.revision,
+              clipId: value.documentAudio.clipId,
+              assetUrl: value.documentAudio.assetUrl,
             },
           }
         : {}),
