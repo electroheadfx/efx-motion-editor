@@ -503,6 +503,17 @@ export function projectLayerDocument(
 }
 
 /**
+ * The document sound clip's media reference guard (52.5, PERSIST-01,
+ * T-52.5-09): a `sound.relativePath` is only valid when it is a safe
+ * package-relative path under the `audio/` directory — absolute paths,
+ * traversals, and sibling-tree paths are refused before any join or write.
+ * Every door that reads or writes the sound reference calls this.
+ */
+export function isSafeAudioRelativePath(value: string): boolean {
+  return isSafePackageRelativePath(value) && value.startsWith('audio/');
+}
+
+/**
  * Compute every write-plan field for one layer, purely: parse through the
  * fail-closed runtime parser, refuse a document whose cache references are not
  * machine-relative (`collectPackageCacheRefs`, T-52.2-56), refuse a keyId
@@ -511,6 +522,14 @@ export function projectLayerDocument(
  */
 function preparePackageLayer(layerId: string, input: EfxPaintDocumentSaveInput): PreparedPackageLayer {
   const document = parseEfxPaintDocument(input.document);
+  // 52.5 (PERSIST-01, T-52.5-09): the sound reference must be a package-
+  // relative audio/ path BEFORE anything is staged — a crafted child-supplied
+  // path never reaches a sub-file or a join.
+  if (document.sound !== null && !isSafeAudioRelativePath(document.sound.relativePath)) {
+    throw new Error(
+      `EFX Paint package: layer "${layerId}" sound relativePath "${document.sound.relativePath}" must be a safe package-relative audio/ path.`,
+    );
+  }
   // 52.2-07 (D-05, T-52.2-56): a legacy package-relative reference (or an
   // absolute path) is a refusal here rather than a value written into a
   // sub-file that would only open on the machine that wrote it.
@@ -1341,6 +1360,14 @@ export async function loadEfxPaintPackage(
     // payload in either roto collection is refused here, and the runtime parser
     // keeps the 'runtime' default everywhere else.
     const document = parseEfxPaintDocument(value, 'reference-only');
+    // 52.5 (PERSIST-01, T-52.5-09): the on-disk door refuses a sound reference
+    // that is not a package-relative audio/ path — fail closed at the read,
+    // never resolve or join it downstream.
+    if (document.sound !== null && !isSafeAudioRelativePath(document.sound.relativePath)) {
+      throw new Error(
+        `EFX Paint package: layer "${layerId}" sound relativePath "${document.sound.relativePath}" must be a safe package-relative audio/ path.`,
+      );
+    }
     const cacheLocations = new Map<string, Map<number, string>>();
     for (const track of document.tracks) {
       const trackLocations = new Map<number, string>();

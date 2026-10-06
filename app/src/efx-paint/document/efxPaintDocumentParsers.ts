@@ -20,6 +20,7 @@ import {
   type BackgroundTrack,
   type BlendMode,
   type CachedFrameReference,
+  type DocumentSoundClip,
   type EfxPaintDocument,
   type FrameLoopClip,
   type FrameLoopClipRepeat,
@@ -29,6 +30,7 @@ import {
   type PaperTexture,
   type PhotoReferenceTrack,
   type PhotoReferenceTransform,
+  type SoundFadeCurve,
 } from './efxPaintDocument';
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -53,7 +55,9 @@ function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'compositeRevision']);
+// 52.5 (D-01, T-52.5-01): `sound` joins the allowlist together with the
+// unknown-members message below (Pitfall 5 — never one without the other).
+const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'sound', 'compositeRevision']);
 const TRACK_KEYS = new Set(['id', 'name', 'order', 'visible', 'solo', 'opacity', 'blendMode', 'revision', 'frames', 'rotoPhysical', 'loopClips']);
 // 260922-rd4: `transform`/`transformLocked` are the ONLY format additions —
 // the background display-preference members (package-format touch is confined
@@ -77,6 +81,29 @@ const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add']);
 // accepted (T-52-04).
 const PHOTO_REFERENCE_KEYS = new Set(['id', 'sourceFrameRefs', 'revision', 'visibleInStudio', 'opacity', 'transform', 'transformLocked']);
 const PHOTO_TRANSFORM_KEYS = new Set(['x', 'y', 'scaleX', 'scaleY', 'rotation']);
+// 52.5 (D-01): the singleton sound clip allowlist — every field required when
+// the member is present; the member itself is optional (absent/null -> null).
+const SOUND_KEYS = new Set([
+  'id',
+  'sourceId',
+  'relativePath',
+  'sourceRevision',
+  'startFrame',
+  'inFrame',
+  'outFrame',
+  'volume',
+  'fadeInFrames',
+  'fadeOutFrames',
+  'fadeInCurve',
+  'fadeOutCurve',
+  'soundInOutput',
+  'previewMainApp',
+]);
+const SOUND_FADE_CURVES = new Set<string>(['linear', 'exponential', 'logarithmic']);
+
+function isSoundFadeCurve(value: unknown): value is SoundFadeCurve {
+  return typeof value === 'string' && SOUND_FADE_CURVES.has(value);
+}
 
 function isBlendMode(value: unknown): value is BlendMode {
   return typeof value === 'string' && BLEND_MODES.has(value);
@@ -410,6 +437,80 @@ function parsePhotoReferenceTrack(value: unknown): PhotoReferenceTrack {
 }
 
 /**
+ * Parse the singleton document sound clip (52.5, D-01, T-52.5-01): fail-closed
+ * against the SOUND_KEYS allowlist — an unknown member throws, never silently
+ * hydrates. Path safety (`isSafePackageRelativePath` + the `audio/` prefix) is
+ * enforced by the persistence layer at every join, not here: the parser judges
+ * shape, the package door judges paths.
+ */
+function parseDocumentSound(value: unknown): DocumentSoundClip {
+  if (!isPlainRecord(value)) {
+    throw new Error('DocumentSoundClip: expected a record.');
+  }
+  if (!hasOnlyKeys(value, SOUND_KEYS)) {
+    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, relativePath, sourceRevision, startFrame, inFrame, outFrame, volume, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, soundInOutput, previewMainApp.');
+  }
+  if (!isNonEmptyString(value.id)) {
+    throw new Error('DocumentSoundClip: id must be a non-empty string.');
+  }
+  if (!isNonEmptyString(value.sourceId)) {
+    throw new Error('DocumentSoundClip: sourceId must be a non-empty string.');
+  }
+  if (!isNonEmptyString(value.relativePath)) {
+    throw new Error('DocumentSoundClip: relativePath must be a non-empty string.');
+  }
+  if (!isNonNegativeInteger(value.sourceRevision)) {
+    throw new Error('DocumentSoundClip: sourceRevision must be a non-negative integer.');
+  }
+  if (!isNonNegativeInteger(value.startFrame)) {
+    throw new Error('DocumentSoundClip: startFrame must be a non-negative integer.');
+  }
+  if (!isNonNegativeInteger(value.inFrame)) {
+    throw new Error('DocumentSoundClip: inFrame must be a non-negative integer.');
+  }
+  if (!isNonNegativeInteger(value.outFrame)) {
+    throw new Error('DocumentSoundClip: outFrame must be a non-negative integer.');
+  }
+  if (typeof value.volume !== 'number' || !Number.isInteger(value.volume) || value.volume < 0 || value.volume > 100) {
+    throw new Error('DocumentSoundClip: volume must be an integer between 0 and 100.');
+  }
+  if (!isNonNegativeInteger(value.fadeInFrames)) {
+    throw new Error('DocumentSoundClip: fadeInFrames must be a non-negative integer.');
+  }
+  if (!isNonNegativeInteger(value.fadeOutFrames)) {
+    throw new Error('DocumentSoundClip: fadeOutFrames must be a non-negative integer.');
+  }
+  if (!isSoundFadeCurve(value.fadeInCurve)) {
+    throw new Error('DocumentSoundClip: fadeInCurve must be linear, exponential, or logarithmic.');
+  }
+  if (!isSoundFadeCurve(value.fadeOutCurve)) {
+    throw new Error('DocumentSoundClip: fadeOutCurve must be linear, exponential, or logarithmic.');
+  }
+  if (typeof value.soundInOutput !== 'boolean') {
+    throw new Error('DocumentSoundClip: soundInOutput must be a boolean.');
+  }
+  if (typeof value.previewMainApp !== 'boolean') {
+    throw new Error('DocumentSoundClip: previewMainApp must be a boolean.');
+  }
+  return Object.freeze({
+    id: value.id,
+    sourceId: value.sourceId,
+    relativePath: value.relativePath,
+    sourceRevision: value.sourceRevision,
+    startFrame: value.startFrame,
+    inFrame: value.inFrame,
+    outFrame: value.outFrame,
+    volume: value.volume,
+    fadeInFrames: value.fadeInFrames,
+    fadeOutFrames: value.fadeOutFrames,
+    fadeInCurve: value.fadeInCurve,
+    fadeOutCurve: value.fadeOutCurve,
+    soundInOutput: value.soundInOutput,
+    previewMainApp: value.previewMainApp,
+  });
+}
+
+/**
  * Reconstruct a validated {@link EfxPaintDocument} from untrusted input.
  *
  * Throws a closed validation failure on any invalid input; caller-owned
@@ -431,7 +532,7 @@ export function parseEfxPaintDocument(
     throw new Error('EfxPaintDocument: expected a record.');
   }
   if (!hasOnlyKeys(value, DOCUMENT_KEYS)) {
-    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, compositeRevision.');
+    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, sound, compositeRevision.');
   }
   if (value.version !== EFX_PAINT_DOCUMENT_VERSION) {
     throw new Error(`EfxPaintDocument: unsupported version ${String(value.version)}; expected ${EFX_PAINT_DOCUMENT_VERSION}.`);
@@ -470,6 +571,8 @@ export function parseEfxPaintDocument(
     tracks,
     background: parseBackgroundTrack(value.background),
     photoReference: value.photoReference === null ? null : parsePhotoReferenceTrack(value.photoReference),
+    // 52.5 (D-01, A2): optional member — absent OR null normalizes to null.
+    sound: value.sound === undefined || value.sound === null ? null : parseDocumentSound(value.sound),
     compositeRevision: value.compositeRevision,
   });
 }

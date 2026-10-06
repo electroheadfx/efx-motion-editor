@@ -162,6 +162,45 @@ export interface PhotoReferenceTrack {
   readonly transformLocked: boolean;
 }
 
+/**
+ * The document's singleton sound clip (52.5, D-01): one dialogue/foley clip
+ * per document, owned by the document as a media reference (52.2 references-
+ * only — `relativePath` is package-relative under `audio/`, never inlined
+ * bytes; path safety is enforced at every join by the persistence layer).
+ * Optional member (A2): absent parses to `null`, no version bump.
+ */
+export interface DocumentSoundClip {
+  /** Clip identity within the document (singleton record). */
+  readonly id: string;
+  /** The audio asset id in the shared media gallery. */
+  readonly sourceId: string;
+  /** Package-relative media path under `audio/` (52.2 reference). */
+  readonly relativePath: string;
+  /** Source asset revision (re-import bumps it). */
+  readonly sourceRevision: number;
+  /** Timeline placement of the clip start, in frames. */
+  readonly startFrame: number;
+  /** Source trim start, in frames. */
+  readonly inFrame: number;
+  /** Source trim end, in frames. */
+  readonly outFrame: number;
+  /** Clip volume, integer percent 0-100 (D-14: the level everywhere). */
+  readonly volume: number;
+  /** Fade-in length in frames (integer >= 0). */
+  readonly fadeInFrames: number;
+  /** Fade-out length in frames (integer >= 0). */
+  readonly fadeOutFrames: number;
+  readonly fadeInCurve: SoundFadeCurve;
+  readonly fadeOutCurve: SoundFadeCurve;
+  /** Master gate (D-12): clip audible in main-editor playback and export. */
+  readonly soundInOutput: boolean;
+  /** Studio preview-mix toggle (D-11): also hear the main app's audio. */
+  readonly previewMainApp: boolean;
+}
+
+/** Fade curve shapes shared by fade-in and fade-out (Phase 15 D-10 carry-over). */
+export type SoundFadeCurve = 'linear' | 'exponential' | 'logarithmic';
+
 /** The v1.0 EFX Physic Paint document owned by one parent layer. */
 export interface EfxPaintDocument {
   readonly version: number;
@@ -171,6 +210,8 @@ export interface EfxPaintDocument {
   readonly tracks: readonly InternalPaintTrack[];
   readonly background: BackgroundTrack;
   readonly photoReference: PhotoReferenceTrack | null;
+  /** The singleton document sound clip (52.5, D-01); null when absent. */
+  readonly sound: DocumentSoundClip | null;
   readonly compositeRevision: number;
 }
 
@@ -216,6 +257,9 @@ export function createEfxPaintDocument(parentLayerId: string): EfxPaintDocument 
       transformLocked: true,
     }),
     photoReference: null,
+    // 52.5 (D-01): the singleton sound clip — optional member (A2), absent by
+    // default; the parser normalizes a missing member to null as well.
+    sound: null,
     compositeRevision: 0,
   });
 }

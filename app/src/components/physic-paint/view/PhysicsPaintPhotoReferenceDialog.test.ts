@@ -91,6 +91,7 @@ function makeDocument(photoReference: PhotoReferenceTrack | null): EfxPaintDocum
       transformLocked: true,
     },
     photoReference,
+    sound: null,
     compositeRevision: 0,
   };
 }
