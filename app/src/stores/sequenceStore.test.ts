@@ -502,6 +502,15 @@ describe('layer stack naming and placement (260923-kcs)', () => {
       expect(overlays[0].id).toBe(created.id);
       expect(overlays[1].id).toBe(existing.id);
     });
+
+    it('opts-less createFxSequence lands at the head of the stack — every layer type defaults to top (261006-bdk)', () => {
+      // Both calls mirror the Shader Browser's opts-less apply call: no position opt.
+      const existing = sequenceStore.createFxSequence('Existing FX', makeStackLayer('existing-layer'), 100);
+      const created = sequenceStore.createFxSequence('New Top FX', makeStackLayer('new-layer'), 100);
+      const overlays = sequenceStore.getOverlaySequences();
+      expect(overlays[0].id).toBe(created.id);
+      expect(overlays[1].id).toBe(existing.id);
+    });
   });
 
   describe('rename hardening', () => {
