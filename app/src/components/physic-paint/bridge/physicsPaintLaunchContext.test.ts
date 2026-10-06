@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from '../roto/physicsPaintRotoPhysicalModel';
-import { applyPhysicsPaintLaunchContext, parsePhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
+import {
+  applyPhysicsPaintLaunchContext,
+  parseCanonicalPhysicsPaintLaunchValue,
+  parsePhysicsPaintLaunchContext,
+} from '../bridge/physicsPaintLaunchContext';
 
 function makeLocation(search: string, hash = ''): Location {
   return { search, hash } as Location;
@@ -112,5 +116,49 @@ describe('physicsPaintLaunchContext', () => {
     applyPhysicsPaintLaunchContext(context, setters, () => settings);
     expect(setters.setLaunchContext).toHaveBeenCalledWith(context);
     expect(setters.setSettings).toHaveBeenCalledWith(settings);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 52.5-01a Task 2 (Q1, T-52.5-08): the closed `documentAudio` launch section —
+// rides ONLY the closed LAUNCH_KEYS, validated fail-closed against the exact
+// {revision, clipId, assetUrl} set (unknown key -> null, never a raw payload).
+// ---------------------------------------------------------------------------
+
+describe('documentAudio closed launch section (52.5-01a, Q1, T-52.5-08)', () => {
+  const DOCUMENT_AUDIO_SECTION = {
+    revision: 2,
+    clipId: 'sound-clip-1',
+    assetUrl: 'efxasset://localhost/audio/sound.wav',
+  } as const;
+  const AUDIO_PREVIEW_SECTION = { revision: 1, fps: 24, tracks: [] } as const;
+
+  it('accepts a payload carrying documentAudio alongside audioPreview', () => {
+    const envelope = makeLaunchEnvelope({
+      audioPreview: AUDIO_PREVIEW_SECTION,
+      documentAudio: DOCUMENT_AUDIO_SECTION,
+    });
+    const parsed = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.documentAudio).toEqual(DOCUMENT_AUDIO_SECTION);
+  });
+
+  it('rejects a documentAudio section carrying one extra ad-hoc key (fail-closed null)', () => {
+    const envelope = makeLaunchEnvelope({
+      audioPreview: AUDIO_PREVIEW_SECTION,
+      documentAudio: { ...DOCUMENT_AUDIO_SECTION, adHoc: true },
+    });
+    expect(parseCanonicalPhysicsPaintLaunchValue(envelope)).toBeNull();
+  });
+
+  it('keeps a launch without documentAudio unchanged', () => {
+    // ONE envelope, parsed twice: each makeLaunchEnvelope call mints fresh
+    // document UUIDs, so two envelopes are never byte-comparable.
+    const envelope = makeLaunchEnvelope({ audioPreview: AUDIO_PREVIEW_SECTION });
+    const parsed = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.documentAudio).toBeUndefined();
+    const repeated = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(JSON.stringify(parsed)).toBe(JSON.stringify(repeated));
   });
 });

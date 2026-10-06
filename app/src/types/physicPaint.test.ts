@@ -19,6 +19,9 @@ import {
   isPhysicPaintActionTransactionPrepareRequest,
   isPhysicPaintActionTransactionResult,
   isPhysicPaintActionTransactionTokenRequest,
+  isPhysicPaintImageImportRequest,
+  isPhysicPaintImageLibraryRequest,
+  isPhysicPaintImageLibraryResult,
   isPhysicPaintRotoRealKeyTransferEntry,
   isWebpBytes,
   normalizePhysicPaintRotoSegmentSpacingOverrides,
@@ -1095,5 +1098,38 @@ describe('isWebpBytes', () => {
   it('rejects arrays shorter than the WebP header', () => {
     expect(isWebpBytes(new Uint8Array([0x52, 0x49, 0x46, 0x46]))).toBe(false);
     expect(isWebpBytes(new Uint8Array(0))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 52.5-01a Task 2 (Q2, D-03, T-52.5-07 FOCUS 2): the shared gallery `kind`
+// discriminator. It selects listing/filter/copy-target ONLY — audio rides the
+// same validated payload pairs as images, with no parallel import path.
+// ---------------------------------------------------------------------------
+
+describe('shared gallery kind discriminator (52.5-01a, Q2, D-03)', () => {
+  it('validates a library request carrying kind "audio" while image payloads stay valid', () => {
+    expect(isPhysicPaintImageLibraryRequest({ operationId: 'op-1', kind: 'audio' })).toBe(true);
+    expect(isPhysicPaintImageLibraryRequest({ operationId: 'op-1' })).toBe(true);
+    expect(isPhysicPaintImageLibraryRequest({ operationId: 'op-1', kind: 'music' })).toBe(false);
+    expect(isPhysicPaintImageLibraryRequest({ operationId: 'op-1', kind: 'audio', bogus: 1 })).toBe(false);
+  });
+
+  it('validates a library result carrying audioAssets while image-only results stay valid', () => {
+    const asset = { id: 'audio-1', name: 'sound.wav', relativePath: 'audio/sound.wav' };
+    expect(
+      isPhysicPaintImageLibraryResult({ operationId: 'op-1', ok: true, images: [], projectDir: '/p', audioAssets: [asset] }),
+    ).toBe(true);
+    expect(isPhysicPaintImageLibraryResult({ operationId: 'op-1', ok: true, images: [], projectDir: '/p' })).toBe(true);
+    expect(
+      isPhysicPaintImageLibraryResult({ operationId: 'op-1', ok: true, images: [], projectDir: '/p', audioAssets: [{ id: 'audio-1' }] }),
+    ).toBe(false);
+  });
+
+  it('validates an import request carrying kind "audio" while image imports stay valid', () => {
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: ['/tmp/sound.wav'], kind: 'audio' })).toBe(true);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: ['/tmp/image.png'] })).toBe(true);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: ['/tmp/sound.wav'], kind: 'video' })).toBe(false);
+    expect(isPhysicPaintImageImportRequest({ operationId: 'op-1', paths: ['/tmp/sound.wav'], kind: 'audio', bogus: 1 })).toBe(false);
   });
 });
