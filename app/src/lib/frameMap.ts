@@ -143,6 +143,7 @@ const FX_TRACK_COLORS: Record<string, string> = {
   'generator-glsl': '#8B5CF6',
   'adjustment-glsl': '#8B5CF6',
   'paint': '#E91E63',
+  'physic-paint': 'var(--color-accent)',
 };
 const FX_DEFAULT_COLOR = '#888888';
 

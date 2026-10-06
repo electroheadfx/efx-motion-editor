@@ -291,7 +291,7 @@ export class TimelineRenderer {
       ctx.fillRect(0, ghostY, TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
       if (fromIndex < fxTracks.length) {
         const ghostTrack = fxTracks[fromIndex];
-        ctx.fillStyle = ghostTrack.color;
+        ctx.fillStyle = this.resolveTrackColor(ghostTrack);
         ctx.beginPath();
         ctx.arc(9, ghostY + FX_TRACK_HEIGHT / 2, 3, 0, Math.PI * 2);
         ctx.fill();
@@ -451,8 +451,10 @@ export class TimelineRenderer {
    *  Content overlay colors use CSS variables that Canvas 2D cannot resolve directly,
    *  so we map them to the pre-resolved theme color cache values. */
   private resolveTrackColor(fxTrack: FxTrackLayout): string {
-    if (fxTrack.kind !== 'content-overlay') return fxTrack.color;
     const colors = getThemeColors();
+    if (fxTrack.kind !== 'content-overlay') {
+      return fxTrack.color.includes('color-accent') ? colors.accent : fxTrack.color;
+    }
     if (fxTrack.color.includes('sidebar-dot-green')) return colors.contentOverlayGreen;
     if (fxTrack.color.includes('sidebar-dot-blue')) return colors.contentOverlayBlue;
     return colors.contentOverlayPurple;
