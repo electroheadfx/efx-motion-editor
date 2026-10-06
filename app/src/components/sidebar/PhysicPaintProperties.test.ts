@@ -41,3 +41,39 @@ describe('PhysicPaintProperties source contract', () => {
     expect(source).toContain("{opening ? 'Opening Roto paint...' : 'Roto paint'}");
   });
 });
+
+describe('Physics paint layer row surface (261006-dfy)', () => {
+  it('renders a display name with fallback, never the raw layer id', () => {
+    expect(source).not.toContain('Layer ID');
+    expect(source).not.toContain('title={layer.id}');
+    expect(source).toContain('layer.name.trim()');
+    expect(source).toContain('Physics paint ${');
+  });
+
+  it('removes the output-status block', () => {
+    expect(source).not.toContain('Rendered Output');
+  });
+
+  it('splits double-click: body opens the Studio, name label never does', () => {
+    expect(source).toContain('onDblClick={handleRowBodyDoubleClick}');
+    expect(source).toContain('onDblClick={handleNameLabelDoubleClick}');
+
+    const bodyHandler = source.slice(
+      source.indexOf('const handleRowBodyDoubleClick'),
+      source.indexOf('const handleNameLabelDoubleClick'),
+    );
+    expect(bodyHandler).toContain('handleOpenCanvas()');
+
+    const nameHandler = source.slice(
+      source.indexOf('const handleNameLabelDoubleClick'),
+      source.indexOf('const deleteCurrentRotoFrame'),
+    );
+    expect(nameHandler).toContain('stopPropagation');
+    expect(nameHandler).not.toContain('handleOpenCanvas');
+  });
+
+  it('accents the row with the existing token, no literal hex', () => {
+    expect(source).toContain("borderLeft: '2px solid var(--color-accent)'");
+    expect(source).not.toContain('#2D5BE3');
+  });
+});
