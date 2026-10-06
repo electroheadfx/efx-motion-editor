@@ -39,7 +39,16 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     ? (getEfxPaintDocument(sourceLayerId)?.activeTrackId ?? '')
     : '';
   const hasCurrentRotoFrame = validContext ? Boolean(physicPaintStore.getFrame(sourceLayerId, activeTrackId, currentFrame)) : false;
-  const hasOutput = validContext ? physicPaintStore.hasOutput(sourceLayerId, activeTrackId) : false;
+
+  // Display-only identity: layer.id stays the persisted identifier everywhere else.
+  const parentLayerSequence = sequenceStore.sequences.value.find((sequence) => (
+    sequence.layers.some((candidate) => candidate.id === layer.id)
+  ));
+  const physicPaintOrdinal = parentLayerSequence
+    ? parentLayerSequence.layers.filter((candidate) => candidate.type === 'physic-paint')
+      .findIndex((candidate) => candidate.id === layer.id) + 1
+    : 1;
+  const displayName = layer.name.trim() || `Physics paint ${physicPaintOrdinal}`;
   useEffect(() => {
     const handleApplyResult = (event: Event) => {
       const result = (event as CustomEvent<PhysicPaintApplyResult>).detail;
@@ -96,6 +105,16 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     }
   };
 
+  const handleRowBodyDoubleClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    handleOpenCanvas();
+  };
+
+  const handleNameLabelDoubleClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+  };
+
   const deleteCurrentRotoFrame = () => {
     if (!validContext || !hasCurrentRotoFrame) return;
     physicPaintStore.removeFrameRange(sourceLayerId, activeTrackId, currentFrame, 1);
@@ -109,14 +128,14 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
     <div class="px-3 py-2 space-y-3 text-[13px]" style={{ color: 'var(--sidebar-text-primary)' }}>
       <div class="space-y-1">
         <SectionLabel text="Physics Paint" />
-        <div class="rounded px-2 py-2 space-y-1" style={{ backgroundColor: 'var(--sidebar-input-bg)' }}>
+        <div
+          class="rounded px-2 py-2 space-y-1"
+          style={{ backgroundColor: 'var(--sidebar-input-bg)', borderLeft: '2px solid var(--color-accent)' }}
+          onDblClick={handleRowBodyDoubleClick}
+        >
           <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] font-semibold" style={{ color: 'var(--sidebar-text-secondary)' }}>Layer</span>
-            <span class="text-[11px] truncate" title={layer.name}>{layer.name}</span>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-[11px] font-semibold" style={{ color: 'var(--sidebar-text-secondary)' }}>Layer ID</span>
-            <span class="text-[10px] truncate font-mono" title={layer.id}>{layer.id}</span>
+            <span class="text-[11px] truncate" title={displayName} onDblClick={handleNameLabelDoubleClick}>{displayName}</span>
           </div>
           <div class="flex items-center justify-between gap-2">
             <span class="text-[11px] font-semibold" style={{ color: 'var(--sidebar-text-secondary)' }}>Current frame</span>
@@ -166,28 +185,6 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
             </span>
           </div>
         </div>
-      </div>
-
-      <div class="space-y-2">
-        <SectionLabel text="Rendered Output" />
-        {hasOutput ? (
-          <div class="space-y-1">
-            <div class="rounded px-2 py-2 text-[11px] flex items-center gap-2" style={{ backgroundColor: 'rgba(76, 175, 112, 0.14)', color: 'var(--sidebar-dot-green)' }}>
-              <span class="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--sidebar-dot-green)' }} />
-              Physics paint output is available for this layer.
-            </div>
-            <div class="text-[11px] leading-5" style={{ color: '#f59e0b' }}>
-              This frame already has physics paint output. Applying will replace it.
-            </div>
-          </div>
-        ) : (
-          <div class="rounded px-2 py-2 space-y-1" style={{ backgroundColor: 'var(--sidebar-input-bg)' }}>
-            <div class="text-[12px] font-semibold">No physics paint output yet</div>
-            <div class="text-[11px] leading-5" style={{ color: 'var(--sidebar-text-secondary)' }}>
-              Open the physics paint canvas, paint in the standalone window, then apply the rendered result to this layer.
-            </div>
-          </div>
-        )}
       </div>
 
       <div class="space-y-2">
