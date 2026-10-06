@@ -5,10 +5,10 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick 261006-bdk (layer-stack top insert) — native UAT pending
+stopped_at: Completed quick 261006-bdk (layer-stack top insert) — native UAT approved
 last_updated: "2026-10-06T07:27:54.934Z"
 last_activity: 2026-10-06
-last_activity_desc: "Completed quick task 261006-bdk: new layers go to the top of the layer stack for every layer type (createFxSequence default → insertSequenceAtStackTop)"
+last_activity_desc: "Quick 261006-bdk native UAT approved — layer-stack top insert CLOSED (createFxSequence default → insertSequenceAtStackTop)"
 state_head: a9479fe6b15c6a540998efc41e7788db4ce1b816
 progress:
   total_phases: 13
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-06 - Completed quick task 261006-bdk: New layers go to the top of the layer stack for every layer type
+Last activity: 2026-10-06 — quick 261006-bdk native UAT approved and CLOSED (new layers go to the top of the layer stack for every layer type; createFxSequence default → insertSequenceAtStackTop)
 
 Progress: [████████████████████] 49/49 plans ([██████████] 100%)
 
