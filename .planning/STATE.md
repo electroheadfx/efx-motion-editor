@@ -2,16 +2,16 @@
 gsd_state_version: "1.0"
 milestone: v1.0.0
 milestone_name: EFX Paint Multi-Track Frames and Reveal
-current_phase: 53
-current_phase_name: Integrated v1.0.0 Acceptance
+current_phase: "52.5"
+current_phase_name: Physic Paint document sound track
 status: planning
-stopped_at: Completed quick 261006-dfy (physics paint sidebar row identity) — native UAT approved
-last_updated: "2026-10-06T08:49:00.182Z"
+stopped_at: Phase 52.5 context gathered
+last_updated: "2026-10-06T16:30:08.406Z"
 last_activity: 2026-10-06
 last_activity_desc: Quick 261006-dfy native UAT approved — physics paint sidebar row identity CLOSED (display name, no output block, body dblclick opens Studio, accent-blue timeline FX row)
-state_head: 30f26b6373a980193a2bf55a2ee34498455d18db
+state_head: 29636cc8186a16e880a5e85c16f9bf7c54f58e84
 progress:
-  total_phases: 13
+  total_phases: 14
   completed_phases: 19
   total_plans: 72
   completed_plans: 72
@@ -25,11 +25,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52.4 — Real-paint kill the salt-and-pepper (INSERTED)
+**Current focus:** Phase 52.5 — Physic Paint document sound track (INSERTED)
 
 ## Current Position
 
-Phase: 53 — Integrated v1.0.0 Acceptance
+Phase: 52.5 — Physic Paint document sound track
 Plan: Not started
 Status: Ready to plan
 Last activity: 2026-10-06 — quick 261006-dfy native UAT approved and CLOSED (physics paint sidebar row identity and entry points; accent-blue timeline FX row)
@@ -472,6 +472,7 @@ None yet.
 - Phase 52.2 inserted after Phase 52: Project package format — references only: sidecar .webp media files + per-layer manifests; absorbs and cancels the autosave quick (URGENT)
 - Phase 52.3 inserted after Phase 52: Paint content export — per-frame compositor enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance) (URGENT)
 - Phase 52.4 inserted after Phase 52: Real-paint kill the salt-and-pepper (URGENT)
+- Phase 52.5 inserted after Phase 52: Physic Paint document sound track (Studio waveform/reposition/start-end + main-editor playback of the layer clip) (URGENT)
 
 ## Deferred Items
 
@@ -488,6 +489,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-04T11:38:34.670Z
-Stopped at: Completed quick 261004-hwa (Photoshop fg/bg swatch) — native UAT approved
-Resume file: None
+Last session: 2026-10-06T16:30:06.539Z
+Stopped at: Phase 52.5 context gathered
+Resume file: .planning/phases/52.5-physic-paint-document-sound-track/52.5-CONTEXT.md
