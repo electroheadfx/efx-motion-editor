@@ -57,6 +57,8 @@ vi.mock('../stores/projectStore', () => ({
     width: { peek: () => hoisted.projectWidth, value: hoisted.projectWidth },
     height: { peek: () => hoisted.projectHeight, value: hoisted.projectHeight },
     fps: { peek: () => 24 },
+    // 52.5-02: the document-clip reference join resolves from the project root.
+    dirPath: { peek: () => '/proj' },
   },
 }));
 

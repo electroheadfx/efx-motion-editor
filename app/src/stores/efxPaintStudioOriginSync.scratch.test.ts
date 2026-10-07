@@ -72,10 +72,42 @@ const REF_REFS = ['ffh-ref-photo-1'];
 const BG_REFS = ['ffh-bg-ref-1'];
 const BG_START_FRAME = 4;
 
+/** 52.5-02 PIN 4: the clip-only sound member the audio modal commits. */
+const SOUND_CLIP = {
+  id: 'ffh-sound-1',
+  sourceId: 'ffh-sound-asset-1',
+  relativePath: 'audio/ffh-dialogue.wav',
+  sourceRevision: 1,
+  startFrame: 4,
+  inFrame: 0,
+  outFrame: 48,
+  gain: -25,
+  fadeInFrames: 6,
+  fadeOutFrames: 12,
+  fadeInCurve: 'exponential' as const,
+  fadeOutCurve: 'linear' as const,
+  enabled: true,
+};
+
 interface SurfaceCarrier {
   photoReference?: { sourceFrameRefs: readonly string[] } | null;
   background: { clips: readonly { startFrame: number; sourceFrameRefs: readonly string[] }[] };
   tracks: readonly { id: string; frames: Record<number, unknown> }[];
+  sound?: {
+    id: string;
+    sourceId: string;
+    relativePath: string;
+    sourceRevision: number;
+    startFrame: number;
+    inFrame: number;
+    outFrame: number;
+    gain: number;
+    fadeInFrames: number;
+    fadeOutFrames: number;
+    fadeInCurve: string;
+    fadeOutCurve: string;
+    enabled: boolean;
+  } | null;
 }
 
 /** Does this document carry the reference-image selection under test? */
@@ -87,6 +119,24 @@ const carriesClip = (document: SurfaceCarrier): boolean =>
 /** Does it carry the added track (id + whatever content the surface added)? */
 const carriesTrack = (document: SurfaceCarrier, trackId: string): boolean =>
   trackId.length > 0 && document.tracks.some((track) => track.id === trackId);
+/** Does it carry the IDENTICAL sound member (field-wise, not just the id)? */
+const carriesSound = (document: SurfaceCarrier): boolean => {
+  const sound = document.sound ?? null;
+  return sound !== null
+    && sound.id === SOUND_CLIP.id
+    && sound.sourceId === SOUND_CLIP.sourceId
+    && sound.relativePath === SOUND_CLIP.relativePath
+    && sound.sourceRevision === SOUND_CLIP.sourceRevision
+    && sound.startFrame === SOUND_CLIP.startFrame
+    && sound.inFrame === SOUND_CLIP.inFrame
+    && sound.outFrame === SOUND_CLIP.outFrame
+    && sound.gain === SOUND_CLIP.gain
+    && sound.fadeInFrames === SOUND_CLIP.fadeInFrames
+    && sound.fadeOutFrames === SOUND_CLIP.fadeOutFrames
+    && sound.fadeInCurve === SOUND_CLIP.fadeInCurve
+    && sound.fadeOutCurve === SOUND_CLIP.fadeOutCurve
+    && sound.enabled === SOUND_CLIP.enabled;
+};
 
 /** Mirror of `physicsPaintBridgeTransport.test.ts#baseDocument`, in-realm. */
 function buildBaseDocument(documents: DocumentsModule, layerId: string, trackId: string) {
@@ -767,6 +817,67 @@ describe('Studio-origin document surfaces through the real child→parent chain 
     };
   };
 
+  /**
+   * 52.5-02 PIN 4 (document sound, SYNC-01): the clip-only settle half. FG-1
+   * (the guard IN the loop), FG-2 (`serializeRuntimeIntoDocument` as the
+   * document source) and FG-3 (two real module instances) are the same three
+   * contracts as `drivePushPin`; this drive measures the SETTLE shape instead —
+   * exactly one push for a clip-only edit, then zero for an immediate no-op
+   * re-settle of the same state.
+   */
+  const driveSoundPin = async () => {
+    const guard = child.guard.createDocumentSyncPushGuard();
+    const readVersion = () => child.efx.efxPaintVersion.peek();
+
+    // The clip-only edit, as the audio modal's member setter commits it.
+    const edit = child.efx.setDocumentSound(LAYER, { ...SOUND_CLIP });
+
+    // Settle 1: FG-2 serialize -> FG-1 evaluate -> the crossing.
+    emitTo.mockClear();
+    const firstDocument = guard.evaluate(() => child.efx.serializeRuntimeIntoDocument(LAYER), readVersion);
+    let firstSendError: string | null = null;
+    if (firstDocument !== null) {
+      await child.transport.sendEfxPaintDocumentSync(firstDocument, 'Tauri').catch((error: unknown) => {
+        firstSendError = error instanceof Error ? error.message : String(error);
+      });
+    }
+    const firstPushes = emitTo.mock.calls.length;
+    const wirePayload = emitTo.mock.calls[emitTo.mock.calls.length - 1]?.[2] ?? null;
+
+    // The parent realm: the document a second Studio launch would have left,
+    // then the REAL installed listener, fed the way the DOM fallback feeds it.
+    parent.efx.reset();
+    parent.physic.physicPaintStore.reset();
+    parent.efx.registerDocument(buildBaseDocument(parent.documents, LAYER, TRACK1));
+    const unlisten = await parentBridge.installPhysicPaintEfxPaintDocumentListener();
+    installed.get(parentBridge.PHYSIC_PAINT_EFX_PAINT_DOCUMENT_EVENT)?.({ detail: wirePayload });
+    const parentDocument = (parent.efx.getDocument(LAYER) ?? null) as SurfaceCarrier | null;
+    unlisten();
+
+    // Settle 2: an immediate no-op re-settle of the SAME state. The member
+    // setter's same-value early return writes nothing, and even a re-serialize
+    // through the same guard is a content duplicate -> zero further pushes.
+    const noopEdit = child.efx.setDocumentSound(LAYER, { ...SOUND_CLIP });
+    emitTo.mockClear();
+    const noopDocument = guard.evaluate(() => child.efx.serializeRuntimeIntoDocument(LAYER), readVersion);
+    if (noopDocument !== null) {
+      await child.transport.sendEfxPaintDocumentSync(noopDocument, 'Tauri');
+    }
+    const noopPushes = emitTo.mock.calls.length;
+
+    return {
+      editAccepted: edit.ok,
+      firstPushCarriedTheSound: firstDocument !== null && carriesSound(firstDocument as unknown as SurfaceCarrier),
+      firstSendFailed: firstSendError !== null,
+      firstPushes,
+      parentDocument,
+      reopenCarrierDocument: parentCarrierDocument(),
+      noopEditAccepted: noopEdit.ok,
+      noopDecisionYieldedTheDocument: noopDocument !== null,
+      noopPushes,
+    };
+  };
+
   it('PIN 1 (reference selection): the parent realm and the reopen carrier hold the selected reference after a failed push is retried', async () => {
     child.efx.reset();
     parent.efx.reset();
@@ -868,6 +979,40 @@ describe('Studio-origin document surfaces through the real child→parent chain 
       retryWasSent: true,
       parentCarriesTheAddedTrack: true,
       parentActivatedTheAddedTrack: true,
+    });
+  });
+
+  it('PIN 4 (document sound): a clip-only edit pushes once and lands in the parent realm and the reopen carrier; a no-op re-settle pushes nothing', async () => {
+    child.efx.reset();
+    parent.efx.reset();
+    child.efx.registerDocument(buildBaseDocument(child.documents, LAYER, TRACK1));
+
+    const chain = await driveSoundPin();
+    const carrier = chain.reopenCarrierDocument;
+
+    expect(
+      {
+        editAccepted: chain.editAccepted,
+        firstPushCarriedTheSound: chain.firstPushCarriedTheSound,
+        firstSendFailed: chain.firstSendFailed,
+        exactlyOnePushForTheClipOnlySettle: chain.firstPushes === 1,
+        parentCarriesTheSound: chain.parentDocument !== null && carriesSound(chain.parentDocument),
+        reopenCarrierCarriesTheSound: carrier !== null && carriesSound(carrier),
+        noopEditAccepted: chain.noopEditAccepted,
+        noopDecisionYieldedNothing: chain.noopDecisionYieldedTheDocument === false,
+        zeroPushesForTheNoOpResettle: chain.noopPushes === 0,
+      },
+      'A clip-only sound edit crosses exactly once (SYNC-01): the settle ships the member to both the parent realm and the reopen carrier, and an immediate no-op re-settle of the same state is a content duplicate that pushes nothing further.',
+    ).toEqual({
+      editAccepted: true,
+      firstPushCarriedTheSound: true,
+      firstSendFailed: false,
+      exactlyOnePushForTheClipOnlySettle: true,
+      parentCarriesTheSound: true,
+      reopenCarrierCarriesTheSound: true,
+      noopEditAccepted: true,
+      noopDecisionYieldedNothing: true,
+      zeroPushesForTheNoOpResettle: true,
     });
   });
 
