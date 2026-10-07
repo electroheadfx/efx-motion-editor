@@ -559,3 +559,64 @@ describe('documentSoundGates — layerInComposite + mainPlaybackClipEnabled (D-1
     expect(mainPlaybackClipEnabled(makeSound({ enabled: true }), false, true)).toBe(false);
   });
 });
+
+describe('documentSoundGates — exportClipEnabled + buildExportMixEntries (52.5-02, EXPORT-01, D-11/D-12/D-14)', () => {
+  it('(m6) exportClipEnabled reads the clip switch alone — preview state has no say (D-11)', async () => {
+    const { exportClipEnabled } = await import('./documentSoundGates');
+    expect(exportClipEnabled(null)).toBe(false);
+    // D-12: the clip's `enabled` switch is the whole export decision. The D-11
+    // preview-mix toggle is preview-only and is structurally absent from this
+    // signature — there is no preview parameter to consult.
+    expect(exportClipEnabled(makeSound({ enabled: true }))).toBe(true);
+    expect(exportClipEnabled(makeSound({ enabled: false }))).toBe(false);
+  });
+
+  it('(m7) buildExportMixEntries refuses without includeAudio and passes tracks through without a clip', async () => {
+    const { buildExportMixEntries } = await import('./documentSoundGates');
+    const { toDocumentSoundAudioTrack } = await import('./documentSoundGates');
+    const track = toDocumentSoundAudioTrack(makeSound(), CLIP_SECTION.assetUrl, 24);
+    const clip = {
+      sound: makeSound({ enabled: true }),
+      filePath: '/proj/audio/sound.wav',
+      timelineStartFrame: 98,
+    };
+    // includeAudio false -> nothing mixes, even with tracks and clips.
+    expect(buildExportMixEntries(false, [track], [clip], 24)).toEqual([]);
+    // includeAudio true, tracks only -> the same track contents as input.
+    expect(buildExportMixEntries(true, [track], [], 24)).toEqual([track]);
+  });
+
+  it('(m8) buildExportMixEntries appends one entry per enabled clip, keyed by sound.id with the rebased global start', async () => {
+    const { buildExportMixEntries } = await import('./documentSoundGates');
+    const clipA = {
+      sound: makeSound({ id: 'clip-a', sourceId: 'asset-a', gain: -25, fadeInFrames: 6, fadeOutFrames: 12, enabled: true }),
+      filePath: '/proj/audio/a.wav',
+      timelineStartFrame: 98,
+    };
+    const clipB = {
+      sound: makeSound({ id: 'clip-b', sourceId: 'asset-b', enabled: false }),
+      filePath: '/proj/audio/b.wav',
+      timelineStartFrame: 10,
+    };
+    const clipC = {
+      sound: makeSound({ id: 'clip-c', sourceId: 'asset-c', enabled: true }),
+      filePath: '/proj/audio/c.wav',
+      timelineStartFrame: 200,
+    };
+    const entries = buildExportMixEntries(true, [], [clipA, clipB, clipC], 24);
+    // Two layers carry a clip: two entries appended (the disabled one is out).
+    expect(entries.map((entry) => entry.id)).toEqual(['clip-a', 'clip-c']);
+    expect(entries[0]).toMatchObject({
+      id: 'clip-a',
+      volume: 0.75, // gain -25 -> (gain + 100) / 100
+      fadeInFrames: 6,
+      fadeOutFrames: 12,
+      // The rebased GLOBAL start, never the document-local sound.startFrame.
+      offsetFrame: 98,
+      relativePath: 'audio/sound.wav',
+      filePath: '/proj/audio/a.wav',
+      muted: false,
+      slipOffset: 0,
+    });
+  });
+});
