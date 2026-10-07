@@ -35,6 +35,11 @@ export const SOUND_TRIM_ZONE_PX = 6;
 /** Trim hit-zone depth extending downward from the 2px drawn bar. */
 export const SOUND_TRIM_HIT_PX = 8;
 
+/** UAT round 3: the waveform fill — RGB (22, 110, 203). */
+export const SOUND_WAVEFORM_FILL = '#166ECB';
+/** UAT round 3: the volume line + fade overlay — RGB (21, 120, 224). */
+export const SOUND_OVERLAY_STROKE = '#1578E0';
+
 /** The document sound fields a gesture may move (commit patch for the member setter). */
 export interface SoundBandGesturePatch {
   readonly startFrame?: number;
@@ -110,6 +115,56 @@ export function soundWaveformPathD(peaks: Float32Array, widthPx: number): string
   }
   parts.push('Z');
   return parts.join(' ');
+}
+
+/**
+ * Volume line y within the band (UAT round 3). Maps the clip's integer percent
+ * 0-100 onto the same amplitude axis `soundWaveformPathD` uses: 100% sits at
+ * the top of the stain extent (a full upward deflection), 0% at the center
+ * (silence). The line spans the clip's width — "from in to out".
+ */
+export function soundVolumeLineY(volumePercent: number): number {
+  const clamped = Math.max(0, Math.min(100, volumePercent));
+  const centerY = SOUND_BAND_HEIGHT_PX / 2;
+  return Math.round((centerY - (clamped / 100) * SOUND_STAIN_HALF_EXTENT_PX) * 100) / 100;
+}
+
+/**
+ * Fade-in overlay (UAT round 3): the classic NLE diagonal, from the extent's
+ * bottom-left corner up to the top edge at the fade-in boundary. null when the
+ * fade is zero-length (no overlay — the clip reads as a hard start).
+ */
+export function soundFadeInPathD(
+  fadeInFrames: number,
+  inFrame: number,
+  outFrame: number,
+  widthPx: number,
+): string | null {
+  const span = soundSpanFrames(inFrame, outFrame);
+  if (fadeInFrames <= 0 || span <= 0 || widthPx <= 0) return null;
+  const fadePx = Math.min(widthPx, (fadeInFrames / span) * widthPx);
+  const top = SOUND_BAND_HEIGHT_PX / 2 - SOUND_STAIN_HALF_EXTENT_PX;
+  const bottom = SOUND_BAND_HEIGHT_PX / 2 + SOUND_STAIN_HALF_EXTENT_PX;
+  return `M0 ${bottom} L${Math.round(fadePx * 100) / 100} ${top}`;
+}
+
+/**
+ * Fade-out overlay: the mirror diagonal, from the top edge at the fade-out
+ * boundary down to the extent's bottom-right corner. null when zero-length.
+ */
+export function soundFadeOutPathD(
+  fadeOutFrames: number,
+  inFrame: number,
+  outFrame: number,
+  widthPx: number,
+): string | null {
+  const span = soundSpanFrames(inFrame, outFrame);
+  if (fadeOutFrames <= 0 || span <= 0 || widthPx <= 0) return null;
+  const fadePx = Math.min(widthPx, (fadeOutFrames / span) * widthPx);
+  const top = SOUND_BAND_HEIGHT_PX / 2 - SOUND_STAIN_HALF_EXTENT_PX;
+  const bottom = SOUND_BAND_HEIGHT_PX / 2 + SOUND_STAIN_HALF_EXTENT_PX;
+  const startX = Math.round((widthPx - fadePx) * 100) / 100;
+  return `M${startX} ${top} L${Math.round(widthPx * 100) / 100} ${bottom}`;
 }
 
 /**

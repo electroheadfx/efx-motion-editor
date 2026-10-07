@@ -3212,18 +3212,38 @@ button.destructive {
   pointer-events: none;
 }
 
-/* ---- 52.5 UAT round 2: vertical end bars at the clip's start and end -----
-   Replaces the 2px trim bar (D-09) — in/out is edited in the Document sound
-   modal's In/Out fields. Non-interactive markers: the stain below still owns
-   the reposition drag and the ruler keeps every seek. */
+/* ---- 52.5 UAT round 3: the in/out trim handles (vertical end bars) -----
+   8px grab zone with a 2px visual centered on the clip's edge. The press
+   NEVER seeks (it stops at the handle); the stain below owns the reposition
+   drag and the playhead square owns every scrub. */
 .physics-paint-sound-edge {
   position: absolute;
   top: 0;
-  width: 2px;
+  width: 8px;
   height: 36px;
   z-index: 2;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.physics-paint-sound-edge::before {
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 2px;
+  height: 36px;
   background: var(--color-audio-stain);
+  content: '';
   pointer-events: none;
+}
+
+.physics-paint-sound-edge.is-selected::before {
+  background: #2da8e3;
+}
+
+.physics-paint-sound-stain.is-selected {
+  outline: 1px solid #2da8e3;
+  outline-offset: -1px;
 }
 
 /* 260827-s52 Task 2: full-height playhead bar. top:0/bottom:0 spans exactly
@@ -3241,6 +3261,26 @@ button.destructive {
   background: #A6D334;
   pointer-events: none;
   z-index: 30;
+}
+
+/* 52.5 UAT round 3: the dedicated scrub handle — a small square on the
+   playhead (top of the ruler band). The ONLY pointer target on the bar
+   (T-s52-03 keeps the line itself pointer-events:none) and the scrub
+   affordance that never touches the sound clip. */
+.physics-paint-playhead-handle {
+  position: absolute;
+  top: 2px;
+  left: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #A6D334;
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.physics-paint-playhead-handle:hover {
+  background: #c2e85a;
 }
 
 .physics-paint-loop-clip-rail {

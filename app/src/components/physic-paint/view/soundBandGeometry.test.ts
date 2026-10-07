@@ -116,6 +116,43 @@ describe('soundBandGeometry — trim law (UI-SPEC: in < out, min span 1, start >
   });
 });
 
+describe('soundBandGeometry — UAT round 3 overlays (waveform RGB 22 110 203, volume/fade RGB 21 120 224)', () => {
+  it('(t13) the waveform fill and overlay stroke carry the exact RGB values the UAT asked for', async () => {
+    const { SOUND_WAVEFORM_FILL, SOUND_OVERLAY_STROKE } = await load();
+    expect(SOUND_WAVEFORM_FILL).toBe('#166ECB'); // RGB (22, 110, 203)
+    expect(SOUND_OVERLAY_STROKE).toBe('#1578E0'); // RGB (21, 120, 224)
+  });
+
+  it('(t14) the volume line maps 100% to the top of the stain extent and 0% to the center', async () => {
+    const { soundVolumeLineY, SOUND_STAIN_HALF_EXTENT_PX } = await load();
+    const centerY = 18;
+    expect(soundVolumeLineY(100)).toBe(centerY - SOUND_STAIN_HALF_EXTENT_PX);
+    expect(soundVolumeLineY(0)).toBe(centerY);
+    expect(soundVolumeLineY(50)).toBe(centerY - SOUND_STAIN_HALF_EXTENT_PX / 2);
+    // Out-of-range percents clamp (the slider is 0-100; the helper is fail-safe).
+    expect(soundVolumeLineY(150)).toBe(soundVolumeLineY(100));
+    expect(soundVolumeLineY(-20)).toBe(soundVolumeLineY(0));
+  });
+
+  it('(t15) the fade-in diagonal runs bottom-left to the top at the fade boundary; null when zero', async () => {
+    const { soundFadeInPathD, SOUND_STAIN_HALF_EXTENT_PX } = await load();
+    const top = 18 - SOUND_STAIN_HALF_EXTENT_PX;
+    const bottom = 18 + SOUND_STAIN_HALF_EXTENT_PX;
+    // 24-frame span, 6-frame fade -> a quarter of the 96px width = 24px.
+    expect(soundFadeInPathD(6, 0, 24, 96)).toBe(`M0 ${bottom} L24 ${top}`);
+    expect(soundFadeInPathD(0, 0, 24, 96)).toBeNull();
+  });
+
+  it('(t16) the fade-out diagonal runs top at the fade boundary to bottom-right; null when zero', async () => {
+    const { soundFadeOutPathD, SOUND_STAIN_HALF_EXTENT_PX } = await load();
+    const top = 18 - SOUND_STAIN_HALF_EXTENT_PX;
+    const bottom = 18 + SOUND_STAIN_HALF_EXTENT_PX;
+    // 24-frame span, 12-frame fade -> half the 96px width = 48px, starting at x=48.
+    expect(soundFadeOutPathD(12, 0, 24, 96)).toBe(`M48 ${top} L96 ${bottom}`);
+    expect(soundFadeOutPathD(0, 0, 24, 96)).toBeNull();
+  });
+});
+
 describe('soundBandGeometry — band surface source contract (plan acceptance criteria)', () => {
   // Every source assertion resolves to a BOOLEAN first so a failing TAP record
   // carries a tiny message (a full-file string dump breaks TAP YAML parsing).
@@ -145,21 +182,22 @@ describe('soundBandGeometry — band surface source contract (plan acceptance cr
     expect(strip.includes('onOpenDocumentSound')).toBe(true);
   });
 
-  it('(t11) the gesture truth table is encoded at the handler level (T-52.5-13)', () => {
+  it('(t11) the gesture truth table is encoded at the handler level (T-52.5-13, UAT round 3)', () => {
     const strip = readSource('./PhysicsPaintWorkflowStrip.tsx');
-    // UAT round 2: the interactive trim bar is retired — in/out is edited in
-    // the modal. The trim-zone handler must be gone entirely.
-    expect(strip.includes('handleSoundTrimZonePointerDown')).toBe(false);
-    expect(strip.includes('physics-paint-sound-trim')).toBe(false);
-    // armed stain moves stop propagation exactly once armed (ruler session starves)
-    expect(/if \(session\.armed\) \{\s*\n\s*event\.stopPropagation\(\);/.test(strip)).toBe(true);
-    // the stain release handler exists, early-returns sub-threshold, and never
-    // stops propagation there (the press-seek stays the single seek)
-    const upAt = strip.indexOf('const handleSoundStainPointerUp');
-    expect(upAt >= 0).toBe(true);
-    const upHandler = strip.slice(upAt, upAt + 800);
+    // UAT round 3: the clip and its trim handles are NEVER scrub targets —
+    // both presses stop propagation before anything else.
+    expect(/handleSoundStainPointerDown[\s\S]{0,400}?event\.stopPropagation\(\)/.test(strip)).toBe(true);
+    expect(/handleSoundTrimZonePointerDown[\s\S]{0,400}?event\.stopPropagation\(\)/.test(strip)).toBe(true);
+    // A clip drag never scrubs: no playhead navigation from the move handler.
+    const moveAt = strip.indexOf('const handleSoundGesturePointerMove');
+    expect(moveAt >= 0).toBe(true);
+    const moveHandler = strip.slice(moveAt, moveAt + 1400);
+    expect(moveHandler.includes('onNavigateToSyncedFrame')).toBe(false);
+    // The sub-threshold tap selects only — never commits.
+    const upHandler = strip.slice(strip.indexOf('const handleSoundGesturePointerUp'), strip.indexOf('const handleSoundGesturePointerUp') + 700);
     expect(/if \(!session\.armed\) \{/.test(upHandler)).toBe(true);
-    expect(upHandler.includes('stopPropagation')).toBe(false);
+    // The playhead carries the dedicated scrub handle.
+    expect(strip.includes('physics-paint-playhead-handle')).toBe(true);
   });
 
   it('(t12) the launcher is a 24x26 nav button with the Document sound label and AudioWaveform icon', () => {
