@@ -1,4 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import type {AudioTrack} from '../types/audio';
 import type {FrameEntry} from '../types/timeline';
 import {audioStore} from '../stores/audioStore';
@@ -7,6 +9,15 @@ import {timelineStore} from '../stores/timelineStore';
 import {audioEngine} from './audioEngine';
 import {isPhysicPaintChildAudioClaimed, publishPhysicPaintAudioPlaybackState} from './physicPaintBridge';
 import {PlaybackEngine, playbackEngine} from './playbackEngine';
+import {registerDocument, reset as resetEfxPaintStore} from '../stores/efxPaintStore';
+import {soloStore} from '../stores/soloStore';
+import {
+  createEfxPaintDocument,
+  type DocumentSoundClip,
+  type EfxPaintDocument,
+} from '../efx-paint/document/efxPaintDocument';
+import {defaultTransform, type Layer, type LayerType} from '../types/layer';
+import type {Sequence} from '../types/sequence';
 
 // 41-04 (D-05): the main-side ownership gate + playback-state broadcast are
 // mocked so this suite can drive claim state directly and observe the exact
@@ -365,5 +376,259 @@ describe('playbackEngine paint-frame activation (52.3-02, Pitfall 3)', () => {
     playbackEngine.scrubToFrame(3);
     expect(sequenceStore.activeSequenceId.value).toBe('fx-b');
     expect(sequenceStore.selectedKeyPhotoId.value).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 52.5-02 Task 1 (D-12/D-13/D-14, Q5/A1, MAIN-MIX-01/02): the document clip
+// joins main-editor playback AFTER the main-track loop, under the D-12 clip
+// switch and the D-13 composite gate. A1 pin: soloActive removes overlay
+// sequences from the composite (exportRenderer skips them), so the clip is
+// silent under solo exactly like the layer's pixels.
+//
+// Frame-space law: `sound.startFrame` is document-local (the Studio band's
+// `appFrame` cells). The clip's global timeline start is
+// `sequence.inFrame + sound.startFrame`, mirroring frameMap's
+// `localFrame = globalFrame - seq.inFrame`.
+//
+// Model drift note: 52.5-02-PLAN.md predates UAT rounds 2-4 (`soundInOutput`,
+// `volume` 0-100). The shipped model uses the clip's single `enabled` switch
+// and `gain` (-100..+100 -> linear 0..2 via the adapter).
+// ---------------------------------------------------------------------------
+
+const CLIP_LAYER = 'layer-sound';
+
+function makeFxLayer(layerId: string, overrides: Partial<Layer> = {}): Layer {
+  return {
+    id: `layer-${layerId}`,
+    name: 'Physics',
+    type: 'physic-paint' as LayerType,
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: {type: 'physic-paint', layerId},
+    ...overrides,
+  };
+}
+
+function makeFxSequence(overrides: Partial<Sequence> = {}): Sequence {
+  return {
+    id: 'seq-fx',
+    kind: 'fx',
+    name: 'FX',
+    fps: 24,
+    width: 4,
+    height: 3,
+    keyPhotos: [],
+    layers: [makeFxLayer(CLIP_LAYER)],
+    inFrame: 0,
+    outFrame: 300,
+    visible: true,
+    ...overrides,
+  };
+}
+
+function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundClip {
+  return {
+    id: 'sound-clip-1',
+    sourceId: 'asset-1',
+    relativePath: 'audio/sound.wav',
+    sourceRevision: 1,
+    startFrame: 48,
+    inFrame: 0,
+    outFrame: 240,
+    gain: -25,
+    fadeInFrames: 6,
+    fadeOutFrames: 12,
+    fadeInCurve: 'exponential',
+    fadeOutCurve: 'linear',
+    enabled: true,
+    ...overrides,
+  };
+}
+
+function registerSoundDocument(sound: DocumentSoundClip | null): EfxPaintDocument {
+  const document: EfxPaintDocument = {...createEfxPaintDocument(CLIP_LAYER), sound};
+  registerDocument(document);
+  return document;
+}
+
+describe('playbackEngine document clip dispatch (52.5-02, MAIN-MIX-01/02)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedClaimed.mockReturnValue(false);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    soloStore.setSolo(false);
+  });
+
+  afterEach(() => {
+    playbackEngine.stop();
+    audioStore.tracks.value = [];
+    sequenceStore.sequences.value = [];
+    resetEfxPaintStore();
+    soloStore.setSolo(false);
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    vi.unstubAllGlobals();
+  });
+
+  function seed(sound: DocumentSoundClip | null, sequence: Sequence) {
+    sequenceStore.sequences.value = [sequence];
+    registerSoundDocument(sound);
+  }
+
+  it('(c1) plays the clip mixed with the main track at the clip window (gain -> linear volume, D-14)', () => {
+    seed(makeSound(), makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    // Cursor 96 inside the clip window [48, 288): immediate at (0 + 48) / 24 = 2.0,
+    // remaining (288 - 96) / 24 = 8.0. The main track dispatches too (control).
+    timelineStore.seek(96);
+    playbackEngine.start();
+    expect(mockedAudio.play.mock.calls.map((call) => call[0])).toEqual(['audio-1', 'sound-clip-1']);
+    expect(mockedAudio.play).toHaveBeenNthCalledWith(
+      2,
+      'sound-clip-1',
+      2.0,
+      expect.objectContaining({
+        id: 'sound-clip-1',
+        volume: 0.75, // gain -25 -> (gain + 100) / 100
+        fadeInFrames: 6,
+        fadeOutFrames: 12,
+        fadeInCurve: 'exponential',
+        fadeOutCurve: 'linear',
+        offsetFrame: 48,
+        inFrame: 0,
+        outFrame: 240,
+        slipOffset: 0,
+      }),
+      24,
+      8.0,
+    );
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(c2) a clip starting after the cursor is scheduled with playDelayed', () => {
+    seed(makeSound(), makeFxSequence());
+    // Cursor 24 before the clip start 48 -> delayed 1.0s at source 0, 10.0s long.
+    timelineStore.seek(24);
+    playbackEngine.start();
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).toHaveBeenCalledWith(
+      'sound-clip-1',
+      1.0,
+      0,
+      expect.objectContaining({id: 'sound-clip-1'}),
+      24,
+      10.0,
+    );
+  });
+
+  it('(c3) the clip start is sequence-rebased: document-local start + seq.inFrame', () => {
+    seed(makeSound({startFrame: 48, inFrame: 0, outFrame: 48}), makeFxSequence({inFrame: 50}));
+    // Document-local 48 at seq.inFrame 50 -> global 98. Cursor 98 -> immediate
+    // at source 0, 2.0s long (48 frames).
+    timelineStore.seek(98);
+    playbackEngine.start();
+    expect(mockedAudio.play).toHaveBeenCalledWith(
+      'sound-clip-1',
+      0,
+      expect.objectContaining({id: 'sound-clip-1', offsetFrame: 98}),
+      24,
+      2.0,
+    );
+  });
+
+  it('(c4) enabled false silences the clip while the main track still plays (D-12)', () => {
+    seed(makeSound({enabled: false}), makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    timelineStore.seek(96);
+    playbackEngine.start();
+    expect(mockedAudio.play).not.toHaveBeenCalledWith('sound-clip-1', expect.anything(), expect.anything(), expect.anything(), expect.anything());
+    expect(mockedAudio.play).toHaveBeenCalledWith('audio-1', expect.anything(), expect.anything(), 24, expect.anything());
+  });
+
+  it('(c5) a document without a sound never dispatches a clip', () => {
+    seed(null, makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    timelineStore.seek(96);
+    playbackEngine.start();
+    expect(mockedAudio.play.mock.calls.map((call) => call[0])).toEqual(['audio-1']);
+  });
+
+  it('(c6) hiding the fx sequence silences the clip while the main track still plays (D-13)', () => {
+    seed(makeSound(), makeFxSequence({visible: false}));
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    timelineStore.seek(96);
+    playbackEngine.start();
+    expect(mockedAudio.play).not.toHaveBeenCalledWith('sound-clip-1', expect.anything(), expect.anything(), expect.anything(), expect.anything());
+    expect(mockedAudio.play).toHaveBeenCalledWith('audio-1', expect.anything(), expect.anything(), 24, expect.anything());
+  });
+
+  it('(c7) solo ON silences the clip while the main track still plays (A1 pin)', () => {
+    seed(makeSound(), makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    soloStore.setSolo(true);
+    timelineStore.seek(96);
+    playbackEngine.start();
+    expect(mockedAudio.play).not.toHaveBeenCalledWith('sound-clip-1', expect.anything(), expect.anything(), expect.anything(), expect.anything());
+    expect(mockedAudio.play).toHaveBeenCalledWith('audio-1', expect.anything(), expect.anything(), 24, expect.anything());
+  });
+
+  it('(c8) a held child audio claim suppresses the clip leg too (41-04 D-05)', () => {
+    seed(makeSound(), makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    mockedClaimed.mockReturnValue(true);
+    timelineStore.seek(96);
+    playbackEngine.start();
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(c9) a clip-only project (no main tracks) still plays the clip', () => {
+    seed(makeSound(), makeFxSequence());
+    timelineStore.seek(96);
+    playbackEngine.start();
+    expect(mockedAudio.play.mock.calls.map((call) => call[0])).toEqual(['sound-clip-1']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Source contract (plan acceptance criteria): the dispatch seam, the decode-once
+// seam, and the path-safe reference join.
+// ---------------------------------------------------------------------------
+describe('playbackEngine document clip source contract (52.5-02)', () => {
+  const readSource = (relative: string): string =>
+    readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
+
+  it('(s1) playbackEngine imports getDocument + getTimelineOverlaySequenceOutFrame and dispatches inside startAudioPlayback', () => {
+    const source = readSource('./playbackEngine.ts');
+    expect(source.includes('getDocument')).toBe(true);
+    expect(source.includes('getTimelineOverlaySequenceOutFrame')).toBe(true);
+    expect(source.includes('collectDocumentSoundClips')).toBe(true);
+    const fnAt = source.indexOf('private startAudioPlayback');
+    expect(fnAt >= 0).toBe(true);
+    const fnBody = source.slice(fnAt, source.indexOf('private tick'));
+    expect(fnBody.includes('collectDocumentSoundClips')).toBe(true);
+  });
+
+  it('(s2) projectStore re-decode decodes the clip by sound.id behind a path-safe audio/ join', () => {
+    const source = readSource('../stores/projectStore.ts');
+    expect((source.match(/audioEngine\.decode/g) ?? []).length >= 2).toBe(true);
+    expect(source.includes('sound.id')).toBe(true);
+    expect(source.includes('isSafeAudioRelativePath')).toBe(true);
+  });
+
+  it('(s3) exportEngine joins the clip through buildExportMixEntries and never reads the preview-mix toggle', () => {
+    const source = readSource('./exportEngine.ts');
+    expect(source.includes('buildExportMixEntries')).toBe(true);
+    expect(source.includes('isSafeAudioRelativePath')).toBe(true);
+    // D-11: the preview-mix flag is preview-only — it is structurally absent
+    // from the export decision (exportClipEnabled reads the clip alone).
+    expect(source.includes('audioPreviewEnabled')).toBe(false);
   });
 });

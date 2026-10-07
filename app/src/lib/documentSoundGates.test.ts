@@ -4,8 +4,10 @@ import { efxPaintAudioMonitor, resumeEfxPaintAudioAtLiveCursor } from '../compon
 import { audioPreviewEnabled, setAudioPreviewEnabled } from '../components/physic-paint/audio/efxPaintAudioPreviewStore';
 import { EFX_PAINT_AUDIO_SUPPRESSED_NOTE, efxPaintAudioOwnership } from '../components/physic-paint/audio/efxPaintAudioOwnership';
 import { parseEfxPaintAudioPreviewSection } from '../components/physic-paint/audio/efxPaintAudioPreviewContext';
-import { createEfxPaintDocument, type DocumentSoundClip } from '../efx-paint/document/efxPaintDocument';
+import { createEfxPaintDocument, type DocumentSoundClip, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { registerDocument, removeDocument } from '../stores/efxPaintStore';
+import { defaultTransform, type Layer, type LayerType } from '../types/layer';
+import type { Sequence } from '../types/sequence';
 
 // ---------------------------------------------------------------------------
 // 52.5-01a Task 3 (Q3, D-11/D-14, STUDIO-MIX-01): Studio clip playback.
@@ -418,5 +420,142 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
       (100 - 96) / 24,
     );
     expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 52.5-02 Tasks 1-2 (D-11/D-12/D-13/D-14, MAIN-MIX-01/02, EXPORT-01, Q5/A1):
+// main-editor mixed playback + export mixer inclusion.
+//
+// Model drift note: 52.5-02-PLAN.md predates UAT rounds 2-4 and speaks of
+// `soundInOutput`, `previewMainApp` and `volume` (0-100). The SHIPPED model
+// collapsed those into the clip's single `enabled` switch (ON = audible in
+// Studio + main playback + export; OFF = silent everywhere) and `gain`
+// (-100..+100, adapter maps (gain+100)/100 -> linear 0..2). The gates below
+// implement the shipped contract: `enabled` is D-12's master switch, and the
+// D-11 preview-mix toggle is structurally absent from every export input.
+//
+// Frame-space law: `sound.startFrame` is DOCUMENT-LOCAL (the Studio band's
+// `appFrame` cells, bounded by `rotoParentEndExclusive`). A clip's global
+// timeline start is `sequence.inFrame + sound.startFrame`, mirroring frameMap's
+// `localFrame = globalFrame - seq.inFrame` and getTimelineOverlaySequenceOutFrame's
+// `seq.inFrame + rotoEnd`.
+// ---------------------------------------------------------------------------
+
+function makeFxLayer(layerId: string, overrides: Partial<Layer> = {}): Layer {
+  return {
+    id: `layer-${layerId}`,
+    name: 'Physics',
+    type: 'physic-paint' as LayerType,
+    visible: true,
+    opacity: 1,
+    blendMode: 'normal',
+    transform: defaultTransform(),
+    source: { type: 'physic-paint', layerId },
+    ...overrides,
+  };
+}
+
+function makeFxSequence(overrides: Partial<Sequence> = {}): Sequence {
+  return {
+    id: 'seq-fx',
+    kind: 'fx',
+    name: 'FX',
+    fps: 24,
+    width: 4,
+    height: 3,
+    keyPhotos: [],
+    layers: [makeFxLayer('layer-1')],
+    inFrame: 0,
+    outFrame: 300,
+    visible: true,
+    ...overrides,
+  };
+}
+
+function documentWithSound(sound: DocumentSoundClip | null, layerId = 'layer-1'): EfxPaintDocument {
+  return { ...createEfxPaintDocument(layerId), sound };
+}
+
+function mapGetDocument(entries: ReadonlyMap<string, EfxPaintDocument>): (layerId: string) => EfxPaintDocument | null {
+  return (layerId) => entries.get(layerId) ?? null;
+}
+
+describe('documentSoundGates — collectDocumentSoundClips (52.5-02, MAIN-MIX-01)', () => {
+  it('(m1) collects one entry per sound-carrying physic-paint layer on an fx sequence, deduped by layer id', async () => {
+    const { collectDocumentSoundClips } = await import('./documentSoundGates');
+    const soundA = makeSound({ id: 'clip-a', sourceId: 'asset-a' });
+    const soundB = makeSound({ id: 'clip-b', sourceId: 'asset-b' });
+    const seq = makeFxSequence({
+      layers: [makeFxLayer('layer-1'), makeFxLayer('layer-2'), makeFxLayer('layer-1')],
+    });
+    const documents = new Map<string, EfxPaintDocument>([
+      ['layer-1', documentWithSound(soundA, 'layer-1')],
+      ['layer-2', documentWithSound(soundB, 'layer-2')],
+    ]);
+    const entries = collectDocumentSoundClips([seq], mapGetDocument(documents));
+    // Deduped by layer id: the repeated 'layer-1' contributes one entry.
+    expect(entries.map((entry) => entry.layerId)).toEqual(['layer-1', 'layer-2']);
+    expect(entries[0].sound).toBe(soundA);
+    expect(entries[1].sound).toBe(soundB);
+    // The entry carries the owning sequence so callers can resolve visibility
+    // and the sequence's global inFrame offset.
+    expect(entries[0].sequence).toBe(seq);
+  });
+
+  it('(m2) skips non-fx sequences and sound-less documents; a hidden fx sequence is still collected', async () => {
+    const { collectDocumentSoundClips } = await import('./documentSoundGates');
+    const sound = makeSound();
+    // A physic-paint layer on a CONTENT sequence is not an overlay (frameMap.ts:60).
+    const contentSeq = makeFxSequence({ id: 'seq-content', kind: 'content', layers: [makeFxLayer('layer-1')] });
+    // A document whose sound is null contributes nothing.
+    const emptySeq = makeFxSequence({ id: 'seq-empty', layers: [makeFxLayer('layer-2')] });
+    // Visibility is the CALLER's gate (layerInComposite) — collect stays a pure
+    // membership read, so a hidden fx sequence still yields its entry.
+    const hiddenSeq = makeFxSequence({ id: 'seq-hidden', visible: false, layers: [makeFxLayer('layer-3')] });
+    const documents = new Map<string, EfxPaintDocument>([
+      ['layer-1', documentWithSound(sound, 'layer-1')],
+      ['layer-2', documentWithSound(null, 'layer-2')],
+      ['layer-3', documentWithSound(sound, 'layer-3')],
+    ]);
+    const entries = collectDocumentSoundClips([contentSeq, emptySeq, hiddenSeq], mapGetDocument(documents));
+    expect(entries.map((entry) => entry.layerId)).toEqual(['layer-3']);
+  });
+
+  it('(m3) entries carry the document-local start rebased to the sequence global inFrame', async () => {
+    const { collectDocumentSoundClips } = await import('./documentSoundGates');
+    const sound = makeSound({ startFrame: 48 });
+    const seq = makeFxSequence({ inFrame: 50, layers: [makeFxLayer('layer-1')] });
+    const documents = new Map([['layer-1', documentWithSound(sound, 'layer-1')]]);
+    const entries = collectDocumentSoundClips([seq], mapGetDocument(documents));
+    expect(entries[0].timelineStartFrame).toBe(98); // 50 + 48
+    // inFrame undefined is the [seq.inFrame ?? 0] law -> 0 + 48.
+    const bare = makeFxSequence({ inFrame: undefined, layers: [makeFxLayer('layer-1')] });
+    expect(collectDocumentSoundClips([bare], mapGetDocument(documents))[0].timelineStartFrame).toBe(48);
+  });
+});
+
+describe('documentSoundGates — layerInComposite + mainPlaybackClipEnabled (D-12/D-13, Q5/A1)', () => {
+  it('(m4) layerInComposite pins the A1 solo row: soloActive removes overlay sequences from the composite', async () => {
+    const { layerInComposite } = await import('./documentSoundGates');
+    expect(layerInComposite(true, false)).toBe(true);
+    // A1 pin: renderGlobalFrame skips overlay sequences entirely when soloActive
+    // (exportRenderer.ts:334-335) and physic-paint layers ride fx sequences.
+    expect(layerInComposite(true, true)).toBe(false);
+    expect(layerInComposite(false, false)).toBe(false);
+    expect(layerInComposite(false, true)).toBe(false);
+  });
+
+  it('(m5) mainPlaybackClipEnabled = clip present AND enabled AND layer-in-composite', async () => {
+    const { mainPlaybackClipEnabled } = await import('./documentSoundGates');
+    // No clip at all -> never dispatches.
+    expect(mainPlaybackClipEnabled(null, true, false)).toBe(false);
+    // `enabled` is D-12's master switch (UAT round 2: OFF = silent everywhere).
+    expect(mainPlaybackClipEnabled(makeSound({ enabled: true }), true, false)).toBe(true);
+    expect(mainPlaybackClipEnabled(makeSound({ enabled: false }), true, false)).toBe(false);
+    // D-13: hidden layer and solo both silence the clip.
+    expect(mainPlaybackClipEnabled(makeSound({ enabled: true }), false, false)).toBe(false);
+    expect(mainPlaybackClipEnabled(makeSound({ enabled: true }), true, true)).toBe(false);
+    expect(mainPlaybackClipEnabled(makeSound({ enabled: true }), false, true)).toBe(false);
   });
 });
