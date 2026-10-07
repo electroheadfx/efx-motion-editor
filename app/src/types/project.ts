@@ -19,6 +19,10 @@ export interface MceProject {
   modified_at: string;
   sequences: MceSequence[];
   images: MceImageRef[];
+  /** 52.5 UAT round 4: gallery audio assets (imported, used or not). Without
+   *  this the gallery is rebuilt from `audio_tracks` alone and a Studio
+   *  document-sound import vanishes on reload. */
+  audio_assets?: MceAudioAssetRef[];
   audio_tracks?: MceAudioTrack[];  // Optional for backward compat with v7
   motion_blur?: {
     enabled: boolean;
@@ -203,6 +207,13 @@ export interface MceKeyPhoto {
   solid_color?: string;      // v10+: hex color for solid entries
   is_transparent?: boolean;  // v10+: true for transparent entries
   gradient?: MceGradientData;  // v13+: gradient fill data
+}
+
+/** Audio asset reference in the project -- relative path for portability */
+export interface MceAudioAssetRef {
+  id: string;
+  name: string;
+  relative_path: string;
 }
 
 /** Image reference in the project -- stores relative paths for portability */

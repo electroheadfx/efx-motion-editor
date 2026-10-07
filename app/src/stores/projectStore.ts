@@ -433,6 +433,7 @@ function buildMceProject(): RuntimeMceProject {
     modified_at: new Date().toISOString(),
     sequences: mceSequences,
     images: imageStore.toMceImages(projectRoot),
+    audio_assets: imageStore.toMceAudioAssets(projectRoot),
     audio_tracks: audioStore.tracks.value.map((track, index): MceAudioTrack => ({
       id: track.id,
       audio_asset_id: track.audioAssetId,
@@ -493,6 +494,7 @@ function hydrateFromMce(
 
     // 2. Load images (converts relative to absolute)
     imageStore.loadFromMceImages(project.images, projectRoot);
+    imageStore.loadFromMceAudioAssets(project.audio_assets ?? [], projectRoot);
 
     // 3. Convert MceSequences to frontend Sequence type and load into sequenceStore
     sequenceStore.reset();
@@ -724,6 +726,18 @@ function hydrateFromMce(
     //    bytes (the compositor's lazy seam is not a substitute for them).
     for (const [layerId, loaded] of loadedDocuments) {
       registerEfxPaintDocument(loaded.document);
+      // 52.5 UAT round 4: a document-sound import lives in the shared gallery
+      // as well as the layer JSON. Re-register it so `isSoundMissing` and the
+      // audio gallery still see the asset after a reload (the manifest's
+      // `audio_assets` covers unused imports; this covers used ones).
+      const sound = loaded.document.sound;
+      if (sound !== null && !imageStore.audioAssets.peek().some((asset) => asset.id === sound.sourceId)) {
+        imageStore.addAudioAsset({
+          id: sound.sourceId,
+          name: sound.relativePath.split('/').pop() ?? sound.relativePath,
+          path: `${projectRoot}/${sound.relativePath}`,
+        });
+      }
       hydrateEfxPaintRuntimeFromDocument(runtimeDocuments.get(layerId) ?? loaded.document, loaded.frames);
     }
 
