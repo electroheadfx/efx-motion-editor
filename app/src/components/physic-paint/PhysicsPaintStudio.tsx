@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { BlendMode, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { SoundBandGesturePatch } from './view/soundBandGeometry';
 import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
@@ -4751,6 +4752,77 @@ export function PhysicsPaintStudio() {
     // leaves through this port and opens the shared gallery in audio mode.
     onImportRequest: () => { void audioPicker.openPicker(); },
   };
+  /* ---- 52.5-01b Task 3 (D-04/E3): peaks ensure on reopen ----------------
+     Peaks are cached at import (handleConfirmAudioPicker); after save/reopen
+     the cache is cold and the band must still draw (E3 populated on reopen).
+     This re-derives them through the EXISTING machinery — assetUrl fetch →
+     audioEngine.decode → computeWaveformPeaks, keyed by sourceId (D-04: no
+     new decode path; a clipId-keyed buffer from monitor prepare is reused when
+     present). Fail-closed: any failure leaves the cache empty → no stain, and
+     the modal carries the error copy. Termination: one in-flight ensure per
+     sourceId (ref guard), early return on cache hit / missing URL; the effect
+     re-runs only on launch/document/section identity changes — never a loop. ---- */
+  const soundPeaksEnsureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!launchContext) return undefined;
+    const sound = getEfxPaintDocument(launchContext.layerId)?.sound;
+    if (!sound) {
+      soundPeaksEnsureRef.current = null;
+      return undefined;
+    }
+    if (audioPeaksCache.get(sound.sourceId)) {
+      soundPeaksEnsureRef.current = null;
+      return undefined;
+    }
+    if (soundPeaksEnsureRef.current === sound.sourceId) return undefined;
+    const section = efxPaintDocumentAudioStore.section.value;
+    // No closed-section URL yet (clip without routed documentAudio) — re-run
+    // when the section lands rather than guessing a package path here.
+    if (!section || section.clipId !== sound.id) return undefined;
+    soundPeaksEnsureRef.current = sound.sourceId;
+    void (async () => {
+      try {
+        let buffer = audioEngine.getBuffer(sound.sourceId) ?? audioEngine.getBuffer(sound.id);
+        if (!buffer) {
+          const response = await fetch(section.assetUrl);
+          if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
+          buffer = await audioEngine.decode(sound.sourceId, await response.arrayBuffer());
+        }
+        audioPeaksCache.set(sound.sourceId, computeWaveformPeaks(buffer));
+      } catch {
+        // E3 error state: fail-closed — cache stays empty, band stays plain.
+      } finally {
+        soundPeaksEnsureRef.current = null;
+      }
+    })();
+    return undefined;
+  }, [launchContext, efxPaintVersion.value, efxPaintDocumentAudioStore.section.value]);
+  /** Gesture settle port for the band (D-08/D-09): dragged start/in/out land
+   *  through the ONE member setter every modal commit uses (T-52.5-12/13).
+   *  Returns whether the setter accepted the write — rejected or identical
+   *  values leave the prior accepted span authoritative (the strip restores
+   *  its preview in that case). */
+  const handleDocumentSoundGestureSettle = (patch: SoundBandGesturePatch): boolean => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return false;
+    const current = getEfxPaintDocument(layerId)?.sound;
+    if (!current) return false;
+    const next: DocumentSoundClip = {
+      ...current,
+      startFrame: patch.startFrame ?? current.startFrame,
+      inFrame: patch.inFrame ?? current.inFrame,
+      outFrame: patch.outFrame ?? current.outFrame,
+    };
+    return setDocumentSound(layerId, next).ok;
+  };
+  /** Band/launcher resolution — the render-body version read subscribes the
+   *  Studio to sound-member edits (efx-preact-reactivity rule 5: rare,
+   *  meaningful bumps — never per frame). */
+  const resolveDocumentSound = (): DocumentSoundClip | null => {
+    efxPaintVersion.value;
+    if (!launchContext) return null;
+    return getEfxPaintDocument(launchContext.layerId)?.sound ?? null;
+  };
   // 50-UAT (modal redesign): the floating Photo Reference dialog bundle — the
   // dialog reads the document through the SAME identity-stable store ports and
   // re-resolves on every document mutation (efxPaintVersion) so its controls
@@ -4821,6 +4893,14 @@ export function PhysicsPaintStudio() {
         // Remove and every setting — no X badge on the icon, 50-UAT round 2).
         photoReference: multiTrackRowBundle.photoReference,
         onOpenReference: () => { referenceDialogOpen.value = true; },
+        // 52.5-01b Task 3 (D-02/D-06/D-07/D-08): the sound band + launcher —
+        // resolved fresh each render (resolveDocumentSound subscribes this
+        // bundle to the sound member), the launcher flips the SAME modal
+        // signal the task-1/2 flow owns, and the gesture settle routes every
+        // dragged start/in/out through the ONE member setter.
+        documentSound: resolveDocumentSound(),
+        onOpenDocumentSound: () => { audioModalOpen.value = true; },
+        onDocumentSoundSettle: handleDocumentSoundGestureSettle,
         // 52-05 (G-52-3): the track rail-creation flow — Motion/Static open the
         // Create Rail dialog on the Paint tab; Reveal opens the SAME dialog on
         // the Reveal Photo Rail tab (one model, two entry points, the SAME

@@ -25,7 +25,7 @@
  */
 
 import { useRef } from 'preact/hooks';
-import { Blend, Camera, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, Plus, Trash2 } from 'lucide-preact';
+import { AudioWaveform, Blend, Camera, Eye, EyeOff, GripVertical, ImagePlus, Layers, Lock, Plus, Trash2 } from 'lucide-preact';
 import { getTrackRotorRevision, physicPaintStore } from '../../../stores/physicPaintStore';
 import { deriveKeyRailSegments, type KeyRailSegment } from './physicsPaintKeyRailPresentation';
 import {
@@ -1066,18 +1066,27 @@ export interface PhysicsPaintTrackColumnStripProps {
   readonly hasReference?: boolean;
   /** Camera icon click — opens the floating Photo Reference dialog. */
   readonly onOpenReference?: () => void;
+  /* ---- 52.5-01b Task 3 (D-02): the Document sound launcher in the strip —
+     the SOLE sound affordance (no Add-Audio button, no Tools-popover entry,
+     no second gallery). 24x26 nav button; tinted when a clip exists (E2). ---- */
+  /** True when the document carries a sound clip — the launcher tints. */
+  readonly hasSound?: boolean;
+  /** Launcher click — opens the Document sound modal. */
+  readonly onOpenDocumentSound?: () => void;
 }
 
 /**
  * The pinned header column's top strip (the mockup "Tracks" bar): layers icon,
- * "Tracks" title, count badge, the photo/reference camera icon, and the '+'
- * add-track button. Sits in the 28 px ruler spacer slot so it aligns with the
+ * "Tracks" title, count badge, the photo/reference camera icon, the Document
+ * sound launcher, and the '+'
+ * add-track button. Sits in the 36 px ruler spacer slot so it aligns with the
  * frame ruler. The camera icon is the photo/reference affordance — a lightweight
  * icon, NOT a track row (50-UAT redesign); it opens the settings dialog (50-UAT
- * modal redesign).
+ * modal redesign). The AudioWaveform button is the Document sound launcher
+ * (52.5-01b D-02) — same rule: icon, not a track row.
  */
 export function PhysicsPaintTrackColumnStrip(props: PhysicsPaintTrackColumnStripProps) {
-  const { trackCount, onAddTrack, hasReference = false, onOpenReference } = props;
+  const { trackCount, onAddTrack, hasReference = false, onOpenReference, hasSound = false, onOpenDocumentSound } = props;
   return (
     <div class="physics-paint-track-column-strip">
       <span class="physics-paint-track-column-title-group">
@@ -1096,6 +1105,15 @@ export function PhysicsPaintTrackColumnStrip(props: PhysicsPaintTrackColumnStrip
           onClick={() => onOpenReference?.()}
         >
           <Camera size={13} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class={`physics-paint-nav-button physics-paint-track-column-sound${hasSound ? ' has-sound' : ''}`}
+          aria-label="Document sound"
+          title="Document sound"
+          onClick={() => onOpenDocumentSound?.()}
+        >
+          <AudioWaveform size={15} aria-hidden="true" />
         </button>
         <button
           type="button"

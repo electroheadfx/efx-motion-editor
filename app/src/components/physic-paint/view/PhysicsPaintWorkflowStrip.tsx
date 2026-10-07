@@ -118,7 +118,28 @@ import { usePhysicsPaintBackgroundClipDrag } from '../hooks/usePhysicsPaintBackg
 import { usePhysicsPaintBackgroundClipResize, type BackgroundClipResizeSource } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, DocumentSoundClip, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+// 52.5-01b Task 3 (D-04/D-07/D-08/D-09): the sound band — pure geometry/trim
+// helpers, the shared 3-tier peaks cache (no new decode path), and the
+// gesture-idle scheduler ports for trim sessions (the stain press rides the
+// ruler session's begin/end pair, since it bubbles).
+import {
+  SOUND_BAND_HEIGHT_PX,
+  SOUND_STAIN_ARM_PX,
+  SOUND_TRIM_ARM_PX,
+  applyTrimEndSound,
+  applyTrimStartSound,
+  clampSoundRepositionStart,
+  selectSoundPeaks,
+  soundStainLeftPx,
+  soundStainWidthPx,
+  soundSpanFrames,
+  soundWaveformPathD,
+  type SoundBandGesturePatch,
+  type SoundBandValues,
+} from './soundBandGeometry';
+import { audioPeaksCache, peaksCacheRevision } from '../../../lib/audioPeaksCache';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
 // requestDeleteTrack preview plus the rename-validation constants — every
 // destructive mutation routes through a controller intent (the delete commit
@@ -473,6 +494,16 @@ export interface PhysicsPaintWorkflowStripProps {
   photoReference?: PhotoReferenceTrack | null;
   /** The strip camera icon's open-dialog intent. */
   onOpenReference?: () => void;
+  /* ---- 52.5-01b Task 3 (D-06/D-07/D-08/D-09): the document sound band ---- */
+  /** The singleton document sound clip (null = no clip; the band renders the
+   *  frame numbers only — no stain, no trim bar). */
+  documentSound?: DocumentSoundClip | null;
+  /** Launcher click — opens the Document sound modal (the ONLY new entry point). */
+  onOpenDocumentSound?: () => void;
+  /** Gesture settle — commits a dragged start/in/out through the Studio's
+   *  member-setter port; returns whether the commit was accepted (rejected or
+   *  no-op clamps restore the prior accepted span). */
+  onDocumentSoundSettle?: (patch: SoundBandGesturePatch) => boolean;
   /* ---- 52-05 (G-52-3): the track rail-creation flow — reveal as the 4th rail kind ---- */
   /** Choosing a PlayScript rail kind (motion/static) opens the Create Rail
    *  dialog on the Paint tab — the same flow that creates a motion/static
@@ -495,17 +526,32 @@ const ROTO_CELL_WIDTH_PX = 18;
 const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
 
 /* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
-   46 (header) + 1 (strip border) + 1 (timeline border) + 28 (ruler) + 34
-   (action row) + 14 (scrollbar) = 124. The strip defaults to exactly enough
+   46 (header) + 1 (strip border) + 1 (timeline border) + 36 (ruler, the
+   52.5-01b D-07 band 28 -> 36 for the waveform stain) + 34 (action row) +
+   14 (scrollbar), i.e. 46 + 1 + 1 + 36 + 34 + 14 = 132. The strip
+   defaults to exactly enough
    height for every track row + the Bg row (30px each, UAT round 4 compact
    rows), capped at 270px so the canvas keeps room; the top-edge drag handle
    lets the user shrink (vertical scroll appears) or grow up to the full
    content height — never beyond the number of tracks. */
 // 47-01 UAT round 7: the row is 30px (8px rail band + 22px cells, no overlap).
 const STRIP_ROW_HEIGHT_PX = 30;
-const STRIP_CHROME_HEIGHT_PX = 124;
+const STRIP_CHROME_HEIGHT_PX = 132;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
+
+/** 52.5-01b Task 3: the live sound-band gesture session (identity fixed at
+ *  pointer-down; `next` is the clamped preview state, `origin` the commit
+ *  baseline for rejected settles). */
+interface SoundBandGestureSession {
+  readonly kind: 'stain' | 'trim-start' | 'trim-end';
+  readonly pointerId: number;
+  readonly originX: number;
+  readonly origin: SoundBandValues;
+  armed: boolean;
+  next: SoundBandValues;
+  removeWindowListeners: () => void;
+}
 
 /**
  * 47-02 Task 3 (TML-03/D-05): the pure ensure-active-row-visible delta.
@@ -1771,6 +1817,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const { frameCells, physicalCellByAppFrame, generatedRotoFrames, cachedFrameByAppFrame, realCachedFrameSet, lifecycleTargetByAppFrame } = structuralIndex;
   const rotoLaneWidthPx = frameCells.length * ROTO_CELL_WIDTH_PX;
+  /* 52.5-01b Task 3 (D-04/E3): the stain reads the shared peaks cache. The
+     revision read subscribes the strip ONLY to cache mutations (import /
+     reopen-ensure — never per frame), per efx-preact-reactivity rule 5. No
+     peaks (loading, missing file, no clip) -> no stain path -> the plain band
+     renders (fail-closed; the modal carries the busy/error copy). */
+  peaksCacheRevision.value;
+  const soundClip = props.documentSound ?? null;
+  const soundLeftPx = soundClip ? soundStainLeftPx(soundClip.startFrame, ROTO_CELL_WIDTH_PX) : 0;
+  const soundWidthPx = soundClip ? soundStainWidthPx(soundClip.inFrame, soundClip.outFrame, ROTO_CELL_WIDTH_PX) : 0;
+  const soundPeaks = soundClip ? selectSoundPeaks(audioPeaksCache.get(soundClip.sourceId), soundWidthPx) : null;
+  const soundPathD = soundPeaks ? soundWaveformPathD(soundPeaks, soundWidthPx) : null;
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
   // is queried for exactly the represented physical extent (frameCells) — one
@@ -2710,6 +2767,174 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onScrubStart: () => props.onScrubStart?.(),
     onScrubEnd: (frame) => props.onScrubEnd?.(frame),
   });
+  /* ---- 52.5-01b Task 3 (D-08/D-09, UI-SPEC gesture truth table, T-52.5-13)
+     One gesture session for the stain body, the trim-bar middle and the two
+     trim end zones. Identity is decided at pointer-down and NEVER switches
+     mid-gesture:
+     - stain press bubbles to the ruler (seek-on-press = the one seek a
+       sub-threshold click gets); once the 4px arm threshold is crossed the
+       moves stop propagation so the ruler scrub session starves — ONE
+       gesture drives the playhead feed + throttled peek.
+     - trim end zones stop propagation at pointer-down (the bar NEVER seeks)
+       and arm at 2px; trim sessions own their begin/end idle pair.
+     - sub-threshold release: exactly one seek (the press), no settle.
+     - armed release: commit through the member setter + full scrub settle;
+       a rejected/no-op clamp restores the prior accepted span in the DOM.
+     Live preview mutates the two layer elements directly (no per-move
+     strip re-render — efx-preact-reactivity rule 5). ---- */
+  const soundRulerElRef = useRef<HTMLDivElement>(null);
+  const soundStainElRef = useRef<HTMLDivElement>(null);
+  const soundTrimBarElRef = useRef<HTMLDivElement>(null);
+  const soundGestureRef = useRef<SoundBandGestureSession | null>(null);
+  const soundBandParentEnd = (): number => props.rotoParentEndExclusive ?? frameCells.length;
+  const frameAtClientX = (clientX: number): number => {
+    const el = soundRulerElRef.current;
+    const count = frameCells.length;
+    if (!el || count <= 0) return 0;
+    const rect = el.getBoundingClientRect();
+    return Math.max(0, Math.min(count - 1, Math.floor((clientX - rect.left) / ROTO_CELL_WIDTH_PX)));
+  };
+  const applySoundBandPreview = (next: SoundBandValues): void => {
+    const left = `${soundStainLeftPx(next.startFrame, ROTO_CELL_WIDTH_PX)}px`;
+    const width = `${soundStainWidthPx(next.inFrame, next.outFrame, ROTO_CELL_WIDTH_PX)}px`;
+    const stain = soundStainElRef.current;
+    if (stain) {
+      stain.style.left = left;
+      stain.style.width = width;
+    }
+    const bar = soundTrimBarElRef.current;
+    if (bar) {
+      bar.style.left = left;
+      bar.style.width = width;
+    }
+  };
+  const startSoundBandGesture = (
+    kind: SoundBandGestureSession['kind'],
+    event: PointerEvent,
+    origin: SoundBandValues,
+  ): void => {
+    const session: SoundBandGestureSession = {
+      kind,
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      origin,
+      armed: false,
+      next: origin,
+      removeWindowListeners: () => {},
+    };
+    // Capture-phase window listeners: the ruler captures the pointer to ITSELF,
+    // so element-level listeners on the stain would never see the moves — a
+    // window-capture listener runs first in the path and can starve the ruler's
+    // window-bubble session exactly when armed (stopPropagation at capture).
+    const onMove = handleSoundGesturePointerMove;
+    const onUp = handleSoundStainPointerUp;
+    const onCancel = handleSoundGesturePointerCancel;
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    session.removeWindowListeners = () => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+    };
+    if (kind !== 'stain') {
+      // The trim press never reaches the ruler, so it owns the idle pairing.
+      beginInteraction(event.pointerId);
+    }
+    soundGestureRef.current = session;
+  };
+  const handleSoundGesturePointerMove = (event: PointerEvent): void => {
+    const session = soundGestureRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+    markInteractionActive();
+    const dx = event.clientX - session.originX;
+    const armPx = session.kind === 'stain' ? SOUND_STAIN_ARM_PX : SOUND_TRIM_ARM_PX;
+    if (!session.armed) {
+      if (Math.abs(dx) <= armPx) return;
+      session.armed = true;
+      props.onScrubStart?.();
+    }
+    // Truth table (T-52.5-13): propagation stops EXACTLY once armed — a
+    // sub-threshold move never reaches the guard below (it returns above),
+    // so the plain ruler session stays live until the gesture commits to
+    // reposition/trim. Fires on every armed move so the starved ruler
+    // session never re-arms on a later event.
+    if (session.armed) {
+      event.stopPropagation();
+    }
+    const delta = Math.round(dx / ROTO_CELL_WIDTH_PX);
+    if (session.kind === 'stain') {
+      const span = soundSpanFrames(session.origin.inFrame, session.origin.outFrame);
+      const nextStart = clampSoundRepositionStart(session.origin.startFrame, delta, span, soundBandParentEnd());
+      session.next = { ...session.origin, startFrame: nextStart };
+    } else if (session.kind === 'trim-start') {
+      session.next = {
+        ...session.origin,
+        ...applyTrimStartSound(session.origin.startFrame, session.origin.inFrame, session.origin.outFrame, delta, soundBandParentEnd()),
+      };
+    } else {
+      session.next = {
+        ...session.origin,
+        ...applyTrimEndSound(session.origin.startFrame, session.origin.inFrame, session.origin.outFrame, delta, soundBandParentEnd()),
+      };
+    }
+    applySoundBandPreview(session.next);
+    // Playhead follows the pointer + throttled audio peek — the same scrub feed
+    // the plain ruler uses (mid-drag navigation is cursor-only by law).
+    props.onNavigateToSyncedFrame?.(frameAtClientX(event.clientX));
+  };
+  const handleSoundStainPointerUp = (event: PointerEvent): void => {
+    const session = soundGestureRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+    session.removeWindowListeners();
+    soundGestureRef.current = null;
+    if (!session.armed) {
+      // Sub-threshold release: the press already delivered the one seek —
+      // no commit, no settle, no extra propagation handling (stain body row
+      // of the truth table). The ruler session cleans itself up.
+      return;
+    }
+    const frame = frameAtClientX(event.clientX);
+    const committed = props.onDocumentSoundSettle?.(session.next) ?? false;
+    // Canonical geometry in the DOM either way: committed values match the
+    // coming re-render, rejected clamps restore the prior accepted span (E4).
+    applySoundBandPreview(committed ? session.next : session.origin);
+    if (session.kind !== 'stain') endInteraction(session.pointerId);
+    // Full settle on release ONLY: peaks re-render (version bump), two-window
+    // sync push, main propagation — plus the scrub re-anchor/navigation.
+    props.onScrubEnd?.(frame);
+  };
+  const handleSoundGesturePointerCancel = (event: PointerEvent): void => {
+    const session = soundGestureRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+    session.removeWindowListeners();
+    soundGestureRef.current = null;
+    applySoundBandPreview(session.origin);
+    if (session.kind !== 'stain') endInteraction(session.pointerId);
+    if (session.armed) props.onScrubEnd?.(frameAtClientX(event.clientX));
+  };
+  const handleSoundStainPointerDown = (event: PointerEvent): void => {
+    if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    if (!props.documentSound || soundGestureRef.current) return;
+    const clip = props.documentSound;
+    // Stain body AND trim-bar middle: the press BUBBLES to the ruler — its
+    // seek-on-press is the single seek a sub-threshold click gets (no stop
+    // here; stopping would break the plain-ruler seek law).
+    startSoundBandGesture('stain', event, { startFrame: clip.startFrame, inFrame: clip.inFrame, outFrame: clip.outFrame });
+  };
+  const handleSoundTrimZonePointerDown = (
+    event: PointerEvent,
+    kind: Extract<SoundBandGestureSession['kind'], 'trim-start' | 'trim-end'>,
+  ): void => {
+    // Truth table: trim identity is decided at pointer-down — the bar NEVER
+    // seeks, so the press is stopped BEFORE any guard (a modified or
+    // secondary press on a zone still must not reach the ruler scrub hook).
+    event.stopPropagation();
+    if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    if (!props.documentSound || soundGestureRef.current) return;
+    const clip = props.documentSound;
+    startSoundBandGesture(kind, event, { startFrame: clip.startFrame, inFrame: clip.inFrame, outFrame: clip.outFrame });
+  };
   // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
   // The hook's ghost/preview Signals are read fresh on every render; the
   // pushPaintTick signal (bumped in onPreviewChange) subscribes the component
@@ -4355,6 +4580,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // Remove — no X badge on the icon, 50-UAT round 2).
             photoReference: props.photoReference ?? null,
             onOpenReference: props.onOpenReference,
+            // 52.5-01b Task 3 (D-02): the Document sound launcher in the same
+            // ruler-spacer strip — tinted while a clip exists.
+            hasSound: soundClip !== null,
+            onOpenDocumentSound: props.onOpenDocumentSound,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
@@ -4363,14 +4592,68 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 ARIA violation, and wiring valuenow would re-render the strip
                 per frame; the nav pill already announces the current frame. */}
             <div
+              ref={soundRulerElRef}
               class="physics-paint-ruler"
               style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
               title="Seek playhead"
               onPointerDown={(event) => rulerScrub.onPointerDown(event as unknown as PointerEvent)}
             >
+              {/* 52.5-01b Task 3 (D-06/D-07, STUDIO-UI-01): the waveform stain
+                  renders FIRST — behind the tick spans, so the frame numbers
+                  stay on top (#eceff2, filled, no outline; the ticks are
+                  pointer-events:none and the layer below receives every press).
+                  Full band height: half-extent 14px symmetric about the band
+                  center; span [start, start+(out-in)] in content space (rides
+                  the horizontal scroll with the ruler, clips at the scroll
+                  bounds). Filled path only — no center line, no fades, no edge
+                  handles (D-06/D-10). */}
+              {soundClip !== null && soundPathD !== null ? (
+                <div
+                  ref={soundStainElRef}
+                  class="physics-paint-sound-stain"
+                  style={{ left: `${soundLeftPx}px`, width: `${soundWidthPx}px` }}
+                  title="Drag to reposition the sound clip"
+                  onPointerDown={(event) => handleSoundStainPointerDown(event as unknown as PointerEvent)}
+                >
+                  <svg
+                    class="physics-paint-sound-stain-wave"
+                    width={soundWidthPx}
+                    height={SOUND_BAND_HEIGHT_PX}
+                    viewBox={`0 0 ${soundWidthPx} ${SOUND_BAND_HEIGHT_PX}`}
+                    aria-hidden="true"
+                  >
+                    <path d={soundPathD} fill="var(--color-audio-stain)" />
+                  </svg>
+                </div>
+              ) : null}
               {rotoRulerTicks.map(frame => (
                 <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>{frame}</span>
               ))}
+              {/* 52.5-01b Task 3 (D-09): the 2px in/out trim bar — same span as
+                  the stain, hit-zone 10px (2px drawn + 8px depth), 6px end zones
+                  arm start/end trim (ew-resize, never seeks); the middle passes
+                  through to the stain law. The bar renders whenever a clip
+                  exists — it is clip geometry, not peaks (loading keeps it). */}
+              {soundClip !== null ? (
+                <div
+                  ref={soundTrimBarElRef}
+                  class="physics-paint-sound-trim"
+                  style={{ left: `${soundLeftPx}px`, width: `${soundWidthPx}px` }}
+                  title="Drag an end to trim the sound clip"
+                  onPointerDown={(event) => handleSoundStainPointerDown(event as unknown as PointerEvent)}
+                >
+                  <span
+                    class="physics-paint-sound-trim-zone physics-paint-sound-trim-start"
+                    title="Trim clip start"
+                    onPointerDown={(event) => handleSoundTrimZonePointerDown(event as unknown as PointerEvent, 'trim-start')}
+                  />
+                  <span
+                    class="physics-paint-sound-trim-zone physics-paint-sound-trim-end"
+                    title="Trim clip end"
+                    onPointerDown={(event) => handleSoundTrimZonePointerDown(event as unknown as PointerEvent, 'trim-end')}
+                  />
+                </div>
+              ) : null}
             </div>
 
             {/* 47-01: the active track's rich lane lives INSIDE the shared

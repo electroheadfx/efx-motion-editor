@@ -2,6 +2,14 @@
   box-sizing: border-box;
 }
 
+/* 52.5-01b Task 3 (D-07, UI-SPEC tokens): waveform stain + trim bar fill.
+   Its own token (alias of the accent value) so the stain can diverge later
+   without touching the selection accent, which stays reserved to the
+   UI-SPEC five-item list. */
+:root {
+  --color-audio-stain: #2D5BE3;
+}
+
 body:has(.demo-shell) {
   min-height: 100vh;
   margin: 0;
@@ -3140,8 +3148,11 @@ button.destructive {
 .physics-paint-ruler {
   display: flex;
   align-items: center;
-  flex: 0 0 28px;
-  height: 28px;
+  /* 52.5-01b Task 3 (D-07): band 28px -> 36px — the waveform stain gets
+     vertical room while the frame numbers stay on top. */
+  flex: 0 0 36px;
+  height: 36px;
+  position: relative;
   border-bottom: 1px solid #5c6066;
   background: #47494b;
   /* 260827-s52: the ruler is the NLE seek/scrub surface. */
@@ -3161,8 +3172,14 @@ button.destructive {
   color: #eceff2;
   font-size: 12px;
   font-weight: 700;
-  line-height: 22px;
+  /* 52.5-01b (D-07): full-height 36px band — line-height centers the numbers
+     on the band (over the stain), the ::after tick mark stays pinned to the
+     bottom edge. Frame numbers never reflow (E5 long-text backstop). */
+  line-height: 36px;
   font-variant-numeric: tabular-nums;
+  /* The numbers are painted OVER the stain; they carry no hit-testing — the
+     stain body and plain band receive every pointer event via the ruler. */
+  pointer-events: none;
 }
 
 .physics-paint-ruler-tick::after {
@@ -3173,6 +3190,64 @@ button.destructive {
   height: 7px;
   background: #8b9096;
   content: '';
+}
+
+/* ---- 52.5-01b Task 3 (D-06/D-07/D-08): the waveform stain -------------
+   Absolutely positioned BEHIND the tick spans (frame numbers render on top,
+   #eceff2 filled) and below the playhead (pointer-events none, z 30). The
+   layer is the drag body for stain reposition (D-08); the SVG inside carries
+   the filled path only — NO center line, NO fade gradients, NO edge handles
+   (D-06: keep the timeline lean). No peaks -> no strip -> no stain (loading
+   and fail-closed states both render the plain band). */
+.physics-paint-sound-stain {
+  position: absolute;
+  top: 0;
+  height: 36px;
+  z-index: 0;
+  cursor: grab;
+}
+
+.physics-paint-sound-stain-wave {
+  display: block;
+  pointer-events: none;
+}
+
+/* ---- 52.5-01b Task 3 (D-09): the 2px in/out trim bar -------------------
+   Drawn height stays 2px at the band's top edge; the hit-zone extends 8px
+   downward (total 10px interactive). Each 6px end zone arms start/end trim
+   (ew-resize); the middle passes through to the stain law. */
+.physics-paint-sound-trim {
+  position: absolute;
+  top: 0;
+  height: 10px;
+  z-index: 2;
+}
+
+.physics-paint-sound-trim::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-audio-stain);
+  content: '';
+  pointer-events: none;
+}
+
+.physics-paint-sound-trim-zone {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 10px;
+  cursor: ew-resize;
+}
+
+.physics-paint-sound-trim-start {
+  left: 0;
+}
+
+.physics-paint-sound-trim-end {
+  right: 0;
 }
 
 /* 260827-s52 Task 2: full-height playhead bar. top:0/bottom:0 spans exactly
@@ -3833,7 +3908,8 @@ button.destructive {
    Layers icon + "Tracks" title + count badge + '+' add-track button, sitting in
    the 28px ruler-spacer slot so it aligns with the frame ruler above the rows. */
 .physics-paint-track-column-strip {
-  flex: 0 0 28px;
+  /* 52.5-01b Task 3 (D-07): ruler-spacer slot tracks the band height 28 -> 36. */
+  flex: 0 0 36px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3951,6 +4027,21 @@ button.destructive {
 .physics-paint-track-column-photo.has-reference {
   color: #7799bb;
   border-color: #4a5a6e;
+}
+
+/* 52.5-01b Task 3 (D-02): the Document sound launcher — a 24x26 nav button in
+   the ruler-spacer slot (fixed, non-scrolling, never over the scrub surface).
+   Clip exists -> tinted with --color-audio-stain (E2 populated); otherwise the
+   default nav-button chrome (#f2f5f7). The ONLY new sound entry point. */
+.physics-paint-track-column-sound {
+  flex: 0 0 auto;
+  width: 24px;
+  padding: 0;
+  line-height: 0;
+}
+
+.physics-paint-track-column-sound.has-sound {
+  color: var(--color-audio-stain);
 }
 
 

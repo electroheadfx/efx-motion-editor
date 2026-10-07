@@ -1370,7 +1370,8 @@ describe('PhysicsPaintWorkflowStrip Gap H band and lane contract (36.15-12, UAT 
     // content height]). The ruler, action row and scrollbar keep their Plan 06
     // heights; the rows-region flex-fills the remaining height and scrolls.
     expect(getCssRuleBlock(styles, '.physics-paint-workflow-header {')).toContain('height: 46px');
-    expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('height: 28px');
+    // 52.5-01b D-07: the ruler band is 36px (28 -> 36 for the sound stain).
+    expect(getCssRuleBlock(styles, '.physics-paint-ruler {')).toContain('height: 36px');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('flex: 1 1 auto');
     expect(getCssRuleBlock(styles, '.physics-paint-rows-region {')).toContain('min-height: 0');
     expect(getCssRuleBlock(styles, '.physics-paint-lane {')).toContain('height: 30px');
