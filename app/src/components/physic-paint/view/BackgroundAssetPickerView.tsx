@@ -3,7 +3,8 @@ import { useEffect, useRef } from 'preact/hooks';
 import { assetUrl } from '../../../lib/ipc';
 import { sortImagesByOriginalFilename } from '../../../efx-paint/utils/naturalFilenameSort';
 import type { MceImageRef } from '../../../types/project';
-import type { PhysicPaintImageLibraryResult } from '../../../types/physicPaint';
+import type { PhysicPaintAudioAssetRef, PhysicPaintImageLibraryResult } from '../../../types/physicPaint';
+import { AUDIO_EMPTY_BODY } from './PhysicsPaintAudioModalView';
 
 /**
  * 49-04 (Task 2): the scoped full-area asset picker (S2) that the Bg row's
@@ -18,12 +19,20 @@ import type { PhysicPaintImageLibraryResult } from '../../../types/physicPaint';
  * in-picker Import button, an images-only multi-select grid, and a footer with
  * Confirm/Cancel. No backdrop overlay, no Tab trap — a region swap, not a modal
  * (D-01).
+ *
+ * 52.5-01b (D-02/D-03): the SAME controller + view serve the audio mode
+ * (`kind: 'audio'`) the Document sound modal's Import/Replace opens — filename
+ * tiles (no thumbnails), SINGLE-select (D-01 singleton: one clip per document),
+ * Confirm emits exactly one asset id. Audio rides the 01a requestLibrary/
+ * import bridge pairs — never a second picker, never a new file-dialog path.
  */
 
 export type BackgroundAssetPickerStatus =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'error'; message: string };
+
+export type BackgroundAssetPickerKind = 'image' | 'audio';
 
 export interface BackgroundAssetPickerPorts {
   /** Bridge consumer port: request { images, projectDir } from the main webview. */
@@ -36,11 +45,18 @@ export interface BackgroundAssetPickerPorts {
   sortImages: (images: readonly MceImageRef[]) => MceImageRef[];
   /** Post-import library refresh: returns the full MceImageRef[] to display. */
   refreshLibrary: () => Promise<MceImageRef[]>;
+  /**
+   * 52.5-01b: audio-mode post-import refresh — returns the package-relative
+   * audio refs (kind 'audio' instances only; the image mode never calls it).
+   */
+  refreshAudioLibrary?: () => Promise<PhysicPaintAudioAssetRef[]>;
 }
 
 export interface BackgroundAssetPickerController {
   open: Signal<boolean>;
   images: Signal<MceImageRef[]>;
+  /** 52.5-01b: the kind 'audio' listing (empty in image mode). */
+  audioAssets: Signal<PhysicPaintAudioAssetRef[]>;
   projectDir: Signal<string>;
   selectedIds: Signal<string[]>;
   status: Signal<BackgroundAssetPickerStatus>;
@@ -53,9 +69,13 @@ export interface BackgroundAssetPickerController {
   importImages: () => Promise<void>;
 }
 
-export function useBackgroundAssetPickerController(ports: BackgroundAssetPickerPorts): BackgroundAssetPickerController {
+export function useBackgroundAssetPickerController(
+  ports: BackgroundAssetPickerPorts,
+  kind: BackgroundAssetPickerKind = 'image',
+): BackgroundAssetPickerController {
   const open = useSignal(false);
   const images = useSignal<MceImageRef[]>([]);
+  const audioAssets = useSignal<PhysicPaintAudioAssetRef[]>([]);
   const projectDir = useSignal('');
   const selectedIds = useSignal<string[]>([]);
   const status = useSignal<BackgroundAssetPickerStatus>({ kind: 'idle' });
@@ -74,12 +94,22 @@ export function useBackgroundAssetPickerController(ports: BackgroundAssetPickerP
       return;
     }
     images.value = result.images;
+    // Audio listings carry their refs separately (01a result shape); image
+    // mode never sees an audio row.
+    audioAssets.value = kind === 'audio' ? result.audioAssets ?? [] : [];
     projectDir.value = result.projectDir;
     status.value = { kind: 'idle' };
   };
 
   const toggleSelect = (imageId: string) => {
     const current = selectedIds.value;
+    // 52.5-01b D-01 singleton: the audio gallery is SINGLE-select — a second
+    // pick REPLACES the selection (one sound clip per document); it never
+    // accumulates the way the image multi-select does.
+    if (kind === 'audio') {
+      selectedIds.value = current.length === 1 && current[0] === imageId ? [] : [imageId];
+      return;
+    }
     selectedIds.value = current.includes(imageId)
       ? current.filter((id) => id !== imageId)
       : [...current, imageId];
@@ -105,7 +135,11 @@ export function useBackgroundAssetPickerController(ports: BackgroundAssetPickerP
         await ports.importFiles(paths, dir);
         // Refresh the library so newly imported images appear without closing
         // the picker; prior selection is preserved (error state keeps it too).
-        images.value = await ports.refreshLibrary();
+        if (kind === 'audio') {
+          audioAssets.value = await ports.refreshAudioLibrary?.() ?? [];
+        } else {
+          images.value = await ports.refreshLibrary();
+        }
         status.value = { kind: 'idle' };
       }
     } catch (error) {
@@ -118,6 +152,7 @@ export function useBackgroundAssetPickerController(ports: BackgroundAssetPickerP
   return {
     open,
     images,
+    audioAssets,
     projectDir,
     selectedIds,
     status,
@@ -146,6 +181,21 @@ export function buildConfirmedImageIds(
   return sortImages(selected).map((image) => image.id);
 }
 
+/**
+ * 52.5-01b (D-01 singleton): the audio Confirm emit — natural-filename ordered
+ * like the image path, and with the controller's single-select it always
+ * carries EXACTLY one asset id (one sound clip per document).
+ */
+export function buildConfirmedAudioIds(
+  audioAssets: readonly PhysicPaintAudioAssetRef[],
+  selectedIds: readonly string[],
+): string[] {
+  const selected = audioAssets.filter((asset) => selectedIds.includes(asset.id));
+  return [...selected]
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }))
+    .map((asset) => asset.id);
+}
+
 export interface BackgroundAssetPickerViewProps {
   open: boolean;
   images: MceImageRef[];
@@ -161,6 +211,11 @@ export interface BackgroundAssetPickerViewProps {
    *  ("Import background images"); the reference picker passes
    *  "Import reference images" (D-01 region swap reuse). */
   title?: string;
+  /** 52.5-01b (D-02/D-03): gallery mode — 'image' (default) lists thumbnails,
+   *  'audio' lists filename tiles and single-selects (D-01 singleton). */
+  kind?: 'image' | 'audio';
+  /** kind 'audio' listing (absent in image mode). */
+  audioAssets?: PhysicPaintAudioAssetRef[];
 }
 
 /**
@@ -192,6 +247,10 @@ export function BackgroundAssetPickerView(props: BackgroundAssetPickerViewProps)
   if (!props.open) return null;
 
   const handleConfirm = () => {
+    if (props.kind === 'audio') {
+      props.onConfirm(buildConfirmedAudioIds(props.audioAssets ?? [], props.selectedIds));
+      return;
+    }
     props.onConfirm(
       buildConfirmedImageIds(props.images, props.selectedIds, (images) =>
         sortImagesByOriginalFilename(images, (image) => image.original_filename),
@@ -199,7 +258,13 @@ export function BackgroundAssetPickerView(props: BackgroundAssetPickerViewProps)
     );
   };
 
-  const empty = props.images.length === 0;
+  // Unified listing shape: image rows carry a thumbnail, audio rows are
+  // filename-only tiles (no thumbnails — D-03 keeps the gallery ONE surface).
+  const entries = props.kind === 'audio'
+    ? (props.audioAssets ?? []).map((asset) => ({ id: asset.id, name: asset.name }))
+    : props.images.map((image) => ({ id: image.id, name: image.original_filename }));
+
+  const empty = entries.length === 0;
   const error = props.status.kind === 'error' ? props.status.message : null;
   const title = props.title ?? 'Import background images';
 
@@ -227,28 +292,38 @@ export function BackgroundAssetPickerView(props: BackgroundAssetPickerViewProps)
         ) : null}
         {empty ? (
           <div class="physics-paint-background-picker-empty">
-            <span>Drag &amp; drop images here or use Import button</span>
+            {/* Audio mode: the contracted modal body copy (verbatim reuse — no
+                drag-and-drop path exists for audio, so the image drag copy
+                never shows here). */}
+            <span>{props.kind === 'audio' ? AUDIO_EMPTY_BODY : 'Drag & drop images here or use Import button'}</span>
           </div>
         ) : (
           <div class="physics-paint-background-picker-grid">
-            {props.images.map((image) => {
-              const selected = props.selectedIds.includes(image.id);
-              const filename = image.original_filename;
+            {entries.map((entry) => {
+              const selected = props.selectedIds.includes(entry.id);
+              const image = props.kind === 'audio'
+                ? null
+                : props.images.find((candidate) => candidate.id === entry.id) ?? null;
               return (
                 <div
-                  key={image.id}
+                  key={entry.id}
                   class={`physics-paint-background-picker-tile${selected ? ' selected' : ''}`}
-                  title={filename}
+                  title={entry.name}
                   aria-pressed={selected}
-                  onClick={() => props.onToggleSelect(image.id)}
+                  onClick={() => props.onToggleSelect(entry.id)}
                 >
-                  <img
-                    src={assetUrl(`${props.projectDir}/${image.thumbnail_relative_path}`)}
-                    alt={filename}
-                    loading="lazy"
-                    draggable={false}
-                  />
-                  <span class="physics-paint-background-picker-tile-name">{filename}</span>
+                  {props.kind === 'audio' ? (
+                    // Filename-only audio tile — no thumbnail, no image decode.
+                    <span class="physics-paint-background-picker-tile-wave" aria-hidden="true" />
+                  ) : image ? (
+                    <img
+                      src={assetUrl(`${props.projectDir}/${image.thumbnail_relative_path}`)}
+                      alt={entry.name}
+                      loading="lazy"
+                      draggable={false}
+                    />
+                  ) : null}
+                  <span class="physics-paint-background-picker-tile-name">{entry.name}</span>
                   {selected ? (
                     <span class="physics-paint-background-picker-tile-check" aria-hidden="true">
                       &#10003;

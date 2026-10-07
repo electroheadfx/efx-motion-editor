@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
 import type { BlendMode, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
+import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, rotoPhysicalRevision, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, prefetchNeighborFrames, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
@@ -29,6 +29,7 @@ import {
   setPhotoReferenceOpacity,
   setPhotoReferenceTransformLocked,
   setBackgroundTransformLocked,
+  setDocumentSound,
   clearPhotoReference,
   setTrackBlend,
   setTrackOpacity,
@@ -138,6 +139,16 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
+import { usePhysicsPaintAudioController } from './view/physicsPaintAudioController';
+import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
+// 52.5-01b: the Document sound import flow reuses the EXISTING decode/peaks
+// machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
+// audioPeaksCache (the task-3 stain reads peaks keyed by sourceId).
+import { assetUrl } from '../../lib/ipc';
+import { audioEngine } from '../../lib/audioEngine';
+import { computeWaveformPeaks } from '../../lib/audioWaveform';
+import { audioPeaksCache } from '../../lib/audioPeaksCache';
+import { efxPaintDocumentAudioStore } from './audio/efxPaintDocumentAudioStore';
 import { encodeSourceBytesForDocumentSync, requestImageImport, requestImageLibrary, requestPhysicPaintProjectContext } from '../../lib/physicPaintBridge';
 import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
 import { imageStore } from '../../stores/imageStore';
@@ -4632,6 +4643,114 @@ export function PhysicsPaintStudio() {
   const handleCancelReferencePicker = () => {
     referencePicker.cancel();
   };
+  /* ---------------------------------------------------------------------------
+   * 52.5-01b (D-02/D-03/D-05): the Document sound flow.
+   * - `audioModalOpen` — Studio-owned open signal (referenceDialogOpen idiom);
+   *   the timeline launcher (task 3) flips it, Escape/X clear it.
+   * - `knownAudioPaths` — CMP-05 fail-closed missing-file probe: the project's
+   *   audio/ refs as the main library reports them. null = not loaded yet and
+   *   the probe reports "present" (no false-missing flash at boot); refreshed
+   *   on mount and after every in-gallery import.
+   * - the controller instance lives HERE so the gallery Confirm flow drives the
+   *   SAME signal instance the modal renders (beginReading → decode →
+   *   applyImportedSource → endReading).
+   * ------------------------------------------------------------------------- */
+  const audioModalOpen = useSignal(false);
+  const knownAudioPaths = useSignal<ReadonlySet<string> | null>(null);
+  const refreshKnownAudioPaths = async (): Promise<PhysicPaintAudioAssetRef[]> => {
+    const result = await requestImageLibrary('audio');
+    const assets = result.ok ? result.audioAssets ?? [] : [];
+    knownAudioPaths.value = new Set(assets.map((asset) => asset.relativePath));
+    return assets;
+  };
+  useEffect(() => {
+    void refreshKnownAudioPaths();
+    return undefined;
+  }, []);
+  const audioModalController = usePhysicsPaintAudioController({
+    layerId: launchContext?.layerId ?? '',
+    ports: {
+      getDocument: (layerId) => getEfxPaintDocument(layerId) ?? undefined,
+      setSound: (layerId, sound) => setDocumentSound(layerId, sound),
+      getFps: () => launchContext?.fps ?? efxPaintDocumentAudioStore.getFps(),
+      isSoundMissing: (sound) => {
+        const known = knownAudioPaths.value;
+        return known !== null && !known.has(sound.relativePath);
+      },
+    },
+  });
+  // 52.5-01b (D-02/D-03): the ONE shared gallery in kind 'audio' mode — same
+  // controller, same region-swap view; only the listing target, the dialog
+  // filter and the import kind differ (never a second picker, never a new
+  // file-dialog path). Audio filter = the D-04 format list + the main app's
+  // extra containers (m4a/aif/aiff decode through the same audioEngine path).
+  const audioPicker = useBackgroundAssetPickerController(
+    {
+      requestLibrary: () => requestImageLibrary('audio'),
+      importFiles: async (paths: string[], _projectDir: string) => {
+        const result = await requestImageImport(paths, 'audio');
+        if (!result.ok) throw new Error(result.error ?? 'Audio import failed');
+      },
+      openDialog: async () => {
+        const selected = await openNativeImageDialog({
+          multiple: true,
+          filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aac', 'flac', 'm4a', 'aif', 'aiff'] }],
+        });
+        if (!selected) return null;
+        return Array.isArray(selected) ? selected : [selected];
+      },
+      sortImages: (images: readonly MceImageRef[]) => sortImagesByOriginalFilename(images, (image) => image.original_filename),
+      // Audio mode never lists image rows (stub keeps the shared ports type).
+      refreshLibrary: async () => [],
+      // Post-import refresh doubles as the missing-probe set refresh.
+      refreshAudioLibrary: refreshKnownAudioPaths,
+    },
+    'audio',
+  );
+  // 52.5-01b: gallery Confirm — close FIRST (the step-aside lifts, so the
+  // modal's `Reading audio…` / error states are visible during the decode),
+  // then fetch + decode the confirmed ref through the EXISTING machinery
+  // (assetUrl fetch → audioEngine.decode — D-04 no new decode path), cache
+  // its peaks keyed by sourceId (the task-3 stain reads them), and commit
+  // through the controller's applyImportedSource (fresh or replace-with-clamp).
+  const handleConfirmAudioPicker = (sortedIds: string[]) => {
+    const layerId = launchContext?.layerId;
+    const assetId = sortedIds[0];
+    const projectDir = audioPicker.projectDir.peek();
+    if (!layerId || !assetId || !projectDir) return;
+    const asset = audioPicker.audioAssets.peek().find((entry) => entry.id === assetId);
+    if (!asset) return;
+    audioPicker.cancel();
+    void (async () => {
+      audioModalController.beginReading();
+      try {
+        const response = await fetch(assetUrl(`${projectDir}/${asset.relativePath}`));
+        if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
+        const bytes = await response.arrayBuffer();
+        const buffer = await audioEngine.decode(asset.id, bytes);
+        audioPeaksCache.set(asset.id, computeWaveformPeaks(buffer));
+        const result = audioModalController.applyImportedSource({
+          sourceId: asset.id,
+          relativePath: asset.relativePath,
+          durationSec: buffer.duration,
+        });
+        audioModalController.endReading();
+        if (result.ok) audioModalController.clearError();
+      } catch {
+        // E1/E10: decode failure surfaces the contracted error copy and
+        // re-enables the CTA (busy cleared, prior clip/empty state retained).
+        audioModalController.reportDecodeError();
+      }
+    })();
+  };
+  const audioModal = {
+    open: audioModalOpen.value,
+    controller: audioModalController,
+    onClose: () => { audioModalOpen.value = false; },
+    // The modal NEVER talks to a file dialog itself (D-02/D-03): the intent
+    // leaves through this port and opens the shared gallery in audio mode.
+    onImportRequest: () => { void audioPicker.openPicker(); },
+  };
   // 50-UAT (modal redesign): the floating Photo Reference dialog bundle — the
   // dialog reads the document through the SAME identity-stable store ports and
   // re-resolves on every document mutation (efxPaintVersion) so its controls
@@ -4849,6 +4968,25 @@ export function PhysicsPaintStudio() {
       onImport: referencePicker.importImages,
       title: 'Import reference images',
     },
+    // 52.5-01b (D-02/D-03): the SAME shared gallery opened with kind 'audio'
+    // for the Document sound modal — single Confirm emit, audio dialog filter,
+    // filename tiles. The modal rides the pickerOpen step-aside in the view.
+    audioPicker: {
+      open: audioPicker.open.value,
+      images: audioPicker.images.value,
+      audioAssets: audioPicker.audioAssets.value,
+      projectDir: audioPicker.projectDir.value,
+      selectedIds: audioPicker.selectedIds.value,
+      status: audioPicker.status.value,
+      importing: audioPicker.importing.value,
+      onToggleSelect: audioPicker.toggleSelect,
+      onConfirm: handleConfirmAudioPicker,
+      onCancel: () => audioPicker.cancel(),
+      onImport: audioPicker.importImages,
+      kind: 'audio' as const,
+      title: AUDIO_IMPORT_CTA,
+    },
+    audioModal,
   });
   const soleOccurrenceDeleteDialog = soleOccurrenceDeleteTarget === null
     ? null

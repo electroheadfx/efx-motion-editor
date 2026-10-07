@@ -2757,7 +2757,7 @@ export function createImageLibraryRequestLifecycle(ports: ImageLibraryRequestLif
  * physicPaintBridge never imports from the component layer — avoiding the
  * circular import with usePhysicsPaintParentBridge.
  */
-export async function requestImageLibrary(): Promise<PhysicPaintImageLibraryResult> {
+export async function requestImageLibrary(kind?: 'image' | 'audio'): Promise<PhysicPaintImageLibraryResult> {
   const eventApi = await import('@tauri-apps/api/event');
   if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') {
     return failedImageLibraryResult('invalid-operation', 'Image library bridge is unavailable');
@@ -2773,7 +2773,11 @@ export async function requestImageLibrary(): Promise<PhysicPaintImageLibraryResu
       resolveResult(event.payload);
     });
     timeout = window.setTimeout(() => resolveResult(failedImageLibraryResult(operationId, 'Image library request timed out')), 15_000);
-    await eventApi.emitTo('main', PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, { operationId });
+    // 52.5-01b (Rule 3): the 01a payload carries the `kind` discriminator but
+    // this client entry point never forwarded it — without it the main-realm
+    // handler always answers the image listing. The payload CONTRACT is
+    // unchanged (01a declared `kind?`); this only stops dropping it.
+    await eventApi.emitTo('main', PHYSIC_PAINT_IMAGE_LIBRARY_REQUEST_EVENT, { operationId, kind: kind ?? 'image' });
     return await resultPromise;
   } finally {
     if (timeout) window.clearTimeout(timeout);
@@ -2837,7 +2841,7 @@ export async function installPhysicPaintImageLibraryListener(): Promise<() => vo
  * (T-260921-bjm-02). The request carries `operationId` + `paths` only — the
  * destination directory is never named by the child.
  */
-export async function requestImageImport(paths: readonly string[]): Promise<PhysicPaintImageImportResult> {
+export async function requestImageImport(paths: readonly string[], kind?: 'image' | 'audio'): Promise<PhysicPaintImageImportResult> {
   const eventApi = await import('@tauri-apps/api/event');
   if (typeof eventApi.emitTo !== 'function' || typeof eventApi.listen !== 'function') {
     return failedImageImportResult('invalid-operation', 'Image import bridge is unavailable');
@@ -2853,7 +2857,10 @@ export async function requestImageImport(paths: readonly string[]): Promise<Phys
       resolveResult(event.payload);
     });
     timeout = window.setTimeout(() => resolveResult(failedImageImportResult(operationId, 'Image import request timed out')), 15_000);
-    await eventApi.emitTo('main', PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, { operationId, paths: [...paths] });
+    // 52.5-01b (Rule 3): same forwarder gap as requestImageLibrary — the 01a
+    // `kind` selects the copy target (images/ vs audio/) inside the MAIN-realm
+    // handler; without forwarding it every import lands in images/.
+    await eventApi.emitTo('main', PHYSIC_PAINT_IMAGE_IMPORT_REQUEST_EVENT, { operationId, paths: [...paths], kind: kind ?? 'image' });
     return await resultPromise;
   } finally {
     if (timeout) window.clearTimeout(timeout);

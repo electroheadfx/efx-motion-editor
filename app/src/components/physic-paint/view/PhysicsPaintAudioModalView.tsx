@@ -1,11 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { AudioWaveform, Trash2, X } from 'lucide-preact';
 import { NumericInput } from '../../shared/NumericInput';
-import {
-  usePhysicsPaintAudioController,
-  type PhysicsPaintAudioControllerPorts,
-  type SoundFadeCurve,
-} from './physicsPaintAudioController';
+import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 
 /**
  * 52.5-01b — the floating `Document sound` dialog (D-05 single control
@@ -38,10 +34,14 @@ import {
  *
  * The component is a thin render shell over the signals-only
  * `physicsPaintAudioController` (accepted canonical state only; no useState,
- * no render-body signal writes). Import/Replace raise `onImportRequest` —
- * PhysicsPaintStudio opens the SHARED BackgroundAssetPickerView with kind
- * 'audio' (D-02/D-03 — this modal never talks to a file dialog itself).
- * Toggles gate audio only: they never touch the stain, the bar, or pixels.
+ * no render-body signal writes). The controller INSTANCE is built by
+ * PhysicsPaintStudio and passed in — the gallery Confirm flow lives in the
+ * Studio and must drive the SAME signal instance the modal renders
+ * (beginReading → decode → applyImportedSource → endReading). Import/Replace
+ * raise `onImportRequest` — PhysicsPaintStudio opens the SHARED
+ * BackgroundAssetPickerView with kind 'audio' (D-02/D-03 — this modal never
+ * talks to a file dialog itself). Toggles gate audio only: they never touch
+ * the stain, the bar, or pixels.
  */
 
 /* ----------------------------------------------------------------------------
@@ -70,10 +70,11 @@ const FADE_CURVE_OPTIONS: readonly SoundFadeCurve[] = ['linear', 'exponential', 
 export interface PhysicsPaintAudioModalViewProps {
   /** Dialog visibility (owned by the Studio — set from the strip launcher). */
   open: boolean;
-  /** The launch layer; null means no Studio target (dialog renders nothing). */
-  layerId: string | null;
-  /** Store ports — production defaults hit the real store. */
-  ports?: Partial<PhysicsPaintAudioControllerPorts>;
+  /**
+   * The Studio-built controller instance — the modal renders ONLY its
+   * accepted state (no useState, no render-body signal writes).
+   */
+  controller: PhysicsPaintAudioController;
   /** Close intent (Escape, header X). */
   onClose: () => void;
   /** Import/Replace intent — opens the shared gallery with kind 'audio'. */
@@ -82,8 +83,7 @@ export interface PhysicsPaintAudioModalViewProps {
 
 export function PhysicsPaintAudioModalView({
   open,
-  layerId,
-  ports,
+  controller,
   onClose,
   onImportRequest,
 }: PhysicsPaintAudioModalViewProps) {
@@ -146,9 +146,7 @@ export function PhysicsPaintAudioModalView({
     draggingRef.current = false;
   };
 
-  const controller = usePhysicsPaintAudioController({ layerId: layerId ?? '', ports });
-
-  if (!open || !layerId) return null;
+  if (!open) return null;
 
   const {
     sound, filename, missing, busy, decodeError, previewVolume, removeArmed,
