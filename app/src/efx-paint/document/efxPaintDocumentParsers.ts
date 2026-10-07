@@ -91,7 +91,7 @@ const SOUND_KEYS = new Set([
   'startFrame',
   'inFrame',
   'outFrame',
-  'volume',
+  'gain',
   'fadeInFrames',
   'fadeOutFrames',
   'fadeInCurve',
@@ -447,7 +447,7 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
     throw new Error('DocumentSoundClip: expected a record.');
   }
   if (!hasOnlyKeys(value, SOUND_KEYS)) {
-    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, relativePath, sourceRevision, startFrame, inFrame, outFrame, volume, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, enabled.');
+    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, relativePath, sourceRevision, startFrame, inFrame, outFrame, gain, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, enabled.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('DocumentSoundClip: id must be a non-empty string.');
@@ -470,8 +470,8 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
   if (!isNonNegativeInteger(value.outFrame)) {
     throw new Error('DocumentSoundClip: outFrame must be a non-negative integer.');
   }
-  if (typeof value.volume !== 'number' || !Number.isInteger(value.volume) || value.volume < 0 || value.volume > 100) {
-    throw new Error('DocumentSoundClip: volume must be an integer between 0 and 100.');
+  if (typeof value.gain !== 'number' || !Number.isInteger(value.gain) || value.gain < -100 || value.gain > 100) {
+    throw new Error('DocumentSoundClip: gain must be an integer between -100 and 100.');
   }
   if (!isNonNegativeInteger(value.fadeInFrames)) {
     throw new Error('DocumentSoundClip: fadeInFrames must be a non-negative integer.');
@@ -496,7 +496,7 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
     startFrame: value.startFrame,
     inFrame: value.inFrame,
     outFrame: value.outFrame,
-    volume: value.volume,
+    gain: value.gain,
     fadeInFrames: value.fadeInFrames,
     fadeOutFrames: value.fadeOutFrames,
     fadeInCurve: value.fadeInCurve,

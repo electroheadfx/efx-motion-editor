@@ -19,6 +19,7 @@
  */
 
 import type { WaveformPeaks } from '../../../types/audio';
+import type { SoundFadeCurve } from '../../../efx-paint/document/efxPaintDocument';
 
 /** Layout constant: the band height (D-07 — 28px -> 36px, single source of truth). */
 export const SOUND_BAND_HEIGHT_PX = 36;
@@ -37,8 +38,12 @@ export const SOUND_TRIM_HIT_PX = 8;
 
 /** UAT round 3: the waveform fill — RGB (22, 110, 203). */
 export const SOUND_WAVEFORM_FILL = '#166ECB';
-/** UAT round 3: the volume line + fade overlay — RGB (21, 120, 224). */
-export const SOUND_OVERLAY_STROKE = '#1578E0';
+/** UAT round 4: the fade/gain overlay stroke — RGB (45, 179, 227). */
+export const SOUND_OVERLAY_STROKE = '#2DB3E3';
+/** UAT round 4: overlay strokes are hairline — 1px, never 1.5. */
+export const SOUND_OVERLAY_STROKE_PX = 1;
+/** UAT round 4: fade shapes — the same closed curve set the document stores. */
+export type { SoundFadeCurve };
 
 /** The document sound fields a gesture may move (commit patch for the member setter). */
 export interface SoundBandGesturePatch {
@@ -118,53 +123,84 @@ export function soundWaveformPathD(peaks: Float32Array, widthPx: number): string
 }
 
 /**
- * Volume line y within the band (UAT round 3). Maps the clip's integer percent
- * 0-100 onto the same amplitude axis `soundWaveformPathD` uses: 100% sits at
- * the top of the stain extent (a full upward deflection), 0% at the center
- * (silence). The line spans the clip's width — "from in to out".
+ * Gain line y within the band (UAT round 4). The clip gain is a signed integer
+ * -100..+100 where 0 is unity at the CENTER of the waveform, +100 is the top of
+ * the stain extent (a doubled level) and -100 the bottom (silence). The line
+ * spans the clip's width — "from in to out".
  */
-export function soundVolumeLineY(volumePercent: number): number {
-  const clamped = Math.max(0, Math.min(100, volumePercent));
+export function soundGainLineY(gain: number): number {
+  const clamped = Math.max(-100, Math.min(100, gain));
   const centerY = SOUND_BAND_HEIGHT_PX / 2;
   return Math.round((centerY - (clamped / 100) * SOUND_STAIN_HALF_EXTENT_PX) * 100) / 100;
 }
 
 /**
- * Fade-in overlay (UAT round 3): the classic NLE diagonal, from the extent's
- * bottom-left corner up to the top edge at the fade-in boundary. null when the
- * fade is zero-length (no overlay — the clip reads as a hard start).
+ * Curve shape for a fade overlay (UAT round 4): t in 0..1 mapped by the clip's
+ * stored fade curve so the diagonal becomes the real graph — linear is the
+ * straight ramp, exponential bows under it (slow start), logarithmic bows over
+ * (slow end). Sampled into a polyline so the shape is visible at any width.
+ */
+const SOUND_FADE_SAMPLES = 8;
+
+/**
+ * Fade-in overlay (UAT round 4): from the silent edge (the extent bottom) up to
+ * the GAIN line at the fade-in boundary — the ramp must land on the gain
+ * position, never past it. null when the fade is zero-length.
  */
 export function soundFadeInPathD(
   fadeInFrames: number,
   inFrame: number,
   outFrame: number,
   widthPx: number,
+  gain: number,
+  curve: SoundFadeCurve,
 ): string | null {
-  const span = soundSpanFrames(inFrame, outFrame);
-  if (fadeInFrames <= 0 || span <= 0 || widthPx <= 0) return null;
-  const fadePx = Math.min(widthPx, (fadeInFrames / span) * widthPx);
-  const top = SOUND_BAND_HEIGHT_PX / 2 - SOUND_STAIN_HALF_EXTENT_PX;
-  const bottom = SOUND_BAND_HEIGHT_PX / 2 + SOUND_STAIN_HALF_EXTENT_PX;
-  return `M0 ${bottom} L${Math.round(fadePx * 100) / 100} ${top}`;
+  const fadePx = soundFadePx(fadeInFrames, inFrame, outFrame, widthPx);
+  if (fadePx === null) return null;
+  return soundFadeCurvePathD(0, soundSilentEdgeY(), fadePx, soundGainLineY(gain), curve);
 }
 
 /**
- * Fade-out overlay: the mirror diagonal, from the top edge at the fade-out
- * boundary down to the extent's bottom-right corner. null when zero-length.
+ * Fade-out overlay: from the gain line at the fade-out boundary down to the
+ * silent edge (the extent bottom). null when zero-length.
  */
 export function soundFadeOutPathD(
   fadeOutFrames: number,
   inFrame: number,
   outFrame: number,
   widthPx: number,
+  gain: number,
+  curve: SoundFadeCurve,
 ): string | null {
+  const fadePx = soundFadePx(fadeOutFrames, inFrame, outFrame, widthPx);
+  if (fadePx === null) return null;
+  return soundFadeCurvePathD(widthPx - fadePx, soundGainLineY(gain), widthPx, soundSilentEdgeY(), curve);
+}
+
+const soundSilentEdgeY = (): number => SOUND_BAND_HEIGHT_PX / 2 + SOUND_STAIN_HALF_EXTENT_PX;
+
+/** Fade length in px along the stain, or null when the fade is degenerate. */
+function soundFadePx(fadeFrames: number, inFrame: number, outFrame: number, widthPx: number): number | null {
   const span = soundSpanFrames(inFrame, outFrame);
-  if (fadeOutFrames <= 0 || span <= 0 || widthPx <= 0) return null;
-  const fadePx = Math.min(widthPx, (fadeOutFrames / span) * widthPx);
-  const top = SOUND_BAND_HEIGHT_PX / 2 - SOUND_STAIN_HALF_EXTENT_PX;
-  const bottom = SOUND_BAND_HEIGHT_PX / 2 + SOUND_STAIN_HALF_EXTENT_PX;
-  const startX = Math.round((widthPx - fadePx) * 100) / 100;
-  return `M${startX} ${top} L${Math.round(widthPx * 100) / 100} ${bottom}`;
+  if (fadeFrames <= 0 || span <= 0 || widthPx <= 0) return null;
+  return Math.min(widthPx, (fadeFrames / span) * widthPx);
+}
+
+/** Sampled polyline along a fade curve from (x0,y0) to (x1,y1). */
+function soundFadeCurvePathD(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  curve: SoundFadeCurve,
+): string {
+  const parts: string[] = [];
+  for (let index = 0; index <= SOUND_FADE_SAMPLES; index += 1) {
+    const t = index / SOUND_FADE_SAMPLES;
+    const k = curve === 'exponential' ? t * t : curve === 'logarithmic' ? Math.sqrt(t) : t;
+    parts.push(`${index ? 'L' : 'M'}${Math.round((x0 + (x1 - x0) * t) * 100) / 100} ${Math.round((y0 + (y1 - y0) * k) * 100) / 100}`);
+  }
+  return parts.join(' ');
 }
 
 /**

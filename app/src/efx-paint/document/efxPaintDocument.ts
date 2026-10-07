@@ -184,8 +184,12 @@ export interface DocumentSoundClip {
   readonly inFrame: number;
   /** Source trim end, in frames. */
   readonly outFrame: number;
-  /** Clip volume, integer percent 0-100 (D-14: the level everywhere). */
-  readonly volume: number;
+  /**
+   * Clip gain, signed integer -100..+100 (UAT round 4). 0 is unity and sits at
+   * the CENTER of the waveform, +100 doubles the level (line at the top of the
+   * stain extent), -100 is silent (line at the bottom). Never a plain volume.
+   */
+  readonly gain: number;
   /** Fade-in length in frames (integer >= 0). */
   readonly fadeInFrames: number;
   /** Fade-out length in frames (integer >= 0). */

@@ -16,10 +16,10 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   `Document sound` · `Import sound` · `Replace…` · `No sound yet` ·
  *   `Import a dialogue or foley clip for this animation — WAV, MP3, AAC, or FLAC.` ·
  *   `Reading audio…` · `Remove` → `Confirm remove?` ·
- *   `Remove sound? Position, trims, volume, and fades are discarded from this document.` ·
+ *   `Remove sound? Position, trims, gain, and fades are discarded from this document.` ·
  *   `Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.` ·
  *   `Sound file is missing from the project. Replace it to restore the clip.` ·
- *   `Volume` (readout `NN%`) · `Fade in` · `Fade out` (frames; curves `linear`,
+ *   `Gain` (readout `-NN..+NN`, 0 = unity) · `Fade in` · `Fade out` (frames; curves `linear`,
  *   `exponential`, `logarithmic`) · `In` · `Out` (frames) · `On` / `Off`
  *
  * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal):
@@ -27,7 +27,7 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   2. file row (filename + `Replace…`) OR the empty-state block
  *      (`No sound yet` / body / `Import sound`) OR the error copy
  *   3. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
- *   4. `Volume` — native range 0-100 step 1 + NN% readout (release-commit)
+ *   4. `Gain` — native range -100..100 step 1 + signed readout (release-commit)
  *   5-6. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
  *        (integer >= 0, no 99 cap) + curve select under each stepper
  *   7. `In` | `Out` — source trim in frames (2 columns, 1-frame minimum span)
@@ -56,10 +56,10 @@ export const AUDIO_REPLACE_CTA = 'Replace…';
 export const AUDIO_LOADING = 'Reading audio…';
 export const AUDIO_REMOVE = 'Remove';
 export const AUDIO_REMOVE_ARMED = 'Confirm remove?';
-export const AUDIO_REMOVE_CONFIRM_COPY = 'Remove sound? Position, trims, volume, and fades are discarded from this document.';
+export const AUDIO_REMOVE_CONFIRM_COPY = 'Remove sound? Position, trims, gain, and fades are discarded from this document.';
 export const AUDIO_ERROR_DECODE = "Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.";
 export const AUDIO_ERROR_MISSING = 'Sound file is missing from the project. Replace it to restore the clip.';
-export const AUDIO_VOLUME_LABEL = 'Volume';
+export const AUDIO_GAIN_LABEL = 'Gain';
 export const AUDIO_FADE_IN_LABEL = 'Fade in';
 export const AUDIO_FADE_OUT_LABEL = 'Fade out';
 export const AUDIO_IN_LABEL = 'In';
@@ -151,8 +151,8 @@ export function PhysicsPaintAudioModalView({
   if (!open) return null;
 
   const {
-    sound, filename, missing, busy, decodeError, previewVolume, removeArmed,
-    previewVolumeInput, commitVolume, commitFadeIn, commitFadeOut,
+    sound, filename, missing, busy, decodeError, previewGain, removeArmed,
+    previewGainInput, commitGain, commitFadeIn, commitFadeOut,
     commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame,
     toggleEnabled, requestRemove, confirmRemove, disarmRemove,
   } = controller;
@@ -292,30 +292,30 @@ export function PhysicsPaintAudioModalView({
                 </p>
               ) : null}
 
-              {/* 4. Volume — native range, release-commit (AudioProperties precedent) */}
+              {/* 4. Gain — native range -100..100, release-commit (AudioProperties precedent) */}
               <div class="physics-paint-audio-row">
                 <div class="physics-paint-photo-reference-opacity-labels">
-                  <span class="physics-paint-photo-reference-label">{AUDIO_VOLUME_LABEL}</span>
+                  <span class="physics-paint-photo-reference-label">{AUDIO_GAIN_LABEL}</span>
                   <span class="physics-paint-photo-reference-label-spacer" aria-hidden="true" />
-                  <output>{previewVolume}%</output>
+                  <output>{previewGain > 0 ? `+${previewGain}` : `${previewGain}`}</output>
                 </div>
                 <input
                   type="range"
-                  min={0}
+                  min={-100}
                   max={100}
                   step={1}
-                  value={previewVolume}
-                  aria-label={AUDIO_VOLUME_LABEL}
-                  aria-valuemin={0}
+                  value={previewGain}
+                  aria-label={AUDIO_GAIN_LABEL}
+                  aria-valuemin={-100}
                   aria-valuemax={100}
-                  aria-valuenow={previewVolume}
+                  aria-valuenow={previewGain}
                   aria-disabled={controlsDisabled}
                   disabled={controlsDisabled}
                   style={{ width: '100%', accentColor: 'var(--color-accent, #2D5BE3)', cursor: 'pointer' }}
-                  onInput={(event) => previewVolumeInput(Number((event.currentTarget as HTMLInputElement).value))}
-                  onPointerUp={(event) => commitVolume(Number((event.currentTarget as HTMLInputElement).value))}
-                  onKeyUp={(event) => commitVolume(Number((event.currentTarget as HTMLInputElement).value))}
-                  onBlur={(event) => commitVolume(Number((event.currentTarget as HTMLInputElement).value))}
+                  onInput={(event) => previewGainInput(Number((event.currentTarget as HTMLInputElement).value))}
+                  onPointerUp={(event) => commitGain(Number((event.currentTarget as HTMLInputElement).value))}
+                  onKeyUp={(event) => commitGain(Number((event.currentTarget as HTMLInputElement).value))}
+                  onBlur={(event) => commitGain(Number((event.currentTarget as HTMLInputElement).value))}
                 />
               </div>
 

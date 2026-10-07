@@ -13,12 +13,12 @@ import {
  * signal writes). Follows `physicsPaintPhotoReferenceController`:
  *   - reads ACCEPTED canonical state from the store (no optimistic facts —
  *     UI-SPEC busy rule; the controller never holds its own clip truth),
- *   - holds ONLY transient drafts in signals: the volume release-commit draft,
+ *   - holds ONLY transient drafts in signals: the gain release-commit draft,
  *     the two-step Remove arm, the `Reading audio…` busy flag and the decode
  *     error copy,
  *   - every field commit routes through the ONE `setDocumentSound` member
  *     setter (SYNC-01): commit/settle only, never mid-drag; invalid entries
- *     (volume outside 0-100, fades below 0 or fractional) are never committed
+ *     (gain outside -100..100, fades below 0 or fractional) are never committed
  *     — the prior accepted value stays (E8/E9, T-52.5-12),
  *   - the toggles invert from a LIVE document read at click time so the
  *     reverse click can never re-send a stale captured value (50-UAT fix).
@@ -27,7 +27,7 @@ import {
  * (PhysicsPaintStudio opens the shared BackgroundAssetPickerView with kind
  * 'audio' — D-02/D-03, wired in task 2). The completed import lands here via
  * `applyImportedSource`, which builds the clip defaults (fresh: startFrame 0,
- * inFrame 0, outFrame = duration × fps, volume 100, fades 0, both toggles ON;
+ * inFrame 0, outFrame = duration × fps, gain 0, fades 0, both toggles ON;
  * replace: source swap with position/in-out preserved and outFrame clamped to
  * a shorter source) and commits through the same setter. The clip's `enabled`
  * switch is the studio-layer sound (52.5 UAT round 2) — ON by default.
@@ -65,16 +65,16 @@ export interface PhysicsPaintAudioController {
   busy: boolean;
   /** Decode-failure state — the view maps it to the contracted error copy. */
   decodeError: boolean;
-  /** Volume draft while dragging (null = not dragging) — release-commit. */
+  /** Gain draft while dragging (null = not dragging) — release-commit. */
   volumeDraft: Signal<number | null>;
   /** The value the slider shows: draft while dragging, else accepted. */
-  previewVolume: number;
+  previewGain: number;
   /** Two-step Remove arm state (`Remove` → `Confirm remove?`). */
   removeArmed: boolean;
-  /** Live drag preview for the volume slider (no store write). */
-  previewVolumeInput: (percent: number) => void;
-  /** Commit the volume on release — integer 0..100 or the prior value stays. */
-  commitVolume: (percent: number) => void;
+  /** Live drag preview for the gain slider (no store write). */
+  previewGainInput: (gain: number) => void;
+  /** Commit the gain on release — integer -100..+100 or the prior value stays. */
+  commitGain: (gain: number) => void;
   /** Commit Fade in / Fade out frames (integer >= 0). */
   commitFadeIn: (frames: number) => void;
   commitFadeOut: (frames: number) => void;
@@ -125,8 +125,8 @@ export interface ImportedSoundSource {
  * component that renders it); the controller only carries error KINDS.
  * ------------------------------------------------------------------------- */
 
-export function isValidVolume(percent: number): boolean {
-  return Number.isInteger(percent) && percent >= 0 && percent <= 100;
+export function isValidGain(gain: number): boolean {
+  return Number.isInteger(gain) && gain >= -100 && gain <= 100;
 }
 
 export function isValidFadeFrames(frames: number): boolean {
@@ -141,7 +141,7 @@ export function isValidFadeCurve(curve: string): curve is SoundFadeCurve {
  * Import defaults (plan task 1, commit path item 4).
  * ------------------------------------------------------------------------- */
 
-/** Fresh import defaults: position 0, full source span, volume 100, fades 0, enabled ON. */
+/** Fresh import defaults: position 0, full source span, gain 0, fades 0, enabled ON. */
 export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): DocumentSoundClip {
   const sourceFrames = Math.max(1, Math.ceil(source.durationSec * Math.max(1, fps)));
   return {
@@ -152,7 +152,7 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
     startFrame: 0,
     inFrame: 0,
     outFrame: sourceFrames,
-    volume: 100,
+    gain: 0,
     fadeInFrames: 0,
     fadeOutFrames: 0,
     fadeInCurve: 'linear',
@@ -225,15 +225,15 @@ export function usePhysicsPaintAudioController({
     return setSound(layerId, { ...current, ...patch });
   };
 
-  const previewVolumeInput = (percent: number) => {
-    volumeDraft.value = percent;
+  const previewGainInput = (gain: number) => {
+    volumeDraft.value = gain;
   };
 
-  const commitVolume = (percent: number) => {
+  const commitGain = (gain: number) => {
     volumeDraft.value = null;
     disarmRemove();
-    if (!isValidVolume(percent)) return; // prior accepted value stays (E8)
-    patchSound({ volume: percent });
+    if (!isValidGain(gain)) return; // prior accepted value stays (E8)
+    patchSound({ gain });
   };
 
   const commitFadeIn = (frames: number) => {
@@ -336,10 +336,10 @@ export function usePhysicsPaintAudioController({
     busy: busy.value,
     decodeError: decodeError.value,
     volumeDraft,
-    previewVolume: volumeDraft.value ?? sound?.volume ?? 100,
+    previewGain: volumeDraft.value ?? sound?.gain ?? 0,
     removeArmed: removeArmed.value,
-    previewVolumeInput,
-    commitVolume,
+    previewGainInput,
+    commitGain,
     commitFadeIn,
     commitFadeOut,
     commitFadeInCurve,

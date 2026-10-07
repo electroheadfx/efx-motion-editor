@@ -127,6 +127,7 @@ import type { BackgroundTrack, DocumentSoundClip, InternalPaintTrack, PhotoRefer
 import {
   SOUND_BAND_HEIGHT_PX,
   SOUND_OVERLAY_STROKE,
+  SOUND_OVERLAY_STROKE_PX,
   SOUND_STAIN_ARM_PX,
   SOUND_TRIM_ARM_PX,
   SOUND_WAVEFORM_FILL,
@@ -136,10 +137,10 @@ import {
   selectSoundPeaks,
   soundFadeInPathD,
   soundFadeOutPathD,
+  soundGainLineY,
   soundStainLeftPx,
   soundStainWidthPx,
   soundSpanFrames,
-  soundVolumeLineY,
   soundWaveformPathD,
   type SoundBandGesturePatch,
   type SoundBandValues,
@@ -1844,8 +1845,23 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const soundClip = props.documentSound ?? null;
   const soundLeftPx = soundClip ? soundStainLeftPx(soundClip.startFrame, ROTO_CELL_WIDTH_PX) : 0;
   const soundWidthPx = soundClip ? soundStainWidthPx(soundClip.inFrame, soundClip.outFrame, ROTO_CELL_WIDTH_PX) : 0;
-  const soundPeaks = soundClip ? selectSoundPeaks(audioPeaksCache.get(soundClip.sourceId), soundWidthPx) : null;
-  const soundPathD = soundPeaks ? soundWaveformPathD(soundPeaks, soundWidthPx) : null;
+  // UAT round 4: the waveform is drawn once in SOURCE space and windowed by
+  // the SVG viewBox to [in, out]. Trimming either end therefore reveals the
+  // cut live instead of rescaling or sliding the whole waveform.
+  const soundSourceFrames = soundClip
+    ? audioPeaksCache.getSourceFrames(soundClip.sourceId) ?? soundClip.outFrame
+    : 0;
+  const soundSourceWidthPx = soundClip ? soundSourceFrames * ROTO_CELL_WIDTH_PX : 0;
+  const soundInPx = soundClip ? soundClip.inFrame * ROTO_CELL_WIDTH_PX : 0;
+  const soundPeaks = soundClip ? selectSoundPeaks(audioPeaksCache.get(soundClip.sourceId), soundSourceWidthPx) : null;
+  const soundPathD = soundPeaks ? soundWaveformPathD(soundPeaks, soundSourceWidthPx) : null;
+  const soundGainY = soundClip ? soundGainLineY(soundClip.gain) : 0;
+  const soundFadeInD = soundClip
+    ? soundFadeInPathD(soundClip.fadeInFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx, soundClip.gain, soundClip.fadeInCurve)
+    : null;
+  const soundFadeOutD = soundClip
+    ? soundFadeOutPathD(soundClip.fadeOutFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx, soundClip.gain, soundClip.fadeOutCurve)
+    : null;
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
   // is queried for exactly the represented physical extent (frameCells) — one
@@ -2806,6 +2822,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
      strip re-render — efx-preact-reactivity rule 5). ---- */
   const soundRulerElRef = useRef<HTMLDivElement>(null);
   const soundStainElRef = useRef<HTMLDivElement>(null);
+  const soundWaveElRef = useRef<SVGSVGElement>(null);
+  const soundOverlayElRef = useRef<SVGGElement>(null);
   const soundEdgeStartElRef = useRef<HTMLDivElement>(null);
   const soundEdgeEndElRef = useRef<HTMLDivElement>(null);
   const soundGestureRef = useRef<SoundBandGestureSession | null>(null);
@@ -2813,6 +2831,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const applySoundBandPreview = (next: SoundBandValues): void => {
     const leftPx = soundStainLeftPx(next.startFrame, ROTO_CELL_WIDTH_PX);
     const widthPx = soundStainWidthPx(next.inFrame, next.outFrame, ROTO_CELL_WIDTH_PX);
+    const inPx = next.inFrame * ROTO_CELL_WIDTH_PX;
     const left = `${leftPx}px`;
     const width = `${widthPx}px`;
     const stain = soundStainElRef.current;
@@ -2820,6 +2839,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       stain.style.left = left;
       stain.style.width = width;
     }
+    // Live trim preview (UAT round 4): window the SOURCE-space waveform to the
+    // next [in, out] so the drag visibly cuts the clip instead of sliding it.
+    const wave = soundWaveElRef.current;
+    if (wave) {
+      wave.setAttribute('viewBox', `${inPx} 0 ${widthPx} ${SOUND_BAND_HEIGHT_PX}`);
+      wave.setAttribute('width', width);
+    }
+    const overlay = soundOverlayElRef.current;
+    if (overlay) overlay.setAttribute('transform', `translate(${inPx}, 0)`);
     const edgeStart = soundEdgeStartElRef.current;
     if (edgeStart) edgeStart.style.left = left;
     const edgeEnd = soundEdgeEndElRef.current;
@@ -4626,39 +4654,42 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   onPointerDown={(event) => handleSoundStainPointerDown(event as unknown as PointerEvent)}
                 >
                   <svg
+                    ref={soundWaveElRef}
                     class="physics-paint-sound-stain-wave"
                     width={soundWidthPx}
                     height={SOUND_BAND_HEIGHT_PX}
-                    viewBox={`0 0 ${soundWidthPx} ${SOUND_BAND_HEIGHT_PX}`}
+                    viewBox={`${soundInPx} 0 ${soundWidthPx} ${SOUND_BAND_HEIGHT_PX}`}
                     aria-hidden="true"
                   >
-                    {/* UAT round 3: waveform RGB (22 110 203); fade diagonals
-                        and the volume line share the darker RGB (21 120 224). */}
+                    {/* UAT round 3/4: waveform RGB (22 110 203); the fade curves
+                        and the gain line share RGB (45 179 227) at 1px. */}
                     <path d={soundPathD} fill={SOUND_WAVEFORM_FILL} />
-                    {soundFadeInPathD(soundClip.fadeInFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx) !== null ? (
-                      <path
-                        d={soundFadeInPathD(soundClip.fadeInFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx) ?? ''}
+                    <g ref={soundOverlayElRef} transform={`translate(${soundInPx}, 0)`}>
+                      {soundFadeInD !== null ? (
+                        <path
+                          d={soundFadeInD}
+                          stroke={SOUND_OVERLAY_STROKE}
+                          stroke-width={SOUND_OVERLAY_STROKE_PX}
+                          fill="none"
+                        />
+                      ) : null}
+                      {soundFadeOutD !== null ? (
+                        <path
+                          d={soundFadeOutD}
+                          stroke={SOUND_OVERLAY_STROKE}
+                          stroke-width={SOUND_OVERLAY_STROKE_PX}
+                          fill="none"
+                        />
+                      ) : null}
+                      <line
+                        x1={0}
+                        y1={soundGainY}
+                        x2={soundWidthPx}
+                        y2={soundGainY}
                         stroke={SOUND_OVERLAY_STROKE}
-                        stroke-width={1.5}
-                        fill="none"
+                        stroke-width={SOUND_OVERLAY_STROKE_PX}
                       />
-                    ) : null}
-                    {soundFadeOutPathD(soundClip.fadeOutFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx) !== null ? (
-                      <path
-                        d={soundFadeOutPathD(soundClip.fadeOutFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx) ?? ''}
-                        stroke={SOUND_OVERLAY_STROKE}
-                        stroke-width={1.5}
-                        fill="none"
-                      />
-                    ) : null}
-                    <line
-                      x1={0}
-                      y1={soundVolumeLineY(soundClip.volume)}
-                      x2={soundWidthPx}
-                      y2={soundVolumeLineY(soundClip.volume)}
-                      stroke={SOUND_OVERLAY_STROKE}
-                      stroke-width={1.5}
-                    />
+                    </g>
                   </svg>
                 </div>
               ) : null}

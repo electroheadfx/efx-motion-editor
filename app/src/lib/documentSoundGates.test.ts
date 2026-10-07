@@ -101,7 +101,7 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
     startFrame: 48,
     inFrame: 0,
     outFrame: 240,
-    volume: 75,
+    gain: -25,
     fadeInFrames: 6,
     fadeOutFrames: 12,
     fadeInCurve: 'exponential',
@@ -144,7 +144,7 @@ describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)'
       inFrame: 0,
       outFrame: 240,
       slipOffset: 0,
-      volume: 0.75, // 75% -> 0.75 linear (D-14)
+      volume: 0.75, // gain -25 -> 0.75 linear (UAT round 4)
       muted: false,
       fadeInFrames: 6,
       fadeOutFrames: 12,
@@ -152,7 +152,7 @@ describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)'
       fadeOutCurve: 'linear',
     });
     expect(track.volume).toBeGreaterThanOrEqual(0);
-    expect(track.volume).toBeLessThanOrEqual(1);
+    expect(track.volume).toBeLessThanOrEqual(2);
   });
 
   it('resolveClipPlayback maps the sound clip onto the locked resolveTrackPlayback truth table', async () => {
@@ -268,7 +268,7 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
     vi.unstubAllGlobals();
   });
 
-  it('dispatches the document clip after the main loop with percent volume scaled to linear (D-14)', async () => {
+  it('dispatches the document clip after the main loop with gain scaled to linear (UAT round 4)', async () => {
     const store = await freshClipStore();
     registerSound(makeSound());
     expect(store.accept(CLIP_SECTION)).toBe(true);

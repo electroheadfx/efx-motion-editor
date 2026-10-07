@@ -116,40 +116,62 @@ describe('soundBandGeometry — trim law (UI-SPEC: in < out, min span 1, start >
   });
 });
 
-describe('soundBandGeometry — UAT round 3 overlays (waveform RGB 22 110 203, volume/fade RGB 21 120 224)', () => {
+describe('soundBandGeometry — UAT round 4 overlays (waveform RGB 22 110 203, fade/gain RGB 45 179 227 at 1px)', () => {
   it('(t13) the waveform fill and overlay stroke carry the exact RGB values the UAT asked for', async () => {
-    const { SOUND_WAVEFORM_FILL, SOUND_OVERLAY_STROKE } = await load();
+    const { SOUND_WAVEFORM_FILL, SOUND_OVERLAY_STROKE, SOUND_OVERLAY_STROKE_PX } = await load();
     expect(SOUND_WAVEFORM_FILL).toBe('#166ECB'); // RGB (22, 110, 203)
-    expect(SOUND_OVERLAY_STROKE).toBe('#1578E0'); // RGB (21, 120, 224)
+    expect(SOUND_OVERLAY_STROKE).toBe('#2DB3E3'); // RGB (45, 179, 227)
+    expect(SOUND_OVERLAY_STROKE_PX).toBe(1); // thin like 1 pixel
   });
 
-  it('(t14) the volume line maps 100% to the top of the stain extent and 0% to the center', async () => {
-    const { soundVolumeLineY, SOUND_STAIN_HALF_EXTENT_PX } = await load();
+  it('(t14) the gain line maps +100 to the top, 0 to the CENTER, -100 to the bottom', async () => {
+    const { soundGainLineY, SOUND_STAIN_HALF_EXTENT_PX } = await load();
     const centerY = 18;
-    expect(soundVolumeLineY(100)).toBe(centerY - SOUND_STAIN_HALF_EXTENT_PX);
-    expect(soundVolumeLineY(0)).toBe(centerY);
-    expect(soundVolumeLineY(50)).toBe(centerY - SOUND_STAIN_HALF_EXTENT_PX / 2);
-    // Out-of-range percents clamp (the slider is 0-100; the helper is fail-safe).
-    expect(soundVolumeLineY(150)).toBe(soundVolumeLineY(100));
-    expect(soundVolumeLineY(-20)).toBe(soundVolumeLineY(0));
+    expect(soundGainLineY(0)).toBe(centerY);
+    expect(soundGainLineY(100)).toBe(centerY - SOUND_STAIN_HALF_EXTENT_PX);
+    expect(soundGainLineY(-100)).toBe(centerY + SOUND_STAIN_HALF_EXTENT_PX);
+    expect(soundGainLineY(50)).toBe(centerY - SOUND_STAIN_HALF_EXTENT_PX / 2);
+    // Out-of-range gains clamp (the slider is -100..100; the helper is fail-safe).
+    expect(soundGainLineY(150)).toBe(soundGainLineY(100));
+    expect(soundGainLineY(-150)).toBe(soundGainLineY(-100));
   });
 
-  it('(t15) the fade-in diagonal runs bottom-left to the top at the fade boundary; null when zero', async () => {
-    const { soundFadeInPathD, SOUND_STAIN_HALF_EXTENT_PX } = await load();
-    const top = 18 - SOUND_STAIN_HALF_EXTENT_PX;
+  it('(t15) fade-in ramps bottom-left up to the GAIN line and bows with the curve type; null when zero', async () => {
+    const { soundFadeInPathD, soundGainLineY, SOUND_STAIN_HALF_EXTENT_PX } = await load();
     const bottom = 18 + SOUND_STAIN_HALF_EXTENT_PX;
-    // 24-frame span, 6-frame fade -> a quarter of the 96px width = 24px.
-    expect(soundFadeInPathD(6, 0, 24, 96)).toBe(`M0 ${bottom} L24 ${top}`);
-    expect(soundFadeInPathD(0, 0, 24, 96)).toBeNull();
+    // 24-frame span at 4px/frame = 96px; 6-frame fade -> a quarter = 24px.
+    const linear = soundFadeInPathD(6, 0, 24, 96, 0, 'linear');
+    expect(linear).not.toBeNull();
+    expect(linear!.startsWith(`M0 ${bottom}`)).toBe(true);
+    expect(linear!.endsWith(`L24 ${soundGainLineY(0)}`)).toBe(true);
+    // The fade must land on the gain line, never past it (UAT round 4 #5):
+    // the ramp stays between the silent edge and the gain line — it never
+    // climbs to the top of the stain extent the way the round-3 diagonal did.
+    const fadeYs = [...linear!.matchAll(/[ML][\d.]+ (-?[\d.]+)/g)].map((m) => Number(m[1]));
+    expect(Math.max(...fadeYs)).toBe(bottom);
+    expect(Math.min(...fadeYs)).toBe(soundGainLineY(0));
+    expect(Math.min(...fadeYs)).toBeGreaterThan(18 - SOUND_STAIN_HALF_EXTENT_PX);
+    expect(soundFadeInPathD(0, 0, 24, 96, 0, 'linear')).toBeNull();
+    // exponential bows under the ramp, logarithmic bows over it.
+    const exponential = soundFadeInPathD(6, 0, 24, 96, 0, 'exponential')!;
+    const logarithmic = soundFadeInPathD(6, 0, 24, 96, 0, 'logarithmic')!;
+    const midY = (d: string): number => {
+      const ys = [...d.matchAll(/[ML][\d.]+ (-?[\d.]+)/g)].map((m) => Number(m[1]));
+      return ys[Math.floor(ys.length / 2)];
+    };
+    expect(midY(exponential)).toBeGreaterThan(midY(linear!));
+    expect(midY(logarithmic)).toBeLessThan(midY(linear!));
   });
 
-  it('(t16) the fade-out diagonal runs top at the fade boundary to bottom-right; null when zero', async () => {
-    const { soundFadeOutPathD, SOUND_STAIN_HALF_EXTENT_PX } = await load();
-    const top = 18 - SOUND_STAIN_HALF_EXTENT_PX;
+  it('(t16) fade-out ramps from the gain line down to bottom-right and bows with the curve type; null when zero', async () => {
+    const { soundFadeOutPathD, soundGainLineY, SOUND_STAIN_HALF_EXTENT_PX } = await load();
     const bottom = 18 + SOUND_STAIN_HALF_EXTENT_PX;
     // 24-frame span, 12-frame fade -> half the 96px width = 48px, starting at x=48.
-    expect(soundFadeOutPathD(12, 0, 24, 96)).toBe(`M48 ${top} L96 ${bottom}`);
-    expect(soundFadeOutPathD(0, 0, 24, 96)).toBeNull();
+    const linear = soundFadeOutPathD(12, 0, 24, 96, 0, 'linear');
+    expect(linear).not.toBeNull();
+    expect(linear!.startsWith(`M48 ${soundGainLineY(0)}`)).toBe(true);
+    expect(linear!.endsWith(`L96 ${bottom}`)).toBe(true);
+    expect(soundFadeOutPathD(0, 0, 24, 96, 0, 'linear')).toBeNull();
   });
 });
 

@@ -8,7 +8,7 @@
  * - (t2) `sound: null` appends an EMPTY `|sound:` term (photoDisplay idiom).
  * - (t3) encodeCanonicalSound serializes the FULL DocumentSoundClip field set
  *   canonically: same output for equal records regardless of member insertion
- *   order, distinct output when ANY field changes (incl. volume and in/out).
+ *   order, distinct output when ANY field changes (incl. gain and in/out).
  * - (t4) [Rule 2 — PERSIST-01] a sound-only edit rotates the savePackage
  *   layer change-token value: the authoritative layer write gate is
  *   `${documentRevision}+${compositeRevision}`, both of which stay put for a
@@ -35,7 +35,7 @@ const CLIP: DocumentSoundClip = {
   startFrame: 12,
   inFrame: 0,
   outFrame: 48,
-  volume: 100,
+  gain: 0,
   fadeInFrames: 0,
   fadeOutFrames: 0,
   fadeInCurve: 'linear',
@@ -71,8 +71,8 @@ interface RevisionModuleWithSound {
 describe('sound sync-fingerprint rotation with stable revision (52.5-01b Task 1 RED)', () => {
   it('(t1) a sound edit rotates buildEfxPaintDocumentSyncFingerprint while the document revision stays put', async () => {
     const module = (await import('./efxPaintDocumentRevision')) as RevisionModuleWithSound;
-    const quiet = docWithSound(clipWith({ volume: 100 }));
-    const loud = docWithSound(clipWith({ volume: 42 }));
+    const quiet = docWithSound(clipWith({ gain: 0 }));
+    const loud = docWithSound(clipWith({ gain: 42 }));
 
     // Root-cause precondition: the sound member is EXCLUDED from the canonical
     // document revision (clip edits must never rotate pixel/cache keys) —
@@ -122,7 +122,7 @@ describe('sound sync-fingerprint rotation with stable revision (52.5-01b Task 1 
       { startFrame: 13 },
       { inFrame: 1 },
       { outFrame: 49 },
-      { volume: 42 },
+      { gain: 42 },
       { fadeInFrames: 5 },
       { fadeOutFrames: 7 },
       { fadeInCurve: 'exponential' },
@@ -180,7 +180,7 @@ describe('save layer change token — sound-only edit rotation (52.5-01b Rule 2,
     const tokenWithAgain = build!(
       revision.buildEfxPaintDocumentRevision(withSound),
       revision.buildEfxPaintCompositeRevision(withSound),
-      clipWith({ volume: 100 }),
+      clipWith({ gain: 0 }),
     );
     expect(tokenWithAgain).toBe(tokenWith);
   });

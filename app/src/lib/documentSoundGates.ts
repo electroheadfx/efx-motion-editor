@@ -78,9 +78,9 @@ export function resolveClipPlayback(
 
 /**
  * Build the AudioTrack-compatible record the engine consumes unchanged: the
- * engine's gain + applyFadeSchedule math applies the clip's volume and fades
- * as-is (D-14). Volume scales the document's integer percent (0-100) to the
- * engine's linear 0-1 range. `filePath` stays empty — the child never holds a
+ * engine's gain + applyFadeSchedule math applies the clip's gain and fades
+ * as-is (D-14). Gain maps -100..+100 onto the engine's linear 0..2 range so
+ * 0 is unity and +100 doubles the level. `filePath` stays empty — the child never holds a
  * filesystem path for the clip (D-04/52.2 references-only discipline); the
  * decoded buffer is keyed by `sound.id` from the closed documentAudio section.
  */
@@ -100,7 +100,7 @@ export function toDocumentSoundAudioTrack(
     offsetFrame: sound.startFrame,
     inFrame: sound.inFrame,
     outFrame: sound.outFrame,
-    volume: sound.volume / 100, // D-14: integer percent 0-100 -> linear 0-1
+    volume: (sound.gain + 100) / 100, // UAT round 4: gain -100..+100 -> linear 0..2 (0 = unity)
     muted: false,
     fadeInFrames: sound.fadeInFrames,
     fadeOutFrames: sound.fadeOutFrames,

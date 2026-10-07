@@ -3,7 +3,7 @@ import {
   buildFreshSoundClip,
   buildReplacedSoundClip,
   isValidFadeFrames,
-  isValidVolume,
+  isValidGain,
   type ImportedSoundSource,
 } from './physicsPaintAudioController';
 
@@ -36,13 +36,14 @@ describe('isValidFadeFrames (T-52.5-12 — frames, integer >= 0, NO 99 cap)', ()
   });
 });
 
-describe('isValidVolume (integer percent 0-100)', () => {
+describe('isValidGain (signed integer -100..100)', () => {
   it('accepts the full slider range and rejects the edges outside it', () => {
-    expect(isValidVolume(0)).toBe(true);
-    expect(isValidVolume(100)).toBe(true);
-    expect(isValidVolume(101)).toBe(false);
-    expect(isValidVolume(-1)).toBe(false);
-    expect(isValidVolume(10.5)).toBe(false);
+    expect(isValidGain(-100)).toBe(true);
+    expect(isValidGain(0)).toBe(true);
+    expect(isValidGain(100)).toBe(true);
+    expect(isValidGain(101)).toBe(false);
+    expect(isValidGain(-101)).toBe(false);
+    expect(isValidGain(10.5)).toBe(false);
   });
 });
 
@@ -52,7 +53,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     expect(clip.startFrame).toBe(0);
     expect(clip.inFrame).toBe(0);
     expect(clip.outFrame).toBe(240);
-    expect(clip.volume).toBe(100);
+    expect(clip.gain).toBe(0);
     expect(clip.enabled).toBe(true);
   });
 
@@ -65,7 +66,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
       startFrame: 48,
       inFrame: 12,
       outFrame: 200,
-      volume: 100,
+      gain: 0,
       fadeInFrames: 0,
       fadeOutFrames: 0,
       fadeInCurve: 'linear' as const,
@@ -88,7 +89,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
       startFrame: 0,
       inFrame: 100,
       outFrame: 120,
-      volume: 100,
+      gain: 0,
       fadeInFrames: 0,
       fadeOutFrames: 0,
       fadeInCurve: 'linear' as const,

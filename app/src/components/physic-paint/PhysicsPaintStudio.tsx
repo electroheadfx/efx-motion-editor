@@ -4729,7 +4729,8 @@ export function PhysicsPaintStudio() {
         if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
         const bytes = await response.arrayBuffer();
         const buffer = await audioEngine.decode(asset.id, bytes);
-        audioPeaksCache.set(asset.id, computeWaveformPeaks(buffer));
+        // UAT round 4: the source frame count powers the band's trim window.
+        audioPeaksCache.set(asset.id, computeWaveformPeaks(buffer), Math.max(1, Math.ceil(buffer.duration * (launchContext?.fps ?? efxPaintDocumentAudioStore.getFps()))));
         const result = audioModalController.applyImportedSource({
           sourceId: asset.id,
           relativePath: asset.relativePath,
@@ -4788,7 +4789,7 @@ export function PhysicsPaintStudio() {
           if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
           buffer = await audioEngine.decode(sound.sourceId, await response.arrayBuffer());
         }
-        audioPeaksCache.set(sound.sourceId, computeWaveformPeaks(buffer));
+        audioPeaksCache.set(sound.sourceId, computeWaveformPeaks(buffer), Math.max(1, Math.ceil(buffer.duration * (launchContext?.fps ?? efxPaintDocumentAudioStore.getFps()))));
       } catch {
         // E3 error state: fail-closed — cache stays empty, band stays plain.
       } finally {

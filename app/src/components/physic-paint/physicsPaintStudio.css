@@ -3238,11 +3238,11 @@ button.destructive {
 }
 
 .physics-paint-sound-edge.is-selected::before {
-  background: #2da8e3;
+  background: #DEBD34;
 }
 
 .physics-paint-sound-stain.is-selected {
-  outline: 1px solid #2da8e3;
+  outline: 1px solid #DEBD34;
   outline-offset: -1px;
 }
 

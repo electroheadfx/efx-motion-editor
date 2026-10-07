@@ -1309,7 +1309,7 @@ function _sameSound(a: DocumentSoundClip | null, b: DocumentSoundClip | null): b
     && a.startFrame === b.startFrame
     && a.inFrame === b.inFrame
     && a.outFrame === b.outFrame
-    && a.volume === b.volume
+    && a.gain === b.gain
     && a.fadeInFrames === b.fadeInFrames
     && a.fadeOutFrames === b.fadeOutFrames
     && a.fadeInCurve === b.fadeInCurve
@@ -1320,7 +1320,7 @@ function _sameSound(a: DocumentSoundClip | null, b: DocumentSoundClip | null): b
 /**
  * Fail-closed shape guard mirroring `parseDocumentSound` (52.5-01b,
  * T-52.5-12): an invalid clip is NEVER written to the document — the prior
- * accepted value stays, so an out-of-range volume or fractional fade can
+ * accepted value stays, so an out-of-range gain or fractional fade can
  * neither reach the sync/save tokens nor the on-disk parser (which would
  * throw at save time).
  */
@@ -1333,7 +1333,7 @@ function _isValidSoundClip(sound: DocumentSoundClip): boolean {
     && isNonNegativeInteger(sound.startFrame)
     && isNonNegativeInteger(sound.inFrame)
     && isNonNegativeInteger(sound.outFrame)
-    && Number.isInteger(sound.volume) && sound.volume >= 0 && sound.volume <= 100
+    && Number.isInteger(sound.gain) && sound.gain >= -100 && sound.gain <= 100
     && isNonNegativeInteger(sound.fadeInFrames)
     && isNonNegativeInteger(sound.fadeOutFrames)
     && (sound.fadeInCurve === 'linear' || sound.fadeInCurve === 'exponential' || sound.fadeInCurve === 'logarithmic')
