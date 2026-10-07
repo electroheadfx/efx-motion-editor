@@ -192,10 +192,13 @@ export interface DocumentSoundClip {
   readonly fadeOutFrames: number;
   readonly fadeInCurve: SoundFadeCurve;
   readonly fadeOutCurve: SoundFadeCurve;
-  /** Master gate (D-12): clip audible in main-editor playback and export. */
-  readonly soundInOutput: boolean;
-  /** Studio preview-mix toggle (D-11): also hear the main app's audio. */
-  readonly previewMainApp: boolean;
+  /**
+   * The studio-layer sound switch (52.5 UAT round 2): ON = the clip is audible
+   * in Studio preview, in main-editor playback, and in export; OFF = the clip
+   * is silent everywhere. Never touches the main app's audio tracks — those
+   * stay on the session monitoring toggle.
+   */
+  readonly enabled: boolean;
 }
 
 /** Fade curve shapes shared by fade-in and fade-out (Phase 15 D-10 carry-over). */

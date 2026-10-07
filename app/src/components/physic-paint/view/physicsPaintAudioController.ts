@@ -29,7 +29,8 @@ import {
  * `applyImportedSource`, which builds the clip defaults (fresh: startFrame 0,
  * inFrame 0, outFrame = duration × fps, volume 100, fades 0, both toggles ON;
  * replace: source swap with position/in-out preserved and outFrame clamped to
- * a shorter source) and commits through the same setter.
+ * a shorter source) and commits through the same setter. The clip's `enabled`
+ * switch is the studio-layer sound (52.5 UAT round 2) — ON by default.
  */
 
 export interface PhysicsPaintAudioControllerPorts {
@@ -80,9 +81,11 @@ export interface PhysicsPaintAudioController {
   /** Commit fade curves (`linear` | `exponential` | `logarithmic`). */
   commitFadeInCurve: (curve: SoundFadeCurve) => void;
   commitFadeOutCurve: (curve: SoundFadeCurve) => void;
-  /** Invert from the LIVE document (always reversible). */
-  toggleSoundInOutput: () => void;
-  togglePreviewMainApp: () => void;
+  /** Commit the source trim bounds (frames; out > in, 1-frame minimum span). */
+  commitInFrame: (frames: number) => void;
+  commitOutFrame: (frames: number) => void;
+  /** Invert the studio-layer sound switch from the LIVE document. */
+  toggleEnabled: () => void;
   /** Two-step remove: first call arms, second commits sound: null. */
   requestRemove: () => void;
   confirmRemove: () => void;
@@ -138,7 +141,7 @@ export function isValidFadeCurve(curve: string): curve is SoundFadeCurve {
  * Import defaults (plan task 1, commit path item 4).
  * ------------------------------------------------------------------------- */
 
-/** Fresh import defaults: position 0, full source span, volume 100, fades 0, both toggles ON (D-11/D-12). */
+/** Fresh import defaults: position 0, full source span, volume 100, fades 0, enabled ON. */
 export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): DocumentSoundClip {
   const sourceFrames = Math.max(1, Math.ceil(source.durationSec * Math.max(1, fps)));
   return {
@@ -154,8 +157,7 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
     fadeOutFrames: 0,
     fadeInCurve: 'linear',
     fadeOutCurve: 'linear',
-    soundInOutput: true,
-    previewMainApp: true,
+    enabled: true,
   };
 }
 
@@ -258,18 +260,30 @@ export function usePhysicsPaintAudioController({
     patchSound({ fadeOutCurve: curve });
   };
 
-  const toggleSoundInOutput = () => {
+  const commitInFrame = (frames: number) => {
     disarmRemove();
+    if (!isValidFadeFrames(frames)) return;
     const current = getDocument(layerId)?.sound;
     if (!current) return;
-    setSound(layerId, { ...current, soundInOutput: !current.soundInOutput });
+    // 1-frame minimum span: in may never meet or pass out.
+    if (frames >= current.outFrame) return;
+    patchSound({ inFrame: frames });
   };
 
-  const togglePreviewMainApp = () => {
+  const commitOutFrame = (frames: number) => {
+    disarmRemove();
+    if (!isValidFadeFrames(frames)) return;
+    const current = getDocument(layerId)?.sound;
+    if (!current) return;
+    if (frames <= current.inFrame) return;
+    patchSound({ outFrame: frames });
+  };
+
+  const toggleEnabled = () => {
     disarmRemove();
     const current = getDocument(layerId)?.sound;
     if (!current) return;
-    setSound(layerId, { ...current, previewMainApp: !current.previewMainApp });
+    setSound(layerId, { ...current, enabled: !current.enabled });
   };
 
   const requestRemove = () => {
@@ -330,8 +344,9 @@ export function usePhysicsPaintAudioController({
     commitFadeOut,
     commitFadeInCurve,
     commitFadeOutCurve,
-    toggleSoundInOutput,
-    togglePreviewMainApp,
+    commitInFrame,
+    commitOutFrame,
+    toggleEnabled,
     requestRemove,
     confirmRemove,
     disarmRemove,

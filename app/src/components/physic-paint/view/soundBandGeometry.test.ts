@@ -147,8 +147,10 @@ describe('soundBandGeometry — band surface source contract (plan acceptance cr
 
   it('(t11) the gesture truth table is encoded at the handler level (T-52.5-13)', () => {
     const strip = readSource('./PhysicsPaintWorkflowStrip.tsx');
-    // trim end zones stop propagation at pointer-down — the bar never seeks
-    expect(/handleSoundTrimZonePointerDown[\s\S]{0,600}?stopPropagation\(\)/.test(strip)).toBe(true);
+    // UAT round 2: the interactive trim bar is retired — in/out is edited in
+    // the modal. The trim-zone handler must be gone entirely.
+    expect(strip.includes('handleSoundTrimZonePointerDown')).toBe(false);
+    expect(strip.includes('physics-paint-sound-trim')).toBe(false);
     // armed stain moves stop propagation exactly once armed (ruler session starves)
     expect(/if \(session\.armed\) \{\s*\n\s*event\.stopPropagation\(\);/.test(strip)).toBe(true);
     // the stain release handler exists, early-returns sub-threshold, and never

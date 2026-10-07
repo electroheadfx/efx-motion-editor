@@ -3212,42 +3212,18 @@ button.destructive {
   pointer-events: none;
 }
 
-/* ---- 52.5-01b Task 3 (D-09): the 2px in/out trim bar -------------------
-   Drawn height stays 2px at the band's top edge; the hit-zone extends 8px
-   downward (total 10px interactive). Each 6px end zone arms start/end trim
-   (ew-resize); the middle passes through to the stain law. */
-.physics-paint-sound-trim {
+/* ---- 52.5 UAT round 2: vertical end bars at the clip's start and end -----
+   Replaces the 2px trim bar (D-09) — in/out is edited in the Document sound
+   modal's In/Out fields. Non-interactive markers: the stain below still owns
+   the reposition drag and the ruler keeps every seek. */
+.physics-paint-sound-edge {
   position: absolute;
   top: 0;
-  height: 10px;
+  width: 2px;
+  height: 36px;
   z-index: 2;
-}
-
-.physics-paint-sound-trim::before {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
   background: var(--color-audio-stain);
-  content: '';
   pointer-events: none;
-}
-
-.physics-paint-sound-trim-zone {
-  position: absolute;
-  top: 0;
-  width: 6px;
-  height: 10px;
-  cursor: ew-resize;
-}
-
-.physics-paint-sound-trim-start {
-  left: 0;
-}
-
-.physics-paint-sound-trim-end {
-  right: 0;
 }
 
 /* 260827-s52 Task 2: full-height playhead bar. top:0/bottom:0 spans exactly
@@ -4041,7 +4017,9 @@ button.destructive {
 }
 
 .physics-paint-track-column-sound.has-sound {
-  color: var(--color-audio-stain);
+  /* 52.5 UAT: the activated launcher needs the brighter cyan-blue — the stain
+     blue (#2D5BE3) reads as near-black on the chrome rail. */
+  color: #2da8e3;
 }
 
 
@@ -4365,7 +4343,7 @@ button.destructive {
   justify-content: center;
   gap: 6px;
   height: 28px;
-  padding: 0;
+  padding: 0 12px;
   border: 1px solid #3d5fb0;
   border-radius: 8px;
   background: #1d2e4e;
@@ -4461,7 +4439,7 @@ button.destructive {
   justify-content: center;
   gap: 6px;
   height: 30px;
-  padding: 0;
+  padding: 0 12px;
   border: 1px solid #5a87ff;
   border-radius: 8px;
   background: #2f67e8;
@@ -4486,8 +4464,9 @@ button.destructive {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   height: 30px;
-  padding: 0 10px;
+  padding: 0 12px;
   border: 1px solid #6e3a34;
   border-radius: 8px;
   background: #3a2321;
@@ -4502,6 +4481,58 @@ button.destructive {
 .physics-paint-photo-reference-remove:focus-visible {
   outline: 2px solid #f0907e;
   outline-offset: 1px;
+}
+
+/* 52.5 UAT round 2 (Document sound modal): title case, padded actions, and a
+   two-column field grid for Fade in/out and In/Out. Opt out of the global
+   `button { text-transform: uppercase }` and the photo-ref label uppercase
+   here — the rest of the photo-ref chrome is untouched. */
+.physics-paint-audio-dialog button,
+.physics-paint-audio-dialog .physics-paint-photo-reference-label {
+  text-transform: none;
+}
+
+.physics-paint-audio-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.physics-paint-audio-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.physics-paint-audio-field-label {
+  color: #8a94a0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.physics-paint-audio-field-stepper {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.physics-paint-audio-field select {
+  width: 100%;
+  height: 22px;
+  border: 1px solid var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55));
+  border-radius: 4px;
+  background: var(--sidebar-input-bg, rgba(127, 131, 138, 0.18));
+  color: var(--sidebar-text-primary, inherit);
+  font-size: 10px;
+}
+
+.physics-paint-audio-enable-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* 52-05 (G-52-3): the track rail-creation flow — the "Create rail" button and

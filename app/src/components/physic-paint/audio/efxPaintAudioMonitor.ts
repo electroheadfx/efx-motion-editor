@@ -170,13 +170,12 @@ export const efxPaintAudioMonitor = {
       // flag on its own.
       toggleSilenced = true;
     }
-    // Q3: effective main-in-preview = session toggle AND modal preview-main
-    // toggle (per the registered document's sound.previewMainApp). No clip
-    // registered -> previewMainApp defaults to true (main leg = toggle only).
+    // UAT round 2: the main leg rides the SESSION monitoring toggle alone —
+    // the document-sound modal never touches the main app's audio.
     const sound = clipSection
       ? resolveDocumentSoundClip(getDocument(efxPaintDocumentAudioStore.getLayerId() ?? ''), clipSection)
       : null;
-    let mainLeg = Boolean(current) && studioMainLegEnabled(sound?.previewMainApp ?? true, sessionToggleOn);
+    let mainLeg = Boolean(current) && studioMainLegEnabled(sessionToggleOn);
     if (mainLeg && !efxPaintAudioOwnership.canStartAudio()) {
       // D-05/D-06: the guard suppresses the MAIN leg only — the clip mixes
       // through (it never sits behind this early-return).
@@ -189,7 +188,7 @@ export const efxPaintAudioMonitor = {
       ? resolveClipPlayback(sound, cursorAppFrame, playbackRangeEnd, fps)
       : null;
     const clipLeg = Boolean(
-      studioClipLegEnabled() && clipSection && sound && clipResolution && preparedTrackIds.has(clipSection.clipId),
+      sound && studioClipLegEnabled(sound.enabled) && clipSection && clipResolution && preparedTrackIds.has(clipSection.clipId),
     );
     if (!mainLeg && !clipLeg) {
       // Nothing dispatchable at this cursor: a mid-playback re-entry must not
@@ -279,13 +278,23 @@ export const efxPaintAudioMonitor = {
    * throttled to EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS so a fast drag never spams
    * stopAll/re-prepare. The snippet window is a few frames past the cursor
    * (EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES); playAtCursor caps it at each
-   * track's audible window. With the session toggle Off (or no audio section)
-   * the scrub stays silent — a D-09 positionedAt re-anchor, zero engine
-   * dispatch. The toggle check happens HERE (not inside playAtCursor) so a
-   * muted scrub never sets the D-14 toggleSilenced flag.
+   * track's audible window.
+   *
+   * 52.5 UAT fix: the gate is "anything could sound here", not "main context
+   * exists" — a document-clip-only session (context null after prepare(null))
+   * must scrub its clip audibly exactly as Play sounds it. Main leg still
+   * needs context AND the session toggle; the clip leg needs its section and
+   * its `enabled` switch ON (playAtCursor decides what actually dispatches).
+   * A scrub with nothing dispatchable stays a D-09 positionedAt re-anchor.
    */
   scrubAt(cursorAppFrame: number): void {
-    if (!context || !audioPreviewEnabled.peek()) {
+    const clipSection = efxPaintDocumentAudioStore.getSection();
+    const sound = clipSection
+      ? resolveDocumentSoundClip(getDocument(efxPaintDocumentAudioStore.getLayerId() ?? ''), clipSection)
+      : null;
+    const hasMain = Boolean(context) && audioPreviewEnabled.peek();
+    const hasClip = Boolean(clipSection && sound && sound.enabled);
+    if (!hasMain && !hasClip) {
       logAudioScrubDiagnostic('scrubAt gated:', !context ? 'no-context (prepare never ran)' : 'toggle-off', 'frame', cursorAppFrame);
       this.positionedAt(cursorAppFrame);
       return;
@@ -293,7 +302,7 @@ export const efxPaintAudioMonitor = {
     const now = performance.now();
     if (now - lastScrubAt < EFX_PAINT_AUDIO_SCRUB_THROTTLE_MS) return;
     lastScrubAt = now;
-    logAudioScrubDiagnostic('scrubAt dispatch:', cursorAppFrame, '| prepared', preparedTrackIds.size, '/', context.tracks.length, 'tracks | canStart', efxPaintAudioOwnership.canStartAudio());
+    logAudioScrubDiagnostic('scrubAt dispatch:', cursorAppFrame, '| prepared', preparedTrackIds.size, '/', context ? context.tracks.length : 0, 'tracks | canStart', efxPaintAudioOwnership.canStartAudio());
     this.playAtCursor(cursorAppFrame, cursorAppFrame + EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES);
   },
 

@@ -6,31 +6,32 @@ import {
 } from '../components/physic-paint/audio/efxPaintAudioPreviewContext';
 
 /**
- * 52.5-01a (Q3, D-11/D-14, STUDIO-MIX-01): pure gates and adapters for the
- * Studio document-clip leg (analog: resolveTrackPlayback — every gate this
- * slice adds is a unit-tested pure function, T-52.5-03 mitigation).
+ * 52.5-01a (Q3, D-11/D-14, STUDIO-MIX-01), revised by 52.5 UAT round 2: pure
+ * gates and adapters for the Studio document-clip leg (analog:
+ * resolveTrackPlayback — every gate this slice adds is a unit-tested pure
+ * function, T-52.5-03 mitigation).
  *
- * Q3 / mix-don't-contend contract:
- * - the MAIN-track leg is gated by the session toggle AND the modal
- *   "Preview main app too" toggle (AND composition),
- * - the document CLIP leg is gated by NEITHER toggle — it mixes.
+ * Gate contract (UAT round 2 — one switch, two legs):
+ * - the MAIN-track leg is gated by the SESSION monitoring toggle alone (the
+ *   modal never touches the main app's audio),
+ * - the document CLIP leg is gated by the clip's `enabled` switch alone (ON =
+ *   audible in Studio + main playback + export; OFF = silent everywhere).
  */
 
 /**
- * Q3 (STUDIO-MIX-01): effective main-in-preview = session toggle AND modal
- * preview-main toggle. Truth table lives in documentSoundGates.test.ts.
+ * Effective main-in-preview = the session monitoring toggle. Truth table lives
+ * in documentSoundGates.test.ts.
  */
-export function studioMainLegEnabled(previewMainApp: boolean, sessionToggleOn: boolean): boolean {
-  return previewMainApp && sessionToggleOn;
+export function studioMainLegEnabled(sessionToggleOn: boolean): boolean {
+  return sessionToggleOn;
 }
 
 /**
- * Q3: the document clip leg is a constant OPEN gate — neither the session
- * toggle nor the modal preview-main toggle ever silences the clip (documented
- * constant, asserted by the truth-table row in documentSoundGates.test.ts).
+ * The document clip leg rides the clip's own `enabled` switch (52.5 UAT round
+ * 2) — never the session monitoring toggle, never the main app's audio state.
  */
-export function studioClipLegEnabled(): boolean {
-  return true;
+export function studioClipLegEnabled(enabled: boolean): boolean {
+  return enabled;
 }
 
 /**
@@ -53,7 +54,7 @@ export function resolveDocumentSoundClip(
  * Map the document sound onto the locked resolveTrackPlayback truth table —
  * the clip is a track whose timeline position is `startFrame`, whose trim is
  * the source in/out, and which never slips (slipOffset 0) and never mutes
- * here (the clip leg is ungated; soundInOutput is a main-editor/export gate).
+ * here (the `enabled` gate is applied by the caller, before resolution).
  */
 export function resolveClipPlayback(
   sound: DocumentSoundClip,

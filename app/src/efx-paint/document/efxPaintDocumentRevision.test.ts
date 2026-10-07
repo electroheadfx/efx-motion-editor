@@ -40,8 +40,7 @@ const CLIP: DocumentSoundClip = {
   fadeOutFrames: 0,
   fadeInCurve: 'linear',
   fadeOutCurve: 'linear',
-  soundInOutput: true,
-  previewMainApp: true,
+  enabled: true,
 };
 
 /**
@@ -128,8 +127,7 @@ describe('sound sync-fingerprint rotation with stable revision (52.5-01b Task 1 
       { fadeOutFrames: 7 },
       { fadeInCurve: 'exponential' },
       { fadeOutCurve: 'logarithmic' },
-      { soundInOutput: false },
-      { previewMainApp: false },
+      { enabled: false },
     ];
     for (const patch of distinctPatches) {
       expect(encode!(clipWith(patch))).not.toBe(encoded);

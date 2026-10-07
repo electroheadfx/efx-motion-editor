@@ -191,8 +191,7 @@ export function encodeCanonicalSound(sound: DocumentSoundClip | null): string {
     `fadeOut:${encodeCanonicalNumber(sound.fadeOutFrames)}`,
     `fadeInCurve:${encodeCanonicalString(sound.fadeInCurve)}`,
     `fadeOutCurve:${encodeCanonicalString(sound.fadeOutCurve)}`,
-    `inOutput:${validatedBoolean(sound.soundInOutput)}`,
-    `previewMain:${validatedBoolean(sound.previewMainApp)}`,
+    `enabled:${validatedBoolean(sound.enabled)}`,
   ].join('');
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { AudioWaveform, Trash2, X } from 'lucide-preact';
-import { NumericInput } from '../../shared/NumericInput';
+import { NumericStepper } from '../../shared/NumericStepper';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 
 /**
@@ -19,8 +19,8 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   `Remove sound? Position, trims, volume, and fades are discarded from this document.` ·
  *   `Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.` ·
  *   `Sound file is missing from the project. Replace it to restore the clip.` ·
- *   `Volume` (readout `NN%`) · `Fade in` · `Fade out` (curves `linear`,
- *   `exponential`, `logarithmic`) · `Sound in output` · `Preview main app too`
+ *   `Volume` (readout `NN%`) · `Fade in` · `Fade out` (frames; curves `linear`,
+ *   `exponential`, `logarithmic`) · `In` · `Out` (frames) · `On` / `Off`
  *
  * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal):
  *   1. header: AudioWaveform 15px + `Document sound` + close X
@@ -28,9 +28,9 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *      (`No sound yet` / body / `Import sound`) OR the error copy
  *   3. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
  *   4. `Volume` — native range 0-100 step 1 + NN% readout (release-commit)
- *   5. `Fade in` — NumericInput + curve select
- *   6. `Fade out` — NumericInput + curve select
- *   7. toggle row: `Sound in output` | `Preview main app too` (aria-pressed)
+ *   5-6. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
+ *        (integer >= 0, no 99 cap) + curve select under each stepper
+ *   7. `In` | `Out` — source trim in frames (2 columns, 1-frame minimum span)
  *
  * The component is a thin render shell over the signals-only
  * `physicsPaintAudioController` (accepted canonical state only; no useState,
@@ -62,8 +62,10 @@ export const AUDIO_ERROR_MISSING = 'Sound file is missing from the project. Repl
 export const AUDIO_VOLUME_LABEL = 'Volume';
 export const AUDIO_FADE_IN_LABEL = 'Fade in';
 export const AUDIO_FADE_OUT_LABEL = 'Fade out';
-export const AUDIO_TOGGLE_IN_OUTPUT = 'Sound in output';
-export const AUDIO_TOGGLE_PREVIEW_MAIN = 'Preview main app too';
+export const AUDIO_IN_LABEL = 'In';
+export const AUDIO_OUT_LABEL = 'Out';
+export const AUDIO_ENABLE_ON = 'On';
+export const AUDIO_ENABLE_OFF = 'Off';
 
 const FADE_CURVE_OPTIONS: readonly SoundFadeCurve[] = ['linear', 'exponential', 'logarithmic'];
 
@@ -151,8 +153,8 @@ export function PhysicsPaintAudioModalView({
   const {
     sound, filename, missing, busy, decodeError, previewVolume, removeArmed,
     previewVolumeInput, commitVolume, commitFadeIn, commitFadeOut,
-    commitFadeInCurve, commitFadeOutCurve, toggleSoundInOutput,
-    togglePreviewMainApp, requestRemove, confirmRemove, disarmRemove,
+    commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame,
+    toggleEnabled, requestRemove, confirmRemove, disarmRemove,
   } = controller;
 
   const errorText = decodeError ? AUDIO_ERROR_DECODE : missing ? AUDIO_ERROR_MISSING : null;
@@ -180,7 +182,7 @@ export function PhysicsPaintAudioModalView({
       <div
         ref={surfaceRef}
         class="physics-paint-photo-reference-surface physics-paint-audio-surface"
-        style={{ width: '300px' }}
+        style={{ width: '340px' }}
         tabIndex={-1}
       >
         {/* 1. Header */}
@@ -252,8 +254,11 @@ export function PhysicsPaintAudioModalView({
                 </p>
               ) : null}
 
-              {/* 3. Remove — two-step inline confirm */}
-              <div class="physics-paint-photo-reference-actions">
+              {/* 3. Remove + On/Off — one line (UAT round 2). The switch is the
+                  studio-layer sound: ON = the clip is audible in Studio, in the
+                  main app, and in export; OFF = silent everywhere. It never
+                  touches the main app's audio tracks. */}
+              <div class="physics-paint-audio-enable-row">
                 <button
                   type="button"
                   class={`physics-paint-photo-reference-remove${removeArmed ? ' physics-paint-audio-remove-armed' : ''}`}
@@ -268,12 +273,24 @@ export function PhysicsPaintAudioModalView({
                   <Trash2 size={13} aria-hidden="true" />
                   <span>{removeArmed ? AUDIO_REMOVE_ARMED : AUDIO_REMOVE}</span>
                 </button>
-                {removeArmed ? (
-                  <p class="physics-paint-audio-confirm-copy" data-testid="audio-remove-confirm-copy">
-                    {AUDIO_REMOVE_CONFIRM_COPY}
-                  </p>
-                ) : null}
+                <button
+                  type="button"
+                  class="physics-paint-photo-reference-toggle"
+                  aria-label="Document sound on/off"
+                  aria-pressed={sound.enabled}
+                  aria-disabled={controlsDisabled}
+                  disabled={controlsDisabled}
+                  data-testid="audio-modal-enabled"
+                  onClick={toggleEnabled}
+                >
+                  <span>{sound.enabled ? AUDIO_ENABLE_ON : AUDIO_ENABLE_OFF}</span>
+                </button>
               </div>
+              {removeArmed ? (
+                <p class="physics-paint-audio-confirm-copy" data-testid="audio-remove-confirm-copy">
+                  {AUDIO_REMOVE_CONFIRM_COPY}
+                </p>
+              ) : null}
 
               {/* 4. Volume — native range, release-commit (AudioProperties precedent) */}
               <div class="physics-paint-audio-row">
@@ -302,72 +319,81 @@ export function PhysicsPaintAudioModalView({
                 />
               </div>
 
-              {/* 5. Fade in — NumericInput (label scrubs the value) + curve select */}
-              <div class="physics-paint-audio-row physics-paint-audio-fade">
-                <NumericInput
-                  label={AUDIO_FADE_IN_LABEL}
-                  value={sound.fadeInFrames}
-                  step={1}
-                  min={0}
-                  onChange={(value) => commitFadeIn(value)}
-                />
-                <select
-                  aria-label={`${AUDIO_FADE_IN_LABEL} curve`}
-                  value={sound.fadeInCurve}
-                  disabled={controlsDisabled}
-                  onChange={(event) => commitFadeInCurve((event.currentTarget as HTMLSelectElement).value as SoundFadeCurve)}
-                >
-                  {FADE_CURVE_OPTIONS.map((curve) => (
-                    <option key={curve} value={curve}>{curve}</option>
-                  ))}
-                </select>
+              {/* 5-6. Fade in | Fade out — one row, 2 columns (UAT). Values are
+                  FRAMES (the model field is fadeInFrames); the unit is in the
+                  label so it never reads as seconds. Integer >= 0, no 99 cap. */}
+              <div class="physics-paint-audio-grid">
+                <div class="physics-paint-audio-field">
+                  <span class="physics-paint-audio-field-label">{AUDIO_FADE_IN_LABEL} (frames)</span>
+                  <NumericStepper
+                    class="physics-paint-audio-field-stepper"
+                    value={sound.fadeInFrames}
+                    step={1}
+                    min={0}
+                    onChange={(value) => commitFadeIn(value)}
+                    ariaLabel="Fade in frames"
+                  />
+                  <select
+                    aria-label={`${AUDIO_FADE_IN_LABEL} curve`}
+                    value={sound.fadeInCurve}
+                    disabled={controlsDisabled}
+                    onChange={(event) => commitFadeInCurve((event.currentTarget as HTMLSelectElement).value as SoundFadeCurve)}
+                  >
+                    {FADE_CURVE_OPTIONS.map((curve) => (
+                      <option key={curve} value={curve}>{curve}</option>
+                    ))}
+                  </select>
+                </div>
+                <div class="physics-paint-audio-field">
+                  <span class="physics-paint-audio-field-label">{AUDIO_FADE_OUT_LABEL} (frames)</span>
+                  <NumericStepper
+                    class="physics-paint-audio-field-stepper"
+                    value={sound.fadeOutFrames}
+                    step={1}
+                    min={0}
+                    onChange={(value) => commitFadeOut(value)}
+                    ariaLabel="Fade out frames"
+                  />
+                  <select
+                    aria-label={`${AUDIO_FADE_OUT_LABEL} curve`}
+                    value={sound.fadeOutCurve}
+                    disabled={controlsDisabled}
+                    onChange={(event) => commitFadeOutCurve((event.currentTarget as HTMLSelectElement).value as SoundFadeCurve)}
+                  >
+                    {FADE_CURVE_OPTIONS.map((curve) => (
+                      <option key={curve} value={curve}>{curve}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
-              {/* 6. Fade out — NumericInput + curve select */}
-              <div class="physics-paint-audio-row physics-paint-audio-fade">
-                <NumericInput
-                  label={AUDIO_FADE_OUT_LABEL}
-                  value={sound.fadeOutFrames}
-                  step={1}
-                  min={0}
-                  onChange={(value) => commitFadeOut(value)}
-                />
-                <select
-                  aria-label={`${AUDIO_FADE_OUT_LABEL} curve`}
-                  value={sound.fadeOutCurve}
-                  disabled={controlsDisabled}
-                  onChange={(event) => commitFadeOutCurve((event.currentTarget as HTMLSelectElement).value as SoundFadeCurve)}
-                >
-                  {FADE_CURVE_OPTIONS.map((curve) => (
-                    <option key={curve} value={curve}>{curve}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 7. Toggle row — two aria-pressed photo-ref-style buttons */}
-              <div class="physics-paint-photo-reference-toggles">
-                <button
-                  type="button"
-                  class="physics-paint-photo-reference-toggle"
-                  aria-label={AUDIO_TOGGLE_IN_OUTPUT}
-                  aria-pressed={sound.soundInOutput}
-                  aria-disabled={controlsDisabled}
-                  disabled={controlsDisabled}
-                  onClick={toggleSoundInOutput}
-                >
-                  <span>{AUDIO_TOGGLE_IN_OUTPUT}</span>
-                </button>
-                <button
-                  type="button"
-                  class="physics-paint-photo-reference-toggle"
-                  aria-label={AUDIO_TOGGLE_PREVIEW_MAIN}
-                  aria-pressed={sound.previewMainApp}
-                  aria-disabled={controlsDisabled}
-                  disabled={controlsDisabled}
-                  onClick={togglePreviewMainApp}
-                >
-                  <span>{AUDIO_TOGGLE_PREVIEW_MAIN}</span>
-                </button>
+              {/* 7. In | Out — source trim in FRAMES (UAT round 2: the end of the
+                  clip was unreachable on the 6px trim zones). 1-frame minimum
+                  span: an entry that would invert the span never commits. */}
+              <div class="physics-paint-audio-grid">
+                <div class="physics-paint-audio-field">
+                  <span class="physics-paint-audio-field-label">{AUDIO_IN_LABEL} (frames)</span>
+                  <NumericStepper
+                    class="physics-paint-audio-field-stepper"
+                    value={sound.inFrame}
+                    step={1}
+                    min={0}
+                    max={sound.outFrame - 1}
+                    onChange={(value) => commitInFrame(value)}
+                    ariaLabel="In frames"
+                  />
+                </div>
+                <div class="physics-paint-audio-field">
+                  <span class="physics-paint-audio-field-label">{AUDIO_OUT_LABEL} (frames)</span>
+                  <NumericStepper
+                    class="physics-paint-audio-field-stepper"
+                    value={sound.outFrame}
+                    step={1}
+                    min={sound.inFrame + 1}
+                    onChange={(value) => commitOutFrame(value)}
+                    ariaLabel="Out frames"
+                  />
+                </div>
               </div>
             </>
           )}

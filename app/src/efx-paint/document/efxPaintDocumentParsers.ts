@@ -96,8 +96,7 @@ const SOUND_KEYS = new Set([
   'fadeOutFrames',
   'fadeInCurve',
   'fadeOutCurve',
-  'soundInOutput',
-  'previewMainApp',
+  'enabled',
 ]);
 const SOUND_FADE_CURVES = new Set<string>(['linear', 'exponential', 'logarithmic']);
 
@@ -448,7 +447,7 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
     throw new Error('DocumentSoundClip: expected a record.');
   }
   if (!hasOnlyKeys(value, SOUND_KEYS)) {
-    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, relativePath, sourceRevision, startFrame, inFrame, outFrame, volume, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, soundInOutput, previewMainApp.');
+    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, relativePath, sourceRevision, startFrame, inFrame, outFrame, volume, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, enabled.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('DocumentSoundClip: id must be a non-empty string.');
@@ -486,11 +485,8 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
   if (!isSoundFadeCurve(value.fadeOutCurve)) {
     throw new Error('DocumentSoundClip: fadeOutCurve must be linear, exponential, or logarithmic.');
   }
-  if (typeof value.soundInOutput !== 'boolean') {
-    throw new Error('DocumentSoundClip: soundInOutput must be a boolean.');
-  }
-  if (typeof value.previewMainApp !== 'boolean') {
-    throw new Error('DocumentSoundClip: previewMainApp must be a boolean.');
+  if (typeof value.enabled !== 'boolean') {
+    throw new Error('DocumentSoundClip: enabled must be a boolean.');
   }
   return Object.freeze({
     id: value.id,
@@ -505,8 +501,7 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
     fadeOutFrames: value.fadeOutFrames,
     fadeInCurve: value.fadeInCurve,
     fadeOutCurve: value.fadeOutCurve,
-    soundInOutput: value.soundInOutput,
-    previewMainApp: value.previewMainApp,
+    enabled: value.enabled,
   });
 }
 

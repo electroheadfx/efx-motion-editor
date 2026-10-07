@@ -1314,8 +1314,7 @@ function _sameSound(a: DocumentSoundClip | null, b: DocumentSoundClip | null): b
     && a.fadeOutFrames === b.fadeOutFrames
     && a.fadeInCurve === b.fadeInCurve
     && a.fadeOutCurve === b.fadeOutCurve
-    && a.soundInOutput === b.soundInOutput
-    && a.previewMainApp === b.previewMainApp;
+    && a.enabled === b.enabled;
 }
 
 /**
@@ -1339,8 +1338,7 @@ function _isValidSoundClip(sound: DocumentSoundClip): boolean {
     && isNonNegativeInteger(sound.fadeOutFrames)
     && (sound.fadeInCurve === 'linear' || sound.fadeInCurve === 'exponential' || sound.fadeInCurve === 'logarithmic')
     && (sound.fadeOutCurve === 'linear' || sound.fadeOutCurve === 'exponential' || sound.fadeOutCurve === 'logarithmic')
-    && typeof sound.soundInOutput === 'boolean'
-    && typeof sound.previewMainApp === 'boolean';
+    && typeof sound.enabled === 'boolean';
 }
 
 /**

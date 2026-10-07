@@ -1238,8 +1238,7 @@ describe('savePackage / loadEfxPaintPackage', () => {
         fadeOutFrames: 12,
         fadeInCurve: 'exponential',
         fadeOutCurve: 'linear',
-        soundInOutput: true,
-        previewMainApp: true,
+        enabled: true,
         ...overrides,
       };
     }

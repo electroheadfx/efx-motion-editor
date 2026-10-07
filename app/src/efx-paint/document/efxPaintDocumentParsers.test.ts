@@ -463,8 +463,7 @@ function validSoundClip(): Record<string, unknown> {
     fadeOutFrames: 12,
     fadeInCurve: 'exponential',
     fadeOutCurve: 'linear',
-    soundInOutput: true,
-    previewMainApp: false,
+    enabled: true,
   };
 }
 

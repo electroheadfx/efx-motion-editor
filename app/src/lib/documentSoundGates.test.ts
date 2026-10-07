@@ -106,8 +106,7 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
     fadeOutFrames: 12,
     fadeInCurve: 'exponential',
     fadeOutCurve: 'linear',
-    soundInOutput: true,
-    previewMainApp: true,
+    enabled: true,
     ...overrides,
   };
 }
@@ -122,17 +121,16 @@ function registerSound(sound: DocumentSoundClip): void {
 // ---------------------------------------------------------------------------
 
 describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)', () => {
-  it('studioMainLegEnabled is the Q3 AND composition of preview-mix and session toggle', async () => {
+  it('studioMainLegEnabled is the session monitoring toggle alone (UAT round 2: the modal never touches main-app audio)', async () => {
     const { studioMainLegEnabled } = await import('./documentSoundGates');
-    expect(studioMainLegEnabled(true, true)).toBe(true);
-    expect(studioMainLegEnabled(true, false)).toBe(false);
-    expect(studioMainLegEnabled(false, true)).toBe(false);
-    expect(studioMainLegEnabled(false, false)).toBe(false);
+    expect(studioMainLegEnabled(true)).toBe(true);
+    expect(studioMainLegEnabled(false)).toBe(false);
   });
 
-  it('the clip leg is a constant ungated true (Q3: neither toggle gates the document clip)', async () => {
+  it('the clip leg rides the clip `enabled` switch alone (UAT round 2)', async () => {
     const { studioClipLegEnabled } = await import('./documentSoundGates');
-    expect(studioClipLegEnabled()).toBe(true);
+    expect(studioClipLegEnabled(true)).toBe(true);
+    expect(studioClipLegEnabled(false)).toBe(false);
   });
 
   it('toDocumentSoundAudioTrack maps the document sound onto the AudioTrack contract (D-14 percent to linear)', async () => {
@@ -335,23 +333,17 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
     expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
   });
 
-  it('previewMainApp false silences the main leg while the clip still dispatches (D-11)', async () => {
+  it('enabled false silences the clip while the main leg keeps playing (UAT round 2)', async () => {
     const store = await freshClipStore();
-    registerSound(makeSound({ previewMainApp: false }));
+    registerSound(makeSound({ enabled: false }));
     expect(store.accept(CLIP_SECTION)).toBe(true);
     stubFetchOk();
     const context = parseOrThrow(makeAudioPreviewSection({ revision: 1 }));
     await efxPaintAudioMonitor.prepare(context);
     efxPaintAudioMonitor.playAtCursor(96, 288);
-    // Modal preview-main toggle Off (session toggle On): main leg silent.
-    expect(mockedAudioEngine.play).not.toHaveBeenCalledWith('track-1', expect.anything(), expect.anything(), expect.anything(), expect.anything());
-    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
-      'sound-clip-1',
-      2.0,
-      expect.objectContaining({ id: 'sound-clip-1', volume: 0.75 }),
-      24,
-      8.0,
-    );
+    // Clip switch OFF: the clip is silent everywhere — main leg unaffected.
+    expect(mockedAudioEngine.play).not.toHaveBeenCalledWith('sound-clip-1', expect.anything(), expect.anything(), expect.anything(), expect.anything());
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith('track-1', expect.anything(), expect.anything(), 24, expect.anything());
     expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
   });
 
@@ -403,6 +395,28 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
       8.0,
     );
     expect(mockedAudioEngine.playDelayed).not.toHaveBeenCalled();
+    expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
+  });
+
+  it('scrubAt in a clip-only session dispatches the clip — audible scrub matches Play (UAT regression)', async () => {
+    const store = await freshClipStore();
+    registerSound(makeSound());
+    expect(store.accept(CLIP_SECTION)).toBe(true);
+    stubFetchOk();
+    await efxPaintAudioMonitor.prepare(null);
+    // The scrub funnel used to require a main-audio `context`, which a
+    // clip-only session never has — Play sounded the clip while scrub was
+    // silent. The gate is now "anything dispatchable".
+    efxPaintAudioMonitor.scrubAt(96);
+    expect(mockedAudioEngine.play).toHaveBeenCalledTimes(1);
+    expect(mockedAudioEngine.play).toHaveBeenCalledWith(
+      'sound-clip-1',
+      2.0,
+      expect.objectContaining({ id: 'sound-clip-1', volume: 0.75 }),
+      24,
+      // Snippet window: cursor + EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES (4).
+      (100 - 96) / 24,
+    );
     expect(efxPaintAudioMonitor.isPlaying()).toBe(true);
   });
 });
