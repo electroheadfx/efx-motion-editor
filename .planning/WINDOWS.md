@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 16
+open_count: 17
 waived_count: 5
 fixed_count: 69
-total_count: 90
-last_updated: 2026-10-06T07:22:49.055Z
+total_count: 91
+last_updated: 2026-10-07T09:28:34.433Z
 ---
 
 # Broken Windows Ledger
@@ -105,6 +105,7 @@ last_updated: 2026-10-06T07:22:49.055Z
 | 88 | quick-261004-dn5 | deviation | app/src/components/physic-paint/view/physicsPaintTemporaryMove.test.ts |  | Task 3: dispatcher meta+Z cell asserts one dispatcher-owned preventDefault; Cmd+A fake target answers strip-scoped closest | open |  | 2026-10-04T09:42:45.463Z |  |
 | 89 | quick-261004-hwa | deviation | app/src/stores/paintStore.fgBg.test.ts |  | Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec) | open |  | 2026-10-04T11:38:08.668Z |  |
 | 90 | quick-261006-bdk | deviation | app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts |  | Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md | open |  | 2026-10-06T07:22:49.055Z |  |
+| 91 | 52.5 | unrun-verify | .planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md |  | 01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest | open |  | 2026-10-07T09:28:34.433Z |  |
 
 ````json
 [
@@ -1203,6 +1204,19 @@ last_updated: 2026-10-06T07:22:49.055Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-06T07:22:49.055Z",
+    "resolved_at": null,
+    "milestone": "v1.0.0"
+  },
+  {
+    "id": 91,
+    "kind": "unrun-verify",
+    "phase": "52.5",
+    "file": ".planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md",
+    "line": null,
+    "description": "01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-07T09:28:34.433Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
   }

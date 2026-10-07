@@ -470,14 +470,14 @@ Plans:
 **Goal:** Give the Physic Paint document its own sound clip (dialogue or foley for the animation being drawn). In the Studio it shows the way the main app shows audio — waveform in the timeline, drag to reposition, edit start/end points — and Studio playback plays this clip. In the main editor, playing a Physic Paint layer plays that clip together with the existing main-timeline audio (music / ambience, which keeps its current role and stays read-only in the Studio, exactly as today). Studio edits (reposition, start/end) reach the main editor through the existing two-window sync and survive save/reopen — `.mce` keeps the sound as a reference, per 52.2.
 **Requirements**: TBD (de-facto contracts: Studio waveform/reposition/start-end, Studio playback, main-editor mixed playback, cross-window sync, save/reopen reference restore)
 **Depends on:** Phase 52 (52.2 `.mce` reference packaging; Phase 51 audio monitoring/scrub machinery)
-**Plans:** 1/3 plans executed (Plan 1 = Studio side, executes as two slices 01a + 01b; Plan 2 = main side, unchanged scope)
+**Plans:** 2/3 plans executed (Plan 1 = Studio side, executes as two slices 01a + 01b; Plan 2 = main side, unchanged scope)
 
 Plans:
 **Wave 1**
 - [x] 52.5-01a-PLAN.md — Plan 1 slice 1, document sound core: singleton sound member (D-01/Q4) fail-closed parse + .mce reference persistence + closed documentAudio transport (Q1) + shared-gallery kind discriminator (Q2) + Studio clip playback with MUST-FIX prepare-gate widening — verdict rows: clip plays in a project with no main audio; clip + in/out survive save/reopen as a .mce reference
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 52.5-01b-PLAN.md — Plan 1 slice 2, Studio surface: |sound: fingerprint term + settle-only push (SYNC-01) + Document sound modal (D-05/D-10) + gallery step-aside wiring + waveform stain / 2 px trim bar / launcher / gesture truth table (D-06..D-09, STUDIO-UI-01/02) — verdict rows: live/native visual UAT only (stain, trim, reposition, gestures, modal states)
+- [x] 52.5-01b-PLAN.md — Plan 1 slice 2, Studio surface: |sound: fingerprint term + settle-only push (SYNC-01) + Document sound modal (D-05/D-10) + gallery step-aside wiring + waveform stain / 2 px trim bar / launcher / gesture truth table (D-06..D-09, STUDIO-UI-01/02) — verdict rows: live/native visual UAT only (stain, trim, reposition, gestures, modal states)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 52.5-02-PLAN.md — Plan 2, main side (scope unchanged): main-editor mixed playback under D-12/D-13 gates + decode-once + export mixer clip join (includeAudio && soundInOutput) + PIN 4 cross-window sync proof + reopen restore + MON-01 regression — verdict rows: both sources audible together; Studio edits appear after sync; reopen restores clip + in/out

@@ -5,17 +5,17 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.5"
 current_phase_name: Physic Paint document sound track (INSERTED)
 status: executing
-stopped_at: Completed 52.5-01a-PLAN.md
-last_updated: "2026-10-07T00:13:22.701Z"
+stopped_at: Completed 52.5-01b-PLAN.md
+last_updated: "2026-10-07T09:29:05.593Z"
 last_activity: 2026-10-07
 last_activity_desc: Phase 52.5 execution started
-state_head: a6a3dd60fa466e626d174e8a0ad54f514b2a9c4e
+state_head: 4247eafd1faef9795dedf507e58f230f11d5c771
 progress:
   total_phases: 14
   completed_phases: 19
   total_plans: 75
-  completed_plans: 73
-  percent: 97
+  completed_plans: 74
+  percent: 99
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 ## Current Position
 
 Phase: 52.5 (Physic Paint document sound track (INSERTED)) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-10-07 — Phase 52.5 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 97%)
+Progress: [████████████████████] 49/49 plans ([█████████░] 99%)
 
 ## Performance Metrics
 
@@ -137,6 +137,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.4 P04 | 98min | 3 tasks | 4 files |
 | Phase quick-260930-wm6 P260930-wm6 | 41m | 3 tasks | 12 files |
 | Phase 52.5-physic-paint-document-sound-track P01a | 78min | 3 tasks | 26 files |
+| Phase 52.5 P01b | 2h40m | 3 tasks | 26 files |
 
 ## Accumulated Context
 
@@ -380,6 +381,9 @@ Recent decisions affecting current work:
 - [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a: clip fps chain = current?.fps ?? store.getFps(), store seeded at hydration (context.fps ?? 12)
 - [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a: child documentAudio store keeps a persistent appliedRevision watermark surviving null-clears (stale replay can never resurrect a clip)
 - [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a Rule 2 deviation: launch hydration seeds store identity + routes documentAudio through the single funnel (usePhysicsPaintLaunchIntegration.ts)
+- [Phase 52.5]: Sound band gestures use window capture-phase listeners: identity fixed at pointer-down, stopPropagation only once armed (stain press bubbles for the single sub-threshold seek; trim stops before guards and never seeks)
+- [Phase 52.5]: Direct-DOM drag preview with one settle on release through setDocumentSound (T-52.5-02 settle-only push); peaks re-derive on reopen via existing decode/cache, fail-closed
+- [Phase 52.5]: Trim law mirrors the NLE model: left end moves start+in together (timeline end invariant), right end clamped so start+(out-in) <= parentEnd, min span 1 frame
 
 ### Pending Todos
 
@@ -493,6 +497,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-07T00:13:21.299Z
-Stopped at: Completed 52.5-01a-PLAN.md
+Last session: 2026-10-07T09:29:03.875Z
+Stopped at: Completed 52.5-01b-PLAN.md
 Resume file: None
