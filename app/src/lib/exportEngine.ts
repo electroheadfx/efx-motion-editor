@@ -16,6 +16,8 @@ import type { Sequence } from '../types/sequence';
 import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpeg, exportEncodeVideo, exportCleanupPngs, exportCleanupFile } from './ipc';
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
 import { renderMixedAudio } from './audioExportMixer';
+import { buildExportMixEntries, collectDocumentSoundClips, type DocumentSoundExportClip } from './documentSoundGates';
+import { isSafeAudioRelativePath } from './efxPaintPersistence';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /**
@@ -323,9 +325,34 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     }
 
     let audioWavPath: string | null = null;
-    const hasAudioTracks = audioStore.tracks.peek().length > 0;
 
-    if (settings.includeAudio && hasAudioTracks) {
+    // 52.5-02 (D-11/D-12/D-14, EXPORT-01): the mix joins the placed document
+    // clips under `includeAudio && clip.enabled`. Inclusion is decided by the
+    // one pure function `buildExportMixEntries` — the D-11 preview-mix toggle is
+    // preview-only and never appears here. Each clip reference must be a safe
+    // package-relative `audio/` path before it is joined (T-52.5-05); a bad or
+    // unusable reference is refused-and-skipped, never mixed from a raw path.
+    const projectRoot = projectStore.dirPath.peek() ?? '';
+    const exportClipEntries: DocumentSoundExportClip[] = [];
+    for (const entry of collectDocumentSoundClips(sequenceStore.sequences.peek(), getEfxPaintDocument)) {
+      if (!isSafeAudioRelativePath(entry.sound.relativePath)) {
+        console.warn(`[Export] Skipping document sound "${entry.sound.relativePath}": not a safe package-relative audio/ path.`);
+        continue;
+      }
+      exportClipEntries.push({
+        sound: entry.sound,
+        filePath: `${projectRoot}/${entry.sound.relativePath}`,
+        timelineStartFrame: entry.timelineStartFrame,
+      });
+    }
+    const mixEntries = buildExportMixEntries(
+      settings.includeAudio,
+      audioStore.tracks.peek(),
+      exportClipEntries,
+      projectStore.fps.peek(),
+    );
+
+    if (mixEntries.length > 0) {
       exportStore.updateProgress({ status: 'preparing' });
 
       // Wire cancel flag to AbortController so renderMixedAudio can be aborted mid-render
@@ -336,7 +363,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
 
       try {
         // Pre-check: verify at least one audio buffer is loaded
-        const tracksWithBuffers = audioStore.tracks.peek().filter(
+        const tracksWithBuffers = mixEntries.filter(
           t => !t.muted && audioEngine.getBuffer(t.id),
         );
         if (tracksWithBuffers.length === 0) {
@@ -345,7 +372,7 @@ export async function startExport(startFromFrame = 0): Promise<void> {
 
         const totalDurationSec = total / projectStore.fps.peek();
         const wavData = await renderMixedAudio(
-          audioStore.tracks.peek(),
+          mixEntries,
           projectStore.fps.peek(),
           totalDurationSec,
           abortController.signal,

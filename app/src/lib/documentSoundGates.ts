@@ -205,3 +205,51 @@ export function mainPlaybackClipEnabled(
 ): boolean {
   return sound !== null && sound.enabled && layerInComposite(sequenceVisible, soloActive);
 }
+
+/**
+ * Export inclusion (D-12, EXPORT-01): the clip ships iff it exists and its own
+ * `enabled` switch is ON. D-11 is proven by construction — the preview-mix
+ * toggle is preview-only, so it is not a parameter here and can never gate
+ * export (`exportClipEnabled` reads the clip alone).
+ */
+export function exportClipEnabled(sound: DocumentSoundClip | null): boolean {
+  return sound !== null && sound.enabled;
+}
+
+/** A clip resolved for export: its place on the global timeline + a path-safe reference. */
+export interface DocumentSoundExportClip {
+  readonly sound: DocumentSoundClip;
+  /** Path-safe absolute reference (the caller enforces isSafeAudioRelativePath before the join). */
+  readonly filePath: string;
+  /** Global timeline start (`sequence.inFrame + sound.startFrame`). */
+  readonly timelineStartFrame: number;
+}
+
+/**
+ * The export mixer's entry list (D-12/D-14, EXPORT-01): main tracks unchanged,
+ * plus one `toDocumentSoundAudioTrack` entry per export-enabled clip appended in
+ * collection order (one per layer). Returns [] when `includeAudio` is off so a
+ * preview-only flag or a stray clip can never reach `renderMixedAudio`'s input.
+ *
+ * `offsetFrame` is the clip's GLOBAL start — the mixer schedules
+ * `startTimeSec = offsetFrame / fps` on the export timeline, so the Studio
+ * adapter's document-local value would misplace the clip.
+ */
+export function buildExportMixEntries(
+  includeAudio: boolean,
+  tracks: readonly AudioTrack[],
+  clipEntries: readonly DocumentSoundExportClip[],
+  fps: number,
+): AudioTrack[] {
+  if (!includeAudio) return [];
+  const entries: AudioTrack[] = [...tracks];
+  for (const { sound, filePath, timelineStartFrame } of clipEntries) {
+    if (!exportClipEnabled(sound)) continue;
+    entries.push({
+      ...toDocumentSoundAudioTrack(sound, filePath, fps),
+      offsetFrame: timelineStartFrame,
+      filePath,
+    });
+  }
+  return entries;
+}
