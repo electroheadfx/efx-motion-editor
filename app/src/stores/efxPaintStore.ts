@@ -14,7 +14,7 @@
  */
 
 import { signal } from '@preact/signals';
-import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
+import type { BackgroundFallback, BackgroundTrack, BlendMode, CachedFrameReference, DocumentSoundClip, EfxPaintDocument, FrameLoopClip, FrameLoopClipRepeat, FrameLoopClipScale, InternalPaintTrack, PhotoReferenceTrack, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
 import { isGrainScaleValue } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { deriveEfxPaintBackgroundResolution } from '../efx-paint/compositor/efxPaintBackgroundResolution';
@@ -1285,6 +1285,82 @@ export function setBackgroundTransformLocked(layerId: string, locked: boolean): 
     ...document,
     background: { ...document.background, transformLocked: locked },
   };
+  _documents.set(layerId, next);
+  _notifyChange();
+  return { ok: true };
+}
+
+/** Result of the document sound member setter (52.5-01b, D-01 singleton). */
+export type DocumentSoundResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: 'no-document' | 'invalid-sound' };
+
+/**
+ * Field-wise sound identity for the same-value early return (idempotent
+ * setter law — every field that reaches the fingerprint/save tokens must
+ * compare here, so an unchanged re-commit is a true no-op).
+ */
+function _sameSound(a: DocumentSoundClip | null, b: DocumentSoundClip | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.id === b.id
+    && a.sourceId === b.sourceId
+    && a.relativePath === b.relativePath
+    && a.sourceRevision === b.sourceRevision
+    && a.startFrame === b.startFrame
+    && a.inFrame === b.inFrame
+    && a.outFrame === b.outFrame
+    && a.volume === b.volume
+    && a.fadeInFrames === b.fadeInFrames
+    && a.fadeOutFrames === b.fadeOutFrames
+    && a.fadeInCurve === b.fadeInCurve
+    && a.fadeOutCurve === b.fadeOutCurve
+    && a.soundInOutput === b.soundInOutput
+    && a.previewMainApp === b.previewMainApp;
+}
+
+/**
+ * Fail-closed shape guard mirroring `parseDocumentSound` (52.5-01b,
+ * T-52.5-12): an invalid clip is NEVER written to the document — the prior
+ * accepted value stays, so an out-of-range volume or fractional fade can
+ * neither reach the sync/save tokens nor the on-disk parser (which would
+ * throw at save time).
+ */
+function _isValidSoundClip(sound: DocumentSoundClip): boolean {
+  const isNonNegativeInteger = (value: number) => Number.isInteger(value) && value >= 0;
+  return typeof sound.id === 'string' && sound.id.length > 0
+    && typeof sound.sourceId === 'string' && sound.sourceId.length > 0
+    && typeof sound.relativePath === 'string' && sound.relativePath.length > 0
+    && isNonNegativeInteger(sound.sourceRevision)
+    && isNonNegativeInteger(sound.startFrame)
+    && isNonNegativeInteger(sound.inFrame)
+    && isNonNegativeInteger(sound.outFrame)
+    && Number.isInteger(sound.volume) && sound.volume >= 0 && sound.volume <= 100
+    && isNonNegativeInteger(sound.fadeInFrames)
+    && isNonNegativeInteger(sound.fadeOutFrames)
+    && (sound.fadeInCurve === 'linear' || sound.fadeInCurve === 'exponential' || sound.fadeInCurve === 'logarithmic')
+    && (sound.fadeOutCurve === 'linear' || sound.fadeOutCurve === 'exponential' || sound.fadeOutCurve === 'logarithmic')
+    && typeof sound.soundInOutput === 'boolean'
+    && typeof sound.previewMainApp === 'boolean';
+}
+
+/**
+ * Write the document's sound member (52.5-01b, D-01 singleton setter,
+ * SYNC-01). The ONE door every modal field commit and every gesture settle
+ * routes through: idempotent same-value early return, fail-closed validation
+ * (invalid entries never commit — the prior accepted value stays), immutable
+ * next-document write, single `_notifyChange()`.
+ *
+ * Display-class revision law: NO `documentRevision` counter bump and NO undo
+ * descriptor — the sound member is excluded from the canonical revision by
+ * design, and the `|sound:` fingerprint/save-token terms pick the edit up
+ * (D-05 class; matches the photo/background display-pref setter idiom).
+ */
+export function setDocumentSound(layerId: string, sound: DocumentSoundClip | null): DocumentSoundResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (sound !== null && !_isValidSoundClip(sound)) return { ok: false, reason: 'invalid-sound' };
+  if (_sameSound(document.sound, sound)) return { ok: true };
+  const next: EfxPaintDocument = { ...document, sound: sound === null ? null : { ...sound } };
   _documents.set(layerId, next);
   _notifyChange();
   return { ok: true };

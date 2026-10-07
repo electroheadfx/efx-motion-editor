@@ -21,6 +21,7 @@ import {
 } from './efxPaintCanonicalEncoder';
 import type {
   BackgroundFallback,
+  DocumentSoundClip,
   EfxPaintDocument,
   FrameLoopClip,
   InternalPaintTrack,
@@ -160,6 +161,41 @@ export function encodeCanonicalBackgroundTransform(transform: PhotoReferenceTran
   ].join('');
 }
 
+/**
+ * Canonical document sound term (52.5-01b, SYNC-01 / PERSIST-01): the FULL
+ * DocumentSoundClip field set in one fixed order, so equal records encode
+ * identically regardless of member insertion order and ANY field change
+ * (volume, in/out, fades, toggles, source identity) rotates the output.
+ *
+ * The sound member is deliberately EXCLUDED from
+ * `encodeValidatedEfxPaintDocumentContent` (clip edits must never rotate the
+ * document revision or the flattened cache keys — 52.5-CONTEXT D-05/D-11
+ * class), so this encoder feeds the two change-detection carriers instead:
+ * the sync fingerprint's `|sound:` term and the savePackage layer
+ * change-token's `|sound:` term (the authoritative layer write gate — without
+ * it a sound-only edit dedupes as a no-op save and save/reopen drops the
+ * clip). A null clip contributes an empty term (photoDisplay idiom).
+ */
+export function encodeCanonicalSound(sound: DocumentSoundClip | null): string {
+  if (sound === null) return '';
+  return [
+    `id:${encodeCanonicalString(sound.id)}`,
+    `src:${encodeCanonicalString(sound.sourceId)}`,
+    `path:${encodeCanonicalString(sound.relativePath)}`,
+    `srcRev:${encodeCanonicalNumber(sound.sourceRevision)}`,
+    `start:${encodeCanonicalNumber(sound.startFrame)}`,
+    `in:${encodeCanonicalNumber(sound.inFrame)}`,
+    `out:${encodeCanonicalNumber(sound.outFrame)}`,
+    `vol:${encodeCanonicalNumber(sound.volume)}`,
+    `fadeIn:${encodeCanonicalNumber(sound.fadeInFrames)}`,
+    `fadeOut:${encodeCanonicalNumber(sound.fadeOutFrames)}`,
+    `fadeInCurve:${encodeCanonicalString(sound.fadeInCurve)}`,
+    `fadeOutCurve:${encodeCanonicalString(sound.fadeOutCurve)}`,
+    `inOutput:${validatedBoolean(sound.soundInOutput)}`,
+    `previewMain:${validatedBoolean(sound.previewMainApp)}`,
+  ].join('');
+}
+
 function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): string {
   const orderedTracks = [...document.tracks].sort((a, b) => a.id.localeCompare(b.id));
   const tracksTerm = `tracks:${orderedTracks.length}:${orderedTracks.map(encodeValidatedEfxPaintTrackContent).join('')}`;
@@ -200,16 +236,18 @@ export function buildEfxPaintDocumentRevision(value: unknown): string {
  * Change-detection fingerprint of the child→main document sync channel: the
  * canonical document revision PLUS the photo/reference display-preference term
  * the revision deliberately excludes PLUS the background display-transform
- * term (260922-rd4, same display-preference class). Display preferences
- * persist in the package but never bump the revision (D-07 vs
- * D-11/D-12/D-13), so the channel's two change-detection points — the child's
- * push guard and the parent's register guard — compare THIS fingerprint;
- * comparing the bare revision silently drops every display-only change from
- * the sync.
+ * term (260922-rd4, same display-preference class) PLUS the document sound
+ * term (52.5-01b, LAST term — the sound member is excluded from the revision
+ * by design so clip edits ship through the sync guards, never through the
+ * pixel revision; T-52.5-02). Display preferences persist in the package but
+ * never bump the revision (D-07 vs D-11/D-12/D-13), so the channel's two
+ * change-detection points — the child's push guard and the parent's register
+ * guard — compare THIS fingerprint; comparing the bare revision silently
+ * drops every display-only (and sound-only) change from the sync.
  */
 export function buildEfxPaintDocumentSyncFingerprint(value: unknown): string {
   const document = parseEfxPaintDocument(value);
-  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}|bgDisplay:${encodeCanonicalBackgroundTransform(document.background.transform)}`;
+  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}|bgDisplay:${encodeCanonicalBackgroundTransform(document.background.transform)}|sound:${encodeCanonicalSound(document.sound)}`;
 }
 
 /**

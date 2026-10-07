@@ -65,6 +65,7 @@ function clipWith(patch: Partial<DocumentSoundClip>): DocumentSoundClip {
 interface RevisionModuleWithSound {
   buildEfxPaintDocumentRevision: (value: unknown) => string;
   buildEfxPaintDocumentSyncFingerprint: (value: unknown) => string;
+  buildEfxPaintCompositeRevision: (value: unknown) => string;
   encodeCanonicalSound?: (sound: DocumentSoundClip | null) => string;
 }
 

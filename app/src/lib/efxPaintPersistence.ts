@@ -47,12 +47,13 @@
  * ASVS V12).
  */
 
-import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { DocumentSoundClip, EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import {
   buildEfxPaintCompositeRevision,
   buildEfxPaintDocumentRevision,
   encodeCanonicalBackgroundTransform,
+  encodeCanonicalSound,
 } from '../efx-paint/document/efxPaintDocumentRevision';
 import { hashCanonicalPhysicalValue } from '../efx-paint/document/efxPaintCanonicalEncoder';
 import {
@@ -511,6 +512,28 @@ export function projectLayerDocument(
  */
 export function isSafeAudioRelativePath(value: string): boolean {
   return isSafePackageRelativePath(value) && value.startsWith('audio/');
+}
+
+/**
+ * The `layer:<layerId>` change token VALUE (52.5-01b Rule 2, PERSIST-01):
+ * both revision legs plus the canonical sound term.
+ *
+ * The sound member is excluded from BOTH `documentRevision` and
+ * `compositeRevision` by design (display-class member — clip edits must never
+ * rotate the pixel revision), so the bare `${revision}+${composite}` value
+ * cannot see a sound-only edit: the change set stays empty, the layer loop
+ * skips `layers/<layerId>.json`, and save/reopen silently drops the clip.
+ * Appending `|sound:` (one canonical encoder, rd4 `|bgT:` precedent at the
+ * authoritative gate) rotates the token exactly when the clip changes while an
+ * unchanged clip keeps the identical value — the no-op-save contract (D-11)
+ * holds for everything else.
+ */
+export function buildEfxPaintLayerChangeTokenValue(
+  documentRevision: string,
+  compositeRevision: string,
+  sound: DocumentSoundClip | null,
+): string {
+  return `${documentRevision}+${compositeRevision}|sound:${encodeCanonicalSound(sound)}`;
 }
 
 /**
@@ -1107,7 +1130,10 @@ export async function savePackage(
   for (const [layerId, documentInput] of input.documents ?? new Map<string, EfxPaintDocumentSaveInput>()) {
     const layer = preparePackageLayer(layerId, documentInput);
     layers.push(layer);
-    nextTokens.set(layer.layerToken, `${layer.documentRevision}+${layer.compositeRevision}`);
+    nextTokens.set(
+      layer.layerToken,
+      buildEfxPaintLayerChangeTokenValue(layer.documentRevision, layer.compositeRevision, layer.document.sound),
+    );
     for (const frame of layer.frames) nextTokens.set(frame.token, frame.contentToken);
   }
   const layerIndex: Record<string, EfxPaintLayerIndexEntry> = {};
