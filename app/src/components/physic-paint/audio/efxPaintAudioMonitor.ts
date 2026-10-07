@@ -1,8 +1,17 @@
 import type { AudioTrack } from '../../../types/audio';
-import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintDocumentAudioSection } from '../../../types/physicPaint';
 import { audioEngine } from '../../../lib/audioEngine';
+import {
+  resolveClipPlayback,
+  resolveDocumentSoundClip,
+  studioClipLegEnabled,
+  studioMainLegEnabled,
+  toDocumentSoundAudioTrack,
+} from '../../../lib/documentSoundGates';
+import { getDocument } from '../../../stores/efxPaintStore';
 import { applyRevisionedEfxPaintAudioPreview, resolveTrackPlayback } from './efxPaintAudioPreviewContext';
 import { audioPreviewEnabled, configureAudioPreviewToggleEffect, efxPaintAudioPreviewStore } from './efxPaintAudioPreviewStore';
+import { efxPaintDocumentAudioStore } from './efxPaintDocumentAudioStore';
 import { efxPaintAudioOwnership } from './efxPaintAudioOwnership';
 import { isPhysicsPaintProfilingEnabled } from '../performance/physicsPaintPerformanceTrace';
 
@@ -79,28 +88,52 @@ let livePlaybackRangeEnd = 0;
 let toggleSilenced = false;
 const preparedTrackIds = new Set<string>();
 
+/**
+ * Shared warn-and-skip prepare for one source id (main track OR document
+ * clip): a failed fetch (efxasset 404) or decode logs console.warn and skips
+ * ONLY that source — playback of the others never blocks and never throws
+ * (AUDIO-06 / 52.5-01a clip prepare through the same path, keyed by clip id).
+ */
+async function fetchAndDecodeSource(id: string, assetUrl: string): Promise<void> {
+  try {
+    const response = await fetch(assetUrl);
+    if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
+    const bytes = await response.arrayBuffer();
+    await audioEngine.decode(id, bytes);
+    preparedTrackIds.add(id);
+  } catch (error) {
+    preparedTrackIds.delete(id);
+    console.warn(`[efxPaintAudioMonitor] skipping audio track "${id}" — asset fetch/decode failed`, error);
+  }
+}
+
 export const efxPaintAudioMonitor = {
   /**
-   * Fetch + decode every non-muted track. Per-track try/catch: a failed fetch
-   * (efxasset 404) or decode logs console.warn and skips ONLY that track —
-   * playback of the others never blocks and never throws (AUDIO-06).
+   * Fetch + decode every non-muted main track plus the document clip (52.5-01a).
+   * Per-source try/catch via fetchAndDecodeSource — never throws (AUDIO-06).
+   * `next` may be null: a clip-only session (zero main-audio tracks) still
+   * prepares the clip so the widened useRotoCachedPlayback gate can play it.
    */
-  async prepare(next: EfxPaintAudioPreviewContext): Promise<void> {
+  async prepare(next: EfxPaintAudioPreviewContext | null): Promise<void> {
     context = next;
     preparedTrackIds.clear();
     if (state === 'idle') state = 'positioned';
-    await Promise.all(next.tracks.filter((track) => !track.muted).map(async (track) => {
-      try {
-        const response = await fetch(track.assetUrl);
-        if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
-        const bytes = await response.arrayBuffer();
-        await audioEngine.decode(track.id, bytes);
-        preparedTrackIds.add(track.id);
-      } catch (error) {
-        preparedTrackIds.delete(track.id);
-        console.warn(`[efxPaintAudioMonitor] skipping audio track "${track.id}" — asset fetch/decode failed`, error);
-      }
-    }));
+    const jobs: Promise<void>[] = next
+      ? next.tracks.filter((track) => !track.muted).map((track) => fetchAndDecodeSource(track.id, track.assetUrl))
+      : [];
+    const clip = efxPaintDocumentAudioStore.getSection();
+    if (clip) jobs.push(fetchAndDecodeSource(clip.clipId, clip.assetUrl));
+    await Promise.all(jobs);
+  },
+
+  /**
+   * 52.5-01a (Q1): decode ONLY the current document clip — used by the
+   * documentAudio push funnel where the main tracks are already prepared and
+   * must not be re-fetched. Warn-and-skip, same path.
+   */
+  async prepareClip(): Promise<void> {
+    const clip = efxPaintDocumentAudioStore.getSection();
+    if (clip) await fetchAndDecodeSource(clip.clipId, clip.assetUrl);
   },
 
   /**
@@ -109,45 +142,90 @@ export const efxPaintAudioMonitor = {
    * Called again while playing: stopAll first, then re-dispatch at the new
    * cursor (seek-restart discipline — the D-03/D-11 template).
    *
-   * Two entry gates, in order (both keep the live cursor current so a later
-   * resume restarts at the true position):
-   *  1. D-13/D-14 session toggle — muted sessions dispatch nothing, silently
-   *     (the toggle button itself is the visible mute state).
-   *  2. D-05/D-06 first-player-wins ownership — a start while the main editor
-   *     owns audio is suppressed with the status note; a window already
-   *     holding the claim is never suppressed by a later main start.
+   * Two legs (52.5-01a, Q3 / STUDIO-MIX-01 — mix, don't contend):
+   *  1. MAIN-track leg — entry gates, in order (both keep the live cursor
+   *     current so a later resume restarts at the true position):
+   *     a. D-13/D-14 session toggle AND the modal preview-main toggle
+   *        (studioMainLegEnabled, Q3 AND composition) — a muted session or a
+   *        preview-main-Off session dispatches no main tracks.
+   *     b. D-05/D-06 first-player-wins ownership — suppressed with the status
+   *        note; a window already holding the claim is never suppressed by a
+   *        later main start.
+   *  2. DOCUMENT CLIP leg — gated by NEITHER toggle and reachable even when
+   *     the claim fails (the ownership early-return only ever ends the MAIN
+   *     leg). Dispatched INSIDE playAtCursor after the main loop, so
+   *     stopAll, seek-restart, drift, loop-wrap, and scrub funnels cover it.
    */
   playAtCursor(cursorAppFrame: number, playbackRangeEnd: number): void {
     const current = context;
-    if (!current) return;
+    const clipSection = efxPaintDocumentAudioStore.getSection();
+    if (!current && !clipSection) return;
     liveCursorAppFrame = cursorAppFrame;
     livePlaybackRangeEnd = playbackRangeEnd;
-    if (!audioPreviewEnabled.peek()) {
+    const sessionToggleOn = audioPreviewEnabled.peek();
+    if (!sessionToggleOn) {
       // D-14: a start/restart attempt while muted leaves visual playback
-      // running silent — remember it so a later toggle-On resumes here.
+      // running silent — remember it so a later toggle-On resumes here. The
+      // ungated clip leg below may still dispatch (Q3); it never clears this
+      // flag on its own.
       toggleSilenced = true;
-      return;
     }
-    if (!efxPaintAudioOwnership.canStartAudio()) {
+    // Q3: effective main-in-preview = session toggle AND modal preview-main
+    // toggle (per the registered document's sound.previewMainApp). No clip
+    // registered -> previewMainApp defaults to true (main leg = toggle only).
+    const sound = clipSection
+      ? resolveDocumentSoundClip(getDocument(efxPaintDocumentAudioStore.getLayerId() ?? ''), clipSection)
+      : null;
+    let mainLeg = Boolean(current) && studioMainLegEnabled(sound?.previewMainApp ?? true, sessionToggleOn);
+    if (mainLeg && !efxPaintAudioOwnership.canStartAudio()) {
+      // D-05/D-06: the guard suppresses the MAIN leg only — the clip mixes
+      // through (it never sits behind this early-return).
       logAudioScrubDiagnostic('playAtCursor suppressed: main window holds audio');
       efxPaintAudioOwnership.noteSuppressed();
+      mainLeg = false;
+    }
+    const fps = current?.fps ?? efxPaintDocumentAudioStore.getFps();
+    const clipResolution = sound && clipSection
+      ? resolveClipPlayback(sound, cursorAppFrame, playbackRangeEnd, fps)
+      : null;
+    const clipLeg = Boolean(
+      studioClipLegEnabled() && clipSection && sound && clipResolution && preparedTrackIds.has(clipSection.clipId),
+    );
+    if (!mainLeg && !clipLeg) {
+      // Nothing dispatchable at this cursor: a mid-playback re-entry must not
+      // leave stale sources running (seek beyond every audible window).
+      if (state === 'playing') this.stop();
       return;
     }
     const ctx = audioEngine.ensureContext();
     if (state === 'playing') audioEngine.stopAll();
     let dispatched = 0;
-    for (const track of current.tracks) {
-      if (track.muted || !preparedTrackIds.has(track.id)) continue;
-      const resolution = resolveTrackPlayback(track, cursorAppFrame, playbackRangeEnd, current.fps);
-      if (!resolution) continue;
-      // The payload entry is AudioTrack-compatible for the engine's
-      // fade/volume math (same timing/gain field names) — the engine consumes
-      // it unchanged; it never sees the extra AudioTrack authority fields.
-      const trackLike = track as unknown as AudioTrack;
-      if (resolution.kind === 'immediate') {
-        audioEngine.play(track.id, resolution.sourceOffsetSec, trackLike, current.fps, resolution.maxPlaySec);
+    if (mainLeg && current) {
+      for (const track of current.tracks) {
+        if (track.muted || !preparedTrackIds.has(track.id)) continue;
+        const resolution = resolveTrackPlayback(track, cursorAppFrame, playbackRangeEnd, current.fps);
+        if (!resolution) continue;
+        // The payload entry is AudioTrack-compatible for the engine's
+        // fade/volume math (same timing/gain field names) — the engine consumes
+        // it unchanged; it never sees the extra AudioTrack authority fields.
+        const trackLike = track as unknown as AudioTrack;
+        if (resolution.kind === 'immediate') {
+          audioEngine.play(track.id, resolution.sourceOffsetSec, trackLike, current.fps, resolution.maxPlaySec);
+        } else {
+          audioEngine.playDelayed(track.id, resolution.delaySec, resolution.sourceOffsetSec, trackLike, current.fps, resolution.maxPlaySec);
+        }
+        dispatched += 1;
+      }
+    }
+    if (clipLeg && sound && clipSection && clipResolution) {
+      // D-14: the adapter scales the percent volume to linear and carries the
+      // fade fields — the engine's gain/applyFadeSchedule math applies them
+      // unchanged (if the adapter did not scale, this is where it would show).
+      const clipTrack = toDocumentSoundAudioTrack(sound, clipSection.assetUrl, fps);
+      if (clipResolution.kind === 'immediate') {
+        audioEngine.play(sound.id, clipResolution.sourceOffsetSec, clipTrack, fps, clipResolution.maxPlaySec);
       } else {
-        audioEngine.playDelayed(track.id, resolution.delaySec, resolution.sourceOffsetSec, trackLike, current.fps, resolution.maxPlaySec);
+        audioEngine.playDelayed(sound.id, clipResolution.delaySec, clipResolution.sourceOffsetSec, clipTrack, fps, clipResolution.maxPlaySec);
       }
       dispatched += 1;
     }
@@ -156,11 +234,13 @@ export const efxPaintAudioMonitor = {
     anchorCtx = ctx;
     anchorCtxTime = ctx.currentTime;
     driftTickCounter = 0;
-    toggleSilenced = false;
+    // The main leg runs iff the session toggle is On — a clip dispatch under
+    // a muted session keeps the D-14 flag set so a later toggle-On starts main.
+    toggleSilenced = !sessionToggleOn;
     state = 'playing';
-    // D-05 claim lifecycle: the first audio start claims ownership so a later
-    // main-editor start suppresses itself (symmetric guard).
-    efxPaintAudioOwnership.claimAudio();
+    // D-05 claim lifecycle: ONLY a dispatched MAIN leg claims ownership — the
+    // clip alone never claims (mix, don't contend).
+    if (mainLeg) efxPaintAudioOwnership.claimAudio();
   },
 
   /**
@@ -183,7 +263,7 @@ export const efxPaintAudioMonitor = {
     anchorCtxTime = 0;
     driftTickCounter = 0;
     fpsMismatchNoted = false;
-    state = context ? 'positioned' : 'idle';
+    state = (context || efxPaintDocumentAudioStore.getSection()) ? 'positioned' : 'idle';
   },
 
   /** Reposition the anchor without sound (D-09 silent scrub). */
@@ -286,6 +366,12 @@ export const efxPaintAudioMonitor = {
       if (state !== 'playing') return;
       this.stop();
       toggleSilenced = true;
+      // Q3 (52.5-01a): the toggle silences ONLY the main leg — re-enter the
+      // play funnel so an active document clip keeps sounding through the
+      // muted session (the clip leg is gated by neither toggle). With no clip
+      // the re-entry hits the muted-session early return with zero engine
+      // dispatch (MON-01 baseline unchanged).
+      this.playAtCursor(liveCursorAppFrame, livePlaybackRangeEnd);
       return;
     }
     if (!toggleSilenced) return;
@@ -306,6 +392,31 @@ export const efxPaintAudioMonitor = {
    */
   async applyRevisionedContext(next: EfxPaintAudioPreviewContext): Promise<void> {
     await this.prepare(next);
+    if (state === 'playing') {
+      this.playAtCursor(liveCursorAppFrame, livePlaybackRangeEnd);
+    } else {
+      anchorAppFrame = liveCursorAppFrame;
+    }
+  },
+
+  /**
+   * 52.5-01a (Q1): a newer documentAudio section (or a null clear) just
+   * entered the child store. Present section: decode the clip through the
+   * warn-and-skip path, then — when playing — restart at the CURRENT Paint
+   * cursor so the clip leg reflects the change immediately (D-03 discipline;
+   * the restart's stopAll retires the previous clip source). Null clear:
+   * retire ONLY the clip source — the main leg keeps playing untouched.
+   */
+  async applyRevisionedDocumentAudio(previous: PhysicPaintDocumentAudioSection | null): Promise<void> {
+    const section = efxPaintDocumentAudioStore.getSection();
+    if (!section) {
+      if (previous) {
+        audioEngine.stop(previous.clipId);
+        preparedTrackIds.delete(previous.clipId);
+      }
+      return;
+    }
+    await this.prepareClip();
     if (state === 'playing') {
       this.playAtCursor(liveCursorAppFrame, livePlaybackRangeEnd);
     } else {
@@ -344,14 +455,32 @@ export const efxPaintAudioMonitor = {
 };
 
 /**
+ * 52.5-01a (Q1, T-52.5-08): the shared PHYSIC_PAINT_AUDIO_CONTEXT_EVENT carries
+ * EITHER payload shape — disjoint key sets ({revision,fps,tracks} vs
+ * {revision,clipId,assetUrl}) plus the null clear. A `clipId` member or an
+ * explicit null routes to the documentAudio funnel; everything else is the
+ * audioPreview shape (which never carries clipId and never sends null).
+ */
+function isDocumentAudioTransport(value: unknown): boolean {
+  if (value === null) return true;
+  return typeof value === 'object' && !Array.isArray(value) && 'clipId' in value;
+}
+
+/**
  * Single child-side funnel for pushed audio-context events (D-02/D-03,
- * AUDIO-04): validate + strict newer-than revision guard
- * (applyRevisionedEfxPaintAudioPreview — stale or equal revisions are dropped
+ * AUDIO-04, 52.5-01a): route by payload shape, then validate + strict
+ * newer-than revision guard in the owning store (equal/stale dropped
  * silently, same-revision re-delivery is a defined no-op), then hand the
  * accepted section to the monitor. Returns null for a dropped delivery (zero
  * audio dispatch), otherwise the monitor's apply promise.
  */
 export function handleEfxPaintAudioContextEvent(value: unknown): Promise<void> | null {
+  if (isDocumentAudioTransport(value)) {
+    const previous = efxPaintDocumentAudioStore.getSection();
+    const applied = efxPaintDocumentAudioStore.accept(value);
+    if (!applied) return null;
+    return efxPaintAudioMonitor.applyRevisionedDocumentAudio(previous);
+  }
   const applied = applyRevisionedEfxPaintAudioPreview(efxPaintAudioPreviewStore, value);
   if (!applied) return null;
   const section = efxPaintAudioPreviewStore.getSection();

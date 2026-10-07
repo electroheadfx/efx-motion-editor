@@ -207,6 +207,9 @@ describe('efxPaintDocumentAudioStore — closed documentAudio funnel (52.5-01a, 
     const unsubscribe = efxPaintDocumentAudioStore.section.subscribe(() => {
       notifications += 1;
     });
+    // signal.subscribe runs once on attach (effect semantics) — reset so the
+    // counter measures CHURN caused by accept, not the attach-fire.
+    notifications = 0;
     expect(efxPaintDocumentAudioStore.accept({ ...payload })).toBe(false);
     expect(efxPaintDocumentAudioStore.getSection()).toBe(before);
     expect(notifications).toBe(0);
