@@ -1,5 +1,6 @@
 import type { AudioTrack } from '../types/audio';
 import type { DocumentSoundClip, EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { Sequence } from '../types/sequence';
 import {
   resolveTrackPlayback,
   type EfxPaintTrackPlaybackResolution,
@@ -118,4 +119,89 @@ export function toDocumentSoundAudioTrack(
     beatMarkers: [],
     showBeatMarkers: false,
   };
+}
+
+/**
+ * One collected clip: the placed clip, the layer that owns it, the fx sequence
+ * that composites that layer, and the clip's GLOBAL timeline start.
+ *
+ * Frame-space law (52.5-02): `sound.startFrame` is DOCUMENT-LOCAL — the Studio
+ * band's `appFrame` cells, bounded by `rotoParentEndExclusive` (the document
+ * capacity). A clip's global timeline start is `sequence.inFrame + startFrame`,
+ * the same rebasing frameMap applies (`localFrame = globalFrame - seq.inFrame`)
+ * and getTimelineOverlaySequenceOutFrame applies to roto ends
+ * (`seq.inFrame + rotoEnd`).
+ */
+export interface DocumentSoundClipEntry {
+  readonly layerId: string;
+  readonly sound: DocumentSoundClip;
+  readonly sequence: Sequence;
+  /** Global timeline frame the clip starts at. */
+  readonly timelineStartFrame: number;
+}
+
+/**
+ * Collect every placed document clip across the fx sequences (52.5-02,
+ * MAIN-MIX-01). Membership mirrors frameMap's overlay predicate shape — a
+ * physic-paint layer on a non-fx sequence is not an overlay and is never
+ * collected — deduped by layer id, one entry per layer whose document carries a
+ * sound. Pure: callers inject `efxPaintStore.getDocument` so the same read
+ * serves main playback and export.
+ *
+ * Deliberately NOT filtered by visibility: a hidden fx sequence still yields its
+ * entry so `mainPlaybackClipEnabled` can apply the D-13 composite gate (and
+ * pin it in a test) rather than the collection silently dropping rows.
+ */
+export function collectDocumentSoundClips(
+  sequences: readonly Sequence[],
+  getDocument: (layerId: string) => EfxPaintDocument | null,
+): DocumentSoundClipEntry[] {
+  const entries: DocumentSoundClipEntry[] = [];
+  const seenLayerIds = new Set<string>();
+  for (const sequence of sequences) {
+    if (sequence.kind !== 'fx') continue;
+    for (const layer of sequence.layers) {
+      if (layer.type !== 'physic-paint') continue;
+      const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
+      if (seenLayerIds.has(layerId)) continue;
+      seenLayerIds.add(layerId);
+      const sound = getDocument(layerId)?.sound ?? null;
+      if (sound === null) continue;
+      entries.push({
+        layerId,
+        sound,
+        sequence,
+        timelineStartFrame: (sequence.inFrame ?? 0) + sound.startFrame,
+      });
+    }
+  }
+  return entries;
+}
+
+/**
+ * D-13 composite gate (Q5/A1 CONFIRMED): a physic-paint layer contributes to
+ * the main editor's output only when its fx sequence is in the composite —
+ * visible AND not soloed. Solo is the main editor's global "only base content"
+ * switch: `renderGlobalFrame` skips overlay sequences entirely when soloActive
+ * (exportRenderer.ts:334-335) and physic-paint layers ride fx sequences
+ * (frameMap.ts:60), so solo ON puts the layer OUT of the composite and its clip
+ * must be inaudible. `physicsPaintSoloArm.ts` is the separate Studio session arm
+ * and plays no part in this gate.
+ */
+export function layerInComposite(sequenceVisible: boolean, soloActive: boolean): boolean {
+  return sequenceVisible && !soloActive;
+}
+
+/**
+ * The main-editor clip leg (D-12 + D-13, MAIN-MIX-01): the clip dispatches iff
+ * it exists, its own `enabled` switch is ON (UAT round 2 — ON = audible in
+ * Studio + main playback + export; OFF = silent everywhere), AND its layer is in
+ * the composite. Sound follows the composite exactly like the layer's pixels.
+ */
+export function mainPlaybackClipEnabled(
+  sound: DocumentSoundClip | null,
+  sequenceVisible: boolean,
+  soloActive: boolean,
+): boolean {
+  return sound !== null && sound.enabled && layerInComposite(sequenceVisible, soloActive);
 }
