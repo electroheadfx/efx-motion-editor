@@ -4657,8 +4657,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ref={soundStainElRef}
                   class="physics-paint-sound-stain"
                   style={{ left: `${soundLeftPx}px`, width: `${soundWidthPx}px` }}
-                  title="Drag to reposition the sound clip"
+                  title="Drag to reposition, double-click to open Document sound"
                   onPointerDown={(event) => handleSoundStainPointerDown(event as unknown as PointerEvent)}
+                  onDblClick={(event) => {
+                    // UAT round 6: double-clicking the clip opens ITS Document
+                    // sound modal (the same port the header launcher uses). The
+                    // paired pointer-downs only select the clip — they never
+                    // commit — so opening on top of them is safe.
+                    event.stopPropagation();
+                    props.onOpenDocumentSound?.();
+                  }}
                 >
                   <svg
                     ref={soundWaveElRef}

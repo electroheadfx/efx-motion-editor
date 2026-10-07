@@ -106,6 +106,13 @@ struct PhysicsPaintLaunchContext {
     roto_interpolation_settings: Option<Value>,
     #[serde(rename = "audioPreview", skip_serializing_if = "Option::is_none")]
     audio_preview: Option<Value>,
+    // 52.5 (UAT round 6): the closed documentAudio section rides the same
+    // opaque-Value channel as audioPreview. Without this field serde DROPPED
+    // the member on the native path, so a reopened project's clip reached the
+    // child with no section — the monitor never ran prepareClip and the clip
+    // leg stayed silent while the band still drew (peaks use a separate path).
+    #[serde(rename = "documentAudio", skip_serializing_if = "Option::is_none")]
+    document_audio: Option<Value>,
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
@@ -990,6 +997,7 @@ mod tests {
             cached_roto_frames: Vec::new(),
             roto_interpolation_settings: None,
             audio_preview: None,
+            document_audio: None,
         }
     }
 
@@ -1023,6 +1031,28 @@ mod tests {
         let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
         assert_eq!(deserialized.document.as_ref().unwrap()["id"], "layer-1");
         assert_eq!(deserialized.document.as_ref().unwrap()["activeTrackId"], "track-1");
+    }
+
+    #[test]
+    fn physics_paint_launch_context_round_trips_the_document_audio_section() {
+        // 52.5 UAT round 6: without a `documentAudio` field serde silently
+        // dropped the section, so a reopened project's clip reached the Studio
+        // with no carrier — the monitor never decoded it and playback stayed
+        // dead while the band still drew. Pin the member across the same
+        // round-trip the child's `get_physics_paint_launch_context` fetch uses.
+        let mut context = roto_launch_context();
+        context.document_audio = Some(serde_json::json!({
+            "revision": 7,
+            "clipId": "clip-1",
+            "assetUrl": "efxasset://localhost/audio/dialogue.wav"
+        }));
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["documentAudio"]["clipId"], "clip-1");
+        let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
+        let section = deserialized.document_audio.as_ref().unwrap();
+        assert_eq!(section["revision"], 7);
+        assert_eq!(section["clipId"], "clip-1");
+        assert_eq!(section["assetUrl"], "efxasset://localhost/audio/dialogue.wav");
     }
 
     // WR-07: pure byte-range resolution for the efxasset video Range branch.

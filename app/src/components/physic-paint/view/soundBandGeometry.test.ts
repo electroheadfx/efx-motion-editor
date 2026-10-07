@@ -251,6 +251,9 @@ describe('soundBandGeometry — band surface source contract (plan acceptance cr
     expect(/if \(!session\.armed\) \{/.test(upHandler)).toBe(true);
     // The playhead carries the dedicated scrub handle.
     expect(strip.includes('physics-paint-playhead-handle')).toBe(true);
+    // UAT round 6: double-clicking the clip opens ITS Document sound modal
+    // through the same port the header launcher uses.
+    expect(/onDblClick[\s\S]{0,600}?onOpenDocumentSound/.test(strip)).toBe(true);
   });
 
   it('(t12) the launcher is a 24x26 nav button with the Document sound label and AudioWaveform icon', () => {
