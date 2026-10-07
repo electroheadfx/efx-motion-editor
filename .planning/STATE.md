@@ -5,17 +5,17 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: "52.5"
 current_phase_name: Physic Paint document sound track (INSERTED)
 status: executing
-stopped_at: Phase 52.5 UI-SPEC approved
-last_updated: "2026-10-06T22:42:02.506Z"
+stopped_at: Completed 52.5-01a-PLAN.md
+last_updated: "2026-10-07T00:13:22.701Z"
 last_activity: 2026-10-07
 last_activity_desc: Phase 52.5 execution started
-state_head: c05ade02b38b66d8a2ea25f3dced8ffcecf2f2e4
+state_head: a6a3dd60fa466e626d174e8a0ad54f514b2a9c4e
 progress:
   total_phases: 14
   completed_phases: 19
   total_plans: 75
-  completed_plans: 72
-  percent: 96
+  completed_plans: 73
+  percent: 97
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
 ## Current Position
 
 Phase: 52.5 (Physic Paint document sound track (INSERTED)) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 52.5
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-10-07 — Phase 52.5 execution started
 
-Progress: [████████████████████] 49/49 plans ([█████████░] 96%)
+Progress: [████████████████████] 49/49 plans ([█████████░] 97%)
 
 ## Performance Metrics
 
@@ -136,6 +136,7 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.4 P03 | 30min | 3 tasks | 3 files |
 | Phase 52.4 P04 | 98min | 3 tasks | 4 files |
 | Phase quick-260930-wm6 P260930-wm6 | 41m | 3 tasks | 12 files |
+| Phase 52.5-physic-paint-document-sound-track P01a | 78min | 3 tasks | 26 files |
 
 ## Accumulated Context
 
@@ -376,6 +377,9 @@ Recent decisions affecting current work:
 - [Phase 52.4]: quick-260930-wm6 revision R1: PREVIEW == SETTLED. THREE render paths existed and the eye judged the one no settled path could reproduce (tier='live' raw dry-canvas blit at LIVE_WIDTH_MUL=4 vs tier='final' reduced-clone deposit + R9 solver). ONE PIPELINE (raw blit + liveSnapshot/restore + the second renderPaintStroke pass deleted) + ONE LANDING (reveal only after the physicsTicks solver) + THREE NAMED DEPOSIT KNOBS (DEPOSIT_KEEP_TIER 70→40, DEPOSIT_DENSITY_SCALE 3000→4500, D-08 floor userOpacity²→userOpacity + gamma 0.8→0.5). Standing gate lookLawDigest.test.ts = byte-equal preview == cache == reloaded. Look = dense + physics texture, never the solid raw blit (that is Paint's job, paint-width)
 - [Phase 52.4]: quick-260930-wm6 revision R2: GESTURE STALL + WHITE SEAM (measure-first, one fix per defect). Look UAT on R1 PASSED; knobs 40/4500/0.5 STAND. Defect 1 writer = paint-pickup-canvas-snap full-canvas getImageData (2,073,600px at 1080p) feeding only a ceil(radius/2) disc → scoped to the curve footprint (whole-source readbacks 1→0). S1 preview EXONERATED; S1 finalize drain NAMED NOT FIXED (unbounded flushPendingStrokeFinalizations + dead hasPendingInput in WKWebView). Defect 2 writer = paper tile seams — plain repeat of a photographed paper_*.jpg steps 0.8000 at every tile boundary (the cut grid + one tile's block outline) → loadPaperTexture mirror-tiles (step 0.8000→0.0000). (a) bbox clip EXONERATED (94,710 hull verts, clippedVerts=0); (d) solver overflow is a HALO not a cut
 - [Phase 52.4]: quick-260930-wm6 revision R3b: TRUE-WHITE HOLES (paper exonerated). R2's mirror did NOT kill the seams. STEP 1 (user): lines are TRUE WHITE (alpha ~ 0) at 100% brush opacity -> paper exonerated BY PHYSICS (fast path skips paperMod at pixelOpacity >= 0.90; conditionHeightMap clamps h to [0.10, 0.90] so paperMod >= 0.775 = lighten at most 22%, never 0; measured min 0.7756). paper.ts byte-untouched. INVARIANT: no VISIBLE wet pixel may vanish without landing in dry (getBakedCanvas = previewBase + dry, no wet overlay). (a) segBounds clip CLEAN at production extremes the R2 pin missed (edgeDetail 100 -> edgeMul 2, r 8/32/64, deform depth 4, INTERIOR offscreens: 60828/88160/84700 verts, clippedVerts 0). (d1) sa==0 clear-without-transfer CLEAN (wet.alpha 1-4 -> sa rounds to 0, but those bytes render 0 on the display TOO). (d2) THE WRITER: dryRegionForStroke = +/- brushRenderRadius but the solver solves +/-(brushR + margin); 384 VISIBLE pixels in the ring never land in dry -> the bbox rectangle = the 'full block outline' + its four sides. Disproven 52.1 assumption (drying.ts): "wet pixels of one finalized stroke are bounded by the stroke bbox". ONE FIX: forceDryAll unions the caller's bounds with the real wet extent (compositeWetLayer's existing O(W*H) scan) -> ring 0->384 written, 384->0 visible-absent; 52.1 bounded-readback law holds. Fix in drying.ts so the uncommitted previewBase fix stays out. drying.bboxLoss.test.ts (q6t Addendum B) flipped to gate the fix. RED c5914ff6 -> GREEN 70d79adf
+- [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a: clip fps chain = current?.fps ?? store.getFps(), store seeded at hydration (context.fps ?? 12)
+- [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a: child documentAudio store keeps a persistent appliedRevision watermark surviving null-clears (stale replay can never resurrect a clip)
+- [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a Rule 2 deviation: launch hydration seeds store identity + routes documentAudio through the single funnel (usePhysicsPaintLaunchIntegration.ts)
 
 ### Pending Todos
 
@@ -489,6 +493,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-06T20:38:40.243Z
-Stopped at: Phase 52.5 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/52.5-physic-paint-document-sound-track/52.5-UI-SPEC.md
+Last session: 2026-10-07T00:13:21.299Z
+Stopped at: Completed 52.5-01a-PLAN.md
+Resume file: None
