@@ -137,10 +137,10 @@ import {
   selectSoundPeaks,
   soundFadeInPathD,
   soundFadeOutPathD,
+  soundGainLineSpan,
   soundGainLineY,
   soundStainLeftPx,
   soundStainWidthPx,
-  soundSpanFrames,
   soundWaveformPathD,
   type SoundBandGesturePatch,
   type SoundBandValues,
@@ -1856,6 +1856,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const soundPeaks = soundClip ? selectSoundPeaks(audioPeaksCache.get(soundClip.sourceId), soundSourceWidthPx) : null;
   const soundPathD = soundPeaks ? soundWaveformPathD(soundPeaks, soundSourceWidthPx) : null;
   const soundGainY = soundClip ? soundGainLineY(soundClip.gain) : 0;
+  // UAT round 5: the gain line is clipped to the gap between active fades —
+  // a fade owns its ramp region, so the line never runs under/after a
+  // transition. Both fades meeting leaves no gap (null) and the line is omitted.
+  const soundGainSpan = soundClip
+    ? soundGainLineSpan(soundClip.fadeInFrames, soundClip.fadeOutFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx)
+    : null;
   const soundFadeInD = soundClip
     ? soundFadeInPathD(soundClip.fadeInFrames, soundClip.inFrame, soundClip.outFrame, soundWidthPx, soundClip.gain, soundClip.fadeInCurve)
     : null;
@@ -2904,8 +2910,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     event.stopPropagation();
     const delta = Math.round(dx / ROTO_CELL_WIDTH_PX);
     if (session.kind === 'stain') {
-      const span = soundSpanFrames(session.origin.inFrame, session.origin.outFrame);
-      const nextStart = clampSoundRepositionStart(session.origin.startFrame, delta, span, soundBandParentEnd());
+      // UAT round 5: the reposition bound is the START (the body may overhang
+      // the parent end) — a full-width clip used to be pinned at frame 0.
+      const nextStart = clampSoundRepositionStart(session.origin.startFrame, delta, soundBandParentEnd());
       session.next = { ...session.origin, startFrame: nextStart };
     } else if (session.kind === 'trim-start') {
       session.next = {
@@ -4661,8 +4668,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     viewBox={`${soundInPx} 0 ${soundWidthPx} ${SOUND_BAND_HEIGHT_PX}`}
                     aria-hidden="true"
                   >
-                    {/* UAT round 3/4: waveform RGB (22 110 203); the fade curves
-                        and the gain line share RGB (45 179 227) at 1px. */}
+                    {/* UAT round 3/4/5: waveform RGB (22 110 203); the fade
+                        curves and the gain line share the lightened overlay
+                        stroke at 1px, and the gain line is clipped around any
+                        active transition (UAT round 5). */}
                     <path d={soundPathD} fill={SOUND_WAVEFORM_FILL} />
                     <g ref={soundOverlayElRef} transform={`translate(${soundInPx}, 0)`}>
                       {soundFadeInD !== null ? (
@@ -4681,14 +4690,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           fill="none"
                         />
                       ) : null}
-                      <line
-                        x1={0}
-                        y1={soundGainY}
-                        x2={soundWidthPx}
-                        y2={soundGainY}
-                        stroke={SOUND_OVERLAY_STROKE}
-                        stroke-width={SOUND_OVERLAY_STROKE_PX}
-                      />
+                      {soundGainSpan !== null ? (
+                        <line
+                          x1={soundGainSpan.x1}
+                          y1={soundGainY}
+                          x2={soundGainSpan.x2}
+                          y2={soundGainY}
+                          stroke={SOUND_OVERLAY_STROKE}
+                          stroke-width={SOUND_OVERLAY_STROKE_PX}
+                        />
+                      ) : null}
                     </g>
                   </svg>
                 </div>

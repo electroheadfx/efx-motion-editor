@@ -14,8 +14,14 @@
  * - The filled path traces maxes left-to-right on top, mins right-to-left on
  *   bottom — the same single-path fill as the timeline audio track, adapted to
  *   the full-height stain. NO center line, NO fades, NO edge handles (D-06).
- * - Trim law: `in < out`, minimum span 1 frame, `start >= 0`, both ends
- *   bounded by the parent end (UI-SPEC "Trim clamps").
+ * - Trim law: `in < out`, minimum span 1 frame, `start >= 0`. A left trim
+ *   keeps the timeline end fixed; a right trim may not push the timeline end
+ *   past the parent end. A REPOSITION (UAT round 5) only bounds the start to a
+ *   frame the parent actually has (`start <= parentEndExclusive - 1`) — the body
+ *   may overhang the parent end,
+ *   which is what the "instead" placement needs (start at frame 10 with the
+ *   body past frame 30); a full-width clip used to compute
+ *   `high = parentEnd - span = 0` and stay pinned at frame 0.
  */
 
 import type { WaveformPeaks } from '../../../types/audio';
@@ -38,8 +44,8 @@ export const SOUND_TRIM_HIT_PX = 8;
 
 /** UAT round 3: the waveform fill — RGB (22, 110, 203). */
 export const SOUND_WAVEFORM_FILL = '#166ECB';
-/** UAT round 4: the fade/gain overlay stroke — RGB (45, 179, 227). */
-export const SOUND_OVERLAY_STROKE = '#2DB3E3';
+/** UAT round 5: the fade/gain overlay stroke, lightened from #2DB3E3. */
+export const SOUND_OVERLAY_STROKE = '#7DD3F5';
 /** UAT round 4: overlay strokes are hairline — 1px, never 1.5. */
 export const SOUND_OVERLAY_STROKE_PX = 1;
 /** UAT round 4: fade shapes — the same closed curve set the document stores. */
@@ -125,13 +131,33 @@ export function soundWaveformPathD(peaks: Float32Array, widthPx: number): string
 /**
  * Gain line y within the band (UAT round 4). The clip gain is a signed integer
  * -100..+100 where 0 is unity at the CENTER of the waveform, +100 is the top of
- * the stain extent (a doubled level) and -100 the bottom (silence). The line
- * spans the clip's width — "from in to out".
+ * the stain extent (a doubled level) and -100 the bottom (silence).
  */
 export function soundGainLineY(gain: number): number {
   const clamped = Math.max(-100, Math.min(100, gain));
   const centerY = SOUND_BAND_HEIGHT_PX / 2;
   return Math.round((centerY - (clamped / 100) * SOUND_STAIN_HALF_EXTENT_PX) * 100) / 100;
+}
+
+/**
+ * Gain line x span within the stain (UAT round 5): the line runs "from in to
+ * out" EXCEPT across an active fade — a fade-in owns [0, fadeInPx] and a fade-out
+ * owns [widthPx - fadeOutPx, widthPx], so the gain line is clipped to the gap
+ * between the two transitions. Both fades meeting leaves no gap -> null (the
+ * ramps already describe the whole clip).
+ */
+export function soundGainLineSpan(
+  fadeInFrames: number,
+  fadeOutFrames: number,
+  inFrame: number,
+  outFrame: number,
+  widthPx: number,
+): { readonly x1: number; readonly x2: number } | null {
+  const fadeInPx = soundFadePx(fadeInFrames, inFrame, outFrame, widthPx) ?? 0;
+  const fadeOutPx = soundFadePx(fadeOutFrames, inFrame, outFrame, widthPx) ?? 0;
+  const x1 = fadeInPx;
+  const x2 = widthPx - fadeOutPx;
+  return x2 > x1 ? { x1, x2 } : null;
 }
 
 /**
@@ -204,17 +230,21 @@ function soundFadeCurvePathD(
 }
 
 /**
- * Stain reposition clamp: `start >= 0` and the clip's timeline end
- * (`start + span`) never passes the parent end.
+ * Stain reposition clamp (UAT round 5): `start >= 0` and the clip must start
+ * on a frame that EXISTS in the parent (`start <= parentEndExclusive - 1`);
+ * the body may overhang the parent end. Bounding the end instead (the old
+ * `high = parentEnd - span`) pinned a full-width clip at 0 and an end-anchored
+ * clip at its current start, so the clip could never be dragged to later
+ * frames. The start bound keeps at least one frame of the clip grabbable, so
+ * it can never be stranded fully past the ruler.
  */
 export function clampSoundRepositionStart(
   startFrame: number,
   deltaFrames: number,
-  spanFrames: number,
   parentEndExclusive: number,
 ): number {
   const low = 0;
-  const high = Math.max(0, parentEndExclusive - spanFrames);
+  const high = Math.max(0, parentEndExclusive - 1);
   return Math.min(Math.max(startFrame + deltaFrames, low), high);
 }
 
@@ -243,7 +273,9 @@ export function applyTrimStartSound(
 /**
  * Right-end trim: `out` moves; `start`/`in` stay put. Clamps: `in < out`
  * (minimum span 1 frame) and the timeline end `start + (out - in)` never
- * passes the parent end.
+ * passes the parent end. UAT round 5: the parent bound is FLOORED at 0 so a
+ * clip already overhanging the parent (legal since the reposition clamp) is
+ * never yanked back by touching the end handle — it may shrink, not snap.
  */
 export function applyTrimEndSound(
   startFrame: number,
@@ -253,7 +285,7 @@ export function applyTrimEndSound(
   parentEndExclusive: number,
 ): Pick<SoundBandValues, 'outFrame'> {
   const minDelta = inFrame + 1 - outFrame;
-  const maxDelta = parentEndExclusive - startFrame + inFrame - outFrame;
+  const maxDelta = Math.max(0, parentEndExclusive - startFrame + inFrame - outFrame);
   if (maxDelta < minDelta) return { outFrame }; // fail-closed: no valid move
   const delta = Math.min(Math.max(deltaFrames, minDelta), maxDelta);
   return { outFrame: outFrame + delta };

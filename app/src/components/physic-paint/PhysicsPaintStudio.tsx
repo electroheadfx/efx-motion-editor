@@ -146,6 +146,7 @@ import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
 // audioPeaksCache (the task-3 stain reads peaks keyed by sourceId).
 import { assetUrl } from '../../lib/ipc';
+import { isSafeAudioRelativePath } from '../../lib/efxPaintPersistence';
 import { audioEngine } from '../../lib/audioEngine';
 import { computeWaveformPeaks } from '../../lib/audioWaveform';
 import { audioPeaksCache } from '../../lib/audioPeaksCache';
@@ -4658,10 +4659,15 @@ export function PhysicsPaintStudio() {
    * ------------------------------------------------------------------------- */
   const audioModalOpen = useSignal(false);
   const knownAudioPaths = useSignal<ReadonlySet<string> | null>(null);
+  // UAT round 5: the gallery probe also carries the project directory, which
+  // is the fallback root for the reopen peaks-ensure when no documentAudio
+  // section is routed (see the effect below).
+  const audioProjectDir = useSignal<string | null>(null);
   const refreshKnownAudioPaths = async (): Promise<PhysicPaintAudioAssetRef[]> => {
     const result = await requestImageLibrary('audio');
     const assets = result.ok ? result.audioAssets ?? [] : [];
     knownAudioPaths.value = new Set(assets.map((asset) => asset.relativePath));
+    audioProjectDir.value = result.ok && result.projectDir.length > 0 ? result.projectDir : null;
     return assets;
   };
   useEffect(() => {
@@ -4776,16 +4782,26 @@ export function PhysicsPaintStudio() {
       return undefined;
     }
     if (soundPeaksEnsureRef.current === sound.sourceId) return undefined;
+    // UAT round 5 (reopen): the routed documentAudio section is the preferred
+    // URL source, but it is not the ONLY one. After a project close/reopen the
+    // clip and its gallery entry survive while the section may never be routed
+    // to this child window — the band then stayed empty until a manual Replace
+    // re-warmed the cache. Fall back to the SAME `projectDir + relativePath`
+    // formula the working Replace path uses (assetUrl fetch → decode → peaks).
     const section = efxPaintDocumentAudioStore.section.value;
-    // No closed-section URL yet (clip without routed documentAudio) — re-run
-    // when the section lands rather than guessing a package path here.
-    if (!section || section.clipId !== sound.id) return undefined;
+    const sectionUrl = section && section.clipId === sound.id ? section.assetUrl : null;
+    const fallbackDir = audioProjectDir.value;
+    const fallbackUrl = fallbackDir !== null && isSafeAudioRelativePath(sound.relativePath)
+      ? assetUrl(`${fallbackDir}/${sound.relativePath}`)
+      : null;
+    const sourceUrl = sectionUrl ?? fallbackUrl;
+    if (sourceUrl === null) return undefined;
     soundPeaksEnsureRef.current = sound.sourceId;
     void (async () => {
       try {
         let buffer = audioEngine.getBuffer(sound.sourceId) ?? audioEngine.getBuffer(sound.id);
         if (!buffer) {
-          const response = await fetch(section.assetUrl);
+          const response = await fetch(sourceUrl);
           if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
           buffer = await audioEngine.decode(sound.sourceId, await response.arrayBuffer());
         }
@@ -4797,7 +4813,7 @@ export function PhysicsPaintStudio() {
       }
     })();
     return undefined;
-  }, [launchContext, efxPaintVersion.value, efxPaintDocumentAudioStore.section.value]);
+  }, [launchContext, efxPaintVersion.value, efxPaintDocumentAudioStore.section.value, audioProjectDir.value]);
   /** Gesture settle port for the band (D-08/D-09): dragged start/in/out land
    *  through the ONE member setter every modal commit uses (T-52.5-12/13).
    *  Returns whether the setter accepted the write — rejected or identical

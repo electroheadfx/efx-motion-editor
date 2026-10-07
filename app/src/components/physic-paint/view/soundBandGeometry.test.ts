@@ -83,14 +83,21 @@ describe('soundBandGeometry — filled waveform path (TimelineRenderer trace ada
 });
 
 describe('soundBandGeometry — trim law (UI-SPEC: in < out, min span 1, start >= 0, parent end)', () => {
-  it('(t6) reposition clamps start >= 0 and keeps the span inside the parent end', async () => {
+  it('(t6) reposition bounds the START (body may overhang) so a full-width clip is never pinned', async () => {
     const g = await load();
-    expect(g.clampSoundRepositionStart(10, 5, 30, 100)).toBe(15);
-    expect(g.clampSoundRepositionStart(10, -50, 30, 100)).toBe(0);
-    // parent end 100, span 30 -> start may reach 70, never beyond
-    expect(g.clampSoundRepositionStart(10, 500, 30, 100)).toBe(70);
-    // span wider than the parent -> pinned at 0 (never negative)
-    expect(g.clampSoundRepositionStart(10, 5, 300, 100)).toBe(0);
+    expect(g.clampSoundRepositionStart(10, 5, 100)).toBe(15);
+    expect(g.clampSoundRepositionStart(10, -50, 100)).toBe(0);
+    // UAT round 5: the start may reach the last parent frame (the body
+    // overhangs) — a full-width clip used to be pinned at 0.
+    expect(g.clampSoundRepositionStart(10, 500, 100)).toBe(99);
+    // full-width clip (span == parent) at 0 can now be dragged to frame 10,
+    // matching the UAT "instead" placement.
+    expect(g.clampSoundRepositionStart(0, 10, 30)).toBe(10);
+    // end-anchored clip (cut the in, start 3) can move right to 10, not stick at 3.
+    expect(g.clampSoundRepositionStart(3, 7, 30)).toBe(10);
+    // the start itself never leaves the parent span (>= 0 and <= end - 1).
+    expect(g.clampSoundRepositionStart(0, -5, 0)).toBe(0);
+    expect(g.clampSoundRepositionStart(0, 5, 0)).toBe(0);
   });
 
   it('(t7) trim start moves start+in together, keeps min span 1 and start >= 0', async () => {
@@ -113,14 +120,20 @@ describe('soundBandGeometry — trim law (UI-SPEC: in < out, min span 1, start >
     expect(g.applyTrimEndSound(10, 5, 60, 50, 100)).toEqual({ outFrame: 95 });
     // min span: out >= in + 1 = 6
     expect(g.applyTrimEndSound(10, 5, 60, -100, 100)).toEqual({ outFrame: 6 });
+    // UAT round 5: an already-overhanging clip (timeline end 10 + 27 = 37 >
+    // parentEnd 30) must never be yanked back by touching the end handle —
+    // the parent bound floors at 0, so out may shrink but not snap left.
+    expect(g.applyTrimEndSound(10, 3, 30, 5, 30)).toEqual({ outFrame: 30 });
+    expect(g.applyTrimEndSound(10, 3, 30, -4, 30)).toEqual({ outFrame: 26 });
   });
 });
 
-describe('soundBandGeometry — UAT round 4 overlays (waveform RGB 22 110 203, fade/gain RGB 45 179 227 at 1px)', () => {
+describe('soundBandGeometry — UAT round 4/5 overlays (waveform RGB 22 110 203, lightened overlay at 1px)', () => {
   it('(t13) the waveform fill and overlay stroke carry the exact RGB values the UAT asked for', async () => {
     const { SOUND_WAVEFORM_FILL, SOUND_OVERLAY_STROKE, SOUND_OVERLAY_STROKE_PX } = await load();
     expect(SOUND_WAVEFORM_FILL).toBe('#166ECB'); // RGB (22, 110, 203)
-    expect(SOUND_OVERLAY_STROKE).toBe('#2DB3E3'); // RGB (45, 179, 227)
+    // UAT round 5: the fade/gain stroke was lightened from #2DB3E3.
+    expect(SOUND_OVERLAY_STROKE).toBe('#7DD3F5');
     expect(SOUND_OVERLAY_STROKE_PX).toBe(1); // thin like 1 pixel
   });
 
@@ -172,6 +185,24 @@ describe('soundBandGeometry — UAT round 4 overlays (waveform RGB 22 110 203, f
     expect(linear!.startsWith(`M48 ${soundGainLineY(0)}`)).toBe(true);
     expect(linear!.endsWith(`L96 ${bottom}`)).toBe(true);
     expect(soundFadeOutPathD(0, 0, 24, 96, 0, 'linear')).toBeNull();
+  });
+
+  it('(t17) the gain line is clipped to the gap between active fades (UAT round 5); null when they meet', async () => {
+    const { soundGainLineSpan } = await load();
+    // No fades: the line runs the full width, "from in to out".
+    expect(soundGainLineSpan(0, 0, 0, 24, 96)).toEqual({ x1: 0, x2: 96 });
+    // 6-frame fade-in of a 24-frame span = 24px -> the line starts at x=24.
+    expect(soundGainLineSpan(6, 0, 0, 24, 96)).toEqual({ x1: 24, x2: 96 });
+    // 12-frame fade-out = 48px -> the line ends at x=48.
+    expect(soundGainLineSpan(0, 12, 0, 24, 96)).toEqual({ x1: 0, x2: 48 });
+    // Both fades leave the middle gap [24, 48].
+    expect(soundGainLineSpan(6, 12, 0, 24, 96)).toEqual({ x1: 24, x2: 48 });
+    // The fades meet exactly -> no gap -> the line is omitted entirely.
+    expect(soundGainLineSpan(12, 12, 0, 24, 96)).toBeNull();
+    // The fades overlap -> still no gap.
+    expect(soundGainLineSpan(12, 24, 0, 24, 96)).toBeNull();
+    // Degenerate span -> no line (the fades meet at a zero width).
+    expect(soundGainLineSpan(0, 0, 0, 0, 0)).toBeNull();
   });
 });
 
