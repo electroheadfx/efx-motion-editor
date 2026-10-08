@@ -142,6 +142,7 @@ import {
   soundStainLeftPx,
   soundStainWidthPx,
   soundWaveformPathD,
+  type SoundBandGestureKind,
   type SoundBandGesturePatch,
   type SoundBandValues,
 } from './soundBandGeometry';
@@ -564,7 +565,9 @@ const STRIP_MIN_ROWS = 1;
  *  pointer-down; `next` is the clamped preview state, `origin` the commit
  *  baseline for rejected settles). */
 interface SoundBandGestureSession {
-  readonly kind: 'stain' | 'trim-start' | 'trim-end';
+  /** 261008-ig1 Task 3: `'duplicate'` joins the union — the bare-alt clone
+   *  intent is stamped at pointer-down and never switches mid-gesture. */
+  readonly kind: SoundBandGestureKind;
   /** 261008-ig1 Task 2: the clip this gesture drives — stamped once at
    *  pointer-down; the settle payload routes through the per-clip door. */
   readonly clipId: string;
@@ -1742,6 +1745,70 @@ export function PhysicsPaintSoundClipEdges(props: PhysicsPaintSoundClipEdgesProp
   );
 }
 
+/* ----------------------------------------------------------------------------
+ * 261008-ig1 Task 3 (D-03) — the incoming-duplicate ghost. HOOK-FREE like its
+ * siblings: the same stain visuals (waveform + fade/gain overlay, source-keyed
+ * peaks — ONE decode serves the original and this preview) but NO handlers and
+ * NO selection read — `pointer-events: none` + never `is-selected`, so exactly
+ * one stain carries the selection class while the original stays put under the
+ * ghost. The gesture moves it DOM-imperatively through its `els` record (no
+ * per-move strip re-render — efx-preact-reactivity rule 5); it unmounts on
+ * pointer-up when the committed clone renders from the store instead.
+ * ------------------------------------------------------------------------- */
+interface PhysicsPaintSoundDuplicateGhostProps {
+  readonly clip: DocumentSoundClip;
+  readonly els: SoundClipDomEls;
+}
+
+export function PhysicsPaintSoundDuplicateGhost(props: PhysicsPaintSoundDuplicateGhostProps) {
+  const clip = props.clip;
+  const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
+  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
+  const sourceFrames = audioPeaksCache.getSourceFrames(clip.sourceId) ?? clip.outFrame;
+  const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
+  const inPx = clip.inFrame * ROTO_CELL_WIDTH_PX;
+  const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
+  const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx) : null;
+  if (pathD === null) return null; // fail-closed: loading / missing source.
+  const gainY = soundGainLineY(clip.gain);
+  const gainSpan = soundGainLineSpan(clip.fadeInFrames, clip.fadeOutFrames, clip.inFrame, clip.outFrame, widthPx);
+  const fadeInD = soundFadeInPathD(clip.fadeInFrames, clip.inFrame, clip.outFrame, widthPx, clip.gain, clip.fadeInCurve);
+  const fadeOutD = soundFadeOutPathD(clip.fadeOutFrames, clip.inFrame, clip.outFrame, widthPx, clip.gain, clip.fadeOutCurve);
+  return (
+    <div
+      ref={(element) => { props.els.stain = element; }}
+      class="physics-paint-sound-stain physics-paint-sound-duplicate-preview"
+      style={{ left: `${leftPx}px`, width: `${widthPx}px`, pointerEvents: 'none' }}
+      aria-hidden="true"
+    >
+      <svg
+        ref={(element) => { props.els.wave = element; }}
+        class="physics-paint-sound-stain-wave"
+        width={widthPx}
+        height={SOUND_BAND_HEIGHT_PX}
+        viewBox={`${inPx} 0 ${widthPx} ${SOUND_BAND_HEIGHT_PX}`}
+        aria-hidden="true"
+      >
+        <path d={pathD} fill={SOUND_WAVEFORM_FILL} />
+        <g ref={(element) => { props.els.overlay = element; }} transform={`translate(${inPx}, 0)`}>
+          {fadeInD !== null ? (
+            <path d={fadeInD} stroke={SOUND_OVERLAY_STROKE} stroke-width={SOUND_OVERLAY_STROKE_PX} fill="none" />
+          ) : null}
+          {fadeOutD !== null ? (
+            <path d={fadeOutD} stroke={SOUND_OVERLAY_STROKE} stroke-width={SOUND_OVERLAY_STROKE_PX} fill="none" />
+          ) : null}
+          {gainSpan !== null ? (
+            <line x1={gainSpan.x1} y1={gainY} x2={gainSpan.x2} y2={gainY} stroke={SOUND_OVERLAY_STROKE} stroke-width={SOUND_OVERLAY_STROKE_PX} />
+          ) : null}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+/** 261008-ig1 Task 3: the ghost's `els` record key — a non-clip sentinel so
+ *  the preview can never collide with a real placed-clip id (UUIDs). */
+const SOUND_DUPLICATE_PREVIEW_ELS_KEY = '__sound-duplicate-preview__';
 /** No-selection fallback when the host never wires a selection signal. */
 const NO_SOUND_SELECTION = signal<string | null>(null);
 /** Frozen empty clip list — identity-stable across renders. */
@@ -2006,6 +2073,22 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
      route to this resolved signal (fallback when a host wires none). */
   const documentAudios = props.documentAudios ?? EMPTY_DOCUMENT_AUDIOS;
   const soundSelection = props.selectedSoundId ?? NO_SOUND_SELECTION;
+  /* 261008-ig1 Task 3 (D-03): the in-flight alt+drag duplicate ghost — the
+     origin clip while a `'duplicate'` session runs, null otherwise. Written
+     ONLY inside the gesture handlers (never a render-body write); the body
+     reads it ONCE so starting/ending a duplicate gesture re-renders the strip
+     exactly twice (the ghost mounts, then unmounts — per-move preview stays
+     DOM-imperative inside the ghost, never a signal write). Held in a ref so
+     the instance survives re-renders in the direct-call test harness too
+     (signal in useRef — the project's useSignal-breaks-the-harness idiom). */
+  const soundDuplicatePreviewRef = useRef<Signal<DocumentSoundClip | null> | null>(null);
+  if (soundDuplicatePreviewRef.current === null) {
+    soundDuplicatePreviewRef.current = signal<DocumentSoundClip | null>(null);
+  }
+  const soundDuplicatePreview = soundDuplicatePreviewRef.current;
+  // One body read per render (narrow-read): the ghost mounts on gesture start
+  // and unmounts on release — handlers never read `.value`, they only write.
+  const soundDuplicateClip = soundDuplicatePreview.value;
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
   // is queried for exactly the represented physical extent (frameCells) — one
@@ -3050,14 +3133,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!session || event.pointerId !== session.pointerId) return;
     markInteractionActive();
     const dx = event.clientX - session.originX;
-    const armPx = session.kind === 'stain' ? SOUND_STAIN_ARM_PX : SOUND_TRIM_ARM_PX;
+    // 261008-ig1 Task 3: a duplicate session repositions exactly like a stain
+    // (same 4px arm, same reposition clamp) — only its settle intent differs.
+    const isReposition = session.kind === 'stain' || session.kind === 'duplicate';
+    const armPx = isReposition ? SOUND_STAIN_ARM_PX : SOUND_TRIM_ARM_PX;
     if (!session.armed) {
       if (Math.abs(dx) <= armPx) return;
       session.armed = true;
     }
     event.stopPropagation();
     const delta = Math.round(dx / ROTO_CELL_WIDTH_PX);
-    if (session.kind === 'stain') {
+    if (isReposition) {
       // UAT round 5: the reposition bound is the START (the body may overhang
       // the parent end) — a full-width clip used to be pinned at frame 0.
       const nextStart = clampSoundRepositionStart(session.origin.startFrame, delta, soundBandParentEnd());
@@ -3073,7 +3159,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         ...applyTrimEndSound(session.origin.startFrame, session.origin.inFrame, session.origin.outFrame, delta, soundBandParentEnd()),
       };
     }
-    applySoundBandPreview(session.clipId, session.next);
+    // Task 3: a duplicate drags the GHOST (the original stain stays put);
+    // move/trim keep previewing their own clip record.
+    applySoundBandPreview(
+      session.kind === 'duplicate' ? SOUND_DUPLICATE_PREVIEW_ELS_KEY : session.clipId,
+      session.next,
+    );
     // UAT round 3: a clip drag NEVER scrubs — no playhead navigation, no audio
     // peek. The playhead handle and the ruler own every seek.
   };
@@ -3083,12 +3174,18 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     session.removeWindowListeners();
     soundGestureRef.current = null;
     endInteraction(session.pointerId);
+    // Task 3: retract the ghost in BOTH release paths (armed or sub-threshold)
+    // — the committed clone renders from the store, the original never moved.
+    if (session.kind === 'duplicate') soundDuplicatePreview.value = null;
     if (!session.armed) {
       // Sub-threshold release: the press only selected the clip — no commit,
       // no settle (the truth-table "tap" row).
       return;
     }
-    const committed = props.onDocumentSoundSettle?.({ clipId: session.clipId, ...session.next }) ?? false;
+    // Settle-on-release only: NO store write happens during the drag (the
+    // gesture identity stamped at pointer-down rides the patch — D-02/D-03).
+    const committed = props.onDocumentSoundSettle?.({ clipId: session.clipId, kind: session.kind, ...session.next }) ?? false;
+    if (session.kind === 'duplicate') return;
     // Canonical geometry in the DOM either way: committed values match the
     // coming re-render, rejected clamps restore the prior accepted span (E4).
     applySoundBandPreview(session.clipId, committed ? session.next : session.origin);
@@ -3099,6 +3196,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     session.removeWindowListeners();
     soundGestureRef.current = null;
     endInteraction(session.pointerId);
+    if (session.kind === 'duplicate') {
+      // Ghost retracts — nothing on the original to restore.
+      soundDuplicatePreview.value = null;
+      return;
+    }
     applySoundBandPreview(session.clipId, session.origin);
   };
   const handleSoundStainPointerDown = (event: PointerEvent, clip: DocumentSoundClip): void => {
@@ -3110,6 +3212,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     // 261008-ig1 Task 2: press = select THAT clip (handler-written, never a
     // render-body write; the narrow reads live in the per-clip children).
     soundSelection.value = clip.id;
+    // 261008-ig1 Task 3 (D-03): BARE alt duplicates. The meta/ctrl/shift
+    // exclusions above run FIRST, so cmd/ctrl/shift+alt can never clone; the
+    // gesture kind is stamped HERE and never re-decided mid-move.
+    if (event.altKey) {
+      soundDuplicatePreview.value = clip;
+      startSoundBandGesture('duplicate', event, clip);
+      return;
+    }
     startSoundBandGesture('stain', event, clip);
   };
   const handleSoundStainDblClick = (event: MouseEvent, clip: DocumentSoundClip): void => {
@@ -3128,6 +3238,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
     if (soundGestureRef.current) return;
     soundSelection.value = clip.id;
+    // 261008-ig1 Task 3 truth-table row: trim gains NO alt branch — a trim
+    // handle always trims, whatever modifiers are held (no duplicate from a
+    // trim). Gesture kind stays the `kind` stamped by the handle itself.
     startSoundBandGesture(kind, event, clip);
   };
   // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
@@ -4840,6 +4953,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   onDblClick={handleSoundStainDblClick}
                 />
               ))}
+              {/* 261008-ig1 Task 3 (D-03): the alt+drag duplicate ghost —
+                  mounted only while a `'duplicate'` session runs (the body's
+                  ONE narrow read above). Handlers move it DOM-imperatively;
+                  it never reads selection and never takes pointer events, so
+                  the original stays put and exactly one stain keeps
+                  `is-selected`. */}
+              {soundDuplicateClip !== null ? (
+                <PhysicsPaintSoundDuplicateGhost
+                  key="sound-duplicate-preview"
+                  clip={soundDuplicateClip}
+                  els={ensureSoundClipEls(SOUND_DUPLICATE_PREVIEW_ELS_KEY)}
+                />
+              ) : null}
               {rotoRulerTicks.map(frame => (
                 <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>{frame}</span>
               ))}

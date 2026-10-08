@@ -1341,3 +1341,216 @@ describe('PhysicsPaintWorkflowStrip reveal request (261008-ig1 Task 2)', () => {
     expect(harness.spies.onGoToLastFrame).toHaveBeenCalledTimes(0);
   });
 });
+
+/* ---------------------------------------------------------------------------
+ * 261008-ig1 Task 3 — the alt+drag duplication truth table (D-03):
+ * - bare alt + stain body → kind 'duplicate' + clipId STAMPED at pointer-down
+ *   (identity never switches mid-move), ghost preview while the original stays
+ *   put, store commit on pointer-up ONLY (settle-on-release),
+ * - cmd/alt never duplicates (the meta/ctrl/shift exclusions run first),
+ * - alt on a trim handle still trims (trim gains no alt branch),
+ * - sub-threshold press commits nothing and retracts the ghost.
+ * ------------------------------------------------------------------------- */
+
+describe('PhysicsPaintWorkflowStrip alt+drag duplication (261008-ig1 Task 3)', () => {
+  const CLIP: DocumentSoundClip = {
+    id: 'clip-1',
+    sourceId: 'src-shared',
+    relativePath: 'audio/shared.wav',
+    sourceRevision: 0,
+    startFrame: 0,
+    inFrame: 0,
+    outFrame: 48,
+    gain: 0,
+    fadeInFrames: 0,
+    fadeOutFrames: 0,
+    fadeInCurve: 'linear',
+    fadeOutCurve: 'linear',
+    enabled: true,
+  };
+  const PEAKS = {
+    tier1: new Float32Array(8),
+    tier2: new Float32Array(8),
+    tier3: new Float32Array(8),
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    audioPeaksCache.clear();
+    audioPeaksCache.set('src-shared', PEAKS, 48);
+  });
+  afterEach(() => {
+    audioPeaksCache.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function pressEvent(overrides: Record<string, unknown> = {}) {
+    return {
+      isPrimary: true,
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      pointerId: 1,
+      clientX: 36,
+      stopPropagation: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  /** Install the gesture window AFTER render (the ruler scrub hook captured
+   *  `win` at setup) and expose the window-level drag handlers. */
+  function stubGestureWindow() {
+    const listeners = new Map<string, (event: unknown) => void>();
+    vi.stubGlobal('window', {
+      addEventListener: vi.fn((type: string, handler: (event: unknown) => void) => {
+        listeners.set(type, handler);
+      }),
+      removeEventListener: vi.fn(),
+    });
+    return {
+      registered: () => [...listeners.keys()],
+      move: (clientX: number) => {
+        listeners.get('pointermove')?.({ pointerId: 1, clientX, stopPropagation: vi.fn() });
+      },
+      up: (clientX: number) => {
+        listeners.get('pointerup')?.({ pointerId: 1, clientX, stopPropagation: vi.fn() });
+      },
+    };
+  }
+
+  function ghostsOf(tree: unknown): TestVNode[] {
+    // The ghost is a function component — expand it (same idiom as the
+    // stain/edges children) to reach the rendered intrinsic vnode's class.
+    return expandNamedComponent(tree, 'PhysicsPaintSoundDuplicateGhost')
+      .filter((vnode) => hasClass(vnode, 'physics-paint-sound-duplicate-preview'));
+  }
+
+  it('bare alt+drag stamps kind+clipId at pointer-down, previews the ghost, and settles only on release', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    const stains = harness.soundStains();
+    const event = pressEvent({ altKey: true });
+    (stains[0].props.onPointerDown as (pointerEvent: unknown) => void)(event);
+
+    // Press = select THAT clip + stop (same contract as a plain press) and the
+    // gesture identity (duplicate + clipId) is stamped HERE, before any move.
+    expect(harness.selection()).toBe('clip-1');
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(win.registered()).toEqual(expect.arrayContaining(['pointermove', 'pointerup', 'pointercancel']));
+
+    // The ghost preview renders while the ORIGINAL stain keeps its geometry —
+    // one ghost, no selection class of its own (exactly one is-selected law).
+    const tree = harness.render();
+    const ghosts = ghostsOf(tree);
+    expect(ghosts).toHaveLength(1);
+    expect((ghosts[0].props.style as { left: string }).left).toBe('0px');
+    expect(hasClass(ghosts[0], 'is-selected')).toBe(false);
+    const original = harness.soundStains()[0];
+    expect((original.props.style as { left: string }).left).toBe('0px');
+
+    // +3 cells: the ghost tracks the drag (DOM-imperative — no strip
+    // re-render), but NOTHING commits until pointer-up (settle-on-release).
+    win.move(36 + 54);
+    expect(harness.spies.onDocumentSoundSettle).not.toHaveBeenCalled();
+
+    win.up(36 + 54);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledWith({
+      clipId: 'clip-1',
+      kind: 'duplicate',
+      startFrame: 3,
+      inFrame: 0,
+      outFrame: 48,
+    });
+
+    // Ghost retracted after release — the committed clone renders from the
+    // store instead (the original never moved).
+    const after = harness.render();
+    expect(ghostsOf(after)).toHaveLength(0);
+    expect((harness.soundStains()[0].props.style as { left: string }).left).toBe('0px');
+  });
+
+  it('gesture identity never switches mid-move — releasing alt mid-drag still settles as duplicate', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    (harness.soundStains()[0].props.onPointerDown as (pointerEvent: unknown) => void)(pressEvent({ altKey: true }));
+    // Move + release events carry NO altKey (the user let go of the modifier) —
+    // the kind decided at pointer-down is the one that settles.
+    win.move(36 + 18);
+    win.up(36 + 18);
+
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledWith({
+      clipId: 'clip-1',
+      kind: 'duplicate',
+      startFrame: 1,
+      inFrame: 0,
+      outFrame: 48,
+    });
+  });
+
+  it('cmd+alt never duplicates — the modifier exclusions run before the alt branch', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    const event = pressEvent({ altKey: true, metaKey: true });
+    (harness.soundStains()[0].props.onPointerDown as (pointerEvent: unknown) => void)(event);
+
+    // The guard returned before stopPropagation/selection/session — no
+    // gesture, no ghost, no settle path at all.
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    expect(harness.selection()).toBeNull();
+    expect(win.registered()).toHaveLength(0);
+    expect(ghostsOf(harness.render())).toHaveLength(0);
+  });
+
+  it('alt on a trim handle still trims — trim gains no duplicate branch', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    const edges = harness.soundEdges();
+    const startEdge = findOne(edges[0], (vnode) => hasClass(vnode, 'physics-paint-sound-edge-start'));
+    const event = pressEvent({ altKey: true });
+    (startEdge.props.onPointerDown as (pointerEvent: unknown) => void)(event);
+
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(harness.selection()).toBe('clip-1');
+    expect(win.registered()).toEqual(expect.arrayContaining(['pointermove', 'pointerup']));
+
+    win.move(36 + 18);
+    win.up(36 + 18);
+
+    // kind 'trim-start' — never 'duplicate': a left trim moves start+in together.
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledWith({
+      clipId: 'clip-1',
+      kind: 'trim-start',
+      startFrame: 1,
+      inFrame: 1,
+      outFrame: 48,
+    });
+    expect(ghostsOf(harness.render())).toHaveLength(0);
+  });
+
+  it('a sub-threshold alt press commits nothing and retracts the ghost', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    (harness.soundStains()[0].props.onPointerDown as (pointerEvent: unknown) => void)(pressEvent({ altKey: true }));
+    expect(ghostsOf(harness.render())).toHaveLength(1);
+
+    // Release under the 4px arm threshold: press selected only — no settle.
+    win.up(36);
+    expect(harness.spies.onDocumentSoundSettle).not.toHaveBeenCalled();
+    expect(ghostsOf(harness.render())).toHaveLength(0);
+  });
+});

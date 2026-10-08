@@ -31,6 +31,7 @@ import {
   setPhotoReferenceTransformLocked,
   setBackgroundTransformLocked,
   patchDocumentSound,
+  addDocumentSound,
   clearPhotoReference,
   setTrackBlend,
   setTrackOpacity,
@@ -140,7 +141,7 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
-import { usePhysicsPaintAudioController } from './view/physicsPaintAudioController';
+import { buildDuplicatedSoundClip, usePhysicsPaintAudioController } from './view/physicsPaintAudioController';
 import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // 52.5-01b: the Document sound import flow reuses the EXISTING decode/peaks
 // machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
@@ -4880,6 +4881,20 @@ export function PhysicsPaintStudio() {
     // list head (D-01/D-02). Fail-closed on an unknown id.
     const current = getEfxPaintDocument(layerId)?.audios.find((clip) => clip.id === patch.clipId);
     if (!current) return false;
+    if (patch.kind === 'duplicate') {
+      // 261008-ig1 Task 3 (D-03): the bare-alt clone append — a FRESH id over
+      // the SAME sourceId (peaks + gallery stay source-keyed: no second bytes
+      // copy / gallery row / audio/ path), geometry+settings copied with the
+      // dragged startFrame applied, the ORIGINAL never touched. The user is
+      // now manipulating the new clip, so selection lands on it (handler
+      // write; the commit itself is settle-on-release, never mid-drag).
+      const duplicate = { ...buildDuplicatedSoundClip(current), startFrame: patch.startFrame ?? current.startFrame };
+      const appended = addDocumentSound(layerId, duplicate);
+      if (appended.ok) selectedSoundId.value = duplicate.id;
+      return appended.ok;
+    }
+    // Move/trim keep the Task 2 routing untouched: a geometry patch on the
+    // gesture's own clip.
     return patchDocumentSound(layerId, patch.clipId, {
       startFrame: patch.startFrame ?? current.startFrame,
       inFrame: patch.inFrame ?? current.inFrame,

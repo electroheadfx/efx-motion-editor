@@ -4,6 +4,7 @@ import type { DocumentSoundClip } from '../../../efx-paint/document/efxPaintDocu
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { DocumentSoundResult } from '../../../stores/efxPaintStore';
 import {
+  buildDuplicatedSoundClip,
   buildFreshSoundClip,
   buildReplacedSoundClip,
   isValidFadeFrames,
@@ -273,5 +274,47 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(patchSound).not.toHaveBeenCalled();
     expect(removeSound).not.toHaveBeenCalled();
     expect(addSound).not.toHaveBeenCalled();
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 261008-ig1 Task 3 — D-03 alt+drag duplication: the duplicate builder mints a
+ * fresh id and SHARES the source identity (sourceId/relativePath verbatim —
+ * peaks + gallery stay source-keyed, so no second decode, bytes copy, gallery
+ * row, or audio/ path is created), copies every setting, and never mutates the
+ * origin (T-261008-IG1-05). The shared-source render itself is pinned by the
+ * Task 2 multi-clip leg (two stains, ONE audioPeaksCache entry).
+ * ------------------------------------------------------------------------- */
+
+describe('buildDuplicatedSoundClip (261008-ig1 Task 3 — fresh id, shared source, copied settings)', () => {
+  it('mints a fresh id and copies every other member byte-for-byte', () => {
+    const duplicate = buildDuplicatedSoundClip(CLIP_A);
+    expect(duplicate.id).not.toBe(CLIP_A.id);
+    // Round-trip: identical to the origin once the fresh id is put back.
+    expect({ ...duplicate, id: CLIP_A.id }).toEqual(CLIP_A);
+    // D-02/D-03: source identity is SHARED, never overloaded onto the id.
+    expect(duplicate.sourceId).toBe(CLIP_A.sourceId);
+    expect(duplicate.relativePath).toBe(CLIP_A.relativePath);
+    expect(duplicate.sourceRevision).toBe(CLIP_A.sourceRevision);
+    // Geometry + settings are value copies.
+    expect(duplicate.startFrame).toBe(CLIP_A.startFrame);
+    expect(duplicate.inFrame).toBe(CLIP_A.inFrame);
+    expect(duplicate.outFrame).toBe(CLIP_A.outFrame);
+    expect(duplicate.gain).toBe(CLIP_A.gain);
+    expect(duplicate.fadeInFrames).toBe(CLIP_A.fadeInFrames);
+    expect(duplicate.fadeOutFrames).toBe(CLIP_A.fadeOutFrames);
+    expect(duplicate.fadeInCurve).toBe(CLIP_A.fadeInCurve);
+    expect(duplicate.fadeOutCurve).toBe(CLIP_A.fadeOutCurve);
+    expect(duplicate.enabled).toBe(CLIP_A.enabled);
+  });
+
+  it('never mutates the origin and never collides across calls (T-261008-IG1-05)', () => {
+    const before = JSON.stringify(CLIP_A);
+    const first = buildDuplicatedSoundClip(CLIP_A);
+    const second = buildDuplicatedSoundClip(CLIP_A);
+    expect(JSON.stringify(CLIP_A)).toBe(before);
+    expect(first.id).not.toBe(second.id);
+    expect(first.id).not.toBe(CLIP_A.id);
+    expect(second.id).not.toBe(CLIP_A.id);
   });
 });

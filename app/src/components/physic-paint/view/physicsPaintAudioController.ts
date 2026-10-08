@@ -218,6 +218,19 @@ export function buildReplacedSoundClip(
   };
 }
 
+/**
+ * 261008-ig1 Task 3 (D-03): alt+drag duplication — a FRESH placed-clip id over
+ * a SHARED source identity. `id` keys the list/selection/transport; `sourceId`
+ * (and `relativePath`) stay verbatim, so peaks and the gallery stay source-
+ * keyed: one decode, one bytes copy, one gallery row, one `audio/` path serve
+ * both clips. Every other member is a value copy — the duplicate starts as a
+ * clone of geometry + settings (start/in/out, gain, fades, enabled) so the
+ * user can slide/trim it elsewhere. The origin object is never mutated.
+ */
+export function buildDuplicatedSoundClip(clip: DocumentSoundClip): DocumentSoundClip {
+  return { ...clip, id: crypto.randomUUID() };
+}
+
 /* ----------------------------------------------------------------------------
  * Controller.
  * ------------------------------------------------------------------------- */

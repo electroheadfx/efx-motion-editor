@@ -51,11 +51,23 @@ export const SOUND_OVERLAY_STROKE_PX = 1;
 /** UAT round 4: fade shapes — the same closed curve set the document stores. */
 export type { SoundFadeCurve };
 
+/**
+ * The band gesture intent, fixed at pointer-down and NEVER switched mid-
+ * gesture (identity law). `'stain'` is the bare reposition; `'duplicate'`
+ * (261008-ig1 Task 3) is the bare-alt clone append — the trim kinds never
+ * duplicate (trim gains no alt branch).
+ */
+export type SoundBandGestureKind = 'stain' | 'trim-start' | 'trim-end' | 'duplicate';
+
 /** The document sound fields a gesture may move (commit patch for the member setter). */
 export interface SoundBandGesturePatch {
   /** 261008-ig1: the PLACED clip the gesture moved (identity fixed at
    *  pointer-down) — the settle routes through the per-clip store door. */
   readonly clipId: string;
+  /** 261008-ig1 Task 3: the gesture intent stamped at pointer-down — the
+   *  Studio routes `'duplicate'` to the clone-append door, everything else to
+   *  the geometry patch (move/trim keep their Task 2 routing). */
+  readonly kind: SoundBandGestureKind;
   readonly startFrame?: number;
   readonly inFrame?: number;
   readonly outFrame?: number;
