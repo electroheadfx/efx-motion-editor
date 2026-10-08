@@ -53,6 +53,9 @@ export type { SoundFadeCurve };
 
 /** The document sound fields a gesture may move (commit patch for the member setter). */
 export interface SoundBandGesturePatch {
+  /** 261008-ig1: the PLACED clip the gesture moved (identity fixed at
+   *  pointer-down) — the settle routes through the per-clip store door. */
+  readonly clipId: string;
   readonly startFrame?: number;
   readonly inFrame?: number;
   readonly outFrame?: number;

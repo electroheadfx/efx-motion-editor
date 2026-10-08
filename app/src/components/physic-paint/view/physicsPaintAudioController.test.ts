@@ -1,17 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { signal } from '@preact/signals';
+import { describe, expect, it, vi } from 'vitest';
+import type { DocumentSoundClip } from '../../../efx-paint/document/efxPaintDocument';
+import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
+import type { DocumentSoundResult } from '../../../stores/efxPaintStore';
 import {
   buildFreshSoundClip,
   buildReplacedSoundClip,
   isValidFadeFrames,
   isValidGain,
+  usePhysicsPaintAudioController,
   type ImportedSoundSource,
 } from './physicsPaintAudioController';
 
+// The controller is a plain function over signals (no component lifecycle
+// beyond useSignal) — map useSignal to a real signal so it runs outside a
+// Preact render (same idiom as the workflow-strip viewport harness).
+vi.mock('@preact/signals', async () => {
+  const actual = await vi.importActual<typeof import('@preact/signals')>('@preact/signals');
+  return { ...actual, useSignal: <Value,>(initial: Value) => actual.signal(initial) };
+});
+
 /**
  * 52.5 UAT round 2 — the Document sound field laws. Pure validators + import
- * builders only (the controller hook needs a Preact context; its commit path
- * is `isValid*` then the one `setDocumentSound` setter, whose own
- * `_isValidSoundClip` accepts any non-negative integer fade).
+ * builders (the controller's commit path is `isValid*` then the selection-
+ * scoped store ports, whose own `_isValidSoundClip` accepts any non-negative
+ * integer fade). 261008-ig1 Task 2 adds the selection-scoped behavior legs:
+ * every commit targets the SELECTED clip, never the list head.
  */
 
 const SOURCE: ImportedSoundSource = {
@@ -100,5 +114,164 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     const clip = buildReplacedSoundClip(current, shorter, 24);
     expect(clip.inFrame).toBe(23);
     expect(clip.outFrame).toBe(24);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 261008-ig1 Task 2 — selection-scoped controller behavior. The controller
+ * resolves the edited clip by `selectedSoundId` (never the list head) and
+ * routes every mutation through the per-clip ports. Faked ports + a real
+ * selection signal: the legs assert the ROUTING, not the store internals
+ * (the store door is pinned in efxPaintStore.test.ts).
+ * ------------------------------------------------------------------------- */
+
+const CLIP_A: DocumentSoundClip = {
+  id: 'clip-a',
+  sourceId: 'src-a',
+  relativePath: 'audio/a.wav',
+  sourceRevision: 0,
+  startFrame: 0,
+  inFrame: 0,
+  outFrame: 48,
+  gain: 0,
+  fadeInFrames: 0,
+  fadeOutFrames: 0,
+  fadeInCurve: 'linear',
+  fadeOutCurve: 'linear',
+  enabled: true,
+};
+
+const CLIP_B: DocumentSoundClip = {
+  ...CLIP_A,
+  id: 'clip-b',
+  // D-02: the second placed clip of the SAME imported file.
+  startFrame: 96,
+  outFrame: 144,
+  gain: -25,
+  enabled: false,
+};
+
+function makeController(options: {
+  selection: string | null;
+  clips?: readonly DocumentSoundClip[] | null;
+}) {
+  const clips = options.clips === undefined ? [CLIP_A, CLIP_B] : options.clips;
+  const document = clips === null
+    ? undefined
+    : { ...createEfxPaintDocument('layer-1'), audios: clips };
+  const selectedSoundId = signal<string | null>(options.selection);
+  const addSound = vi.fn((_layerId: string, _clip: DocumentSoundClip): DocumentSoundResult => ({ ok: true }));
+  const patchSound = vi.fn((_layerId: string, _clipId: string, _patch: Partial<DocumentSoundClip>): DocumentSoundResult => ({ ok: true }));
+  const removeSound = vi.fn((_layerId: string, _clipId: string): DocumentSoundResult => ({ ok: true }));
+  const controller = usePhysicsPaintAudioController({
+    layerId: 'layer-1',
+    selectedSoundId,
+    ports: {
+      getDocument: () => document,
+      addSound,
+      patchSound,
+      removeSound,
+      getFps: () => 24,
+      isSoundMissing: () => false,
+    },
+  });
+  return { controller, selectedSoundId, addSound, patchSound, removeSound };
+}
+
+describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig1 Task 2)', () => {
+  it('resolves the editor clip from the selection, never the list head', () => {
+    const second = makeController({ selection: 'clip-b' });
+    expect(second.controller.sound?.id).toBe('clip-b');
+    expect(second.controller.audios.map((clip) => clip.id)).toEqual(['clip-a', 'clip-b']);
+
+    const none = makeController({ selection: null });
+    expect(none.controller.sound).toBeNull();
+    // The list stays visible even with no selection (the modal list chooser).
+    expect(none.controller.audios).toHaveLength(2);
+  });
+
+  it('commitGain patches ONLY the selected clip', () => {
+    const { controller, patchSound } = makeController({ selection: 'clip-b' });
+    controller.commitGain(50);
+    expect(patchSound).toHaveBeenCalledTimes(1);
+    expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-b', { gain: 50 });
+  });
+
+  it('field commits fail closed with no selection — no port call, no mutation', () => {
+    const { controller, patchSound, removeSound } = makeController({ selection: null });
+    controller.commitGain(50);
+    controller.commitFadeIn(12);
+    controller.toggleEnabled();
+    controller.confirmRemove();
+    expect(patchSound).not.toHaveBeenCalled();
+    expect(removeSound).not.toHaveBeenCalled();
+  });
+
+  it('field commits fail closed when the selection points at an unknown clip', () => {
+    const { controller, patchSound } = makeController({ selection: 'clip-zzz' });
+    controller.commitGain(50);
+    expect(patchSound).not.toHaveBeenCalled();
+  });
+
+  it('confirmRemove removes only the selected entry and clears the selection', () => {
+    const { controller, selectedSoundId, removeSound } = makeController({ selection: 'clip-b' });
+    controller.requestRemove();
+    controller.confirmRemove();
+    expect(removeSound).toHaveBeenCalledTimes(1);
+    expect(removeSound).toHaveBeenCalledWith('layer-1', 'clip-b');
+    expect(selectedSoundId.value).toBeNull();
+  });
+
+  it('applyImportedSource appends a fresh clip and selects it', () => {
+    const { controller, selectedSoundId, addSound } = makeController({ selection: 'clip-a' });
+    const result = controller.applyImportedSource({
+      sourceId: 'asset-9',
+      relativePath: 'audio/new.wav',
+      sourceRevision: 2,
+      durationSec: 10,
+    });
+    expect(result.ok).toBe(true);
+    expect(addSound).toHaveBeenCalledTimes(1);
+    const added = addSound.mock.calls[0][1];
+    expect(added.id).not.toBe(CLIP_A.id);
+    expect(added.id).not.toBe(CLIP_B.id);
+    expect(added.sourceId).toBe('asset-9');
+    expect(added.outFrame).toBe(240); // 10s x 24fps
+    expect(selectedSoundId.value).toBe(added.id);
+  });
+
+  it('applyReplacedSource swaps only the selected clip, preserving position and in/out', () => {
+    const { controller, patchSound, addSound } = makeController({ selection: 'clip-a' });
+    const result = controller.applyReplacedSource({
+      sourceId: 'asset-new',
+      relativePath: 'audio/new.wav',
+      sourceRevision: 3,
+      durationSec: 10, // longer than the clip span — clamps keep 0..48
+    });
+    expect(result.ok).toBe(true);
+    expect(addSound).not.toHaveBeenCalled();
+    expect(patchSound).toHaveBeenCalledTimes(1);
+    expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', {
+      sourceId: 'asset-new',
+      relativePath: 'audio/new.wav',
+      sourceRevision: 3,
+      inFrame: 0,
+      outFrame: 48,
+    });
+  });
+
+  it('fails closed with no document — no port call', () => {
+    const { controller, addSound, patchSound, removeSound } = makeController({
+      selection: 'clip-a',
+      clips: null,
+    });
+    expect(controller.sound).toBeNull();
+    expect(controller.audios).toEqual([]);
+    controller.commitGain(50);
+    controller.confirmRemove();
+    expect(controller.applyImportedSource(SOURCE).ok).toBe(false);
+    expect(patchSound).not.toHaveBeenCalled();
+    expect(removeSound).not.toHaveBeenCalled();
+    expect(addSound).not.toHaveBeenCalled();
   });
 });

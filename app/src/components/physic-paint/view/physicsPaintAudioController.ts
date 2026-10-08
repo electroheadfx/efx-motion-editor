@@ -4,8 +4,8 @@ import type { DocumentSoundClip, EfxPaintDocument } from '../../../efx-paint/doc
 import {
   addDocumentSound,
   efxPaintVersion,
-  getDocument as getEfxPaintDocument,
-  setDocumentAudios,
+  patchDocumentSound,
+  removeDocumentSound,
   type DocumentSoundResult,
 } from '../../../stores/efxPaintStore';
 
@@ -18,34 +18,33 @@ import {
  *   - holds ONLY transient drafts in signals: the gain release-commit draft,
  *     the two-step Remove arm, the `Reading audio…` busy flag and the decode
  *     error copy,
- *   - every field commit routes through the ONE `setSound` slot setter
- *     (SYNC-01, list-shaped since 261008-ig1): commit/settle only, never
- *     mid-drag; invalid entries
+ *   - every field commit routes through the ONE per-clip store door for the
+ *     SELECTED clip (261008-ig1 Task 2: never the list head — D-01/D-02):
+ *     commit/settle only, never mid-drag; invalid entries
  *     (gain outside -100..100, fades below 0 or fractional) are never committed
  *     — the prior accepted value stays (E8/E9, T-52.5-12),
  *   - the toggles invert from a LIVE document read at click time so the
  *     reverse click can never re-send a stale captured value (50-UAT fix).
  *
- * Import/Replace INTENTS leave through the view's `onImportRequest` port
+ * Import/Replace INTENTS leave through the view's `onImportRequest(mode)` port
  * (PhysicsPaintStudio opens the shared BackgroundAssetPickerView with kind
- * 'audio' — D-02/D-03, wired in task 2). The completed import lands here via
- * `applyImportedSource`, which builds the clip defaults (fresh: startFrame 0,
- * inFrame 0, outFrame = duration × fps, gain 0, fades 0, both toggles ON;
- * replace: source swap with position/in-out preserved and outFrame clamped to
- * a shorter source) and commits through the same setter. The clip's `enabled`
+ * 'audio' — D-02/D-03). The completed import lands here via
+ * `applyImportedSource` (ALWAYS appends a fresh clip and selects it — the
+ * list length grows, D-01) or `applyReplacedSource` (swaps the SELECTED
+ * clip's source with position/in-out preserved and outFrame clamped to a
+ * shorter source — only `Replace…` takes this path). The clip's `enabled`
  * switch is the studio-layer sound (52.5 UAT round 2) — ON by default.
  */
 
 export interface PhysicsPaintAudioControllerPorts {
   /** Document read — the controller never holds its own truth. */
   getDocument: (layerId: string) => EfxPaintDocument | undefined;
-  /**
-   * The one member setter (D-01/SYNC-01), slot-shaped over the list
-   * (261008-ig1 Task 1): null clears the list, a clip replaces the first
-   * entry (appends when the list is empty). Task 2 retargets to per-clip
-   * helpers driven by the selection.
-   */
-  setSound: (layerId: string, sound: DocumentSoundClip | null) => DocumentSoundResult;
+  /** Append a fresh clip through the list door (Import — always-add). */
+  addSound: (layerId: string, clip: DocumentSoundClip) => DocumentSoundResult;
+  /** Patch ONE clip by id (field commits, Replace, toggles). */
+  patchSound: (layerId: string, clipId: string, patch: Partial<DocumentSoundClip>) => DocumentSoundResult;
+  /** Remove ONE clip by id (Remove). */
+  removeSound: (layerId: string, clipId: string) => DocumentSoundResult;
   /** Project fps for import defaults (outFrame = durationSec × fps). */
   getFps: () => number;
   /**
@@ -58,12 +57,28 @@ export interface PhysicsPaintAudioControllerPorts {
 
 export interface PhysicsPaintAudioControllerProps {
   layerId: string;
+  /**
+   * The Studio-owned selection (261008-ig1 Task 2): the controller edits
+   * THIS clip, never the list head. The body reads `.value` (not `.peek()`)
+   * so the modal and Studio subscribe to selection changes — a band deselect
+   * updates an open modal without a reveal. Handlers are the only writers
+   * (confirmRemove clears it after a committed remove; the Studio sets it on
+   * select/reveal) — never a render-body write.
+   */
+  selectedSoundId: Signal<string | null>;
   /** Injectable ports for tests; production defaults hit the real store. */
   ports?: Partial<PhysicsPaintAudioControllerPorts>;
 }
 
 export interface PhysicsPaintAudioController {
-  /** The accepted clip (null = empty state). Narrow store read. */
+  /** The accepted clip list (D-01 — empty = empty state). Narrow store read. */
+  audios: readonly DocumentSoundClip[];
+  /**
+   * The Studio-owned selection signal (261008-ig1 Task 2): the modal list
+   * renders it and the controller resolves the edited clip from it.
+   */
+  selectedSoundId: Signal<string | null>;
+  /** The SELECTED clip (null = no selection). Narrow store read, never the head. */
   sound: DocumentSoundClip | null;
   /** Filename fact for the file row (basename of relativePath). */
   filename: string | null;
@@ -106,11 +121,18 @@ export interface PhysicsPaintAudioController {
   reportDecodeError: () => void;
   clearError: () => void;
   /**
-   * Commit a completed Import/Replace: builds the clip defaults (fresh or
-   * replace-with-clamp) and writes through the one setter. Invalid / absent
-   * document leaves the prior value untouched.
+   * Commit a completed Import (append mode): builds the FRESH clip defaults
+   * and appends it through the list door, then selects the new clip (D-01 —
+   * the list length grows). Invalid / absent document leaves the list alone.
    */
   applyImportedSource: (source: ImportedSoundSource) => DocumentSoundResult;
+  /**
+   * Commit a completed Replace (replace mode): swaps the SELECTED clip's
+   * source with position/in-out preserved (outFrame clamped to a shorter
+   * source) through the per-clip door. No selection / absent document leaves
+   * the prior value untouched.
+   */
+  applyReplacedSource: (source: ImportedSoundSource) => DocumentSoundResult;
 }
 
 export type SoundFadeCurve = 'linear' | 'exponential' | 'logarithmic';
@@ -200,22 +222,30 @@ export function buildReplacedSoundClip(
  * Controller.
  * ------------------------------------------------------------------------- */
 
+/** Frozen empty list constant — identity-stable across renders. */
+const EMPTY_AUDIOS: readonly DocumentSoundClip[] = Object.freeze([]);
+
 export function usePhysicsPaintAudioController({
   layerId,
+  selectedSoundId,
   ports = {},
 }: PhysicsPaintAudioControllerProps): PhysicsPaintAudioController {
   const getDocument = ports.getDocument ?? defaultPorts.getDocument;
   // Narrow read of the store version clock so the modal re-renders on a store
   // write even when its parent is memo-blocked (rd4 Lock/Visible fix class).
   efxPaintVersion.value;
-  const setSound = ports.setSound ?? defaultPorts.setSound;
+  const addSound = ports.addSound ?? defaultPorts.addSound;
+  const patchSound = ports.patchSound ?? defaultPorts.patchSound;
+  const removeSound = ports.removeSound ?? defaultPorts.removeSound;
   const getFps = ports.getFps ?? defaultPorts.getFps;
   const isSoundMissing = ports.isSoundMissing ?? defaultPorts.isSoundMissing;
 
   const document = getDocument(layerId);
-  // 261008-ig1 Task 1: the modal edits the FIRST clip (single-clip behavior
-  // over the list — Task 2 retargets it to the selected clip). Narrow read.
-  const sound = document?.audios[0] ?? null;
+  const audios = document?.audios ?? EMPTY_AUDIOS;
+  // 261008-ig1 Task 2: the modal edits the SELECTED clip (`.value`, not
+  // `.peek()` — the controller subscribes to selection changes). Narrow read.
+  const selectedId = selectedSoundId.value;
+  const sound = selectedId !== null ? audios.find((clip) => clip.id === selectedId) ?? null : null;
 
   const filename = sound ? sound.relativePath.split('/').pop() ?? sound.relativePath : null;
   const missing = sound !== null && isSoundMissing(sound);
@@ -229,10 +259,15 @@ export function usePhysicsPaintAudioController({
     if (removeArmed.value) removeArmed.value = false;
   };
 
-  const patchSound = (patch: Partial<DocumentSoundClip>): DocumentSoundResult => {
-    const current = getDocument(layerId)?.audios[0] ?? null;
-    if (!current) return { ok: false, reason: 'no-document' };
-    return setSound(layerId, { ...current, ...patch });
+  /**
+   * Fail-closed per-clip commit: no document -> no-document, no/unknown
+   * selection -> unknown-clip (never the list head — D-01/D-02).
+   */
+  const commitPatch = (patch: Partial<DocumentSoundClip>): DocumentSoundResult => {
+    if (!document) return { ok: false, reason: 'no-document' };
+    if (selectedId === null) return { ok: false, reason: 'unknown-clip' };
+    if (!audios.some((clip) => clip.id === selectedId)) return { ok: false, reason: 'unknown-clip' };
+    return patchSound(layerId, selectedId, patch);
   };
 
   const previewGainInput = (gain: number) => {
@@ -243,57 +278,54 @@ export function usePhysicsPaintAudioController({
     volumeDraft.value = null;
     disarmRemove();
     if (!isValidGain(gain)) return; // prior accepted value stays (E8)
-    patchSound({ gain });
+    commitPatch({ gain });
   };
 
   const commitFadeIn = (frames: number) => {
     disarmRemove();
     if (!isValidFadeFrames(frames)) return; // prior accepted value stays (E9)
-    patchSound({ fadeInFrames: frames });
+    commitPatch({ fadeInFrames: frames });
   };
 
   const commitFadeOut = (frames: number) => {
     disarmRemove();
     if (!isValidFadeFrames(frames)) return;
-    patchSound({ fadeOutFrames: frames });
+    commitPatch({ fadeOutFrames: frames });
   };
 
   const commitFadeInCurve = (curve: SoundFadeCurve) => {
     disarmRemove();
     if (!isValidFadeCurve(curve)) return;
-    patchSound({ fadeInCurve: curve });
+    commitPatch({ fadeInCurve: curve });
   };
 
   const commitFadeOutCurve = (curve: SoundFadeCurve) => {
     disarmRemove();
     if (!isValidFadeCurve(curve)) return;
-    patchSound({ fadeOutCurve: curve });
+    commitPatch({ fadeOutCurve: curve });
   };
 
   const commitInFrame = (frames: number) => {
     disarmRemove();
     if (!isValidFadeFrames(frames)) return;
-    const current = getDocument(layerId)?.audios[0];
-    if (!current) return;
+    if (!sound) return;
     // 1-frame minimum span: in may never meet or pass out.
-    if (frames >= current.outFrame) return;
-    patchSound({ inFrame: frames });
+    if (frames >= sound.outFrame) return;
+    commitPatch({ inFrame: frames });
   };
 
   const commitOutFrame = (frames: number) => {
     disarmRemove();
     if (!isValidFadeFrames(frames)) return;
-    const current = getDocument(layerId)?.audios[0];
-    if (!current) return;
-    if (frames <= current.inFrame) return;
-    patchSound({ outFrame: frames });
+    if (!sound) return;
+    if (frames <= sound.inFrame) return;
+    commitPatch({ outFrame: frames });
   };
 
   const toggleEnabled = () => {
     disarmRemove();
-    const current = getDocument(layerId)?.audios[0];
-    if (!current) return;
-    setSound(layerId, { ...current, enabled: !current.enabled });
+    if (!sound) return;
+    commitPatch({ enabled: !sound.enabled });
   };
 
   const requestRemove = () => {
@@ -303,8 +335,9 @@ export function usePhysicsPaintAudioController({
 
   const confirmRemove = () => {
     removeArmed.value = false;
-    if (!sound) return;
-    setSound(layerId, null);
+    if (selectedId === null || !sound) return;
+    const result = removeSound(layerId, selectedId);
+    if (result.ok) selectedSoundId.value = null;
   };
 
   const beginReading = () => {
@@ -326,12 +359,28 @@ export function usePhysicsPaintAudioController({
   };
 
   const applyImportedSource = (source: ImportedSoundSource): DocumentSoundResult => {
-    const current = getDocument(layerId)?.audios[0] ?? null;
+    if (!document) return { ok: false, reason: 'no-document' };
     const fps = getFps();
-    const next = current === null
-      ? buildFreshSoundClip(source, fps)
-      : buildReplacedSoundClip(current, source, fps);
-    const result = setSound(layerId, next);
+    const next = buildFreshSoundClip(source, fps);
+    const result = addSound(layerId, next);
+    if (result.ok) {
+      selectedSoundId.value = next.id;
+      decodeError.value = false;
+      removeArmed.value = false;
+    }
+    return result;
+  };
+
+  const applyReplacedSource = (source: ImportedSoundSource): DocumentSoundResult => {
+    if (!sound) return document ? { ok: false, reason: 'unknown-clip' } : { ok: false, reason: 'no-document' };
+    const replaced = buildReplacedSoundClip(sound, source, getFps());
+    const result = commitPatch({
+      sourceId: replaced.sourceId,
+      relativePath: replaced.relativePath,
+      sourceRevision: replaced.sourceRevision,
+      inFrame: replaced.inFrame,
+      outFrame: replaced.outFrame,
+    });
     if (result.ok) {
       decodeError.value = false;
       removeArmed.value = false;
@@ -340,6 +389,8 @@ export function usePhysicsPaintAudioController({
   };
 
   return {
+    audios,
+    selectedSoundId,
     sound,
     filename,
     missing,
@@ -365,30 +416,16 @@ export function usePhysicsPaintAudioController({
     reportDecodeError,
     clearError,
     applyImportedSource,
+    applyReplacedSource,
   };
-}
-
-/**
- * Slot routing over the `audios` list (261008-ig1 Task 1): `null` clears the
- * list (single-clip Remove semantics), a clip replaces the FIRST entry or
- * appends when the list is empty. Fail-closed on an absent document. Task 2
- * retargets the controller to selection-driven patch/remove helpers.
- */
-export function setDocumentSoundSlot(
-  layerId: string,
-  sound: DocumentSoundClip | null,
-): DocumentSoundResult {
-  if (sound === null) return setDocumentAudios(layerId, []);
-  const document = getEfxPaintDocument(layerId);
-  if (!document) return { ok: false, reason: 'no-document' };
-  if (document.audios.length === 0) return addDocumentSound(layerId, sound);
-  return setDocumentAudios(layerId, [sound, ...document.audios.slice(1)]);
 }
 
 /** Production ports — the real store (the view injects the wiring ports). */
 const defaultPorts: PhysicsPaintAudioControllerPorts = {
   getDocument: () => undefined,
-  setSound: setDocumentSoundSlot,
+  addSound: (layerId, clip) => addDocumentSound(layerId, clip),
+  patchSound: (layerId, clipId, patch) => patchDocumentSound(layerId, clipId, patch),
+  removeSound: (layerId, clipId) => removeDocumentSound(layerId, clipId),
   getFps: () => 12,
   isSoundMissing: () => false,
 };

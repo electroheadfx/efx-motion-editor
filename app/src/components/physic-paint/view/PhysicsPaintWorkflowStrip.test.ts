@@ -834,7 +834,12 @@ describe('PhysicsPaintWorkflowStrip status capsule contract (36.15-05)', () => {
     // Each cell owns one styled-tooltip controller via the child component.
     const cellComponentIndex = code.indexOf('function RotoTimelineCellButton');
     expect(cellComponentIndex).toBeGreaterThanOrEqual(0);
-    const cellComponent = code.slice(cellComponentIndex, code.indexOf('export function PhysicsPaintWorkflowStrip'));
+    // 261008-ig1 Task 2: the per-clip sound children now sit BETWEEN the cell
+    // component and the strip export (narrow-read law), so end the slice at
+    // the children boundary instead of the strip export.
+    const soundChildrenIndex = code.indexOf('interface PhysicsPaintSoundClipChildProps');
+    expect(soundChildrenIndex).toBeGreaterThan(cellComponentIndex);
+    const cellComponent = code.slice(cellComponentIndex, soundChildrenIndex);
     expect(cellComponent).toContain('useStyledTooltip');
     expect(cellComponent).toContain('PhysicsPaintStyledTooltip');
     expect(cellComponent).not.toContain('title=');

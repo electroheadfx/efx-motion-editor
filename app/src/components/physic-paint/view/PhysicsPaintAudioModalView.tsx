@@ -13,7 +13,7 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  * Copywriting Contract (52.5-UI-SPEC — verbatim, never interpolated, defined
  * here because this component renders it):
  *
- *   `Document sound` · `Import sound` · `Replace…` · `No sound yet` ·
+ *   `Document sounds` · `Import sound` · `Replace…` · `No sound yet` ·
  *   `Import a dialogue or foley clip for this animation — WAV, MP3, AAC, or FLAC.` ·
  *   `Reading audio…` · `Remove` → `Confirm remove?` ·
  *   `Remove sound? Position, trims, gain, and fades are discarded from this document.` ·
@@ -23,8 +23,9 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   `exponential`, `logarithmic`) · `In` · `Out` (frames) · `On` / `Off`
  *
  * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal):
- *   1. header: AudioWaveform 15px + `Document sound` + close X
- *   2. file row (filename + `Replace…`) OR the empty-state block
+ *   1. header: AudioWaveform 15px + `Document sounds` + close X
+ *   2. clip list (one row per placed clip — 261008-ig1 Task 2, D-01) +
+ *      file row (filename + `Replace…`) OR the empty-state block
  *      (`No sound yet` / body / `Import sound`) OR the error copy
  *   3. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
  *   4. `Gain` — NumericStepper step 5, -100..100 (per-step commit), no separate readout
@@ -48,7 +49,7 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  * Copywriting Contract (52.5-UI-SPEC — verbatim, never interpolated).
  * ------------------------------------------------------------------------- */
 
-export const AUDIO_MODAL_TITLE = 'Document sound';
+export const AUDIO_MODAL_TITLE = 'Document sounds';
 export const AUDIO_EMPTY_HEADING = 'No sound yet';
 export const AUDIO_EMPTY_BODY = 'Import a dialogue or foley clip for this animation — WAV, MP3, AAC, or FLAC.';
 export const AUDIO_IMPORT_CTA = 'Import sound';
@@ -84,8 +85,14 @@ export interface PhysicsPaintAudioModalViewProps {
   controller: PhysicsPaintAudioController;
   /** Close intent (Escape, header X). */
   onClose: () => void;
-  /** Import/Replace intent — opens the shared gallery with kind 'audio'. */
-  onImportRequest: () => void;
+  /**
+   * Import/Replace intent — opens the shared gallery with kind 'audio'.
+   * `append` (Import) always adds a fresh clip; `replace` (Replace…) swaps the
+   * SELECTED clip's source (261008-ig1 Task 2 — D-01/D-02).
+   */
+  onImportRequest: (mode: 'append' | 'replace') => void;
+  /** List-row select — the Studio owns selection and reveals the clip band. */
+  onSelectSoundClip: (clipId: string) => void;
   /**
    * 52.5 UAT: "hear the MAIN APP's audio while previewing in the Studio" — a
    * SECOND, independent switch from the clip's `enabled` row below. Preview-
@@ -104,6 +111,7 @@ export function PhysicsPaintAudioModalView({
   controller,
   onClose,
   onImportRequest,
+  onSelectSoundClip,
   mainAppAudioEnabled,
   onToggleMainAppAudio,
 }: PhysicsPaintAudioModalViewProps) {
@@ -169,6 +177,7 @@ export function PhysicsPaintAudioModalView({
   if (!open) return null;
 
   const {
+    audios, selectedSoundId,
     sound, filename, missing, busy, decodeError, previewGain, removeArmed,
     commitGain, commitFadeIn, commitFadeOut,
     commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame,
@@ -242,7 +251,7 @@ export function PhysicsPaintAudioModalView({
         </div>
 
         <div class="physics-paint-photo-reference-content">
-          {sound === null ? (
+          {audios.length === 0 ? (
             /* 2a. Empty state — the only content block when no clip exists
                (E1 partial); a failed fresh import surfaces its error copy
                above it (E1/E10 error rows). */
@@ -257,7 +266,7 @@ export function PhysicsPaintAudioModalView({
               <button
                 type="button"
                 class="physics-paint-photo-reference-import"
-                onClick={withDisarm(onImportRequest)}
+                onClick={withDisarm(() => onImportRequest('append'))}
                 disabled={controlsDisabled}
               >
                 <AudioWaveform size={13} aria-hidden="true" />
@@ -265,6 +274,39 @@ export function PhysicsPaintAudioModalView({
               </button>
             </div>
           ) : (
+            <>
+              {/* 2a. Clip list — one row per placed clip (261008-ig1 Task 2,
+                  D-01): the list stays visible with no selection; a row click
+                  selects (handler-written, no effect). */}
+              <div class="physics-paint-audio-clip-list" data-testid="audio-modal-list">
+                {audios.map((clip) => (
+                  <button
+                    type="button"
+                    key={clip.id}
+                    class={`physics-paint-audio-clip-row${selectedSoundId.value === clip.id ? ' physics-paint-audio-clip-row-selected' : ''}`}
+                    onClick={() => onSelectSoundClip(clip.id)}
+                    disabled={controlsDisabled}
+                  >
+                    <span class="physics-paint-audio-filename">
+                      {clip.relativePath.split('/').pop() ?? clip.relativePath}
+                    </span>
+                    <span class="physics-paint-audio-clip-span">
+                      {clip.startFrame} · {clip.inFrame}..{clip.outFrame}
+                    </span>
+                    <span>{clip.enabled ? AUDIO_ENABLE_ON : AUDIO_ENABLE_OFF}</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  class="physics-paint-photo-reference-import"
+                  onClick={withDisarm(() => onImportRequest('append'))}
+                  disabled={controlsDisabled}
+                >
+                  <AudioWaveform size={13} aria-hidden="true" />
+                  <span>{busy ? AUDIO_LOADING : AUDIO_IMPORT_CTA}</span>
+                </button>
+              </div>
+              {sound !== null ? (
             <>
               {/* 2b. File row + Replace… */}
               <div class="physics-paint-photo-reference-source">
@@ -276,7 +318,7 @@ export function PhysicsPaintAudioModalView({
                 <button
                   type="button"
                   class="physics-paint-photo-reference-import"
-                  onClick={withDisarm(onImportRequest)}
+                  onClick={withDisarm(() => onImportRequest('replace'))}
                   disabled={controlsDisabled}
                 >
                   <span>{busy ? AUDIO_LOADING : AUDIO_REPLACE_CTA}</span>
@@ -421,6 +463,8 @@ export function PhysicsPaintAudioModalView({
                   />
                 </div>
               </div>
+            </>
+              ) : null}
             </>
           )}
         </div>

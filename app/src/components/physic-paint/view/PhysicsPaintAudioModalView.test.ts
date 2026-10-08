@@ -36,3 +36,34 @@ describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
     expect(source).not.toContain('readout `');
   });
 });
+
+describe('PhysicsPaintAudioModalView clip list (261008-ig1 Task 2)', () => {
+  it('pluralizes the header title and the copy-list header line', () => {
+    expect(source).toContain("export const AUDIO_MODAL_TITLE = 'Document sounds';");
+    expect(source).not.toContain("AUDIO_MODAL_TITLE = 'Document sound';");
+    expect(source).toContain('`Document sounds` · `Import sound`');
+    expect(source).toContain('1. header: AudioWaveform 15px + `Document sounds` + close X');
+  });
+
+  it('renders one row per clip keyed by clip.id with the selected marker bound to the controller selection', () => {
+    expect(source).toContain('data-testid="audio-modal-list"');
+    expect(source).toContain('key={clip.id}');
+    expect(source).toContain('selectedSoundId.value === clip.id');
+    expect(source).toContain('onSelectSoundClip(clip.id)');
+  });
+
+  it('gates the empty state on an empty list and the editor on the selected clip', () => {
+    expect(source).toContain('audios.length === 0');
+    expect(source).toContain('sound !== null ? (');
+    // The old singleton gate (`sound === null` chose between empty and editor)
+    // must be gone — a list with no selection shows the list, not the empty
+    // state.
+    expect(source).not.toContain('{sound === null ? (');
+  });
+
+  it('routes Import as append and Replace… as replace through the mode port', () => {
+    expect(source).toContain("onImportRequest('append')");
+    expect(source).toContain("onImportRequest('replace')");
+    expect(source).not.toContain('withDisarm(onImportRequest)');
+  });
+});

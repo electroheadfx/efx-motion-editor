@@ -2345,3 +2345,38 @@ describe('260922-rd4 background transform via the shared photo-reference handles
     expect(studioKeyboard).toContain('if (actions.relockBackgroundTransform?.())');
   });
 });
+
+describe('261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract', () => {
+  it('owns the selection, modal open target, import mode, and reveal signals', () => {
+    expect(studio).toContain('const selectedSoundId = useSignal<string | null>(null);');
+    expect(studio).toContain("const audioModalTarget = useSignal<'list' | string | null>(null);");
+    expect(studio).toContain("const audioImportMode = useSignal<'append' | 'replace'>('append');");
+    expect(studio).toContain('const revealRequest = useSignal<{ frame: number; nonce: number } | null>(null);');
+  });
+
+  it('header launcher opens the list chooser; a single clip resolves onto that clip; dblclick targets the clip', () => {
+    expect(studio).toContain("audioModalTarget.value = 'list'");
+    expect(studio).toContain('audios.length === 1');
+    expect(studio).toContain('audioModalTarget.value = clipId');
+    expect(studio).toContain('audioModalTarget.value !== null');
+    expect(studio).toContain("audioModalTarget.value = null");
+  });
+
+  it('routes band settles by the patch clipId through the per-clip store door (no slot shim)', () => {
+    expect(studio).toContain('patch.clipId');
+    expect(studio).toContain('patchDocumentSound(layerId, patch.clipId');
+    expect(studio).not.toContain('setDocumentSoundSlot');
+  });
+
+  it('feeds the strip the audios list and reveals on a fresh nonce', () => {
+    expect(studio).toContain('documentAudios: resolveDocumentAudios()');
+    expect(studio).toContain('revealSoundClip');
+    expect(studio).toContain('nonce: (previous?.nonce ?? 0) + 1');
+    expect(studio).not.toContain('documentSound: resolveDocumentSound()');
+  });
+
+  it('ensures peaks once per distinct sourceId (Set in-flight guard)', () => {
+    expect(studio).toContain('[...new Set(audios.map((clip) => clip.sourceId))]');
+    expect(studio).toContain('soundPeaksEnsureRef = useRef<Set<string>>(new Set())');
+  });
+});
