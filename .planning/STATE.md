@@ -6,10 +6,10 @@ current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
 stopped_at: Phase 52.5 complete, ready to plan Phase 53
-last_updated: "2026-10-08T09:05:12.234Z"
+last_updated: "2026-10-08T10:14:31.449Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 52.5 complete, transitioned to Phase 53
-state_head: 60c6cbdcb469caefb02a70c347d1377d92d48367
+state_head: 478650e0bb7b96a52fa387cb5741224f63cdcf35
 progress:
   total_phases: 14
   completed_phases: 19
@@ -32,9 +32,9 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-08 — Phase 52.5 complete, transitioned to Phase 53
+Last activity: 2026-10-08 - Completed quick task 261008-ful: 2 small UX features (LayerRow double-click opens Studio + audio modal Gain stepper)
 
-Progress: [████████████████████] 75/75 plans (100%)
+Progress: [████████████████████] 75/75 plans ([█████████░] 95%)
 
 ## Performance Metrics
 
@@ -473,6 +473,7 @@ None yet.
 | 261004-hwa | Quick 7: Photoshop foreground/background swatch — two overlapping squares at bottom of left sidebar, X swaps, back-click promotes, sidebar picker syncs to top swatch | 2026-10-04 | 33738ffa | [261004-hwa-quick-7-photoshop-foreground-background-](./quick/261004-hwa-quick-7-photoshop-foreground-background-/) |
 | 261006-bdk | New layers go to the top of the layer stack for every layer type — createFxSequence default routes through insertSequenceAtStackTop (explicit position:'end' remains the only append); Shader Browser opts-less apply now lands at stack head without editing ShaderBrowser.tsx; reorderFxSequences / resolveFxReorderToIndex untouched (260923-kcs single-adjustment contract); regression pin added. Native UAT pending | 2026-10-06 | a9479fe6 | [261006-bdk-quick-new-layers-go-to-the-top-of-the-la](./quick/261006-bdk-quick-new-layers-go-to-the-top-of-the-la/) |
 | 261006-dfy | Physics paint layer row in the main app left sidebar — visual identity and entry points (display name, remove output block, dblclick body opens Studio, accent color) | 2026-10-06 | 30f26b63 | [261006-dfy-quick-physics-paint-layer-row-in-the-mai](./quick/261006-dfy-quick-physics-paint-layer-row-in-the-mai/) |
+| 261008-ful | 2 small UX features: LayerRow double-click opens Studio (shared launch path) + audio modal Gain slider → NumericStepper | 2026-10-08 | 478650e0 | [261008-ful-2-small-ux-features-one-atomic-commit-ea](./quick/261008-ful-2-small-ux-features-one-atomic-commit-ea/) |
 
 ### Roadmap Evolution
 
