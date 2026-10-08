@@ -1,5 +1,5 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Duplicated Document sound clips only play audios[0] — with play loop the first clip plays once then goes silent. Studio draws N clips via the document carrier but the documentAudio transport channel is still the closed 3-member singleton {revision, clipId, assetUrl} fed from `getEfxPaintDocument(layerId)?.audios[0]` at app/src/lib/physicPaintBridge.ts:3911. The clip leg in app/src/components/physic-paint/audio/efxPaintAudioMonitor.ts is single-slot (one getSection(), one resolveDocumentSoundClip, one audioEngine.play(sound.id)), and applyRevisionedDocumentAudio re-plays the same already-run-to-end sound.id on loop restart so the second schedule is dropped. Need the transport to carry every placed clip (per-clip id key, never sourceId) and the loop-restart re-arm fixed. This is the D-01 deferral from quick 261008-ig1, not a regression."
 created: 2026-10-08
 updated: 2026-10-08
@@ -127,9 +127,10 @@ reasoning_checkpoint:
     passed (only pre-existing PhysicsPaintStudioView.test.ts collection failure,
     verified identical on clean HEAD via stash); tsc --noEmit clean; cargo test
     physics_paint_launch_context 5/5 passed (incl. new
-    round_trips_the_document_audio_clips_list pin). LIVE UAT PENDING (user
-    oracle) — do not claim done until both duplicated clips are audible with
-    play loop repeating them.
+    round_trips_the_document_audio_clips_list pin). LIVE UAT PASSED 2026-10-08
+    (user oracle) — both duplicated clips audible at their own positions and
+    both repeat under play loop. Approved together with the 261008-ig1
+    multi-audio rows and the 261008-ryq sidebar/Position features.
 - files_changed:
   - app/src/types/physicPaint.ts (PhysicPaintDocumentAudioClipRef + reshaped section type/validator)
   - app/src/lib/physicPaintBridge.ts (builder carries every audios[] member; push comment key sets)

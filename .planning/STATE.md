@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-08 - Completed quick task 261008-ryq: Audio list moved to sidebar Audio tab + editable Position (frames) stepper — automated-ready (5 native UAT rows)
+Last activity: 2026-10-08 - UAT APPROVED for milestone 52.5 Document sound: multi-audio core slice (261008-ig1), dup-clip playback fix (dup-clip-plays-audios-0), and sidebar Audio tab + Position stepper (261008-ryq)
 
 Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
