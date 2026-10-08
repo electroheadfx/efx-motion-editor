@@ -616,11 +616,19 @@ describe('playbackEngine document clip source contract (52.5-02)', () => {
     expect(fnBody.includes('collectDocumentSoundClips')).toBe(true);
   });
 
-  it('(s2) projectStore re-decode decodes the clip by sound.id behind a path-safe audio/ join', () => {
-    const source = readSource('../stores/projectStore.ts');
-    expect((source.match(/audioEngine\.decode/g) ?? []).length >= 2).toBe(true);
-    expect(source.includes('sound.id')).toBe(true);
-    expect(source.includes('isSafeAudioRelativePath')).toBe(true);
+  it('(s2) the clip decodes once by sound.id behind a path-safe audio/ join', () => {
+    // The decode lives in documentSoundPeaks (one decode serves playback AND
+    // the main timeline's sourceId-keyed waveform preview); projectStore and
+    // the document-sync apply both route through it.
+    const peaksSource = readSource('./documentSoundPeaks.ts');
+    expect(peaksSource.includes('audioEngine.decode(sound.id')).toBe(true);
+    expect(peaksSource.includes('isSafeAudioRelativePath')).toBe(true);
+    expect(peaksSource.includes('computeWaveformPeaks')).toBe(true);
+
+    const projectSource = readSource('../stores/projectStore.ts');
+    expect(projectSource.includes('ensureDocumentSoundPeaks')).toBe(true);
+    const bridgeSource = readSource('./physicPaintBridge.ts');
+    expect(bridgeSource.includes('ensureDocumentSoundPeaks')).toBe(true);
   });
 
   it('(s3) exportEngine joins the clip through buildExportMixEntries and never reads the preview-mix toggle', () => {

@@ -75,6 +75,7 @@ import { assetUrl, scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, 
 // 52.5-01a (T-52.5-09): the sound relativePath must resolve inside the package
 // `audio/` directory at BOTH the save/load edge and this assetUrl build.
 import { isSafeAudioRelativePath } from './efxPaintPersistence';
+import { ensureDocumentSoundPeaks } from './documentSoundPeaks';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
 export const PHYSIC_PAINT_PROJECT_CONTEXT_EVENT = 'physic-paint:project-context';
@@ -3737,6 +3738,12 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       if (current && !soundChanged && buildEfxPaintDocumentSyncFingerprint(current) === buildEfxPaintDocumentSyncFingerprint(document)) return;
       registerEfxPaintDocument(document);
       if (soundChanged) void publishPhysicPaintDocumentAudioContext(document.parentLayerId);
+      // 52.5 follow-up: the main timeline previews the clip's waveform from
+      // sourceId-keyed peaks in THIS realm (the Studio cache lives in its own
+      // webview). A mid-session import/replace must therefore decode here too.
+      if (soundChanged && document.sound !== null) {
+        void ensureDocumentSoundPeaks(document.sound, projectStore.dirPath.peek() ?? '', projectStore.fps.peek());
+      }
       // 47-01 UAT round 8: mirror the child's live runtime into the main
       // window's runtime maps (rotoPhysical only — frame bytes stay owned by
       // the bridge applies) so the apply validation and the save projection

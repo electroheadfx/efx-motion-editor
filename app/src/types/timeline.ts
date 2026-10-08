@@ -72,6 +72,26 @@ export interface TrackLayout {
   glTransition?: GlTransition;
 }
 
+/**
+ * Read-only preview payload for a physic-paint document sound clip on the main
+ * timeline (52.5 follow-up). `startFrame` is DOCUMENT-LOCAL — the renderer
+ * rebases it with the owning sequence's `inFrame`, mirroring the Roto-key law.
+ */
+export interface TimelineSoundClip {
+  readonly sourceId: string;
+  readonly startFrame: number;
+  readonly inFrame: number;
+  readonly outFrame: number;
+  readonly gain: number;
+  readonly fadeInFrames: number;
+  readonly fadeOutFrames: number;
+  readonly fadeInCurve: FadeCurve;
+  readonly fadeOutCurve: FadeCurve;
+  readonly peaks: WaveformPeaks | null;
+  /** Source length in frames; null until the peaks cache knows it. */
+  readonly sourceFrames: number | null;
+}
+
 /** Layout info for an FX or content-overlay sequence range bar in the timeline */
 export interface FxTrackLayout {
   sequenceId: string;
@@ -87,6 +107,7 @@ export interface FxTrackLayout {
   playScriptMarkers?: TimelinePlayScriptMarker[]; // saved Play ranges nested inside physic-paint FX bars
   rotoKeyFrames?: number[]; // layer-local physical appFrames of real Roto keys (C-04 markers)
   repeatDurationMarkers?: TimelineRepeatDurationMarker[];
+  soundClip?: TimelineSoundClip | null;
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
 }

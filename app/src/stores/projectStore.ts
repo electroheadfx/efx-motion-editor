@@ -29,7 +29,8 @@ import {exportStore} from './exportStore';
 import {savePaintData, loadPaintData, cleanupOrphanedPaintFiles} from '../lib/paintPersistence';
 import {recordPhysicsPaintPerformance} from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 import {requestPhysicPaintFlush} from '../lib/physicPaintFlush';
-import {loadEfxPaintPackage, savePackage, isSafeAudioRelativePath} from '../lib/efxPaintPersistence';
+import {loadEfxPaintPackage, savePackage} from '../lib/efxPaintPersistence';
+import {ensureDocumentSoundPeaks} from '../lib/documentSoundPeaks';
 import type {EfxPaintDocumentSaveInput, EfxPaintLoadedDocument} from '../lib/efxPaintPersistence';
 import type {EfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
 import {materializePackageRotoMediaBytes} from '../lib/efxPaintMediaMaterialize';
@@ -772,22 +773,14 @@ function hydrateFromMce(
     }
     // 52.5-02 (T-52.5-10, PERSIST-01): decode each placed document clip ONCE per
     // open, keyed by `sound.id` — the same identity the clip leg and the export
-    // mixer look the buffer up under. No peaks here: the Studio band renders
-    // from its own sourceId-keyed cache. Fail-closed warn-and-skip on a bad
-    // reference or missing bytes, matching the loop's existing pattern.
+    // mixer look the buffer up under. The same decode also fills the
+    // sourceId-keyed peaks the main timeline's waveform preview reads (52.5
+    // follow-up) — the Studio band reads its own realm's cache. Fail-closed
+    // warn-and-skip on a bad reference or missing bytes.
     for (const layerId of getActivePhysicPaintLayerIds()) {
       const sound = getEfxPaintDocument(layerId)?.sound ?? null;
       if (sound === null) continue;
-      try {
-        if (!isSafeAudioRelativePath(sound.relativePath)) {
-          console.error(`Skipping document sound "${sound.relativePath}": not a safe package-relative audio/ path.`);
-          continue;
-        }
-        const fileBytes = await readFile(`${projectRoot}/${sound.relativePath}`);
-        await audioEngine.decode(sound.id, fileBytes.buffer);
-      } catch (err) {
-        console.error(`Failed to decode document sound "${sound.relativePath}":`, err);
-      }
+      await ensureDocumentSoundPeaks(sound, projectRoot, fps.peek());
     }
   })();
 }

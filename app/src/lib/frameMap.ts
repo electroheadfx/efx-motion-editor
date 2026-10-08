@@ -314,6 +314,11 @@ function getThumbnailImageId(layer: Layer | undefined): string | undefined {
 /** FX track layout data for timeline rendering (one track per FX or content-overlay sequence) */
 export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
   physicPaintVersion.value;
+  // Document-only mutations (the sound member) bump only efxPaintVersion, and
+  // peaks arrive asynchronously under peaksCacheRevision — both must refresh
+  // this layout or the preview stays empty until an unrelated edit.
+  void efxPaintVersion.value;
+  void peaksCacheRevision.value;
   const layouts: FxTrackLayout[] = [];
   for (const seq of sequenceStore.sequences.value) {
     if (seq.kind === 'content') continue; // content sequences render via trackLayouts
@@ -326,6 +331,8 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
     } else {
       color = primaryLayer ? fxColorForLayerType(primaryLayer.type) : FX_DEFAULT_COLOR;
     }
+    const physicPaintLayerId = primaryLayer?.type === 'physic-paint' ? getLayerId(primaryLayer) : null;
+    const documentSound = physicPaintLayerId !== null ? getEfxPaintDocument(physicPaintLayerId)?.sound ?? null : null;
     layouts.push({
       sequenceId: seq.id,
       sequenceName: seq.name,
@@ -337,12 +344,25 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       visible: seq.visible !== false,
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
       layerType: primaryLayer?.type,
-      rotoKeyFrames: primaryLayer?.type === 'physic-paint'
-        ? physicPaintStore.getRotoRealKeyRecords(getLayerId(primaryLayer), getActiveTrackId(primaryLayer)).map((record) => record.appFrame)
+      rotoKeyFrames: physicPaintLayerId !== null
+        ? physicPaintStore.getRotoRealKeyRecords(physicPaintLayerId, getActiveTrackId(primaryLayer)).map((record) => record.appFrame)
         : undefined,
       repeatDurationMarkers: primaryLayer?.type === 'physic-paint'
         ? getTimelineRepeatDurationMarkers(primaryLayer, seq)
         : undefined,
+      soundClip: documentSound === null ? null : {
+        sourceId: documentSound.sourceId,
+        startFrame: documentSound.startFrame,
+        inFrame: documentSound.inFrame,
+        outFrame: documentSound.outFrame,
+        gain: documentSound.gain,
+        fadeInFrames: documentSound.fadeInFrames,
+        fadeOutFrames: documentSound.fadeOutFrames,
+        fadeInCurve: documentSound.fadeInCurve,
+        fadeOutCurve: documentSound.fadeOutCurve,
+        peaks: audioPeaksCache.get(documentSound.sourceId) ?? null,
+        sourceFrames: audioPeaksCache.getSourceFrames(documentSound.sourceId) ?? null,
+      },
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
     });

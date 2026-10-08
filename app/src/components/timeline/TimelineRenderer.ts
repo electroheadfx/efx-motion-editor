@@ -2,6 +2,18 @@ import type {TrackLayout, FxTrackLayout, AudioTrackLayout, TimelinePlayScriptMar
 import type {imageStore as ImageStoreType} from '../../stores/imageStore';
 import {computeDownbeatFrames} from '../../lib/beatMarkerEngine';
 import {createCanvasGradient} from '../../lib/previewRenderer';
+import {
+  selectSoundPeaks,
+  soundWaveformPathD,
+  soundGainLineY,
+  soundGainLineSpan,
+  soundFadeInPathD,
+  soundFadeOutPathD,
+  SOUND_BAND_HEIGHT_PX,
+  SOUND_WAVEFORM_FILL,
+  SOUND_OVERLAY_STROKE,
+  SOUND_OVERLAY_STROKE_PX,
+} from '../physic-paint/view/soundBandGeometry';
 import {ThumbnailCache} from './ThumbnailCache';
 // --- Design constants (exported for TimelineInteraction) ---
 export const BASE_FRAME_WIDTH = 60;
@@ -63,6 +75,43 @@ export function getPhysicPaintRotoKeyMarkerGeometry(marker: {
 }): PhysicPaintRotoKeyMarkerGeometry {
   return {
     x: (marker.inFrame + marker.appFrame) * marker.frameWidth - marker.scrollX + TRACK_HEADER_WIDTH,
+  };
+}
+
+export interface PhysicPaintSoundStainGeometry {
+  /** Left edge of the trimmed clip window on the canvas. */
+  x: number;
+  /** Width of the trimmed clip window on the canvas. */
+  width: number;
+  /** Left edge of the untrimmed SOURCE waveform (left of `x` when trimmed in). */
+  sourceX: number;
+  /** Width of the untrimmed SOURCE waveform. */
+  sourceWidth: number;
+}
+
+/** Canvas geometry for the document sound clip's waveform stain on a
+ *  physic-paint FX row. `startFrame` is DOCUMENT-LOCAL and is rebased by the
+ *  owning sequence's `inFrame` — the same law as the Roto-key markers above
+ *  (52.5 frame-space: global = sequence.inFrame + sound.startFrame). The
+ *  waveform is drawn once in SOURCE space and windowed to [in, out] so a trim
+ *  reveals the cut instead of rescaling the whole source. */
+export function getPhysicPaintSoundStainGeometry(clip: {
+  startFrame: number;
+  inFrame: number;
+  outFrame: number;
+  sourceFrames: number;
+  sequenceInFrame: number;
+  frameWidth: number;
+  scrollX: number;
+}): PhysicPaintSoundStainGeometry {
+  const spanFrames = Math.max(0, clip.outFrame - clip.inFrame);
+  const sourceFrames = Math.max(1, clip.sourceFrames);
+  const x = (clip.sequenceInFrame + clip.startFrame) * clip.frameWidth - clip.scrollX + TRACK_HEADER_WIDTH;
+  return {
+    x,
+    width: spanFrames * clip.frameWidth,
+    sourceX: x - clip.inFrame * clip.frameWidth,
+    sourceWidth: sourceFrames * clip.frameWidth,
   };
 }
 
@@ -590,6 +639,88 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
+  /** Draw the document sound clip's waveform stain on a physic-paint FX row —
+   *  the same preview as the Studio sound band (blue #166ECB stain + 1px
+   *  #7DD3F5 gain/fade overlays), read-only and fitted to the bar height. */
+  private drawPhysicPaintSoundStain(
+    ctx: CanvasRenderingContext2D,
+    sound: NonNullable<FxTrackLayout['soundClip']>,
+    sequenceInFrame: number,
+    barX: number,
+    barW: number,
+    barY: number,
+    barH: number,
+    frameWidth: number,
+    scrollX: number,
+    canvasWidth: number,
+  ): void {
+    if (!sound.peaks || barH <= 0 || barW <= 0) return;
+    const geom = getPhysicPaintSoundStainGeometry({
+      startFrame: sound.startFrame,
+      inFrame: sound.inFrame,
+      outFrame: sound.outFrame,
+      sourceFrames: sound.sourceFrames ?? sound.outFrame,
+      sequenceInFrame,
+      frameWidth,
+      scrollX,
+    });
+    if (geom.width <= 0 || geom.sourceWidth <= 0) return;
+    const trackLeft = Math.max(barX, TRACK_HEADER_WIDTH);
+    const trackRight = Math.min(barX + barW, canvasWidth);
+    if (trackRight <= trackLeft) return;
+
+    const peaks = selectSoundPeaks(sound.peaks, geom.sourceWidth);
+    const stainD = peaks ? soundWaveformPathD(peaks, geom.sourceWidth) : null;
+    if (!stainD) return;
+
+    // The Studio geometry is authored in a 36px band; fit it to the bar with a
+    // Y-only scale and de-scaled stroke width so hairlines stay 1px.
+    const scaleY = barH / SOUND_BAND_HEIGHT_PX;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
+    ctx.clip();
+
+    // Waveform stain in SOURCE space (windowed by the clip rect to [in, out]).
+    ctx.save();
+    ctx.translate(geom.sourceX, barY);
+    ctx.scale(1, scaleY);
+    ctx.fillStyle = SOUND_WAVEFORM_FILL;
+    ctx.fill(new Path2D(stainD));
+    ctx.restore();
+
+    // Gain line + fade curves in CLIP space (the trimmed window).
+    const gainY = soundGainLineY(sound.gain);
+    const gainSpan = soundGainLineSpan(
+      sound.fadeInFrames, sound.fadeOutFrames, sound.inFrame, sound.outFrame, geom.width,
+    );
+    const fadeInD = soundFadeInPathD(
+      sound.fadeInFrames, sound.inFrame, sound.outFrame, geom.width, sound.gain, sound.fadeInCurve,
+    );
+    const fadeOutD = soundFadeOutPathD(
+      sound.fadeOutFrames, sound.inFrame, sound.outFrame, geom.width, sound.gain, sound.fadeOutCurve,
+    );
+    if (gainSpan || fadeInD || fadeOutD) {
+      ctx.save();
+      ctx.translate(geom.x, barY);
+      ctx.scale(1, scaleY);
+      ctx.lineWidth = SOUND_OVERLAY_STROKE_PX / scaleY;
+      ctx.strokeStyle = SOUND_OVERLAY_STROKE;
+      if (gainSpan) {
+        ctx.beginPath();
+        ctx.moveTo(gainSpan.x1, gainY);
+        ctx.lineTo(gainSpan.x2, gainY);
+        ctx.stroke();
+      }
+      if (fadeInD) ctx.stroke(new Path2D(fadeInD));
+      if (fadeOutD) ctx.stroke(new Path2D(fadeOutD));
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
   /** Draw always-visible orange diamonds for real Roto keys on a physic-paint FX row (C-04).
    *  Pure canvas drawing: #F5A623 fill, no stroke, no shadow, no interaction surface (D-08/D-09). */
   private drawRotoKeyMarkers(
@@ -724,6 +855,21 @@ export class TimelineRenderer {
             }
           }
         }
+      }
+
+      if (fxTrack.layerType === 'physic-paint' && fxTrack.soundClip) {
+        this.drawPhysicPaintSoundStain(
+          ctx,
+          fxTrack.soundClip,
+          fxTrack.inFrame,
+          barX,
+          barW,
+          barY,
+          barH,
+          frameWidth,
+          scrollX,
+          canvasWidth,
+        );
       }
 
       if (fxTrack.layerType === 'physic-paint' && fxTrack.repeatDurationMarkers?.length) {

@@ -148,6 +148,66 @@ describe('physic-paint Roto key markers (C-04)', () => {
   });
 });
 
+describe('physic-paint document sound stain preview', () => {
+  it('rebases the document-local startFrame with the owning sequence inFrame (frame-space law)', async () => {
+    const { getPhysicPaintSoundStainGeometry, TRACK_HEADER_WIDTH } = await import('./TimelineRenderer');
+
+    const geometry = getPhysicPaintSoundStainGeometry({
+      startFrame: 48,
+      inFrame: 10,
+      outFrame: 60,
+      sourceFrames: 80,
+      sequenceInFrame: 50,
+      frameWidth: 4,
+      scrollX: 12,
+    });
+    expect(geometry.x).toBe((50 + 48) * 4 - 12 + TRACK_HEADER_WIDTH);
+    expect(geometry.width).toBe((60 - 10) * 4);
+    // Source-space window: the untrimmed waveform starts one trim-in to the left.
+    expect(geometry.sourceX).toBe(geometry.x - 10 * 4);
+    expect(geometry.sourceWidth).toBe(80 * 4);
+  });
+
+  it('draws the Studio stain and hairline overlays for physic-paint rows only, under the key markers', () => {
+    const code = source();
+    const fxTrackSource = code.slice(code.indexOf('private drawFxTrack'), code.indexOf('/** Draw a Photoshop-style checkerboard'));
+
+    expect(fxTrackSource).toContain("fxTrack.layerType === 'physic-paint' && fxTrack.soundClip");
+    expect(fxTrackSource).toContain('drawPhysicPaintSoundStain');
+    // The stain paints BEFORE the Roto key diamonds so the keys stay on top.
+    expect(fxTrackSource.indexOf('drawPhysicPaintSoundStain')).toBeLessThan(fxTrackSource.indexOf('drawRotoKeyMarkers'));
+
+    const stainIndex = code.indexOf('private drawPhysicPaintSoundStain');
+    const stainSource = code.slice(stainIndex, code.indexOf('private drawRotoKeyMarkers'));
+    expect(stainSource).toContain('selectSoundPeaks');
+    expect(stainSource).toContain('soundWaveformPathD');
+    expect(stainSource).toContain('SOUND_WAVEFORM_FILL');
+    expect(stainSource).toContain('SOUND_OVERLAY_STROKE');
+    expect(stainSource).toContain('soundGainLineSpan');
+    expect(stainSource).toContain('soundFadeInPathD');
+    expect(stainSource).toContain('soundFadeOutPathD');
+    // Read-only preview: no hit-testing, no selection, no trim chrome.
+    for (const interactionSurface of ['addEventListener', 'hitTest', 'onClick', 'selected', 'hover', 'focus']) {
+      expect(stainSource).not.toContain(interactionSurface);
+    }
+  });
+
+  it('feeds soundClip + sourceId peaks into the FX layout and refreshes on the document/peaks clocks', () => {
+    const code = frameMapSource();
+    const fxLayoutsIndex = code.indexOf('export const fxTrackLayouts');
+    expect(fxLayoutsIndex).toBeGreaterThan(-1);
+    const fxLayoutsSource = code.slice(fxLayoutsIndex);
+
+    expect(fxLayoutsSource).toContain('soundClip');
+    expect(fxLayoutsSource).toContain('documentSound.sourceId');
+    expect(fxLayoutsSource).toContain('audioPeaksCache.get(documentSound.sourceId)');
+    expect(fxLayoutsSource).toContain('audioPeaksCache.getSourceFrames(documentSound.sourceId)');
+    // Sound edits bump efxPaintVersion only; peaks arrive under peaksCacheRevision.
+    expect(fxLayoutsSource).toContain('efxPaintVersion.value');
+    expect(fxLayoutsSource).toContain('peaksCacheRevision.value');
+  });
+});
+
 describe('Motion Editor Group lifecycle regression boundary (43.2-17, D-05/D-38)', () => {
   it('keeps Group lifecycle copy, identity, status, tooltip, and navigation out of the Motion Editor renderer', () => {
     const code = source();
