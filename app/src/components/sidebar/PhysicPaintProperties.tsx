@@ -110,7 +110,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       <div class="space-y-1">
         <SectionLabel text="Physics Paint" />
         <div
-          class="rounded px-2 py-2 space-y-1"
+          class="rounded px-2 py-2 space-y-1 cursor-pointer"
           style={{ backgroundColor: 'var(--sidebar-input-bg)', borderLeft: '2px solid var(--color-accent)' }}
           onDblClick={handleRowBodyDoubleClick}
         >

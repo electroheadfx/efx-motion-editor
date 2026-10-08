@@ -142,3 +142,39 @@ describe('FX stack one-gesture drop + inline rename wiring (260923-kcs)', () => 
     expect(canvas).toContain('sequenceStore.rename(');
   });
 });
+
+describe('Physic-paint FX rail double-click opens Studio (261008-ful UAT)', () => {
+  it('routes rail-body dblclick through the ONE shared launch path, physic-paint only', () => {
+    const start = interaction.indexOf('private onDoubleClick(');
+    const end = interaction.indexOf('private selectFxSequenceLayer(');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const region = interaction.slice(start, end);
+
+    // Body branch sits at/after the header boundary; the name area keeps rename.
+    expect(region).toContain('if (localX >= TRACK_HEADER_WIDTH) {');
+    expect(region).toContain("track.layerType === 'physic-paint'");
+    expect(region).toContain('this.openStudioFromFxRail(track, e.clientX);');
+    expect(region).toContain('timelineStore.fxRenameEdit.value = {');
+
+    // The helper assembles nothing itself — payload lives in the shared bridge.
+    expect(region).toContain('openPhysicPaintForLayer(layer, frame)');
+    expect(region).not.toContain('openPhysicPaintCanvas(');
+    expect(region).toContain('Number.isInteger(frame)');
+  });
+
+  it('advertises pointer cursor on physic-paint rail body hover, other kinds unchanged', () => {
+    const start = interaction.indexOf('// Cursor hint: FX area');
+    const end = interaction.indexOf('// Cursor hint: Audio area');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const region = interaction.slice(start, end);
+
+    expect(region).toContain("fxTrack.layerType === 'physic-paint'");
+    expect(region).toContain("this.canvas.style.cursor = 'pointer';");
+    // Non-physic-paint kinds keep the drag-mode cursor ladder.
+    expect(region).toContain('this.fxDragModeFromX(e.clientX, fxTrack)');
+    expect(region).toContain("'col-resize'");
+    expect(region).toContain("'grab'");
+  });
+});

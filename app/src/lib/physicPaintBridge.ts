@@ -4030,15 +4030,16 @@ export function createPhysicPaintLaunchContext(
 }
 
 /**
- * THE single Studio launch path for every caller — sidebar row, LayerList
- * double-click, future launchers — so the open payload (current frame,
- * project canvas size, fps, derived workflow label) is assembled in exactly
- * one place and the surfaces can never drift. All peeks happen at call time;
- * validation, media materialization, geometry mirror, and window hide/show
- * stay inside `openPhysicPaintCanvas`.
+ * THE single Studio launch path for every caller — sidebar row, timeline FX
+ * rail double-click, future launchers — so the open payload (frame, project
+ * canvas size, fps, derived workflow label) is assembled in exactly one place
+ * and the surfaces can never drift. `frameOverride` lets a surface open at a
+ * clicked frame (the rail dblclick) instead of the playhead; everything else
+ * peeks at call time. Validation, media materialization, geometry mirror, and
+ * window hide/show stay inside `openPhysicPaintCanvas`.
  */
-export async function openPhysicPaintForLayer(layer: Layer | null | undefined): Promise<Result<PhysicPaintLaunchContext>> {
-  const frame = timelineStore.currentFrame.peek();
+export async function openPhysicPaintForLayer(layer: Layer | null | undefined, frameOverride?: number): Promise<Result<PhysicPaintLaunchContext>> {
+  const frame = frameOverride ?? timelineStore.currentFrame.peek();
   const parentSequence = layer
     ? sequenceStore.sequences.peek().find((sequence) => (
       sequence.layers.some((candidate) => candidate.id === layer.id)

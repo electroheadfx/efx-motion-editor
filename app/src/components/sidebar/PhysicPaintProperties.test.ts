@@ -18,7 +18,7 @@ describe('PhysicPaintProperties source contract', () => {
   it('passes the current frame, project canvas size, and derived workflow label to the Roto bridge', () => {
     // 261008-ful: the payload is assembled in exactly ONE place — the shared
     // bridge helper. This pin reads the bridge source so the sidebar and the
-    // LayerList launcher stay welded to a single payload contract.
+    // timeline FX-rail launcher stay welded to a single payload contract.
     const helper = bridgeSource.slice(
       bridgeSource.indexOf('export async function openPhysicPaintForLayer'),
       bridgeSource.indexOf('export async function openPhysicPaintCanvas'),
@@ -71,6 +71,8 @@ describe('Physics paint layer row surface (261006-dfy)', () => {
   it('splits double-click: body opens the Studio, name label never does', () => {
     expect(source).toContain('onDblClick={handleRowBodyDoubleClick}');
     expect(source).toContain('onDblClick={handleNameLabelDoubleClick}');
+    // 261008-ful UAT: the double-clickable body advertises the pointer cursor.
+    expect(source).toContain('rounded px-2 py-2 space-y-1 cursor-pointer');
 
     const bodyHandler = source.slice(
       source.indexOf('const handleRowBodyDoubleClick'),
