@@ -4758,6 +4758,11 @@ export function PhysicsPaintStudio() {
     // The modal NEVER talks to a file dialog itself (D-02/D-03): the intent
     // leaves through this port and opens the shared gallery in audio mode.
     onImportRequest: () => { void audioPicker.openPicker(); },
+    // 52.5 UAT: the main-app-audio preview toggle. SAME session signal as the
+    // strip's Audio Preview button (one source of truth, two surfaces), routed
+    // through the same handler so the mid-playback effect (D-14) is identical.
+    mainAppAudioEnabled: audioPreviewEnabled.value,
+    onToggleMainAppAudio: handleAudioPreviewToggle,
   };
   /* ---- 52.5-01b Task 3 (D-04/E3): peaks ensure on reopen ----------------
      Peaks are cached at import (handleConfirmAudioPicker); after save/reopen

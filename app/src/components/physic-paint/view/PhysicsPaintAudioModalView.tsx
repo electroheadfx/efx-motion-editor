@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { AudioWaveform, Trash2, X } from 'lucide-preact';
+import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 import { NumericStepper } from '../../shared/NumericStepper';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 
@@ -66,6 +66,11 @@ export const AUDIO_IN_LABEL = 'In';
 export const AUDIO_OUT_LABEL = 'Out';
 export const AUDIO_ENABLE_ON = 'On';
 export const AUDIO_ENABLE_OFF = 'Off';
+/** 52.5 UAT: the main-app-audio preview toggle (header, preview-only). */
+export const AUDIO_MAIN_APP_AUDIO_ON = 'Main app audio On — preview only, click to mute';
+export const AUDIO_MAIN_APP_AUDIO_OFF = 'Main app audio Off — preview only, click to hear';
+export const AUDIO_MAIN_APP_AUDIO_ARIA_ON = 'Mute main app audio in the Studio preview';
+export const AUDIO_MAIN_APP_AUDIO_ARIA_OFF = 'Hear main app audio in the Studio preview';
 
 const FADE_CURVE_OPTIONS: readonly SoundFadeCurve[] = ['linear', 'exponential', 'logarithmic'];
 
@@ -81,6 +86,17 @@ export interface PhysicsPaintAudioModalViewProps {
   onClose: () => void;
   /** Import/Replace intent — opens the shared gallery with kind 'audio'. */
   onImportRequest: () => void;
+  /**
+   * 52.5 UAT: "hear the MAIN APP's audio while previewing in the Studio" — a
+   * SECOND, independent switch from the clip's `enabled` row below. Preview-
+   * only: it never touches main-editor playback or the exported mix (those
+   * always carry the clip AND the main tracks). Session state shared with the
+   * strip's Audio Preview toggle (one signal, two surfaces); defaults Off so
+   * the Studio previews the studio sound alone. Lives in the header so it is
+   * reachable even in the empty state (before any clip is imported).
+   */
+  mainAppAudioEnabled: boolean;
+  onToggleMainAppAudio: () => void;
 }
 
 export function PhysicsPaintAudioModalView({
@@ -88,6 +104,8 @@ export function PhysicsPaintAudioModalView({
   controller,
   onClose,
   onImportRequest,
+  mainAppAudioEnabled,
+  onToggleMainAppAudio,
 }: PhysicsPaintAudioModalViewProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<{ pointerX: number; pointerY: number; baseX: number; baseY: number } | null>(null);
@@ -196,6 +214,22 @@ export function PhysicsPaintAudioModalView({
           <AudioWaveform size={15} class="physics-paint-photo-reference-header-icon" aria-hidden="true" />
           <strong id="physics-audio-modal-title">{AUDIO_MODAL_TITLE}</strong>
           <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
+          {/* 52.5 UAT: main-app-audio preview toggle. SECOND switch, unrelated
+              to the clip's `enabled` row — it only decides whether the MAIN
+              APP's tracks are heard underneath in the Studio preview (default
+              Off = the Studio previews the studio sound alone). Preview-only:
+              main-editor playback and the exported mix always carry both. */}
+          <button
+            type="button"
+            class="physics-paint-audio-preview-toggle"
+            aria-label={mainAppAudioEnabled ? AUDIO_MAIN_APP_AUDIO_ARIA_ON : AUDIO_MAIN_APP_AUDIO_ARIA_OFF}
+            aria-pressed={mainAppAudioEnabled}
+            title={mainAppAudioEnabled ? AUDIO_MAIN_APP_AUDIO_ON : AUDIO_MAIN_APP_AUDIO_OFF}
+            data-testid="audio-modal-main-app-audio"
+            onClick={onToggleMainAppAudio}
+          >
+            {mainAppAudioEnabled ? <Volume2 size={13} aria-hidden="true" /> : <VolumeX size={13} aria-hidden="true" />}
+          </button>
           <button
             type="button"
             class="physics-paint-photo-reference-close"

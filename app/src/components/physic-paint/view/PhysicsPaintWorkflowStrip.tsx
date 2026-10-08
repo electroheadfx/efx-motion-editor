@@ -281,9 +281,11 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoPlaybackLoopChange?: (loop: boolean) => void;
   onRotoPlaybackFpsChange?: (fps: number) => void;
   /**
-   * 41-04 (D-12..D-14): session-local Audio Preview toggle. State defaults On
-   * per session (never persisted); the intent routes through the monitor's
-   * single control funnel for immediate mid-playback effect.
+   * 41-04 (D-12..D-14): session-local Audio Preview toggle. State defaults
+   * Off per session (52.5 UAT — the Studio previews the studio sound alone;
+   * never persisted); the intent routes through the monitor's single control
+   * funnel for immediate mid-playback effect. The Document sound modal carries
+   * the SAME signal as a second surface (one source of truth).
    */
   audioPreviewEnabled?: boolean;
   onAudioPreviewToggle?: () => void;

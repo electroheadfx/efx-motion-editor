@@ -10,13 +10,21 @@ import type { EfxPaintAudioPreviewContext } from '../../../types/physicPaint';
 const section = signal<EfxPaintAudioPreviewContext | null>(null);
 
 /**
- * D-13 Audio Preview toggle: session-local, default On, resets on each EFX
+ * D-13 Audio Preview toggle: session-local, default Off, resets on each EFX
  * Paint window open (a fresh bundle per window gives the reset for free).
  * Never written to project data, .mce files, app config, or localStorage
  * (AUDIO-05 prohibition). The monitor gates its play funnel on this signal;
  * the setter with the immediate mid-playback effect lands with the toggle UI.
+ *
+ * 52.5 UAT: this is "hear the MAIN APP's audio while previewing in the Studio"
+ * — preview-only, it never touches main-editor playback or the exported mix
+ * (those always carry both the document clip and the main tracks). The
+ * document clip has its OWN switch (`DocumentSoundClip.enabled`) and is
+ * unaffected here. Default Off so the Studio previews the studio sound alone;
+ * turn it On to hear the main app's tracks underneath.
  */
-export const audioPreviewEnabled = signal(true);
+export const AUDIO_PREVIEW_DEFAULT = false;
+export const audioPreviewEnabled = signal(AUDIO_PREVIEW_DEFAULT);
 
 type AudioPreviewToggleEffect = (enabled: boolean) => void;
 let toggleEffect: AudioPreviewToggleEffect | null = null;
