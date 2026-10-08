@@ -107,6 +107,8 @@ export interface PhysicsPaintAudioController {
   /** Commit the source trim bounds (frames; out > in, 1-frame minimum span). */
   commitInFrame: (frames: number) => void;
   commitOutFrame: (frames: number) => void;
+  /** Commit the clip placement (startFrame): integer >= 0, NO upper clamp. */
+  commitStartFrame: (frames: number) => void;
   /** Invert the studio-layer sound switch from the LIVE document. */
   toggleEnabled: () => void;
   /** Two-step remove: first call arms, second commits sound: null. */
@@ -344,6 +346,13 @@ export function usePhysicsPaintAudioController({
     commitPatch({ outFrame: frames });
   };
 
+  const commitStartFrame = (frames: number) => {
+    disarmRemove();
+    if (!isValidFadeFrames(frames)) return; // prior accepted value stays (E8/E9)
+    if (!sound) return;
+    commitPatch({ startFrame: frames });
+  };
+
   const toggleEnabled = () => {
     disarmRemove();
     if (!sound) return;
@@ -458,6 +467,7 @@ export function usePhysicsPaintAudioController({
     commitFadeOutCurve,
     commitInFrame,
     commitOutFrame,
+    commitStartFrame,
     toggleEnabled,
     requestRemove,
     confirmRemove,

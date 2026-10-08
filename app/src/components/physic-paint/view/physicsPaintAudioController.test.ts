@@ -198,6 +198,36 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-b', { gain: 50 });
   });
 
+  it('commitStartFrame patches { startFrame } on the SELECTED clip through the per-clip door (261008-ryq)', () => {
+    const { controller, patchSound } = makeController({ selection: 'clip-b' });
+    controller.commitStartFrame(42);
+    expect(patchSound).toHaveBeenCalledTimes(1);
+    expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-b', { startFrame: 42 });
+  });
+
+  it('commitStartFrame rejects negative, fractional, and NaN entries — the prior value stays (261008-ryq)', () => {
+    for (const bad of [-1, 2.5, Number.NaN]) {
+      const { controller, patchSound } = makeController({ selection: 'clip-a' });
+      controller.commitStartFrame(bad);
+      expect(patchSound).not.toHaveBeenCalled();
+    }
+  });
+
+  it('commitStartFrame fails closed with null/unknown selection and has NO upper clamp (261008-ryq)', () => {
+    const none = makeController({ selection: null });
+    none.controller.commitStartFrame(42);
+    expect(none.patchSound).not.toHaveBeenCalled();
+
+    const unknown = makeController({ selection: 'clip-zzz' });
+    unknown.controller.commitStartFrame(42);
+    expect(unknown.patchSound).not.toHaveBeenCalled();
+
+    const big = makeController({ selection: 'clip-a' });
+    big.controller.commitStartFrame(1000000);
+    expect(big.patchSound).toHaveBeenCalledTimes(1);
+    expect(big.patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', { startFrame: 1000000 });
+  });
+
   it('field commits fail closed with no selection — no port call, no mutation', () => {
     const { controller, patchSound, removeSound } = makeController({ selection: null });
     controller.commitGain(50);

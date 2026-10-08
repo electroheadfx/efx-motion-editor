@@ -20,7 +20,7 @@ import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
  *   `Remove sound? Position, trims, gain, and fades are discarded from this document.` ·
  *   `Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.` ·
  *   `Sound file is missing from the project. Replace it to restore the clip.` ·
- *   `Gain` (-100..+100, 0 = unity) · `Fade in` · `Fade out` (frames; curves `linear`,
+ *   `Position` (frames) · `Gain` (-100..+100, 0 = unity) · `Fade in` · `Fade out` (frames; curves `linear`,
  *   `exponential`, `logarithmic`) · `In` · `Out` (frames) · `On` / `Off`
  *
  * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal,
@@ -29,11 +29,12 @@ import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
  *   1. header: AudioWaveform 15px + `Document sounds` + close X
  *   2. file row (filename + `Replace…`) OR the empty-state block
  *      (`No sound yet` / body / `Import sound`, zero clips) OR the error copy
- *   3. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
- *   4. `Gain` — NumericStepper step 5, -100..100 (per-step commit), no separate readout
- *   5-6. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
+ *   3. `Position` (frames) — NumericStepper step 1, integer >= 0, no upper clamp
+ *   4. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
+ *   5. `Gain` — NumericStepper step 5, -100..100 (per-step commit), no separate readout
+ *   6-7. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
  *        (integer >= 0, no 99 cap) + curve select under each stepper
- *   7. `In` | `Out` — source trim in frames (2 columns, 1-frame minimum span)
+ *   8. `In` | `Out` — source trim in frames (2 columns, 1-frame minimum span)
  *
  * The component is a thin render shell over the signals-only
  * `physicsPaintAudioController` (accepted canonical state only; no useState,
@@ -62,6 +63,7 @@ export const AUDIO_REMOVE_ARMED = 'Confirm remove?';
 export const AUDIO_REMOVE_CONFIRM_COPY = 'Remove sound? Position, trims, gain, and fades are discarded from this document.';
 export const AUDIO_ERROR_DECODE = "Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.";
 export const AUDIO_ERROR_MISSING = 'Sound file is missing from the project. Replace it to restore the clip.';
+export const AUDIO_POSITION_LABEL = 'Position';
 export const AUDIO_GAIN_LABEL = 'Gain';
 export const AUDIO_FADE_IN_LABEL = 'Fade in';
 export const AUDIO_FADE_OUT_LABEL = 'Fade out';
@@ -179,7 +181,7 @@ export function PhysicsPaintAudioModalView({
     audios,
     sound, filename, missing, busy, decodeError, previewGain, removeArmed,
     commitGain, commitFadeIn, commitFadeOut,
-    commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame,
+    commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame, commitStartFrame,
     toggleEnabled, requestRemove, confirmRemove, removeSelected, disarmRemove,
   } = controller;
 
@@ -314,7 +316,25 @@ export function PhysicsPaintAudioModalView({
                 </p>
               ) : null}
 
-              {/* 3. Remove + On/Off — one line (UAT round 2). The switch is the
+              {/* 3. Position (frames) — band placement; per-step commit, integer >= 0, no upper clamp */}
+              <div class="physics-paint-audio-row">
+                <div class="physics-paint-photo-reference-opacity-labels">
+                  <span class="physics-paint-photo-reference-label">{AUDIO_POSITION_LABEL} (frames)</span>
+                  <span class="physics-paint-photo-reference-label-spacer" aria-hidden="true" />
+                </div>
+                <NumericStepper
+                  class="physics-paint-audio-field-stepper"
+                  value={sound.startFrame}
+                  step={1}
+                  min={0}
+                  onChange={(value) => commitStartFrame(value)}
+                  ariaLabel={AUDIO_POSITION_LABEL}
+                  disabled={controlsDisabled}
+                  ariaDisabled={controlsDisabled}
+                />
+              </div>
+
+              {/* 4. Remove + On/Off — one line (UAT round 2). The switch is the
                   studio-layer sound: ON = the clip is audible in Studio, in the
                   main app, and in export; OFF = silent everywhere. It never
                   touches the main app's audio tracks. */}
@@ -352,7 +372,7 @@ export function PhysicsPaintAudioModalView({
                 </p>
               ) : null}
 
-              {/* 4. Gain — NumericStepper step 5, -100..100 (per-step commit); the stepper is the value display */}
+              {/* 5. Gain — NumericStepper step 5, -100..100 (per-step commit); the stepper is the value display */}
               <div class="physics-paint-audio-row">
                 <div class="physics-paint-photo-reference-opacity-labels">
                   <span class="physics-paint-photo-reference-label">{AUDIO_GAIN_LABEL}</span>
@@ -371,7 +391,7 @@ export function PhysicsPaintAudioModalView({
                 />
               </div>
 
-              {/* 5-6. Fade in | Fade out — one row, 2 columns (UAT). Values are
+              {/* 6-7. Fade in | Fade out — one row, 2 columns (UAT). Values are
                   FRAMES (the model field is fadeInFrames); the unit is in the
                   label so it never reads as seconds. Integer >= 0, no 99 cap. */}
               <div class="physics-paint-audio-grid">
@@ -419,7 +439,7 @@ export function PhysicsPaintAudioModalView({
                 </div>
               </div>
 
-              {/* 7. In | Out — source trim in FRAMES (UAT round 2: the end of the
+              {/* 8. In | Out — source trim in FRAMES (UAT round 2: the end of the
                   clip was unreachable on the 6px trim zones). 1-frame minimum
                   span: an entry that would invert the span never commits. */}
               <div class="physics-paint-audio-grid">

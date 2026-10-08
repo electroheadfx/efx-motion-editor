@@ -6,10 +6,11 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintAudioModalView.tsx'), 'utf8');
 
 describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
-  it('renders field 4 as a NumericStepper (step 5, clamped) committing through commitGain', () => {
-    const start = source.indexOf('{/* 4.');
+  it('renders field 5 as a NumericStepper (step 5, clamped) committing through commitGain', () => {
+    // 261008-ryq renumbered the step comments: Position is 3, so Gain is 5.
+    const start = source.indexOf('{/* 5.');
     expect(start).toBeGreaterThan(-1);
-    const end = source.indexOf('{/* 5-6.', start);
+    const end = source.indexOf('{/* 6-7.', start);
     expect(end).toBeGreaterThan(start);
     const gainField = source.slice(start, end);
     expect(gainField).toContain('<NumericStepper');
@@ -34,6 +35,39 @@ describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
     expect(source).not.toContain('<output>');
     expect(source).not.toContain('signed readout');
     expect(source).not.toContain('readout `');
+  });
+});
+
+describe('PhysicsPaintAudioModalView Position field (261008-ryq)', () => {
+  it('renders field 3 as a NumericStepper (step 1, min 0, no upper clamp) committing through commitStartFrame', () => {
+    const start = source.indexOf('{/* 3.');
+    expect(start).toBeGreaterThan(-1);
+    const end = source.indexOf('{/* 4.', start);
+    expect(end).toBeGreaterThan(start);
+    const positionField = source.slice(start, end);
+    expect(positionField).toContain('<NumericStepper');
+    expect(positionField).toContain('step={1}');
+    expect(positionField).toContain('min={0}');
+    expect(positionField).not.toContain('max={');
+    expect(positionField).toContain('value={sound.startFrame}');
+    expect(positionField).toContain('onChange={(value) => commitStartFrame(value)}');
+    expect(positionField).toContain('{AUDIO_POSITION_LABEL} (frames)');
+    expect(positionField).toContain('ariaLabel={AUDIO_POSITION_LABEL}');
+  });
+
+  it('places Position after the file row/error copy and before Remove, contract renumbered to the locked order', () => {
+    expect(source).toContain("export const AUDIO_POSITION_LABEL = 'Position';");
+    // The header contract lists Position as step 3 and the steps that follow.
+    const contract = source.slice(source.indexOf('Field order top-to-bottom'), source.indexOf('The component is a thin render shell'));
+    expect(contract).toContain('3. `Position` (frames)');
+    expect(contract).toContain('4. `Remove`');
+    expect(contract).toContain('5. `Gain`');
+    expect(contract).toContain('6-7. `Fade in` | `Fade out`');
+    expect(contract).toContain('8. `In` | `Out`');
+    // Placement pin: the Position block sits between the file row and Remove.
+    const positionIndex = source.indexOf('{/* 3. Position');
+    expect(positionIndex).toBeGreaterThan(source.indexOf('{/* 2b. File row'));
+    expect(source.indexOf('{/* 4. Remove')).toBeGreaterThan(positionIndex);
   });
 });
 
