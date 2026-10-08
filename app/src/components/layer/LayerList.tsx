@@ -4,6 +4,8 @@ import {GripVertical, Eye, EyeOff, X, Lock} from 'lucide-preact';
 import {layerStore} from '../../stores/layerStore';
 import {uiStore} from '../../stores/uiStore';
 import {audioStore} from '../../stores/audioStore';
+import {timelineStore} from '../../stores/timelineStore';
+import {openPhysicPaintForLayer} from '../../lib/physicPaintBridge';
 import type {Layer} from '../../types/layer';
 
 /** SortableJS-powered layer list with drag-and-drop reorder, visibility toggle, delete, and selection */
@@ -81,6 +83,10 @@ interface LayerRowProps {
 
 function LayerRow({layer, isSelected}: LayerRowProps) {
   const isBase = layer.isBase ?? false;
+  // Re-entrancy guard mirroring the sidebar's `opening` state (no signal
+  // writes, no useState — a plain ref keeps rapid double-clicks from racing
+  // multiple Studio window opens).
+  const openingRef = useRef(false);
 
   // Color-coded type indicator using sidebar variables
   const typeColor =
@@ -113,6 +119,27 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
     layerStore.remove(layer.id);
   };
 
+  // 261008-ful: double-click a physic-paint row opens the Studio through the
+  // ONE shared launch path. Strictly gated — non-physic-paint rows and invalid
+  // frames return before any launch; failures stay silent in the UI (logged
+  // only). Select/grip/eye/delete remain untouched.
+  const handleRowDoubleClick = async (e: MouseEvent) => {
+    e.stopPropagation();
+    if (layer.type !== 'physic-paint' || layer.source.type !== 'physic-paint') return;
+    const frame = timelineStore.currentFrame.peek();
+    if (!Number.isInteger(frame) || frame < 0) return;
+    if (openingRef.current) return;
+    openingRef.current = true;
+    try {
+      const result = await openPhysicPaintForLayer(layer);
+      if (!result.ok) {
+        console.info('[LayerList] physic-paint double-click launch failed', result);
+      }
+    } finally {
+      openingRef.current = false;
+    }
+  };
+
   return (
     <div
       class={`${isBase ? 'layer-base' : ''} group/row flex items-center gap-2 rounded-md px-2.5 py-1.5 h-[44px] cursor-pointer select-none`}
@@ -122,6 +149,7 @@ function LayerRow({layer, isSelected}: LayerRowProps) {
           : 'transparent',
       }}
       onClick={handleSelect}
+      onDblClick={handleRowDoubleClick}
     >
       {/* Drag handle -- hidden for base layer */}
       {!isBase ? (

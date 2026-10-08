@@ -70,7 +70,7 @@ import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
 import { imageStore } from '../stores/imageStore';
 import { tempProjectDir } from './projectDir';
-import { resolveSequenceTimelineRange, trackLayouts } from './frameMap';
+import { fxTrackLayouts, resolveSequenceTimelineRange, trackLayouts } from './frameMap';
 import { assetUrl, scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 // 52.5-01a (T-52.5-09): the sound relativePath must resolve inside the package
 // `audio/` directory at BOTH the save/load edge and this assetUrl build.
@@ -4027,6 +4027,37 @@ export function createPhysicPaintLaunchContext(
   const validated = parseCanonicalPhysicsPaintLaunchValue(context);
   if (!validated) throw new Error('Could not construct a canonical physical launch context.');
   return validated;
+}
+
+/**
+ * THE single Studio launch path for every caller — sidebar row, LayerList
+ * double-click, future launchers — so the open payload (current frame,
+ * project canvas size, fps, derived workflow label) is assembled in exactly
+ * one place and the surfaces can never drift. All peeks happen at call time;
+ * validation, media materialization, geometry mirror, and window hide/show
+ * stay inside `openPhysicPaintCanvas`.
+ */
+export async function openPhysicPaintForLayer(layer: Layer | null | undefined): Promise<Result<PhysicPaintLaunchContext>> {
+  const frame = timelineStore.currentFrame.peek();
+  const parentSequence = layer
+    ? sequenceStore.sequences.peek().find((sequence) => (
+      sequence.layers.some((candidate) => candidate.id === layer.id)
+    ))
+    : undefined;
+  const fxLayout = parentSequence
+    ? fxTrackLayouts.peek().find((layout) => layout.sequenceId === parentSequence.id)
+    : undefined;
+
+  return openPhysicPaintCanvas({
+    layer,
+    frame,
+    canvas: {
+      width: projectStore.width.peek(),
+      height: projectStore.height.peek(),
+    },
+    fps: projectStore.fps.peek(),
+    workflowLabel: fxLayout?.headerLabel,
+  });
 }
 
 export async function openPhysicPaintCanvas(request: PhysicPaintOpenRequest): Promise<Result<PhysicPaintLaunchContext>> {
