@@ -120,16 +120,19 @@ describe('physicsPaintLaunchContext', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 52.5-01a Task 2 (Q1, T-52.5-08): the closed `documentAudio` launch section —
-// rides ONLY the closed LAUNCH_KEYS, validated fail-closed against the exact
-// {revision, clipId, assetUrl} set (unknown key -> null, never a raw payload).
+// 52.5-01a Task 2 (Q1, T-52.5-08), reshaped (dup-clip-plays-audios-0): the
+// closed `documentAudio` launch section — rides ONLY the closed LAUNCH_KEYS,
+// validated fail-closed against the exact {revision, clips} set, every entry
+// a closed {clipId, assetUrl} ref (unknown key -> null, never a raw payload).
 // ---------------------------------------------------------------------------
 
 describe('documentAudio closed launch section (52.5-01a, Q1, T-52.5-08)', () => {
   const DOCUMENT_AUDIO_SECTION = {
     revision: 2,
-    clipId: 'sound-clip-1',
-    assetUrl: 'efxasset://localhost/audio/sound.wav',
+    clips: [
+      { clipId: 'sound-clip-1', assetUrl: 'efxasset://localhost/audio/sound.wav' },
+      { clipId: 'sound-clip-2', assetUrl: 'efxasset://localhost/audio/sound.wav' },
+    ],
   } as const;
   const AUDIO_PREVIEW_SECTION = { revision: 1, fps: 24, tracks: [] } as const;
 

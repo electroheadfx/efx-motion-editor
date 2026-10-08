@@ -1,7 +1,7 @@
 import type { Result } from './ipc';
 import { effect, signal } from '@preact/signals';
 import type { Layer } from '../types/layer';
-import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
+import type { EfxPaintAudioPreviewContext, PhysicPaintActionRetainedArtifactReference, PhysicPaintActionTransactionRecord, PhysicPaintApplyPayload, PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintDocumentAudioClipRef, PhysicPaintDocumentAudioSection, PhysicPaintImageImportResult, PhysicPaintImageLibraryRequest, PhysicPaintImageLibraryResult, PhysicPaintLaunchContext, PhysicPaintProjectContextRequest, PhysicPaintRotoAuthorityRequest, PhysicPaintRotoAuthorityResult, PhysicPaintRotoInterpolationSettings, PhysicPaintRotoPhysicalEditApplyResult, PhysicPaintRotoPhysicalEditIntent, PhysicPaintRotoPhysicalEditRecord, PhysicPaintRotoPhysicalEditSemanticDelta, PhysicPaintRotoPhysicalEditOperationKind, PhysicPaintScriptLibraryResult, PhysicPaintStateSaveRequest, PhysicPaintStateSaveResult } from '../types/physicPaint';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, buildFrameBytesToken, isPhysicPaintApplyPayload, isPhysicPaintFrameSyncMessage, isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryRequest, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextRequest, isPhysicPaintRotoAuthorityRequest, isPhysicPaintRotoPhysicalEditApplyPayload, isPhysicPaintRotoPhysicalEditRecordRef, isPhysicPaintScriptLibraryRequest, isWebpBytes, serializePhysicPaintRotoPhysicalEditIntent } from '../types/physicPaint';
 import { base64ToWebpBytes, fromTransportPayload, sha256HexBytes, toTransportPayload } from './webpBytes';
 import { buildBytesPayload } from './efxPaintMediaMaterialize';
@@ -3017,8 +3017,8 @@ export async function installPhysicPaintProjectContextRequestListener(): Promise
  * 52.5-01a (Q1, T-52.5-08): post-register documentAudio push — rides the SAME
  * PHYSIC_PAINT_AUDIO_CONTEXT_EVENT emit path (emitTo window-label + CustomEvent
  * + opener.postMessage fallbacks) with the closed documentAudio section as the
- * payload; `null` clears the child's store (clip removed). The payload key sets
- * are disjoint ({revision,fps,tracks} vs {revision,clipId,assetUrl}), so the
+ * payload; `null` clears the child's store (clips removed). The payload key
+ * sets are disjoint ({revision,fps,tracks} vs {revision,clips}), so the
  * child's audioPreview funnel drops this shape and vice versa — task 3 wires
  * the documentAudio side of this event.
  */
@@ -3897,27 +3897,30 @@ let nextDocumentAudioRevision = 1;
 /**
  * Build the launch/push section from `getEfxPaintDocument(layerId)?.audios`
  * ALONE (Q1 guardrail: this must never read audioStore.tracks — a zero-main-
- * audio project still transports its clip). Absent/empty list -> null (section
- * absent); an unsafe relativePath -> null (fail closed, T-52.5-09: the same
- * guard refuses the package at save/load).
+ * audio project still transports its clips). Absent/empty list -> null (section
+ * absent); any unsafe relativePath -> null for the WHOLE section (fail closed,
+ * T-52.5-09: the same guard refuses the package at save/load).
  *
- * SCOPE BOUNDARY (261008-ig1): the `documentAudio` channel stays the CLOSED
- * 3-member singleton {revision, clipId, assetUrl} fed from `audios[0]` — the
- * channel reshaping for the full list is the follow-up quick's job (out of
- * scope here by plan). The list itself rides the `document` carrier, which is
- * what the Studio child reads to draw every clip.
+ * dup-clip-plays-audios-0 (261008-ig1 D-01 follow-up): the channel now
+ * carries EVERY placed clip — one ref per `audios[]` member, keyed by the
+ * clip's own `id` (never the shared `sourceId`) — under one monotonic
+ * `revision` for the whole list.
  */
 export function buildPhysicPaintDocumentAudioSection(layerId: string): PhysicPaintDocumentAudioSection | null {
-  const sound = getEfxPaintDocument(layerId)?.audios[0] ?? null;
-  if (!sound) return null;
+  const audios = getEfxPaintDocument(layerId)?.audios ?? [];
+  if (audios.length === 0) return null;
   // Same project-root fallback as the gallery import copy target
-  // (`dirPath ?? tempProjectDir`) so an unsaved project's clip still resolves.
+  // (`dirPath ?? tempProjectDir`) so an unsaved project's clips still resolve.
   const projectDir = projectStore.dirPath.peek() ?? tempProjectDir.peek();
-  if (!projectDir || !isSafeAudioRelativePath(sound.relativePath)) return null;
+  if (!projectDir) return null;
+  const clips: PhysicPaintDocumentAudioClipRef[] = [];
+  for (const sound of audios) {
+    if (!isSafeAudioRelativePath(sound.relativePath)) return null;
+    clips.push({ clipId: sound.id, assetUrl: assetUrl(`${projectDir}/${sound.relativePath}`) });
+  }
   return {
     revision: nextDocumentAudioRevision++,
-    clipId: sound.id,
-    assetUrl: assetUrl(`${projectDir}/${sound.relativePath}`),
+    clips,
   };
 }
 

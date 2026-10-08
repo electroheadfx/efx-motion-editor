@@ -4843,7 +4843,8 @@ export function PhysicsPaintStudio() {
         for (const sourceId of pendingSources) {
           const clip = audios.find((entry) => entry.sourceId === sourceId);
           if (!clip) continue;
-          const sectionUrl = section && section.clipId === clip.id ? section.assetUrl : null;
+          const sectionEntry = section?.clips.find((ref) => ref.clipId === clip.id) ?? null;
+          const sectionUrl = sectionEntry ? sectionEntry.assetUrl : null;
           const fallbackUrl = fallbackDir !== null && isSafeAudioRelativePath(clip.relativePath)
             ? assetUrl(`${fallbackDir}/${clip.relativePath}`)
             : null;

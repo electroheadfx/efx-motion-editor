@@ -109,10 +109,11 @@ async function fetchAndDecodeSource(id: string, assetUrl: string): Promise<void>
 
 export const efxPaintAudioMonitor = {
   /**
-   * Fetch + decode every non-muted main track plus the document clip (52.5-01a).
-   * Per-source try/catch via fetchAndDecodeSource — never throws (AUDIO-06).
-   * `next` may be null: a clip-only session (zero main-audio tracks) still
-   * prepares the clip so the widened useRotoCachedPlayback gate can play it.
+   * Fetch + decode every non-muted main track plus every document clip
+   * (52.5-01a, dup-clip-plays-audios-0: the section carries the full clips
+   * list). Per-source try/catch via fetchAndDecodeSource — never throws
+   * (AUDIO-06). `next` may be null: a clip-only session (zero main-audio
+   * tracks) still prepares the clips so the widened gate can play them.
    */
   async prepare(next: EfxPaintAudioPreviewContext | null): Promise<void> {
     context = next;
@@ -121,19 +122,23 @@ export const efxPaintAudioMonitor = {
     const jobs: Promise<void>[] = next
       ? next.tracks.filter((track) => !track.muted).map((track) => fetchAndDecodeSource(track.id, track.assetUrl))
       : [];
-    const clip = efxPaintDocumentAudioStore.getSection();
-    if (clip) jobs.push(fetchAndDecodeSource(clip.clipId, clip.assetUrl));
+    const section = efxPaintDocumentAudioStore.getSection();
+    if (section) {
+      for (const entry of section.clips) jobs.push(fetchAndDecodeSource(entry.clipId, entry.assetUrl));
+    }
     await Promise.all(jobs);
   },
 
   /**
-   * 52.5-01a (Q1): decode ONLY the current document clip — used by the
-   * documentAudio push funnel where the main tracks are already prepared and
-   * must not be re-fetched. Warn-and-skip, same path.
+   * 52.5-01a (Q1), reshaped (dup-clip-plays-audios-0): decode ONLY the
+   * current document clips — used by the documentAudio push funnel where the
+   * main tracks are already prepared and must not be re-fetched. One
+   * warn-and-skip job per listed clip, keyed by its placed-clip id.
    */
   async prepareClip(): Promise<void> {
-    const clip = efxPaintDocumentAudioStore.getSection();
-    if (clip) await fetchAndDecodeSource(clip.clipId, clip.assetUrl);
+    const section = efxPaintDocumentAudioStore.getSection();
+    if (!section) return;
+    await Promise.all(section.clips.map((entry) => fetchAndDecodeSource(entry.clipId, entry.assetUrl)));
   },
 
   /**
@@ -151,10 +156,11 @@ export const efxPaintAudioMonitor = {
    *     b. D-05/D-06 first-player-wins ownership — suppressed with the status
    *        note; a window already holding the claim is never suppressed by a
    *        later main start.
-   *  2. DOCUMENT CLIP leg — gated by NEITHER toggle and reachable even when
-   *     the claim fails (the ownership early-return only ever ends the MAIN
-   *     leg). Dispatched INSIDE playAtCursor after the main loop, so
-   *     stopAll, seek-restart, drift, loop-wrap, and scrub funnels cover it.
+   *  2. DOCUMENT CLIP leg — ONE dispatch per listed clip (dup-clip-plays-
+   *     audios-0), gated by NEITHER toggle and reachable even when the claim
+   *     fails (the ownership early-return only ever ends the MAIN leg).
+   *     Dispatched INSIDE playAtCursor after the main loop, so stopAll,
+   *     seek-restart, drift, loop-wrap, and scrub funnels cover every clip.
    */
   playAtCursor(cursorAppFrame: number, playbackRangeEnd: number): void {
     const current = context;
@@ -172,9 +178,6 @@ export const efxPaintAudioMonitor = {
     }
     // UAT round 2: the main leg rides the SESSION monitoring toggle alone —
     // the document-sound modal never touches the main app's audio.
-    const sound = clipSection
-      ? resolveDocumentSoundClip(getDocument(efxPaintDocumentAudioStore.getLayerId() ?? ''), clipSection)
-      : null;
     let mainLeg = Boolean(current) && studioMainLegEnabled(sessionToggleOn);
     if (mainLeg && !efxPaintAudioOwnership.canStartAudio()) {
       // D-05/D-06: the guard suppresses the MAIN leg only — the clip mixes
@@ -184,12 +187,21 @@ export const efxPaintAudioMonitor = {
       mainLeg = false;
     }
     const fps = current?.fps ?? efxPaintDocumentAudioStore.getFps();
-    const clipResolution = sound && clipSection
-      ? resolveClipPlayback(sound, cursorAppFrame, playbackRangeEnd, fps)
-      : null;
-    const clipLeg = Boolean(
-      sound && studioClipLegEnabled(sound.enabled) && clipSection && clipResolution && preparedTrackIds.has(clipSection.clipId),
-    );
+    // dup-clip-plays-audios-0: arm EVERY listed clip — per-clip resolve by the
+    // placed id (never sourceId), the enabled switch, the prepared gate, and
+    // the locked resolveClipPlayback truth table — so the leg is a loop over
+    // section.clips, not a single-slot read of one section.
+    const clipDocument = getDocument(efxPaintDocumentAudioStore.getLayerId() ?? '');
+    const armedClips = clipSection
+      ? clipSection.clips.flatMap((entry) => {
+          const sound = resolveDocumentSoundClip(clipDocument, entry);
+          if (!sound || !studioClipLegEnabled(sound.enabled) || !preparedTrackIds.has(entry.clipId)) return [];
+          const resolution = resolveClipPlayback(sound, cursorAppFrame, playbackRangeEnd, fps);
+          if (!resolution) return [];
+          return [{ sound, entry, resolution }];
+        })
+      : [];
+    const clipLeg = armedClips.length > 0;
     if (!mainLeg && !clipLeg) {
       // Nothing dispatchable at this cursor: a mid-playback re-entry must not
       // leave stale sources running (seek beyond every audible window).
@@ -216,17 +228,21 @@ export const efxPaintAudioMonitor = {
         dispatched += 1;
       }
     }
-    if (clipLeg && sound && clipSection && clipResolution) {
-      // D-14: the adapter scales the percent volume to linear and carries the
+    if (clipLeg) {
+      // One dispatch per armed clip, each under its OWN placed-clip id (the
+      // engine keys sources per id, so duplicates never collide). D-14: the
+      // adapter scales that clip's percent gain to linear and carries its
       // fade fields — the engine's gain/applyFadeSchedule math applies them
-      // unchanged (if the adapter did not scale, this is where it would show).
-      const clipTrack = toDocumentSoundAudioTrack(sound, clipSection.assetUrl, fps);
-      if (clipResolution.kind === 'immediate') {
-        audioEngine.play(sound.id, clipResolution.sourceOffsetSec, clipTrack, fps, clipResolution.maxPlaySec);
-      } else {
-        audioEngine.playDelayed(sound.id, clipResolution.delaySec, clipResolution.sourceOffsetSec, clipTrack, fps, clipResolution.maxPlaySec);
+      // per source, and the sources sum in the destination bus (mix).
+      for (const { sound, entry, resolution } of armedClips) {
+        const clipTrack = toDocumentSoundAudioTrack(sound, entry.assetUrl, fps);
+        if (resolution.kind === 'immediate') {
+          audioEngine.play(sound.id, resolution.sourceOffsetSec, clipTrack, fps, resolution.maxPlaySec);
+        } else {
+          audioEngine.playDelayed(sound.id, resolution.delaySec, resolution.sourceOffsetSec, clipTrack, fps, resolution.maxPlaySec);
+        }
+        dispatched += 1;
       }
-      dispatched += 1;
     }
     logAudioScrubDiagnostic('playAtCursor:', cursorAppFrame, '| dispatched', dispatched, 'tracks | AudioContext', ctx.state);
     anchorAppFrame = cursorAppFrame;
@@ -289,11 +305,16 @@ export const efxPaintAudioMonitor = {
    */
   scrubAt(cursorAppFrame: number): void {
     const clipSection = efxPaintDocumentAudioStore.getSection();
-    const sound = clipSection
-      ? resolveDocumentSoundClip(getDocument(efxPaintDocumentAudioStore.getLayerId() ?? ''), clipSection)
-      : null;
+    const clipDocument = getDocument(efxPaintDocumentAudioStore.getLayerId() ?? '');
     const hasMain = Boolean(context) && audioPreviewEnabled.peek();
-    const hasClip = Boolean(clipSection && sound && sound.enabled);
+    // "Anything dispatchable": at least one LISTED clip resolves to an enabled
+    // sound — the leg covers the whole clips list, never just slot 0.
+    const hasClip = Boolean(
+      clipSection && clipSection.clips.some((entry) => {
+        const sound = resolveDocumentSoundClip(clipDocument, entry);
+        return Boolean(sound && sound.enabled);
+      }),
+    );
     if (!hasMain && !hasClip) {
       logAudioScrubDiagnostic('scrubAt gated:', !context ? 'no-context (prepare never ran)' : 'toggle-off', 'frame', cursorAppFrame);
       this.positionedAt(cursorAppFrame);
@@ -409,21 +430,34 @@ export const efxPaintAudioMonitor = {
   },
 
   /**
-   * 52.5-01a (Q1): a newer documentAudio section (or a null clear) just
-   * entered the child store. Present section: decode the clip through the
-   * warn-and-skip path, then — when playing — restart at the CURRENT Paint
-   * cursor so the clip leg reflects the change immediately (D-03 discipline;
-   * the restart's stopAll retires the previous clip source). Null clear:
-   * retire ONLY the clip source — the main leg keeps playing untouched.
+   * 52.5-01a (Q1), reshaped (dup-clip-plays-audios-0): a newer documentAudio
+   * section (or a null clear) just entered the child store. Present section:
+   * retire the clips the newer list no longer names, decode every listed clip
+   * through the warn-and-skip path, then — when playing — restart at the
+   * CURRENT Paint cursor so the clip leg re-arms EVERY clip immediately
+   * (D-03 discipline; the restart's stopAll retires previous sources, and the
+   * fresh per-id schedule replaces any already-run-to-end source). Null
+   * clear: retire ONLY the clip sources — the main leg keeps playing
+   * untouched.
    */
   async applyRevisionedDocumentAudio(previous: PhysicPaintDocumentAudioSection | null): Promise<void> {
     const section = efxPaintDocumentAudioStore.getSection();
     if (!section) {
       if (previous) {
-        audioEngine.stop(previous.clipId);
-        preparedTrackIds.delete(previous.clipId);
+        for (const entry of previous.clips) {
+          audioEngine.stop(entry.clipId);
+          preparedTrackIds.delete(entry.clipId);
+        }
       }
       return;
+    }
+    if (previous) {
+      const nextIds = new Set(section.clips.map((entry) => entry.clipId));
+      for (const entry of previous.clips) {
+        if (nextIds.has(entry.clipId)) continue;
+        audioEngine.stop(entry.clipId);
+        preparedTrackIds.delete(entry.clipId);
+      }
     }
     await this.prepareClip();
     if (state === 'playing') {
@@ -464,15 +498,16 @@ export const efxPaintAudioMonitor = {
 };
 
 /**
- * 52.5-01a (Q1, T-52.5-08): the shared PHYSIC_PAINT_AUDIO_CONTEXT_EVENT carries
- * EITHER payload shape — disjoint key sets ({revision,fps,tracks} vs
- * {revision,clipId,assetUrl}) plus the null clear. A `clipId` member or an
- * explicit null routes to the documentAudio funnel; everything else is the
- * audioPreview shape (which never carries clipId and never sends null).
+ * 52.5-01a (Q1, T-52.5-08), reshaped (dup-clip-plays-audios-0): the shared
+ * PHYSIC_PAINT_AUDIO_CONTEXT_EVENT carries EITHER payload shape — disjoint
+ * key sets ({revision,fps,tracks} vs {revision,clips}) plus the null clear.
+ * A `clips` member or an explicit null routes to the documentAudio funnel;
+ * everything else is the audioPreview shape (which never carries `clips` and
+ * never sends null).
  */
 function isDocumentAudioTransport(value: unknown): boolean {
   if (value === null) return true;
-  return typeof value === 'object' && !Array.isArray(value) && 'clipId' in value;
+  return typeof value === 'object' && !Array.isArray(value) && 'clips' in value;
 }
 
 /**

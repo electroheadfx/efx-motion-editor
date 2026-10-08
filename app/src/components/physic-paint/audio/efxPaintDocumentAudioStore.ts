@@ -5,9 +5,10 @@ import { isPhysicPaintDocumentAudioSection } from '../../../types/physicPaint';
 /**
  * 52.5-01a (Q1, T-52.5-08): session-only child-side documentAudio store
  * (soloStore-shaped, same discipline as efxPaintAudioPreviewStore) — holds the
- * currently applied CLOSED documentAudio section {revision, clipId, assetUrl}
- * for this child window, plus the launch identity (layer + project fps) a
- * clip-only session needs to resolve and dispatch the clip.
+ * currently applied CLOSED documentAudio section {revision, clips[]} (one ref
+ * per PLACED clip, keyed by its own id — dup-clip-plays-audios-0) for this
+ * child window, plus the launch identity (layer + project fps) a clip-only
+ * session needs to resolve and dispatch the clips.
  *
  * Nothing is persisted; each window load starts empty and hydrates from the
  * launch context / push events. The single write funnel `accept` mirrors
@@ -79,8 +80,7 @@ export const efxPaintDocumentAudioStore = {
     appliedRevision = incoming.revision;
     section.value = {
       revision: incoming.revision,
-      clipId: incoming.clipId,
-      assetUrl: incoming.assetUrl,
+      clips: incoming.clips.map((entry) => ({ clipId: entry.clipId, assetUrl: entry.assetUrl })),
     };
     return true;
   },

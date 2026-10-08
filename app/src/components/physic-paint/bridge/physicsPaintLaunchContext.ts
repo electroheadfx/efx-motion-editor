@@ -14,8 +14,9 @@ export interface PhysicsPaintLaunchStateSetters<Settings> {
 
 const LAUNCH_KEYS = new Set(['operationId', 'layerId', 'project', 'startFrame', 'layerName', 'workflowLabel', 'width', 'height', 'fps', 'document', 'rotoPlayback', 'audioPreview', 'documentAudio']);
 const AUDIO_PREVIEW_KEYS = new Set(['revision', 'fps', 'tracks']);
-// 52.5-01a (Q1, T-52.5-08): the closed documentAudio section key set.
-const DOCUMENT_AUDIO_KEYS = new Set(['revision', 'clipId', 'assetUrl']);
+// 52.5-01a (Q1, T-52.5-08) reshaped (dup-clip-plays-audios-0): the closed
+// documentAudio section key set — one revisioned list of per-clip refs.
+const DOCUMENT_AUDIO_KEYS = new Set(['revision', 'clips']);
 const AUDIO_PREVIEW_TRACK_KEYS = new Set(['id', 'assetUrl', 'offsetFrame', 'inFrame', 'outFrame', 'slipOffset', 'fadeInFrames', 'fadeOutFrames', 'volume', 'muted', 'fadeInCurve', 'fadeOutCurve']);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -100,8 +101,7 @@ export function parseCanonicalPhysicsPaintLaunchValue(value: unknown): PhysicPai
         ? {
             documentAudio: {
               revision: value.documentAudio.revision,
-              clipId: value.documentAudio.clipId,
-              assetUrl: value.documentAudio.assetUrl,
+              clips: value.documentAudio.clips.map((entry) => ({ clipId: entry.clipId, assetUrl: entry.assetUrl })),
             },
           }
         : {}),

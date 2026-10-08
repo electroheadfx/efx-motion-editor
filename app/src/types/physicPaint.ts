@@ -1932,14 +1932,26 @@ export interface EfxPaintAudioPreviewContext {
 }
 
 /**
- * 52.5-01a (Q1, T-52.5-08): the CLOSED document sound section. It rides the
- * launch alongside `audioPreview` and names the document's `sound` member by
- * ref only — `clipId` + an `efxasset://` URL, never bytes, never a filePath.
+ * One ref into a placed document sound clip — `clipId` is the PLACED clip's
+ * own `DocumentSoundClip.id` (261008-ig1 two-identity law: never the shared
+ * `sourceId` of the imported file), plus an `efxasset://` URL, never bytes,
+ * never a filePath. Closed keys: exactly {clipId, assetUrl}.
+ */
+export interface PhysicPaintDocumentAudioClipRef {
+  clipId: string;
+  assetUrl: string;
+}
+
+/**
+ * 52.5-01a (Q1, T-52.5-08) reshaped (dup-clip-plays-audios-0, 261008-ig1
+ * D-01 follow-up): the CLOSED document sound section now carries EVERY placed
+ * clip — one ref per `audios[]` member keyed by its own id — under a single
+ * monotonic `revision` for the whole list. Rides the launch alongside
+ * `audioPreview`; `null` (section absent) still clears the child's store.
  */
 export interface PhysicPaintDocumentAudioSection {
   revision: number;
-  clipId: string;
-  assetUrl: string;
+  clips: PhysicPaintDocumentAudioClipRef[];
 }
 
 export interface PhysicPaintLaunchContext {
@@ -2471,15 +2483,29 @@ export function isEfxPaintAudioPreviewContext(value: unknown): value is EfxPaint
 }
 
 /**
- * 52.5-01a (Q1, T-52.5-08): closed `documentAudio` section — exactly
- * {revision, clipId, assetUrl}; any other member fails the whole launch.
+ * Closed per-clip ref — exactly {clipId, assetUrl}. An entry carrying the
+ * shared `sourceId` (or any other member) fails the whole section: the
+ * placed-clip id is the ONLY identity this channel transports.
+ */
+export function isPhysicPaintDocumentAudioClipRef(value: unknown): value is PhysicPaintDocumentAudioClipRef {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['clipId', 'assetUrl'])
+    && isNonEmptyString(value.clipId)
+    && isNonEmptyString(value.assetUrl);
+}
+
+/**
+ * 52.5-01a (Q1, T-52.5-08) reshaped (dup-clip-plays-audios-0): closed
+ * `documentAudio` section — exactly {revision, clips}; any other member fails
+ * the whole launch, and every `clips[]` entry must itself be a closed
+ * {clipId, assetUrl} ref.
  */
 export function isPhysicPaintDocumentAudioSection(value: unknown): value is PhysicPaintDocumentAudioSection {
   return isRecord(value)
-    && hasOnlyKeys(value, ['revision', 'clipId', 'assetUrl'])
+    && hasOnlyKeys(value, ['revision', 'clips'])
     && isNonNegativeInteger(value.revision)
-    && isNonEmptyString(value.clipId)
-    && isNonEmptyString(value.assetUrl);
+    && Array.isArray(value.clips)
+    && value.clips.every(isPhysicPaintDocumentAudioClipRef);
 }
 
 function isEfxPaintAudioFadeCurve(value: unknown): value is FadeCurve {

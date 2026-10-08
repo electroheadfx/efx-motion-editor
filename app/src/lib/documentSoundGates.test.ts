@@ -90,8 +90,9 @@ function parseOrThrow(section: unknown) {
 const LAYER_ID = 'layer-1';
 const CLIP_SECTION = {
   revision: 1,
-  clipId: 'sound-clip-1',
-  assetUrl: 'efxasset://localhost/audio/sound.wav',
+  clips: [
+    { clipId: 'sound-clip-1', assetUrl: 'efxasset://localhost/audio/sound.wav' },
+  ],
 } as const;
 
 function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundClip {
@@ -138,7 +139,7 @@ describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)'
   it('toDocumentSoundAudioTrack maps the document sound onto the AudioTrack contract (D-14 percent to linear)', async () => {
     const { toDocumentSoundAudioTrack } = await import('./documentSoundGates');
     const sound = makeSound();
-    const track = toDocumentSoundAudioTrack(sound, CLIP_SECTION.assetUrl, 24);
+    const track = toDocumentSoundAudioTrack(sound, CLIP_SECTION.clips[0].assetUrl, 24);
     expect(track).toMatchObject({
       id: 'sound-clip-1',
       audioAssetId: 'asset-1',
@@ -183,18 +184,18 @@ describe('efxPaintDocumentAudioStore — closed documentAudio funnel (52.5-01a, 
   it('a newer documentAudio revision replaces the stored section while equal-or-older revisions are dropped', async () => {
     const { efxPaintDocumentAudioStore } = await import('../components/physic-paint/audio/efxPaintDocumentAudioStore');
     efxPaintDocumentAudioStore.reset();
-    expect(efxPaintDocumentAudioStore.accept({ revision: 1, clipId: 'clip-a', assetUrl: 'efxasset://localhost/audio/a.wav' })).toBe(true);
-    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 1, clipId: 'clip-a' });
-    expect(efxPaintDocumentAudioStore.accept({ revision: 3, clipId: 'clip-b', assetUrl: 'efxasset://localhost/audio/b.wav' })).toBe(true);
-    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 3, clipId: 'clip-b' });
+    expect(efxPaintDocumentAudioStore.accept({ revision: 1, clips: [{ clipId: 'clip-a', assetUrl: 'efxasset://localhost/audio/a.wav' }] })).toBe(true);
+    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 1, clips: [{ clipId: 'clip-a' }] });
+    expect(efxPaintDocumentAudioStore.accept({ revision: 3, clips: [{ clipId: 'clip-b', assetUrl: 'efxasset://localhost/audio/b.wav' }] })).toBe(true);
+    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 3, clips: [{ clipId: 'clip-b' }] });
     // Equal revision: dropped (same-revision re-delivery is a defined no-op).
-    expect(efxPaintDocumentAudioStore.accept({ revision: 3, clipId: 'clip-c', assetUrl: 'efxasset://localhost/audio/c.wav' })).toBe(false);
+    expect(efxPaintDocumentAudioStore.accept({ revision: 3, clips: [{ clipId: 'clip-c', assetUrl: 'efxasset://localhost/audio/c.wav' }] })).toBe(false);
     // Older revision: dropped (stale never overwrites newer).
-    expect(efxPaintDocumentAudioStore.accept({ revision: 2, clipId: 'clip-d', assetUrl: 'efxasset://localhost/audio/d.wav' })).toBe(false);
-    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 3, clipId: 'clip-b' });
+    expect(efxPaintDocumentAudioStore.accept({ revision: 2, clips: [{ clipId: 'clip-d', assetUrl: 'efxasset://localhost/audio/d.wav' }] })).toBe(false);
+    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 3, clips: [{ clipId: 'clip-b' }] });
     // Fail-closed: an unknown ad-hoc key never reaches the store.
-    expect(efxPaintDocumentAudioStore.accept({ revision: 4, clipId: 'clip-e', assetUrl: 'efxasset://x', adHoc: true })).toBe(false);
-    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 3, clipId: 'clip-b' });
+    expect(efxPaintDocumentAudioStore.accept({ revision: 4, clips: [{ clipId: 'clip-e', assetUrl: 'efxasset://x' }], adHoc: true })).toBe(false);
+    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 3, clips: [{ clipId: 'clip-b' }] });
   });
 
   it('re-setting the identical section is idempotent — zero signal churn', async () => {
@@ -219,17 +220,17 @@ describe('efxPaintDocumentAudioStore — closed documentAudio funnel (52.5-01a, 
   it('a null payload clears the section idempotently and a stale replay cannot resurrect it', async () => {
     const { efxPaintDocumentAudioStore } = await import('../components/physic-paint/audio/efxPaintDocumentAudioStore');
     efxPaintDocumentAudioStore.reset();
-    expect(efxPaintDocumentAudioStore.accept({ revision: 5, clipId: 'clip-x', assetUrl: 'efxasset://localhost/audio/x.wav' })).toBe(true);
+    expect(efxPaintDocumentAudioStore.accept({ revision: 5, clips: [{ clipId: 'clip-x', assetUrl: 'efxasset://localhost/audio/x.wav' }] })).toBe(true);
     expect(efxPaintDocumentAudioStore.accept(null)).toBe(true);
     expect(efxPaintDocumentAudioStore.getSection()).toBeNull();
     expect(efxPaintDocumentAudioStore.accept(null)).toBe(false); // idempotent clear
     // The applied revision survives the null-clear: a replayed stale section
     // can never resurrect a removed clip (strict newer-than, T-52.5-08).
-    expect(efxPaintDocumentAudioStore.accept({ revision: 5, clipId: 'clip-x', assetUrl: 'efxasset://localhost/audio/x.wav' })).toBe(false);
+    expect(efxPaintDocumentAudioStore.accept({ revision: 5, clips: [{ clipId: 'clip-x', assetUrl: 'efxasset://localhost/audio/x.wav' }] })).toBe(false);
     expect(efxPaintDocumentAudioStore.getSection()).toBeNull();
     // A genuinely newer section after the clear still applies.
-    expect(efxPaintDocumentAudioStore.accept({ revision: 6, clipId: 'clip-y', assetUrl: 'efxasset://localhost/audio/y.wav' })).toBe(true);
-    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 6, clipId: 'clip-y' });
+    expect(efxPaintDocumentAudioStore.accept({ revision: 6, clips: [{ clipId: 'clip-y', assetUrl: 'efxasset://localhost/audio/y.wav' }] })).toBe(true);
+    expect(efxPaintDocumentAudioStore.getSection()).toMatchObject({ revision: 6, clips: [{ clipId: 'clip-y' }] });
   });
 });
 
@@ -605,7 +606,7 @@ describe('documentSoundGates — exportClipEnabled + buildExportMixEntries (52.5
   it('(m7) buildExportMixEntries refuses without includeAudio and passes tracks through without a clip', async () => {
     const { buildExportMixEntries } = await import('./documentSoundGates');
     const { toDocumentSoundAudioTrack } = await import('./documentSoundGates');
-    const track = toDocumentSoundAudioTrack(makeSound(), CLIP_SECTION.assetUrl, 24);
+    const track = toDocumentSoundAudioTrack(makeSound(), CLIP_SECTION.clips[0].assetUrl, 24);
     const clip = {
       sound: makeSound({ enabled: true }),
       filePath: '/proj/audio/sound.wav',
