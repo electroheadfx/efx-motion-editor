@@ -27,7 +27,7 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   2. file row (filename + `Replace…`) OR the empty-state block
  *      (`No sound yet` / body / `Import sound`) OR the error copy
  *   3. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
- *   4. `Gain` — native range -100..100 step 1 + signed readout (release-commit)
+ *   4. `Gain` — NumericStepper step 5, -100..100 (per-step commit) + signed readout
  *   5-6. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
  *        (integer >= 0, no 99 cap) + curve select under each stepper
  *   7. `In` | `Out` — source trim in frames (2 columns, 1-frame minimum span)
@@ -170,7 +170,7 @@ export function PhysicsPaintAudioModalView({
 
   const {
     sound, filename, missing, busy, decodeError, previewGain, removeArmed,
-    previewGainInput, commitGain, commitFadeIn, commitFadeOut,
+    commitGain, commitFadeIn, commitFadeOut,
     commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame,
     toggleEnabled, requestRemove, confirmRemove, disarmRemove,
   } = controller;
@@ -326,30 +326,23 @@ export function PhysicsPaintAudioModalView({
                 </p>
               ) : null}
 
-              {/* 4. Gain — native range -100..100, release-commit (AudioProperties precedent) */}
+              {/* 4. Gain — NumericStepper step 5, -100..100 (per-step commit) + signed readout */}
               <div class="physics-paint-audio-row">
                 <div class="physics-paint-photo-reference-opacity-labels">
                   <span class="physics-paint-photo-reference-label">{AUDIO_GAIN_LABEL}</span>
                   <span class="physics-paint-photo-reference-label-spacer" aria-hidden="true" />
                   <output>{previewGain > 0 ? `+${previewGain}` : `${previewGain}`}</output>
                 </div>
-                <input
-                  type="range"
+                <NumericStepper
+                  class="physics-paint-audio-field-stepper"
+                  value={previewGain}
+                  step={5}
                   min={-100}
                   max={100}
-                  step={1}
-                  value={previewGain}
-                  aria-label={AUDIO_GAIN_LABEL}
-                  aria-valuemin={-100}
-                  aria-valuemax={100}
-                  aria-valuenow={previewGain}
-                  aria-disabled={controlsDisabled}
+                  onChange={(value) => commitGain(value)}
+                  ariaLabel={AUDIO_GAIN_LABEL}
                   disabled={controlsDisabled}
-                  style={{ width: '100%', accentColor: 'var(--color-accent, #2D5BE3)', cursor: 'pointer' }}
-                  onInput={(event) => previewGainInput(Number((event.currentTarget as HTMLInputElement).value))}
-                  onPointerUp={(event) => commitGain(Number((event.currentTarget as HTMLInputElement).value))}
-                  onKeyUp={(event) => commitGain(Number((event.currentTarget as HTMLInputElement).value))}
-                  onBlur={(event) => commitGain(Number((event.currentTarget as HTMLInputElement).value))}
+                  ariaDisabled={controlsDisabled}
                 />
               </div>
 
