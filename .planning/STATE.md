@@ -6,10 +6,10 @@ current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
 stopped_at: Completed quick-261008-ig1-PLAN.md
-last_updated: "2026-10-08T16:43:42.272Z"
+last_updated: "2026-10-08T18:45:56.011Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 52.5 complete, transitioned to Phase 53
-state_head: 7568a975e4783d9099fda114840eab8d35d5407b
+state_head: fc39d28be74e1cf44f5f3ea31ad2060ac2ae4866
 progress:
   total_phases: 14
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-08 - Completed quick task 261008-ig1: Multi-audio concept core slice (audios[] model, modal list, multi-clip timeline, alt+drag duplication, D-04 serde gate) — Needs Review (7 native UAT rows)
+Last activity: 2026-10-08 - Completed quick task 261008-ryq: Audio list moved to sidebar Audio tab + editable Position (frames) stepper — automated-ready (5 native UAT rows)
 
 Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
@@ -475,6 +475,7 @@ None yet.
 | 261006-dfy | Physics paint layer row in the main app left sidebar — visual identity and entry points (display name, remove output block, dblclick body opens Studio, accent color) | 2026-10-06 | 30f26b63 | [261006-dfy-quick-physics-paint-layer-row-in-the-mai](./quick/261006-dfy-quick-physics-paint-layer-row-in-the-mai/) |
 | 261008-ful | 2 small UX features: LayerRow double-click opens Studio (shared launch path) + audio modal Gain slider → NumericStepper | 2026-10-08 | 478650e0 | [261008-ful-2-small-ux-features-one-atomic-commit-ea](./quick/261008-ful-2-small-ux-features-one-atomic-commit-ea/) |
 | 261008-ig1 | Multi-audio concept core slice — audios[] replaces the singleton, per-clip settings, modal list with click-to-reveal, timeline multi-clip render, alt+drag duplication (fresh id, shared sourceId), D-04 Rust serde round-trip gate | 2026-10-08 | 7568a975 | [261008-ig1-multi-audio-concept-written-to-planning-](./quick/261008-ig1-multi-audio-concept-written-to-planning-/) |
+| 261008-ryq | Audio list to sidebar Audio tab + editable clip Position (milestone 52.5) | 2026-10-08 | fc39d28b | [261008-ryq-audio-list-to-sidebar-audio-tab-editable](./quick/261008-ryq-audio-list-to-sidebar-audio-tab-editable/) |
 
 ### Roadmap Evolution
 
