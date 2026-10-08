@@ -26,9 +26,13 @@ describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
     expect(source).not.toContain('previewGainInput');
   });
 
-  it('keeps the updated contract comment and the signed readout copy verbatim', () => {
+  it('keeps the updated contract comment and drops the redundant signed readout', () => {
     expect(source).toContain('NumericStepper step 5');
-    expect(source).toContain('previewGain > 0 ? `+${previewGain}` : `${previewGain}`');
     expect(source).toContain('AUDIO_GAIN_LABEL');
+    // 261008-ful UAT: the stepper is the only value display — no extra
+    // top-right readout, and no stale readout wording in the contract.
+    expect(source).not.toContain('<output>');
+    expect(source).not.toContain('signed readout');
+    expect(source).not.toContain('readout `');
   });
 });

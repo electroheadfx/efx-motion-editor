@@ -19,7 +19,7 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   `Remove sound? Position, trims, gain, and fades are discarded from this document.` ·
  *   `Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.` ·
  *   `Sound file is missing from the project. Replace it to restore the clip.` ·
- *   `Gain` (readout `-NN..+NN`, 0 = unity) · `Fade in` · `Fade out` (frames; curves `linear`,
+ *   `Gain` (-100..+100, 0 = unity) · `Fade in` · `Fade out` (frames; curves `linear`,
  *   `exponential`, `logarithmic`) · `In` · `Out` (frames) · `On` / `Off`
  *
  * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal):
@@ -27,7 +27,7 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   2. file row (filename + `Replace…`) OR the empty-state block
  *      (`No sound yet` / body / `Import sound`) OR the error copy
  *   3. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
- *   4. `Gain` — NumericStepper step 5, -100..100 (per-step commit) + signed readout
+ *   4. `Gain` — NumericStepper step 5, -100..100 (per-step commit), no separate readout
  *   5-6. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
  *        (integer >= 0, no 99 cap) + curve select under each stepper
  *   7. `In` | `Out` — source trim in frames (2 columns, 1-frame minimum span)
@@ -326,12 +326,11 @@ export function PhysicsPaintAudioModalView({
                 </p>
               ) : null}
 
-              {/* 4. Gain — NumericStepper step 5, -100..100 (per-step commit) + signed readout */}
+              {/* 4. Gain — NumericStepper step 5, -100..100 (per-step commit); the stepper is the value display */}
               <div class="physics-paint-audio-row">
                 <div class="physics-paint-photo-reference-opacity-labels">
                   <span class="physics-paint-photo-reference-label">{AUDIO_GAIN_LABEL}</span>
                   <span class="physics-paint-photo-reference-label-spacer" aria-hidden="true" />
-                  <output>{previewGain > 0 ? `+${previewGain}` : `${previewGain}`}</output>
                 </div>
                 <NumericStepper
                   class="physics-paint-audio-field-stepper"
