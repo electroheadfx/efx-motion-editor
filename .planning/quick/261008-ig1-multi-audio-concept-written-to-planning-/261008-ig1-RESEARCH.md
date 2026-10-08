@@ -194,11 +194,13 @@ let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwra
 
 *(All other claims in this research are `[VERIFIED]` — files Read this session; citations with line ranges beside each claim.)*
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Where does the clip list ride the launch context?** — Known: `document` and `documentAudio` are both opaque `Value`; CONTEXT says "the struct grows to carry the clip list" but also defers transport reshaping. Recommendation: pin `audios[]` inside the `document` carrier with the hard-gate Rust test; leave `documentAudio` singleton until the follow-up. Confirm at plan time.
-2. **Main-window timeline stain with N clips (Front 1 #11)** — loop `soundClips` through `TimelineRenderer`, or explicitly defer with first-clip behavior? Recommendation: small loop (the renderer math is already per-clip-geometry), else state the limitation in the plan.
-3. **Alt+trim behavior** — duplicate on stain only, trim ignores alt (recommended), or also split on alt? Lock in the gesture truth table.
+All three were resolved at plan time in `261008-ig1-PLAN.md`.
+
+1. **(RESOLVED — PLAN Task 1 (9))** Where does the clip list ride the launch context? — Known: `document` and `documentAudio` are both opaque `Value`; CONTEXT says "the struct grows to carry the clip list" but also defers transport reshaping. **Resolution: `audios[]` is pinned inside the `document` carrier with the hard-gate Rust test** (`physics_paint_launch_context_round_trips_the_audios_list`); `documentAudio` stays a three-member singleton fed from `audios[0]` until the follow-up quick.
+2. **(RESOLVED — PLAN Task 1 (7))** Main-window timeline stain with N clips (Front 1 #11) — **Resolution: loop `soundClips` through `TimelineRenderer`.** The renderer math is already per-clip-geometry; the plan generalizes the single `props.documentSound` read to a map over `audios[]`, matching the concept's Timeline section.
+3. **(RESOLVED — PLAN Task 3)** Alt+trim behavior — **Resolution: alt duplicates on the stain body only; trim handles ignore alt.** Locked as a truth-table row in the plan.
 
 ## Environment Availability
 
