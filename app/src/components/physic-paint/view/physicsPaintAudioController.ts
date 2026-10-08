@@ -264,12 +264,15 @@ export function usePhysicsPaintAudioController({
   const missing = sound !== null && isSoundMissing(sound);
 
   const volumeDraft = useSignal<number | null>(null);
-  const removeArmed = useSignal(false);
+  // Armed against a STAMPED clip id, not the current selection: the no-backdrop
+  // dialog lets a band press re-target selection mid-arm, and confirmRemove has
+  // no undo, so a bare boolean would delete the wrong clip.
+  const removeArmedClipId = useSignal<string | null>(null);
   const busy = useSignal(false);
   const decodeError = useSignal(false);
 
   const disarmRemove = () => {
-    if (removeArmed.value) removeArmed.value = false;
+    removeArmedClipId.value = null;
   };
 
   /**
@@ -343,13 +346,20 @@ export function usePhysicsPaintAudioController({
 
   const requestRemove = () => {
     if (!sound) return;
-    removeArmed.value = true;
+    // Stamp the LIVE selection, not the render-time snapshot: the arm must name
+    // the clip the user is looking at even if a re-render has not landed yet.
+    removeArmedClipId.value = selectedSoundId.value ?? sound.id;
   };
 
   const confirmRemove = () => {
-    removeArmed.value = false;
-    if (selectedId === null || !sound) return;
-    const result = removeSound(layerId, selectedId);
+    const armedId = removeArmedClipId.value;
+    removeArmedClipId.value = null;
+    // Fail closed unless the arm still points at the live selection. The
+    // no-backdrop dialog lets a band press re-target selection mid-arm, and
+    // removeSound has no undo.
+    const liveSelectedId = selectedSoundId.value;
+    if (armedId === null || liveSelectedId === null || armedId !== liveSelectedId) return;
+    const result = removeSound(layerId, armedId);
     if (result.ok) selectedSoundId.value = null;
   };
 
@@ -379,7 +389,7 @@ export function usePhysicsPaintAudioController({
     if (result.ok) {
       selectedSoundId.value = next.id;
       decodeError.value = false;
-      removeArmed.value = false;
+      removeArmedClipId.value = null;
     }
     return result;
   };
@@ -396,7 +406,7 @@ export function usePhysicsPaintAudioController({
     });
     if (result.ok) {
       decodeError.value = false;
-      removeArmed.value = false;
+      removeArmedClipId.value = null;
     }
     return result;
   };
@@ -411,7 +421,12 @@ export function usePhysicsPaintAudioController({
     decodeError: decodeError.value,
     volumeDraft,
     previewGain: volumeDraft.value ?? sound?.gain ?? 0,
-    removeArmed: removeArmed.value,
+    // Getter, not a captured boolean: the arm must reflect the LIVE selection
+    // at read time (a mid-arm selection change disarms the button visually).
+    get removeArmed(): boolean {
+      const armedId = removeArmedClipId.value;
+      return armedId !== null && armedId === selectedSoundId.value;
+    },
     previewGainInput,
     commitGain,
     commitFadeIn,

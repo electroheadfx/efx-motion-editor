@@ -223,6 +223,34 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(selectedSoundId.value).toBeNull();
   });
 
+  it('confirmRemove deletes the ARMED clip, not whatever is selected at confirm time', () => {
+    // HIGH-01: the no-backdrop dialog lets a band press re-target selection
+    // mid-arm. Arm A, select B, confirm -> nothing is deleted (fail closed),
+    // and B survives.
+    const { controller, selectedSoundId, removeSound } = makeController({ selection: 'clip-a' });
+    controller.requestRemove();
+    expect(controller.removeArmed).toBe(true);
+
+    // Selection moves mid-arm (band press in the strip, modal row click, …).
+    selectedSoundId.value = 'clip-b';
+    controller.confirmRemove();
+    expect(removeSound).not.toHaveBeenCalled();
+
+    // A mismatched confirm consumes the arm outright — no stale arm left.
+    selectedSoundId.value = 'clip-a';
+    controller.confirmRemove();
+    expect(removeSound).not.toHaveBeenCalled();
+  });
+
+  it('confirmRemove still removes the armed clip when the selection is unchanged', () => {
+    const { controller, selectedSoundId, removeSound } = makeController({ selection: 'clip-a' });
+    controller.requestRemove();
+    controller.confirmRemove();
+    expect(removeSound).toHaveBeenCalledTimes(1);
+    expect(removeSound).toHaveBeenCalledWith('layer-1', 'clip-a');
+    expect(selectedSoundId.value).toBeNull();
+  });
+
   it('applyImportedSource appends a fresh clip and selects it', () => {
     const { controller, selectedSoundId, addSound } = makeController({ selection: 'clip-a' });
     const result = controller.applyImportedSource({
