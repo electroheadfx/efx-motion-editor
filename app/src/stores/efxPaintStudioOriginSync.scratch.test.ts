@@ -93,7 +93,7 @@ interface SurfaceCarrier {
   photoReference?: { sourceFrameRefs: readonly string[] } | null;
   background: { clips: readonly { startFrame: number; sourceFrameRefs: readonly string[] }[] };
   tracks: readonly { id: string; frames: Record<number, unknown> }[];
-  sound?: {
+  audios?: readonly {
     id: string;
     sourceId: string;
     relativePath: string;
@@ -107,7 +107,7 @@ interface SurfaceCarrier {
     fadeInCurve: string;
     fadeOutCurve: string;
     enabled: boolean;
-  } | null;
+  }[];
 }
 
 /** Does this document carry the reference-image selection under test? */
@@ -119,9 +119,9 @@ const carriesClip = (document: SurfaceCarrier): boolean =>
 /** Does it carry the added track (id + whatever content the surface added)? */
 const carriesTrack = (document: SurfaceCarrier, trackId: string): boolean =>
   trackId.length > 0 && document.tracks.some((track) => track.id === trackId);
-/** Does it carry the IDENTICAL sound member (field-wise, not just the id)? */
+/** Does it carry the IDENTICAL clip member (field-wise, not just the id)? */
 const carriesSound = (document: SurfaceCarrier): boolean => {
-  const sound = document.sound ?? null;
+  const sound = document.audios?.[0] ?? null;
   return sound !== null
     && sound.id === SOUND_CLIP.id
     && sound.sourceId === SOUND_CLIP.sourceId
@@ -829,8 +829,9 @@ describe('Studio-origin document surfaces through the real child→parent chain 
     const guard = child.guard.createDocumentSyncPushGuard();
     const readVersion = () => child.efx.efxPaintVersion.peek();
 
-    // The clip-only edit, as the audio modal's member setter commits it.
-    const edit = child.efx.setDocumentSound(LAYER, { ...SOUND_CLIP });
+    // The clip-only edit, as the audio modal's member setter commits it
+    // (261008-ig1: list-shaped write — the first commit installs the list).
+    const edit = child.efx.setDocumentAudios(LAYER, [{ ...SOUND_CLIP }]);
 
     // Settle 1: FG-2 serialize -> FG-1 evaluate -> the crossing.
     emitTo.mockClear();
@@ -857,7 +858,7 @@ describe('Studio-origin document surfaces through the real child→parent chain 
     // Settle 2: an immediate no-op re-settle of the SAME state. The member
     // setter's same-value early return writes nothing, and even a re-serialize
     // through the same guard is a content duplicate -> zero further pushes.
-    const noopEdit = child.efx.setDocumentSound(LAYER, { ...SOUND_CLIP });
+    const noopEdit = child.efx.setDocumentAudios(LAYER, [{ ...SOUND_CLIP }]);
     emitTo.mockClear();
     const noopDocument = guard.evaluate(() => child.efx.serializeRuntimeIntoDocument(LAYER), readVersion);
     if (noopDocument !== null) {

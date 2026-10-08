@@ -3725,24 +3725,28 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // the guard below would otherwise return before the byte channel is read.
       applyDocumentSyncFrameMedia(document, incoming.changedBytes);
       const current = getEfxPaintDocument(document.parentLayerId);
-      // 52.5-01a (Q1, T-52.5-08): sound contributes no documentRevision term
-      // until the `|sound:` fingerprint term ships in slice 01b, so the sound
-      // member is compared directly here — a sound-only change must register
-      // AND trigger the documentAudio push even when the fingerprint below
-      // would early-return. Parser-produced members have stable key order, so
-      // JSON.stringify is an exact member comparison.
-      const soundChanged = JSON.stringify(current?.sound ?? null) !== JSON.stringify(document.sound);
+      // 52.5-01a (Q1, T-52.5-08) / 261008-ig1: the audios list contributes a
+      // display-class fingerprint term only, so the member is compared directly
+      // here as well — a clip-only change must register AND trigger the
+      // documentAudio push even when the bare revision below would early-return.
+      // Parser-produced members have stable key order, so JSON.stringify is an
+      // exact member (and array-order) comparison.
+      const soundChanged = JSON.stringify(current?.audios ?? []) !== JSON.stringify(document.audios);
       // The sync fingerprint (canonical revision + photo-reference display
       // preferences): a display-only change never bumps the revision but is
       // persisted content, so it must still register here.
       if (current && !soundChanged && buildEfxPaintDocumentSyncFingerprint(current) === buildEfxPaintDocumentSyncFingerprint(document)) return;
       registerEfxPaintDocument(document);
       if (soundChanged) void publishPhysicPaintDocumentAudioContext(document.parentLayerId);
-      // 52.5 follow-up: the main timeline previews the clip's waveform from
+      // 52.5 follow-up: the main timeline previews each clip's waveform from
       // sourceId-keyed peaks in THIS realm (the Studio cache lives in its own
-      // webview). A mid-session import/replace must therefore decode here too.
-      if (soundChanged && document.sound !== null) {
-        void ensureDocumentSoundPeaks(document.sound, projectStore.dirPath.peek() ?? '', projectStore.fps.peek());
+      // webview). A mid-session import/replace/duplicate must therefore decode
+      // here too — one decode per DISTINCT sourceId (duplicates share it;
+      // ensureDocumentSoundPeaks itself early-returns on cached sources).
+      if (soundChanged) {
+        for (const clip of document.audios) {
+          void ensureDocumentSoundPeaks(clip, projectStore.dirPath.peek() ?? '', projectStore.fps.peek());
+        }
       }
       // 47-01 UAT round 8: mirror the child's live runtime into the main
       // window's runtime maps (rotoPhysical only — frame bytes stay owned by
@@ -3885,20 +3889,26 @@ export function buildPhysicPaintAudioPreviewSection(): EfxPaintAudioPreviewConte
  * 52.5-01a (Q1, T-52.5-08): monotonic revision counter for the CLOSED
  * documentAudio section — same ownership style as nextAudioPreviewRevision:
  * bumped exactly once per built section, total ordering across launch embed
- * and the post-register push. The section names the document's `sound` member
- * by ref only (clipId + efxasset:// URL) — never bytes, never a filePath.
+ * and the post-register push. The section names ONE of the document's `audios`
+ * clips by ref only (clipId + efxasset:// URL) — never bytes, never a filePath.
  */
 let nextDocumentAudioRevision = 1;
 
 /**
- * Build the launch/push section from `getEfxPaintDocument(layerId)?.sound`
+ * Build the launch/push section from `getEfxPaintDocument(layerId)?.audios`
  * ALONE (Q1 guardrail: this must never read audioStore.tracks — a zero-main-
- * audio project still transports its clip). Absent sound -> null (section
+ * audio project still transports its clip). Absent/empty list -> null (section
  * absent); an unsafe relativePath -> null (fail closed, T-52.5-09: the same
  * guard refuses the package at save/load).
+ *
+ * SCOPE BOUNDARY (261008-ig1): the `documentAudio` channel stays the CLOSED
+ * 3-member singleton {revision, clipId, assetUrl} fed from `audios[0]` — the
+ * channel reshaping for the full list is the follow-up quick's job (out of
+ * scope here by plan). The list itself rides the `document` carrier, which is
+ * what the Studio child reads to draw every clip.
  */
 export function buildPhysicPaintDocumentAudioSection(layerId: string): PhysicPaintDocumentAudioSection | null {
-  const sound = getEfxPaintDocument(layerId)?.sound;
+  const sound = getEfxPaintDocument(layerId)?.audios[0] ?? null;
   if (!sound) return null;
   // Same project-root fallback as the gallery import copy target
   // (`dirPath ?? tempProjectDir`) so an unsaved project's clip still resolves.

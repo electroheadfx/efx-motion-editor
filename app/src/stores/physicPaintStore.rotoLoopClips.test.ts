@@ -46,6 +46,10 @@ function makeTrackDocument(layerId: string): EfxPaintDocument {
     }],
     background: { id: 'background-1', clips: [], fallback: { mode: 'transparent' }, visible: true, revision: 0 },
     photoReference: null,
+    // 261008-ig1: the document sound member is the audios list — the bridge
+    // launch path reads `document.audios[0]` for the channel section, so the
+    // hand-built fixture must carry the member (empty = no sound section).
+    audios: [],
     compositeRevision: 0,
   } as unknown as EfxPaintDocument;
 }

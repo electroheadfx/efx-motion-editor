@@ -449,7 +449,10 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
 }
 
 function registerSoundDocument(sound: DocumentSoundClip | null): EfxPaintDocument {
-  const document: EfxPaintDocument = {...createEfxPaintDocument(CLIP_LAYER), sound};
+  const document: EfxPaintDocument = {
+    ...createEfxPaintDocument(CLIP_LAYER),
+    audios: sound === null ? [] : [sound],
+  };
   registerDocument(document);
   return document;
 }

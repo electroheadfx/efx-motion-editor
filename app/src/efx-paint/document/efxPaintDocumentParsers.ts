@@ -55,9 +55,17 @@ function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
 }
 
-// 52.5 (D-01, T-52.5-01): `sound` joins the allowlist together with the
-// unknown-members message below (Pitfall 5 — never one without the other).
-const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'sound', 'compositeRevision']);
+// 52.5 (D-01, T-52.5-01) as retargeted by 261008-ig1: `audios` (the placed-
+// clip LIST) joins the allowlist together with the unknown-members message
+// below (Pitfall 5 — never one without the other). The retired singular
+// `sound` member is gone: an old document carrying it throws — no shim, no
+// migration (project law).
+const DOCUMENT_KEYS = new Set(['version', 'parentLayerId', 'documentRevision', 'activeTrackId', 'tracks', 'background', 'photoReference', 'audios', 'compositeRevision']);
+// 261008-ig1 (D-05): the audio CONTAINER allowlist — the document is the
+// container, so this set names the only audio-family member a document may
+// carry. Defense-in-depth: DOCUMENT_KEYS above is the primary gate; this trip-
+// wire fails loudly if the two sets ever diverge.
+const AUDIO_LIST_KEYS = new Set(['audios']);
 const TRACK_KEYS = new Set(['id', 'name', 'order', 'visible', 'solo', 'opacity', 'blendMode', 'revision', 'frames', 'rotoPhysical', 'loopClips']);
 // 260922-rd4: `transform`/`transformLocked` are the ONLY format additions —
 // the background display-preference members (package-format touch is confined
@@ -81,8 +89,8 @@ const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add']);
 // accepted (T-52-04).
 const PHOTO_REFERENCE_KEYS = new Set(['id', 'sourceFrameRefs', 'revision', 'visibleInStudio', 'opacity', 'transform', 'transformLocked']);
 const PHOTO_TRANSFORM_KEYS = new Set(['x', 'y', 'scaleX', 'scaleY', 'rotation']);
-// 52.5 (D-01): the singleton sound clip allowlist — every field required when
-// the member is present; the member itself is optional (absent/null -> null).
+// 261008-ig1 (D-01): the per-clip allowlist — every field required when an
+// entry is present; the `audios` member itself is optional (absent -> []).
 const SOUND_KEYS = new Set([
   'id',
   'sourceId',
@@ -436,11 +444,11 @@ function parsePhotoReferenceTrack(value: unknown): PhotoReferenceTrack {
 }
 
 /**
- * Parse the singleton document sound clip (52.5, D-01, T-52.5-01): fail-closed
- * against the SOUND_KEYS allowlist — an unknown member throws, never silently
- * hydrates. Path safety (`isSafePackageRelativePath` + the `audio/` prefix) is
- * enforced by the persistence layer at every join, not here: the parser judges
- * shape, the package door judges paths.
+ * Parse ONE placed sound clip entry (261008-ig1 / 52.5 D-01, T-52.5-01):
+ * fail-closed against the SOUND_KEYS allowlist — an unknown member throws,
+ * never silently hydrates. Path safety (`isSafePackageRelativePath` + the
+ * `audio/` prefix) is enforced by the persistence layer at every join, not
+ * here: the parser judges shape, the package door judges paths.
  */
 function parseDocumentSound(value: unknown): DocumentSoundClip {
   if (!isPlainRecord(value)) {
@@ -506,6 +514,21 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
 }
 
 /**
+ * Parse the `audios` container (261008-ig1, D-01): absent -> `[]` (A2, no
+ * version bump); any non-array value throws (fail-closed — never coerced,
+ * never treated as the retired singleton). Every entry runs the full
+ * SOUND_KEYS fail-closed parse above; the frozen output preserves ARRAY ORDER
+ * (canonical order for the fingerprint/save tokens).
+ */
+function parseDocumentAudios(value: unknown): readonly DocumentSoundClip[] {
+  if (value === undefined) return Object.freeze([]);
+  if (!Array.isArray(value)) {
+    throw new Error('EfxPaintDocument: audios must be an array.');
+  }
+  return Object.freeze(value.map((entry) => parseDocumentSound(entry)));
+}
+
+/**
  * Reconstruct a validated {@link EfxPaintDocument} from untrusted input.
  *
  * Throws a closed validation failure on any invalid input; caller-owned
@@ -527,7 +550,15 @@ export function parseEfxPaintDocument(
     throw new Error('EfxPaintDocument: expected a record.');
   }
   if (!hasOnlyKeys(value, DOCUMENT_KEYS)) {
-    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, sound, compositeRevision.');
+    throw new Error('EfxPaintDocument: unknown members; expected exactly version, parentLayerId, documentRevision, activeTrackId, tracks, background, photoReference, audios, compositeRevision.');
+  }
+  // 261008-ig1 (D-05) container tripwire: any audio-family member present must
+  // be inside AUDIO_LIST_KEYS. DOCUMENT_KEYS already rejects the retired
+  // singular `sound`; this keeps the two sets honest if they ever drift.
+  for (const key of ['audios', 'sound']) {
+    if (key in value && !AUDIO_LIST_KEYS.has(key)) {
+      throw new Error(`EfxPaintDocument: unknown audio container member "${key}"; expected exactly audios.`);
+    }
   }
   if (value.version !== EFX_PAINT_DOCUMENT_VERSION) {
     throw new Error(`EfxPaintDocument: unsupported version ${String(value.version)}; expected ${EFX_PAINT_DOCUMENT_VERSION}.`);
@@ -566,8 +597,9 @@ export function parseEfxPaintDocument(
     tracks,
     background: parseBackgroundTrack(value.background),
     photoReference: value.photoReference === null ? null : parsePhotoReferenceTrack(value.photoReference),
-    // 52.5 (D-01, A2): optional member — absent OR null normalizes to null.
-    sound: value.sound === undefined || value.sound === null ? null : parseDocumentSound(value.sound),
+    // 261008-ig1 (D-01, A2): optional member — absent normalizes to []. A
+    // non-array (including null) throws — fail-closed, never coerced.
+    audios: parseDocumentAudios(value.audios),
     compositeRevision: value.compositeRevision,
   });
 }

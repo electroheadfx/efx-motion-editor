@@ -162,3 +162,54 @@ describe('documentAudio closed launch section (52.5-01a, Q1, T-52.5-08)', () => 
     expect(JSON.stringify(parsed)).toBe(JSON.stringify(repeated));
   });
 });
+
+// ---------------------------------------------------------------------------
+// 261008-ig1 Task 1: the multi-clip `audios[]` list rides INSIDE the document
+// carrier (not as a sibling launch key) — a launch envelope carrying two clips
+// with a shared sourceId must survive the closed parse, and the retired
+// singular `sound` member must fail closed.
+// ---------------------------------------------------------------------------
+
+describe('audios list rides the document launch carrier (261008-ig1)', () => {
+  function makeAudioClip(id: string): Record<string, unknown> {
+    return {
+      id,
+      sourceId: 'asset-shared-1',
+      relativePath: 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav',
+      sourceRevision: 1,
+      startFrame: 48,
+      inFrame: 12,
+      outFrame: 108,
+      gain: -10,
+      fadeInFrames: 6,
+      fadeOutFrames: 12,
+      fadeInCurve: 'exponential',
+      fadeOutCurve: 'linear',
+      enabled: true,
+    };
+  }
+
+  it('parses a launch document carrying two clips with a shared sourceId, members intact', () => {
+    const envelope = makeLaunchEnvelope();
+    const document = envelope.document as unknown as Record<string, unknown>;
+    document.audios = [makeAudioClip('clip-1'), makeAudioClip('clip-2')];
+    const parsed = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(parsed).not.toBeNull();
+    const audios = (parsed!.document as unknown as { audios?: Record<string, unknown>[] }).audios ?? [];
+    expect(audios).toHaveLength(2);
+    expect(audios[0].id).toBe('clip-1');
+    expect(audios[1].id).toBe('clip-2');
+    // Two identities: distinct clip ids, ONE shared imported file.
+    expect(audios[0].sourceId).toBe(audios[1].sourceId);
+    expect(audios[1].startFrame).toBe(48);
+    expect(audios[1].gain).toBe(-10);
+    expect(audios[1].fadeOutCurve).toBe('linear');
+  });
+
+  it('rejects a launch document carrying the retired singular sound member (fail-closed null)', () => {
+    const envelope = makeLaunchEnvelope();
+    const document = envelope.document as unknown as Record<string, unknown>;
+    document.sound = makeAudioClip('clip-1');
+    expect(parseCanonicalPhysicsPaintLaunchValue(envelope)).toBeNull();
+  });
+});

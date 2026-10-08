@@ -1055,6 +1055,91 @@ mod tests {
         assert_eq!(section["assetUrl"], "efxasset://localhost/audio/dialogue.wav");
     }
 
+    #[test]
+    fn physics_paint_launch_context_round_trips_the_audios_list() {
+        // 261008-ig1 D-04 HARD GATE: the multi-clip `audios[]` list rides the
+        // opaque `document` carrier, but the serde silent-drop pitfall is
+        // exactly why this is pinned with a round-trip — a member the struct
+        // does not declare vanishes on the native launch path and the Studio
+        // child never sees the clip list. Two clip identities: distinct `id`
+        // per placed clip, ONE shared `sourceId` (the imported file).
+        let clip_a = serde_json::json!({
+            "id": "clip-1",
+            "sourceId": "asset-shared-1",
+            "relativePath": "audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/dialogue.wav",
+            "sourceRevision": 3,
+            "startFrame": 48,
+            "inFrame": 12,
+            "outFrame": 108,
+            "gain": -20,
+            "fadeInFrames": 6,
+            "fadeOutFrames": 12,
+            "fadeInCurve": "exponential",
+            "fadeOutCurve": "linear",
+            "enabled": true
+        });
+        let clip_b = serde_json::json!({
+            "id": "clip-2",
+            "sourceId": "asset-shared-1",
+            "relativePath": "audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/dialogue.wav",
+            "sourceRevision": 3,
+            "startFrame": 200,
+            "inFrame": 0,
+            "outFrame": 96,
+            "gain": 15,
+            "fadeInFrames": 0,
+            "fadeOutFrames": 4,
+            "fadeInCurve": "linear",
+            "fadeOutCurve": "logarithmic",
+            "enabled": false
+        });
+        let mut context = roto_launch_context();
+        context.document = Some(serde_json::json!({
+            "id": "layer-1",
+            "version": 1,
+            "activeTrackId": "track-1",
+            "tracks": [],
+            "audios": [clip_a, clip_b]
+        }));
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["document"]["audios"].as_array().unwrap().len(), 2);
+        let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
+        let document = deserialized.document.as_ref().unwrap();
+        let audios = document["audios"].as_array().expect("audios list survives deserialize");
+        assert_eq!(audios.len(), 2);
+        for (index, expected_id) in ["clip-1", "clip-2"].iter().enumerate() {
+            let clip = &audios[index];
+            assert_eq!(clip["id"].as_str().unwrap(), *expected_id);
+            assert_eq!(clip["sourceId"].as_str().unwrap(), "asset-shared-1");
+            assert_eq!(
+                clip["relativePath"].as_str().unwrap(),
+                "audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/dialogue.wav"
+            );
+            assert_eq!(clip["sourceRevision"], 3);
+            assert!(clip["startFrame"].is_number());
+            assert!(clip["inFrame"].is_number());
+            assert!(clip["outFrame"].is_number());
+            assert!(clip["gain"].is_number());
+            assert!(clip["fadeInFrames"].is_number());
+            assert!(clip["fadeOutFrames"].is_number());
+            assert!(clip["fadeInCurve"].is_string());
+            assert!(clip["fadeOutCurve"].is_string());
+            assert!(clip["enabled"].is_boolean());
+        }
+        // Per-clip settings survive distinctly — the two clips are not collapsed.
+        assert_eq!(audios[0]["startFrame"], 48);
+        assert_eq!(audios[0]["gain"], -20);
+        assert_eq!(audios[0]["fadeOutCurve"], "linear");
+        assert_eq!(audios[0]["enabled"], true);
+        assert_eq!(audios[1]["startFrame"], 200);
+        assert_eq!(audios[1]["gain"], 15);
+        assert_eq!(audios[1]["fadeOutCurve"], "logarithmic");
+        assert_eq!(audios[1]["enabled"], false);
+        // Two identities, never overloaded: distinct clip ids, ONE shared file.
+        assert_ne!(audios[0]["id"], audios[1]["id"]);
+        assert_eq!(audios[0]["sourceId"], audios[1]["sourceId"]);
+    }
+
     // WR-07: pure byte-range resolution for the efxasset video Range branch.
     // Intended signature:
     //   fn resolve_byte_range(range_header: Option<&str>, file_size: u64) -> ByteRangeResolution

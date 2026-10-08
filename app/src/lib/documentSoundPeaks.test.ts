@@ -5,9 +5,18 @@ const readFile = vi.fn();
 const decode = vi.fn();
 const computeWaveformPeaks = vi.fn();
 const isSafeAudioRelativePath = vi.fn();
+// Playback buffers are keyed by PLACED clip id (the dual-condition gate in
+// ensureDocumentSoundPeaks reads audioEngine.getBuffer(sound.id)) — the mock
+// keeps a realistic id -> buffer store so the buffer half of the gate works.
+const engineBuffers = new Map<string, { duration: number }>();
 
 vi.mock('@tauri-apps/plugin-fs', () => ({ readFile: (...args: unknown[]) => readFile(...args) }));
-vi.mock('./audioEngine', () => ({ audioEngine: { decode: (...args: unknown[]) => decode(...args) } }));
+vi.mock('./audioEngine', () => ({
+  audioEngine: {
+    decode: (...args: unknown[]) => decode(...args),
+    getBuffer: (id: string) => engineBuffers.get(id),
+  },
+}));
 vi.mock('./audioWaveform', () => ({ computeWaveformPeaks: (...args: unknown[]) => computeWaveformPeaks(...args) }));
 vi.mock('./efxPaintPersistence', () => ({ isSafeAudioRelativePath: (...args: unknown[]) => isSafeAudioRelativePath(...args) }));
 
@@ -32,9 +41,14 @@ describe('ensureDocumentSoundPeaks', () => {
     vi.clearAllMocks();
     const { audioPeaksCache } = await import('./audioPeaksCache');
     audioPeaksCache.clear();
+    engineBuffers.clear();
     isSafeAudioRelativePath.mockReturnValue(true);
     readFile.mockResolvedValue({ buffer: new ArrayBuffer(8) });
-    decode.mockResolvedValue({ duration: 2 });
+    decode.mockImplementation(async (id: string) => {
+      const buffer = { duration: 2 };
+      engineBuffers.set(id, buffer);
+      return buffer;
+    });
     computeWaveformPeaks.mockReturnValue({ tier1: new Float32Array(2), tier2: new Float32Array(2), tier3: new Float32Array(2) });
   });
 
@@ -59,6 +73,26 @@ describe('ensureDocumentSoundPeaks', () => {
 
     expect(readFile).toHaveBeenCalledTimes(1);
     expect(decode).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-decodes when peaks exist but this clip has no playback buffer yet (dual-identity gate)', async () => {
+    const { ensureDocumentSoundPeaks } = await import('./documentSoundPeaks');
+    const { audioPeaksCache } = await import('./audioPeaksCache');
+
+    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
+    expect(engineBuffers.has('clip-1')).toBe(true);
+    expect(audioPeaksCache.get('src-1')).toBeTruthy();
+
+    // Peaks (sourceId-keyed) survive a missing clip-id buffer (e.g. evicted) —
+    // the gate must decode again so playback gets ITS buffer back, without
+    // recomputing the shared peaks.
+    engineBuffers.delete('clip-1');
+    const peaksBefore = audioPeaksCache.get('src-1');
+    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
+
+    expect(decode).toHaveBeenCalledTimes(2);
+    expect(engineBuffers.has('clip-1')).toBe(true);
+    expect(audioPeaksCache.get('src-1')).toBe(peaksBefore);
   });
 
   it('collapses concurrent calls for the same source into one decode', async () => {

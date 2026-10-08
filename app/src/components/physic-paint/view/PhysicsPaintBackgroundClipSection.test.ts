@@ -65,7 +65,7 @@ function makeDocument(clips: readonly FrameLoopClip[]): EfxPaintDocument {
       transformLocked: true,
     },
     photoReference: null,
-    sound: null,
+    audios: [],
     compositeRevision: 0,
   };
 }

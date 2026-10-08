@@ -1290,18 +1290,17 @@ export function setBackgroundTransformLocked(layerId: string, locked: boolean): 
   return { ok: true };
 }
 
-/** Result of the document sound member setter (52.5-01b, D-01 singleton). */
+/** Result of the document `audios` setter family (261008-ig1, D-01 list). */
 export type DocumentSoundResult =
   | { readonly ok: true }
-  | { readonly ok: false; readonly reason: 'no-document' | 'invalid-sound' };
+  | { readonly ok: false; readonly reason: 'no-document' | 'invalid-sound' | 'unknown-clip' };
 
 /**
- * Field-wise sound identity for the same-value early return (idempotent
+ * Field-wise clip identity for the same-value early return (idempotent
  * setter law — every field that reaches the fingerprint/save tokens must
  * compare here, so an unchanged re-commit is a true no-op).
  */
-function _sameSound(a: DocumentSoundClip | null, b: DocumentSoundClip | null): boolean {
-  if (a === null || b === null) return a === b;
+function _sameSound(a: DocumentSoundClip, b: DocumentSoundClip): boolean {
   return a.id === b.id
     && a.sourceId === b.sourceId
     && a.relativePath === b.relativePath
@@ -1315,6 +1314,12 @@ function _sameSound(a: DocumentSoundClip | null, b: DocumentSoundClip | null): b
     && a.fadeInCurve === b.fadeInCurve
     && a.fadeOutCurve === b.fadeOutCurve
     && a.enabled === b.enabled;
+}
+
+/** Member-wise list identity — length, order, and every field of every clip. */
+function _sameAudios(a: readonly DocumentSoundClip[], b: readonly DocumentSoundClip[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((clip, index) => _sameSound(clip, b[index]));
 }
 
 /**
@@ -1342,26 +1347,64 @@ function _isValidSoundClip(sound: DocumentSoundClip): boolean {
 }
 
 /**
- * Write the document's sound member (52.5-01b, D-01 singleton setter,
- * SYNC-01). The ONE door every modal field commit and every gesture settle
- * routes through: idempotent same-value early return, fail-closed validation
- * (invalid entries never commit — the prior accepted value stays), immutable
- * next-document write, single `_notifyChange()`.
+ * Write the document's `audios` list wholesale (261008-ig1, D-01 list setter,
+ * SYNC-01). The base door of the setter family: idempotent same-value early
+ * return (member-wise, order-sensitive), fail-closed validation (EVERY entry
+ * must be valid — one bad entry rejects the whole write and the prior
+ * accepted list stays), immutable next-document write with frozen clips,
+ * single `_notifyChange()`.
  *
  * Display-class revision law: NO `documentRevision` counter bump and NO undo
- * descriptor — the sound member is excluded from the canonical revision by
- * design, and the `|sound:` fingerprint/save-token terms pick the edit up
+ * descriptor — the audios member is excluded from the canonical revision by
+ * design, and the `|audios:` fingerprint/save-token terms pick the edit up
  * (D-05 class; matches the photo/background display-pref setter idiom).
  */
-export function setDocumentSound(layerId: string, sound: DocumentSoundClip | null): DocumentSoundResult {
+export function setDocumentAudios(layerId: string, audios: readonly DocumentSoundClip[]): DocumentSoundResult {
   const document = getDocument(layerId);
   if (!document) return { ok: false, reason: 'no-document' };
-  if (sound !== null && !_isValidSoundClip(sound)) return { ok: false, reason: 'invalid-sound' };
-  if (_sameSound(document.sound, sound)) return { ok: true };
-  const next: EfxPaintDocument = { ...document, sound: sound === null ? null : { ...sound } };
+  if (audios.some((clip) => !_isValidSoundClip(clip))) return { ok: false, reason: 'invalid-sound' };
+  if (_sameAudios(document.audios, audios)) return { ok: true };
+  const next: EfxPaintDocument = {
+    ...document,
+    audios: Object.freeze(audios.map((clip) => Object.freeze({ ...clip }))),
+  };
   _documents.set(layerId, next);
   _notifyChange();
   return { ok: true };
+}
+
+/** Append one placed clip without touching the existing list. */
+export function addDocumentSound(layerId: string, clip: DocumentSoundClip): DocumentSoundResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  return setDocumentAudios(layerId, [...document.audios, clip]);
+}
+
+/**
+ * Patch ONE clip by its placed-clip id. Unknown id fails closed with
+ * `'unknown-clip'` and no mutation (the id is the list/selection/transport
+ * key — never fuzzy-matched).
+ */
+export function patchDocumentSound(
+  layerId: string,
+  clipId: string,
+  patch: Partial<DocumentSoundClip>,
+): DocumentSoundResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  const index = document.audios.findIndex((clip) => clip.id === clipId);
+  if (index === -1) return { ok: false, reason: 'unknown-clip' };
+  const nextClips = [...document.audios];
+  nextClips[index] = { ...nextClips[index], ...patch };
+  return setDocumentAudios(layerId, nextClips);
+}
+
+/** Remove ONE clip by its placed-clip id; unknown id fails closed. */
+export function removeDocumentSound(layerId: string, clipId: string): DocumentSoundResult {
+  const document = getDocument(layerId);
+  if (!document) return { ok: false, reason: 'no-document' };
+  if (!document.audios.some((clip) => clip.id === clipId)) return { ok: false, reason: 'unknown-clip' };
+  return setDocumentAudios(layerId, document.audios.filter((clip) => clip.id !== clipId));
 }
 
 /**

@@ -163,16 +163,20 @@ export interface PhotoReferenceTrack {
 }
 
 /**
- * The document's singleton sound clip (52.5, D-01): one dialogue/foley clip
- * per document, owned by the document as a media reference (52.2 references-
- * only — `relativePath` is package-relative under `audio/`, never inlined
- * bytes; path safety is enforced at every join by the persistence layer).
- * Optional member (A2): absent parses to `null`, no version bump.
+ * One placed sound clip (261008-ig1 / 52.5 MULTI-AUDIO-CONCEPT, D-01): several
+ * clips per document, each owned by the document as a media reference (52.2
+ * references-only — `relativePath` is package-relative under `audio/`, never
+ * inlined bytes; path safety is enforced at every join by the persistence
+ * layer). Two identities, never overloaded:
+ * - `id` = the PLACED clip (list key, timeline selection, transport key,
+ *   buffer key) — unique per clip.
+ * - `sourceId` = the IMPORTED FILE (peaks cache key, gallery dedupe key) —
+ *   NOT unique: an alt+drag duplicate shares its sourceId.
  */
 export interface DocumentSoundClip {
-  /** Clip identity within the document (singleton record). */
+  /** Placed-clip identity — unique per clip (alt+drag mints a fresh one). */
   readonly id: string;
-  /** The audio asset id in the shared media gallery. */
+  /** The imported file's gallery asset id — SHARED across duplicates. */
   readonly sourceId: string;
   /** Package-relative media path under `audio/` (52.2 reference). */
   readonly relativePath: string;
@@ -217,8 +221,8 @@ export interface EfxPaintDocument {
   readonly tracks: readonly InternalPaintTrack[];
   readonly background: BackgroundTrack;
   readonly photoReference: PhotoReferenceTrack | null;
-  /** The singleton document sound clip (52.5, D-01); null when absent. */
-  readonly sound: DocumentSoundClip | null;
+  /** The document's placed sound clips (261008-ig1, D-01); empty when none. */
+  readonly audios: readonly DocumentSoundClip[];
   readonly compositeRevision: number;
 }
 
@@ -264,9 +268,9 @@ export function createEfxPaintDocument(parentLayerId: string): EfxPaintDocument 
       transformLocked: true,
     }),
     photoReference: null,
-    // 52.5 (D-01): the singleton sound clip — optional member (A2), absent by
-    // default; the parser normalizes a missing member to null as well.
-    sound: null,
+    // 261008-ig1 (D-01): the placed-clip list — optional member (A2), empty by
+    // default; the parser normalizes a missing member to [] as well.
+    audios: Object.freeze([]),
     compositeRevision: 0,
   });
 }

@@ -53,7 +53,7 @@ import {
   buildEfxPaintCompositeRevision,
   buildEfxPaintDocumentRevision,
   encodeCanonicalBackgroundTransform,
-  encodeCanonicalSound,
+  encodeCanonicalAudios,
 } from '../efx-paint/document/efxPaintDocumentRevision';
 import { hashCanonicalPhysicalValue } from '../efx-paint/document/efxPaintCanonicalEncoder';
 import {
@@ -515,25 +515,26 @@ export function isSafeAudioRelativePath(value: string): boolean {
 }
 
 /**
- * The `layer:<layerId>` change token VALUE (52.5-01b Rule 2, PERSIST-01):
- * both revision legs plus the canonical sound term.
+ * The `layer:<layerId>` change token VALUE (52.5-01b Rule 2, PERSIST-01,
+ * retargeted by 261008-ig1): both revision legs plus the canonical `audios`
+ * term.
  *
- * The sound member is excluded from BOTH `documentRevision` and
+ * The audios member is excluded from BOTH `documentRevision` and
  * `compositeRevision` by design (display-class member — clip edits must never
  * rotate the pixel revision), so the bare `${revision}+${composite}` value
- * cannot see a sound-only edit: the change set stays empty, the layer loop
- * skips `layers/<layerId>.json`, and save/reopen silently drops the clip.
- * Appending `|sound:` (one canonical encoder, rd4 `|bgT:` precedent at the
- * authoritative gate) rotates the token exactly when the clip changes while an
- * unchanged clip keeps the identical value — the no-op-save contract (D-11)
+ * cannot see a clip-only edit: the change set stays empty, the layer loop
+ * skips `layers/<layerId>.json`, and save/reopen silently drops the clips.
+ * Appending `|audios:` (one canonical encoder, rd4 `|bgT:` precedent at the
+ * authoritative gate) rotates the token exactly when any clip changes while an
+ * unchanged list keeps the identical value — the no-op-save contract (D-11)
  * holds for everything else.
  */
 export function buildEfxPaintLayerChangeTokenValue(
   documentRevision: string,
   compositeRevision: string,
-  sound: DocumentSoundClip | null,
+  audios: readonly DocumentSoundClip[],
 ): string {
-  return `${documentRevision}+${compositeRevision}|sound:${encodeCanonicalSound(sound)}`;
+  return `${documentRevision}+${compositeRevision}|audios:${encodeCanonicalAudios(audios)}`;
 }
 
 /**
@@ -545,13 +546,15 @@ export function buildEfxPaintLayerChangeTokenValue(
  */
 function preparePackageLayer(layerId: string, input: EfxPaintDocumentSaveInput): PreparedPackageLayer {
   const document = parseEfxPaintDocument(input.document);
-  // 52.5 (PERSIST-01, T-52.5-09): the sound reference must be a package-
-  // relative audio/ path BEFORE anything is staged — a crafted child-supplied
-  // path never reaches a sub-file or a join.
-  if (document.sound !== null && !isSafeAudioRelativePath(document.sound.relativePath)) {
-    throw new Error(
-      `EFX Paint package: layer "${layerId}" sound relativePath "${document.sound.relativePath}" must be a safe package-relative audio/ path.`,
-    );
+  // 52.5 (PERSIST-01, T-52.5-09) per clip (261008-ig1): every clip's
+  // reference must be a package-relative audio/ path BEFORE anything is
+  // staged — a crafted child-supplied path never reaches a sub-file or a join.
+  for (const clip of document.audios) {
+    if (!isSafeAudioRelativePath(clip.relativePath)) {
+      throw new Error(
+        `EFX Paint package: layer "${layerId}" sound relativePath "${clip.relativePath}" must be a safe package-relative audio/ path.`,
+      );
+    }
   }
   // 52.2-07 (D-05, T-52.2-56): a legacy package-relative reference (or an
   // absolute path) is a refusal here rather than a value written into a
@@ -1132,7 +1135,7 @@ export async function savePackage(
     layers.push(layer);
     nextTokens.set(
       layer.layerToken,
-      buildEfxPaintLayerChangeTokenValue(layer.documentRevision, layer.compositeRevision, layer.document.sound),
+      buildEfxPaintLayerChangeTokenValue(layer.documentRevision, layer.compositeRevision, layer.document.audios),
     );
     for (const frame of layer.frames) nextTokens.set(frame.token, frame.contentToken);
   }
@@ -1386,13 +1389,15 @@ export async function loadEfxPaintPackage(
     // payload in either roto collection is refused here, and the runtime parser
     // keeps the 'runtime' default everywhere else.
     const document = parseEfxPaintDocument(value, 'reference-only');
-    // 52.5 (PERSIST-01, T-52.5-09): the on-disk door refuses a sound reference
-    // that is not a package-relative audio/ path — fail closed at the read,
-    // never resolve or join it downstream.
-    if (document.sound !== null && !isSafeAudioRelativePath(document.sound.relativePath)) {
-      throw new Error(
-        `EFX Paint package: layer "${layerId}" sound relativePath "${document.sound.relativePath}" must be a safe package-relative audio/ path.`,
-      );
+    // 52.5 (PERSIST-01, T-52.5-09) per clip (261008-ig1): the on-disk door
+    // refuses any clip reference that is not a package-relative audio/ path —
+    // fail closed at the read, never resolve or join it downstream.
+    for (const clip of document.audios) {
+      if (!isSafeAudioRelativePath(clip.relativePath)) {
+        throw new Error(
+          `EFX Paint package: layer "${layerId}" sound relativePath "${clip.relativePath}" must be a safe package-relative audio/ path.`,
+        );
+      }
     }
     const cacheLocations = new Map<string, Map<number, string>>();
     for (const track of document.tracks) {

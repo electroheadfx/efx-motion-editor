@@ -162,22 +162,12 @@ export function encodeCanonicalBackgroundTransform(transform: PhotoReferenceTran
 }
 
 /**
- * Canonical document sound term (52.5-01b, SYNC-01 / PERSIST-01): the FULL
- * DocumentSoundClip field set in one fixed order, so equal records encode
- * identically regardless of member insertion order and ANY field change
- * (volume, in/out, fades, toggles, source identity) rotates the output.
- *
- * The sound member is deliberately EXCLUDED from
- * `encodeValidatedEfxPaintDocumentContent` (clip edits must never rotate the
- * document revision or the flattened cache keys — 52.5-CONTEXT D-05/D-11
- * class), so this encoder feeds the two change-detection carriers instead:
- * the sync fingerprint's `|sound:` term and the savePackage layer
- * change-token's `|sound:` term (the authoritative layer write gate — without
- * it a sound-only edit dedupes as a no-op save and save/reopen drops the
- * clip). A null clip contributes an empty term (photoDisplay idiom).
+ * Canonical encoding of ONE placed clip — the FULL DocumentSoundClip field set
+ * in one fixed order, so equal records encode identically regardless of member
+ * insertion order and ANY field change (gain, in/out, fades, toggles, source
+ * identity) rotates the output.
  */
-export function encodeCanonicalSound(sound: DocumentSoundClip | null): string {
-  if (sound === null) return '';
+function encodeCanonicalSoundClip(sound: DocumentSoundClip): string {
   return [
     `id:${encodeCanonicalString(sound.id)}`,
     `src:${encodeCanonicalString(sound.sourceId)}`,
@@ -193,6 +183,27 @@ export function encodeCanonicalSound(sound: DocumentSoundClip | null): string {
     `fadeOutCurve:${encodeCanonicalString(sound.fadeOutCurve)}`,
     `enabled:${validatedBoolean(sound.enabled)}`,
   ].join('');
+}
+
+/**
+ * Canonical document `audios` term (261008-ig1, SYNC-01 / PERSIST-01): the
+ * list length prefix plus each clip's full-field encoding, in ARRAY ORDER —
+ * swapping two clips rotates the output, and ANY field change on ANY clip
+ * rotates it too (an empty list contributes an empty term, photoDisplay
+ * idiom).
+ *
+ * The audios member is deliberately EXCLUDED from
+ * `encodeValidatedEfxPaintDocumentContent` (clip edits must never rotate the
+ * document revision or the flattened cache keys — 52.5-CONTEXT D-05/D-11
+ * class), so this encoder feeds the two change-detection carriers instead:
+ * the sync fingerprint's `|audios:` term and the savePackage layer
+ * change-token's `|audios:` term (the authoritative layer write gate —
+ * without it a clip-only edit dedupes as a no-op save and save/reopen drops
+ * the clips).
+ */
+export function encodeCanonicalAudios(audios: readonly DocumentSoundClip[]): string {
+  if (audios.length === 0) return '';
+  return `${audios.length}:${audios.map((clip) => encodeCanonicalSoundClip(clip)).join('')}`;
 }
 
 function encodeValidatedEfxPaintDocumentContent(document: EfxPaintDocument): string {
@@ -235,18 +246,19 @@ export function buildEfxPaintDocumentRevision(value: unknown): string {
  * Change-detection fingerprint of the child→main document sync channel: the
  * canonical document revision PLUS the photo/reference display-preference term
  * the revision deliberately excludes PLUS the background display-transform
- * term (260922-rd4, same display-preference class) PLUS the document sound
- * term (52.5-01b, LAST term — the sound member is excluded from the revision
- * by design so clip edits ship through the sync guards, never through the
- * pixel revision; T-52.5-02). Display preferences persist in the package but
- * never bump the revision (D-07 vs D-11/D-12/D-13), so the channel's two
- * change-detection points — the child's push guard and the parent's register
- * guard — compare THIS fingerprint; comparing the bare revision silently
- * drops every display-only (and sound-only) change from the sync.
+ * term (260922-rd4, same display-preference class) PLUS the document `audios`
+ * term (261008-ig1, LAST term — the audios member is excluded from the
+ * revision by design so clip edits ship through the sync guards, never
+ * through the pixel revision; T-52.5-02). Display preferences persist in the
+ * package but never bump the revision (D-07 vs D-11/D-12/D-13), so the
+ * channel's two change-detection points — the child's push guard and the
+ * parent's register guard — compare THIS fingerprint; comparing the bare
+ * revision silently drops every display-only (and clip-only) change from the
+ * sync.
  */
 export function buildEfxPaintDocumentSyncFingerprint(value: unknown): string {
   const document = parseEfxPaintDocument(value);
-  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}|bgDisplay:${encodeCanonicalBackgroundTransform(document.background.transform)}|sound:${encodeCanonicalSound(document.sound)}`;
+  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}|bgDisplay:${encodeCanonicalBackgroundTransform(document.background.transform)}|audios:${encodeCanonicalAudios(document.audios)}`;
 }
 
 /**

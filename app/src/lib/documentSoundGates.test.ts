@@ -113,9 +113,9 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
   };
 }
 
-function registerSound(sound: DocumentSoundClip): void {
+function registerSound(...clips: readonly DocumentSoundClip[]): void {
   const document = createEfxPaintDocument(LAYER_ID);
-  registerDocument({ ...document, sound });
+  registerDocument({ ...document, audios: clips });
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +474,7 @@ function makeFxSequence(overrides: Partial<Sequence> = {}): Sequence {
 }
 
 function documentWithSound(sound: DocumentSoundClip | null, layerId = 'layer-1'): EfxPaintDocument {
-  return { ...createEfxPaintDocument(layerId), sound };
+  return { ...createEfxPaintDocument(layerId), audios: sound === null ? [] : [sound] };
 }
 
 function mapGetDocument(entries: ReadonlyMap<string, EfxPaintDocument>): (layerId: string) => EfxPaintDocument | null {
@@ -532,6 +532,37 @@ describe('documentSoundGates — collectDocumentSoundClips (52.5-02, MAIN-MIX-01
     // inFrame undefined is the [seq.inFrame ?? 0] law -> 0 + 48.
     const bare = makeFxSequence({ inFrame: undefined, layers: [makeFxLayer('layer-1')] });
     expect(collectDocumentSoundClips([bare], mapGetDocument(documents))[0].timelineStartFrame).toBe(48);
+  });
+
+  it('(m9) one layer carrying several clips yields one entry per clip (261008-ig1, D-01)', async () => {
+    const { collectDocumentSoundClips } = await import('./documentSoundGates');
+    const clipA = makeSound({ id: 'clip-a', sourceId: 'asset-shared' });
+    const clipB = makeSound({ id: 'clip-b', sourceId: 'asset-shared', startFrame: 200 });
+    const seq = makeFxSequence({ layers: [makeFxLayer('layer-1'), makeFxLayer('layer-1')] });
+    const documents = new Map<string, EfxPaintDocument>([
+      ['layer-1', { ...createEfxPaintDocument('layer-1'), audios: [clipA, clipB] }],
+    ]);
+    const entries = collectDocumentSoundClips([seq], mapGetDocument(documents));
+    // Sequence-layer dedupe still holds; the layer's own clip list expands.
+    expect(entries.map((entry) => entry.sound.id)).toEqual(['clip-a', 'clip-b']);
+    expect(entries.every((entry) => entry.layerId === 'layer-1')).toBe(true);
+    expect(entries[0].sequence).toBe(seq);
+  });
+});
+
+describe('documentSoundGates — resolveDocumentSoundClip by id anywhere in the list (261008-ig1, D-01)', () => {
+  it('(r1) resolves the clip whose id matches, whether it sits first or second in audios[]', async () => {
+    const { resolveDocumentSoundClip } = await import('./documentSoundGates');
+    const clipA = makeSound({ id: 'clip-a' });
+    const clipB = makeSound({ id: 'clip-b' });
+    const document: EfxPaintDocument = { ...createEfxPaintDocument(LAYER_ID), audios: [clipA, clipB] };
+
+    expect(resolveDocumentSoundClip(document, { clipId: 'clip-b' })).toBe(clipB);
+    expect(resolveDocumentSoundClip(document, { clipId: 'clip-a' })).toBe(clipA);
+    // Fail-closed: a clipId naming no member resolves to null.
+    expect(resolveDocumentSoundClip(document, { clipId: 'clip-zzz' })).toBeNull();
+    expect(resolveDocumentSoundClip({ ...createEfxPaintDocument(LAYER_ID), audios: [] }, { clipId: 'clip-a' })).toBeNull();
+    expect(resolveDocumentSoundClip(document, null)).toBeNull();
   });
 });
 

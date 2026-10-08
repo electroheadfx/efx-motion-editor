@@ -639,12 +639,13 @@ export class TimelineRenderer {
     ctx.restore();
   }
 
-  /** Draw the document sound clip's waveform stain on a physic-paint FX row —
+  /** Draw ONE document sound clip's waveform stain on a physic-paint FX row —
    *  the same preview as the Studio sound band (blue #166ECB stain + 1px
-   *  #7DD3F5 gain/fade overlays), read-only and fitted to the bar height. */
+   *  #7DD3F5 gain/fade overlays), read-only and fitted to the bar height.
+   *  One call per clip (261008-ig1 — the row carries `soundClips[]`). */
   private drawPhysicPaintSoundStain(
     ctx: CanvasRenderingContext2D,
-    sound: NonNullable<FxTrackLayout['soundClip']>,
+    sound: NonNullable<FxTrackLayout['soundClips']>[number],
     sequenceInFrame: number,
     barX: number,
     barW: number,
@@ -857,19 +858,23 @@ export class TimelineRenderer {
         }
       }
 
-      if (fxTrack.layerType === 'physic-paint' && fxTrack.soundClip) {
-        this.drawPhysicPaintSoundStain(
-          ctx,
-          fxTrack.soundClip,
-          fxTrack.inFrame,
-          barX,
-          barW,
-          barY,
-          barH,
-          frameWidth,
-          scrollX,
-          canvasWidth,
-        );
+      // 261008-ig1: one stain + trim window per placed clip (overlaps MIX —
+      // drawn in list order; later clips paint over earlier ones).
+      if (fxTrack.layerType === 'physic-paint' && fxTrack.soundClips?.length) {
+        for (const soundClip of fxTrack.soundClips) {
+          this.drawPhysicPaintSoundStain(
+            ctx,
+            soundClip,
+            fxTrack.inFrame,
+            barX,
+            barW,
+            barY,
+            barH,
+            frameWidth,
+            scrollX,
+            canvasWidth,
+          );
+        }
       }
 
       if (fxTrack.layerType === 'physic-paint' && fxTrack.repeatDurationMarkers?.length) {

@@ -314,7 +314,7 @@ function getThumbnailImageId(layer: Layer | undefined): string | undefined {
 /** FX track layout data for timeline rendering (one track per FX or content-overlay sequence) */
 export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
   physicPaintVersion.value;
-  // Document-only mutations (the sound member) bump only efxPaintVersion, and
+  // Document-only mutations (the audios member) bump only efxPaintVersion, and
   // peaks arrive asynchronously under peaksCacheRevision — both must refresh
   // this layout or the preview stays empty until an unrelated edit.
   void efxPaintVersion.value;
@@ -332,7 +332,9 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       color = primaryLayer ? fxColorForLayerType(primaryLayer.type) : FX_DEFAULT_COLOR;
     }
     const physicPaintLayerId = primaryLayer?.type === 'physic-paint' ? getLayerId(primaryLayer) : null;
-    const documentSound = physicPaintLayerId !== null ? getEfxPaintDocument(physicPaintLayerId)?.sound ?? null : null;
+    // 261008-ig1: one layout entry per placed clip. Peaks stay SOURCE-keyed
+    // (`audioPeaksCache.get(sourceId)`) — duplicates share one cached decode.
+    const documentAudios = physicPaintLayerId !== null ? getEfxPaintDocument(physicPaintLayerId)?.audios ?? [] : [];
     layouts.push({
       sequenceId: seq.id,
       sequenceName: seq.name,
@@ -350,7 +352,8 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       repeatDurationMarkers: primaryLayer?.type === 'physic-paint'
         ? getTimelineRepeatDurationMarkers(primaryLayer, seq)
         : undefined,
-      soundClip: documentSound === null ? null : {
+      soundClips: documentAudios.map((documentSound) => ({
+        id: documentSound.id,
         sourceId: documentSound.sourceId,
         startFrame: documentSound.startFrame,
         inFrame: documentSound.inFrame,
@@ -362,7 +365,7 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
         fadeOutCurve: documentSound.fadeOutCurve,
         peaks: audioPeaksCache.get(documentSound.sourceId) ?? null,
         sourceFrames: audioPeaksCache.getSourceFrames(documentSound.sourceId) ?? null,
-      },
+      })),
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,
     });

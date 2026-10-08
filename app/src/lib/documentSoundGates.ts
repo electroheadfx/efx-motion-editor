@@ -36,19 +36,18 @@ export function studioClipLegEnabled(enabled: boolean): boolean {
 }
 
 /**
- * Resolve the registered document sound for a transported clip section —
- * fail-closed: absent document, absent sound, or a clipId that does not name
- * the registered sound all resolve to null (the clip never dispatches from a
- * mismatched carrier, T-52.5-08).
+ * Resolve the registered document clip for a transported clip section —
+ * fail-closed: absent document, empty list, or a clipId that names no member
+ * of `audios[]` all resolve to null (the clip never dispatches from a
+ * mismatched carrier, T-52.5-08). The `clipId` is the PLACED-CLIP id — matched
+ * against `clip.id`, never `sourceId` (261008-ig1, D-01 two identities).
  */
 export function resolveDocumentSoundClip(
   document: EfxPaintDocument | null,
   section: { clipId: string } | null,
 ): DocumentSoundClip | null {
-  if (!section) return null;
-  const sound = document?.sound ?? null;
-  if (!sound || sound.id !== section.clipId) return null;
-  return sound;
+  if (!section || !document) return null;
+  return document.audios.find((clip) => clip.id === section.clipId) ?? null;
 }
 
 /**
@@ -142,11 +141,13 @@ export interface DocumentSoundClipEntry {
 
 /**
  * Collect every placed document clip across the fx sequences (52.5-02,
- * MAIN-MIX-01). Membership mirrors frameMap's overlay predicate shape — a
- * physic-paint layer on a non-fx sequence is not an overlay and is never
- * collected — deduped by layer id, one entry per layer whose document carries a
- * sound. Pure: callers inject `efxPaintStore.getDocument` so the same read
- * serves main playback and export.
+ * MAIN-MIX-01, retargeted by 261008-ig1). Membership mirrors frameMap's
+ * overlay predicate shape — a physic-paint layer on a non-fx sequence is not an
+ * overlay and is never collected — deduped by layer id at the SEQUENCE layer
+ * list, then one entry per clip in the layer's `audios[]` (a layer carrying
+ * several clips contributes several entries, in list order). Pure: callers
+ * inject `efxPaintStore.getDocument` so the same read serves main playback and
+ * export.
  *
  * Deliberately NOT filtered by visibility: a hidden fx sequence still yields its
  * entry so `mainPlaybackClipEnabled` can apply the D-13 composite gate (and
@@ -165,14 +166,14 @@ export function collectDocumentSoundClips(
       const layerId = layer.source.type === 'physic-paint' ? layer.source.layerId : layer.id;
       if (seenLayerIds.has(layerId)) continue;
       seenLayerIds.add(layerId);
-      const sound = getDocument(layerId)?.sound ?? null;
-      if (sound === null) continue;
-      entries.push({
-        layerId,
-        sound,
-        sequence,
-        timelineStartFrame: (sequence.inFrame ?? 0) + sound.startFrame,
-      });
+      for (const sound of getDocument(layerId)?.audios ?? []) {
+        entries.push({
+          layerId,
+          sound,
+          sequence,
+          timelineStartFrame: (sequence.inFrame ?? 0) + sound.startFrame,
+        });
+      }
     }
   }
   return entries;

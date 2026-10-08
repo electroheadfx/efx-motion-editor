@@ -30,7 +30,7 @@ import {
   setPhotoReferenceOpacity,
   setPhotoReferenceTransformLocked,
   setBackgroundTransformLocked,
-  setDocumentSound,
+  patchDocumentSound,
   clearPhotoReference,
   setTrackBlend,
   setTrackOpacity,
@@ -140,7 +140,7 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
-import { usePhysicsPaintAudioController } from './view/physicsPaintAudioController';
+import { setDocumentSoundSlot, usePhysicsPaintAudioController } from './view/physicsPaintAudioController';
 import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // 52.5-01b: the Document sound import flow reuses the EXISTING decode/peaks
 // machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
@@ -4678,7 +4678,9 @@ export function PhysicsPaintStudio() {
     layerId: launchContext?.layerId ?? '',
     ports: {
       getDocument: (layerId) => getEfxPaintDocument(layerId) ?? undefined,
-      setSound: (layerId, sound) => setDocumentSound(layerId, sound),
+      // 261008-ig1 Task 1: slot routing over `audios[]` (null clears, clip
+      // replaces/appends the first entry) — Task 2 retargets to selection.
+      setSound: (layerId, sound) => setDocumentSoundSlot(layerId, sound),
       getFps: () => launchContext?.fps ?? efxPaintDocumentAudioStore.getFps(),
       isSoundMissing: (sound) => {
         const known = knownAudioPaths.value;
@@ -4770,23 +4772,21 @@ export function PhysicsPaintStudio() {
      This re-derives them through the EXISTING machinery — assetUrl fetch →
      audioEngine.decode → computeWaveformPeaks, keyed by sourceId (D-04: no
      new decode path; a clipId-keyed buffer from monitor prepare is reused when
-     present). Fail-closed: any failure leaves the cache empty → no stain, and
-     the modal carries the error copy. Termination: one in-flight ensure per
-     sourceId (ref guard), early return on cache hit / missing URL; the effect
+     present). 261008-ig1: runs for EVERY distinct sourceId in `audios[]` —
+     duplicates share one cached decode (source-keyed law, never clip-keyed).
+     Fail-closed: any failure leaves the cache empty → no stain, and the modal
+     carries the error copy. Termination: one in-flight ensure per sourceId
+     (Set ref guard), early return on cache hit / missing URL; the effect
      re-runs only on launch/document/section identity changes — never a loop. ---- */
-  const soundPeaksEnsureRef = useRef<string | null>(null);
+  const soundPeaksEnsureRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!launchContext) return undefined;
-    const sound = getEfxPaintDocument(launchContext.layerId)?.sound;
-    if (!sound) {
-      soundPeaksEnsureRef.current = null;
-      return undefined;
-    }
-    if (audioPeaksCache.get(sound.sourceId)) {
-      soundPeaksEnsureRef.current = null;
-      return undefined;
-    }
-    if (soundPeaksEnsureRef.current === sound.sourceId) return undefined;
+    const audios = getEfxPaintDocument(launchContext.layerId)?.audios ?? [];
+    // One ensure per distinct source — the peaks cache is source-keyed.
+    const pendingSources = [...new Set(audios.map((clip) => clip.sourceId))]
+      .filter((sourceId) => audioPeaksCache.get(sourceId) === undefined
+        && !soundPeaksEnsureRef.current.has(sourceId));
+    if (pendingSources.length === 0) return undefined;
     // UAT round 5 (reopen): the routed documentAudio section is the preferred
     // URL source, but it is not the ONLY one. After a project close/reopen the
     // clip and its gallery entry survive while the section may never be routed
@@ -4794,27 +4794,35 @@ export function PhysicsPaintStudio() {
     // re-warmed the cache. Fall back to the SAME `projectDir + relativePath`
     // formula the working Replace path uses (assetUrl fetch → decode → peaks).
     const section = efxPaintDocumentAudioStore.section.value;
-    const sectionUrl = section && section.clipId === sound.id ? section.assetUrl : null;
     const fallbackDir = audioProjectDir.value;
-    const fallbackUrl = fallbackDir !== null && isSafeAudioRelativePath(sound.relativePath)
-      ? assetUrl(`${fallbackDir}/${sound.relativePath}`)
-      : null;
-    const sourceUrl = sectionUrl ?? fallbackUrl;
-    if (sourceUrl === null) return undefined;
-    soundPeaksEnsureRef.current = sound.sourceId;
+    for (const sourceId of pendingSources) soundPeaksEnsureRef.current.add(sourceId);
     void (async () => {
       try {
-        let buffer = audioEngine.getBuffer(sound.sourceId) ?? audioEngine.getBuffer(sound.id);
-        if (!buffer) {
-          const response = await fetch(sourceUrl);
-          if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
-          buffer = await audioEngine.decode(sound.sourceId, await response.arrayBuffer());
+        for (const sourceId of pendingSources) {
+          const clip = audios.find((entry) => entry.sourceId === sourceId);
+          if (!clip) continue;
+          const sectionUrl = section && section.clipId === clip.id ? section.assetUrl : null;
+          const fallbackUrl = fallbackDir !== null && isSafeAudioRelativePath(clip.relativePath)
+            ? assetUrl(`${fallbackDir}/${clip.relativePath}`)
+            : null;
+          const sourceUrl = sectionUrl ?? fallbackUrl;
+          if (sourceUrl === null) continue;
+          try {
+            let buffer = audioEngine.getBuffer(sourceId) ?? audioEngine.getBuffer(clip.id);
+            if (!buffer) {
+              const response = await fetch(sourceUrl);
+              if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
+              buffer = await audioEngine.decode(sourceId, await response.arrayBuffer());
+            }
+            if (audioPeaksCache.get(sourceId) === undefined) {
+              audioPeaksCache.set(sourceId, computeWaveformPeaks(buffer), Math.max(1, Math.ceil(buffer.duration * (launchContext?.fps ?? efxPaintDocumentAudioStore.getFps()))));
+            }
+          } catch {
+            // E3 error state: fail-closed — cache stays empty, band stays plain.
+          }
         }
-        audioPeaksCache.set(sound.sourceId, computeWaveformPeaks(buffer), Math.max(1, Math.ceil(buffer.duration * (launchContext?.fps ?? efxPaintDocumentAudioStore.getFps()))));
-      } catch {
-        // E3 error state: fail-closed — cache stays empty, band stays plain.
       } finally {
-        soundPeaksEnsureRef.current = null;
+        for (const sourceId of pendingSources) soundPeaksEnsureRef.current.delete(sourceId);
       }
     })();
     return undefined;
@@ -4827,23 +4835,24 @@ export function PhysicsPaintStudio() {
   const handleDocumentSoundGestureSettle = (patch: SoundBandGesturePatch): boolean => {
     const layerId = launchContext?.layerId;
     if (!layerId) return false;
-    const current = getEfxPaintDocument(layerId)?.sound;
+    // 261008-ig1 Task 1: the band edits the FIRST clip (Task 2 routes by the
+    // gesture session's clipId). Fail-closed on an empty list.
+    const current = getEfxPaintDocument(layerId)?.audios[0];
     if (!current) return false;
-    const next: DocumentSoundClip = {
-      ...current,
+    return patchDocumentSound(layerId, current.id, {
       startFrame: patch.startFrame ?? current.startFrame,
       inFrame: patch.inFrame ?? current.inFrame,
       outFrame: patch.outFrame ?? current.outFrame,
-    };
-    return setDocumentSound(layerId, next).ok;
+    }).ok;
   };
   /** Band/launcher resolution — the render-body version read subscribes the
    *  Studio to sound-member edits (efx-preact-reactivity rule 5: rare,
-   *  meaningful bumps — never per frame). */
+   *  meaningful bumps — never per frame). Task 1: the first clip
+   *  (single-clip behavior); Task 2: the selected clip. */
   const resolveDocumentSound = (): DocumentSoundClip | null => {
     efxPaintVersion.value;
     if (!launchContext) return null;
-    return getEfxPaintDocument(launchContext.layerId)?.sound ?? null;
+    return getEfxPaintDocument(launchContext.layerId)?.audios[0] ?? null;
   };
   // 50-UAT (modal redesign): the floating Photo Reference dialog bundle — the
   // dialog reads the document through the SAME identity-stable store ports and

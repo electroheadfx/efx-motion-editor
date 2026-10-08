@@ -729,16 +729,18 @@ function hydrateFromMce(
     for (const [layerId, loaded] of loadedDocuments) {
       registerEfxPaintDocument(loaded.document);
       // 52.5 UAT round 4: a document-sound import lives in the shared gallery
-      // as well as the layer JSON. Re-register it so `isSoundMissing` and the
-      // audio gallery still see the asset after a reload (the manifest's
-      // `audio_assets` covers unused imports; this covers used ones).
-      const sound = loaded.document.sound;
-      if (sound !== null && !imageStore.audioAssets.peek().some((asset) => asset.id === sound.sourceId)) {
-        imageStore.addAudioAsset({
-          id: sound.sourceId,
-          name: sound.relativePath.split('/').pop() ?? sound.relativePath,
-          path: `${projectRoot}/${sound.relativePath}`,
-        });
+      // as well as the layer JSON. Re-register each clip's source so
+      // `isSoundMissing` and the audio gallery still see the asset after a
+      // reload (the manifest's `audio_assets` covers unused imports; this
+      // covers used ones). Duplicates share a sourceId — one gallery entry.
+      for (const sound of loaded.document.audios) {
+        if (!imageStore.audioAssets.peek().some((asset) => asset.id === sound.sourceId)) {
+          imageStore.addAudioAsset({
+            id: sound.sourceId,
+            name: sound.relativePath.split('/').pop() ?? sound.relativePath,
+            path: `${projectRoot}/${sound.relativePath}`,
+          });
+        }
       }
       hydrateEfxPaintRuntimeFromDocument(runtimeDocuments.get(layerId) ?? loaded.document, loaded.frames);
     }
@@ -771,16 +773,15 @@ function hydrateFromMce(
         console.error(`Failed to decode audio track "${track.name}":`, err);
       }
     }
-    // 52.5-02 (T-52.5-10, PERSIST-01): decode each placed document clip ONCE per
-    // open, keyed by `sound.id` — the same identity the clip leg and the export
-    // mixer look the buffer up under. The same decode also fills the
-    // sourceId-keyed peaks the main timeline's waveform preview reads (52.5
-    // follow-up) — the Studio band reads its own realm's cache. Fail-closed
+    // 52.5-02 (T-52.5-10, PERSIST-01) + 261008-ig1: decode each placed clip
+    // ONCE per open — buffer keyed by `sound.id` (the clip leg and the export
+    // mixer look it up under), peaks keyed by `sound.sourceId` (shared across
+    // duplicates, so one source decodes its peaks once). Fail-closed
     // warn-and-skip on a bad reference or missing bytes.
     for (const layerId of getActivePhysicPaintLayerIds()) {
-      const sound = getEfxPaintDocument(layerId)?.sound ?? null;
-      if (sound === null) continue;
-      await ensureDocumentSoundPeaks(sound, projectRoot, fps.peek());
+      for (const sound of getEfxPaintDocument(layerId)?.audios ?? []) {
+        await ensureDocumentSoundPeaks(sound, projectRoot, fps.peek());
+      }
     }
   })();
 }
