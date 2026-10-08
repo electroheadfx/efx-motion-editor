@@ -94,15 +94,21 @@ coverage:
         status: pass
     human_judgment: false
   - id: D5
-    description: "Live UAT row 1: double-click a physic-paint layer row → Studio opens at current frame; single-click select, grip reorder, eye, delete still work; image/video row double-click shows no new behavior"
+    description: "Live UAT row 1 (re-scoped after first attempt): double-click a physic-paint timeline FX rail body → Studio opens at the clicked frame; sidebar layer body dblclick keeps working with cursor: pointer; name-label rename, other FX kinds, drag/resize unchanged"
     requirement: QUICK-261008-FUL
-    verification: []
+    verification:
+      - kind: other
+        ref: "UAT approved 2026-10-08 after 5bdbc8c6 (rail-body dblclick + pointer cursors; unreachable LayerList dblclick removed — LayerList lists only content sequences, physic-paint rows live in fx sequences)"
+        status: pass
     human_judgment: true
-    rationale: "Native visual verification in the Tauri app must be performed by the user (no Chrome DevTools MCP per project rule); automated pins prove the wiring, not the live gesture"
+    rationale: "First attempt put the dblclick on LayerList (unreachable for physic-paint rows); user UAT caught it, re-scoped to the timeline FX rail + sidebar body, approved after 5bdbc8c6"
   - id: D6
-    description: "Live UAT row 2: Gain stepper −/+ moves 5 per press clamped −100..+100; a set value survives close/reopen of Studio; Fades and toggles unchanged"
+    description: "Live UAT row 2: Gain stepper −/+ moves 5 per press clamped −100..+100; a set value survives close/reopen of Studio; Fades and toggles unchanged; no extra readout beside the stepper"
     requirement: QUICK-261008-FUL
-    verification: []
+    verification:
+      - kind: other
+        ref: "UAT approved 2026-10-08 after d59f8502 (redundant +NN readout removed; stepper is the only value display)"
+        status: pass
     human_judgment: true
     rationale: "Persistence across Studio close/reopen is a cross-window live behavior; vitest cannot exercise the Tauri window lifecycle (live evidence over unit probes)"
 
@@ -180,17 +186,17 @@ See `.planning/quick/261008-ful-2-small-ux-features-one-atomic-commit-ea/deferre
 
 None - no external service configuration required.
 
-## Live UAT (pending — nothing claimed done before it passes)
+## Live UAT — APPROVED 2026-10-08
 
-| # | Row | Pass condition |
-|---|-----|----------------|
-| 1 | LayerRow double-click | Double-click a physic-paint layer row → Studio opens at the current frame; single-click select, grip reorder, eye toggle, delete all still work; double-click on image/video rows produces no new behavior |
-| 2 | Audio modal Gain | Gain shows as a value with −/+ moving 5 per press, clamped −100..+100; set a value, close Studio, reopen → persists; Fades and toggles unchanged |
+| # | Row | Outcome |
+|---|-----|---------|
+| 1 | Studio open from a layer surface | PASS after re-scope (5bdbc8c6): first attempt targeted LayerList (unreachable for physic-paint rows — content sequences only); final = timeline FX rail body dblclick → Studio at clicked frame + pointer cursors (rail hover, sidebar body); name rename / other kinds / drag untouched |
+| 2 | Audio modal Gain | PASS after d59f8502: stepper −/+ moves 5, clamped −100..+100, persists across Studio close/reopen; redundant +NN readout removed; fades/toggles unchanged |
 
 ## Next Phase Readiness
 
-- Both features automated-ready: per-task gates green (11 + 9 tests), full suite no NEW failures, diff boundaries exact, two atomic commits on `feat/v1.0.0-52-5-audio-studio`
-- Blocking for "done": the user's two native UAT rows above
+- Both features shipped: per-task gates green (11 + 9 tests), full suite no NEW failures, two atomic commits + two UAT-fix commits on `feat/v1.0.0-52-5-audio-studio`
+- UAT: both native rows approved 2026-10-08
 - Non-blocking debt carried: the two pre-existing failures (typecheck ×3, suite ×1) belong to quick 261004-dn5's `'move'` tool cluster / paintStore wiring — route to a future quick, not this one
 
 ## Self-Check: PASSED
