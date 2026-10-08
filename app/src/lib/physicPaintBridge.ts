@@ -3028,7 +3028,7 @@ export async function publishPhysicPaintDocumentAudioContext(layerId: string): P
     const eventApi = await import('@tauri-apps/api/event');
     await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, section);
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
     const message = { type: PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, payload: section };
     window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, { detail: section }));
     window.opener?.postMessage?.(message, window.location.origin);
@@ -3041,7 +3041,7 @@ export async function publishPhysicPaintAudioContext(): Promise<void> {
     const eventApi = await import('@tauri-apps/api/event');
     await eventApi.emitTo?.(PHYSIC_PAINT_WINDOW_LABEL, PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, section);
   }
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
     const message = { type: PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, payload: section };
     window.dispatchEvent(new CustomEvent(PHYSIC_PAINT_AUDIO_CONTEXT_EVENT, { detail: section }));
     window.opener?.postMessage?.(message, window.location.origin);
