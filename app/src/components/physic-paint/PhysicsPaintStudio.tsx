@@ -141,7 +141,8 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
-import { buildDuplicatedSoundClip, usePhysicsPaintAudioController } from './view/physicsPaintAudioController';
+import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsPaintAudioController } from './view/physicsPaintAudioController';
+import type { AudioSectionPorts } from './view/PhysicsPaintAudioListSection';
 import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // 52.5-01b: the Document sound import flow reuses the EXISTING decode/peaks
 // machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
@@ -435,7 +436,38 @@ export function PhysicsPaintStudio() {
   // 49-06 (UAT round 2): the right-panel tool tab. The Studio owns it so a Paint
   // track selection returns the panel to Track option and a Bg rail selection
   // opens the Background option tab (selection-driven, never stuck on the clip).
-  const rightPanelToolTab = useSignal<'paint' | 'track' | 'background'>('paint');
+  const rightPanelToolTab = useSignal<'paint' | 'track' | 'background' | 'audio'>('paint');
+  /* ---------------------------------------------------------------------------
+   * 52.5-01b (D-02/D-03/D-05) + 261008-ig1 Task 2 + 261008-ryq: the Document
+   * sound signals. They live HERE, ABOVE the keyboard hook — its state object
+   * reads `selectedSoundId`, so a declaration further down would hit the TDZ on
+   * first render. The controller (:usePhysicsPaintAudioController below) and
+   * every handler stay where they are: only lazy arrows / event handlers reach
+   * them, never the memo factory itself.
+   * - `selectedSoundId` — the Studio-owned selection (D-01): handlers are the
+   *   ONLY writers (band press, list-row click, dblclick, reveal, remove).
+   * - `audioModalTarget` — clipId | '' | null: the modal's open target
+   *   (261008-ryq: the clip LIST lives in the sidebar Audio tab — '' opens on
+   *   the zero-clip empty state, a clipId opens the single-clip editor,
+   *   null = closed (Escape/X clear it)).
+   * - `audioImportMode` — the intent the last onImportRequest carried
+   *   ('append' = fresh clip, 'replace' = selected clip's source).
+   * - `revealRequest` — {frame, nonce} one-shot viewport positioning for a
+   *   selected/revealed clip (the strip rides the qad math per nonce).
+   * - `knownAudioPaths` — CMP-05 fail-closed missing-file probe: the project's
+   *   audio/ refs as the main library reports them. null = not loaded yet and
+   *   the probe reports "present" (no false-missing flash at boot); refreshed
+   *   on mount and after every in-gallery import.
+   * ------------------------------------------------------------------------- */
+  const selectedSoundId = useSignal<string | null>(null);
+  const audioModalTarget = useSignal<string | null>(null);
+  const audioImportMode = useSignal<'append' | 'replace'>('append');
+  const revealRequest = useSignal<{ frame: number; nonce: number } | null>(null);
+  const knownAudioPaths = useSignal<ReadonlySet<string> | null>(null);
+  // UAT round 5: the gallery probe also carries the project directory, which
+  // is the fallback root for the reopen peaks-ensure when no documentAudio
+  // section is routed (see the effect below).
+  const audioProjectDir = useSignal<string | null>(null);
   // 50-UAT (modal redesign): the floating Photo Reference dialog — a Studio-owned
   // signal so the strip camera icon opens it and the dialog self-closes. The
   // dialog stays open behind the full-area reference picker so an Import/
@@ -3118,6 +3150,10 @@ export function PhysicsPaintStudio() {
       hasSelectedRotoKey: selectedKeyId.value !== null,
       // 49-06 UAT: a selected Bg rail owns Delete/Backspace (selection-driven).
       hasSelectedBackgroundClip: selectedBackgroundClipId.value !== null,
+      // 261008-ryq: a selected sound clip owns Delete/Backspace after the Bg
+      // branch (Bg wins when both are selected) — safe: the signal declaration
+      // sits above this hook call (TDZ law).
+      hasSelectedSoundClip: selectedSoundId.value !== null,
     },
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {
@@ -3156,6 +3192,10 @@ export function PhysicsPaintStudio() {
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
+      // 261008-ryq: one-shot keyboard removal of the selected sound clip —
+      // MUST stay an arrow (audioModalController is declared further down and
+      // is only touched at keydown time).
+      removeSelectedSound: () => audioModalController.removeSelected(),
       selectAllRotoKeys,
       disarmPushTool,
       // 43.6-06 (D-04): the solo disarm layer sits between the push disarm
@@ -3535,6 +3575,33 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
+  // 261008-ryq Task 1: the sidebar Audio-tab ports (audioSectionPortsRef —
+  // backgroundClipSectionPortsRef precedent). The controller instance is
+  // rebuilt every render (fresh audios/selection facts), so `getController`
+  // resolves it through a ref: the ports object keeps ONE identity for the
+  // rightPanel memo while the arrow always yields the LATEST controller at
+  // child-render time. The other members are lazy arrows too — they only run
+  // on a row click / Import press, never inside the memo factory (the
+  // controller, picker and reveal handlers are declared further down).
+  const audioModalControllerRef = useRef<PhysicsPaintAudioController | null>(null);
+  const audioSectionPortsRef = useRef<AudioSectionPorts>({
+    getController: () => audioModalControllerRef.current!,
+    onSelectClip: (clipId: string) => {
+      // Row click does all three effects IN the handler (never a deferred
+      // effect): select + reveal + open the modal on that clip.
+      const controller = audioModalControllerRef.current;
+      const clip = controller?.audios.find((entry) => entry.id === clipId);
+      if (!controller || !clip) return;
+      controller.disarmRemove();
+      selectedSoundId.value = clip.id;
+      revealSoundClip(clip);
+      audioModalTarget.value = clip.id;
+    },
+    onImportRequest: (mode: 'append' | 'replace') => {
+      audioImportMode.value = mode;
+      void audioPicker.openPicker();
+    },
+  });
   // 50-UAT (modal redesign): the Photo Reference dialog ports are identity-
   // stable — the store ops and the imageStore resolver never change, so the ref
   // is created once and the dialog memo deps stay small (the dialog re-resolves
@@ -3557,7 +3624,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3598,6 +3665,11 @@ export function PhysicsPaintStudio() {
     backgroundClipSection: launchContext?.layerId
       ? { layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }
       : undefined,
+    // 261008-ryq Task 1: the sidebar Audio-tab ports — identity-stable ref;
+    // the factory only ever reads `.current` (getController runs at
+    // child-render time, never here). efxPaintVersion is already a memo dep,
+    // so a document edit re-runs the factory and the rows refresh.
+    audioSectionPorts: launchContext?.layerId ? audioSectionPortsRef.current : undefined,
     // 49-06 (UAT round 2): the Studio-owned tool tab signal — the right panel
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
     // to Track option and a Bg rail selection opens the Background option tab.
@@ -4648,32 +4720,12 @@ export function PhysicsPaintStudio() {
   };
   /* ---------------------------------------------------------------------------
    * 52.5-01b (D-02/D-03/D-05) + 261008-ig1 Task 2: the Document sound flow.
-   * - `selectedSoundId` — the Studio-owned selection (D-01): handlers are the
-   *   ONLY writers (band press, list-row click, dblclick, reveal, remove).
-   * - `audioModalTarget` — 'list' | clipId | null: WHICH surface the modal is
-   *   open on (the header launcher opens the list chooser; a band dblclick
-   *   targets THAT clip). null = closed (Escape/X clear it).
-   * - `audioImportMode` — the intent the last onImportRequest carried
-   *   ('append' = fresh clip, 'replace' = selected clip's source).
-   * - `revealRequest` — {frame, nonce} one-shot viewport positioning for a
-   *   selected/revealed clip (the strip rides the qad math per nonce).
-   * - `knownAudioPaths` — CMP-05 fail-closed missing-file probe: the project's
-   *   audio/ refs as the main library reports them. null = not loaded yet and
-   *   the probe reports "present" (no false-missing flash at boot); refreshed
-   *   on mount and after every in-gallery import.
-   * - the controller instance lives HERE so the gallery Confirm flow drives the
-   *   SAME signal instance the modal renders (beginReading → decode →
-   *   applyImportedSource / applyReplacedSource → endReading).
+   * The signal declarations moved UP beside `rightPanelToolTab` (the keyboard
+   * hook's state reads `selectedSoundId` — TDZ law). What lives HERE: the
+   * controller instance — the gallery Confirm flow drives the SAME signal
+   * instance the modal renders (beginReading → decode → applyImportedSource /
+   * applyReplacedSource → endReading) — and the handlers below it.
    * ------------------------------------------------------------------------- */
-  const selectedSoundId = useSignal<string | null>(null);
-  const audioModalTarget = useSignal<'list' | string | null>(null);
-  const audioImportMode = useSignal<'append' | 'replace'>('append');
-  const revealRequest = useSignal<{ frame: number; nonce: number } | null>(null);
-  const knownAudioPaths = useSignal<ReadonlySet<string> | null>(null);
-  // UAT round 5: the gallery probe also carries the project directory, which
-  // is the fallback root for the reopen peaks-ensure when no documentAudio
-  // section is routed (see the effect below).
-  const audioProjectDir = useSignal<string | null>(null);
   const refreshKnownAudioPaths = async (): Promise<PhysicPaintAudioAssetRef[]> => {
     const result = await requestImageLibrary('audio');
     const assets = result.ok ? result.audioAssets ?? [] : [];
@@ -4701,6 +4753,9 @@ export function PhysicsPaintStudio() {
       },
     },
   });
+  // 261008-ryq: publish the LATEST controller to the identity-stable ports ref
+  // (render-body ref write — launchContextRef precedent, not a signal).
+  audioModalControllerRef.current = audioModalController;
   // 52.5-01b (D-02/D-03): the ONE shared gallery in kind 'audio' mode — same
   // controller, same region-swap view; only the listing target, the dialog
   // filter and the import kind differ (never a second picker, never a new
@@ -4790,17 +4845,6 @@ export function PhysicsPaintStudio() {
     onImportRequest: (mode: 'append' | 'replace') => {
       audioImportMode.value = mode;
       void audioPicker.openPicker();
-    },
-    // 261008-ig1 Task 2: a list-row click selects THAT clip and reveals its
-    // band (handler-written selection — never a deferred effect).
-    onSelectSoundClip: (clipId: string) => {
-      const layerId = launchContext?.layerId;
-      const clip = layerId
-        ? getEfxPaintDocument(layerId)?.audios.find((entry) => entry.id === clipId)
-        : undefined;
-      if (!clip) return;
-      selectedSoundId.value = clip.id;
-      revealSoundClip(clip);
     },
     // 52.5 UAT: the main-app-audio preview toggle. SAME session signal as the
     // strip's Audio Preview button (one source of truth, two surfaces), routed
@@ -5002,18 +5046,20 @@ export function PhysicsPaintStudio() {
         documentAudios: resolveDocumentAudios(),
         selectedSoundId,
         onOpenDocumentSound: () => {
-          // Single clip: resolve onto it (one less click); otherwise clear a
-          // stale selection that no longer exists and open the list chooser.
+          // 261008-ryq: the LIST lives in the sidebar Audio tab — the launcher
+          // opens the single-clip editor. Auto-select the first clip when
+          // nothing (valid) is selected; zero clips opens on the empty state
+          // ('' target — the open test is `!== null`).
           const audios = resolveDocumentAudios();
-          if (audios.length === 1) {
-            selectedSoundId.value = audios[0].id;
-          } else if (
-            selectedSoundId.peek() !== null
-            && !audios.some((clip) => clip.id === selectedSoundId.peek())
-          ) {
-            selectedSoundId.value = null;
+          if (audios.length === 0) {
+            audioModalTarget.value = '';
+          } else {
+            const current = selectedSoundId.peek();
+            if (current === null || !audios.some((clip) => clip.id === current)) {
+              selectedSoundId.value = audios[0].id;
+            }
+            audioModalTarget.value = selectedSoundId.peek() ?? '';
           }
-          audioModalTarget.value = 'list';
         },
         onDocumentSoundDblClick: (clipId: string) => {
           selectedSoundId.value = clipId;

@@ -37,19 +37,23 @@ describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
   });
 });
 
-describe('PhysicsPaintAudioModalView clip list (261008-ig1 Task 2)', () => {
-  it('pluralizes the header title and the copy-list header line', () => {
+describe('PhysicsPaintAudioModalView single-clip editor (261008-ryq)', () => {
+  it('pluralizes the header title and keeps the header contract line', () => {
     expect(source).toContain("export const AUDIO_MODAL_TITLE = 'Document sounds';");
     expect(source).not.toContain("AUDIO_MODAL_TITLE = 'Document sound';");
     expect(source).toContain('`Document sounds` · `Import sound`');
     expect(source).toContain('1. header: AudioWaveform 15px + `Document sounds` + close X');
   });
 
-  it('renders one row per clip keyed by clip.id with the selected marker bound to the controller selection', () => {
-    expect(source).toContain('data-testid="audio-modal-list"');
-    expect(source).toContain('key={clip.id}');
-    expect(source).toContain('selectedSoundId.value === clip.id');
-    expect(source).toContain('onSelectSoundClip(clip.id)');
+  it('no longer renders the clip rows — the list moved to the sidebar Audio tab', () => {
+    expect(source).not.toContain('data-testid="audio-modal-list"');
+    expect(source).not.toContain('key={clip.id}');
+    expect(source).not.toContain('selectedSoundId.value === clip.id');
+    expect(source).not.toContain('onSelectSoundClip');
+    expect(source).toContain('LIST now lives in the sidebar Audio tab');
+    // The contract comment's step 2 is the file row / empty state only — no
+    // clip-list step.
+    expect(source).not.toContain('clip list (rows');
   });
 
   it('gates the empty state on an empty list and the editor on the selected clip', () => {
@@ -59,6 +63,14 @@ describe('PhysicsPaintAudioModalView clip list (261008-ig1 Task 2)', () => {
     // must be gone — a list with no selection shows the list, not the empty
     // state.
     expect(source).not.toContain('{sound === null ? (');
+  });
+
+  it('handles the modal-open one-shot Delete/Backspace via removeSelected behind the shortcut-target guard', () => {
+    const keyDown = source.slice(source.indexOf('onKeyDown={'), source.indexOf('{/* 1. Header */}'));
+    expect(keyDown).toContain("(event.key === 'Backspace' || event.key === 'Delete')");
+    expect(keyDown).toContain('!event.repeat');
+    expect(keyDown).toContain('isPhysicsPaintShortcutTarget(event.target)');
+    expect(keyDown).toContain('removeSelected();');
   });
 
   it('routes Import as append and Replace… as replace through the mode port', () => {

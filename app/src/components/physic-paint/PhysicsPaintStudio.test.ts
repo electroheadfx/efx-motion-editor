@@ -2349,17 +2349,35 @@ describe('260922-rd4 background transform via the shared photo-reference handles
 describe('261008-ig1 Task 2 — Studio multi-clip selection, open target, and reveal contract', () => {
   it('owns the selection, modal open target, import mode, and reveal signals', () => {
     expect(studio).toContain('const selectedSoundId = useSignal<string | null>(null);');
-    expect(studio).toContain("const audioModalTarget = useSignal<'list' | string | null>(null);");
+    // 261008-ryq: the 'list' open mode is gone — the target is clipId | '' | null.
+    expect(studio).toContain('const audioModalTarget = useSignal<string | null>(null);');
+    expect(studio).not.toContain("useSignal<'list' | string | null>");
     expect(studio).toContain("const audioImportMode = useSignal<'append' | 'replace'>('append');");
     expect(studio).toContain('const revealRequest = useSignal<{ frame: number; nonce: number } | null>(null);');
   });
 
-  it('header launcher opens the list chooser; a single clip resolves onto that clip; dblclick targets the clip', () => {
-    expect(studio).toContain("audioModalTarget.value = 'list'");
-    expect(studio).toContain('audios.length === 1');
+  it('header launcher auto-selects the first clip (empty state at zero); dblclick targets the clip', () => {
+    expect(studio).not.toContain("audioModalTarget.value = 'list'");
+    expect(studio).not.toContain('audios.length === 1');
+    expect(studio).toContain('audios.length === 0');
+    expect(studio).toContain("audioModalTarget.value = ''");
+    expect(studio).toContain('selectedSoundId.value = audios[0].id');
+    expect(studio).toContain("audioModalTarget.value = selectedSoundId.peek() ?? ''");
     expect(studio).toContain('audioModalTarget.value = clipId');
     expect(studio).toContain('audioModalTarget.value !== null');
     expect(studio).toContain("audioModalTarget.value = null");
+  });
+
+  it('exposes the selected sound to the dispatcher and the Audio-tab ports to the panel (261008-ryq)', () => {
+    // Keyboard state/actions: one-shot removal of the selected sound clip.
+    expect(studio).toContain('hasSelectedSoundClip: selectedSoundId.value !== null,');
+    expect(studio).toContain('removeSelectedSound: () => audioModalController.removeSelected(),');
+    // Sidebar Audio tab: lazy ports gated on a layerId, refreshed with the
+    // version-driven panel memo.
+    expect(studio).toContain('audioSectionPorts: launchContext?.layerId ? audioSectionPortsRef.current : undefined,');
+    expect(studio).toContain('audioSectionPortsRef');
+    // The controller instance is handed to the ports through a latest ref.
+    expect(studio).toContain('audioModalControllerRef.current = audioModalController;');
   });
 
   it('routes band settles by the patch clipId through the per-clip store door (no slot shim)', () => {

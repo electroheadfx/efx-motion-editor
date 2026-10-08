@@ -15,6 +15,7 @@ import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from 
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
 import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';
+import { PhysicsPaintAudioListSection, type AudioSectionPorts } from './PhysicsPaintAudioListSection';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 
@@ -61,10 +62,17 @@ export interface PhysicsPaintRightPanelProps {
    * 49-06 (UAT round 2): the tool-pane tab signal, owned by the Studio so a
    * Paint track selection returns the panel to Track option and a Bg rail
    * selection opens the Background option tab (a THIRD tab — it never replaces
-   * Track option). The right panel reads `.value` in its render body (the
-   * 38-11 signal-bypasses-memo pattern) and writes it on tab clicks.
+   * Track option). 261008-ryq: the Audio tab is a fourth, manual tab. The
+   * right panel reads `.value` in its render body (the 38-11 signal-bypasses-
+   * memo pattern) and writes it on tab clicks.
    */
-  toolTab?: Signal<'paint' | 'track' | 'background'>;
+  toolTab?: Signal<'paint' | 'track' | 'background' | 'audio'>;
+  /**
+   * 261008-ryq Task 1: the sidebar Audio-tab list ports (lazy controller
+   * resolution + select/import intents) — identity-stable ref from the Studio
+   * (backgroundClipSectionPortsRef precedent).
+   */
+  audioSectionPorts?: AudioSectionPorts;
 }
 
 /** The five BlendMode values offered by the track Blend select (TML-04). */
@@ -253,6 +261,7 @@ export function PhysicsPaintRightPanel({
   onTrackBlendChange,
   scripts,
   backgroundClipSection,
+  audioSectionPorts,
   toolTab: toolTabSignal,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
@@ -278,12 +287,13 @@ export function PhysicsPaintRightPanel({
   // A selected Bg clip FORCES the Background tab; a stale 'background' tab with
   // no selection (e.g. the clip was deleted) falls back to Track option.
   const effectiveToolTab = selectedBackgroundClipId ? 'background' : (toolTab === 'background' ? 'track' : toolTab);
-  const setToolTab = (tab: 'paint' | 'track' | 'background') => {
+  const setToolTab = (tab: 'paint' | 'track' | 'background' | 'audio') => {
     if (toolTabSignal) toolTabSignal.value = tab;
   };
-  // Clicking a Paint/Track tab while a Bg clip is selected clears the selection
-  // so the click is responsive (the Background tab is forced by the selection).
-  const selectToolTab = (tab: 'paint' | 'track') => {
+  // Clicking a Paint/Track/Audio tab while a Bg clip is selected clears the
+  // selection so the click is responsive (the Background tab is forced by the
+  // selection).
+  const selectToolTab = (tab: 'paint' | 'track' | 'audio') => {
     setToolTab(tab);
     if (backgroundClipSection) backgroundClipSection.selectedBackgroundClipId.value = null;
   };
@@ -628,7 +638,7 @@ export function PhysicsPaintRightPanel({
             aria-selected={effectiveToolTab === 'paint'}
             onClick={() => selectToolTab('paint')}
           >
-            Paint option
+            Paint
           </button>
           <button
             type="button"
@@ -637,7 +647,19 @@ export function PhysicsPaintRightPanel({
             aria-selected={effectiveToolTab === 'track'}
             onClick={() => selectToolTab('track')}
           >
-            Track option
+            Track
+          </button>
+          {/* 261008-ryq: the Audio tab lists every placed clip (the list moved
+              out of the Document sound modal). Manual like Paint/Track — it
+              clears a selected Bg clip on click. */}
+          <button
+            type="button"
+            class={`physics-paint-options-tab physics-paint-tab-audio-option${effectiveToolTab === 'audio' ? ' active' : ''}`}
+            role="tab"
+            aria-selected={effectiveToolTab === 'audio'}
+            onClick={() => selectToolTab('audio')}
+          >
+            Audio
           </button>
           {/* 49-06 (UAT round 2): the Background option tab is a THIRD tab shown
               only while a Bg clip is selected — it never replaces Track option.
@@ -680,6 +702,10 @@ export function PhysicsPaintRightPanel({
           // section in its OWN tab. Keyed by clip id so a selection change
           // remounts the section with fresh draft state (no effect-driven sync).
           <PhysicsPaintBackgroundClipSection key={selectedBackgroundClipId} {...backgroundClipSection!} />
+        ) : effectiveToolTab === 'audio' ? (
+          // 261008-ryq: explicit arm BEFORE the track fallback so the Audio tab
+          // can never fall through to Track (T-261008-RYQ-04).
+          audioSectionPorts ? <PhysicsPaintAudioListSection ports={audioSectionPorts} /> : null
         ) : (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-track" role="tabpanel" aria-label="Track options">
             <div class="physics-paint-option-group">

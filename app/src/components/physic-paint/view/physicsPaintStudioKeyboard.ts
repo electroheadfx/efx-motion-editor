@@ -11,6 +11,10 @@ export interface PhysicsPaintStudioKeyboardState {
    *  selection-driven Delete/Backspace then owns that clip (timeline delete
    *  for Bg rails, mirrored by the selected-rail trash button). */
   hasSelectedBackgroundClip?: boolean;
+  /** 261008-ryq: true while a sound clip is the current selection — a
+   *  selection-driven Delete/Backspace then removes it ONE-SHOT (no arm;
+   *  visible Remove buttons keep the two-step arm). */
+  hasSelectedSoundClip?: boolean;
   /** True while the toolbox popover is open (role="dialog" aria-modal="false"). */
   toolboxPopoverOpen?: boolean;
 }
@@ -36,6 +40,9 @@ export interface PhysicsPaintStudioKeyboardActions {
   deleteRotoKey?: () => void;
   /** 49-06 UAT: delete the selected Background clip (timeline Delete/Backspace). */
   deleteBackgroundClip?: () => void;
+  /** 261008-ryq: one-shot removal of the SELECTED sound clip (keyboard path —
+   *  the modal-open path handles its own key inside the dialog). */
+  removeSelectedSound?: () => void;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
   /** Dismiss the toolbox popover; handled on Escape before collapseRotoSelection
@@ -186,6 +193,17 @@ export function dispatchPhysicsPaintStudioKeyDown(
       event.preventDefault();
       if (state.mutationLocked) return;
       actions.deleteBackgroundClip();
+      return;
+    }
+    // 261008-ryq: a SELECTED sound clip owns Delete/Backspace NEXT (Bg first
+    // wins when both are selected) — one-shot removal, same shape as the Bg
+    // branch: document-wide real-modal guard, preventDefault only when it
+    // fires, mutationLocked stops before the mutation.
+    if (state.hasSelectedSoundClip && actions.removeSelectedSound) {
+      if (event.target instanceof Element && event.target.ownerDocument.querySelector('[aria-modal="true"]')) return;
+      event.preventDefault();
+      if (state.mutationLocked) return;
+      actions.removeSelectedSound();
       return;
     }
     if (!actions.deleteRotoKey || !isPhysicsPaintRotoDeleteTarget(event.target)) return;

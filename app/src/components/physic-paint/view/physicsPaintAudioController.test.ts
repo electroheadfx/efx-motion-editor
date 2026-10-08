@@ -251,6 +251,52 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(selectedSoundId.value).toBeNull();
   });
 
+  it('removeSelected one-shots the selected clip — one removeSound, selection and arm cleared, no arm involved (261008-ryq)', () => {
+    const { controller, selectedSoundId, removeSound } = makeController({ selection: 'clip-b' });
+    expect(controller.removeArmed).toBe(false);
+    controller.removeSelected();
+    expect(removeSound).toHaveBeenCalledTimes(1);
+    expect(removeSound).toHaveBeenCalledWith('layer-1', 'clip-b');
+    expect(selectedSoundId.value).toBeNull();
+    expect(controller.removeArmed).toBe(false);
+  });
+
+  it('removeSelected no-ops with a null or unknown selection — no port call (261008-ryq)', () => {
+    const none = makeController({ selection: null });
+    none.controller.removeSelected();
+    expect(none.removeSound).not.toHaveBeenCalled();
+    expect(none.selectedSoundId.value).toBeNull();
+
+    const unknown = makeController({ selection: 'clip-zzz' });
+    unknown.controller.removeSelected();
+    expect(unknown.removeSound).not.toHaveBeenCalled();
+  });
+
+  it('requestRemove arms the LIVE selection written after render — list-row select + arm in one click (261008-ryq)', () => {
+    // Render with null selection (the render-time `sound` snapshot is null),
+    // then the row handler writes the selection and arms in the SAME click.
+    const { controller, selectedSoundId, removeSound } = makeController({ selection: null });
+    selectedSoundId.value = 'clip-b';
+    controller.requestRemove();
+    expect(controller.removeArmed).toBe(true);
+    controller.confirmRemove();
+    expect(removeSound).toHaveBeenCalledTimes(1);
+    expect(removeSound).toHaveBeenCalledWith('layer-1', 'clip-b');
+    expect(selectedSoundId.value).toBeNull();
+  });
+
+  it('requestRemove still fails closed with a null or unknown live selection (261008-ryq)', () => {
+    const none = makeController({ selection: null });
+    none.controller.requestRemove();
+    expect(none.controller.removeArmed).toBe(false);
+    none.controller.confirmRemove();
+    expect(none.removeSound).not.toHaveBeenCalled();
+
+    const unknown = makeController({ selection: 'clip-zzz' });
+    unknown.controller.requestRemove();
+    expect(unknown.controller.removeArmed).toBe(false);
+  });
+
   it('applyImportedSource appends a fresh clip and selects it', () => {
     const { controller, selectedSoundId, addSound } = makeController({ selection: 'clip-a' });
     const result = controller.applyImportedSource({

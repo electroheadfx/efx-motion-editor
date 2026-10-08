@@ -1062,10 +1062,11 @@ button.destructive {
   flex: 1 1 0;
 }
 
-/* 47 UAT: the tool pane's two tabs ('Paint option' / 'Track option') share
-   the bottom pane's tab look and split the pane width equally. */
+/* 47 UAT: the tool pane's tabs ('Paint' / 'Track' / 'Audio' — 261008-ryq)
+   share the bottom pane's tab look and split the pane width equally. */
 .physics-paint-tab-paint-option,
-.physics-paint-tab-track-option {
+.physics-paint-tab-track-option,
+.physics-paint-tab-audio-option {
   flex: 1 1 0;
 }
 
@@ -4613,6 +4614,109 @@ button.destructive {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 261008-ryq: the clip LIST lives in the sidebar Audio tab; the modal is the
+   single-clip editor. Rows are compact: filename + frame span left, On/Off and
+   an icon-only Trash2 right; the selected row carries a distinct highlight. */
+.physics-paint-audio-clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  min-width: 0;
+}
+
+.physics-paint-audio-clip-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 4px;
+}
+
+.physics-paint-audio-clip-row-selected {
+  border-color: var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55));
+  background: rgba(127, 131, 138, 0.14);
+}
+
+.physics-paint-audio-clip-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.physics-paint-audio-clip-select:hover:not(:disabled) {
+  background: rgba(127, 131, 138, 0.14);
+}
+
+.physics-paint-audio-clip-select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.physics-paint-audio-filename {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.physics-paint-audio-clip-span {
+  flex: 0 0 auto;
+  color: #8a94a0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-audio-clip-toggle {
+  flex: 0 0 auto;
+  color: #c4cad0;
+  font-size: 10px;
+}
+
+.physics-paint-audio-clip-trash {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #c4cad0;
+  cursor: pointer;
+}
+
+.physics-paint-audio-clip-trash:hover:not(:disabled) {
+  background: rgba(127, 131, 138, 0.2);
+  color: #f0907e;
+}
+
+.physics-paint-audio-clip-trash:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.physics-paint-audio-clip-import {
+  align-self: stretch;
+  margin-top: 2px;
 }
 
 /* 52-05 (G-52-3): the track rail-creation flow — the "Create rail" button and

@@ -112,6 +112,12 @@ export interface PhysicsPaintAudioController {
   /** Two-step remove: first call arms, second commits sound: null. */
   requestRemove: () => void;
   confirmRemove: () => void;
+  /**
+   * 261008-ryq: ONE-SHOT removal for the keyboard paths (Delete/Backspace on
+   * the modal-open and modal-closed paths). Visible Remove buttons keep the
+   * two-step requestRemove/confirmRemove arm — never a second arm.
+   */
+  removeSelected: () => void;
   /** Revert the Remove arm ("reverts on any other action"). */
   disarmRemove: () => void;
   /** Busy-flag drivers for the import/decode flow (task 2 wiring). */
@@ -345,10 +351,14 @@ export function usePhysicsPaintAudioController({
   };
 
   const requestRemove = () => {
-    if (!sound) return;
-    // Stamp the LIVE selection, not the render-time snapshot: the arm must name
-    // the clip the user is looking at even if a re-render has not landed yet.
-    removeArmedClipId.value = selectedSoundId.value ?? sound.id;
+    // 261008-ryq: gate on the LIVE selection (not the render-time `sound`
+    // snapshot — it predates a list-row handler's selection write, so the row
+    // can select + arm in one click). Fail-closed semantics unchanged: no
+    // selection or an unknown id never arms.
+    const liveId = selectedSoundId.value;
+    if (liveId === null) return;
+    if (!audios.some((clip) => clip.id === liveId)) return;
+    removeArmedClipId.value = liveId;
   };
 
   const confirmRemove = () => {
@@ -361,6 +371,19 @@ export function usePhysicsPaintAudioController({
     if (armedId === null || liveSelectedId === null || armedId !== liveSelectedId) return;
     const result = removeSound(layerId, armedId);
     if (result.ok) selectedSoundId.value = null;
+  };
+
+  /** 261008-ryq: the keyboard one-shot — remove the live selection in ONE
+   *  step (no arm involved). Visible buttons keep the two-step path. */
+  const removeSelected = () => {
+    const liveId = selectedSoundId.value;
+    if (liveId === null) return;
+    if (!audios.some((clip) => clip.id === liveId)) return;
+    const result = removeSound(layerId, liveId);
+    if (result.ok) {
+      selectedSoundId.value = null;
+      removeArmedClipId.value = null;
+    }
   };
 
   const beginReading = () => {
@@ -438,6 +461,7 @@ export function usePhysicsPaintAudioController({
     toggleEnabled,
     requestRemove,
     confirmRemove,
+    removeSelected,
     disarmRemove,
     beginReading,
     endReading,

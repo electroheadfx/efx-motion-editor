@@ -27,10 +27,10 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
-  it('renders the Brush color section chrome-less and the Tool pane behind Paint option/Track option tabs, keeping the lower Actions/Onion/Motion tab group (47 UAT)', () => {
+  it('renders the Brush color section chrome-less and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group (47 UAT)', () => {
     // The brush color section stays chrome-less (36.15-12, UAT Gap H-1/H-2).
-    // 47 UAT: the tool pane gained its own two-tab group — 'Paint option'
-    // (default-open) and 'Track option' — so the active track's options live
+    // 47 UAT: the tool pane gained its own tab group — 'Paint' (default-open),
+    // 'Track', and (261008-ryq) 'Audio' — so the active track's options live
     // in a pane section of their own instead of mixing with the brush tools.
     expect(rightPanel).not.toContain('aria-label="Brush color panel"');
     expect(rightPanel).not.toContain('aria-label="Tool panel"');
@@ -40,12 +40,13 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
     expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
 
-    // The tool pane's own tablist: Paint option FIRST and default-open, Track
-    // option second, and the conditional Background option tab (49-06 UAT round
-    // 2 — shown only while a Bg clip is selected, never replacing Track).
+    // The tool pane's own tablist: Paint FIRST and default-open, Track second,
+    // Audio third (261008-ryq — the clip list moved into this tab), and the
+    // conditional Background option tab last (49-06 UAT round 2 — shown only
+    // while a Bg clip is selected, never replacing Track).
     const toolTabStart = rightPanel.indexOf('aria-label="Physics Paint tool option panels"');
     const toolTabs = rightPanel.slice(toolTabStart, rightPanel.indexOf('</div>', toolTabStart));
-    expectInOrder(toolTabs, ['Paint option', 'Track option', 'Background option']);
+    expectInOrder(toolTabs, ['Paint', 'Track', 'Audio', 'Background option']);
     // 49-06 (UAT round 2): the tab is a Studio-owned signal — the panel reads
     // it (the 38-11 signal-bypasses-memo pattern) so a Paint track selection
     // returns to Track option and a Bg rail selection opens Background option.
@@ -62,10 +63,10 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel).not.toContain('physics-paint-tab-log');
     expect(rightPanel).not.toMatch(/>\s*LOG\s*</);
 
-    // Two tablists remain: the tool pane's tabs (Paint/Track + the conditional
-    // Background option) + the lower group's three.
+    // Two tablists remain: the tool pane's tabs (Paint/Track/Audio + the
+    // conditional Background option) + the lower group's three.
     expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(6);
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(7);
 
     for (const label of ['Actions', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));

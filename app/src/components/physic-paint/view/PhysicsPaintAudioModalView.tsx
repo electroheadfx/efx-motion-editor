@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 import { NumericStepper } from '../../shared/NumericStepper';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
+import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
 
 /**
  * 52.5-01b — the floating `Document sound` dialog (D-05 single control
@@ -22,11 +23,12 @@ import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaint
  *   `Gain` (-100..+100, 0 = unity) · `Fade in` · `Fade out` (frames; curves `linear`,
  *   `exponential`, `logarithmic`) · `In` · `Out` (frames) · `On` / `Off`
  *
- * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal):
+ * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal,
+ * re-scoped by 261008-ryq): the modal edits ONLY the selected clip — the clip
+ * LIST now lives in the sidebar Audio tab:
  *   1. header: AudioWaveform 15px + `Document sounds` + close X
- *   2. clip list (one row per placed clip — 261008-ig1 Task 2, D-01) +
- *      file row (filename + `Replace…`) OR the empty-state block
- *      (`No sound yet` / body / `Import sound`) OR the error copy
+ *   2. file row (filename + `Replace…`) OR the empty-state block
+ *      (`No sound yet` / body / `Import sound`, zero clips) OR the error copy
  *   3. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
  *   4. `Gain` — NumericStepper step 5, -100..100 (per-step commit), no separate readout
  *   5-6. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
@@ -91,8 +93,6 @@ export interface PhysicsPaintAudioModalViewProps {
    * SELECTED clip's source (261008-ig1 Task 2 — D-01/D-02).
    */
   onImportRequest: (mode: 'append' | 'replace') => void;
-  /** List-row select — the Studio owns selection and reveals the clip band. */
-  onSelectSoundClip: (clipId: string) => void;
   /**
    * 52.5 UAT: "hear the MAIN APP's audio while previewing in the Studio" — a
    * SECOND, independent switch from the clip's `enabled` row below. Preview-
@@ -111,7 +111,6 @@ export function PhysicsPaintAudioModalView({
   controller,
   onClose,
   onImportRequest,
-  onSelectSoundClip,
   mainAppAudioEnabled,
   onToggleMainAppAudio,
 }: PhysicsPaintAudioModalViewProps) {
@@ -177,11 +176,11 @@ export function PhysicsPaintAudioModalView({
   if (!open) return null;
 
   const {
-    audios, selectedSoundId,
+    audios,
     sound, filename, missing, busy, decodeError, previewGain, removeArmed,
     commitGain, commitFadeIn, commitFadeOut,
     commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame,
-    toggleEnabled, requestRemove, confirmRemove, disarmRemove,
+    toggleEnabled, requestRemove, confirmRemove, removeSelected, disarmRemove,
   } = controller;
 
   const errorText = decodeError ? AUDIO_ERROR_DECODE : missing ? AUDIO_ERROR_MISSING : null;
@@ -203,6 +202,22 @@ export function PhysicsPaintAudioModalView({
         if (event.key === 'Escape') {
           event.preventDefault();
           handleClose();
+        }
+        // 261008-ryq: the modal-open path of the one-shot keyboard delete
+        // (stopPropagation above keeps the global dispatcher out of the
+        // dialog). Same gates as the dispatcher: plain key, no modifiers, no
+        // repeat, and never while typing in a stepper/select field.
+        if (
+          (event.key === 'Backspace' || event.key === 'Delete')
+          && !event.repeat
+          && !event.metaKey
+          && !event.ctrlKey
+          && !event.altKey
+          && !event.shiftKey
+          && isPhysicsPaintShortcutTarget(event.target)
+        ) {
+          event.preventDefault();
+          removeSelected();
         }
       }}
     >
@@ -275,37 +290,6 @@ export function PhysicsPaintAudioModalView({
             </div>
           ) : (
             <>
-              {/* 2a. Clip list — one row per placed clip (261008-ig1 Task 2,
-                  D-01): the list stays visible with no selection; a row click
-                  selects (handler-written, no effect). */}
-              <div class="physics-paint-audio-clip-list" data-testid="audio-modal-list">
-                {audios.map((clip) => (
-                  <button
-                    type="button"
-                    key={clip.id}
-                    class={`physics-paint-audio-clip-row${selectedSoundId.value === clip.id ? ' physics-paint-audio-clip-row-selected' : ''}`}
-                    onClick={() => onSelectSoundClip(clip.id)}
-                    disabled={controlsDisabled}
-                  >
-                    <span class="physics-paint-audio-filename">
-                      {clip.relativePath.split('/').pop() ?? clip.relativePath}
-                    </span>
-                    <span class="physics-paint-audio-clip-span">
-                      {clip.startFrame} · {clip.inFrame}..{clip.outFrame}
-                    </span>
-                    <span>{clip.enabled ? AUDIO_ENABLE_ON : AUDIO_ENABLE_OFF}</span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  class="physics-paint-photo-reference-import"
-                  onClick={withDisarm(() => onImportRequest('append'))}
-                  disabled={controlsDisabled}
-                >
-                  <AudioWaveform size={13} aria-hidden="true" />
-                  <span>{busy ? AUDIO_LOADING : AUDIO_IMPORT_CTA}</span>
-                </button>
-              </div>
               {sound !== null ? (
             <>
               {/* 2b. File row + Replace… */}
