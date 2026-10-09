@@ -7,6 +7,7 @@ import {audioStore} from './audioStore';
 import {sequenceStore} from './sequenceStore';
 import {physicPaintStore} from './physicPaintStore';
 import {imageStore} from './imageStore';
+import {audioEngine} from '../lib/audioEngine';
 import {applyPhysicPaintImageImportRequest, createPhysicPaintImageImportStatePorts} from '../lib/physicPaintBridge';
 import type {AudioTrack} from '../types/audio';
 import type {RuntimeMceProject} from '../types/project';
@@ -25,6 +26,16 @@ vi.mock('../lib/ipc', async (importOriginal) => {
     ...actual,
     projectCreate: mockProjectCreate,
     importImages: mockImportImages,
+  };
+});
+// 261009-rko: plugin-fs readFile is the retired main-app audio decode door.
+// Spy it so the reopen-loop test can pin the efxasset fetch path instead.
+const mockReadFile = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/plugin-fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tauri-apps/plugin-fs')>();
+  return {
+    ...actual,
+    readFile: mockReadFile,
   };
 });
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
@@ -283,6 +294,144 @@ describe('projectStore audio persistence', () => {
       expect(tracks[0].id).toBe('a');  // order 0 first
       expect(tracks[1].id).toBe('b');  // order 1 second
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261009-rko: source_path format law — clean-break keys, verbatim reopen,
+// efxasset decode. Main-app audio is a disk reference; the manifest carries the
+// absolute on-disk path verbatim as `source_path` (retired `relative_path`).
+// ---------------------------------------------------------------------------
+describe('261009-rko source_path format law', () => {
+  beforeEach(() => {
+    audioStore.reset();
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    imageStore.reset();
+    mockReadFile.mockReset();
+  });
+
+  function makeMinimalMceProject(overrides: Partial<RuntimeMceProject> = {}): RuntimeMceProject {
+    return {
+      version: 16,
+      name: 'Test Project',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      created_at: '2026-01-01',
+      modified_at: '2026-01-01',
+      sequences: [],
+      images: [],
+      ...overrides,
+    };
+  }
+
+  function makeSourcePathMember(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'a1',
+      name: 'take.wav',
+      source_path: '/Users/test/Music/take.wav',
+      original_filename: 'take.wav',
+      offset_frame: 0,
+      in_frame: 0,
+      out_frame: 100,
+      volume: 1,
+      muted: false,
+      fade_in_frames: 0,
+      fade_out_frames: 0,
+      fade_in_curve: 'exponential',
+      fade_out_curve: 'exponential',
+      sample_rate: 44100,
+      duration: 4.2,
+      channel_count: 2,
+      order: 0,
+      track_height: 44,
+      slip_offset: 0,
+      total_frames_in_file: 100,
+      ...overrides,
+    };
+  }
+
+  it('buildMceProject emits source_path equal to track.filePath and asset.path verbatim', () => {
+    const track = makeTrack({filePath: '/Users/test/Music/take.wav'});
+    audioStore.tracks.value = [track];
+    imageStore.addAudioAsset({id: 'audio-asset-1', name: 'take.wav', path: '/Users/test/Music/take.wav'});
+
+    const project = projectStore.buildMceProject();
+    const mat = project.audio_tracks![0] as unknown as Record<string, unknown>;
+    const asset = project.audio_assets![0] as unknown as Record<string, unknown>;
+
+    expect(mat.source_path).toBe('/Users/test/Music/take.wav');
+    expect(asset.source_path).toBe('/Users/test/Music/take.wav');
+
+    const tracksJson = JSON.stringify(project.audio_tracks);
+    const assetsJson = JSON.stringify(project.audio_assets);
+    expect(tracksJson).toContain('source_path');
+    expect(assetsJson).toContain('source_path');
+    expect(tracksJson).not.toContain('relative_path');
+    expect(assetsJson).not.toContain('relative_path');
+  });
+
+  it('hydrateFromMce resolves track.filePath verbatim from source_path with no projectRoot join', () => {
+    const project = makeMinimalMceProject({
+      audio_tracks: [makeSourcePathMember()] as never,
+    });
+
+    projectStore.hydrateFromMce(project, '/test/project');
+
+    const tracks = audioStore.tracks.value;
+    expect(tracks).toHaveLength(1);
+    expect(tracks[0].filePath).toBe('/Users/test/Music/take.wav');
+    expect((tracks[0] as unknown as Record<string, unknown>).relativePath).toBeUndefined();
+    expect(imageStore.audioAssets.value[0]?.path).toBe('/Users/test/Music/take.wav');
+  });
+
+  it('loadFromMceAudioAssets resolves asset.path verbatim from source_path', () => {
+    imageStore.loadFromMceAudioAssets([
+      {id: 'a1', name: 'take.wav', source_path: '/Users/test/Music/take.wav'} as never,
+    ]);
+
+    expect(imageStore.audioAssets.value).toHaveLength(1);
+    expect(imageStore.audioAssets.value[0].path).toBe('/Users/test/Music/take.wav');
+  });
+
+  it('loadFromMceAudioAssets throws on a member carrying relative_path', () => {
+    expect(() =>
+      imageStore.loadFromMceAudioAssets([
+        {id: 'a1', name: 'take.wav', relative_path: 'audio/take.wav'} as never,
+      ]),
+    ).toThrow(/relative_path/);
+  });
+
+  it('reopen-loop decode reads through fetch(assetUrl(track.filePath)) and never plugin-fs readFile', async () => {
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    }));
+    vi.stubGlobal('fetch', fetchSpy);
+    const decodeSpy = vi.spyOn(audioEngine, 'decode').mockResolvedValue({
+      sampleRate: 44100,
+      duration: 4.2,
+      numberOfChannels: 2,
+    } as unknown as AudioBuffer);
+
+    const project = makeMinimalMceProject({
+      audio_tracks: [makeSourcePathMember()] as never,
+    });
+    projectStore.hydrateFromMce(project, '/test/project');
+
+    await vi.waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalled();
+    });
+
+    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    expect(calledUrl).toContain('efxasset://');
+    expect(calledUrl).toContain('/Users/test/Music/take.wav');
+    expect(mockReadFile).not.toHaveBeenCalled();
+    expect(decodeSpy).toHaveBeenCalled();
+
+    decodeSpy.mockRestore();
+    vi.unstubAllGlobals();
   });
 });
 
