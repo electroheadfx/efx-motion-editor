@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { signal } from '@preact/signals';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
+import { SliderStepper } from '../../shared/SliderStepper';
 import type { PhysicsPaintAudioController } from './physicsPaintAudioController';
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
 
@@ -190,6 +191,21 @@ function findById(tree: AnyVNode, id: string): AnyVNode {
   return match!;
 }
 
+/**
+ * The blended SliderStepper vnode for a field (the id rides on the component,
+ * whose rendered root also carries it). Assertions read the COMPONENT's props —
+ * value / min / max / commitOnRelease / onChange. Matched on the exported
+ * component identity so the wrapping PanelSlider (same id prop) never wins.
+ */
+function findStepper(tree: AnyVNode, id: string): AnyVNode {
+  const match = childrenOf(tree).find((node) => {
+    const vnode = node as AnyVNode;
+    return vnode.type === SliderStepper && vnode.props?.id === id;
+  }) as AnyVNode | undefined;
+  expect(match, `Missing SliderStepper with id ${id}`).toBeDefined();
+  return match!;
+}
+
 /** The five-option blend select in the Track section (TML-04). */
 const TRACK_BLEND_OPTIONS = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
@@ -261,7 +277,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     expect(textContent(findByClass(tree, 'physics-paint-tab-audio-option'))).toContain('Audio');
     expect(textContent(tree)).toContain('Blend');
     expect(textContent(tree)).toContain('Paint 1');
-    expect(findById(tree, 'physics-track-opacity').props.value).toBe(0.5);
+    expect(findStepper(tree, 'physics-track-opacity').props.value).toBe(0.5);
     expect(findById(tree, 'physics-track-blend').props.value).toBe('multiply');
   });
 
@@ -276,26 +292,22 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     // Clamping first (fresh signal draft): the slider display always clamps to
     // the declared 0..1 range (47-03 TML-04).
     const clampedUp = renderPanelWithTrackTab(baseProps({ trackOpacity: 1.5 }));
-    expect(findById(clampedUp, 'physics-track-opacity').props.value).toBe(1);
+    expect(findStepper(clampedUp, 'physics-track-opacity').props.value).toBe(1);
 
     const clampedDown = renderPanelWithTrackTab(baseProps({ trackOpacity: -0.2 }));
-    expect(findById(clampedDown, 'physics-track-opacity').props.value).toBe(0);
+    expect(findStepper(clampedDown, 'physics-track-opacity').props.value).toBe(0);
 
     const props = baseProps({ trackOpacity: 0.5 });
     const tree = renderPanelWithTrackTab(props);
+    const stepper = findStepper(tree, 'physics-track-opacity');
 
-    // Dragging updates the local signal draft (the thumb follows the mouse) but
-    // does NOT commit — the opacity recomposite is deferred to release.
-    findById(tree, 'physics-track-opacity').props.onInput({ target: { value: '0.8' } });
+    // The panel hands the blended component the release-commit law and the
+    // raw commit callback; the drag draft itself lives inside SliderStepper.
+    expect(stepper.props.commitOnRelease).toBe(true);
+    expect(stepper.props.onChange).toBe(props.onTrackOpacityChange);
     expect(props.onTrackOpacityChange).not.toHaveBeenCalled();
-
-    // Releasing the thumb commits exactly once (pointerup — the native change
-    // event fires on every move in WebKit, so it must never commit).
-    findById(tree, 'physics-track-opacity').props.onPointerUp({ currentTarget: { value: '0.8' } });
-    expect(props.onTrackOpacityChange).toHaveBeenCalledOnce();
-    expect(props.onTrackOpacityChange).toHaveBeenCalledWith(0.8);
-    expect(findById(tree, 'physics-track-opacity').props.min).toBe(0);
-    expect(findById(tree, 'physics-track-opacity').props.max).toBe(1);
+    expect(stepper.props.min).toBe(0);
+    expect(stepper.props.max).toBe(1);
   });
 
   it('commits the selected blend mode once and offers exactly the five BlendMode options', () => {
@@ -322,7 +334,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     }));
 
     expect(textContent(first)).toContain('Paint 1');
-    expect(findById(first, 'physics-track-opacity').props.value).toBe(0.5);
+    expect(findStepper(first, 'physics-track-opacity').props.value).toBe(0.5);
     expect(findById(first, 'physics-track-blend').props.value).toBe('multiply');
 
     const second = renderPanelWithTrackTab(baseProps({
@@ -333,7 +345,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
 
     expect(textContent(second)).toContain('Paint 2');
     expect(textContent(second)).not.toContain('Paint 1');
-    expect(findById(second, 'physics-track-opacity').props.value).toBe(1);
+    expect(findStepper(second, 'physics-track-opacity').props.value).toBe(1);
     expect(findById(second, 'physics-track-blend').props.value).toBe('normal');
   });
 
@@ -345,7 +357,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     const first = renderPanel(baseProps());
     clickToolTab(first, 'physics-paint-tab-track-option');
     const onTrack = renderPanel(baseProps());
-    expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
+    expect(findStepper(onTrack, 'physics-track-opacity')).toBeDefined();
 
     // Active track changes + a paint revision bump: the tab stays put.
     renderPanel(baseProps({ trackName: 'Paint 2' }));
@@ -353,13 +365,13 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     const afterPaintBump = renderPanel(baseProps({ trackName: 'Paint 2' }));
 
     expect(findByClass(afterPaintBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
-    expect(findById(afterPaintBump, 'physics-track-opacity')).toBeDefined();
+    expect(findStepper(afterPaintBump, 'physics-track-opacity')).toBeDefined();
 
     // Manual 'Paint' click also sticks.
     clickToolTab(afterPaintBump, 'physics-paint-tab-paint-option');
     const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
     expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
-    expect(findById(onPaint, 'physics-edge-detail')).toBeDefined();
+    expect(findStepper(onPaint, 'physics-edge-detail')).toBeDefined();
   });
 
   it('49-06 UAT round 2: a selected Bg clip shows the Background option tab — a THIRD tab that never replaces Track option', () => {
@@ -379,7 +391,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     // The Track section content is NOT shown while a clip is selected.
     const trackOpacity = childrenOf(tree).find((node) => {
       const vnode = node as AnyVNode;
-      return typeof vnode.type !== 'function' && vnode.props?.id === 'physics-track-opacity';
+      return vnode.props?.id === 'physics-track-opacity';
     });
     expect(trackOpacity).toBeUndefined();
   });
@@ -408,7 +420,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     });
     expect(backgroundTab).toBeUndefined();
     expect(findByClass(cleared, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
-    expect(findById(cleared, 'physics-track-opacity')).toBeDefined();
+    expect(findStepper(cleared, 'physics-track-opacity')).toBeDefined();
   });
 });
 

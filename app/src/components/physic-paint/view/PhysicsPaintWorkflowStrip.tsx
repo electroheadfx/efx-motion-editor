@@ -1659,7 +1659,7 @@ export function PhysicsPaintSoundClipStain(props: PhysicsPaintSoundClipStainProp
       ref={(element) => { props.els.stain = element; }}
       class={`physics-paint-sound-stain${isSelected ? ' is-selected' : ''}`}
       style={{ left: `${leftPx}px`, width: `${widthPx}px` }}
-      title="Drag to reposition, double-click to open Document sounds"
+      title="Drag to reposition, double-click to open Document sound"
       onPointerDown={(event) => props.onPointerDown(event as unknown as PointerEvent, clip)}
       onDblClick={(event) => props.onDblClick(event as unknown as MouseEvent, clip)}
     >

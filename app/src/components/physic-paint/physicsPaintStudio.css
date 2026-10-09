@@ -469,10 +469,9 @@ button.destructive {
 }
 
 .physics-paint-topbar-control > span,
-.physics-paint-topbar-slider > span,
 .physics-paint-right-label,
 .physics-paint-section-heading {
-  color: var(--sidebar-text-secondary, #7799bb);
+  color: #9aa5b1;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
@@ -480,51 +479,23 @@ button.destructive {
   text-transform: uppercase;
 }
 
+/* SPECS/slider-stepper UAT: the topbar's own labels sit in the same row as the
+   blended fields, so they drop the caps + wide tracking and share the field
+   label's 11px / 0.08px metrics. Right-panel and section labels keep the caps. */
+.physics-paint-topbar-control > span {
+  letter-spacing: 0.08px;
+  text-transform: none;
+}
+
 .physics-paint-section-heading {
   color: #fff;
 }
 
+/* SPECS/slider-stepper: the blended field owns its own label row + bar, so the
+   old range/number/output rules are gone. Sized ×1.2 over the UAT pass — the
+   bar was too cramped to read next to the segmented controls. */
 .physics-paint-topbar-slider {
-  min-width: 118px;
-}
-
-.physics-paint-topbar-slider.exact {
-  min-width: 188px;
-}
-
-.physics-paint-topbar-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.physics-paint-topbar-slider input[type="range"] {
-  width: 86px;
-  accent-color: var(--color-accent, #2d5be3);
-}
-
-.physics-paint-topbar-slider.exact input[type="range"] {
-  width: 132px;
-}
-
-.physics-paint-topbar-number {
-  width: 46px;
-  height: 24px;
-  padding: 2px 4px;
-  border: 1px solid #747980;
-  border-radius: 4px;
-  background: #5a5c5f;
-  color: #f8fafc;
-  font-size: 12px;
-  font-weight: 700;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.physics-paint-topbar-slider output {
-  color: var(--sidebar-text-primary, #e5edf8);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  min-width: 142px;
 }
 
 .physics-paint-segmented-row {
@@ -973,28 +944,16 @@ button.destructive {
   background: rgba(170, 45, 45, 0.94);
 }
 
+/* SPECS/slider-stepper: the blended field stacks label+value over the bar, so
+   the old 3-column label | range | output grid is gone — the row is a plain
+   full-width stack. */
 .physics-paint-option-row {
-  display: grid;
-  grid-template-columns: 104px minmax(0, 1fr) 42px;
-  align-items: center;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
   min-height: 28px;
-}
-
-.physics-paint-option-row input[type="range"] {
-  width: 100%;
-  accent-color: var(--color-accent, #2d5be3);
-}
-
-.physics-paint-option-row input[type="number"] {
-  width: 100%;
-}
-
-.physics-paint-option-row output {
-  color: var(--sidebar-text-primary, #e5edf8);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
 }
 
 .physics-paint-option-group {
@@ -4217,6 +4176,7 @@ button.destructive {
   flex-direction: column;
   gap: 10px;
   padding: 12px;
+  padding-bottom: 20px;
 }
 
 /* Apply progress pill — floats centered over the canvas region's
@@ -4597,80 +4557,148 @@ button.destructive {
   width: 100%;
 }
 
+/* UAT: centered title with a white rule on each side. */
 .physics-paint-audio-section-label {
   font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12px;
-  color: #8a94a0;
+  color: #ffffff;
   white-space: nowrap;
 }
 
 .physics-paint-audio-section-rule {
   flex: 1 1 0;
   height: 1px;
-  background: #2a3540;
+  background: #ffffff;
 }
 
+/* SPECS/slider-stepper: each audio row is one blended field — the label/value
+   sit in the component's own label row, so the old 110px label cell and the
+   side-by-side controls row are gone. */
 .physics-paint-audio-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
   width: 100%;
   min-width: 0;
 }
 
-.physics-paint-audio-label-cell {
-  width: 110px;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* UAT: Trim in/out and Fade in/out share a row as two columns, and the pair
+   carries the soft rule that separates it from the full-width row above. */
+.physics-paint-audio-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  width: 100%;
   min-width: 0;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.physics-paint-audio-hint {
-  font-size: 9px;
-  color: #7e8894;
-  white-space: nowrap;
+/* UAT: the audio modal keeps only a frosted hint — at 0.66 the panel let 34%
+   of a white/black canvas bleed through, so the panel (and the slider's
+   contrast against it) swung from light gray to near-black. At 0.9 the
+   backdrop contributes ~7%: constant panel, faint glass retained. Scoped to
+   this dialog — the photo-reference dialogs keep their full liquid glass. */
+.physics-paint-audio-surface.physics-paint-photo-reference-surface {
+  background: rgba(28, 30, 34, 0.9);
 }
 
-.physics-paint-audio-controls {
-  flex: 1 1 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.physics-paint-audio-controls select {
-  width: 92px;
+/* The fade-curve select is the field's second row, under the bar. */
+.physics-paint-audio-dialog .slider-stepper-below select {
+  width: 100%;
   height: 22px;
-  flex: 0 0 auto;
-  border: 1px solid var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55));
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid rgba(159, 165, 174, 0.55);
   border-radius: 4px;
-  background: var(--sidebar-input-bg, rgba(127, 131, 138, 0.18));
+  background: rgba(127, 131, 138, 0.18);
   color: var(--sidebar-text-primary, inherit);
   font-size: 10px;
 }
 
-.physics-paint-audio-field-stepper {
-  flex: 1 1 0;
-  min-width: 0;
-  width: 100%;
+/* The On/Off pill now sits in the header; the shared photo-reference toggle
+   otherwise stretches to fill its flex parent. */
+.physics-paint-audio-dialog .physics-paint-audio-toggle {
+  flex: 0 0 auto;
 }
 
-.physics-paint-audio-footer {
+/* UAT: the modal's three actions drop to 25px. Scoped to this dialog — the
+   photo-reference dialog keeps its own 28/30px sizing. */
+.physics-paint-audio-dialog .physics-paint-photo-reference-import,
+.physics-paint-audio-dialog .physics-paint-photo-reference-remove,
+.physics-paint-audio-dialog .physics-paint-photo-reference-toggle {
+  height: 25px;
+}
+
+/* Icon-only Remove sits beside Replace in the file row (UAT). */
+.physics-paint-audio-remove-icon {
+  width: 25px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+/* 11. Remove confirmation MODAL (UAT) — Cancel / Remove, never inline. The
+   parent dialog is pointer-events:none, so the overlay opts back in. */
+.physics-paint-audio-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.physics-paint-audio-confirm-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
+  flex-direction: column;
+  gap: 14px;
+  width: 262px;
+  box-sizing: border-box;
+  padding: 16px;
+  border: 1px solid #62676d;
+  border-radius: 8px;
+  background: #343638;
+  color: #eef1f4;
+  font-family: Inter, system-ui, sans-serif;
 }
 
-/* The armed-confirm copy renders directly under the footer row (261009-6ee). */
 .physics-paint-audio-confirm-copy {
   margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.physics-paint-audio-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.physics-paint-audio-confirm-cancel,
+.physics-paint-audio-confirm-ok {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 25px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.physics-paint-audio-confirm-cancel {
+  border: 1px solid #62676d;
+  background: transparent;
+  color: #eef1f4;
+}
+
+.physics-paint-audio-confirm-ok {
+  border: 1px solid #8b3f37;
+  background: #6e3a34;
+  color: #f0907e;
 }
 
 /* 261008-ryq: the clip LIST lives in the sidebar Audio tab; the modal is the
@@ -6377,19 +6405,7 @@ button.destructive {
   }
 
   .physics-paint-topbar-slider {
-    min-width: 96px;
-  }
-
-  .physics-paint-topbar-slider.exact {
-    min-width: 156px;
-  }
-
-  .physics-paint-topbar-slider input[type="range"] {
-    width: 62px;
-  }
-
-  .physics-paint-topbar-slider.exact input[type="range"] {
-    width: 102px;
+    min-width: 115px;
   }
 
   .physics-paint-segmented-button:not(.physics-paint-swatch-button) {

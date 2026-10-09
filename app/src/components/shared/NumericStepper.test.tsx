@@ -469,15 +469,15 @@ const STUDIO_FPS_ARIA_LABEL = 'Cached Roto playback frames per second';
 const RAW_NATIVE_NUMERIC_INPUT = /type="number"/;
 
 /** The shared treatment a swept file must reference. */
-const SHARED_STEPPER_REFERENCE = /NumericStepper|NumericInput/;
+const SHARED_STEPPER_REFERENCE = /NumericStepper|NumericInput|SliderStepper/;
 
 function readSweptSource(relPath: string): string {
   return readFileSync(resolve(APP_ROOT, relPath), 'utf8');
 }
 
-/** Every `<NumericStepper ... />` element rendered by a swept file. */
+/** Every shared numeric control element rendered by a swept file. */
 function stepperElements(source: string): string[] {
-  return source.match(/<NumericStepper[\s\S]*?\/>/g) ?? [];
+  return source.match(/<(NumericStepper|SliderStepper)[\s\S]*?\/>/g) ?? [];
 }
 
 /** The sole allowed consumer of the exception options (260924-d6l Pin 3). */
@@ -486,8 +486,8 @@ const GRAIN_CALL_SITE_REL = 'src/components/physic-paint/view/PhysicsPaintTopBar
 /** The opt-in exception-option identifiers the paper grain field alone may pass. */
 const EXCEPTION_OPTION_IDENTIFIER = /\b(resolveStep|freeEntry)\b/;
 
-/** A file instantiating the shared stepper or its drag-to-scrub wrapper. */
-const STEPPER_CALL_SITE = /<NumericStepper\b|<NumericInput\b/;
+/** A file instantiating the shared stepper, blended slider-stepper, or drag wrapper. */
+const STEPPER_CALL_SITE = /<NumericStepper\b|<NumericInput\b|<SliderStepper\b/;
 
 /** Recursive `src` walk: every non-test `.tsx` file, as `src/...` relative paths. */
 function listSourceTsx(dir: string, baseRel: string): string[] {

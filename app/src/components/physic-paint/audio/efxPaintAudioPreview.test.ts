@@ -1209,10 +1209,12 @@ describe('main-app-audio preview toggle surfaces (52.5 UAT / 261009-6ee re-lock)
 
   it('(f) the modal carries no preview toggle; the Studio wires the surviving strip surface to the shared session signal', () => {
     const modal = readSource('../view/PhysicsPaintAudioModalView.tsx');
-    // One-switch law: the modal's ONLY audio switch is the footer enabled pill.
+    // One-switch law: the modal's ONLY audio switch is the header enabled pill.
     expect(modal.includes('mainAppAudioEnabled')).toBe(false);
     expect(modal.includes('onToggleMainAppAudio')).toBe(false);
-    expect(modal.includes('VolumeX')).toBe(false);
+    // VolumeX is the pill's OFF icon (UAT) — exactly ONE VolumeX element, so the
+    // old preview-toggle Volume2/VolumeX pair cannot come back as a second surface.
+    expect((modal.match(/<VolumeX/g) ?? []).length).toBe(1);
 
     const studio = readSource('../PhysicsPaintStudio.tsx');
     // One source of truth: the strip surface reads the SAME session signal —

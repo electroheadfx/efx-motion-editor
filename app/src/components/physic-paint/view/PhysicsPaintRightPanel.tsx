@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { signal, type Signal } from '@preact/signals';
+import { type Signal } from '@preact/signals';
 import { GripHorizontal, X } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
+import { SliderStepper } from '../../shared/SliderStepper';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
 import {
   loadFavoriteColors,
@@ -140,66 +141,31 @@ function PanelSlider(props: {
   step?: number;
   disabled?: boolean;
   /**
-   * 48-06 (UAT): commit the value only when the thumb is RELEASED (the native
-   * change event), not on every input move. The thumb still follows the mouse
-   * through a local signal draft; the parent's value only updates on release.
-   * Used by the track opacity slider, whose commit recomposites the surface.
+   * 48-06 (UAT): commit the value only when the thumb is RELEASED, not on every
+   * input move. The thumb still follows the mouse through a local signal draft;
+   * the parent's value only updates on release. Used by the track opacity
+   * slider, whose commit recomposites the surface.
    */
   commitOnRelease?: boolean;
 }) {
   // The track opacity (0..1) can arrive out of range from the document;
   // the slider display always clamps to the declared min/max (47-03 TML-04).
   const clampedValue = Math.max(props.min, Math.min(props.max, props.value));
-  // 48-06 (UAT): while commitOnRelease is dragging, the thumb position lives in
-  // this signal draft (held in a ref so it survives re-renders without React
-  // state) so the slider stays responsive; the committed value (and the
-  // parent's recomposite) only happens on release.
-  const draftRef = useRef(signal<number | null>(null));
-  const draft = draftRef.current;
-  const displayValue = draft.value ?? clampedValue;
   return (
-    <label class="physics-paint-option-row" for={props.id}>
-      <span class="physics-paint-right-label">{props.label}</span>
-      <input
+    <div class="physics-paint-option-row">
+      <SliderStepper
         id={props.id}
-        type="range"
+        label={props.label}
+        value={clampedValue}
+        onChange={props.onChange}
+        step={props.step ?? 1}
         min={props.min}
         max={props.max}
-        step={props.step}
-        value={displayValue}
         disabled={props.disabled}
-        onInput={(event) => {
-          const next = Number((event.target as HTMLInputElement).value);
-          if (props.commitOnRelease) {
-            draft.value = next;
-          } else {
-            props.onChange(next);
-          }
-        }}
-        // 48-06 (UAT): the release commit is on pointerup/keyup/blur — NOT the
-        // native change event, which WebKit fires on EVERY move for range
-        // inputs (a Tauri/WebKit app would otherwise recomposite per pixel).
-        onPointerUp={(event) => {
-          if (!props.commitOnRelease) return;
-          const next = Number((event.currentTarget as HTMLInputElement).value);
-          draft.value = null;
-          props.onChange(next);
-        }}
-        onKeyUp={(event) => {
-          if (!props.commitOnRelease) return;
-          const next = Number((event.currentTarget as HTMLInputElement).value);
-          draft.value = null;
-          props.onChange(next);
-        }}
-        onBlur={(event) => {
-          if (!props.commitOnRelease) return;
-          const next = Number((event.currentTarget as HTMLInputElement).value);
-          draft.value = null;
-          props.onChange(next);
-        }}
+        ariaLabel={props.label}
+        commitOnRelease={props.commitOnRelease}
       />
-      <output>{displayValue}{props.suffix ?? ''}</output>
-    </label>
+    </div>
   );
 }
 

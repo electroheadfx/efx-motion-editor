@@ -11,7 +11,7 @@ import {
 
 /**
  * 261008-ryq Task 1 — the Audio tab of the Studio tool pane: one row per
- * placed clip (the list moved OUT of the Document sounds modal, which now
+ * placed clip (the list moved OUT of the Document sound modal, which now
  * edits only the selected clip). Thin render shell over the Studio's
  * `physicsPaintAudioController` (signals-only, no useState, no render-body
  * signal writes): row selection highlight reads `selectedSoundId.value` in the
