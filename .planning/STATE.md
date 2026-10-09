@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick-261009-6ee-PLAN.md
-last_updated: "2026-10-09T16:23:47.547Z"
+stopped_at: Completed quick-261009-rko-PLAN.md
+last_updated: "2026-10-09T19:22:34.642Z"
 last_activity: 2026-10-09
 last_activity_desc: Quick 261009-6ee UAT accepted — closed (blended SliderStepper + audio modal refinements)
-state_head: 0850be68647cfa6aa46c7b75ba3d88a4b971b252
+state_head: aa446e4adf88b7cfde667685db236941085f3c89
 progress:
   total_phases: 14
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-09 - Completed quick task 261009-ofk: Audio stays a disk reference — never copied into the .mce — with Relink on missing rows
+Last activity: 2026-10-09 - Completed quick task 261009-rko: Main-app audio joins the disk-reference law (verified 4/4 automated, Needs Review — live UAT pending)
 
 Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
@@ -140,6 +140,8 @@ Progress: [████████████████████] 75/75 p
 | Phase 52.5-physic-paint-document-sound-track P01a | 78min | 3 tasks | 26 files |
 | Phase 52.5 P01b | 2h40m | 3 tasks | 26 files |
 | Phase quick-261009-6ee P261009-6ee | 45m | 2 tasks | 15 files |
+| Phase quick-261009-rko P261009-rko | 28 | 2 tasks | 18 files |
+| Phase quick-261009-rko P261009-rko | 15 | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -389,6 +391,8 @@ Recent decisions affecting current work:
 - [Phase quick-261009-6ee]: One-switch law: header preview toggle dropped from the Document sounds modal; footer On/Off pill is its only audio switch, strip Audio Preview toggle remains the main-app-audio surface
 - [Phase quick-261009-6ee]: Shared NumericStepper restyled to unified 22px single-pill chrome app-wide; base box keys removed, contextual CSS input box rules stripped (Rule 2) to keep one outline
 - [Phase quick-261009-6ee]: Live-UAT refinements locked — new shared blended SliderStepper (value on top, bare −/+, sliderMax track-only range) on all five snapshot surfaces; audio modal: FILE section header, header On/Off pill (VolumeX off-state), icon Remove + Cancel/Remove confirmation modal, singular "Document sound" title, opaque bar #4c4e51, rail/knob midline-centered, panel alpha 0.9 (faint glass only, photo-ref dialogs keep full glass)
+- [Phase quick-261009-rko]: source_path is the absolute on-disk path carried verbatim; relative_path retired at both load doors
+- [Phase quick-261009-rko]: readAudioSourceBytes/efxasset is the sole main-app audio byte-read; gallery import and sidebar Replace never copy into the package
 
 ### Pending Todos
 
@@ -482,6 +486,7 @@ None yet.
 | 261008-ryq | Audio list to sidebar Audio tab + editable clip Position (milestone 52.5) | 2026-10-08 | fc39d28b | [261008-ryq-audio-list-to-sidebar-audio-tab-editable](./quick/261008-ryq-audio-list-to-sidebar-audio-tab-editable/) |
 | 261009-6ee | Audio modal grouped-field layout + shared stepper pill (Studio). Status: **native UAT accepted 2026-10-09** — locked-mock grouping, one-switch law, blended SliderStepper on all five surfaces, and the live-refinement rounds (FILE header, header On/Off pill, icon Remove + confirmation modal, singular title, opaque bar, rail alignment, panel alpha 0.9) all approved. Quick 261009-6ee **CLOSED** | 2026-10-09 | 5c472444 | [261009-6ee-audio-modal-grouped-field-layout-shared-](./quick/261009-6ee-audio-modal-grouped-field-layout-shared-/) |
 | 261009-ofk | Audio stays a disk reference — never copied into the .mce — with Relink on missing rows (automated-ready, live UAT pending) | 2026-10-09 | 0850be68 | [261009-ofk-audio-stays-a-disk-reference-never-copie](./quick/261009-ofk-audio-stays-a-disk-reference-never-copie/) |
+| 261009-rko | Main-app audio joins the disk-reference law — no copy in gallery import or sidebar Replace, source_path manifest clean break | 2026-10-09 | aa446e4a | [261009-rko-main-app-audio-joins-the-disk-reference-](./quick/261009-rko-main-app-audio-joins-the-disk-reference-/) |
 
 ### Roadmap Evolution
 
@@ -507,6 +512,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T03:03:01.257Z
-Stopped at: Completed quick-261009-6ee-PLAN.md
+Last session: 2026-10-09T18:48:43.623Z
+Stopped at: Completed quick-261009-rko-PLAN.md
 Resume file: None
