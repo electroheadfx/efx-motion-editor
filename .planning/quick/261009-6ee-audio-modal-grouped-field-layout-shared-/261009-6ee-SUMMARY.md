@@ -11,9 +11,13 @@ tech_stack:
   added: []
   patterns: [preact-signals, source-string contract tests, inline-style pill chrome]
 key_files:
-  created: []
+  created:
+    - app/src/components/shared/SliderStepper.tsx
+    - app/src/components/shared/SliderStepper.test.tsx
   modified:
     - app/src/components/shared/NumericStepper.tsx
+    - app/src/components/physic-paint/view/PhysicsPaintRightPanel.tsx
+    - app/src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts
     - app/src/components/shared/NumericStepper.test.tsx
     - app/src/components/shared/NumericInput.tsx
     - app/src/components/shared/ColorPickerModal.tsx
@@ -36,7 +40,7 @@ decisions:
 metrics:
   duration: ~45m
   completed: 2026-10-09
-  status: complete
+  status: passed
 plan_head_before: a3a9bfe3f0498a3731299d16888ffccd85124a89
 plan_head_after: 5af2aa4113b421ec5de3cfde5b016b801f1c07e5
 actuals:
@@ -47,7 +51,7 @@ actuals:
 
 # Phase quick-261009-6ee Plan 261009-6ee: Audio modal grouped field layout + shared stepper pill Summary
 
-The Document sounds modal now matches the locked `SPECS/modal-audio-new` mock (header title+close only, File row, TIMING and SOUND sections, footer pill + two-step Remove) and the shared NumericStepper renders as one unified 22px pill app-wide — layout/chrome only, zero behavior change, automated-ready pending the user's live UAT.
+The Document sounds modal now matches the locked `SPECS/modal-audio-new` mock (header title+close only, File row, TIMING and SOUND sections, footer pill + two-step Remove) and the shared NumericStepper renders as one unified 22px pill app-wide — layout/chrome only, zero behavior change. Native UAT accepted by the user 2026-10-09 (closed), including the live-refinement rounds delivered in 5c472444: the new shared blended `SliderStepper` on all five snapshot surfaces, the FILE section header, header On/Off pill with VolumeX off-state, icon Remove with a Cancel/Remove confirmation modal, the singular `Document sound` title, the opaque bar `#4c4e51` with the rail/knob midline-centered on the −/+ glyph row, and the audio panel at alpha 0.9 (faint glass; photo-reference dialogs keep full liquid glass).
 
 ## Tasks
 
@@ -92,9 +96,9 @@ None — no new network endpoints, auth paths, file access, or schema changes; l
 
 - Pre-existing (already tracked, not re-logged): `PhysicsPaintStudioView.test.ts` full-suite module-load failure — `.planning/WINDOWS.md` entry 90.
 
-## Status
+## Status: CLOSED — native UAT PASSED (2026-10-09)
 
-**automated-ready** — all plan tasks complete, gates green; the user's live UAT (locked-mock comparison + pill chrome across call sites + strip Audio Preview toggle still driving the shared signal) remains before this quick can be called UAT-passed.
+**Quick 261009-6ee is closed.** All live UAT rows approved by the user: locked-mock grouping, one-switch law (strip Audio Preview toggle still driving the shared signal), trim/position clamps, two-step Remove, header drag/Escape, unified pill chrome across call sites, the blended SliderStepper on all five snapshot surfaces, and the live-refinement rounds (FILE section header, header On/Off pill with VolumeX off-state, icon Remove + Cancel/Remove confirmation modal, singular `Document sound` title, opaque bar `#4c4e51`, rail/knob midline-centered on the −/+ glyph row, audio panel alpha 0.9 over white/black canvases). UAT refinement commit: 5c472444.
 
 ## Self-Check: PASSED
 
