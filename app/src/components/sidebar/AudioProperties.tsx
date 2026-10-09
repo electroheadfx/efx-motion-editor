@@ -1,8 +1,12 @@
-import {useState} from 'preact/hooks';
+import {useRef, useState} from 'preact/hooks';
+import {signal} from '@preact/signals';
 import {Volume2, VolumeX, Loader2} from 'lucide-preact';
 import {open} from '@tauri-apps/plugin-dialog';
 import {NumericInput} from '../shared/NumericInput';
+import {SliderStepper} from '../shared/SliderStepper';
 import {SectionLabel} from '../shared/SectionLabel';
+import {RuleSectionHeader} from '../shared/RuleSectionHeader';
+import {CollapsibleSection} from './CollapsibleSection';
 import {audioStore} from '../../stores/audioStore';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {audioEngine} from '../../lib/audioEngine';
@@ -26,6 +30,8 @@ const FADE_CURVES: {value: FadeCurve; label: string}[] = [
 
 export function AudioProperties({track}: AudioPropertiesProps) {
   const [isReplacing, setIsReplacing] = useState(false);
+  // BEAT SYNC accordion — collapsed on open (signal in useRef; project law: no useState).
+  const beatSyncCollapsed = useRef(signal(true));
 
   const handleReplace = async () => {
     const filePath = await open({
@@ -62,7 +68,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
     <div class="px-3 py-2 space-y-3">
       {/* Section 1: TRACK NAME */}
       <div>
-        <SectionLabel text="TRACK NAME" />
+        <RuleSectionHeader text="TRACK NAME" />
         <div style={{marginTop: '6px'}}>
           <input
             type="text"
@@ -80,7 +86,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
 
       {/* Section 2: FILE */}
       <div>
-        <SectionLabel text="FILE" />
+        <RuleSectionHeader text="FILE" />
         <div class="flex items-center justify-between" style={{marginTop: '6px'}}>
           <span class="text-[10px] text-(--color-text-secondary) truncate flex-1 min-w-0">
             {track.originalFilename}
@@ -97,8 +103,10 @@ export function AudioProperties({track}: AudioPropertiesProps) {
 
       {/* Section 3: VOLUME */}
       <div>
-        <div class="flex items-center justify-between">
-          <SectionLabel text="VOLUME" />
+        <div class="flex items-center" style={{gap: '8px'}}>
+          <div style={{flex: '1 1 0', minWidth: 0}}>
+            <RuleSectionHeader text="VOLUME" />
+          </div>
           <button
             class="transition-colors p-0.5 cursor-pointer"
             style={{color: track.muted ? 'var(--color-text-muted)' : 'var(--color-accent)'}}
@@ -128,21 +136,22 @@ export function AudioProperties({track}: AudioPropertiesProps) {
         </div>
       </div>
 
-      {/* Section 4: FADES */}
+      {/* Section 4: FADES — one full-width SliderStepper per fade; curve select under each bar */}
       <div>
-        <SectionLabel text="FADES" />
+        <RuleSectionHeader text="FADES" />
         <div class="flex flex-col" style={{gap: '10px', marginTop: '6px'}}>
-          <div class="flex items-center" style={{gap: '16px'}}>
-            <NumericInput
-              label="In"
-              value={track.fadeInFrames}
-              step={1}
-              min={0}
-              onChange={(val) => audioStore.setFades(track.id, val, track.fadeOutFrames)}
-            />
-            <div class="flex items-center gap-1 flex-1 min-w-0">
+          <SliderStepper
+            label="Fade in (frames)"
+            value={track.fadeInFrames}
+            step={1}
+            min={0}
+            sliderMax={Math.max(track.fadeInFrames, track.outFrame - track.inFrame, 1)}
+            onChange={(val) => audioStore.setFades(track.id, val, track.fadeOutFrames)}
+            ariaLabel="Fade in frames"
+            below={
               <select
                 class="w-full bg-(--color-bg-input) text-(--color-text-secondary) text-[10px] px-1 py-0.5 rounded outline-none cursor-pointer"
+                aria-label="Fade in curve"
                 value={track.fadeInCurve}
                 onChange={(e) => {
                   audioStore.updateTrack(track.id, {fadeInCurve: (e.target as HTMLSelectElement).value as FadeCurve});
@@ -152,19 +161,20 @@ export function AudioProperties({track}: AudioPropertiesProps) {
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
               </select>
-            </div>
-          </div>
-          <div class="flex items-center" style={{gap: '16px'}}>
-            <NumericInput
-              label="Out"
-              value={track.fadeOutFrames}
-              step={1}
-              min={0}
-              onChange={(val) => audioStore.setFades(track.id, track.fadeInFrames, val)}
-            />
-            <div class="flex items-center gap-1 flex-1 min-w-0">
+            }
+          />
+          <SliderStepper
+            label="Fade out (frames)"
+            value={track.fadeOutFrames}
+            step={1}
+            min={0}
+            sliderMax={Math.max(track.fadeOutFrames, track.outFrame - track.inFrame, 1)}
+            onChange={(val) => audioStore.setFades(track.id, track.fadeInFrames, val)}
+            ariaLabel="Fade out frames"
+            below={
               <select
                 class="w-full bg-(--color-bg-input) text-(--color-text-secondary) text-[10px] px-1 py-0.5 rounded outline-none cursor-pointer"
+                aria-label="Fade out curve"
                 value={track.fadeOutCurve}
                 onChange={(e) => {
                   audioStore.updateTrack(track.id, {fadeOutCurve: (e.target as HTMLSelectElement).value as FadeCurve});
@@ -174,47 +184,48 @@ export function AudioProperties({track}: AudioPropertiesProps) {
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
               </select>
-            </div>
-          </div>
+            }
+          />
         </div>
       </div>
 
-      {/* Section 5: POSITION */}
+      {/* Section 5: POSITION — offsetFrame can be negative and is commit-unbounded */}
       <div>
-        <SectionLabel text="POSITION" />
+        <RuleSectionHeader text="POSITION" />
         <div class="flex flex-col" style={{gap: '10px', marginTop: '6px'}}>
-          <div class="flex items-center" style={{gap: '16px'}}>
-            <NumericInput
-              label="Offset"
-              value={track.offsetFrame}
-              step={1}
-              onChange={(val) => audioStore.setOffset(track.id, val)}
-            />
-            <div class="flex-1" />
-          </div>
-          <div class="flex items-center" style={{gap: '16px'}}>
-            <NumericInput
-              label="In"
-              value={track.inFrame}
-              step={1}
-              min={0}
-              onChange={(val) => audioStore.setInOut(track.id, val, track.outFrame)}
-            />
-            <NumericInput
-              label="Out"
-              value={track.outFrame}
-              step={1}
-              min={track.inFrame + 1}
-              onChange={(val) => audioStore.setInOut(track.id, track.inFrame, val)}
-            />
-          </div>
+          <SliderStepper
+            label="Position (frames)"
+            value={track.offsetFrame}
+            step={1}
+            sliderMin={Math.min(track.offsetFrame, -1)}
+            sliderMax={Math.max(track.offsetFrame, track.outFrame - track.inFrame, 1)}
+            onChange={(val) => audioStore.setOffset(track.id, val)}
+            ariaLabel="Position frames"
+          />
+          <SliderStepper
+            label="In (frames)"
+            value={track.inFrame}
+            step={1}
+            min={0}
+            sliderMax={Math.max(track.inFrame, track.outFrame, 1)}
+            onChange={(val) => audioStore.setInOut(track.id, val, track.outFrame)}
+            ariaLabel="In frames"
+          />
+          <SliderStepper
+            label="Out (frames)"
+            value={track.outFrame}
+            step={1}
+            min={track.inFrame + 1}
+            sliderMax={Math.max(track.outFrame, track.inFrame + 1)}
+            onChange={(val) => audioStore.setInOut(track.id, track.inFrame, val)}
+            ariaLabel="Out frames"
+          />
         </div>
       </div>
 
-      {/* Section 6: BPM */}
-      <div>
-        <SectionLabel text="BPM" />
-        <div class="flex flex-col" style={{gap: '10px', marginTop: '6px'}}>
+      {/* BEAT SYNC accordion — BPM + AUTO-ARRANGE, collapsed on open */}
+      <CollapsibleSection title="BEAT SYNC" collapsed={beatSyncCollapsed.current}>
+        <div class="flex flex-col" style={{gap: '10px', marginTop: '6px', paddingBottom: '4px'}}>
           <div class="flex items-center" style={{gap: '8px'}}>
             <NumericInput
               label="BPM"
@@ -228,7 +239,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
                 }
               }}
             />
-            {/* x2 and /2 quick-fix buttons */}
+            {/* x2 and /2 quick-adjust buttons */}
             <button
               class="text-[10px] px-1.5 py-0.5 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={() => {
@@ -272,18 +283,18 @@ export function AudioProperties({track}: AudioPropertiesProps) {
           >
             Re-detect BPM
           </button>
-        </div>
-      </div>
 
-      {/* Section 7: AUTO-ARRANGE */}
-      {track.bpm != null && track.beatMarkers.length > 0 && (
-        <div>
-          <SectionLabel text="AUTO-ARRANGE" />
-          <div class="flex flex-col" style={{gap: '8px', marginTop: '6px'}}>
-            <AutoArrangeSection track={track} />
-          </div>
+          {/* AUTO-ARRANGE — gated on bpm + beat markers so BPM stays reachable */}
+          {track.bpm != null && track.beatMarkers.length > 0 && (
+            <div>
+              <SectionLabel text="AUTO-ARRANGE" />
+              <div class="flex flex-col" style={{gap: '8px', marginTop: '6px'}}>
+                <AutoArrangeSection track={track} />
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </CollapsibleSection>
     </div>
   );
 }

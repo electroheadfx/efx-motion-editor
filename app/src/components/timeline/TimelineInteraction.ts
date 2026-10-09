@@ -734,7 +734,7 @@ export class TimelineInteraction {
           this.fxDragOrigOut = fxTrack.outFrame;
           timelineStore.setTimelineDragging(true);
           this.canvas.setPointerCapture(e.pointerId);
-          this.canvas.style.cursor = mode === 'move' ? 'grabbing' : 'col-resize';
+          this.canvas.style.cursor = mode === 'move' ? 'grabbing' : 'ew-resize';
           startCoalescing();
           return;
         }
@@ -803,7 +803,7 @@ export class TimelineInteraction {
         this.audioDragOrigOffset = audioTrack.offsetFrame;
         timelineStore.setTimelineDragging(true);
         this.canvas.setPointerCapture(e.pointerId);
-        this.canvas.style.cursor = 'col-resize';
+        this.canvas.style.cursor = 'ew-resize';
         startCoalescing();
         return;
       }
@@ -1083,20 +1083,20 @@ export class TimelineInteraction {
 
         if (fxIdx >= 0 && fxIdx < fxTracks.length) {
           const fxTrack = fxTracks[fxIdx];
-          if (fxTrack.layerType === 'physic-paint') {
+          // Edge hit-test FIRST so trim cursors are not swallowed by the
+          // physic-paint row-body pointer hint (261009-v0s).
+          const mode = this.fxDragModeFromX(e.clientX, fxTrack);
+          if (mode === 'resize-left' || mode === 'resize-right') {
+            this.canvas.style.cursor = 'ew-resize';
+          } else if (fxTrack.layerType === 'physic-paint') {
             // Physic-paint rails open Studio on double-click → pointer hint
             // across the row body (261008-ful UAT). Drag still works; the
             // active-drag branches above take the cursor during a drag.
             this.canvas.style.cursor = 'pointer';
+          } else if (mode === 'move') {
+            this.canvas.style.cursor = 'grab';
           } else {
-            const mode = this.fxDragModeFromX(e.clientX, fxTrack);
-            if (mode === 'resize-left' || mode === 'resize-right') {
-              this.canvas.style.cursor = 'col-resize';
-            } else if (mode === 'move') {
-              this.canvas.style.cursor = 'grab';
-            } else {
-              this.canvas.style.cursor = 'default';
-            }
+            this.canvas.style.cursor = 'default';
           }
         } else {
           this.canvas.style.cursor = 'default';
@@ -1127,7 +1127,7 @@ export class TimelineInteraction {
             // Waveform body area
             const mode = this.audioDragModeFromX(e.clientX, audioTrack);
             if (mode === 'resize-left' || mode === 'resize-right') {
-              this.canvas.style.cursor = 'col-resize';
+              this.canvas.style.cursor = 'ew-resize';
             } else if (mode === 'move') {
               this.canvas.style.cursor = e.altKey ? 'ew-resize' : 'grab';
             } else {
@@ -1154,6 +1154,13 @@ export class TimelineInteraction {
       // Clear name label hover when not hovering
       if (this.renderer) {
         this.renderer.setHoveredNameLabel(null);
+      }
+
+      // Playhead scrub hover (261009-v0s): 10px zone matches the pointer-down
+      // scrub gate (isOnPlayhead) — consulted BEFORE the content-area default.
+      if (this.isOnPlayhead(e.clientX)) {
+        this.canvas.style.cursor = 'pointer';
+        return;
       }
 
       // Linear timeline: no grab cursor on headers

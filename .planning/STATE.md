@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick-261009-rko-PLAN.md
-last_updated: "2026-10-09T19:22:34.642Z"
+stopped_at: Completed quick-261009-v0s-PLAN.md
+last_updated: "2026-10-09T20:51:41.783Z"
 last_activity: 2026-10-09
 last_activity_desc: Quick 261009-6ee UAT accepted — closed (blended SliderStepper + audio modal refinements)
-state_head: aa446e4adf88b7cfde667685db236941085f3c89
+state_head: 0fa140c7fd600203f13854e72a2d617624da6035
 progress:
   total_phases: 14
   completed_phases: 19
@@ -142,6 +142,7 @@ Progress: [████████████████████] 75/75 p
 | Phase quick-261009-6ee P261009-6ee | 45m | 2 tasks | 15 files |
 | Phase quick-261009-rko P261009-rko | 28 | 2 tasks | 18 files |
 | Phase quick-261009-rko P261009-rko | 15 | 2 tasks | 18 files |
+| Phase quick-261009-v0s P261009-v0s | 9min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -393,6 +394,11 @@ Recent decisions affecting current work:
 - [Phase quick-261009-6ee]: Live-UAT refinements locked — new shared blended SliderStepper (value on top, bare −/+, sliderMax track-only range) on all five snapshot surfaces; audio modal: FILE section header, header On/Off pill (VolumeX off-state), icon Remove + Cancel/Remove confirmation modal, singular "Document sound" title, opaque bar #4c4e51, rail/knob midline-centered, panel alpha 0.9 (faint glass only, photo-ref dialogs keep full glass)
 - [Phase quick-261009-rko]: source_path is the absolute on-disk path carried verbatim; relative_path retired at both load doors
 - [Phase quick-261009-rko]: readAudioSourceBytes/efxasset is the sole main-app audio byte-read; gallery import and sidebar Replace never copy into the package
+- [Phase quick-261009-v0s]: RuleSectionHeader single-sources Studio section values as inline styles; physicsPaintStudio.css rules deleted
+- [Phase quick-261009-v0s]: Physic-paint rail hover hit-tests trim edges before the row-body pointer hint
+- [Phase quick-261009-v0s]: Playhead hover consults isOnPlayhead before the content-area default fallback; 10px zone unchanged
+- [Phase quick-261009-v0s]: Position SliderStepper commit unbounded (negatives legal); sliderMin/sliderMax track-only
+- [Phase quick-261009-v0s]: BPM and Beat Offset stay NumericInput; AUTO-ARRANGE keeps bpm+markers gate and one-undo Apply
 
 ### Pending Todos
 
@@ -512,6 +518,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-09T18:48:43.623Z
-Stopped at: Completed quick-261009-rko-PLAN.md
+Last session: 2026-10-09T20:51:40.271Z
+Stopped at: Completed quick-261009-v0s-PLAN.md
 Resume file: None

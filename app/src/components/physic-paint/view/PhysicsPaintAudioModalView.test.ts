@@ -123,12 +123,15 @@ describe('PhysicsPaintAudioModalView actions (261009-6ee + UAT move)', () => {
     expect(source).not.toContain('physics-paint-audio-footer');
   });
 
-  it('the FILE section header uses the TIMING/SOUND rule design above the file row', () => {
+  it('the FILE section header uses the shared RuleSectionHeader above the file row', () => {
     expect(source).toContain("export const AUDIO_SECTION_FILE = 'FILE';");
     const fileSection = fileRow.slice(0, fileRow.indexOf('physics-paint-audio-file-row'));
-    expect(fileSection).toContain('physics-paint-audio-section');
-    expect(fileSection).toContain('{AUDIO_SECTION_FILE}');
-    expect(fileSection.match(/physics-paint-audio-section-rule/g)).toHaveLength(2);
+    expect(fileSection).toContain('<RuleSectionHeader');
+    expect(fileSection).toContain('text={AUDIO_SECTION_FILE}');
+    // 261009-v0s: section values live in RuleSectionHeader only — the old
+    // physics-paint-audio-section* classes and markup are gone.
+    expect(source).not.toContain('physics-paint-audio-section');
+    expect(source).toContain("from '../../shared/RuleSectionHeader'");
     // The old plain `File` label is gone.
     expect(fileRow).not.toContain('>File</span>');
   });
