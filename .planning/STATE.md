@@ -6,10 +6,10 @@ current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
 stopped_at: Completed quick-261009-6ee-PLAN.md
-last_updated: "2026-10-09T14:49:50.000Z"
+last_updated: "2026-10-09T16:23:47.547Z"
 last_activity: 2026-10-09
 last_activity_desc: Quick 261009-6ee UAT accepted — closed (blended SliderStepper + audio modal refinements)
-state_head: 5c47244459f4ee44b934df497c742f53becf92da
+state_head: 0850be68647cfa6aa46c7b75ba3d88a4b971b252
 progress:
   total_phases: 14
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-09 - Quick 261009-6ee UAT accepted (native, live) — CLOSED; blended SliderStepper + audio modal refinement rounds landed in 5c472444
+Last activity: 2026-10-09 - Completed quick task 261009-ofk: Audio stays a disk reference — never copied into the .mce — with Relink on missing rows
 
 Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
@@ -481,6 +481,7 @@ None yet.
 | 261008-ig1 | Multi-audio concept core slice — audios[] replaces the singleton, per-clip settings, modal list with click-to-reveal, timeline multi-clip render, alt+drag duplication (fresh id, shared sourceId), D-04 Rust serde round-trip gate | 2026-10-08 | 7568a975 | [261008-ig1-multi-audio-concept-written-to-planning-](./quick/261008-ig1-multi-audio-concept-written-to-planning-/) |
 | 261008-ryq | Audio list to sidebar Audio tab + editable clip Position (milestone 52.5) | 2026-10-08 | fc39d28b | [261008-ryq-audio-list-to-sidebar-audio-tab-editable](./quick/261008-ryq-audio-list-to-sidebar-audio-tab-editable/) |
 | 261009-6ee | Audio modal grouped-field layout + shared stepper pill (Studio). Status: **native UAT accepted 2026-10-09** — locked-mock grouping, one-switch law, blended SliderStepper on all five surfaces, and the live-refinement rounds (FILE header, header On/Off pill, icon Remove + confirmation modal, singular title, opaque bar, rail alignment, panel alpha 0.9) all approved. Quick 261009-6ee **CLOSED** | 2026-10-09 | 5c472444 | [261009-6ee-audio-modal-grouped-field-layout-shared-](./quick/261009-6ee-audio-modal-grouped-field-layout-shared-/) |
+| 261009-ofk | Audio stays a disk reference — never copied into the .mce — with Relink on missing rows (automated-ready, live UAT pending) | 2026-10-09 | 0850be68 | [261009-ofk-audio-stays-a-disk-reference-never-copie](./quick/261009-ofk-audio-stays-a-disk-reference-never-copie/) |
 
 ### Roadmap Evolution
 
