@@ -6,10 +6,10 @@ current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
 stopped_at: Completed quick-261009-v0s-PLAN.md
-last_updated: "2026-10-09T20:51:41.783Z"
+last_updated: "2026-10-09T20:55:39.361Z"
 last_activity: 2026-10-09
 last_activity_desc: Quick 261009-6ee UAT accepted — closed (blended SliderStepper + audio modal refinements)
-state_head: 0fa140c7fd600203f13854e72a2d617624da6035
+state_head: 1ef7689c0067e465ee5dbc834cf534386f1d32d2
 progress:
   total_phases: 14
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-09 - Completed quick task 261009-rko: Main-app audio joins the disk-reference law (verified 4/4 automated, Needs Review — live UAT pending)
+Last activity: 2026-10-09 - Completed quick task 261009-v0s: Audio properties panel re-flow + timeline trim/scrub cursors (automated-ready, live UAT pending)
 
 Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
@@ -493,6 +493,7 @@ None yet.
 | 261009-6ee | Audio modal grouped-field layout + shared stepper pill (Studio). Status: **native UAT accepted 2026-10-09** — locked-mock grouping, one-switch law, blended SliderStepper on all five surfaces, and the live-refinement rounds (FILE header, header On/Off pill, icon Remove + confirmation modal, singular title, opaque bar, rail alignment, panel alpha 0.9) all approved. Quick 261009-6ee **CLOSED** | 2026-10-09 | 5c472444 | [261009-6ee-audio-modal-grouped-field-layout-shared-](./quick/261009-6ee-audio-modal-grouped-field-layout-shared-/) |
 | 261009-ofk | Audio stays a disk reference — never copied into the .mce — with Relink on missing rows (automated-ready, live UAT pending) | 2026-10-09 | 0850be68 | [261009-ofk-audio-stays-a-disk-reference-never-copie](./quick/261009-ofk-audio-stays-a-disk-reference-never-copie/) |
 | 261009-rko | Main-app audio joins the disk-reference law — no copy in gallery import or sidebar Replace, source_path manifest clean break | 2026-10-09 | aa446e4a | [261009-rko-main-app-audio-joins-the-disk-reference-](./quick/261009-rko-main-app-audio-joins-the-disk-reference-/) |
+| 261009-v0s | Audio properties panel re-flow + timeline trim/scrub cursors — AudioProperties adopts SliderStepper (Fade in/out with curve in below slot, Position renamed from Offset, In, Out) full-width Studio pattern; RuleSectionHeader extraction single-sources section values; BEAT SYNC accordion collapsed by default (BPM + AUTO-ARRANGE); TimelineInteraction trim edges ew-resize (was col-resize) incl physic-paint rails edge-over-pointer-hint, playhead hover pointer (10px). Status: automated-ready, live UAT rows 1-6 pending | 2026-10-09 | 1ef7689c | [261009-v0s-audio-properties-panel-re-flow-timeline-](./quick/261009-v0s-audio-properties-panel-re-flow-timeline-/) |
 
 ### Roadmap Evolution
 
