@@ -320,7 +320,6 @@ function makeAudioTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
     audioAssetId: 'asset-1',
     name: 'Kick',
     filePath: '/Volumes/media/audio/kick.wav',
-    relativePath: 'audio/kick.wav',
     originalFilename: 'kick.wav',
     offsetFrame: 48,
     inFrame: 0,

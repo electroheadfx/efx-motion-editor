@@ -2,6 +2,7 @@ import {signal, computed, batch} from '@preact/signals';
 import type {ImportResult, ImportedImage} from '../types/image';
 import type {MceAudioAssetRef, MceImageRef} from '../types/project';
 import {importImages as ipcImportImages, assetUrl} from '../lib/ipc';
+import {readMceAudioSourcePath} from '../lib/mceAudioSourcePath';
 
 const POOL_MAX = 50;
 
@@ -17,7 +18,7 @@ export interface VideoAsset {
 export interface AudioAsset {
   id: string;
   name: string;
-  path: string; // absolute path in project audio/ directory
+  path: string; // absolute path to the audio file on disk (disk reference)
 }
 
 /** All imported images (metadata only -- does not mean full-res is loaded) */
@@ -201,25 +202,31 @@ export const imageStore = {
     });
   },
 
-  /** Restore gallery audio assets from a saved project (relative -> absolute). */
-  loadFromMceAudioAssets(refs: MceAudioAssetRef[], projectRoot: string) {
-    const root = projectRoot.endsWith('/') ? projectRoot.slice(0, -1) : projectRoot;
+  /**
+   * Restore gallery audio assets from a saved project — disk references, path
+   * verbatim from `source_path` (no projectRoot join, no root strip).
+   */
+  loadFromMceAudioAssets(refs: readonly unknown[]) {
+    const loaded = refs.map((ref) => {
+      const sourcePath = readMceAudioSourcePath(ref, 'audio_assets[]');
+      const record = ref as {id: unknown; name: unknown};
+      return {
+        id: String(record.id ?? ''),
+        name: String(record.name ?? ''),
+        path: sourcePath,
+      };
+    });
     batch(() => {
-      audioAssets.value = refs.map((ref) => ({
-        id: ref.id,
-        name: ref.name,
-        path: `${root}/${ref.relative_path}`,
-      }));
+      audioAssets.value = loaded;
     });
   },
 
-  /** Convert current gallery audio assets to relative refs (for project save). */
-  toMceAudioAssets(projectRoot: string): MceAudioAssetRef[] {
-    const root = projectRoot.endsWith('/') ? projectRoot : `${projectRoot}/`;
+  /** Convert current gallery audio assets to disk-reference refs (for project save). */
+  toMceAudioAssets(): MceAudioAssetRef[] {
     return audioAssets.value.map((asset) => ({
       id: asset.id,
       name: asset.name,
-      relative_path: asset.path.startsWith(root) ? asset.path.slice(root.length) : asset.path,
+      source_path: asset.path,
     }));
   },
 
@@ -242,7 +249,8 @@ export const imageStore = {
     }));
   },
 
-  /** Update image paths after project dir migration (temp -> real project) */
+  /** Update image paths after project dir migration (temp -> real project).
+   *  Audio asset paths are disk references outside the project — never remapped. */
   updateProjectPaths(oldRoot: string, newRoot: string) {
     images.value = images.value.map((img) => ({
       ...img,
@@ -250,10 +258,6 @@ export const imageStore = {
       thumbnail_path: img.thumbnail_path.replace(oldRoot, newRoot),
     }));
     videoAssets.value = videoAssets.value.map((asset) => ({
-      ...asset,
-      path: asset.path.replace(oldRoot, newRoot),
-    }));
-    audioAssets.value = audioAssets.value.map((asset) => ({
       ...asset,
       path: asset.path.replace(oldRoot, newRoot),
     }));

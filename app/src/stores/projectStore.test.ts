@@ -78,8 +78,7 @@ function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
     id: 'track-1',
     audioAssetId: 'audio-asset-1',
     name: 'test-audio.wav',
-    filePath: '/project/audio/test-audio.wav',
-    relativePath: 'audio/test-audio.wav',
+    filePath: '/Users/test/Music/test-audio.wav',
     originalFilename: 'test-audio.wav',
     offsetFrame: 10,
     inFrame: 0,
@@ -127,7 +126,7 @@ describe('projectStore audio persistence', () => {
 
       expect(mat.id).toBe('track-1');
       expect(mat.name).toBe('test-audio.wav');
-      expect(mat.relative_path).toBe('audio/test-audio.wav');
+      expect(mat.source_path).toBe('/Users/test/Music/test-audio.wav');
       expect(mat.original_filename).toBe('test-audio.wav');
       expect(mat.offset_frame).toBe(10);
       expect(mat.in_frame).toBe(0);
@@ -219,7 +218,7 @@ describe('projectStore audio persistence', () => {
         audio_tracks: [{
           id: 'a1',
           name: 'music.mp3',
-          relative_path: 'audio/music.mp3',
+          source_path: '/Users/test/Music/music.mp3',
           original_filename: 'music.mp3',
           offset_frame: 5,
           in_frame: 0,
@@ -246,8 +245,7 @@ describe('projectStore audio persistence', () => {
       expect(tracks).toHaveLength(1);
       expect(tracks[0].id).toBe('a1');
       expect(tracks[0].name).toBe('music.mp3');
-      expect(tracks[0].filePath).toBe('/test/project/audio/music.mp3');
-      expect(tracks[0].relativePath).toBe('audio/music.mp3');
+      expect(tracks[0].filePath).toBe('/Users/test/Music/music.mp3');
       expect(tracks[0].volume).toBe(0.7);
       expect(tracks[0].muted).toBe(true);
       expect(tracks[0].fadeInCurve).toBe('logarithmic');
@@ -269,7 +267,7 @@ describe('projectStore audio persistence', () => {
       const project = makeMinimalMceProject({
         audio_tracks: [
           {
-            id: 'b', name: 'second.wav', relative_path: 'audio/second.wav',
+            id: 'b', name: 'second.wav', source_path: '/Users/test/Music/second.wav',
             original_filename: 'second.wav', offset_frame: 0, in_frame: 0,
             out_frame: 50, volume: 1, muted: false, fade_in_frames: 0,
             fade_out_frames: 0, fade_in_curve: 'exponential',
@@ -277,7 +275,7 @@ describe('projectStore audio persistence', () => {
             channel_count: 2, order: 1, track_height: 44, slip_offset: 0, total_frames_in_file: 50,
           },
           {
-            id: 'a', name: 'first.wav', relative_path: 'audio/first.wav',
+            id: 'a', name: 'first.wav', source_path: '/Users/test/Music/first.wav',
             original_filename: 'first.wav', offset_frame: 0, in_frame: 0,
             out_frame: 50, volume: 1, muted: false, fade_in_frames: 0,
             fade_out_frames: 0, fade_in_curve: 'exponential',
@@ -421,14 +419,13 @@ describe('261009-rko source_path format law', () => {
     projectStore.hydrateFromMce(project, '/test/project');
 
     await vi.waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalled();
+      expect(decodeSpy).toHaveBeenCalled();
     });
 
-    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    const calledUrl = String((fetchSpy.mock.calls[0] as unknown as [unknown])[0]);
     expect(calledUrl).toContain('efxasset://');
     expect(calledUrl).toContain('/Users/test/Music/take.wav');
     expect(mockReadFile).not.toHaveBeenCalled();
-    expect(decodeSpy).toHaveBeenCalled();
 
     decodeSpy.mockRestore();
     vi.unstubAllGlobals();

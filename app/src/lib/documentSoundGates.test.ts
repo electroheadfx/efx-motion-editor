@@ -645,10 +645,10 @@ describe('documentSoundGates — exportClipEnabled + buildExportMixEntries (52.5
       fadeOutFrames: 12,
       // The rebased GLOBAL start, never the document-local sound.startFrame.
       offsetFrame: 98,
-      relativePath: '/Users/test/Music/sound.wav',
       filePath: '/proj/audio/a.wav',
       muted: false,
       slipOffset: 0,
     });
+    expect((entries[0] as unknown as Record<string, unknown>).relativePath).toBeUndefined();
   });
 });

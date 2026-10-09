@@ -4,8 +4,7 @@ export interface AudioTrack {
   id: string;
   audioAssetId: string;  // References AudioAsset.id in imageStore
   name: string;
-  filePath: string;           // Absolute path to audio file on disk
-  relativePath: string;       // Relative path within project dir (for .mce persistence)
+  filePath: string;           // Disk reference — absolute path on disk, persisted as source_path
   originalFilename: string;   // Original filename for display in properties panel
   offsetFrame: number;        // Start position on timeline (frame 0 = project start); can be negative
   inFrame: number;            // Trim in-point (frames from audio file start)
@@ -34,7 +33,8 @@ export interface MceAudioTrack {
   id: string;
   audio_asset_id?: string;  // Stable asset reference (v9+)
   name: string;
-  relative_path: string;
+  /** Absolute path to the audio file on disk (heavy media stay disk references — never copied into the package) */
+  source_path: string;
   original_filename: string;
   offset_frame: number;
   in_frame: number;

@@ -47,7 +47,8 @@ import {
   reset as resetEfxPaintStore,
   _setEfxPaintMarkDirtyCallback,
 } from './efxPaintStore';
-import {readFile} from '@tauri-apps/plugin-fs';
+import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
+import {readMceAudioSourcePath} from '../lib/mceAudioSourcePath';
 
 // --- Signals ---
 
@@ -435,12 +436,12 @@ function buildMceProject(): RuntimeMceProject {
     modified_at: new Date().toISOString(),
     sequences: mceSequences,
     images: imageStore.toMceImages(projectRoot),
-    audio_assets: imageStore.toMceAudioAssets(projectRoot),
+    audio_assets: imageStore.toMceAudioAssets(),
     audio_tracks: audioStore.tracks.value.map((track, index): MceAudioTrack => ({
       id: track.id,
       audio_asset_id: track.audioAssetId,
       name: track.name,
-      relative_path: track.relativePath,
+      source_path: track.filePath,
       original_filename: track.originalFilename,
       offset_frame: track.offsetFrame,
       in_frame: track.inFrame,
@@ -496,7 +497,7 @@ function hydrateFromMce(
 
     // 2. Load images (converts relative to absolute)
     imageStore.loadFromMceImages(project.images, projectRoot);
-    imageStore.loadFromMceAudioAssets(project.audio_assets ?? [], projectRoot);
+    imageStore.loadFromMceAudioAssets(project.audio_assets ?? []);
 
     // 3. Convert MceSequences to frontend Sequence type and load into sequenceStore
     sequenceStore.reset();
@@ -670,12 +671,12 @@ function hydrateFromMce(
     const sortedAudio = [...mceAudioTracks].sort((a, b) => a.order - b.order);
 
     for (const mat of sortedAudio) {
+      const sourcePath = readMceAudioSourcePath(mat, 'audio_tracks[]');
       const track: AudioTrack = {
         id: mat.id,
         audioAssetId: mat.audio_asset_id ?? mat.id,
         name: mat.name,
-        filePath: projectRoot + '/' + mat.relative_path,
-        relativePath: mat.relative_path,
+        filePath: sourcePath,
         originalFilename: mat.original_filename,
         offsetFrame: mat.offset_frame,
         inFrame: mat.in_frame,
@@ -777,8 +778,7 @@ function hydrateFromMce(
   (async () => {
     for (const track of audioStore.tracks.peek()) {
       try {
-        const fileBytes = await readFile(track.filePath);
-        const arrayBuffer = fileBytes.buffer;
+        const arrayBuffer = await readAudioSourceBytes(track.filePath);
         const audioBuffer = await audioEngine.decode(track.id, arrayBuffer);
         const peaks = computeWaveformPeaks(audioBuffer);
         audioPeaksCache.set(track.id, peaks);

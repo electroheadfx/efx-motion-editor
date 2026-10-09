@@ -25,7 +25,7 @@ describe('readAudioSourceBytes (261009-rko efxasset decode door)', () => {
 
     expect(result).toBe(bytes);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const calledUrl = String(fetchSpy.mock.calls[0][0]);
+    const calledUrl = String((fetchSpy.mock.calls[0] as unknown as [unknown])[0]);
     expect(calledUrl).toBe(assetUrl(sourcePath));
     expect(calledUrl).toContain('efxasset://');
   });

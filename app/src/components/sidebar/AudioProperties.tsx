@@ -63,7 +63,6 @@ export function AudioProperties({track}: AudioPropertiesProps) {
       // Update track with new file paths and metadata
       audioStore.updateTrack(track.id, {
         filePath: projectDir + '/audio/' + filename,
-        relativePath: 'audio/' + filename,
         originalFilename: filename,
         sampleRate: audioBuffer.sampleRate,
         duration: audioBuffer.duration,

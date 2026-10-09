@@ -209,11 +209,11 @@ export interface MceKeyPhoto {
   gradient?: MceGradientData;  // v13+: gradient fill data
 }
 
-/** Audio asset reference in the project -- relative path for portability */
+/** Audio asset reference in the project -- Absolute path to the audio file on disk (disk reference) */
 export interface MceAudioAssetRef {
   id: string;
   name: string;
-  relative_path: string;
+  source_path: string;
 }
 
 /** Image reference in the project -- stores relative paths for portability */

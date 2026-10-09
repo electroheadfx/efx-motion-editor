@@ -338,7 +338,6 @@ export function ImportedView() {
         audioAssetId: audioAssetId,
         name: asset.name,
         filePath: asset.path,
-        relativePath: 'audio/' + asset.name,
         originalFilename: asset.name,
         offsetFrame: 0,
         inFrame: 0,

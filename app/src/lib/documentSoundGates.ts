@@ -95,7 +95,6 @@ export function toDocumentSoundAudioTrack(
     audioAssetId: sound.sourceId,
     name: sound.sourcePath,
     filePath: '',
-    relativePath: sound.sourcePath,
     originalFilename: sound.sourcePath.split('/').pop() ?? sound.sourcePath,
     offsetFrame: sound.startFrame,
     inFrame: sound.inFrame,
