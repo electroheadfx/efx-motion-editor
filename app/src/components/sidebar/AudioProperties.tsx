@@ -1,7 +1,6 @@
 import {useState} from 'preact/hooks';
 import {Volume2, VolumeX, Loader2} from 'lucide-preact';
 import {open} from '@tauri-apps/plugin-dialog';
-import {copyFile, mkdir, readFile} from '@tauri-apps/plugin-fs';
 import {NumericInput} from '../shared/NumericInput';
 import {SectionLabel} from '../shared/SectionLabel';
 import {audioStore} from '../../stores/audioStore';
@@ -10,6 +9,7 @@ import {audioEngine} from '../../lib/audioEngine';
 import {computeWaveformPeaks} from '../../lib/audioWaveform';
 import {audioPeaksCache} from '../../lib/audioPeaksCache';
 import {projectStore} from '../../stores/projectStore';
+import {buildAudioReplacePatch, readAudioSourceBytes} from '../../lib/mainAppAudioSources';
 import {startCoalescing, stopCoalescing, pushAction} from '../../lib/history';
 import {autoArrangeHoldFrames, type ArrangeStrategy} from '../../lib/beatMarkerEngine';
 import type {AudioTrack, FadeCurve} from '../../types/audio';
@@ -28,9 +28,6 @@ export function AudioProperties({track}: AudioPropertiesProps) {
   const [isReplacing, setIsReplacing] = useState(false);
 
   const handleReplace = async () => {
-    const projectDir = projectStore.dirPath.peek();
-    if (!projectDir) return;
-
     const filePath = await open({
       filters: [{name: 'Audio', extensions: ['wav', 'mp3', 'aac', 'flac', 'm4a']}],
       multiple: false,
@@ -40,36 +37,18 @@ export function AudioProperties({track}: AudioPropertiesProps) {
 
     setIsReplacing(true);
     try {
-      const filename = filePath.split('/').pop() ?? 'audio';
-
-      // Create audio/ directory in project
-      await mkdir(projectDir + '/audio', {recursive: true});
-
-      // Copy file to project
-      await copyFile(filePath, projectDir + '/audio/' + filename);
-
-      // Read and decode
-      const fileBytes = await readFile(projectDir + '/audio/' + filename);
-      const arrayBuffer = fileBytes.buffer;
+      // 261009-rko: disk reference — never copied into the package.
+      const arrayBuffer = await readAudioSourceBytes(filePath);
       const audioBuffer = await audioEngine.decode(track.id, arrayBuffer);
 
       // Recompute peaks
       const peaks = computeWaveformPeaks(audioBuffer);
       audioPeaksCache.set(track.id, peaks);
 
-      // Compute outFrame from new audio duration
-      const outFrame = Math.ceil(audioBuffer.duration * projectStore.fps.peek());
-
-      // Update track with new file paths and metadata
-      audioStore.updateTrack(track.id, {
-        filePath: projectDir + '/audio/' + filename,
-        originalFilename: filename,
-        sampleRate: audioBuffer.sampleRate,
-        duration: audioBuffer.duration,
-        channelCount: audioBuffer.numberOfChannels,
-        inFrame: 0,
-        outFrame,
-      });
+      audioStore.updateTrack(
+        track.id,
+        buildAudioReplacePatch(filePath, audioBuffer, projectStore.fps.peek()),
+      );
     } catch (err) {
       console.error('Failed to replace audio file:', err);
     } finally {

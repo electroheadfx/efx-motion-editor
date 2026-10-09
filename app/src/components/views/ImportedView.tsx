@@ -1,6 +1,7 @@
 import {useState, useCallback, useEffect} from 'preact/hooks';
 import {open} from '@tauri-apps/plugin-dialog';
-import {copyFile, mkdir, readFile} from '@tauri-apps/plugin-fs';
+import {copyFile, mkdir} from '@tauri-apps/plugin-fs';
+import {readAudioSourceBytes, registerPickedAudioSource} from '../../lib/mainAppAudioSources';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
 import {sequenceStore} from '../../stores/sequenceStore';
@@ -325,8 +326,7 @@ export function ImportedView() {
 
     setIsDecodingAudio(true);
     try {
-      const fileBytes = await readFile(asset.path);
-      const arrayBuffer = fileBytes.buffer;
+      const arrayBuffer = await readAudioSourceBytes(asset.path);
       const trackId = crypto.randomUUID();
       const audioBuffer = await audioEngine.decode(trackId, arrayBuffer);
       const peaks = computeWaveformPeaks(audioBuffer);
@@ -383,20 +383,9 @@ export function ImportedView() {
         filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aac', 'flac', 'm4a', 'aif', 'aiff'] }],
       });
       if (!selected) return;
-      const dir = projectStore.dirPath.value ?? tempProjectDir.value;
-      if (!dir) return;
       const filePath = typeof selected === 'string' ? selected : selected;
-      const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? 'audio';
-      const sep = dir.endsWith('/') ? '' : '/';
-      const audioDir = `${dir}${sep}audio`;
-      try { await mkdir(audioDir, { recursive: true }); } catch { /* exists */ }
-      const destPath = `${audioDir}/${filename}`;
-      try { await copyFile(filePath, destPath); } catch (err) { console.error('Failed to copy audio:', err); return; }
-      // Only add asset if not already imported (same path = same file)
-      const existing = imageStore.audioAssets.value.find(a => a.path === destPath);
-      if (!existing) {
-        imageStore.addAudioAsset({ id: crypto.randomUUID(), name: filename, path: destPath });
-      }
+      // 261009-rko: disk reference — never copied into the package.
+      registerPickedAudioSource(filePath);
     } else if (currentIntent?.type === 'video') {
       // Video import flow
       const selected = await open({
