@@ -1267,6 +1267,7 @@ fn manifest_project(name: &str) -> MceProject {
         modified_at: "2026-09-12T00:00:00Z".into(),
         sequences: vec![],
         images: vec![],
+        audio_assets: vec![],
         audio_tracks: vec![],
         efx_paint_documents: std::collections::HashMap::new(),
         format_version: None,

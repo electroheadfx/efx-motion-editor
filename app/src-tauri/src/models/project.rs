@@ -23,6 +23,11 @@ pub struct MceProject {
     pub modified_at: String,
     pub sequences: Vec<MceSequence>,
     pub images: Vec<MceImageRef>,
+    /// Gallery audio assets (imported, used or not). Declared here because
+    /// serde drops undeclared keys — without this field every save would erase
+    /// the gallery rows (same class of hole as `format_version` below).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audio_assets: Vec<MceAudioAssetRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<MceAudioTrack>,
     /// v1.0 EFX Paint documents keyed by parent layer id (F1). Carried
@@ -47,12 +52,25 @@ pub struct MceProject {
     pub efx_paint: HashMap<String, Value>,
 }
 
+/// Gallery audio asset reference (261009-rko): absolute on-disk path, never
+/// copied into the package. Carries the same disk-reference law as
+/// `MceAudioTrack.source_path`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceAudioAssetRef {
+    pub id: String,
+    pub name: String,
+    pub source_path: String,
+}
+
 /// Audio track in project file (Phase 15)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MceAudioTrack {
     pub id: String,
     pub name: String,
-    pub relative_path: String,
+    /// Absolute path to the audio file on disk (261009-rko: heavy media stay
+    /// disk references — never copied into the package). Retired key
+    /// `relative_path` is refused by the TS load door before this model sees it.
+    pub source_path: String,
     pub original_filename: String,
     pub offset_frame: i32,
     pub in_frame: u32,

@@ -66,6 +66,7 @@ pub fn project_create(
         modified_at: now,
         sequences: vec![],
         images: vec![],
+        audio_assets: vec![],
         audio_tracks: vec![],
         efx_paint_documents: std::collections::HashMap::new(),
         // A brand-new project carries no package keys yet: the first save
