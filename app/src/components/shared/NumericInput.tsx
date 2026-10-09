@@ -114,15 +114,11 @@ export function NumericInput({
         min={min}
         max={max}
         ariaLabel={label}
-        inputClass="flex-1 min-w-0 w-full rounded outline-none"
+        inputClass="flex-1 min-w-0 w-full outline-none"
         inputStyle={{
           fontSize: '12px',
           fontWeight: 400,
           color: 'var(--sidebar-text-primary)',
-          backgroundColor: 'var(--sidebar-input-bg)',
-          borderRadius: '4px',
-          padding: '6px 10px',
-          border: 'none',
           textAlign: 'left',
         }}
       />

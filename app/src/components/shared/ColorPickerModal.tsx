@@ -271,7 +271,6 @@ export function ColorPickerModal({
 
   const inputStyle = {
     fontSize: '11px',
-    backgroundColor: 'var(--sidebar-input-bg)',
     color: 'var(--sidebar-text-primary)',
   };
 
@@ -447,7 +446,7 @@ export function ColorPickerModal({
                     max={360}
                     class="w-full"
                     ariaLabel="Gradient angle"
-                    inputClass="w-full rounded outline-none font-mono"
+                    inputClass="w-full outline-none font-mono"
                     inputStyle={inputStyle}
                   />
                   <span class="text-[10px] shrink-0" style={{color: 'var(--sidebar-text-secondary)'}}>deg</span>
@@ -468,7 +467,7 @@ export function ColorPickerModal({
                     max={100}
                     class="w-full"
                     ariaLabel="Center X"
-                    inputClass="w-full rounded outline-none font-mono"
+                    inputClass="w-full outline-none font-mono"
                     inputStyle={inputStyle}
                   />
                 </div>
@@ -482,7 +481,7 @@ export function ColorPickerModal({
                     max={100}
                     class="w-full"
                     ariaLabel="Center Y"
-                    inputClass="w-full rounded outline-none font-mono"
+                    inputClass="w-full outline-none font-mono"
                     inputStyle={inputStyle}
                   />
                 </div>
@@ -597,7 +596,7 @@ export function ColorPickerModal({
                   max={255}
                   class="w-full"
                   ariaLabel={`${label} channel`}
-                  inputClass="w-full rounded outline-none font-mono"
+                  inputClass="w-full outline-none font-mono"
                   inputStyle={inputStyle}
                 />
               </div>
@@ -622,7 +621,7 @@ export function ColorPickerModal({
                   max={max}
                   class="w-full"
                   ariaLabel={`${label} channel`}
-                  inputClass="w-full rounded outline-none font-mono"
+                  inputClass="w-full outline-none font-mono"
                   inputStyle={inputStyle}
                 />
               </div>

@@ -2474,13 +2474,11 @@ button.destructive {
   opacity: 0.35;
 }
 
+/* 261009-6ee: box chrome (height/padding/border/background) removed — the
+   shared NumericStepper pill owns the field box; a second box here would fork
+   the one-pill treatment (T-261009-6EE-02). Typography stays. */
 .physics-paint-roto-fps-control input {
   width: 48px;
-  height: 24px;
-  padding: 2px 4px;
-  border: 1px solid #747980;
-  border-radius: 3px;
-  background: #5a5c5f;
   color: #f8fafc;
   font-size: 12px;
   font-weight: 700;
@@ -2893,13 +2891,9 @@ button.destructive {
   min-height: 26px;
 }
 
+/* 261009-6ee: box chrome removed — the shared pill owns the field box. */
 .physics-paint-roto-force-spacing-controls input {
   width: 42px;
-  height: 22px;
-  padding: 1px 4px;
-  border: 1px solid #747980;
-  border-radius: 4px;
-  background: #5a5c5f;
   color: #f8fafc;
   font-size: 11px;
   font-weight: 700;

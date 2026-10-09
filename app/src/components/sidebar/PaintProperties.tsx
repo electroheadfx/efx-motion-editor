@@ -392,9 +392,9 @@ export function PaintProperties({layer}: {layer: Layer}) {
                       max={500}
                       class="w-24 shrink-0"
                       ariaLabel="Stroke width"
-                      inputClass="text-[11px] rounded outline-none"
-                      inputStyle={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', padding: '2px 4px'}}
-                      buttonStyle={{width: '18px', height: '18px'}}
+                      inputClass="text-[11px] outline-none"
+                      inputStyle={{color: 'var(--sidebar-text-primary)'}}
+                      buttonStyle={{width: '18px'}}
                     />
                   </div>
                   {/* Color -- full row */}
@@ -792,9 +792,9 @@ export function PaintProperties({layer}: {layer: Layer}) {
                 max={BRUSH_SIZE_MAX}
                 class="w-24 shrink-0"
                 ariaLabel="Brush size"
-                inputClass="text-[11px] rounded outline-none"
-                inputStyle={{backgroundColor: 'var(--sidebar-input-bg)', color: 'var(--sidebar-text-primary)', padding: '2px 6px'}}
-                buttonStyle={{width: '18px', height: '18px'}}
+                inputClass="text-[11px] outline-none"
+                inputStyle={{color: 'var(--sidebar-text-primary)'}}
+                buttonStyle={{width: '18px'}}
               />
             </div>
 

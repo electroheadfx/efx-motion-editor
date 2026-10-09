@@ -92,14 +92,11 @@ function TopBarSlider(props: {
             inputStyle={{
               flex: '0 0 auto',
               width: '46px',
-              height: '24px',
-              padding: '2px 4px',
-              backgroundColor: '#5a5c5f',
               color: '#f8fafc',
               fontSize: '12px',
               fontWeight: 700,
             }}
-            buttonStyle={{ width: '22px', height: '24px' }}
+            buttonStyle={{ width: '22px' }}
           />
         ) : <output>{props.value}</output>}
       </div>
@@ -191,14 +188,11 @@ export function PhysicsPaintTopBar({
             inputStyle={{
               flex: '0 0 auto',
               width: '46px',
-              height: '24px',
-              padding: '2px 4px',
-              backgroundColor: '#5a5c5f',
               color: '#f8fafc',
               fontSize: '12px',
               fontWeight: 700,
             }}
-            buttonStyle={{ width: '22px', height: '24px' }}
+            buttonStyle={{ width: '22px' }}
           />
         </div>
       </div>

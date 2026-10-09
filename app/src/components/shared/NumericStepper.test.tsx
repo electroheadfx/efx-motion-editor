@@ -859,3 +859,77 @@ describe('260924-ffd — classic default + fps preset contract pins', () => {
     resetHistory();
   });
 });
+
+/**
+ * 261009-6ee — the unified single-pill chrome pins (SPECS/modal-audio-new).
+ *
+ * Chrome-only contract: exactly ONE element per stepper draws a box — the
+ * `numeric-stepper-pill` container (border + borderRadius + background) — and
+ * it wraps EXACTLY the three controls (button, input, button). The input and
+ * both buttons carry no border/background style keys of their own, and
+ * `{children}` (NumericInput's label + drag-to-scrub wrapper) renders OUTSIDE
+ * the pill as its sibling. Behavior is pinned by the describes above; these
+ * pins lock the look.
+ */
+describe('261009-6ee — unified single-pill chrome pins', () => {
+  const BOX_STYLE_KEYS = [
+    'border',
+    'borderTop',
+    'borderRight',
+    'borderBottom',
+    'borderLeft',
+    'borderRadius',
+    'background',
+    'backgroundColor',
+    'boxShadow',
+  ] as const;
+
+  function styleOf(vnode: TestVNode): Record<string, unknown> {
+    return (vnode.props.style ?? {}) as Record<string, unknown>;
+  }
+
+  function drawsBox(vnode: TestVNode): boolean {
+    return BOX_STYLE_KEYS.some((key) => styleOf(vnode)[key] !== undefined);
+  }
+
+  it('renders exactly ONE box-drawing element — the pill', () => {
+    const tree = renderStepper({});
+    const boxes = findAll(tree, drawsBox);
+    expect(boxes).toHaveLength(1);
+    const pillStyle = styleOf(boxes[0]);
+    expect(boxes[0].props.class).toBe('numeric-stepper-pill');
+    expect(pillStyle.border).toBeDefined();
+    expect(pillStyle.borderRadius).toBeDefined();
+    expect(pillStyle.background ?? pillStyle.backgroundColor).toBeDefined();
+  });
+
+  it('renders the input and both buttons WITHOUT their own border/background style keys', () => {
+    const tree = renderStepper({});
+    const field = input(tree);
+    expect(field).toBeDefined();
+    expect(drawsBox(field!)).toBe(false);
+
+    const buttons = findAll(tree, (vnode) => vnode.type === 'button');
+    expect(buttons).toHaveLength(2);
+    for (const target of buttons) {
+      expect(drawsBox(target)).toBe(false);
+    }
+  });
+
+  it('wraps exactly [button, input, button] in the pill, with children outside it', () => {
+    const tree = renderStepper({ children: <span class="stepper-scrub-label">Hold</span> });
+    const pills = findAll(tree, (vnode) => vnode.props.class === 'numeric-stepper-pill');
+    expect(pills).toHaveLength(1);
+    const pill = pills[0];
+
+    // The pill holds ONLY the three controls, in order.
+    expect(childrenOf(pill).map((child) => (child as TestVNode).type)).toEqual(['button', 'input', 'button']);
+
+    // `{children}` (the NumericInput label) is a SIBLING of the pill, outside it.
+    const wrapperKids = childrenOf(tree as TestVNode).filter(Boolean) as TestVNode[];
+    expect(wrapperKids).toHaveLength(2);
+    expect(wrapperKids[0].type).toBe('span');
+    expect(String(wrapperKids[0].props.class)).toContain('stepper-scrub-label');
+    expect(wrapperKids[1]).toBe(pill);
+  });
+});

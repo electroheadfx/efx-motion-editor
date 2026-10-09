@@ -1350,19 +1350,11 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
               class="physics-paint-roto-fps-stepper"
               inputStyle={{
                 width: '40px',
-                height: '24px',
-                padding: '2px 4px',
-                border: '1px solid #747980',
-                borderRadius: '3px',
-                backgroundColor: '#5a5c5f',
                 color: '#f8fafc',
                 fontWeight: 700,
               }}
               buttonStyle={{
                 width: '22px',
-                height: '24px',
-                border: '1px solid #747980',
-                backgroundColor: '#5a5c5f',
                 color: '#f8fafc',
               }}
             /></label>
@@ -1395,8 +1387,8 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                     ariaDescribedBy={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
                     onFocus={forceSpacingTooltip.onFocus}
                     onBlur={forceSpacingTooltip.onBlur}
-                    inputStyle={{ width: '34px', padding: '2px 4px' }}
-                    buttonStyle={{ width: '18px', height: '18px' }}
+                    inputStyle={{ width: '34px' }}
+                    buttonStyle={{ width: '18px' }}
                   />
                   <button
                     type="submit"
