@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick-261008-ig1-PLAN.md
-last_updated: "2026-10-08T18:45:56.011Z"
+stopped_at: Completed quick-261009-6ee-PLAN.md
+last_updated: "2026-10-09T03:03:47.151Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 52.5 complete, transitioned to Phase 53
-state_head: fc39d28be74e1cf44f5f3ea31ad2060ac2ae4866
+state_head: 5af2aa4113b421ec5de3cfde5b016b801f1c07e5
 progress:
   total_phases: 14
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-08 - UAT APPROVED for milestone 52.5 Document sound: multi-audio core slice (261008-ig1), dup-clip playback fix (dup-clip-plays-audios-0), and sidebar Audio tab + Position stepper (261008-ryq)
+Last activity: 2026-10-09 - Completed quick task 261009-6ee: Audio modal grouped-field layout + shared stepper pill (Studio)
 
 Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
@@ -139,6 +139,7 @@ Progress: [████████████████████] 75/75 p
 | Phase quick-260930-wm6 P260930-wm6 | 41m | 3 tasks | 12 files |
 | Phase 52.5-physic-paint-document-sound-track P01a | 78min | 3 tasks | 26 files |
 | Phase 52.5 P01b | 2h40m | 3 tasks | 26 files |
+| Phase quick-261009-6ee P261009-6ee | 45m | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -385,6 +386,8 @@ Recent decisions affecting current work:
 - [Phase 52.5]: Sound band gestures use window capture-phase listeners: identity fixed at pointer-down, stopPropagation only once armed (stain press bubbles for the single sub-threshold seek; trim stops before guards and never seeks)
 - [Phase 52.5]: Direct-DOM drag preview with one settle on release through setDocumentSound (T-52.5-02 settle-only push); peaks re-derive on reopen via existing decode/cache, fail-closed
 - [Phase 52.5]: Trim law mirrors the NLE model: left end moves start+in together (timeline end invariant), right end clamped so start+(out-in) <= parentEnd, min span 1 frame
+- [Phase quick-261009-6ee]: One-switch law: header preview toggle dropped from the Document sounds modal; footer On/Off pill is its only audio switch, strip Audio Preview toggle remains the main-app-audio surface
+- [Phase quick-261009-6ee]: Shared NumericStepper restyled to unified 22px single-pill chrome app-wide; base box keys removed, contextual CSS input box rules stripped (Rule 2) to keep one outline
 
 ### Pending Todos
 
@@ -476,6 +479,7 @@ None yet.
 | 261008-ful | 2 small UX features: LayerRow double-click opens Studio (shared launch path) + audio modal Gain slider → NumericStepper | 2026-10-08 | 478650e0 | [261008-ful-2-small-ux-features-one-atomic-commit-ea](./quick/261008-ful-2-small-ux-features-one-atomic-commit-ea/) |
 | 261008-ig1 | Multi-audio concept core slice — audios[] replaces the singleton, per-clip settings, modal list with click-to-reveal, timeline multi-clip render, alt+drag duplication (fresh id, shared sourceId), D-04 Rust serde round-trip gate | 2026-10-08 | 7568a975 | [261008-ig1-multi-audio-concept-written-to-planning-](./quick/261008-ig1-multi-audio-concept-written-to-planning-/) |
 | 261008-ryq | Audio list to sidebar Audio tab + editable clip Position (milestone 52.5) | 2026-10-08 | fc39d28b | [261008-ryq-audio-list-to-sidebar-audio-tab-editable](./quick/261008-ryq-audio-list-to-sidebar-audio-tab-editable/) |
+| 261009-6ee | Audio modal grouped-field layout + shared stepper pill (Studio) | 2026-10-09 | 5af2aa41 | [261009-6ee-audio-modal-grouped-field-layout-shared-](./quick/261009-6ee-audio-modal-grouped-field-layout-shared-/) |
 
 ### Roadmap Evolution
 
@@ -501,6 +505,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-08T15:55:06.376Z
-Stopped at: Completed quick-261008-ig1-PLAN.md
+Last session: 2026-10-09T03:03:01.257Z
+Stopped at: Completed quick-261009-6ee-PLAN.md
 Resume file: None
