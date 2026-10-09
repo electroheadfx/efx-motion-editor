@@ -576,7 +576,7 @@ describe('Physics Paint right panel pickup label (260930-ni6)', () => {
 });
 
 /** Hand-rolled controller + ports for the Audio tab (261008-ryq). */
-function audioTabHarness() {
+function audioTabHarness(missingIds: ReadonlySet<string> = new Set()) {
   const selectedSoundId = signal<string | null>('clip-1');
   const controller = {
     audios: [
@@ -589,6 +589,7 @@ function audioTabHarness() {
     confirmRemove: vi.fn(),
     requestRemove: vi.fn(),
     disarmRemove: vi.fn(),
+    isSoundMissing: (clip: { id: string }) => missingIds.has(clip.id),
   } as unknown as PhysicsPaintAudioController;
   const onSelectClip = vi.fn();
   const onImportRequest = vi.fn();
@@ -652,6 +653,39 @@ describe('Physics Paint right panel Audio tab (261008-ryq)', () => {
     trashes = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-trash'));
     ((trashes[1] as AnyVNode).props.onClick as () => void)();
     expect(controller.confirmRemove).toHaveBeenCalledOnce();
+  });
+
+  it('(261009-ofk) a missing clip renders its row with the missing class and a Relink button', () => {
+    const { props } = audioTabHarness(new Set(['clip-1']));
+    const tree = renderAudioTab(props);
+
+    const rows = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-row'));
+    const missingRows = rows.filter((node) => hasClass(node, 'physics-paint-audio-clip-row-missing'));
+    expect(missingRows).toHaveLength(1);
+    const relinkButtons = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-relink'));
+    expect(relinkButtons).toHaveLength(1);
+    expect(textContent(relinkButtons[0])).toContain('Relink');
+  });
+
+  it('(261009-ofk) clicking Relink sets selectedSoundId to that clip id and calls onImportRequest(\'replace\') once', () => {
+    const { props, controller, onImportRequest } = audioTabHarness(new Set(['clip-2']));
+    const tree = renderAudioTab(props);
+
+    const relinkButtons = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-relink'));
+    expect(relinkButtons).toHaveLength(1);
+    ((relinkButtons[0] as AnyVNode).props.onClick as () => void)();
+
+    expect(controller.selectedSoundId.value).toBe('clip-2');
+    expect(onImportRequest).toHaveBeenCalledTimes(1);
+    expect(onImportRequest).toHaveBeenCalledWith('replace');
+  });
+
+  it('(261009-ofk) a present clip renders no Relink button', () => {
+    const { props } = audioTabHarness(new Set());
+    const tree = renderAudioTab(props);
+
+    const relinkButtons = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-relink'));
+    expect(relinkButtons).toHaveLength(0);
   });
 
   it('Import disarms first then requests the append import', () => {

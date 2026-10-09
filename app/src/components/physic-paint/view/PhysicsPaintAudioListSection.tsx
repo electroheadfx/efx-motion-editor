@@ -5,6 +5,7 @@ import {
   AUDIO_ENABLE_ON,
   AUDIO_IMPORT_CTA,
   AUDIO_LOADING,
+  AUDIO_RELINK_CTA,
   AUDIO_REMOVE,
   AUDIO_REMOVE_ARMED,
 } from './PhysicsPaintAudioModalView';
@@ -52,19 +53,20 @@ export function PhysicsPaintAudioListSection({ ports }: PhysicsPaintAudioListSec
       {controller.audios.map((clip) => {
         const selected = selectedId === clip.id;
         const armedHere = selected && controller.removeArmed;
+        const missing = controller.isSoundMissing(clip);
         return (
           <div
             key={clip.id}
-            class={`physics-paint-audio-clip-row${selected ? ' physics-paint-audio-clip-row-selected' : ''}`}
+            class={`physics-paint-audio-clip-row${selected ? ' physics-paint-audio-clip-row-selected' : ''}${missing ? ' physics-paint-audio-clip-row-missing' : ''}`}
           >
             <button
               type="button"
-              class="physics-paint-audio-clip-select"
+              class={`physics-paint-audio-clip-select${missing ? ' physics-paint-audio-filename-missing' : ''}`}
               aria-pressed={selected}
               disabled={busy}
               onClick={() => ports.onSelectClip(clip.id)}
             >
-              <span class="physics-paint-audio-filename">
+              <span class={`physics-paint-audio-filename${missing ? ' physics-paint-audio-filename-missing' : ''}`}>
                 {clip.sourcePath.split('/').pop() ?? clip.sourcePath}
               </span>
               <span class="physics-paint-audio-clip-span">
@@ -72,6 +74,24 @@ export function PhysicsPaintAudioListSection({ ports }: PhysicsPaintAudioListSec
               </span>
               <span class="physics-paint-audio-clip-toggle">{clip.enabled ? AUDIO_ENABLE_ON : AUDIO_ENABLE_OFF}</span>
             </button>
+            {missing ? (
+              <button
+                type="button"
+                class="physics-paint-audio-clip-relink"
+                aria-label={AUDIO_RELINK_CTA}
+                title={AUDIO_RELINK_CTA}
+                disabled={busy}
+                onClick={() => {
+                  // Selection BEFORE the door raise so applyReplacedSource
+                  // commits against this clip (same pattern as row Trash2).
+                  controller.disarmRemove();
+                  controller.selectedSoundId.value = clip.id;
+                  ports.onImportRequest('replace');
+                }}
+              >
+                {AUDIO_RELINK_CTA}
+              </button>
+            ) : null}
             <button
               type="button"
               class="physics-paint-audio-clip-trash"

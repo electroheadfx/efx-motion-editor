@@ -61,7 +61,7 @@ function makeClip(id: string, overrides: Partial<DocumentSoundClip> = {}): Docum
   return {
     id,
     sourceId: SHARED_SOURCE_ID,
-    relativePath: 'audio/sound.wav',
+    sourcePath: '/Users/test/Music/sound.wav',
     sourceRevision: 1,
     startFrame: 48,
     inFrame: 0,

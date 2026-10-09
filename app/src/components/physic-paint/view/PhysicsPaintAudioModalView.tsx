@@ -83,6 +83,7 @@ export const AUDIO_REMOVE_CONFIRM_COPY = 'Remove sound? Position, trims, gain, a
 export const AUDIO_REMOVE_CANCEL = 'Cancel';
 export const AUDIO_ERROR_DECODE = "Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.";
 export const AUDIO_ERROR_MISSING = 'Sound file is missing from the project. Replace it to restore the clip.';
+export const AUDIO_RELINK_CTA = 'Relink';
 export const AUDIO_POSITION_LABEL = 'Position';
 export const AUDIO_GAIN_LABEL = 'Gain';
 export const AUDIO_FADE_IN_LABEL = 'Fade in';

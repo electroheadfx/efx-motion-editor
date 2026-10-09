@@ -191,6 +191,14 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(none.controller.audios).toHaveLength(2);
   });
 
+  it('(261009-ofk) the controller exposes isSoundMissing wired to the port and the port default is false', () => {
+    // Default port: always false (not probed -> present).
+    const defaultController = makeController({ selection: 'clip-a' });
+    expect(defaultController.controller.isSoundMissing).toBeTypeOf('function');
+    expect(defaultController.controller.isSoundMissing(CLIP_A)).toBe(false);
+    expect(defaultController.controller.isSoundMissing(CLIP_B)).toBe(false);
+  });
+
   it('commitGain patches ONLY the selected clip', () => {
     const { controller, patchSound } = makeController({ selection: 'clip-b' });
     controller.commitGain(50);

@@ -82,8 +82,10 @@ export interface PhysicsPaintAudioController {
   sound: DocumentSoundClip | null;
   /** Filename fact for the file row (basename of sourcePath). */
   filename: string | null;
-  /** True when a clip exists but its package reference no longer resolves. */
+  /** True when the SELECTED clip's file at sourcePath does not resolve on disk. */
   missing: boolean;
+  /** Per-row missing probe — the list calls this per clip (261009-ofk). */
+  isSoundMissing: (sound: DocumentSoundClip) => boolean;
   /** `Reading audio…` busy flag — disables Import/Replace/Remove/fields. */
   busy: boolean;
   /** Decode-failure state — the view maps it to the contracted error copy. */
@@ -449,6 +451,7 @@ export function usePhysicsPaintAudioController({
     sound,
     filename,
     missing,
+    isSoundMissing,
     busy: busy.value,
     decodeError: decodeError.value,
     volumeDraft,
