@@ -174,7 +174,70 @@ describe('Physic-paint FX rail double-click opens Studio (261008-ful UAT)', () =
     expect(region).toContain("this.canvas.style.cursor = 'pointer';");
     // Non-physic-paint kinds keep the drag-mode cursor ladder.
     expect(region).toContain('this.fxDragModeFromX(e.clientX, fxTrack)');
-    expect(region).toContain("'col-resize'");
+    // 261009-v0s: trim edges advertise ew-resize (was col-resize).
+    expect(region).toContain("'ew-resize'");
+    expect(region).not.toContain("'col-resize'");
     expect(region).toContain("'grab'");
+  });
+});
+
+describe('Timeline hover cursor tokens (261009-v0s)', () => {
+  it('edge zones of FX bars and audio clips resolve to ew-resize, even on physic-paint rails', () => {
+    const hoverStart = interaction.indexOf('// Cursor hints (hover state)');
+    const hoverEnd = interaction.indexOf('private onPointerUp(');
+    expect(hoverStart).toBeGreaterThan(-1);
+    expect(hoverEnd).toBeGreaterThan(hoverStart);
+    const hover = interaction.slice(hoverStart, hoverEnd);
+
+    // Edge hit-test wins over the physic-paint pointer hint (row body).
+    // The FX header's own pointer comes first — skip past it.
+    const fxBranch = hover.slice(
+      hover.indexOf('// Cursor hint: FX area'),
+      hover.indexOf('// Cursor hint: Audio area'),
+    );
+    const modeIndex = fxBranch.indexOf('const mode = this.fxDragModeFromX(e.clientX, fxTrack);');
+    const edgeIndex = fxBranch.indexOf("this.canvas.style.cursor = 'ew-resize';", modeIndex);
+    const pointerIndex = fxBranch.indexOf("this.canvas.style.cursor = 'pointer';", edgeIndex);
+    expect(modeIndex).toBeGreaterThan(-1);
+    expect(edgeIndex).toBeGreaterThan(modeIndex);
+    expect(pointerIndex).toBeGreaterThan(edgeIndex);
+    expect(fxBranch).toContain("mode === 'resize-left' || mode === 'resize-right'");
+    expect(fxBranch).toContain("fxTrack.layerType === 'physic-paint'");
+
+    // Audio clip edges use the same token.
+    const audioBranch = hover.slice(
+      hover.indexOf('// Cursor hint: Audio area'),
+      hover.indexOf('// Name label hover'),
+    );
+    expect(audioBranch).toContain("this.canvas.style.cursor = 'ew-resize';");
+    expect(audioBranch).not.toContain("'col-resize'");
+  });
+
+  it('active-drag trim on FX and audio bars advertises ew-resize', () => {
+    expect(interaction).toContain("mode === 'move' ? 'grabbing' : 'ew-resize'");
+    // Audio resize-start site (the INT-04 edge branch).
+    expect(interaction).toContain("this.canvas.style.cursor = 'ew-resize';");
+    // Slip keeps its existing ew-resize on alt; row-resize stays on the bottom edge.
+    expect(interaction).toContain("mode === 'slip' ? 'ew-resize' : 'grabbing'");
+    expect(interaction).toContain("this.canvas.style.cursor = 'row-resize';");
+  });
+
+  it('playhead 10px hover shows pointer via isOnPlayhead before the content-area default fallback', () => {
+    const defaultIndex = interaction.indexOf("this.canvas.style.cursor = 'default';");
+    const playheadIndex = interaction.indexOf('if (this.isOnPlayhead(e.clientX)) {');
+    expect(defaultIndex).toBeGreaterThan(-1);
+    // Exactly one hover-time isOnPlayhead consult (the pointer-down gate is separate).
+    expect(interaction.match(/isOnPlayhead\(e\.clientX\)/g) ?? []).toHaveLength(2);
+    expect(playheadIndex).toBeGreaterThan(-1);
+    // The hover consult sits immediately before the default fallback.
+    const fallbackAfterPlayhead = interaction.indexOf(
+      "this.canvas.style.cursor = 'default';",
+      playheadIndex,
+    );
+    expect(fallbackAfterPlayhead).toBeGreaterThan(playheadIndex);
+    const playheadBody = interaction.slice(playheadIndex, fallbackAfterPlayhead);
+    expect(playheadBody).toContain("this.canvas.style.cursor = 'pointer';");
+    // Hit zone stays 10px — the helper is untouched.
+    expect(interaction).toContain('return Math.abs(clientX - playheadX) <= 10;');
   });
 });
