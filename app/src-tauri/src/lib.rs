@@ -75,6 +75,26 @@ struct PhysicsPaintRotoPlaybackSettings {
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct PhysicPaintDocumentAudioClipRef {
+    // Two-identity law (261008-ig1): clipId is the PLACED clip's own id —
+    // never the shared sourceId of the imported file.
+    #[serde(rename = "clipId")]
+    clip_id: String,
+    #[serde(rename = "assetUrl")]
+    asset_url: String,
+}
+
+// dup-clip-plays-audios-0 (261008-ig1 D-01 follow-up): the documentAudio
+// transport now carries EVERY placed clip under one revision — typed (not an
+// opaque Value) so a member the struct does not declare fails the round-trip
+// gate instead of silently vanishing on the native launch path.
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct PhysicsPaintDocumentAudioSection {
+    revision: u64,
+    clips: Vec<PhysicPaintDocumentAudioClipRef>,
+}
+
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
 struct PhysicsPaintLaunchContext {
     #[serde(rename = "operationId")]
     operation_id: String,
@@ -106,6 +126,15 @@ struct PhysicsPaintLaunchContext {
     roto_interpolation_settings: Option<Value>,
     #[serde(rename = "audioPreview", skip_serializing_if = "Option::is_none")]
     audio_preview: Option<Value>,
+    // 52.5 (UAT round 6): the closed documentAudio section. Without this
+    // field serde DROPPED the member on the native path, so a reopened
+    // project's clips reached the child with no section — the monitor never
+    // ran prepareClip and the clip leg stayed silent while the band still
+    // drew (peaks use a separate path). Typed since dup-clip-plays-audios-0:
+    // a dropped/un-declared member now fails deserialization instead of
+    // silently passing through as an opaque Value.
+    #[serde(rename = "documentAudio", skip_serializing_if = "Option::is_none")]
+    document_audio: Option<PhysicsPaintDocumentAudioSection>,
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
@@ -990,6 +1019,7 @@ mod tests {
             cached_roto_frames: Vec::new(),
             roto_interpolation_settings: None,
             audio_preview: None,
+            document_audio: None,
         }
     }
 
@@ -1023,6 +1053,151 @@ mod tests {
         let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
         assert_eq!(deserialized.document.as_ref().unwrap()["id"], "layer-1");
         assert_eq!(deserialized.document.as_ref().unwrap()["activeTrackId"], "track-1");
+    }
+
+    #[test]
+    fn physics_paint_launch_context_round_trips_the_document_audio_section() {
+        // 52.5 UAT round 6: without a `documentAudio` field serde silently
+        // dropped the section, so a reopened project's clip reached the Studio
+        // with no carrier — the monitor never decoded it and playback stayed
+        // dead while the band still drew. Pin the member across the same
+        // round-trip the child's `get_physics_paint_launch_context` fetch uses.
+        // Reshaped (dup-clip-plays-audios-0): the section is the typed
+        // {revision, clips[]} list — a member the struct does not declare now
+        // fails this round-trip instead of passing through opaquely.
+        let mut context = roto_launch_context();
+        context.document_audio = Some(serde_json::from_value(serde_json::json!({
+            "revision": 7,
+            "clips": [
+                { "clipId": "clip-1", "assetUrl": "efxasset://localhost/audio/dialogue.wav" }
+            ]
+        }))
+        .unwrap());
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["documentAudio"]["clips"][0]["clipId"], "clip-1");
+        let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
+        let section = deserialized.document_audio.as_ref().unwrap();
+        assert_eq!(section.revision, 7);
+        assert_eq!(section.clips.len(), 1);
+        assert_eq!(section.clips[0].clip_id, "clip-1");
+        assert_eq!(section.clips[0].asset_url, "efxasset://localhost/audio/dialogue.wav");
+    }
+
+    #[test]
+    fn physics_paint_launch_context_round_trips_the_document_audio_clips_list() {
+        // dup-clip-plays-audios-0 (261008-ig1 D-01 follow-up): the transport
+        // carries EVERY placed clip — two refs, a distinct clipId per PLACED
+        // clip, ONE shared assetUrl (a duplicate shares the imported file).
+        // The section never carries `sourceId` (two-identity law). A struct
+        // that does not declare `clips` (or an entry member) fails the
+        // from_value below — this gate genuinely fails on a dropped member.
+        let mut context = roto_launch_context();
+        let section_json = serde_json::json!({
+            "revision": 7,
+            "clips": [
+                { "clipId": "clip-1", "assetUrl": "efxasset://localhost/audio/dialogue.wav" },
+                { "clipId": "clip-2", "assetUrl": "efxasset://localhost/audio/dialogue.wav" }
+            ]
+        });
+        context.document_audio = Some(serde_json::from_value(section_json).unwrap());
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["documentAudio"]["clips"].as_array().unwrap().len(), 2);
+        assert_eq!(json["documentAudio"]["clips"][1]["clipId"], "clip-2");
+        let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
+        let section = deserialized.document_audio.as_ref().unwrap();
+        assert_eq!(section.revision, 7);
+        assert_eq!(section.clips.len(), 2);
+        assert_eq!(section.clips[0].clip_id, "clip-1");
+        assert_eq!(section.clips[1].clip_id, "clip-2");
+        assert_eq!(section.clips[1].asset_url, "efxasset://localhost/audio/dialogue.wav");
+        let reencoded = serde_json::to_string(section).unwrap();
+        assert!(reencoded.contains("clipId"));
+        assert!(!reencoded.contains("sourceId"));
+    }
+
+    #[test]
+    fn physics_paint_launch_context_round_trips_the_audios_list() {
+        // 261008-ig1 D-04 HARD GATE: the multi-clip `audios[]` list rides the
+        // opaque `document` carrier, but the serde silent-drop pitfall is
+        // exactly why this is pinned with a round-trip — a member the struct
+        // does not declare vanishes on the native launch path and the Studio
+        // child never sees the clip list. Two clip identities: distinct `id`
+        // per placed clip, ONE shared `sourceId` (the imported file).
+        let clip_a = serde_json::json!({
+            "id": "clip-1",
+            "sourceId": "asset-shared-1",
+            "relativePath": "audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/dialogue.wav",
+            "sourceRevision": 3,
+            "startFrame": 48,
+            "inFrame": 12,
+            "outFrame": 108,
+            "gain": -20,
+            "fadeInFrames": 6,
+            "fadeOutFrames": 12,
+            "fadeInCurve": "exponential",
+            "fadeOutCurve": "linear",
+            "enabled": true
+        });
+        let clip_b = serde_json::json!({
+            "id": "clip-2",
+            "sourceId": "asset-shared-1",
+            "relativePath": "audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/dialogue.wav",
+            "sourceRevision": 3,
+            "startFrame": 200,
+            "inFrame": 0,
+            "outFrame": 96,
+            "gain": 15,
+            "fadeInFrames": 0,
+            "fadeOutFrames": 4,
+            "fadeInCurve": "linear",
+            "fadeOutCurve": "logarithmic",
+            "enabled": false
+        });
+        let mut context = roto_launch_context();
+        context.document = Some(serde_json::json!({
+            "id": "layer-1",
+            "version": 1,
+            "activeTrackId": "track-1",
+            "tracks": [],
+            "audios": [clip_a, clip_b]
+        }));
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["document"]["audios"].as_array().unwrap().len(), 2);
+        let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
+        let document = deserialized.document.as_ref().unwrap();
+        let audios = document["audios"].as_array().expect("audios list survives deserialize");
+        assert_eq!(audios.len(), 2);
+        for (index, expected_id) in ["clip-1", "clip-2"].iter().enumerate() {
+            let clip = &audios[index];
+            assert_eq!(clip["id"].as_str().unwrap(), *expected_id);
+            assert_eq!(clip["sourceId"].as_str().unwrap(), "asset-shared-1");
+            assert_eq!(
+                clip["relativePath"].as_str().unwrap(),
+                "audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/dialogue.wav"
+            );
+            assert_eq!(clip["sourceRevision"], 3);
+            assert!(clip["startFrame"].is_number());
+            assert!(clip["inFrame"].is_number());
+            assert!(clip["outFrame"].is_number());
+            assert!(clip["gain"].is_number());
+            assert!(clip["fadeInFrames"].is_number());
+            assert!(clip["fadeOutFrames"].is_number());
+            assert!(clip["fadeInCurve"].is_string());
+            assert!(clip["fadeOutCurve"].is_string());
+            assert!(clip["enabled"].is_boolean());
+        }
+        // Per-clip settings survive distinctly — the two clips are not collapsed.
+        assert_eq!(audios[0]["startFrame"], 48);
+        assert_eq!(audios[0]["gain"], -20);
+        assert_eq!(audios[0]["fadeOutCurve"], "linear");
+        assert_eq!(audios[0]["enabled"], true);
+        assert_eq!(audios[1]["startFrame"], 200);
+        assert_eq!(audios[1]["gain"], 15);
+        assert_eq!(audios[1]["fadeOutCurve"], "logarithmic");
+        assert_eq!(audios[1]["enabled"], false);
+        // Two identities, never overloaded: distinct clip ids, ONE shared file.
+        assert_ne!(audios[0]["id"], audios[1]["id"]);
+        assert_eq!(audios[0]["sourceId"], audios[1]["sourceId"]);
     }
 
     // WR-07: pure byte-range resolution for the efxasset video Range branch.

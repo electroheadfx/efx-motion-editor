@@ -138,6 +138,7 @@ function makeTrackDocument(layerId: string, trackId: string = TEST_TRACK_ID): Ef
       transformLocked: true,
     },
     photoReference: null,
+    audios: [],
     compositeRevision: 0,
   };
 }

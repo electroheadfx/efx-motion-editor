@@ -214,8 +214,31 @@ export function commitStepperInput(raw: string, options: StepperCommitOptions): 
 const WRAPPER_STYLE: JSX.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  gap: '3px',
+  gap: '4px',
   minWidth: 0,
+};
+
+/**
+ * 261009-6ee — the unified single-pill chrome (SPECS/modal-audio-new Stepper
+ * node): ONE 22px container owns the whole box (single background + single
+ * outline, radius 4px, padding 0 6px, gap 4px); the buttons and the input
+ * inside it are transparent. Geometry only — the app's existing tokens stay,
+ * the mock's raw hex values are Pencil export artifacts. No call site may
+ * re-add a box key: overrides merge OVER these styles, so the audit in
+ * NumericStepper.test.tsx pins exactly one box-drawing element per stepper.
+ */
+const PILL_STYLE: JSX.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  boxSizing: 'border-box',
+  flex: '1 1 0',
+  minWidth: 0,
+  height: '22px',
+  padding: '0 6px',
+  gap: '4px',
+  borderRadius: '4px',
+  border: '1px solid var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55))',
+  background: 'var(--sidebar-input-bg, rgba(127, 131, 138, 0.18))',
 };
 
 const BASE_BUTTON_STYLE: JSX.CSSProperties = {
@@ -226,9 +249,6 @@ const BASE_BUTTON_STYLE: JSX.CSSProperties = {
   height: '20px',
   flexShrink: 0,
   padding: 0,
-  border: '1px solid var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55))',
-  borderRadius: '4px',
-  background: 'var(--sidebar-input-bg, rgba(127, 131, 138, 0.18))',
   color: 'var(--sidebar-text-secondary, inherit)',
   cursor: 'pointer',
   lineHeight: 1,
@@ -240,10 +260,6 @@ const BASE_INPUT_STYLE: JSX.CSSProperties = {
   flex: '1 1 0',
   minWidth: 0,
   width: '100%',
-  padding: '4px 6px',
-  border: '1px solid var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55))',
-  borderRadius: '4px',
-  background: 'var(--sidebar-input-bg, rgba(127, 131, 138, 0.18))',
   color: 'var(--sidebar-text-primary, inherit)',
   fontSize: '12px',
   textAlign: 'center',
@@ -389,66 +405,71 @@ export function NumericStepper({
   return (
     <div class={className ? `numeric-stepper ${className}` : 'numeric-stepper'} style={WRAPPER_STYLE}>
       {children}
-      <button
-        type="button"
-        class={resolvedButtonClass}
-        style={resolvedButtonStyle}
-        tabIndex={-1}
-        disabled={disabled || decrementAtEnd}
-        aria-label={`Decrease ${ariaLabel}`}
-        onPointerDown={handlePressStart(-1)}
-        onPointerUp={handlePressEnd}
-        onPointerCancel={handlePressEnd}
-        onPointerLeave={handlePressEnd}
-        onClick={handleClick(-1)}
-      >
-        <Minus size={BUTTON_ICON_SIZE} aria-hidden="true" />
-      </button>
-      <input
-        ref={inputRef}
-        type="text"
-        inputMode="decimal"
-        class={inputClass ? `numeric-stepper-input ${inputClass}` : 'numeric-stepper-input'}
-        style={inputStyle ? { ...BASE_INPUT_STYLE, ...inputStyle } : BASE_INPUT_STYLE}
-        value={display}
-        disabled={disabled}
-        aria-label={ariaLabel}
-        aria-disabled={ariaDisabled ? 'true' : undefined}
-        aria-describedby={ariaDescribedBy}
-        onFocus={(event) => {
-          startCoalescing();
-          onFocus?.(event);
-        }}
-        onBlur={(event) => {
-          commitInput(event.currentTarget);
-          stopCoalescing();
-          onBlur?.();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
+      {/* 261009-6ee: the pill wraps EXACTLY the three controls — NumericInput's
+          label (children) stays a sibling OUTSIDE it, so the label drag-to-scrub
+          contract is untouched. */}
+      <div class="numeric-stepper-pill" style={PILL_STYLE}>
+        <button
+          type="button"
+          class={resolvedButtonClass}
+          style={resolvedButtonStyle}
+          tabIndex={-1}
+          disabled={disabled || decrementAtEnd}
+          aria-label={`Decrease ${ariaLabel}`}
+          onPointerDown={handlePressStart(-1)}
+          onPointerUp={handlePressEnd}
+          onPointerCancel={handlePressEnd}
+          onPointerLeave={handlePressEnd}
+          onClick={handleClick(-1)}
+        >
+          <Minus size={BUTTON_ICON_SIZE} aria-hidden="true" />
+        </button>
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="decimal"
+          class={inputClass ? `numeric-stepper-input ${inputClass}` : 'numeric-stepper-input'}
+          style={inputStyle ? { ...BASE_INPUT_STYLE, ...inputStyle } : BASE_INPUT_STYLE}
+          value={display}
+          disabled={disabled}
+          aria-label={ariaLabel}
+          aria-disabled={ariaDisabled ? 'true' : undefined}
+          aria-describedby={ariaDescribedBy}
+          onFocus={(event) => {
+            startCoalescing();
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
             commitInput(event.currentTarget);
-            event.currentTarget.blur();
-          } else if (event.key === 'Escape') {
-            event.currentTarget.value = display;
-            event.currentTarget.blur();
-          }
-        }}
-      />
-      <button
-        type="button"
-        class={resolvedButtonClass}
-        style={resolvedButtonStyle}
-        tabIndex={-1}
-        disabled={disabled || incrementAtEnd}
-        aria-label={`Increase ${ariaLabel}`}
-        onPointerDown={handlePressStart(1)}
-        onPointerUp={handlePressEnd}
-        onPointerCancel={handlePressEnd}
-        onPointerLeave={handlePressEnd}
-        onClick={handleClick(1)}
-      >
-        <Plus size={BUTTON_ICON_SIZE} aria-hidden="true" />
-      </button>
+            stopCoalescing();
+            onBlur?.();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              commitInput(event.currentTarget);
+              event.currentTarget.blur();
+            } else if (event.key === 'Escape') {
+              event.currentTarget.value = display;
+              event.currentTarget.blur();
+            }
+          }}
+        />
+        <button
+          type="button"
+          class={resolvedButtonClass}
+          style={resolvedButtonStyle}
+          tabIndex={-1}
+          disabled={disabled || incrementAtEnd}
+          aria-label={`Increase ${ariaLabel}`}
+          onPointerDown={handlePressStart(1)}
+          onPointerUp={handlePressEnd}
+          onPointerCancel={handlePressEnd}
+          onPointerLeave={handlePressEnd}
+          onClick={handleClick(1)}
+        >
+          <Plus size={BUTTON_ICON_SIZE} aria-hidden="true" />
+        </button>
+      </div>
     </div>
   );
 }

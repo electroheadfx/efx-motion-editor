@@ -1,5 +1,5 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
-import { NumericStepper } from '../../shared/NumericStepper';
+import { SliderStepper } from '../../shared/SliderStepper';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -62,48 +62,23 @@ function TopBarSlider(props: {
   min: number;
   max: number;
   onChange: (value: number) => void;
-  numericInput?: boolean;
   disabled?: boolean;
 }) {
   const updateValue = (value: unknown) => props.onChange(clampTopBarValue(value, props.min, props.max));
   return (
-    <label class={`physics-paint-topbar-control physics-paint-topbar-slider${props.numericInput ? ' exact' : ''}`} for={props.id}>
-      <span>{props.label}</span>
-      <div class="physics-paint-topbar-slider-row">
-        <input
-          id={props.id}
-          type="range"
-          min={props.min}
-          max={props.max}
-          value={props.value}
-          disabled={props.disabled}
-          onInput={(event) => updateValue((event.target as HTMLInputElement).value)}
-        />
-        {props.numericInput ? (
-          <NumericStepper
-            class="physics-paint-topbar-number-stepper"
-            value={props.value}
-            onChange={(value) => updateValue(value)}
-            step={1}
-            min={props.min}
-            max={props.max}
-            disabled={props.disabled}
-            ariaLabel={`${props.label} exact value`}
-            inputStyle={{
-              flex: '0 0 auto',
-              width: '46px',
-              height: '24px',
-              padding: '2px 4px',
-              backgroundColor: '#5a5c5f',
-              color: '#f8fafc',
-              fontSize: '12px',
-              fontWeight: 700,
-            }}
-            buttonStyle={{ width: '22px', height: '24px' }}
-          />
-        ) : <output>{props.value}</output>}
-      </div>
-    </label>
+    <div class="physics-paint-topbar-control physics-paint-topbar-slider">
+      <SliderStepper
+        id={props.id}
+        label={props.label}
+        value={props.value}
+        onChange={(value) => updateValue(value)}
+        step={1}
+        min={props.min}
+        max={props.max}
+        disabled={props.disabled}
+        ariaLabel={props.label}
+      />
+    </div>
   );
 }
 
@@ -136,7 +111,7 @@ export function PhysicsPaintTopBar({
       </div>
 
       <div class="physics-paint-topbar-primary">
-        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} numericInput disabled={disabled} />
+        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} disabled={disabled} />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
 
         <div class="physics-paint-topbar-control">
@@ -175,10 +150,9 @@ export function PhysicsPaintTopBar({
           </div>
         </div>
 
-        <div class="physics-paint-topbar-control">
-          <span>Grain scale</span>
-          <NumericStepper
-            class="physics-paint-topbar-number-stepper"
+        <div class="physics-paint-topbar-control physics-paint-topbar-slider">
+          <SliderStepper
+            label="Grain scale"
             value={grainScale}
             step={grainScaleStep(grainScale)}
             resolveStep={grainScaleStep}
@@ -188,17 +162,6 @@ export function PhysicsPaintTopBar({
             disabled={disabled}
             freeEntry
             onChange={onGrainScaleChange}
-            inputStyle={{
-              flex: '0 0 auto',
-              width: '46px',
-              height: '24px',
-              padding: '2px 4px',
-              backgroundColor: '#5a5c5f',
-              color: '#f8fafc',
-              fontSize: '12px',
-              fontWeight: 700,
-            }}
-            buttonStyle={{ width: '22px', height: '24px' }}
           />
         </div>
       </div>

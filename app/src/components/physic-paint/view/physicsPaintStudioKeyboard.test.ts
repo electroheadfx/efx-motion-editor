@@ -56,6 +56,7 @@ function actions() {
     pasteRotoKey: vi.fn(),
     deleteRotoKey: vi.fn(),
     deleteBackgroundClip: vi.fn(),
+    removeSelectedSound: vi.fn(),
     toggleShortcuts: vi.fn(),
     toggleRotoPlayback: vi.fn(),
     navigateRotoFrame: vi.fn(),
@@ -806,5 +807,97 @@ describe('Physics Paint Bg clip delete shortcut (49-06 UAT)', () => {
 
     expect(handlers.deleteBackgroundClip).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('Physics Paint sound clip delete shortcut (261008-ryq)', () => {
+  it.each(['Backspace', 'Delete'])('removes the SELECTED sound clip on %s — one-shot, no arm', (key) => {
+    const { handlers, preventDefault } = dispatch(
+      key,
+      new TestHTMLElement('div') as unknown as EventTarget,
+      {},
+      { hasSelectedSoundClip: true },
+    );
+
+    expect(handlers.removeSelectedSound).toHaveBeenCalledOnce();
+    expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
+    expect(handlers.deleteBackgroundClip).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Bg clip wins when both a Bg clip and a sound clip are selected', () => {
+    const { handlers } = dispatch(
+      'Delete',
+      new TestHTMLElement('div') as unknown as EventTarget,
+      {},
+      { hasSelectedBackgroundClip: true, hasSelectedSoundClip: true },
+    );
+
+    expect(handlers.deleteBackgroundClip).toHaveBeenCalledOnce();
+    expect(handlers.removeSelectedSound).not.toHaveBeenCalled();
+    expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
+  });
+
+  it('falls through to the Roto delete flow when no sound clip is selected', () => {
+    const { handlers } = dispatch('Delete', new TestHTMLElement('canvas') as unknown as EventTarget);
+
+    expect(handlers.deleteRotoKey).toHaveBeenCalledOnce();
+    expect(handlers.removeSelectedSound).not.toHaveBeenCalled();
+  });
+
+  it('suppresses repeated and modified events even with a sound clip selected', () => {
+    for (const overrides of [
+      { repeat: true },
+      { metaKey: true },
+      { ctrlKey: true },
+      { altKey: true },
+      { shiftKey: true },
+    ]) {
+      const { handlers, preventDefault } = dispatch(
+        'Delete',
+        new TestHTMLElement('div') as unknown as EventTarget,
+        overrides,
+        { hasSelectedSoundClip: true },
+      );
+      expect(handlers.removeSelectedSound).not.toHaveBeenCalled();
+      expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+  });
+
+  it('protects against removing a sound clip while typing in a field', () => {
+    const { handlers, preventDefault } = dispatch(
+      'Delete',
+      new TestHTMLElement('input') as unknown as EventTarget,
+      {},
+      { hasSelectedSoundClip: true },
+    );
+
+    expect(handlers.removeSelectedSound).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('stays out of the way while a real modal is open — the dialog owns its own key path', () => {
+    const { handlers, preventDefault } = dispatch(
+      'Delete',
+      new TestHTMLElement('div', { modalOpen: true }) as unknown as EventTarget,
+      {},
+      { hasSelectedSoundClip: true },
+    );
+
+    expect(handlers.removeSelectedSound).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('prevents the default but never mutates while mutations are locked', () => {
+    const { handlers, preventDefault } = dispatch(
+      'Delete',
+      new TestHTMLElement('div') as unknown as EventTarget,
+      {},
+      { hasSelectedSoundClip: true, mutationLocked: true },
+    );
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(handlers.removeSelectedSound).not.toHaveBeenCalled();
   });
 });

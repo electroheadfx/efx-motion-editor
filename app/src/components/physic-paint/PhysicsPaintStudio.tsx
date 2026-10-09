@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
 import type { BgMode, CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
-import type { BlendMode, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintApplyResult, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
+import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
+import type { SoundBandGesturePatch } from './view/soundBandGeometry';
+import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
 import type { MceImageRef } from '../../types/project';
 import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, rotoPhysicalRevision, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, prefetchNeighborFrames, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
@@ -29,6 +30,8 @@ import {
   setPhotoReferenceOpacity,
   setPhotoReferenceTransformLocked,
   setBackgroundTransformLocked,
+  patchDocumentSound,
+  addDocumentSound,
   clearPhotoReference,
   setTrackBlend,
   setTrackOpacity,
@@ -138,6 +141,18 @@ import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './ho
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
+import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsPaintAudioController } from './view/physicsPaintAudioController';
+import type { AudioSectionPorts } from './view/PhysicsPaintAudioListSection';
+import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
+// 52.5-01b: the Document sound import flow reuses the EXISTING decode/peaks
+// machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
+// audioPeaksCache (the task-3 stain reads peaks keyed by sourceId).
+import { assetUrl } from '../../lib/ipc';
+import { isSafeAudioRelativePath } from '../../lib/efxPaintPersistence';
+import { audioEngine } from '../../lib/audioEngine';
+import { computeWaveformPeaks } from '../../lib/audioWaveform';
+import { audioPeaksCache } from '../../lib/audioPeaksCache';
+import { efxPaintDocumentAudioStore } from './audio/efxPaintDocumentAudioStore';
 import { encodeSourceBytesForDocumentSync, requestImageImport, requestImageLibrary, requestPhysicPaintProjectContext } from '../../lib/physicPaintBridge';
 import { sortImagesByOriginalFilename } from '../../efx-paint/utils/naturalFilenameSort';
 import { imageStore } from '../../stores/imageStore';
@@ -421,7 +436,38 @@ export function PhysicsPaintStudio() {
   // 49-06 (UAT round 2): the right-panel tool tab. The Studio owns it so a Paint
   // track selection returns the panel to Track option and a Bg rail selection
   // opens the Background option tab (selection-driven, never stuck on the clip).
-  const rightPanelToolTab = useSignal<'paint' | 'track' | 'background'>('paint');
+  const rightPanelToolTab = useSignal<'paint' | 'track' | 'background' | 'audio'>('paint');
+  /* ---------------------------------------------------------------------------
+   * 52.5-01b (D-02/D-03/D-05) + 261008-ig1 Task 2 + 261008-ryq: the Document
+   * sound signals. They live HERE, ABOVE the keyboard hook — its state object
+   * reads `selectedSoundId`, so a declaration further down would hit the TDZ on
+   * first render. The controller (:usePhysicsPaintAudioController below) and
+   * every handler stay where they are: only lazy arrows / event handlers reach
+   * them, never the memo factory itself.
+   * - `selectedSoundId` — the Studio-owned selection (D-01): handlers are the
+   *   ONLY writers (band press, list-row click, dblclick, reveal, remove).
+   * - `audioModalTarget` — clipId | '' | null: the modal's open target
+   *   (261008-ryq: the clip LIST lives in the sidebar Audio tab — '' opens on
+   *   the zero-clip empty state, a clipId opens the single-clip editor,
+   *   null = closed (Escape/X clear it)).
+   * - `audioImportMode` — the intent the last onImportRequest carried
+   *   ('append' = fresh clip, 'replace' = selected clip's source).
+   * - `revealRequest` — {frame, nonce} one-shot viewport positioning for a
+   *   selected/revealed clip (the strip rides the qad math per nonce).
+   * - `knownAudioPaths` — CMP-05 fail-closed missing-file probe: the project's
+   *   audio/ refs as the main library reports them. null = not loaded yet and
+   *   the probe reports "present" (no false-missing flash at boot); refreshed
+   *   on mount and after every in-gallery import.
+   * ------------------------------------------------------------------------- */
+  const selectedSoundId = useSignal<string | null>(null);
+  const audioModalTarget = useSignal<string | null>(null);
+  const audioImportMode = useSignal<'append' | 'replace'>('append');
+  const revealRequest = useSignal<{ frame: number; nonce: number } | null>(null);
+  const knownAudioPaths = useSignal<ReadonlySet<string> | null>(null);
+  // UAT round 5: the gallery probe also carries the project directory, which
+  // is the fallback root for the reopen peaks-ensure when no documentAudio
+  // section is routed (see the effect below).
+  const audioProjectDir = useSignal<string | null>(null);
   // 50-UAT (modal redesign): the floating Photo Reference dialog — a Studio-owned
   // signal so the strip camera icon opens it and the dialog self-closes. The
   // dialog stays open behind the full-area reference picker so an Import/
@@ -3104,6 +3150,10 @@ export function PhysicsPaintStudio() {
       hasSelectedRotoKey: selectedKeyId.value !== null,
       // 49-06 UAT: a selected Bg rail owns Delete/Backspace (selection-driven).
       hasSelectedBackgroundClip: selectedBackgroundClipId.value !== null,
+      // 261008-ryq: a selected sound clip owns Delete/Backspace after the Bg
+      // branch (Bg wins when both are selected) — safe: the signal declaration
+      // sits above this hook call (TDZ law).
+      hasSelectedSoundClip: selectedSoundId.value !== null,
     },
     savedRotoFrames: timelineSavedRotoFrames,
     actions: {
@@ -3142,6 +3192,10 @@ export function PhysicsPaintStudio() {
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
+      // 261008-ryq: one-shot keyboard removal of the selected sound clip —
+      // MUST stay an arrow (audioModalController is declared further down and
+      // is only touched at keydown time).
+      removeSelectedSound: () => audioModalController.removeSelected(),
       selectAllRotoKeys,
       disarmPushTool,
       // 43.6-06 (D-04): the solo disarm layer sits between the push disarm
@@ -3521,6 +3575,33 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
+  // 261008-ryq Task 1: the sidebar Audio-tab ports (audioSectionPortsRef —
+  // backgroundClipSectionPortsRef precedent). The controller instance is
+  // rebuilt every render (fresh audios/selection facts), so `getController`
+  // resolves it through a ref: the ports object keeps ONE identity for the
+  // rightPanel memo while the arrow always yields the LATEST controller at
+  // child-render time. The other members are lazy arrows too — they only run
+  // on a row click / Import press, never inside the memo factory (the
+  // controller, picker and reveal handlers are declared further down).
+  const audioModalControllerRef = useRef<PhysicsPaintAudioController | null>(null);
+  const audioSectionPortsRef = useRef<AudioSectionPorts>({
+    getController: () => audioModalControllerRef.current!,
+    onSelectClip: (clipId: string) => {
+      // Row click does all three effects IN the handler (never a deferred
+      // effect): select + reveal + open the modal on that clip.
+      const controller = audioModalControllerRef.current;
+      const clip = controller?.audios.find((entry) => entry.id === clipId);
+      if (!controller || !clip) return;
+      controller.disarmRemove();
+      selectedSoundId.value = clip.id;
+      revealSoundClip(clip);
+      audioModalTarget.value = clip.id;
+    },
+    onImportRequest: (mode: 'append' | 'replace') => {
+      audioImportMode.value = mode;
+      void audioPicker.openPicker();
+    },
+  });
   // 50-UAT (modal redesign): the Photo Reference dialog ports are identity-
   // stable — the store ops and the imageStore resolver never change, so the ref
   // is created once and the dialog memo deps stay small (the dialog re-resolves
@@ -3543,7 +3624,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, rightPanelToolTab], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3584,6 +3665,11 @@ export function PhysicsPaintStudio() {
     backgroundClipSection: launchContext?.layerId
       ? { layerId: launchContext.layerId, selectedBackgroundClipId, ports: backgroundClipSectionPortsRef.current }
       : undefined,
+    // 261008-ryq Task 1: the sidebar Audio-tab ports — identity-stable ref;
+    // the factory only ever reads `.current` (getController runs at
+    // child-render time, never here). efxPaintVersion is already a memo dep,
+    // so a document edit re-runs the factory and the rows refresh.
+    audioSectionPorts: launchContext?.layerId ? audioSectionPortsRef.current : undefined,
     // 49-06 (UAT round 2): the Studio-owned tool tab signal — the right panel
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
     // to Track option and a Bg rail selection opens the Background option tab.
@@ -4632,6 +4718,253 @@ export function PhysicsPaintStudio() {
   const handleCancelReferencePicker = () => {
     referencePicker.cancel();
   };
+  /* ---------------------------------------------------------------------------
+   * 52.5-01b (D-02/D-03/D-05) + 261008-ig1 Task 2: the Document sound flow.
+   * The signal declarations moved UP beside `rightPanelToolTab` (the keyboard
+   * hook's state reads `selectedSoundId` — TDZ law). What lives HERE: the
+   * controller instance — the gallery Confirm flow drives the SAME signal
+   * instance the modal renders (beginReading → decode → applyImportedSource /
+   * applyReplacedSource → endReading) — and the handlers below it.
+   * ------------------------------------------------------------------------- */
+  const refreshKnownAudioPaths = async (): Promise<PhysicPaintAudioAssetRef[]> => {
+    const result = await requestImageLibrary('audio');
+    const assets = result.ok ? result.audioAssets ?? [] : [];
+    knownAudioPaths.value = new Set(assets.map((asset) => asset.relativePath));
+    audioProjectDir.value = result.ok && result.projectDir.length > 0 ? result.projectDir : null;
+    return assets;
+  };
+  useEffect(() => {
+    void refreshKnownAudioPaths();
+    return undefined;
+  }, []);
+  const audioModalController = usePhysicsPaintAudioController({
+    layerId: launchContext?.layerId ?? '',
+    // 261008-ig1 Task 2: the controller resolves the edited clip from THIS
+    // selection (never the list head) — same signal the band + modal bind.
+    selectedSoundId,
+    ports: {
+      getDocument: (layerId) => getEfxPaintDocument(layerId) ?? undefined,
+      // addSound/patchSound/removeSound default to the per-clip store doors
+      // (no slot shim — 261008-ig1 Task 2).
+      getFps: () => launchContext?.fps ?? efxPaintDocumentAudioStore.getFps(),
+      isSoundMissing: (sound) => {
+        const known = knownAudioPaths.value;
+        return known !== null && !known.has(sound.relativePath);
+      },
+    },
+  });
+  // 261008-ryq: publish the LATEST controller to the identity-stable ports ref
+  // (render-body ref write — launchContextRef precedent, not a signal).
+  audioModalControllerRef.current = audioModalController;
+  // 52.5-01b (D-02/D-03): the ONE shared gallery in kind 'audio' mode — same
+  // controller, same region-swap view; only the listing target, the dialog
+  // filter and the import kind differ (never a second picker, never a new
+  // file-dialog path). Audio filter = the D-04 format list + the main app's
+  // extra containers (m4a/aif/aiff decode through the same audioEngine path).
+  const audioPicker = useBackgroundAssetPickerController(
+    {
+      requestLibrary: () => requestImageLibrary('audio'),
+      importFiles: async (paths: string[], _projectDir: string) => {
+        const result = await requestImageImport(paths, 'audio');
+        if (!result.ok) throw new Error(result.error ?? 'Audio import failed');
+      },
+      openDialog: async () => {
+        const selected = await openNativeImageDialog({
+          multiple: true,
+          filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'aac', 'flac', 'm4a', 'aif', 'aiff'] }],
+        });
+        if (!selected) return null;
+        return Array.isArray(selected) ? selected : [selected];
+      },
+      sortImages: (images: readonly MceImageRef[]) => sortImagesByOriginalFilename(images, (image) => image.original_filename),
+      // Audio mode never lists image rows (stub keeps the shared ports type).
+      refreshLibrary: async () => [],
+      // Post-import refresh doubles as the missing-probe set refresh.
+      refreshAudioLibrary: refreshKnownAudioPaths,
+    },
+    'audio',
+  );
+  // 52.5-01b: gallery Confirm — close FIRST (the step-aside lifts, so the
+  // modal's `Reading audio…` / error states are visible during the decode),
+  // then fetch + decode the confirmed ref through the EXISTING machinery
+  // (assetUrl fetch → audioEngine.decode — D-04 no new decode path), cache
+  // its peaks keyed by sourceId (the task-3 stain reads them), and commit
+  // through the controller: 'append' = applyImportedSource (ALWAYS a fresh
+  // clip, D-01), 'replace' = applyReplacedSource (the SELECTED clip's source,
+  // position/in-out preserved). A successful commit reveals the edited clip.
+  const handleConfirmAudioPicker = (sortedIds: string[]) => {
+    const layerId = launchContext?.layerId;
+    const assetId = sortedIds[0];
+    const projectDir = audioPicker.projectDir.peek();
+    if (!layerId || !assetId || !projectDir) return;
+    const asset = audioPicker.audioAssets.peek().find((entry) => entry.id === assetId);
+    if (!asset) return;
+    audioPicker.cancel();
+    void (async () => {
+      audioModalController.beginReading();
+      try {
+        const response = await fetch(assetUrl(`${projectDir}/${asset.relativePath}`));
+        if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
+        const bytes = await response.arrayBuffer();
+        const buffer = await audioEngine.decode(asset.id, bytes);
+        // UAT round 4: the source frame count powers the band's trim window.
+        audioPeaksCache.set(asset.id, computeWaveformPeaks(buffer), Math.max(1, Math.ceil(buffer.duration * (launchContext?.fps ?? efxPaintDocumentAudioStore.getFps()))));
+        const source = {
+          sourceId: asset.id,
+          relativePath: asset.relativePath,
+          durationSec: buffer.duration,
+        };
+        const mode = audioImportMode.peek();
+        const result = mode === 'replace'
+          ? audioModalController.applyReplacedSource(source)
+          : audioModalController.applyImportedSource(source);
+        audioModalController.endReading();
+        if (result.ok) {
+          audioModalController.clearError();
+          // Reveal the edited clip on the strip (select + fresh nonce).
+          const placedId = selectedSoundId.peek();
+          const placed = placedId !== null
+            ? getEfxPaintDocument(layerId)?.audios.find((clip) => clip.id === placedId)
+            : undefined;
+          if (placed) revealSoundClip(placed);
+        }
+      } catch {
+        // E1/E10: decode failure surfaces the contracted error copy and
+        // re-enables the CTA (busy cleared, prior clip/empty state retained).
+        audioModalController.reportDecodeError();
+      }
+    })();
+  };
+  const audioModal = {
+    open: audioModalTarget.value !== null,
+    controller: audioModalController,
+    onClose: () => { audioModalTarget.value = null; },
+    // The modal NEVER talks to a file dialog itself (D-02/D-03): the intent
+    // leaves through this port WITH its mode (append = fresh clip, replace =
+    // the selected clip's source) and opens the shared gallery in audio mode.
+    onImportRequest: (mode: 'append' | 'replace') => {
+      audioImportMode.value = mode;
+      void audioPicker.openPicker();
+    },
+    // 261009-6ee one-switch law: the modal carries no preview props anymore.
+    // The main-app-audio preview surface is the STRIP's Audio Preview toggle
+    // (audioPreviewEnabled / handleAudioPreviewToggle passed to the workflow
+    // strip below) — same session signal, untouched here.
+  };
+  /* ---- 52.5-01b Task 3 (D-04/E3): peaks ensure on reopen ----------------
+     Peaks are cached at import (handleConfirmAudioPicker); after save/reopen
+     the cache is cold and the band must still draw (E3 populated on reopen).
+     This re-derives them through the EXISTING machinery — assetUrl fetch →
+     audioEngine.decode → computeWaveformPeaks, keyed by sourceId (D-04: no
+     new decode path; a clipId-keyed buffer from monitor prepare is reused when
+     present). 261008-ig1: runs for EVERY distinct sourceId in `audios[]` —
+     duplicates share one cached decode (source-keyed law, never clip-keyed).
+     Fail-closed: any failure leaves the cache empty → no stain, and the modal
+     carries the error copy. Termination: one in-flight ensure per sourceId
+     (Set ref guard), early return on cache hit / missing URL; the effect
+     re-runs only on launch/document/section identity changes — never a loop. ---- */
+  const soundPeaksEnsureRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!launchContext) return undefined;
+    const audios = getEfxPaintDocument(launchContext.layerId)?.audios ?? [];
+    // One ensure per distinct source — the peaks cache is source-keyed.
+    const pendingSources = [...new Set(audios.map((clip) => clip.sourceId))]
+      .filter((sourceId) => audioPeaksCache.get(sourceId) === undefined
+        && !soundPeaksEnsureRef.current.has(sourceId));
+    if (pendingSources.length === 0) return undefined;
+    // UAT round 5 (reopen): the routed documentAudio section is the preferred
+    // URL source, but it is not the ONLY one. After a project close/reopen the
+    // clip and its gallery entry survive while the section may never be routed
+    // to this child window — the band then stayed empty until a manual Replace
+    // re-warmed the cache. Fall back to the SAME `projectDir + relativePath`
+    // formula the working Replace path uses (assetUrl fetch → decode → peaks).
+    const section = efxPaintDocumentAudioStore.section.value;
+    const fallbackDir = audioProjectDir.value;
+    for (const sourceId of pendingSources) soundPeaksEnsureRef.current.add(sourceId);
+    void (async () => {
+      try {
+        for (const sourceId of pendingSources) {
+          const clip = audios.find((entry) => entry.sourceId === sourceId);
+          if (!clip) continue;
+          const sectionEntry = section?.clips.find((ref) => ref.clipId === clip.id) ?? null;
+          const sectionUrl = sectionEntry ? sectionEntry.assetUrl : null;
+          const fallbackUrl = fallbackDir !== null && isSafeAudioRelativePath(clip.relativePath)
+            ? assetUrl(`${fallbackDir}/${clip.relativePath}`)
+            : null;
+          const sourceUrl = sectionUrl ?? fallbackUrl;
+          if (sourceUrl === null) continue;
+          try {
+            let buffer = audioEngine.getBuffer(sourceId) ?? audioEngine.getBuffer(clip.id);
+            if (!buffer) {
+              const response = await fetch(sourceUrl);
+              if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
+              buffer = await audioEngine.decode(sourceId, await response.arrayBuffer());
+            }
+            if (audioPeaksCache.get(sourceId) === undefined) {
+              audioPeaksCache.set(sourceId, computeWaveformPeaks(buffer), Math.max(1, Math.ceil(buffer.duration * (launchContext?.fps ?? efxPaintDocumentAudioStore.getFps()))));
+            }
+          } catch {
+            // E3 error state: fail-closed — cache stays empty, band stays plain.
+          }
+        }
+      } finally {
+        for (const sourceId of pendingSources) soundPeaksEnsureRef.current.delete(sourceId);
+      }
+    })();
+    return undefined;
+  }, [launchContext, efxPaintVersion.value, efxPaintDocumentAudioStore.section.value, audioProjectDir.value]);
+  /** Gesture settle port for the band (D-08/D-09): dragged start/in/out land
+   *  through the per-clip store door every modal commit uses (T-52.5-12/13).
+   *  Returns whether the door accepted the write — rejected or identical
+   *  values leave the prior accepted span authoritative (the strip restores
+   *  its preview in that case). */
+  const handleDocumentSoundGestureSettle = (patch: SoundBandGesturePatch): boolean => {
+    const layerId = launchContext?.layerId;
+    if (!layerId) return false;
+    // 261008-ig1 Task 2: route by the gesture session's clipId — NEVER the
+    // list head (D-01/D-02). Fail-closed on an unknown id.
+    const current = getEfxPaintDocument(layerId)?.audios.find((clip) => clip.id === patch.clipId);
+    if (!current) return false;
+    if (patch.kind === 'duplicate') {
+      // 261008-ig1 Task 3 (D-03): the bare-alt clone append — a FRESH id over
+      // the SAME sourceId (peaks + gallery stay source-keyed: no second bytes
+      // copy / gallery row / audio/ path), geometry+settings copied with the
+      // dragged startFrame applied, the ORIGINAL never touched. The user is
+      // now manipulating the new clip, so selection lands on it (handler
+      // write; the commit itself is settle-on-release, never mid-drag).
+      const duplicate = { ...buildDuplicatedSoundClip(current), startFrame: patch.startFrame ?? current.startFrame };
+      const appended = addDocumentSound(layerId, duplicate);
+      if (appended.ok) selectedSoundId.value = duplicate.id;
+      return appended.ok;
+    }
+    // Move/trim keep the Task 2 routing untouched: a geometry patch on the
+    // gesture's own clip.
+    return patchDocumentSound(layerId, patch.clipId, {
+      startFrame: patch.startFrame ?? current.startFrame,
+      inFrame: patch.inFrame ?? current.inFrame,
+      outFrame: patch.outFrame ?? current.outFrame,
+    }).ok;
+  };
+  /** Band/launcher resolution — the render-body version read subscribes the
+   *  Studio to sound-member edits (efx-preact-reactivity rule 5: rare,
+   *  meaningful bumps — never per frame). 261008-ig1 Task 2: the FULL clip
+   *  list (D-01, array order canonical). */
+  const resolveDocumentAudios = (): readonly DocumentSoundClip[] => {
+    efxPaintVersion.value;
+    if (!launchContext) return [];
+    return getEfxPaintDocument(launchContext.layerId)?.audios ?? [];
+  };
+  /** Reveal a clip band: select it and issue one {frame, nonce} positioning —
+   *  the strip repositions once per nonce on the qad math and never snaps a
+   *  manual scroll back (261008-ig1 Task 2). */
+  const revealSoundClip = (clip: DocumentSoundClip): void => {
+    selectedSoundId.value = clip.id;
+    const previous = revealRequest.peek();
+    revealRequest.value = {
+      frame: clip.startFrame,
+      nonce: (previous?.nonce ?? 0) + 1,
+    };
+  };
   // 50-UAT (modal redesign): the floating Photo Reference dialog bundle — the
   // dialog reads the document through the SAME identity-stable store ports and
   // re-resolves on every document mutation (efxPaintVersion) so its controls
@@ -4702,6 +5035,37 @@ export function PhysicsPaintStudio() {
         // Remove and every setting — no X badge on the icon, 50-UAT round 2).
         photoReference: multiTrackRowBundle.photoReference,
         onOpenReference: () => { referenceDialogOpen.value = true; },
+        // 52.5-01b Task 3 (D-02/D-06/D-07/D-08) + 261008-ig1 Task 2: the
+        // sound band + launcher — the full clip list (resolveDocumentAudios
+        // subscribes this bundle to sound-member edits), the header launcher
+        // opens the LIST chooser (a single-clip document resolves straight
+        // onto that clip), a band dblclick targets THAT clip, reveals ride
+        // the nonce-keyed positioning, and the gesture settle routes every
+        // dragged start/in/out through the per-clip store door.
+        documentAudios: resolveDocumentAudios(),
+        selectedSoundId,
+        onOpenDocumentSound: () => {
+          // 261008-ryq: the LIST lives in the sidebar Audio tab — the launcher
+          // opens the single-clip editor. Auto-select the first clip when
+          // nothing (valid) is selected; zero clips opens on the empty state
+          // ('' target — the open test is `!== null`).
+          const audios = resolveDocumentAudios();
+          if (audios.length === 0) {
+            audioModalTarget.value = '';
+          } else {
+            const current = selectedSoundId.peek();
+            if (current === null || !audios.some((clip) => clip.id === current)) {
+              selectedSoundId.value = audios[0].id;
+            }
+            audioModalTarget.value = selectedSoundId.peek() ?? '';
+          }
+        },
+        onDocumentSoundDblClick: (clipId: string) => {
+          selectedSoundId.value = clipId;
+          audioModalTarget.value = clipId;
+        },
+        onDocumentSoundSettle: handleDocumentSoundGestureSettle,
+        revealRequest: revealRequest.value,
         // 52-05 (G-52-3): the track rail-creation flow — Motion/Static open the
         // Create Rail dialog on the Paint tab; Reveal opens the SAME dialog on
         // the Reveal Photo Rail tab (one model, two entry points, the SAME
@@ -4849,6 +5213,25 @@ export function PhysicsPaintStudio() {
       onImport: referencePicker.importImages,
       title: 'Import reference images',
     },
+    // 52.5-01b (D-02/D-03): the SAME shared gallery opened with kind 'audio'
+    // for the Document sound modal — single Confirm emit, audio dialog filter,
+    // filename tiles. The modal rides the pickerOpen step-aside in the view.
+    audioPicker: {
+      open: audioPicker.open.value,
+      images: audioPicker.images.value,
+      audioAssets: audioPicker.audioAssets.value,
+      projectDir: audioPicker.projectDir.value,
+      selectedIds: audioPicker.selectedIds.value,
+      status: audioPicker.status.value,
+      importing: audioPicker.importing.value,
+      onToggleSelect: audioPicker.toggleSelect,
+      onConfirm: handleConfirmAudioPicker,
+      onCancel: () => audioPicker.cancel(),
+      onImport: audioPicker.importImages,
+      kind: 'audio' as const,
+      title: AUDIO_IMPORT_CTA,
+    },
+    audioModal,
   });
   const soleOccurrenceDeleteDialog = soleOccurrenceDeleteTarget === null
     ? null

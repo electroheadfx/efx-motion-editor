@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { audioEngine } from '../../../lib/audioEngine';
 import {
   applyRevisionedEfxPaintAudioPreview,
@@ -296,6 +298,10 @@ function parseOrThrow(section: unknown) {
 describe('efxPaintAudioMonitor (Play wiring, truth table section 3 dispatch)', () => {
   beforeEach(() => {
     efxPaintAudioMonitor.stop();
+    // These cells exercise the MAIN-track leg, which the session toggle gates.
+    // 52.5 UAT: that toggle now defaults Off (studio sound alone), so a test
+    // that wants the main app's audio must say so explicitly.
+    audioPreviewEnabled.value = true;
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -432,6 +438,7 @@ describe('efxPaintAudioMonitor (Play wiring, truth table section 3 dispatch)', (
 describe('seek wiring regression (260902-cfa: D-02 seek-restart / D-09 silent re-anchor)', () => {
   beforeEach(() => {
     efxPaintAudioMonitor.stop();
+    audioPreviewEnabled.value = true;
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     fakeAudioContext.currentTime = 0;
@@ -475,6 +482,7 @@ describe('seek wiring regression (260902-cfa: D-02 seek-restart / D-09 silent re
 describe('audible scrub (260902-cfa amendment: D-02 throttled snippet / D-09 silent when muted)', () => {
   beforeEach(() => {
     efxPaintAudioMonitor.stop();
+    audioPreviewEnabled.value = true;
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     fakeAudioContext.currentTime = 0;
@@ -543,6 +551,7 @@ describe('audible scrub (260902-cfa amendment: D-02 throttled snippet / D-09 sil
 describe('efxPaintAudioMonitor sync behaviors (41-03: D-09 scrub, D-10 drift, D-11 loop wrap, A6 fps note)', () => {
   beforeEach(() => {
     efxPaintAudioMonitor.stop();
+    audioPreviewEnabled.value = true;
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     fakeAudioContext.currentTime = 0;
@@ -1015,8 +1024,15 @@ describe('Audio Preview toggle (41-04 Task 2: D-12..D-14, AUDIO-05 edges)', () =
     );
   });
 
-  it('(e) the session toggle defaults On and writes no storage (D-13 — never persisted)', () => {
-    expect(audioPreviewEnabled.peek()).toBe(true);
+  it('(e) the session toggle defaults Off and writes no storage (D-13 — never persisted)', async () => {
+    // 52.5 UAT: default is Off (the Studio previews the studio sound alone;
+    // the main app's audio is opt-in). Pin the FRESH module default — the
+    // beforeEach reset forces the live signal to On, so reading it here would
+    // only prove the reset, not the default.
+    vi.resetModules();
+    const fresh = await import('./efxPaintAudioPreviewStore');
+    expect(fresh.AUDIO_PREVIEW_DEFAULT).toBe(false);
+    expect(fresh.audioPreviewEnabled.peek()).toBe(false);
     const storage = (globalThis as { localStorage?: Storage }).localStorage;
     if (storage) {
       const setItem = vi.spyOn(storage, 'setItem');
@@ -1177,5 +1193,44 @@ describe('engine release on close (41-05 Task 1: D-08, AUDIO-06)', () => {
     expect(mockedAudioEngine.stopAll).toHaveBeenCalledTimes(1);
     expect(mockedAudioEngine.closeContext).toHaveBeenCalledTimes(1);
     expect(efxPaintAudioMonitor.isPlaying()).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261009-6ee one-switch law (re-lock of the 52.5 UAT pins): the Document sound
+// modal NO LONGER carries the main-app-audio preview toggle — the header
+// surface was dropped and the strip's Audio Preview button is the modal's
+// sibling surface over the SAME session signal (one source of truth), which
+// must stay preview-only — it never reaches the main editor or export.
+// ---------------------------------------------------------------------------
+describe('main-app-audio preview toggle surfaces (52.5 UAT / 261009-6ee re-lock)', () => {
+  const readSource = (relative: string): string =>
+    readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
+
+  it('(f) the modal carries no preview toggle; the Studio wires the surviving strip surface to the shared session signal', () => {
+    const modal = readSource('../view/PhysicsPaintAudioModalView.tsx');
+    // One-switch law: the modal's ONLY audio switch is the header enabled pill.
+    expect(modal.includes('mainAppAudioEnabled')).toBe(false);
+    expect(modal.includes('onToggleMainAppAudio')).toBe(false);
+    // VolumeX is the pill's OFF icon (UAT) — exactly ONE VolumeX element, so the
+    // old preview-toggle Volume2/VolumeX pair cannot come back as a second surface.
+    expect((modal.match(/<VolumeX/g) ?? []).length).toBe(1);
+
+    const studio = readSource('../PhysicsPaintStudio.tsx');
+    // One source of truth: the strip surface reads the SAME session signal —
+    // no second state, no duplicate setter, and the modal gets NO preview props.
+    expect(/audioPreviewEnabled:\s*audioPreviewEnabled\.value/.test(studio)).toBe(true);
+    expect(/onAudioPreviewToggle:\s*handleAudioPreviewToggle/.test(studio)).toBe(true);
+    expect(/mainAppAudioEnabled:/.test(studio)).toBe(false);
+
+    // The copy contract relocated with the signal (52.5 strings stay verbatim).
+    const store = readSource('./efxPaintAudioPreviewStore.ts');
+    expect(store.includes('AUDIO_MAIN_APP_AUDIO_ARIA_OFF')).toBe(true);
+    expect(store.includes('AUDIO_MAIN_APP_AUDIO_ON')).toBe(true);
+  });
+
+  it('(g) the signal is preview-only: main playback and export never read it', () => {
+    expect(readSource('../../../lib/playbackEngine.ts').includes('audioPreviewEnabled')).toBe(false);
+    expect(readSource('../../../lib/exportEngine.ts').includes('audioPreviewEnabled')).toBe(false);
   });
 });

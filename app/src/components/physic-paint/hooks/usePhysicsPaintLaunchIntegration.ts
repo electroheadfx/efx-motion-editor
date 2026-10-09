@@ -9,6 +9,7 @@ import {
 } from '../../../stores/physicPaintStore';
 import { applyPhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
 import { handleEfxPaintAudioContextEvent } from '../audio/efxPaintAudioMonitor';
+import { efxPaintDocumentAudioStore } from '../audio/efxPaintDocumentAudioStore';
 import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
 import { applyBackgroundFallbackToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
@@ -194,6 +195,16 @@ export function usePhysicsPaintLaunchIntegration(input: {
     // section = no audio.
     if (hydration.context.audioPreview) {
       void handleEfxPaintAudioContextEvent(hydration.context.audioPreview);
+    }
+    // 52.5-01a (Q1, STUDIO-MIX-01): the closed documentAudio section rides the
+    // launch the same way. Seed the child store's launch identity (layer +
+    // project fps) FIRST so a clip-only session — zero main audio, no
+    // audioPreview section — can resolve the registered sound and dispatch the
+    // clip at the project fps; then run the section through the SAME single
+    // funnel live pushes use (strict newer-than + monitor prepare).
+    efxPaintDocumentAudioStore.setLaunchIdentity(hydration.context.layerId, hydration.context.fps ?? 12);
+    if (hydration.context.documentAudio) {
+      void handleEfxPaintAudioContextEvent(hydration.context.documentAudio);
     }
     const readyEngine = input.engineRef.current;
     if (readyEngine) input.loadCachedReferenceFrame(hydration.document.cursorAppFrame, readyEngine as PreviewBackgroundEngine);

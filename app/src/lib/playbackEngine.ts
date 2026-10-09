@@ -4,11 +4,18 @@ import {sequenceStore} from '../stores/sequenceStore';
 import {uiStore} from '../stores/uiStore';
 import {projectStore} from '../stores/projectStore';
 import {audioStore} from '../stores/audioStore';
+import {soloStore} from '../stores/soloStore';
+import {getDocument} from '../stores/efxPaintStore';
 import {audioEngine} from './audioEngine';
-import {totalFrames, frameMap, trackLayouts} from './frameMap';
+import {totalFrames, frameMap, trackLayouts, getTimelineOverlaySequenceOutFrame} from './frameMap';
 import {shuttleDirection, shuttleSpeed, resetShuttle} from './jklShuttle';
 import {isolationStore} from '../stores/isolationStore';
 import {isPhysicPaintChildAudioClaimed, publishPhysicPaintAudioPlaybackState} from './physicPaintBridge';
+import {
+  collectDocumentSoundClips,
+  mainPlaybackClipEnabled,
+  toDocumentSoundAudioTrack,
+} from './documentSoundGates';
 
 export const isFullSpeed = signal(false);
 
@@ -297,6 +304,54 @@ export class PlaybackEngine {
         const sourceOffset = (track.inFrame + track.slipOffset) / fps;
         const maxPlayFrames = effectiveEnd - trackStartOnTimeline;
         audioEngine.playDelayed(track.id, delaySec, sourceOffset, track, fps, maxPlayFrames / fps);
+      }
+    }
+
+    // 52.5-02 (D-12/D-13/D-14, MAIN-MIX-01/02): the document clip leg MIXES with
+    // the main tracks above — same claim guard, same stopAll funnels, same
+    // schedule math. Sound follows the composite exactly like the layer's
+    // pixels: `mainPlaybackClipEnabled` folds the clip's own `enabled` switch
+    // (D-12) and `layerInComposite` (D-13 — hidden fx sequence or solo ON makes
+    // the clip inaudible). The clip's global start is sequence-rebased
+    // (`seq.inFrame + sound.startFrame`); buffers are keyed by `sound.id`, the
+    // same identity projectStore's re-decode step decodes them under.
+    const soloActive = soloStore.soloEnabled.peek();
+    for (const entry of collectDocumentSoundClips(sequenceStore.sequences.peek(), getDocument)) {
+      const {sound, sequence} = entry;
+      const owner = sequence.layers.find((layer) =>
+        layer.type === 'physic-paint' && layer.source.type === 'physic-paint'
+          ? layer.source.layerId === entry.layerId
+          : layer.id === entry.layerId,
+      );
+      const sequenceVisible = sequence.visible !== false && owner?.visible !== false;
+      if (!mainPlaybackClipEnabled(sound, sequenceVisible, soloActive)) continue;
+
+      const clipStartOnTimeline = entry.timelineStartFrame;
+      const trimDuration = sound.outFrame - sound.inFrame;
+      const clipEndOnTimeline = clipStartOnTimeline + trimDuration;
+      // "Sound follows the composite exactly like the layer's pixels": the clip
+      // stops where the layer stops being composited (its sequence's overlay
+      // out), and never past the timeline.
+      const sequenceOut = getTimelineOverlaySequenceOutFrame(sequence, maxFrames);
+      const effectiveEnd = Math.min(clipEndOnTimeline, sequenceOut, maxFrames);
+      if (clipStartOnTimeline >= effectiveEnd) continue;
+
+      const assetUrl = `${projectStore.dirPath.peek() ?? ''}/${sound.relativePath}`;
+      // offsetFrame is the GLOBAL timeline start for the main realm (the Studio
+      // adapter's document-local value would misplace the clip in the export mix).
+      const trackRecord = {
+        ...toDocumentSoundAudioTrack(sound, assetUrl, fps),
+        offsetFrame: clipStartOnTimeline,
+      };
+
+      if (currentFrame >= clipStartOnTimeline && currentFrame < effectiveEnd) {
+        const framesIntoClip = currentFrame - clipStartOnTimeline;
+        const sourceOffset = (sound.inFrame + framesIntoClip) / fps;
+        audioEngine.play(sound.id, sourceOffset, trackRecord, fps, (effectiveEnd - currentFrame) / fps);
+      } else if (currentFrame < clipStartOnTimeline) {
+        const delaySec = (clipStartOnTimeline - currentFrame) / fps;
+        const sourceOffset = sound.inFrame / fps;
+        audioEngine.playDelayed(sound.id, delaySec, sourceOffset, trackRecord, fps, (effectiveEnd - clipStartOnTimeline) / fps);
       }
     }
   }

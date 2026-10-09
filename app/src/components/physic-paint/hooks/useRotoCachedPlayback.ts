@@ -4,6 +4,7 @@ import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { efxPaintAudioMonitor } from '../audio/efxPaintAudioMonitor';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
+import { efxPaintDocumentAudioStore } from '../audio/efxPaintDocumentAudioStore';
 import { efxPaintAudioOwnership } from '../audio/efxPaintAudioOwnership';
 import { resolvePlaybackStartIndex } from '../roto/physicsPaintRotoSoloWindow';
 
@@ -228,7 +229,10 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     // first cached appFrame is the Play cursor, one past the last is the end.
     // Store reads use peek() (38.1-D-01); the engine singleton is reused (D-08).
     const audioPreview = efxPaintAudioPreviewStore.getSection();
-    if (audioPreview && audioPreview.tracks.length > 0) {
+    // 52.5-01a MUST-FIX (STUDIO-MIX-01): a project with NO main-audio tracks
+    // must still prepare and play its document clip — widen the gate with the
+    // clip-presence disjunct (the store is the child's single clip source).
+    if ((audioPreview && audioPreview.tracks.length > 0) || efxPaintDocumentAudioStore.getSection() !== null) {
       const audioCursorAppFrame = cachedFrames[startIndex].appFrame;
       const audioPlaybackRangeEnd = cachedFrames[cachedFrames.length - 1].appFrame + 1;
       // 41-CR-01: capture this start's session generation before the async
@@ -244,8 +248,9 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       // 41-03 (locked A6): matched-fps guarantee — surface a non-blocking
       // note once per playback session when playback fps diverges from the
       // project fps. Routed through the publishStatus gate (queued during
-      // playback, flushed on stop); playbackRate is never scaled.
-      const fpsNote = efxPaintAudioMonitor.noteFpsMismatchOnce(audioPreview.fps, playbackFps);
+      // playback, flushed on stop); playbackRate is never scaled. Clip-only
+      // sessions carry no main section fps — no note for them.
+      const fpsNote = audioPreview ? efxPaintAudioMonitor.noteFpsMismatchOnce(audioPreview.fps, playbackFps) : null;
       if (fpsNote) publishStatus(fpsNote);
     }
     const showNextFrame = () => {

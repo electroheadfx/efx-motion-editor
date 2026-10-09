@@ -5,16 +5,16 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick 261006-dfy (physics paint sidebar row identity) — native UAT approved
-last_updated: "2026-10-06T08:49:00.182Z"
-last_activity: 2026-10-06
-last_activity_desc: Quick 261006-dfy native UAT approved — physics paint sidebar row identity CLOSED (display name, no output block, body dblclick opens Studio, accent-blue timeline FX row)
-state_head: 30f26b6373a980193a2bf55a2ee34498455d18db
+stopped_at: Completed quick-261009-6ee-PLAN.md
+last_updated: "2026-10-09T14:49:50.000Z"
+last_activity: 2026-10-09
+last_activity_desc: Quick 261009-6ee UAT accepted — closed (blended SliderStepper + audio modal refinements)
+state_head: 5c47244459f4ee44b934df497c742f53becf92da
 progress:
-  total_phases: 13
+  total_phases: 14
   completed_phases: 19
-  total_plans: 72
-  completed_plans: 72
+  total_plans: 75
+  completed_plans: 75
   percent: 100
 ---
 
@@ -22,25 +22,25 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-19 after Phase 52.3)
+See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 52.4 — Real-paint kill the salt-and-pepper (INSERTED)
+**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
 
 ## Current Position
 
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-06 — quick 261006-dfy native UAT approved and CLOSED (physics paint sidebar row identity and entry points; accent-blue timeline FX row)
+Last activity: 2026-10-09 - Quick 261009-6ee UAT accepted (native, live) — CLOSED; blended SliderStepper + audio modal refinement rounds landed in 5c472444
 
-Progress: [████████████████████] 49/49 plans ([██████████] 100%)
+Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 52 for v0.9.0 (12 phases, shipped 2026-08-21)
+- Total plans completed: 55 for v0.9.0 (12 phases, shipped 2026-08-21)
 - Average duration: N/A
 - Total execution time: N/A
 
@@ -62,6 +62,7 @@ Progress: [████████████████████] 49/49 p
 | 52 | 6 | - | - |
 | 52.3 | 3 | - | - |
 | 52.4 | 4 | - | - |
+| 52.5 | 3 | - | - |
 
 **Recent Trend:**
 
@@ -136,6 +137,9 @@ Progress: [████████████████████] 49/49 p
 | Phase 52.4 P03 | 30min | 3 tasks | 3 files |
 | Phase 52.4 P04 | 98min | 3 tasks | 4 files |
 | Phase quick-260930-wm6 P260930-wm6 | 41m | 3 tasks | 12 files |
+| Phase 52.5-physic-paint-document-sound-track P01a | 78min | 3 tasks | 26 files |
+| Phase 52.5 P01b | 2h40m | 3 tasks | 26 files |
+| Phase quick-261009-6ee P261009-6ee | 45m | 2 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -376,6 +380,15 @@ Recent decisions affecting current work:
 - [Phase 52.4]: quick-260930-wm6 revision R1: PREVIEW == SETTLED. THREE render paths existed and the eye judged the one no settled path could reproduce (tier='live' raw dry-canvas blit at LIVE_WIDTH_MUL=4 vs tier='final' reduced-clone deposit + R9 solver). ONE PIPELINE (raw blit + liveSnapshot/restore + the second renderPaintStroke pass deleted) + ONE LANDING (reveal only after the physicsTicks solver) + THREE NAMED DEPOSIT KNOBS (DEPOSIT_KEEP_TIER 70→40, DEPOSIT_DENSITY_SCALE 3000→4500, D-08 floor userOpacity²→userOpacity + gamma 0.8→0.5). Standing gate lookLawDigest.test.ts = byte-equal preview == cache == reloaded. Look = dense + physics texture, never the solid raw blit (that is Paint's job, paint-width)
 - [Phase 52.4]: quick-260930-wm6 revision R2: GESTURE STALL + WHITE SEAM (measure-first, one fix per defect). Look UAT on R1 PASSED; knobs 40/4500/0.5 STAND. Defect 1 writer = paint-pickup-canvas-snap full-canvas getImageData (2,073,600px at 1080p) feeding only a ceil(radius/2) disc → scoped to the curve footprint (whole-source readbacks 1→0). S1 preview EXONERATED; S1 finalize drain NAMED NOT FIXED (unbounded flushPendingStrokeFinalizations + dead hasPendingInput in WKWebView). Defect 2 writer = paper tile seams — plain repeat of a photographed paper_*.jpg steps 0.8000 at every tile boundary (the cut grid + one tile's block outline) → loadPaperTexture mirror-tiles (step 0.8000→0.0000). (a) bbox clip EXONERATED (94,710 hull verts, clippedVerts=0); (d) solver overflow is a HALO not a cut
 - [Phase 52.4]: quick-260930-wm6 revision R3b: TRUE-WHITE HOLES (paper exonerated). R2's mirror did NOT kill the seams. STEP 1 (user): lines are TRUE WHITE (alpha ~ 0) at 100% brush opacity -> paper exonerated BY PHYSICS (fast path skips paperMod at pixelOpacity >= 0.90; conditionHeightMap clamps h to [0.10, 0.90] so paperMod >= 0.775 = lighten at most 22%, never 0; measured min 0.7756). paper.ts byte-untouched. INVARIANT: no VISIBLE wet pixel may vanish without landing in dry (getBakedCanvas = previewBase + dry, no wet overlay). (a) segBounds clip CLEAN at production extremes the R2 pin missed (edgeDetail 100 -> edgeMul 2, r 8/32/64, deform depth 4, INTERIOR offscreens: 60828/88160/84700 verts, clippedVerts 0). (d1) sa==0 clear-without-transfer CLEAN (wet.alpha 1-4 -> sa rounds to 0, but those bytes render 0 on the display TOO). (d2) THE WRITER: dryRegionForStroke = +/- brushRenderRadius but the solver solves +/-(brushR + margin); 384 VISIBLE pixels in the ring never land in dry -> the bbox rectangle = the 'full block outline' + its four sides. Disproven 52.1 assumption (drying.ts): "wet pixels of one finalized stroke are bounded by the stroke bbox". ONE FIX: forceDryAll unions the caller's bounds with the real wet extent (compositeWetLayer's existing O(W*H) scan) -> ring 0->384 written, 384->0 visible-absent; 52.1 bounded-readback law holds. Fix in drying.ts so the uncommitted previewBase fix stays out. drying.bboxLoss.test.ts (q6t Addendum B) flipped to gate the fix. RED c5914ff6 -> GREEN 70d79adf
+- [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a: clip fps chain = current?.fps ?? store.getFps(), store seeded at hydration (context.fps ?? 12)
+- [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a: child documentAudio store keeps a persistent appliedRevision watermark surviving null-clears (stale replay can never resurrect a clip)
+- [Phase 52.5-physic-paint-document-sound-track]: 52.5-01a Rule 2 deviation: launch hydration seeds store identity + routes documentAudio through the single funnel (usePhysicsPaintLaunchIntegration.ts)
+- [Phase 52.5]: Sound band gestures use window capture-phase listeners: identity fixed at pointer-down, stopPropagation only once armed (stain press bubbles for the single sub-threshold seek; trim stops before guards and never seeks)
+- [Phase 52.5]: Direct-DOM drag preview with one settle on release through setDocumentSound (T-52.5-02 settle-only push); peaks re-derive on reopen via existing decode/cache, fail-closed
+- [Phase 52.5]: Trim law mirrors the NLE model: left end moves start+in together (timeline end invariant), right end clamped so start+(out-in) <= parentEnd, min span 1 frame
+- [Phase quick-261009-6ee]: One-switch law: header preview toggle dropped from the Document sounds modal; footer On/Off pill is its only audio switch, strip Audio Preview toggle remains the main-app-audio surface
+- [Phase quick-261009-6ee]: Shared NumericStepper restyled to unified 22px single-pill chrome app-wide; base box keys removed, contextual CSS input box rules stripped (Rule 2) to keep one outline
+- [Phase quick-261009-6ee]: Live-UAT refinements locked — new shared blended SliderStepper (value on top, bare −/+, sliderMax track-only range) on all five snapshot surfaces; audio modal: FILE section header, header On/Off pill (VolumeX off-state), icon Remove + Cancel/Remove confirmation modal, singular "Document sound" title, opaque bar #4c4e51, rail/knob midline-centered, panel alpha 0.9 (faint glass only, photo-ref dialogs keep full glass)
 
 ### Pending Todos
 
@@ -464,6 +477,10 @@ None yet.
 | 261004-hwa | Quick 7: Photoshop foreground/background swatch — two overlapping squares at bottom of left sidebar, X swaps, back-click promotes, sidebar picker syncs to top swatch | 2026-10-04 | 33738ffa | [261004-hwa-quick-7-photoshop-foreground-background-](./quick/261004-hwa-quick-7-photoshop-foreground-background-/) |
 | 261006-bdk | New layers go to the top of the layer stack for every layer type — createFxSequence default routes through insertSequenceAtStackTop (explicit position:'end' remains the only append); Shader Browser opts-less apply now lands at stack head without editing ShaderBrowser.tsx; reorderFxSequences / resolveFxReorderToIndex untouched (260923-kcs single-adjustment contract); regression pin added. Native UAT pending | 2026-10-06 | a9479fe6 | [261006-bdk-quick-new-layers-go-to-the-top-of-the-la](./quick/261006-bdk-quick-new-layers-go-to-the-top-of-the-la/) |
 | 261006-dfy | Physics paint layer row in the main app left sidebar — visual identity and entry points (display name, remove output block, dblclick body opens Studio, accent color) | 2026-10-06 | 30f26b63 | [261006-dfy-quick-physics-paint-layer-row-in-the-mai](./quick/261006-dfy-quick-physics-paint-layer-row-in-the-mai/) |
+| 261008-ful | 2 small UX features: LayerRow double-click opens Studio (shared launch path) + audio modal Gain slider → NumericStepper | 2026-10-08 | 478650e0 | [261008-ful-2-small-ux-features-one-atomic-commit-ea](./quick/261008-ful-2-small-ux-features-one-atomic-commit-ea/) |
+| 261008-ig1 | Multi-audio concept core slice — audios[] replaces the singleton, per-clip settings, modal list with click-to-reveal, timeline multi-clip render, alt+drag duplication (fresh id, shared sourceId), D-04 Rust serde round-trip gate | 2026-10-08 | 7568a975 | [261008-ig1-multi-audio-concept-written-to-planning-](./quick/261008-ig1-multi-audio-concept-written-to-planning-/) |
+| 261008-ryq | Audio list to sidebar Audio tab + editable clip Position (milestone 52.5) | 2026-10-08 | fc39d28b | [261008-ryq-audio-list-to-sidebar-audio-tab-editable](./quick/261008-ryq-audio-list-to-sidebar-audio-tab-editable/) |
+| 261009-6ee | Audio modal grouped-field layout + shared stepper pill (Studio). Status: **native UAT accepted 2026-10-09** — locked-mock grouping, one-switch law, blended SliderStepper on all five surfaces, and the live-refinement rounds (FILE header, header On/Off pill, icon Remove + confirmation modal, singular title, opaque bar, rail alignment, panel alpha 0.9) all approved. Quick 261009-6ee **CLOSED** | 2026-10-09 | 5c472444 | [261009-6ee-audio-modal-grouped-field-layout-shared-](./quick/261009-6ee-audio-modal-grouped-field-layout-shared-/) |
 
 ### Roadmap Evolution
 
@@ -472,6 +489,7 @@ None yet.
 - Phase 52.2 inserted after Phase 52: Project package format — references only: sidecar .webp media files + per-layer manifests; absorbs and cancels the autosave quick (URGENT)
 - Phase 52.3 inserted after Phase 52: Paint content export — per-frame compositor enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance) (URGENT)
 - Phase 52.4 inserted after Phase 52: Real-paint kill the salt-and-pepper (URGENT)
+- Phase 52.5 inserted after Phase 52: Physic Paint document sound track (Studio waveform/reposition/start-end + main-editor playback of the layer clip) (URGENT)
 
 ## Deferred Items
 
@@ -488,6 +506,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-04T11:38:34.670Z
-Stopped at: Completed quick 261004-hwa (Photoshop fg/bg swatch) — native UAT approved
+Last session: 2026-10-09T03:03:01.257Z
+Stopped at: Completed quick-261009-6ee-PLAN.md
 Resume file: None

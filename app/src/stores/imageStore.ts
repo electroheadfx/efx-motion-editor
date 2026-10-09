@@ -1,6 +1,6 @@
 import {signal, computed, batch} from '@preact/signals';
 import type {ImportResult, ImportedImage} from '../types/image';
-import type {MceImageRef} from '../types/project';
+import type {MceAudioAssetRef, MceImageRef} from '../types/project';
 import {importImages as ipcImportImages, assetUrl} from '../lib/ipc';
 
 const POOL_MAX = 50;
@@ -109,8 +109,9 @@ export const imageStore = {
     _markDirty?.();
   },
 
-  /** Register an audio file as an imported asset */
+  /** Register an audio file as an imported asset (idempotent by id). */
   addAudioAsset(asset: AudioAsset) {
+    if (audioAssets.value.some((existing) => existing.id === asset.id)) return;
     audioAssets.value = [...audioAssets.value, asset];
     _markDirty?.();
   },
@@ -200,6 +201,28 @@ export const imageStore = {
     });
   },
 
+  /** Restore gallery audio assets from a saved project (relative -> absolute). */
+  loadFromMceAudioAssets(refs: MceAudioAssetRef[], projectRoot: string) {
+    const root = projectRoot.endsWith('/') ? projectRoot.slice(0, -1) : projectRoot;
+    batch(() => {
+      audioAssets.value = refs.map((ref) => ({
+        id: ref.id,
+        name: ref.name,
+        path: `${root}/${ref.relative_path}`,
+      }));
+    });
+  },
+
+  /** Convert current gallery audio assets to relative refs (for project save). */
+  toMceAudioAssets(projectRoot: string): MceAudioAssetRef[] {
+    const root = projectRoot.endsWith('/') ? projectRoot : `${projectRoot}/`;
+    return audioAssets.value.map((asset) => ({
+      id: asset.id,
+      name: asset.name,
+      relative_path: asset.path.startsWith(root) ? asset.path.slice(root.length) : asset.path,
+    }));
+  },
+
   /** Convert current images to MceImageRef array (for project save).
    *  Makes paths relative by stripping the project root prefix. */
   toMceImages(projectRoot: string): MceImageRef[] {
@@ -225,6 +248,14 @@ export const imageStore = {
       ...img,
       project_path: img.project_path.replace(oldRoot, newRoot),
       thumbnail_path: img.thumbnail_path.replace(oldRoot, newRoot),
+    }));
+    videoAssets.value = videoAssets.value.map((asset) => ({
+      ...asset,
+      path: asset.path.replace(oldRoot, newRoot),
+    }));
+    audioAssets.value = audioAssets.value.map((asset) => ({
+      ...asset,
+      path: asset.path.replace(oldRoot, newRoot),
     }));
   },
 

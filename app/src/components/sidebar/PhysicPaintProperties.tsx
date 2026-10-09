@@ -8,9 +8,7 @@ import { getDocument as getEfxPaintDocument } from '../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../stores/physicPaintStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { timelineStore } from '../../stores/timelineStore';
-import { projectStore } from '../../stores/projectStore';
-import { openPhysicPaintCanvas, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
-import { fxTrackLayouts } from '../../lib/frameMap';
+import { openPhysicPaintForLayer, PHYSIC_PAINT_APPLY_RESULT_EVENT } from '../../lib/physicPaintBridge';
 import { SectionLabel } from '../shared/SectionLabel';
 
 interface PhysicPaintPropertiesProps {
@@ -69,31 +67,14 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
   }, [sourceLayerId]);
 
   const handleOpenCanvas = async () => {
-    const currentFrame = timelineStore.currentFrame.peek();
     if (!validContext || opening) return;
-
-    const parentSequence = sequenceStore.sequences.peek().find((sequence) => (
-      sequence.layers.some((candidate) => candidate.id === layer.id)
-    ));
-    const fxLayout = parentSequence
-      ? fxTrackLayouts.peek().find((layout) => layout.sequenceId === parentSequence.id)
-      : undefined;
 
     setOpening(true);
     setStatusMessage('Opening Roto paint...');
     setErrorMessage(null);
 
-    console.info('[PhysicPaintProperties] open canvas clicked', { layerId: layer.id, frame: currentFrame });
-    const result = await openPhysicPaintCanvas({
-      layer,
-      frame: currentFrame,
-      canvas: {
-        width: projectStore.width.peek(),
-        height: projectStore.height.peek(),
-      },
-      fps: projectStore.fps.peek(),
-      workflowLabel: fxLayout?.headerLabel,
-    });
+    console.info('[PhysicPaintProperties] open canvas clicked', { layerId: layer.id });
+    const result = await openPhysicPaintForLayer(layer);
 
     console.info('[PhysicPaintProperties] open canvas result', result);
     setOpening(false);
@@ -129,7 +110,7 @@ export function PhysicPaintProperties({ layer }: PhysicPaintPropertiesProps) {
       <div class="space-y-1">
         <SectionLabel text="Physics Paint" />
         <div
-          class="rounded px-2 py-2 space-y-1"
+          class="rounded px-2 py-2 space-y-1 cursor-pointer"
           style={{ backgroundColor: 'var(--sidebar-input-bg)', borderLeft: '2px solid var(--color-accent)' }}
           onDblClick={handleRowBodyDoubleClick}
         >

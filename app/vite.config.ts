@@ -271,7 +271,11 @@ export default defineConfig({
     // work); the instrument added +0.80 kB. Budget raised 1370 → 1390
     // (measured value + ~15 kB headroom) to close that pre-existing overrun
     // and cover the instrument.
-    chunkSizeWarningLimit: 1390,
+    // Measured 2026-10-07: 1,390.23 kB after the 52.5 UAT round 4 work
+    // (gallery `audio_assets` persistence + gain/fade-curve overlays). The
+    // budget is a routing knob, not a behavior contract — raised 1390 → 1420
+    // (measured + ~30 kB headroom) on the user's explicit OK.
+    chunkSizeWarningLimit: 1420,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

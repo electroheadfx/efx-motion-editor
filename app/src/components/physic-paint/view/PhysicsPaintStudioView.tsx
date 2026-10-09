@@ -16,6 +16,7 @@ import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
 import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
 import { PhysicsPaintToolRail } from './PhysicsPaintToolRail';
 import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
+import { PhysicsPaintAudioModalView } from './PhysicsPaintAudioModalView';
 import { PhysicsPaintReferenceGhostLayer } from './PhysicsPaintReferenceGhostLayer';
 import { PhysicsPaintReferenceTransformHandles } from './PhysicsPaintReferenceTransformHandles';
 import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
@@ -300,11 +301,18 @@ export interface PhysicsPaintStudioViewProps {
   /** 50-03 (S2): the reference picker — the same full-area region swap reused
    *  for the Photo row's Import/Replace control (D-01). */
   referencePicker?: ComponentProps<typeof BackgroundAssetPickerView>;
+  /** 52.5-01b (D-02/D-03): the SAME gallery opened with kind 'audio' for the
+   *  Document sound modal's Import/Replace — one picker, never a second one. */
+  audioPicker?: ComponentProps<typeof BackgroundAssetPickerView>;
+  /** 52.5-01b (D-05): the floating Document sound dialog — steps aside behind
+   *  the shared gallery while it is open (260923-fhn, same as the reference
+   *  and PlayScript dialogs). */
+  audioModal?: ComponentProps<typeof PhysicsPaintAudioModalView> | null;
 }
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
   // 260923-fhn (Quick 4): while either gallery picker is open, every parent
   // modal steps aside — the picker overlay is absolute z-20 inside the canvas
   // region, the parents are fixed z-70/72, and stacked they fight for space.
@@ -313,7 +321,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   // never cleared here, so each returns with its prior state when the picker
   // closes. Visibility orchestration only — opener wiring, import handlers,
   // overlay order and stacking are untouched.
-  const pickerOpen = Boolean(backgroundPicker?.open || referencePicker?.open);
+  // 52.5-01b: the audio gallery joins the SAME step-aside boolean, so the
+  // Document sound modal (and every other parent dialog) hides while the
+  // shared gallery runs in kind 'audio' mode.
+  const pickerOpen = Boolean(backgroundPicker?.open || referencePicker?.open || audioPicker?.open);
   return (
     <main class="demo-shell">
       <section
@@ -331,6 +342,7 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               the engine canvas stays mounted underneath (D-01 lock). */}
           {backgroundPicker?.open ? <BackgroundAssetPickerView {...backgroundPicker} /> : null}
           {referencePicker?.open ? <BackgroundAssetPickerView {...referencePicker} /> : null}
+          {audioPicker?.open ? <BackgroundAssetPickerView {...audioPicker} /> : null}
           {/* 52.1 quick B: the apply pill lives INSIDE the canvas region
               (position:relative, no overflow clip — the canvas-toast
               pattern). It previously rendered inside the workflow strip, whose
@@ -347,6 +359,12 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         {!pickerOpen ? <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} /> : null}
 
         {referenceDialog && !pickerOpen ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
+
+        {/* 52.5-01b (D-05): the Document sound modal rides the SAME pickerOpen
+            step-aside as every other parent dialog — while the shared gallery
+            is open (kind 'audio') the modal hides and returns with its prior
+            state on picker close. */}
+        {audioModal && !pickerOpen ? <PhysicsPaintAudioModalView {...audioModal} /> : null}
 
         {scriptPickerDialog?.open && !pickerOpen ? <PhysicsPaintScriptPickerDialog {...scriptPickerDialog} /> : null}
 

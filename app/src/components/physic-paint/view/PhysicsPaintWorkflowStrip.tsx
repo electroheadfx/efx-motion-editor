@@ -3,7 +3,7 @@ import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, Chevron
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useSignal, type ReadonlySignal, type Signal } from '@preact/signals';
+import { signal, useSignal, type ReadonlySignal, type Signal } from '@preact/signals';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import { PhysicsPaintStyledTooltip, useStyledTooltip } from './PhysicsPaintStyledTooltip';
 import {
@@ -118,7 +118,36 @@ import { usePhysicsPaintBackgroundClipDrag } from '../hooks/usePhysicsPaintBackg
 import { usePhysicsPaintBackgroundClipResize, type BackgroundClipResizeSource } from '../hooks/usePhysicsPaintBackgroundClipResize';
 import { deriveEfxPaintBackgroundResolution } from '../../../efx-paint/compositor/efxPaintBackgroundResolution';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import type { BackgroundTrack, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, DocumentSoundClip, InternalPaintTrack, PhotoReferenceTrack } from '../../../efx-paint/document/efxPaintDocument';
+// 52.5-01b Task 3 (D-04/D-07/D-08/D-09), revised by UAT round 3: the sound
+// band — pure geometry helpers and the shared 3-tier peaks cache (no new
+// decode path). The clip is NOT a scrub target (press stops propagation):
+// selecting it arms a reposition drag; the vertical end bars are the in/out
+// trim handles. A small square on the playhead is the dedicated scrub handle.
+import {
+  SOUND_BAND_HEIGHT_PX,
+  SOUND_OVERLAY_STROKE,
+  SOUND_OVERLAY_STROKE_PX,
+  SOUND_STAIN_ARM_PX,
+  SOUND_TRIM_ARM_PX,
+  SOUND_WAVEFORM_FILL,
+  applyTrimEndSound,
+  applyTrimStartSound,
+  clampSoundRepositionStart,
+  selectSoundPeaks,
+  soundFadeInPathD,
+  soundFadeOutPathD,
+  soundGainLineSpan,
+  soundGainLineY,
+  soundStainLeftPx,
+  soundStainWidthPx,
+  soundWaveformPathD,
+  type SoundBandGestureKind,
+  type SoundBandGesturePatch,
+  type SoundBandValues,
+} from './soundBandGeometry';
+import { audioPeaksCache, peaksCacheRevision } from '../../../lib/audioPeaksCache';
+import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
 // requestDeleteTrack preview plus the rename-validation constants — every
 // destructive mutation routes through a controller intent (the delete commit
@@ -253,9 +282,11 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoPlaybackLoopChange?: (loop: boolean) => void;
   onRotoPlaybackFpsChange?: (fps: number) => void;
   /**
-   * 41-04 (D-12..D-14): session-local Audio Preview toggle. State defaults On
-   * per session (never persisted); the intent routes through the monitor's
-   * single control funnel for immediate mid-playback effect.
+   * 41-04 (D-12..D-14): session-local Audio Preview toggle. State defaults
+   * Off per session (52.5 UAT — the Studio previews the studio sound alone;
+   * never persisted); the intent routes through the monitor's single control
+   * funnel for immediate mid-playback effect. The Document sound modal carries
+   * the SAME signal as a second surface (one source of truth).
    */
   audioPreviewEnabled?: boolean;
   onAudioPreviewToggle?: () => void;
@@ -473,6 +504,27 @@ export interface PhysicsPaintWorkflowStripProps {
   photoReference?: PhotoReferenceTrack | null;
   /** The strip camera icon's open-dialog intent. */
   onOpenReference?: () => void;
+  /* ---- 52.5-01b Task 3 (D-06/D-07/D-08/D-09): the document sound band ----
+     261008-ig1 Task 2: the BAND takes the full clip LIST (array order
+     canonical) plus the Studio-owned selection signal — the strip body never
+     reads the selection (narrow-read law; only the per-clip children do). */
+  /** The placed document sound clips (absent/empty = the band renders the
+   *  frame numbers only — no stain, no trim bar). */
+  documentAudios?: readonly DocumentSoundClip[];
+  /** Studio-owned selection signal — handlers are the only writers. */
+  selectedSoundId?: Signal<string | null> | null;
+  /** Launcher click — opens the Document sound modal (the ONLY header entry point). */
+  onOpenDocumentSound?: () => void;
+  /** Double-click a clip band — opens THAT clip's modal (never the launcher port). */
+  onDocumentSoundDblClick?: (clipId: string) => void;
+  /** Gesture settle — commits a dragged start/in/out through the Studio's
+   *  per-clip store door (the patch carries the gesture's clipId); returns
+   *  whether the commit was accepted (rejected or no-op clamps restore the
+   *  prior accepted span). */
+  onDocumentSoundSettle?: (patch: SoundBandGesturePatch) => boolean;
+  /** Reveal request {frame, nonce} from a modal list-row click — the strip
+   *  positions the viewport ONCE per nonce (qad law; never snaps back). */
+  revealRequest?: { frame: number; nonce: number } | null;
   /* ---- 52-05 (G-52-3): the track rail-creation flow — reveal as the 4th rail kind ---- */
   /** Choosing a PlayScript rail kind (motion/static) opens the Create Rail
    *  dialog on the Paint tab — the same flow that creates a motion/static
@@ -495,17 +547,47 @@ const ROTO_CELL_WIDTH_PX = 18;
 const RULER_TICK_WIDTH_PX = RULER_STEP * ROTO_CELL_WIDTH_PX;
 
 /* 47-01 UAT round 3: flexible strip height. The fixed chrome bands are
-   46 (header) + 1 (strip border) + 1 (timeline border) + 28 (ruler) + 34
-   (action row) + 14 (scrollbar) = 124. The strip defaults to exactly enough
+   46 (header) + 1 (strip border) + 1 (timeline border) + 36 (ruler, the
+   52.5-01b D-07 band 28 -> 36 for the waveform stain) + 34 (action row) +
+   14 (scrollbar), i.e. 46 + 1 + 1 + 36 + 34 + 14 = 132. The strip
+   defaults to exactly enough
    height for every track row + the Bg row (30px each, UAT round 4 compact
    rows), capped at 270px so the canvas keeps room; the top-edge drag handle
    lets the user shrink (vertical scroll appears) or grow up to the full
    content height — never beyond the number of tracks. */
 // 47-01 UAT round 7: the row is 30px (8px rail band + 22px cells, no overlap).
 const STRIP_ROW_HEIGHT_PX = 30;
-const STRIP_CHROME_HEIGHT_PX = 124;
+const STRIP_CHROME_HEIGHT_PX = 132;
 const STRIP_MAX_HEIGHT_PX = 270;
 const STRIP_MIN_ROWS = 1;
+
+/** 52.5-01b Task 3: the live sound-band gesture session (identity fixed at
+ *  pointer-down; `next` is the clamped preview state, `origin` the commit
+ *  baseline for rejected settles). */
+interface SoundBandGestureSession {
+  /** 261008-ig1 Task 3: `'duplicate'` joins the union — the bare-alt clone
+   *  intent is stamped at pointer-down and never switches mid-gesture. */
+  readonly kind: SoundBandGestureKind;
+  /** 261008-ig1 Task 2: the clip this gesture drives — stamped once at
+   *  pointer-down; the settle payload routes through the per-clip door. */
+  readonly clipId: string;
+  readonly pointerId: number;
+  readonly originX: number;
+  readonly origin: SoundBandValues;
+  armed: boolean;
+  next: SoundBandValues;
+  removeWindowListeners: () => void;
+}
+
+/** Per-clip DOM handles the gesture preview mutates directly (no per-move
+ *  strip re-render). One record per clip id, created on first sight. */
+interface SoundClipDomEls {
+  stain: HTMLDivElement | null;
+  wave: SVGSVGElement | null;
+  overlay: SVGGElement | null;
+  edgeStart: HTMLDivElement | null;
+  edgeEnd: HTMLDivElement | null;
+}
 
 /**
  * 47-02 Task 3 (TML-03/D-05): the pure ensure-active-row-visible delta.
@@ -760,7 +842,7 @@ function RotoPlaybackCurrentFrameOutput(props: { currentFrame: Signal<number>; p
  * position source, so the bar follows seeks, cell navigation, playback ticks,
  * and undo/redo restores for free. CSS enforces pointer-events: none (T-s52-03).
  */
-function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFrame?: ReadonlySignal<number | null>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number }) {
+function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFrame?: ReadonlySignal<number | null>; playbackActive: boolean; playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined; frameCount: number; onHandlePointerDown?: (event: PointerEvent) => void }) {
   // G-52-9 drag-gate: while the ruler scrub gesture is armed the scrub feed
   // wins — this leaf is the ONLY strip UI that follows the drag (the Studio
   // runs no startFrame propagation mid-drag, so props.currentFrame holds the
@@ -772,7 +854,19 @@ function PhysicsPaintPlayheadBar(props: { currentFrame: Signal<number>; scrubFra
   // 4 = the timeline-scroll padding-left (the ruler/cell origin); +8 = half a
   // cell (18/2 = 9) minus half the 2px line → the bar centers on the frame.
   const left = 4 + clampedFrame * ROTO_CELL_WIDTH_PX + 8;
-  return <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }} />;
+  return (
+    <div class="physics-paint-playhead-bar" aria-hidden="true" style={{ left: `${left}px` }}>
+      {/* UAT round 3: the dedicated scrub handle — a small square on the
+          playhead. Dragging it scrubs without ever touching the clip (the
+          clip is a selection/drag target, never a scrub target). The bar
+          stays pointer-events:none (T-s52-03); only this square takes input. */}
+      <div
+        class="physics-paint-playhead-handle"
+        title="Drag to scrub"
+        onPointerDown={(event) => props.onHandlePointerDown?.(event as unknown as PointerEvent)}
+      ></div>
+    </div>
+  );
 }
 
 function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; isError: boolean; warmProgress?: ReadonlySignal<number> }) {
@@ -1256,19 +1350,11 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
               class="physics-paint-roto-fps-stepper"
               inputStyle={{
                 width: '40px',
-                height: '24px',
-                padding: '2px 4px',
-                border: '1px solid #747980',
-                borderRadius: '3px',
-                backgroundColor: '#5a5c5f',
                 color: '#f8fafc',
                 fontWeight: 700,
               }}
               buttonStyle={{
                 width: '22px',
-                height: '24px',
-                border: '1px solid #747980',
-                backgroundColor: '#5a5c5f',
                 color: '#f8fafc',
               }}
             /></label>
@@ -1301,8 +1387,8 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                     ariaDescribedBy={!props.canApplyForceSpacing && props.forceSpacingActionDisabledReason ? 'roto-key-action-reason-spacing' : undefined}
                     onFocus={forceSpacingTooltip.onFocus}
                     onBlur={forceSpacingTooltip.onBlur}
-                    inputStyle={{ width: '34px', padding: '2px 4px' }}
-                    buttonStyle={{ width: '18px', height: '18px' }}
+                    inputStyle={{ width: '34px' }}
+                    buttonStyle={{ width: '18px' }}
                   />
                   <button
                     type="submit"
@@ -1523,6 +1609,202 @@ const RotoTimelineCellButton = memo(
     && prev.onCellClick === next.onCellClick
     && rotoCellVmValuesEqual(prev.vm, next.vm),
 );
+
+/* ----------------------------------------------------------------------------
+ * 261008-ig1 Task 2 — the per-clip sound band children (D-01 multi-clip).
+ * HOOK-FREE by law: expanded by direct function call in tests, and the NARROW
+ * selection reads (`selectedSoundId.value`) live HERE — never in the strip
+ * body — so a band deselect re-renders exactly these vnodes
+ * (efx-preact-reactivity narrow-read). Declared BEFORE the strip export so
+ * the body source slice excludes them. Fail-closed: the stain child returns
+ * null without peaks (loading / missing source -> plain band).
+ * ------------------------------------------------------------------------- */
+
+/** The placed clip + Studio-owned selection + per-clip DOM handles. */
+interface PhysicsPaintSoundClipChildProps {
+  readonly clip: DocumentSoundClip;
+  readonly selectedSoundId: Signal<string | null>;
+  readonly els: SoundClipDomEls;
+}
+
+interface PhysicsPaintSoundClipStainProps extends PhysicsPaintSoundClipChildProps {
+  readonly onPointerDown: (event: PointerEvent, clip: DocumentSoundClip) => void;
+  readonly onDblClick: (event: MouseEvent, clip: DocumentSoundClip) => void;
+}
+
+interface PhysicsPaintSoundClipEdgesProps extends PhysicsPaintSoundClipChildProps {
+  readonly onPointerDown: (event: PointerEvent, kind: 'trim-start' | 'trim-end', clip: DocumentSoundClip) => void;
+}
+
+export function PhysicsPaintSoundClipStain(props: PhysicsPaintSoundClipStainProps) {
+  const clip = props.clip;
+  const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
+  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
+  // UAT round 4: the waveform is drawn once in SOURCE space and windowed by
+  // the SVG viewBox to [in, out] — trimming reveals the cut live.
+  const sourceFrames = audioPeaksCache.getSourceFrames(clip.sourceId) ?? clip.outFrame;
+  const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
+  const inPx = clip.inFrame * ROTO_CELL_WIDTH_PX;
+  const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
+  const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx) : null;
+  if (pathD === null) return null; // fail-closed: loading / missing source.
+  const gainY = soundGainLineY(clip.gain);
+  // UAT round 5: the gain line is clipped to the gap between active fades.
+  const gainSpan = soundGainLineSpan(clip.fadeInFrames, clip.fadeOutFrames, clip.inFrame, clip.outFrame, widthPx);
+  const fadeInD = soundFadeInPathD(clip.fadeInFrames, clip.inFrame, clip.outFrame, widthPx, clip.gain, clip.fadeInCurve);
+  const fadeOutD = soundFadeOutPathD(clip.fadeOutFrames, clip.inFrame, clip.outFrame, widthPx, clip.gain, clip.fadeOutCurve);
+  const isSelected = props.selectedSoundId.value === clip.id;
+  return (
+    <div
+      ref={(element) => { props.els.stain = element; }}
+      class={`physics-paint-sound-stain${isSelected ? ' is-selected' : ''}`}
+      style={{ left: `${leftPx}px`, width: `${widthPx}px` }}
+      title="Drag to reposition, double-click to open Document sound"
+      onPointerDown={(event) => props.onPointerDown(event as unknown as PointerEvent, clip)}
+      onDblClick={(event) => props.onDblClick(event as unknown as MouseEvent, clip)}
+    >
+      <svg
+        ref={(element) => { props.els.wave = element; }}
+        class="physics-paint-sound-stain-wave"
+        width={widthPx}
+        height={SOUND_BAND_HEIGHT_PX}
+        viewBox={`${inPx} 0 ${widthPx} ${SOUND_BAND_HEIGHT_PX}`}
+        aria-hidden="true"
+      >
+        {/* UAT round 3/4/5: waveform RGB (22 110 203); fade curves + gain line
+            share the lightened overlay stroke at 1px, gain clipped around any
+            active transition. */}
+        <path d={pathD} fill={SOUND_WAVEFORM_FILL} />
+        <g ref={(element) => { props.els.overlay = element; }} transform={`translate(${inPx}, 0)`}>
+          {fadeInD !== null ? (
+            <path
+              d={fadeInD}
+              stroke={SOUND_OVERLAY_STROKE}
+              stroke-width={SOUND_OVERLAY_STROKE_PX}
+              fill="none"
+            />
+          ) : null}
+          {fadeOutD !== null ? (
+            <path
+              d={fadeOutD}
+              stroke={SOUND_OVERLAY_STROKE}
+              stroke-width={SOUND_OVERLAY_STROKE_PX}
+              fill="none"
+            />
+          ) : null}
+          {gainSpan !== null ? (
+            <line
+              x1={gainSpan.x1}
+              y1={gainY}
+              x2={gainSpan.x2}
+              y2={gainY}
+              stroke={SOUND_OVERLAY_STROKE}
+              stroke-width={SOUND_OVERLAY_STROKE_PX}
+            />
+          ) : null}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+export function PhysicsPaintSoundClipEdges(props: PhysicsPaintSoundClipEdgesProps) {
+  const clip = props.clip;
+  const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
+  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
+  const isSelected = props.selectedSoundId.value === clip.id;
+  const selectedClass = isSelected ? ' is-selected' : '';
+  // Paired element closes (not self-closing) so the source contract's
+  // tag-depth matcher stays balanced. Neither bar seeks — the press stops at
+  // the handle; the playhead square and the ruler own every scrub.
+  return (
+    <>
+      <div
+        ref={(element) => { props.els.edgeStart = element; }}
+        class={`physics-paint-sound-edge physics-paint-sound-edge-start${selectedClass}`}
+        style={{ left: `${leftPx - 3}px` }}
+        title="Drag to trim clip start"
+        onPointerDown={(event) => props.onPointerDown(event as unknown as PointerEvent, 'trim-start', clip)}
+      ></div>
+      <div
+        ref={(element) => { props.els.edgeEnd = element; }}
+        class={`physics-paint-sound-edge physics-paint-sound-edge-end${selectedClass}`}
+        style={{ left: `${leftPx + Math.max(0, widthPx - 5)}px` }}
+        title="Drag to trim clip end"
+        onPointerDown={(event) => props.onPointerDown(event as unknown as PointerEvent, 'trim-end', clip)}
+      ></div>
+    </>
+  );
+}
+
+/* ----------------------------------------------------------------------------
+ * 261008-ig1 Task 3 (D-03) — the incoming-duplicate ghost. HOOK-FREE like its
+ * siblings: the same stain visuals (waveform + fade/gain overlay, source-keyed
+ * peaks — ONE decode serves the original and this preview) but NO handlers and
+ * NO selection read — `pointer-events: none` + never `is-selected`, so exactly
+ * one stain carries the selection class while the original stays put under the
+ * ghost. The gesture moves it DOM-imperatively through its `els` record (no
+ * per-move strip re-render — efx-preact-reactivity rule 5); it unmounts on
+ * pointer-up when the committed clone renders from the store instead.
+ * ------------------------------------------------------------------------- */
+interface PhysicsPaintSoundDuplicateGhostProps {
+  readonly clip: DocumentSoundClip;
+  readonly els: SoundClipDomEls;
+}
+
+export function PhysicsPaintSoundDuplicateGhost(props: PhysicsPaintSoundDuplicateGhostProps) {
+  const clip = props.clip;
+  const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
+  const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
+  const sourceFrames = audioPeaksCache.getSourceFrames(clip.sourceId) ?? clip.outFrame;
+  const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
+  const inPx = clip.inFrame * ROTO_CELL_WIDTH_PX;
+  const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
+  const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx) : null;
+  if (pathD === null) return null; // fail-closed: loading / missing source.
+  const gainY = soundGainLineY(clip.gain);
+  const gainSpan = soundGainLineSpan(clip.fadeInFrames, clip.fadeOutFrames, clip.inFrame, clip.outFrame, widthPx);
+  const fadeInD = soundFadeInPathD(clip.fadeInFrames, clip.inFrame, clip.outFrame, widthPx, clip.gain, clip.fadeInCurve);
+  const fadeOutD = soundFadeOutPathD(clip.fadeOutFrames, clip.inFrame, clip.outFrame, widthPx, clip.gain, clip.fadeOutCurve);
+  return (
+    <div
+      ref={(element) => { props.els.stain = element; }}
+      class="physics-paint-sound-stain physics-paint-sound-duplicate-preview"
+      style={{ left: `${leftPx}px`, width: `${widthPx}px`, pointerEvents: 'none' }}
+      aria-hidden="true"
+    >
+      <svg
+        ref={(element) => { props.els.wave = element; }}
+        class="physics-paint-sound-stain-wave"
+        width={widthPx}
+        height={SOUND_BAND_HEIGHT_PX}
+        viewBox={`${inPx} 0 ${widthPx} ${SOUND_BAND_HEIGHT_PX}`}
+        aria-hidden="true"
+      >
+        <path d={pathD} fill={SOUND_WAVEFORM_FILL} />
+        <g ref={(element) => { props.els.overlay = element; }} transform={`translate(${inPx}, 0)`}>
+          {fadeInD !== null ? (
+            <path d={fadeInD} stroke={SOUND_OVERLAY_STROKE} stroke-width={SOUND_OVERLAY_STROKE_PX} fill="none" />
+          ) : null}
+          {fadeOutD !== null ? (
+            <path d={fadeOutD} stroke={SOUND_OVERLAY_STROKE} stroke-width={SOUND_OVERLAY_STROKE_PX} fill="none" />
+          ) : null}
+          {gainSpan !== null ? (
+            <line x1={gainSpan.x1} y1={gainY} x2={gainSpan.x2} y2={gainY} stroke={SOUND_OVERLAY_STROKE} stroke-width={SOUND_OVERLAY_STROKE_PX} />
+          ) : null}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+/** 261008-ig1 Task 3: the ghost's `els` record key — a non-clip sentinel so
+ *  the preview can never collide with a real placed-clip id (UUIDs). */
+const SOUND_DUPLICATE_PREVIEW_ELS_KEY = '__sound-duplicate-preview__';
+/** No-selection fallback when the host never wires a selection signal. */
+const NO_SOUND_SELECTION = signal<string | null>(null);
+/** Frozen empty clip list — identity-stable across renders. */
+const EMPTY_DOCUMENT_AUDIOS: readonly DocumentSoundClip[] = Object.freeze([]);
 
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
@@ -1771,6 +2053,34 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   );
   const { frameCells, physicalCellByAppFrame, generatedRotoFrames, cachedFrameByAppFrame, realCachedFrameSet, lifecycleTargetByAppFrame } = structuralIndex;
   const rotoLaneWidthPx = frameCells.length * ROTO_CELL_WIDTH_PX;
+  /* 52.5-01b Task 3 (D-04/E3): the stain reads the shared peaks cache. The
+     revision read subscribes the strip ONLY to cache mutations (import /
+     reopen-ensure — never per frame), per efx-preact-reactivity rule 5. No
+     peaks (loading, missing file, no clip) -> no stain path -> the plain band
+     renders (fail-closed; the modal carries the busy/error copy). */
+  peaksCacheRevision.value;
+  /* 261008-ig1 Task 2: the placed clip LIST + Studio-owned selection (D-01).
+     The NARROW `.value` reads live in the per-clip children — the body only
+     wires the signal through (never reads it). The handler-only writes below
+     route to this resolved signal (fallback when a host wires none). */
+  const documentAudios = props.documentAudios ?? EMPTY_DOCUMENT_AUDIOS;
+  const soundSelection = props.selectedSoundId ?? NO_SOUND_SELECTION;
+  /* 261008-ig1 Task 3 (D-03): the in-flight alt+drag duplicate ghost — the
+     origin clip while a `'duplicate'` session runs, null otherwise. Written
+     ONLY inside the gesture handlers (never a render-body write); the body
+     reads it ONCE so starting/ending a duplicate gesture re-renders the strip
+     exactly twice (the ghost mounts, then unmounts — per-move preview stays
+     DOM-imperative inside the ghost, never a signal write). Held in a ref so
+     the instance survives re-renders in the direct-call test harness too
+     (signal in useRef — the project's useSignal-breaks-the-harness idiom). */
+  const soundDuplicatePreviewRef = useRef<Signal<DocumentSoundClip | null> | null>(null);
+  if (soundDuplicatePreviewRef.current === null) {
+    soundDuplicatePreviewRef.current = signal<DocumentSoundClip | null>(null);
+  }
+  const soundDuplicatePreview = soundDuplicatePreviewRef.current;
+  // One body read per render (narrow-read): the ghost mounts on gesture start
+  // and unmounts on release — handlers never read `.value`, they only write.
+  const soundDuplicateClip = soundDuplicatePreview.value;
   const rotoRulerTicks = useMemo(() => buildRulerTicks(frameCells), [frameCells]);
   // Phase 43 loop resolution (Pitfall 7, D-32): the lazy per-frame contract
   // is queried for exactly the represented physical extent (frameCells) — one
@@ -2709,7 +3019,222 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     onSeek: (frame) => props.onNavigateToSyncedFrame?.(frame),
     onScrubStart: () => props.onScrubStart?.(),
     onScrubEnd: (frame) => props.onScrubEnd?.(frame),
+    // UAT round 3: the playhead's scrub handle drives the SAME session but
+    // maps clientX through the ruler's rect (the handle lives on the playhead
+    // bar, outside the ruler).
+    getRulerElement: () => soundRulerElRef.current,
   });
+  /* ---- 52.5-01b Task 3 (D-08/D-09, UI-SPEC gesture truth table, T-52.5-13)
+     One gesture session for the stain body, the trim-bar middle and the two
+     trim end zones. Identity is decided at pointer-down and NEVER switches
+     mid-gesture:
+     - stain press bubbles to the ruler (seek-on-press = the one seek a
+       sub-threshold click gets); once the 4px arm threshold is crossed the
+       moves stop propagation so the ruler scrub session starves — ONE
+       gesture drives the playhead feed + throttled peek.
+     - trim end zones stop propagation at pointer-down (the bar NEVER seeks)
+       and arm at 2px; trim sessions own their begin/end idle pair.
+     - sub-threshold release: exactly one seek (the press), no settle.
+     - armed release: commit through the member setter + full scrub settle;
+       a rejected/no-op clamp restores the prior accepted span in the DOM.
+     Live preview mutates the two layer elements directly (no per-move
+     strip re-render — efx-preact-reactivity rule 5). ---- */
+  const soundRulerElRef = useRef<HTMLDivElement>(null);
+  /* 261008-ig1 Task 2: per-clip DOM handles — one record per clip id, created
+     on first sight (idempotent during render; the child ref callbacks fill
+     the fields at mount). The gesture preview mutates ONLY the gesture's
+     clip record — no per-move strip re-render (efx-preact-reactivity rule 5). */
+  const soundClipElsRef = useRef(new Map<string, SoundClipDomEls>());
+  const soundGestureRef = useRef<SoundBandGestureSession | null>(null);
+  const soundBandParentEnd = (): number => props.rotoParentEndExclusive ?? frameCells.length;
+  const ensureSoundClipEls = (clipId: string): SoundClipDomEls => {
+    const existing = soundClipElsRef.current.get(clipId);
+    if (existing) return existing;
+    const fresh: SoundClipDomEls = { stain: null, wave: null, overlay: null, edgeStart: null, edgeEnd: null };
+    soundClipElsRef.current.set(clipId, fresh);
+    return fresh;
+  };
+  const applySoundBandPreview = (clipId: string, next: SoundBandValues): void => {
+    const els = soundClipElsRef.current.get(clipId);
+    if (!els) return;
+    const leftPx = soundStainLeftPx(next.startFrame, ROTO_CELL_WIDTH_PX);
+    const widthPx = soundStainWidthPx(next.inFrame, next.outFrame, ROTO_CELL_WIDTH_PX);
+    const inPx = next.inFrame * ROTO_CELL_WIDTH_PX;
+    const left = `${leftPx}px`;
+    const width = `${widthPx}px`;
+    const stain = els.stain;
+    if (stain) {
+      stain.style.left = left;
+      stain.style.width = width;
+    }
+    // Live trim preview (UAT round 4): window the SOURCE-space waveform to the
+    // next [in, out] so the drag visibly cuts the clip instead of sliding it.
+    const wave = els.wave;
+    if (wave) {
+      wave.setAttribute('viewBox', `${inPx} 0 ${widthPx} ${SOUND_BAND_HEIGHT_PX}`);
+      wave.setAttribute('width', width);
+    }
+    const overlay = els.overlay;
+    if (overlay) overlay.setAttribute('transform', `translate(${inPx}, 0)`);
+    const edgeStart = els.edgeStart;
+    if (edgeStart) edgeStart.style.left = left;
+    const edgeEnd = els.edgeEnd;
+    if (edgeEnd) edgeEnd.style.left = `${leftPx + Math.max(0, widthPx - 5)}px`;
+  };
+  const startSoundBandGesture = (
+    kind: SoundBandGestureSession['kind'],
+    event: PointerEvent,
+    clip: DocumentSoundClip,
+  ): void => {
+    // The clip and its handles are NEVER scrub targets (UAT round 3): the
+    // press is stopped before anything and this gesture owns the idle pairing.
+    beginInteraction(event.pointerId);
+    const origin: SoundBandValues = {
+      startFrame: clip.startFrame,
+      inFrame: clip.inFrame,
+      outFrame: clip.outFrame,
+    };
+    const session: SoundBandGestureSession = {
+      kind,
+      clipId: clip.id,
+      pointerId: event.pointerId,
+      originX: event.clientX,
+      origin,
+      armed: false,
+      next: origin,
+      removeWindowListeners: () => {},
+    };
+    // Capture-phase window listeners: element-level listeners would never see
+    // the moves once the ruler captures the pointer, so the session listens at
+    // the window in the capture phase and owns the drag outright.
+    const onMove = handleSoundGesturePointerMove;
+    const onUp = handleSoundGesturePointerUp;
+    const onCancel = handleSoundGesturePointerCancel;
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('pointercancel', onCancel, true);
+    session.removeWindowListeners = () => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onCancel, true);
+    };
+    soundGestureRef.current = session;
+  };
+  const handleSoundGesturePointerMove = (event: PointerEvent): void => {
+    const session = soundGestureRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+    markInteractionActive();
+    const dx = event.clientX - session.originX;
+    // 261008-ig1 Task 3: a duplicate session repositions exactly like a stain
+    // (same 4px arm, same reposition clamp) — only its settle intent differs.
+    const isReposition = session.kind === 'stain' || session.kind === 'duplicate';
+    const armPx = isReposition ? SOUND_STAIN_ARM_PX : SOUND_TRIM_ARM_PX;
+    if (!session.armed) {
+      if (Math.abs(dx) <= armPx) return;
+      session.armed = true;
+    }
+    event.stopPropagation();
+    const delta = Math.round(dx / ROTO_CELL_WIDTH_PX);
+    if (isReposition) {
+      // UAT round 5: the reposition bound is the START (the body may overhang
+      // the parent end) — a full-width clip used to be pinned at frame 0.
+      const nextStart = clampSoundRepositionStart(session.origin.startFrame, delta, soundBandParentEnd());
+      session.next = { ...session.origin, startFrame: nextStart };
+    } else if (session.kind === 'trim-start') {
+      session.next = {
+        ...session.origin,
+        ...applyTrimStartSound(session.origin.startFrame, session.origin.inFrame, session.origin.outFrame, delta, soundBandParentEnd()),
+      };
+    } else {
+      session.next = {
+        ...session.origin,
+        ...applyTrimEndSound(session.origin.startFrame, session.origin.inFrame, session.origin.outFrame, delta, soundBandParentEnd()),
+      };
+    }
+    // Task 3: a duplicate drags the GHOST (the original stain stays put);
+    // move/trim keep previewing their own clip record.
+    applySoundBandPreview(
+      session.kind === 'duplicate' ? SOUND_DUPLICATE_PREVIEW_ELS_KEY : session.clipId,
+      session.next,
+    );
+    // UAT round 3: a clip drag NEVER scrubs — no playhead navigation, no audio
+    // peek. The playhead handle and the ruler own every seek.
+  };
+  const handleSoundGesturePointerUp = (event: PointerEvent): void => {
+    const session = soundGestureRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+    session.removeWindowListeners();
+    soundGestureRef.current = null;
+    endInteraction(session.pointerId);
+    // Task 3: retract the ghost in BOTH release paths (armed or sub-threshold)
+    // — the committed clone renders from the store, the original never moved.
+    if (session.kind === 'duplicate') soundDuplicatePreview.value = null;
+    if (!session.armed) {
+      // Sub-threshold release: the press only selected the clip — no commit,
+      // no settle (the truth-table "tap" row).
+      return;
+    }
+    // Settle-on-release only: NO store write happens during the drag (the
+    // gesture identity stamped at pointer-down rides the patch — D-02/D-03).
+    const committed = props.onDocumentSoundSettle?.({ clipId: session.clipId, kind: session.kind, ...session.next }) ?? false;
+    if (session.kind === 'duplicate') return;
+    // Canonical geometry in the DOM either way: committed values match the
+    // coming re-render, rejected clamps restore the prior accepted span (E4).
+    applySoundBandPreview(session.clipId, committed ? session.next : session.origin);
+  };
+  const handleSoundGesturePointerCancel = (event: PointerEvent): void => {
+    const session = soundGestureRef.current;
+    if (!session || event.pointerId !== session.pointerId) return;
+    session.removeWindowListeners();
+    soundGestureRef.current = null;
+    endInteraction(session.pointerId);
+    if (session.kind === 'duplicate') {
+      // Ghost retracts — nothing on the original to restore.
+      soundDuplicatePreview.value = null;
+      return;
+    }
+    applySoundBandPreview(session.clipId, session.origin);
+  };
+  const handleSoundStainPointerDown = (event: PointerEvent, clip: DocumentSoundClip): void => {
+    if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    if (soundGestureRef.current) return;
+    // UAT round 3: the clip is a selection/drag target, NEVER a scrub target —
+    // the press stops here so the ruler seek never sees it.
+    event.stopPropagation();
+    // 261008-ig1 Task 2: press = select THAT clip (handler-written, never a
+    // render-body write; the narrow reads live in the per-clip children).
+    soundSelection.value = clip.id;
+    // 261008-ig1 Task 3 (D-03): BARE alt duplicates. The meta/ctrl/shift
+    // exclusions above run FIRST, so cmd/ctrl/shift+alt can never clone; the
+    // gesture kind is stamped HERE and never re-decided mid-move.
+    if (event.altKey) {
+      soundDuplicatePreview.value = clip;
+      startSoundBandGesture('duplicate', event, clip);
+      return;
+    }
+    startSoundBandGesture('stain', event, clip);
+  };
+  const handleSoundStainDblClick = (event: MouseEvent, clip: DocumentSoundClip): void => {
+    // UAT round 6 / 261008-ig1: double-clicking the clip opens THAT clip's
+    // modal through the clip port (never the header launcher port).
+    event.stopPropagation();
+    props.onDocumentSoundDblClick?.(clip.id);
+  };
+  const handleSoundTrimZonePointerDown = (
+    event: PointerEvent,
+    kind: Extract<SoundBandGestureSession['kind'], 'trim-start' | 'trim-end'>,
+    clip: DocumentSoundClip,
+  ): void => {
+    // Trim handles never seek either — the press is stopped before any guard.
+    event.stopPropagation();
+    if (!event.isPrimary || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+    if (soundGestureRef.current) return;
+    soundSelection.value = clip.id;
+    // 261008-ig1 Task 3 truth-table row: trim gains NO alt branch — a trim
+    // handle always trims, whatever modifiers are held (no duplicate from a
+    // trim). Gesture kind stays the `kind` stamped by the handle itself.
+    startSoundBandGesture(kind, event, clip);
+  };
   // 43.5-05 Task 2 drag preview reads (T5/T6) ─────────────────────────────
   // The hook's ghost/preview Signals are read fresh on every render; the
   // pushPaintTick signal (bumped in onPreviewChange) subscribes the component
@@ -3370,6 +3895,30 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     updateScrollbar();
     timelineOpenPositionedRef.current = true;
   }, [props.timelineOpenFrame, props.rotoPhysicalCells.length, updateScrollbar]);
+
+  // 261008-ig1 Task 2: reveal — a modal list-row click issues {frame, nonce};
+  // the viewport repositions ONCE per nonce on the qad target math (identity-
+  // stable dep = the nonce alone, so a manual scroll is never snapped back
+  // until a NEW request arrives). Termination: the handled-nonce guard flips
+  // once per nonce and no other writer exists, so the effect can never move
+  // the viewport twice for one request. Park (no write) while the content
+  // extent is shorter than the reveal frame (fail-closed).
+  const revealHandledNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    const request = props.revealRequest;
+    if (!request) return;
+    if (revealHandledNonceRef.current === request.nonce) return;
+    const frame = request.frame;
+    if (!Number.isInteger(frame) || frame < 0) return;
+    const scroller = timelineScrollRef.current;
+    if (!scroller) return;
+    if (scroller.scrollWidth < (frame + 1) * ROTO_CELL_WIDTH_PX) return;
+    const target = frame * ROTO_CELL_WIDTH_PX + ROTO_CELL_WIDTH_PX / 2 - scroller.clientWidth / 2;
+    const maxScroll = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    scroller.scrollLeft = Math.min(Math.max(0, target), maxScroll);
+    revealHandledNonceRef.current = request.nonce;
+    updateScrollbar();
+  }, [props.revealRequest?.nonce, updateScrollbar]);
 
   const classifyRotoDragTarget = useCallback((clientX: number, clientY: number, movedKeyId: string, sourceAppFrame: number): {
     target: RotoDragTarget | null;
@@ -4355,6 +4904,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
             // Remove — no X badge on the icon, 50-UAT round 2).
             photoReference: props.photoReference ?? null,
             onOpenReference: props.onOpenReference,
+            // 52.5-01b Task 3 (D-02): the Document sound launcher in the same
+            // ruler-spacer strip — tinted while ANY clip exists (D-01 list).
+            hasSound: documentAudios.length > 0,
+            onOpenDocumentSound: props.onOpenDocumentSound,
           })}
           <div ref={timelineScrollRef} class="physics-paint-timeline-scroll" tabIndex={-1} onScroll={updateScrollbar}>
             {/* 260827-s52 Task 1: the ruler is interactive — pointer-down seeks
@@ -4363,13 +4916,64 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                 ARIA violation, and wiring valuenow would re-render the strip
                 per frame; the nav pill already announces the current frame. */}
             <div
+              ref={soundRulerElRef}
               class="physics-paint-ruler"
               style={{ width: `${rotoLaneWidthPx}px`, minWidth: `${rotoLaneWidthPx}px` }}
               title="Seek playhead"
-              onPointerDown={(event) => rulerScrub.onPointerDown(event as unknown as PointerEvent)}
+              onPointerDown={(event) => {
+                // A band press outside every clip deselects (the clip's own
+                // press stops propagation, so it never reaches here).
+                // Handler write — never a render-body write.
+                soundSelection.value = null;
+                rulerScrub.onPointerDown(event as unknown as PointerEvent);
+              }}
             >
+              {/* 52.5-01b Task 3 (D-06/D-07, STUDIO-UI-01) + 261008-ig1 Task 2:
+                  ONE waveform stain per placed clip (D-01), rendered FIRST —
+                  behind the tick spans, so the frame numbers stay on top
+                  (#eceff2, filled, no outline; the ticks are pointer-events:none
+                  and the layer below receives every press). The per-clip child
+                  owns the geometry AND the narrow selection read; fail-closed
+                  to null without peaks (loading / missing source). */}
+              {documentAudios.map((clip) => (
+                <PhysicsPaintSoundClipStain
+                  key={clip.id}
+                  clip={clip}
+                  selectedSoundId={soundSelection}
+                  els={ensureSoundClipEls(clip.id)}
+                  onPointerDown={handleSoundStainPointerDown}
+                  onDblClick={handleSoundStainDblClick}
+                />
+              ))}
+              {/* 261008-ig1 Task 3 (D-03): the alt+drag duplicate ghost —
+                  mounted only while a `'duplicate'` session runs (the body's
+                  ONE narrow read above). Handlers move it DOM-imperatively;
+                  it never reads selection and never takes pointer events, so
+                  the original stays put and exactly one stain keeps
+                  `is-selected`. */}
+              {soundDuplicateClip !== null ? (
+                <PhysicsPaintSoundDuplicateGhost
+                  key="sound-duplicate-preview"
+                  clip={soundDuplicateClip}
+                  els={ensureSoundClipEls(SOUND_DUPLICATE_PREVIEW_ELS_KEY)}
+                />
+              ) : null}
               {rotoRulerTicks.map(frame => (
                 <span key={frame} class="physics-paint-ruler-tick" style={{ flex: `0 0 ${RULER_TICK_WIDTH_PX}px` }}>{frame}</span>
+              ))}
+              {/* 52.5 UAT round 3 + 261008-ig1 Task 2: the vertical end bars
+                  are the in/out trim handles — ONE pair per placed clip (the
+                  per-clip child; paired element closes so the source
+                  contract's tag-depth matcher stays balanced). Neither bar
+                  seeks — the press stops at the handle. */}
+              {documentAudios.map((clip) => (
+                <PhysicsPaintSoundClipEdges
+                  key={`sound-edge-${clip.id}`}
+                  clip={clip}
+                  selectedSoundId={soundSelection}
+                  els={ensureSoundClipEls(clip.id)}
+                  onPointerDown={handleSoundTrimZonePointerDown}
+                />
               ))}
             </div>
 
@@ -4450,6 +5054,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               playbackActive={props.isPlaying}
               playbackTick={props.rotoCachedPlaybackTick}
               frameCount={frameCells.length}
+              onHandlePointerDown={(event) => rulerScrub.onPointerDown(event)}
             />
           </div>
         </div>

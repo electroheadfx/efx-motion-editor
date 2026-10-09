@@ -1,0 +1,56 @@
+TAP version 13
+1..1
+not ok 1 - src/components/physic-paint/view/BackgroundAssetPickerView.test.ts # time=13.81ms {
+    1..4
+    ok 1 - useBackgroundAssetPickerController # time=4.20ms {
+        1..9
+        ok 1 - starts closed with an empty selection and disabled Confirm (S2 idle) # time=1.47ms
+        ok 2 - populates the library and project directory on open (Task 1 bridge consumer) # time=0.53ms
+        ok 3 - surfaces the bridge error state without opening the grid (fail-closed) # time=0.19ms
+        ok 4 - never populates a picker that was closed while the request was in flight # time=0.16ms
+        ok 5 - toggles selection and drives the Confirm-disabled computed # time=0.26ms
+        ok 6 - imports dialog-selected paths and refreshes the library in place (in-picker Import) # time=0.70ms
+        ok 7 - keeps the picker open and reports the error when the import path fails # time=0.22ms
+        ok 8 - reports a missing project directory before attempting the import # time=0.21ms
+        ok 9 - cancel closes the picker and clears the selection and error state # time=0.14ms
+    }
+    ok 2 - buildConfirmedImageIds — D-02 natural original-filename ordering # time=0.26ms {
+        1..2
+        ok 1 - emits the confirmed selection ordered by original filename, never by click order or asset UUID # time=0.16ms
+        ok 2 - emits an empty array when nothing is selected # time=0.05ms
+    }
+    not ok 3 - BackgroundAssetPickerView kind='audio' (52.5-01b Task 2 RED) # time=8.61ms {
+        1..3
+        not ok 1 - (t1) kind='audio' maps the requestLibrary result's audioAssets into the listing signal # time=4.28ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected undefined to be '[{\"id\":\"snd-a\",\"name\":\"loop.wav\",\"rel…' // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/BackgroundAssetPickerView.test.ts:271:59"
+            actual: "undefined"
+            expected: "[{\"id\":\"snd-a\",\"name\":\"loop.wav\",\"relativePath\":\"audio/loop.wav\"},{\"id\":\"snd-b\",\"name\":\"voice.mp3\",\"relativePath\":\"audio/voice.mp3\"}]"
+            ...
+        not ok 2 - (t2) kind='audio' Confirm path emits exactly one asset id (D-01 singleton) # time=3.95ms
+            ---
+            error:
+                name: "AssertionError"
+                message: "expected '[\"snd-a\",\"snd-b\"]' to be '[\"snd-b\"]' // Object.is equality"
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/BackgroundAssetPickerView.test.ts:282:58"
+            actual: "[\"snd-a\",\"snd-b\"]"
+            expected: "[\"snd-b\"]"
+            ...
+        not ok 3 - (t3) the view renders audio filename tiles without thumbnails and confirms through the audio path # time=0.34ms
+            ---
+            error:
+                name: "Error"
+                message: "view source missing audio-mode markers: kind?: 'image' | 'audio' | props.kind === 'audio' | audioAssets | buildConfirmedAudioIds | {props.kind === 'audio' ? ("
+            at: "/Users/lmarques/Dev/efx-motion-editor/app/src/components/physic-paint/view/BackgroundAssetPickerView.test.ts:309:13"
+            ...
+    }
+    ok 4 - BackgroundAssetPickerView surface contract # time=0.45ms {
+        1..3
+        ok 1 - is a signal-driven controller with no useState in the new picker code (efx-preact-reactivity) # time=0.16ms
+        ok 2 - renders a full-area region swap with named Confirm/Cancel and an in-picker Import (S2) # time=0.16ms
+        ok 3 - moves focus to Confirm on open and restores it on close (UI-SPEC) # time=0.09ms
+    }
+}

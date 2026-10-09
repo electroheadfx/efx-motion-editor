@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from '../roto/physicsPaintRotoPhysicalModel';
-import { applyPhysicsPaintLaunchContext, parsePhysicsPaintLaunchContext } from '../bridge/physicsPaintLaunchContext';
+import {
+  applyPhysicsPaintLaunchContext,
+  parseCanonicalPhysicsPaintLaunchValue,
+  parsePhysicsPaintLaunchContext,
+} from '../bridge/physicsPaintLaunchContext';
 
 function makeLocation(search: string, hash = ''): Location {
   return { search, hash } as Location;
@@ -112,5 +116,103 @@ describe('physicsPaintLaunchContext', () => {
     applyPhysicsPaintLaunchContext(context, setters, () => settings);
     expect(setters.setLaunchContext).toHaveBeenCalledWith(context);
     expect(setters.setSettings).toHaveBeenCalledWith(settings);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 52.5-01a Task 2 (Q1, T-52.5-08), reshaped (dup-clip-plays-audios-0): the
+// closed `documentAudio` launch section — rides ONLY the closed LAUNCH_KEYS,
+// validated fail-closed against the exact {revision, clips} set, every entry
+// a closed {clipId, assetUrl} ref (unknown key -> null, never a raw payload).
+// ---------------------------------------------------------------------------
+
+describe('documentAudio closed launch section (52.5-01a, Q1, T-52.5-08)', () => {
+  const DOCUMENT_AUDIO_SECTION = {
+    revision: 2,
+    clips: [
+      { clipId: 'sound-clip-1', assetUrl: 'efxasset://localhost/audio/sound.wav' },
+      { clipId: 'sound-clip-2', assetUrl: 'efxasset://localhost/audio/sound.wav' },
+    ],
+  } as const;
+  const AUDIO_PREVIEW_SECTION = { revision: 1, fps: 24, tracks: [] } as const;
+
+  it('accepts a payload carrying documentAudio alongside audioPreview', () => {
+    const envelope = makeLaunchEnvelope({
+      audioPreview: AUDIO_PREVIEW_SECTION,
+      documentAudio: DOCUMENT_AUDIO_SECTION,
+    });
+    const parsed = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.documentAudio).toEqual(DOCUMENT_AUDIO_SECTION);
+  });
+
+  it('rejects a documentAudio section carrying one extra ad-hoc key (fail-closed null)', () => {
+    const envelope = makeLaunchEnvelope({
+      audioPreview: AUDIO_PREVIEW_SECTION,
+      documentAudio: { ...DOCUMENT_AUDIO_SECTION, adHoc: true },
+    });
+    expect(parseCanonicalPhysicsPaintLaunchValue(envelope)).toBeNull();
+  });
+
+  it('keeps a launch without documentAudio unchanged', () => {
+    // ONE envelope, parsed twice: each makeLaunchEnvelope call mints fresh
+    // document UUIDs, so two envelopes are never byte-comparable.
+    const envelope = makeLaunchEnvelope({ audioPreview: AUDIO_PREVIEW_SECTION });
+    const parsed = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.documentAudio).toBeUndefined();
+    const repeated = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(JSON.stringify(parsed)).toBe(JSON.stringify(repeated));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261008-ig1 Task 1: the multi-clip `audios[]` list rides INSIDE the document
+// carrier (not as a sibling launch key) — a launch envelope carrying two clips
+// with a shared sourceId must survive the closed parse, and the retired
+// singular `sound` member must fail closed.
+// ---------------------------------------------------------------------------
+
+describe('audios list rides the document launch carrier (261008-ig1)', () => {
+  function makeAudioClip(id: string): Record<string, unknown> {
+    return {
+      id,
+      sourceId: 'asset-shared-1',
+      relativePath: 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav',
+      sourceRevision: 1,
+      startFrame: 48,
+      inFrame: 12,
+      outFrame: 108,
+      gain: -10,
+      fadeInFrames: 6,
+      fadeOutFrames: 12,
+      fadeInCurve: 'exponential',
+      fadeOutCurve: 'linear',
+      enabled: true,
+    };
+  }
+
+  it('parses a launch document carrying two clips with a shared sourceId, members intact', () => {
+    const envelope = makeLaunchEnvelope();
+    const document = envelope.document as unknown as Record<string, unknown>;
+    document.audios = [makeAudioClip('clip-1'), makeAudioClip('clip-2')];
+    const parsed = parseCanonicalPhysicsPaintLaunchValue(envelope);
+    expect(parsed).not.toBeNull();
+    const audios = (parsed!.document as unknown as { audios?: Record<string, unknown>[] }).audios ?? [];
+    expect(audios).toHaveLength(2);
+    expect(audios[0].id).toBe('clip-1');
+    expect(audios[1].id).toBe('clip-2');
+    // Two identities: distinct clip ids, ONE shared imported file.
+    expect(audios[0].sourceId).toBe(audios[1].sourceId);
+    expect(audios[1].startFrame).toBe(48);
+    expect(audios[1].gain).toBe(-10);
+    expect(audios[1].fadeOutCurve).toBe('linear');
+  });
+
+  it('rejects a launch document carrying the retired singular sound member (fail-closed null)', () => {
+    const envelope = makeLaunchEnvelope();
+    const document = envelope.document as unknown as Record<string, unknown>;
+    document.sound = makeAudioClip('clip-1');
+    expect(parseCanonicalPhysicsPaintLaunchValue(envelope)).toBeNull();
   });
 });

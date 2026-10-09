@@ -3,11 +3,14 @@ import type { PreactHookRuntime } from '../../../test/preactHookRuntime';
 import type { PhysicPaintRotoLoopClip, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { vi } from 'vitest';
-import type { BackgroundTrack, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
+import type { BackgroundTrack, DocumentSoundClip, InternalPaintTrack } from '../../../efx-paint/document/efxPaintDocument';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { getDocument, registerDocument, setActiveTrackId } from '../../../stores/efxPaintStore';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
+import { audioPeaksCache } from '../../../lib/audioPeaksCache';
 import { buildPhysicPaintRotoPhysicalRevision } from '../roto/physicsPaintRotoPhysicalModel';
 
 const runtimeHolder = vi.hoisted(() => ({ current: null as PreactHookRuntime | null }));
@@ -37,12 +40,15 @@ vi.mock('@preact/signals', async () => {
 });
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { signal } from '@preact/signals';
 import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const CELL_WIDTH_PX = 18;
+/** 261008-ig1 Task 2: the strip source for the narrow-read contract pin. */
+const stripSource = readFileSync(fileURLToPath(new URL('./PhysicsPaintWorkflowStrip.tsx', import.meta.url)), 'utf8');
 
 interface TestVNode {
   type: unknown;
@@ -80,6 +86,18 @@ function findOne(root: unknown, predicate: (vnode: TestVNode) => boolean): TestV
 
 function hasClass(vnode: TestVNode, className: string): boolean {
   return String(vnode.props.class ?? vnode.props.className ?? '').split(/\s+/).includes(className);
+}
+
+/**
+ * 261008-ig1 Task 2: expand the strip's per-clip child component vnodes by
+ * calling their (hook-free) component functions directly — same idiom as
+ * resolveRow. `walk` never expands function components, so without this the
+ * stain/edge vnodes stay opaque.
+ */
+function expandNamedComponent(root: unknown, name: string): TestVNode[] {
+  return findAll(root, (vnode) => typeof vnode.type === 'function' && (vnode.type as { name?: string }).name === name)
+    .map((vnode) => (vnode.type as (props: TestVNode['props']) => TestVNode | null)(vnode.props))
+    .filter((vnode): vnode is TestVNode => vnode !== null && vnode !== undefined);
 }
 
 function assignRef(ref: unknown, value: unknown): void {
@@ -153,6 +171,12 @@ interface WorkflowHarnessOptions {
   readonly layerId?: string;
   readonly background?: BackgroundTrack;
   readonly onSelectTrack?: (trackId: string) => void;
+  /** 261008-ig1 Task 2: the placed document sound clips (array order canonical). */
+  readonly documentAudios?: readonly DocumentSoundClip[];
+  /** Initial selected clip id — the Studio-owned selection signal the harness owns. */
+  readonly selectedSoundId?: string | null;
+  /** Initial reveal request consumed by the strip's nonce-keyed effect. */
+  readonly revealRequest?: { frame: number; nonce: number } | null;
 }
 
 function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
@@ -169,6 +193,10 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   const content = {};
   let currentFrame = options.currentFrame ?? 154;
   let tree: unknown = null;
+  // 261008-ig1 Task 2: the Studio-owned selection signal + reveal request the
+  // strip consumes (the harness plays the Studio).
+  const selectedSoundId = signal<string | null>(options.selectedSoundId ?? null);
+  let revealRequest: { frame: number; nonce: number } | null = options.revealRequest ?? null;
 
   const onNavigateToSyncedFrame = vi.fn((frame: number) => {
     currentFrame = frame;
@@ -182,6 +210,9 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
   const onClearRotoSpacingSelection = vi.fn();
   const onClearRotoKeySelection = vi.fn();
   const onSelectRotoLoopClip = vi.fn();
+  const onOpenDocumentSound = vi.fn();
+  const onDocumentSoundDblClick = vi.fn();
+  const onDocumentSoundSettle = vi.fn(() => true);
 
   function render(): unknown {
     const runtime = runtimeHolder.current;
@@ -214,6 +245,13 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       layerId: options.layerId ?? '',
       background: options.background,
       onSelectTrack: options.onSelectTrack,
+      // 261008-ig1 Task 2: the multi-clip sound band.
+      documentAudios: options.documentAudios,
+      selectedSoundId,
+      revealRequest,
+      onOpenDocumentSound,
+      onDocumentSoundDblClick,
+      onDocumentSoundSettle,
     });
 
     const scrollerNode = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-timeline-scroll'));
@@ -391,6 +429,13 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       const scroller = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-timeline-scroll'));
       return findAll(scroller, (vnode) => hasClass(vnode, 'physics-paint-track-row-header'));
     },
+    // 261008-ig1 Task 2: per-clip child expansion + selection/reveal access.
+    soundStains: () => expandNamedComponent(tree, 'PhysicsPaintSoundClipStain'),
+    soundEdges: () => expandNamedComponent(tree, 'PhysicsPaintSoundClipEdges'),
+    selection: () => selectedSoundId.value,
+    setRevealRequest(next: { frame: number; nonce: number } | null) {
+      revealRequest = next;
+    },
     spies: {
       onNavigateToSyncedFrame,
       onGoToFirstFrame,
@@ -402,6 +447,9 @@ function createWorkflowHarness(options: WorkflowHarnessOptions = {}) {
       onClearRotoSpacingSelection,
       onClearRotoKeySelection,
       onSelectRotoLoopClip,
+      onOpenDocumentSound,
+      onDocumentSoundDblClick,
+      onDocumentSoundSettle,
     },
   };
 }
@@ -856,9 +904,9 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       const strip = harness.stripSection();
       const stripStyle = strip.props.style as { height?: string };
       // 2 Paint rows + 1 Bg row = 3 rows × 30px = 90px content;
-      // chrome 124px → default = min(124 + 90, 270) = 214px (all rows visible,
-      // no dead space, no scroll).
-      expect(String(stripStyle.height)).toBe('214px');
+      // chrome 132px (52.5-01b D-07: ruler band 28 -> 36) → default =
+      // min(132 + 90, 270) = 222px (all rows visible, no dead space, no scroll).
+      expect(String(stripStyle.height)).toBe('222px');
     });
 
     it('caps the default strip height at 270px when the rows overflow the cap (UAT round 3 flexible height)', () => {
@@ -1079,5 +1127,430 @@ describe('Studio open positions the timeline viewport on the opened frame', () =
     harness.flushEffects();
 
     expect(harness.scroller.scrollLeft).toBe(0);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 261008-ig1 Task 2 — the multi-clip band: one stain per clip, selection via
+ * the Studio-owned signal (narrow read in the per-clip children), press =
+ * select (never scrub), band press = deselect, dblclick = open THAT clip.
+ * ------------------------------------------------------------------------- */
+
+describe('PhysicsPaintWorkflowStrip multi-clip sound band (261008-ig1 Task 2)', () => {
+  const CLIP_A: DocumentSoundClip = {
+    id: 'clip-a',
+    sourceId: 'src-shared',
+    relativePath: 'audio/shared.wav',
+    sourceRevision: 0,
+    startFrame: 0,
+    inFrame: 0,
+    outFrame: 48,
+    gain: 0,
+    fadeInFrames: 0,
+    fadeOutFrames: 0,
+    fadeInCurve: 'linear',
+    fadeOutCurve: 'linear',
+    enabled: true,
+  };
+  // D-02: a second placed clip of the SAME imported file (shared sourceId —
+  // one peaks entry must serve both stains).
+  const CLIP_B: DocumentSoundClip = {
+    ...CLIP_A,
+    id: 'clip-b',
+    startFrame: 96,
+    outFrame: 132,
+  };
+  const PEAKS = {
+    tier1: new Float32Array(8),
+    tier2: new Float32Array(8),
+    tier3: new Float32Array(8),
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    audioPeaksCache.clear();
+    audioPeaksCache.set('src-shared', PEAKS, 48);
+  });
+  afterEach(() => {
+    audioPeaksCache.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function pressEvent(overrides: Record<string, unknown> = {}) {
+    return {
+      isPrimary: true,
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      pointerId: 1,
+      clientX: 36,
+      stopPropagation: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  it('renders one stain per clip and exactly one is-selected — the selected clip', () => {
+    const harness = createWorkflowHarness({
+      documentAudios: [CLIP_A, CLIP_B],
+      selectedSoundId: 'clip-b',
+    });
+    harness.render();
+
+    const stains = harness.soundStains();
+    expect(stains).toHaveLength(2);
+    const selected = stains.filter((stain) => hasClass(stain, 'is-selected'));
+    expect(selected).toHaveLength(1);
+    // CLIP_B is the SECOND entry (document order) — selection binds by id,
+    // not by list position.
+    expect(stains.indexOf(selected[0])).toBe(1);
+    // Both stains render (non-null) from the ONE shared-source peaks entry —
+    // the child fails closed to null without peaks (D-02/D-03).
+    expect(stains.every((stain) => typeof stain.props.onDblClick === 'function')).toBe(true);
+  });
+
+  it('stain press selects THAT clip, stops the press, and never seeks', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP_A, CLIP_B] });
+    harness.render();
+    // The strip's gesture session calls window.addEventListener at event time
+    // (the ruler scrub hook captured `win` at setup — no window there).
+    vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+
+    const stains = harness.soundStains();
+    const event = pressEvent();
+    (stains[0].props.onPointerDown as (pointerEvent: unknown) => void)(event);
+
+    expect(harness.selection()).toBe('clip-a');
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onNavigateToSyncedFrame).not.toHaveBeenCalled();
+    expect(harness.spies.onOpenDocumentSound).not.toHaveBeenCalled();
+  });
+
+  it('pressing the band outside every clip deselects without seeking', () => {
+    const harness = createWorkflowHarness({
+      documentAudios: [CLIP_A, CLIP_B],
+      selectedSoundId: 'clip-b',
+    });
+    // No window stub: the ruler scrub hook captured `win` = undefined at
+    // setup and early-returns — only the strip's deselect line runs.
+    const tree = harness.render();
+    const ruler = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-ruler'));
+    (ruler.props.onPointerDown as (pointerEvent: unknown) => void)(pressEvent());
+
+    expect(harness.selection()).toBeNull();
+    expect(harness.spies.onNavigateToSyncedFrame).not.toHaveBeenCalled();
+  });
+
+  it('double-clicking a clip opens THAT clip through the clip port, never the header launcher', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP_A, CLIP_B] });
+    harness.render();
+
+    const stains = harness.soundStains();
+    const event = { stopPropagation: vi.fn() };
+    (stains[1].props.onDblClick as (pointerEvent: unknown) => void)(event);
+
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onDocumentSoundDblClick).toHaveBeenCalledWith('clip-b');
+    expect(harness.spies.onOpenDocumentSound).not.toHaveBeenCalled();
+  });
+
+  it('strip body source never reads selectedSoundId.value — only the per-clip children do (narrow-read law)', () => {
+    const bodyAt = stripSource.indexOf('export function PhysicsPaintWorkflowStrip');
+    expect(bodyAt).toBeGreaterThan(-1);
+    // The per-clip children are declared BEFORE the strip export (the strip is
+    // the last top-level declaration), so this slice is exactly the render body.
+    const body = stripSource.slice(bodyAt);
+    // The lookahead distinguishes reads from the guarded `= null` / `= clip.id`
+    // writes that live inside event handlers.
+    const readPattern = /selectedSoundId\.value(?!\s*=[^=])/g;
+    expect(body.match(readPattern) ?? []).toHaveLength(0);
+
+    const stainAt = stripSource.indexOf('function PhysicsPaintSoundClipStain');
+    const edgesAt = stripSource.indexOf('function PhysicsPaintSoundClipEdges');
+    expect(stainAt).toBeGreaterThan(-1);
+    expect(stainAt).toBeLessThan(bodyAt);
+    expect(edgesAt).toBeGreaterThan(stainAt);
+    const stainChild = stripSource.slice(stainAt, edgesAt);
+    expect((stainChild.match(readPattern) ?? []).length).toBeGreaterThanOrEqual(1);
+    const edgesChild = stripSource.slice(edgesAt, bodyAt);
+    expect((edgesChild.match(readPattern) ?? []).length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 261008-ig1 Task 2 — reveal: the modal row click issues `{frame, nonce}`;
+ * the strip rides the qad positioning math keyed on the nonce ALONE (identity-
+ * stable deps), manual scrolling is never overridden, a new nonce re-fires.
+ * ------------------------------------------------------------------------- */
+
+describe('PhysicsPaintWorkflowStrip reveal request (261008-ig1 Task 2)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Harness fixture: capacity 240, visibleFrameCount 47 (clientWidth 846,
+  // maxScroll 3474) — positioning target for frame 111 = 111*18 + 9 - 423 = 1584.
+  it('positions once per nonce, manual scroll persists, a new nonce re-fires', () => {
+    const harness = createWorkflowHarness({ capacity: 240, visibleFrameCount: 47 });
+    harness.render();
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(0);
+
+    harness.setRevealRequest({ frame: 111, nonce: 1 });
+    harness.render();
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(1584);
+
+    // The scroll the USER did is never snapped back (qad law): same nonce,
+    // effect deps unchanged, no re-position.
+    harness.scrollToFrame(5);
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(90);
+
+    // A NEW reveal request re-fires on demand.
+    harness.setRevealRequest({ frame: 111, nonce: 2 });
+    harness.render();
+    harness.flushEffects();
+    expect(harness.scroller.scrollLeft).toBe(1584);
+  });
+
+  it('parks while the content extent is shorter than the reveal frame', () => {
+    const harness = createWorkflowHarness({ capacity: 50, visibleFrameCount: 47 });
+    harness.render();
+    harness.setRevealRequest({ frame: 111, nonce: 1 });
+    harness.render();
+    harness.flushEffects();
+    // scrollWidth 900 < (111+1)*18 = 2016 → parked at 0 (fail-closed).
+    expect(harness.scroller.scrollLeft).toBe(0);
+  });
+
+  it('reveal positioning writes no navigation or selection intent', () => {
+    const harness = createWorkflowHarness({ capacity: 240, visibleFrameCount: 47 });
+    harness.render();
+    harness.setRevealRequest({ frame: 111, nonce: 1 });
+    harness.render();
+    harness.flushEffects();
+
+    expect(harness.scroller.scrollLeft).toBe(1584);
+    expect(harness.spies.onNavigateToSyncedFrame).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onGoToFirstFrame).toHaveBeenCalledTimes(0);
+    expect(harness.spies.onGoToLastFrame).toHaveBeenCalledTimes(0);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 261008-ig1 Task 3 — the alt+drag duplication truth table (D-03):
+ * - bare alt + stain body → kind 'duplicate' + clipId STAMPED at pointer-down
+ *   (identity never switches mid-move), ghost preview while the original stays
+ *   put, store commit on pointer-up ONLY (settle-on-release),
+ * - cmd/alt never duplicates (the meta/ctrl/shift exclusions run first),
+ * - alt on a trim handle still trims (trim gains no alt branch),
+ * - sub-threshold press commits nothing and retracts the ghost.
+ * ------------------------------------------------------------------------- */
+
+describe('PhysicsPaintWorkflowStrip alt+drag duplication (261008-ig1 Task 3)', () => {
+  const CLIP: DocumentSoundClip = {
+    id: 'clip-1',
+    sourceId: 'src-shared',
+    relativePath: 'audio/shared.wav',
+    sourceRevision: 0,
+    startFrame: 0,
+    inFrame: 0,
+    outFrame: 48,
+    gain: 0,
+    fadeInFrames: 0,
+    fadeOutFrames: 0,
+    fadeInCurve: 'linear',
+    fadeOutCurve: 'linear',
+    enabled: true,
+  };
+  const PEAKS = {
+    tier1: new Float32Array(8),
+    tier2: new Float32Array(8),
+    tier3: new Float32Array(8),
+  };
+
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    audioPeaksCache.clear();
+    audioPeaksCache.set('src-shared', PEAKS, 48);
+  });
+  afterEach(() => {
+    audioPeaksCache.clear();
+    vi.unstubAllGlobals();
+  });
+
+  function pressEvent(overrides: Record<string, unknown> = {}) {
+    return {
+      isPrimary: true,
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      pointerId: 1,
+      clientX: 36,
+      stopPropagation: vi.fn(),
+      ...overrides,
+    };
+  }
+
+  /** Install the gesture window AFTER render (the ruler scrub hook captured
+   *  `win` at setup) and expose the window-level drag handlers. */
+  function stubGestureWindow() {
+    const listeners = new Map<string, (event: unknown) => void>();
+    vi.stubGlobal('window', {
+      addEventListener: vi.fn((type: string, handler: (event: unknown) => void) => {
+        listeners.set(type, handler);
+      }),
+      removeEventListener: vi.fn(),
+    });
+    return {
+      registered: () => [...listeners.keys()],
+      move: (clientX: number) => {
+        listeners.get('pointermove')?.({ pointerId: 1, clientX, stopPropagation: vi.fn() });
+      },
+      up: (clientX: number) => {
+        listeners.get('pointerup')?.({ pointerId: 1, clientX, stopPropagation: vi.fn() });
+      },
+    };
+  }
+
+  function ghostsOf(tree: unknown): TestVNode[] {
+    // The ghost is a function component — expand it (same idiom as the
+    // stain/edges children) to reach the rendered intrinsic vnode's class.
+    return expandNamedComponent(tree, 'PhysicsPaintSoundDuplicateGhost')
+      .filter((vnode) => hasClass(vnode, 'physics-paint-sound-duplicate-preview'));
+  }
+
+  it('bare alt+drag stamps kind+clipId at pointer-down, previews the ghost, and settles only on release', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    const stains = harness.soundStains();
+    const event = pressEvent({ altKey: true });
+    (stains[0].props.onPointerDown as (pointerEvent: unknown) => void)(event);
+
+    // Press = select THAT clip + stop (same contract as a plain press) and the
+    // gesture identity (duplicate + clipId) is stamped HERE, before any move.
+    expect(harness.selection()).toBe('clip-1');
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(win.registered()).toEqual(expect.arrayContaining(['pointermove', 'pointerup', 'pointercancel']));
+
+    // The ghost preview renders while the ORIGINAL stain keeps its geometry —
+    // one ghost, no selection class of its own (exactly one is-selected law).
+    const tree = harness.render();
+    const ghosts = ghostsOf(tree);
+    expect(ghosts).toHaveLength(1);
+    expect((ghosts[0].props.style as { left: string }).left).toBe('0px');
+    expect(hasClass(ghosts[0], 'is-selected')).toBe(false);
+    const original = harness.soundStains()[0];
+    expect((original.props.style as { left: string }).left).toBe('0px');
+
+    // +3 cells: the ghost tracks the drag (DOM-imperative — no strip
+    // re-render), but NOTHING commits until pointer-up (settle-on-release).
+    win.move(36 + 54);
+    expect(harness.spies.onDocumentSoundSettle).not.toHaveBeenCalled();
+
+    win.up(36 + 54);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledWith({
+      clipId: 'clip-1',
+      kind: 'duplicate',
+      startFrame: 3,
+      inFrame: 0,
+      outFrame: 48,
+    });
+
+    // Ghost retracted after release — the committed clone renders from the
+    // store instead (the original never moved).
+    const after = harness.render();
+    expect(ghostsOf(after)).toHaveLength(0);
+    expect((harness.soundStains()[0].props.style as { left: string }).left).toBe('0px');
+  });
+
+  it('gesture identity never switches mid-move — releasing alt mid-drag still settles as duplicate', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    (harness.soundStains()[0].props.onPointerDown as (pointerEvent: unknown) => void)(pressEvent({ altKey: true }));
+    // Move + release events carry NO altKey (the user let go of the modifier) —
+    // the kind decided at pointer-down is the one that settles.
+    win.move(36 + 18);
+    win.up(36 + 18);
+
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledWith({
+      clipId: 'clip-1',
+      kind: 'duplicate',
+      startFrame: 1,
+      inFrame: 0,
+      outFrame: 48,
+    });
+  });
+
+  it('cmd+alt never duplicates — the modifier exclusions run before the alt branch', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    const event = pressEvent({ altKey: true, metaKey: true });
+    (harness.soundStains()[0].props.onPointerDown as (pointerEvent: unknown) => void)(event);
+
+    // The guard returned before stopPropagation/selection/session — no
+    // gesture, no ghost, no settle path at all.
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    expect(harness.selection()).toBeNull();
+    expect(win.registered()).toHaveLength(0);
+    expect(ghostsOf(harness.render())).toHaveLength(0);
+  });
+
+  it('alt on a trim handle still trims — trim gains no duplicate branch', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    const edges = harness.soundEdges();
+    const startEdge = findOne(edges[0], (vnode) => hasClass(vnode, 'physics-paint-sound-edge-start'));
+    const event = pressEvent({ altKey: true });
+    (startEdge.props.onPointerDown as (pointerEvent: unknown) => void)(event);
+
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(harness.selection()).toBe('clip-1');
+    expect(win.registered()).toEqual(expect.arrayContaining(['pointermove', 'pointerup']));
+
+    win.move(36 + 18);
+    win.up(36 + 18);
+
+    // kind 'trim-start' — never 'duplicate': a left trim moves start+in together.
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledTimes(1);
+    expect(harness.spies.onDocumentSoundSettle).toHaveBeenCalledWith({
+      clipId: 'clip-1',
+      kind: 'trim-start',
+      startFrame: 1,
+      inFrame: 1,
+      outFrame: 48,
+    });
+    expect(ghostsOf(harness.render())).toHaveLength(0);
+  });
+
+  it('a sub-threshold alt press commits nothing and retracts the ghost', () => {
+    const harness = createWorkflowHarness({ documentAudios: [CLIP] });
+    harness.render();
+    const win = stubGestureWindow();
+
+    (harness.soundStains()[0].props.onPointerDown as (pointerEvent: unknown) => void)(pressEvent({ altKey: true }));
+    expect(ghostsOf(harness.render())).toHaveLength(1);
+
+    // Release under the 4px arm threshold: press selected only — no settle.
+    win.up(36);
+    expect(harness.spies.onDocumentSoundSettle).not.toHaveBeenCalled();
+    expect(ghostsOf(harness.render())).toHaveLength(0);
   });
 });

@@ -112,6 +112,12 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly photoReference?: PhotoReferenceTrack | null;
   /** The strip camera icon's open-dialog intent. */
   readonly onOpenReference?: () => void;
+  /* ---- 52.5-01b Task 3 (D-02): the Document sound launcher in the top
+     strip (same icon-not-a-track-row rule as the camera). ---- */
+  /** True when the document carries a sound clip — the launcher tints. */
+  readonly hasSound?: boolean;
+  /** The strip launcher's open-Document-sound-modal intent. */
+  readonly onOpenDocumentSound?: () => void;
 }
 
 /**
@@ -151,6 +157,8 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     onImportBackground,
     photoReference = null,
     onOpenReference,
+    hasSound = false,
+    onOpenDocumentSound,
   } = props;
   const deletable = tracks.length > 1;
   // 49-06 UAT: while a Bg clip is selected, NO normal track header paints the
@@ -165,6 +173,8 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
         onAddTrack={onAddTrack}
         hasReference={photoReference !== null && photoReference.sourceFrameRefs.length > 0}
         onOpenReference={onOpenReference}
+        hasSound={hasSound}
+        onOpenDocumentSound={onOpenDocumentSound}
       />
       <div class="physics-paint-header-rows-wrap">
         <div ref={headerRowsRef} class="physics-paint-header-rows" onScroll={onHeaderScroll}>

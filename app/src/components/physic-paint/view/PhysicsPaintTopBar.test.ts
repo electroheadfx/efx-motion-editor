@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { PhysicsPaintTopBar, grainScaleStep, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
-import { NumericStepper, commitStepperInput, parseStepperInput } from '../../shared/NumericStepper';
+import { commitStepperInput, parseStepperInput } from '../../shared/NumericStepper';
+import { SliderStepper } from '../../shared/SliderStepper';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -52,7 +53,7 @@ function childrenOf(node: unknown): unknown[] {
   if (!node || typeof node !== 'object') return [];
   const vnode = node as AnyVNode;
   // Host-only walk: TopBar itself is invoked by hand; nested function
-  // components (NumericStepper) must not be expanded — they need hook state.
+  // components (SliderStepper) must not be expanded — they need hook state.
   const children = vnode.props?.children;
   return [vnode, ...childrenOf(children)];
 }
@@ -98,11 +99,11 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 // 0.5 − → 0.4; 1.5 + → 2.0, 2.0 + → 2.1. Values live in the shared
 // [GRAIN_SCALE_MIN, GRAIN_SCALE_MAX] acceptance and route to onGrainScaleChange.
 describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
-  it('renders a NumericStepper bound to grainScale with the shared bounds and live change handler', () => {
+  it('renders a SliderStepper bound to grainScale with the shared bounds and live change handler', () => {
     const props = baseTopBarProps();
     const tree = renderTopBar(props);
-    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === NumericStepper) as AnyVNode | undefined;
-    expect(stepper, 'Grain scale must render the shared NumericStepper').toBeDefined();
+    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === SliderStepper) as AnyVNode | undefined;
+    expect(stepper, 'Grain scale must render the shared SliderStepper').toBeDefined();
     expect(stepper!.props.value).toBe(1);
     expect(stepper!.props.step).toBe(0.5);
     expect(stepper!.props.min).toBe(GRAIN_SCALE_MIN);
@@ -157,7 +158,7 @@ describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
   it('a non-default grainScale prop feeds the stepper value', () => {
     const props = { ...baseTopBarProps(), grainScale: 0.4 };
     const tree = renderTopBar(props);
-    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === NumericStepper) as AnyVNode | undefined;
+    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === SliderStepper) as AnyVNode | undefined;
     expect(stepper!.props.value).toBe(0.4);
     expect(stepper!.props.step).toBe(0.1);
   });

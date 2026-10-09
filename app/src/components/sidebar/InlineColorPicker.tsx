@@ -235,7 +235,6 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
 
   const sliderInputStyle = {
     fontSize: '11px',
-    backgroundColor: 'var(--sidebar-input-bg)',
     color: 'var(--sidebar-text-primary)',
   };
 
@@ -273,9 +272,9 @@ export function InlineColorPicker({color, opacity, onChange, onClose}: InlineCol
         max={max}
         class="w-16 shrink-0"
         ariaLabel={label}
-        inputClass="text-[10px] rounded outline-none text-center"
+        inputClass="text-[10px] outline-none text-center"
         inputStyle={sliderInputStyle}
-        buttonStyle={{width: '16px', height: '16px'}}
+        buttonStyle={{width: '16px'}}
       />
       {unit && <span class="text-[8px] w-3" style={{color: 'var(--sidebar-text-secondary)'}}>{unit}</span>}
     </div>

@@ -1291,3 +1291,164 @@ describe('Background clip CRUD ops (49-02 Task 2)', () => {
     expect(getDocument(layerId)).toBe(docBefore);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 261008-ig1 Task 1 RED — `audios[]` list setter family. Dynamic `await import()`
+// with a duck-typed module keeps each failing test's own name in the TAP report
+// when the new exports do not exist yet (01a pattern).
+// ---------------------------------------------------------------------------
+
+/** One full-field clip; `sourceId` is shared across duplicates (D-01 two identities). */
+function makeSoundClip(id: string, patch: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id,
+    sourceId: 'asset-shared-1',
+    relativePath: 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav',
+    sourceRevision: 2,
+    startFrame: 10,
+    inFrame: 0,
+    outFrame: 60,
+    gain: 0,
+    fadeInFrames: 0,
+    fadeOutFrames: 0,
+    fadeInCurve: 'linear',
+    fadeOutCurve: 'linear',
+    enabled: true,
+    ...patch,
+  };
+}
+
+type SoundStoreResult = { ok: true } | { ok: false; reason: string };
+interface EfxPaintStoreWithAudios {
+  setDocumentAudios?: (layerId: string, audios: readonly unknown[]) => SoundStoreResult;
+  addDocumentSound?: (layerId: string, clip: unknown) => SoundStoreResult;
+  patchDocumentSound?: (layerId: string, clipId: string, patch: Record<string, unknown>) => SoundStoreResult;
+  removeDocumentSound?: (layerId: string, clipId: string) => SoundStoreResult;
+}
+
+describe('efxPaintStore audios list setters (261008-ig1 Task 1 RED)', () => {
+  beforeEach(() => {
+    reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+  });
+
+  it('setDocumentAudios writes the list, notifies once, and stores frozen clips', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    expect(typeof store.setDocumentAudios).toBe('function');
+
+    registerDocument(makeTrackDocument('layer-aud'));
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+    const before = efxPaintVersion.value;
+    const clips = [makeSoundClip('clip-1'), makeSoundClip('clip-2')];
+
+    const result = store.setDocumentAudios!('layer-aud', clips);
+    expect(result).toEqual({ ok: true });
+    expect(dirty).toHaveBeenCalledTimes(1);
+    expect(efxPaintVersion.value).toBe(before + 1);
+    const written = getDocument('layer-aud')!.audios;
+    expect(written).toHaveLength(2);
+    expect(written[0].id).toBe('clip-1');
+    expect(written[1].id).toBe('clip-2');
+    expect(Object.isFrozen(written)).toBe(true);
+    expect(Object.isFrozen(written[0])).toBe(true);
+  });
+
+  it('setDocumentAudios same-value re-commit is a true no-op (no notify)', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    registerDocument(makeTrackDocument('layer-aud'));
+    const clips = [makeSoundClip('clip-1')];
+    store.setDocumentAudios!('layer-aud', clips);
+
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+    const before = efxPaintVersion.value;
+    const again = store.setDocumentAudios!('layer-aud', [makeSoundClip('clip-1')]);
+    expect(again).toEqual({ ok: true });
+    expect(dirty).not.toHaveBeenCalled();
+    expect(efxPaintVersion.value).toBe(before);
+  });
+
+  it('setDocumentAudios rejects the whole write when ANY entry is invalid (fail-closed)', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    registerDocument(makeTrackDocument('layer-aud'));
+    store.setDocumentAudios!('layer-aud', [makeSoundClip('clip-1')]);
+    const docBefore = getDocument('layer-aud')!;
+
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+    const bad = [makeSoundClip('clip-2'), makeSoundClip('clip-3', { gain: 400 })];
+    expect(store.setDocumentAudios!('layer-aud', bad)).toEqual({ ok: false, reason: 'invalid-sound' });
+    expect(getDocument('layer-aud')).toBe(docBefore);
+    expect(dirty).not.toHaveBeenCalled();
+  });
+
+  it('setDocumentAudios guards an absent document', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    expect(store.setDocumentAudios!('layer-missing', [])).toEqual({ ok: false, reason: 'no-document' });
+  });
+
+  it('addDocumentSound appends without touching existing clips', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    expect(typeof store.addDocumentSound).toBe('function');
+
+    registerDocument(makeTrackDocument('layer-aud'));
+    store.setDocumentAudios!('layer-aud', [makeSoundClip('clip-1')]);
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+
+    expect(store.addDocumentSound!('layer-aud', makeSoundClip('clip-2'))).toEqual({ ok: true });
+    const written = getDocument('layer-aud')!.audios;
+    expect(written.map((clip) => clip.id)).toEqual(['clip-1', 'clip-2']);
+    expect(dirty).toHaveBeenCalledTimes(1);
+  });
+
+  it('patchDocumentSound patches by clip id; unknown id fails closed with no mutation', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    expect(typeof store.patchDocumentSound).toBe('function');
+
+    registerDocument(makeTrackDocument('layer-aud'));
+    store.setDocumentAudios!('layer-aud', [makeSoundClip('clip-1'), makeSoundClip('clip-2')]);
+    const docBefore = getDocument('layer-aud')!;
+
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+    expect(store.patchDocumentSound!('layer-aud', 'nope', { gain: 10 }))
+      .toEqual({ ok: false, reason: 'unknown-clip' });
+    expect(getDocument('layer-aud')).toBe(docBefore);
+    expect(dirty).not.toHaveBeenCalled();
+
+    expect(store.patchDocumentSound!('layer-aud', 'clip-2', { gain: 25 })).toEqual({ ok: true });
+    const written = getDocument('layer-aud')!.audios;
+    expect(written[0].gain).toBe(0);
+    expect(written[1].gain).toBe(25);
+    expect(dirty).toHaveBeenCalledTimes(1);
+  });
+
+  it('patchDocumentSound rejects an invalid merged result without mutating', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    registerDocument(makeTrackDocument('layer-aud'));
+    store.setDocumentAudios!('layer-aud', [makeSoundClip('clip-1')]);
+    const docBefore = getDocument('layer-aud')!;
+
+    expect(store.patchDocumentSound!('layer-aud', 'clip-1', { gain: 999 }))
+      .toEqual({ ok: false, reason: 'invalid-sound' });
+    expect(getDocument('layer-aud')).toBe(docBefore);
+  });
+
+  it('removeDocumentSound removes only the named clip; unknown id fails closed', async () => {
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    expect(typeof store.removeDocumentSound).toBe('function');
+
+    registerDocument(makeTrackDocument('layer-aud'));
+    store.setDocumentAudios!('layer-aud', [makeSoundClip('clip-1'), makeSoundClip('clip-2')]);
+    const docBefore = getDocument('layer-aud')!;
+
+    expect(store.removeDocumentSound!('layer-aud', 'nope')).toEqual({ ok: false, reason: 'unknown-clip' });
+    expect(getDocument('layer-aud')).toBe(docBefore);
+
+    expect(store.removeDocumentSound!('layer-aud', 'clip-1')).toEqual({ ok: true });
+    const written = getDocument('layer-aud')!.audios;
+    expect(written.map((clip) => clip.id)).toEqual(['clip-2']);
+  });
+});

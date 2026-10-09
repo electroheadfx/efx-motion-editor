@@ -14,6 +14,8 @@ import type {TimelineRenderer} from './TimelineRenderer';
 import {isolationStore} from '../../stores/isolationStore';
 import {resolveFxSpanDragRange} from './timelineFxSpanDrag';
 import {resolveFxReorderToIndex} from '../../lib/fxReorder';
+import {openPhysicPaintForLayer} from '../../lib/physicPaintBridge';
+import type {FxTrackLayout} from '../../types/timeline';
 
 /**
  * TimelineInteraction: Pointer/wheel/touch event handling for the timeline canvas.
@@ -44,6 +46,9 @@ export class TimelineInteraction {
   private isDraggingFxReorder = false;
   private fxReorderFromIndex = -1;
   private fxReorderMoved = false;
+
+  // Re-entrancy guard for rail-dblclick Studio opens (261008-ful)
+  private fxOpenPending = false;
 
   // Keyframe hover state
   private hoveredKeyframeFrame: number | null = null;
@@ -225,10 +230,12 @@ export class TimelineInteraction {
   }
 
   /** Double-click on an FX header name area opens the inline rename overlay —
-   *  no dialog. x < 18 is the visibility dot and stays untouched; clicks outside
-   *  the header name area do nothing. The two pre-dblclick click cycles each
-   *  start/end a reorder drag with fxReorderMoved=false → no reorder, and
-   *  selection stays idempotent (260923-kcs). */
+   *  no dialog. x < 18 is the visibility dot and stays untouched. The rail
+   *  BODY (at/after the header boundary) opens Studio — physic-paint rails
+   *  only; every other FX kind keeps no body dblclick (261008-ful UAT). The
+   *  two pre-dblclick click cycles each start/end a reorder drag with
+   *  fxReorderMoved=false → no reorder, and selection stays idempotent
+   *  (260923-kcs). */
   private onDoubleClick(e: MouseEvent) {
     if (e.button !== 0) return;
     // Blur usually settles a prior edit first; settle here too so a rapid
@@ -241,8 +248,15 @@ export class TimelineInteraction {
     if (fxIdx < 0 || fxIdx >= fxTracks.length) return;
     const rect = this.canvas.getBoundingClientRect();
     const localX = e.clientX - rect.left;
-    if (localX < 18 || localX >= TRACK_HEADER_WIDTH) return;
     const track = fxTracks[fxIdx];
+    if (localX >= TRACK_HEADER_WIDTH) {
+      if (track.layerType === 'physic-paint') {
+        e.preventDefault();
+        this.openStudioFromFxRail(track, e.clientX);
+      }
+      return;
+    }
+    if (localX < 18) return;
     const scrollY = this.renderer ? this.renderer.getScrollY() : timelineStore.scrollY.peek();
     timelineStore.fxRenameEdit.value = {
       sequenceId: track.sequenceId,
@@ -254,6 +268,29 @@ export class TimelineInteraction {
       height: FX_TRACK_HEIGHT,
     };
     e.preventDefault();
+  }
+
+  /** Rail-body double-click on a physic-paint FX track opens Studio at the
+   *  clicked frame through the ONE shared launch path (261008-ful UAT). The
+   *  frame is clamped to the rail's span; a failed open logs and stays silent. */
+  private openStudioFromFxRail(track: FxTrackLayout, clientX: number): void {
+    if (this.fxOpenPending) return;
+    const seq = sequenceStore.sequences.peek().find((candidate) => candidate.id === track.sequenceId);
+    const layer = seq?.layers.find((candidate) => (
+      candidate.type === 'physic-paint' && candidate.source.type === 'physic-paint'
+    ));
+    if (!layer) return;
+    const clicked = Math.round(this.getFrame(clientX));
+    const frame = Math.min(Math.max(clicked, track.inFrame), Math.max(track.outFrame - 1, track.inFrame));
+    if (!Number.isInteger(frame) || frame < 0) return;
+    this.fxOpenPending = true;
+    void openPhysicPaintForLayer(layer, frame)
+      .then((result) => {
+        if (!result.ok) console.info('[Timeline] physic-paint rail double-click launch failed', result);
+      })
+      .finally(() => {
+        this.fxOpenPending = false;
+      });
   }
 
   /** Select the first layer in an FX or content-overlay sequence for property editing.
@@ -1046,13 +1083,20 @@ export class TimelineInteraction {
 
         if (fxIdx >= 0 && fxIdx < fxTracks.length) {
           const fxTrack = fxTracks[fxIdx];
-          const mode = this.fxDragModeFromX(e.clientX, fxTrack);
-          if (mode === 'resize-left' || mode === 'resize-right') {
-            this.canvas.style.cursor = 'col-resize';
-          } else if (mode === 'move') {
-            this.canvas.style.cursor = 'grab';
+          if (fxTrack.layerType === 'physic-paint') {
+            // Physic-paint rails open Studio on double-click → pointer hint
+            // across the row body (261008-ful UAT). Drag still works; the
+            // active-drag branches above take the cursor during a drag.
+            this.canvas.style.cursor = 'pointer';
           } else {
-            this.canvas.style.cursor = 'default';
+            const mode = this.fxDragModeFromX(e.clientX, fxTrack);
+            if (mode === 'resize-left' || mode === 'resize-right') {
+              this.canvas.style.cursor = 'col-resize';
+            } else if (mode === 'move') {
+              this.canvas.style.cursor = 'grab';
+            } else {
+              this.canvas.style.cursor = 'default';
+            }
           }
         } else {
           this.canvas.style.cursor = 'default';

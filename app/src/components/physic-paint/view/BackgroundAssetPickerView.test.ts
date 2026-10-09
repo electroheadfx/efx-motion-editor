@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MceImageRef } from '../../../types/project';
-import type { PhysicPaintImageLibraryResult } from '../../../types/physicPaint';
+import type { PhysicPaintAudioAssetRef, PhysicPaintImageLibraryResult } from '../../../types/physicPaint';
 import {
   buildConfirmedImageIds,
   useBackgroundAssetPickerController,
@@ -222,6 +222,92 @@ describe('buildConfirmedImageIds — D-02 natural original-filename ordering', (
   it('emits an empty array when nothing is selected', () => {
     const images = [image('a', 'shot_1.png')];
     expect(buildConfirmedImageIds(images, [], (rows) => [...rows])).toEqual([]);
+  });
+});
+
+/* ----------------------------------------------------------------------------
+ * 52.5-01b Task 2 RED — kind 'audio' gallery mode (D-02 single entry point,
+ * D-03 gallery is the only import seam, DOC-SND-02). The controller shape is
+ * duck-typed loosely so the pre-GREEN file still type-checks (01a idiom):
+ * `audioAssets` and the `kind` parameter exist only after GREEN.
+ * ------------------------------------------------------------------------- */
+
+function audioAsset(id: string, name: string): PhysicPaintAudioAssetRef {
+  return { id, name, relativePath: `audio/${name}` };
+}
+
+type AudioPickerController = ReturnType<typeof useBackgroundAssetPickerController> & {
+  audioAssets?: { value: PhysicPaintAudioAssetRef[] };
+};
+
+const renderAudioPicker = useBackgroundAssetPickerController as unknown as (
+  ports: BackgroundAssetPickerPorts,
+  kind?: 'image' | 'audio',
+) => AudioPickerController;
+
+function audioPorts(assets: readonly PhysicPaintAudioAssetRef[]): BackgroundAssetPickerPorts {
+  return createPorts({
+    requestLibrary: vi.fn(async () => ({
+      ok: true,
+      images: [],
+      projectDir: '/proj',
+      operationId: 'op-1',
+      audioAssets: [...assets],
+    })),
+  });
+}
+
+describe("BackgroundAssetPickerView kind='audio' (52.5-01b Task 2 RED)", () => {
+  it("(t1) kind='audio' maps the requestLibrary result's audioAssets into the listing signal", async () => {
+    const assets = [audioAsset('snd-a', 'loop.wav'), audioAsset('snd-b', 'voice.mp3')];
+    const controller = renderAudioPicker(audioPorts(assets), 'audio');
+    await controller.openPicker();
+    expect(controller.open.value).toBe(true);
+    // The image listing stays EMPTY in audio mode (the result carries no images).
+    expect(controller.images.value).toEqual([]);
+    // The audio listing maps the result's audioAssets (RED: signal missing).
+    // JSON compare keeps the failure payload on ONE line — a multi-line
+    // pretty-format array dump corrupts the TAP YAML (01a/01b evidence pitfall).
+    expect(JSON.stringify(controller.audioAssets?.value)).toBe(JSON.stringify(assets));
+  });
+
+  it("(t2) kind='audio' Confirm path emits exactly one asset id (D-01 singleton)", async () => {
+    const assets = [audioAsset('snd-a', 'loop.wav'), audioAsset('snd-b', 'voice.mp3')];
+    const controller = renderAudioPicker(audioPorts(assets), 'audio');
+    await controller.openPicker();
+    controller.toggleSelect('snd-a');
+    controller.toggleSelect('snd-b');
+    // Audio selection is SINGLE-select: the second pick replaces, never
+    // accumulates. JSON compare keeps the failure payload one line (TAP YAML).
+    expect(JSON.stringify(controller.selectedIds.value)).toBe(JSON.stringify(['snd-b']));
+    const mod = (await import('./BackgroundAssetPickerView')) as {
+      buildConfirmedAudioIds?: (
+        assets: readonly PhysicPaintAudioAssetRef[],
+        selectedIds: readonly string[],
+      ) => string[];
+    };
+    const emitted = mod.buildConfirmedAudioIds?.(assets, controller.selectedIds.value) ?? [];
+    expect(JSON.stringify(emitted)).toBe(JSON.stringify(['snd-b']));
+    expect(emitted.length).toBe(1);
+  });
+
+  it('(t3) the view renders audio filename tiles without thumbnails and confirms through the audio path', () => {
+    const code = source();
+    // Custom short-message check: `expect(code).toContain(...)` would print the
+    // ENTIRE source file into the TAP diagnostic, which breaks the RED
+    // evidence parser (01a pitfall — keep failure payloads small).
+    const required = [
+      "kind?: 'image' | 'audio'",
+      "props.kind === 'audio'",
+      'audioAssets',
+      'buildConfirmedAudioIds',
+      // Audio tiles are filename-only — the thumbnail <img> rides the image branch only.
+      "{props.kind === 'audio' ? (",
+    ];
+    const missing = required.filter((needle) => !code.includes(needle));
+    if (missing.length > 0) {
+      throw new Error(`view source missing audio-mode markers: ${missing.join(' | ')}`);
+    }
   });
 });
 

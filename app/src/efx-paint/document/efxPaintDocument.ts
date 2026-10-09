@@ -162,6 +162,56 @@ export interface PhotoReferenceTrack {
   readonly transformLocked: boolean;
 }
 
+/**
+ * One placed sound clip (261008-ig1 / 52.5 MULTI-AUDIO-CONCEPT, D-01): several
+ * clips per document, each owned by the document as a media reference (52.2
+ * references-only — `relativePath` is package-relative under `audio/`, never
+ * inlined bytes; path safety is enforced at every join by the persistence
+ * layer). Two identities, never overloaded:
+ * - `id` = the PLACED clip (list key, timeline selection, transport key,
+ *   buffer key) — unique per clip.
+ * - `sourceId` = the IMPORTED FILE (peaks cache key, gallery dedupe key) —
+ *   NOT unique: an alt+drag duplicate shares its sourceId.
+ */
+export interface DocumentSoundClip {
+  /** Placed-clip identity — unique per clip (alt+drag mints a fresh one). */
+  readonly id: string;
+  /** The imported file's gallery asset id — SHARED across duplicates. */
+  readonly sourceId: string;
+  /** Package-relative media path under `audio/` (52.2 reference). */
+  readonly relativePath: string;
+  /** Source asset revision (re-import bumps it). */
+  readonly sourceRevision: number;
+  /** Timeline placement of the clip start, in frames. */
+  readonly startFrame: number;
+  /** Source trim start, in frames. */
+  readonly inFrame: number;
+  /** Source trim end, in frames. */
+  readonly outFrame: number;
+  /**
+   * Clip gain, signed integer -100..+100 (UAT round 4). 0 is unity and sits at
+   * the CENTER of the waveform, +100 doubles the level (line at the top of the
+   * stain extent), -100 is silent (line at the bottom). Never a plain volume.
+   */
+  readonly gain: number;
+  /** Fade-in length in frames (integer >= 0). */
+  readonly fadeInFrames: number;
+  /** Fade-out length in frames (integer >= 0). */
+  readonly fadeOutFrames: number;
+  readonly fadeInCurve: SoundFadeCurve;
+  readonly fadeOutCurve: SoundFadeCurve;
+  /**
+   * The studio-layer sound switch (52.5 UAT round 2): ON = the clip is audible
+   * in Studio preview, in main-editor playback, and in export; OFF = the clip
+   * is silent everywhere. Never touches the main app's audio tracks — those
+   * stay on the session monitoring toggle.
+   */
+  readonly enabled: boolean;
+}
+
+/** Fade curve shapes shared by fade-in and fade-out (Phase 15 D-10 carry-over). */
+export type SoundFadeCurve = 'linear' | 'exponential' | 'logarithmic';
+
 /** The v1.0 EFX Physic Paint document owned by one parent layer. */
 export interface EfxPaintDocument {
   readonly version: number;
@@ -171,6 +221,8 @@ export interface EfxPaintDocument {
   readonly tracks: readonly InternalPaintTrack[];
   readonly background: BackgroundTrack;
   readonly photoReference: PhotoReferenceTrack | null;
+  /** The document's placed sound clips (261008-ig1, D-01); empty when none. */
+  readonly audios: readonly DocumentSoundClip[];
   readonly compositeRevision: number;
 }
 
@@ -216,6 +268,9 @@ export function createEfxPaintDocument(parentLayerId: string): EfxPaintDocument 
       transformLocked: true,
     }),
     photoReference: null,
+    // 261008-ig1 (D-01): the placed-clip list — optional member (A2), empty by
+    // default; the parser normalizes a missing member to [] as well.
+    audios: Object.freeze([]),
     compositeRevision: 0,
   });
 }

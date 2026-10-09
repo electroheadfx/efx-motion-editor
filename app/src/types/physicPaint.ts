@@ -1931,6 +1931,29 @@ export interface EfxPaintAudioPreviewContext {
   tracks: EfxPaintAudioPreviewTrack[];
 }
 
+/**
+ * One ref into a placed document sound clip — `clipId` is the PLACED clip's
+ * own `DocumentSoundClip.id` (261008-ig1 two-identity law: never the shared
+ * `sourceId` of the imported file), plus an `efxasset://` URL, never bytes,
+ * never a filePath. Closed keys: exactly {clipId, assetUrl}.
+ */
+export interface PhysicPaintDocumentAudioClipRef {
+  clipId: string;
+  assetUrl: string;
+}
+
+/**
+ * 52.5-01a (Q1, T-52.5-08) reshaped (dup-clip-plays-audios-0, 261008-ig1
+ * D-01 follow-up): the CLOSED document sound section now carries EVERY placed
+ * clip — one ref per `audios[]` member keyed by its own id — under a single
+ * monotonic `revision` for the whole list. Rides the launch alongside
+ * `audioPreview`; `null` (section absent) still clears the child's store.
+ */
+export interface PhysicPaintDocumentAudioSection {
+  revision: number;
+  clips: PhysicPaintDocumentAudioClipRef[];
+}
+
 export interface PhysicPaintLaunchContext {
   operationId: string;
   layerId: string;
@@ -1945,6 +1968,8 @@ export interface PhysicPaintLaunchContext {
   document?: EfxPaintDocumentPayload;
   rotoPlayback?: PhysicPaintRotoPlaybackSettings;
   audioPreview?: EfxPaintAudioPreviewContext;
+  /** 52.5-01a: closed document sound section (absent when the layer has no sound clip). */
+  documentAudio?: PhysicPaintDocumentAudioSection;
 }
 
 export interface PhysicPaintFrameSyncMessage {
@@ -2168,6 +2193,15 @@ export interface PhysicPaintScriptLibraryResultMessage {
  */
 export interface PhysicPaintImageLibraryRequest {
   operationId: string;
+  /** 52.5-01a (Q2, D-03): selects the listing/filter target only — no parallel import path. */
+  kind?: 'image' | 'audio';
+}
+
+/** 52.5-01a: an audio library ref carried as a package-relative `audio/` path. */
+export interface PhysicPaintAudioAssetRef {
+  id: string;
+  name: string;
+  relativePath: string;
 }
 
 export interface PhysicPaintImageLibraryResult {
@@ -2175,6 +2209,8 @@ export interface PhysicPaintImageLibraryResult {
   ok: boolean;
   images: MceImageRef[];
   projectDir: string;
+  /** 52.5-01a: present only for `kind: 'audio'` listings. */
+  audioAssets?: PhysicPaintAudioAssetRef[];
   error?: string;
 }
 
@@ -2211,6 +2247,8 @@ export interface PhysicPaintImageLibraryResultMessage {
 export interface PhysicPaintImageImportRequest {
   operationId: string;
   paths: string[];
+  /** 52.5-01a (Q2, D-03): selects the copy target (images/ vs audio/) inside the MAIN-realm handler. */
+  kind?: 'image' | 'audio';
 }
 
 export interface PhysicPaintImageImportResult {
@@ -2218,6 +2256,8 @@ export interface PhysicPaintImageImportResult {
   ok: boolean;
   images: MceImageRef[];
   errors: string[];
+  /** 52.5-01a: present only for `kind: 'audio'` imports (the copied asset refs). */
+  audioAssets?: PhysicPaintAudioAssetRef[];
   error?: string;
 }
 
@@ -2272,6 +2312,7 @@ export function isPhysicPaintLaunchContext(value: unknown): value is PhysicPaint
     optionalPositiveNumber(value.fps) &&
     (value.rotoPlayback === undefined || isPhysicPaintRotoPlaybackSettings(value.rotoPlayback)) &&
     (value.audioPreview === undefined || isEfxPaintAudioPreviewContext(value.audioPreview)) &&
+    (value.documentAudio === undefined || isPhysicPaintDocumentAudioSection(value.documentAudio)) &&
     (value.document === undefined || isEfxPaintDocumentPayload(value.document)) &&
     optionalNonEmptyString(value.workflowLabel) &&
     (value.layerName === undefined || typeof value.layerName === 'string')
@@ -2441,6 +2482,32 @@ export function isEfxPaintAudioPreviewContext(value: unknown): value is EfxPaint
     && value.tracks.every(isEfxPaintAudioPreviewTrack);
 }
 
+/**
+ * Closed per-clip ref — exactly {clipId, assetUrl}. An entry carrying the
+ * shared `sourceId` (or any other member) fails the whole section: the
+ * placed-clip id is the ONLY identity this channel transports.
+ */
+export function isPhysicPaintDocumentAudioClipRef(value: unknown): value is PhysicPaintDocumentAudioClipRef {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['clipId', 'assetUrl'])
+    && isNonEmptyString(value.clipId)
+    && isNonEmptyString(value.assetUrl);
+}
+
+/**
+ * 52.5-01a (Q1, T-52.5-08) reshaped (dup-clip-plays-audios-0): closed
+ * `documentAudio` section — exactly {revision, clips}; any other member fails
+ * the whole launch, and every `clips[]` entry must itself be a closed
+ * {clipId, assetUrl} ref.
+ */
+export function isPhysicPaintDocumentAudioSection(value: unknown): value is PhysicPaintDocumentAudioSection {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['revision', 'clips'])
+    && isNonNegativeInteger(value.revision)
+    && Array.isArray(value.clips)
+    && value.clips.every(isPhysicPaintDocumentAudioClipRef);
+}
+
 function isEfxPaintAudioFadeCurve(value: unknown): value is FadeCurve {
   return value === 'linear' || value === 'exponential' || value === 'logarithmic';
 }
@@ -2510,15 +2577,34 @@ export function isMceImageRef(value: unknown): value is MceImageRef {
   );
 }
 
+/** 52.5-01a (Q2): the shared gallery discriminator — absent means 'image'. */
+function isGalleryKind(value: unknown): boolean {
+  return value === undefined || value === 'image' || value === 'audio';
+}
+
+export function isPhysicPaintAudioAssetRef(value: unknown): value is PhysicPaintAudioAssetRef {
+  return isRecord(value)
+    && hasOnlyKeys(value, ['id', 'name', 'relativePath'])
+    && isNonEmptyString(value.id)
+    && isNonEmptyString(value.name)
+    && isNonEmptyString(value.relativePath);
+}
+
 export function isPhysicPaintImageLibraryRequest(value: unknown): value is PhysicPaintImageLibraryRequest {
-  return Boolean(isRecord(value) && hasOnlyKeys(value, ['operationId']) && isBoundedOperationId(value.operationId));
+  return Boolean(
+    isRecord(value)
+      && hasOnlyKeys(value, ['operationId', 'kind'])
+      && isBoundedOperationId(value.operationId)
+      && isGalleryKind(value.kind),
+  );
 }
 
 export function isPhysicPaintImageLibraryResult(value: unknown): value is PhysicPaintImageLibraryResult {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'images', 'projectDir', 'error'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'images', 'projectDir', 'audioAssets', 'error'])) return false;
   if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
   if (!Array.isArray(value.images) || !value.images.every(isMceImageRef)) return false;
   if (typeof value.projectDir !== 'string' || value.projectDir.length === 0) return false;
+  if (value.audioAssets !== undefined && !(Array.isArray(value.audioAssets) && value.audioAssets.every(isPhysicPaintAudioAssetRef))) return false;
   return value.error === undefined || typeof value.error === 'string';
 }
 
@@ -2539,8 +2625,10 @@ export function isPhysicPaintImageImportRequest(value: unknown): value is Physic
     isRecord(value) &&
       // `projectDir` is structurally forbidden: the destination directory is
       // the MAIN realm's own resolved dir, never a child-supplied one.
-      hasOnlyKeys(value, ['operationId', 'paths']) &&
+      // 52.5-01a (Q2): `kind` selects the copy target inside that same handler.
+      hasOnlyKeys(value, ['operationId', 'paths', 'kind']) &&
       isBoundedOperationId(value.operationId) &&
+      isGalleryKind(value.kind) &&
       Array.isArray(value.paths) &&
       value.paths.length > 0 &&
       value.paths.length <= PHYSIC_PAINT_IMAGE_IMPORT_MAX_PATHS &&
@@ -2549,10 +2637,11 @@ export function isPhysicPaintImageImportRequest(value: unknown): value is Physic
 }
 
 export function isPhysicPaintImageImportResult(value: unknown): value is PhysicPaintImageImportResult {
-  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'images', 'errors', 'error'])) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ['operationId', 'ok', 'images', 'errors', 'audioAssets', 'error'])) return false;
   if (!isBoundedOperationId(value.operationId) || typeof value.ok !== 'boolean') return false;
   if (!Array.isArray(value.images) || !value.images.every(isMceImageRef)) return false;
   if (!Array.isArray(value.errors) || !value.errors.every((entry: unknown) => typeof entry === 'string')) return false;
+  if (value.audioAssets !== undefined && !(Array.isArray(value.audioAssets) && value.audioAssets.every(isPhysicPaintAudioAssetRef))) return false;
   return value.error === undefined || typeof value.error === 'string';
 }
 

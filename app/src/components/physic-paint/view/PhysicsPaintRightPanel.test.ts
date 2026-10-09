@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { signal } from '@preact/signals';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
+import { SliderStepper } from '../../shared/SliderStepper';
+import type { PhysicsPaintAudioController } from './physicsPaintAudioController';
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
 
 type AnyVNode = VNode<Record<string, any>>;
@@ -99,7 +101,7 @@ vi.mock('../../sidebar/SidebarScrollArea', () => ({
 vi.mock('./PhysicsPaintScriptsPanel', () => ({
   PhysicsPaintScriptsPanel: () => null,
 }));
-vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null }));
+vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null, Trash2: () => null, AudioWaveform: () => null }));
 // The Background Clip section is signals-driven (useSignal only); the harness
 // walks components as plain function calls, so useSignal maps to the real
 // signal core (the BackgroundAssetPickerView.test.ts pattern).
@@ -189,6 +191,21 @@ function findById(tree: AnyVNode, id: string): AnyVNode {
   return match!;
 }
 
+/**
+ * The blended SliderStepper vnode for a field (the id rides on the component,
+ * whose rendered root also carries it). Assertions read the COMPONENT's props —
+ * value / min / max / commitOnRelease / onChange. Matched on the exported
+ * component identity so the wrapping PanelSlider (same id prop) never wins.
+ */
+function findStepper(tree: AnyVNode, id: string): AnyVNode {
+  const match = childrenOf(tree).find((node) => {
+    const vnode = node as AnyVNode;
+    return vnode.type === SliderStepper && vnode.props?.id === id;
+  }) as AnyVNode | undefined;
+  expect(match, `Missing SliderStepper with id ${id}`).toBeDefined();
+  return match!;
+}
+
 /** The five-option blend select in the Track section (TML-04). */
 const TRACK_BLEND_OPTIONS = ['normal', 'screen', 'multiply', 'overlay', 'add'];
 
@@ -221,8 +238,7 @@ function clickToolTab(tree: AnyVNode, tabClass: string): void {
   (tab.props.onClick as () => void)();
 }
 
-/** Render the panel and open the 'Track option' tab (the initial tab is
- *  'Paint option'). */
+/** Render the panel and open the 'Track' tab (the initial tab is 'Paint'). */
 function renderPanelWithTrackTab(props: PhysicsPaintRightPanelProps): AnyVNode {
   const tree = renderPanel(props);
   clickToolTab(tree, 'physics-paint-tab-track-option');
@@ -242,22 +258,30 @@ beforeEach(() => {
 });
 
 describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)', () => {
-  it('hosts the track options behind the Track option tab: active track name, opacity slider value, and blend select value', () => {
+  it('hosts the track options behind the Track tab: active track name, opacity slider value, and blend select value', () => {
     const tree = renderPanelWithTrackTab(baseProps({
       trackName: 'Paint 1',
       trackOpacity: 0.5,
       trackBlendMode: 'multiply',
     }));
 
-    expect(textContent(tree)).toContain('Paint option');
-    expect(textContent(tree)).toContain('Track option');
+    // 261008-ryq: the tool-pane tabs are Paint | Track | Audio (relabeled —
+    // no 'option' suffix), each asserted on its OWN button so the check does
+    // not pass off unrelated panel text.
+    const paintTab = textContent(findByClass(tree, 'physics-paint-tab-paint-option'));
+    expect(paintTab).toContain('Paint');
+    expect(paintTab).not.toContain('option');
+    const trackTab = textContent(findByClass(tree, 'physics-paint-tab-track-option'));
+    expect(trackTab).toContain('Track');
+    expect(trackTab).not.toContain('option');
+    expect(textContent(findByClass(tree, 'physics-paint-tab-audio-option'))).toContain('Audio');
     expect(textContent(tree)).toContain('Blend');
     expect(textContent(tree)).toContain('Paint 1');
-    expect(findById(tree, 'physics-track-opacity').props.value).toBe(0.5);
+    expect(findStepper(tree, 'physics-track-opacity').props.value).toBe(0.5);
     expect(findById(tree, 'physics-track-blend').props.value).toBe('multiply');
   });
 
-  it('keeps the track controls out of the Paint option panel (47 UAT)', () => {
+  it('keeps the track controls out of the Paint panel (47 UAT)', () => {
     const tree = renderPanel(baseProps());
     expect(findByClass(tree, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
     expect(findByClass(tree, 'physics-paint-tab-track-option').props['aria-selected']).toBe(false);
@@ -268,26 +292,22 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     // Clamping first (fresh signal draft): the slider display always clamps to
     // the declared 0..1 range (47-03 TML-04).
     const clampedUp = renderPanelWithTrackTab(baseProps({ trackOpacity: 1.5 }));
-    expect(findById(clampedUp, 'physics-track-opacity').props.value).toBe(1);
+    expect(findStepper(clampedUp, 'physics-track-opacity').props.value).toBe(1);
 
     const clampedDown = renderPanelWithTrackTab(baseProps({ trackOpacity: -0.2 }));
-    expect(findById(clampedDown, 'physics-track-opacity').props.value).toBe(0);
+    expect(findStepper(clampedDown, 'physics-track-opacity').props.value).toBe(0);
 
     const props = baseProps({ trackOpacity: 0.5 });
     const tree = renderPanelWithTrackTab(props);
+    const stepper = findStepper(tree, 'physics-track-opacity');
 
-    // Dragging updates the local signal draft (the thumb follows the mouse) but
-    // does NOT commit — the opacity recomposite is deferred to release.
-    findById(tree, 'physics-track-opacity').props.onInput({ target: { value: '0.8' } });
+    // The panel hands the blended component the release-commit law and the
+    // raw commit callback; the drag draft itself lives inside SliderStepper.
+    expect(stepper.props.commitOnRelease).toBe(true);
+    expect(stepper.props.onChange).toBe(props.onTrackOpacityChange);
     expect(props.onTrackOpacityChange).not.toHaveBeenCalled();
-
-    // Releasing the thumb commits exactly once (pointerup — the native change
-    // event fires on every move in WebKit, so it must never commit).
-    findById(tree, 'physics-track-opacity').props.onPointerUp({ currentTarget: { value: '0.8' } });
-    expect(props.onTrackOpacityChange).toHaveBeenCalledOnce();
-    expect(props.onTrackOpacityChange).toHaveBeenCalledWith(0.8);
-    expect(findById(tree, 'physics-track-opacity').props.min).toBe(0);
-    expect(findById(tree, 'physics-track-opacity').props.max).toBe(1);
+    expect(stepper.props.min).toBe(0);
+    expect(stepper.props.max).toBe(1);
   });
 
   it('commits the selected blend mode once and offers exactly the five BlendMode options', () => {
@@ -314,7 +334,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     }));
 
     expect(textContent(first)).toContain('Paint 1');
-    expect(findById(first, 'physics-track-opacity').props.value).toBe(0.5);
+    expect(findStepper(first, 'physics-track-opacity').props.value).toBe(0.5);
     expect(findById(first, 'physics-track-blend').props.value).toBe('multiply');
 
     const second = renderPanelWithTrackTab(baseProps({
@@ -325,19 +345,19 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
 
     expect(textContent(second)).toContain('Paint 2');
     expect(textContent(second)).not.toContain('Paint 1');
-    expect(findById(second, 'physics-track-opacity').props.value).toBe(1);
+    expect(findStepper(second, 'physics-track-opacity').props.value).toBe(1);
     expect(findById(second, 'physics-track-blend').props.value).toBe('normal');
   });
 
   it('keeps the manually selected tab across re-renders — no auto-select fights the user\'s choice (47 UAT)', () => {
     // Track selection, tool changes, and paint activity must NEVER move the
-    // tab: a manual 'Track option' click sticks through re-renders with
+    // tab: a manual 'Track' click sticks through re-renders with
     // different active tracks/tools, and a paint revision bump does not
     // revert it.
     const first = renderPanel(baseProps());
     clickToolTab(first, 'physics-paint-tab-track-option');
     const onTrack = renderPanel(baseProps());
-    expect(findById(onTrack, 'physics-track-opacity')).toBeDefined();
+    expect(findStepper(onTrack, 'physics-track-opacity')).toBeDefined();
 
     // Active track changes + a paint revision bump: the tab stays put.
     renderPanel(baseProps({ trackName: 'Paint 2' }));
@@ -345,13 +365,13 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     const afterPaintBump = renderPanel(baseProps({ trackName: 'Paint 2' }));
 
     expect(findByClass(afterPaintBump, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
-    expect(findById(afterPaintBump, 'physics-track-opacity')).toBeDefined();
+    expect(findStepper(afterPaintBump, 'physics-track-opacity')).toBeDefined();
 
-    // Manual 'Paint option' click also sticks.
+    // Manual 'Paint' click also sticks.
     clickToolTab(afterPaintBump, 'physics-paint-tab-paint-option');
     const onPaint = renderPanel(baseProps({ activeTool: 'erase' }));
     expect(findByClass(onPaint, 'physics-paint-tab-paint-option').props['aria-selected']).toBe(true);
-    expect(findById(onPaint, 'physics-edge-detail')).toBeDefined();
+    expect(findStepper(onPaint, 'physics-edge-detail')).toBeDefined();
   });
 
   it('49-06 UAT round 2: a selected Bg clip shows the Background option tab — a THIRD tab that never replaces Track option', () => {
@@ -371,7 +391,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     // The Track section content is NOT shown while a clip is selected.
     const trackOpacity = childrenOf(tree).find((node) => {
       const vnode = node as AnyVNode;
-      return typeof vnode.type !== 'function' && vnode.props?.id === 'physics-track-opacity';
+      return vnode.props?.id === 'physics-track-opacity';
     });
     expect(trackOpacity).toBeUndefined();
   });
@@ -400,7 +420,7 @@ describe('Physics Paint right panel Track section (47-03, TML-04 + 47 UAT tabs)'
     });
     expect(backgroundTab).toBeUndefined();
     expect(findByClass(cleared, 'physics-paint-tab-track-option').props['aria-selected']).toBe(true);
-    expect(findById(cleared, 'physics-track-opacity')).toBeDefined();
+    expect(findStepper(cleared, 'physics-track-opacity')).toBeDefined();
   });
 });
 
@@ -552,5 +572,102 @@ describe('Physics Paint right panel pickup label (260930-ni6)', () => {
     expect(panelSrc).toContain('label="Blending"');
     // The id pin guards the control wiring — value/onChange stay on the same element.
     expect(panelSrc).toContain('id="physics-pickup"');
+  });
+});
+
+/** Hand-rolled controller + ports for the Audio tab (261008-ryq). */
+function audioTabHarness() {
+  const selectedSoundId = signal<string | null>('clip-1');
+  const controller = {
+    audios: [
+      { id: 'clip-1', relativePath: 'audio/one.wav', startFrame: 0, inFrame: 2, outFrame: 24, enabled: true },
+      { id: 'clip-2', relativePath: 'audio/two.wav', startFrame: 12, inFrame: 0, outFrame: 18, enabled: false },
+    ],
+    selectedSoundId,
+    removeArmed: false,
+    busy: false,
+    confirmRemove: vi.fn(),
+    requestRemove: vi.fn(),
+    disarmRemove: vi.fn(),
+  } as unknown as PhysicsPaintAudioController;
+  const onSelectClip = vi.fn();
+  const onImportRequest = vi.fn();
+  const props = baseProps({
+    audioSectionPorts: { getController: () => controller, onSelectClip, onImportRequest },
+  });
+  return { controller, selectedSoundId, onSelectClip, onImportRequest, props };
+}
+
+/** Render the panel with the Audio tab open. */
+function renderAudioTab(props: PhysicsPaintRightPanelProps): AnyVNode {
+  const tree = renderPanel(props);
+  clickToolTab(tree, 'physics-paint-tab-audio-option');
+  return renderPanel(props);
+}
+
+describe('Physics Paint right panel Audio tab (261008-ryq)', () => {
+  it('renders one row per clip with the selected highlight, filename and frame span', () => {
+    const { props } = audioTabHarness();
+    const tree = renderAudioTab(props);
+
+    const rows = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-row'));
+    expect(rows).toHaveLength(2);
+    const selectedRows = rows.filter((node) => hasClass(node, 'physics-paint-audio-clip-row-selected'));
+    expect(selectedRows).toHaveLength(1);
+    expect(textContent(selectedRows[0])).toContain('one.wav');
+    expect(textContent(selectedRows[0])).toMatch(/0\s+·\s+2\s+\.\.\s+24/);
+    expect(textContent(selectedRows[0])).toContain('On');
+    // The unselected row carries its own span/toggle text, no highlight class.
+    const otherRow = rows.find((node) => !hasClass(node, 'physics-paint-audio-clip-row-selected'))!;
+    expect(textContent(otherRow)).toContain('two.wav');
+    expect(textContent(otherRow)).toMatch(/12\s+·\s+0\s+\.\.\s+18/);
+    expect(textContent(otherRow)).toContain('Off');
+  });
+
+  it('row click calls onSelectClip with that clip id (select + reveal + open live in the Studio handler)', () => {
+    const { props, onSelectClip } = audioTabHarness();
+    const tree = renderAudioTab(props);
+
+    const selects = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-select'));
+    expect(selects).toHaveLength(2);
+    ((selects[1] as AnyVNode).props.onClick as () => void)();
+    expect(onSelectClip).toHaveBeenCalledOnce();
+    expect(onSelectClip).toHaveBeenCalledWith('clip-2');
+  });
+
+  it('trash rides the shared two-step arm: first press selects + requestRemove, second press confirms', () => {
+    const { controller, selectedSoundId, props } = audioTabHarness();
+    let tree = renderAudioTab(props);
+
+    // First press on the UNARMED row 2: selects it and arms via requestRemove.
+    let trashes = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-trash'));
+    ((trashes[1] as AnyVNode).props.onClick as () => void)();
+    expect(selectedSoundId.value).toBe('clip-2');
+    expect(controller.requestRemove).toHaveBeenCalledOnce();
+    expect(controller.confirmRemove).not.toHaveBeenCalled();
+
+    // Arm lands (the fake mirrors the controller's armed state) → second press confirms.
+    (controller as { removeArmed: boolean }).removeArmed = true;
+    tree = renderPanel(props);
+    trashes = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-trash'));
+    ((trashes[1] as AnyVNode).props.onClick as () => void)();
+    expect(controller.confirmRemove).toHaveBeenCalledOnce();
+  });
+
+  it('Import disarms first then requests the append import', () => {
+    const { controller, onImportRequest, props } = audioTabHarness();
+    const tree = renderAudioTab(props);
+
+    (findByClass(tree, 'physics-paint-audio-clip-import').props.onClick as () => void)();
+    expect(controller.disarmRemove).toHaveBeenCalledOnce();
+    expect(onImportRequest).toHaveBeenCalledOnce();
+    expect(onImportRequest).toHaveBeenCalledWith('append');
+  });
+
+  it('renders no audio arm (null, no crash) when the tab is opened without ports', () => {
+    const tree = renderAudioTab(baseProps());
+    const rows = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-row'));
+    expect(rows).toHaveLength(0);
+    expect(childrenOf(tree).some((node) => hasClass(node, 'physics-paint-audio-clip-list'))).toBe(false);
   });
 });

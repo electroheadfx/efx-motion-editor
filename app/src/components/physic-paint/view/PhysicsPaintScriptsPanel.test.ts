@@ -98,18 +98,18 @@ function expectInOrder(source: string, tokens: readonly string[]) {
 }
 
 describe('Physics Paint SCRIPTS panel contract', () => {
-  it('keeps the lower Scripts/Onion/Motion tab group, adds the tool pane\'s Paint/Track option tabs (47 UAT), and exposes scans on Scripts entry', () => {
+  it('keeps the lower Scripts/Onion/Motion tab group, adds the tool pane\'s Paint/Track/Audio tabs (47 UAT), and exposes scans on Scripts entry', () => {
     for (const tab of ['Actions', 'Onion', 'Motion']) expect(rightPanel).toMatch(new RegExp(`>\\s*${tab}\\s*<`));
     // 36.15-12, UAT Gap H-1/H-2: the Brush color single-tab header strip is
     // removed — that section renders its content directly. 47 UAT: the tool
-    // pane gained its own two-tab group ('Paint option' / 'Track option'),
-    // so the lower group keeps its three tabs and the LOG tab stays gone.
+    // pane gained its own tab group ('Paint' / 'Track'; 261008-ryq adds
+    // 'Audio'), so the lower group keeps its three tabs and LOG stays gone.
     expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
     expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
-    // 49-06 (UAT round 2): the tool pane's Paint/Track tabs plus the
-    // conditional Background option tab (shown only while a Bg clip is
-    // selected) — 6 role=tab buttons in the source.
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(6);
+    // 49-06 (UAT round 2) + 261008-ryq: the tool pane's Paint/Track/Audio tabs
+    // plus the conditional Background option tab (shown only while a Bg clip
+    // is selected) — 7 role=tab buttons in the source.
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(7);
     expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
     expect(rightPanel).toContain("setOptionsTab('scripts'); void scripts.library.enterScripts()");
     expect(rightPanel).toContain("optionsTab === 'scripts'");

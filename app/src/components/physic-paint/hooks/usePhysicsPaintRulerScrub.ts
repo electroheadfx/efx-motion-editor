@@ -48,6 +48,13 @@ export interface PhysicsPaintRulerScrubOptions {
   readonly onScrubEnd?: (finalFrame: number) => void;
   /** Cell pitch in CSS pixels (the strip passes ROTO_CELL_WIDTH_PX = 18). */
   readonly cellWidthPx?: number;
+  /**
+   * UAT round 3: the coordinate-space element for clientX -> frame. Defaults
+   * to the pointer-down target (the ruler). The playhead's scrub handle drives
+   * the SAME session but maps through the RULER's rect, so it passes the ruler
+   * element here instead of its own.
+   */
+  readonly getRulerElement?: () => RulerScrubRulerElement | null;
   readonly windowLike?: RulerScrubWindowLike;
 }
 
@@ -93,7 +100,8 @@ export function usePhysicsPaintRulerScrub(
     if (!win || sessionRef.current) return;
     beginInteraction(event.pointerId);
 
-    const rulerElement = event.currentTarget as unknown as RulerScrubRulerElement;
+    const rulerElement = options.getRulerElement?.() ?? (event.currentTarget as unknown as RulerScrubRulerElement);
+    if (!rulerElement) return;
     const rectLeft = rulerElement.getBoundingClientRect().left;
     const frameAt = (clientX: number): number => {
       const count = options.frameCount();

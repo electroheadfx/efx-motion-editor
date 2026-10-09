@@ -298,6 +298,7 @@ Known technical debt:
 | Phase 52.3 FrameEntry discriminated union (content/paint/gap) with dense enumeration gated on `entries.length === 0` | The paint-only enumeration branch was never designed (quick 260919-azh verdict NEVER-WIRED); a fail-closed union keeps D-08/D-10 filter semantics explicit | ✓ Good — parked Cases C/D green, refusal unreachable for paint content, 7/7 native UAT rows across formats/resolutions/scales |
 | Phase 52.3 one shared `entry.globalFrame` predicate across enumeration, render gating, and export preload | Positional-vs-global conflation produced all-transparent selected-fx exports (RESEARCH Pitfall 1) and an empty preload window (review CR-01) at fx inFrame > 0 | ✓ Good — CR-01 closed RED-first (50ecd5e4 → 3e84c120); preload, render gate, and enumeration provably share one predicate |
 | Phase 52.3 playback activation of the owning fx sequence when the playhead enters paint frames is deliberate (D-08-consistent) | Dense enumeration makes playback cross fx-owned frames; deactivating would fight the selected-fx mental model | ✓ Good — pinned in playbackEngine tests; UAT Row 7 confirmed as callout, not a bug |
+| Phase 52.5 document sound as reference-only `audio/` persistence + closed bridge keys (LAUNCH_KEYS/DOCUMENT_AUDIO_KEYS fail-closed) + mix-not-contend clip dispatch | Sound bytes must never enter the .mce document; ad-hoc bridge keys would reopen the injection surface; Studio claim and main playback must mix rather than contend | ✓ Good — 10/10 UAT, threats_open: 0, single decode keyed by sound.id, export mix gated by tested pure functions |
 
 ## Evolution
 
@@ -317,4 +318,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-19 after Phase 52.3 — Paint content export enumeration complete (14/14 must-haves verified, 7/7 native UAT rows, CR-01 review fix landed). Phase 53 (Integrated v1.0.0 Acceptance) is the final v1.0.0 phase. Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*
+*Last updated: 2026-10-08 after Phase 52.5 — Physic Paint document sound track complete (10/10 UAT, threats_open: 0, UI audit 16/24 with advisory findings). Phase 53 (Integrated v1.0.0 Acceptance) is the final v1.0.0 phase. Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*

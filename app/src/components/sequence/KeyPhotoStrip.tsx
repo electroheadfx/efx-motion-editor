@@ -251,22 +251,17 @@ function FramesPopover({holdFrames, anchorRef, onCommit, onClose, startFrame}: F
         max={999}
         class="w-full"
         ariaLabel="Hold frames"
-        inputClass="flex-1 h-7 rounded-md outline-none text-center font-mono"
+        inputClass="flex-1 outline-none text-center font-mono"
         inputStyle={{
           fontSize: '12px',
-          backgroundColor: 'var(--sidebar-input-bg)',
           color: 'var(--sidebar-text-primary)',
           minWidth: '40px',
-          padding: '5px 6px',
         }}
         buttonStyle={{
           width: '28px',
-          height: '28px',
-          borderRadius: '6px',
-          backgroundColor: 'var(--sidebar-input-bg)',
           color: 'var(--sidebar-text-primary)',
         }}
-        buttonClass="transition-colors hover:bg-[#ffffff15]"
+        buttonClass="transition-colors"
       />
       {(() => {
         const selectedTrack = audioStore.tracks.value.find(
