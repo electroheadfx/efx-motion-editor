@@ -4170,9 +4170,11 @@ button.destructive {
   outline-offset: 1px;
 }
 
-/* 52.5 UAT: main-app-audio preview toggle (audio-modal header). Same 22px
-   chrome as the close button; aria-pressed carries the state so the On look
-   never collides with the global `button.active` rule. */
+/* 52.5 UAT → 261009-6ee: main-app-audio preview toggle — now the STRIP's
+   Audio Preview button only (the modal's header surface was dropped by the
+   one-switch law; the modal's single switch is the footer enabled pill). Same
+   22px chrome as the close button; aria-pressed carries the state so the On
+   look never collides with the global `button.active` rule. */
 .physics-paint-audio-preview-toggle {
   flex: 0 0 auto;
   display: inline-flex;
@@ -4567,25 +4569,89 @@ button.destructive {
   text-transform: none;
 }
 
-.physics-paint-audio-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
+/* 261009-6ee — grouped field layout (SPECS/modal-audio-new): File label on its
+   own line above the file row, TIMING/SOUND section headers, one field per row
+   over a fixed 110px label cell, and a footer with the enabled pill (LEFT) and
+   two-step Remove (RIGHT). The retired 2-column grid/field/label rules were
+   unreferenced after the reflow (grep-verified). */
+.physics-paint-audio-file-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
 }
 
-.physics-paint-audio-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.physics-paint-audio-file-row .physics-paint-photo-reference-chip {
+  flex: 1 1 0;
   min-width: 0;
 }
 
-.physics-paint-audio-field-label {
+.physics-paint-audio-file-row .physics-paint-photo-reference-import {
+  flex: 0 0 auto;
+}
+
+.physics-paint-audio-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.physics-paint-audio-section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12px;
   color: #8a94a0;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+.physics-paint-audio-section-rule {
+  flex: 1 1 0;
+  height: 1px;
+  background: #2a3540;
+}
+
+.physics-paint-audio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.physics-paint-audio-label-cell {
+  width: 110px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.physics-paint-audio-hint {
+  font-size: 9px;
+  color: #7e8894;
+  white-space: nowrap;
+}
+
+.physics-paint-audio-controls {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.physics-paint-audio-controls select {
+  width: 92px;
+  height: 22px;
+  flex: 0 0 auto;
+  border: 1px solid var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55));
+  border-radius: 4px;
+  background: var(--sidebar-input-bg, rgba(127, 131, 138, 0.18));
+  color: var(--sidebar-text-primary, inherit);
+  font-size: 10px;
 }
 
 .physics-paint-audio-field-stepper {
@@ -4594,20 +4660,17 @@ button.destructive {
   width: 100%;
 }
 
-.physics-paint-audio-field select {
-  width: 100%;
-  height: 22px;
-  border: 1px solid var(--sidebar-border-unselected, rgba(127, 131, 138, 0.55));
-  border-radius: 4px;
-  background: var(--sidebar-input-bg, rgba(127, 131, 138, 0.18));
-  color: var(--sidebar-text-primary, inherit);
-  font-size: 10px;
-}
-
-.physics-paint-audio-enable-row {
+.physics-paint-audio-footer {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  width: 100%;
+}
+
+/* The armed-confirm copy renders directly under the footer row (261009-6ee). */
+.physics-paint-audio-confirm-copy {
+  margin: 0;
 }
 
 /* 261008-ryq: the clip LIST lives in the sidebar Audio tab; the modal is the

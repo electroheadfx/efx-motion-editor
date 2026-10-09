@@ -1197,28 +1197,34 @@ describe('engine release on close (41-05 Task 1: D-08, AUDIO-06)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 52.5 UAT: the Document sound modal carries the main-app-audio preview toggle
-// as a SECOND surface over the same session signal (one source of truth), and
-// that signal is preview-only — it must never reach the main editor or export.
+// 261009-6ee one-switch law (re-lock of the 52.5 UAT pins): the Document sound
+// modal NO LONGER carries the main-app-audio preview toggle — the header
+// surface was dropped and the strip's Audio Preview button is the modal's
+// sibling surface over the SAME session signal (one source of truth), which
+// must stay preview-only — it never reaches the main editor or export.
 // ---------------------------------------------------------------------------
-describe('main-app-audio preview toggle surfaces (52.5 UAT)', () => {
+describe('main-app-audio preview toggle surfaces (52.5 UAT / 261009-6ee re-lock)', () => {
   const readSource = (relative: string): string =>
     readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
 
-  it('(f) the modal exposes the toggle and the Studio wires it to the shared session signal', () => {
+  it('(f) the modal carries no preview toggle; the Studio wires the surviving strip surface to the shared session signal', () => {
     const modal = readSource('../view/PhysicsPaintAudioModalView.tsx');
-    expect(modal.includes('mainAppAudioEnabled')).toBe(true);
-    expect(modal.includes('onToggleMainAppAudio')).toBe(true);
-    expect(modal.includes('Volume2')).toBe(true);
-    expect(modal.includes('VolumeX')).toBe(true);
-    // Preview-only copy is on the control itself — never "affects export".
-    expect(modal.includes('AUDIO_MAIN_APP_AUDIO_ARIA_OFF')).toBe(true);
+    // One-switch law: the modal's ONLY audio switch is the footer enabled pill.
+    expect(modal.includes('mainAppAudioEnabled')).toBe(false);
+    expect(modal.includes('onToggleMainAppAudio')).toBe(false);
+    expect(modal.includes('VolumeX')).toBe(false);
 
     const studio = readSource('../PhysicsPaintStudio.tsx');
-    // One source of truth: the modal surface reads the SAME signal the strip's
-    // Audio Preview button flips (no second state, no duplicate setter).
-    expect(/mainAppAudioEnabled:\s*audioPreviewEnabled\.value/.test(studio)).toBe(true);
-    expect(/onToggleMainAppAudio:\s*handleAudioPreviewToggle/.test(studio)).toBe(true);
+    // One source of truth: the strip surface reads the SAME session signal —
+    // no second state, no duplicate setter, and the modal gets NO preview props.
+    expect(/audioPreviewEnabled:\s*audioPreviewEnabled\.value/.test(studio)).toBe(true);
+    expect(/onAudioPreviewToggle:\s*handleAudioPreviewToggle/.test(studio)).toBe(true);
+    expect(/mainAppAudioEnabled:/.test(studio)).toBe(false);
+
+    // The copy contract relocated with the signal (52.5 strings stay verbatim).
+    const store = readSource('./efxPaintAudioPreviewStore.ts');
+    expect(store.includes('AUDIO_MAIN_APP_AUDIO_ARIA_OFF')).toBe(true);
+    expect(store.includes('AUDIO_MAIN_APP_AUDIO_ON')).toBe(true);
   });
 
   it('(g) the signal is preview-only: main playback and export never read it', () => {

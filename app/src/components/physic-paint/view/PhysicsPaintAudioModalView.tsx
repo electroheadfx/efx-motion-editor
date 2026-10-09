@@ -1,15 +1,16 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
+import { AudioWaveform, Trash2, Volume2, X } from 'lucide-preact';
 import { NumericStepper } from '../../shared/NumericStepper';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
 
 /**
  * 52.5-01b — the floating `Document sound` dialog (D-05 single control
- * surface). Pattern: `PhysicsPaintPhotoReferenceDialog` / Play Script floating
+ * surface), re-flowed to the locked mock SPECS/modal-audio-new by 261009-6ee.
+ * Pattern: `PhysicsPaintPhotoReferenceDialog` / Play Script floating
  * dialog — NO backdrop, NO Tab trap, Escape closes, close button, focus
  * captured on open and restored to the launcher on close, header drag
- * repositions (photo-ref precedent). Width 300px (UI-SPEC spacing exception).
+ * repositions (photo-ref precedent). Width 340px (mock-locked).
  *
  * Copywriting Contract (52.5-UI-SPEC — verbatim, never interpolated, defined
  * here because this component renders it):
@@ -20,21 +21,36 @@ import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
  *   `Remove sound? Position, trims, gain, and fades are discarded from this document.` ·
  *   `Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.` ·
  *   `Sound file is missing from the project. Replace it to restore the clip.` ·
- *   `Position` (frames) · `Gain` (-100..+100, 0 = unity) · `Fade in` · `Fade out` (frames; curves `linear`,
- *   `exponential`, `logarithmic`) · `In` · `Out` (frames) · `On` / `Off`
+ *   `Position` (frames) · `Gain` (-100..+100, `0 = unity`) · `Fade in` ·
+ *   `Fade out` (frames; curves `linear`, `exponential`, `logarithmic`) ·
+ *   `Trim in` · `Trim out` (frames) · `TIMING` · `SOUND` · `On` / `Off`
  *
- * Field order top-to-bottom is a verbatim contract (52.5-UI-SPEC Audio modal,
- * re-scoped by 261008-ryq): the modal edits ONLY the selected clip — the clip
- * LIST now lives in the sidebar Audio tab:
- *   1. header: AudioWaveform 15px + `Document sounds` + close X
- *   2. file row (filename + `Replace…`) OR the empty-state block
- *      (`No sound yet` / body / `Import sound`, zero clips) OR the error copy
- *   3. `Position` (frames) — NumericStepper step 1, integer >= 0, no upper clamp
- *   4. `Remove` — two-step inline confirm (`Confirm remove?` + confirm copy)
- *   5. `Gain` — NumericStepper step 5, -100..100 (per-step commit), no separate readout
- *   6-7. `Fade in` | `Fade out` — one row, 2 columns, values in FRAMES
- *        (integer >= 0, no 99 cap) + curve select under each stepper
- *   8. `In` | `Out` — source trim in frames (2 columns, 1-frame minimum span)
+ * Field order top-to-bottom is a verbatim contract (SPECS/modal-audio-new,
+ * locked by 261009-6ee): the modal edits ONLY the selected clip — the clip
+ * LIST lives in the sidebar Audio tab:
+ *   1. header: AudioWaveform 15px + `Document sounds` + close X (title + close
+ *      ONLY — this modal carries no preview button)
+ *   2. `File` label ABOVE the file row (filename chip + `Replace…`) OR the
+ *      empty-state block (`No sound yet` / body / `Import sound`, zero clips)
+ *      OR the error copy
+ *   3. `TIMING` section header (uppercase micro-label + 1px rule)
+ *   4. `Position` (frames) — NumericStepper step 1, integer >= 0, no upper
+ *      clamp (commitStartFrame)
+ *   5. `Trim in` (frames) — NumericStepper (commitInFrame, 1-frame minimum span)
+ *   6. `Trim out` (frames) — NumericStepper (commitOutFrame, 1-frame minimum span)
+ *   7. `SOUND` section header
+ *   8. `Gain` + hint `0 = unity` — NumericStepper step 5, -100..100 (commitGain)
+ *   9. `Fade in` (frames) — NumericStepper step 1 min 0 + curve select BESIDE
+ *      (commitFadeIn)
+ *   10. `Fade out` (frames) — same row shape (commitFadeOut)
+ *   11. footer — LEFT enabled pill (`On`/`Off`, Volume2 icon when on) toggling
+ *       sound.enabled, RIGHT `Remove` two-step (requestRemove/confirmRemove)
+ *       with AUDIO_REMOVE_CONFIRM_COPY at the footer
+ *
+ * 261009-6ee one-switch deviation (locked): the mock's header preview button
+ * is dropped — the footer enabled pill is this modal's ONLY audio switch. The
+ * main-app-audio preview surface lives on the Studio strip's Audio Preview
+ * toggle; its copy constants moved to efxPaintAudioPreviewStore.ts.
  *
  * The component is a thin render shell over the signals-only
  * `physicsPaintAudioController` (accepted canonical state only; no useState,
@@ -67,15 +83,13 @@ export const AUDIO_POSITION_LABEL = 'Position';
 export const AUDIO_GAIN_LABEL = 'Gain';
 export const AUDIO_FADE_IN_LABEL = 'Fade in';
 export const AUDIO_FADE_OUT_LABEL = 'Fade out';
-export const AUDIO_IN_LABEL = 'In';
-export const AUDIO_OUT_LABEL = 'Out';
+export const AUDIO_IN_LABEL = 'Trim in';
+export const AUDIO_OUT_LABEL = 'Trim out';
+export const AUDIO_GAIN_HINT = '0 = unity';
+export const AUDIO_SECTION_TIMING = 'TIMING';
+export const AUDIO_SECTION_SOUND = 'SOUND';
 export const AUDIO_ENABLE_ON = 'On';
 export const AUDIO_ENABLE_OFF = 'Off';
-/** 52.5 UAT: the main-app-audio preview toggle (header, preview-only). */
-export const AUDIO_MAIN_APP_AUDIO_ON = 'Main app audio On — preview only, click to mute';
-export const AUDIO_MAIN_APP_AUDIO_OFF = 'Main app audio Off — preview only, click to hear';
-export const AUDIO_MAIN_APP_AUDIO_ARIA_ON = 'Mute main app audio in the Studio preview';
-export const AUDIO_MAIN_APP_AUDIO_ARIA_OFF = 'Hear main app audio in the Studio preview';
 
 const FADE_CURVE_OPTIONS: readonly SoundFadeCurve[] = ['linear', 'exponential', 'logarithmic'];
 
@@ -95,17 +109,6 @@ export interface PhysicsPaintAudioModalViewProps {
    * SELECTED clip's source (261008-ig1 Task 2 — D-01/D-02).
    */
   onImportRequest: (mode: 'append' | 'replace') => void;
-  /**
-   * 52.5 UAT: "hear the MAIN APP's audio while previewing in the Studio" — a
-   * SECOND, independent switch from the clip's `enabled` row below. Preview-
-   * only: it never touches main-editor playback or the exported mix (those
-   * always carry the clip AND the main tracks). Session state shared with the
-   * strip's Audio Preview toggle (one signal, two surfaces); defaults Off so
-   * the Studio previews the studio sound alone. Lives in the header so it is
-   * reachable even in the empty state (before any clip is imported).
-   */
-  mainAppAudioEnabled: boolean;
-  onToggleMainAppAudio: () => void;
 }
 
 export function PhysicsPaintAudioModalView({
@@ -113,8 +116,6 @@ export function PhysicsPaintAudioModalView({
   controller,
   onClose,
   onImportRequest,
-  mainAppAudioEnabled,
-  onToggleMainAppAudio,
 }: PhysicsPaintAudioModalViewProps) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<{ pointerX: number; pointerY: number; baseX: number; baseY: number } | null>(null);
@@ -240,22 +241,10 @@ export function PhysicsPaintAudioModalView({
           <AudioWaveform size={15} class="physics-paint-photo-reference-header-icon" aria-hidden="true" />
           <strong id="physics-audio-modal-title">{AUDIO_MODAL_TITLE}</strong>
           <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
-          {/* 52.5 UAT: main-app-audio preview toggle. SECOND switch, unrelated
-              to the clip's `enabled` row — it only decides whether the MAIN
-              APP's tracks are heard underneath in the Studio preview (default
-              Off = the Studio previews the studio sound alone). Preview-only:
-              main-editor playback and the exported mix always carry both. */}
-          <button
-            type="button"
-            class="physics-paint-audio-preview-toggle"
-            aria-label={mainAppAudioEnabled ? AUDIO_MAIN_APP_AUDIO_ARIA_ON : AUDIO_MAIN_APP_AUDIO_ARIA_OFF}
-            aria-pressed={mainAppAudioEnabled}
-            title={mainAppAudioEnabled ? AUDIO_MAIN_APP_AUDIO_ON : AUDIO_MAIN_APP_AUDIO_OFF}
-            data-testid="audio-modal-main-app-audio"
-            onClick={onToggleMainAppAudio}
-          >
-            {mainAppAudioEnabled ? <Volume2 size={13} aria-hidden="true" /> : <VolumeX size={13} aria-hidden="true" />}
-          </button>
+          {/* 261009-6ee one-switch deviation: NO preview button here — title +
+              close ONLY. The footer enabled pill below is this modal's single
+              audio switch; the main-app-audio preview lives on the Studio
+              strip's Audio Preview toggle. */}
           <button
             type="button"
             class="physics-paint-photo-reference-close"
@@ -294,10 +283,12 @@ export function PhysicsPaintAudioModalView({
             <>
               {sound !== null ? (
             <>
-              {/* 2b. File row + Replace… */}
-              <div class="physics-paint-photo-reference-source">
+              {/* 2b. File row — `File` label on its OWN line above the row; the
+                  row is the filename chip (flex 1) + Replace… */}
+              <div>
                 <span class="physics-paint-photo-reference-label">File</span>
-                <span class="physics-paint-photo-reference-label-spacer" aria-hidden="true" />
+              </div>
+              <div class="physics-paint-audio-file-row">
                 <span class="physics-paint-photo-reference-chip" title={filename ?? undefined}>
                   <span class="physics-paint-audio-filename">{filename}</span>
                 </span>
@@ -316,11 +307,16 @@ export function PhysicsPaintAudioModalView({
                 </p>
               ) : null}
 
-              {/* 3. Position (frames) — band placement; per-step commit, integer >= 0, no upper clamp */}
+              {/* 3. TIMING section header */}
+              <div class="physics-paint-audio-section">
+                <span class="physics-paint-audio-section-label">{AUDIO_SECTION_TIMING}</span>
+                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
+              </div>
+
+              {/* 4. Position (frames) — band placement; per-step commit, integer >= 0, no upper clamp */}
               <div class="physics-paint-audio-row">
-                <div class="physics-paint-photo-reference-opacity-labels">
+                <div class="physics-paint-audio-label-cell">
                   <span class="physics-paint-photo-reference-label">{AUDIO_POSITION_LABEL} (frames)</span>
-                  <span class="physics-paint-photo-reference-label-spacer" aria-hidden="true" />
                 </div>
                 <NumericStepper
                   class="physics-paint-audio-field-stepper"
@@ -334,49 +330,51 @@ export function PhysicsPaintAudioModalView({
                 />
               </div>
 
-              {/* 4. Remove + On/Off — one line (UAT round 2). The switch is the
-                  studio-layer sound: ON = the clip is audible in Studio, in the
-                  main app, and in export; OFF = silent everywhere. It never
-                  touches the main app's audio tracks. */}
-              <div class="physics-paint-audio-enable-row">
-                <button
-                  type="button"
-                  class={`physics-paint-photo-reference-remove${removeArmed ? ' physics-paint-audio-remove-armed' : ''}`}
-                  aria-label={removeArmed ? AUDIO_REMOVE_ARMED : AUDIO_REMOVE}
-                  aria-pressed={removeArmed}
-                  disabled={controlsDisabled}
-                  onClick={() => {
-                    if (removeArmed) confirmRemove();
-                    else requestRemove();
-                  }}
-                >
-                  <Trash2 size={13} aria-hidden="true" />
-                  <span>{removeArmed ? AUDIO_REMOVE_ARMED : AUDIO_REMOVE}</span>
-                </button>
-                <button
-                  type="button"
-                  class="physics-paint-photo-reference-toggle"
-                  aria-label="Document sound on/off"
-                  aria-pressed={sound.enabled}
-                  aria-disabled={controlsDisabled}
-                  disabled={controlsDisabled}
-                  data-testid="audio-modal-enabled"
-                  onClick={toggleEnabled}
-                >
-                  <span>{sound.enabled ? AUDIO_ENABLE_ON : AUDIO_ENABLE_OFF}</span>
-                </button>
-              </div>
-              {removeArmed ? (
-                <p class="physics-paint-audio-confirm-copy" data-testid="audio-remove-confirm-copy">
-                  {AUDIO_REMOVE_CONFIRM_COPY}
-                </p>
-              ) : null}
-
-              {/* 5. Gain — NumericStepper step 5, -100..100 (per-step commit); the stepper is the value display */}
+              {/* 5. Trim in (frames) — source trim start; 1-frame minimum span:
+                  an entry that would invert the span never commits (max = out - 1). */}
               <div class="physics-paint-audio-row">
-                <div class="physics-paint-photo-reference-opacity-labels">
+                <div class="physics-paint-audio-label-cell">
+                  <span class="physics-paint-photo-reference-label">{AUDIO_IN_LABEL} (frames)</span>
+                </div>
+                <NumericStepper
+                  class="physics-paint-audio-field-stepper"
+                  value={sound.inFrame}
+                  step={1}
+                  min={0}
+                  max={sound.outFrame - 1}
+                  onChange={(value) => commitInFrame(value)}
+                  ariaLabel="In frames"
+                />
+              </div>
+
+              {/* 6. Trim out (frames) — source trim end; 1-frame minimum span
+                  (min = in + 1). */}
+              <div class="physics-paint-audio-row">
+                <div class="physics-paint-audio-label-cell">
+                  <span class="physics-paint-photo-reference-label">{AUDIO_OUT_LABEL} (frames)</span>
+                </div>
+                <NumericStepper
+                  class="physics-paint-audio-field-stepper"
+                  value={sound.outFrame}
+                  step={1}
+                  min={sound.inFrame + 1}
+                  onChange={(value) => commitOutFrame(value)}
+                  ariaLabel="Out frames"
+                />
+              </div>
+
+              {/* 7. SOUND section header */}
+              <div class="physics-paint-audio-section">
+                <span class="physics-paint-audio-section-label">{AUDIO_SECTION_SOUND}</span>
+                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
+              </div>
+
+              {/* 8. Gain — NumericStepper step 5, -100..100 (per-step commit); the
+                  stepper is the value display, `0 = unity` hint under the label */}
+              <div class="physics-paint-audio-row">
+                <div class="physics-paint-audio-label-cell">
                   <span class="physics-paint-photo-reference-label">{AUDIO_GAIN_LABEL}</span>
-                  <span class="physics-paint-photo-reference-label-spacer" aria-hidden="true" />
+                  <span class="physics-paint-audio-hint">{AUDIO_GAIN_HINT}</span>
                 </div>
                 <NumericStepper
                   class="physics-paint-audio-field-stepper"
@@ -391,12 +389,14 @@ export function PhysicsPaintAudioModalView({
                 />
               </div>
 
-              {/* 6-7. Fade in | Fade out — one row, 2 columns (UAT). Values are
+              {/* 9. Fade in (frames) — curve select BESIDE the stepper. Values are
                   FRAMES (the model field is fadeInFrames); the unit is in the
                   label so it never reads as seconds. Integer >= 0, no 99 cap. */}
-              <div class="physics-paint-audio-grid">
-                <div class="physics-paint-audio-field">
-                  <span class="physics-paint-audio-field-label">{AUDIO_FADE_IN_LABEL} (frames)</span>
+              <div class="physics-paint-audio-row">
+                <div class="physics-paint-audio-label-cell">
+                  <span class="physics-paint-photo-reference-label">{AUDIO_FADE_IN_LABEL} (frames)</span>
+                </div>
+                <div class="physics-paint-audio-controls">
                   <NumericStepper
                     class="physics-paint-audio-field-stepper"
                     value={sound.fadeInFrames}
@@ -416,8 +416,14 @@ export function PhysicsPaintAudioModalView({
                     ))}
                   </select>
                 </div>
-                <div class="physics-paint-audio-field">
-                  <span class="physics-paint-audio-field-label">{AUDIO_FADE_OUT_LABEL} (frames)</span>
+              </div>
+
+              {/* 10. Fade out (frames) — same row shape as Fade in */}
+              <div class="physics-paint-audio-row">
+                <div class="physics-paint-audio-label-cell">
+                  <span class="physics-paint-photo-reference-label">{AUDIO_FADE_OUT_LABEL} (frames)</span>
+                </div>
+                <div class="physics-paint-audio-controls">
                   <NumericStepper
                     class="physics-paint-audio-field-stepper"
                     value={sound.fadeOutFrames}
@@ -439,34 +445,44 @@ export function PhysicsPaintAudioModalView({
                 </div>
               </div>
 
-              {/* 8. In | Out — source trim in FRAMES (UAT round 2: the end of the
-                  clip was unreachable on the 6px trim zones). 1-frame minimum
-                  span: an entry that would invert the span never commits. */}
-              <div class="physics-paint-audio-grid">
-                <div class="physics-paint-audio-field">
-                  <span class="physics-paint-audio-field-label">{AUDIO_IN_LABEL} (frames)</span>
-                  <NumericStepper
-                    class="physics-paint-audio-field-stepper"
-                    value={sound.inFrame}
-                    step={1}
-                    min={0}
-                    max={sound.outFrame - 1}
-                    onChange={(value) => commitInFrame(value)}
-                    ariaLabel="In frames"
-                  />
-                </div>
-                <div class="physics-paint-audio-field">
-                  <span class="physics-paint-audio-field-label">{AUDIO_OUT_LABEL} (frames)</span>
-                  <NumericStepper
-                    class="physics-paint-audio-field-stepper"
-                    value={sound.outFrame}
-                    step={1}
-                    min={sound.inFrame + 1}
-                    onChange={(value) => commitOutFrame(value)}
-                    ariaLabel="Out frames"
-                  />
-                </div>
+              {/* 11. Footer — LEFT enabled pill (the modal's single audio switch:
+                  ON = the clip is audible in Studio, in the main app, and in
+                  export; OFF = silent everywhere — it never touches the main
+                  app's audio tracks), RIGHT two-step Remove. */}
+              <div class="physics-paint-audio-footer">
+                <button
+                  type="button"
+                  class="physics-paint-photo-reference-toggle"
+                  aria-label="Document sound on/off"
+                  aria-pressed={sound.enabled}
+                  aria-disabled={controlsDisabled}
+                  disabled={controlsDisabled}
+                  data-testid="audio-modal-enabled"
+                  onClick={toggleEnabled}
+                >
+                  {sound.enabled ? <Volume2 size={12} aria-hidden="true" /> : null}
+                  <span>{sound.enabled ? AUDIO_ENABLE_ON : AUDIO_ENABLE_OFF}</span>
+                </button>
+                <button
+                  type="button"
+                  class={`physics-paint-photo-reference-remove${removeArmed ? ' physics-paint-audio-remove-armed' : ''}`}
+                  aria-label={removeArmed ? AUDIO_REMOVE_ARMED : AUDIO_REMOVE}
+                  aria-pressed={removeArmed}
+                  disabled={controlsDisabled}
+                  onClick={() => {
+                    if (removeArmed) confirmRemove();
+                    else requestRemove();
+                  }}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                  <span>{removeArmed ? AUDIO_REMOVE_ARMED : AUDIO_REMOVE}</span>
+                </button>
               </div>
+              {removeArmed ? (
+                <p class="physics-paint-audio-confirm-copy" data-testid="audio-remove-confirm-copy">
+                  {AUDIO_REMOVE_CONFIRM_COPY}
+                </p>
+              ) : null}
             </>
               ) : null}
             </>

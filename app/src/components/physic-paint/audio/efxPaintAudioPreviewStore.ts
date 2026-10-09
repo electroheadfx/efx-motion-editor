@@ -26,6 +26,16 @@ const section = signal<EfxPaintAudioPreviewContext | null>(null);
 export const AUDIO_PREVIEW_DEFAULT = false;
 export const audioPreviewEnabled = signal(AUDIO_PREVIEW_DEFAULT);
 
+/**
+ * The feature's copy contract, relocated here (261009-6ee one-switch law): the
+ * modal header surface was dropped — the strip's Audio Preview toggle is the
+ * live surface; these constants stay pinned by efxPaintAudioPreview.test.ts.
+ */
+export const AUDIO_MAIN_APP_AUDIO_ON = 'Main app audio On — preview only, click to mute';
+export const AUDIO_MAIN_APP_AUDIO_OFF = 'Main app audio Off — preview only, click to hear';
+export const AUDIO_MAIN_APP_AUDIO_ARIA_ON = 'Mute main app audio in the Studio preview';
+export const AUDIO_MAIN_APP_AUDIO_ARIA_OFF = 'Hear main app audio in the Studio preview';
+
 type AudioPreviewToggleEffect = (enabled: boolean) => void;
 let toggleEffect: AudioPreviewToggleEffect | null = null;
 

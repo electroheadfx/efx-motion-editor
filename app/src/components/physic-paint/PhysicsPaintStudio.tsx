@@ -4846,11 +4846,10 @@ export function PhysicsPaintStudio() {
       audioImportMode.value = mode;
       void audioPicker.openPicker();
     },
-    // 52.5 UAT: the main-app-audio preview toggle. SAME session signal as the
-    // strip's Audio Preview button (one source of truth, two surfaces), routed
-    // through the same handler so the mid-playback effect (D-14) is identical.
-    mainAppAudioEnabled: audioPreviewEnabled.value,
-    onToggleMainAppAudio: handleAudioPreviewToggle,
+    // 261009-6ee one-switch law: the modal carries no preview props anymore.
+    // The main-app-audio preview surface is the STRIP's Audio Preview toggle
+    // (audioPreviewEnabled / handleAudioPreviewToggle passed to the workflow
+    // strip below) — same session signal, untouched here.
   };
   /* ---- 52.5-01b Task 3 (D-04/E3): peaks ensure on reopen ----------------
      Peaks are cached at import (handleConfirmAudioPicker); after save/reopen
