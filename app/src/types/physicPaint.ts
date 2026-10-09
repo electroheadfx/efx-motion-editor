@@ -2197,11 +2197,11 @@ export interface PhysicPaintImageLibraryRequest {
   kind?: 'image' | 'audio';
 }
 
-/** 52.5-01a: an audio library ref carried as a package-relative `audio/` path. */
+/** 261009-ofk: an audio library ref carried as the absolute on-disk path (disk reference — never copied into the package). */
 export interface PhysicPaintAudioAssetRef {
   id: string;
   name: string;
-  relativePath: string;
+  sourcePath: string;
 }
 
 export interface PhysicPaintImageLibraryResult {
@@ -2584,10 +2584,10 @@ function isGalleryKind(value: unknown): boolean {
 
 export function isPhysicPaintAudioAssetRef(value: unknown): value is PhysicPaintAudioAssetRef {
   return isRecord(value)
-    && hasOnlyKeys(value, ['id', 'name', 'relativePath'])
+    && hasOnlyKeys(value, ['id', 'name', 'sourcePath'])
     && isNonEmptyString(value.id)
     && isNonEmptyString(value.name)
-    && isNonEmptyString(value.relativePath);
+    && isNonEmptyString(value.sourcePath);
 }
 
 export function isPhysicPaintImageLibraryRequest(value: unknown): value is PhysicPaintImageLibraryRequest {

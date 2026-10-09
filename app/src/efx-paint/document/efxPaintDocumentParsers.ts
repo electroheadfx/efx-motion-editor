@@ -94,7 +94,7 @@ const PHOTO_TRANSFORM_KEYS = new Set(['x', 'y', 'scaleX', 'scaleY', 'rotation'])
 const SOUND_KEYS = new Set([
   'id',
   'sourceId',
-  'relativePath',
+  'sourcePath',
   'sourceRevision',
   'startFrame',
   'inFrame',
@@ -446,16 +446,16 @@ function parsePhotoReferenceTrack(value: unknown): PhotoReferenceTrack {
 /**
  * Parse ONE placed sound clip entry (261008-ig1 / 52.5 D-01, T-52.5-01):
  * fail-closed against the SOUND_KEYS allowlist — an unknown member throws,
- * never silently hydrates. Path safety (`isSafePackageRelativePath` + the
- * `audio/` prefix) is enforced by the persistence layer at every join, not
- * here: the parser judges shape, the package door judges paths.
+ * never silently hydrates. `sourcePath` is the absolute on-disk path carried
+ * verbatim (261009-ofk disk-reference law) — the parser judges shape; the
+ * efxasset read boundary judges what the path may resolve to.
  */
 function parseDocumentSound(value: unknown): DocumentSoundClip {
   if (!isPlainRecord(value)) {
     throw new Error('DocumentSoundClip: expected a record.');
   }
   if (!hasOnlyKeys(value, SOUND_KEYS)) {
-    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, relativePath, sourceRevision, startFrame, inFrame, outFrame, gain, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, enabled.');
+    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, sourcePath, sourceRevision, startFrame, inFrame, outFrame, gain, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, enabled.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('DocumentSoundClip: id must be a non-empty string.');
@@ -463,8 +463,8 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
   if (!isNonEmptyString(value.sourceId)) {
     throw new Error('DocumentSoundClip: sourceId must be a non-empty string.');
   }
-  if (!isNonEmptyString(value.relativePath)) {
-    throw new Error('DocumentSoundClip: relativePath must be a non-empty string.');
+  if (!isNonEmptyString(value.sourcePath)) {
+    throw new Error('DocumentSoundClip: sourcePath must be a non-empty string.');
   }
   if (!isNonNegativeInteger(value.sourceRevision)) {
     throw new Error('DocumentSoundClip: sourceRevision must be a non-negative integer.');
@@ -499,7 +499,7 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
   return Object.freeze({
     id: value.id,
     sourceId: value.sourceId,
-    relativePath: value.relativePath,
+    sourcePath: value.sourcePath,
     sourceRevision: value.sourceRevision,
     startFrame: value.startFrame,
     inFrame: value.inFrame,

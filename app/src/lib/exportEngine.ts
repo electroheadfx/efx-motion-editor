@@ -17,7 +17,6 @@ import { exportCreateDir, exportWritePng, exportCheckFfmpeg, exportDownloadFfmpe
 import { generateJsonSidecar, generateFcpxml } from './exportSidecar';
 import { renderMixedAudio } from './audioExportMixer';
 import { buildExportMixEntries, collectDocumentSoundClips, type DocumentSoundExportClip } from './documentSoundGates';
-import { isSafeAudioRelativePath } from './efxPaintPersistence';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /**
@@ -332,16 +331,13 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     // preview-only and never appears here. Each clip reference must be a safe
     // package-relative `audio/` path before it is joined (T-52.5-05); a bad or
     // unusable reference is refused-and-skipped, never mixed from a raw path.
-    const projectRoot = projectStore.dirPath.peek() ?? '';
     const exportClipEntries: DocumentSoundExportClip[] = [];
     for (const entry of collectDocumentSoundClips(sequenceStore.sequences.peek(), getEfxPaintDocument)) {
-      if (!isSafeAudioRelativePath(entry.sound.relativePath)) {
-        console.warn(`[Export] Skipping document sound "${entry.sound.relativePath}": not a safe package-relative audio/ path.`);
-        continue;
-      }
+      // 261009-ofk: sourcePath is the absolute disk path — mixed from that
+      // path directly; no package-relative gate applies to this field.
       exportClipEntries.push({
         sound: entry.sound,
-        filePath: `${projectRoot}/${entry.sound.relativePath}`,
+        filePath: entry.sound.sourcePath,
         timelineStartFrame: entry.timelineStartFrame,
       });
     }

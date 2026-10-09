@@ -1303,7 +1303,7 @@ function makeSoundClip(id: string, patch: Record<string, unknown> = {}): Record<
   return {
     id,
     sourceId: 'asset-shared-1',
-    relativePath: 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav',
+    sourcePath: '/Users/test/Music/sound.wav',
     sourceRevision: 2,
     startFrame: 10,
     inFrame: 0,

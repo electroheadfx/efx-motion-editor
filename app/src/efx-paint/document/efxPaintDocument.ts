@@ -165,9 +165,9 @@ export interface PhotoReferenceTrack {
 /**
  * One placed sound clip (261008-ig1 / 52.5 MULTI-AUDIO-CONCEPT, D-01): several
  * clips per document, each owned by the document as a media reference (52.2
- * references-only — `relativePath` is package-relative under `audio/`, never
- * inlined bytes; path safety is enforced at every join by the persistence
- * layer). Two identities, never overloaded:
+ * references-only, generalized to audio by 261009-ofk — `sourcePath` is the
+ * absolute on-disk path; heavy media stay disk references and are never
+ * copied into the package). Two identities, never overloaded:
  * - `id` = the PLACED clip (list key, timeline selection, transport key,
  *   buffer key) — unique per clip.
  * - `sourceId` = the IMPORTED FILE (peaks cache key, gallery dedupe key) —
@@ -178,8 +178,8 @@ export interface DocumentSoundClip {
   readonly id: string;
   /** The imported file's gallery asset id — SHARED across duplicates. */
   readonly sourceId: string;
-  /** Package-relative media path under `audio/` (52.2 reference). */
-  readonly relativePath: string;
+  /** Absolute path to the audio file on disk (heavy media stay disk references — never copied into the package). */
+  readonly sourcePath: string;
   /** Source asset revision (re-import bumps it). */
   readonly sourceRevision: number;
   /** Timeline placement of the clip start, in frames. */

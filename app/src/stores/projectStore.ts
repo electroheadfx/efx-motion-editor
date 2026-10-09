@@ -734,11 +734,24 @@ function hydrateFromMce(
       // reload (the manifest's `audio_assets` covers unused imports; this
       // covers used ones). Duplicates share a sourceId — one gallery entry.
       for (const sound of loaded.document.audios) {
-        if (!imageStore.audioAssets.peek().some((asset) => asset.id === sound.sourceId)) {
+        // 261009-ofk: sourcePath is authoritative (the manifest's
+        // audio_assets may round-trip a root-joined value — imageStore
+        // serialization is out of scope and untouched). If a same-id asset
+        // already exists with a different path, swap it so the gallery row
+        // carries the clip's disk reference.
+        const existingAsset = imageStore.audioAssets.peek().find((asset) => asset.id === sound.sourceId);
+        if (existingAsset && existingAsset.path !== sound.sourcePath) {
+          imageStore.removeAudioAsset(sound.sourceId);
           imageStore.addAudioAsset({
             id: sound.sourceId,
-            name: sound.relativePath.split('/').pop() ?? sound.relativePath,
-            path: `${projectRoot}/${sound.relativePath}`,
+            name: sound.sourcePath.split('/').pop() ?? sound.sourcePath,
+            path: sound.sourcePath,
+          });
+        } else if (!existingAsset) {
+          imageStore.addAudioAsset({
+            id: sound.sourceId,
+            name: sound.sourcePath.split('/').pop() ?? sound.sourcePath,
+            path: sound.sourcePath,
           });
         }
       }
@@ -780,7 +793,7 @@ function hydrateFromMce(
     // warn-and-skip on a bad reference or missing bytes.
     for (const layerId of getActivePhysicPaintLayerIds()) {
       for (const sound of getEfxPaintDocument(layerId)?.audios ?? []) {
-        await ensureDocumentSoundPeaks(sound, projectRoot, fps.peek());
+        await ensureDocumentSoundPeaks(sound, fps.peek());
       }
     }
   })();

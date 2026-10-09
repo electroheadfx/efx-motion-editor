@@ -14,8 +14,7 @@ import type {DocumentSoundClip} from '../efx-paint/document/efxPaintDocument';
 import {audioEngine} from './audioEngine';
 import {computeWaveformPeaks} from './audioWaveform';
 import {audioPeaksCache} from './audioPeaksCache';
-import {isSafeAudioRelativePath} from './efxPaintPersistence';
-import {readFile} from '@tauri-apps/plugin-fs';
+import {assetUrl} from './ipc';
 
 const inFlight = new Set<string>();
 
@@ -27,7 +26,6 @@ const inFlight = new Set<string>();
  */
 export async function ensureDocumentSoundPeaks(
   sound: DocumentSoundClip,
-  projectRoot: string,
   fps: number,
 ): Promise<void> {
   const peaksReady = audioPeaksCache.get(sound.sourceId) !== undefined;
@@ -36,12 +34,13 @@ export async function ensureDocumentSoundPeaks(
   if (inFlight.has(sound.id)) return;
   inFlight.add(sound.id);
   try {
-    if (!isSafeAudioRelativePath(sound.relativePath)) {
-      console.error(`Skipping document sound "${sound.relativePath}": not a safe package-relative audio/ path.`);
-      return;
-    }
-    const fileBytes = await readFile(`${projectRoot}/${sound.relativePath}`);
-    const buffer = await audioEngine.decode(sound.id, fileBytes.buffer);
+    // 261009-ofk: plugin-fs scope cannot reach arbitrary user paths; the
+    // efxasset protocol already serves absolute paths (allowed_roots + media
+    // extension allowlist) — same channel the Studio decode uses.
+    const response = await fetch(assetUrl(sound.sourcePath));
+    if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
+    const fileBytes = await response.arrayBuffer();
+    const buffer = await audioEngine.decode(sound.id, fileBytes);
     if (!peaksReady) {
       audioPeaksCache.set(
         sound.sourceId,
@@ -50,7 +49,7 @@ export async function ensureDocumentSoundPeaks(
       );
     }
   } catch (err) {
-    console.error(`Failed to decode document sound "${sound.relativePath}":`, err);
+    console.error(`Failed to decode document sound "${sound.sourcePath}":`, err);
   } finally {
     inFlight.delete(sound.id);
   }

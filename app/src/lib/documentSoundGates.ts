@@ -93,10 +93,10 @@ export function toDocumentSoundAudioTrack(
   return {
     id: sound.id,
     audioAssetId: sound.sourceId,
-    name: sound.relativePath,
+    name: sound.sourcePath,
     filePath: '',
-    relativePath: sound.relativePath,
-    originalFilename: sound.relativePath.split('/').pop() ?? sound.relativePath,
+    relativePath: sound.sourcePath,
+    originalFilename: sound.sourcePath.split('/').pop() ?? sound.sourcePath,
     offsetFrame: sound.startFrame,
     inFrame: sound.inFrame,
     outFrame: sound.outFrame,
@@ -220,7 +220,7 @@ export function exportClipEnabled(sound: DocumentSoundClip | null): boolean {
 /** A clip resolved for export: its place on the global timeline + a path-safe reference. */
 export interface DocumentSoundExportClip {
   readonly sound: DocumentSoundClip;
-  /** Path-safe absolute reference (the caller enforces isSafeAudioRelativePath before the join). */
+  /** Absolute disk-path reference (the efxasset read boundary judges resolution). */
   readonly filePath: string;
   /** Global timeline start (`sequence.inFrame + sound.startFrame`). */
   readonly timelineStartFrame: number;

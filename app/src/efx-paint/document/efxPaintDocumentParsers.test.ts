@@ -277,8 +277,8 @@ describe('persisted-shape parse mode: media references (52.2-02, D-02 / D-07)', 
   });
 
   const REJECTED_MEDIA_REFERENCES: ReadonlyArray<readonly [string, unknown]> = [
-    ['a traversal-shaped relativePath', { ...FRAME_MEDIA, relativePath: '../escape.webp' }],
-    ['an absolute relativePath', { ...FRAME_MEDIA, relativePath: '/abs/escape.webp' }],
+    ['a traversal-shaped relativePath', { ...FRAME_MEDIA, sourcePath: '../escape.webp' }],
+    ['an absolute relativePath', { ...FRAME_MEDIA, sourcePath: '/abs/escape.webp' }],
     ['a relativePath outside the frames tree', { ...FRAME_MEDIA, relativePath: 'images/a.webp' }],
     ['a digest that is not 64 hex characters', { ...FRAME_MEDIA, digest: 'deadbeef' }],
     ['an upper-case digest', { ...FRAME_MEDIA, digest: MEDIA_DIGEST_A.toUpperCase() }],
@@ -352,8 +352,8 @@ describe('group overrides share the record type, parser and mode (52.2-02, D-06)
 
   it('refuses a group override whose media reference escapes frames/ or whose digest is malformed', () => {
     for (const media of [
-      { ...FRAME_MEDIA, relativePath: '../escape.webp' },
-      { ...FRAME_MEDIA, relativePath: 'images/a.webp' },
+      { ...FRAME_MEDIA, sourcePath: '../escape.webp' },
+      { ...FRAME_MEDIA, sourcePath: 'images/a.webp' },
       { ...FRAME_MEDIA, digest: 'not-a-digest' },
     ]) {
       expect(() =>
@@ -455,7 +455,7 @@ function validSoundClip(id = 'sound-clip-1'): Record<string, unknown> {
   return {
     id,
     sourceId: 'asset-audio-1',
-    relativePath: 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav',
+    sourcePath: '/Users/test/Music/sound.wav',
     sourceRevision: 3,
     startFrame: 48,
     inFrame: 12,
@@ -524,6 +524,23 @@ describe('audios list member, fail-closed parse (261008-ig1, D-01, D-05, A2)', (
     (document.audios as Record<string, unknown>[])[0].bogusClipKey = true;
     expect(() => parseEfxPaintDocument(JSON.parse(JSON.stringify(document)))).toThrow(
       /DocumentSoundClip: unknown members/,
+    );
+  });
+
+  it('(261009-ofk) round-trips sourcePath byte-identical — an absolute on-disk path survives serialize/parse', () => {
+    const clip = { ...validSoundClip(), sourcePath: '/Users/test/Music/take.wav' };
+    const document = documentWithAudios([clip]);
+    const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(document)));
+    expect(parsed.audios[0].sourcePath).toBe('/Users/test/Music/take.wav');
+  });
+
+  it('(261009-ofk) a clip record carrying the retired package-relative key throws (fail-closed, no shim)', () => {
+    const clip = validSoundClip();
+    delete (clip as Record<string, unknown>).sourcePath;
+    (clip as Record<string, unknown>).relativePath = 'audio/sound.wav';
+    const document = documentWithAudios([clip]);
+    expect(() => parseEfxPaintDocument(JSON.parse(JSON.stringify(document)))).toThrow(
+      /DocumentSoundClip: unknown members; expected exactly id, sourceId, sourcePath/,
     );
   });
 });

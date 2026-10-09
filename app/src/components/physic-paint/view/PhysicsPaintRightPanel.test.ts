@@ -580,8 +580,8 @@ function audioTabHarness() {
   const selectedSoundId = signal<string | null>('clip-1');
   const controller = {
     audios: [
-      { id: 'clip-1', relativePath: 'audio/one.wav', startFrame: 0, inFrame: 2, outFrame: 24, enabled: true },
-      { id: 'clip-2', relativePath: 'audio/two.wav', startFrame: 12, inFrame: 0, outFrame: 18, enabled: false },
+      { id: 'clip-1', sourcePath: '/Users/test/Music/one.wav', startFrame: 0, inFrame: 2, outFrame: 24, enabled: true },
+      { id: 'clip-2', sourcePath: '/Users/test/Music/two.wav', startFrame: 12, inFrame: 0, outFrame: 18, enabled: false },
     ],
     selectedSoundId,
     removeArmed: false,

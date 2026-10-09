@@ -74,7 +74,6 @@ import { fxTrackLayouts, resolveSequenceTimelineRange, trackLayouts } from './fr
 import { assetUrl, scriptLibraryDelete, scriptLibraryLoad, scriptLibraryRename, scriptLibrarySave, scriptLibraryScan } from './ipc';
 // 52.5-01a (T-52.5-09): the sound relativePath must resolve inside the package
 // `audio/` directory at BOTH the save/load edge and this assetUrl build.
-import { isSafeAudioRelativePath } from './efxPaintPersistence';
 import { ensureDocumentSoundPeaks } from './documentSoundPeaks';
 
 export const PHYSIC_PAINT_LAUNCH_EVENT = 'physic-paint:launch';
@@ -2638,41 +2637,31 @@ export function createPhysicPaintImageImportStatePorts(): PhysicPaintImageImport
       const result = await imageStore.importFiles([...paths], projectDir);
       return result ? result.errors.map((error) => `${error.path}: ${error.error}`) : null;
     },
-    importAudio: async (paths, projectDir) => {
+    importAudio: async (paths, _projectDir) => {
       try {
-        const { copyFile, mkdir } = await import('@tauri-apps/plugin-fs');
-        const audioDir = `${projectDir}/audio`;
         const refs: PhysicPaintAudioAssetRef[] = [];
         const errors: string[] = [];
         for (const filePath of paths) {
+          // 261009-ofk disk-reference law: the chosen file STAYS where it
+          // lives. No mkdir, no copyFile, no audio/ tree — the package holds
+          // structure only; sourcePath is the picker's absolute path verbatim.
           const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? '';
-          const relativePath = `audio/${filename}`;
-          // The package edge only ever accepts safe audio/ references — a
-          // hostile basename never escapes the audio directory (T-52.5-09).
-          if (!filename || !isSafeAudioRelativePath(relativePath)) {
-            errors.push(`${filePath}: unsafe audio filename`);
+          if (!filePath || !filename) {
+            errors.push(`${filePath}: empty audio path`);
             continue;
           }
-          const destPath = `${audioDir}/${filename}`;
-          const existing = imageStore.audioAssets.value.find((asset) => asset.path === destPath);
+          const existing = imageStore.audioAssets.value.find((asset) => asset.path === filePath);
           if (existing) {
-            refs.push({ id: existing.id, name: existing.name, relativePath });
+            refs.push({ id: existing.id, name: existing.name, sourcePath: filePath });
             continue;
           }
-          try {
-            await mkdir(audioDir, { recursive: true });
-            await copyFile(filePath, destPath);
-          } catch (error) {
-            errors.push(`${filePath}: ${String(error)}`);
-            continue;
-          }
-          const asset = { id: crypto.randomUUID(), name: filename, path: destPath };
+          const asset = { id: crypto.randomUUID(), name: filename, path: filePath };
           imageStore.addAudioAsset(asset);
-          refs.push({ id: asset.id, name: asset.name, relativePath });
+          refs.push({ id: asset.id, name: asset.name, sourcePath: filePath });
         }
         return { refs, errors };
       } catch (error) {
-        console.error('Failed to copy audio:', error);
+        console.error('Failed to register audio:', error);
         return null;
       }
     },
@@ -2802,18 +2791,15 @@ export async function installPhysicPaintImageLibraryListener(): Promise<() => vo
   const state: PhysicPaintImageLibraryStatePorts = {
     getImages: () => imageStore.toMceImages(projectStore.dirPath.value ?? tempProjectDir.value ?? ''),
     getProjectDir: () => projectStore.dirPath.value ?? tempProjectDir.value ?? '',
-    // 52.5-01a (Q2): kind 'audio' listing — only assets inside the project's
-    // audio/ directory ship, as package-relative refs (never absolute paths).
+    // 261009-ofk: kind 'audio' listing — every registered audio asset ships
+    // as a disk reference wherever it lives (the gallery lists the sourcePath
+    // the picker recorded; no package-relative filter, no audio/ prefix).
     getAudioAssets: () => {
-      const projectDir = projectStore.dirPath.value ?? tempProjectDir.value ?? '';
-      if (!projectDir) return [];
-      const prefix = `${projectDir}/audio/`;
       return imageStore.audioAssets.value
-        .filter((asset) => asset.path.startsWith(prefix))
         .map((asset) => ({
           id: asset.id,
           name: asset.name,
-          relativePath: `audio/${asset.path.slice(prefix.length)}`,
+          sourcePath: asset.path,
         }));
     },
   };
@@ -3745,7 +3731,7 @@ export async function installPhysicPaintEfxPaintDocumentListener(): Promise<() =
       // ensureDocumentSoundPeaks itself early-returns on cached sources).
       if (soundChanged) {
         for (const clip of document.audios) {
-          void ensureDocumentSoundPeaks(clip, projectStore.dirPath.peek() ?? '', projectStore.fps.peek());
+          void ensureDocumentSoundPeaks(clip, projectStore.fps.peek());
         }
       }
       // 47-01 UAT round 8: mirror the child's live runtime into the main
@@ -3898,8 +3884,8 @@ let nextDocumentAudioRevision = 1;
  * Build the launch/push section from `getEfxPaintDocument(layerId)?.audios`
  * ALONE (Q1 guardrail: this must never read audioStore.tracks — a zero-main-
  * audio project still transports its clips). Absent/empty list -> null (section
- * absent); any unsafe relativePath -> null for the WHOLE section (fail closed,
- * T-52.5-09: the same guard refuses the package at save/load).
+ * absent). Each clip resolves through its bare `sourcePath` (absolute disk
+ * path, 261009-ofk) — the efxasset protocol is the only read channel.
  *
  * dup-clip-plays-audios-0 (261008-ig1 D-01 follow-up): the channel now
  * carries EVERY placed clip — one ref per `audios[]` member, keyed by the
@@ -3909,14 +3895,12 @@ let nextDocumentAudioRevision = 1;
 export function buildPhysicPaintDocumentAudioSection(layerId: string): PhysicPaintDocumentAudioSection | null {
   const audios = getEfxPaintDocument(layerId)?.audios ?? [];
   if (audios.length === 0) return null;
-  // Same project-root fallback as the gallery import copy target
-  // (`dirPath ?? tempProjectDir`) so an unsaved project's clips still resolve.
-  const projectDir = projectStore.dirPath.peek() ?? tempProjectDir.peek();
-  if (!projectDir) return null;
   const clips: PhysicPaintDocumentAudioClipRef[] = [];
   for (const sound of audios) {
-    if (!isSafeAudioRelativePath(sound.relativePath)) return null;
-    clips.push({ clipId: sound.id, assetUrl: assetUrl(`${projectDir}/${sound.relativePath}`) });
+    // 261009-ofk: sourcePath is absolute — the efxasset read boundary
+    // (allowed_roots + media-extension allowlist) is the only door; no
+    // projectRoot join and no package-relative gate apply to this field.
+    clips.push({ clipId: sound.id, assetUrl: assetUrl(sound.sourcePath) });
   }
   return {
     revision: nextDocumentAudioRevision++,

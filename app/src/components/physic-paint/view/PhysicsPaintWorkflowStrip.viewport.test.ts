@@ -1140,7 +1140,7 @@ describe('PhysicsPaintWorkflowStrip multi-clip sound band (261008-ig1 Task 2)', 
   const CLIP_A: DocumentSoundClip = {
     id: 'clip-a',
     sourceId: 'src-shared',
-    relativePath: 'audio/shared.wav',
+    sourcePath: '/Users/test/Music/shared.wav',
     sourceRevision: 0,
     startFrame: 0,
     inFrame: 0,
@@ -1356,7 +1356,7 @@ describe('PhysicsPaintWorkflowStrip alt+drag duplication (261008-ig1 Task 3)', (
   const CLIP: DocumentSoundClip = {
     id: 'clip-1',
     sourceId: 'src-shared',
-    relativePath: 'audio/shared.wav',
+    sourcePath: '/Users/test/Music/shared.wav',
     sourceRevision: 0,
     startFrame: 0,
     inFrame: 0,

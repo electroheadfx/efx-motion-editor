@@ -148,7 +148,6 @@ import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
 // audioPeaksCache (the task-3 stain reads peaks keyed by sourceId).
 import { assetUrl } from '../../lib/ipc';
-import { isSafeAudioRelativePath } from '../../lib/efxPaintPersistence';
 import { audioEngine } from '../../lib/audioEngine';
 import { computeWaveformPeaks } from '../../lib/audioWaveform';
 import { audioPeaksCache } from '../../lib/audioPeaksCache';
@@ -4729,7 +4728,7 @@ export function PhysicsPaintStudio() {
   const refreshKnownAudioPaths = async (): Promise<PhysicPaintAudioAssetRef[]> => {
     const result = await requestImageLibrary('audio');
     const assets = result.ok ? result.audioAssets ?? [] : [];
-    knownAudioPaths.value = new Set(assets.map((asset) => asset.relativePath));
+    knownAudioPaths.value = new Set(assets.map((asset) => asset.sourcePath));
     audioProjectDir.value = result.ok && result.projectDir.length > 0 ? result.projectDir : null;
     return assets;
   };
@@ -4749,7 +4748,7 @@ export function PhysicsPaintStudio() {
       getFps: () => launchContext?.fps ?? efxPaintDocumentAudioStore.getFps(),
       isSoundMissing: (sound) => {
         const known = knownAudioPaths.value;
-        return known !== null && !known.has(sound.relativePath);
+        return known !== null && !known.has(sound.sourcePath);
       },
     },
   });
@@ -4803,7 +4802,7 @@ export function PhysicsPaintStudio() {
     void (async () => {
       audioModalController.beginReading();
       try {
-        const response = await fetch(assetUrl(`${projectDir}/${asset.relativePath}`));
+        const response = await fetch(assetUrl(asset.sourcePath));
         if (!response.ok) throw new Error(`efxasset fetch failed (status ${response.status})`);
         const bytes = await response.arrayBuffer();
         const buffer = await audioEngine.decode(asset.id, bytes);
@@ -4811,7 +4810,7 @@ export function PhysicsPaintStudio() {
         audioPeaksCache.set(asset.id, computeWaveformPeaks(buffer), Math.max(1, Math.ceil(buffer.duration * (launchContext?.fps ?? efxPaintDocumentAudioStore.getFps()))));
         const source = {
           sourceId: asset.id,
-          relativePath: asset.relativePath,
+          sourcePath: asset.sourcePath,
           durationSec: buffer.duration,
         };
         const mode = audioImportMode.peek();
@@ -4876,10 +4875,9 @@ export function PhysicsPaintStudio() {
     // URL source, but it is not the ONLY one. After a project close/reopen the
     // clip and its gallery entry survive while the section may never be routed
     // to this child window — the band then stayed empty until a manual Replace
-    // re-warmed the cache. Fall back to the SAME `projectDir + relativePath`
-    // formula the working Replace path uses (assetUrl fetch → decode → peaks).
+    // re-warmed the cache. Fall back to the bare sourcePath (261009-ofk: the
+    // absolute disk path, resolved through assetUrl — no projectRoot join).
     const section = efxPaintDocumentAudioStore.section.value;
-    const fallbackDir = audioProjectDir.value;
     for (const sourceId of pendingSources) soundPeaksEnsureRef.current.add(sourceId);
     void (async () => {
       try {
@@ -4888,9 +4886,8 @@ export function PhysicsPaintStudio() {
           if (!clip) continue;
           const sectionEntry = section?.clips.find((ref) => ref.clipId === clip.id) ?? null;
           const sectionUrl = sectionEntry ? sectionEntry.assetUrl : null;
-          const fallbackUrl = fallbackDir !== null && isSafeAudioRelativePath(clip.relativePath)
-            ? assetUrl(`${fallbackDir}/${clip.relativePath}`)
-            : null;
+          // 261009-ofk: sourcePath is absolute — the bare path is the URL.
+          const fallbackUrl = assetUrl(clip.sourcePath);
           const sourceUrl = sectionUrl ?? fallbackUrl;
           if (sourceUrl === null) continue;
           try {

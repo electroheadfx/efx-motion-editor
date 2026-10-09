@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {DocumentSoundClip} from '../efx-paint/document/efxPaintDocument';
 
-const readFile = vi.fn();
+const fetchMock = vi.fn();
 const decode = vi.fn();
 const computeWaveformPeaks = vi.fn();
-const isSafeAudioRelativePath = vi.fn();
 // Playback buffers are keyed by PLACED clip id (the dual-condition gate in
 // ensureDocumentSoundPeaks reads audioEngine.getBuffer(sound.id)) — the mock
 // keeps a realistic id -> buffer store so the buffer half of the gate works.
 const engineBuffers = new Map<string, { duration: number }>();
 
-vi.mock('@tauri-apps/plugin-fs', () => ({ readFile: (...args: unknown[]) => readFile(...args) }));
+vi.stubGlobal('fetch', fetchMock);
 vi.mock('./audioEngine', () => ({
   audioEngine: {
     decode: (...args: unknown[]) => decode(...args),
@@ -18,12 +17,12 @@ vi.mock('./audioEngine', () => ({
   },
 }));
 vi.mock('./audioWaveform', () => ({ computeWaveformPeaks: (...args: unknown[]) => computeWaveformPeaks(...args) }));
-vi.mock('./efxPaintPersistence', () => ({ isSafeAudioRelativePath: (...args: unknown[]) => isSafeAudioRelativePath(...args) }));
+vi.mock('./ipc', () => ({ assetUrl: (p: string) => `efxasset://localhost${p}` }));
 
 const SOUND: DocumentSoundClip = {
   id: 'clip-1',
   sourceId: 'src-1',
-  relativePath: 'audio/foley.wav',
+  sourcePath: '/Users/test/Music/foley.wav',
   sourceRevision: 0,
   startFrame: 0,
   inFrame: 0,
@@ -42,8 +41,7 @@ describe('ensureDocumentSoundPeaks', () => {
     const { audioPeaksCache } = await import('./audioPeaksCache');
     audioPeaksCache.clear();
     engineBuffers.clear();
-    isSafeAudioRelativePath.mockReturnValue(true);
-    readFile.mockResolvedValue({ buffer: new ArrayBuffer(8) });
+    fetchMock.mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
     decode.mockImplementation(async (id: string) => {
       const buffer = { duration: 2 };
       engineBuffers.set(id, buffer);
@@ -56,7 +54,7 @@ describe('ensureDocumentSoundPeaks', () => {
     const { ensureDocumentSoundPeaks } = await import('./documentSoundPeaks');
     const { audioPeaksCache } = await import('./audioPeaksCache');
 
-    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
+    await ensureDocumentSoundPeaks(SOUND, 24);
 
     expect(decode).toHaveBeenCalledTimes(1);
     // Playback looks the buffer up by clip id; the preview peaks key on sourceId.
@@ -68,10 +66,10 @@ describe('ensureDocumentSoundPeaks', () => {
   it('is a no-op once the peaks are cached', async () => {
     const { ensureDocumentSoundPeaks } = await import('./documentSoundPeaks');
 
-    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
-    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
+    await ensureDocumentSoundPeaks(SOUND, 24);
+    await ensureDocumentSoundPeaks(SOUND, 24);
 
-    expect(readFile).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
@@ -79,7 +77,7 @@ describe('ensureDocumentSoundPeaks', () => {
     const { ensureDocumentSoundPeaks } = await import('./documentSoundPeaks');
     const { audioPeaksCache } = await import('./audioPeaksCache');
 
-    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
+    await ensureDocumentSoundPeaks(SOUND, 24);
     expect(engineBuffers.has('clip-1')).toBe(true);
     expect(audioPeaksCache.get('src-1')).toBeTruthy();
 
@@ -88,7 +86,7 @@ describe('ensureDocumentSoundPeaks', () => {
     // recomputing the shared peaks.
     engineBuffers.delete('clip-1');
     const peaksBefore = audioPeaksCache.get('src-1');
-    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
+    await ensureDocumentSoundPeaks(SOUND, 24);
 
     expect(decode).toHaveBeenCalledTimes(2);
     expect(engineBuffers.has('clip-1')).toBe(true);
@@ -99,21 +97,20 @@ describe('ensureDocumentSoundPeaks', () => {
     const { ensureDocumentSoundPeaks } = await import('./documentSoundPeaks');
 
     await Promise.all([
-      ensureDocumentSoundPeaks(SOUND, '/proj', 24),
-      ensureDocumentSoundPeaks(SOUND, '/proj', 24),
+      ensureDocumentSoundPeaks(SOUND, 24),
+      ensureDocumentSoundPeaks(SOUND, 24),
     ]);
 
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses an unsafe relative path without reading or decoding', async () => {
-    isSafeAudioRelativePath.mockReturnValue(false);
+  it('fails closed when the efxasset fetch is refused without decoding', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 404 });
     const { ensureDocumentSoundPeaks } = await import('./documentSoundPeaks');
     const { audioPeaksCache } = await import('./audioPeaksCache');
 
-    await ensureDocumentSoundPeaks(SOUND, '/proj', 24);
+    await ensureDocumentSoundPeaks(SOUND, 24);
 
-    expect(readFile).not.toHaveBeenCalled();
     expect(decode).not.toHaveBeenCalled();
     expect(audioPeaksCache.get('src-1')).toBeUndefined();
   });
@@ -123,7 +120,7 @@ describe('ensureDocumentSoundPeaks', () => {
     const { ensureDocumentSoundPeaks } = await import('./documentSoundPeaks');
     const { audioPeaksCache } = await import('./audioPeaksCache');
 
-    await expect(ensureDocumentSoundPeaks(SOUND, '/proj', 24)).resolves.toBeUndefined();
+    await expect(ensureDocumentSoundPeaks(SOUND, 24)).resolves.toBeUndefined();
 
     expect(audioPeaksCache.get('src-1')).toBeUndefined();
   });

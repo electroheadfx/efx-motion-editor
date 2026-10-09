@@ -65,7 +65,7 @@ export function PhysicsPaintAudioListSection({ ports }: PhysicsPaintAudioListSec
               onClick={() => ports.onSelectClip(clip.id)}
             >
               <span class="physics-paint-audio-filename">
-                {clip.relativePath.split('/').pop() ?? clip.relativePath}
+                {clip.sourcePath.split('/').pop() ?? clip.sourcePath}
               </span>
               <span class="physics-paint-audio-clip-span">
                 {clip.startFrame} · {clip.inFrame}..{clip.outFrame}

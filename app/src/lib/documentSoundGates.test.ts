@@ -99,7 +99,7 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
   return {
     id: 'sound-clip-1',
     sourceId: 'asset-1',
-    relativePath: 'audio/sound.wav',
+    sourcePath: '/Users/test/Music/sound.wav',
     sourceRevision: 1,
     startFrame: 48,
     inFrame: 0,
@@ -645,7 +645,7 @@ describe('documentSoundGates — exportClipEnabled + buildExportMixEntries (52.5
       fadeOutFrames: 12,
       // The rebased GLOBAL start, never the document-local sound.startFrame.
       offsetFrame: 98,
-      relativePath: 'audio/sound.wav',
+      relativePath: '/Users/test/Music/sound.wav',
       filePath: '/proj/audio/a.wav',
       muted: false,
       slipOffset: 0,
