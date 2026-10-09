@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
+import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
 
@@ -319,11 +320,7 @@ export function PhysicsPaintAudioModalView({
               {/* 2b. File row — `FILE` section header (rule + label + rule, the
                   TIMING/SOUND design) above the row; the row is the filename
                   chip (flex 1) + Replace… */}
-              <div class="physics-paint-audio-section">
-                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
-                <span class="physics-paint-audio-section-label">{AUDIO_SECTION_FILE}</span>
-                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
-              </div>
+              <RuleSectionHeader text={AUDIO_SECTION_FILE} />
               <div class="physics-paint-audio-file-row">
                 <span class="physics-paint-photo-reference-chip" title={filename ?? undefined}>
                   <span class="physics-paint-audio-filename">{filename}</span>
@@ -357,11 +354,7 @@ export function PhysicsPaintAudioModalView({
               ) : null}
 
               {/* 3. TIMING section header — centered title between two rules */}
-              <div class="physics-paint-audio-section">
-                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
-                <span class="physics-paint-audio-section-label">{AUDIO_SECTION_TIMING}</span>
-                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
-              </div>
+              <RuleSectionHeader text={AUDIO_SECTION_TIMING} />
 
               {/* 4. Position (frames) — band placement; per-step commit, integer >= 0, no upper clamp */}
               <div class="physics-paint-audio-row">
@@ -406,11 +399,7 @@ export function PhysicsPaintAudioModalView({
               </div>
 
               {/* 7. SOUND section header — centered title between two rules */}
-              <div class="physics-paint-audio-section">
-                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
-                <span class="physics-paint-audio-section-label">{AUDIO_SECTION_SOUND}</span>
-                <span class="physics-paint-audio-section-rule" aria-hidden="true" />
-              </div>
+              <RuleSectionHeader text={AUDIO_SECTION_SOUND} />
 
               {/* 8. Gain — step 5, -100..100 (per-step commit); the `0 = unity`
                   note rides inline in the label (UAT). */}

@@ -4550,29 +4550,6 @@ button.destructive {
   flex: 0 0 auto;
 }
 
-.physics-paint-audio-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-
-/* UAT: centered title with a white rule on each side. */
-.physics-paint-audio-section-label {
-  font-size: 9.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12px;
-  color: #ffffff;
-  white-space: nowrap;
-}
-
-.physics-paint-audio-section-rule {
-  flex: 1 1 0;
-  height: 1px;
-  background: #ffffff;
-}
-
 /* SPECS/slider-stepper: each audio row is one blended field — the label/value
    sit in the component's own label row, so the old 110px label cell and the
    side-by-side controls row are gone. */
