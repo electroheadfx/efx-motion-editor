@@ -1116,7 +1116,7 @@ describe('shared gallery kind discriminator (52.5-01a, Q2, D-03)', () => {
   });
 
   it('validates a library result carrying audioAssets while image-only results stay valid', () => {
-    const asset = { id: 'audio-1', name: 'sound.wav', relativePath: 'audio/sound.wav' };
+    const asset = { id: 'audio-1', name: 'sound.wav', sourcePath: '/Users/test/Music/sound.wav' };
     expect(
       isPhysicPaintImageLibraryResult({ operationId: 'op-1', ok: true, images: [], projectDir: '/p', audioAssets: [asset] }),
     ).toBe(true);

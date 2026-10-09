@@ -171,7 +171,7 @@ function encodeCanonicalSoundClip(sound: DocumentSoundClip): string {
   return [
     `id:${encodeCanonicalString(sound.id)}`,
     `src:${encodeCanonicalString(sound.sourceId)}`,
-    `path:${encodeCanonicalString(sound.relativePath)}`,
+    `path:${encodeCanonicalString(sound.sourcePath)}`,
     `srcRev:${encodeCanonicalNumber(sound.sourceRevision)}`,
     `start:${encodeCanonicalNumber(sound.startFrame)}`,
     `in:${encodeCanonicalNumber(sound.inFrame)}`,

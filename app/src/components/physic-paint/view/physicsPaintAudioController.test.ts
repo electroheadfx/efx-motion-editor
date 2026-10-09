@@ -31,7 +31,7 @@ vi.mock('@preact/signals', async () => {
 
 const SOURCE: ImportedSoundSource = {
   sourceId: 'asset-1',
-  relativePath: 'audio/sound.wav',
+  sourcePath: '/Users/test/Music/sound.wav',
   sourceRevision: 1,
   durationSec: 10,
 };
@@ -76,7 +76,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     const current = {
       id: 'sound-clip-1',
       sourceId: 'asset-1',
-      relativePath: 'audio/sound.wav',
+      sourcePath: '/Users/test/Music/sound.wav',
       sourceRevision: 1,
       startFrame: 48,
       inFrame: 12,
@@ -99,7 +99,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     const current = {
       id: 'sound-clip-1',
       sourceId: 'asset-1',
-      relativePath: 'audio/sound.wav',
+      sourcePath: '/Users/test/Music/sound.wav',
       sourceRevision: 1,
       startFrame: 0,
       inFrame: 100,
@@ -129,7 +129,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
 const CLIP_A: DocumentSoundClip = {
   id: 'clip-a',
   sourceId: 'src-a',
-  relativePath: 'audio/a.wav',
+  sourcePath: '/Users/test/Music/a.wav',
   sourceRevision: 0,
   startFrame: 0,
   inFrame: 0,
@@ -189,6 +189,14 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(none.controller.sound).toBeNull();
     // The list stays visible even with no selection (the modal list chooser).
     expect(none.controller.audios).toHaveLength(2);
+  });
+
+  it('(261009-ofk) the controller exposes isSoundMissing wired to the port and the port default is false', () => {
+    // Default port: always false (not probed -> present).
+    const defaultController = makeController({ selection: 'clip-a' });
+    expect(defaultController.controller.isSoundMissing).toBeTypeOf('function');
+    expect(defaultController.controller.isSoundMissing(CLIP_A)).toBe(false);
+    expect(defaultController.controller.isSoundMissing(CLIP_B)).toBe(false);
   });
 
   it('commitGain patches ONLY the selected clip', () => {
@@ -331,7 +339,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     const { controller, selectedSoundId, addSound } = makeController({ selection: 'clip-a' });
     const result = controller.applyImportedSource({
       sourceId: 'asset-9',
-      relativePath: 'audio/new.wav',
+      sourcePath: '/Users/test/Music/new.wav',
       sourceRevision: 2,
       durationSec: 10,
     });
@@ -349,7 +357,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     const { controller, patchSound, addSound } = makeController({ selection: 'clip-a' });
     const result = controller.applyReplacedSource({
       sourceId: 'asset-new',
-      relativePath: 'audio/new.wav',
+      sourcePath: '/Users/test/Music/new.wav',
       sourceRevision: 3,
       durationSec: 10, // longer than the clip span — clamps keep 0..48
     });
@@ -358,7 +366,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(patchSound).toHaveBeenCalledTimes(1);
     expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', {
       sourceId: 'asset-new',
-      relativePath: 'audio/new.wav',
+      sourcePath: '/Users/test/Music/new.wav',
       sourceRevision: 3,
       inFrame: 0,
       outFrame: 48,
@@ -383,7 +391,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
 
 /* ---------------------------------------------------------------------------
  * 261008-ig1 Task 3 — D-03 alt+drag duplication: the duplicate builder mints a
- * fresh id and SHARES the source identity (sourceId/relativePath verbatim —
+ * fresh id and SHARES the source identity (sourceId/sourcePath verbatim —
  * peaks + gallery stay source-keyed, so no second decode, bytes copy, gallery
  * row, or audio/ path is created), copies every setting, and never mutates the
  * origin (T-261008-IG1-05). The shared-source render itself is pinned by the
@@ -398,7 +406,7 @@ describe('buildDuplicatedSoundClip (261008-ig1 Task 3 — fresh id, shared sourc
     expect({ ...duplicate, id: CLIP_A.id }).toEqual(CLIP_A);
     // D-02/D-03: source identity is SHARED, never overloaded onto the id.
     expect(duplicate.sourceId).toBe(CLIP_A.sourceId);
-    expect(duplicate.relativePath).toBe(CLIP_A.relativePath);
+    expect(duplicate.sourcePath).toBe(CLIP_A.sourcePath);
     expect(duplicate.sourceRevision).toBe(CLIP_A.sourceRevision);
     // Geometry + settings are value copies.
     expect(duplicate.startFrame).toBe(CLIP_A.startFrame);

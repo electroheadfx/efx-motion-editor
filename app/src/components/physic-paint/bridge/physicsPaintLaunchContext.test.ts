@@ -178,7 +178,7 @@ describe('audios list rides the document launch carrier (261008-ig1)', () => {
     return {
       id,
       sourceId: 'asset-shared-1',
-      relativePath: 'audio/6f9c6a90-d1b7-42e6-9b8e-5a44f8b11a11/sound.wav',
+      sourcePath: '/Users/test/Music/sound.wav',
       sourceRevision: 1,
       startFrame: 48,
       inFrame: 12,

@@ -233,7 +233,7 @@ describe('buildConfirmedImageIds — D-02 natural original-filename ordering', (
  * ------------------------------------------------------------------------- */
 
 function audioAsset(id: string, name: string): PhysicPaintAudioAssetRef {
-  return { id, name, relativePath: `audio/${name}` };
+  return { id, name, sourcePath: `/Users/test/Music/${name}` };
 }
 
 type AudioPickerController = ReturnType<typeof useBackgroundAssetPickerController> & {

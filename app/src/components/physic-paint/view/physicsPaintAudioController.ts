@@ -48,9 +48,9 @@ export interface PhysicsPaintAudioControllerPorts {
   /** Project fps for import defaults (outFrame = durationSec × fps). */
   getFps: () => number;
   /**
-   * Missing-reference probe (CMP-05 fail-closed): true when the clip's
-   * `relativePath` no longer resolves inside the .mce package. Default false;
-   * the Studio wires the real resolver.
+   * Missing-reference probe (261009-ofk): true when the file at `sourcePath`
+   * does not resolve on disk (never "not inside the .mce package"). Default
+   * false; the Studio wires the real resolver.
    */
   isSoundMissing: (sound: DocumentSoundClip) => boolean;
 }
@@ -80,10 +80,12 @@ export interface PhysicsPaintAudioController {
   selectedSoundId: Signal<string | null>;
   /** The SELECTED clip (null = no selection). Narrow store read, never the head. */
   sound: DocumentSoundClip | null;
-  /** Filename fact for the file row (basename of relativePath). */
+  /** Filename fact for the file row (basename of sourcePath). */
   filename: string | null;
-  /** True when a clip exists but its package reference no longer resolves. */
+  /** True when the SELECTED clip's file at sourcePath does not resolve on disk. */
   missing: boolean;
+  /** Per-row missing probe — the list calls this per clip (261009-ofk). */
+  isSoundMissing: (sound: DocumentSoundClip) => boolean;
   /** `Reading audio…` busy flag — disables Import/Replace/Remove/fields. */
   busy: boolean;
   /** Decode-failure state — the view maps it to the contracted error copy. */
@@ -149,8 +151,8 @@ export type SoundFadeCurve = 'linear' | 'exponential' | 'logarithmic';
 export interface ImportedSoundSource {
   /** The gallery asset id (PhysicPaintAudioAssetRef.id). */
   sourceId: string;
-  /** Package-relative `audio/` path (01a reference discipline). */
-  relativePath: string;
+  /** Absolute on-disk path (261009-ofk disk-reference law). */
+  sourcePath: string;
   /** Source revision carried by the asset ref (0 when the ref has none). */
   sourceRevision?: number;
   /** Decoded duration in seconds — outFrame = durationSec × fps. */
@@ -185,7 +187,7 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
   return {
     id: crypto.randomUUID(),
     sourceId: source.sourceId,
-    relativePath: source.relativePath,
+    sourcePath: source.sourcePath,
     sourceRevision: source.sourceRevision ?? 0,
     startFrame: 0,
     inFrame: 0,
@@ -219,7 +221,7 @@ export function buildReplacedSoundClip(
   return {
     ...current,
     sourceId: source.sourceId,
-    relativePath: source.relativePath,
+    sourcePath: source.sourcePath,
     sourceRevision: source.sourceRevision ?? 0,
     inFrame,
     outFrame,
@@ -229,7 +231,7 @@ export function buildReplacedSoundClip(
 /**
  * 261008-ig1 Task 3 (D-03): alt+drag duplication — a FRESH placed-clip id over
  * a SHARED source identity. `id` keys the list/selection/transport; `sourceId`
- * (and `relativePath`) stay verbatim, so peaks and the gallery stay source-
+ * (and `sourcePath`) stay verbatim, so peaks and the gallery stay source-
  * keyed: one decode, one bytes copy, one gallery row, one `audio/` path serve
  * both clips. Every other member is a value copy — the duplicate starts as a
  * clone of geometry + settings (start/in/out, gain, fades, enabled) so the
@@ -268,7 +270,7 @@ export function usePhysicsPaintAudioController({
   const selectedId = selectedSoundId.value;
   const sound = selectedId !== null ? audios.find((clip) => clip.id === selectedId) ?? null : null;
 
-  const filename = sound ? sound.relativePath.split('/').pop() ?? sound.relativePath : null;
+  const filename = sound ? sound.sourcePath.split('/').pop() ?? sound.sourcePath : null;
   const missing = sound !== null && isSoundMissing(sound);
 
   const volumeDraft = useSignal<number | null>(null);
@@ -431,7 +433,7 @@ export function usePhysicsPaintAudioController({
     const replaced = buildReplacedSoundClip(sound, source, getFps());
     const result = commitPatch({
       sourceId: replaced.sourceId,
-      relativePath: replaced.relativePath,
+      sourcePath: replaced.sourcePath,
       sourceRevision: replaced.sourceRevision,
       inFrame: replaced.inFrame,
       outFrame: replaced.outFrame,
@@ -449,6 +451,7 @@ export function usePhysicsPaintAudioController({
     sound,
     filename,
     missing,
+    isSoundMissing,
     busy: busy.value,
     decodeError: decodeError.value,
     volumeDraft,

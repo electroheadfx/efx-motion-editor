@@ -102,6 +102,7 @@ import { encodeSourceBytesForDocumentSync,
   PHYSIC_PAINT_LAUNCH_EVENT,
   publishPhysicPaintAudioPlaybackState,
   resetPhysicPaintDocumentSyncFrameState,
+  createPhysicPaintImageImportStatePorts,
 } from './physicPaintBridge';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
@@ -7497,5 +7498,46 @@ describe('Studio window opens on the main window geometry (quick 260923-i17)', (
     // Deliberate in-test negative: the mirror law forbids centred placement
     // anywhere in this command (both the builder arm and the post-show arm).
     expect(region).not.toMatch(/center\s*\(/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261009-ofk: audio stays a disk reference — never copied into the package.
+// ---------------------------------------------------------------------------
+
+describe('importAudio never-copy law (261009-ofk)', () => {
+  it('returns sourcePath verbatim and calls neither mkdir nor copyFile', async () => {
+    const copyFile = vi.fn();
+    const mkdir = vi.fn();
+    vi.doMock('@tauri-apps/plugin-fs', () => ({ copyFile, mkdir }));
+
+    const ports = createPhysicPaintImageImportStatePorts();
+    const pickerPath = '/Users/test/Music/take.wav';
+    const result = await ports.importAudio!([pickerPath], '/project');
+
+    expect(result).not.toBeNull();
+    expect(result!.refs).toHaveLength(1);
+    expect(result!.refs[0].sourcePath).toBe(pickerPath);
+    expect(result!.errors).toHaveLength(0);
+
+    // Never-copy: the chosen file stays where it lives.
+    expect(copyFile).not.toHaveBeenCalled();
+    expect(mkdir).not.toHaveBeenCalled();
+
+    vi.doUnmock('@tauri-apps/plugin-fs');
+  });
+
+  it('registers a second distinct path as a separate ref', async () => {
+    const ports = createPhysicPaintImageImportStatePorts();
+    const pathA = '/Users/test/Music/take-a.wav';
+    const pathB = '/Users/test/Music/take-b.wav';
+    const result = await ports.importAudio!([pathA, pathB], '/project');
+
+    expect(result).not.toBeNull();
+    expect(result!.refs).toHaveLength(2);
+    expect(result!.refs[0].sourcePath).toBe(pathA);
+    expect(result!.refs[1].sourcePath).toBe(pathB);
+    // Distinct gallery ids for distinct paths.
+    expect(result!.refs[0].id).not.toBe(result!.refs[1].id);
   });
 });

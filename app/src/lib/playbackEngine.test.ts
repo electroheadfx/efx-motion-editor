@@ -433,7 +433,7 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
   return {
     id: 'sound-clip-1',
     sourceId: 'asset-1',
-    relativePath: 'audio/sound.wav',
+    sourcePath: '/Users/test/Music/sound.wav',
     sourceRevision: 1,
     startFrame: 48,
     inFrame: 0,
@@ -619,13 +619,15 @@ describe('playbackEngine document clip source contract (52.5-02)', () => {
     expect(fnBody.includes('collectDocumentSoundClips')).toBe(true);
   });
 
-  it('(s2) the clip decodes once by sound.id behind a path-safe audio/ join', () => {
+  it('(s2) the clip decodes once by sound.id through the bare sourcePath (261009-ofk)', () => {
     // The decode lives in documentSoundPeaks (one decode serves playback AND
     // the main timeline's sourceId-keyed waveform preview); projectStore and
-    // the document-sync apply both route through it.
+    // the document-sync apply both route through it. 261009-ofk: the retired
+    // isSafeAudioRelativePath gate is gone — sourcePath is absolute and the
+    // efxasset read boundary is the only door.
     const peaksSource = readSource('./documentSoundPeaks.ts');
     expect(peaksSource.includes('audioEngine.decode(sound.id')).toBe(true);
-    expect(peaksSource.includes('isSafeAudioRelativePath')).toBe(true);
+    expect(peaksSource.includes('isSafeAudioRelativePath')).toBe(false);
     expect(peaksSource.includes('computeWaveformPeaks')).toBe(true);
 
     const projectSource = readSource('../stores/projectStore.ts');
@@ -637,7 +639,9 @@ describe('playbackEngine document clip source contract (52.5-02)', () => {
   it('(s3) exportEngine joins the clip through buildExportMixEntries and never reads the preview-mix toggle', () => {
     const source = readSource('./exportEngine.ts');
     expect(source.includes('buildExportMixEntries')).toBe(true);
-    expect(source.includes('isSafeAudioRelativePath')).toBe(true);
+    // 261009-ofk: the retired package-relative gate is gone — sourcePath is
+    // the absolute disk path mixed directly.
+    expect(source.includes('isSafeAudioRelativePath')).toBe(false);
     // D-11: the preview-mix flag is preview-only — it is structurally absent
     // from the export decision (exportClipEnabled reads the clip alone).
     expect(source.includes('audioPreviewEnabled')).toBe(false);

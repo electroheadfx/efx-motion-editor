@@ -76,7 +76,7 @@ const BG_START_FRAME = 4;
 const SOUND_CLIP = {
   id: 'ffh-sound-1',
   sourceId: 'ffh-sound-asset-1',
-  relativePath: 'audio/ffh-dialogue.wav',
+  sourcePath: '/Users/test/Music/ffh-dialogue.wav',
   sourceRevision: 1,
   startFrame: 4,
   inFrame: 0,
@@ -96,7 +96,7 @@ interface SurfaceCarrier {
   audios?: readonly {
     id: string;
     sourceId: string;
-    relativePath: string;
+    sourcePath: string;
     sourceRevision: number;
     startFrame: number;
     inFrame: number;
@@ -125,7 +125,7 @@ const carriesSound = (document: SurfaceCarrier): boolean => {
   return sound !== null
     && sound.id === SOUND_CLIP.id
     && sound.sourceId === SOUND_CLIP.sourceId
-    && sound.relativePath === SOUND_CLIP.relativePath
+    && sound.sourcePath === SOUND_CLIP.sourcePath
     && sound.sourceRevision === SOUND_CLIP.sourceRevision
     && sound.startFrame === SOUND_CLIP.startFrame
     && sound.inFrame === SOUND_CLIP.inFrame

@@ -32,7 +32,7 @@ import type { DocumentSoundClip, EfxPaintDocument } from './efxPaintDocument';
 const CLIP: DocumentSoundClip = {
   id: 'snd-clip-1',
   sourceId: 'asset-1',
-  relativePath: 'audio/scene-one.wav',
+  sourcePath: '/Users/test/Music/scene-one.wav',
   sourceRevision: 3,
   startFrame: 12,
   inFrame: 0,
@@ -128,7 +128,7 @@ describe('audios sync-fingerprint rotation with stable revision (261008-ig1 Task
     const distinctPatches: readonly Partial<DocumentSoundClip>[] = [
       { id: 'snd-clip-2' },
       { sourceId: 'asset-2' },
-      { relativePath: 'audio/scene-two.wav' },
+      { sourcePath: '/Users/test/Music/scene-two.wav' },
       { sourceRevision: 4 },
       { startFrame: 13 },
       { inFrame: 1 },
@@ -143,6 +143,16 @@ describe('audios sync-fingerprint rotation with stable revision (261008-ig1 Task
     for (const patch of distinctPatches) {
       expect(encode!([clipWith(patch)])).not.toBe(encoded);
     }
+  });
+
+  it('(261009-ofk) encodeCanonicalAudios rotates when sourcePath changes and is stable when it does not', async () => {
+    const module = (await import('./efxPaintDocumentRevision')) as RevisionModuleWithAudios;
+    const encode = module.encodeCanonicalAudios;
+    const encoded = encode!([CLIP]);
+    const rotated = encode!([{ ...CLIP, sourcePath: '/Users/test/Music/other-take.wav' }]);
+    expect(rotated).not.toBe(encoded);
+    // Same sourcePath value -> identical output (stable fingerprint).
+    expect(encode!([{ ...CLIP, sourcePath: CLIP.sourcePath }])).toBe(encoded);
   });
 });
 

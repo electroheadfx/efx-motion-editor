@@ -336,7 +336,7 @@ export class PlaybackEngine {
       const effectiveEnd = Math.min(clipEndOnTimeline, sequenceOut, maxFrames);
       if (clipStartOnTimeline >= effectiveEnd) continue;
 
-      const assetUrl = `${projectStore.dirPath.peek() ?? ''}/${sound.relativePath}`;
+      const assetUrl = sound.sourcePath;
       // offsetFrame is the GLOBAL timeline start for the main realm (the Studio
       // adapter's document-local value would misplace the clip in the export mix).
       const trackRecord = {

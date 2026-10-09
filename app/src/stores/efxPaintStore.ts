@@ -1303,7 +1303,7 @@ export type DocumentSoundResult =
 function _sameSound(a: DocumentSoundClip, b: DocumentSoundClip): boolean {
   return a.id === b.id
     && a.sourceId === b.sourceId
-    && a.relativePath === b.relativePath
+    && a.sourcePath === b.sourcePath
     && a.sourceRevision === b.sourceRevision
     && a.startFrame === b.startFrame
     && a.inFrame === b.inFrame
@@ -1333,7 +1333,7 @@ function _isValidSoundClip(sound: DocumentSoundClip): boolean {
   const isNonNegativeInteger = (value: number) => Number.isInteger(value) && value >= 0;
   return typeof sound.id === 'string' && sound.id.length > 0
     && typeof sound.sourceId === 'string' && sound.sourceId.length > 0
-    && typeof sound.relativePath === 'string' && sound.relativePath.length > 0
+    && typeof sound.sourcePath === 'string' && sound.sourcePath.length > 0
     && isNonNegativeInteger(sound.sourceRevision)
     && isNonNegativeInteger(sound.startFrame)
     && isNonNegativeInteger(sound.inFrame)
