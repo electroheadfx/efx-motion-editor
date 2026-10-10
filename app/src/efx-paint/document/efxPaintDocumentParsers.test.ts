@@ -460,6 +460,7 @@ function validSoundClip(id = 'sound-clip-1'): Record<string, unknown> {
     startFrame: 48,
     inFrame: 12,
     outFrame: 108,
+    sourceFrames: 240,
     slipOffset: 0,
     gain: -20,
     fadeInFrames: 6,
@@ -563,6 +564,28 @@ describe('audios list member, fail-closed parse (261008-ig1, D-01, D-05, A2)', (
       const clip = { ...validSoundClip(), slipOffset: bad };
       expect(() => parseEfxPaintDocument(JSON.parse(JSON.stringify(documentWithAudios([clip]))))).toThrow(
         /DocumentSoundClip: slipOffset must be an integer/,
+      );
+    }
+  });
+
+  it('sourceFrames joins the SOUND_KEYS allowlist as a required positive integer (261010-ht0 F4 clean break)', () => {
+    // Present + positive integer round-trips.
+    const sized = { ...validSoundClip(), sourceFrames: 1944 };
+    const parsed = parseEfxPaintDocument(JSON.parse(JSON.stringify(documentWithAudios([sized]))));
+    expect(parsed.audios[0].sourceFrames).toBe(1944);
+
+    // Absent member fails parse — no legacy default.
+    const bare = validSoundClip();
+    delete (bare as Record<string, unknown>).sourceFrames;
+    expect(() => parseEfxPaintDocument(JSON.parse(JSON.stringify(documentWithAudios([bare]))))).toThrow(
+      /DocumentSoundClip: sourceFrames must be a positive integer/,
+    );
+
+    // Non-integer, zero, and negative throw.
+    for (const bad of [1.5, '240', null, 0, -1]) {
+      const clip = { ...validSoundClip(), sourceFrames: bad };
+      expect(() => parseEfxPaintDocument(JSON.parse(JSON.stringify(documentWithAudios([clip]))))).toThrow(
+        /DocumentSoundClip: sourceFrames must be a positive integer/,
       );
     }
   });

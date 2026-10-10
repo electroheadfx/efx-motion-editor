@@ -393,7 +393,11 @@ export function PhysicsPaintAudioModalView({
                    Same sign + bounds as the editor: UI positive = earlier source. */}
               {(() => {
                 const fps = controller.getFps();
-                const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+                // Prefer the persisted sourceFrames; peaks-cache is secondary only
+                // (261010-ht0 F4) — the trim-out fallback is gone.
+                const sourceFrames = sound.sourceFrames
+                  ?? audioPeaksCache.getSourceFrames(sound.sourceId)
+                  ?? sound.outFrame;
                 const slipBounds = slipOffsetBoundsSeconds(
                   { inFrame: sound.inFrame, outFrame: sound.outFrame, totalFramesInFile: sourceFrames },
                   fps,
@@ -419,7 +423,11 @@ export function PhysicsPaintAudioModalView({
               {/* Trim in/out share one row as two columns (UAT) — audio seconds. */}
               {(() => {
                 const fps = controller.getFps();
-                const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+                // Prefer the persisted sourceFrames; peaks-cache is secondary only
+                // (261010-ht0 F4) — the trim-out fallback is gone.
+                const sourceFrames = sound.sourceFrames
+                  ?? audioPeaksCache.getSourceFrames(sound.sourceId)
+                  ?? sound.outFrame;
                 const maxSeconds = sourceFrames / Math.max(1, fps);
                 return (
                   <div class="physics-paint-audio-pair">

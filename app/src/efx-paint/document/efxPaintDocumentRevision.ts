@@ -176,6 +176,8 @@ function encodeCanonicalSoundClip(sound: DocumentSoundClip): string {
     `start:${encodeCanonicalNumber(sound.startFrame)}`,
     `in:${encodeCanonicalNumber(sound.inFrame)}`,
     `out:${encodeCanonicalNumber(sound.outFrame)}`,
+    `sourceFrames:${encodeCanonicalNumber(sound.sourceFrames)}`,
+    `slip:${encodeCanonicalNumber(sound.slipOffset)}`,
     `gain:${encodeCanonicalNumber(sound.gain)}`,
     `fadeIn:${encodeCanonicalNumber(sound.fadeInFrames)}`,
     `fadeOut:${encodeCanonicalNumber(sound.fadeOutFrames)}`,

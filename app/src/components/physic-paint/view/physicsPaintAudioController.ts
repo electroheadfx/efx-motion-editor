@@ -202,7 +202,7 @@ export function isValidFadeCurve(curve: string): curve is SoundFadeCurve {
  * Import defaults (plan task 1, commit path item 4).
  * ------------------------------------------------------------------------- */
 
-/** Fresh import defaults: position 0, full source span, slip 0, gain 0, fades 0, enabled ON. */
+/** Fresh import defaults: position 0, full source span, slip 0, gain 0, fades 0, log/log curves, enabled ON. */
 export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): DocumentSoundClip {
   const sourceFrames = Math.max(1, Math.ceil(source.durationSec * Math.max(1, fps)));
   return {
@@ -213,12 +213,13 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
     startFrame: 0,
     inFrame: 0,
     outFrame: sourceFrames,
+    sourceFrames,
     slipOffset: 0,
     gain: 0,
     fadeInFrames: 0,
     fadeOutFrames: 0,
-    fadeInCurve: 'linear',
-    fadeOutCurve: 'linear',
+    fadeInCurve: 'logarithmic',
+    fadeOutCurve: 'logarithmic',
     enabled: true,
   };
 }
@@ -253,6 +254,7 @@ export function buildReplacedSoundClip(
     sourceRevision: source.sourceRevision ?? 0,
     inFrame,
     outFrame,
+    sourceFrames,
     slipOffset,
   };
 }
@@ -392,7 +394,10 @@ export function usePhysicsPaintAudioController({
     disarmRemove();
     if (!Number.isInteger(frames)) return;
     if (!sound) return;
-    const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+    // Prefer the persisted sourceFrames; peaks-cache is a secondary source only.
+    const sourceFrames = sound.sourceFrames
+      ?? audioPeaksCache.getSourceFrames(sound.sourceId)
+      ?? sound.outFrame;
     const clamped = clampSlipOffsetFrames(frames, {
       inFrame: sound.inFrame,
       outFrame: sound.outFrame,

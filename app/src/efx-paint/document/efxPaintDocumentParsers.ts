@@ -99,6 +99,7 @@ const SOUND_KEYS = new Set([
   'startFrame',
   'inFrame',
   'outFrame',
+  'sourceFrames',
   'slipOffset',
   'gain',
   'fadeInFrames',
@@ -456,7 +457,7 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
     throw new Error('DocumentSoundClip: expected a record.');
   }
   if (!hasOnlyKeys(value, SOUND_KEYS)) {
-    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, sourcePath, sourceRevision, startFrame, inFrame, outFrame, slipOffset, gain, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, enabled.');
+    throw new Error('DocumentSoundClip: unknown members; expected exactly id, sourceId, sourcePath, sourceRevision, startFrame, inFrame, outFrame, sourceFrames, slipOffset, gain, fadeInFrames, fadeOutFrames, fadeInCurve, fadeOutCurve, enabled.');
   }
   if (!isNonEmptyString(value.id)) {
     throw new Error('DocumentSoundClip: id must be a non-empty string.');
@@ -478,6 +479,11 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
   }
   if (!isNonNegativeInteger(value.outFrame)) {
     throw new Error('DocumentSoundClip: outFrame must be a non-negative integer.');
+  }
+  // Clean break (261010-ht0 F4): sourceFrames is a REQUIRED positive integer —
+  // the engine-frame length of the source file. No legacy defaulting on parse.
+  if (typeof value.sourceFrames !== 'number' || !Number.isInteger(value.sourceFrames) || value.sourceFrames < 1) {
+    throw new Error('DocumentSoundClip: sourceFrames must be a positive integer.');
   }
   // Clean break (261010-en9 R6): slipOffset is a REQUIRED integer — negatives
   // are legal (slip may move either way). No legacy defaulting on parse.
@@ -510,6 +516,7 @@ function parseDocumentSound(value: unknown): DocumentSoundClip {
     startFrame: value.startFrame,
     inFrame: value.inFrame,
     outFrame: value.outFrame,
+    sourceFrames: value.sourceFrames,
     slipOffset: value.slipOffset,
     gain: value.gain,
     fadeInFrames: value.fadeInFrames,

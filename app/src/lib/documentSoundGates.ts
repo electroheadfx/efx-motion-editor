@@ -114,7 +114,7 @@ export function toDocumentSoundAudioTrack(
     order: 0,
     trackHeight: 44,
     slipOffset: sound.slipOffset,
-    totalFramesInFile: sound.outFrame,
+    totalFramesInFile: sound.sourceFrames,
     bpm: null,
     beatOffsetFrames: 0,
     beatMarkers: [],

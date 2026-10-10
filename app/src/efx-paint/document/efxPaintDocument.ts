@@ -189,6 +189,13 @@ export interface DocumentSoundClip {
   /** Source trim end, in frames. */
   readonly outFrame: number;
   /**
+   * Engine-frame length of the SOURCE FILE (261010-ht0 F4): the full decoded
+   * duration at project fps, NOT the trim span. Required integer >= 1 (clean
+   * break, slipOffset pattern). Offset bounds and In/Out max read this first
+   * and never fall back to the trim out point.
+   */
+  readonly sourceFrames: number;
+  /**
    * Content slip within the in/out window, ENGINE sign (261010-en9 R6):
    * `source = inFrame + slipOffset + framesIntoTrack`, so a positive
    * slipOffset reads LATER source. The UI Offset (s) control is the inverse —

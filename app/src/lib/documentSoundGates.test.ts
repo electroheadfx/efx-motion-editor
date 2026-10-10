@@ -104,6 +104,7 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
     startFrame: 48,
     inFrame: 0,
     outFrame: 240,
+    sourceFrames: 240,
     slipOffset: 0,
     gain: -25,
     fadeInFrames: 6,
@@ -157,6 +158,15 @@ describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)'
     });
     expect(track.volume).toBeGreaterThanOrEqual(0);
     expect(track.volume).toBeLessThanOrEqual(10);
+    // 261010-ht0 F4: totalFramesInFile maps from sound.sourceFrames, never the trim out.
+    expect(track.totalFramesInFile).toBe(240);
+  });
+
+  it('totalFramesInFile reads sound.sourceFrames even when the trim out is shorter (261010-ht0 F4)', async () => {
+    const { toDocumentSoundAudioTrack } = await import('./documentSoundGates');
+    const sound = makeSound({ inFrame: 0, outFrame: 38, sourceFrames: 1944 });
+    const track = toDocumentSoundAudioTrack(sound, CLIP_SECTION.clips[0].assetUrl, 24);
+    expect(track.totalFramesInFile).toBe(1944);
   });
 
   it('maps sound.slipOffset (non-zero) into the AudioTrack and resolveClipPlayback (261010-en9 R6)', async () => {

@@ -84,6 +84,34 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     expect(clip.slipOffset).toBe(0);
     expect(clip.gain).toBe(0);
     expect(clip.enabled).toBe(true);
+    // 261010-ht0 F2/F4: store the already-computed source length; log defaults.
+    expect(clip.sourceFrames).toBe(240);
+    expect(clip.fadeInCurve).toBe('logarithmic');
+    expect(clip.fadeOutCurve).toBe('logarithmic');
+  });
+
+  it('replace keeps the current clip stored curves and records the new sourceFrames', () => {
+    const current = {
+      id: 'sound-clip-1',
+      sourceId: 'asset-1',
+      sourcePath: '/Users/test/Music/sound.wav',
+      sourceRevision: 1,
+      startFrame: 0,
+      inFrame: 0,
+      outFrame: 240,
+      sourceFrames: 240,
+      slipOffset: 0,
+      gain: 0,
+      fadeInFrames: 6,
+      fadeOutFrames: 12,
+      fadeInCurve: 'exponential' as const,
+      fadeOutCurve: 'logarithmic' as const,
+      enabled: true,
+    };
+    const clip = buildReplacedSoundClip(current, { ...SOURCE, durationSec: 2 }, 24);
+    expect(clip.fadeInCurve).toBe('exponential');
+    expect(clip.fadeOutCurve).toBe('logarithmic');
+    expect(clip.sourceFrames).toBe(48);
   });
 
   it('replace keeps position/in-out and clamps outFrame to a shorter source', () => {
@@ -95,6 +123,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
       startFrame: 48,
       inFrame: 12,
       outFrame: 200,
+      sourceFrames: 240,
       slipOffset: 0,
       gain: 0,
       fadeInFrames: 0,
@@ -119,6 +148,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
       startFrame: 0,
       inFrame: 12,
       outFrame: 200,
+      sourceFrames: 240,
       slipOffset: -12,
       gain: 0,
       fadeInFrames: 0,
@@ -144,6 +174,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
       startFrame: 0,
       inFrame: 100,
       outFrame: 120,
+      sourceFrames: 240,
       slipOffset: 0,
       gain: 0,
       fadeInFrames: 0,
@@ -175,6 +206,7 @@ const CLIP_A: DocumentSoundClip = {
   startFrame: 0,
   inFrame: 0,
   outFrame: 48,
+  sourceFrames: 240,
   slipOffset: 0,
   gain: 0,
   fadeInFrames: 0,

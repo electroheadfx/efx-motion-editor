@@ -13,8 +13,8 @@ export interface AudioTrack {
   muted: boolean;
   fadeInFrames: number;       // Fade-in duration in frames
   fadeOutFrames: number;      // Fade-out duration in frames
-  fadeInCurve: FadeCurve;     // Default 'exponential' per D-21
-  fadeOutCurve: FadeCurve;    // Default 'exponential' per D-21
+  fadeInCurve: FadeCurve;     // Default 'logarithmic' (261010-ht0 F2)
+  fadeOutCurve: FadeCurve;    // Default 'logarithmic' (261010-ht0 F2)
   sampleRate: number;         // From decoded AudioBuffer
   duration: number;           // Total duration in seconds
   channelCount: number;       // Number of channels (for metadata display)

@@ -19,6 +19,15 @@ describe('slipOffsetBoundsSeconds (261010-en9 R5/R6 sign law)', () => {
     expect(bounds.max).toBe(0);
   });
 
+  it('a long trimmed source yields a wide negative-to-zero window (261010-ht0 F4)', () => {
+    // Studio clip: inFrame 0, outFrame 1.6s-equivalent (38 frames at 24 fps),
+    // sourceFrames of an 81s file (1944 frames). The trim span never collapses
+    // the window — Offset can move near -79.4s.
+    const bounds = slipOffsetBoundsSeconds({ inFrame: 0, outFrame: 38, totalFramesInFile: 1944 }, 24);
+    expect(bounds.min).toBeCloseTo(-79.4, 1);
+    expect(bounds.max).toBe(0);
+  });
+
   it('outFrame == totalFramesInFile blocks negative UI Offset (min 0)', () => {
     const bounds = slipOffsetBoundsSeconds({ inFrame: 24, outFrame: 240, totalFramesInFile: 240 }, 24);
     expect(bounds.min).toBe(0);
