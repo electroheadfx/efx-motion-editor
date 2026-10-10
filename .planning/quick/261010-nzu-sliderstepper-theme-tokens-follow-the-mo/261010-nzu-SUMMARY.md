@@ -45,7 +45,10 @@ coverage:
     human_judgment: false
   - id: D2
     description: "Live UAT: editor sidebar AudioProperties sliders follow the theme (gray/dark-blue family); Studio audio modal + TopBar + RightPanel look identical via fallbacks; NumericStepper chrome unchanged on both surfaces"
-    verification: []
+    verification:
+      - kind: native-uat
+        ref: "User-driven native UAT 2026-10-10 — all four rows approved"
+        status: pass
     human_judgment: true
     rationale: "Cross-surface visual parity (Studio byte-identical, editor themed) needs native visual UAT — unit tests can pin the style strings but cannot prove rendered pixels on the WKWebView surfaces."
 
@@ -115,7 +118,7 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- Automated suite green (54 tests: 19 SliderStepper + 35 NumericStepper). Live UAT rows in the plan's `<verification>` block remain user-driven before close.
+- Automated suite green (54 tests: 19 SliderStepper + 35 NumericStepper). Native UAT approved 2026-10-10 — all four rows (editor sidebar theme-follow, theme switch, Studio screenshot-diff parity, NumericStepper chrome unchanged) passed. CLOSED.
 
 ---
 *Quick: 261010-nzu*
