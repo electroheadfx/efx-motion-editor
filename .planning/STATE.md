@@ -5,17 +5,17 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
-stopped_at: Completed quick-261010-bkv-PLAN.md
-last_updated: "2026-10-10T07:18:11.843Z"
-last_activity: 2026-10-09
-last_activity_desc: Quick 261009-6ee UAT accepted — closed (blended SliderStepper + audio modal refinements)
-state_head: e451e17205ffe2b93aa2a86cfd6103e540266015
+stopped_at: Completed 261010-en9 (quick audio panel UAT refinements)
+last_updated: "2026-10-10T08:58:17.726Z"
+last_activity: 2026-10-10
+last_activity_desc: "Completed quick task 261010-en9: Audio panel UAT refinements (automated-ready, live UAT pending)"
+state_head: e0851a5d3aae03ffecce4a1d7c1856f1abd635ff
 progress:
   total_phases: 14
-  completed_phases: 19
+  completed_phases: 12
   total_plans: 75
-  completed_plans: 75
-  percent: 100
+  completed_plans: 76
+  percent: 86
 ---
 
 # Project State
@@ -32,9 +32,9 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-10 - Completed quick task 261010-bkv: Audio gain/layout/time refinements (automated-ready, live UAT pending)
+Last activity: 2026-10-10 - Completed quick task 261010-en9: Audio panel UAT refinements (automated-ready, live UAT pending)
 
-Progress: [████████████████████] 75/75 plans ([██████████] 100%)
+Progress: [████████████████████] 75/75 plans ([█████████░] 86%)
 
 ## Performance Metrics
 
@@ -144,6 +144,7 @@ Progress: [████████████████████] 75/75 p
 | Phase quick-261009-rko P261009-rko | 15 | 2 tasks | 18 files |
 | Phase quick-261009-v0s P261009-v0s | 9min | 2 tasks | 8 files |
 | Phase quick-261010-bkv P261010-bkv | 29 | 3 tasks | 12 files |
+| Phase quick-261010-en9 P261010-en9 | 14min | 3 tasks | 28 files |
 
 ## Accumulated Context
 
@@ -401,6 +402,9 @@ Recent decisions affecting current work:
 - [Phase quick-261009-v0s]: Position SliderStepper commit unbounded (negatives legal); sliderMin/sliderMax track-only
 - [Phase quick-261009-v0s]: BPM and Beat Offset stay NumericInput; AUTO-ARRANGE keeps bpm+markers gate and one-undo Apply
 - [Phase quick-261010-bkv]: dB is the only UI amplitude domain; audioGain.ts is the single bridge (linear volume editor / integer -100..+100 Studio gain)
+- [Phase quick-261010-en9]: Offset (s) sign law: UI positive = earlier source; engine slipOffset is the inverse (slipOffsetBounds.ts owns bounds + clamp)
+- [Phase quick-261010-en9]: DocumentSoundClip.slipOffset is a clean-break required integer; MceAudioTrack.slip_offset untouched
+- [Phase quick-261010-en9]: setIn writes inFrame AND offsetFrame in one undo action so the clip end stays fixed
 
 ### Pending Todos
 
@@ -497,6 +501,7 @@ None yet.
 | 261009-rko | Main-app audio joins the disk-reference law — no copy in gallery import or sidebar Replace, source_path manifest clean break | 2026-10-09 | aa446e4a | [261009-rko-main-app-audio-joins-the-disk-reference-](./quick/261009-rko-main-app-audio-joins-the-disk-reference-/) |
 | 261009-v0s | Audio properties panel re-flow + timeline trim/scrub cursors — AudioProperties adopts SliderStepper (Fade in/out with curve in below slot, Position renamed from Offset, In, Out) full-width Studio pattern; RuleSectionHeader extraction single-sources section values; BEAT SYNC accordion collapsed by default (BPM + AUTO-ARRANGE); TimelineInteraction trim edges ew-resize (was col-resize) incl physic-paint rails edge-over-pointer-hint, playhead hover pointer (10px). Status: automated-ready, live UAT rows 1-6 pending | 2026-10-09 | 1ef7689c | [261009-v0s-audio-properties-panel-re-flow-timeline-](./quick/261009-v0s-audio-properties-panel-re-flow-timeline-/) |
 | 261010-bkv | Audio gain/layout/time refinements (UAT on 261009-v0s) — Volume→Gain dB logarithmic -20..+20 default 0 in Studio modal AND editor sidebar; group Gain under TRACK section (rename Track Name→Track, Volume→Gain); fades 2 cols with curve dropdown under each; Position In/Out 2 cols; Position sliderMax = timeline last-track end (not clip-trim span — explains the 72 bug); editor+studio In/Out in audio time (seconds) with max = track time in timeline, default Out at max; Track section shows audio max time + frames equivalent. Status: automated-ready, live UAT rows 1-8 pending | 2026-10-10 | e451e172 | [261010-bkv-audio-gain-layout-time-refinements-uat-o](./quick/261010-bkv-audio-gain-layout-time-refinements-uat-o/) |
+| 261010-en9 | Audio panel UAT refinements (UAT on 261009-v0s + 261010-bkv) — section header rule+label rgb(205,201,201); FILE section merged into TRACK (file/Replace row first); editor timeline audio clips draw gain line + diagonal fade paths (soundBandGeometry reuse); In-from-left trim keeps clip end fixed (audioStore.setIn); Offset (s) slip control in editor + Studio TIMING (DocumentSoundClip.slipOffset clean-break add); playhead timecode [frame] / [HH:MM:SS.FF of now]; 10px section padding. Status: automated-ready, live UAT rows 1-8 pending | 2026-10-10 | e0851a5d | [261010-en9-audio-panel-uat-refinements-section-head](./quick/261010-en9-audio-panel-uat-refinements-section-head/) |
 
 ### Roadmap Evolution
 
@@ -522,6 +527,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-10T07:17:14.092Z
-Stopped at: Completed quick-261010-bkv-PLAN.md
+Last session: 2026-10-10T08:57:18.501Z
+Stopped at: Completed 261010-en9 (quick audio panel UAT refinements)
 Resume file: None
