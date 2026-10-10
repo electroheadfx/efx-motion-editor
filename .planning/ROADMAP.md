@@ -666,7 +666,26 @@ Plans:
   2. Native UAT validates the full 17-step surface (document init, legacy rejection, track CRUD, Background loops, fallback, Reveal, save/reopen, main-editor parity).
   3. Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication.
 
-**Plans**: TBD
+**Plans:** 5 plans
+
+Plans:
+
+**Wave 1** *(parallel)*
+
+- [ ] 53-01-PLAN.md — Atomic 1.0.0 bump across the five version surfaces (D-17) + stale-bundle archival + six spec gates with fresh evidence in 53-GATES.md (ACC-01)
+- [ ] 53-02-PLAN.md — 53-UAT.html interactive worksheet (D-02): end-to-end machinery tracer + full 33-row inventory carrying every D-04/D-12..D-16 insertion as a first-class row (ACC-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 53-03-PLAN.md — User credentialed release wrapper (D-22) + comprehensive single signed-bundle UAT pass (D-01) archived as 53-UAT.md + 53-UAT.json (ACC-02)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 53-04-PLAN.md — User push + immutable v1.0.0 tag (D-19), D-18 milestone notes, GitHub draft release with fresh DMG, then verify-downloaded + install + D-06 covering smoke in 53-VERIFY-DOWNLOADED.md (ACC-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 53-05-PLAN.md — 14-row stop-condition checklist with cited evidence (D-20) + gated two-step publish decision + post-publish Latest/tag verification in 53-RELEASE.md (ACC-03)
 
 ## Progress
 
