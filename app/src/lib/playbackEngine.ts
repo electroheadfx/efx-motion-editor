@@ -346,11 +346,11 @@ export class PlaybackEngine {
 
       if (currentFrame >= clipStartOnTimeline && currentFrame < effectiveEnd) {
         const framesIntoClip = currentFrame - clipStartOnTimeline;
-        const sourceOffset = (sound.inFrame + framesIntoClip) / fps;
+        const sourceOffset = (sound.inFrame + sound.slipOffset + framesIntoClip) / fps;
         audioEngine.play(sound.id, sourceOffset, trackRecord, fps, (effectiveEnd - currentFrame) / fps);
       } else if (currentFrame < clipStartOnTimeline) {
         const delaySec = (clipStartOnTimeline - currentFrame) / fps;
-        const sourceOffset = sound.inFrame / fps;
+        const sourceOffset = (sound.inFrame + sound.slipOffset) / fps;
         audioEngine.playDelayed(sound.id, delaySec, sourceOffset, trackRecord, fps, (effectiveEnd - clipStartOnTimeline) / fps);
       }
     }

@@ -508,7 +508,7 @@ describe('playbackEngine document clip dispatch (52.5-02, MAIN-MIX-01/02)', () =
         offsetFrame: 48,
         inFrame: 0,
         outFrame: 240,
-        sourceFrames: 240,
+        totalFramesInFile: 240,
         slipOffset: 0,
       }),
       24,
@@ -530,6 +530,23 @@ describe('playbackEngine document clip dispatch (52.5-02, MAIN-MIX-01/02)', () =
       expect.objectContaining({id: 'sound-clip-1'}),
       24,
       10.0,
+    );
+  });
+
+  it('(c2b) slipOffset shifts the source start — the heard content changes', () => {
+    // 261010 UAT: the document-sound dispatch computed sourceOffset from
+    // inFrame alone and dropped slipOffset, so the Offset slider wrote
+    // successfully and playback never moved.
+    seed(makeSound({ inFrame: 0, outFrame: 240, slipOffset: 48 }), makeFxSequence());
+    timelineStore.seek(96);
+    playbackEngine.start();
+    // inFrame 0 + slip 48 + framesInto 48 = 96 frames -> 4.0s (was 2.0s without slip)
+    expect(mockedAudio.play).toHaveBeenCalledWith(
+      'sound-clip-1',
+      4.0,
+      expect.objectContaining({ id: 'sound-clip-1', slipOffset: 48 }),
+      24,
+      8.0,
     );
   });
 
