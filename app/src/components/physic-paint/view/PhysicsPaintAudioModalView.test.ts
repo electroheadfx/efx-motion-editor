@@ -83,17 +83,15 @@ describe('PhysicsPaintAudioModalView Position field (261008-ryq / 261009-6ee)', 
   });
 });
 
-describe('PhysicsPaintAudioModalView trim span law (261009-6ee)', () => {
+describe('PhysicsPaintAudioModalView trim span law (261009-6ee / 261010-bkv)', () => {
   it('Trim in caps at out - 1 so a 1-frame minimum span never inverts', () => {
     const start = source.indexOf('{/* 5.');
     expect(start).toBeGreaterThan(-1);
     const end = source.indexOf('{/* 6.', start);
     expect(end).toBeGreaterThan(start);
     const trimIn = source.slice(start, end);
-    expect(trimIn).toContain('value={sound.inFrame}');
-    expect(trimIn).toContain('max={sound.outFrame - 1}');
-    expect(trimIn).toContain('onChange={(value) => commitInFrame(value)}');
-    expect(trimIn).toContain('ariaLabel="In frames"');
+    expect(trimIn).toContain('commitInFrame(secondsToFrames(value');
+    expect(trimIn).toContain('ariaLabel="In seconds"');
   });
 
   it('Trim out floors at in + 1 so a 1-frame minimum span never inverts', () => {
@@ -102,10 +100,8 @@ describe('PhysicsPaintAudioModalView trim span law (261009-6ee)', () => {
     const end = source.indexOf('{/* 7.', start);
     expect(end).toBeGreaterThan(start);
     const trimOut = source.slice(start, end);
-    expect(trimOut).toContain('value={sound.outFrame}');
-    expect(trimOut).toContain('min={sound.inFrame + 1}');
-    expect(trimOut).toContain('onChange={(value) => commitOutFrame(value)}');
-    expect(trimOut).toContain('ariaLabel="Out frames"');
+    expect(trimOut).toContain('commitOutFrame(secondsToFrames(value');
+    expect(trimOut).toContain('ariaLabel="Out seconds"');
   });
 });
 
@@ -231,5 +227,24 @@ describe('PhysicsPaintAudioModalView single-clip editor (261008-ryq)', () => {
     expect(source).toContain("onImportRequest('append')");
     expect(source).toContain("onImportRequest('replace')");
     expect(source).not.toContain('withDisarm(onImportRequest)');
+  });
+});
+
+describe('PhysicsPaintAudioModalView In/Out audio time + max-time (261010-bkv)', () => {
+  it('Trim in/out display and commit in audio seconds', () => {
+    expect(source).toContain('{AUDIO_IN_LABEL} (s)');
+    expect(source).toContain('{AUDIO_OUT_LABEL} (s)');
+    expect(source).toContain('framesToSeconds(sound.inFrame');
+    expect(source).toContain('framesToSeconds(sound.outFrame');
+    expect(source).toContain('secondsToFrames(value');
+    expect(source).toContain('commitInFrame(secondsToFrames(value');
+    expect(source).toContain('commitOutFrame(secondsToFrames(value');
+  });
+
+  it('FILE meta shows the audio max as seconds plus frames', () => {
+    expect(source).toContain('formatAudioMaxTime');
+    expect(source).toContain('data-testid="audio-max-time"');
+    // Studio derives source frames from audioPeaksCache when present.
+    expect(source).toContain('getSourceFrames');
   });
 });

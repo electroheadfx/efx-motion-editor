@@ -73,3 +73,13 @@ describe('audioGain frames/seconds (261010-bkv)', () => {
     expect(secondsToFrames(0.5, 12)).toBe(6);
   });
 });
+
+describe('audioGain audio-max readout (261010-bkv)', () => {
+  it('formats `{seconds}s / {frames} frames` with seconds to one decimal', async () => {
+    const {formatAudioMaxTime} = await loadAudioGain();
+    expect(formatAudioMaxTime(3.5, 84)).toBe('3.5s / 84 frames');
+    expect(formatAudioMaxTime(10, 240)).toBe('10.0s / 240 frames');
+    expect(formatAudioMaxTime(0.04, 1)).toBe('0.0s / 1 frames');
+    expect(formatAudioMaxTime(2.25, 54)).toBe('2.3s / 54 frames');
+  });
+});

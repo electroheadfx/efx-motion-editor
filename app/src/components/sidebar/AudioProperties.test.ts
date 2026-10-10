@@ -20,8 +20,8 @@ describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () =
       'label="Fade in (frames)"',
       'label="Fade out (frames)"',
       'label="Position (frames)"',
-      'label="In (frames)"',
-      'label="Out (frames)"',
+      'label="In (s)"',
+      'label="Out (s)"',
     ]) {
       expect(source).toContain(label);
     }
@@ -67,16 +67,15 @@ describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () =
     expect(fadesPair.match(/below=\{/g)).toHaveLength(2);
     // In/Out sit side by side under full-width Position.
     const inoutPair = source.slice(source.indexOf('data-testid="audio-inout-pair"'));
-    expect(inoutPair).toContain('label="In (frames)"');
-    expect(inoutPair).toContain('label="Out (frames)"');
-    expect(inoutPair).toContain('audioStore.setInOut(track.id, val, track.outFrame)');
-    expect(inoutPair).toContain('audioStore.setInOut(track.id, track.inFrame, val)');
+    expect(inoutPair).toContain('label="In (s)"');
+    expect(inoutPair).toContain('label="Out (s)"');
+    expect(inoutPair).toContain('secondsToFrames(val, fps)');
   });
 
   it('Position commit is unbounded (negatives legal) with a track-only slider range below 0', () => {
     const positionField = source.slice(
       source.indexOf('label="Position (frames)"'),
-      source.indexOf('label="In (frames)"'),
+      source.indexOf('label="In'),
     );
     expect(positionField).toContain('value={track.offsetFrame}');
     expect(positionField).toContain('audioStore.setOffset(track.id, val)');
@@ -155,5 +154,35 @@ describe('AudioProperties never-copy handleReplace stays byte-stable (261009-rko
     expect(replaceSource.includes('mkdir')).toBe(false);
     expect(replaceSource.includes('copyFile')).toBe(false);
     expect(replaceSource.includes('plugin-fs')).toBe(false);
+  });
+});
+
+describe('AudioProperties time unit and range refinements (261010-bkv)', () => {
+  it('Position sliderMax reaches the timeline end (totalFrames), floored at offsetFrame', () => {
+    const positionField = source.slice(
+      source.indexOf('label="Position (frames)"'),
+      source.indexOf('label="In'),
+    );
+    expect(positionField).toContain('sliderMax={Math.max(totalFrames, track.offsetFrame, 1)}');
+    expect(positionField).toContain('audioStore.setOffset(track.id, val)');
+  });
+
+  it('In/Out display and commit in audio seconds via audioGain converters', () => {
+    expect(source).toContain('label="In (s)"');
+    expect(source).toContain('label="Out (s)"');
+    expect(source).toContain('framesToSeconds(track.inFrame, fps)');
+    expect(source).toContain('framesToSeconds(track.outFrame, fps)');
+    expect(source).toContain('secondsToFrames(val, fps)');
+    expect(source).toContain('audioStore.setInOut(track.id, secondsToFrames(val, fps), track.outFrame)');
+    expect(source).toContain('audioStore.setInOut(track.id, track.inFrame, secondsToFrames(val, fps))');
+    // 1-frame Out span preserved in frame space.
+    expect(source).toContain('min={track.inFrame + 1}');
+  });
+
+  it('TRACK/file meta shows the audio max as seconds plus frames', () => {
+    expect(source).toContain('formatAudioMaxTime');
+    expect(source).toContain('track.duration');
+    expect(source).toContain('track.totalFramesInFile');
+    expect(source).toContain('data-testid="audio-max-time"');
   });
 });
