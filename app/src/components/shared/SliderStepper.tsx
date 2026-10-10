@@ -83,12 +83,12 @@ const LABEL_CELL_STYLE: JSX.CSSProperties = {
   minWidth: 0,
 };
 
-/** Lighter gray than the sidebar token so the label reads on both surfaces. */
+/** Follows the sidebar theme; the fallback keeps the pre-quick Studio gray. */
 const LABEL_STYLE: JSX.CSSProperties = {
   fontSize: '11px',
   fontWeight: 600,
   letterSpacing: '0.08px',
-  color: '#9aa5b1',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -100,9 +100,9 @@ const VALUE_STYLE: JSX.CSSProperties = {
   height: '17px',
   boxSizing: 'border-box',
   flexShrink: 0,
-  border: '1px solid rgba(159, 165, 174, 0.55)',
+  border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
   outline: 'none',
-  background: 'rgba(127, 131, 138, 0.18)',
+  background: 'var(--sidebar-input-bg, rgba(127, 131, 138, 0.18))',
   borderRadius: '3px',
   padding: '0 5px',
   fontSize: '11px',
@@ -130,9 +130,10 @@ const BELOW_STYLE: JSX.CSSProperties = {
 /**
  * The one box-drawing element: 22px, radius 4. OPAQUE (UAT): the mock's
  * translucent gray washed out over the audio modal's frosted (blur+saturate)
- * backdrop — the paper bled through and inverted the bar's look. Pinned to the
- * sidebar's own composite over `#3e3f41` (0.22 × rgb(127,131,138) over
- * #3e3f41 = #4c4e51): identical on the Studio chrome, solid on the modal.
+ * backdrop — the paper bled through and inverted the bar's look. Follows the
+ * sidebar input-bg theme var; the `#4c4e51` fallback is the pre-quick composite
+ * over `#3e3f41` (0.22 × rgb(127,131,138) over #3e3f41), so Studio (which does
+ * not define the var) renders byte-identical.
  */
 const BAR_STYLE: JSX.CSSProperties = {
   display: 'flex',
@@ -143,7 +144,7 @@ const BAR_STYLE: JSX.CSSProperties = {
   height: '22px',
   padding: '0 2px',
   borderRadius: '4px',
-  background: '#4c4e51',
+  background: 'var(--sidebar-input-bg, #4c4e51)',
 };
 
 /** 30px hit cell — the glyph inside carries no box of its own. */
@@ -183,7 +184,7 @@ const TRACK_LINE_STYLE: JSX.CSSProperties = {
   height: '4px',
   width: '100%',
   borderRadius: '2px',
-  background: '#363c47',
+  background: 'var(--sidebar-border-unselected, #363c47)',
 };
 
 const PROGRESS_STYLE: JSX.CSSProperties = {
@@ -192,7 +193,7 @@ const PROGRESS_STYLE: JSX.CSSProperties = {
   top: 'calc(50% - 2px)',
   height: '4px',
   borderRadius: '2px',
-  background: '#2f67e8',
+  background: 'var(--color-accent, #2f67e8)',
 };
 
 const KNOB_STYLE: JSX.CSSProperties = {
@@ -201,7 +202,7 @@ const KNOB_STYLE: JSX.CSSProperties = {
   width: '11px',
   height: '11px',
   borderRadius: '9999px',
-  background: '#f1f3f5',
+  background: 'var(--sidebar-slider-thumb, #f1f3f5)',
   outline: '1px solid #ffffff',
   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.4)',
 };

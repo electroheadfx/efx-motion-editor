@@ -233,6 +233,68 @@ describe('slider-stepper — track range and commit law stay separate', () => {
   });
 });
 
+/**
+ * 261010-nzu — color-only token migration. Every color slot resolves through a
+ * sidebar theme var whose CSS fallback is the exact pre-quick Studio literal,
+ * so a surface that does not define the vars (Studio) renders byte-identical
+ * colors. Pin the full `var(TOKEN, literal)` string — not just the token name —
+ * so a fallback drift is a test failure, not a silent Studio regression.
+ */
+describe('slider-stepper — theme tokens carry Studio fallbacks (261010-nzu)', () => {
+  function styleOf(vnode: AnyVNode): Record<string, unknown> {
+    return (vnode.props.style ?? {}) as Record<string, unknown>;
+  }
+
+  it('bar background is the input-bg var with the pre-quick bar literal as fallback', () => {
+    const tree = renderStepper({});
+    expect(styleOf(byClass(tree, 'slider-stepper-bar')!).background).toBe(
+      'var(--sidebar-input-bg, #4c4e51)',
+    );
+  });
+
+  it('value box background and border carry the pre-quick translucent Studio literals', () => {
+    const tree = renderStepper({});
+    const value = byClass(tree, 'slider-stepper-value')!;
+    expect(styleOf(value).background).toBe('var(--sidebar-input-bg, rgba(127, 131, 138, 0.18))');
+    expect(styleOf(value).border).toBe(
+      '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
+    );
+  });
+
+  it('label color is the text-secondary var with the pre-quick label literal as fallback', () => {
+    const tree = renderStepper({});
+    expect(styleOf(byClass(tree, 'slider-stepper-label')!).color).toBe(
+      'var(--sidebar-text-secondary, #9aa5b1)',
+    );
+  });
+
+  it('knob background is the slider-thumb var with the pre-quick knob literal as fallback', () => {
+    const tree = renderStepper({});
+    const knob = byClass(tree, 'slider-stepper-knob')!;
+    expect(styleOf(knob).background).toBe('var(--sidebar-slider-thumb, #f1f3f5)');
+    // Geometry/chrome pins from the one-box law stay untouched.
+    expect(styleOf(knob).outline).toBe('1px solid #ffffff');
+    expect(styleOf(knob).boxShadow).toBe('0 1px 3px rgba(0, 0, 0, 0.4)');
+  });
+
+  it('track line and progress carry the border-unselected and accent vars', () => {
+    const tree = renderStepper({});
+    expect(styleOf(byClass(tree, 'slider-stepper-track-line')!).background).toBe(
+      'var(--sidebar-border-unselected, #363c47)',
+    );
+    expect(styleOf(byClass(tree, 'slider-stepper-progress')!).background).toBe(
+      'var(--color-accent, #2f67e8)',
+    );
+  });
+
+  it('value text color stays on the already-themed text-primary var', () => {
+    const tree = renderStepper({});
+    expect(styleOf(byClass(tree, 'slider-stepper-value')!).color).toBe(
+      'var(--sidebar-text-primary, #eceff2)',
+    );
+  });
+});
+
 describe('slider-stepper — commitOnRelease (48-06)', () => {
   function trackOf(tree: AnyVNode): AnyVNode {
     const track = byClass(tree, 'slider-stepper-track');
