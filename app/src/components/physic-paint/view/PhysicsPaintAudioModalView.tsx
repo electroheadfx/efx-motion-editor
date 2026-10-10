@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
+import { GAIN_DB_MAX, GAIN_DB_MIN } from '../../../lib/audioGain';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
 
@@ -22,7 +23,7 @@ import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
  *   `Remove sound? Position, trims, gain, and fades are discarded from this document.` ·
  *   `Couldn't read this audio file. Use WAV, MP3, AAC, or FLAC, or replace the clip.` ·
  *   `Sound file is missing from the project. Replace it to restore the clip.` ·
- *   `Position` (frames) · `Gain` (-100..+100, `0 = unity`) · `Fade in` ·
+ *   `Position` (frames) · `Gain` (dB -20..+20) · `Fade in` ·
  *   `Fade out` (frames; curves `linear`, `exponential`, `logarithmic`) ·
  *   `Trim in` · `Trim out` (frames) · `TIMING` · `SOUND` · `On` / `Off`
  *
@@ -45,8 +46,8 @@ import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
  *      shares one row as TWO COLUMNS with 6, under a soft rule
  *   6. `Trim out` (frames) — SliderStepper (commitOutFrame, 1-frame minimum span)
  *   7. `SOUND` section header
- *   8. `Gain` — SliderStepper step 5, -100..100, `0 = unity` inline in the label
- *      (commitGain)
+ *   8. `Gain` — SliderStepper step 1, dB -20..+20 (commitGain; the dB unit is
+ *      the label)
  *   9. `Fade in` (frames) — SliderStepper step 1 min 0, curve select on a second
  *      row under the bar (commitFadeIn)
  *   10. `Fade out` (frames) — same row shape as Fade in (commitFadeOut)
@@ -91,7 +92,6 @@ export const AUDIO_FADE_IN_LABEL = 'Fade in';
 export const AUDIO_FADE_OUT_LABEL = 'Fade out';
 export const AUDIO_IN_LABEL = 'Trim in';
 export const AUDIO_OUT_LABEL = 'Trim out';
-export const AUDIO_GAIN_HINT = '0 = unity';
 export const AUDIO_SECTION_FILE = 'FILE';
 export const AUDIO_SECTION_TIMING = 'TIMING';
 export const AUDIO_SECTION_SOUND = 'SOUND';
@@ -401,15 +401,15 @@ export function PhysicsPaintAudioModalView({
               {/* 7. SOUND section header — centered title between two rules */}
               <RuleSectionHeader text={AUDIO_SECTION_SOUND} />
 
-              {/* 8. Gain — step 5, -100..100 (per-step commit); the `0 = unity`
-                  note rides inline in the label (UAT). */}
+              {/* 8. Gain — step 1, dB -20..+20 (per-step commit); the dB unit
+                  is the label (261010-bkv). */}
               <div class="physics-paint-audio-row">
                 <SliderStepper
-                  label={`${AUDIO_GAIN_LABEL} (${AUDIO_GAIN_HINT})`}
+                  label={`${AUDIO_GAIN_LABEL} (dB)`}
                   value={previewGain}
-                  step={5}
-                  min={-100}
-                  max={100}
+                  step={1}
+                  min={GAIN_DB_MIN}
+                  max={GAIN_DB_MAX}
                   onChange={(value) => commitGain(value)}
                   ariaLabel={AUDIO_GAIN_LABEL}
                   disabled={controlsDisabled}

@@ -9,7 +9,7 @@ export interface AudioTrack {
   offsetFrame: number;        // Start position on timeline (frame 0 = project start); can be negative
   inFrame: number;            // Trim in-point (frames from audio file start)
   outFrame: number;           // Trim out-point (frames from audio file start)
-  volume: number;             // 0 to 1 linear
+  volume: number;             // Linear amplitude (1.0 = unity; >1 is legal true-amplitude headroom)
   muted: boolean;
   fadeInFrames: number;       // Fade-in duration in frames
   fadeOutFrames: number;      // Fade-out duration in frames

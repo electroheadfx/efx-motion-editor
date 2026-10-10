@@ -5,6 +5,7 @@ import {
   resolveTrackPlayback,
   type EfxPaintTrackPlaybackResolution,
 } from '../components/physic-paint/audio/efxPaintAudioPreviewContext';
+import { dbToLinear, gainToDb } from './audioGain';
 
 /**
  * 52.5-01a (Q3, D-11/D-14, STUDIO-MIX-01), revised by 52.5 UAT round 2: pure
@@ -79,8 +80,9 @@ export function resolveClipPlayback(
 /**
  * Build the AudioTrack-compatible record the engine consumes unchanged: the
  * engine's gain + applyFadeSchedule math applies the clip's gain and fades
- * as-is (D-14). Gain maps -100..+100 onto the engine's linear 0..2 range so
- * 0 is unity and +100 doubles the level. `filePath` stays empty — the child never holds a
+ * as-is (D-14). Gain maps -100..+100 through the dB bridge (gain/5 dB) onto
+ * true linear amplitude: 0 is unity, -100 is 0.1, +100 is 10 (261010-bkv).
+ * `filePath` stays empty — the child never holds a
  * filesystem path for the clip (D-04/52.2 references-only discipline); the
  * decoded buffer is keyed by `sound.id` from the closed documentAudio section.
  */
@@ -99,7 +101,7 @@ export function toDocumentSoundAudioTrack(
     offsetFrame: sound.startFrame,
     inFrame: sound.inFrame,
     outFrame: sound.outFrame,
-    volume: (sound.gain + 100) / 100, // UAT round 4: gain -100..+100 -> linear 0..2 (0 = unity)
+    volume: dbToLinear(gainToDb(sound.gain)), // 261010-bkv: gain/5 dB -> true linear amplitude
     muted: false,
     fadeInFrames: sound.fadeInFrames,
     fadeOutFrames: sound.fadeOutFrames,

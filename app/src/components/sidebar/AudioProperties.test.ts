@@ -12,10 +12,11 @@ const studioCss = readFileSync(
   'utf8',
 );
 
-describe('AudioProperties SliderStepper re-flow (261009-v0s)', () => {
-  it('renders exactly five SliderStepper fields with the locked labels', () => {
-    expect(source.match(/<SliderStepper/g)).toHaveLength(5);
+describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () => {
+  it('renders exactly six SliderStepper fields with the locked labels', () => {
+    expect(source.match(/<SliderStepper/g)).toHaveLength(6);
     for (const label of [
+      'label="Gain"',
       'label="Fade in (frames)"',
       'label="Fade out (frames)"',
       'label="Position (frames)"',
@@ -68,10 +69,27 @@ describe('AudioProperties SliderStepper re-flow (261009-v0s)', () => {
   });
 });
 
+describe('AudioProperties TRACK section (261010-bkv)', () => {
+  it('groups name + Gain (dB) + mute under a TRACK header; no volume section or percent readout', () => {
+    expect(source).toContain('<RuleSectionHeader text="TRACK" />');
+    expect(source).not.toContain('TRACK NAME');
+    expect(source).not.toContain('text="VOLUME"');
+    expect(source).not.toContain('volumePercent}%');
+    // Gain is the dB control over linear volume.
+    expect(source).toContain('label="Gain"');
+    expect(source).toContain('value={linearToDb(track.volume)}');
+    expect(source).toContain('audioStore.setVolume(track.id, dbToLinear(val))');
+    expect(source).toContain('min={GAIN_DB_MIN}');
+    expect(source).toContain('max={GAIN_DB_MAX}');
+    // Mute stays on the TRACK header row — one click, same setMuted.
+    expect(source).toContain('audioStore.setMuted(track.id, !track.muted)');
+  });
+});
+
 describe('AudioProperties Studio section headers (261009-v0s)', () => {
-  it('uses RuleSectionHeader for the five content section titles', () => {
+  it('uses RuleSectionHeader for the four content section titles', () => {
     expect(source).toContain("from '../shared/RuleSectionHeader'");
-    for (const title of ['TRACK NAME', 'FILE', 'VOLUME', 'FADES', 'POSITION']) {
+    for (const title of ['TRACK', 'FILE', 'FADES', 'POSITION']) {
       expect(source).toContain(`<RuleSectionHeader text="${title}" />`);
     }
     // SectionLabel remains only for AUTO-ARRANGE (not one of the five).

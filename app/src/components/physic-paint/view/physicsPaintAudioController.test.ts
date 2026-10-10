@@ -9,6 +9,7 @@ import {
   buildReplacedSoundClip,
   isValidFadeFrames,
   isValidGain,
+  isValidGainDb,
   usePhysicsPaintAudioController,
   type ImportedSoundSource,
 } from './physicsPaintAudioController';
@@ -51,14 +52,26 @@ describe('isValidFadeFrames (T-52.5-12 — frames, integer >= 0, NO 99 cap)', ()
   });
 });
 
-describe('isValidGain (signed integer -100..100)', () => {
-  it('accepts the full slider range and rejects the edges outside it', () => {
+describe('isValidGain (signed integer -100..100 store domain)', () => {
+  it('accepts the full stored gain range and rejects the edges outside it', () => {
     expect(isValidGain(-100)).toBe(true);
     expect(isValidGain(0)).toBe(true);
     expect(isValidGain(100)).toBe(true);
     expect(isValidGain(101)).toBe(false);
     expect(isValidGain(-101)).toBe(false);
     expect(isValidGain(10.5)).toBe(false);
+  });
+});
+
+describe('isValidGainDb (261010-bkv UI dB domain)', () => {
+  it('accepts integer dB on -20..+20 and rejects off-grid / out-of-range', () => {
+    expect(isValidGainDb(-20)).toBe(true);
+    expect(isValidGainDb(0)).toBe(true);
+    expect(isValidGainDb(20)).toBe(true);
+    expect(isValidGainDb(21)).toBe(false);
+    expect(isValidGainDb(-21)).toBe(false);
+    expect(isValidGainDb(0.5)).toBe(false);
+    expect(isValidGainDb(Number.NaN)).toBe(false);
   });
 });
 
@@ -199,11 +212,26 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     expect(defaultController.controller.isSoundMissing(CLIP_B)).toBe(false);
   });
 
-  it('commitGain patches ONLY the selected clip', () => {
+  it('commitGain speaks dB and patches ONLY the selected clip with integer gain', () => {
     const { controller, patchSound } = makeController({ selection: 'clip-b' });
-    controller.commitGain(50);
+    // +10 dB -> stored gain +50 (dbToGain).
+    controller.commitGain(10);
     expect(patchSound).toHaveBeenCalledTimes(1);
     expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-b', { gain: 50 });
+  });
+
+  it('commitGain rejects dB outside -20..+20 and non-grid values — the prior value stays', () => {
+    for (const bad of [21, -21, 0.5, Number.NaN]) {
+      const { controller, patchSound } = makeController({ selection: 'clip-a' });
+      controller.commitGain(bad);
+      expect(patchSound).not.toHaveBeenCalled();
+    }
+  });
+
+  it('previewGain shows dB for the stored integer gain', () => {
+    const { controller } = makeController({ selection: 'clip-b' });
+    // CLIP_B.gain = -25 -> -5 dB.
+    expect(controller.previewGain).toBe(-5);
   });
 
   it('commitStartFrame patches { startFrame } on the SELECTED clip through the per-clip door (261008-ryq)', () => {
@@ -238,7 +266,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
 
   it('field commits fail closed with no selection — no port call, no mutation', () => {
     const { controller, patchSound, removeSound } = makeController({ selection: null });
-    controller.commitGain(50);
+    controller.commitGain(10);
     controller.commitFadeIn(12);
     controller.toggleEnabled();
     controller.confirmRemove();
@@ -248,7 +276,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
 
   it('field commits fail closed when the selection points at an unknown clip', () => {
     const { controller, patchSound } = makeController({ selection: 'clip-zzz' });
-    controller.commitGain(50);
+    controller.commitGain(10);
     expect(patchSound).not.toHaveBeenCalled();
   });
 
@@ -380,7 +408,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     });
     expect(controller.sound).toBeNull();
     expect(controller.audios).toEqual([]);
-    controller.commitGain(50);
+    controller.commitGain(10);
     controller.confirmRemove();
     expect(controller.applyImportedSource(SOURCE).ok).toBe(false);
     expect(patchSound).not.toHaveBeenCalled();

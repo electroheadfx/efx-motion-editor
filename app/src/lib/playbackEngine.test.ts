@@ -392,7 +392,7 @@ describe('playbackEngine paint-frame activation (52.3-02, Pitfall 3)', () => {
 //
 // Model drift note: 52.5-02-PLAN.md predates UAT rounds 2-4 (`soundInOutput`,
 // `volume` 0-100). The shipped model uses the clip's single `enabled` switch
-// and `gain` (-100..+100 -> linear 0..2 via the adapter).
+// and `gain` (-100..+100 -> dB/5 -> true linear amplitude via the adapter).
 // ---------------------------------------------------------------------------
 
 const CLIP_LAYER = 'layer-sound';
@@ -498,7 +498,7 @@ describe('playbackEngine document clip dispatch (52.5-02, MAIN-MIX-01/02)', () =
       2.0,
       expect.objectContaining({
         id: 'sound-clip-1',
-        volume: 0.75, // gain -25 -> (gain + 100) / 100
+        volume: 10 ** (-25 / 100), // 261010-bkv: gain -25 -> -5 dB -> 10^(-0.25)
         fadeInFrames: 6,
         fadeOutFrames: 12,
         fadeInCurve: 'exponential',

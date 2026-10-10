@@ -8,6 +8,7 @@ import {
   removeDocumentSound,
   type DocumentSoundResult,
 } from '../../../stores/efxPaintStore';
+import {GAIN_DB_MAX, GAIN_DB_MIN, dbToGain, gainToDb} from '../../../lib/audioGain';
 
 /**
  * 52.5-01b — the Document sound modal controller (D-05 single control
@@ -22,7 +23,9 @@ import {
  *     SELECTED clip (261008-ig1 Task 2: never the list head — D-01/D-02):
  *     commit/settle only, never mid-drag; invalid entries
  *     (gain outside -100..100, fades below 0 or fractional) are never committed
- *     — the prior accepted value stays (E8/E9, T-52.5-12),
+ *     — the prior accepted value stays (E8/E9, T-52.5-12). Gain commits speak
+ *     dB -20..+20; stored DocumentSoundClip.gain stays integer -100..+100
+ *     (261010-bkv),
  *   - the toggles invert from a LIVE document read at click time so the
  *     reverse click can never re-send a stale captured value (50-UAT fix).
  *
@@ -96,10 +99,10 @@ export interface PhysicsPaintAudioController {
   previewGain: number;
   /** Two-step Remove arm state (`Remove` → `Confirm remove?`). */
   removeArmed: boolean;
-  /** Live drag preview for the gain slider (no store write). */
-  previewGainInput: (gain: number) => void;
-  /** Commit the gain on release — integer -100..+100 or the prior value stays. */
-  commitGain: (gain: number) => void;
+  /** Live drag preview for the gain slider in dB (no store write). */
+  previewGainInput: (db: number) => void;
+  /** Commit the gain on release — integer dB -20..+20; stores integer gain -100..+100. */
+  commitGain: (db: number) => void;
   /** Commit Fade in / Fade out frames (integer >= 0). */
   commitFadeIn: (frames: number) => void;
   commitFadeOut: (frames: number) => void;
@@ -167,6 +170,14 @@ export interface ImportedSoundSource {
 
 export function isValidGain(gain: number): boolean {
   return Number.isInteger(gain) && gain >= -100 && gain <= 100;
+}
+
+/**
+ * UI dB domain for commitGain: integer dB on the -20..+20 grid. Stored gain
+ * stays the -100..+100 integer (dbToGain); invalid dB never commits.
+ */
+export function isValidGainDb(db: number): boolean {
+  return Number.isInteger(db) && db >= GAIN_DB_MIN && db <= GAIN_DB_MAX;
 }
 
 export function isValidFadeFrames(frames: number): boolean {
@@ -296,14 +307,17 @@ export function usePhysicsPaintAudioController({
     return patchSound(layerId, selectedId, patch);
   };
 
-  const previewGainInput = (gain: number) => {
-    volumeDraft.value = gain;
+  const previewGainInput = (db: number) => {
+    volumeDraft.value = db;
   };
 
-  const commitGain = (gain: number) => {
+  /** commitGain speaks dB (-20..+20); the store keeps integer gain -100..+100. */
+  const commitGain = (db: number) => {
     volumeDraft.value = null;
     disarmRemove();
-    if (!isValidGain(gain)) return; // prior accepted value stays (E8)
+    if (!isValidGainDb(db)) return; // prior accepted value stays (E8)
+    const gain = dbToGain(db);
+    if (!isValidGain(gain)) return;
     commitPatch({ gain });
   };
 
@@ -455,7 +469,7 @@ export function usePhysicsPaintAudioController({
     busy: busy.value,
     decodeError: decodeError.value,
     volumeDraft,
-    previewGain: volumeDraft.value ?? sound?.gain ?? 0,
+    previewGain: volumeDraft.value ?? gainToDb(sound?.gain ?? 0),
     // Getter, not a captured boolean: the arm must reflect the LIVE selection
     // at read time (a mid-arm selection change disarms the button visually).
     get removeArmed(): boolean {

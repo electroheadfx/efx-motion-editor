@@ -5,8 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'PhysicsPaintAudioModalView.tsx'), 'utf8');
 
-describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
-  it('renders field 8 as a SliderStepper (step 5, clamped) committing through commitGain', () => {
+describe('PhysicsPaintAudioModalView Gain field (261008-ful / 261010-bkv)', () => {
+  it('renders field 8 as a dB SliderStepper (step 1, -20..+20) committing through commitGain', () => {
     // 261009-6ee renumbered the step comments: Position is 4, so Gain is 8.
     const start = source.indexOf('{/* 8.');
     expect(start).toBeGreaterThan(-1);
@@ -14,13 +14,13 @@ describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
     expect(end).toBeGreaterThan(start);
     const gainField = source.slice(start, end);
     expect(gainField).toContain('<SliderStepper');
-    expect(gainField).toContain('step={5}');
-    expect(gainField).toContain('min={-100}');
-    expect(gainField).toContain('max={100}');
+    expect(gainField).toContain('step={1}');
+    expect(gainField).toContain('min={GAIN_DB_MIN}');
+    expect(gainField).toContain('max={GAIN_DB_MAX}');
     expect(gainField).toContain('value={previewGain}');
     expect(gainField).toContain('onChange={(value) => commitGain(value)}');
-    // 261009-6ee grouped layout: the `0 = unity` hint sits under the label.
-    expect(gainField).toContain('{AUDIO_GAIN_HINT}');
+    // 261010-bkv: the dB unit is the label — no `0 = unity` hint.
+    expect(gainField).toContain('{AUDIO_GAIN_LABEL} (dB)');
   });
 
   it('removes the native range slider and the stale contract wording entirely', () => {
@@ -30,8 +30,10 @@ describe('PhysicsPaintAudioModalView Gain field (261008-ful)', () => {
   });
 
   it('keeps the updated contract comment and drops the redundant signed readout', () => {
-    expect(source).toContain('step 5, -100..100');
+    expect(source).toContain('step 1, dB -20..+20');
     expect(source).toContain('AUDIO_GAIN_LABEL');
+    expect(source).not.toContain('AUDIO_GAIN_HINT');
+    expect(source).not.toContain('0 = unity');
     // 261008-ful UAT: the stepper is the only value display — no extra
     // top-right readout, and no stale readout wording in the contract.
     expect(source).not.toContain('<output>');
@@ -183,9 +185,9 @@ describe('PhysicsPaintAudioModalView one-switch law (261009-6ee)', () => {
   it('the grouped-layout copy constants exist with the locked values', () => {
     expect(source).toContain("export const AUDIO_IN_LABEL = 'Trim in';");
     expect(source).toContain("export const AUDIO_OUT_LABEL = 'Trim out';");
-    expect(source).toContain("export const AUDIO_GAIN_HINT = '0 = unity';");
     expect(source).toContain("export const AUDIO_SECTION_TIMING = 'TIMING';");
     expect(source).toContain("export const AUDIO_SECTION_SOUND = 'SOUND';");
+    expect(source).not.toContain('AUDIO_GAIN_HINT');
   });
 });
 

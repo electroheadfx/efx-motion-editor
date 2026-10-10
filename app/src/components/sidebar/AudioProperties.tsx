@@ -14,7 +14,8 @@ import {computeWaveformPeaks} from '../../lib/audioWaveform';
 import {audioPeaksCache} from '../../lib/audioPeaksCache';
 import {projectStore} from '../../stores/projectStore';
 import {buildAudioReplacePatch, readAudioSourceBytes} from '../../lib/mainAppAudioSources';
-import {startCoalescing, stopCoalescing, pushAction} from '../../lib/history';
+import {pushAction} from '../../lib/history';
+import {GAIN_DB_MAX, GAIN_DB_MIN, dbToLinear, linearToDb} from '../../lib/audioGain';
 import {autoArrangeHoldFrames, type ArrangeStrategy} from '../../lib/beatMarkerEngine';
 import type {AudioTrack, FadeCurve} from '../../types/audio';
 
@@ -62,13 +63,27 @@ export function AudioProperties({track}: AudioPropertiesProps) {
     }
   };
 
+  // 261009-rko never-copy pin anchor — keep this exact marker after handleReplace.
   const volumePercent = Math.round(track.volume * 100);
+  void volumePercent;
 
   return (
     <div class="px-3 py-2 space-y-3">
-      {/* Section 1: TRACK NAME */}
+      {/* Section 1: TRACK — name + Gain (dB) + mute */}
       <div>
-        <RuleSectionHeader text="TRACK NAME" />
+        <div class="flex items-center" style={{gap: '8px'}}>
+          <div style={{flex: '1 1 0', minWidth: 0}}>
+            <RuleSectionHeader text="TRACK" />
+          </div>
+          <button
+            class="transition-colors p-0.5 cursor-pointer"
+            style={{color: track.muted ? 'var(--color-text-muted)' : 'var(--color-accent)'}}
+            title={track.muted ? 'Unmute' : 'Mute'}
+            onClick={() => audioStore.setMuted(track.id, !track.muted)}
+          >
+            {track.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+          </button>
+        </div>
         <div style={{marginTop: '6px'}}>
           <input
             type="text"
@@ -80,6 +95,18 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             onChange={(e) => {
               audioStore.updateTrack(track.id, {name: (e.target as HTMLInputElement).value});
             }}
+          />
+        </div>
+        <div style={{marginTop: '6px'}}>
+          <SliderStepper
+            label="Gain"
+            value={linearToDb(track.volume)}
+            step={1}
+            min={GAIN_DB_MIN}
+            max={GAIN_DB_MAX}
+            precision={1}
+            onChange={(val) => audioStore.setVolume(track.id, dbToLinear(val))}
+            ariaLabel="Gain dB"
           />
         </div>
       </div>
@@ -98,41 +125,6 @@ export function AudioProperties({track}: AudioPropertiesProps) {
           >
             {isReplacing ? <Loader2 size={12} class="animate-spin" /> : 'Replace...'}
           </button>
-        </div>
-      </div>
-
-      {/* Section 3: VOLUME */}
-      <div>
-        <div class="flex items-center" style={{gap: '8px'}}>
-          <div style={{flex: '1 1 0', minWidth: 0}}>
-            <RuleSectionHeader text="VOLUME" />
-          </div>
-          <button
-            class="transition-colors p-0.5 cursor-pointer"
-            style={{color: track.muted ? 'var(--color-text-muted)' : 'var(--color-accent)'}}
-            title={track.muted ? 'Unmute' : 'Mute'}
-            onClick={() => audioStore.setMuted(track.id, !track.muted)}
-          >
-            {track.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-          </button>
-        </div>
-        <div class="flex items-center gap-1.5" style={{marginTop: '6px'}}>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={volumePercent}
-            class="flex-1 h-1 accent-(--color-accent) cursor-pointer"
-            onPointerDown={() => startCoalescing()}
-            onPointerUp={() => stopCoalescing()}
-            onInput={(e) => {
-              const val = parseInt((e.target as HTMLInputElement).value, 10) / 100;
-              audioStore.setVolume(track.id, val);
-            }}
-          />
-          <span class="text-[11px] w-8 text-right shrink-0" style={{color: 'var(--sidebar-text-primary)'}}>
-            {volumePercent}%
-          </span>
         </div>
       </div>
 

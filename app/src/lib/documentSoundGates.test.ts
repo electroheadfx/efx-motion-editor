@@ -147,7 +147,7 @@ describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)'
       inFrame: 0,
       outFrame: 240,
       slipOffset: 0,
-      volume: 0.75, // gain -25 -> 0.75 linear (UAT round 4)
+      volume: 10 ** (-25 / 100), // 261010-bkv: gain -25 -> -5 dB -> 10^(-0.25)
       muted: false,
       fadeInFrames: 6,
       fadeOutFrames: 12,
@@ -155,7 +155,7 @@ describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)'
       fadeOutCurve: 'linear',
     });
     expect(track.volume).toBeGreaterThanOrEqual(0);
-    expect(track.volume).toBeLessThanOrEqual(2);
+    expect(track.volume).toBeLessThanOrEqual(10);
   });
 
   it('resolveClipPlayback maps the sound clip onto the locked resolveTrackPlayback truth table', async () => {
@@ -297,7 +297,7 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
       2.0,
       expect.objectContaining({
         id: 'sound-clip-1',
-        volume: 0.75,
+        volume: 10 ** (-25 / 100),
         fadeInFrames: 6,
         fadeOutFrames: 12,
         fadeInCurve: 'exponential',
@@ -329,7 +329,7 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
     expect(mockedAudioEngine.play).toHaveBeenCalledWith(
       'sound-clip-1',
       2.0,
-      expect.objectContaining({ id: 'sound-clip-1', volume: 0.75 }),
+      expect.objectContaining({ id: 'sound-clip-1', volume: 10 ** (-25 / 100) }),
       24,
       8.0,
     );
@@ -372,7 +372,7 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
     expect(mockedAudioEngine.play).toHaveBeenCalledWith(
       'sound-clip-1',
       2.0,
-      expect.objectContaining({ id: 'sound-clip-1', volume: 0.75 }),
+      expect.objectContaining({ id: 'sound-clip-1', volume: 10 ** (-25 / 100) }),
       24,
       8.0,
     );
@@ -393,7 +393,7 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
     expect(mockedAudioEngine.play).toHaveBeenCalledWith(
       'sound-clip-1',
       2.0,
-      expect.objectContaining({ id: 'sound-clip-1', volume: 0.75 }),
+      expect.objectContaining({ id: 'sound-clip-1', volume: 10 ** (-25 / 100) }),
       24, // fps comes from the launch identity seeded into the child store
       8.0,
     );
@@ -415,7 +415,7 @@ describe('efxPaintAudioMonitor clip dispatch — ungated document clip leg (52.5
     expect(mockedAudioEngine.play).toHaveBeenCalledWith(
       'sound-clip-1',
       2.0,
-      expect.objectContaining({ id: 'sound-clip-1', volume: 0.75 }),
+      expect.objectContaining({ id: 'sound-clip-1', volume: 10 ** (-25 / 100) }),
       24,
       // Snippet window: cursor + EFX_PAINT_AUDIO_SCRUB_SNIPPET_FRAMES (4).
       (100 - 96) / 24,
@@ -640,7 +640,7 @@ describe('documentSoundGates — exportClipEnabled + buildExportMixEntries (52.5
     expect(entries.map((entry) => entry.id)).toEqual(['clip-a', 'clip-c']);
     expect(entries[0]).toMatchObject({
       id: 'clip-a',
-      volume: 0.75, // gain -25 -> (gain + 100) / 100
+      volume: 10 ** (-25 / 100), // 261010-bkv: gain -25 -> -5 dB -> 10^(-0.25)
       fadeInFrames: 6,
       fadeOutFrames: 12,
       // The rebased GLOBAL start, never the document-local sound.startFrame.
