@@ -358,13 +358,16 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
         startFrame: documentSound.startFrame,
         inFrame: documentSound.inFrame,
         outFrame: documentSound.outFrame,
+        slipOffset: documentSound.slipOffset,
         gain: documentSound.gain,
         fadeInFrames: documentSound.fadeInFrames,
         fadeOutFrames: documentSound.fadeOutFrames,
         fadeInCurve: documentSound.fadeInCurve,
         fadeOutCurve: documentSound.fadeOutCurve,
         peaks: audioPeaksCache.get(documentSound.sourceId) ?? null,
-        sourceFrames: audioPeaksCache.getSourceFrames(documentSound.sourceId) ?? null,
+        sourceFrames: documentSound.sourceFrames
+          ?? audioPeaksCache.getSourceFrames(documentSound.sourceId)
+          ?? null,
       })),
       fadeIn: seq.fadeIn ? { duration: seq.fadeIn.duration } : undefined,
       fadeOut: seq.fadeOut ? { duration: seq.fadeOut.duration } : undefined,

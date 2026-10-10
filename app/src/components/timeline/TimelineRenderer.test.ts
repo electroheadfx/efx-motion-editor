@@ -156,6 +156,7 @@ describe('physic-paint document sound stain preview', () => {
       startFrame: 48,
       inFrame: 10,
       outFrame: 60,
+      slipOffset: 0,
       sourceFrames: 80,
       sequenceInFrame: 50,
       frameWidth: 4,
@@ -166,6 +167,28 @@ describe('physic-paint document sound stain preview', () => {
     // Source-space window: the untrimmed waveform starts one trim-in to the left.
     expect(geometry.sourceX).toBe(geometry.x - 10 * 4);
     expect(geometry.sourceWidth).toBe(80 * 4);
+  });
+
+  it('slipOffset slides the source under the bar — the waveform moves when Offset moves', async () => {
+    // 261010 UAT: the stain geometry ignored slipOffset, so dragging Offset
+    // played different audio over an identical drawn waveform.
+    const { getPhysicPaintSoundStainGeometry } = await import('./TimelineRenderer');
+
+    const base = {
+      startFrame: 48,
+      inFrame: 10,
+      outFrame: 60,
+      sourceFrames: 80,
+      sequenceInFrame: 50,
+      frameWidth: 4,
+      scrollX: 12,
+    };
+    const atZero = getPhysicPaintSoundStainGeometry({ ...base, slipOffset: 0 });
+    const slipped = getPhysicPaintSoundStainGeometry({ ...base, slipOffset: 24 });
+    // Bar position is untouched by slip; only the source slides under it.
+    expect(slipped.x).toBe(atZero.x);
+    expect(slipped.width).toBe(atZero.width);
+    expect(slipped.sourceX).toBe(atZero.sourceX - 24 * 4);
   });
 
   it('draws the Studio stain and hairline overlays for physic-paint rows only, under the key markers', () => {

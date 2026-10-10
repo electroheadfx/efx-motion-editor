@@ -101,6 +101,7 @@ export function getPhysicPaintSoundStainGeometry(clip: {
   startFrame: number;
   inFrame: number;
   outFrame: number;
+  slipOffset: number;
   sourceFrames: number;
   sequenceInFrame: number;
   frameWidth: number;
@@ -112,7 +113,10 @@ export function getPhysicPaintSoundStainGeometry(clip: {
   return {
     x,
     width: spanFrames * clip.frameWidth,
-    sourceX: x - clip.inFrame * clip.frameWidth,
+    // The bar's left edge is the audible source frame (inFrame + slipOffset);
+    // the untrimmed source sits behind it. Slip slides the waveform inside the
+    // bar — same law as audioClipGeometry.audioSourceSpaceGeometry.
+    sourceX: x - (clip.inFrame + clip.slipOffset) * clip.frameWidth,
     sourceWidth: sourceFrames * clip.frameWidth,
   };
 }
@@ -662,6 +666,7 @@ export class TimelineRenderer {
       startFrame: sound.startFrame,
       inFrame: sound.inFrame,
       outFrame: sound.outFrame,
+      slipOffset: sound.slipOffset ?? 0,
       sourceFrames: sound.sourceFrames ?? sound.outFrame,
       sequenceInFrame,
       frameWidth,

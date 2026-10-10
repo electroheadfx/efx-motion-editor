@@ -87,6 +87,8 @@ export interface TimelineSoundClip {
   readonly startFrame: number;
   readonly inFrame: number;
   readonly outFrame: number;
+  /** Engine-sign content slip inside the in/out window (261010-en9 R6). */
+  readonly slipOffset: number;
   readonly gain: number;
   readonly fadeInFrames: number;
   readonly fadeOutFrames: number;
