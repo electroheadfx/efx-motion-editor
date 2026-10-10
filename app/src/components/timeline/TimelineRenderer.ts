@@ -15,6 +15,7 @@ import {
   SOUND_OVERLAY_STROKE_PX,
 } from '../physic-paint/view/soundBandGeometry';
 import {dbToGain, linearToDb} from '../../lib/audioGain';
+import {audioSourceSpaceGeometry, selectAudioPeakTier} from '../../lib/audioClipGeometry';
 import {ThumbnailCache} from './ThumbnailCache';
 // --- Design constants (exported for TimelineInteraction) ---
 export const BASE_FRAME_WIDTH = 60;
@@ -1340,16 +1341,17 @@ export class TimelineRenderer {
     // Skip if bar not visible
     if (barX + barW < TRACK_HEADER_WIDTH || barX > canvasWidth) return;
 
-    // 6. Select resolution tier based on zoom
-    let peaks: Float32Array;
-    if (track.peaks.tier2.length > 0) {
-      const pixelsPerPeak = barW / (track.peaks.tier2.length / 2);
-      peaks = pixelsPerPeak < 1 ? track.peaks.tier1
-        : pixelsPerPeak > 4 ? track.peaks.tier3
-        : track.peaks.tier2;
-    } else {
-      peaks = track.peaks.tier1;
-    }
+    // 6. Source-space window (261010-g2n W1): peaks live in SOURCE pixels and
+    //    the bar rect is just a viewport onto them — trim cuts, slip slides.
+    const sourceGeom = audioSourceSpaceGeometry({
+      barX,
+      barW,
+      inFrame: track.inFrame,
+      outFrame: track.outFrame,
+      slipOffset: track.slipOffset,
+      totalAudioFrames: track.totalAudioFrames,
+    });
+    const peaks = selectAudioPeakTier(track.peaks, sourceGeom.sourceScale, track.totalAudioFrames);
 
     const centerY = barY + barH / 2;
 
@@ -1365,46 +1367,45 @@ export class TimelineRenderer {
       ctx.stroke();
     }
 
-    // 8. Draw waveform peaks — smooth filled path, sliced to in/out range
+    // 8. Draw waveform peaks in SOURCE space, windowed to the clip bar
     if (peaks.length > 0 && track.totalAudioFrames > 0) {
       ctx.fillStyle = track.muted ? colors.audioWaveformMuted : colors.audioWaveform;
       const fullPeakCount = peaks.length / 2;
       const halfH = barH / 2 - 1;
 
-      // Map inFrame..outFrame (with slipOffset) to peak indices
-      const srcStart = track.inFrame + track.slipOffset;
-      const srcEnd = track.outFrame + track.slipOffset;
-      const startIdx = Math.max(0, Math.floor((srcStart / track.totalAudioFrames) * fullPeakCount));
-      const endIdx = Math.min(fullPeakCount, Math.ceil((srcEnd / track.totalAudioFrames) * fullPeakCount));
+      // Peak pi sits at source position px = sourceX + (pi / fullPeakCount) * sourceW.
+      // Only touch indices that land in the visible bar, +/- 1 peak of padding.
+      const {sourceX, sourceW} = sourceGeom;
+      const peakSpacing = sourceW / Math.max(1, fullPeakCount);
+      const clipLeft = Math.max(barX, TRACK_HEADER_WIDTH);
+      const clipRight = Math.min(barX + barW, canvasWidth);
+      const startIdx = Math.max(0, Math.floor((clipLeft - sourceX) / peakSpacing) - 1);
+      const endIdx = Math.min(fullPeakCount, Math.ceil((clipRight - sourceX) / peakSpacing) + 1);
       const visiblePeakCount = endIdx - startIdx;
       if (visiblePeakCount <= 0) return;
 
       // Clip drawing to the visible bar area
       ctx.save();
       ctx.beginPath();
-      ctx.rect(Math.max(barX, TRACK_HEADER_WIDTH), barY, Math.min(barX + barW, canvasWidth) - Math.max(barX, TRACK_HEADER_WIDTH), barH);
+      ctx.rect(clipLeft, barY, clipRight - clipLeft, barH);
       ctx.clip();
 
       // Draw smooth filled waveform using a single path:
       // trace maxes left-to-right across the top, then mins right-to-left across the bottom
+      const sourcePeakX = (pi: number) => sourceX + (pi / fullPeakCount) * sourceW;
       ctx.beginPath();
-      const firstPx = barX;
-      ctx.moveTo(firstPx, centerY - peaks[(startIdx) * 2 + 1] * halfH);
+      ctx.moveTo(sourcePeakX(startIdx), centerY - peaks[startIdx * 2 + 1] * halfH);
 
       // Top edge (max values, left to right)
-      for (let vi = 0; vi < visiblePeakCount; vi++) {
-        const px = barX + (vi / visiblePeakCount) * barW;
-        const pi = startIdx + vi;
+      for (let pi = startIdx; pi < endIdx; pi++) {
         const max = peaks[pi * 2 + 1];
-        ctx.lineTo(px, centerY - max * halfH);
+        ctx.lineTo(sourcePeakX(pi), centerY - max * halfH);
       }
 
       // Bottom edge (min values, right to left)
-      for (let vi = visiblePeakCount - 1; vi >= 0; vi--) {
-        const px = barX + (vi / visiblePeakCount) * barW;
-        const pi = startIdx + vi;
+      for (let pi = endIdx - 1; pi >= startIdx; pi--) {
         const min = peaks[pi * 2];
-        ctx.lineTo(px, centerY - min * halfH);
+        ctx.lineTo(sourcePeakX(pi), centerY - min * halfH);
       }
 
       ctx.closePath();

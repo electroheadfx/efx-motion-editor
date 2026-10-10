@@ -48,3 +48,33 @@ describe('drawAudioTrack Studio-style overlays (261010-en9 R3)', () => {
     expect(draw).toContain('audioWaveformMuted');
   });
 });
+
+describe('drawAudioTrack source-space peak windowing (261010-g2n W1)', () => {
+  it('windows peaks through audioSourceSpaceGeometry + selectAudioPeakTier', () => {
+    const draw = drawAudioTrackSource();
+    expect(draw).toContain('audioSourceSpaceGeometry(');
+    expect(draw).toContain('selectAudioPeakTier(');
+    expect(draw).toContain('sourceX');
+    expect(draw).toContain('sourceW');
+    expect(draw).toContain('sourceScale');
+    // Peak px is source-space: sourceX + (pi / fullPeakCount) * sourceW.
+    expect(draw).toMatch(/sourceX \+ \(pi \/ fullPeakCount\) \* sourceW/);
+  });
+
+  it('drops the visiblePeakCount rescale-to-bar mapping', () => {
+    const draw = drawAudioTrackSource();
+    expect(draw).not.toContain('vi / visiblePeakCount) * barW');
+    expect(draw).not.toContain('barW / (track.peaks.tier2.length / 2)');
+  });
+
+  it('keeps the gain/fade overlay block clip-space and untouched', () => {
+    const draw = drawAudioTrackSource();
+    expect(draw).toContain('soundGainLineY(');
+    expect(draw).toContain('soundGainLineSpan(');
+    expect(draw).toContain('soundFadeInPathD(');
+    expect(draw).toContain('soundFadeOutPathD(');
+    expect(draw).toContain('new Path2D(');
+    // Overlay geometry still uses the clip bar width, not sourceW.
+    expect(draw).toMatch(/soundGainLineSpan\(\s*track\.fadeInFrames,\s*track\.fadeOutFrames,\s*track\.inFrame,\s*track\.outFrame,\s*barW,/);
+  });
+});
