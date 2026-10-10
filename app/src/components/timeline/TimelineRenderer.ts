@@ -14,6 +14,7 @@ import {
   SOUND_OVERLAY_STROKE,
   SOUND_OVERLAY_STROKE_PX,
 } from '../physic-paint/view/soundBandGeometry';
+import {dbToGain, linearToDb} from '../../lib/audioGain';
 import {ThumbnailCache} from './ThumbnailCache';
 // --- Design constants (exported for TimelineInteraction) ---
 export const BASE_FRAME_WIDTH = 60;
@@ -1411,30 +1412,40 @@ export class TimelineRenderer {
       ctx.restore();
     }
 
-    // 9. Draw fade overlays
-    if (track.fadeInFrames > 0) {
-      const fadeInW = track.fadeInFrames * frameWidth;
-      const fadeX = barX;
-      const fadeEndX = barX + fadeInW;
-      if (fadeEndX > TRACK_HEADER_WIDTH && fadeX < canvasWidth) {
-        const grad = ctx.createLinearGradient(fadeX, 0, fadeEndX, 0);
-        grad.addColorStop(0, colors.audioTrackBg);
-        grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad;
-        ctx.fillRect(Math.max(fadeX, TRACK_HEADER_WIDTH), barY, Math.min(fadeInW, canvasWidth - fadeX), barH);
+    // 9. Gain line + fade curves in CLIP space (Studio overlay language).
+    // Editor linear volume maps to the Studio integer gain at the call site;
+    // soundGainLineY stays on its -100..+100 contract.
+    const gain = dbToGain(linearToDb(track.volume));
+    const gainY = soundGainLineY(gain);
+    const gainSpan = soundGainLineSpan(
+      track.fadeInFrames, track.fadeOutFrames, track.inFrame, track.outFrame, barW,
+    );
+    const fadeInD = soundFadeInPathD(
+      track.fadeInFrames, track.inFrame, track.outFrame, barW, gain, track.fadeInCurve,
+    );
+    const fadeOutD = soundFadeOutPathD(
+      track.fadeOutFrames, track.inFrame, track.outFrame, barW, gain, track.fadeOutCurve,
+    );
+    if (gainSpan || fadeInD || fadeOutD) {
+      // Fit Studio 36px band geometry to the bar with a Y-only scale so hairlines stay 1px.
+      const scaleY = barH / SOUND_BAND_HEIGHT_PX;
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(Math.max(barX, TRACK_HEADER_WIDTH), barY, Math.min(barX + barW, canvasWidth) - Math.max(barX, TRACK_HEADER_WIDTH), barH, 3);
+      ctx.clip();
+      ctx.translate(barX, barY);
+      ctx.scale(1, scaleY);
+      ctx.lineWidth = SOUND_OVERLAY_STROKE_PX / scaleY;
+      ctx.strokeStyle = SOUND_OVERLAY_STROKE;
+      if (gainSpan) {
+        ctx.beginPath();
+        ctx.moveTo(gainSpan.x1, gainY);
+        ctx.lineTo(gainSpan.x2, gainY);
+        ctx.stroke();
       }
-    }
-    if (track.fadeOutFrames > 0) {
-      const fadeOutW = track.fadeOutFrames * frameWidth;
-      const fadeStartX = barX + barW - fadeOutW;
-      const fadeEndX = barX + barW;
-      if (fadeEndX > TRACK_HEADER_WIDTH && fadeStartX < canvasWidth) {
-        const grad = ctx.createLinearGradient(fadeStartX, 0, fadeEndX, 0);
-        grad.addColorStop(0, 'transparent');
-        grad.addColorStop(1, colors.audioTrackBg);
-        ctx.fillStyle = grad;
-        ctx.fillRect(Math.max(fadeStartX, TRACK_HEADER_WIDTH), barY, Math.min(fadeOutW, canvasWidth - fadeStartX), barH);
-      }
+      if (fadeInD) ctx.stroke(new Path2D(fadeInD));
+      if (fadeOutD) ctx.stroke(new Path2D(fadeOutD));
+      ctx.restore();
     }
 
     // 10. Draw edge lines at barX and barX+barW

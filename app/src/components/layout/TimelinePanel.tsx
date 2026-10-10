@@ -110,9 +110,9 @@ export function TimelinePanel() {
           <SkipForward size={14} />
         </button>
 
-        {/* Timecode display */}
+        {/* Timecode display — [playhead frame] / [HH:MM:SS.FF of the current position] */}
         <span class="text-[11px] text-(--color-text-secondary)">
-          {formatTime(timelineStore.displayTime.value)} / {formatTime(timelineStore.totalDuration.value)}
+          {timelineStore.displayFrame.value} / {formatTime(timelineStore.displayTime.value)}
         </span>
 
         <div class="w-px h-5 bg-(--color-border-subtle)" />
