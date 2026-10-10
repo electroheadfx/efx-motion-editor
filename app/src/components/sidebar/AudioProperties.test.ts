@@ -53,6 +53,26 @@ describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () =
     expect(source).toContain('min={track.inFrame + 1}');
   });
 
+  it('wraps the two fades and In/Out each in a 2-column pair (261010-bkv)', () => {
+    expect(source).toContain('data-testid="audio-fades-pair"');
+    expect(source).toContain('data-testid="audio-inout-pair"');
+    expect(source).toContain("gridTemplateColumns: 'repeat(2, minmax(0, 1fr))'");
+    // Each fade keeps its own below-slot curve select under its own bar.
+    const fadesPair = source.slice(
+      source.indexOf('data-testid="audio-fades-pair"'),
+      source.indexOf('data-testid="audio-inout-pair"'),
+    );
+    expect(fadesPair).toContain('label="Fade in (frames)"');
+    expect(fadesPair).toContain('label="Fade out (frames)"');
+    expect(fadesPair.match(/below=\{/g)).toHaveLength(2);
+    // In/Out sit side by side under full-width Position.
+    const inoutPair = source.slice(source.indexOf('data-testid="audio-inout-pair"'));
+    expect(inoutPair).toContain('label="In (frames)"');
+    expect(inoutPair).toContain('label="Out (frames)"');
+    expect(inoutPair).toContain('audioStore.setInOut(track.id, val, track.outFrame)');
+    expect(inoutPair).toContain('audioStore.setInOut(track.id, track.inFrame, val)');
+  });
+
   it('Position commit is unbounded (negatives legal) with a track-only slider range below 0', () => {
     const positionField = source.slice(
       source.indexOf('label="Position (frames)"'),

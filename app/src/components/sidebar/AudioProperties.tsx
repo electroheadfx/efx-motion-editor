@@ -128,10 +128,18 @@ export function AudioProperties({track}: AudioPropertiesProps) {
         </div>
       </div>
 
-      {/* Section 4: FADES — one full-width SliderStepper per fade; curve select under each bar */}
+      {/* Section 4: FADES — two side-by-side SliderStepper columns; each curve select under its own bar */}
       <div>
         <RuleSectionHeader text="FADES" />
-        <div class="flex flex-col" style={{gap: '10px', marginTop: '6px'}}>
+        <div
+          data-testid="audio-fades-pair"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: '8px 12px',
+            marginTop: '6px',
+          }}
+        >
           <SliderStepper
             label="Fade in (frames)"
             value={track.fadeInFrames}
@@ -184,7 +192,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
       {/* Section 5: POSITION — offsetFrame can be negative and is commit-unbounded */}
       <div>
         <RuleSectionHeader text="POSITION" />
-        <div class="flex flex-col" style={{gap: '10px', marginTop: '6px'}}>
+        <div style={{marginTop: '6px'}}>
           <SliderStepper
             label="Position (frames)"
             value={track.offsetFrame}
@@ -194,6 +202,16 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             onChange={(val) => audioStore.setOffset(track.id, val)}
             ariaLabel="Position frames"
           />
+        </div>
+        <div
+          data-testid="audio-inout-pair"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+            gap: '8px 12px',
+            marginTop: '10px',
+          }}
+        >
           <SliderStepper
             label="In (frames)"
             value={track.inFrame}
