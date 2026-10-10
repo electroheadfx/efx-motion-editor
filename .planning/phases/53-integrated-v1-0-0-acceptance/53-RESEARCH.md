@@ -318,24 +318,24 @@ Not applicable — this is a release/verification phase, not a rename/refactor/m
 | A4 | The vitest circular-import failure is routed as a pre-53 quick (or explicit user-accepted scoped fix), not silently absorbed into the gates plan | Pitfall 1 | ACC-01 cannot close; release window starts red |
 | A5 | No external packages are needed; Package Legitimacy Audit is empty | Standard Stack | none — verified by design of the phase |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Which on-disk package is the D-03 through-line?**
+1. **Which on-disk package is the D-03 through-line?** — **RESOLVED:** handled by 53-03-PLAN.md's UAT pass sub-step 0 (material gate): the executor confirms the D-03 through-line `.mce` path with the user before any row runs; if the 31-key §7-pair package cannot be produced, the user explicitly approves the available material with the deviation recorded in the divergence table. 53-04-PLAN.md Task 3 reuses that confirmed file for the Finder double-click row.
    - What we know: `v1.0.0.mce` referenced throughout `.planning` no longer exists; `v1.0.0-2.mce` exists with capacity 31 but 3 real keys / 3 WebP frames (verified by reading the layer JSON this session).
    - What's unclear: whether the user holds the 31-key package elsewhere or the pass uses the current package + fresh projects.
    - Recommendation: ask during plan authoring; adjust worksheet row wording to the confirmed path.
 
-2. **Routing of the failing `PhysicsPaintStudioView.test.ts` suite?**
+2. **Routing of the failing `PhysicsPaintStudioView.test.ts` suite?** — **RESOLVED:** routed as a pre-53 quick (CONTEXT.md deferred queue), enforced by the 53-01-PLAN.md Task 2 precondition: the executor asserts the full vitest suite is green at HEAD and halts with CHECKPOINT REACHED if `PhysicsPaintStudioView.test.ts` fails — cleared by the pre-53 quick or a user-approved scoped fix under D-21 before any gate runs.
    - What we know: pre-existing, tracked (WINDOWS.md #90), documented fix direction (late-bind the wiring), repeatedly declared out-of-scope by quicks.
    - What's unclear: pre-53 quick vs user-accepted scoped test-only fix in the gates plan.
    - Recommendation: pre-53 quick (cleanest vs D-21 release-only rule); surface both options to the user.
 
-3. **Does Phase 53 close SND-07?**
+3. **Does Phase 53 close SND-07?** — **RESOLVED:** yes — folded into the pass as worksheet row **R18** (moved document-sound file surfaces as missing in the modal, no silent playback) in 53-02-PLAN.md; 53-03-PLAN.md's matrix lists SND-07 as a carried first-class row that may not be dropped.
    - What we know: SND-07 checkbox open pending a formal moved-file→missing UAT row (REQUIREMENTS.md:103 `[VERIFIED: .planning/REQUIREMENTS.md:103]`).
    - What's unclear: whether the acceptance pass owns that row or a 52.5 follow-up does.
    - Recommendation: fold one explicit row into the save/reopen section of the worksheet (it is a package-native surface like D-16's).
 
-4. **Scope of "hash-stale" pending native UAT from recent quicks beyond the carry list** — many quicks since 260924 carry "automated-ready, native UAT pending" markers; most were later approved per memory, but a full sweep is not done.
+4. **Scope of "hash-stale" pending native UAT from recent quicks beyond the carry list** — many quicks since 260924 carry "automated-ready, native UAT pending" markers; most were later approved per memory, but a full sweep is not done. — **RESOLVED:** 53-02-PLAN.md Task 2 runs the audit-uat sweep (`node .claude/gsd-core/bin/gsd-tools.cjs audit-uat`) during worksheet authoring and records the outcome in the worksheet footer — either "no additional unresolved rows" or appended numbered cards for each found row; only unresolved rows enter the pass, and none may be silently dropped.
    - Recommendation: run `gsd-audit-uat`-style sweep during worksheet authoring; only unresolved rows enter the pass.
 
 ## Environment Availability
