@@ -1308,6 +1308,8 @@ function _sameSound(a: DocumentSoundClip, b: DocumentSoundClip): boolean {
     && a.startFrame === b.startFrame
     && a.inFrame === b.inFrame
     && a.outFrame === b.outFrame
+    && a.sourceFrames === b.sourceFrames
+    && a.slipOffset === b.slipOffset
     && a.gain === b.gain
     && a.fadeInFrames === b.fadeInFrames
     && a.fadeOutFrames === b.fadeOutFrames

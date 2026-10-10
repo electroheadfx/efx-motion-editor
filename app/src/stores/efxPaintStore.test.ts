@@ -1438,6 +1438,30 @@ describe('efxPaintStore audios list setters (261008-ig1 Task 1 RED)', () => {
     expect(getDocument('layer-aud')).toBe(docBefore);
   });
 
+  it('patchDocumentSound writes slipOffset and sourceFrames — a slip-only change is NOT a same-value no-op', async () => {
+    // 261010 UAT: _sameSound omitted slipOffset/sourceFrames, so a slip-only
+    // patch was swallowed by the same-value early return (ok:true, no write,
+    // no notify) and the Studio Offset slider froze at 0.
+    const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
+    registerDocument(makeTrackDocument('layer-aud'));
+    store.setDocumentAudios!('layer-aud', [makeSoundClip('clip-1')]);
+
+    const dirty = vi.fn();
+    _setEfxPaintMarkDirtyCallback(dirty);
+
+    expect(store.patchDocumentSound!('layer-aud', 'clip-1', { slipOffset: 120 })).toEqual({ ok: true });
+    expect(getDocument('layer-aud')!.audios[0].slipOffset).toBe(120);
+    expect(dirty).toHaveBeenCalledTimes(1);
+
+    expect(store.patchDocumentSound!('layer-aud', 'clip-1', { sourceFrames: 1944 })).toEqual({ ok: true });
+    expect(getDocument('layer-aud')!.audios[0].sourceFrames).toBe(1944);
+    expect(dirty).toHaveBeenCalledTimes(2);
+
+    // Same-value re-commit of an already-written slip IS a true no-op.
+    expect(store.patchDocumentSound!('layer-aud', 'clip-1', { slipOffset: 120 })).toEqual({ ok: true });
+    expect(dirty).toHaveBeenCalledTimes(2);
+  });
+
   it('removeDocumentSound removes only the named clip; unknown id fails closed', async () => {
     const store = (await import('./efxPaintStore')) as EfxPaintStoreWithAudios;
     expect(typeof store.removeDocumentSound).toBe('function');
