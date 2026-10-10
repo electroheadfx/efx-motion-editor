@@ -15,7 +15,8 @@ import {audioPeaksCache} from '../../lib/audioPeaksCache';
 import {projectStore} from '../../stores/projectStore';
 import {buildAudioReplacePatch, readAudioSourceBytes} from '../../lib/mainAppAudioSources';
 import {pushAction} from '../../lib/history';
-import {GAIN_DB_MAX, GAIN_DB_MIN, dbToLinear, linearToDb} from '../../lib/audioGain';
+import {GAIN_DB_MAX, GAIN_DB_MIN, dbToLinear, formatAudioMaxTime, framesToSeconds, linearToDb, secondsToFrames} from '../../lib/audioGain';
+import {totalFrames} from '../../lib/frameMap';
 import {autoArrangeHoldFrames, type ArrangeStrategy} from '../../lib/beatMarkerEngine';
 import type {AudioTrack, FadeCurve} from '../../types/audio';
 
@@ -67,6 +68,8 @@ export function AudioProperties({track}: AudioPropertiesProps) {
   const volumePercent = Math.round(track.volume * 100);
   void volumePercent;
 
+  const fps = projectStore.fps.peek();
+
   return (
     <div class="px-3 py-2 space-y-3">
       {/* Section 1: TRACK — name + Gain (dB) + mute */}
@@ -108,6 +111,13 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             onChange={(val) => audioStore.setVolume(track.id, dbToLinear(val))}
             ariaLabel="Gain dB"
           />
+        </div>
+        <div
+          data-testid="audio-max-time"
+          class="text-[10px] text-(--color-text-secondary)"
+          style={{marginTop: '6px'}}
+        >
+          {formatAudioMaxTime(track.duration, track.totalFramesInFile)}
         </div>
       </div>
 
@@ -198,7 +208,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             value={track.offsetFrame}
             step={1}
             sliderMin={Math.min(track.offsetFrame, -1)}
-            sliderMax={Math.max(track.offsetFrame, track.outFrame - track.inFrame, 1)}
+            sliderMax={Math.max(totalFrames.value, track.offsetFrame, 1)}
             onChange={(val) => audioStore.setOffset(track.id, val)}
             ariaLabel="Position frames"
           />
@@ -213,22 +223,24 @@ export function AudioProperties({track}: AudioPropertiesProps) {
           }}
         >
           <SliderStepper
-            label="In (frames)"
-            value={track.inFrame}
-            step={1}
+            label="In (s)"
+            value={framesToSeconds(track.inFrame, fps)}
+            step={0.1}
             min={0}
-            sliderMax={Math.max(track.inFrame, track.outFrame, 1)}
-            onChange={(val) => audioStore.setInOut(track.id, val, track.outFrame)}
-            ariaLabel="In frames"
+            sliderMax={Math.max(track.duration, framesToSeconds(track.inFrame, fps), 0.1)}
+            precision={1}
+            onChange={(val) => audioStore.setInOut(track.id, secondsToFrames(val, fps), track.outFrame)}
+            ariaLabel="In seconds"
           />
           <SliderStepper
-            label="Out (frames)"
-            value={track.outFrame}
-            step={1}
-            min={track.inFrame + 1}
-            sliderMax={Math.max(track.outFrame, track.inFrame + 1)}
-            onChange={(val) => audioStore.setInOut(track.id, track.inFrame, val)}
-            ariaLabel="Out frames"
+            label="Out (s)"
+            value={framesToSeconds(track.outFrame, fps)}
+            step={0.1}
+            min={framesToSeconds(track.inFrame + 1, fps)}
+            sliderMax={Math.max(track.duration, framesToSeconds(track.outFrame, fps), 0.1)}
+            precision={1}
+            onChange={(val) => audioStore.setInOut(track.id, track.inFrame, secondsToFrames(val, fps))}
+            ariaLabel="Out seconds"
           />
         </div>
       </div>

@@ -85,6 +85,8 @@ export interface PhysicsPaintAudioController {
   sound: DocumentSoundClip | null;
   /** Filename fact for the file row (basename of sourcePath). */
   filename: string | null;
+  /** Project fps for seconds↔frames In/Out display (261010-bkv). */
+  getFps: () => number;
   /** True when the SELECTED clip's file at sourcePath does not resolve on disk. */
   missing: boolean;
   /** Per-row missing probe — the list calls this per clip (261009-ofk). */
@@ -464,6 +466,7 @@ export function usePhysicsPaintAudioController({
     selectedSoundId,
     sound,
     filename,
+    getFps,
     missing,
     isSoundMissing,
     busy: busy.value,

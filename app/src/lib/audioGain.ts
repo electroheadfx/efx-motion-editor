@@ -47,3 +47,8 @@ export function framesToSeconds(frames: number, fps: number): number {
 export function secondsToFrames(seconds: number, fps: number): number {
   return Math.round(seconds * Math.max(1, fps));
 }
+
+/** Audio-max readout: `{seconds}s / {frames} frames` (seconds to one decimal). */
+export function formatAudioMaxTime(seconds: number, frames: number): string {
+  return `${seconds.toFixed(1)}s / ${frames} frames`;
+}

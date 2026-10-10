@@ -50,7 +50,7 @@ describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () =
     expect(source.match(/below=\{/g)).toHaveLength(2);
     expect(source).toContain('fadeInCurve');
     expect(source).toContain('fadeOutCurve');
-    expect(source).toContain('min={track.inFrame + 1}');
+    expect(source).toContain('min={framesToSeconds(track.inFrame + 1, fps)}');
   });
 
   it('wraps the two fades and In/Out each in a 2-column pair (261010-bkv)', () => {
@@ -163,7 +163,7 @@ describe('AudioProperties time unit and range refinements (261010-bkv)', () => {
       source.indexOf('label="Position (frames)"'),
       source.indexOf('label="In'),
     );
-    expect(positionField).toContain('sliderMax={Math.max(totalFrames, track.offsetFrame, 1)}');
+    expect(positionField).toContain('sliderMax={Math.max(totalFrames.value, track.offsetFrame, 1)}');
     expect(positionField).toContain('audioStore.setOffset(track.id, val)');
   });
 
@@ -176,7 +176,7 @@ describe('AudioProperties time unit and range refinements (261010-bkv)', () => {
     expect(source).toContain('audioStore.setInOut(track.id, secondsToFrames(val, fps), track.outFrame)');
     expect(source).toContain('audioStore.setInOut(track.id, track.inFrame, secondsToFrames(val, fps))');
     // 1-frame Out span preserved in frame space.
-    expect(source).toContain('min={track.inFrame + 1}');
+    expect(source).toContain('min={framesToSeconds(track.inFrame + 1, fps)}');
   });
 
   it('TRACK/file meta shows the audio max as seconds plus frames', () => {

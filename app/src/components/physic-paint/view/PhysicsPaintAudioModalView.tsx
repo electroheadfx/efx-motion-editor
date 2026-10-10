@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'preact/hooks';
 import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
-import { GAIN_DB_MAX, GAIN_DB_MIN } from '../../../lib/audioGain';
+import { GAIN_DB_MAX, GAIN_DB_MIN, formatAudioMaxTime, framesToSeconds, secondsToFrames } from '../../../lib/audioGain';
+import { audioPeaksCache } from '../../../lib/audioPeaksCache';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
 
@@ -25,7 +26,7 @@ import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
  *   `Sound file is missing from the project. Replace it to restore the clip.` ·
  *   `Position` (frames) · `Gain` (dB -20..+20) · `Fade in` ·
  *   `Fade out` (frames; curves `linear`, `exponential`, `logarithmic`) ·
- *   `Trim in` · `Trim out` (frames) · `TIMING` · `SOUND` · `On` / `Off`
+ *   `Trim in` · `Trim out` (seconds) · `TIMING` · `SOUND` · `On` / `Off`
  *
  * Field order top-to-bottom is a verbatim contract (SPECS/modal-audio-new,
  * locked by 261009-6ee): the modal edits ONLY the selected clip — the clip
@@ -42,9 +43,10 @@ import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
  *   3. `TIMING` section header (uppercase micro-label + 1px rule)
  *   4. `Position` (frames) — SliderStepper step 1, integer >= 0, no upper
  *      clamp (commitStartFrame)
- *   5. `Trim in` (frames) — SliderStepper (commitInFrame, 1-frame minimum span);
- *      shares one row as TWO COLUMNS with 6, under a soft rule
- *   6. `Trim out` (frames) — SliderStepper (commitOutFrame, 1-frame minimum span)
+ *   5. `Trim in` (s) — SliderStepper (commitInFrame via secondsToFrames,
+ *      1-frame minimum span); shares one row as TWO COLUMNS with 6
+ *   6. `Trim out` (s) — SliderStepper (commitOutFrame via secondsToFrames,
+ *      1-frame minimum span)
  *   7. `SOUND` section header
  *   8. `Gain` — SliderStepper step 1, dB -20..+20 (commitGain; the dB unit is
  *      the label)
@@ -347,6 +349,20 @@ export function PhysicsPaintAudioModalView({
                   <Trash2 size={13} aria-hidden="true" />
                 </button>
               </div>
+              {(() => {
+                const fps = controller.getFps();
+                const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+                const sourceSeconds = sourceFrames / Math.max(1, fps);
+                return (
+                  <div
+                    data-testid="audio-max-time"
+                    class="physics-paint-audio-max-time"
+                    style={{fontSize: '10px', opacity: 0.75, marginTop: '4px'}}
+                  >
+                    {formatAudioMaxTime(sourceSeconds, sourceFrames)}
+                  </div>
+                );
+              })()}
               {errorText ? (
                 <p class="physics-paint-audio-error" role="alert" data-testid="audio-modal-error">
                   {errorText}
@@ -371,32 +387,41 @@ export function PhysicsPaintAudioModalView({
                 />
               </div>
 
-              {/* Trim in/out share one row as two columns (UAT). */}
-              <div class="physics-paint-audio-pair">
-                {/* 5. Trim in (frames) — source trim start; 1-frame minimum span:
-                    an entry that would invert the span never commits (max = out - 1). */}
-                <SliderStepper
-                  label={`${AUDIO_IN_LABEL} (frames)`}
-                  value={sound.inFrame}
-                  step={1}
-                  min={0}
-                  max={sound.outFrame - 1}
-                  onChange={(value) => commitInFrame(value)}
-                  ariaLabel="In frames"
-                />
+              {/* Trim in/out share one row as two columns (UAT) — audio seconds. */}
+              {(() => {
+                const fps = controller.getFps();
+                const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+                const maxSeconds = sourceFrames / Math.max(1, fps);
+                return (
+                  <div class="physics-paint-audio-pair">
+                    {/* 5. Trim in (s) — source trim start; 1-frame minimum span
+                        preserved in frame space on commit. */}
+                    <SliderStepper
+                      label={`${AUDIO_IN_LABEL} (s)`}
+                      value={framesToSeconds(sound.inFrame, fps)}
+                      step={0.1}
+                      min={0}
+                      max={framesToSeconds(sound.outFrame - 1, fps)}
+                      precision={1}
+                      onChange={(value) => commitInFrame(secondsToFrames(value, fps))}
+                      ariaLabel="In seconds"
+                    />
 
-                {/* 6. Trim out (frames) — source trim end; 1-frame minimum span
-                    (min = in + 1). No upper clamp — track range is display-only. */}
-                <SliderStepper
-                  label={`${AUDIO_OUT_LABEL} (frames)`}
-                  value={sound.outFrame}
-                  step={1}
-                  min={sound.inFrame + 1}
-                  sliderMax={Math.max(sound.outFrame, sound.inFrame + 1)}
-                  onChange={(value) => commitOutFrame(value)}
-                  ariaLabel="Out frames"
-                />
-              </div>
+                    {/* 6. Trim out (s) — source trim end; 1-frame minimum span
+                        (min = in + 1 frames). sliderMax is the audio max time. */}
+                    <SliderStepper
+                      label={`${AUDIO_OUT_LABEL} (s)`}
+                      value={framesToSeconds(sound.outFrame, fps)}
+                      step={0.1}
+                      min={framesToSeconds(sound.inFrame + 1, fps)}
+                      sliderMax={Math.max(maxSeconds, framesToSeconds(sound.outFrame, fps), 0.1)}
+                      precision={1}
+                      onChange={(value) => commitOutFrame(secondsToFrames(value, fps))}
+                      ariaLabel="Out seconds"
+                    />
+                  </div>
+                );
+              })()}
 
               {/* 7. SOUND section header — centered title between two rules */}
               <RuleSectionHeader text={AUDIO_SECTION_SOUND} />
