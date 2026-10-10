@@ -6,10 +6,10 @@ current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
 stopped_at: Closed 261010-nzu SliderStepper theme tokens — native UAT approved
-last_updated: "2026-10-10T15:31:06.918Z"
+last_updated: "2026-10-10T16:55:49.683Z"
 last_activity: 2026-10-10
 last_activity_desc: Native UAT approved for quick 261010-nzu (SliderStepper theme tokens — sidebar theme vars with Studio-safe fallbacks, Studio look unchanged) — CLOSED
-state_head: e0fe6f21c617c542cffa3357297f5a46c65633f6
+state_head: 8411dac53aed484b9013dcf58033efbd2b4a2c57
 progress:
   total_phases: 14
   completed_phases: 19
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 Phase: 53 — Integrated v1.0.0 Acceptance
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-10 - Completed quick task 261010-mwy: Physics paint layer spans the visible timeline view (no modal)
+Last activity: 2026-10-10 - Completed quick task 261010-pze: Backfill the PKG and SND requirements blocks for the 52.x inserted phases
 
 Progress: [████████████████████] 75/75 plans ([██████████] 100%)
 
@@ -513,6 +513,7 @@ None yet.
 | 261010-ht0 | Audio fade curves + Studio Offset + Fit to view (UAT round 3) — fade curve law in fadeCurves.ts (fade-in = mirror of fade-out, no more In=log/Out=exp workaround); exponential default on both fades editor+Studio (a brief logarithmic default was user-reverted); audible fades sampled via setValueCurveAtTime so sound matches overlay (log no longer linearRamp); DocumentSoundClip.sourceFrames clean-break add fixes Studio Offset stuck at 0 (outFrame fallback collapse removed); Fit to view button in Studio modal (crop In/Out to on-screen slice, startFrame follows, slip resets, one undo). Status: **native UAT approved 2026-10-10** — rows 1-5 approved (mirrored fades, audible=overlay, exponential default, Studio Offset moves, Studio Fit to view); UAT-loop follow-ups also approved (waveform visual gain x1-x4 + taller stain 5a821a54; editor OUT-cut window 10172f84). Quick 261010-ht0 **CLOSED** | 2026-10-10 **Native UAT PASSED 2026-10-10 — CLOSED** | 3d7b3dc0, c76c5369, 5a821a54, 10172f84 | [261010-ht0-audio-fade-curves-studio-offset-fit-to-v](./quick/261010-ht0-audio-fade-curves-studio-offset-fit-to-v/) |
 | 261010-mwy | Physics paint layer spans the visible timeline view — view-derived inFrame/outFrame at current zoom/scroll (LOCKED span law in timelineVisibleSpan.ts); isolation still wins; Paint/FX/content unchanged; 13/13 tests green. Native UAT passed 2026-10-10 | 2026-10-10 | b5d6918c | [261010-mwy-physics-paint-layer-spans-the-visible-ti](./quick/261010-mwy-physics-paint-layer-spans-the-visible-ti/) |
 | 261010-nzu | SliderStepper color slots follow the sidebar theme vars with Studio-safe fallbacks (colors only; Studio look locked by 261009-6ee) | 2026-10-10 | e0fe6f21 | [261010-nzu-sliderstepper-theme-tokens-follow-the-mo](./quick/261010-nzu-sliderstepper-theme-tokens-follow-the-mo/) |
+| 261010-pze | Backfill PKG (52.2 .mce package format) and SND (52.5 document sound) requirements blocks into REQUIREMENTS.md — docs-only pre-Phase-53 traceability backfill | 2026-10-10 | 8411dac5 | [261010-pze-backfill-the-pkg-and-snd-requirements-bl](./quick/261010-pze-backfill-the-pkg-and-snd-requirements-bl/) |
 
 ### Roadmap Evolution
 
