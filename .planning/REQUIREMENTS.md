@@ -202,13 +202,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACC-01 | Phase 53 | Pending |
 | ACC-02 | Phase 53 | Pending |
 | ACC-03 | Phase 53 | Pending |
+| PKG-01 | Phase 52.2 | Complete |
+| PKG-02 | Phase 52.2 | Complete |
+| PKG-03 | Phase 52.2 | Complete |
+| PKG-04 | Phase 52.2 | Complete |
+| PKG-05 | Phase 52.2 | Complete |
+| PKG-06 | Phase 52.2 | Complete |
+| SND-01 | Phase 52.5 | Complete |
+| SND-02 | Phase 52.5 | Complete |
+| SND-03 | Phase 52.5 | Complete |
+| SND-04 | Phase 52.5 | Complete |
+| SND-05 | Phase 52.5 | Complete |
+| SND-06 | Phase 52.5 | Complete |
+| SND-07 | Phase 52.5 | Pending |
 
 **Coverage:**
 
-- v1.0.0 requirements: 55 total
-- Mapped to phases: 55
+- v1.0.0 requirements: 68 total
+- Mapped to phases: 68
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-23*
-*Last updated: 2026-09-11 (CMP-01..06 + AUD-01..04 verification records backfilled — see 48-VERIFICATION.md, 52.1-VERIFICATION.md, 51-VERIFICATION.md)*
+*Last updated: 2026-10-10 (PKG-01..06 + SND-01..07 backfilled for GSD 52.2 / 52.5)*
