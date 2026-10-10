@@ -105,23 +105,55 @@ describe('AudioProperties TRACK section (261010-bkv)', () => {
   });
 });
 
-describe('AudioProperties Studio section headers (261009-v0s)', () => {
-  it('uses RuleSectionHeader for the four content section titles', () => {
+describe('AudioProperties Studio section headers (261009-v0s + 261010-en9 R1/R2)', () => {
+  it('uses RuleSectionHeader for the three content section titles; FILE is retired', () => {
     expect(source).toContain("from '../shared/RuleSectionHeader'");
-    for (const title of ['TRACK', 'FILE', 'FADES', 'POSITION']) {
+    for (const title of ['TRACK', 'FADES', 'POSITION']) {
       expect(source).toContain(`<RuleSectionHeader text="${title}" />`);
     }
-    // SectionLabel remains only for AUTO-ARRANGE (not one of the five).
+    expect(source).not.toContain('<RuleSectionHeader text="FILE" />');
+    // SectionLabel remains only for AUTO-ARRANGE (not one of the sections).
     expect(source).toContain('text="AUTO-ARRANGE"');
   });
 
   it('RuleSectionHeader is the only home of the section values (CSS rules deleted)', () => {
     expect(ruleHeader).toContain('9.5px');
     expect(ruleHeader).toContain('0.12px');
-    expect(ruleHeader).toContain('#ffffff');
+    expect(ruleHeader).toContain("rgb(205, 201, 201)");
+    expect(ruleHeader).not.toContain('#ffffff');
     expect(studioCss).not.toContain('.physics-paint-audio-section');
     expect(studioCss).not.toContain('.physics-paint-audio-section-label');
     expect(studioCss).not.toContain('.physics-paint-audio-section-rule');
+  });
+});
+
+describe('AudioProperties TRACK file/Replace merge + content padding (261010-en9 R2/R8)', () => {
+  it('opens TRACK with the filename + Replace row before the name input', () => {
+    const trackSection = source.slice(
+      source.indexOf('<RuleSectionHeader text="TRACK" />'),
+      source.indexOf('<RuleSectionHeader text="FADES" />'),
+    );
+    const fileRow = trackSection.indexOf('track.originalFilename');
+    const replaceBtn = trackSection.indexOf('handleReplace');
+    const nameInput = trackSection.indexOf('value={track.name}');
+    expect(fileRow).toBeGreaterThan(-1);
+    expect(replaceBtn).toBeGreaterThan(fileRow);
+    expect(nameInput).toBeGreaterThan(replaceBtn);
+  });
+
+  it('content wrappers use 10px top and bottom margin', () => {
+    // file row, name input, Gain, max-time share the inline pair form.
+    expect(source).toContain("style={{marginTop: '10px', marginBottom: '10px'}}");
+    // fades pair + in/out pair use the grid form with the same 10px pair.
+    const fadesPair = source.slice(
+      source.indexOf('data-testid="audio-fades-pair"'),
+      source.indexOf('data-testid="audio-inout-pair"'),
+    );
+    expect(fadesPair).toContain("marginTop: '10px'");
+    expect(fadesPair).toContain("marginBottom: '10px'");
+    const inoutPair = source.slice(source.indexOf('data-testid="audio-inout-pair"'));
+    expect(inoutPair).toContain("marginTop: '10px'");
+    expect(inoutPair).toContain("marginBottom: '10px'");
   });
 });
 

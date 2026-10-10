@@ -72,7 +72,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
 
   return (
     <div class="px-3 py-2 space-y-3">
-      {/* Section 1: TRACK — name + Gain (dB) + mute */}
+      {/* Section 1: TRACK — file/Replace row + name + Gain (dB) + mute */}
       <div>
         <div class="flex items-center" style={{gap: '8px'}}>
           <div style={{flex: '1 1 0', minWidth: 0}}>
@@ -87,7 +87,20 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             {track.muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
         </div>
-        <div style={{marginTop: '6px'}}>
+        {/* R2: filename + Replace row is first content under TRACK (FILE section retired). */}
+        <div class="flex items-center justify-between" style={{marginTop: '10px', marginBottom: '10px'}}>
+          <span class="text-[10px] text-(--color-text-secondary) truncate flex-1 min-w-0">
+            {track.originalFilename}
+          </span>
+          <button
+            class="shrink-0 text-[10px] text-(--color-text-secondary) hover:text-(--color-text-primary) cursor-pointer transition-colors ml-2"
+            onClick={handleReplace}
+            disabled={isReplacing}
+          >
+            {isReplacing ? <Loader2 size={12} class="animate-spin" /> : 'Replace...'}
+          </button>
+        </div>
+        <div style={{marginTop: '10px', marginBottom: '10px'}}>
           <input
             type="text"
             value={track.name}
@@ -100,7 +113,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             }}
           />
         </div>
-        <div style={{marginTop: '6px'}}>
+        <div style={{marginTop: '10px', marginBottom: '10px'}}>
           <SliderStepper
             label="Gain"
             value={linearToDb(track.volume)}
@@ -115,30 +128,13 @@ export function AudioProperties({track}: AudioPropertiesProps) {
         <div
           data-testid="audio-max-time"
           class="text-[10px] text-(--color-text-secondary)"
-          style={{marginTop: '6px'}}
+          style={{marginTop: '10px', marginBottom: '10px'}}
         >
           {formatAudioMaxTime(track.duration, track.totalFramesInFile)}
         </div>
       </div>
 
-      {/* Section 2: FILE */}
-      <div>
-        <RuleSectionHeader text="FILE" />
-        <div class="flex items-center justify-between" style={{marginTop: '6px'}}>
-          <span class="text-[10px] text-(--color-text-secondary) truncate flex-1 min-w-0">
-            {track.originalFilename}
-          </span>
-          <button
-            class="shrink-0 text-[10px] text-(--color-text-secondary) hover:text-(--color-text-primary) cursor-pointer transition-colors ml-2"
-            onClick={handleReplace}
-            disabled={isReplacing}
-          >
-            {isReplacing ? <Loader2 size={12} class="animate-spin" /> : 'Replace...'}
-          </button>
-        </div>
-      </div>
-
-      {/* Section 4: FADES — two side-by-side SliderStepper columns; each curve select under its own bar */}
+      {/* Section 2: FADES — two side-by-side SliderStepper columns; each curve select under its own bar */}
       <div>
         <RuleSectionHeader text="FADES" />
         <div
@@ -147,7 +143,8 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             display: 'grid',
             gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
             gap: '8px 12px',
-            marginTop: '6px',
+            marginTop: '10px',
+            marginBottom: '10px',
           }}
         >
           <SliderStepper
@@ -199,10 +196,10 @@ export function AudioProperties({track}: AudioPropertiesProps) {
         </div>
       </div>
 
-      {/* Section 5: POSITION — offsetFrame can be negative and is commit-unbounded */}
+      {/* Section 3: POSITION — offsetFrame can be negative and is commit-unbounded */}
       <div>
         <RuleSectionHeader text="POSITION" />
-        <div style={{marginTop: '6px'}}>
+        <div style={{marginTop: '10px', marginBottom: '10px'}}>
           <SliderStepper
             label="Position (frames)"
             value={track.offsetFrame}
@@ -220,6 +217,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
             gap: '8px 12px',
             marginTop: '10px',
+            marginBottom: '10px',
           }}
         >
           <SliderStepper
