@@ -1278,6 +1278,22 @@ describe('PhysicsPaintWorkflowStrip multi-clip sound band (261008-ig1 Task 2)', 
     const edgesChild = stripSource.slice(edgesAt, bodyAt);
     expect((edgesChild.match(readPattern) ?? []).length).toBeGreaterThanOrEqual(1);
   });
+
+  it('stain viewBox windows the source at inFrame + slipOffset so Offset slides the waveform', () => {
+    // 261010 UAT: the Studio strip is SVG (not TimelineRenderer) and computed
+    // inPx from inFrame alone — dragging Offset played new audio over an
+    // identical drawn waveform.
+    const stainAt = stripSource.indexOf('function PhysicsPaintSoundClipStain');
+    const ghostAt = stripSource.indexOf('function PhysicsPaintSoundDuplicateGhost');
+    expect(stainAt).toBeGreaterThan(-1);
+    expect(ghostAt).toBeGreaterThan(stainAt);
+    const stainChild = stripSource.slice(stainAt, ghostAt);
+    const ghostChild = stripSource.slice(ghostAt, ghostAt + 2000);
+    for (const child of [stainChild, ghostChild]) {
+      expect(child).toContain('clip.inFrame + clip.slipOffset');
+      expect(child).toContain('viewBox={`${inPx}');
+    }
+  });
 });
 
 /* ---------------------------------------------------------------------------

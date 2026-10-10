@@ -1642,9 +1642,13 @@ export function PhysicsPaintSoundClipStain(props: PhysicsPaintSoundClipStainProp
   const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
   // UAT round 4: the waveform is drawn once in SOURCE space and windowed by
   // the SVG viewBox to [in, out] — trimming reveals the cut live.
-  const sourceFrames = audioPeaksCache.getSourceFrames(clip.sourceId) ?? clip.outFrame;
+  // 261010 UAT: the window starts at the AUDIBLE source frame (in + slip), so
+  // dragging Offset slides the waveform under a stationary bar.
+  const sourceFrames = clip.sourceFrames
+    ?? audioPeaksCache.getSourceFrames(clip.sourceId)
+    ?? clip.outFrame;
   const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
-  const inPx = clip.inFrame * ROTO_CELL_WIDTH_PX;
+  const inPx = (clip.inFrame + clip.slipOffset) * ROTO_CELL_WIDTH_PX;
   const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
   const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx) : null;
   if (pathD === null) return null; // fail-closed: loading / missing source.
@@ -1756,9 +1760,13 @@ export function PhysicsPaintSoundDuplicateGhost(props: PhysicsPaintSoundDuplicat
   const clip = props.clip;
   const leftPx = soundStainLeftPx(clip.startFrame, ROTO_CELL_WIDTH_PX);
   const widthPx = soundStainWidthPx(clip.inFrame, clip.outFrame, ROTO_CELL_WIDTH_PX);
-  const sourceFrames = audioPeaksCache.getSourceFrames(clip.sourceId) ?? clip.outFrame;
+  // 261010 UAT: same source-space window as the live stain — slip slides the
+  // waveform under a stationary bar.
+  const sourceFrames = clip.sourceFrames
+    ?? audioPeaksCache.getSourceFrames(clip.sourceId)
+    ?? clip.outFrame;
   const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
-  const inPx = clip.inFrame * ROTO_CELL_WIDTH_PX;
+  const inPx = (clip.inFrame + clip.slipOffset) * ROTO_CELL_WIDTH_PX;
   const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
   const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx) : null;
   if (pathD === null) return null; // fail-closed: loading / missing source.
