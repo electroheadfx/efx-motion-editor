@@ -12,6 +12,7 @@ import {capturePreviewCanvas} from '../../lib/shaderPreviewCapture';
 import {defaultTransform, createDefaultFxSource} from '../../types/layer';
 import type {LayerType, BlendMode, Layer, LayerSourceData} from '../../types/layer';
 import {totalFrames, trackLayouts} from '../../lib/frameMap';
+import {resolvePhysicPaintCreateSpan} from '../../lib/timelineVisibleSpan';
 
 /** Popover menu for adding content overlay and FX sequences in the timeline area */
 export function AddLayerMenu() {
@@ -151,11 +152,23 @@ export function AddLayerMenu() {
       source: { type: 'physic-paint', layerId } as LayerSourceData,
       isBase: false,
     };
-    if (targetSequenceId) {
-      sequenceStore.createFxSequence(stackName, physicPaintLayer, totalFrames.peek(), { position: 'top', inFrame: isolatedInFrame, outFrame: isolatedOutFrame });
-    } else {
-      sequenceStore.createFxSequence(stackName, physicPaintLayer, totalFrames.peek(), { position: 'top' });
-    }
+    // 261010-mwy: Physic Paint fills exactly the timeline frames visible at the
+    // current zoom and scroll (zoom = length control). Isolation still wins —
+    // the view never overrides the isolated sequence range. Narrow reads at
+    // click time (.peek()) so the menu is not subscribed to viewport signals.
+    const createSpan = resolvePhysicPaintCreateSpan({
+      isolated: targetSequenceId ? {inFrame: isolatedInFrame, outFrame: isolatedOutFrame} : null,
+      view: {
+        zoom: timelineStore.zoom.peek(),
+        scrollX: timelineStore.scrollX.peek(),
+        viewportWidth: timelineStore.viewportWidth.peek(),
+      },
+    });
+    sequenceStore.createFxSequence(stackName, physicPaintLayer, totalFrames.peek(), {
+      position: 'top',
+      inFrame: createSpan.inFrame,
+      outFrame: createSpan.outFrame,
+    });
     // v1.0 (DOC-01/DOC-02): one parent layer owns exactly one document with
     // one default Paint track + fixed Background track (transparent fallback).
     registerDocument(createEfxPaintDocument(layerId));
