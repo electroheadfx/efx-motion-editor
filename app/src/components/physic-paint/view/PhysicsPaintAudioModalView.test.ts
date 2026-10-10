@@ -102,6 +102,28 @@ describe('PhysicsPaintAudioModalView Offset (s) (261010-en9 R6)', () => {
   });
 });
 
+describe('PhysicsPaintAudioModalView Fit to view (261010-ht0 F5)', () => {
+  it('renders the Fit to view control in TIMING near In-Out with the editor verbatim label', () => {
+    expect(source).toContain("export const AUDIO_FIT_TO_VIEW = 'Fit to view'");
+    expect(source).toContain('{AUDIO_FIT_TO_VIEW}');
+    expect(source).toContain('onClick={() => commitFitToView()}');
+    // Sits after the In/Out pair and before the SOUND section header.
+    const trimIndex = source.indexOf('Trim in/out share one row');
+    const fitIndex = source.indexOf('{/* 6b. Fit to view');
+    const soundIndex = source.indexOf('{/* 7. SOUND');
+    expect(fitIndex).toBeGreaterThan(trimIndex);
+    expect(soundIndex).toBeGreaterThan(fitIndex);
+    // Modest small-button chrome — no SliderStepper/NumericStepper restyle.
+    expect(source).toContain('class="physics-paint-audio-fit"');
+    expect(source).not.toContain('SliderStepper\n                  label={AUDIO_FIT_TO_VIEW}');
+  });
+
+  it('prefers sound.sourceFrames for Offset bounds and In/Out max (trim-out fallback gone)', () => {
+    expect(source).toContain('sound.sourceFrames');
+    expect(source).not.toContain('audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame');
+  });
+});
+
 describe('PhysicsPaintAudioModalView trim span law (261009-6ee / 261010-bkv)', () => {
   it('Trim in caps at out - 1 so a 1-frame minimum span never inverts', () => {
     const start = source.indexOf('{/* 5.');

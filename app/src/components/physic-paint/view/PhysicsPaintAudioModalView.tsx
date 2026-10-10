@@ -96,6 +96,7 @@ export const AUDIO_FADE_IN_LABEL = 'Fade in';
 export const AUDIO_FADE_OUT_LABEL = 'Fade out';
 export const AUDIO_IN_LABEL = 'Trim in';
 export const AUDIO_OUT_LABEL = 'Trim out';
+export const AUDIO_FIT_TO_VIEW = 'Fit to view';
 export const AUDIO_SECTION_FILE = 'FILE';
 export const AUDIO_SECTION_TIMING = 'TIMING';
 export const AUDIO_SECTION_SOUND = 'SOUND';
@@ -197,6 +198,7 @@ export function PhysicsPaintAudioModalView({
     sound, filename, missing, busy, decodeError, previewGain, removeArmed,
     commitGain, commitFadeIn, commitFadeOut,
     commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame, commitStartFrame, commitSlipOffset,
+    commitFitToView,
     toggleEnabled, requestRemove, confirmRemove, removeSelected, disarmRemove,
   } = controller;
 
@@ -353,7 +355,10 @@ export function PhysicsPaintAudioModalView({
               </div>
               {(() => {
                 const fps = controller.getFps();
-                const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+                // Prefer the persisted sourceFrames; peaks-cache is secondary only
+                // (261010-ht0 F4) — the trim-out fallback is gone.
+                const sourceFrames = sound.sourceFrames
+                  ?? audioPeaksCache.getSourceFrames(sound.sourceId);
                 const sourceSeconds = sourceFrames / Math.max(1, fps);
                 return (
                   <div
@@ -396,8 +401,7 @@ export function PhysicsPaintAudioModalView({
                 // Prefer the persisted sourceFrames; peaks-cache is secondary only
                 // (261010-ht0 F4) — the trim-out fallback is gone.
                 const sourceFrames = sound.sourceFrames
-                  ?? audioPeaksCache.getSourceFrames(sound.sourceId)
-                  ?? sound.outFrame;
+                  ?? audioPeaksCache.getSourceFrames(sound.sourceId);
                 const slipBounds = slipOffsetBoundsSeconds(
                   { inFrame: sound.inFrame, outFrame: sound.outFrame, totalFramesInFile: sourceFrames },
                   fps,
@@ -426,8 +430,7 @@ export function PhysicsPaintAudioModalView({
                 // Prefer the persisted sourceFrames; peaks-cache is secondary only
                 // (261010-ht0 F4) — the trim-out fallback is gone.
                 const sourceFrames = sound.sourceFrames
-                  ?? audioPeaksCache.getSourceFrames(sound.sourceId)
-                  ?? sound.outFrame;
+                  ?? audioPeaksCache.getSourceFrames(sound.sourceId);
                 const maxSeconds = sourceFrames / Math.max(1, fps);
                 return (
                   <div class="physics-paint-audio-pair">
@@ -459,6 +462,22 @@ export function PhysicsPaintAudioModalView({
                   </div>
                 );
               })()}
+
+              {/* 6b. Fit to view — crop In/Out to the on-screen slice, move the
+                   band start to that left edge, reset slip to 0 (261010-ht0 F5).
+                   Same verbatim label as the editor. No-op when the viewport
+                   port returns null or the band is already fully visible. */}
+              <div class="physics-paint-audio-row">
+                <button
+                  type="button"
+                  class="physics-paint-audio-fit"
+                  onClick={() => commitFitToView()}
+                  disabled={controlsDisabled}
+                  aria-disabled={controlsDisabled}
+                >
+                  {AUDIO_FIT_TO_VIEW}
+                </button>
+              </div>
 
               {/* 7. SOUND section header — centered title between two rules */}
               <RuleSectionHeader text={AUDIO_SECTION_SOUND} />

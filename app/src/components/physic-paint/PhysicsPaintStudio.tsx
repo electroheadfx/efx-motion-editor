@@ -142,6 +142,7 @@ import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
 import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController';
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
 import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsPaintAudioController } from './view/physicsPaintAudioController';
+import { getTimelineViewportFrames } from './view/PhysicsPaintWorkflowStrip';
 import type { AudioSectionPorts } from './view/PhysicsPaintAudioListSection';
 import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // 52.5-01b: the Document sound import flow reuses the EXISTING decode/peaks
@@ -4765,6 +4766,9 @@ export function PhysicsPaintStudio() {
       // (no slot shim — 261008-ig1 Task 2).
       getFps: () => launchContext?.fps ?? efxPaintDocumentAudioStore.getFps(),
       isSoundMissing: (sound) => isSoundSourceMissing(missingAudioSourcePaths.value, sound.sourcePath),
+      // 261010-ht0 F5: Fit to view reads the strip-registered viewport getter
+      // (module-level, no per-scroll signal).
+      getTimelineViewport: () => getTimelineViewportFrames(),
     },
   });
   // 261008-ryq: publish the LATEST controller to the identity-stable ports ref

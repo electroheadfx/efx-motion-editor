@@ -1806,6 +1806,26 @@ const NO_SOUND_SELECTION = signal<string | null>(null);
 /** Frozen empty clip list — identity-stable across renders. */
 const EMPTY_DOCUMENT_AUDIOS: readonly DocumentSoundClip[] = Object.freeze([]);
 
+/**
+ * 261010-ht0 F5 — module-level timeline viewport getter registered by the
+ * strip on mount. The Studio audio modal's Fit to view reads it through the
+ * controller port. No signal bumped per scroll — a plain function read at
+ * click time. Same content-space origin as soundStainLeftPx
+ * (scrollLeft / ROTO_CELL_WIDTH_PX).
+ */
+export type TimelineViewportFrames = { readonly visStart: number; readonly visEnd: number };
+let timelineViewportGetter: (() => TimelineViewportFrames | null) | null = null;
+
+export function registerTimelineViewportGetter(
+  getter: (() => TimelineViewportFrames | null) | null,
+): void {
+  timelineViewportGetter = getter;
+}
+
+export function getTimelineViewportFrames(): TimelineViewportFrames | null {
+  return timelineViewportGetter?.() ?? null;
+}
+
 export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps) {
   recordPhysicsPaintPerformanceCounter('render.workflowStrip');
   const [scrollbar, setScrollbar] = useState({ left: 0, width: 0, visible: false });
@@ -1821,6 +1841,19 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   >(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
+  // 261010-ht0 F5: register the stable viewport getter (module-level read, no
+  // per-scroll signal). Unregister on unmount so a closed Studio never leaks.
+  useEffect(() => {
+    registerTimelineViewportGetter(() => {
+      const el = timelineScrollRef.current;
+      if (!el) return null;
+      return {
+        visStart: el.scrollLeft / ROTO_CELL_WIDTH_PX,
+        visEnd: (el.scrollLeft + el.clientWidth) / ROTO_CELL_WIDTH_PX,
+      };
+    });
+    return () => registerTimelineViewportGetter(null);
+  }, []);
   // 47-01 header column: the pinned header-rows container and the rows-region
   // share the same vertical scroll position (D-05). The sync is a no-op while
   // the track count fits the band; it keeps header cells aligned with their

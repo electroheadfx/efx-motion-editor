@@ -11,6 +11,7 @@ import {
 import {GAIN_DB_MAX, GAIN_DB_MIN, dbToGain, gainToDb} from '../../../lib/audioGain';
 import {clampSlipOffsetFrames} from '../../../lib/slipOffsetBounds';
 import {audioPeaksCache} from '../../../lib/audioPeaksCache';
+import {computeAudioFitToView} from '../../../lib/audioClipGeometry';
 
 /**
  * 52.5-01b — the Document sound modal controller (D-05 single control
@@ -58,6 +59,14 @@ export interface PhysicsPaintAudioControllerPorts {
    * false; the Studio wires the real resolver.
    */
   isSoundMissing: (sound: DocumentSoundClip) => boolean;
+  /**
+   * Studio timeline visible frame range in WorkflowStrip content space
+   * (scrollLeft / ROTO_CELL_WIDTH_PX .. (scrollLeft + clientWidth) / ROTO_CELL_WIDTH_PX,
+   * same origin as soundStainLeftPx). Default null — Fit to view is then a
+   * no-op. Wired by PhysicsPaintStudio via a stable strip-registered getter
+   * (no signal bumped per scroll).
+   */
+  getTimelineViewport: () => { readonly visStart: number; readonly visEnd: number } | null;
 }
 
 export interface PhysicsPaintAudioControllerProps {
@@ -124,6 +133,13 @@ export interface PhysicsPaintAudioController {
    * accepted value (E8/E9).
    */
   commitSlipOffset: (frames: number) => void;
+  /**
+   * 261010-ht0 F5 — Studio Fit to view: crop In/Out to the on-screen slice,
+   * move the band start to that left edge, reset slip to 0, all in ONE
+   * commitPatch (one undo). No-op when the viewport port returns null or
+   * computeAudioFitToView returns null (band fully visible / empty intersection).
+   */
+  commitFitToView: () => void;
   /** Invert the studio-layer sound switch from the LIVE document. */
   toggleEnabled: () => void;
   /** Two-step remove: first call arms, second commits sound: null. */
@@ -293,6 +309,7 @@ export function usePhysicsPaintAudioController({
   const removeSound = ports.removeSound ?? defaultPorts.removeSound;
   const getFps = ports.getFps ?? defaultPorts.getFps;
   const isSoundMissing = ports.isSoundMissing ?? defaultPorts.isSoundMissing;
+  const getTimelineViewport = ports.getTimelineViewport ?? defaultPorts.getTimelineViewport;
 
   const document = getDocument(layerId);
   const audios = document?.audios ?? EMPTY_AUDIOS;
@@ -394,16 +411,46 @@ export function usePhysicsPaintAudioController({
     disarmRemove();
     if (!Number.isInteger(frames)) return;
     if (!sound) return;
-    // Prefer the persisted sourceFrames; peaks-cache is a secondary source only.
+    // Prefer the persisted sourceFrames; peaks-cache is a secondary source only
+    // (261010-ht0 F4) — the trim-out fallback is gone.
     const sourceFrames = sound.sourceFrames
-      ?? audioPeaksCache.getSourceFrames(sound.sourceId)
-      ?? sound.outFrame;
+      ?? audioPeaksCache.getSourceFrames(sound.sourceId);
     const clamped = clampSlipOffsetFrames(frames, {
       inFrame: sound.inFrame,
       outFrame: sound.outFrame,
       totalFramesInFile: sourceFrames,
     });
     commitPatch({ slipOffset: clamped });
+  };
+
+  /**
+   * 261010-ht0 F5 — Fit to view: one commitPatch writes inFrame, outFrame,
+   * startFrame (from fit.offsetFrame), and slipOffset: 0. The bar law is
+   * offsetFrame .. offsetFrame + (outFrame - inFrame) — pass
+   * offsetFrame = sound.startFrame and totalFramesInFile = sound.sourceFrames.
+   */
+  const commitFitToView = () => {
+    disarmRemove();
+    if (!sound) return;
+    const viewport = getTimelineViewport();
+    if (!viewport) return;
+    const fit = computeAudioFitToView(
+      {
+        inFrame: sound.inFrame,
+        outFrame: sound.outFrame,
+        offsetFrame: sound.startFrame,
+        slipOffset: sound.slipOffset,
+        totalFramesInFile: sound.sourceFrames,
+      },
+      viewport,
+    );
+    if (!fit) return;
+    commitPatch({
+      inFrame: fit.inFrame,
+      outFrame: fit.outFrame,
+      startFrame: fit.offsetFrame,
+      slipOffset: 0,
+    });
   };
 
   const toggleEnabled = () => {
@@ -524,6 +571,7 @@ export function usePhysicsPaintAudioController({
     commitOutFrame,
     commitStartFrame,
     commitSlipOffset,
+    commitFitToView,
     toggleEnabled,
     requestRemove,
     confirmRemove,
@@ -546,4 +594,5 @@ const defaultPorts: PhysicsPaintAudioControllerPorts = {
   removeSound: (layerId, clipId) => removeDocumentSound(layerId, clipId),
   getFps: () => 12,
   isSoundMissing: () => false,
+  getTimelineViewport: () => null,
 };

@@ -229,6 +229,7 @@ const CLIP_B: DocumentSoundClip = {
 function makeController(options: {
   selection: string | null;
   clips?: readonly DocumentSoundClip[] | null;
+  getTimelineViewport?: () => { visStart: number; visEnd: number } | null;
 }) {
   const clips = options.clips === undefined ? [CLIP_A, CLIP_B] : options.clips;
   const document = clips === null
@@ -238,6 +239,7 @@ function makeController(options: {
   const addSound = vi.fn((_layerId: string, _clip: DocumentSoundClip): DocumentSoundResult => ({ ok: true }));
   const patchSound = vi.fn((_layerId: string, _clipId: string, _patch: Partial<DocumentSoundClip>): DocumentSoundResult => ({ ok: true }));
   const removeSound = vi.fn((_layerId: string, _clipId: string): DocumentSoundResult => ({ ok: true }));
+  const getTimelineViewport = options.getTimelineViewport ?? (() => null);
   const controller = usePhysicsPaintAudioController({
     layerId: 'layer-1',
     selectedSoundId,
@@ -248,6 +250,7 @@ function makeController(options: {
       removeSound,
       getFps: () => 24,
       isSoundMissing: () => false,
+      getTimelineViewport,
     },
   });
   return { controller, selectedSoundId, addSound, patchSound, removeSound };
@@ -341,6 +344,58 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     const none = makeController({ selection: null });
     none.controller.commitSlipOffset(3);
     expect(none.patchSound).not.toHaveBeenCalled();
+  });
+
+  it('commitFitToView writes in/out/start/slip in ONE commitPatch (261010-ht0 F5)', () => {
+    // CLIP_A: start 0, in 0, out 48, sourceFrames 240. Visible slice [10, 30]
+    // crops the bar to that intersection: new in = 10, new out = 30,
+    // new start = 10, slip resets to 0.
+    const { controller, patchSound } = makeController({
+      selection: 'clip-a',
+      getTimelineViewport: () => ({ visStart: 10, visEnd: 30 }),
+    });
+    controller.commitFitToView();
+    expect(patchSound).toHaveBeenCalledTimes(1);
+    expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', {
+      inFrame: 10,
+      outFrame: 30,
+      startFrame: 10,
+      slipOffset: 0,
+    });
+  });
+
+  it('commitFitToView is a no-op when the viewport port returns null or the band is fully visible', () => {
+    const nullPort = makeController({
+      selection: 'clip-a',
+      getTimelineViewport: () => null,
+    });
+    nullPort.controller.commitFitToView();
+    expect(nullPort.patchSound).not.toHaveBeenCalled();
+
+    // Bar spans 0..48; a viewport covering 0..100 is fully visible -> null fit.
+    const fullyVisible = makeController({
+      selection: 'clip-a',
+      getTimelineViewport: () => ({ visStart: 0, visEnd: 100 }),
+    });
+    fullyVisible.controller.commitFitToView();
+    expect(fullyVisible.patchSound).not.toHaveBeenCalled();
+
+    // Empty intersection (viewport entirely past the bar) -> no write.
+    const empty = makeController({
+      selection: 'clip-a',
+      getTimelineViewport: () => ({ visStart: 100, visEnd: 200 }),
+    });
+    empty.controller.commitFitToView();
+    expect(empty.patchSound).not.toHaveBeenCalled();
+  });
+
+  it('commitFitToView fails closed with no selection', () => {
+    const { controller, patchSound } = makeController({
+      selection: null,
+      getTimelineViewport: () => ({ visStart: 0, visEnd: 10 }),
+    });
+    controller.commitFitToView();
+    expect(patchSound).not.toHaveBeenCalled();
   });
 
   it('field commits fail closed with no selection — no port call, no mutation', () => {
