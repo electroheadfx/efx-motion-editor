@@ -83,6 +83,15 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **RVL-05**: Photo reference visibility alone never leaks into output; hide/solo/opacity/blend around Reveal behave predictably
 - [x] **RVL-06**: Undo/redo by reference, not raster-byte snapshots; save/reopen and export preserve the result
 
+### PKG — Project Package Format (GSD 52.2)
+
+- [x] **PKG-01**: The project folder IS the document package — a macOS single-icon `.mce` package (Finder shows one file, double-click opens it; a plain folder underneath, so other OSes keep working); the manifest keeps the `.mce` name and carries a `formatVersion` field
+- [x] **PKG-02**: References only — JSON holds relative paths and content digests, never payloads; the user can open the package and SEE the media files on disk; zero base64 in any JSON
+- [x] **PKG-03**: Heavy media obey the same law as images — audio and video stay disk references (absolute on-disk paths) and are never copied into the package
+- [x] **PKG-04**: Clean break — pre-52.2 project data is refused explicitly; no migration shim, converter, or compatibility reader ships in the code
+- [x] **PKG-05**: Persistence granularity is per paint layer, never per key — layer metadata in a per-layer JSON sub-file, key rasters as media files in the media tree
+- [x] **PKG-06**: Save/reopen preserves the package — manifest, layer sub-files, media references, and cache identity — through the existing transactional save (staging -> hardlink unchanged -> fsync -> atomic rename-swap -> digest-bound commit/rollback)
+
 ### ACC — Integrated Acceptance (Phase 9)
 
 - [ ] **ACC-01**: All automated gates pass (vitest, typecheck, build, cargo test, release script preflight)
