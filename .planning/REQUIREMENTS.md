@@ -83,6 +83,25 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **RVL-05**: Photo reference visibility alone never leaks into output; hide/solo/opacity/blend around Reveal behave predictably
 - [x] **RVL-06**: Undo/redo by reference, not raster-byte snapshots; save/reopen and export preserve the result
 
+### PKG — Project Package Format (GSD 52.2)
+
+- [x] **PKG-01**: The project folder IS the document package — a macOS single-icon `.mce` package (Finder shows one file, double-click opens it; a plain folder underneath, so other OSes keep working); the manifest keeps the `.mce` name and carries a `formatVersion` field
+- [x] **PKG-02**: References only — JSON holds relative paths and content digests, never payloads; the user can open the package and SEE the media files on disk; zero base64 in any JSON
+- [x] **PKG-03**: Heavy media obey the same law as images — audio and video stay disk references (absolute on-disk paths) and are never copied into the package
+- [x] **PKG-04**: Clean break — pre-52.2 project data is refused explicitly; no migration shim, converter, or compatibility reader ships in the code
+- [x] **PKG-05**: Persistence granularity is per paint layer, never per key — layer metadata in a per-layer JSON sub-file, key rasters as media files in the media tree
+- [x] **PKG-06**: Save/reopen preserves the package — manifest, layer sub-files, media references, and cache identity — through the existing transactional save (staging -> hardlink unchanged -> fsync -> atomic rename-swap -> digest-bound commit/rollback)
+
+### SND — Document Sound (GSD 52.5)
+
+- [x] **SND-01**: Placed-clip identity — `id` unique per placed clip (list key, timeline selection, transport, buffer); `sourceId` identifies the imported file and is shared across duplicates
+- [x] **SND-02**: Heavy media stay disk references — `sourcePath` is the absolute on-disk path; audio is never copied into the `.mce` package
+- [x] **SND-03**: Trim — `inFrame`/`outFrame` bound the audible window; `startFrame` places the clip on the timeline, independent of the source file
+- [x] **SND-04**: Clip gain is a signed integer -100..+100 (0 = unity, +100 = double, -100 = silent), never a plain volume
+- [x] **SND-05**: Fade-in and fade-out each have a frame length and a curve (linear | exponential | logarithmic)
+- [x] **SND-06**: The per-clip `enabled` switch silences the clip everywhere (Studio preview, main-editor playback, export) without touching the main app's audio tracks
+- [ ] **SND-07**: Save/reopen restores every placed clip (identity, sourcePath, trim, gain, fades, enabled); a clip whose file has moved is surfaced as missing, never silently dropped
+
 ### ACC — Integrated Acceptance (Phase 9)
 
 - [ ] **ACC-01**: All automated gates pass (vitest, typecheck, build, cargo test, release script preflight)
@@ -183,13 +202,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ACC-01 | Phase 53 | Pending |
 | ACC-02 | Phase 53 | Pending |
 | ACC-03 | Phase 53 | Pending |
+| PKG-01 | Phase 52.2 | Complete |
+| PKG-02 | Phase 52.2 | Complete |
+| PKG-03 | Phase 52.2 | Complete |
+| PKG-04 | Phase 52.2 | Complete |
+| PKG-05 | Phase 52.2 | Complete |
+| PKG-06 | Phase 52.2 | Complete |
+| SND-01 | Phase 52.5 | Complete |
+| SND-02 | Phase 52.5 | Complete |
+| SND-03 | Phase 52.5 | Complete |
+| SND-04 | Phase 52.5 | Complete |
+| SND-05 | Phase 52.5 | Complete |
+| SND-06 | Phase 52.5 | Complete |
+| SND-07 | Phase 52.5 | Pending |
 
 **Coverage:**
 
-- v1.0.0 requirements: 55 total
-- Mapped to phases: 55
+- v1.0.0 requirements: 68 total
+- Mapped to phases: 68
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-23*
-*Last updated: 2026-09-11 (CMP-01..06 + AUD-01..04 verification records backfilled — see 48-VERIFICATION.md, 52.1-VERIFICATION.md, 51-VERIFICATION.md)*
+*Last updated: 2026-10-10 (PKG-01..06 + SND-01..07 backfilled for GSD 52.2 / 52.5)*
