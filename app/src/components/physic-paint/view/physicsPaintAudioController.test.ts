@@ -84,10 +84,10 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     expect(clip.slipOffset).toBe(0);
     expect(clip.gain).toBe(0);
     expect(clip.enabled).toBe(true);
-    // 261010-ht0 F2/F4: store the already-computed source length; log defaults.
+    // 261010 F2/F4: store the already-computed source length; exponential defaults.
     expect(clip.sourceFrames).toBe(240);
-    expect(clip.fadeInCurve).toBe('logarithmic');
-    expect(clip.fadeOutCurve).toBe('logarithmic');
+    expect(clip.fadeInCurve).toBe('exponential');
+    expect(clip.fadeOutCurve).toBe('exponential');
   });
 
   it('replace keeps the current clip stored curves and records the new sourceFrames', () => {

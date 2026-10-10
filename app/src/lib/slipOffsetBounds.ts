@@ -19,14 +19,39 @@ export interface SlipWindow {
   readonly totalFramesInFile: number;
 }
 
+/**
+ * Resolve the source length in frames from a sound clip, tolerating the
+ * 0/NaN/undefined holes that would otherwise collapse the slip bounds to a
+ * point (261010 UAT: Studio Offset stuck at zero). `preferred` is the
+ * persisted `sourceFrames`; `cached` is the peaks-cache value. Returns null
+ * when nothing usable is known — callers must treat that as "no slip room".
+ */
+export function resolveSlipTotalFrames(
+  preferred: number | null | undefined,
+  cached: number | null | undefined,
+): number | null {
+  for (const candidate of [preferred, cached]) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 1) {
+      return Math.floor(candidate);
+    }
+  }
+  return null;
+}
+
 /** UI-second min/max for the Offset (s) control. Positive UI = earlier source. */
 export function slipOffsetBoundsSeconds(
   window: SlipWindow,
   fps: number,
 ): { readonly min: number; readonly max: number } {
   const safeFps = Math.max(1, fps);
+  const total = window.totalFramesInFile;
+  // Unknown source length → no slip room. Never emit NaN bounds (a NaN min
+  // freezes the slider at 0 and reads as "the control is broken").
+  if (!Number.isFinite(total) || total < 1) {
+    return { min: 0, max: 0 };
+  }
   return {
-    min: (window.outFrame - window.totalFramesInFile) / safeFps,
+    min: (window.outFrame - total) / safeFps,
     max: window.inFrame / safeFps,
   };
 }
@@ -40,8 +65,12 @@ export function clampSlipOffsetFrames(
   engineSlipFrames: number,
   window: SlipWindow,
 ): number {
+  const total = window.totalFramesInFile;
+  if (!Number.isFinite(total) || total < 1 || !Number.isFinite(engineSlipFrames)) {
+    return 0;
+  }
   const min = -window.inFrame;
-  const max = window.totalFramesInFile - window.outFrame;
+  const max = total - window.outFrame;
   const clamped = Math.max(min, Math.min(max, engineSlipFrames));
   // Normalize -0 so callers and tests see a plain zero at the lower edge.
   return clamped === 0 ? 0 : clamped;

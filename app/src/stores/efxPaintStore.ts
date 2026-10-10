@@ -1338,6 +1338,7 @@ function _isValidSoundClip(sound: DocumentSoundClip): boolean {
     && isNonNegativeInteger(sound.startFrame)
     && isNonNegativeInteger(sound.inFrame)
     && isNonNegativeInteger(sound.outFrame)
+    && Number.isInteger(sound.sourceFrames) && sound.sourceFrames >= 1
     && Number.isInteger(sound.slipOffset)
     && Number.isInteger(sound.gain) && sound.gain >= -100 && sound.gain <= 100
     && isNonNegativeInteger(sound.fadeInFrames)

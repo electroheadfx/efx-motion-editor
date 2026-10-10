@@ -4559,6 +4559,40 @@ button.destructive {
   min-width: 0;
 }
 
+/* 261010 UAT: Fit to view is a compact secondary action — short bar, not the
+   30px primary import button. */
+.physics-paint-audio-fit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #c8c8c8;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.physics-paint-audio-fit:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.physics-paint-audio-fit:focus-visible {
+  outline: 2px solid #5a87ff;
+  outline-offset: 1px;
+}
+
+.physics-paint-audio-fit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* UAT: Trim in/out and Fade in/out share a row as two columns, and the pair
    carries the soft rule that separates it from the full-width row above. */
 .physics-paint-audio-pair {

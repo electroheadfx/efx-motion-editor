@@ -3,7 +3,7 @@ import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { GAIN_DB_MAX, GAIN_DB_MIN, formatAudioMaxTime, framesToSeconds, secondsToFrames } from '../../../lib/audioGain';
-import { slipOffsetBoundsSeconds } from '../../../lib/slipOffsetBounds';
+import { resolveSlipTotalFrames, slipOffsetBoundsSeconds } from '../../../lib/slipOffsetBounds';
 import { audioPeaksCache } from '../../../lib/audioPeaksCache';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
@@ -357,8 +357,10 @@ export function PhysicsPaintAudioModalView({
                 const fps = controller.getFps();
                 // Prefer the persisted sourceFrames; peaks-cache is secondary only
                 // (261010-ht0 F4) — the trim-out fallback is gone.
-                const sourceFrames = sound.sourceFrames
-                  ?? audioPeaksCache.getSourceFrames(sound.sourceId);
+                const sourceFrames = resolveSlipTotalFrames(
+                  sound.sourceFrames,
+                  audioPeaksCache.getSourceFrames(sound.sourceId),
+                ) ?? sound.outFrame;
                 const sourceSeconds = sourceFrames / Math.max(1, fps);
                 return (
                   <div
@@ -398,10 +400,14 @@ export function PhysicsPaintAudioModalView({
                    Same sign + bounds as the editor: UI positive = earlier source. */}
               {(() => {
                 const fps = controller.getFps();
-                // Prefer the persisted sourceFrames; peaks-cache is secondary only
-                // (261010-ht0 F4) — the trim-out fallback is gone.
-                const sourceFrames = sound.sourceFrames
-                  ?? audioPeaksCache.getSourceFrames(sound.sourceId);
+                // 261010 UAT: resolveSlipTotalFrames skips 0/NaN holes on the
+                // persisted field and falls back to the peaks cache. No
+                // outFrame fallback here — that collapsed the bounds to a point
+                // and froze the slider at 0. Unknown source length → [0, 0].
+                const sourceFrames = resolveSlipTotalFrames(
+                  sound.sourceFrames,
+                  audioPeaksCache.getSourceFrames(sound.sourceId),
+                ) ?? 0;
                 const slipBounds = slipOffsetBoundsSeconds(
                   { inFrame: sound.inFrame, outFrame: sound.outFrame, totalFramesInFile: sourceFrames },
                   fps,
@@ -414,6 +420,8 @@ export function PhysicsPaintAudioModalView({
                       step={0.1}
                       min={slipBounds.min}
                       max={slipBounds.max}
+                      sliderMin={slipBounds.min}
+                      sliderMax={slipBounds.max}
                       precision={1}
                       onChange={(value) => commitSlipOffset(-secondsToFrames(value, fps))}
                       ariaLabel="Offset seconds"
@@ -429,8 +437,10 @@ export function PhysicsPaintAudioModalView({
                 const fps = controller.getFps();
                 // Prefer the persisted sourceFrames; peaks-cache is secondary only
                 // (261010-ht0 F4) — the trim-out fallback is gone.
-                const sourceFrames = sound.sourceFrames
-                  ?? audioPeaksCache.getSourceFrames(sound.sourceId);
+                const sourceFrames = resolveSlipTotalFrames(
+                  sound.sourceFrames,
+                  audioPeaksCache.getSourceFrames(sound.sourceId),
+                ) ?? sound.outFrame;
                 const maxSeconds = sourceFrames / Math.max(1, fps);
                 return (
                   <div class="physics-paint-audio-pair">

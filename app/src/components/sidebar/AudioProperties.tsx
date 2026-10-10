@@ -247,6 +247,8 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             step={0.1}
             min={slipBounds.min}
             max={slipBounds.max}
+            sliderMin={slipBounds.min}
+            sliderMax={slipBounds.max}
             precision={1}
             onChange={(val) => audioStore.setSlipOffset(track.id, -secondsToFrames(val, fps))}
             ariaLabel="Offset seconds"

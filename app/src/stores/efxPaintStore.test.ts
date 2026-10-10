@@ -1308,6 +1308,8 @@ function makeSoundClip(id: string, patch: Record<string, unknown> = {}): Record<
     startFrame: 10,
     inFrame: 0,
     outFrame: 60,
+    sourceFrames: 600,
+    slipOffset: 0,
     gain: 0,
     fadeInFrames: 0,
     fadeOutFrames: 0,

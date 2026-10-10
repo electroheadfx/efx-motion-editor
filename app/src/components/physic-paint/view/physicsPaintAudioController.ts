@@ -9,7 +9,7 @@ import {
   type DocumentSoundResult,
 } from '../../../stores/efxPaintStore';
 import {GAIN_DB_MAX, GAIN_DB_MIN, dbToGain, gainToDb} from '../../../lib/audioGain';
-import {clampSlipOffsetFrames} from '../../../lib/slipOffsetBounds';
+import {clampSlipOffsetFrames, resolveSlipTotalFrames} from '../../../lib/slipOffsetBounds';
 import {audioPeaksCache} from '../../../lib/audioPeaksCache';
 import {computeAudioFitToView} from '../../../lib/audioClipGeometry';
 
@@ -234,8 +234,8 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
     gain: 0,
     fadeInFrames: 0,
     fadeOutFrames: 0,
-    fadeInCurve: 'logarithmic',
-    fadeOutCurve: 'logarithmic',
+    fadeInCurve: 'exponential',
+    fadeOutCurve: 'exponential',
     enabled: true,
   };
 }
@@ -411,14 +411,17 @@ export function usePhysicsPaintAudioController({
     disarmRemove();
     if (!Number.isInteger(frames)) return;
     if (!sound) return;
-    // Prefer the persisted sourceFrames; peaks-cache is a secondary source only
-    // (261010-ht0 F4) — the trim-out fallback is gone.
-    const sourceFrames = sound.sourceFrames
-      ?? audioPeaksCache.getSourceFrames(sound.sourceId);
+    // 261010 UAT: resolveSlipTotalFrames tolerates 0/NaN/undefined on the
+    // persisted field and falls back to the peaks cache. Unknown source length
+    // clamps to 0 (no slip room) instead of producing NaN and being rejected.
+    const sourceFrames = resolveSlipTotalFrames(
+      sound.sourceFrames,
+      audioPeaksCache.getSourceFrames(sound.sourceId),
+    );
     const clamped = clampSlipOffsetFrames(frames, {
       inFrame: sound.inFrame,
       outFrame: sound.outFrame,
-      totalFramesInFile: sourceFrames,
+      totalFramesInFile: sourceFrames ?? 0,
     });
     commitPatch({ slipOffset: clamped });
   };
