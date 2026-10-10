@@ -9,6 +9,7 @@ import {RuleSectionHeader} from '../shared/RuleSectionHeader';
 import {CollapsibleSection} from './CollapsibleSection';
 import {audioStore} from '../../stores/audioStore';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {timelineStore} from '../../stores/timelineStore';
 import {audioEngine} from '../../lib/audioEngine';
 import {computeWaveformPeaks} from '../../lib/audioWaveform';
 import {audioPeaksCache} from '../../lib/audioPeaksCache';
@@ -17,6 +18,8 @@ import {buildAudioReplacePatch, readAudioSourceBytes} from '../../lib/mainAppAud
 import {pushAction} from '../../lib/history';
 import {GAIN_DB_MAX, GAIN_DB_MIN, dbToLinear, formatAudioMaxTime, framesToSeconds, linearToDb, secondsToFrames} from '../../lib/audioGain';
 import {slipOffsetBoundsSeconds} from '../../lib/slipOffsetBounds';
+import {computeAudioFitToView} from '../../lib/audioClipGeometry';
+import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH} from '../timeline/TimelineRenderer';
 import {totalFrames} from '../../lib/frameMap';
 import {autoArrangeHoldFrames, type ArrangeStrategy} from '../../lib/beatMarkerEngine';
 import type {AudioTrack, FadeCurve} from '../../types/audio';
@@ -74,6 +77,27 @@ export function AudioProperties({track}: AudioPropertiesProps) {
     {inFrame: track.inFrame, outFrame: track.outFrame, totalFramesInFile: track.totalFramesInFile},
     fps,
   );
+
+  // 261010-g2n W2 — crop In/Out to the on-screen slice in one undo.
+  const handleFitToView = () => {
+    const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.value;
+    if (!(frameWidth > 0)) return;
+    const trackArea = timelineStore.viewportWidth.value - TRACK_HEADER_WIDTH;
+    const visStart = timelineStore.scrollX.value / frameWidth;
+    const visEnd = (timelineStore.scrollX.value + trackArea) / frameWidth;
+    const fit = computeAudioFitToView(
+      {
+        inFrame: track.inFrame,
+        outFrame: track.outFrame,
+        offsetFrame: track.offsetFrame,
+        slipOffset: track.slipOffset,
+        totalFramesInFile: track.totalFramesInFile,
+      },
+      {visStart, visEnd},
+    );
+    if (!fit) return;
+    audioStore.fitToView(track.id, fit);
+  };
 
   return (
     <div class="px-3 py-2 space-y-3">
@@ -258,6 +282,15 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             onChange={(val) => audioStore.setInOut(track.id, track.inFrame, secondsToFrames(val, fps))}
             ariaLabel="Out seconds"
           />
+        </div>
+        <div style={{marginTop: '10px', marginBottom: '10px'}}>
+          <button
+            class="w-full text-[10px] px-2 py-1 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={handleFitToView}
+            title="Crop In/Out to the on-screen slice of the clip"
+          >
+            Fit to view
+          </button>
         </div>
       </div>
 

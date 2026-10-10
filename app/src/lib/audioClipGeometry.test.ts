@@ -1,5 +1,9 @@
 import {describe, expect, it} from 'vitest';
-import {audioSourceSpaceGeometry, selectAudioPeakTier} from './audioClipGeometry';
+import {
+  audioSourceSpaceGeometry,
+  computeAudioFitToView,
+  selectAudioPeakTier,
+} from './audioClipGeometry';
 import type {WaveformPeaks} from '../types/audio';
 
 function makePeaks(tier1Count: number, tier2Count: number, tier3Count: number): WaveformPeaks {
@@ -146,5 +150,84 @@ describe('selectAudioPeakTier (261010-g2n W1)', () => {
     const sourceScale = 600 / (1.5 * 24);
     expect(sourceScale * (1944 / 4000)).toBeGreaterThan(4);
     expect(selectAudioPeakTier(longFile, sourceScale, 1944)).toBe(longFile.tier3);
+  });
+});
+
+describe('computeAudioFitToView (261010-g2n W2)', () => {
+  const track = {
+    inFrame: 100,
+    outFrame: 300,
+    offsetFrame: 50,
+    slipOffset: 0,
+    totalFramesInFile: 1000,
+  };
+
+  it('returns null when the clip bar is already fully inside the viewport', () => {
+    // Bar span [50, 250]; viewport covers [0, 400].
+    expect(computeAudioFitToView(track, {visStart: 0, visEnd: 400})).toBeNull();
+  });
+
+  it('returns null when the intersection is empty', () => {
+    // Bar span [50, 250]; viewport entirely to the right.
+    expect(computeAudioFitToView(track, {visStart: 500, visEnd: 800})).toBeNull();
+  });
+
+  it('crops In/Out to the on-screen slice and moves Position to the visible left edge', () => {
+    // Bar span [50, 250]; viewport [150, 400] -> L=150, R=250.
+    const fit = computeAudioFitToView(track, {visStart: 150, visEnd: 400});
+    expect(fit).not.toBeNull();
+    // source at t = 100 + 0 + (t - 50); at L=150 -> 200; at R=250 -> 300.
+    expect(fit!.inFrame).toBe(200);
+    expect(fit!.outFrame).toBe(300);
+    expect(fit!.offsetFrame).toBe(150);
+    expect(fit!.slipOffset).toBe(0);
+  });
+
+  it('keeps on-screen source content when slipOffset is non-zero', () => {
+    const slipped = {...track, slipOffset: 20};
+    // Bar span [50, 250]; viewport [0, 200] -> L=50, R=200.
+    const fit = computeAudioFitToView(slipped, {visStart: 0, visEnd: 200});
+    expect(fit).not.toBeNull();
+    // source at t = 100 + 20 + (t - 50) = 70 + t; at L=50 -> 120; at R=200 -> 270.
+    // After the fit (slip=0, offset=50) content at t is 120 + (t - 50) = 70 + t — unchanged.
+    expect(fit!.inFrame).toBe(120);
+    expect(fit!.outFrame).toBe(270);
+    expect(fit!.offsetFrame).toBe(50);
+    expect(fit!.slipOffset).toBe(0);
+  });
+
+  it('crops the right side of a bar that overhangs the viewport', () => {
+    // Bar span [50, 250]; viewport [0, 120] -> L=50, R=120.
+    const fit = computeAudioFitToView(track, {visStart: 0, visEnd: 120});
+    expect(fit).not.toBeNull();
+    // source at t = 100 + (t - 50) = 50 + t; at L=50 -> 100; at R=120 -> 170.
+    expect(fit!.inFrame).toBe(100);
+    expect(fit!.outFrame).toBe(170);
+    expect(fit!.offsetFrame).toBe(50);
+    expect(fit!.slipOffset).toBe(0);
+  });
+
+  it('preserves a 1-frame minimum span', () => {
+    // Degenerate viewport that barely touches the bar's right edge.
+    const fit = computeAudioFitToView(track, {visStart: 249.25, visEnd: 250.1});
+    expect(fit).not.toBeNull();
+    expect(fit!.outFrame - fit!.inFrame).toBeGreaterThanOrEqual(1);
+  });
+
+  it('clamps the crop into the file window (T-g2n-02)', () => {
+    const edge = {
+      inFrame: 0,
+      outFrame: 10,
+      offsetFrame: -100,
+      slipOffset: 0,
+      totalFramesInFile: 20,
+    };
+    // Bar span [-100, -90]; viewport [-95, 0] -> L=-95, R=-90.
+    const fit = computeAudioFitToView(edge, {visStart: -95, visEnd: 0});
+    expect(fit).not.toBeNull();
+    expect(fit!.inFrame).toBeGreaterThanOrEqual(0);
+    expect(fit!.outFrame).toBeGreaterThan(fit!.inFrame);
+    expect(fit!.outFrame).toBeLessThanOrEqual(20);
+    expect(fit!.slipOffset).toBe(0);
   });
 });

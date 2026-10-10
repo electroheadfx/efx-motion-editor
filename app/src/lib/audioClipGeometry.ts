@@ -68,3 +68,69 @@ export function selectAudioPeakTier(
   if (pixelsPerSourcePeak > 4) return peaks.tier3;
   return peaks.tier2;
 }
+
+export interface AudioFitTrack {
+  readonly inFrame: number;
+  readonly outFrame: number;
+  readonly offsetFrame: number;
+  readonly slipOffset: number;
+  readonly totalFramesInFile: number;
+}
+
+export interface AudioFitViewport {
+  /** First visible timeline frame (content space). */
+  readonly visStart: number;
+  /** One-past-last visible timeline frame (content space). */
+  readonly visEnd: number;
+}
+
+export interface AudioFitResult {
+  readonly inFrame: number;
+  readonly outFrame: number;
+  readonly offsetFrame: number;
+  readonly slipOffset: 0;
+}
+
+/**
+ * 261010-g2n W2 — crop In/Out to the on-screen slice of the clip bar.
+ *
+ * On-screen content at timeline frame t is `inFrame + slipOffset + (t - offsetFrame)`.
+ * The fit keeps that content by writing newIn/newOut from that mapping and moving
+ * Position to the visible left edge, with slip reset to 0. Returns null (no store
+ * write) when the bar is already fully visible or the intersection is empty.
+ */
+export function computeAudioFitToView(
+  track: AudioFitTrack,
+  viewport: AudioFitViewport,
+): AudioFitResult | null {
+  const trimFrames = Math.max(1, track.outFrame - track.inFrame);
+  const barStart = track.offsetFrame;
+  const barEnd = track.offsetFrame + trimFrames;
+
+  const L = Math.max(barStart, viewport.visStart);
+  const R = Math.min(barEnd, viewport.visEnd);
+  if (R <= L) return null;
+  // Fully visible bar — nothing to crop.
+  if (barStart >= viewport.visStart && barEnd <= viewport.visEnd) return null;
+
+  // Source at timeline frame t is inFrame + slipOffset + (t - offsetFrame).
+  const sourceAt = (t: number) => track.inFrame + track.slipOffset + (t - track.offsetFrame);
+  let newIn = Math.round(sourceAt(L));
+  let newOut = Math.round(sourceAt(R));
+
+  // 1-frame minimum span (T-g2n-02).
+  if (newOut < newIn + 1) newOut = newIn + 1;
+
+  // Clamp the crop into the file window.
+  const maxIn = Math.max(0, track.totalFramesInFile - 1);
+  newIn = Math.min(Math.max(0, newIn), maxIn);
+  const maxOut = Math.max(newIn + 1, track.totalFramesInFile);
+  newOut = Math.min(Math.max(newIn + 1, newOut), maxOut);
+
+  return {
+    inFrame: newIn,
+    outFrame: newOut,
+    offsetFrame: Math.round(L),
+    slipOffset: 0,
+  };
+}

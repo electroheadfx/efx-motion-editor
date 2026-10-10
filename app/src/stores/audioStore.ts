@@ -240,6 +240,35 @@ export const audioStore = {
   },
 
   /**
+   * 261010-g2n W2: crop In/Out/Position to the on-screen slice in ONE undo.
+   * Writes inFrame, outFrame, offsetFrame, and slipOffset: 0 from a single
+   * snapshot — never chain setIn/setInOut/setSlipOffset (that would be three
+   * history entries). Callers compute the crop via computeAudioFitToView.
+   */
+  fitToView(
+    trackId: string,
+    patch: {inFrame: number; outFrame: number; offsetFrame: number},
+  ): void {
+    const track = tracks.value.find(t => t.id === trackId);
+    if (!track) return;
+    const before = snapshot();
+    tracks.value = tracks.value.map(t =>
+      t.id === trackId
+        ? {...t, inFrame: patch.inFrame, outFrame: patch.outFrame, offsetFrame: patch.offsetFrame, slipOffset: 0}
+        : t,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Fit audio "${track.name}" to view`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /**
    * 261010-en9 R5: engine-sign slip (positive = later source). Clamped so the
    * heard window `[inFrame + slip, outFrame + slip]` stays inside
    * `[0, totalFramesInFile]` — the clamp helper is the only bounds source.

@@ -229,3 +229,38 @@ describe('AudioProperties time unit and range refinements (261010-bkv)', () => {
     expect(source).toContain('data-testid="audio-max-time"');
   });
 });
+
+describe('AudioProperties Fit to view (261010-g2n W2)', () => {
+  it('exposes a Fit to view control in POSITION after the In/Out pair', () => {
+    const positionSection = source.slice(
+      source.indexOf('<RuleSectionHeader text="POSITION" />'),
+      source.indexOf('title="BEAT SYNC"'),
+    );
+    expect(positionSection).toContain('Fit to view');
+    const fitIdx = positionSection.indexOf('Fit to view');
+    const inoutIdx = positionSection.indexOf('data-testid="audio-inout-pair"');
+    expect(inoutIdx).toBeGreaterThan(-1);
+    expect(fitIdx).toBeGreaterThan(inoutIdx);
+  });
+
+  it('reads timelineStore viewport signals and calls computeAudioFitToView before any store write', () => {
+    expect(source).toContain('computeAudioFitToView');
+    expect(source).toContain('audioStore.fitToView');
+    expect(source).toContain('timelineStore.scrollX');
+    expect(source).toContain('timelineStore.zoom');
+    expect(source).toContain('timelineStore.viewportWidth');
+    // Viewport frame range is built from TimelineRenderer layout constants.
+    expect(source).toContain('BASE_FRAME_WIDTH');
+    expect(source).toContain('TRACK_HEADER_WIDTH');
+    // Null crop returns before any store call.
+    expect(source).toMatch(/if \(!fit\) return/);
+  });
+
+  it('uses modest small-button chrome consistent with the BPM x2 / /2 shape', () => {
+    const fitBtn = source.slice(source.indexOf('Fit to view') - 400, source.indexOf('Fit to view') + 80);
+    expect(fitBtn).toContain('bg-(--color-bg-input)');
+    expect(fitBtn).toContain('text-[10px]');
+    expect(fitBtn).toContain('rounded');
+    expect(fitBtn).toContain('disabled:opacity-40');
+  });
+});

@@ -1,5 +1,7 @@
 import {describe, it, expect, beforeEach} from 'vitest';
 import {audioStore, _setAudioMarkDirtyCallback} from './audioStore';
+import {historyStore} from './historyStore';
+import {resetHistory} from '../lib/history';
 import type {AudioTrack} from '../types/audio';
 
 function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
@@ -36,6 +38,7 @@ function makeTrack(overrides: Partial<AudioTrack> = {}): AudioTrack {
 describe('audioStore', () => {
   beforeEach(() => {
     audioStore.reset();
+    resetHistory();
     _setAudioMarkDirtyCallback(() => {});
   });
 
@@ -179,6 +182,52 @@ describe('audioStore', () => {
       expect(audioStore.getTrack(track.id)?.slipOffset).toBe(-10);
       audioStore.setSlipOffset(track.id, 999);
       expect(audioStore.getTrack(track.id)?.slipOffset).toBe(100);
+    });
+  });
+
+  describe('fitToView (261010-g2n W2)', () => {
+    it('writes inFrame, outFrame, offsetFrame, and slipOffset 0 in one undo', () => {
+      const track = makeTrack({
+        inFrame: 100,
+        outFrame: 300,
+        offsetFrame: 50,
+        slipOffset: 20,
+      });
+      audioStore.addTrack(track);
+      // addTrack already pushed one entry.
+      const stackBefore = historyStore.stack.value.length;
+      audioStore.fitToView(track.id, {inFrame: 120, outFrame: 270, offsetFrame: 50});
+      const t = audioStore.getTrack(track.id);
+      expect(t?.inFrame).toBe(120);
+      expect(t?.outFrame).toBe(270);
+      expect(t?.offsetFrame).toBe(50);
+      expect(t?.slipOffset).toBe(0);
+      // Exactly one history entry — not chained setIn/setInOut/setSlipOffset.
+      expect(historyStore.stack.value.length).toBe(stackBefore + 1);
+    });
+
+    it('undo restores the pre-fit fields including slipOffset', () => {
+      const track = makeTrack({
+        inFrame: 100,
+        outFrame: 300,
+        offsetFrame: 50,
+        slipOffset: 20,
+      });
+      audioStore.addTrack(track);
+      audioStore.fitToView(track.id, {inFrame: 120, outFrame: 270, offsetFrame: 50});
+      const entry = historyStore.stack.value[historyStore.stack.value.length - 1];
+      entry.undo();
+      const t = audioStore.getTrack(track.id);
+      expect(t?.inFrame).toBe(100);
+      expect(t?.outFrame).toBe(300);
+      expect(t?.offsetFrame).toBe(50);
+      expect(t?.slipOffset).toBe(20);
+    });
+
+    it('is a no-op when the track is missing', () => {
+      const stackBefore = historyStore.stack.value.length;
+      audioStore.fitToView('missing', {inFrame: 1, outFrame: 2, offsetFrame: 0});
+      expect(historyStore.stack.value.length).toBe(stackBefore);
     });
   });
 
