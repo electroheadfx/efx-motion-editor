@@ -6,10 +6,10 @@ current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: planning
 stopped_at: Closed 261009-v0s / 261010-bkv / 261010-en9 / 261010-g2n / 261010-ht0 audio quicks — UAT approved
-last_updated: "2026-10-10T14:49:47.375Z"
+last_updated: "2026-10-10T15:31:06.918Z"
 last_activity: 2026-10-10
-last_activity_desc: Native UAT approved for all five audio quicks (261009-v0s, 261010-bkv, 261010-en9, 261010-g2n, 261010-ht0) plus UAT-loop follow-ups — all CLOSED
-state_head: b5d6918c7b4eb1bcac8a705926454c60a6aef6ed
+last_activity_desc: Completed quick task 261010-nzu (SliderStepper theme tokens — sidebar theme vars with Studio-safe fallbacks) — automated-ready, native UAT rows pending
+state_head: e0fe6f21c617c542cffa3357297f5a46c65633f6
 progress:
   total_phases: 14
   completed_phases: 19
@@ -512,6 +512,7 @@ None yet.
 | 261010-g2n | Audio panel UAT fix (UAT round 2) — waveform source-space windowing + tier selection (audioClipGeometry; trim reveals cut, slip slides, short clips get detail not spike blobs); Fit to view button crops In/Out to the on-screen slice of the clip bar (one undo, slip reset, Position follows visible left edge); Replace text link becomes a button. Status: **native UAT approved 2026-10-10** — rows 1-5 approved (short-window detail, Out-nudge stability, Offset slide, Fit to view, Replace button). Quick 261010-g2n **CLOSED** | 2026-10-10 **Native UAT PASSED 2026-10-10 — CLOSED** | 255c5b48 | [261010-g2n-audio-panel-uat-fix-waveform-source-spac](./quick/261010-g2n-audio-panel-uat-fix-waveform-source-spac/) |
 | 261010-ht0 | Audio fade curves + Studio Offset + Fit to view (UAT round 3) — fade curve law in fadeCurves.ts (fade-in = mirror of fade-out, no more In=log/Out=exp workaround); exponential default on both fades editor+Studio (a brief logarithmic default was user-reverted); audible fades sampled via setValueCurveAtTime so sound matches overlay (log no longer linearRamp); DocumentSoundClip.sourceFrames clean-break add fixes Studio Offset stuck at 0 (outFrame fallback collapse removed); Fit to view button in Studio modal (crop In/Out to on-screen slice, startFrame follows, slip resets, one undo). Status: **native UAT approved 2026-10-10** — rows 1-5 approved (mirrored fades, audible=overlay, exponential default, Studio Offset moves, Studio Fit to view); UAT-loop follow-ups also approved (waveform visual gain x1-x4 + taller stain 5a821a54; editor OUT-cut window 10172f84). Quick 261010-ht0 **CLOSED** | 2026-10-10 **Native UAT PASSED 2026-10-10 — CLOSED** | 3d7b3dc0, c76c5369, 5a821a54, 10172f84 | [261010-ht0-audio-fade-curves-studio-offset-fit-to-v](./quick/261010-ht0-audio-fade-curves-studio-offset-fit-to-v/) |
 | 261010-mwy | Physics paint layer spans the visible timeline view — view-derived inFrame/outFrame at current zoom/scroll (LOCKED span law in timelineVisibleSpan.ts); isolation still wins; Paint/FX/content unchanged; 13/13 tests green. Native UAT passed 2026-10-10 | 2026-10-10 | b5d6918c | [261010-mwy-physics-paint-layer-spans-the-visible-ti](./quick/261010-mwy-physics-paint-layer-spans-the-visible-ti/) |
+| 261010-nzu | SliderStepper color slots follow the sidebar theme vars with Studio-safe fallbacks (colors only; Studio look locked by 261009-6ee) | 2026-10-10 | e0fe6f21 | [261010-nzu-sliderstepper-theme-tokens-follow-the-mo](./quick/261010-nzu-sliderstepper-theme-tokens-follow-the-mo/) |
 
 ### Roadmap Evolution
 
