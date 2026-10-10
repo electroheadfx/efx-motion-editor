@@ -151,9 +151,14 @@ export const audioStore = {
   setInOut(trackId: string, inFrame: number, outFrame: number): void {
     const track = tracks.value.find(t => t.id === trackId);
     if (!track) return;
+    // Audible window [in+slip, out+slip] must stay inside the file.
+    const minIn = Math.max(0, -track.slipOffset);
+    const maxOut = Math.max(track.outFrame, track.totalFramesInFile - track.slipOffset);
+    const nextIn = Math.max(minIn, Math.min(track.outFrame - 1, inFrame));
+    const nextOut = Math.min(maxOut, Math.max(nextIn + 1, outFrame));
     const before = snapshot();
     tracks.value = tracks.value.map(t =>
-      t.id === trackId ? {...t, inFrame, outFrame} : t,
+      t.id === trackId ? {...t, inFrame: nextIn, outFrame: nextOut} : t,
     );
     markDirty();
     const after = snapshot();
@@ -171,12 +176,14 @@ export const audioStore = {
    * right while the clip END stays fixed. One undo action writes inFrame AND
    * offsetFrame so `offsetFrame + (outFrame - inFrame)` is invariant
    * (newOffset = oldOffset + (newIn - oldIn)); outFrame is unchanged. inFrame
-   * clamps to [0, outFrame - 1] (1-frame minimum span in frame space).
+   * clamps to [0, outFrame - 1] (1-frame minimum span in frame space) and to
+   * the slip-aware floor so [in+slip, out+slip] stays inside the file.
    */
   setIn(trackId: string, inFrame: number): void {
     const track = tracks.value.find(t => t.id === trackId);
     if (!track) return;
-    const clampedIn = Math.max(0, Math.min(track.outFrame - 1, inFrame));
+    const minIn = Math.max(0, -track.slipOffset);
+    const clampedIn = Math.max(minIn, Math.min(track.outFrame - 1, inFrame));
     const nextOffset = track.offsetFrame + (clampedIn - track.inFrame);
     const before = snapshot();
     tracks.value = tracks.value.map(t =>

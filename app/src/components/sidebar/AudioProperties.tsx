@@ -77,6 +77,12 @@ export function AudioProperties({track}: AudioPropertiesProps) {
     {inFrame: track.inFrame, outFrame: track.outFrame, totalFramesInFile: track.totalFramesInFile},
     fps,
   );
+  // Audible window is [in+slip, out+slip] and must stay inside the file.
+  // Out max shrinks as slip moves toward the file end; In min rises when slip
+  // is positive. Otherwise a max-left Offset still lets Out run past the last
+  // sample (261010 UAT).
+  const inMinFrames = Math.max(0, -track.slipOffset);
+  const outMaxFrames = Math.max(track.outFrame, track.totalFramesInFile - track.slipOffset, 1);
 
   // 261010-g2n W2 — crop In/Out to the on-screen slice in one undo.
   const handleFitToView = () => {
@@ -268,7 +274,8 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             label="In (s)"
             value={framesToSeconds(track.inFrame, fps)}
             step={0.1}
-            min={0}
+            min={framesToSeconds(inMinFrames, fps)}
+            sliderMin={framesToSeconds(inMinFrames, fps)}
             sliderMax={Math.max(track.duration, framesToSeconds(track.inFrame, fps), 0.1)}
             precision={1}
             onChange={(val) => audioStore.setIn(track.id, secondsToFrames(val, fps))}
@@ -279,7 +286,8 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             value={framesToSeconds(track.outFrame, fps)}
             step={0.1}
             min={framesToSeconds(track.inFrame + 1, fps)}
-            sliderMax={Math.max(track.duration, framesToSeconds(track.outFrame, fps), 0.1)}
+            sliderMin={framesToSeconds(track.inFrame + 1, fps)}
+            sliderMax={Math.max(framesToSeconds(outMaxFrames, fps), framesToSeconds(track.outFrame, fps), 0.1)}
             precision={1}
             onChange={(val) => audioStore.setInOut(track.id, track.inFrame, secondsToFrames(val, fps))}
             ariaLabel="Out seconds"

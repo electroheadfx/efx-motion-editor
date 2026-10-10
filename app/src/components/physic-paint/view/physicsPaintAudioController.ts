@@ -388,6 +388,8 @@ export function usePhysicsPaintAudioController({
     if (!sound) return;
     // 1-frame minimum span: in may never meet or pass out.
     if (frames >= sound.outFrame) return;
+    // Audible window [in+slip, out+slip] must stay inside the file.
+    if (frames + sound.slipOffset < 0) return;
     commitPatch({ inFrame: frames });
   };
 
@@ -396,6 +398,12 @@ export function usePhysicsPaintAudioController({
     if (!isValidFadeFrames(frames)) return;
     if (!sound) return;
     if (frames <= sound.inFrame) return;
+    const sourceFrames = resolveSlipTotalFrames(
+      sound.sourceFrames,
+      audioPeaksCache.getSourceFrames(sound.sourceId),
+    );
+    // Out may not push the audible window past the last sample.
+    if (sourceFrames != null && frames + sound.slipOffset > sourceFrames) return;
     commitPatch({ outFrame: frames });
   };
 

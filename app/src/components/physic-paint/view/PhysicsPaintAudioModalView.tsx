@@ -441,7 +441,12 @@ export function PhysicsPaintAudioModalView({
                   sound.sourceFrames,
                   audioPeaksCache.getSourceFrames(sound.sourceId),
                 ) ?? sound.outFrame;
-                const maxSeconds = sourceFrames / Math.max(1, fps);
+                // Audible window is [in+slip, out+slip]; it must stay inside the
+                // file. Out max therefore SHRINKS as slip moves toward the file
+                // end, and In min rises when slip is positive. Otherwise a
+                // max-left Offset still let Out run past the last sample.
+                const inMinFrames = Math.max(0, -sound.slipOffset);
+                const outMaxFrames = Math.max(sound.outFrame, sourceFrames - sound.slipOffset, 1);
                 return (
                   <div class="physics-paint-audio-pair">
                     {/* 5. Trim in (s) — source trim start; 1-frame minimum span
@@ -450,21 +455,26 @@ export function PhysicsPaintAudioModalView({
                       label={`${AUDIO_IN_LABEL} (s)`}
                       value={framesToSeconds(sound.inFrame, fps)}
                       step={0.1}
-                      min={0}
+                      min={framesToSeconds(inMinFrames, fps)}
                       max={framesToSeconds(sound.outFrame - 1, fps)}
+                      sliderMin={framesToSeconds(inMinFrames, fps)}
+                      sliderMax={framesToSeconds(Math.max(sound.outFrame - 1, inMinFrames), fps)}
                       precision={1}
                       onChange={(value) => commitInFrame(secondsToFrames(value, fps))}
                       ariaLabel="In seconds"
                     />
 
                     {/* 6. Trim out (s) — source trim end; 1-frame minimum span
-                        (min = in + 1 frames). sliderMax is the audio max time. */}
+                        (min = in + 1 frames). sliderMax is the available audio
+                        given the current Offset, not the raw file length. */}
                     <SliderStepper
                       label={`${AUDIO_OUT_LABEL} (s)`}
                       value={framesToSeconds(sound.outFrame, fps)}
                       step={0.1}
                       min={framesToSeconds(sound.inFrame + 1, fps)}
-                      sliderMax={Math.max(maxSeconds, framesToSeconds(sound.outFrame, fps), 0.1)}
+                      max={framesToSeconds(outMaxFrames, fps)}
+                      sliderMin={framesToSeconds(sound.inFrame + 1, fps)}
+                      sliderMax={framesToSeconds(outMaxFrames, fps)}
                       precision={1}
                       onChange={(value) => commitOutFrame(secondsToFrames(value, fps))}
                       ariaLabel="Out seconds"
