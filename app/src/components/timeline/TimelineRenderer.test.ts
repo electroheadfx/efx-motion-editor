@@ -215,6 +215,21 @@ describe('physic-paint document sound stain preview', () => {
     }
   });
 
+  it('windows the drawn waveform to the trimmed [in, out] stain rect, not the layer bar', () => {
+    // 261010 UAT: the fill was clipped to the FX bar, so the full source
+    // spilled past the OUT cut and the layer looked wider than the fade-out.
+    const code = source();
+    const stainIndex = code.indexOf('private drawPhysicPaintSoundStain');
+    const stainSource = code.slice(stainIndex, code.indexOf('private drawRotoKeyMarkers'));
+
+    // The source-space fill must sit behind a clip to geom.x / geom.width.
+    expect(stainSource).toContain('ctx.rect(geom.x, barY, geom.width, barH)');
+    expect(stainSource).toContain('ctx.translate(geom.sourceX, barY)');
+    // And the stain clip must come BEFORE the fill so the window is applied.
+    expect(stainSource.indexOf('ctx.rect(geom.x, barY, geom.width, barH)'))
+      .toBeLessThan(stainSource.indexOf('ctx.fill(new Path2D(stainD))'));
+  });
+
   it('feeds soundClip + sourceId peaks into the FX layout and refreshes on the document/peaks clocks', () => {
     const code = frameMapSource();
     const fxLayoutsIndex = code.indexOf('export const fxTrackLayouts');

@@ -693,8 +693,13 @@ export class TimelineRenderer {
     ctx.roundRect(trackLeft, barY, trackRight - trackLeft, barH, 3);
     ctx.clip();
 
-    // Waveform stain in SOURCE space (windowed by the clip rect to [in, out]).
+    // Waveform stain in SOURCE space, windowed to the trimmed [in, out] span.
+    // Clip to the STAIN rect (geom.x..geom.x+geom.width), never the layer bar:
+    // the full source path spills past the OUT cut otherwise (261010 UAT).
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(geom.x, barY, geom.width, barH);
+    ctx.clip();
     ctx.translate(geom.sourceX, barY);
     ctx.scale(1, scaleY);
     ctx.fillStyle = SOUND_WAVEFORM_FILL;
