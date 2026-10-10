@@ -92,12 +92,14 @@ export interface AudioFitResult {
 }
 
 /**
- * 261010-g2n W2 — crop In/Out to the on-screen slice of the clip bar.
+ * 261010-g2n W2 / UAT 2026-10-10 — snap In/Out to the timeline's visible view.
  *
- * On-screen content at timeline frame t is `inFrame + slipOffset + (t - offsetFrame)`.
- * The fit keeps that content by writing newIn/newOut from that mapping and moving
- * Position to the visible left edge, with slip reset to 0. Returns null (no store
- * write) when the bar is already fully visible or the intersection is empty.
+ * The audible span becomes EXACTLY the on-screen frame range at the current
+ * zoom (crop when the bar overhangs the view, expand when it is narrower, move
+ * it into view when it is off-screen). Content at the left of the intersection
+ * (or the clip's own left when it sits entirely inside the view) is preserved
+ * as the new In; Position moves to the visible left edge and slip resets to 0.
+ * Returns null (no store write) only when the clip already matches the view.
  */
 export function computeAudioFitToView(
   track: AudioFitTrack,
@@ -107,30 +109,43 @@ export function computeAudioFitToView(
   const barStart = track.offsetFrame;
   const barEnd = track.offsetFrame + trimFrames;
 
-  const L = Math.max(barStart, viewport.visStart);
-  const R = Math.min(barEnd, viewport.visEnd);
-  if (R <= L) return null;
-  // Fully visible bar — nothing to crop.
-  if (barStart >= viewport.visStart && barEnd <= viewport.visEnd) return null;
+  const visStart = viewport.visStart;
+  const visEnd = viewport.visEnd;
+  const viewSpan = Math.round(visEnd) - Math.round(visStart);
+  if (!Number.isFinite(viewSpan) || viewSpan <= 0) return null;
 
   // Source at timeline frame t is inFrame + slipOffset + (t - offsetFrame).
   const sourceAt = (t: number) => track.inFrame + track.slipOffset + (t - track.offsetFrame);
-  let newIn = Math.round(sourceAt(L));
-  let newOut = Math.round(sourceAt(R));
 
-  // 1-frame minimum span (T-g2n-02).
-  if (newOut < newIn + 1) newOut = newIn + 1;
+  // Keep the source content at the left of the intersection, or the clip's own
+  // left when it sits entirely inside (or outside) the view.
+  const overlaps = barEnd > visStart && barStart < visEnd;
+  const keepT = overlaps ? Math.max(barStart, visStart) : barStart;
+  let newIn = Math.round(sourceAt(keepT));
+  let newOut = newIn + Math.max(1, viewSpan);
 
-  // Clamp the crop into the file window.
+  // Clamp into the file window (T-g2n-02).
   const maxIn = Math.max(0, track.totalFramesInFile - 1);
   newIn = Math.min(Math.max(0, newIn), maxIn);
   const maxOut = Math.max(newIn + 1, track.totalFramesInFile);
   newOut = Math.min(Math.max(newIn + 1, newOut), maxOut);
 
+  const newOffset = Math.round(visStart);
+
+  // Already snapped to the view — no store write.
+  if (
+    newIn === track.inFrame &&
+    newOut === track.outFrame &&
+    newOffset === track.offsetFrame &&
+    track.slipOffset === 0
+  ) {
+    return null;
+  }
+
   return {
     inFrame: newIn,
     outFrame: newOut,
-    offsetFrame: Math.round(L),
+    offsetFrame: newOffset,
     slipOffset: 0,
   };
 }

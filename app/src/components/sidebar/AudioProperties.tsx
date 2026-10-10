@@ -87,11 +87,12 @@ export function AudioProperties({track}: AudioPropertiesProps) {
   // 261010 UAT: display-only waveform amplification x1..x4 (shared with Studio).
   const waveformGain = audioWaveformGain.value;
 
-  // 261010-g2n W2 — crop In/Out to the on-screen slice in one undo.
+  // 261010-g2n W2 / UAT 2026-10-10 — snap In/Out to the visible timeline view
+  // at the current zoom (one undo).
   const handleFitToView = () => {
     const frameWidth = BASE_FRAME_WIDTH * timelineStore.zoom.value;
-    if (!(frameWidth > 0)) return;
     const trackArea = timelineStore.viewportWidth.value - TRACK_HEADER_WIDTH;
+    if (!(frameWidth > 0) || !(trackArea > 0)) return;
     const visStart = timelineStore.scrollX.value / frameWidth;
     const visEnd = (timelineStore.scrollX.value + trackArea) / frameWidth;
     const fit = computeAudioFitToView(
@@ -296,26 +297,18 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             ariaLabel="Out seconds"
           />
         </div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            marginTop: '10px',
-            marginBottom: '10px',
-          }}
-        >
+        <div style={{marginTop: '10px', marginBottom: '10px'}}>
           <button
-            class="flex-1 text-[10px] px-2 py-1 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            class="w-full text-[10px] px-2 py-1 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             onClick={handleFitToView}
-            title="Crop In/Out to the on-screen slice of the clip"
+            title="Snap In/Out to the visible timeline view at the current zoom"
           >
             Fit to view
           </button>
           <div
             role="group"
             aria-label="Waveform gain"
-            style={{display: 'inline-flex', gap: '2px', flexShrink: 0}}
+            style={{display: 'flex', gap: '2px', marginTop: '6px'}}
           >
             {([1, 2, 3, 4] as const).map((level) => (
               <button
@@ -323,7 +316,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
                 type="button"
                 aria-pressed={waveformGain === level}
                 title={`Waveform x${level}`}
-                class={`text-[10px] px-1.5 py-1 rounded border cursor-pointer transition-colors ${
+                class={`flex-1 text-[10px] px-1.5 py-1 rounded border cursor-pointer transition-colors ${
                   waveformGain === level
                     ? 'bg-(--color-accent) text-white border-(--color-accent)'
                     : 'bg-(--color-bg-input) text-(--color-text-secondary) border-(--color-border-subtle) hover:bg-(--color-bg-hover-item) hover:text-white'

@@ -153,7 +153,7 @@ describe('selectAudioPeakTier (261010-g2n W1)', () => {
   });
 });
 
-describe('computeAudioFitToView (261010-g2n W2)', () => {
+describe('computeAudioFitToView (261010-g2n W2 / UAT 2026-10-10 snap-to-view)', () => {
   const track = {
     inFrame: 100,
     outFrame: 300,
@@ -162,53 +162,73 @@ describe('computeAudioFitToView (261010-g2n W2)', () => {
     totalFramesInFile: 1000,
   };
 
-  it('returns null when the clip bar is already fully inside the viewport', () => {
-    // Bar span [50, 250]; viewport covers [0, 400].
-    expect(computeAudioFitToView(track, {visStart: 0, visEnd: 400})).toBeNull();
+  it('snaps In/Out to the view span even when the bar is already fully visible', () => {
+    // Bar span [50, 250] (200 frames); viewport [0, 400] — zoomed OUT.
+    // The audible span becomes the 400-frame view, Position at 0.
+    const fit = computeAudioFitToView(track, {visStart: 0, visEnd: 400});
+    expect(fit).not.toBeNull();
+    // source at t=50 (clip left) = 100; newOut = 100 + 400 = 500.
+    expect(fit!.inFrame).toBe(100);
+    expect(fit!.outFrame).toBe(500);
+    expect(fit!.offsetFrame).toBe(0);
+    expect(fit!.slipOffset).toBe(0);
   });
 
-  it('returns null when the intersection is empty', () => {
-    // Bar span [50, 250]; viewport entirely to the right.
-    expect(computeAudioFitToView(track, {visStart: 500, visEnd: 800})).toBeNull();
+  it('returns null when the result already matches the view', () => {
+    const snapped = {inFrame: 100, outFrame: 500, offsetFrame: 0, slipOffset: 0, totalFramesInFile: 1000};
+    expect(computeAudioFitToView(snapped, {visStart: 0, visEnd: 400})).toBeNull();
+  });
+
+  it('returns null when the view span is empty or non-finite', () => {
+    expect(computeAudioFitToView(track, {visStart: 10, visEnd: 10})).toBeNull();
+    expect(computeAudioFitToView(track, {visStart: 10, visEnd: 5})).toBeNull();
   });
 
   it('crops In/Out to the on-screen slice and moves Position to the visible left edge', () => {
-    // Bar span [50, 250]; viewport [150, 400] -> L=150, R=250.
+    // Bar span [50, 250]; viewport [150, 400] -> L=150, viewSpan=250.
     const fit = computeAudioFitToView(track, {visStart: 150, visEnd: 400});
     expect(fit).not.toBeNull();
-    // source at t = 100 + 0 + (t - 50); at L=150 -> 200; at R=250 -> 300.
+    // source at t = 100 + 0 + (t - 50); at L=150 -> 200; span = 250 -> out=450.
     expect(fit!.inFrame).toBe(200);
-    expect(fit!.outFrame).toBe(300);
+    expect(fit!.outFrame).toBe(450);
     expect(fit!.offsetFrame).toBe(150);
     expect(fit!.slipOffset).toBe(0);
   });
 
+  it('zoom shows up as the view span: a tighter zoom crops tighter', () => {
+    // Same scroll origin, zoomed in: viewport [150, 200] -> span 50.
+    const fit = computeAudioFitToView(track, {visStart: 150, visEnd: 200});
+    expect(fit).not.toBeNull();
+    // source at L=150 -> 200; span 50 -> out=250.
+    expect(fit!.inFrame).toBe(200);
+    expect(fit!.outFrame).toBe(250);
+    expect(fit!.offsetFrame).toBe(150);
+  });
+
   it('keeps on-screen source content when slipOffset is non-zero', () => {
     const slipped = {...track, slipOffset: 20};
-    // Bar span [50, 250]; viewport [0, 200] -> L=50, R=200.
+    // Bar span [50, 250]; viewport [0, 200] -> keepT=50, viewSpan=200.
     const fit = computeAudioFitToView(slipped, {visStart: 0, visEnd: 200});
     expect(fit).not.toBeNull();
-    // source at t = 100 + 20 + (t - 50) = 70 + t; at L=50 -> 120; at R=200 -> 270.
-    // After the fit (slip=0, offset=50) content at t is 120 + (t - 50) = 70 + t — unchanged.
+    // source at t = 100 + 20 + (t - 50) = 70 + t; at keepT=50 -> 120; span 200 -> 320.
     expect(fit!.inFrame).toBe(120);
-    expect(fit!.outFrame).toBe(270);
-    expect(fit!.offsetFrame).toBe(50);
+    expect(fit!.outFrame).toBe(320);
+    expect(fit!.offsetFrame).toBe(0);
     expect(fit!.slipOffset).toBe(0);
   });
 
-  it('crops the right side of a bar that overhangs the viewport', () => {
-    // Bar span [50, 250]; viewport [0, 120] -> L=50, R=120.
-    const fit = computeAudioFitToView(track, {visStart: 0, visEnd: 120});
+  it('moves an off-screen bar into the view and sizes it to the view', () => {
+    // Bar span [50, 250]; viewport [500, 600] — no overlap.
+    const fit = computeAudioFitToView(track, {visStart: 500, visEnd: 600});
     expect(fit).not.toBeNull();
-    // source at t = 100 + (t - 50) = 50 + t; at L=50 -> 100; at R=120 -> 170.
+    // keepT = barStart = 50 -> source 100; span 100 -> 200; Position = 500.
     expect(fit!.inFrame).toBe(100);
-    expect(fit!.outFrame).toBe(170);
-    expect(fit!.offsetFrame).toBe(50);
+    expect(fit!.outFrame).toBe(200);
+    expect(fit!.offsetFrame).toBe(500);
     expect(fit!.slipOffset).toBe(0);
   });
 
   it('preserves a 1-frame minimum span', () => {
-    // Degenerate viewport that barely touches the bar's right edge.
     const fit = computeAudioFitToView(track, {visStart: 249.25, visEnd: 250.1});
     expect(fit).not.toBeNull();
     expect(fit!.outFrame - fit!.inFrame).toBeGreaterThanOrEqual(1);
@@ -222,8 +242,8 @@ describe('computeAudioFitToView (261010-g2n W2)', () => {
       slipOffset: 0,
       totalFramesInFile: 20,
     };
-    // Bar span [-100, -90]; viewport [-95, 0] -> L=-95, R=-90.
-    const fit = computeAudioFitToView(edge, {visStart: -95, visEnd: 0});
+    // View [−95, 5] would request a 100-frame span; the file only has 20.
+    const fit = computeAudioFitToView(edge, {visStart: -95, visEnd: 5});
     expect(fit).not.toBeNull();
     expect(fit!.inFrame).toBeGreaterThanOrEqual(0);
     expect(fit!.outFrame).toBeGreaterThan(fit!.inFrame);

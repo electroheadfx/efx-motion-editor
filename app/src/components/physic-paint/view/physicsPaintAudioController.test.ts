@@ -364,7 +364,7 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     });
   });
 
-  it('commitFitToView is a no-op when the viewport port returns null or the band is fully visible', () => {
+  it('commitFitToView snaps to the view (UAT 2026-10-10); null port stays a no-op', () => {
     const nullPort = makeController({
       selection: 'clip-a',
       getTimelineViewport: () => null,
@@ -372,21 +372,32 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     nullPort.controller.commitFitToView();
     expect(nullPort.patchSound).not.toHaveBeenCalled();
 
-    // Bar spans 0..48; a viewport covering 0..100 is fully visible -> null fit.
+    // Bar spans 0..48 (in 0, out 48); a viewport covering 0..100 EXPANDS the
+    // audible span to the 100-frame view (zoom shows up in the result).
     const fullyVisible = makeController({
       selection: 'clip-a',
       getTimelineViewport: () => ({ visStart: 0, visEnd: 100 }),
     });
     fullyVisible.controller.commitFitToView();
-    expect(fullyVisible.patchSound).not.toHaveBeenCalled();
+    expect(fullyVisible.patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', {
+      inFrame: 0,
+      outFrame: 100,
+      startFrame: 0,
+      slipOffset: 0,
+    });
 
-    // Empty intersection (viewport entirely past the bar) -> no write.
-    const empty = makeController({
+    // Off-screen bar MOVES into the view and is sized to the view.
+    const offscreen = makeController({
       selection: 'clip-a',
       getTimelineViewport: () => ({ visStart: 100, visEnd: 200 }),
     });
-    empty.controller.commitFitToView();
-    expect(empty.patchSound).not.toHaveBeenCalled();
+    offscreen.controller.commitFitToView();
+    expect(offscreen.patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', {
+      inFrame: 0,
+      outFrame: 100,
+      startFrame: 100,
+      slipOffset: 0,
+    });
   });
 
   it('commitFitToView fails closed with no selection', () => {

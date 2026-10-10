@@ -488,9 +488,9 @@ export function PhysicsPaintAudioModalView({
               })()}
 
               {/* 6b. Fit to view + waveform gain x1..x4 (261010-ht0 F5 / UAT
-                   visual gain). Fit crops In/Out to the on-screen slice; the
-                   gain buttons amplify the DRAWN peaks only (never audible). */}
-              <div class="physics-paint-audio-row physics-paint-audio-fit-row">
+                   visual gain). Fit snaps In/Out to the visible timeline view;
+                   the gain buttons amplify the DRAWN peaks only (never audible). */}
+              <div class="physics-paint-audio-row">
                 <button
                   type="button"
                   class="physics-paint-audio-fit"
