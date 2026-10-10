@@ -147,6 +147,7 @@ import {
   type SoundBandValues,
 } from './soundBandGeometry';
 import { audioPeaksCache, peaksCacheRevision } from '../../../lib/audioPeaksCache';
+import { audioWaveformGain } from '../../../lib/audioWaveformGain';
 import { beginInteraction, endInteraction, markInteractionActive } from '../bridge/gestureIdleScheduler';
 // 47-02 Task 2: the track CRUD wiring. The strip imports ONLY the pure-read
 // requestDeleteTrack preview plus the rename-validation constants — every
@@ -1650,7 +1651,9 @@ export function PhysicsPaintSoundClipStain(props: PhysicsPaintSoundClipStainProp
   const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
   const inPx = (clip.inFrame + clip.slipOffset) * ROTO_CELL_WIDTH_PX;
   const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
-  const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx) : null;
+  // 261010 UAT: display-only x1..x4 amplification so subtle audio is visible.
+  const waveformGain = audioWaveformGain.value;
+  const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx, waveformGain) : null;
   if (pathD === null) return null; // fail-closed: loading / missing source.
   const gainY = soundGainLineY(clip.gain);
   // UAT round 5: the gain line is clipped to the gap between active fades.
@@ -1768,7 +1771,9 @@ export function PhysicsPaintSoundDuplicateGhost(props: PhysicsPaintSoundDuplicat
   const sourceWidthPx = sourceFrames * ROTO_CELL_WIDTH_PX;
   const inPx = (clip.inFrame + clip.slipOffset) * ROTO_CELL_WIDTH_PX;
   const peaks = selectSoundPeaks(audioPeaksCache.get(clip.sourceId), sourceWidthPx);
-  const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx) : null;
+  // 261010 UAT: display-only x1..x4 amplification so subtle audio is visible.
+  const waveformGain = audioWaveformGain.value;
+  const pathD = peaks ? soundWaveformPathD(peaks, sourceWidthPx, waveformGain) : null;
   if (pathD === null) return null; // fail-closed: loading / missing source.
   const gainY = soundGainLineY(clip.gain);
   const gainSpan = soundGainLineSpan(clip.fadeInFrames, clip.fadeOutFrames, clip.inFrame, clip.outFrame, widthPx);

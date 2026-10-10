@@ -30,9 +30,10 @@ import { fadeLoudnessIn, fadeShape } from '../../../lib/fadeCurves';
 
 /** Layout constant: the band height (D-07 — 28px -> 36px, single source of truth). */
 export const SOUND_BAND_HEIGHT_PX = 36;
-/** Stain inset from the band top/bottom: max extent = 36 - 8 = 28px. */
-export const SOUND_STAIN_INSET_PX = 8;
-/** Half-extent of the waveform about the band's vertical center: (36 - 8) / 2. */
+/** Stain inset from the band top/bottom: max extent = 36 - 2 = 34px (261010 UAT:
+ *  the 8px inset left the waveform looking tiny in the 36px band). */
+export const SOUND_STAIN_INSET_PX = 2;
+/** Half-extent of the waveform about the band's vertical center: (36 - 2) / 2. */
 export const SOUND_STAIN_HALF_EXTENT_PX = (SOUND_BAND_HEIGHT_PX - SOUND_STAIN_INSET_PX) / 2;
 /** Horizontal travel that arms a stain reposition (matches RULER_SCRUB_THRESHOLD_PX). */
 export const SOUND_STAIN_ARM_PX = 4;
@@ -120,16 +121,22 @@ export function selectSoundPeaks(peaks: WaveformPeaks | undefined, barWidthPx: n
  * Filled waveform path for the stain: trace maxes left-to-right across the
  * top, then mins right-to-left across the bottom, closed — the TimelineRenderer
  * single-path fill adapted to a `widthPx`-wide band with the half-extent
- * symmetric about center. Returns null for degenerate input (never a broken
- * shape — the loading state draws no stain).
+ * symmetric about center. `visualGain` (261010 UAT x1..x4) amplifies the drawn
+ * peaks so subtle audio is visible — DISPLAY ONLY, clamped to the stain
+ * extent, never stored or audible. Returns null for degenerate input (never a
+ * broken shape — the loading state draws no stain).
  */
-export function soundWaveformPathD(peaks: Float32Array, widthPx: number): string | null {
+export function soundWaveformPathD(peaks: Float32Array, widthPx: number, visualGain = 1): string | null {
   const count = peaks.length / 2;
   if (count < 2 || widthPx <= 0) return null;
   const centerY = SOUND_BAND_HEIGHT_PX / 2;
   const half = SOUND_STAIN_HALF_EXTENT_PX;
   const step = widthPx / (count - 1);
-  const y = (value: number): number => Math.round((centerY - value * half) * 100) / 100;
+  const amp = visualGain > 1 ? visualGain : 1;
+  const y = (value: number): number => {
+    const scaled = Math.max(-1, Math.min(1, value * amp));
+    return Math.round((centerY - scaled * half) * 100) / 100;
+  };
   const x = (index: number): number => Math.round(index * step * 100) / 100;
   const parts: string[] = [`M${x(0)} ${y(peaks[1])}`];
   // Top edge (max values, left to right)

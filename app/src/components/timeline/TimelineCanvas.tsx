@@ -9,6 +9,7 @@ import {layerStore} from '../../stores/layerStore';
 import {sequenceStore} from '../../stores/sequenceStore';
 import {keyframeStore} from '../../stores/keyframeStore';
 import {audioStore} from '../../stores/audioStore';
+import {audioWaveformGain} from '../../lib/audioWaveformGain';
 // isFxLayer removed: FX layers now support keyframes
 import {currentTheme} from '../../lib/themeManager';
 import {isFullSpeed} from '../../lib/playbackEngine';
@@ -133,6 +134,7 @@ export function TimelineCanvas() {
         selectedAudioTrackId: audioStore.selectedTrackId.value,
         beatMarkersVisible: audioStore.beatMarkersVisible.value,
         snapToBeatsEnabled: audioStore.snapToBeatsEnabled.value,
+        waveformGain: audioWaveformGain.value,
       });
     });
 

@@ -18,6 +18,7 @@ import {buildAudioReplacePatch, readAudioSourceBytes} from '../../lib/mainAppAud
 import {pushAction} from '../../lib/history';
 import {GAIN_DB_MAX, GAIN_DB_MIN, dbToLinear, formatAudioMaxTime, framesToSeconds, linearToDb, secondsToFrames} from '../../lib/audioGain';
 import {slipOffsetBoundsSeconds} from '../../lib/slipOffsetBounds';
+import {audioWaveformGain, setAudioWaveformGain} from '../../lib/audioWaveformGain';
 import {computeAudioFitToView} from '../../lib/audioClipGeometry';
 import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH} from '../timeline/TimelineRenderer';
 import {totalFrames} from '../../lib/frameMap';
@@ -83,6 +84,8 @@ export function AudioProperties({track}: AudioPropertiesProps) {
   // sample (261010 UAT).
   const inMinFrames = Math.max(0, -track.slipOffset);
   const outMaxFrames = Math.max(track.outFrame, track.totalFramesInFile - track.slipOffset, 1);
+  // 261010 UAT: display-only waveform amplification x1..x4 (shared with Studio).
+  const waveformGain = audioWaveformGain.value;
 
   // 261010-g2n W2 — crop In/Out to the on-screen slice in one undo.
   const handleFitToView = () => {
@@ -293,14 +296,44 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             ariaLabel="Out seconds"
           />
         </div>
-        <div style={{marginTop: '10px', marginBottom: '10px'}}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '10px',
+            marginBottom: '10px',
+          }}
+        >
           <button
-            class="w-full text-[10px] px-2 py-1 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            class="flex-1 text-[10px] px-2 py-1 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             onClick={handleFitToView}
             title="Crop In/Out to the on-screen slice of the clip"
           >
             Fit to view
           </button>
+          <div
+            role="group"
+            aria-label="Waveform gain"
+            style={{display: 'inline-flex', gap: '2px', flexShrink: 0}}
+          >
+            {([1, 2, 3, 4] as const).map((level) => (
+              <button
+                key={level}
+                type="button"
+                aria-pressed={waveformGain === level}
+                title={`Waveform x${level}`}
+                class={`text-[10px] px-1.5 py-1 rounded border cursor-pointer transition-colors ${
+                  waveformGain === level
+                    ? 'bg-(--color-accent) text-white border-(--color-accent)'
+                    : 'bg-(--color-bg-input) text-(--color-text-secondary) border-(--color-border-subtle) hover:bg-(--color-bg-hover-item) hover:text-white'
+                }`}
+                onClick={() => setAudioWaveformGain(level)}
+              >
+                x{level}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

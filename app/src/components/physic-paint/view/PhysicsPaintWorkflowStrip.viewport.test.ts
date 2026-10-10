@@ -1294,6 +1294,20 @@ describe('PhysicsPaintWorkflowStrip multi-clip sound band (261008-ig1 Task 2)', 
       expect(child).toContain('viewBox={`${inPx}');
     }
   });
+
+  it('stain + ghost amplify the drawn waveform with audioStore.waveformGain (display only)', () => {
+    // 261010 UAT: x1..x4 visual gain so subtle audio is visible in the band.
+    const stainAt = stripSource.indexOf('function PhysicsPaintSoundClipStain');
+    const ghostAt = stripSource.indexOf('function PhysicsPaintSoundDuplicateGhost');
+    expect(stainAt).toBeGreaterThan(-1);
+    expect(ghostAt).toBeGreaterThan(stainAt);
+    const stainChild = stripSource.slice(stainAt, ghostAt);
+    const ghostChild = stripSource.slice(ghostAt, ghostAt + 2500);
+    for (const child of [stainChild, ghostChild]) {
+      expect(child).toContain('audioWaveformGain.value');
+      expect(child).toContain('soundWaveformPathD(peaks, sourceWidthPx, waveformGain)');
+    }
+  });
 });
 
 /* ---------------------------------------------------------------------------

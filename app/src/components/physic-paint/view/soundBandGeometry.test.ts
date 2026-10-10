@@ -18,11 +18,11 @@ const readSource = (relative: string): string =>
   readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
 
 describe('soundBandGeometry — band layout constants (D-07)', () => {
-  it('(t1) the band is 36px with an 8px inset and a 14px stain half-extent', async () => {
+  it('(t1) the band is 36px with a 2px inset and a 17px stain half-extent (261010 UAT: waveform uses the band)', async () => {
     const g = await load();
     expect(g.SOUND_BAND_HEIGHT_PX).toBe(36);
-    expect(g.SOUND_STAIN_INSET_PX).toBe(8);
-    expect(g.SOUND_STAIN_HALF_EXTENT_PX).toBe(14);
+    expect(g.SOUND_STAIN_INSET_PX).toBe(2);
+    expect(g.SOUND_STAIN_HALF_EXTENT_PX).toBe(17);
   });
 
   it('(t2) arm thresholds: 4px stain reposition, 2px trim, 6px end zones, 8px hit depth', async () => {
@@ -61,24 +61,48 @@ describe('soundBandGeometry — tier selection mirrors TimelineRenderer.drawAudi
 });
 
 describe('soundBandGeometry — filled waveform path (TimelineRenderer trace adapted)', () => {
-  it('(t5) traces maxes left-to-right on top, mins right-to-left on bottom, inside ±14 of center', async () => {
+  it('(t5) traces maxes left-to-right on top, mins right-to-left on bottom, inside ±17 of center', async () => {
     const g = await load();
     const peaks = new Float32Array([-0.5, 0.5, -1, 1, -0.25, 0.25]); // 3 pairs
     const d = g.soundWaveformPathD(peaks, 20);
     expect(d).not.toBeNull();
     expect(d!.startsWith('M')).toBe(true);
     expect(d!.endsWith('Z')).toBe(true);
-    // first max (0.5) -> y = 18 - 0.5*14 = 11
-    expect(d).toContain('M0 11');
-    // every y must stay within [4, 32] (center 18 ± half-extent 14)
+    // first max (0.5) -> y = 18 - 0.5*17 = 9.5
+    expect(d).toContain('M0 9.5');
+    // every y must stay within [1, 35] (center 18 ± half-extent 17)
     const ys = [...d!.matchAll(/[ML][\d.]+ (-?[\d.]+)/g)].map((m) => Number(m[1]));
     expect(ys.length).toBeGreaterThanOrEqual(6);
     for (const y of ys) {
-      expect(y).toBeGreaterThanOrEqual(4);
-      expect(y).toBeLessThanOrEqual(32);
+      expect(y).toBeGreaterThanOrEqual(1);
+      expect(y).toBeLessThanOrEqual(35);
     }
     // too few peaks -> no path (degenerate, never a broken shape)
     expect(g.soundWaveformPathD(new Float32Array([0, 0]), 20)).toBeNull();
+  });
+
+  it('(t5b) visualGain x1..x4 amplifies drawn peaks and clamps to the stain extent (display only)', async () => {
+    const g = await load();
+    const peaks = new Float32Array([-0.25, 0.25, -0.25, 0.25]); // 2 pairs, subtle audio
+    const x1 = g.soundWaveformPathD(peaks, 20, 1)!;
+    const x2 = g.soundWaveformPathD(peaks, 20, 2)!;
+    const x4 = g.soundWaveformPathD(peaks, 20, 4)!;
+    // x1: max 0.25 -> y = 18 - 0.25*17 = 13.75
+    expect(x1).toContain('M0 13.75');
+    // x2: 0.5 -> y = 18 - 0.5*17 = 9.5
+    expect(x2).toContain('M0 9.5');
+    // x4: 1.0 (clamped from 1.0 — 0.25*4) -> y = 18 - 17 = 1
+    expect(x4).toContain('M0 1');
+    // over-driven peaks clamp at the extent, never past it
+    const loud = new Float32Array([-1, 1, -1, 1]);
+    const clipped = g.soundWaveformPathD(loud, 20, 4)!;
+    const ys = [...clipped.matchAll(/[ML][\d.]+ (-?[\d.]+)/g)].map((m) => Number(m[1]));
+    for (const y of ys) {
+      expect(y).toBeGreaterThanOrEqual(1);
+      expect(y).toBeLessThanOrEqual(35);
+    }
+    // default (no arg) is x1
+    expect(g.soundWaveformPathD(peaks, 20)).toBe(x1);
   });
 });
 

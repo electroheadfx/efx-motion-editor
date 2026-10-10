@@ -226,6 +226,8 @@ export interface DrawState {
   selectedAudioTrackId?: string | null;
   beatMarkersVisible?: boolean;
   snapToBeatsEnabled?: boolean;
+  /** Display-only waveform amplification x1..x4 (261010 UAT). */
+  waveformGain?: number;
 }
 
 /**
@@ -373,7 +375,7 @@ export class TimelineRenderer {
       const audioStartY = RULER_HEIGHT + fxTracksTotalHeight + contentTracksTotalHeight;
       let audioY = audioStartY;
       for (const audioTrack of state.audioTracks) {
-        this.drawAudioTrack(ctx, audioTrack, audioY, frameWidth, scrollX, w, colors);
+        this.drawAudioTrack(ctx, audioTrack, audioY, frameWidth, scrollX, w, colors, state.waveformGain ?? 1);
         audioY += audioTrack.trackHeight;
       }
     }
@@ -660,6 +662,7 @@ export class TimelineRenderer {
     frameWidth: number,
     scrollX: number,
     canvasWidth: number,
+    waveformGain = 1,
   ): void {
     if (!sound.peaks || barH <= 0 || barW <= 0) return;
     const geom = getPhysicPaintSoundStainGeometry({
@@ -678,7 +681,7 @@ export class TimelineRenderer {
     if (trackRight <= trackLeft) return;
 
     const peaks = selectSoundPeaks(sound.peaks, geom.sourceWidth);
-    const stainD = peaks ? soundWaveformPathD(peaks, geom.sourceWidth) : null;
+    const stainD = peaks ? soundWaveformPathD(peaks, geom.sourceWidth, waveformGain) : null;
     if (!stainD) return;
 
     // The Studio geometry is authored in a 36px band; fit it to the bar with a
@@ -880,6 +883,7 @@ export class TimelineRenderer {
             frameWidth,
             scrollX,
             canvasWidth,
+            state?.waveformGain ?? 1,
           );
         }
       }
@@ -1312,6 +1316,7 @@ export class TimelineRenderer {
     scrollX: number,
     canvasWidth: number,
     colors: Record<string, string>,
+    waveformGain = 1,
   ): void {
     // 1. Track background
     ctx.fillStyle = colors.audioTrackBg;
@@ -1396,21 +1401,23 @@ export class TimelineRenderer {
       ctx.clip();
 
       // Draw smooth filled waveform using a single path:
-      // trace maxes left-to-right across the top, then mins right-to-left across the bottom
+      // trace maxes left-to-right across the top, then mins right-to-left across the bottom.
+      // 261010 UAT: visualGain x1..x4 amplifies drawn peaks (clamped), display only.
+      const amp = (value: number) => Math.max(-1, Math.min(1, value * (waveformGain > 1 ? waveformGain : 1)));
       const sourcePeakX = (pi: number) => sourceX + (pi / fullPeakCount) * sourceW;
       ctx.beginPath();
-      ctx.moveTo(sourcePeakX(startIdx), centerY - peaks[startIdx * 2 + 1] * halfH);
+      ctx.moveTo(sourcePeakX(startIdx), centerY - amp(peaks[startIdx * 2 + 1]) * halfH);
 
       // Top edge (max values, left to right)
       for (let pi = startIdx; pi < endIdx; pi++) {
         const max = peaks[pi * 2 + 1];
-        ctx.lineTo(sourcePeakX(pi), centerY - max * halfH);
+        ctx.lineTo(sourcePeakX(pi), centerY - amp(max) * halfH);
       }
 
       // Bottom edge (min values, right to left)
       for (let pi = endIdx - 1; pi >= startIdx; pi--) {
         const min = peaks[pi * 2];
-        ctx.lineTo(sourcePeakX(pi), centerY - min * halfH);
+        ctx.lineTo(sourcePeakX(pi), centerY - amp(min) * halfH);
       }
 
       ctx.closePath();

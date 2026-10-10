@@ -5,6 +5,7 @@ import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { GAIN_DB_MAX, GAIN_DB_MIN, formatAudioMaxTime, framesToSeconds, secondsToFrames } from '../../../lib/audioGain';
 import { resolveSlipTotalFrames, slipOffsetBoundsSeconds } from '../../../lib/slipOffsetBounds';
 import { audioPeaksCache } from '../../../lib/audioPeaksCache';
+import { audioWaveformGain, setAudioWaveformGain } from '../../../lib/audioWaveformGain';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
 
@@ -97,6 +98,8 @@ export const AUDIO_FADE_OUT_LABEL = 'Fade out';
 export const AUDIO_IN_LABEL = 'Trim in';
 export const AUDIO_OUT_LABEL = 'Trim out';
 export const AUDIO_FIT_TO_VIEW = 'Fit to view';
+export const AUDIO_WAVEFORM_GAIN_ARIA = 'Waveform gain';
+export const AUDIO_WAVEFORM_GAIN_LEVELS = [1, 2, 3, 4] as const;
 export const AUDIO_SECTION_FILE = 'FILE';
 export const AUDIO_SECTION_TIMING = 'TIMING';
 export const AUDIO_SECTION_SOUND = 'SOUND';
@@ -204,6 +207,7 @@ export function PhysicsPaintAudioModalView({
 
   const errorText = decodeError ? AUDIO_ERROR_DECODE : missing ? AUDIO_ERROR_MISSING : null;
   const controlsDisabled = busy;
+  const waveformGain = audioWaveformGain.value;
 
   /** Any other action reverts the armed Remove (two-step confirm law). */
   const withDisarm = (action: () => void) => () => {
@@ -483,11 +487,10 @@ export function PhysicsPaintAudioModalView({
                 );
               })()}
 
-              {/* 6b. Fit to view — crop In/Out to the on-screen slice, move the
-                   band start to that left edge, reset slip to 0 (261010-ht0 F5).
-                   Same verbatim label as the editor. No-op when the viewport
-                   port returns null or the band is already fully visible. */}
-              <div class="physics-paint-audio-row">
+              {/* 6b. Fit to view + waveform gain x1..x4 (261010-ht0 F5 / UAT
+                   visual gain). Fit crops In/Out to the on-screen slice; the
+                   gain buttons amplify the DRAWN peaks only (never audible). */}
+              <div class="physics-paint-audio-row physics-paint-audio-fit-row">
                 <button
                   type="button"
                   class="physics-paint-audio-fit"
@@ -497,6 +500,19 @@ export function PhysicsPaintAudioModalView({
                 >
                   {AUDIO_FIT_TO_VIEW}
                 </button>
+                <div class="physics-paint-audio-wave-gain" role="group" aria-label={AUDIO_WAVEFORM_GAIN_ARIA}>
+                  {AUDIO_WAVEFORM_GAIN_LEVELS.map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      class={`physics-paint-audio-wave-gain-btn${waveformGain === level ? ' is-active' : ''}`}
+                      onClick={() => setAudioWaveformGain(level)}
+                      aria-pressed={waveformGain === level}
+                    >
+                      x{level}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* 7. SOUND section header — centered title between two rules */}

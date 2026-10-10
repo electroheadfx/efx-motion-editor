@@ -183,6 +183,8 @@ describe('audios list rides the document launch carrier (261008-ig1)', () => {
       startFrame: 48,
       inFrame: 12,
       outFrame: 108,
+      sourceFrames: 600,
+      slipOffset: 0,
       gain: -10,
       fadeInFrames: 6,
       fadeOutFrames: 12,

@@ -1234,6 +1234,8 @@ describe('savePackage / loadEfxPaintPackage', () => {
         startFrame: 48,
         inFrame: 12,
         outFrame: 108,
+        sourceFrames: 600,
+        slipOffset: 0,
         gain: -20,
         fadeInFrames: 6,
         fadeOutFrames: 12,
