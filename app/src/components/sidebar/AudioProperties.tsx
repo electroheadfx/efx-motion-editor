@@ -16,6 +16,7 @@ import {projectStore} from '../../stores/projectStore';
 import {buildAudioReplacePatch, readAudioSourceBytes} from '../../lib/mainAppAudioSources';
 import {pushAction} from '../../lib/history';
 import {GAIN_DB_MAX, GAIN_DB_MIN, dbToLinear, formatAudioMaxTime, framesToSeconds, linearToDb, secondsToFrames} from '../../lib/audioGain';
+import {slipOffsetBoundsSeconds} from '../../lib/slipOffsetBounds';
 import {totalFrames} from '../../lib/frameMap';
 import {autoArrangeHoldFrames, type ArrangeStrategy} from '../../lib/beatMarkerEngine';
 import type {AudioTrack, FadeCurve} from '../../types/audio';
@@ -69,6 +70,10 @@ export function AudioProperties({track}: AudioPropertiesProps) {
   void volumePercent;
 
   const fps = projectStore.fps.peek();
+  const slipBounds = slipOffsetBoundsSeconds(
+    {inFrame: track.inFrame, outFrame: track.outFrame, totalFramesInFile: track.totalFramesInFile},
+    fps,
+  );
 
   return (
     <div class="px-3 py-2 space-y-3">
@@ -210,6 +215,19 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             ariaLabel="Position frames"
           />
         </div>
+        {/* R5 Offset (s): UI positive = earlier source; engine slipOffset is the inverse. */}
+        <div style={{marginTop: '10px', marginBottom: '10px'}}>
+          <SliderStepper
+            label="Offset (s)"
+            value={framesToSeconds(-track.slipOffset, fps)}
+            step={0.1}
+            min={slipBounds.min}
+            max={slipBounds.max}
+            precision={1}
+            onChange={(val) => audioStore.setSlipOffset(track.id, -secondsToFrames(val, fps))}
+            ariaLabel="Offset seconds"
+          />
+        </div>
         <div
           data-testid="audio-inout-pair"
           style={{
@@ -227,7 +245,7 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             min={0}
             sliderMax={Math.max(track.duration, framesToSeconds(track.inFrame, fps), 0.1)}
             precision={1}
-            onChange={(val) => audioStore.setInOut(track.id, secondsToFrames(val, fps), track.outFrame)}
+            onChange={(val) => audioStore.setIn(track.id, secondsToFrames(val, fps))}
             ariaLabel="In seconds"
           />
           <SliderStepper

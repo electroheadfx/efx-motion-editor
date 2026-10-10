@@ -81,6 +81,7 @@ const SOUND_CLIP = {
   startFrame: 4,
   inFrame: 0,
   outFrame: 48,
+  slipOffset: 0,
   gain: -25,
   fadeInFrames: 6,
   fadeOutFrames: 12,

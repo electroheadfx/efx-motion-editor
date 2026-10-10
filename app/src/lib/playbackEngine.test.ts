@@ -437,6 +437,7 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
     startFrame: 48,
     inFrame: 0,
     outFrame: 240,
+    slipOffset: 0,
     gain: -25,
     fadeInFrames: 6,
     fadeOutFrames: 12,

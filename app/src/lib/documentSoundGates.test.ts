@@ -104,6 +104,7 @@ function makeSound(overrides: Partial<DocumentSoundClip> = {}): DocumentSoundCli
     startFrame: 48,
     inFrame: 0,
     outFrame: 240,
+    slipOffset: 0,
     gain: -25,
     fadeInFrames: 6,
     fadeOutFrames: 12,
@@ -156,6 +157,21 @@ describe('documentSoundGates — Studio mix gates (52.5-01a, Q3, STUDIO-MIX-01)'
     });
     expect(track.volume).toBeGreaterThanOrEqual(0);
     expect(track.volume).toBeLessThanOrEqual(10);
+  });
+
+  it('maps sound.slipOffset (non-zero) into the AudioTrack and resolveClipPlayback (261010-en9 R6)', async () => {
+    const { toDocumentSoundAudioTrack, resolveClipPlayback } = await import('./documentSoundGates');
+    const sound = makeSound({ slipOffset: -12 });
+    const track = toDocumentSoundAudioTrack(sound, CLIP_SECTION.clips[0].assetUrl, 24);
+    expect(track.slipOffset).toBe(-12);
+    // Engine source = (inFrame + slipOffset + framesIntoTrack) / fps.
+    // cursor 96 inside [48, 48 + (240 - 0)) -> sourceOffsetSec = (0 + -12 + 48) / 24 = 1.5;
+    // effectiveEnd = min(48 + 240, 288) = 288 -> maxPlaySec = (288 - 96) / 24 = 8.0.
+    expect(resolveClipPlayback(sound, 96, 288, 24)).toEqual({
+      kind: 'immediate',
+      sourceOffsetSec: 1.5,
+      maxPlaySec: 8.0,
+    });
   });
 
   it('resolveClipPlayback maps the sound clip onto the locked resolveTrackPlayback truth table', async () => {

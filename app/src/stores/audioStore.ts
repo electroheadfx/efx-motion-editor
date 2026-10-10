@@ -4,6 +4,7 @@ import {pushAction} from '../lib/history';
 import {detectBPM} from '../lib/bpmDetector';
 import {computeBeatMarkers} from '../lib/beatMarkerEngine';
 import {audioEngine} from '../lib/audioEngine';
+import {clampSlipOffsetFrames} from '../lib/slipOffsetBounds';
 
 const tracks = signal<AudioTrack[]>([]);
 const selectedTrackId = signal<string | null>(null);
@@ -165,6 +166,33 @@ export const audioStore = {
     });
   },
 
+  /**
+   * 261010-en9 R4 In-from-left trim: raising In moves the clip's left edge
+   * right while the clip END stays fixed. One undo action writes inFrame AND
+   * offsetFrame so `offsetFrame + (outFrame - inFrame)` is invariant
+   * (newOffset = oldOffset + (newIn - oldIn)); outFrame is unchanged. inFrame
+   * clamps to [0, outFrame - 1] (1-frame minimum span in frame space).
+   */
+  setIn(trackId: string, inFrame: number): void {
+    const track = tracks.value.find(t => t.id === trackId);
+    if (!track) return;
+    const clampedIn = Math.max(0, Math.min(track.outFrame - 1, inFrame));
+    const nextOffset = track.offsetFrame + (clampedIn - track.inFrame);
+    const before = snapshot();
+    tracks.value = tracks.value.map(t =>
+      t.id === trackId ? {...t, inFrame: clampedIn, offsetFrame: nextOffset} : t,
+    );
+    markDirty();
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: `Set in-point on "${track.name}"`,
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
   setFades(trackId: string, fadeInFrames: number, fadeOutFrames: number): void {
     const track = tracks.value.find(t => t.id === trackId);
     if (!track) return;
@@ -211,12 +239,22 @@ export const audioStore = {
     // No undo for continuous resize; no markDirty needed for transient UI state
   },
 
+  /**
+   * 261010-en9 R5: engine-sign slip (positive = later source). Clamped so the
+   * heard window `[inFrame + slip, outFrame + slip]` stays inside
+   * `[0, totalFramesInFile]` — the clamp helper is the only bounds source.
+   */
   setSlipOffset(trackId: string, slipOffset: number): void {
     const track = tracks.value.find(t => t.id === trackId);
     if (!track) return;
+    const clamped = clampSlipOffsetFrames(slipOffset, {
+      inFrame: track.inFrame,
+      outFrame: track.outFrame,
+      totalFramesInFile: track.totalFramesInFile,
+    });
     const before = snapshot();
     tracks.value = tracks.value.map(t =>
-      t.id === trackId ? {...t, slipOffset} : t,
+      t.id === trackId ? {...t, slipOffset: clamped} : t,
     );
     markDirty();
     const after = snapshot();

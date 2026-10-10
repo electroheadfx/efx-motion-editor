@@ -113,14 +113,72 @@ describe('audioStore', () => {
       expect(t?.inFrame).toBe(10);
       expect(t?.outFrame).toBe(50);
     });
+
+    it('Out path leaves offsetFrame unchanged (right-edge trim)', () => {
+      const track = makeTrack({offsetFrame: 7, inFrame: 10, outFrame: 50});
+      audioStore.addTrack(track);
+      audioStore.setInOut(track.id, 10, 60);
+      const t = audioStore.getTrack(track.id);
+      expect(t?.outFrame).toBe(60);
+      expect(t?.offsetFrame).toBe(7);
+    });
+  });
+
+  describe('setIn (261010-en9 R4 In-from-left trim)', () => {
+    it('moves the left edge right while the clip end stays fixed', () => {
+      // offsetFrame + (outFrame - inFrame) is invariant.
+      const track = makeTrack({offsetFrame: 10, inFrame: 20, outFrame: 80});
+      audioStore.addTrack(track);
+      audioStore.setIn(track.id, 30);
+      const t = audioStore.getTrack(track.id);
+      expect(t?.inFrame).toBe(30);
+      expect(t?.outFrame).toBe(80);
+      // newOffset = oldOffset + (newIn - oldIn) = 10 + (30 - 20) = 20
+      expect(t?.offsetFrame).toBe(20);
+      expect((t!.offsetFrame) + (t!.outFrame - t!.inFrame)).toBe(70);
+    });
+
+    it('lowering In moves the left edge left and keeps the end put', () => {
+      const track = makeTrack({offsetFrame: 10, inFrame: 20, outFrame: 80});
+      audioStore.addTrack(track);
+      audioStore.setIn(track.id, 5);
+      const t = audioStore.getTrack(track.id);
+      expect(t?.inFrame).toBe(5);
+      expect(t?.offsetFrame).toBe(-5);
+      expect((t!.offsetFrame) + (t!.outFrame - t!.inFrame)).toBe(70);
+    });
+
+    it('clamps inFrame to [0, outFrame - 1] (1-frame minimum span)', () => {
+      const track = makeTrack({offsetFrame: 0, inFrame: 10, outFrame: 50});
+      audioStore.addTrack(track);
+      audioStore.setIn(track.id, -20);
+      expect(audioStore.getTrack(track.id)?.inFrame).toBe(0);
+      audioStore.setIn(track.id, 50);
+      expect(audioStore.getTrack(track.id)?.inFrame).toBe(49);
+    });
+
+    it('is a no-op when the track is missing', () => {
+      audioStore.setIn('missing', 5);
+      expect(audioStore.tracks.value).toHaveLength(0);
+    });
   });
 
   describe('setSlipOffset', () => {
-    it('changes track slipOffset', () => {
-      const track = makeTrack();
+    it('changes track slipOffset inside the file window', () => {
+      // total 200 / out 100 -> engine slip may run to +100 (later source).
+      const track = makeTrack({inFrame: 0, outFrame: 100, totalFramesInFile: 200});
       audioStore.addTrack(track);
       audioStore.setSlipOffset(track.id, 15);
       expect(audioStore.getTrack(track.id)?.slipOffset).toBe(15);
+    });
+
+    it('clamps engine slip so the heard window stays inside the file', () => {
+      const track = makeTrack({inFrame: 10, outFrame: 100, totalFramesInFile: 200});
+      audioStore.addTrack(track);
+      audioStore.setSlipOffset(track.id, -999);
+      expect(audioStore.getTrack(track.id)?.slipOffset).toBe(-10);
+      audioStore.setSlipOffset(track.id, 999);
+      expect(audioStore.getTrack(track.id)?.slipOffset).toBe(100);
     });
   });
 

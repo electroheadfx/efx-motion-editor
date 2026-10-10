@@ -9,6 +9,8 @@ import {
   type DocumentSoundResult,
 } from '../../../stores/efxPaintStore';
 import {GAIN_DB_MAX, GAIN_DB_MIN, dbToGain, gainToDb} from '../../../lib/audioGain';
+import {clampSlipOffsetFrames} from '../../../lib/slipOffsetBounds';
+import {audioPeaksCache} from '../../../lib/audioPeaksCache';
 
 /**
  * 52.5-01b — the Document sound modal controller (D-05 single control
@@ -116,6 +118,12 @@ export interface PhysicsPaintAudioController {
   commitOutFrame: (frames: number) => void;
   /** Commit the clip placement (startFrame): integer >= 0, NO upper clamp. */
   commitStartFrame: (frames: number) => void;
+  /**
+   * Commit content slip (ENGINE-sign frames, 261010-en9 R6). Clamped so the
+   * heard window stays inside the source; invalid entries leave the prior
+   * accepted value (E8/E9).
+   */
+  commitSlipOffset: (frames: number) => void;
   /** Invert the studio-layer sound switch from the LIVE document. */
   toggleEnabled: () => void;
   /** Two-step remove: first call arms, second commits sound: null. */
@@ -194,7 +202,7 @@ export function isValidFadeCurve(curve: string): curve is SoundFadeCurve {
  * Import defaults (plan task 1, commit path item 4).
  * ------------------------------------------------------------------------- */
 
-/** Fresh import defaults: position 0, full source span, gain 0, fades 0, enabled ON. */
+/** Fresh import defaults: position 0, full source span, slip 0, gain 0, fades 0, enabled ON. */
 export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): DocumentSoundClip {
   const sourceFrames = Math.max(1, Math.ceil(source.durationSec * Math.max(1, fps)));
   return {
@@ -205,6 +213,7 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
     startFrame: 0,
     inFrame: 0,
     outFrame: sourceFrames,
+    slipOffset: 0,
     gain: 0,
     fadeInFrames: 0,
     fadeOutFrames: 0,
@@ -218,6 +227,8 @@ export function buildFreshSoundClip(source: ImportedSoundSource, fps: number): D
  * Replace path: source identity swaps; position and in/out are preserved
  * unless the new source is shorter, then outFrame clamps to the source length
  * (never below a 1-frame span; inFrame follows when the clamp would invert).
+ * slipOffset is preserved when the new source can still host the current slip;
+ * otherwise it resets to 0 (261010-en9 R6).
  */
 export function buildReplacedSoundClip(
   current: DocumentSoundClip,
@@ -231,6 +242,10 @@ export function buildReplacedSoundClip(
     inFrame = Math.max(0, sourceFrames - 1);
     outFrame = sourceFrames;
   }
+  const slipWindow = { inFrame, outFrame, totalFramesInFile: sourceFrames };
+  const slipOffset = clampSlipOffsetFrames(current.slipOffset, slipWindow) === current.slipOffset
+    ? current.slipOffset
+    : 0;
   return {
     ...current,
     sourceId: source.sourceId,
@@ -238,6 +253,7 @@ export function buildReplacedSoundClip(
     sourceRevision: source.sourceRevision ?? 0,
     inFrame,
     outFrame,
+    slipOffset,
   };
 }
 
@@ -371,6 +387,20 @@ export function usePhysicsPaintAudioController({
     commitPatch({ startFrame: frames });
   };
 
+  /** ENGINE-sign slip frames; clamped against the source window. */
+  const commitSlipOffset = (frames: number) => {
+    disarmRemove();
+    if (!Number.isInteger(frames)) return;
+    if (!sound) return;
+    const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+    const clamped = clampSlipOffsetFrames(frames, {
+      inFrame: sound.inFrame,
+      outFrame: sound.outFrame,
+      totalFramesInFile: sourceFrames,
+    });
+    commitPatch({ slipOffset: clamped });
+  };
+
   const toggleEnabled = () => {
     disarmRemove();
     if (!sound) return;
@@ -488,6 +518,7 @@ export function usePhysicsPaintAudioController({
     commitInFrame,
     commitOutFrame,
     commitStartFrame,
+    commitSlipOffset,
     toggleEnabled,
     requestRemove,
     confirmRemove,

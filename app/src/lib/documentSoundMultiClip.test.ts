@@ -66,6 +66,7 @@ function makeClip(id: string, overrides: Partial<DocumentSoundClip> = {}): Docum
     startFrame: 48,
     inFrame: 0,
     outFrame: 240,
+    slipOffset: 0,
     gain: 0,
     fadeInFrames: 0,
     fadeOutFrames: 0,

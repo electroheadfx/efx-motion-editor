@@ -13,13 +13,14 @@ const studioCss = readFileSync(
 );
 
 describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () => {
-  it('renders exactly six SliderStepper fields with the locked labels', () => {
-    expect(source.match(/<SliderStepper/g)).toHaveLength(6);
+  it('renders exactly seven SliderStepper fields with the locked labels', () => {
+    expect(source.match(/<SliderStepper/g)).toHaveLength(7);
     for (const label of [
       'label="Gain"',
       'label="Fade in (frames)"',
       'label="Fade out (frames)"',
       'label="Position (frames)"',
+      'label="Offset (s)"',
       'label="In (s)"',
       'label="Out (s)"',
     ]) {
@@ -32,7 +33,6 @@ describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () =
     expect(source).toContain('audioStore.setOffset(track.id, val)');
     // slipOffset / beatOffsetFrames are different fields — never renamed.
     expect(source).toContain('beatOffsetFrames');
-    expect(source).not.toContain('slipOffset');
   });
 
   it('drops NumericInput from Fade in / Fade out / Position / In / Out', () => {
@@ -75,7 +75,7 @@ describe('AudioProperties SliderStepper re-flow (261009-v0s + 261010-bkv)', () =
   it('Position commit is unbounded (negatives legal) with a track-only slider range below 0', () => {
     const positionField = source.slice(
       source.indexOf('label="Position (frames)"'),
-      source.indexOf('label="In'),
+      source.indexOf('label="Offset (s)"'),
     );
     expect(positionField).toContain('value={track.offsetFrame}');
     expect(positionField).toContain('audioStore.setOffset(track.id, val)');
@@ -205,10 +205,21 @@ describe('AudioProperties time unit and range refinements (261010-bkv)', () => {
     expect(source).toContain('framesToSeconds(track.inFrame, fps)');
     expect(source).toContain('framesToSeconds(track.outFrame, fps)');
     expect(source).toContain('secondsToFrames(val, fps)');
-    expect(source).toContain('audioStore.setInOut(track.id, secondsToFrames(val, fps), track.outFrame)');
+    // R4: In goes through setIn (clip-end invariant); Out keeps setInOut.
+    expect(source).toContain('audioStore.setIn(track.id, secondsToFrames(val, fps))');
     expect(source).toContain('audioStore.setInOut(track.id, track.inFrame, secondsToFrames(val, fps))');
     // 1-frame Out span preserved in frame space.
     expect(source).toContain('min={framesToSeconds(track.inFrame + 1, fps)}');
+  });
+
+  it('Offset (s) slips content with the user sign and file-window bounds (261010-en9 R5)', () => {
+    expect(source).toContain('label="Offset (s)"');
+    // UI positive = earlier source — engine slipOffset is the inverse.
+    expect(source).toContain('value={framesToSeconds(-track.slipOffset, fps)}');
+    expect(source).toContain('audioStore.setSlipOffset(track.id, -secondsToFrames(val, fps))');
+    expect(source).toContain('slipOffsetBoundsSeconds');
+    expect(source).toContain('min={slipBounds.min}');
+    expect(source).toContain('max={slipBounds.max}');
   });
 
   it('TRACK/file meta shows the audio max as seconds plus frames', () => {

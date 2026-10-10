@@ -27,6 +27,7 @@ const SOUND: DocumentSoundClip = {
   startFrame: 0,
   inFrame: 0,
   outFrame: 48,
+  slipOffset: 0,
   gain: 0,
   fadeInFrames: 0,
   fadeOutFrames: 0,

@@ -81,6 +81,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     expect(clip.startFrame).toBe(0);
     expect(clip.inFrame).toBe(0);
     expect(clip.outFrame).toBe(240);
+    expect(clip.slipOffset).toBe(0);
     expect(clip.gain).toBe(0);
     expect(clip.enabled).toBe(true);
   });
@@ -94,6 +95,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
       startFrame: 48,
       inFrame: 12,
       outFrame: 200,
+      slipOffset: 0,
       gain: 0,
       fadeInFrames: 0,
       fadeOutFrames: 0,
@@ -108,6 +110,31 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
     expect(clip.outFrame).toBe(48);
   });
 
+  it('replace preserves slipOffset when the new source can host it, else resets to 0 (261010-en9 R6)', () => {
+    const current = {
+      id: 'sound-clip-1',
+      sourceId: 'asset-1',
+      sourcePath: '/Users/test/Music/sound.wav',
+      sourceRevision: 1,
+      startFrame: 0,
+      inFrame: 12,
+      outFrame: 200,
+      slipOffset: -12,
+      gain: 0,
+      fadeInFrames: 0,
+      fadeOutFrames: 0,
+      fadeInCurve: 'linear' as const,
+      fadeOutCurve: 'linear' as const,
+      enabled: true,
+    };
+    // 2s x 24 = 48 frames; in 12 / out 48 -> slip window [-12, 0] hosts -12.
+    const kept = buildReplacedSoundClip(current, { ...SOURCE, durationSec: 2 }, 24);
+    expect(kept.slipOffset).toBe(-12);
+    // 0.5s x 24 = 12 frames; the folded tail span cannot host -12 -> 0.
+    const reset = buildReplacedSoundClip(current, { ...SOURCE, durationSec: 0.5 }, 24);
+    expect(reset.slipOffset).toBe(0);
+  });
+
   it('replace on a source shorter than the in point folds to a 1-frame tail span', () => {
     const current = {
       id: 'sound-clip-1',
@@ -117,6 +144,7 @@ describe('import defaults (fresh + replace-with-clamp)', () => {
       startFrame: 0,
       inFrame: 100,
       outFrame: 120,
+      slipOffset: 0,
       gain: 0,
       fadeInFrames: 0,
       fadeOutFrames: 0,
@@ -147,6 +175,7 @@ const CLIP_A: DocumentSoundClip = {
   startFrame: 0,
   inFrame: 0,
   outFrame: 48,
+  slipOffset: 0,
   gain: 0,
   fadeInFrames: 0,
   fadeOutFrames: 0,
@@ -262,6 +291,24 @@ describe('usePhysicsPaintAudioController — selection-scoped commits (261008-ig
     big.controller.commitStartFrame(1000000);
     expect(big.patchSound).toHaveBeenCalledTimes(1);
     expect(big.patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', { startFrame: 1000000 });
+  });
+
+  it('commitSlipOffset patches { slipOffset } clamped to the source window (261010-en9 R6)', () => {
+    const { controller, patchSound } = makeController({ selection: 'clip-a' });
+    // CLIP_A in 0 / out 48; sourceFrames falls back to outFrame -> slip window [0, 0].
+    controller.commitSlipOffset(-12);
+    expect(patchSound).toHaveBeenCalledWith('layer-1', 'clip-a', { slipOffset: 0 });
+  });
+
+  it('commitSlipOffset rejects non-integer entries and fails closed with no selection', () => {
+    for (const bad of [1.5, Number.NaN]) {
+      const { controller, patchSound } = makeController({ selection: 'clip-a' });
+      controller.commitSlipOffset(bad);
+      expect(patchSound).not.toHaveBeenCalled();
+    }
+    const none = makeController({ selection: null });
+    none.controller.commitSlipOffset(3);
+    expect(none.patchSound).not.toHaveBeenCalled();
   });
 
   it('field commits fail closed with no selection — no port call, no mutation', () => {

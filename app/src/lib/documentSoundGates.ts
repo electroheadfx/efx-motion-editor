@@ -54,8 +54,9 @@ export function resolveDocumentSoundClip(
 /**
  * Map the document sound onto the locked resolveTrackPlayback truth table —
  * the clip is a track whose timeline position is `startFrame`, whose trim is
- * the source in/out, and which never slips (slipOffset 0) and never mutes
- * here (the `enabled` gate is applied by the caller, before resolution).
+ * the source in/out, and which carries its own slipOffset (261010-en9 R6,
+ * engine sign) and never mutes here (the `enabled` gate is applied by the
+ * caller, before resolution).
  */
 export function resolveClipPlayback(
   sound: DocumentSoundClip,
@@ -68,7 +69,7 @@ export function resolveClipPlayback(
       offsetFrame: sound.startFrame,
       inFrame: sound.inFrame,
       outFrame: sound.outFrame,
-      slipOffset: 0,
+      slipOffset: sound.slipOffset,
       muted: false,
     },
     cursorFrame,
@@ -112,7 +113,7 @@ export function toDocumentSoundAudioTrack(
     channelCount: 0,
     order: 0,
     trackHeight: 44,
-    slipOffset: 0,
+    slipOffset: sound.slipOffset,
     totalFramesInFile: sound.outFrame,
     bpm: null,
     beatOffsetFrames: 0,

@@ -46,7 +46,7 @@ describe('PhysicsPaintAudioModalView Position field (261008-ryq / 261009-6ee)', 
   it('renders field 4 as a SliderStepper (step 1, min 0, no upper clamp) committing through commitStartFrame', () => {
     const start = source.indexOf('{/* 4.');
     expect(start).toBeGreaterThan(-1);
-    const end = source.indexOf('{/* 5.', start);
+    const end = source.indexOf('{/* 4b.', start);
     expect(end).toBeGreaterThan(start);
     const positionField = source.slice(start, end);
     expect(positionField).toContain('<SliderStepper');
@@ -80,6 +80,25 @@ describe('PhysicsPaintAudioModalView Position field (261008-ryq / 261009-6ee)', 
     const fadeIndex = source.indexOf('{/* 10. Fade out');
     expect(fadeIndex).toBeGreaterThan(positionIndex);
     expect(source.indexOf('{/* 11. Remove confirmation')).toBeGreaterThan(fadeIndex);
+  });
+});
+
+describe('PhysicsPaintAudioModalView Offset (s) (261010-en9 R6)', () => {
+  it('renders the Offset (s) control with the editor sign and file-window bounds', () => {
+    expect(source).toContain("export const AUDIO_OFFSET_LABEL = 'Offset (s)'");
+    expect(source).toContain('label={AUDIO_OFFSET_LABEL}');
+    // UI positive = earlier source — engine slipOffset is the inverse.
+    expect(source).toContain('value={framesToSeconds(-sound.slipOffset, fps)}');
+    expect(source).toContain('commitSlipOffset(-secondsToFrames(value, fps))');
+    expect(source).toContain('slipOffsetBoundsSeconds');
+  });
+
+  it('sits in TIMING after Position and before the In/Out pair', () => {
+    const positionIndex = source.indexOf('{/* 4. Position');
+    const offsetIndex = source.indexOf('{/* 4b. Offset');
+    const trimIndex = source.indexOf('Trim in/out share one row');
+    expect(offsetIndex).toBeGreaterThan(positionIndex);
+    expect(trimIndex).toBeGreaterThan(offsetIndex);
   });
 });
 

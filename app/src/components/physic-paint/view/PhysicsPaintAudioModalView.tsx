@@ -3,6 +3,7 @@ import { AudioWaveform, Trash2, Volume2, VolumeX, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { GAIN_DB_MAX, GAIN_DB_MIN, formatAudioMaxTime, framesToSeconds, secondsToFrames } from '../../../lib/audioGain';
+import { slipOffsetBoundsSeconds } from '../../../lib/slipOffsetBounds';
 import { audioPeaksCache } from '../../../lib/audioPeaksCache';
 import type { PhysicsPaintAudioController, SoundFadeCurve } from './physicsPaintAudioController';
 import { isPhysicsPaintShortcutTarget } from './physicsPaintStudioKeyboard';
@@ -89,6 +90,7 @@ export const AUDIO_ERROR_DECODE = "Couldn't read this audio file. Use WAV, MP3, 
 export const AUDIO_ERROR_MISSING = 'Sound file is missing from the project. Replace it to restore the clip.';
 export const AUDIO_RELINK_CTA = 'Relink';
 export const AUDIO_POSITION_LABEL = 'Position';
+export const AUDIO_OFFSET_LABEL = 'Offset (s)';
 export const AUDIO_GAIN_LABEL = 'Gain';
 export const AUDIO_FADE_IN_LABEL = 'Fade in';
 export const AUDIO_FADE_OUT_LABEL = 'Fade out';
@@ -194,7 +196,7 @@ export function PhysicsPaintAudioModalView({
     audios,
     sound, filename, missing, busy, decodeError, previewGain, removeArmed,
     commitGain, commitFadeIn, commitFadeOut,
-    commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame, commitStartFrame,
+    commitFadeInCurve, commitFadeOutCurve, commitInFrame, commitOutFrame, commitStartFrame, commitSlipOffset,
     toggleEnabled, requestRemove, confirmRemove, removeSelected, disarmRemove,
   } = controller;
 
@@ -386,6 +388,33 @@ export function PhysicsPaintAudioModalView({
                   ariaDisabled={controlsDisabled}
                 />
               </div>
+
+              {/* 4b. Offset (s) — content slip inside the in/out window (261010-en9 R6).
+                   Same sign + bounds as the editor: UI positive = earlier source. */}
+              {(() => {
+                const fps = controller.getFps();
+                const sourceFrames = audioPeaksCache.getSourceFrames(sound.sourceId) ?? sound.outFrame;
+                const slipBounds = slipOffsetBoundsSeconds(
+                  { inFrame: sound.inFrame, outFrame: sound.outFrame, totalFramesInFile: sourceFrames },
+                  fps,
+                );
+                return (
+                  <div class="physics-paint-audio-row">
+                    <SliderStepper
+                      label={AUDIO_OFFSET_LABEL}
+                      value={framesToSeconds(-sound.slipOffset, fps)}
+                      step={0.1}
+                      min={slipBounds.min}
+                      max={slipBounds.max}
+                      precision={1}
+                      onChange={(value) => commitSlipOffset(-secondsToFrames(value, fps))}
+                      ariaLabel="Offset seconds"
+                      disabled={controlsDisabled}
+                      ariaDisabled={controlsDisabled}
+                    />
+                  </div>
+                );
+              })()}
 
               {/* Trim in/out share one row as two columns (UAT) — audio seconds. */}
               {(() => {

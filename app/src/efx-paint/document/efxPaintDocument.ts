@@ -189,6 +189,14 @@ export interface DocumentSoundClip {
   /** Source trim end, in frames. */
   readonly outFrame: number;
   /**
+   * Content slip within the in/out window, ENGINE sign (261010-en9 R6):
+   * `source = inFrame + slipOffset + framesIntoTrack`, so a positive
+   * slipOffset reads LATER source. The UI Offset (s) control is the inverse —
+   * display `framesToSeconds(-slipOffset, fps)`, commit `-secondsToFrames(ui)`.
+   * Frames; may be negative. MceAudioTrack.slip_offset is untouched.
+   */
+  readonly slipOffset: number;
+  /**
    * Clip gain, signed integer -100..+100 (UAT round 4). 0 is unity and sits at
    * the CENTER of the waveform, +100 doubles the level (line at the top of the
    * stain extent), -100 is silent (line at the bottom). Never a plain volume.
