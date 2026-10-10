@@ -122,11 +122,11 @@ export function AudioProperties({track}: AudioPropertiesProps) {
             {track.originalFilename}
           </span>
           <button
-            class="shrink-0 text-[10px] text-(--color-text-secondary) hover:text-(--color-text-primary) cursor-pointer transition-colors ml-2"
+            class="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-(--color-bg-input) text-(--color-text-secondary) hover:bg-(--color-bg-hover-item) hover:text-white cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed ml-2"
             onClick={handleReplace}
             disabled={isReplacing}
           >
-            {isReplacing ? <Loader2 size={12} class="animate-spin" /> : 'Replace...'}
+            {isReplacing ? <Loader2 size={12} class="animate-spin" /> : 'Replace'}
           </button>
         </div>
         <div style={{marginTop: '10px', marginBottom: '10px'}}>

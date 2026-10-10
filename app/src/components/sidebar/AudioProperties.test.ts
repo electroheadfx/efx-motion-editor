@@ -189,6 +189,33 @@ describe('AudioProperties never-copy handleReplace stays byte-stable (261009-rko
   });
 });
 
+describe('AudioProperties Replace file-row button (261010-g2n W3)', () => {
+  it('labels the control Replace with no ellipsis', () => {
+    expect(source).toContain("'Replace'");
+    expect(source).not.toContain("'Replace...'");
+    expect(source).not.toContain('"Replace..."');
+  });
+
+  it('uses the small-button chrome shape shared with BPM x2 / /2', () => {
+    const trackSection = source.slice(
+      source.indexOf('<RuleSectionHeader text="TRACK" />'),
+      source.indexOf('<RuleSectionHeader text="FADES" />'),
+    );
+    const replaceBtn = trackSection.slice(trackSection.indexOf('handleReplace') - 300);
+    expect(replaceBtn).toContain('bg-(--color-bg-input)');
+    expect(replaceBtn).toContain('text-[10px]');
+    expect(replaceBtn).toContain('rounded');
+    expect(replaceBtn).toContain('disabled:opacity-40');
+    expect(replaceBtn).toContain('hover:bg-(--color-bg-hover-item)');
+  });
+
+  it('keeps the isReplacing spinner branch', () => {
+    expect(source).toContain('isReplacing ? <Loader2');
+    expect(source).toContain('animate-spin');
+    expect(source).toContain('disabled={isReplacing}');
+  });
+});
+
 describe('AudioProperties time unit and range refinements (261010-bkv)', () => {
   it('Position sliderMax reaches the timeline end (totalFrames), floored at offsetFrame', () => {
     const positionField = source.slice(
