@@ -1,4 +1,6 @@
 import {describe, it, expect} from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {audioEngine} from './audioEngine';
 
 describe('audioEngine', () => {
@@ -38,11 +40,20 @@ describe('audioEngine', () => {
     it.todo('stopAll stops all active sources');
   });
 
-  describe('AUDIO-06: applyFadeSchedule', () => {
-    it.todo('schedules fade-in with exponentialRampToValueAtTime for exponential curve');
-    it.todo('schedules fade-in with linearRampToValueAtTime for linear curve');
-    it.todo('schedules fade-out ramp to 0.001 (not 0)');
-    it.todo('computes correct ramp times from fadeInFrames/fadeOutFrames and fps');
-    it.todo('handles partial fade-in when playback starts mid-fade');
+  describe('AUDIO-06: applyFadeSchedule (261010-ht0 F3)', () => {
+    it('schedules every curve via setValueCurveAtTime of the sampled fadeCurves law', () => {
+      const source = readFileSync(
+        fileURLToPath(new URL('./audioEngine.ts', import.meta.url)),
+        'utf8',
+      );
+      expect(source).toContain("from './fadeCurves'");
+      expect(source).toContain('sampleFadeCurve');
+      expect(source).toContain('setValueCurveAtTime');
+      // No linear-ramp stand-in for logarithmic (or any curve).
+      expect(source).not.toContain('linearRampToValueAtTime');
+      expect(source).not.toContain('exponentialRampToValueAtTime');
+      // Partial fade-in entry samples the remaining loudness slice.
+      expect(source).toContain("sampleFadeCurve(track.fadeInCurve, 'in'");
+    });
   });
 });

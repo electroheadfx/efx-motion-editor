@@ -165,15 +165,18 @@ describe('soundBandGeometry — UAT round 4/5 overlays (waveform RGB 22 110 203,
     expect(Math.min(...fadeYs)).toBe(soundGainLineY(0));
     expect(Math.min(...fadeYs)).toBeGreaterThan(18 - SOUND_STAIN_HALF_EXTENT_PX);
     expect(soundFadeInPathD(0, 0, 24, 96, 0, 'linear')).toBeNull();
-    // exponential bows under the ramp, logarithmic bows over it.
+    // 261010-ht0 F1: fade-in samples fadeLoudnessIn, so exponential is the
+    // true mirror of the user-liked fade-out (2t - t^2 — fast start / bows
+    // OVER toward the gain line) and logarithmic bows UNDER (1 - sqrt(1-t)).
+    // In=exp and Out=exp are visual mirrors with no curve-name pairing.
     const exponential = soundFadeInPathD(6, 0, 24, 96, 0, 'exponential')!;
     const logarithmic = soundFadeInPathD(6, 0, 24, 96, 0, 'logarithmic')!;
     const midY = (d: string): number => {
       const ys = [...d.matchAll(/[ML][\d.]+ (-?[\d.]+)/g)].map((m) => Number(m[1]));
       return ys[Math.floor(ys.length / 2)];
     };
-    expect(midY(exponential)).toBeGreaterThan(midY(linear!));
-    expect(midY(logarithmic)).toBeLessThan(midY(linear!));
+    expect(midY(exponential)).toBeLessThan(midY(linear!));
+    expect(midY(logarithmic)).toBeGreaterThan(midY(linear!));
   });
 
   it('(t16) fade-out ramps from the gain line down to bottom-right and bows with the curve type; null when zero', async () => {

@@ -26,6 +26,7 @@
 
 import type { WaveformPeaks } from '../../../types/audio';
 import type { SoundFadeCurve } from '../../../efx-paint/document/efxPaintDocument';
+import { fadeLoudnessIn, fadeShape } from '../../../lib/fadeCurves';
 
 /** Layout constant: the band height (D-07 — 28px -> 36px, single source of truth). */
 export const SOUND_BAND_HEIGHT_PX = 36;
@@ -176,10 +177,12 @@ export function soundGainLineSpan(
 }
 
 /**
- * Curve shape for a fade overlay (UAT round 4): t in 0..1 mapped by the clip's
- * stored fade curve so the diagonal becomes the real graph — linear is the
- * straight ramp, exponential bows under it (slow start), logarithmic bows over
- * (slow end). Sampled into a polyline so the shape is visible at any width.
+ * Curve shape for a fade overlay (UAT round 4 / 261010-ht0 F1): t in 0..1
+ * sampled from the shared fadeCurves law so the drawn graph IS the audible
+ * ramp. Fade-in samples fadeLoudnessIn (silent-to-gain); fade-out samples
+ * fadeShape when interpolating gain-to-silent (equivalently loudness =
+ * 1 - fadeShape). In=exp and Out=exp are true mirrors — no curve-name pairing
+ * workaround. Sampled into a polyline so the shape is visible at any width.
  */
 const SOUND_FADE_SAMPLES = 8;
 
@@ -198,7 +201,13 @@ export function soundFadeInPathD(
 ): string | null {
   const fadePx = soundFadePx(fadeInFrames, inFrame, outFrame, widthPx);
   if (fadePx === null) return null;
-  return soundFadeCurvePathD(0, soundSilentEdgeY(), fadePx, soundGainLineY(gain), curve);
+  return soundFadeCurvePathD(
+    0,
+    soundSilentEdgeY(),
+    fadePx,
+    soundGainLineY(gain),
+    (t) => fadeLoudnessIn(t, curve),
+  );
 }
 
 /**
@@ -215,7 +224,13 @@ export function soundFadeOutPathD(
 ): string | null {
   const fadePx = soundFadePx(fadeOutFrames, inFrame, outFrame, widthPx);
   if (fadePx === null) return null;
-  return soundFadeCurvePathD(widthPx - fadePx, soundGainLineY(gain), widthPx, soundSilentEdgeY(), curve);
+  return soundFadeCurvePathD(
+    widthPx - fadePx,
+    soundGainLineY(gain),
+    widthPx,
+    soundSilentEdgeY(),
+    (t) => fadeShape(t, curve),
+  );
 }
 
 const soundSilentEdgeY = (): number => SOUND_BAND_HEIGHT_PX / 2 + SOUND_STAIN_HALF_EXTENT_PX;
@@ -227,18 +242,21 @@ function soundFadePx(fadeFrames: number, inFrame: number, outFrame: number, widt
   return Math.min(widthPx, (fadeFrames / span) * widthPx);
 }
 
-/** Sampled polyline along a fade curve from (x0,y0) to (x1,y1). */
+/**
+ * Sampled polyline along a fade curve from (x0,y0) to (x1,y1). The shape
+ * comes from the shared fadeCurves law — this builder carries no private table.
+ */
 function soundFadeCurvePathD(
   x0: number,
   y0: number,
   x1: number,
   y1: number,
-  curve: SoundFadeCurve,
+  shapeAt: (t: number) => number,
 ): string {
   const parts: string[] = [];
   for (let index = 0; index <= SOUND_FADE_SAMPLES; index += 1) {
     const t = index / SOUND_FADE_SAMPLES;
-    const k = curve === 'exponential' ? t * t : curve === 'logarithmic' ? Math.sqrt(t) : t;
+    const k = shapeAt(t);
     parts.push(`${index ? 'L' : 'M'}${Math.round((x0 + (x1 - x0) * t) * 100) / 100} ${Math.round((y0 + (y1 - y0) * k) * 100) / 100}`);
   }
   return parts.join(' ');

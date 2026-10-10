@@ -1,23 +1,27 @@
 import type { AudioTrack, FadeCurve } from '../types/audio';
 import { audioEngine } from './audioEngine';
+import { FADE_OUT_FLOOR, sampleFadeCurve } from './fadeCurves';
 import audioBufferToWav from 'audiobuffer-to-wav';
 
 /**
- * Apply a gain ramp using the specified curve type.
- * Mirrors audioEngine.applyRamp logic for OfflineAudioContext.
+ * Apply a sampled fade-out ramp via setValueCurveAtTime for OfflineAudioContext.
+ * Mirrors audioEngine.applyRamp: every curve uses the shared fadeCurves law so
+ * export matches preview (261010-ht0 F3). No linear-ramp stand-in.
  */
 function applyRamp(
   gain: GainNode,
-  targetValue: number,
+  vol: number,
+  startTime: number,
   endTime: number,
   curve: FadeCurve,
 ): void {
-  if (curve === 'exponential') {
-    gain.gain.exponentialRampToValueAtTime(targetValue, endTime);
-  } else {
-    // 'linear' and 'logarithmic' both use linearRamp
-    gain.gain.linearRampToValueAtTime(targetValue, endTime);
+  const duration = Math.max(0, endTime - startTime);
+  if (duration === 0) {
+    gain.gain.setValueAtTime(FADE_OUT_FLOOR, endTime);
+    return;
   }
+  const curveArray = sampleFadeCurve(curve, 'out', 0, 1, vol);
+  gain.gain.setValueCurveAtTime(curveArray, startTime, duration);
 }
 
 /**
@@ -52,21 +56,21 @@ function applyExportFadeSchedule(
     return;
   }
 
-  // Fade-in: start at near-zero, ramp to full volume
+  // Fade-in: sample the full loudness curve (export always starts at t=0).
   if (hasFadeIn) {
-    gain.gain.setValueAtTime(0.001, startTime);
-    applyRamp(gain, vol, startTime + fadeInSec, track.fadeInCurve);
+    const curveArray = sampleFadeCurve(track.fadeInCurve, 'in', 0, 1, vol);
+    gain.gain.setValueCurveAtTime(curveArray, startTime, fadeInSec);
   } else {
     gain.gain.setValueAtTime(vol, startTime);
   }
 
-  // Fade-out: at the end of visible range, ramp to near-zero
-  // (exponentialRamp cannot target 0, so we use 0.001)
+  // Fade-out: at the end of visible range, sample the loudness curve to the
+  // FADE_OUT_FLOOR (0.001) so AudioParam never receives a zero edge.
   if (hasFadeOut) {
     const fadeOutStart = startTime + visibleDuration - fadeOutSec;
     if (fadeOutStart > startTime) {
       gain.gain.setValueAtTime(vol, fadeOutStart);
-      applyRamp(gain, 0.001, startTime + visibleDuration, track.fadeOutCurve);
+      applyRamp(gain, vol, fadeOutStart, startTime + visibleDuration, track.fadeOutCurve);
     }
   }
 }

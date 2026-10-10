@@ -1,4 +1,5 @@
 import type {AudioTrack, FadeCurve} from '../types/audio';
+import { FADE_OUT_FLOOR, sampleFadeCurve } from './fadeCurves';
 
 /**
  * Web Audio API wrapper for audio decode, playback, volume, and fade scheduling.
@@ -227,11 +228,12 @@ class AudioEngine {
    * Apply gain fade schedule for fade-in and fade-out.
    *
    * Uses Web Audio API gain automation:
-   * - exponentialRampToValueAtTime for 'exponential' curves
-   * - linearRampToValueAtTime for 'linear' curves
-   * - linearRamp as fallback for 'logarithmic' curves
+   * - setValueCurveAtTime of the sampled fadeCurves law for EVERY curve
+   *   (exponential, logarithmic, linear) — the audible ramp matches the
+   *   drawn overlay (261010-ht0 F3). No linear-ramp stand-in.
    *
-   * Note: exponentialRamp cannot target 0, so fade-out targets 0.001 instead.
+   * Note: fade-out targets FADE_OUT_FLOOR (0.001) so AudioParam never
+   * receives a zero edge.
    */
   private applyFadeSchedule(
     gain: GainNode,
@@ -266,14 +268,14 @@ class AudioEngine {
       return;
     }
 
-    // Fade-in
+    // Fade-in: sample the remaining loudness slice so a partial entry (playback
+    // joins inside the fade) starts mid-curve. setValueCurveAtTime for every
+    // curve — the audible ramp matches the drawn overlay (261010-ht0 F3).
     if (hasFadeIn) {
-      const fadeProgress = visibleOffset / fadeInSec;
-      const startValue = Math.max(0.001, vol * fadeProgress);
-      const fadeInEnd = audioStartTime + (fadeInSec - visibleOffset);
-
-      gain.gain.setValueAtTime(startValue, audioStartTime);
-      this.applyRamp(gain, vol, fadeInEnd, track.fadeInCurve);
+      const fadeProgress = Math.min(1, Math.max(0, visibleOffset / fadeInSec));
+      const remaining = fadeInSec - visibleOffset;
+      const curveArray = sampleFadeCurve(track.fadeInCurve, 'in', fadeProgress, 1, vol);
+      gain.gain.setValueCurveAtTime(curveArray, audioStartTime, remaining);
     } else {
       gain.gain.setValueAtTime(vol, audioStartTime);
     }
@@ -283,20 +285,29 @@ class AudioEngine {
       const fadeOutStart = effectiveEnd - fadeOutSec;
       if (fadeOutStart > audioStartTime) {
         gain.gain.setValueAtTime(vol, fadeOutStart);
-        this.applyRamp(gain, 0.001, effectiveEnd, track.fadeOutCurve);
+        this.applyRamp(gain, vol, fadeOutStart, effectiveEnd, track.fadeOutCurve);
       }
     }
   }
 
-  /** Apply a ramp to the gain node using the specified curve type. */
-  private applyRamp(gain: GainNode, targetValue: number, endTime: number, curve: FadeCurve): void {
-    if (curve === 'exponential') {
-      gain.gain.exponentialRampToValueAtTime(targetValue, endTime);
-    } else {
-      // 'linear' and 'logarithmic' both use linearRamp
-      // (true logarithmic would need setValueCurveAtTime with a log-shaped array)
-      gain.gain.linearRampToValueAtTime(targetValue, endTime);
+  /**
+   * Apply a sampled fade-out ramp (fadeShape law, floored at 0.001) via
+   * setValueCurveAtTime. No linear-ramp stand-in for any curve.
+   */
+  private applyRamp(
+    gain: GainNode,
+    vol: number,
+    startTime: number,
+    endTime: number,
+    curve: FadeCurve,
+  ): void {
+    const duration = Math.max(0, endTime - startTime);
+    if (duration === 0) {
+      gain.gain.setValueAtTime(FADE_OUT_FLOOR, endTime);
+      return;
     }
+    const curveArray = sampleFadeCurve(curve, 'out', 0, 1, vol);
+    gain.gain.setValueCurveAtTime(curveArray, startTime, duration);
   }
 }
 
