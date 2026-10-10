@@ -92,6 +92,16 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **PKG-05**: Persistence granularity is per paint layer, never per key — layer metadata in a per-layer JSON sub-file, key rasters as media files in the media tree
 - [x] **PKG-06**: Save/reopen preserves the package — manifest, layer sub-files, media references, and cache identity — through the existing transactional save (staging -> hardlink unchanged -> fsync -> atomic rename-swap -> digest-bound commit/rollback)
 
+### SND — Document Sound (GSD 52.5)
+
+- [x] **SND-01**: Placed-clip identity — `id` unique per placed clip (list key, timeline selection, transport, buffer); `sourceId` identifies the imported file and is shared across duplicates
+- [x] **SND-02**: Heavy media stay disk references — `sourcePath` is the absolute on-disk path; audio is never copied into the `.mce` package
+- [x] **SND-03**: Trim — `inFrame`/`outFrame` bound the audible window; `startFrame` places the clip on the timeline, independent of the source file
+- [x] **SND-04**: Clip gain is a signed integer -100..+100 (0 = unity, +100 = double, -100 = silent), never a plain volume
+- [x] **SND-05**: Fade-in and fade-out each have a frame length and a curve (linear | exponential | logarithmic)
+- [x] **SND-06**: The per-clip `enabled` switch silences the clip everywhere (Studio preview, main-editor playback, export) without touching the main app's audio tracks
+- [ ] **SND-07**: Save/reopen restores every placed clip (identity, sourcePath, trim, gain, fades, enabled); a clip whose file has moved is surfaced as missing, never silently dropped
+
 ### ACC — Integrated Acceptance (Phase 9)
 
 - [ ] **ACC-01**: All automated gates pass (vitest, typecheck, build, cargo test, release script preflight)
