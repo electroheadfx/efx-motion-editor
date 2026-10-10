@@ -152,3 +152,7 @@ None.
 - FOUND: f9ce5ec3 (Task 1)
 - FOUND: c42e7538 (Task 2)
 - FOUND: 255c5b48 (Task 3)
+
+## Status: CLOSED — native UAT PASSED (2026-10-10)
+
+**Quick 261010-g2n is closed.** All live UAT rows approved by the user 2026-10-10: short-window waveform detail (no spike blobs), Out-nudge stability, Offset slide under a stationary bar, Fit to view one-undo crop, and the Replace button affordance.

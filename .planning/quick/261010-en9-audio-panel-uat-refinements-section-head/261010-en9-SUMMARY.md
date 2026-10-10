@@ -222,3 +222,7 @@ Live native UAT (rows 1–8) remains with the user.
 ## Self-Check: PASSED
 
 All 17 listed files found on disk. Commits 4ed40975, 4be41eb2, e0851a5d are ancestors of HEAD.
+
+## Status: CLOSED — native UAT PASSED (2026-10-10)
+
+**Quick 261010-en9 is closed.** All live UAT rows approved by the user 2026-10-10: section header rgb(205,201,201), FILE merged into TRACK with file/Replace first, editor timeline gain line + diagonal fades, In-from-left trim (clip end fixed), Offset (s) slip in editor + Studio, playhead timecode `[frame | second]`, 10px section padding. Offset follow-ups landed in e98a6a2d / 327ad773 / 5bb42bad / 256e4e38.

@@ -198,3 +198,7 @@ None.
 - 3eb775b6: FOUND (Task 1)
 - a0c7c2ec: FOUND (Task 2)
 - 3d7b3dc0: FOUND (Task 3)
+
+## Status: CLOSED — native UAT PASSED (2026-10-10)
+
+**Quick 261010-ht0 is closed.** All live UAT rows approved by the user 2026-10-10: fade-in and fade-out are true mirrors at every curve (no In=log/Out=exp workaround), the audible fade matches the drawn overlay, exponential is the import default for both fades (user reverted the brief logarithmic default), Studio Offset moves on a trimmed clip of a long file, and Studio Fit to view crops In/Out in one undo. UAT-loop follow-ups also approved: slipOffset store/playback/waveform fixes (e98a6a2d, 327ad773, c76c5369, 5bb42bad, 256e4e38), waveform visual gain x1-x4 + taller stain (5a821a54), and the editor OUT-cut window fix (10172f84).

@@ -207,3 +207,7 @@ pnpm --filter efx-motion-editor exec vitest run src/components/sidebar/AudioProp
 Result: 55/55 tests passed, typecheck clean.
 
 ## Self-Check: PASSED
+
+## Status: CLOSED — native UAT PASSED (2026-10-10)
+
+**Quick 261009-v0s is closed.** All live UAT rows approved by the user 2026-10-10: SliderStepper re-flow (Fade in/out with curve slot, Position, In, Out), RuleSectionHeader look (later retuned to rgb(205,201,201) in 261010-en9), BEAT SYNC collapsed by default, timeline trim ew-resize / playhead hover cursors, and the 10px section padding. Follow-up UAT refinements landed in 261010-en9 / 261010-g2n / 261010-ht0.

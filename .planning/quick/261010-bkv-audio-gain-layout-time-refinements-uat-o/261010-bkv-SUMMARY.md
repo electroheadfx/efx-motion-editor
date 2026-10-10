@@ -213,3 +213,7 @@ Result: **GREEN** — 133 passed, 7 todo, typecheck clean.
 - FOUND: afb8f463
 - FOUND: c5fb4c01
 - FOUND: e451e172
+
+## Status: CLOSED — native UAT PASSED (2026-10-10)
+
+**Quick 261010-bkv is closed.** All live UAT rows approved by the user 2026-10-10: TRACK + Gain dB -20..+20 default 0 (editor and Studio), 2-column fades with curve dropdowns, 2-column In/Out in seconds, Position sliderMax = timeline end, Out default at max, and the audio max-time readout. Later refinements (In-from-left, Offset, Fit to view) landed in 261010-en9 / g2n / ht0.
