@@ -22,7 +22,7 @@ import {startAutoSave, stopAutoSave} from '../lib/autoSave';
 import {tempProjectDir} from '../lib/projectDir';
 import {addRecentProject, setLastProjectPath} from '../lib/appConfig';
 import {canvasStore} from './canvasStore';
-import {paintStore, _setPaintMarkDirtyCallback} from './paintStore';
+import {paintStore, _setPaintMarkDirtyCallback, _setPaintProjectDimensionsProvider} from './paintStore';
 import {physicPaintStore, _setPhysicPaintMarkDirtyCallback, _setPhysicPaintCompositorSizeProvider, _setPhysicPaintPackageDirProvider} from './physicPaintStore';
 import {motionBlurStore} from './motionBlurStore';
 import {exportStore} from './exportStore';
@@ -1164,6 +1164,11 @@ _setAudioMarkDirtyCallback(() => projectStore.markDirty());
 // Wire paintStore's markDirty callback to projectStore
 // This ensures auto-save fires when the user paints
 _setPaintMarkDirtyCallback(() => projectStore.markDirty());
+
+// Wire paintStore's project-dims provider so flatten/unflatten/refreshFrameFx
+// stamp the LIVE project canvas size (the 1920x1080 fallback is silent).
+// Same ESM module-body cycle workaround as _setSequenceProjectDimensionsProvider.
+_setPaintProjectDimensionsProvider(() => ({width: width.value, height: height.value}));
 
 // Wire physicPaintStore's markDirty callback to projectStore
 // This ensures auto-save notices rendered physics paint output changes

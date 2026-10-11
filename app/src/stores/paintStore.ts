@@ -5,11 +5,22 @@ import {pointsToBezierAnchors, shapeToAnchors} from '../lib/bezierPath';
 import {pushAction} from '../lib/history';
 import {renderFrameFx} from '../lib/brushP5Adapter';
 import {loadBrushPreferences, saveBrushSize, saveBrushColor} from '../lib/paintPreferences';
-import {projectStore} from './projectStore';
 
 // Late-bound callback to mark project dirty without circular import
 let _markProjectDirty: (() => void) | null = null;
 export function _setPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
+
+// Project canvas dims are read through an injected provider: a static
+// projectStore import re-enters paintStore before its bindings initialize
+// (WINDOWS.md #90). projectStore wires the provider at module init; the
+// fallback matches the boot default so an unwired test stays coherent.
+let _projectDimensionsProvider: (() => { width: number; height: number }) | null = null;
+export function _setPaintProjectDimensionsProvider(fn: () => { width: number; height: number }) {
+  _projectDimensionsProvider = fn;
+}
+function getProjectDimensions(): { width: number; height: number } {
+  return _projectDimensionsProvider?.() ?? { width: 1920, height: 1080 };
+}
 
 // --- Signals ---
 
@@ -694,8 +705,7 @@ export const paintStore = {
     const paintFrame = this.getFrame(layerId, frame);
     if (!paintFrame || paintFrame.elements.length === 0) return;
 
-    const projW = projectStore.width.peek();
-    const projH = projectStore.height.peek();
+    const {width: projW, height: projH} = getProjectDimensions();
 
     // Collect all brush strokes for renderFrameFx
     const brushStrokes = paintFrame.elements.filter(
@@ -735,8 +745,7 @@ export const paintStore = {
     const paintFrame = this.getFrame(layerId, frame);
     if (!paintFrame) return;
 
-    const projW = projectStore.width.peek();
-    const projH = projectStore.height.peek();
+    const {width: projW, height: projH} = getProjectDimensions();
 
     // Restore FX strokes to fx-applied state
     const brushStrokes = paintFrame.elements.filter(
@@ -772,8 +781,7 @@ export const paintStore = {
 
     // Skip expensive p5.brush render when flat preview is active
     if (!showFlatPreview.peek()) {
-      const projW = projectStore.width.peek();
-      const projH = projectStore.height.peek();
+      const {width: projW, height: projH} = getProjectDimensions();
 
       const brushStrokes = paintFrame.elements.filter(
         (el) => el.tool === 'brush'
