@@ -11,18 +11,34 @@
 **Date:** 2026-10-11
 **Result:** PENDING — matrix pending the comprehensive pass (Task 2)
 
-## Worksheet META (prepared — Task 2 sub-step 0 material gate pending)
+## Worksheet META (material gate RESOLVED — meta-pair approved by the user; ready for the walk)
 
 | META field | Value | Status |
 |------------|-------|--------|
 | `meta-app` | `app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app` (absolute: `/Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app`) | ready |
 | `meta-commit` | `0c9e7defd9e13ba9f7b782d96242e8ce9692dafb` (= `origin/HEAD` at release time) | ready |
-| `meta-pair` | D-03 through-line `.mce` path — **MATERIAL GATE: must be confirmed with the user before row execution** (research Pitfall 2: documented `v1.0.0.mce` (31 keys) is gone; `~/Desktop/efx-motion-editor-project-test/v1.0.0-2.mce` exists with capacity 31 but only 3 real keys; also present: `1.0.0-sound.mce`, `Untitled Project.mce`) | **OPEN** |
+| `meta-pair` | `/Users/lmarques/Desktop/efx-motion-editor-project-test/v1.0.0-2.mce` | **APPROVED (user's final call)** — the last project that works with the 1.0.0 build; the other files in that folder are not compatible with the 1.0.0 build and are not used. Material substitution recorded in the divergence table (D-03 entry below). |
 | `meta-fixture` | `app/src/efx-paint/document/__fixtures__/pre-52.2-project.mce.json` | ready |
+
+### Available material under test (meta-pair manifest — what is actually on disk)
+
+- 1080x1080 @ 24fps, 1 fx sequence "Layer 1", timeline frames 0-31
+- 1 physic-paint layer with a real efxPaint document (documentRevision efxdoc-405, compositeRevision composite-144)
+- 3 cached WebP paint frames
+- 1 audio track: source trim in 504 / out 533 of a 1944-frame file, offset_frame 2, volume 1.0, exponential fades (1 frame in/out), slip_offset 0, bpm 93.8, 165 beat markers shown
+- 3 audio assets as disk references to imports/Drex3emRush-sansRouli.aif
+
+### Pass instructions — BINDING for the walk (user's honesty constraint, verbatim)
+
+> no row may silently claim the 31-key shape. If a row's wording says "31 keys" or "full range", either exercise it on a user-built longer fresh project and say so in the comment, or mark NA referencing this divergence. No quiet PASS.
+
+### Ride-along tracked note (not a worksheet row)
+
+- Acceptance 3 of the #90 scoped fix rides along this walk: live non-1920x1080 FX flatten/unflatten at real project dimensions. Recorded as a tracked note here (the worksheet carries no matching row), with its outcome reported alongside the walk results.
 
 ## Pass/Fail Matrix
 
-**Pre-pass skeleton — every verdict is `PENDING`; no row has been executed yet.** One row per worksheet card (same R-numbers as `53-UAT.html`, D-04 order), each carrying spec-step text, the shipped-English expected marker, and the live verdict recorded during the comprehensive pass.
+**Pre-pass skeleton — every verdict is `PENDING`; no row has been executed yet (meta-pair gate cleared; honesty constraint above is binding on every verdict).** One row per worksheet card (same R-numbers as `53-UAT.html`, D-04 order), each carrying spec-step text, the shipped-English expected marker, and the live verdict recorded during the comprehensive pass.
 
 | # | Spec step / origin | Expected-outcome marker (shipped English) | Result |
 |---|--------------------|-------------------------------------------|--------|
@@ -73,7 +89,11 @@ Spec step 17 (downloaded-artifact verification) is mapped to `53-VERIFY-DOWNLOAD
 
 ## Divergence table (spec-vs-implementation)
 
-_Pending the comprehensive pass — divergences are recorded, NOT fixed (D-21, release-only phase)._
+_Divergences are recorded, NOT fixed (D-21, release-only phase)._
+
+| # | Divergence | Status |
+|---|------------|--------|
+| D-03 | D-03 material substitution: the documented §7-pair 31-key through-line (~/Desktop/efx-motion-editor-project-test/v1.0.0.mce, 2 layers / ~200 frames / 31 keys — the real project shape that surfaced the 52.3 export-enumeration blocker) no longer exists on disk. Substituted with v1.0.0-2.mce (31-frame fx timeline, 1 physic-paint layer with 3 cached frames, 1 beat-mapped audio track, 3 disk-referenced audio assets). Consequences: (a) audio and package-integrity rows — R9, R14, R17, R18 and the 52.5 sound sweep rows — run on real audio material; (b) paint, Reveal, and Background rows — R5, R10-R13, R22-R27 — run on targeted fresh projects built during the walk, per D-03's existing 'targeted fresh projects' clause; (c) the R28-R30 live-gate performance rows record the material actually sized (31 frames, not ~200) in the row comment. Verdict NA is acceptable on a row only with a comment naming this substitution. This is a material loss, not a product defect. Other packages in that folder are not compatible with the 1.0.0 build and are not used. | recorded, NOT fixed — D-21 (user decision: GO for the live pass on this material) |
 
 ## User approval
 
