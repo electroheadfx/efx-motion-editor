@@ -153,7 +153,7 @@
     <div class="progress-card">
       <div class="progress-meta">
         <span class="progress-label"><span class="lang-fr">Progression des verdicts</span><span class="lang-en">Verdict progress</span></span>
-        <span class="progress-count" id="progress-count">0/9 · 0%</span>
+        <span class="progress-count" id="progress-count">42/42 · 0%</span>
       </div>
       <div class="bar"><div id="progress-fill"></div></div>
     </div>
@@ -459,6 +459,1002 @@
     </div>
   </section>
 
+
+  <!-- ══════════ ROW R10 ══════════ -->
+  <section class="card" id="card-R10">
+    <div class="badges"><span class="badge row">R10</span><span class="badge">SPEC STEP 7</span><span class="badge">BACKGROUND LOOP</span></div>
+    <h2><span class="lang-fr">Background : 5 images frame 0, Repeat 3 → frames 0-14</span><span class="lang-en">Background: 5 images at frame 0, Repeat 3 → frames 0-14</span></h2>
+    <p class="why"><span class="lang-fr">Cinq images sources liées sur la track Background, Repeat 3 : le cycle des cinq doit se répéter sans duplication d’assets (loi liée).</span><span class="lang-en">Five linked source images on the Background track, Repeat 3: the five-frame cycle repeats with no asset duplication (linked law).</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Importer/cinq images distinctes sur Background, toutes en frame 0.</span><span class="lang-en">Import five distinct images onto Background, all at frame 0.</span></li>
+      <li><span class="lang-fr">Régler Repeat = 3.</span><span class="lang-en">Set Repeat = 3.</span></li>
+      <li><span class="lang-fr">Naviguer frames 0-14 : cinq sources liées, trois cycles complets.</span><span class="lang-en">Navigate frames 0-14: five linked sources, three full cycles.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Frames 0-14 construites exactement des cinq sources liées (Repeat 3).</span><span class="lang-en"><b>Expected:</b> Frames 0-14 built exactly from the five linked sources (Repeat 3).</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : cycle erroné, assets dupliqués, ou bornes décalées → FAIL.</span><span class="lang-en">If: wrong cycle, duplicated assets, or shifted bounds → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R10-c1"><span><span class="lang-fr">Les cinq images sont en frame 0 sur Background</span><span class="lang-en">Five images placed at frame 0 on Background</span></span></label>
+      <label><input type="checkbox" id="R10-c2"><span><span class="lang-fr">Repeat = 3 réglé</span><span class="lang-en">Repeat = 3 set</span></span></label>
+      <label><input type="checkbox" id="R10-c3"><span><span class="lang-fr">Frames 0-14 = 3 cycles des 5 sources liées</span><span class="lang-en">Frames 0-14 = 3 cycles of the 5 linked sources</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R10" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R10" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R10" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R10" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R11 ══════════ -->
+  <section class="card" id="card-R11">
+    <div class="badges"><span class="badge row">R11</span><span class="badge">SPEC STEP 8</span><span class="badge">BACKGROUND LOOP</span></div>
+    <h2><span class="lang-fr">10 images frame 15, Repeat 2 → frames 15-34, fin exclusive 35</span><span class="lang-en">10 images at frame 15, Repeat 2 → frames 15-34, exclusive end 35</span></h2>
+    <p class="why"><span class="lang-fr">Deuxième clip Background : dix sources, Repeat 2, et la borne de fin est exclusive (35) — la semantics de fin exclusive est un stop-condition.</span><span class="lang-en">Second Background clip: ten sources, Repeat 2, and the end bound is exclusive (35) — exclusive-end semantics is a stop condition.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Ajouter un second clip Background : 10 images neuves en frame 15.</span><span class="lang-en">Add a second Background clip: 10 new images at frame 15.</span></li>
+      <li><span class="lang-fr">Régler Repeat = 2.</span><span class="lang-en">Set Repeat = 2.</span></li>
+      <li><span class="lang-fr">Naviguer 15-34, puis 35 : le clip s’arrête avant 35.</span><span class="lang-en">Navigate 15-34, then 35: the clip stops before 35.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Frames 15-34 = 2 cycles des 10 sources ; frame 35 hors clip (fin exclusive).</span><span class="lang-en"><b>Expected:</b> Frames 15-34 = 2 cycles of the 10 sources; frame 35 outside the clip (exclusive end).</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : frame 35 appartient encore au clip, ou 15-34 mal construit → FAIL (borne inclusive = violation).</span><span class="lang-en">If: frame 35 still belongs to the clip, or 15-34 misbuilt → FAIL (inclusive end = violation).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R11-c1"><span><span class="lang-fr">10 images en frame 15, Repeat 2</span><span class="lang-en">10 images at frame 15, Repeat 2</span></span></label>
+      <label><input type="checkbox" id="R11-c2"><span><span class="lang-fr">Frames 15-34 correctes</span><span class="lang-en">Frames 15-34 correct</span></span></label>
+      <label><input type="checkbox" id="R11-c3"><span><span class="lang-fr">Frame 35 exclusive (hors clip)</span><span class="lang-en">Frame 35 exclusive (outside clip)</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R11" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R11" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R11" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R11" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R12 ══════════ -->
+  <section class="card" id="card-R12">
+    <div class="badges"><span class="badge row">R12</span><span class="badge">SPEC STEP 9</span><span class="badge">FALLBACK GAP</span></div>
+    <h2><span class="lang-fr">Gap de fallback : solide ↔ transparent, comparaison multi-surfaces</span><span class="lang-en">Fallback gap: solid ↔ transparent, multi-surface comparison</span></h2>
+    <p class="why"><span class="lang-fr">Le fallback (papier du document) doit être visible sur TOUTES les surfaces de sortie, pas seulement au preview — y compris quand il bascule.</span><span class="lang-en">The fallback (document paper) must appear on ALL output surfaces, not just preview — including when it toggles.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Créer une gap sans contenu sur Background (fallback visible).</span><span class="lang-en">Create a content-less gap on Background (fallback visible).</span></li>
+      <li><span class="lang-fr">Basculer fallback solide ↔ transparent.</span><span class="lang-en">Toggle the fallback solid ↔ transparent.</span></li>
+      <li><span class="lang-fr">Comparer : canvas Studio, preview principal, export PNG.</span><span class="lang-en">Compare: Studio canvas, main preview, PNG export.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Les trois surfaces montrent le même fallback (identique).</span><span class="lang-en"><b>Expected:</b> All three surfaces show the same fallback (identical).</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : une surface diverge (ex. export sans fallback) → FAIL avec capture de la paire.</span><span class="lang-en">If: one surface diverges (e.g. export without fallback) → FAIL with the pair screenshot.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R12-c1"><span><span class="lang-fr">Gap de fallback créée</span><span class="lang-en">Fallback gap created</span></span></label>
+      <label><input type="checkbox" id="R12-c2"><span><span class="lang-fr">Solide ↔ transparent bascule partout</span><span class="lang-en">Solid ↔ transparent toggles everywhere</span></span></label>
+      <label><input type="checkbox" id="R12-c3"><span><span class="lang-fr">Studio = preview = export</span><span class="lang-en">Studio = preview = export</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R12" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R12" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R12" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R12" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R13 ══════════ -->
+  <section class="card" id="card-R13">
+    <div class="badges"><span class="badge row">R13</span><span class="badge">SPEC STEP 10</span><span class="badge">INFINITY + INTERRUPT</span></div>
+    <h2><span class="lang-fr">Background → infinity, clip suivant interrompt, move/delete déterministe</span><span class="lang-en">Background → infinity, next clip interrupts, move/delete deterministic</span></h2>
+    <p class="why"><span class="lang-fr">Expansion infinie + interruption propre : la loi « linked loops stop at next clip or parent end » est contractuelle ; move/delete doit restaurer sans overlap.</span><span class="lang-en">Infinite expansion + clean interruption: the "linked loops stop at next clip or parent end" law is contractual; move/delete must restore with no overlap.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Régler le clip Background en Infinity.</span><span class="lang-en">Set the Background clip to Infinity.</span></li>
+      <li><span class="lang-fr">Ajouter le clip suivant : il interrompt le cycle partiel en cours.</span><span class="lang-en">Add the next clip: it interrupts the partial cycle in progress.</span></li>
+      <li><span class="lang-fr">Déplacer puis supprimer le clip suivant : expansion restaurée, déterministe, sans overlap.</span><span class="lang-en">Move then delete the next clip: expansion restored, deterministic, no overlap.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Infinity étend jusqu’au clip suivant / fin du parent ; move/delete restaurent l’état exact sans frames superposées.</span><span class="lang-en"><b>Expected:</b> Infinity extends to the next clip / parent end; move/delete restore the exact state with no overlapping frames.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : frames superposées après delete, expansion non déterministe, ou le cycle partiel survit → FAIL.</span><span class="lang-en">If: overlapping frames after delete, non-deterministic expansion, or the partial cycle survives → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R13-c1"><span><span class="lang-fr">Infinity étend jusqu’à interruption</span><span class="lang-en">Infinity extends until interruption</span></span></label>
+      <label><input type="checkbox" id="R13-c2"><span><span class="lang-fr">Clip suivant interrompt le cycle partiel</span><span class="lang-en">Next clip interrupts the partial cycle</span></span></label>
+      <label><input type="checkbox" id="R13-c3"><span><span class="lang-fr">Move/delete : restauration déterministe sans overlap</span><span class="lang-en">Move/delete: deterministic restore, no overlap</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R13" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R13" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R13" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R13" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R14 ══════════ -->
+  <section class="card" id="card-R14">
+    <div class="badges"><span class="badge row">R14</span><span class="badge">SPEC STEP 11</span><span class="badge">SAVE / REOPEN</span></div>
+    <h2><span class="lang-fr">Save, close, reopen : IDs, liens, repeats, timing, fallback, composite</span><span class="lang-en">Save, close, reopen: IDs, links, repeats, timing, fallback, composite</span></h2>
+    <p class="why"><span class="lang-fr">Persistance complète du round-trip — chaque champ structuré doit revenir identique, c’est un stop-condition de fermeture.</span><span class="lang-en">Full persistence round-trip — every structured field must come back identical; it is a closure stop condition.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Sauvegarder le projet complet (via le package .mce).</span><span class="lang-en">Save the whole project (via the .mce package).</span></li>
+      <li><span class="lang-fr">Fermer totalement l’app.</span><span class="lang-en">Quit the app entirely.</span></li>
+      <li><span class="lang-fr">Réouvrir : comparer IDs, source links, requested repeats, timing, fallback, composite.</span><span class="lang-en">Reopen: compare IDs, source links, requested repeats, timing, fallback, composite.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Round-trip identique sur les six familles de champs.</span><span class="lang-en"><b>Expected:</b> Identical round-trip across the six field families.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : un ID change, un lien source casse, un repeat/timing drift, ou le composite diffère → FAIL avec le champ exact.</span><span class="lang-en">If: an ID changes, a source link breaks, repeat/timing drifts, or the composite differs → FAIL with the exact field.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R14-c1"><span><span class="lang-fr">IDs identiques après reopen</span><span class="lang-en">IDs identical after reopen</span></span></label>
+      <label><input type="checkbox" id="R14-c2"><span><span class="lang-fr">Source links + repeats + timing intacts</span><span class="lang-en">Source links + repeats + timing intact</span></span></label>
+      <label><input type="checkbox" id="R14-c3"><span><span class="lang-fr">Fallback + composite identiques</span><span class="lang-en">Fallback + composite identical</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R14" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R14" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R14" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R14" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R15 ══════════ -->
+  <section class="card" id="card-R15">
+    <div class="badges"><span class="badge row">R15</span><span class="badge">INSERT · 260913-05k-a</span><span class="badge">D-16</span><span class="badge">PACKAGE IO</span></div>
+    <h2><span class="lang-fr">IO package via commandes Rust sur le build packagé</span><span class="lang-en">Package IO through Rust commands on the packaged build</span></h2>
+    <p class="why"><span class="lang-fr">260913-05k (D-16) : la renderer/plugin-fs ne touche NI le package NI le cache — tout IO de package passe par les commandes Rust, prouvé sur le .app signé.</span><span class="lang-en">260913-05k (D-16): renderer/plugin-fs touches NEITHER package NOR cache — all package IO goes through Rust commands, proven on the signed .app.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Sur le build packagé : ouvrir le through-line .mce (META pair).</span><span class="lang-en">On the packaged build: open the through-line .mce (META pair).</span></li>
+      <li><span class="lang-fr">Peindre, sauvegarder directement (Save, pas Save As).</span><span class="lang-en">Paint, save directly (Save, not Save As).</span></li>
+      <li><span class="lang-fr">Vérifier sur disque : frames/ webp + layers/ JSON écrits par Rust.</span><span class="lang-en">Verify on disk: frames/ webp + layers/ JSON written by Rust.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Save direct fonctionne ; écritures disque via commandes Rust uniquement.</span><span class="lang-en"><b>Expected:</b> Direct save works; disk writes via Rust commands only.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : refus fs-scope, Save qui tombe en Save As, ou écriture par le renderer → FAIL (régression 05k).</span><span class="lang-en">If: fs-scope refusal, Save falling into Save As, or renderer-side write → FAIL (05k regression).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R15-c1"><span><span class="lang-fr">Ouverture package sans refus fs-scope</span><span class="lang-en">Package open with no fs-scope refusal</span></span></label>
+      <label><input type="checkbox" id="R15-c2"><span><span class="lang-fr">Save direct fonctionne</span><span class="lang-en">Direct save works</span></span></label>
+      <label><input type="checkbox" id="R15-c3"><span><span class="lang-fr">Écritures disque = commandes Rust</span><span class="lang-en">Disk writes = Rust commands</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R15" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R15" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R15" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R15" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R16 ══════════ -->
+  <section class="card" id="card-R16">
+    <div class="badges"><span class="badge row">R16</span><span class="badge">INSERT · 260913-05k-b</span><span class="badge">D-16</span><span class="badge">FAILURE MODAL</span></div>
+    <h2><span class="lang-fr">Modal de failure bloquante quand le chemin package a disparu</span><span class="lang-en">Blocking failure modal when the package path is gone</span></h2>
+    <p class="why"><span class="lang-fr">Surface de save/open failure : le chemin du package supprimé/renommé doit produire un modal bloquant avec erreur réelle — pas d’échec silencieux, pas de corruption.</span><span class="lang-en">Save/open failure surface: a deleted/renamed package path must produce a blocking modal with a real error — no silent failure, no corruption.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Pendant que le projet est ouvert : déplacer/renommer le .mce sur disque.</span><span class="lang-en">While the project is open: move/rename the .mce on disk.</span></li>
+      <li><span class="lang-fr">Déclencher Save → modal bloquant avec message d’erreur réel, contenu dirty préservé.</span><span class="lang-en">Trigger Save → blocking modal with a real error message, dirty content preserved.</span></li>
+      <li><span class="lang-fr">Déclencher Open vers le chemin mort → même modal bloquant.</span><span class="lang-en">Trigger Open to the dead path → same blocking modal.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Modal bloquant + erreur réelle + aucun état corrompu ; Open échoue explicitement.</span><span class="lang-en"><b>Expected:</b> Blocking modal + real error + no corrupted state; Open fails explicitly.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : échec silencieux, spinner infini, ou document corrompu → FAIL.</span><span class="lang-en">If: silent failure, infinite spinner, or corrupted document → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R16-c1"><span><span class="lang-fr">Save sur chemin mort → modal bloquant</span><span class="lang-en">Save on dead path → blocking modal</span></span></label>
+      <label><input type="checkbox" id="R16-c2"><span><span class="lang-fr">Open sur chemin mort → modal bloquant</span><span class="lang-en">Open on dead path → blocking modal</span></span></label>
+      <label><input type="checkbox" id="R16-c3"><span><span class="lang-fr">Contenu dirty préservé, aucun état corrompu</span><span class="lang-en">Dirty content preserved, no corrupted state</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R16" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R16" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R16" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R16" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R17 ══════════ -->
+  <section class="card" id="card-R17">
+    <div class="badges"><span class="badge row">R17</span><span class="badge">INSERT · DOC-05</span><span class="badge">D-14</span><span class="badge">COLD OPEN</span></div>
+    <h2><span class="lang-fr">Réouverture offline : auto-contenance du package (cold open)</span><span class="lang-en">Offline reopen: package self-containment (cold open)</span></h2>
+    <p class="why"><span class="lang-fr">DOC-05 (D-14) : le package doit être auto-suffisant — réouverture sans réseau ni cache chaud prouve qu’aucune dépendance externe ne subsiste.</span><span class="lang-en">DOC-05 (D-14): the package must be self-sufficient — reopen with no network and no warm cache proves no external dependency remains.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Couper le réseau (ou mode avion) et purger le cache chaud de l’app.</span><span class="lang-en">Cut the network (or airplane mode) and clear the app’s warm cache.</span></li>
+      <li><span class="lang-fr">Ouvrir le .mce par double-click Finder.</span><span class="lang-en">Open the .mce via Finder double-click.</span></li>
+      <li><span class="lang-fr">Naviguer frames, peindre une stroke, exporter court PNG.</span><span class="lang-en">Navigate frames, paint one stroke, short PNG export.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Cold open complet : contenu intégral, peinture OK, export OK, zéro requête réseau.</span><span class="lang-en"><b>Expected:</b> Full cold open: complete content, painting works, export works, zero network requests.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : contenu manquant, spinner réseau, ou export échoue → FAIL (dépendance non auto-suffisante).</span><span class="lang-en">If: missing content, network spinner, or export fails → FAIL (not self-sufficient).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R17-c1"><span><span class="lang-fr">Cold open sans réseau ni cache</span><span class="lang-en">Cold open with no network or cache</span></span></label>
+      <label><input type="checkbox" id="R17-c2"><span><span class="lang-fr">Peinture + navigation OK</span><span class="lang-en">Paint + navigation OK</span></span></label>
+      <label><input type="checkbox" id="R17-c3"><span><span class="lang-fr">Export PNG OK hors-ligne</span><span class="lang-en">PNG export OK offline</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R17" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R17" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R17" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R17" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R18 ══════════ -->
+  <section class="card" id="card-R18">
+    <div class="badges"><span class="badge row">R18</span><span class="badge">INSERT · SND-07</span><span class="badge">D-16</span><span class="badge">SOUND REF</span></div>
+    <h2><span class="lang-fr">Fichier son déplacé → modal « missing », jamais de playback silencieux</span><span class="lang-en">Moved sound file → "missing" modal, never silent playback</span></h2>
+    <p class="why"><span class="lang-fr">Les médias sont des disk refs (loi .mce). Un son déplacé doit apparaître comme manquant dans le modal — pas de playback silencieux ni de fallback muet.</span><span class="lang-en">Media are disk refs (.mce law). A moved sound must surface as missing in the modal — no silent playback, no mute fallback.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Projet avec document sound référencé depuis le disque.</span><span class="lang-en">Project with a document sound referenced from disk.</span></li>
+      <li><span class="lang-fr">Déplacer le fichier son sur disque, réouvrir le projet.</span><span class="lang-en">Move the sound file on disk, reopen the project.</span></li>
+      <li><span class="lang-fr">Ouvrir le modal sons/document sound.</span><span class="lang-en">Open the sounds/document-sound modal.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Le modal affiche l’état « missing » pour le fichier déplacé ; aucun playback silencieux.</span><span class="lang-en"><b>Expected:</b> The modal shows the "missing" state for the moved file; no silent playback.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : playback muet sans indication, ou crash à l’ouverture du modal → FAIL.</span><span class="lang-en">If: mute playback with no indication, or a crash opening the modal → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R18-c1"><span><span class="lang-fr">Modal affiche « missing »</span><span class="lang-en">Modal shows "missing"</span></span></label>
+      <label><input type="checkbox" id="R18-c2"><span><span class="lang-fr">Aucun playback silencieux</span><span class="lang-en">No silent playback</span></span></label>
+      <label><input type="checkbox" id="R18-c3"><span><span class="lang-fr">Aucun crash du modal</span><span class="lang-en">No modal crash</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R18" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R18" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R18" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R18" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R19 ══════════ -->
+  <section class="card" id="card-R19">
+    <div class="badges"><span class="badge row">R19</span><span class="badge">SPEC STEP 12</span><span class="badge">MAIN EDITOR</span></div>
+    <h2><span class="lang-fr">Le main editor ne voit qu’UN résultat du calque Paint parent</span><span class="lang-en">The main editor sees only ONE Paint-layer result</span></h2>
+    <p class="why"><span class="lang-fr">Intégration interne : toutes les tracks internes se flattent en un seul résultat visible dans le main editor — pas de fuite d’une track individuelle.</span><span class="lang-en">Internal integration: all internal tracks flatten into a single result visible in the main editor — no individual-track leak.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Avec ≥3 tracks internes actives, revenir au main editor.</span><span class="lang-en">With ≥3 active internal tracks, return to the main editor.</span></li>
+      <li><span class="lang-fr">Observer le calque Paint parent sur la timeline principale.</span><span class="lang-en">Observe the parent Paint layer on the main timeline.</span></li>
+      <li><span class="lang-fr">Faire varier hide/solo internes : le main editor ne montre toujours qu’un résultat.</span><span class="lang-en">Vary internal hide/solo: the main editor still shows only one result.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Un seul résultat composite par calque Paint parent dans le main editor.</span><span class="lang-en"><b>Expected:</b> Exactly one composite result per parent Paint layer in the main editor.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : plusieurs résultats, ou une track s’affiche séparément dans le main editor → FAIL.</span><span class="lang-en">If: multiple results, or one track showing separately in the main editor → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R19-c1"><span><span class="lang-fr">Un seul résultat visible</span><span class="lang-en">One single result visible</span></span></label>
+      <label><input type="checkbox" id="R19-c2"><span><span class="lang-fr">Hide/solo interne reflété dans ce résultat</span><span class="lang-en">Internal hide/solo reflected in that result</span></span></label>
+      <label><input type="checkbox" id="R19-c3"><span><span class="lang-fr">Pas de fuite de track individuelle</span><span class="lang-en">No individual-track leak</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R19" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R19" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R19" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R19" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R20 ══════════ -->
+  <section class="card" id="card-R20">
+    <div class="badges"><span class="badge row">R20</span><span class="badge">SPEC STEP 13</span><span class="badge">LAYER STACK</span></div>
+    <h2><span class="lang-fr">Empiler des calques Paint parent avec des calques ordinaires</span><span class="lang-en">Stack parent Paint layers with ordinary layers</span></h2>
+    <p class="why"><span class="lang-fr">Le stack du main editor traite le parent Paint comme un calque ordinaire — position, opacity, blend, reorder.</span><span class="lang-en">The main editor stack treats a parent Paint layer like an ordinary layer — position, opacity, blend, reorder.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Empiler un calque Paint parent entre deux calques ordinaires.</span><span class="lang-en">Stack a parent Paint layer between two ordinary layers.</span></li>
+      <li><span class="lang-fr">Ajuster opacity/blend du parent, reorder.</span><span class="lang-en">Adjust the parent’s opacity/blend, reorder.</span></li>
+      <li><span class="lang-fr">Sauvegarder, reopen : le stack est identique.</span><span class="lang-en">Save, reopen: the stack is identical.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Comportement identique aux calques ordinaires, persisté.</span><span class="lang-en"><b>Expected:</b> Ordinary-layer behavior, persisted.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : le parent refuse un reorder/blend, ou l’ordre ne persiste pas → FAIL.</span><span class="lang-en">If: the parent refuses reorder/blend, or order does not persist → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R20-c1"><span><span class="lang-fr">Position/opacity/blend du parent OK</span><span class="lang-en">Parent position/opacity/blend OK</span></span></label>
+      <label><input type="checkbox" id="R20-c2"><span><span class="lang-fr">Reorder OK dans le stack</span><span class="lang-en">Reorder OK in the stack</span></span></label>
+      <label><input type="checkbox" id="R20-c3"><span><span class="lang-fr">Persisté après reopen</span><span class="lang-en">Persisted after reopen</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R20" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R20" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R20" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R20" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R21 ══════════ -->
+  <section class="card" id="card-R21">
+    <div class="badges"><span class="badge row">R21</span><span class="badge">SPEC STEP 14</span><span class="badge">PHOTO REF</span></div>
+    <h2><span class="lang-fr">Source photo/référence distincte de Background</span><span class="lang-en">Photo/reference source distinct from Background</span></h2>
+    <p class="why"><span class="lang-fr">La photo-reference track n’est PAS Background : piste distincte, règles distinctes, aucun cross-talk.</span><span class="lang-en">The photo-reference track is NOT Background: distinct track, distinct rules, no cross-talk.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Avoir une photo-reference et une Background dans le même document.</span><span class="lang-en">Have a photo-reference and a Background in the same document.</span></li>
+      <li><span class="lang-fr">Modifier la photo-reference : Background inchangée.</span><span class="lang-en">Modify the photo-reference: Background unchanged.</span></li>
+      <li><span class="lang-fr">Modifier Background : photo-reference inchangée.</span><span class="lang-en">Modify Background: photo-reference unchanged.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Deux pistes indépendantes ; aucun cross-talk de contenu ni de réglage.</span><span class="lang-en"><b>Expected:</b> Two independent tracks; no content or setting cross-talk.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : les deux convergent, ou un réglage de l’un affecte l’autre → FAIL.</span><span class="lang-en">If: the two converge, or one’s setting affects the other → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R21-c1"><span><span class="lang-fr">Photo-ref track distincte de Background</span><span class="lang-en">Photo-ref track distinct from Background</span></span></label>
+      <label><input type="checkbox" id="R21-c2"><span><span class="lang-fr">Édition photo-ref n’affecte pas Background</span><span class="lang-en">Photo-ref edit does not affect Background</span></span></label>
+      <label><input type="checkbox" id="R21-c3"><span><span class="lang-fr">Édition Background n’affecte pas photo-ref</span><span class="lang-en">Background edit does not affect photo-ref</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R21" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R21" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R21" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R21" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R22 ══════════ -->
+  <section class="card" id="card-R22">
+    <div class="badges"><span class="badge row">R22</span><span class="badge">SPEC STEP 15</span><span class="badge">REVEAL</span></div>
+    <h2><span class="lang-fr">Reveal progressif ET statique/hold</span><span class="lang-en">Progressive AND static/hold Reveal</span></h2>
+    <p class="why"><span class="lang-fr">Les deux modes de Reveal de la ré-orientation 52 : bake-into-keys progressif et rendu statique/hold.</span><span class="lang-en">Both 52 re-orientation Reveal modes: progressive bake-into-keys and static/hold rendering.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Créer un Reveal progressif sur une plage de frames.</span><span class="lang-en">Create a progressive Reveal over a frame range.</span></li>
+      <li><span class="lang-fr">Vérifier le bake dans les keys (4th rail kind), le scrub montre l’évolution.</span><span class="lang-en">Verify the bake into keys (4th rail kind); scrub shows the evolution.</span></li>
+      <li><span class="lang-fr">Créer un Reveal static/hold : contenu tenu sur toute la plage.</span><span class="lang-en">Create a static/hold Reveal: content held across the range.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Progressif : évolution visible frame par frame ; hold : contenu constant. Les deux persistés.</span><span class="lang-en"><b>Expected:</b> Progressive: visible frame-by-frame evolution; hold: constant content. Both persisted.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : l’un des deux modes manque, ne persiste pas, ou se comporte comme l’autre → FAIL.</span><span class="lang-en">If: either mode is missing, non-persistent, or behaves like the other → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R22-c1"><span><span class="lang-fr">Reveal progressif : évolution frame par frame</span><span class="lang-en">Progressive Reveal: frame-by-frame evolution</span></span></label>
+      <label><input type="checkbox" id="R22-c2"><span><span class="lang-fr">Reveal hold : contenu tenu constant</span><span class="lang-en">Hold Reveal: content held constant</span></span></label>
+      <label><input type="checkbox" id="R22-c3"><span><span class="lang-fr">Les deux persistés après reopen</span><span class="lang-en">Both persisted after reopen</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R22" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R22" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R22" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R22" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R23 ══════════ -->
+  <section class="card" id="card-R23">
+    <div class="badges"><span class="badge row">R23</span><span class="badge">INSERT · kov-1</span><span class="badge">260920-kov</span><span class="badge">UNDO HONESTY</span></div>
+    <h2><span class="lang-fr">Stretch Reveal : commit uniquement sur vrai changement</span><span class="lang-en">Reveal stretch: commits only on real change</span></h2>
+    <p class="why"><span class="lang-fr">kov WR-01 : un stretch sans-op ne doit ni créer d’entrée d’undo mentale ni bump de révision — le « lying undo » est le défaut.</span><span class="lang-en">kov WR-01: a no-op stretch must create neither a phantom undo entry nor a revision bump — the "lying undo" is the defect.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Sélectionner une key Reveal, noter l’entrée d’undo et la révision.</span><span class="lang-en">Select a Reveal key, note the undo entry and revision.</span></li>
+      <li><span class="lang-fr">Drag le handle sans dépasser le seuil de changement (no-op).</span><span class="lang-en">Drag the handle without crossing the change threshold (no-op).</span></li>
+      <li><span class="lang-fr">Comparer undo count + révision ; puis faire un vrai changement.</span><span class="lang-en">Compare undo count + revision; then make a real change.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> No-op : zéro nouvelle entrée d’undo, révision inchangée ; vrai changement : commit.</span><span class="lang-en"><b>Expected:</b> No-op: zero new undo entries, revision unchanged; real change: commits.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : un no-op bump la révision ou ajoute une entrée d’undo → FAIL (WR-01).</span><span class="lang-en">If: a no-op bumps the revision or adds an undo entry → FAIL (WR-01).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R23-c1"><span><span class="lang-fr">No-op : pas de nouvelle entrée d’undo</span><span class="lang-en">No-op: no new undo entry</span></span></label>
+      <label><input type="checkbox" id="R23-c2"><span><span class="lang-fr">No-op : révision inchangée</span><span class="lang-en">No-op: revision unchanged</span></span></label>
+      <label><input type="checkbox" id="R23-c3"><span><span class="lang-fr">Vrai changement : commit + undo réel</span><span class="lang-en">Real change: commits + real undo</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R23" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R23" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R23" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R23" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R24 ══════════ -->
+  <section class="card" id="card-R24">
+    <div class="badges"><span class="badge row">R24</span><span class="badge">INSERT · kov-2</span><span class="badge">260920-kov</span><span class="badge">FRAME-ALIGNED BAKE</span></div>
+    <h2><span class="lang-fr">Bake multi-images : source résolue frame-alignée par frame</span><span class="lang-en">Multi-image bake: each frame’s source resolved frame-aligned</span></h2>
+    <p class="why"><span class="lang-fr">kov WR-02 : le bake d’une référence multi-images doit résoudre la source PAR frame à canonicalStart — pas une seule résolution pour tout le range (D-15).</span><span class="lang-en">kov WR-02: a multi-image reference bake must resolve the source PER frame at canonicalStart — not one resolution for the whole range (D-15).</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Créer une référence multi-images sur un range non trivial.</span><span class="lang-en">Create a multi-image reference over a non-trivial range.</span></li>
+      <li><span class="lang-fr">Bake le Reveal (progressif).</span><span class="lang-en">Bake the Reveal (progressive).</span></li>
+      <li><span class="lang-fr">Comparer frame par frame : chaque frame montre SA source alignée.</span><span class="lang-en">Compare frame by frame: each frame shows ITS own aligned source.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Chaque frame bake résout sa propre source frame-alignée.</span><span class="lang-en"><b>Expected:</b> Each baked frame resolves its own frame-aligned source.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : toutes les frames montrent la même image (résolution unique) → FAIL (WR-02).</span><span class="lang-en">If: all frames show the same image (single resolution) → FAIL (WR-02).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R24-c1"><span><span class="lang-fr">Sources différentes visibles sur le range</span><span class="lang-en">Different sources visible across the range</span></span></label>
+      <label><input type="checkbox" id="R24-c2"><span><span class="lang-fr">Aucune image figée unique sur tout le range</span><span class="lang-en">No single frozen image across the range</span></span></label>
+      <label><input type="checkbox" id="R24-c3"><span><span class="lang-fr">Persisté après save/reopen</span><span class="lang-en">Persisted after save/reopen</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R24" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R24" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R24" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R24" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R25 ══════════ -->
+  <section class="card" id="card-R25">
+    <div class="badges"><span class="badge row">R25</span><span class="badge">INSERT · kov-3</span><span class="badge">260920-kov</span><span class="badge">DIALOG</span></div>
+    <h2><span class="lang-fr">Photo dialog non hijacké après le 1er Reveal</span><span class="lang-en">Photo dialog not hijacked after first Reveal use</span></h2>
+    <p class="why"><span class="lang-fr">kov WR-03 : revealCreationRequested devait être reset — après le premier Reveal, le Create Rail dialog doit redevenir une surface pure de photo-reference.</span><span class="lang-en">kov WR-03: revealCreationRequested must reset — after the first Reveal, the Create Rail dialog must return to a pure photo-reference surface.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Créer un Reveal via le Create Rail dialog.</span><span class="lang-en">Create a Reveal via the Create Rail dialog.</span></li>
+      <li><span class="lang-fr">Réouvrir le dialog : il ouvre sur photo-reference, pas Reveal.</span><span class="lang-en">Reopen the dialog: it opens on photo-reference, not Reveal.</span></li>
+      <li><span class="lang-fr">Créer une photo-reference normale : aucun side-effect Reveal.</span><span class="lang-en">Create a normal photo-reference: no Reveal side effect.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Dialog redevenu pur (photo-reference) après le premier usage Reveal.</span><span class="lang-en"><b>Expected:</b> Dialog pure again (photo-reference) after first Reveal use.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : le dialog reste hijacké en mode Reveal → FAIL (WR-03).</span><span class="lang-en">If: the dialog stays hijacked in Reveal mode → FAIL (WR-03).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R25-c1"><span><span class="lang-fr">Réouverture = surface photo-reference</span><span class="lang-en">Reopen = photo-reference surface</span></span></label>
+      <label><input type="checkbox" id="R25-c2"><span><span class="lang-fr">Photo-reference créée sans side-effect Reveal</span><span class="lang-en">Photo-reference created with no Reveal side effect</span></span></label>
+      <label><input type="checkbox" id="R25-c3"><span><span class="lang-fr">Aucun hijack persistant</span><span class="lang-en">No persistent hijack</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R25" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R25" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R25" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R25" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R26 ══════════ -->
+  <section class="card" id="card-R26">
+    <div class="badges"><span class="badge row">R26</span><span class="badge">SPEC STEP 16</span><span class="badge">WYSIWYG</span></div>
+    <h2><span class="lang-fr">Comparer Studio flattened, preview principal et export</span><span class="lang-en">Compare Studio flattened output, main preview, and export</span></h2>
+    <p class="why"><span class="lang-fr">Loi WYSIWYG (52.3 D-05) : ce que l’œil voit à l’écran EST ce que l’export produit — toute divergence est un defect de release.</span><span class="lang-en">WYSIWYG law (52.3 D-05): what the eye sees on screen IS what the export produces — any divergence is a release defect.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Figurer une frame composite riche (tracks multiples, blend, fallback).</span><span class="lang-en">Build a rich composite frame (multiple tracks, blend, fallback).</span></li>
+      <li><span class="lang-fr">Capturer : canvas Studio, preview principal, export PNG.</span><span class="lang-en">Capture: Studio canvas, main preview, PNG export.</span></li>
+      <li><span class="lang-fr">Comparer les trois (œil + superposition).</span><span class="lang-en">Compare all three (eye + overlay).</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Les trois surfaces sont visuellement identiques.</span><span class="lang-en"><b>Expected:</b> All three surfaces visually identical.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : toute divergence (couleur, blend, fallback, coin) → FAIL avec les captures.</span><span class="lang-en">If: any divergence (color, blend, fallback, corner) → FAIL with the captures.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R26-c1"><span><span class="lang-fr">Studio flattened = preview</span><span class="lang-en">Studio flattened = preview</span></span></label>
+      <label><input type="checkbox" id="R26-c2"><span><span class="lang-fr">Preview = export PNG</span><span class="lang-en">Preview = PNG export</span></span></label>
+      <label><input type="checkbox" id="R26-c3"><span><span class="lang-fr">Studio = export (3e comparaison)</span><span class="lang-en">Studio = export (third comparison)</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R26" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R26" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R26" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R26" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R27 ══════════ -->
+  <section class="card" id="card-R27">
+    <div class="badges"><span class="badge row">R27</span><span class="badge">INSERT · export enumeration</span><span class="badge">D-04</span><span class="badge">52.3</span></div>
+    <h2><span class="lang-fr">L’export peinture énumère les frames correctement sur toutes les surfaces</span><span class="lang-en">Paint content export enumerates frames correctly across all surfaces</span></h2>
+    <p class="why"><span class="lang-fr">Inséré au step 16 (D-04) : le blocker 52.3 de l’enum d’export — l’énumération des frames peintes doit être complète et correcte sur chaque surface de sortie.</span><span class="lang-en">Inserted at step 16 (D-04): the 52.3 export-enumeration blocker — painted-frame enumeration must be complete and correct on every output surface.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Projet avec contenu peint réparti sur tout le range (dont gaps).</span><span class="lang-en">Project with painted content spread across the whole range (including gaps).</span></li>
+      <li><span class="lang-fr">Lancer un export peinture complet.</span><span class="lang-en">Run a full paint-content export.</span></li>
+      <li><span class="lang-fr">Compter/vérifier les frames exportées contre le range attendu.</span><span class="lang-en">Count/verify exported frames against the expected range.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Chaque frame attendue est exportée (aucune manquante, aucune fantôme) ; surfaces concordantes.</span><span class="lang-en"><b>Expected:</b> Every expected frame exported (none missing, none phantom); surfaces agree.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : frames manquantes, doublons, ou surfaces qui divergent en count → FAIL.</span><span class="lang-en">If: missing frames, duplicates, or surfaces diverging in count → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R27-c1"><span><span class="lang-fr">Toutes les frames attendues exportées</span><span class="lang-en">All expected frames exported</span></span></label>
+      <label><input type="checkbox" id="R27-c2"><span><span class="lang-fr">Aucun doublon ni frame fantôme</span><span class="lang-en">No duplicates or phantom frames</span></span></label>
+      <label><input type="checkbox" id="R27-c3"><span><span class="lang-fr">Comptes concordants entre surfaces</span><span class="lang-en">Counts agree across surfaces</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R27" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R27" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R27" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R27" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R28 ══════════ -->
+  <section class="card" id="card-R28">
+    <div class="badges"><span class="badge row">R28</span><span class="badge">INSERT · live-gate</span><span class="badge">52.1</span><span class="badge">D-12</span><span class="badge">PROFILER</span></div>
+    <h2><span class="lang-fr">Live gate : compteurs de profiler (52.1)</span><span class="lang-en">Live gate: profiler counters (52.1)</span></h2>
+    <p class="why"><span class="lang-fr">52.1 n’a pas enregistré de mesure à la clôture — la phase 53 est le backstop désigné (D-12). Compteurs profiler sur le build signé.</span><span class="lang-en">52.1 closed without a recorded measurement — Phase 53 is the designated backstop (D-12). Profiler counters on the signed build.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Ouvrir le .app signé avec le through-line projet.</span><span class="lang-en">Open the signed .app with the through-line project.</span></li>
+      <li><span class="lang-fr">Lancer le mode profilé (compteurs de frames/decodes) pendant une lecture + scrub.</span><span class="lang-en">Run the profiler mode (frame/decode counters) during playback + scrub.</span></li>
+      <li><span class="lang-fr">Noter les compteurs dans le commentaire.</span><span class="lang-en">Record the counters in the comment.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Compteurs profiler lisibles et stables pendant playback + scrub (valeurs notées).</span><span class="lang-en"><b>Expected:</b> Profiler counters readable and stable during playback + scrub (values recorded).</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : compteurs absents/crash, ou starvation visible (frames dropped massives) → FAIL.</span><span class="lang-en">If: counters missing/crash, or visible starvation (massive frame drops) → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R28-c1"><span><span class="lang-fr">Compteurs profiler lisibles</span><span class="lang-en">Profiler counters readable</span></span></label>
+      <label><input type="checkbox" id="R28-c2"><span><span class="lang-fr">Playback + scrub sans starvation visible</span><span class="lang-en">Playback + scrub with no visible starvation</span></span></label>
+      <label><input type="checkbox" id="R28-c3"><span><span class="lang-fr">Valeurs notées dans le commentaire</span><span class="lang-en">Values recorded in the comment</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R28" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R28" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R28" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R28" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R29 ══════════ -->
+  <section class="card" id="card-R29">
+    <div class="badges"><span class="badge row">R29</span><span class="badge">INSERT · live-gate</span><span class="badge">52.1</span><span class="badge">D-12</span><span class="badge">MEMORY</span></div>
+    <h2><span class="lang-fr">Live gate : trace mémoire (52.1)</span><span class="lang-en">Live gate: live memory trace (52.1)</span></h2>
+    <p class="why"><span class="lang-fr">Trace mémoire pendant usage réel — 512MB LRU + bytes/ImageBitmap : pas de fuite ni d’explosion sur le projet through-line.</span><span class="lang-en">Memory trace during real use — 512MB LRU + bytes/ImageBitmap: no leak or explosion on the through-line project.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Activer la trace mémoire, charger le through-line.</span><span class="lang-en">Enable the memory trace, load the through-line.</span></li>
+      <li><span class="lang-fr">Boucler : lecture, scrub, peinture, export court.</span><span class="lang-en">Loop: playback, scrub, painting, short export.</span></li>
+      <li><span class="lang-fr">Noter pic et fin de trace.</span><span class="lang-en">Record the peak and end-of-trace.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Mémoire stabilisée (pic borné par le LRU), pas de croissance monotone.</span><span class="lang-en"><b>Expected:</b> Memory stabilizes (peak bounded by the LRU), no monotonic growth.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : croissance monotone sans plafond, ou OOM/crash → FAIL.</span><span class="lang-en">If: unbounded monotonic growth, or OOM/crash → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R29-c1"><span><span class="lang-fr">Trace activée et complétée</span><span class="lang-en">Trace enabled and completed</span></span></label>
+      <label><input type="checkbox" id="R29-c2"><span><span class="lang-fr">Pic borné, pas de croissance monotone</span><span class="lang-en">Peak bounded, no monotonic growth</span></span></label>
+      <label><input type="checkbox" id="R29-c3"><span><span class="lang-fr">Aucun OOM ni crash</span><span class="lang-en">No OOM or crash</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R29" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R29" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R29" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R29" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R30 ══════════ -->
+  <section class="card" id="card-R30">
+    <div class="badges"><span class="badge row">R30</span><span class="badge">INSERT · live-gate</span><span class="badge">52.1</span><span class="badge">D-12</span><span class="badge">OPEN TIME</span></div>
+    <h2><span class="lang-fr">Live gate : temps d’ouverture wall clock (52.1)</span><span class="lang-en">Live gate: open-time wall clock (52.1)</span></h2>
+    <p class="why"><span class="lang-fr">Open-time non mesurée à 52.1 — mesurer sur le .app signé à froid, avec le package .mce.</span><span class="lang-en">Open-time unmeasured at 52.1 — measure on the signed .app from cold, with the .mce package.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Quit + purge cache, chronomètre le cold open du .mce.</span><span class="lang-en">Quit + clear cache, time the cold open of the .mce.</span></li>
+      <li><span class="lang-fr">Répéter ×3, noter les 3 mesures.</span><span class="lang-en">Repeat ×3, record the 3 measurements.</span></li>
+      <li><span class="lang-fr">Comparer à la perception utilisateur (« ouvre sans attendre »).</span><span class="lang-en">Compare to user perception ("opens without waiting").</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> 3 mesures notées, ouverture perçue comme immédiate à froide.</span><span class="lang-en"><b>Expected:</b> 3 measurements recorded, cold open perceived as immediate.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : > quelques secondes perçues, ou variance énorme entre essais → FAIL avec les 3 chiffres.</span><span class="lang-en">If: several perceived seconds, or huge variance between attempts → FAIL with the 3 numbers.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R30-c1"><span><span class="lang-fr">3 mesures wall clock notées</span><span class="lang-en">3 wall-clock measurements recorded</span></span></label>
+      <label><input type="checkbox" id="R30-c2"><span><span class="lang-fr">Ouverture perçue immédiate</span><span class="lang-en">Open perceived as immediate</span></span></label>
+      <label><input type="checkbox" id="R30-c3"><span><span class="lang-fr">Variance maîtrisée</span><span class="lang-en">Variance controlled</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R30" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R30" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R30" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R30" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R31 ══════════ -->
+  <section class="card" id="card-R31">
+    <div class="badges"><span class="badge row">R31</span><span class="badge">INSERT · 46-UAT</span><span class="badge">D-13</span><span class="badge">ASYNC CAPTURE</span></div>
+    <h2><span class="lang-fr">Capture PlayScript asynchrone A→B (re-record)</span><span class="lang-en">Async PlayScript capture A→B (re-record)</span></h2>
+    <p class="why"><span class="lang-fr">Ligne transférée de 46-UAT (D-13) : jamais silencieusement droppée — re-enregistrée pendant le pass sur le build signé.</span><span class="lang-en">Row transferred from 46-UAT (D-13): never silently dropped — re-recorded during the pass on the signed build.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Sélectionner un range A→B avec PlayScript motion.</span><span class="lang-en">Select an A→B range with PlayScript motion.</span></li>
+      <li><span class="lang-fr">Lancer la capture asynchrone, laisser terminer.</span><span class="lang-en">Run the async capture, let it finish.</span></li>
+      <li><span class="lang-fr">Vérifier le résultat : frames capturées, pas de blocage UI.</span><span class="lang-en">Verify the result: frames captured, no UI block.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Capture A→B complète, asynchrone, UI responsive pendant le run.</span><span class="lang-en"><b>Expected:</b> A→B capture completes, async, UI responsive during the run.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : blocage UI, capture tronquée, ou échec silencieux → FAIL.</span><span class="lang-en">If: UI block, truncated capture, or silent failure → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R31-c1"><span><span class="lang-fr">Capture A→B complète</span><span class="lang-en">A→B capture complete</span></span></label>
+      <label><input type="checkbox" id="R31-c2"><span><span class="lang-fr">UI responsive pendant le run</span><span class="lang-en">UI responsive during run</span></span></label>
+      <label><input type="checkbox" id="R31-c3"><span><span class="lang-fr">Résultat conforme (pas de frames manquantes)</span><span class="lang-en">Result conforms (no missing frames)</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R31" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R31" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R31" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R31" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R32 ══════════ -->
+  <section class="card" id="card-R32">
+    <div class="badges"><span class="badge row">R32</span><span class="badge">INSERT · 46-UAT</span><span class="badge">D-13</span><span class="badge">SIDECAR</span></div>
+    <h2><span class="lang-fr">Nettoyage des sidecars sur disque (re-record)</span><span class="lang-en">Sidecar cleanup on disk (re-record)</span></h2>
+    <p class="why"><span class="lang-fr">Ligne transférée 46-UAT : les sidecars temporaires doivent être nettoyés sur disque après usage — pas de fichiers orphelins.</span><span class="lang-en">Transferred 46-UAT row: temporary sidecars must be cleaned from disk after use — no orphan files.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Repérer le dossier des sidecars avant/après une session (capture, save).</span><span class="lang-en">Locate the sidecar folder before/after a session (capture, save).</span></li>
+      <li><span class="lang-fr">Fermer l’app, inspecter le disque.</span><span class="lang-en">Quit the app, inspect the disk.</span></li>
+      <li><span class="lang-fr">Compter les fichiers orphelins.</span><span class="lang-en">Count orphan files.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Les sidecars de session ont été supprimés ; zéro orphelin de la session.</span><span class="lang-en"><b>Expected:</b> Session sidecars removed; zero orphans from the session.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : sidecars persistants après quit → FAIL avec la liste.</span><span class="lang-en">If: sidecars persist after quit → FAIL with the list.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R32-c1"><span><span class="lang-fr">Sidecars supprimés après quit</span><span class="lang-en">Sidecars removed after quit</span></span></label>
+      <label><input type="checkbox" id="R32-c2"><span><span class="lang-fr">Zéro orphelin de la session</span><span class="lang-en">Zero session orphans</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R32" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R32" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R32" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R32" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R33 ══════════ -->
+  <section class="card" id="card-R33">
+    <div class="badges"><span class="badge row">R33</span><span class="badge">INSERT · 46-UAT</span><span class="badge">D-13</span><span class="badge">F-01</span></div>
+    <h2><span class="lang-fr">F-01 : switch à contenu identique (ou retrait explicite)</span><span class="lang-en">F-01: identical-content switch (or explicit retirement)</span></h2>
+    <p class="why"><span class="lang-fr">Ligne transférée 46-UAT : soit elle passe, soit elle est RETIRÉE explicitement avec un fix — jamais silencieusement oubliée. N-A uniquement avec un commentaire de retrait.</span><span class="lang-en">Transferred 46-UAT row: either it passes, or it is explicitly RETIRED with a fix — never silently forgotten. NA allowed only with a retirement comment.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Switch entre deux sources à contenu identique (le scénario F-01).</span><span class="lang-en">Switch between two sources with identical content (the F-01 scenario).</span></li>
+      <li><span class="lang-fr">Observer : pas de flicker, pas de rebuild inutile, résultat stable.</span><span class="lang-en">Observe: no flicker, no needless rebuild, stable result.</span></li>
+      <li><span class="lang-fr">Si retrait : documenter le fix + la raison dans le commentaire.</span><span class="lang-en">If retirement: document the fix + reason in the comment.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Soit PASS (comportement correct), soit N-A AVEC commentaire de retrait explicite.</span><span class="lang-en"><b>Expected:</b> Either PASS (correct behavior), or NA WITH an explicit retirement comment.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : N-A sans commentaire de retrait, ou comportement buggy → FAIL / NA invalide.</span><span class="lang-en">If: NA without a retirement comment, or buggy behavior → FAIL / invalid NA.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R33-c1"><span><span class="lang-fr">Switch testé</span><span class="lang-en">Switch tested</span></span></label>
+      <label><input type="checkbox" id="R33-c2"><span><span class="lang-fr">Comportement correct ou retrait documenté</span><span class="lang-en">Behavior correct or retirement documented</span></span></label>
+      <label><input type="checkbox" id="R33-c3"><span><span class="lang-fr">Commentaire présent si N-A</span><span class="lang-en">Comment present if NA</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R33" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R33" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R33" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R33" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R34 ══════════ -->
+  <section class="card" id="card-R34">
+    <div class="badges"><span class="badge row">R34</span><span class="badge">INSERT · c7x-1</span><span class="badge">260921-c7x</span><span class="badge">SWEEP</span></div>
+    <h2><span class="lang-fr">c7x ligne 1 : Layer 2 : move key + click-positioning sur frame interpolée</span><span class="lang-en">c7x row 1: Layer 2: move a key, then click-positioning onto an interpolated frame — both behave exactly as on the first layer</span></h2>
+    <p class="why"><span class="lang-fr">Native UAT en attente du quick 260921-c7x (verdict H-A, settle mismatch/timeout/latch) — les 5 lignes n’ont jamais tourné, fermées par gates automatisés seuls. Trouvé par le sweep manuel de la phase 53.</span><span class="lang-en">Pending native UAT from quick 260921-c7x (verdict H-A, settlement mismatch/timeout/latch) — the 5 rows never ran, closed on automated gates alone. Found by the Phase 53 manual sweep.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Rejouer la scène exacte de la ligne sur le .app signé (projet existant ou neuif tel qu’indiqué).</span><span class="lang-en">Replay this row’s exact scenario on the signed .app (existing or fresh project as noted).</span></li>
+      <li><span class="lang-fr">Observer le comportement post-fix (settlement release, identity-first).</span><span class="lang-en">Observe post-fix behavior (settlement release, identity-first).</span></li>
+      <li><span class="lang-fr">Noter tout symptôme résiduel dans le commentaire.</span><span class="lang-en">Note any residual symptom in the comment.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Comportement conforme au fix c7x : pas de latch, pas de timeout fantôme, edits successifs OK.</span><span class="lang-en"><b>Expected:</b> Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : « already in flight » persistant, timeout fantôme, ou edit bloqué → FAIL (non-résolu).</span><span class="lang-en">If: persistent "already in flight", phantom timeout, or blocked edit → FAIL (unresolved).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R34-c1"><span><span class="lang-fr">Scène rejouée sur le build signé</span><span class="lang-en">Scene replayed on the signed build</span></span></label>
+      <label><input type="checkbox" id="R34-c2"><span><span class="lang-fr">Aucun symptôme latch/timeout</span><span class="lang-en">No latch/timeout symptom</span></span></label>
+      <label><input type="checkbox" id="R34-c3"><span><span class="lang-fr">Éditions successives non bloquées</span><span class="lang-en">Successive edits not blocked</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R34" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R34" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R34" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R34" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R35 ══════════ -->
+  <section class="card" id="card-R35">
+    <div class="badges"><span class="badge row">R35</span><span class="badge">INSERT · c7x-2</span><span class="badge">260921-c7x</span><span class="badge">SWEEP</span></div>
+    <h2><span class="lang-fr">c7x ligne 2 : Move rail + stretch reveal : commit + persist à save/reopen</span><span class="lang-en">c7x row 2: Move a rail, then stretch a reveal rail — each commits, and the reveal stretch persists across save/reopen</span></h2>
+    <p class="why"><span class="lang-fr">Native UAT en attente du quick 260921-c7x (verdict H-A, settle mismatch/timeout/latch) — les 5 lignes n’ont jamais tourné, fermées par gates automatisés seuls. Trouvé par le sweep manuel de la phase 53.</span><span class="lang-en">Pending native UAT from quick 260921-c7x (verdict H-A, settlement mismatch/timeout/latch) — the 5 rows never ran, closed on automated gates alone. Found by the Phase 53 manual sweep.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Rejouer la scène exacte de la ligne sur le .app signé (projet existant ou neuif tel qu’indiqué).</span><span class="lang-en">Replay this row’s exact scenario on the signed .app (existing or fresh project as noted).</span></li>
+      <li><span class="lang-fr">Observer le comportement post-fix (settlement release, identity-first).</span><span class="lang-en">Observe post-fix behavior (settlement release, identity-first).</span></li>
+      <li><span class="lang-fr">Noter tout symptôme résiduel dans le commentaire.</span><span class="lang-en">Note any residual symptom in the comment.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Comportement conforme au fix c7x : pas de latch, pas de timeout fantôme, edits successifs OK.</span><span class="lang-en"><b>Expected:</b> Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : « already in flight » persistant, timeout fantôme, ou edit bloqué → FAIL (non-résolu).</span><span class="lang-en">If: persistent "already in flight", phantom timeout, or blocked edit → FAIL (unresolved).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R35-c1"><span><span class="lang-fr">Scène rejouée sur le build signé</span><span class="lang-en">Scene replayed on the signed build</span></span></label>
+      <label><input type="checkbox" id="R35-c2"><span><span class="lang-fr">Aucun symptôme latch/timeout</span><span class="lang-en">No latch/timeout symptom</span></span></label>
+      <label><input type="checkbox" id="R35-c3"><span><span class="lang-fr">Éditions successives non bloquées</span><span class="lang-en">Successive edits not blocked</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R35" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R35" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R35" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R35" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R36 ══════════ -->
+  <section class="card" id="card-R36">
+    <div class="badges"><span class="badge row">R36</span><span class="badge">INSERT · c7x-3</span><span class="badge">260921-c7x</span><span class="badge">SWEEP</span></div>
+    <h2><span class="lang-fr">c7x ligne 3 : Key spacing : appliqué, aucun tooltip « already in flight »</span><span class="lang-en">c7x row 3: Apply key spacing on a rail — the spacing applies and no "already in flight" tooltip follows</span></h2>
+    <p class="why"><span class="lang-fr">Native UAT en attente du quick 260921-c7x (verdict H-A, settle mismatch/timeout/latch) — les 5 lignes n’ont jamais tourné, fermées par gates automatisés seuls. Trouvé par le sweep manuel de la phase 53.</span><span class="lang-en">Pending native UAT from quick 260921-c7x (verdict H-A, settlement mismatch/timeout/latch) — the 5 rows never ran, closed on automated gates alone. Found by the Phase 53 manual sweep.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Rejouer la scène exacte de la ligne sur le .app signé (projet existant ou neuif tel qu’indiqué).</span><span class="lang-en">Replay this row’s exact scenario on the signed .app (existing or fresh project as noted).</span></li>
+      <li><span class="lang-fr">Observer le comportement post-fix (settlement release, identity-first).</span><span class="lang-en">Observe post-fix behavior (settlement release, identity-first).</span></li>
+      <li><span class="lang-fr">Noter tout symptôme résiduel dans le commentaire.</span><span class="lang-en">Note any residual symptom in the comment.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Comportement conforme au fix c7x : pas de latch, pas de timeout fantôme, edits successifs OK.</span><span class="lang-en"><b>Expected:</b> Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : « already in flight » persistant, timeout fantôme, ou edit bloqué → FAIL (non-résolu).</span><span class="lang-en">If: persistent "already in flight", phantom timeout, or blocked edit → FAIL (unresolved).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R36-c1"><span><span class="lang-fr">Scène rejouée sur le build signé</span><span class="lang-en">Scene replayed on the signed build</span></span></label>
+      <label><input type="checkbox" id="R36-c2"><span><span class="lang-fr">Aucun symptôme latch/timeout</span><span class="lang-en">No latch/timeout symptom</span></span></label>
+      <label><input type="checkbox" id="R36-c3"><span><span class="lang-fr">Éditions successives non bloquées</span><span class="lang-en">Successive edits not blocked</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R36" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R36" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R36" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R36" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R37 ══════════ -->
+  <section class="card" id="card-R37">
+    <div class="badges"><span class="badge row">R37</span><span class="badge">INSERT · c7x-4</span><span class="badge">260921-c7x</span><span class="badge">SWEEP</span></div>
+    <h2><span class="lang-fr">c7x ligne 4 : Échec injecté puis edit suivant : non bloqué, pas de timeout</span><span class="lang-en">c7x row 4: Trigger one failure deliberately, then the next edit — it must not be blocked, no timeout</span></h2>
+    <p class="why"><span class="lang-fr">Native UAT en attente du quick 260921-c7x (verdict H-A, settle mismatch/timeout/latch) — les 5 lignes n’ont jamais tourné, fermées par gates automatisés seuls. Trouvé par le sweep manuel de la phase 53.</span><span class="lang-en">Pending native UAT from quick 260921-c7x (verdict H-A, settlement mismatch/timeout/latch) — the 5 rows never ran, closed on automated gates alone. Found by the Phase 53 manual sweep.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Rejouer la scène exacte de la ligne sur le .app signé (projet existant ou neuif tel qu’indiqué).</span><span class="lang-en">Replay this row’s exact scenario on the signed .app (existing or fresh project as noted).</span></li>
+      <li><span class="lang-fr">Observer le comportement post-fix (settlement release, identity-first).</span><span class="lang-en">Observe post-fix behavior (settlement release, identity-first).</span></li>
+      <li><span class="lang-fr">Noter tout symptôme résiduel dans le commentaire.</span><span class="lang-en">Note any residual symptom in the comment.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Comportement conforme au fix c7x : pas de latch, pas de timeout fantôme, edits successifs OK.</span><span class="lang-en"><b>Expected:</b> Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : « already in flight » persistant, timeout fantôme, ou edit bloqué → FAIL (non-résolu).</span><span class="lang-en">If: persistent "already in flight", phantom timeout, or blocked edit → FAIL (unresolved).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R37-c1"><span><span class="lang-fr">Scène rejouée sur le build signé</span><span class="lang-en">Scene replayed on the signed build</span></span></label>
+      <label><input type="checkbox" id="R37-c2"><span><span class="lang-fr">Aucun symptôme latch/timeout</span><span class="lang-en">No latch/timeout symptom</span></span></label>
+      <label><input type="checkbox" id="R37-c3"><span><span class="lang-fr">Éditions successives non bloquées</span><span class="lang-en">Successive edits not blocked</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R37" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R37" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R37" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R37" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R38 ══════════ -->
+  <section class="card" id="card-R38">
+    <div class="badges"><span class="badge row">R38</span><span class="badge">INSERT · c7x-5</span><span class="badge">260921-c7x</span><span class="badge">SWEEP</span></div>
+    <h2><span class="lang-fr">c7x ligne 5 : Séquence import en une passe : bake multi-image frame-aligné (kov rang ②)</span><span class="lang-en">c7x row 5: Sequence import in one go: multi-image frame-aligned bake (kov rang ② replay)</span></h2>
+    <p class="why"><span class="lang-fr">Native UAT en attente du quick 260921-c7x (verdict H-A, settle mismatch/timeout/latch) — les 5 lignes n’ont jamais tourné, fermées par gates automatisés seuls. Trouvé par le sweep manuel de la phase 53.</span><span class="lang-en">Pending native UAT from quick 260921-c7x (verdict H-A, settlement mismatch/timeout/latch) — the 5 rows never ran, closed on automated gates alone. Found by the Phase 53 manual sweep.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Rejouer la scène exacte de la ligne sur le .app signé (projet existant ou neuif tel qu’indiqué).</span><span class="lang-en">Replay this row’s exact scenario on the signed .app (existing or fresh project as noted).</span></li>
+      <li><span class="lang-fr">Observer le comportement post-fix (settlement release, identity-first).</span><span class="lang-en">Observe post-fix behavior (settlement release, identity-first).</span></li>
+      <li><span class="lang-fr">Noter tout symptôme résiduel dans le commentaire.</span><span class="lang-en">Note any residual symptom in the comment.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Comportement conforme au fix c7x : pas de latch, pas de timeout fantôme, edits successifs OK.</span><span class="lang-en"><b>Expected:</b> Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : « already in flight » persistant, timeout fantôme, ou edit bloqué → FAIL (non-résolu).</span><span class="lang-en">If: persistent "already in flight", phantom timeout, or blocked edit → FAIL (unresolved).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R38-c1"><span><span class="lang-fr">Scène rejouée sur le build signé</span><span class="lang-en">Scene replayed on the signed build</span></span></label>
+      <label><input type="checkbox" id="R38-c2"><span><span class="lang-fr">Aucun symptôme latch/timeout</span><span class="lang-en">No latch/timeout symptom</span></span></label>
+      <label><input type="checkbox" id="R38-c3"><span><span class="lang-fr">Éditions successives non bloquées</span><span class="lang-en">Successive edits not blocked</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R38" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R38" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R38" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R38" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R39 ══════════ -->
+  <section class="card" id="card-R39">
+    <div class="badges"><span class="badge row">R39</span><span class="badge">INSERT · wm6</span><span class="badge">260930-wm6</span><span class="badge">SWEEP</span><span class="badge">AUTOMATED-READY</span></div>
+    <h2><span class="lang-fr">wm6 sans-cuisson : look + trous blancs + parité (UAT pending)</span><span class="lang-en">wm6 sans-cuisson: look + white holes + parity (UAT pending)</span></h2>
+    <p class="why"><span class="lang-fr">Quick 260930-wm6 status automated-ready, native UAT PENDING (R3b) : (a) plus de vrais trous blancs/coupes, (b) look accepté inchangé, (c) preview==cache==reloaded byte-egal, (d) perf sans le freeze 2e stroke 52.1, (e) previewBase stale-ctx au retour sur key.</span><span class="lang-en">Quick 260930-wm6 status automated-ready, native UAT PENDING (R3b): (a) no true-white holes/cuts, (b) accepted look unchanged, (c) preview==cache==reloaded byte-equal, (d) perf without the 52.1 2nd-stroke freeze, (e) previewBase stale-ctx fix on key return.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Peindre des strokes denses avec physics (knobs 40/4500/0.5), juger les trous blancs.</span><span class="lang-en">Paint dense physics strokes (knobs 40/4500/0.5), judge white holes.</span></li>
+      <li><span class="lang-fr">Vérifier le look accepté est inchangé.</span><span class="lang-en">Verify the accepted look is unchanged.</span></li>
+      <li><span class="lang-fr">preview==cache==reloaded : digest byte-egal (lookLawDigest green).</span><span class="lang-en">preview==cache==reloaded: byte-equal digest (lookLawDigest green).</span></li>
+      <li><span class="lang-fr">Retour sur une key : pas de paint faded (previewBase).</span><span class="lang-en">Return to a key: no faded paint (previewBase).</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> (a) zéro coupe/blanc ; (b) look identique ; (c) digest identique ; (d) pas de freeze 2e stroke ; (e) pas de faded au retour key.</span><span class="lang-en"><b>Expected:</b> (a) zero white cuts; (b) identical look; (c) equal digest; (d) no 2nd-stroke freeze; (e) no fade on key return.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : une coupe blanche visible, look change, ou freeze → FAIL avec la ligne exacte.</span><span class="lang-en">If: a visible white cut, changed look, or freeze → FAIL with the exact line.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R39-c1"><span><span class="lang-fr">(a) Zéro trou/blanc visible</span><span class="lang-en">(a) No visible white holes</span></span></label>
+      <label><input type="checkbox" id="R39-c2"><span><span class="lang-fr">(b) Look accepté inchangé</span><span class="lang-en">(b) Accepted look unchanged</span></span></label>
+      <label><input type="checkbox" id="R39-c3"><span><span class="lang-fr">(c) preview==cache==reloaded byte-egal</span><span class="lang-en">(c) preview==cache==reloaded byte-equal</span></span></label>
+      <label><input type="checkbox" id="R39-c4"><span><span class="lang-fr">(d) Pas de freeze 2e stroke</span><span class="lang-en">(d) No 2nd-stroke freeze</span></span></label>
+      <label><input type="checkbox" id="R39-c5"><span><span class="lang-fr">(e) Retour key sans paint faded</span><span class="lang-en">(e) Key return without faded paint</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R39" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R39" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R39" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R39" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R40 ══════════ -->
+  <section class="card" id="card-R40">
+    <div class="badges"><span class="badge row">R40</span><span class="badge">INSERT · libre</span><span class="badge">260930-libre</span><span class="badge">SWEEP</span><span class="badge">LOOK</span></div>
+    <h2><span class="lang-fr">physique-libre : jugement du look spread 60-65 (UAT pending)</span><span class="lang-en">physique-libre: spread 60-65 look judgment (UAT pending)</span></h2>
+    <p class="why"><span class="lang-fr">Quick 260930-libre automated-ready, UAT en cours (MEMORY : « physique-libre landed, UAT in progress ») : painterly relief, max > min spread, bruit résiduel absent, uniformité feutre, ticks solver, levier g, overshoot largeur.</span><span class="lang-en">Quick 260930-libre automated-ready, UAT in progress (MEMORY: "physique-libre landed, UAT in progress"): painterly relief, max > min spread, residual noise gone, felt-tip uniformity, solver ticks, g lever, width overshoot.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Peindre à spread 60 puis 65 sur le build signé.</span><span class="lang-en">Paint at spread 60 then 65 on the signed build.</span></li>
+      <li><span class="lang-fr">Juger : relief peintre, richeurs max vs min, bruit résiduel, uniformité bord.</span><span class="lang-en">Judge: painterly relief, max vs min richness, residual noise, edge uniformity.</span></li>
+      <li><span class="lang-fr">Ticks solver (3 à 60 / 4 à 65) ; juger le levier g et l’overshoot.</span><span class="lang-en">Solver ticks (3 at 60 / 4 at 65); judge the g lever and overshoot.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Look « plein spread » revenu : mass transport au bord, intérieur texturé, bruit absent ; max visiblement plus riche que min.</span><span class="lang-en"><b>Expected:</b> The "full spread" look is back: mass transport at the edge, textured interior, no noise; max visibly richer than min.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : intérieur saturé plat, bruit pixel résiduel, ou min==max → FAIL avec capture.</span><span class="lang-en">If: saturated flat interior, residual pixel noise, or min==max → FAIL with a capture.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R40-c1"><span><span class="lang-fr">Relief peintre récupéré</span><span class="lang-en">Painterly relief recovered</span></span></label>
+      <label><input type="checkbox" id="R40-c2"><span><span class="lang-fr">Max spread plus riche que min</span><span class="lang-en">Max spread richer than min</span></span></label>
+      <label><input type="checkbox" id="R40-c3"><span><span class="lang-fr">Bruit pixel résiduel absent</span><span class="lang-en">Residual pixel noise gone</span></span></label>
+      <label><input type="checkbox" id="R40-c4"><span><span class="lang-fr">Uniformité bord améliorée</span><span class="lang-en">Edge uniformity improved</span></span></label>
+      <label><input type="checkbox" id="R40-c5"><span><span class="lang-fr">Ticks solver inchangés (3@60 / 4@65)</span><span class="lang-en">Solver ticks unchanged (3@60 / 4@65)</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R40" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R40" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R40" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R40" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R41 ══════════ -->
+  <section class="card" id="card-R41">
+    <div class="badges"><span class="badge row">R41</span><span class="badge">INSERT · ni6</span><span class="badge">260930-ni6</span><span class="badge">SWEEP</span><span class="badge">DEFAULTS</span></div>
+    <h2><span class="lang-fr">ni6 : défauts panel + libellé Blending (UAT pending, 4 lignes)</span><span class="lang-en">ni6: panel defaults + Blending label (UAT pending, 4 rows)</span></h2>
+    <p class="why"><span class="lang-fr">Quick 260930-ni6 automated-ready, 4 lignes native UAT en attente : Shape detail 20 / Blending 0 / Spread 60-65 / Brush smoothing Soft au fresh open, libellé « Blending », strokes existantes inchangées, Spread 60-65 identique à avant.</span><span class="lang-en">Quick 260930-ni6 automated-ready, 4 pending native UAT rows: Shape detail 20 / Blending 0 / Spread 60-65 / Brush smoothing Soft on fresh open, "Blending" label, existing strokes unchanged, Spread 60-65 identical to before.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Ouvrir Studio fraîchement : lire les défauts du panel.</span><span class="lang-en">Open Studio fresh: read the panel defaults.</span></li>
+      <li><span class="lang-fr">Vérifier le libellé « Blending ».</span><span class="lang-en">Verify the "Blending" label.</span></li>
+      <li><span class="lang-fr">Ouvrir un projet avec strokes existantes : rendu inchangé ; juger Spread 60-65.</span><span class="lang-en">Open a project with existing strokes: render unchanged; judge Spread 60-65.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Défauts = SD 20, Blending 0, Spread 60-65, Smoothing Soft ; libellé « Blending » ; rien changé visuellement.</span><span class="lang-en"><b>Expected:</b> Defaults = SD 20, Blending 0, Spread 60-65, Smoothing Soft; label "Blending"; nothing visually changed.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : un défaut sort de la plage, libellé ancien, ou les strokes existantes changent d’allure → FAIL.</span><span class="lang-en">If: a default out of range, old label, or existing strokes change appearance → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R41-c1"><span><span class="lang-fr">Défauts panel corrects au fresh open</span><span class="lang-en">Panel defaults correct on fresh open</span></span></label>
+      <label><input type="checkbox" id="R41-c2"><span><span class="lang-fr">Libellé « Blending » présent</span><span class="lang-en">"Blending" label present</span></span></label>
+      <label><input type="checkbox" id="R41-c3"><span><span class="lang-fr">Strokes existantes inchangées</span><span class="lang-en">Existing strokes unchanged</span></span></label>
+      <label><input type="checkbox" id="R41-c4"><span><span class="lang-fr">Spread 60-65 identique à avant</span><span class="lang-en">Spread 60-65 identical to before</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R41" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R41" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R41" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R41" placeholder="…"></textarea>
+    </div>
+  </section>
+
+
+  <!-- ══════════ ROW R42 ══════════ -->
+  <section class="card" id="card-R42">
+    <div class="badges"><span class="badge row">R42</span><span class="badge">INSERT · t2o</span><span class="badge">260929-t2o</span><span class="badge">SWEEP</span><span class="badge">LOOK</span></div>
+    <h2><span class="lang-fr">t2o : R7 look a/b/c, no parcellaire, rim fibres, live-vs-finalize</span><span class="lang-en">t2o: R7 look a/b/c, no parcellaire, rim fibres, live-vs-finalize</span></h2>
+    <p class="why"><span class="lang-fr">Quick 260929-t2o automated-ready, native UAT PENDING : R7(a) edge texturé fibre, R7(b) corrélation le long de la fibre, R7(c) AA d’une fibre sans blur de silhouette, no parcellaire (pas de trous/canon creux), rim fibres lisibles au zoom 4, live vs finalize continu. (Les 52.4 rows a-i sont clôturées par 52.4-UAT 18/18.)</span><span class="lang-en">Quick 260929-t2o automated-ready, native UAT PENDING: R7(a) fibre-scale textured edge, R7(b) correlation along the fibre, R7(c) single-fibre AA with no silhouette blur, no parcellaire (no holes/hollow tube), rim fibres readable at zoom 4, continuous live vs finalize. (52.4 rows a-i are closed by 52.4-UAT 18/18.)</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Peindre à zoom 4, inspecter le bord d’un stroke épais et d’un fin.</span><span class="lang-en">Paint at zoom 4, inspect the edge of a thick and a thin stroke.</span></li>
+      <li><span class="lang-fr">Vérifier : texture fibre, corrélation, AA d’une fibre, pas de parcellaire, rim fibres.</span><span class="lang-en">Check: fibre texture, correlation, single-fibre AA, no parcellaire, rim fibres.</span></li>
+      <li><span class="lang-fr">Capturer le même stroke live puis finalize : continuité silhouette/couverture.</span><span class="lang-en">Capture the same stroke live then finalize: silhouette/coverage continuity.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> Edge texturé à l’échelle fibre (pas de smoothing, pas de pixel-noise), spans pleins, rim lisibles, live→finalize continu.</span><span class="lang-en"><b>Expected:</b> Fibre-scale textured edge (no smoothing, no pixel-noise), solid spans, readable rim, continuous live→finalize.</span></div>
+    <div class="alert warn"><span class="lang-fr">Si : parcellaire (trous dans span épais), blur de silhouette, ou live≠finalize brutalement → FAIL.</span><span class="lang-en">If: parcellaire (holes in thick spans), silhouette blur, or abrupt live≠finalize → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R42-c1"><span><span class="lang-fr">R7 a/b/c jugés au zoom 4</span><span class="lang-en">R7 a/b/c judged at zoom 4</span></span></label>
+      <label><input type="checkbox" id="R42-c2"><span><span class="lang-fr">No parcellaire (spans pleins)</span><span class="lang-en">No parcellaire (solid spans)</span></span></label>
+      <label><input type="checkbox" id="R42-c3"><span><span class="lang-fr">Rim fibres lisibles</span><span class="lang-en">Rim fibres readable</span></span></label>
+      <label><input type="checkbox" id="R42-c4"><span><span class="lang-fr">Live vs finalize continu</span><span class="lang-en">Live vs finalize continuous</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R42" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R42" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R42" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R42" placeholder="…"></textarea>
+    </div>
+  </section>
+
   <!-- ══════════ FREE NOTES ══════════ -->
   <section class="card" id="card-notes">
     <div class="badges"><span class="badge">NOTES</span></div>
@@ -485,6 +1481,13 @@
       <span><span class="lang-fr">Handoff : télécharge le rapport JSON, dépose-le dans <code>/tmp</code> et donne-le à la session GSD (archivé en <code>53-UAT.json</code>).</span><span class="lang-en">Handoff: download the JSON report, drop it in <code>/tmp</code> and give it to the GSD session (archived as <code>53-UAT.json</code>).</span></span>
       <span><span class="lang-fr">Généré le 2026-10-11 · état sauvegardé localement dans ce navigateur</span><span class="lang-en">Generated 2026-10-11 · state saved locally in this browser</span></span>
     </div>
+
+    <div class="sig-row">
+      <span><span class="lang-fr"><b>Step 17 de la spec</b> (vérification de l'artefact téléchargé signé/notarisé) n'est PAS une carte : consigné dans <code>53-VERIFY-DOWNLOADED.md</code> (plan 53-04).</span><span class="lang-en"><b>Spec step 17</b> (signed/notarized downloaded-artifact verification) is NOT a card: recorded in <code>53-VERIFY-DOWNLOADED.md</code> (plan 53-04).</span></span>
+    </div>
+    <div class="sig-row">
+      <span><span class="lang-fr"><b>Sweep owed-UAT :</b> <code>node .claude/gsd-core/bin/gsd-tools.cjs audit-uat</code> échoue (préexistant, hors scope : <code>36.2-VERIFICATION.md</code> status <code>failed_superseded</code> hors de l'ensemble fermé — seul 53-UAT.html est modifiable par ce plan). Balayage manuel de repli : frontmatter de tous les quicks + scan des <code>*-UAT.md</code>/<code>*-VERIFICATION.md</code>/deferred-items de phase + croisement MEMORY.md + vérification d'ancestry des commits. <b>Résultat :</b> lignes non résolues supplémentaires trouvées et ajoutées — R34-R38 (c7x ×5), R39 (wm6), R40 (libre), R41 (ni6), R42 (t2o look). Écartées avec raison : q6t (HALTED, attribution en attente user), nqe/ort/pyp/m7w (STOP-clause measurement, superseded by rm2/b7c), dh1 (SUPERSEDED → 52.4, UAT 18/18), sli+g1g (combined pass 2026-09-11), 52r (CLOSED 8/8 live), t2o/m2z/j47 rows a-i (closed by 52.4-UAT 18/18 — seul le look t2o reste, R42), quicks 261009/261010 tous <code>status: complete</code>, deferred-items 52.2/52.5 = découvertes code (pas de lignes UAT natives), PhysicsPaintStudioView.test.ts circular import routé OUT (research Pitfall 1).</span><span class="lang-en"><b>Owed-UAT sweep:</b> <code>node .claude/gsd-core/bin/gsd-tools.cjs audit-uat</code> fails (pre-existing, out of scope: <code>36.2-VERIFICATION.md</code> status <code>failed_superseded</code> outside the closed set — only 53-UAT.html is modifiable by this plan). Manual fallback sweep: frontmatter of every quick + phase <code>*-UAT.md</code>/<code>*-VERIFICATION.md</code>/deferred-items scan + MEMORY.md cross-reference + commit ancestry checks. <b>Outcome:</b> additional unresolved rows found and appended — R34-R38 (c7x ×5), R39 (wm6), R40 (libre), R41 (ni6), R42 (t2o look). Dismissed with reason: q6t (HALTED, attribution awaiting user), nqe/ort/pyp/m7w (STOP-clause measurement, superseded by rm2/b7c), dh1 (SUPERSEDED → 52.4, UAT 18/18), sli+g1g (combined pass 2026-09-11), 52r (CLOSED 8/8 live), t2o/m2z/j47 rows a-i (closed by 52.4-UAT 18/18 — only the t2o look remains, R42), quicks 261009/261010 all <code>status: complete</code>, deferred-items 52.2/52.5 = code discoveries (not native-UAT rows), PhysicsPaintStudioView.test.ts circular import routed OUT (research Pitfall 1).</span></span>
+    </div>
   </footer>
 </div>
 
@@ -494,7 +1497,7 @@
 (function () {
   'use strict';
   var KEY = 'efx-53-uat';
-  var ROW_IDS = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9'];
+  var ROW_IDS = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R10', 'R11', 'R12', 'R13', 'R14', 'R15', 'R16', 'R17', 'R18', 'R19', 'R20', 'R21', 'R22', 'R23', 'R24', 'R25', 'R26', 'R27', 'R28', 'R29', 'R30', 'R31', 'R32', 'R33', 'R34', 'R35', 'R36', 'R37', 'R38', 'R39', 'R40', 'R41', 'R42'];
   var CHECKS = {
     R1: ['c1', 'c2', 'c3'],
     R2: ['c1', 'c2', 'c3', 'c4'],
@@ -504,7 +1507,40 @@
     R6: ['c1', 'c2', 'c3', 'c4'],
     R7: ['c1', 'c2', 'c3'],
     R8: ['c1', 'c2', 'c3', 'c4'],
-    R9: ['c1', 'c2', 'c3', 'c4']
+    R9: ['c1', 'c2', 'c3', 'c4'],
+    R10: ['c1', 'c2', 'c3'],
+    R11: ['c1', 'c2', 'c3'],
+    R12: ['c1', 'c2', 'c3'],
+    R13: ['c1', 'c2', 'c3'],
+    R14: ['c1', 'c2', 'c3'],
+    R15: ['c1', 'c2', 'c3'],
+    R16: ['c1', 'c2', 'c3'],
+    R17: ['c1', 'c2', 'c3'],
+    R18: ['c1', 'c2', 'c3'],
+    R19: ['c1', 'c2', 'c3'],
+    R20: ['c1', 'c2', 'c3'],
+    R21: ['c1', 'c2', 'c3'],
+    R22: ['c1', 'c2', 'c3'],
+    R23: ['c1', 'c2', 'c3'],
+    R24: ['c1', 'c2', 'c3'],
+    R25: ['c1', 'c2', 'c3'],
+    R26: ['c1', 'c2', 'c3'],
+    R27: ['c1', 'c2', 'c3'],
+    R28: ['c1', 'c2', 'c3'],
+    R29: ['c1', 'c2', 'c3'],
+    R30: ['c1', 'c2', 'c3'],
+    R31: ['c1', 'c2', 'c3'],
+    R32: ['c1', 'c2'],
+    R33: ['c1', 'c2', 'c3'],
+    R34: ['c1', 'c2', 'c3'],
+    R35: ['c1', 'c2', 'c3'],
+    R36: ['c1', 'c2', 'c3'],
+    R37: ['c1', 'c2', 'c3'],
+    R38: ['c1', 'c2', 'c3'],
+    R39: ['c1', 'c2', 'c3', 'c4', 'c5'],
+    R40: ['c1', 'c2', 'c3', 'c4', 'c5'],
+    R41: ['c1', 'c2', 'c3', 'c4'],
+    R42: ['c1', 'c2', 'c3', 'c4']
   };
   var TITLES = {
     R1: { fr: 'Nouveau parent Paint : tracks par défaut + fallback', en: 'New parent Paint layer: default tracks + fallback' },
@@ -515,7 +1551,40 @@
     R6: { fr: 'Reorder, hide, solo, opacity, blend', en: 'Reorder, hide, solo, opacity, blend' },
     R7: { fr: 'Audit truth-table hide/solo (carry milestone-audit)', en: 'Hide/solo truth-table audit (milestone-audit carry)' },
     R8: { fr: 'Scrub sur gap : preserve active sequence + key photo', en: 'Scrub onto gap: preserve active sequence + key photo' },
-    R9: { fr: 'Lecture des tracks internes, audio éditeur synchronisé', en: 'Play internal tracks with synchronized main-editor audio' }
+    R9: { fr: 'Lecture des tracks internes, audio éditeur synchronisé', en: 'Play internal tracks with synchronized main-editor audio' },
+    R10: { fr: 'Background : 5 images frame 0, Repeat 3 → frames 0-14', en: 'Background: 5 images at frame 0, Repeat 3 → frames 0-14' },
+    R11: { fr: '10 images frame 15, Repeat 2 → frames 15-34, fin exclusive 35', en: '10 images at frame 15, Repeat 2 → frames 15-34, exclusive end 35' },
+    R12: { fr: 'Gap de fallback : solide ↔ transparent, comparaison multi-surfaces', en: 'Fallback gap: solid ↔ transparent, multi-surface comparison' },
+    R13: { fr: 'Background → infinity, clip suivant interrompt, move/delete déterministe', en: 'Background → infinity, next clip interrupts, move/delete deterministic' },
+    R14: { fr: 'Save, close, reopen : IDs, liens, repeats, timing, fallback, composite', en: 'Save, close, reopen: IDs, links, repeats, timing, fallback, composite' },
+    R15: { fr: 'IO package via commandes Rust sur le build packagé', en: 'Package IO through Rust commands on the packaged build' },
+    R16: { fr: 'Modal de failure bloquante quand le chemin package a disparu', en: 'Blocking failure modal when the package path is gone' },
+    R17: { fr: 'Réouverture offline : auto-contenance du package (cold open)', en: 'Offline reopen: package self-containment (cold open)' },
+    R18: { fr: 'Fichier son déplacé → modal « missing », jamais de playback silencieux', en: 'Moved sound file → "missing" modal, never silent playback' },
+    R19: { fr: 'Le main editor ne voit qu’UN résultat du calque Paint parent', en: 'The main editor sees only ONE Paint-layer result' },
+    R20: { fr: 'Empiler des calques Paint parent avec des calques ordinaires', en: 'Stack parent Paint layers with ordinary layers' },
+    R21: { fr: 'Source photo/référence distincte de Background', en: 'Photo/reference source distinct from Background' },
+    R22: { fr: 'Reveal progressif ET statique/hold', en: 'Progressive AND static/hold Reveal' },
+    R23: { fr: 'Stretch Reveal : commit uniquement sur vrai changement', en: 'Reveal stretch: commits only on real change' },
+    R24: { fr: 'Bake multi-images : source résolue frame-alignée par frame', en: 'Multi-image bake: each frame’s source resolved frame-aligned' },
+    R25: { fr: 'Photo dialog non hijacké après le 1er Reveal', en: 'Photo dialog not hijacked after first Reveal use' },
+    R26: { fr: 'Comparer Studio flattened, preview principal et export', en: 'Compare Studio flattened output, main preview, and export' },
+    R27: { fr: 'L’export peinture énumère les frames correctement sur toutes les surfaces', en: 'Paint content export enumerates frames correctly across all surfaces' },
+    R28: { fr: 'Live gate : compteurs de profiler (52.1)', en: 'Live gate: profiler counters (52.1)' },
+    R29: { fr: 'Live gate : trace mémoire (52.1)', en: 'Live gate: live memory trace (52.1)' },
+    R30: { fr: 'Live gate : temps d’ouverture wall clock (52.1)', en: 'Live gate: open-time wall clock (52.1)' },
+    R31: { fr: 'Capture PlayScript asynchrone A→B (re-record)', en: 'Async PlayScript capture A→B (re-record)' },
+    R32: { fr: 'Nettoyage des sidecars sur disque (re-record)', en: 'Sidecar cleanup on disk (re-record)' },
+    R33: { fr: 'F-01 : switch à contenu identique (ou retrait explicite)', en: 'F-01: identical-content switch (or explicit retirement)' },
+    R34: { fr: 'c7x ligne 1 : Layer 2 : move key + click-positioning sur frame interpolée', en: 'c7x row 1: Layer 2: move a key, then click-positioning onto an interpolated frame — both behave exactly as on the first layer' },
+    R35: { fr: 'c7x ligne 2 : Move rail + stretch reveal : commit + persist à save/reopen', en: 'c7x row 2: Move a rail, then stretch a reveal rail — each commits, and the reveal stretch persists across save/reopen' },
+    R36: { fr: 'c7x ligne 3 : Key spacing : appliqué, aucun tooltip « already in flight »', en: 'c7x row 3: Apply key spacing on a rail — the spacing applies and no "already in flight" tooltip follows' },
+    R37: { fr: 'c7x ligne 4 : Échec injecté puis edit suivant : non bloqué, pas de timeout', en: 'c7x row 4: Trigger one failure deliberately, then the next edit — it must not be blocked, no timeout' },
+    R38: { fr: 'c7x ligne 5 : Séquence import en une passe : bake multi-image frame-aligné (kov rang ②)', en: 'c7x row 5: Sequence import in one go: multi-image frame-aligned bake (kov rang ② replay)' },
+    R39: { fr: 'wm6 sans-cuisson : look + trous blancs + parité (UAT pending)', en: 'wm6 sans-cuisson: look + white holes + parity (UAT pending)' },
+    R40: { fr: 'physique-libre : jugement du look spread 60-65 (UAT pending)', en: 'physique-libre: spread 60-65 look judgment (UAT pending)' },
+    R41: { fr: 'ni6 : défauts panel + libellé Blending (UAT pending, 4 lignes)', en: 'ni6: panel defaults + Blending label (UAT pending, 4 rows)' },
+    R42: { fr: 't2o : R7 look a/b/c, no parcellaire, rim fibres, live-vs-finalize', en: 't2o: R7 look a/b/c, no parcellaire, rim fibres, live-vs-finalize' }
   };
   var META_IDS = ['meta-app', 'meta-commit', 'meta-pair', 'meta-fixture'];
 
