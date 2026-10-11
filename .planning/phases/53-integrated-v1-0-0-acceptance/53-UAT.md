@@ -34,7 +34,16 @@
 
 ### Ride-along tracked note (not a worksheet row)
 
-- Acceptance 3 of the #90 scoped fix rides along this walk: live non-1920x1080 FX flatten/unflatten at real project dimensions. Recorded as a tracked note here (the worksheet carries no matching row). **Status at archive time: the live non-1920x1080 FX flatten outcome has NOT yet been reported.**
+- Acceptance 3 of the #90 scoped fix rides along this walk: live non-1920x1080 FX flatten/unflatten at real project dimensions. Recorded as a tracked note here (the worksheet carries no matching row).
+
+  **Outcome: PASS** (user-reported, verbatim):
+
+  > Acceptance 3 (live non-1920x1080 FX flatten check): PASS
+  > - Material: v1.0.0-2.mce, canvas 1080x1080 (not 1920x1080)
+  > - FX brush stroke painted, flatten/unflatten exercised
+  > - The FX render lands at the live project 1080x1080 — the paintStore project-dimensions provider is wired, not the 1920x1080 fallback.
+  >
+  > WINDOWS.md #90 is fully closed on my side too: targeted vitest 4/4, full suite 259 files / 0 failed, live check green.
 
 ## Acceptance type and reduced scope (recorded verbatim from the export `freeNotes`)
 
@@ -111,7 +120,9 @@ _Divergences are recorded, NOT fixed (D-21, release-only phase)._
 
 ## User approval
 
-_Pending — the user's explicit approval of the archived record closes this record._
+**APPROVED** (user, 2026-10-11, verbatim):
+
+> APPROVED — the archived UAT record is accepted. 36 pass / 6 na / 0 fail, 42/42 verdicts, honest reduced scope recorded as agreed.
 
 ## Hard boundaries respected
 
