@@ -212,7 +212,7 @@ Real-time preview with zoom/pan, pinch gestures, fit-to-window, and fullscreen m
 
 ## Release
 
-v0.9.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. Highlights: Hold Loop Clips with a deterministic loop engine, a unified rail timeline (Motion, Static, and derived Key Rails) with Scissor, directional Push, multi-rail batch operations, PlayScript application modes with color override, EFX Paint audio preview, and automatic script hydration. Production packaging safeguards include a complete frontend bundle entry, the generated EFX application icon set, system codesign resolution, and a production CSP that grants PNG data URLs in `img-src` for cached Roto/Physics Paint frames.
+v1.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. Highlights: multi-track Frames and Reveal in EFX Paint — multiple internal frame tracks with hide/solo/opacity/blend composited into a single parent layer, progressive and static Reveal modes, Background sequences with linked repeat sources, and photo/reference sources kept distinct from output; a portable `.mce` project package format that saves a whole project as one self-contained file; and an HD native runtime with byte-backed frame caching and Rust WebP decoding. Production packaging safeguards include a complete frontend bundle entry, the generated EFX application icon set, system codesign resolution, and a production CSP with narrow data-URL grants.
 
 ## Canvas Motion Fork
 
