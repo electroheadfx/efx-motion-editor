@@ -106,7 +106,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 
 - [x] **ACC-01**: All automated gates pass (vitest, typecheck, build, cargo test, release script preflight)
 - [x] **ACC-02**: Native UAT validates the full 17-step surface (document init, legacy rejection, track CRUD, Background loops, fallback, Reveal, save/reopen, main-editor parity)
-- [ ] **ACC-03**: Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication
+- [x] **ACC-03**: Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication
 
 ## v2 Requirements
 
@@ -201,7 +201,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | RVL-06 | Phase 52 | Complete |
 | ACC-01 | Phase 53 | Complete |
 | ACC-02 | Phase 53 | Complete |
-| ACC-03 | Phase 53 | Pending |
+| ACC-03 | Phase 53 | Complete |
 | PKG-01 | Phase 52.2 | Complete |
 | PKG-02 | Phase 52.2 | Complete |
 | PKG-03 | Phase 52.2 | Complete |

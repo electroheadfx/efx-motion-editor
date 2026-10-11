@@ -187,7 +187,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 - [x] **Phase 51: Read-only Audio Preview** - Synchronized main-editor audio monitoring across internal tracks (completed 2026-09-02 via quicks 260902-cfa + amendments)
 - [x] **Phase 52: Shared Mask Compositor and Reveal** - Photo source revealed through Paint/PlayScript coverage (completed 2026-09-04)
 - [x] **Phase 52.5: Physic Paint document sound track** - Studio waveform/reposition/start-end + main-editor playback of the layer clip (INSERTED) (completed 2026-10-08)
-- [ ] **Phase 53: Integrated v1.0.0 Acceptance** - Automated gates, native UAT, signed/notarized release
+- [x] **Phase 53: Integrated v1.0.0 Acceptance** - Automated gates, native UAT, signed/notarized release (completed 2026-10-11)
 
 ## Phase Details
 
@@ -666,7 +666,7 @@ Plans:
   2. Native UAT validates the full 17-step surface (document init, legacy rejection, track CRUD, Background loops, fallback, Reveal, save/reopen, main-editor parity).
   3. Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication.
 
-**Plans:** 3/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 
@@ -681,11 +681,11 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 53-04-PLAN.md — User push + immutable v1.0.0 tag (D-19), D-18 milestone notes, GitHub draft release with fresh DMG, then verify-downloaded + install + D-06 covering smoke in 53-VERIFY-DOWNLOADED.md (ACC-03)
+- [x] 53-04-PLAN.md — User push + immutable v1.0.0 tag (D-19), D-18 milestone notes, GitHub draft release with fresh DMG, then verify-downloaded + install + D-06 covering smoke in 53-VERIFY-DOWNLOADED.md (ACC-03)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 53-05-PLAN.md — 14-row stop-condition checklist with cited evidence (D-20) + gated two-step publish decision + post-publish Latest/tag verification in 53-RELEASE.md (ACC-03)
+- [x] 53-05-PLAN.md — 14-row stop-condition checklist with cited evidence (D-20) + gated two-step publish decision + post-publish Latest/tag verification in 53-RELEASE.md (ACC-03)
 
 ## Progress
 
@@ -710,4 +710,4 @@ Plans:
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
 | 52.1. Modern frame runtime + native HD paint | v1.0.0 | 7/7 | Complete | 2026-09-09 |
 | 52.2. Project package format — references only | v1.0.0 | 16/16 | Complete | 2026-09-18 |
-| 53. Integrated v1.0.0 Acceptance | v1.0.0 | 3/5 | In Progress | - |
+| 53. Integrated v1.0.0 Acceptance | v1.0.0 | 5/5 | Complete    | 2026-10-11 |
