@@ -165,30 +165,52 @@ const MIN_FRAME_WIDTH_FOR_THUMB = 4; // Below this px width, use solid color fal
 // Colors are read from CSS variables once per theme change, not every frame.
 let cachedColors: Record<string, string> | null = null;
 
+/** Expand #RGB/#RGBA to 6/8-digit hex. Prod CSS minify shortens #3366EE → #36e;
+ *  appending an alpha byte to a 3-digit hex yields an invalid canvas fillStyle. */
+function expandHex(value: string): string {
+  const v = value.trim();
+  if (/^#[0-9a-fA-F]{3}$/.test(v)) {
+    return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`;
+  }
+  if (/^#[0-9a-fA-F]{4}$/.test(v)) {
+    return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}${v[4]}${v[4]}`;
+  }
+  return v;
+}
+
+/** Append a 2-digit alpha to a hex color (expands shorthand first). */
+function withAlpha(color: string, alphaHex: string): string {
+  return expandHex(color) + alphaHex;
+}
+
+function readCssColor(style: CSSStyleDeclaration, name: string, fallback: string): string {
+  return expandHex(style.getPropertyValue(name).trim() || fallback);
+}
+
 function getThemeColors(): Record<string, string> {
   if (cachedColors) return cachedColors;
   const style = getComputedStyle(document.documentElement);
   cachedColors = {
-    trackBg: style.getPropertyValue('--color-timeline-track-bg').trim() || '#111111',
-    headerBg: style.getPropertyValue('--color-timeline-header-bg').trim() || '#0D0D0D',
-    frameBorder: style.getPropertyValue('--color-timeline-frame-border').trim() || '#222222',
-    rulerBg: style.getPropertyValue('--color-timeline-ruler-bg').trim() || '#0A0A0A',
-    rulerText: style.getPropertyValue('--color-timeline-ruler-text').trim() || '#666666',
-    trackName: style.getPropertyValue('--color-timeline-track-name').trim() || '#999999',
-    fxTrackBg: style.getPropertyValue('--color-timeline-fx-track-bg').trim() || '#0D0D0D',
-    fxHeaderBg: style.getPropertyValue('--color-timeline-fx-header-bg').trim() || '#0A0A0A',
+    trackBg: readCssColor(style, '--color-timeline-track-bg', '#111111'),
+    headerBg: readCssColor(style, '--color-timeline-header-bg', '#0D0D0D'),
+    frameBorder: readCssColor(style, '--color-timeline-frame-border', '#222222'),
+    rulerBg: readCssColor(style, '--color-timeline-ruler-bg', '#0A0A0A'),
+    rulerText: readCssColor(style, '--color-timeline-ruler-text', '#666666'),
+    trackName: readCssColor(style, '--color-timeline-track-name', '#999999'),
+    fxTrackBg: readCssColor(style, '--color-timeline-fx-track-bg', '#0D0D0D'),
+    fxHeaderBg: readCssColor(style, '--color-timeline-fx-header-bg', '#0A0A0A'),
     // Content overlay type-specific colors (resolved from CSS variables for Canvas 2D)
-    contentOverlayGreen: style.getPropertyValue('--sidebar-dot-green').trim() || '#22C55E',
-    contentOverlayBlue: style.getPropertyValue('--sidebar-dot-blue').trim() || '#3B82F6',
+    contentOverlayGreen: readCssColor(style, '--sidebar-dot-green', '#22C55E'),
+    contentOverlayBlue: readCssColor(style, '--sidebar-dot-blue', '#3B82F6'),
     contentOverlayPurple: '#8B5CF6', // hardcoded, no CSS variable
     // Audio track colors
-    audioTrackBg: style.getPropertyValue('--color-audio-track-bg').trim() || '#0A0F0E',
-    audioHeaderBg: style.getPropertyValue('--color-audio-header-bg').trim() || '#080D0C',
-    audioWaveform: style.getPropertyValue('--color-audio-waveform').trim() || '#22B8A0',
-    audioWaveformMuted: style.getPropertyValue('--color-audio-waveform-muted').trim() || '#22B8A033',
-    audioCenterline: style.getPropertyValue('--color-audio-centerline').trim() || '#FFFFFF15',
-    audioFadeOverlay: style.getPropertyValue('--color-audio-fade-overlay').trim() || '#22B8A040',
-    accent: style.getPropertyValue('--color-accent').trim() || '#2D5BE3',
+    audioTrackBg: readCssColor(style, '--color-audio-track-bg', '#0A0F0E'),
+    audioHeaderBg: readCssColor(style, '--color-audio-header-bg', '#080D0C'),
+    audioWaveform: readCssColor(style, '--color-audio-waveform', '#22B8A0'),
+    audioWaveformMuted: readCssColor(style, '--color-audio-waveform-muted', '#22B8A033'),
+    audioCenterline: readCssColor(style, '--color-audio-centerline', '#FFFFFF15'),
+    audioFadeOverlay: readCssColor(style, '--color-audio-fade-overlay', '#22B8A040'),
+    accent: readCssColor(style, '--color-accent', '#2D5BE3'),
   };
   return cachedColors;
 }
@@ -510,7 +532,7 @@ export class TimelineRenderer {
   private resolveTrackColor(fxTrack: FxTrackLayout): string {
     const colors = getThemeColors();
     if (fxTrack.kind !== 'content-overlay') {
-      return fxTrack.color.includes('color-accent') ? colors.accent : fxTrack.color;
+      return fxTrack.color.includes('color-accent') ? colors.accent : expandHex(fxTrack.color);
     }
     if (fxTrack.color.includes('sidebar-dot-green')) return colors.contentOverlayGreen;
     if (fxTrack.color.includes('sidebar-dot-blue')) return colors.contentOverlayBlue;
@@ -555,7 +577,7 @@ export class TimelineRenderer {
       if (clippedW <= 0) continue;
 
       const activeStroke = colors.accent;
-      const rangeFill = marker.active ? colors.accent + '66' : 'rgba(255, 255, 255, 0.16)';
+      const rangeFill = marker.active ? withAlpha(colors.accent, '66') : 'rgba(255, 255, 255, 0.16)';
       const endpointFill = marker.active ? colors.accent : 'rgba(255, 255, 255, 0.38)';
       const outline = marker.active ? 'rgba(255, 255, 255, 0.72)' : 'rgba(255, 255, 255, 0.22)';
 
@@ -809,7 +831,7 @@ export class TimelineRenderer {
     const isVisible = fxTrack.visible;
     ctx.fillStyle = isSelected ? '#151015' : colors.fxHeaderBg;
     ctx.fillRect(isSelected ? 2 : 0, y, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), FX_TRACK_HEIGHT);
-    ctx.fillStyle = isVisible ? resolvedColor : resolvedColor + '4D'; // 30% opacity when hidden
+    ctx.fillStyle = isVisible ? resolvedColor : withAlpha(resolvedColor, '4D'); // 30% opacity when hidden
     ctx.font = '9px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
     const name = this.truncateText(ctx, getTimelineFxHeaderLabel(fxTrack), TRACK_HEADER_WIDTH - 16);
@@ -837,13 +859,13 @@ export class TimelineRenderer {
       const clippedW = Math.max(0, clippedRight - clippedLeft);
 
       // Bar fill (semi-transparent color)
-      ctx.fillStyle = resolvedColor + (isVisible ? '40' : '26'); // 25% or 15% opacity
+      ctx.fillStyle = withAlpha(resolvedColor, isVisible ? '40' : '26'); // 25% or 15% opacity
       ctx.beginPath();
       ctx.roundRect(clippedLeft, barY, clippedW, barH, 3);
       ctx.fill();
 
       // Bar border
-      ctx.strokeStyle = resolvedColor + (isVisible ? '80' : '40'); // 50% or 25% opacity
+      ctx.strokeStyle = withAlpha(resolvedColor, isVisible ? '80' : '40'); // 50% or 25% opacity
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -1334,7 +1356,7 @@ export class TimelineRenderer {
     // 3. Track name in header
     ctx.font = '10px Inter, sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = track.muted ? colors.trackName + '66' : colors.trackName;
+    ctx.fillStyle = track.muted ? withAlpha(colors.trackName, '66') : colors.trackName;
     const truncatedName = this.truncateText(ctx, track.trackName, TRACK_HEADER_WIDTH - 16);
     ctx.fillText(truncatedName, 8, y + track.trackHeight / 2 + 3);
 
