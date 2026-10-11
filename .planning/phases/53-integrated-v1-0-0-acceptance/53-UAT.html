@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EFX Motion Editor — Phase 53 · UAT intégrée v1.0.0</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --card: #ffffff;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --blue: #2563eb;
+    --blue-soft: #eff6ff;
+    --green: #16a34a;
+    --green-soft: #f0fdf4;
+    --red: #dc2626;
+    --red-soft: #fef2f2;
+    --amber: #d97706;
+    --amber-soft: #fffbeb;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; line-height: 1.55;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .langswitch { display: flex; gap: 6px; flex-shrink: 0; }
+  .langswitch button {
+    border: 1px solid var(--line); background: var(--card); color: var(--muted);
+    padding: 5px 12px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  .langswitch button.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  body[data-lang="fr"] .lang-en { display: none; }
+  body[data-lang="en"] .lang-fr { display: none; }
+
+  .progress-shell {
+    position: sticky; top: 0; z-index: 10; background: var(--bg);
+    padding: 12px 0 10px; margin-bottom: 14px;
+  }
+  .progress-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+  .progress-meta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .progress-label { font-weight: 700; font-size: 14px; }
+  .progress-count { font-family: var(--mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .bar { height: 10px; background: #e5e9ef; border-radius: 999px; overflow: hidden; }
+  .bar > div { height: 100%; width: 0%; background: linear-gradient(90deg, var(--blue), #3b82f6); border-radius: 999px; transition: width .35s ease; }
+
+  .alert { border-radius: 10px; padding: 12px 14px; margin: 12px 0; border: 1px solid transparent; font-size: 14px; }
+  .alert.info { background: var(--blue-soft); border-color: #bfdbfe; color: #1e3a8a; }
+  .alert.ok { background: var(--green-soft); border-color: #bbf7d0; color: #14532d; }
+  .alert.warn { background: var(--amber-soft); border-color: #fde68a; color: #78350f; }
+  .alert b { font-weight: 700; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-left: 5px solid #cbd5e1;
+    border-radius: 12px; padding: 18px 20px; margin: 16px 0;
+  }
+  .card.v-pass { border-left-color: var(--green); }
+  .card.v-fail { border-left-color: var(--red); }
+  .card.v-na { border-left-color: var(--amber); }
+
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .badge {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600; white-space: nowrap;
+    background: #eef2f7; color: #475569; border: 1px solid var(--line);
+    border-radius: 6px; padding: 2px 8px;
+  }
+  .badge.row { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+  h2 { font-size: 17px; margin: 2px 0 8px; }
+  h3 { font-size: 14px; margin: 16px 0 6px; color: #334155; }
+  .why { color: var(--muted); font-size: 13.5px; margin: 0 0 6px; }
+  ol.steps { margin: 8px 0 4px; padding-left: 22px; }
+  ol.steps li { margin: 6px 0; }
+  code, .mono { font-family: var(--mono); font-size: 12.5px; background: #f1f5f9; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+
+  .checks { display: grid; gap: 6px; margin: 10px 0; }
+  .checks label {
+    display: flex; align-items: flex-start; gap: 9px; background: #f8fafc;
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; cursor: pointer; font-size: 14px;
+  }
+  .checks input[type="checkbox"] { margin-top: 3px; accent-color: var(--blue); width: 15px; height: 15px; }
+
+  .verdict { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 6px; }
+  .verdict label {
+    display: inline-flex; align-items: center; gap: 7px; border: 1.5px solid var(--line);
+    border-radius: 999px; padding: 6px 14px; cursor: pointer; font-weight: 600; font-size: 13.5px; background: #fff;
+  }
+  .verdict input { accent-color: var(--blue); }
+  .verdict label:has(input[value="pass"]:checked) { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+  .verdict label:has(input[value="fail"]:checked) { border-color: var(--red); background: var(--red-soft); color: var(--red); }
+  .verdict label:has(input[value="na"]:checked) { border-color: var(--amber); background: var(--amber-soft); color: var(--amber); }
+
+  textarea, input[type="text"] {
+    width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
+    font: inherit; font-size: 14px; background: #fff; color: var(--ink);
+  }
+  textarea { min-height: 64px; resize: vertical; }
+  textarea:focus, input[type="text"]:focus { outline: 2px solid #93c5fd; border-color: var(--blue); }
+  .field { margin: 10px 0; }
+  .field > span.lbl { display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 4px; }
+  .req { color: var(--red); font-weight: 700; }
+
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+  @media (max-width: 700px) { .meta-grid { grid-template-columns: 1fr; } }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .btn {
+    border: none; border-radius: 10px; padding: 11px 18px; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; color: #fff; background: var(--blue);
+  }
+  .btn.secondary { background: #fff; color: var(--ink); border: 1.5px solid var(--line); }
+  .btn.danger { background: #fff; color: var(--red); border: 1.5px solid #fecaca; }
+  .btn:hover { filter: brightness(0.96); }
+  #export-status { margin-top: 12px; font-size: 13.5px; }
+  #export-status .missing { color: var(--red); }
+  #export-status .complete { color: var(--green); font-weight: 700; }
+
+  footer.sig {
+    margin-top: 42px; padding-top: 16px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12.5px;
+  }
+  footer.sig .sig-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: #0f172a; color: #fff; padding: 10px 18px; border-radius: 999px;
+    font-size: 13.5px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 50;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body data-lang="fr">
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1><span class="lang-fr">UAT intégrée v1.0.0 — Phase 53</span><span class="lang-en">Integrated v1.0.0 UAT — Phase 53</span></h1>
+      <p class="sub"><span class="lang-fr">Acceptance du milestone EFX Paint Multi-Track Frames and Reveal · spec 17 étapes + insertions D-04 / D-12…D-16 · pass unique (D-01)</span><span class="lang-en">EFX Paint Multi-Track Frames and Reveal milestone acceptance · spec 17 steps + D-04 / D-12…D-16 insertions · single comprehensive pass (D-01)</span></p>
+    </div>
+    <div class="langswitch">
+      <button id="btn-fr" class="on">FR</button>
+      <button id="btn-en">EN</button>
+    </div>
+  </header>
+
+  <div class="progress-shell">
+    <div class="progress-card">
+      <div class="progress-meta">
+        <span class="progress-label"><span class="lang-fr">Progression des verdicts</span><span class="lang-en">Verdict progress</span></span>
+        <span class="progress-count" id="progress-count">0/9 · 0%</span>
+      </div>
+      <div class="bar"><div id="progress-fill"></div></div>
+    </div>
+  </div>
+
+  <div class="alert info">
+    <span class="lang-fr"><b>Mode d'emploi.</b> La session GSD te donne le chemin du <code>.app</code> signé frais, le commit sous test, le chemin du package <code>.mce</code> de la through-line D-03 (§7-pair converti) et le chemin de la fixture legacy. Teste chaque ligne dans le <b>.app signé</b> (sauf mention contraire), coche les sous-vérifications, choisis un verdict <b>PASS / FAIL / N-A</b>, commente si besoin. L'état est sauvegardé automatiquement dans ce navigateur. Quand c'est fini : <b>Télécharger le rapport JSON</b>, dépose-le dans <code>/tmp</code> (ou colle son contenu) et donne-le à la session GSD — il sera archivé comme <code>53-UAT.json</code>. <b>Important :</b> le chemin du paire through-line ci-dessous est <b>REQUIS</b> — le pass ne peut pas commencer sans lui.</span>
+    <span class="lang-en"><b>How to use.</b> The GSD session gives you the fresh signed <code>.app</code> path, the commit under test, the D-03 through-line <code>.mce</code> package path (converted §7-pair) and the legacy fixture path. Test each row in the <b>signed .app</b> (unless stated otherwise), tick the sub-checks, pick a <b>PASS / FAIL / N-A</b> verdict, comment as needed. State auto-saves in this browser. When done: <b>Download the JSON report</b>, drop it in <code>/tmp</code> (or paste its content) and hand it to the GSD session — it gets archived as <code>53-UAT.json</code>. <b>Important:</b> the through-line package path below is <b>REQUIRED</b> — the pass cannot start without it.</span>
+  </div>
+
+  <!-- ══════════ METADATA ══════════ -->
+  <section class="card">
+    <div class="badges"><span class="badge">META</span></div>
+    <h2><span class="lang-fr">Identification de la session</span><span class="lang-en">Session identification</span></h2>
+    <div class="meta-grid">
+      <div class="field">
+        <span class="lbl"><span class="lang-fr">Chemin du .app signé frais</span><span class="lang-en">Fresh signed .app path</span></span>
+        <input type="text" id="meta-app" placeholder="…/target/release/bundle/macos/EFX Motion Editor.app">
+      </div>
+      <div class="field">
+        <span class="lbl"><span class="lang-fr">Commit sous test</span><span class="lang-en">Commit under test</span></span>
+        <input type="text" id="meta-commit" placeholder="d081eb5c ou + récent">
+      </div>
+      <div class="field">
+        <span class="lbl"><span class="lang-fr">Chemin du package through-line D-03 (§7-pair converti) — <span class="req">REQUIS</span></span><span class="lang-en">D-03 through-line package path (converted §7-pair) — <span class="req">REQUIRED</span></span></span>
+        <input type="text" id="meta-pair" required placeholder="/…/v1.0.0.mce">
+      </div>
+      <div class="field">
+        <span class="lbl"><span class="lang-fr">Chemin de la fixture legacy (rejet)</span><span class="lang-en">Legacy rejection fixture path</span></span>
+        <input type="text" id="meta-fixture" placeholder="app/src/efx-paint/document/__fixtures__/pre-52.2-project.mce.json">
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 1 ══════════ -->
+  <section class="card" id="card-R1">
+    <div class="badges"><span class="badge row">R1</span><span class="badge">SPEC STEP 1</span><span class="badge">FRESH DOC</span></div>
+    <h2><span class="lang-fr">Nouveau parent Paint : tracks par défaut + fallback</span><span class="lang-en">New parent Paint layer: default tracks + fallback</span></h2>
+    <p class="why"><span class="lang-fr">Initialisation d'un document v1.0 frais : une track Paint par défaut, une Background fixe, le fallback configuré — l'armature de la spec, première surface.</span><span class="lang-en">Fresh v1.0 document initialization: one default Paint track, one fixed Background track, the configured fallback — the spec armature's first surface.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Créer un projet v1.0 neuf → ajouter un calque Paint parent (EFX Paint).</span><span class="lang-en">Create a fresh v1.0 project → add a parent Paint layer (EFX Paint).</span></li>
+      <li><span class="lang-fr">Confirmer que le document s'ouvre avec <b>une</b> track Paint par défaut et <b>une</b> Background fixe.</span><span class="lang-en">Confirm the document opens with <b>one</b> default Paint track and <b>one</b> fixed Background track.</span></li>
+      <li><span class="lang-fr">Confirmer que le fallback configuré (papier du document) est bien présent.</span><span class="lang-en">Confirm the configured fallback (document paper) is present.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> une track Paint par défaut, une Background fixe, le fallback configuré — exactement une fois chacun.</span><span class="lang-en"><b>Expected:</b> one default Paint track, one fixed Background track, the configured fallback — exactly one of each.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> track Paint dupliquée, Background manquante/variable, ou fallback absent → FAIL avec capture.</span><span class="lang-en"><b>If:</b> duplicated Paint track, missing/variable Background, or fallback absent → FAIL with a screenshot.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R1-c1"><span><span class="lang-fr">Une track Paint par défaut</span><span class="lang-en">One default Paint track</span></span></label>
+      <label><input type="checkbox" id="R1-c2"><span><span class="lang-fr">Une Background fixe</span><span class="lang-en">One fixed Background track</span></span></label>
+      <label><input type="checkbox" id="R1-c3"><span><span class="lang-fr">Fallback configuré présent</span><span class="lang-en">Configured fallback present</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R1" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R1" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R1" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R1" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 2 ══════════ -->
+  <section class="card" id="card-R2">
+    <div class="badges"><span class="badge row">R2</span><span class="badge">INSERT · FINDER</span><span class="badge">D-04</span></div>
+    <h2><span class="lang-fr">Finder : UNE icône, double-click ouvre</span><span class="lang-en">Finder: ONE icon, double-click opens</span></h2>
+    <p class="why"><span class="lang-fr">Traitement package macOS : la déclaration <code>Info.plist</code> (<code>LSTypeIsPackage</code> + UTI <code>com.apple.package</code>) n'a d'effet que dans le .app signé. Inséré près des étapes open/init (D-04).</span><span class="lang-en">macOS package treatment: the <code>Info.plist</code> declaration (<code>LSTypeIsPackage</code> + UTI <code>com.apple.package</code>) only takes effect in the signed .app. Inserted near the open/init steps (D-04).</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Forcer l'enregistrement LaunchServices : <code>lsregister -f "…/EFX Motion Editor.app"</code> — enregistrement périmé = piège connu.</span><span class="lang-en">Force LaunchServices registration: <code>lsregister -f "…/EFX Motion Editor.app"</code> — stale registration is the known trap.</span></li>
+      <li><span class="lang-fr">Finder → dossier du through-line : le <code>.mce</code> apparaît comme <b>UN fichier à l'icône EFX</b>, pas un dossier bleu.</span><span class="lang-en">Finder → through-line folder: the <code>.mce</code> shows as <b>ONE EFX-icon file</b>, not a blue folder.</span></li>
+      <li><span class="lang-fr"><b>À chaud</b> : double-click → le projet s'ouvre.</span><span class="lang-en"><b>Warm</b>: double-click → the project opens.</span></li>
+      <li><span class="lang-fr"><b>À froid</b> : double-click → l'app se lance ET ouvre le projet.</span><span class="lang-en"><b>Cold</b>: double-click → the app launches AND opens the project.</span></li>
+      <li><span class="lang-fr">Projet non sauvegardé ouvert → garde unsaved-changes visible, jamais de perte silencieuse.</span><span class="lang-en">Unsaved project open → unsaved-changes guard appears, never a silent loss.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> une icône unique ; double-click ouvre le projet, à chaud comme à froid.</span><span class="lang-en"><b>Expected:</b> one icon; double-click opens the project, warm and cold.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Dossier persistant :</b> refaire <code>lsregister -f</code> puis re-tester une fois. Persistence → FAIL avec capture.</span><span class="lang-en"><b>Persistent folder:</b> re-run <code>lsregister -f</code> and retest once. Persistence → FAIL with a screenshot.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R2-c1"><span><span class="lang-fr">Icône EFX unique (pas de dossier)</span><span class="lang-en">Single EFX icon (no folder)</span></span></label>
+      <label><input type="checkbox" id="R2-c2"><span><span class="lang-fr">Double-click à chaud ouvre le projet</span><span class="lang-en">Warm double-click opens the project</span></span></label>
+      <label><input type="checkbox" id="R2-c3"><span><span class="lang-fr">Double-click à froid lance + ouvre</span><span class="lang-en">Cold double-click launches + opens</span></span></label>
+      <label><input type="checkbox" id="R2-c4"><span><span class="lang-fr">Garde unsaved-changes respectée</span><span class="lang-en">Unsaved-changes guard respected</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R2" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R2" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R2" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R2" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 3 ══════════ -->
+  <section class="card" id="card-R3">
+    <div class="badges"><span class="badge row">R3</span><span class="badge">SPEC STEP 2</span><span class="badge">LEGACY REJECTION</span></div>
+    <h2><span class="lang-fr">Fixture pré-v1.0 rejetée explicitement</span><span class="lang-en">Pre-v1.0 fixture rejected explicitly</span></h2>
+    <p class="why"><span class="lang-fr">Clean-break + fail-closed : le rejet est le comportement conçu, pas un défaut. Aucun rendu ni persistance legacy joignable.</span><span class="lang-en">Clean-break + fail-closed: the rejection is the designed behavior, not a defect. No reachable legacy render or persistence path.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Dans le .app signé : ouvrir la fixture <code>pre-52.2-project.mce.json</code> (chemin META fixture).</span><span class="lang-en">In the signed .app: open the <code>pre-52.2-project.mce.json</code> fixture (META fixture path).</span></li>
+      <li><span class="lang-fr">Confirmer l'échec <b>explicite</b> « unsupported » — pas d'import silencieux.</span><span class="lang-en">Confirm the <b>explicit</b> "unsupported" failure — no silent import.</span></li>
+      <li><span class="lang-fr">Confirmer zéro mutation partielle du document courant.</span><span class="lang-en">Confirm zero partial mutation of the current document.</span></li>
+      <li><span class="lang-fr">Confirmer qu'aucun chemin de rendu legacy n'est atteignable.</span><span class="lang-en">Confirm no legacy render path is reachable.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> échec explicite « unsupported », aucune mutation partielle, aucun rendu legacy.</span><span class="lang-en"><b>Expected:</b> explicit "unsupported" failure, no partial mutation, no legacy rendering.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> import silencieux, chargement partiel, ou dialogue sans recours → FAIL (violation clean-break).</span><span class="lang-en"><b>If:</b> silent import, partial load, or a no-recourse dialog → FAIL (clean-break violation).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R3-c1"><span><span class="lang-fr">Échec explicite « unsupported »</span><span class="lang-en">Explicit "unsupported" failure</span></span></label>
+      <label><input type="checkbox" id="R3-c2"><span><span class="lang-fr">Aucune mutation partielle</span><span class="lang-en">No partial mutation</span></span></label>
+      <label><input type="checkbox" id="R3-c3"><span><span class="lang-fr">Aucun rendu legacy joignable</span><span class="lang-en">No reachable legacy render path</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R3" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R3" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R3" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R3" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 4 ══════════ -->
+  <section class="card" id="card-R4">
+    <div class="badges"><span class="badge row">R4</span><span class="badge">SPEC STEP 3</span><span class="badge">TRACK IDS</span></div>
+    <h2><span class="lang-fr">Ajouter ≥3 tracks Paint internes, IDs stables</span><span class="lang-en">Add ≥3 internal Paint tracks, stable IDs</span></h2>
+    <p class="why"><span class="lang-fr">La stabilité des IDs est un stop-condition : reorder/persist ne doivent jamais changer l'identité d'une track.</span><span class="lang-en">ID stability is a stop condition: reorder/persist must never change a track's identity.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Dans le parent Paint : ajouter au moins trois tracks Paint internes.</span><span class="lang-en">Inside the parent Paint layer: add at least three internal Paint tracks.</span></li>
+      <li><span class="lang-fr">Noter les IDs (devtools ou renommage) avant/après navigation et changement d'onglet.</span><span class="lang-en">Note the IDs (devtools or rename) before/after navigation and tab changes.</span></li>
+      <li><span class="lang-fr">Revenir sur chaque track : les IDs n'ont pas changé.</span><span class="lang-en">Return to each track: IDs unchanged.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> ≥3 tracks ajoutées ; chaque ID reste identique pendant toute la session.</span><span class="lang-en"><b>Expected:</b> ≥3 tracks added; every ID identical throughout the session.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> un ID change au fil des navigation → FAIL avec le couple avant/après en commentaire.</span><span class="lang-en"><b>If:</b> an ID changes across navigation → FAIL with the before/after pair in the comment.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R4-c1"><span><span class="lang-fr">≥3 tracks Paint internes ajoutées</span><span class="lang-en">≥3 internal Paint tracks added</span></span></label>
+      <label><input type="checkbox" id="R4-c2"><span><span class="lang-fr">IDs stables après navigation</span><span class="lang-en">IDs stable after navigation</span></span></label>
+      <label><input type="checkbox" id="R4-c3"><span><span class="lang-fr">IDs stables après retour de save (si applicable)</span><span class="lang-en">IDs stable after save round-trip (if applicable)</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R4" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R4" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R4" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R4" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 5 ══════════ -->
+  <section class="card" id="card-R5">
+    <div class="badges"><span class="badge row">R5</span><span class="badge">SPEC STEP 4</span><span class="badge">HOLD LOOP</span></div>
+    <h2><span class="lang-fr">Contenu distinct par track + cycle Hold Loop lié</span><span class="lang-en">Distinct frame content per track + linked Hold Loop cycle</span></h2>
+    <p class="why"><span class="lang-fr">Chaque track porte un contenu frame distinct ; le Hold Loop est <b>lié</b> aux sources — jamais une duplication de assets.</span><span class="lang-en">Each track carries distinct frame content; the Hold Loop is <b>linked</b> to its sources — never duplicated assets.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Peindre/générer un contenu frame différent sur chacune des tracks.</span><span class="lang-en">Paint/generate different frame content on each track.</span></li>
+      <li><span class="lang-fr">Créer un cycle Hold Loop lié sur l'une des tracks.</span><span class="lang-en">Create a linked Hold Loop cycle on one of the tracks.</span></li>
+      <li><span class="lang-fr">Naviguer les frames : le contenu de chaque track reste distinct ; le cycle répète les mêmes sources liées.</span><span class="lang-en">Navigate frames: each track's content stays distinct; the cycle repeats the same linked sources.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> contenu distinct par track ; cycle Hold Loop lié, répétitions identiques sans duplication d'assets.</span><span class="lang-en"><b>Expected:</b> distinct content per track; linked Hold Loop cycle, identical repetitions with no asset duplication.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> les répétitions créent des assets distincts, ou deux tracks convergent vers le même contenu → FAIL.</span><span class="lang-en"><b>If:</b> repetitions create distinct assets, or two tracks converge to the same content → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R5-c1"><span><span class="lang-fr">Contenu frame distinct sur chaque track</span><span class="lang-en">Distinct frame content on each track</span></span></label>
+      <label><input type="checkbox" id="R5-c2"><span><span class="lang-fr">Cycle Hold Loop lié créé</span><span class="lang-en">Linked Hold Loop cycle created</span></span></label>
+      <label><input type="checkbox" id="R5-c3"><span><span class="lang-fr">Répétitions identiques, zéro duplication d'asset</span><span class="lang-en">Identical repetitions, zero asset duplication</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R5" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R5" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R5" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R5" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 6 ══════════ -->
+  <section class="card" id="card-R6">
+    <div class="badges"><span class="badge row">R6</span><span class="badge">SPEC STEP 5</span><span class="badge">TRACK CONTROLS</span></div>
+    <h2><span class="lang-fr">Reorder, hide, solo, opacity, blend</span><span class="lang-en">Reorder, hide, solo, opacity, blend</span></h2>
+    <p class="why"><span class="lang-fr">Les contrôles track-local : reorder sans changer l'identité ; hide/solo/opacity/blend pilotent le composite interne.</span><span class="lang-en">Track-local controls: reorder without identity change; hide/solo/opacity/blend drive the internal composite.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Reorder deux tracks — l'identité (ID) ne change pas, l'ordre si.</span><span class="lang-en">Reorder two tracks — identity (ID) unchanged, order changed.</span></li>
+      <li><span class="lang-fr">Toggle hide : la track disparaît du composite, réapparaît au un-hide.</span><span class="lang-en">Toggle hide: track leaves the composite, returns on un-hide.</span></li>
+      <li><span class="lang-fr">Toggle solo : seule la track solo reste visible.</span><span class="lang-en">Toggle solo: only the soloed track remains visible.</span></li>
+      <li><span class="lang-fr">Ajuster opacity et blend mode : effet visible sur le composite interne, pas de double-application.</span><span class="lang-en">Adjust opacity and blend mode: visible on the internal composite, no double-application.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> reorder ne change pas l'identité ; hide/solo/opacity/blend agissent une seule fois (pas de double-application).</span><span class="lang-en"><b>Expected:</b> reorder does not change identity; hide/solo/opacity/blend act exactly once (no double-application).</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> l'ID change au reorder, ou opacity/blend paraît appliqué deux fois → FAIL.</span><span class="lang-en"><b>If:</b> an ID changes on reorder, or opacity/blend appears applied twice → FAIL.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R6-c1"><span><span class="lang-fr">Reorder : identité stable, ordre changé</span><span class="lang-en">Reorder: identity stable, order changed</span></span></label>
+      <label><input type="checkbox" id="R6-c2"><span><span class="lang-fr">Hide/unhide correct</span><span class="lang-en">Hide/unhide correct</span></span></label>
+      <label><input type="checkbox" id="R6-c3"><span><span class="lang-fr">Solo isole correctement</span><span class="lang-en">Solo isolates correctly</span></span></label>
+      <label><input type="checkbox" id="R6-c4"><span><span class="lang-fr">Opacity + blend : effet unique, sans double-application</span><span class="lang-en">Opacity + blend: single effect, no double-application</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R6" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R6" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R6" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R6" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 7 ══════════ -->
+  <section class="card" id="card-R7">
+    <div class="badges"><span class="badge row">R7</span><span class="badge">INSERT · HIDE/SOLO AUDIT</span><span class="badge">260911-g1g</span></div>
+    <h2><span class="lang-fr">Audit truth-table hide/solo (carry milestone-audit)</span><span class="lang-en">Hide/solo truth-table audit (milestone-audit carry)</span></h2>
+    <p class="why"><span class="lang-fr">Carry du v1.0.0-MILESTONE-AUDIT : la matrice hide/solo complète (piste de session + S persisté) doit être prouvée sur l'artefact signé. Fix 260911-g1g.</span><span class="lang-en">Carried from v1.0.0-MILESTONE-AUDIT: the complete hide/solo matrix (session arm + persisted row S) must be proven on the signed artifact. Fix 260911-g1g.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Dérouler la truth-table : chaque combinaison hide/solo × visible/invisible produit le composite attendu.</span><span class="lang-en">Walk the truth table: each hide/solo × visible/invisible combination yields the expected composite.</span></li>
+      <li><span class="lang-fr">Vérifier le pill solo de session (jamais persisté) <b>et</b> le S de row persisté séparément.</span><span class="lang-en">Check the session solo pill (never persisted) <b>and</b> the persisted row S separately.</span></li>
+      <li><span class="lang-fr">Reopen : seul le S persisté survit ; le pill de session repart à zéro.</span><span class="lang-en">Reopen: only the persisted S survives; the session pill resets.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> toute la truth-table correspond ; aucune fuite entre pill de session et S persisté.</span><span class="lang-en"><b>Expected:</b> the full truth table matches; no leakage between session pill and persisted S.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> une combinaison produit un composite inattendu, ou le pill de session persiste → FAIL avec la ligne exacte.</span><span class="lang-en"><b>If:</b> any combination yields an unexpected composite, or the session pill persists → FAIL with the exact line.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R7-c1"><span><span class="lang-fr">Truth-table hide/solo complète vérifiée</span><span class="lang-en">Complete hide/solo truth table checked</span></span></label>
+      <label><input type="checkbox" id="R7-c2"><span><span class="lang-fr">Pill de session ≠ S persisté (pas de fuite)</span><span class="lang-en">Session pill ≠ persisted S (no leakage)</span></span></label>
+      <label><input type="checkbox" id="R7-c3"><span><span class="lang-fr">Reopen : seul le S persisté survit</span><span class="lang-en">Reopen: only persisted S survives</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R7" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R7" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R7" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R7" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 8 ══════════ -->
+  <section class="card" id="card-R8">
+    <div class="badges"><span class="badge row">R8</span><span class="badge">INSERT · j5r</span><span class="badge">260920-j5r</span></div>
+    <h2><span class="lang-fr">Scrub sur gap : preserve active sequence + key photo</span><span class="lang-en">Scrub onto gap: preserve active sequence + key photo</span></h2>
+    <p class="why"><span class="lang-fr">Ligne UAT native en attente de 260920-j5r : scrubber sur une entrée gap ne doit ni vider la sequence active ni perdre la key photo sélectionnée (WR-01 52.3, fix guard <code>syncActiveSequence</code>).</span><span class="lang-en">Pending native UAT row from 260920-j5r: scrubbing onto a gap entry must neither clear the active sequence nor lose the selected key photo (52.3 WR-01, <code>syncActiveSequence</code> guard fix).</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Projet paint-only avec fx inFrame &gt; 0 (où le bug était visible en usage normal).</span><span class="lang-en">Paint-only project with fx inFrame &gt; 0 (where the bug showed in normal use).</span></li>
+      <li><span class="lang-fr">Sélectionner une séquence + key photo → scrubber sur une entrée gap <b>précédente</b>.</span><span class="lang-en">Select a sequence + key photo → scrub onto a <b>leading</b> gap entry.</span></li>
+      <li><span class="lang-fr">Confirmer : la sidebar fx garde ses propriétés, la sequence active et la key photo sélectionnée sont préservées.</span><span class="lang-en">Confirm: the fx sidebar keeps its properties; active sequence and selected key photo preserved.</span></li>
+      <li><span class="lang-fr">Répéter avec un gap <b>inter-fx</b> et ouvrir l'export dialog : « selected sequence » toujours présent.</span><span class="lang-en">Repeat with an <b>inter-fx</b> gap and open the export dialog: "selected sequence" still present.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> scrub sur gap ne change ni la sidebar fx ni la selection — y compris dans l'export dialog.</span><span class="lang-en"><b>Expected:</b> scrubbing onto a gap changes neither the fx sidebar nor the selection — including in the export dialog.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> la sidebar perd ses fx properties ou l'export perd « selected sequence » → FAIL (régression WR-01).</span><span class="lang-en"><b>If:</b> the sidebar loses fx properties or export loses "selected sequence" → FAIL (WR-01 regression).</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R8-c1"><span><span class="lang-fr">Gap précédent : sequence active préservée</span><span class="lang-en">Leading gap: active sequence preserved</span></span></label>
+      <label><input type="checkbox" id="R8-c2"><span><span class="lang-fr">Key photo sélectionnée préservée</span><span class="lang-en">Selected key photo preserved</span></span></label>
+      <label><input type="checkbox" id="R8-c3"><span><span class="lang-fr">Gap inter-fx : sidebar fx intacte</span><span class="lang-en">Inter-fx gap: fx sidebar intact</span></span></label>
+      <label><input type="checkbox" id="R8-c4"><span><span class="lang-fr">Export dialog garde « selected sequence »</span><span class="lang-en">Export dialog keeps "selected sequence"</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R8" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R8" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R8" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R8" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ ROW 9 ══════════ -->
+  <section class="card" id="card-R9">
+    <div class="badges"><span class="badge row">R9</span><span class="badge">SPEC STEP 6</span><span class="badge">AUDIO SYNC</span></div>
+    <h2><span class="lang-fr">Lecture des tracks internes, audio éditeur synchronisé</span><span class="lang-en">Play internal tracks with synchronized main-editor audio</span></h2>
+    <p class="why"><span class="lang-fr">La lecture interne doit rester synchronisée avec l'audio du main editor — pas de dérive, pas d'audio doublé.</span><span class="lang-en">Internal playback must stay synchronized with main-editor audio — no drift, no doubled audio.</span></p>
+    <h3><span class="lang-fr">Étapes</span><span class="lang-en">Steps</span></h3>
+    <ol class="steps">
+      <li><span class="lang-fr">Projet avec audio importé sur la timeline principale.</span><span class="lang-en">Project with audio imported on the main timeline.</span></li>
+      <li><span class="lang-fr">Play depuis le parent Paint : les tracks internes défilent à la cadence du projet.</span><span class="lang-en">Play from the parent Paint layer: internal tracks advance at project cadence.</span></li>
+      <li><span class="lang-fr">Écouter : l'audio principal joue à la frame correcte, sans dérive ni doublon.</span><span class="lang-en">Listen: main audio plays at the correct frame, without drift or doubling.</span></li>
+      <li><span class="lang-fr">Seek + pause + re-play : la synchro reste stable.</span><span class="lang-en">Seek + pause + re-play: sync stays stable.</span></li>
+    </ol>
+    <div class="alert ok"><span class="lang-fr"><b>Attendu :</b> audio au bon point de la timeline, synchro stable après seek/pause.</span><span class="lang-en"><b>Expected:</b> audio at the right timeline point, sync stable after seek/pause.</span></div>
+    <div class="alert warn"><span class="lang-fr"><b>Si :</b> dérive progressive, audio doublé, ou frame rate interne décroché → FAIL avec la scène décrite.</span><span class="lang-en"><b>If:</b> progressive drift, doubled audio, or the internal frame rate slips → FAIL with the scene described.</span></div>
+    <div class="checks">
+      <label><input type="checkbox" id="R9-c1"><span><span class="lang-fr">Cadence interne = cadence projet</span><span class="lang-en">Internal cadence = project cadence</span></span></label>
+      <label><input type="checkbox" id="R9-c2"><span><span class="lang-fr">Audio principal à la bonne frame, sans dérive</span><span class="lang-en">Main audio at the correct frame, no drift</span></span></label>
+      <label><input type="checkbox" id="R9-c3"><span><span class="lang-fr">Pas d'audio doublé</span><span class="lang-en">No doubled audio</span></span></label>
+      <label><input type="checkbox" id="R9-c4"><span><span class="lang-fr">Synchro stable après seek/pause</span><span class="lang-en">Sync stable after seek/pause</span></span></label>
+    </div>
+    <div class="verdict">
+      <label><input type="radio" name="v-R9" value="pass"><span>PASS</span></label>
+      <label><input type="radio" name="v-R9" value="fail"><span>FAIL</span></label>
+      <label><input type="radio" name="v-R9" value="na"><span><span class="lang-fr">N-A / différé</span><span class="lang-en">N-A / deferred</span></span></label>
+    </div>
+    <div class="field">
+      <span class="lbl"><span class="lang-fr">Commentaire</span><span class="lang-en">Comment</span></span>
+      <textarea id="cm-R9" placeholder="…"></textarea>
+    </div>
+  </section>
+
+  <!-- ══════════ FREE NOTES ══════════ -->
+  <section class="card" id="card-notes">
+    <div class="badges"><span class="badge">NOTES</span></div>
+    <h2><span class="lang-fr">Observations libres / anomalies hors scope</span><span class="lang-en">Free observations / out-of-scope anomalies</span></h2>
+    <textarea id="free-notes" style="min-height:110px" placeholder="…"></textarea>
+  </section>
+
+  <!-- ══════════ EXPORT ══════════ -->
+  <section class="card" id="card-export">
+    <div class="badges"><span class="badge">EXPORT</span></div>
+    <h2><span class="lang-fr">Rapport</span><span class="lang-en">Report</span></h2>
+    <p class="why"><span class="lang-fr">Le JSON téléchargé est le handoff : dépose-le dans <code>/tmp</code> (ou colle son contenu) et donne-le à la session GSD — il sera archivé comme <code>53-UAT.json</code> par le plan 53-03.</span><span class="lang-en">The downloaded JSON is the handoff: drop it in <code>/tmp</code> (or paste its content) and give it to the GSD session — plan 53-03 archives it as <code>53-UAT.json</code>.</span></p>
+    <div class="actions">
+      <button class="btn" id="btn-export"><span class="lang-fr">Télécharger le rapport JSON</span><span class="lang-en">Download JSON report</span></button>
+      <button class="btn secondary" id="btn-md"><span class="lang-fr">Copier le résumé Markdown</span><span class="lang-en">Copy Markdown summary</span></button>
+      <button class="btn danger" id="btn-reset"><span class="lang-fr">Réinitialiser</span><span class="lang-en">Reset</span></button>
+    </div>
+    <div id="export-status"></div>
+  </section>
+
+  <footer class="sig">
+    <span>EFX Motion Editor · Phase 53 — Integrated v1.0.0 Acceptance</span>
+    <div class="sig-row">
+      <span><span class="lang-fr">Handoff : télécharge le rapport JSON, dépose-le dans <code>/tmp</code> et donne-le à la session GSD (archivé en <code>53-UAT.json</code>).</span><span class="lang-en">Handoff: download the JSON report, drop it in <code>/tmp</code> and give it to the GSD session (archived as <code>53-UAT.json</code>).</span></span>
+      <span><span class="lang-fr">Généré le 2026-10-11 · état sauvegardé localement dans ce navigateur</span><span class="lang-en">Generated 2026-10-11 · state saved locally in this browser</span></span>
+    </div>
+  </footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var KEY = 'efx-53-uat';
+  var ROW_IDS = ['R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9'];
+  var CHECKS = {
+    R1: ['c1', 'c2', 'c3'],
+    R2: ['c1', 'c2', 'c3', 'c4'],
+    R3: ['c1', 'c2', 'c3'],
+    R4: ['c1', 'c2', 'c3'],
+    R5: ['c1', 'c2', 'c3'],
+    R6: ['c1', 'c2', 'c3', 'c4'],
+    R7: ['c1', 'c2', 'c3'],
+    R8: ['c1', 'c2', 'c3', 'c4'],
+    R9: ['c1', 'c2', 'c3', 'c4']
+  };
+  var TITLES = {
+    R1: { fr: 'Nouveau parent Paint : tracks par défaut + fallback', en: 'New parent Paint layer: default tracks + fallback' },
+    R2: { fr: 'Finder : UNE icône, double-click ouvre', en: 'Finder: ONE icon, double-click opens' },
+    R3: { fr: 'Fixture pré-v1.0 rejetée explicitement', en: 'Pre-v1.0 fixture rejected explicitly' },
+    R4: { fr: 'Ajouter ≥3 tracks Paint internes, IDs stables', en: 'Add ≥3 internal Paint tracks, stable IDs' },
+    R5: { fr: 'Contenu distinct par track + cycle Hold Loop lié', en: 'Distinct frame content per track + linked Hold Loop cycle' },
+    R6: { fr: 'Reorder, hide, solo, opacity, blend', en: 'Reorder, hide, solo, opacity, blend' },
+    R7: { fr: 'Audit truth-table hide/solo (carry milestone-audit)', en: 'Hide/solo truth-table audit (milestone-audit carry)' },
+    R8: { fr: 'Scrub sur gap : preserve active sequence + key photo', en: 'Scrub onto gap: preserve active sequence + key photo' },
+    R9: { fr: 'Lecture des tracks internes, audio éditeur synchronisé', en: 'Play internal tracks with synchronized main-editor audio' }
+  };
+  var META_IDS = ['meta-app', 'meta-commit', 'meta-pair', 'meta-fixture'];
+
+  function $(id) { return document.getElementById(id); }
+
+  function lang() { return document.body.getAttribute('data-lang') || 'fr'; }
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+
+  function collectState() {
+    var state = { meta: {}, rows: {}, freeNotes: $('free-notes').value || '' };
+    META_IDS.forEach(function (id) { state.meta[id] = $(id).value || ''; });
+    ROW_IDS.forEach(function (rid) {
+      var verdict = '';
+      var radios = document.getElementsByName('v-' + rid);
+      for (var i = 0; i < radios.length; i++) { if (radios[i].checked) verdict = radios[i].value; }
+      var checks = {};
+      CHECKS[rid].forEach(function (cid) { checks[cid] = $(rid + '-' + cid).checked; });
+      state.rows[rid] = { verdict: verdict, checks: checks, comment: $('cm-' + rid).value || '' };
+    });
+    return state;
+  }
+
+  function missing(state) {
+    var list = [];
+    if (!state.meta['meta-app'].trim()) list.push(lang() === 'fr' ? '.app path vide' : '.app path empty');
+    if (!state.meta['meta-commit'].trim()) list.push(lang() === 'fr' ? 'commit vide' : 'commit empty');
+    if (!state.meta['meta-pair'].trim()) list.push(lang() === 'fr' ? 'chemin through-line (REQUIS) vide' : 'through-line path (REQUIRED) empty');
+    ROW_IDS.forEach(function (rid) {
+      if (!state.rows[rid].verdict) list.push(rid + ' ' + (lang() === 'fr' ? 'sans verdict' : 'no verdict'));
+    });
+    return list;
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(collectState())); } catch (e) { /* private mode */ }
+  }
+
+  function restore() {
+    var raw;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return; }
+    if (!raw) return;
+    var state;
+    try { state = JSON.parse(raw); } catch (e) { return; }
+    META_IDS.forEach(function (id) { if (state.meta && typeof state.meta[id] === 'string') $(id).value = state.meta[id]; });
+    ROW_IDS.forEach(function (rid) {
+      var row = state.rows && state.rows[rid];
+      if (!row) return;
+      if (row.verdict) {
+        var radios = document.getElementsByName('v-' + rid);
+        for (var i = 0; i < radios.length; i++) { radios[i].checked = (radios[i].value === row.verdict); }
+      }
+      if (row.checks) CHECKS[rid].forEach(function (cid) { if (row.checks[cid]) $(rid + '-' + cid).checked = true; });
+      if (typeof row.comment === 'string') $('cm-' + rid).value = row.comment;
+    });
+    if (typeof state.freeNotes === 'string') $('free-notes').value = state.freeNotes;
+  }
+
+  function updateProgress() {
+    var state = collectState();
+    var done = 0;
+    ROW_IDS.forEach(function (rid) {
+      var v = state.rows[rid].verdict;
+      var card = $('card-' + rid);
+      card.classList.remove('v-pass', 'v-fail', 'v-na');
+      if (v) { done++; card.classList.add('v-' + v); }
+    });
+    var pct = Math.round(done / ROW_IDS.length * 100);
+    $('progress-fill').style.width = pct + '%';
+    $('progress-count').textContent = done + '/' + ROW_IDS.length + ' · ' + pct + '%';
+  }
+
+  function onAnyChange() { save(); updateProgress(); }
+
+  function exportJSON() {
+    var state = collectState();
+    var miss = missing(state);
+    var payload = {
+      artifact: 'phase-53-uat',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      complete: miss.length === 0,
+      missing: miss,
+      build: {
+        appPath: state.meta['meta-app'],
+        commit: state.meta['meta-commit'],
+        pairPath: state.meta['meta-pair'],
+        fixturePath: state.meta['meta-fixture']
+      },
+      rows: ROW_IDS.map(function (rid) {
+        return {
+          id: rid,
+          title: TITLES[rid].en,
+          verdict: state.rows[rid].verdict || null,
+          checks: state.rows[rid].checks,
+          comment: state.rows[rid].comment
+        };
+      }),
+      freeNotes: state.freeNotes
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    var stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '');
+    a.href = URL.createObjectURL(blob);
+    a.download = '53-uat-report-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    reportStatus(miss);
+  }
+
+  function buildMarkdown() {
+    var state = collectState();
+    var L = lang();
+    var lines = [];
+    lines.push('# Phase 53 — Integrated v1.0.0 UAT report');
+    lines.push('');
+    lines.push('- Date: ' + new Date().toISOString());
+    lines.push('- Build (.app): ' + (state.meta['meta-app'] || '—'));
+    lines.push('- Commit: ' + (state.meta['meta-commit'] || '—'));
+    lines.push('- Through-line package: ' + (state.meta['meta-pair'] || '—'));
+    lines.push('- Legacy fixture: ' + (state.meta['meta-fixture'] || '—'));
+    var done = ROW_IDS.filter(function (rid) { return state.rows[rid].verdict; }).length;
+    lines.push('- Verdicts: ' + done + '/' + ROW_IDS.length);
+    lines.push('');
+    ROW_IDS.forEach(function (rid) {
+      var row = state.rows[rid];
+      var v = row.verdict ? row.verdict.toUpperCase() : (L === 'fr' ? 'SANS VERDICT' : 'NO VERDICT');
+      lines.push('## ' + rid + ' — ' + TITLES[rid][L] + ' : ' + v);
+      CHECKS[rid].forEach(function (cid) {
+        lines.push('- [' + (row.checks[cid] ? 'x' : ' ') + '] ' + rid + '-' + cid);
+      });
+      if (row.comment.trim()) lines.push('Comment: ' + row.comment.trim());
+      lines.push('');
+    });
+    if (state.freeNotes.trim()) {
+      lines.push('## Free notes');
+      lines.push(state.freeNotes.trim());
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
+  function copyMarkdown() {
+    var md = buildMarkdown();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(md).then(function () {
+        toast(lang() === 'fr' ? 'Résumé Markdown copié' : 'Markdown summary copied');
+      }, function () { fallbackCopy(md); });
+    } else {
+      fallbackCopy(md);
+    }
+  }
+
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast(lang() === 'fr' ? 'Résumé copié' : 'Summary copied'); }
+    catch (e) { toast('Copy failed'); }
+    ta.remove();
+  }
+
+  function reportStatus(miss) {
+    var el = $('export-status');
+    if (miss.length === 0) {
+      el.innerHTML = '<p class="complete">' + (lang() === 'fr' ? 'Rapport complet — tous les verdicts posés, META renseignée.' : 'Complete report — every verdict recorded, META filled.') + '</p>';
+    } else {
+      el.innerHTML = '<p class="missing">' + (lang() === 'fr' ? 'Exporté, mais incomplet : ' : 'Exported, but incomplete: ') + miss.join(' · ') + '</p>';
+    }
+  }
+
+  function resetAll() {
+    var ok = window.confirm(lang() === 'fr'
+      ? 'Tout effacer ? Verdicts, coches et commentaires seront perdus.'
+      : 'Clear everything? Verdicts, checks and comments will be lost.');
+    if (!ok) return;
+    try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    location.reload();
+  }
+
+  function setLang(L) {
+    document.body.setAttribute('data-lang', L);
+    document.documentElement.setAttribute('lang', L);
+    $('btn-fr').classList.toggle('on', L === 'fr');
+    $('btn-en').classList.toggle('on', L === 'en');
+    try { localStorage.setItem(KEY + '-lang', L); } catch (e) { /* ignore */ }
+  }
+
+  document.addEventListener('change', function (e) {
+    if (e.target && (e.target.matches('input') || e.target.matches('textarea'))) onAnyChange();
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target && (e.target.matches('input[type="text"]') || e.target.matches('textarea'))) onAnyChange();
+  });
+
+  $('btn-export').addEventListener('click', exportJSON);
+  $('btn-md').addEventListener('click', copyMarkdown);
+  $('btn-reset').addEventListener('click', resetAll);
+  $('btn-fr').addEventListener('click', function () { setLang('fr'); });
+  $('btn-en').addEventListener('click', function () { setLang('en'); });
+
+  var savedLang = null;
+  try { savedLang = localStorage.getItem(KEY + '-lang'); } catch (e) { /* ignore */ }
+  if (savedLang === 'en') setLang('en');
+
+  restore();
+  updateProgress();
+})();
+</script>
+</body>
+</html>
