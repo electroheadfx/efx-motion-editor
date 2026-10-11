@@ -1,0 +1,487 @@
+{
+  "artifact": "phase-53-uat",
+  "version": 1,
+  "exportedAt": "2026-10-11T12:14:47.546Z",
+  "complete": true,
+  "missing": [],
+  "build": {
+    "appPath": "/Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app",
+    "commit": "0c9e7def",
+    "pairPath": "/Users/lmarques/Desktop/efx-motion-editor-project-test/v1.0.0-2.mce",
+    "fixturePath": "/Users/lmarques/Dev/efx-motion-editor/app/src/efx-paint/document/__fixtures__/pre-52.2-project.mce.json"
+  },
+  "rows": [
+    {
+      "id": "R1",
+      "title": "New parent Paint layer: default tracks + fallback",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R2",
+      "title": "Finder: ONE icon, double-click opens",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R3",
+      "title": "Pre-v1.0 fixture rejected explicitly",
+      "verdict": "na",
+      "checks": {
+        "c1": false,
+        "c2": false,
+        "c3": false
+      },
+      "comment": "Legacy pre-v1.0 rejection not exercised. v1.0.0 is a clean break (project law: no backward compat, no migration) and there is no pre-existing user base on the old format. Scope decision, recorded not skipped."
+    },
+    {
+      "id": "R4",
+      "title": "Add ≥3 internal Paint tracks, stable IDs",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R5",
+      "title": "Distinct frame content per track + linked Hold Loop cycle",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R6",
+      "title": "Reorder, hide, solo, opacity, blend",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R7",
+      "title": "Hide/solo truth-table audit (milestone-audit carry)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R8",
+      "title": "Scrub onto gap: preserve active sequence + key photo",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R9",
+      "title": "Play internal tracks with synchronized main-editor audio",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R10",
+      "title": "Background: 5 images at frame 0, Repeat 3 → frames 0-14",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R11",
+      "title": "10 images at frame 15, Repeat 2 → frames 15-34, exclusive end 35",
+      "verdict": "na",
+      "checks": {
+        "c1": false,
+        "c2": false,
+        "c3": false
+      },
+      "comment": "Not individually executed in this session. Scenario (10 images at frame 15, Repeat 2) not run as a discrete setup."
+    },
+    {
+      "id": "R12",
+      "title": "Fallback gap: solid ↔ transparent, multi-surface comparison",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R13",
+      "title": "Background → infinity, next clip interrupts, move/delete deterministic",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R14",
+      "title": "Save, close, reopen: IDs, links, repeats, timing, fallback, composite",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R15",
+      "title": "Package IO through Rust commands on the packaged build",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R16",
+      "title": "Blocking failure modal when the package path is gone",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R17",
+      "title": "Offline reopen: package self-containment (cold open)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R18",
+      "title": "Moved sound file → \"missing\" modal, never silent playback",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R19",
+      "title": "The main editor sees only ONE Paint-layer result",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R20",
+      "title": "Stack parent Paint layers with ordinary layers",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R21",
+      "title": "Photo/reference source distinct from Background",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R22",
+      "title": "Progressive AND static/hold Reveal",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R23",
+      "title": "Reveal stretch: commits only on real change",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R24",
+      "title": "Multi-image bake: each frame’s source resolved frame-aligned",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R25",
+      "title": "Photo dialog not hijacked after first Reveal use",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R26",
+      "title": "Compare Studio flattened output, main preview, and export",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R27",
+      "title": "Paint content export enumerates frames correctly across all surfaces",
+      "verdict": "na",
+      "checks": {
+        "c1": false,
+        "c2": false,
+        "c3": false
+      },
+      "comment": "D-03 substitution: the documented 31-key / ~200-frame §7-pair material is missing; v1.0.0-2.mce (31-frame timeline, 3 cached frames) was the approved through-line. Export enumeration not individually exercised on the reduced material. N-A recorded instead of a quiet PASS."
+    },
+    {
+      "id": "R28",
+      "title": "Live gate: profiler counters (52.1)",
+      "verdict": "na",
+      "checks": {
+        "c1": false,
+        "c2": false,
+        "c3": false
+      },
+      "comment": "D-03 substitution: measured material would have been 31 frames, not the documented ~200. No profiler counter numbers recorded. N-A."
+    },
+    {
+      "id": "R29",
+      "title": "Live gate: live memory trace (52.1)",
+      "verdict": "na",
+      "checks": {
+        "c1": false,
+        "c2": false,
+        "c3": false
+      },
+      "comment": "D-03 substitution: measured material would have been 31 frames, not the documented ~200. No memory trace numbers recorded. N-A."
+    },
+    {
+      "id": "R30",
+      "title": "Live gate: open-time wall clock (52.1)",
+      "verdict": "na",
+      "checks": {
+        "c1": false,
+        "c2": false,
+        "c3": false
+      },
+      "comment": "D-03 substitution: measured material would have been 31 frames, not the documented ~200. No wall-clock numbers recorded. N-A."
+    },
+    {
+      "id": "R31",
+      "title": "Async PlayScript capture A→B (re-record)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R32",
+      "title": "Sidecar cleanup on disk (re-record)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R33",
+      "title": "F-01: identical-content switch (or explicit retirement)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R34",
+      "title": "c7x row 1: Layer 2: move a key, then click-positioning onto an interpolated frame — both behave exactly as on the first layer",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R35",
+      "title": "c7x row 2: Move a rail, then stretch a reveal rail — each commits, and the reveal stretch persists across save/reopen",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R36",
+      "title": "c7x row 3: Apply key spacing on a rail — the spacing applies and no \"already in flight\" tooltip follows",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R37",
+      "title": "c7x row 4: Trigger one failure deliberately, then the next edit — it must not be blocked, no timeout",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R38",
+      "title": "c7x row 5: Sequence import in one go: multi-image frame-aligned bake (kov rang ② replay)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R39",
+      "title": "wm6 sans-cuisson: look + white holes + parity (UAT pending)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true,
+        "c5": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R40",
+      "title": "physique-libre: spread 60-65 look judgment (UAT pending)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true,
+        "c5": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R41",
+      "title": "ni6: panel defaults + Blending label (UAT pending, 4 rows)",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true
+      },
+      "comment": ""
+    },
+    {
+      "id": "R42",
+      "title": "t2o: R7 look a/b/c, no parcellaire, rim fibres, live-vs-finalize",
+      "verdict": "pass",
+      "checks": {
+        "c1": true,
+        "c2": true,
+        "c3": true,
+        "c4": true
+      },
+      "comment": ""
+    }
+  ],
+  "freeNotes": "Acceptance type: author broad testing on the signed build (0c9e7def), 2026-10-11. Not a formal isolated per-row walk — no beta testers available. Per-row verdicts reflect the author's verification of the expected behavior during integrated testing.\n\nHonest reduced scope, explicitly recorded:\n- R3 N-A — legacy pre-v1.0 rejection, scope decision (v1.0.0 is a clean break, no pre-existing user base)\n- R11 N-A — not individually executed\n- R27 N-A — export enumeration not exercised on the reduced D-03 material\n- R28/R29/R30 N-A — no measurement numbers recorded (profiler, memory, wall clock)\n- D-03 substitution applies throughout: the documented 31-key / ~200-frame §7-pair is gone; the approved through-line is v1.0.0-2.mce (31 frames, 3 cached paint frames, 1 beat-mapped audio track).\n\nTotals: 36 pass, 6 na, 0 fail, 42/42 verdicts."
+}
