@@ -1,7 +1,7 @@
 # Phase 53: Signed Release Ledger (v1.0.0)
 
 **Plan:** 53-04 — distribution: user push + immutable tag (D-19) → GitHub draft with D-18 notes → downloaded-artifact verification (ACC-03)
-**Status:** IN PROGRESS — pre-conditions recorded; **awaiting Task 1 human-action (user creates + pushes the `v1.0.0` annotated tag)**
+**Status:** IN PROGRESS — Task 1 CLEARED (user pushed tag; agent verified read-only 2026-10-11); executing Task 2 (D-18 notes + draft release)
 **Recorded:** 2026-10-11 (agent, read-only checks only — no push, no credential file touched)
 **Sequence lock (D-05 + skill §1):** push `main` + annotated tag → agent verifies read-only → `gh release create --draft` with notes + DMG → verify-downloaded + install/smoke → (53-05: stop conditions + publish decision)
 
@@ -25,11 +25,12 @@ Modeled on the Phase 44 pre-conditions table. Every row cites its source ledger.
 
 | Ref | Value |
 |-----|-------|
-| `refs/heads/main` on origin | `3e6bc8cf4ef68937e902cc32f242b9bb603a6d25` — **already equals local `main`** (waves 1–2 merged and pushed; nothing left to push) |
-| `refs/tags/v1.0.0` on origin | **absent** — the tag has not been created/pushed yet |
-| Local `v1.0.0` tag | **absent** |
+| `refs/heads/main` on origin (at Task 1 recording) | `3e6bc8cf4ef68937e902cc32f242b9bb603a6d25` |
+| `refs/heads/main` on origin (post-push, re-checked) | `a2ec4b2f4a88d72d246aba69e33c991b21b07059` — equals the tag target (README rebuild commits `9c21b0fa`/`1a42ff2c` + merge `a2ec4b2f` landed between the Task 1 recording and the user's push) |
+| `refs/tags/v1.0.0` on origin | **present** — annotated tag object `32cf5283953fe19e432322a3bac6007bd35d0f9f` (verified below) |
+| Local `v1.0.0` tag | **present** — the same annotated tag object `32cf5283…`, dereferencing to commit `a2ec4b2f` |
 
-The bump commit (`359ada83`) is an ancestor of `3e6bc8cf`, so the correct tag target is `3e6bc8cf` (current `main` HEAD). `app/package.json` at that commit reads `"version": "1.0.0"`.
+The bump commit (`359ada83`) is an ancestor of the tag target (`a2ec4b2f` — `git merge-base --is-ancestor` exit 0). `app/package.json` at the tag reads `"version": "1.0.0"`.
 
 ## Task 1 — tag creation + push (D-19, user-owned)
 
@@ -43,16 +44,22 @@ git push origin v1.0.0
 
 The agent issues no push command (memory: user handles push/remote ops).
 
-### Tag verification outputs (agent, read-only — TO BE FILLED after the push)
+### Tag verification outputs (agent, read-only — captured 2026-10-11 after the user's push)
 
 | Check | Command | Output |
 |-------|---------|--------|
-| Tag present on origin | `git ls-remote --tags origin refs/tags/v1.0.0` | _pending_ |
-| Tag points at the 1.0.0 bump commit | `git show v1.0.0:app/package.json` → `"version": "1.0.0"` | _pending_ |
+| Tag present on origin | `git ls-remote --tags origin refs/tags/v1.0.0` | `32cf5283953fe19e432322a3bac6007bd35d0f9f\trefs/tags/v1.0.0` — **PASS** |
+| Local tag object matches remote | `git rev-parse v1.0.0` | `32cf5283953fe19e432322a3bac6007bd35d0f9f` (identical annotated tag object; type `tag`) |
+| Tag dereferences to the bump commit | `git rev-parse v1.0.0^{commit}` | `a2ec4b2f4a88d72d246aba69e33c991b21b07059` — equals `refs/heads/main` on origin (`git ls-remote origin refs/heads/main` → same SHA) |
+| Tag points at the 1.0.0 bump commit | `git show v1.0.0:app/package.json` → `grep '"version"'` | `"version": "1.0.0"` — **PASS** (stale-tag gate, v0.8.0 lesson) |
+| Bump ancestry | `git merge-base --is-ancestor 359ada83 v1.0.0` | exit 0 — the 1.0.0 bump commit is inside the tagged tree |
 
-> If either check fails, execution stops and is flagged: a pushed tag is immutable release
-> history — only the user may decide a delete-and-retag (v0.8.0 lesson). No `gh release`
-> command runs in this task.
+**Task 1 verdict: PASS (5/5).** All checks green; the agent issued no push command — the user
+pushed `main` and created/pushed the annotated tag (D-19). No `gh release` command ran in this
+task; the draft comes next (Task 2).
+
+> If any check had failed, execution would stop and be flagged: a pushed tag is immutable release
+> history — only the user may decide a delete-and-retag (v0.8.0 lesson).
 
 ## Release notes (D-18) — TO BE WRITTEN in Task 2
 
