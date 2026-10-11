@@ -11,9 +11,73 @@
 **Date:** 2026-10-11
 **Result:** PENDING — matrix pending the comprehensive pass (Task 2)
 
+## Worksheet META (prepared — Task 2 sub-step 0 material gate pending)
+
+| META field | Value | Status |
+|------------|-------|--------|
+| `meta-app` | `app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app` (absolute: `/Users/lmarques/Dev/efx-motion-editor/app/src-tauri/target/release/bundle/macos/EFX Motion Editor.app`) | ready |
+| `meta-commit` | `0c9e7defd9e13ba9f7b782d96242e8ce9692dafb` (= `origin/HEAD` at release time) | ready |
+| `meta-pair` | D-03 through-line `.mce` path — **MATERIAL GATE: must be confirmed with the user before row execution** (research Pitfall 2: documented `v1.0.0.mce` (31 keys) is gone; `~/Desktop/efx-motion-editor-project-test/v1.0.0-2.mce` exists with capacity 31 but only 3 real keys; also present: `1.0.0-sound.mce`, `Untitled Project.mce`) | **OPEN** |
+| `meta-fixture` | `app/src/efx-paint/document/__fixtures__/pre-52.2-project.mce.json` | ready |
+
 ## Pass/Fail Matrix
 
-Matrix pending the comprehensive pass (Task 2) — one row per worksheet card (same R-numbers as `53-UAT.html`), each carrying spec-step text, the shipped-English expected marker, and the live verdict.
+**Pre-pass skeleton — every verdict is `PENDING`; no row has been executed yet.** One row per worksheet card (same R-numbers as `53-UAT.html`, D-04 order), each carrying spec-step text, the shipped-English expected marker, and the live verdict recorded during the comprehensive pass.
+
+| # | Spec step / origin | Expected-outcome marker (shipped English) | Result |
+|---|--------------------|-------------------------------------------|--------|
+| R1 | New parent Paint layer: default tracks + fallback [SPEC STEP 1, FRESH DOC] | one default Paint track, one fixed Background track, the configured fallback — exactly one of each. | PENDING |
+| R2 | Finder: ONE icon, double-click opens [INSERT · FINDER, D-04] | one icon; double-click opens the project, warm and cold. | PENDING |
+| R3 | Pre-v1.0 fixture rejected explicitly [SPEC STEP 2, LEGACY REJECTION] | explicit "unsupported" failure, no partial mutation, no legacy rendering. | PENDING |
+| R4 | Add ≥3 internal Paint tracks, stable IDs [SPEC STEP 3, TRACK IDS] | ≥3 tracks added; every ID identical throughout the session. | PENDING |
+| R5 | Distinct frame content per track + linked Hold Loop cycle [SPEC STEP 4, HOLD LOOP] | distinct content per track; linked Hold Loop cycle, identical repetitions with no asset duplication. | PENDING |
+| R6 | Reorder, hide, solo, opacity, blend [SPEC STEP 5, TRACK CONTROLS] | reorder does not change identity; hide/solo/opacity/blend act exactly once (no double-application). | PENDING |
+| R7 | Hide/solo truth-table audit (milestone-audit carry) [INSERT · HIDE/SOLO AUDIT, 260911-g1g] | the full truth table matches; no leakage between session pill and persisted S. | PENDING |
+| R8 | Scrub onto gap: preserve active sequence + key photo [INSERT · j5r, 260920-j5r] | scrubbing onto a gap changes neither the fx sidebar nor the selection — including in the export dialog. | PENDING |
+| R9 | Play internal tracks with synchronized main-editor audio [SPEC STEP 6, AUDIO SYNC] | audio at the right timeline point, sync stable after seek/pause. | PENDING |
+| R10 | Background: 5 images at frame 0, Repeat 3 → frames 0-14 [SPEC STEP 7, BACKGROUND LOOP] | Frames 0-14 built exactly from the five linked sources (Repeat 3). | PENDING |
+| R11 | 10 images at frame 15, Repeat 2 → frames 15-34, exclusive end 35 [SPEC STEP 8, BACKGROUND LOOP] | Frames 15-34 = 2 cycles of the 10 sources; frame 35 outside the clip (exclusive end). | PENDING |
+| R12 | Fallback gap: solid ↔ transparent, multi-surface comparison [SPEC STEP 9, FALLBACK GAP] | All three surfaces show the same fallback (identical). | PENDING |
+| R13 | Background → infinity, next clip interrupts, move/delete deterministic [SPEC STEP 10, INFINITY + INTERRUPT] | Infinity extends to the next clip / parent end; move/delete restore the exact state with no overlapping frames. | PENDING |
+| R14 | Save, close, reopen: IDs, links, repeats, timing, fallback, composite [SPEC STEP 11, SAVE / REOPEN] | Identical round-trip across the six field families. | PENDING |
+| R15 | Package IO through Rust commands on the packaged build [INSERT · 260913-05k-a, D-16, PACKAGE IO] | Direct save works; disk writes via Rust commands only. | PENDING |
+| R16 | Blocking failure modal when the package path is gone [INSERT · 260913-05k-b, D-16, FAILURE MODAL] | Blocking modal + real error + no corrupted state; Open fails explicitly. | PENDING |
+| R17 | Offline reopen: package self-containment (cold open) [INSERT · DOC-05, D-14, COLD OPEN] | Full cold open: complete content, painting works, export works, zero network requests. | PENDING |
+| R18 | Moved sound file → "missing" modal, never silent playback [INSERT · SND-07, D-16, SOUND REF] | The modal shows the "missing" state for the moved file; no silent playback. | PENDING |
+| R19 | The main editor sees only ONE Paint-layer result [SPEC STEP 12, MAIN EDITOR] | Exactly one composite result per parent Paint layer in the main editor. | PENDING |
+| R20 | Stack parent Paint layers with ordinary layers [SPEC STEP 13, LAYER STACK] | Ordinary-layer behavior, persisted. | PENDING |
+| R21 | Photo/reference source distinct from Background [SPEC STEP 14, PHOTO REF] | Two independent tracks; no content or setting cross-talk. | PENDING |
+| R22 | Progressive AND static/hold Reveal [SPEC STEP 15, REVEAL] | Progressive: visible frame-by-frame evolution; hold: constant content. Both persisted. | PENDING |
+| R23 | Reveal stretch: commits only on real change [INSERT · kov-1, 260920-kov, UNDO HONESTY] | No-op: zero new undo entries, revision unchanged; real change: commits. | PENDING |
+| R24 | Multi-image bake: each frame's source resolved frame-aligned [INSERT · kov-2, 260920-kov, FRAME-ALIGNED BAKE] | Each baked frame resolves its own frame-aligned source. | PENDING |
+| R25 | Photo dialog not hijacked after first Reveal use [INSERT · kov-3, 260920-kov, DIALOG] | Dialog pure again (photo-reference) after first Reveal use. | PENDING |
+| R26 | Compare Studio flattened output, main preview, and export [SPEC STEP 16, WYSIWYG] | All three surfaces visually identical. | PENDING |
+| R27 | Paint content export enumerates frames correctly across all surfaces [INSERT · export enumeration, D-04, 52.3] | Every expected frame exported (none missing, none phantom); surfaces agree. | PENDING |
+| R28 | Live gate: profiler counters (52.1) [INSERT · live-gate, 52.1, D-12, PROFILER] | Profiler counters readable and stable during playback + scrub (values recorded). | PENDING |
+| R29 | Live gate: live memory trace (52.1) [INSERT · live-gate, 52.1, D-12, MEMORY] | Memory stabilizes (peak bounded by the LRU), no monotonic growth. | PENDING |
+| R30 | Live gate: open-time wall clock (52.1) [INSERT · live-gate, 52.1, D-12, OPEN TIME] | 3 measurements recorded, cold open perceived as immediate. | PENDING |
+| R31 | Async PlayScript capture A→B (re-record) [INSERT · 46-UAT, D-13, ASYNC CAPTURE] | A→B capture completes, async, UI responsive during the run. | PENDING |
+| R32 | Sidecar cleanup on disk (re-record) [INSERT · 46-UAT, D-13, SIDECAR] | Session sidecars removed; zero orphans from the session. | PENDING |
+| R33 | F-01: identical-content switch (or explicit retirement) [INSERT · 46-UAT, D-13, F-01] | Either PASS (correct behavior), or NA WITH an explicit retirement comment. | PENDING |
+| R34 | c7x row 1: Layer 2 move a key, then click-positioning onto an interpolated frame — both behave exactly as on the first layer [INSERT · c7x-1, 260921-c7x, SWEEP] | Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK. | PENDING |
+| R35 | c7x row 2: Move a rail, then stretch a reveal rail — each commits, and the reveal stretch persists across save/reopen [INSERT · c7x-2, 260921-c7x, SWEEP] | Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK. | PENDING |
+| R36 | c7x row 3: Apply key spacing on a rail — the spacing applies and no "already in flight" tooltip follows [INSERT · c7x-3, 260921-c7x, SWEEP] | Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK. | PENDING |
+| R37 | c7x row 4: Trigger one failure deliberately, then the next edit — it must not be blocked, no timeout [INSERT · c7x-4, 260921-c7x, SWEEP] | Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK. | PENDING |
+| R38 | c7x row 5: Sequence import in one go: multi-image frame-aligned bake (kov range ② replay) [INSERT · c7x-5, 260921-c7x, SWEEP] | Behavior per the c7x fix: no latch, no phantom timeout, successive edits OK. | PENDING |
+| R39 | wm6 sans-cuisson: look + white holes + parity (UAT pending) [INSERT · wm6, 260930-wm6, SWEEP, AUTOMATED-READY] | (a) zero white cuts; (b) identical look; (c) equal digest; (d) no 2nd-stroke freeze; (e) no fade on key return. | PENDING |
+| R40 | physique-libre: spread 60-65 look judgment (UAT pending) [INSERT · libre, 260930-libre, SWEEP, LOOK] | The "full spread" look is back: mass transport at the edge, textured interior, no noise; max visibly richer than min. | PENDING |
+| R41 | ni6: panel defaults + Blending label (UAT pending, 4 rows) [INSERT · ni6, 260930-ni6, SWEEP, DEFAULTS] | Defaults = SD 20, Blending 0, Spread 60-65, Smoothing Soft; label "Blending"; nothing visually changed. | PENDING |
+| R42 | t2o: R7 look a/b/c, no parcellaire, rim fibres, live-vs-finalize [INSERT · t2o, 260929-t2o, SWEEP, LOOK] | Fibre-scale textured edge (no smoothing, no pixel-noise), solid spans, readable rim, continuous live→finalize. | PENDING |
+
+Spec step 17 (downloaded-artifact verification) is mapped to `53-VERIFY-DOWNLOADED.md` (plan 53-04), per the worksheet footer — not part of this pass.
+
+## Divergence table (spec-vs-implementation)
+
+_Pending the comprehensive pass — divergences are recorded, NOT fixed (D-21, release-only phase)._
+
+## User approval
+
+_Pending — the user's explicit approval of the archived record closes this record._
 
 ## Hard boundaries respected
 
