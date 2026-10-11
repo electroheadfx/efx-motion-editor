@@ -666,7 +666,7 @@ Plans:
   2. Native UAT validates the full 17-step surface (document init, legacy rejection, track CRUD, Background loops, fallback, Reveal, save/reopen, main-editor parity).
   3. Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication.
 
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 
@@ -677,7 +677,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 53-03-PLAN.md — User credentialed release wrapper (D-22) + comprehensive single signed-bundle UAT pass (D-01) archived as 53-UAT.md + 53-UAT.json (ACC-02)
+- [x] 53-03-PLAN.md — User credentialed release wrapper (D-22) + comprehensive single signed-bundle UAT pass (D-01) archived as 53-UAT.md + 53-UAT.json (ACC-02)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -710,4 +710,4 @@ Plans:
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
 | 52.1. Modern frame runtime + native HD paint | v1.0.0 | 7/7 | Complete | 2026-09-09 |
 | 52.2. Project package format — references only | v1.0.0 | 16/16 | Complete | 2026-09-18 |
-| 53. Integrated v1.0.0 Acceptance | v1.0.0 | 2/5 | In Progress | - |
+| 53. Integrated v1.0.0 Acceptance | v1.0.0 | 3/5 | In Progress | - |
