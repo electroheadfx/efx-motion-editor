@@ -2,217 +2,213 @@
 
 ![EFX Motion Editor header artwork — cinematic stop-motion editor banner](docs/assets/header-efx-motion.png)
 
-A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes. Import key photographs, arrange them into timed sequences, add overlay layers with blend modes and keyframe animation, apply cinematic FX effects, add GLSL shader effects, paint and rotoscope frame-by-frame with a **dual-mode paint layer** (Flat vector strokes and FX spectral pigment rendering), **bezier path editing**, **inline color picker** with 4 modes, and **stroke draw-reveal animation**, plus a **standalone Physics Paint window** with a **deterministic Roto timeline** for physics-driven rotoscoping, apply **Hollywood-grade per-layer motion blur** with GLSL velocity shaders and sub-frame accumulation, import audio with waveforms, preview in real-time with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1).
+A macOS desktop application for creating **cinematic stop-motion films** from photography keyframes: import key photographs, arrange them into timed sequences, composite multi-track layers with blend modes and keyframe animation, apply cinematic FX and GLSL shaders, paint and rotoscope frame-by-frame, and export PNG image sequences or video (ProRes/H.264/AV1). Alongside the photo pipeline stands a second pillar — the **Physics Paint Studio**: a standalone window where pressure-driven wet-media physics, a deterministic Roto timeline, a reusable Scripts library, and a per-document sound track turn hand-drawn animation into Loop Clips on the main timeline.
 
 <!-- Screenshot: Main editor view -->
 
-## Features
+## Highlights (v1.0.0)
+
+- **Multi-track EFX Paint document** — one parent paint layer now holds a whole frame-animation document: internal tracks with hide/solo/opacity/blend, a deterministic compositor, a fixed Background track, a photo/reference track, and Reveal.
+- **Physics Paint Studio** — its own window (the main window hides while it is open): deterministic Roto timeline, project-scoped Scripts library, document sound track, pressure-driven physics look controls.
+- **`.mce` project package** — manifest + per-layer JSON + WebP frame sidecars; references-only, digest-verified, changed-files-only atomic saves.
+- **Modern HD frame runtime** — byte-backed frames with native Rust WebP decoding, a 512 MB decode LRU, and a raised 1920 px working-resolution cap.
+- **Reveal** — photo sources revealed through paint/Script coverage, baked into keys.
+- **Cinema pipeline** — 17 GPU shaders, 18 GL transitions, per-layer motion blur, multi-clip audio; ships as a signed and notarized macOS (Apple Silicon) build.
+
+## Photo Workflow
 
 ### Key Photo Workflow
 
-Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hold frame counts, and arrange into named sequences. Support for solid color, transparent, and gradient key entries alongside imported images. Collapsible key photo lists in the sidebar with click-to-toggle.
+Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hold frame counts, and arrange into named sequences. Solid color, transparent, and gradient key entries sit alongside imported images — linear/radial/conic gradients with 2–5 stops, drag-positioned on a visual stop bar with HEX/RGBA/HSL editing, rendered in preview, thumbnails, and export.
 
 <!-- Screenshot: Key photo strip with solid/transparent entries -->
 
 ### Multi-Sequence Timeline
 
-Create, reorder, duplicate, and rename sequences with per-sequence frame rate and resolution settings. Canvas-based timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
+Create, reorder, duplicate, and rename sequences with per-sequence frame rate and resolution. Canvas timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
 
 <!-- Screenshot: Timeline with multiple sequences -->
 
-### Layer System
+### Layers & Compositor
 
-Stack static images, image sequences, or video layers with opacity, blend modes (normal, screen, multiply, overlay, add), and transform controls (position, scale, rotation, crop). Live canvas manipulation with drag handles.
+Stack static images, image sequences, or video layers with opacity, blend modes (normal, screen, multiply, overlay, add), and transforms (position, scale, rotation, crop) with live canvas drag handles.
 
 <!-- Screenshot: Layer compositing with transform handles -->
 
-### Cinematic FX Effects
+### Transitions
 
-Built-in generator effects (film grain, particles, lines, dots, vignette) and adjustment effects (color grade with presets, GPU-accelerated blur). All effects have per-layer keyframe animation with interpolation curves.
-
-<!-- Screenshot: FX effects panel -->
-
-### GLSL Shader Library
-
-17 GPU-powered shader effects ported from Shadertoy, organized in a visual browser with animated previews and real-time parameter controls.
-
-**FX Image Shaders** — Process the image below with GPU filters:
-
-| Shader | Description |
-|--------|-------------|
-| B&W Pixel Filter | Grayscale, monotone, and duotone modes with color pickers |
-| Super Film Grain | 1920s film look with grain, scratches, dust, flicker, and vignette |
-| Color Fusion | RGB channel cycling for chromatic persistence effects |
-| Fast Blur | GPU disc blur with noise-rotated sampling (1-4 steps) |
-| Color Temperature | Warm/cool white balance in perceptual ProPhoto RGB space |
-| CRT Screen | Retro CRT with pixelation, barrel distortion, chromatic aberration |
-| Filmora Shake | Camera shake with motion blur, rotation, and RGB separation |
-
-**Generator Shaders** — Procedural animated content as timeline layers:
-
-| Shader | Description |
-|--------|-------------|
-| Star Nest | Volumetric star field with dark matter and distance fading |
-| Spiral Lit Clouds | Volumetric raymarched clouds through a twisting luminous tunnel |
-| The Drive Home | Rainy night drive with bokeh traffic lights and rain drops |
-| Clouds 3D Fly | Volumetric cloud flythrough with sun lighting and FBM noise |
-| Sun with Stars | Volumetric sun with fractal nebula and twinkling star field |
-| Neon Doodle Fuzz | Twin neon tubes weaving through space with fuzzy glow |
-| Seascape | Realistic ocean with raymarched waves and sky reflections |
-| Ocean Water | Multi-wave ocean simulation with ground and subsurface scattering |
-| Indefinite | Abstract fractal cloud tunnel with warm volumetric glow |
-| Zippy Zaps | Electric fractal lightning with vibrant color cycling |
-
-The shader library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](app/src/lib/shaders/SHADER-SPEC.md) for how to add new shaders.
-
-<!-- Screenshot: GLSL shader browser with animated previews -->
-
-### Gradient Fills
-
-Apply linear, radial, or conic gradient fills to solid key entries with 2–5 color stops. Drag-to-position gradient stops on a visual gradient bar, edit stop colors via HEX/RGBA/HSL inputs, and adjust angle or center point. Gradients render in the preview canvas, timeline thumbnails, and video export.
-
-<!-- Screenshot: Gradient color picker with stop editor -->
-
-### Fade & Cross-Dissolve Transitions
-
-Fade in/out and cross-dissolve transitions between sequences with opacity and solid color modes.
-
-### GL Shader Transitions
-
-18 GPU-powered transition shaders ported from [gl-transitions.com](https://gl-transitions.com/), rendered via a dual-texture WebGL2 pipeline. Browse transitions with animated previews showing actual sequence content, quick-apply from the grid, or expand for parameter tuning. Swap shaders after applying without losing duration/curve settings.
-
-| Transition | Description |
-|-----------|-------------|
-| Directional | Slide the scene in a configurable direction |
-| Directional Wipe | Hard-edge wipe with configurable direction and smoothness |
-| Wipe Left / Wipe Down | Clean axis-aligned wipe transitions |
-| Dissolve | Random noise dissolve |
-| Fade Color | Dissolve through a solid color intermediate |
-| Fade Grayscale | Dissolve through grayscale intermediate |
-| Swap | Two images swap positions with perspective and reflection |
-| Window Slice | Venetian blinds slice transition |
-| Slides | Multi-panel slide transition |
-| Cross Zoom | Zoom blur cross-dissolve |
-| Zoom In Circles | Circular reveal zoom pattern |
-| Simple Zoom | Simple zoom-in transition |
-| Cross Warp | Warped cross-dissolve |
-| Cube | 3D cube rotation with reflection |
-| Pixelize | Pixelation with configurable grid size |
-| Dreamy | Dreamy blur dissolve |
-| Glitch Memories | Glitch effect with chromatic aberration |
-
-Transitions render in both the live preview and video export pipelines. Duration, easing curve, and per-shader parameters are editable in the sidebar. Project persistence via `.mce` v15 format.
+Fade in/out and cross-dissolve transitions (opacity and solid color modes) plus **18 GPU transitions** from [gl-transitions.com](https://gl-transitions.com/) through a dual-texture WebGL2 pipeline: Directional, Directional Wipe, Wipe Left, Wipe Down, Dissolve, Fade Color, Fade Grayscale, Swap, Window Slice, Slides, Cross Zoom, Zoom In Circles, Simple Zoom, Cross Warp, Cube, Pixelize, Dreamy, Glitch Memories. Browse with animated previews, quick-apply from the grid, and tune duration, easing curve, and per-shader parameters — swap shaders after applying without losing settings. Rendered in both the live preview and video export.
 
 <!-- Screenshot: GL transition browser with animated previews -->
 
-### Audio Import & Waveform
-
-Import WAV, MP3, AAC, or FLAC audio files. Audio waveform renders on the timeline below content tracks. Synced playback with volume, mute, drag offset, and fade in/out controls. Audio persists across project save/reopen.
-
-<!-- Screenshot: Audio waveform on timeline -->
-
-### Paint Layer / Rotopaint
-
-Frame-by-frame drawing and rotoscoping directly on the canvas. Powered by a perfect-freehand brush engine for smooth, pressure-sensitive strokes. 8 tools: select, brush, eraser (path-based), eyedropper, flood fill, line, rectangle, and ellipse. Onion skinning overlay shows ghosted paint from adjacent frames with configurable range and opacity falloff. Paint data persists as sidecar JSON files alongside the project. Paint layers composite in both the live preview and video export pipelines with full blend mode and opacity support.
-
-**Dual-Mode Paint System** — Each paint frame operates in one of two exclusive modes: **Flat** (perfect-freehand vector strokes) or **FX** (p5.brush spectral pigment rendering). Mode conversion dialogs handle transitions between flat and FX with full undo support. Per-layer paint mode persists across sessions. Physics-driven painting lives in the dedicated standalone Physics Paint window (see Standalone Physics Paint below).
-
-**Brush FX Styles** — Post-process FX workflow: draw flat strokes, select them, then apply artistic styles powered by [p5.brush](https://p5-brush.cargo.site/) with Kubelka-Munk spectral pigment mixing (blue + yellow = green, not gray). 6 brush styles: flat, watercolor, ink, charcoal, pencil, and marker. Per-style FX parameters (bleed, grain, scatter, field strength, edge darken) with real-time slider controls. Per-frame batch rendering ensures overlapping strokes get physically-correct spectral blending in a single GLSL pass.
-
-**Inline Color Picker** — Canvas-adjacent color picker panel (260px) with 4 color modes: Box (SV square + hue slider), TSL (tint/shade/lightness sliders), RVB (red/green/blue sliders), and CMYK (cyan/magenta/yellow/key sliders). All sliders render live gradient backgrounds. HEX input with real-time sync, auto-apply on any interaction. Recent colors row (last 12) and persistent favorites (click to save, right-click to remove). Color changes apply instantly to brush and selected strokes.
-
-**Circle Cursor** — Photoshop-style brush cursor shows a circle at the current brush pixel size, scaling with canvas zoom. Provides precise visual feedback for brush coverage during drawing.
-
-**Wireframe Overlay** — Selected strokes display a visible wireframe/path overlay for easy identification and grab targeting. Works for both flat and FX strokes with distinct visual styles.
-
-**Stroke Draw-Reveal Animation** — Distribute a selected stroke's points across a target frame range using speed-based distribution (slow drawing = more frames, fast = fewer). Creates hand-drawn reveal animations from existing strokes with single atomic undo.
-
-**Select Tool** — Click to select strokes, Cmd/Ctrl+click for multi-select, Cmd+A to select all. Selected elements can be moved (drag), resized (corner/edge handles for uniform/non-uniform scale), rotated (rotate handle above bounding box with custom cursor), recolored, resized via slider, and reordered (To Back / Backward / Forward / To Front). Alt+drag to duplicate any selected stroke. Rotation works on all element types: brush strokes rotate point-by-point, geometry shapes (rect, ellipse) rotate visually via canvas transform with proper hit-testing. Apply or change FX styles on selected strokes with instant re-render. Toggle flat/FX preview with F key.
-
-**Bezier Path Editing** — Convert freehand strokes to editable bezier curves with the pen tool. Drag anchor points and control handles to reshape stroke paths with real-time visual feedback. Add new control points by clicking on path segments, delete points with Backspace. Progressive simplify button reduces path complexity incrementally. Supports smooth and corner anchor types with handle breaking. All bezier edits support undo/redo with one entry per drag gesture. Edited anchors persist across project save/load via paint sidecar JSON.
-
-**Paint Mode** — Sticky edit mode (P key or toolbar button) that locks focus to the paint layer. Canvas controls are replaced by a dedicated paint toolbar. Exit via ESC, P key, or orange pulsating "Exit Paint Mode" button. Sequence overlay (O key) shows reference frames underneath paint at configurable opacity. Copy strokes to next frame for animation workflows. Configurable solid paint background color. Brush color and size persist across sessions (default: #203769 at 35px).
-
-**Stroke List Panel** — Dedicated panel within PaintProperties showing all strokes on the current frame. Drag to reorder strokes (updates canvas rendering order immediately), click to select (bidirectional sync with canvas selection), toggle visibility eye icon to hide/show individual strokes, delete with full undo/redo support. Multi-select via Cmd+click, auto-scrolls to keep selected strokes visible. S key activates select tool in paint mode (Alt+S toggles solo overlay).
-
-**Tablet & Pen Support** — Native macOS tablet pressure bridge via NSEvent. Supports pen pressure sensitivity with easing/taper curves for natural brush dynamics, tilt detection, and coalesced touch events for high-resolution stroke capture at full tablet polling rate. Works with Wacom, Apple Pencil (iPad Sidecar), and other pressure-sensitive input devices.
-
-<!-- Screenshot: Paint overlay with brush FX styles -->
-
-### Standalone Physics Paint
-
-Physics-driven rotoscoping ships as **efx-physic-paint**, a complete standalone interactive application running in its own Tauri window — preserving native incremental physics behavior (the earlier headless batch adapter approach was abandoned in favor of this standalone window).
-
-- **Typed editor bridge** — The parent editor and the Physics Paint window communicate through a typed Tauri/postMessage bridge with exact acknowledgements ([`app/src/lib/physicPaintBridge.ts`](app/src/lib/physicPaintBridge.ts)), including native frame synchronization via the Tauri-native `physic-paint:seek-frame` path.
-- **Deterministic Roto timeline** — Stable physical-frame keys with direct frame positioning, generated interpolation, dynamic interpolation spacing controls, and atomic acknowledged edits.
-- **Live pixel caching** — Automatic live PNG pixel caching with durable alpha composites, cached playback, and real-key repaint.
-- **Undo/Redo** — Accepted-only history, 10 levels per brush.
-- **Movement & groups** — Single-key drag movement, rigid multi-select group drag and group delete, and Force Spacing.
-- **Clipboard operations** — Group Copy, Paste, Duplicate, and fail-closed Cut.
-- **Roto Scripts** — Durable project-scoped script library with reusable JSON presets and WebP thumbnails, Copy Script / Apply Script clipboard, and the Play Script one-hand multi-frame replay workflow (the former separate Play workflow is fused into Roto Scripts).
-
-### Per-Layer Motion Blur
-
-Hollywood-quality per-layer directional motion blur with cinematographic shutter angle control. Each animated layer is individually blurred based on its velocity — fast-moving layers streak while stationary layers stay razor-sharp, just like a real film camera with a rotary disc shutter.
-
-**Real-Time Preview** — WebGL2 GLSL directional blur shader runs per-layer in the preview pipeline. Configurable quality tiers (Low/16 samples, Medium/32 samples) for smooth playback. Toggle with `M` key or toolbar button, adjust shutter angle (0-360 degrees) and quality from the dropdown popover.
-
-**Export with Sub-Frame Accumulation** — Export pipeline renders 8 to 128 sub-frames per output frame at fractional temporal positions, accumulates them in a Float32 buffer for mathematically perfect averaging, then applies GLSL velocity blur per sub-frame. The result is cinema-grade motion blur indistinguishable from footage shot on a physical camera. Export shutter angle can be overridden independently from preview settings.
-
-**Velocity Intelligence** — Per-layer velocity cache tracks keyframe position deltas frame-to-frame with automatic seek invalidation. Layers below the motion threshold are skipped entirely — zero GPU cost for static elements. The velocity engine feeds both the preview GLSL shader and the export accumulation pipeline.
-
-**Controls** — Toolbar toggle (Zap icon) with dropdown for shutter angle slider and quality selector. Export dialog with enable toggle, shutter angle override, and sample count selector (8/16/32/64/128). Keyboard shortcut `M` (guarded in paint mode). All settings persist in the `.mce` project file.
-
-<!-- Screenshot: Motion blur preview with shutter angle popover -->
-
-### Canvas Motion Path
-
-After Effects-style spatial keyframe path editing directly on the canvas. Animated layers display their trajectory as a dotted trail with interactive keyframe markers. Drag keyframe positions on the canvas to reshape motion paths in real-time with auto-seek and undo coalescing.
-
-<!-- Screenshot: Motion path with keyframe markers -->
-
 ### Keyframe Animation
 
-Per-layer keyframe animation with 4 interpolation curves (linear, ease-in, ease-out, ease-in-out). Animate position, scale, rotation, opacity, blur, and FX parameters over time. Keyframe navigation and diamond editing in the sidebar.
+Per-layer keyframes with 4 interpolation curves (linear, ease-in, ease-out, ease-in-out) animating position, scale, rotation, opacity, blur, and FX parameters, with sidebar diamond editing and navigation. After Effects-style canvas motion paths show each layer's trajectory as a dotted trail — drag keyframes on the canvas to reshape paths with auto-seek and undo coalescing.
 
 <!-- Screenshot: Keyframe animation controls -->
 
-### Media Management
-
-Color-coded usage badges on imported assets showing usage counts across all sequences. Safe removal with cascade deletion and undo support. Right-click context menu for quick asset management.
-
-<!-- Screenshot: Import grid with usage badges -->
-
 ### Video Export
 
-Export as PNG image sequences with resolution multipliers, or encode video directly (ProRes/H.264/AV1) via auto-provisioned FFmpeg. Optional per-layer motion blur with up to 128 sub-frame accumulation samples for cinema-grade output. Export the full timeline or selected sequence only for fast iteration. Progress tracking with metadata sidecars.
+Export PNG image sequences with resolution multipliers, or encode ProRes/H.264/AV1 directly via auto-provisioned FFmpeg. Full timeline or single sequence, progress tracking with metadata sidecars, and up to 128 sub-frame accumulation samples for motion blur. Paint content exports through the compositor — paint-only projects render every frame of the range in both canvas orientations.
 
 <!-- Screenshot: Export dialog -->
 
-### Canvas Preview
+## Physics Paint Studio
 
-Real-time preview with zoom/pan, pinch gestures, fit-to-window, and fullscreen mode with letterboxed preview. Full-speed playback mode for performance testing.
+Physics-driven rotoscoping ships as **efx-physic-paint**, a complete interactive application running in its own Tauri window (the earlier headless batch adapter was abandoned in favor of this standalone window). Opening a Physics Paint layer launches the Studio as a single-window session: while the Studio is open the main window hides and the Studio owns the layer session.
+
+<!-- Screenshot: Physics Paint Studio — Roto timeline -->
+
+### Studio Window
+
+- **Typed editor bridge** — the parent editor and the Studio communicate through a typed Tauri/postMessage bridge with exact acknowledgements ([`app/src/lib/physicPaintBridge.ts`](app/src/lib/physicPaintBridge.ts)), including native frame synchronization via the Tauri-native `physic-paint:seek-frame` path.
+- **Launch & geometry** — double-click a Physics Paint layer row in the main sidebar to open the Studio; on every open the Studio window mirrors the main window's current bounds.
+- **Main-editor identity** — the layer row shows its display name, accent color, and entry points; the layer spans the visible timeline view at the current zoom/scroll, and new layers stack at the top of the layer list.
+
+### Deterministic Roto Timeline
+
+- Stable physical-frame keys with direct frame positioning, generated interpolation, dynamic interpolation spacing controls, and a document-level interpolation mode.
+- NLE-style ruler seek with a playhead bar; the timeline viewport auto-scrolls to the frame you opened.
+- Live PNG pixel caching with durable alpha composites, cached playback, and real-key repaint.
+- Undo/redo: accepted-only history, 10 levels per brush.
+- Movement & groups: single-key drag, rigid multi-select group drag, group delete, and Force Spacing.
+- Clipboard: group Copy, Paste, Duplicate, and fail-closed Cut.
+
+### Roto Scripts Library
+
+- Durable project-scoped library of reusable JSON presets with WebP thumbnails, plus a Copy Script / Apply Script clipboard.
+- Apply creates a Loop Clip on the main timeline — link to an existing cycle or create a new one; Play Script replays a multi-frame sequence into the source cycle (the former separate Play workflow lives here).
+- Every Action from every physics layer is visible in the Scripts panel and applies to the layer that is current when you apply — with an All / current-layer scope selector.
+- Apply and Clear live in the Tools popover under an Actions section.
+
+<!-- Screenshot: Roto Scripts panel -->
+
+### Document Sound Track
+
+- The physics paint document carries its own sound clip (dialogue or foley for the animation being drawn): waveform in the Studio timeline, drag to reposition, trim start/end points.
+- Studio playback plays the clip; the main editor plays it mixed with the main-timeline audio (music/ambience keeps its role and stays read-only in the Studio).
+- Edits sync across both windows and survive save/reopen — `.mce` keeps the sound as a disk reference, never copied into the package.
+
+<!-- Screenshot: Document sound waveform in the Studio timeline -->
+
+### Pressure & Look Controls
+
+- Tablet pressure drives stroke thickness: the settled silhouette follows the gesture (hairlines and tapers stay clean) with held-pose determinism, so frames do not boil.
+- **Spread**, **Shape detail** (fractal outline noise scaled to local stroke width), paper grain scale (Tools), brush smoothing, and water controls shape the wet-media look; a pressure-varying ribbon previews each stroke before it settles.
+- Bristle deposit lays coherent translucent streaks along the ribbon — build-up by overlap, not salt-and-pepper.
+- Tools: brush, eraser (fresh stroke clears the whole stroke; dry paint is a pixel eraser), temporary erase while Alt is held, Move for fresh strokes, and a Photoshop-style foreground/background swatch with X-swap.
+
+## Features
+
+### EFX Paint — Multi-Track Paint Document
+
+One parent paint layer holds a complete multi-track frame-animation document — a v1.0 clean break: pre-v1.0 paint data is rejected with an explicit dialog, never migrated.
+
+- Multiple internal frame tracks with track-local paint/Roto/PlayScript state, revisions, and caches; track CRUD, active selection, hide/solo, opacity/blend, and cross-track drags.
+- Deterministic internal compositor: one flattened parent raster per frame, feeding both preview and export.
+- Fixed Background track with imported Loop Clips (finite/infinite repeat, gaps, transparent fallback).
+- Photo/reference track: reference-only, reveal-source, or masked-transform-source modes.
+- Read-only, frame-synchronized audio monitoring while editing — audible scrub and play-from-cursor.
+
+<!-- Screenshot: EFX Paint multi-track timeline -->
+
+### Reveal
+
+A Reveal rail — the fourth rail kind — shows a photo source through paint/Script coverage: the reference as placed is masked by coverage alpha (destination-in) and baked into keys. Progressive and static Reveal modes; create, replay, resize, or delete the rail, each with its own undo.
+
+<!-- Screenshot: Reveal rail with baked mask -->
+
+### Paint Layer / Rotopaint
+
+Frame-by-frame drawing and rotoscoping directly on the canvas, powered by a perfect-freehand brush engine with pressure-sensitive strokes, 8 tools (select, brush, path eraser, eyedropper, flood fill, line, rectangle, ellipse), and onion skinning with configurable range and opacity falloff.
+
+- **Dual-mode paint** — each frame is Flat (vector strokes) or FX (p5.brush spectral pigment); conversion dialogs handle transitions with full undo, and the mode persists per layer.
+- **Brush FX styles** — flat, watercolor, ink, charcoal, pencil, marker with Kubelka-Munk spectral pigment mixing (blue + yellow = green) and per-style parameters (bleed, grain, scatter, field strength, edge darken); per-frame batch rendering blends overlapping strokes in a single GLSL pass.
+- **Select & edit** — move/resize/rotate/recolor/reorder strokes, Alt-drag duplicate, bezier path editing with anchors and control handles, progressive path simplify, wireframe overlay, and a stroke list panel with visibility toggles and drag reorder.
+- **Stroke draw-reveal animation** — distribute a stroke's points across a frame range by drawing speed for hand-drawn reveals, with single-atomic undo.
+- **Inline color picker** — Box, TSL, RVB, and CMYK modes with live gradient sliders, HEX sync, recents, and favorites; circle brush cursor at pixel size.
+- **Paint mode** — sticky edit mode (P) with a dedicated toolbar, sequence overlay (O), copy-strokes-to-next-frame, and ESC to exit.
+- **Tablet & pen support** — native macOS pressure bridge with easing/taper curves, tilt, and coalesced touch events (Wacom, Apple Pencil via Sidecar).
+
+<!-- Screenshot: Paint overlay with brush FX styles -->
+
+### Per-Layer Motion Blur
+
+Hollywood-style per-layer directional blur with cinematographic shutter angle (0–360°). WebGL2 preview at Low (16) or Medium (32) samples, toggled with `M`; export renders 8–128 sub-frames per output frame accumulated in a Float32 buffer with GLSL velocity blur, overridable independently from preview. A per-layer velocity cache with seek invalidation skips layers below the motion threshold — zero cost for static elements. Settings persist in the project file.
+
+<!-- Screenshot: Motion blur preview with shutter angle popover -->
+
+### Audio
+
+Import WAV, MP3, AAC, or FLAC with waveforms rendered on the timeline below content tracks. Multiple clips per project with per-clip gain (dB), fade in/out with curves, position and trim controls, mute, and drag offset; playback stays synced and audio persists across save/reopen as disk references.
+
+<!-- Screenshot: Audio waveform on timeline -->
+
+### Cinematic FX Effects
+
+Built-in generator effects (film grain, particles, lines, dots, vignette) and adjustment effects (color grade with presets, GPU-accelerated blur), all with per-layer keyframe animation and interpolation curves.
+
+### GLSL Shader Library
+
+17 GPU-powered shader effects ported from Shadertoy, in a visual browser with animated previews and real-time parameter controls:
+
+- **FX image shaders** — B&W Pixel Filter, Super Film Grain, Color Fusion, Fast Blur, Color Temperature, CRT Screen, Filmora Shake.
+- **Generator shaders** (procedural timeline layers) — Star Nest, Spiral Lit Clouds, The Drive Home, Clouds 3D Fly, Sun with Stars, Neon Doodle Fuzz, Seascape, Ocean Water, Indefinite, Zippy Zaps.
+
+The library is extensible — see [`src/lib/shaders/SHADER-SPEC.md`](app/src/lib/shaders/SHADER-SPEC.md) for how to add new shaders.
+
+<!-- Screenshot: GLSL shader browser with animated previews -->
+
+### Media, Preview & Professional Controls
+
+- Color-coded usage badges on imported assets, safe removal with cascade deletion and undo, and a right-click asset menu.
+- Real-time preview with zoom/pan, pinch gestures, fit-to-window, fullscreen letterbox, and full-speed playback for performance testing.
+- 3-level UI theme (dark/medium/light) on 28+ CSS variables, DaVinci Resolve-inspired.
+- JKL shuttle scrubbing, 200-level undo/redo with drag coalescing, debounced + periodic auto-save with atomic writes, keyboard shortcuts with `?` overlay, global solo (`S`), and sequence isolation with loop playback.
 
 <!-- Screenshot: Canvas preview with zoom -->
 
-### UI Theme System
+### Project Format — `.mce`
 
-3-level UI theme (dark/medium/light) with 28+ CSS variables. DaVinci Resolve-inspired dark aesthetic throughout.
+A portable package: the `project.mce` manifest, one `layers/<layerId>.json` sub-file per changed paint layer, and `frames/<layerId>/<keyId>.webp` frame media — references only, never inline payloads or machine-local paths. Saves are digest-verified, changed-files-only, and published atomically; audio stays a disk reference, never copied into the package. v1.0.0 is a clean break: pre-v1.0 Physics Paint data is refused with an explicit rejection dialog.
 
-<!-- Screenshot: Theme comparison -->
+## What's New in v1.0.0
 
-### Professional Controls
+Phases 45 → 53 of the v1.0.0 milestone:
 
-- **JKL Shuttle Scrubbing** — Professional J/K/L shuttle controls with speed multiplier
-- **Undo/Redo** — 200-level history stack with drag coalescing
-- **Auto-Save** — Debounced (2s) + periodic (60s) auto-save with atomic writes
-- **Keyboard Shortcuts** — Space, arrows, JKL, Cmd+Z/S/N/O, `?` overlay, and more
-- **Global Solo Mode** — Strip all overlay layers and FX from preview/export with one click or `S` key
-- **Sequence Isolation** — Solo mode and global loop playback toggle
+| Phase | Shipped |
+|-------|---------|
+| 45 | Versioned v1.0 EFX Paint document owned by the parent layer; clean-format break with explicit pre-v1.0 rejection |
+| 46 | Track-local paint/Roto/PlayScript state, revisions, dirty tracking, and per-track caches |
+| 47 | Internal multi-track timeline: track CRUD, active selection, hide/solo, opacity/blend, cross-track drags |
+| 48 | Deterministic internal compositor — one flattened parent raster per frame |
+| 49 | Fixed Background track with imported Loop Clips (finite/infinite repeat, gaps, fallback) |
+| 50 | Photo/reference track — reference-only / reveal-source / masked-transform-source modes |
+| 51 | Read-only audio monitoring in the editor — audible scrub and play-from-cursor |
+| 52 | Shared mask compositor and Reveal rails |
+| 52.1 | Modern frame runtime: bytes/ImageBitmap frames, Rust WebP decode, 512 MB LRU, native HD paint |
+| 52.2 | `.mce` project package format — references-only, digest-verified atomic saves |
+| 52.3 | Paint content export — paint-only projects enumerate every frame through the compositor |
+| 52.4 | Real paint — structured bristle-footprint deposit replaces salt-and-pepper |
+| 52.5 | Physics Paint document sound track — Studio waveform/trim/reposition + mixed main-editor playback |
+| 53 | Integrated acceptance — automated gates, native UAT, signed/notarized release |
 
-## Release
+Alongside the phases, **84 completed quick tasks** (2026-08-27 → 2026-10-10, recorded in `.planning/STATE.md`), grouped by theme:
 
-v1.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. Highlights: multi-track Frames and Reveal in EFX Paint — multiple internal frame tracks with hide/solo/opacity/blend composited into a single parent layer, progressive and static Reveal modes, Background sequences with linked repeat sources, and photo/reference sources kept distinct from output; a portable `.mce` project package format that saves a whole project as one self-contained file; and an HD native runtime with byte-backed frame caching and Rust WebP decoding. Production packaging safeguards include a complete frontend bundle entry, the generated EFX application icon set, system codesign resolution, and a production CSP with narrow data-URL grants.
+| Theme | Examples |
+|-------|----------|
+| Studio window & timeline UX | NLE ruler seek + playhead bar, workflow strip layout, pinned right panel, auto-position to opened frame, main-window geometry mirroring |
+| Track rows & hide/solo | Hide is a hard off-switch, inline track-row controls, armed-solo badge, document-level interpolation mode |
+| Physics look laws | Pressure-driven thickness, Spread recalibration, Shape-detail fractal noise, paper grain scale, preview == settled "one look law" |
+| Studio tools | Eraser contract (fresh vs dry), Alt-to-erase, Move tool, foreground/background swatch, pressure-ribbon stroke preview |
+| Scripts library | Project-scoped Actions with layer scope selector, Apply/Clear moved into the Tools popover |
+| Multi-clip audio | Multiple audio clips per project, gain in dB, fade curves, waveform windowing, disk references with relink |
+| Persistence & Studio sync | Rust-owned package file IO, gallery import persistence, Studio-origin state push fixes, second-layer gesture fixes |
+| Sequences & canvas | Canvas size/orientation presets at project creation, span re-extend clamp, sequence-extension clamp, fond paper-first draw |
+| Export | Export "Preparing" hoisted ahead of the Studio flush; paint-content enumeration verdict feeding phase 52.3 |
+| Main-app integration | Physics layer row with double-click-to-Studio, layer spans the visible timeline view, new layers stack at the top, layer-stack reorder |
+
+v1.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. Production packaging safeguards include a complete frontend bundle entry, the generated EFX application icon set, system codesign resolution, and a production CSP with narrow data-URL grants.
 
 ## Canvas Motion Fork
 
@@ -230,7 +226,7 @@ This project uses [@efxlab/motion-canvas-*](https://www.npmjs.com/search?q=%40ef
 | Video Export | FFmpeg (auto-provisioned) |
 | Paint Engine | perfect-freehand (flat strokes), p5.brush (spectral pigment FX), fit-curve + bezier-js (path editing), @efxlab/efx-physic-paint (standalone Physics Paint engine with typed editor bridge) |
 | Monorepo | pnpm workspaces, tsup (package builds) |
-| Project Format | `.mce` v15 (progressive JSON with backward compat v1-v15) |
+| Project Format | `.mce` package (manifest + per-layer JSON + WebP frame sidecars, references-only) |
 
 ## Prerequisites
 
@@ -266,61 +262,40 @@ pnpm tauri build
 
 The built application will be available in `app/src-tauri/target/release/`.
 
+## Testing
+
+```bash
+cd app
+pnpm exec vitest run
+```
+
+Never run Vitest in watch mode.
+
 ## Project Structure
 
 ```
 efx-motion-editor/                # pnpm workspace root
-├── app/                          # Main Tauri application (formerly Application/)
+├── app/                          # Main Tauri application
 │   ├── src/                      # Frontend (Preact + TypeScript)
-│   │   ├── components/           # UI components
-│   │   │   ├── layout/           # EditorShell, LeftPanel, TimelinePanel, CanvasArea
-│   │   │   ├── timeline/         # TimelineCanvas, TimelineRenderer, AddFxMenu
-│   │   │   ├── sidebar/          # Properties panels, FX controls, keyframe nav
-│   │   │   ├── shader-browser/   # GLSL shader browser window
-│   │   │   ├── physic-paint/     # Standalone Physics Paint window UI (Roto timeline)
-│   │   │   ├── overlay/          # Shortcuts overlay, fullscreen
-│   │   │   └── shared/           # NumericInput, ColorPickerModal, SectionLabel
-│   │   ├── stores/               # Reactive state (17 Preact Signal stores)
-│   │   ├── lib/                  # Core logic
-│   │   │   ├── shaders/          # GLSL shader library
-│   │   │   │   ├── generators/   # 10 procedural generator shaders
-│   │   │   │   ├── fx-image/     # 7 image filter shaders
-│   │   │   │   ├── transitions/  # 18 GL transition shaders
-│   │   │   │   └── SHADER-SPEC.md
-│   │   │   ├── glslRuntime.ts    # WebGL2 shader rendering engine
-│   │   │   ├── shaderLibrary.ts  # Shader registry and types
-│   │   │   ├── previewRenderer.ts   # Canvas 2D compositing engine
-│   │   │   ├── exportRenderer.ts    # Export pipeline
-│   │   │   ├── glBlur.ts         # GPU-accelerated Gaussian blur
-│   │   │   ├── glMotionBlur.ts   # WebGL2 GLSL directional motion blur
-│   │   │   ├── motionBlurEngine.ts  # Velocity computation & sub-frame accumulation
-│   │   │   ├── fxGenerators.ts   # CPU FX generators (grain, particles, etc.)
-│   │   │   ├── paintRenderer.ts     # Paint stroke/shape/fill renderer
-│   │   │   ├── brushP5Adapter.ts    # p5.brush FX adapter (spectral mixing, multi-pass)
-│   │   │   ├── paintFloodFill.ts    # Stack-based flood fill algorithm
-│   │   │   ├── bezierPath.ts        # Bezier curve math (fit-curve conversion, sampling, editing)
-│   │   │   ├── paintPersistence.ts  # Sidecar file I/O for paint data
-│   │   │   ├── physicPaintBridge.ts    # Typed bridge to the standalone Physics Paint window (frame sync)
-│   │   │   ├── physicPaintPersistence.ts  # Physics Paint sidecar persistence
-│   │   │   ├── rotoFrameDraw.ts        # Roto timeline frame rendering
-│   │   │   ├── playbackEngine.ts    # rAF playback with delta accumulation
-│   │   │   └── ...
+│   │   ├── components/           # layout, timeline, sidebar, shader-browser,
+│   │   │                         # physic-paint (Studio UI), overlay, shared
+│   │   ├── stores/               # Reactive state (Preact signals)
+│   │   ├── lib/                  # Renderers, GLSL shaders, paint, bridges,
+│   │   │                         # physics paint bridge/persistence (see SHADER-SPEC.md)
+│   │   ├── efx-paint/            # v1.0 multi-track paint document model
 │   │   ├── types/                # TypeScript type definitions
 │   │   └── scenes/               # Motion Canvas preview scene
 │   └── src-tauri/                # Native backend (Rust + Tauri 2.0)
-│       └── src/
-│           ├── commands/         # IPC command handlers
-│           ├── models/           # Data structures (project format)
-│           └── services/         # File I/O, image processing, thumbnails
+│       ├── commands/             # IPC command handlers
+│       ├── models/               # Data structures (project format)
+│       └── services/             # File I/O, image processing, thumbnails
 ├── packages/
-│   └── efx-physic-paint/         # @efxlab/efx-physic-paint — natural-media paint simulation (wet/dry physics, stable fluids, paper texture)
-│       ├── src/                  # Brush, core, engine, render, animation, util modules
-│       ├── tsup.config.ts        # Build config (ESM + CJS)
-│       └── package.json
-├── package.json                  # Workspace root (scripts, overrides, packageManager)
-├── pnpm-workspace.yaml           # Workspace definition (app, packages/*)
+│   └── efx-physic-paint/         # @efxlab/efx-physic-paint — natural-media paint
+│                                 # simulation (wet/dry physics, fluids, paper texture)
 ├── docs/                         # Project docs and assets (README header artwork)
-└── .planning/                    # GSD project planning
+├── .planning/                    # GSD project planning
+├── package.json                  # Workspace root (scripts, overrides, packageManager)
+└── pnpm-workspace.yaml           # Workspace definition (app, packages/*)
 ```
 
 ## License
