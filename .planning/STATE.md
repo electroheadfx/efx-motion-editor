@@ -5,17 +5,17 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: executing
-stopped_at: Closed 261010-nzu SliderStepper theme tokens — native UAT approved
-last_updated: "2026-10-10T19:10:55.113Z"
-last_activity: 2026-10-10
-last_activity_desc: Native UAT approved for quick 261010-nzu (SliderStepper theme tokens — sidebar theme vars with Studio-safe fallbacks, Studio look unchanged) — CLOSED
-state_head: 3b5eb4a886c690a123aca4b9c86aeb6194d86e77
+stopped_at: "Phase 53 wave 1 complete: 53-01 + 53-02 merged to main (950f341d, 705f4033); D-21 #90 fix landed 2075e873; post-merge gate next; acceptance 3 (live flatten check) pending user"
+last_updated: "2026-10-11T08:35:51.612Z"
+last_activity: 2026-10-11
+last_activity_desc: Phase 53 execution started
+state_head: 705f40331bc2a908abbed4ede2042a827c9511b7
 progress:
   total_phases: 14
   completed_phases: 19
   total_plans: 80
-  completed_plans: 76
-  percent: 94
+  completed_plans: 77
+  percent: 96
 ---
 
 # Project State
@@ -29,12 +29,12 @@ See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
 
 ## Current Position
 
-Phase: 53 (Integrated v1.0.0 Acceptance) — READY TO EXECUTE
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-10-10 - Completed quick task 261010-pze: Backfill the PKG and SND requirements blocks for the 52.x inserted phases
+Phase: 53 (Integrated v1.0.0 Acceptance) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 53
+Last activity: 2026-10-11 — Phase 53 execution started
 
-Progress: [████████████████████] 75/75 plans ([█████████░] 94%)
+Progress: [████████████████████] 75/75 plans ([█████████░] 96%)
 
 ## Performance Metrics
 
@@ -425,6 +425,7 @@ None yet.
 - 52.2-03: vitest run exits 1 on 9 pre-existing failures (roto persistence x7, base64ToBytes frame-transport token in app/src/lib/ipc.ts, efxPaintPersistence base64) — identical at the plan base 15e680cc; not introduced by this plan, owners must clear them before /gsd-ship
 - BEFORE render-churn capture pending - owner: user. Run the SPECS/async-conventions.md section 7 protocol on the current dev build (render.tracksStrip/rightPanel/canvas through window.__EFX_PHYSICS_PAINT_PROFILE__.snapshot().counters) before plan 52.2-14 pilot code lands.
 - 260924-stb intermediate STOP (RESOLVED in-run): f(run) carrier regressed pyp texture d(b)→0 on the r=3 production raster; 210-candidate re-calibration FALSIFIED (run=0 ambiguous between hairline body and thick-stroke edge columns). Resolved by carrier revision to neighborhood mean-thickness field — GREEN 6341afba, all pins pass. Windows ledger 76 records the superseded f(run) attempt.
+- RESOLVED 2026-10-11 — Phase 53 wave 1 / plan 53-01: blocking-human precondition cleared. User approved a D-21 scoped fix owned by the orchestrator (replacing the user-dispatched quick): WINDOWS.md #90 paintStore/projectStore ESM module-body cycle broken via a late-bound `_setPaintProjectDimensionsProvider` (fix commit 2075e873 on fix/90-paint-dimensions-provider; two files only, no typeof guards, no test/config edits). Merged into preserved worktree agent-a903db740857f072f as 0dc40f8b (bump 359ada83 untouched; a4357fa untouched). Acceptance 1 green (PhysicsPaintStudioView 4/4); acceptance 2 green (full suite 259 files passed / 0 failed / 4809 tests — precondition re-run GREEN in a903db); acceptance 3 (live non-1920x1080 flatten/unflatten dims) PENDING USER. Task 2 continuation dispatching.
 
 ### Quick Tasks Completed
 
@@ -539,6 +540,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-10T15:20:00.000Z
-Stopped at: Closed 261009-v0s / 261010-bkv / 261010-en9 / 261010-g2n / 261010-ht0 audio quicks — UAT approved
+Last session: 2026-10-11T08:35:50.314Z
+Stopped at: Phase 53 wave 1 complete: 53-01 + 53-02 merged to main (950f341d, 705f4033); D-21 #90 fix landed 2075e873; post-merge gate next; acceptance 3 (live flatten check) pending user
 Resume file: None

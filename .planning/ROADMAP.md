@@ -666,14 +666,14 @@ Plans:
   2. Native UAT validates the full 17-step surface (document init, legacy rejection, track CRUD, Background loops, fallback, Reveal, save/reopen, main-editor parity).
   3. Release stop conditions are all not active; signed/notarized downloaded-artifact verification passes before publication.
 
-**Plans:** 5 plans
+**Plans:** 2/5 plans executed
 
 Plans:
 
 **Wave 1** *(parallel)*
 
-- [ ] 53-01-PLAN.md — Atomic 1.0.0 bump across the five version surfaces (D-17) + stale-bundle archival + six spec gates with fresh evidence in 53-GATES.md (ACC-01)
-- [ ] 53-02-PLAN.md — 53-UAT.html interactive worksheet (D-02): end-to-end machinery tracer + full 33-row inventory carrying every D-04/D-12..D-16 insertion as a first-class row (ACC-02)
+- [x] 53-01-PLAN.md — Atomic 1.0.0 bump across the five version surfaces (D-17) + stale-bundle archival + six spec gates with fresh evidence in 53-GATES.md (ACC-01)
+- [x] 53-02-PLAN.md — 53-UAT.html interactive worksheet (D-02): end-to-end machinery tracer + full 33-row inventory carrying every D-04/D-12..D-16 insertion as a first-class row (ACC-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -710,4 +710,4 @@ Plans:
 | 52. Shared Mask Compositor and Reveal | v1.0.0 | 6/5 | Complete    | 2026-09-04 |
 | 52.1. Modern frame runtime + native HD paint | v1.0.0 | 7/7 | Complete | 2026-09-09 |
 | 52.2. Project package format — references only | v1.0.0 | 16/16 | Complete | 2026-09-18 |
-| 53. Integrated v1.0.0 Acceptance | v1.0.0 | 0/TBD | Not started | - |
+| 53. Integrated v1.0.0 Acceptance | v1.0.0 | 2/5 | In Progress | - |
