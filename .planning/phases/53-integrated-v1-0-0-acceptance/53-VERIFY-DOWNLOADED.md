@@ -56,13 +56,19 @@ Scope per D-06 (~15-20 min — a covering smoke, NOT a second full pass):
 
 Any failure is FLAGGED, not fixed in-phase (D-21 — release-only phase). A failure stops the plan.
 
-## 6. Results (filled in during Task 3)
+## 6. Results (filled in during Task 3 + post-rebuild re-verification)
 
-- [x] verify-downloaded → `DOWNLOADED ARTIFACT PASS` on the freshly downloaded DMG (agent download, SHA-256-identical to local build; user's browser download to follow for install/smoke)
-- [ ] App installed to Applications and launched normally without Gatekeeper bypass / right-click override
-- [ ] Icon verified on the downloaded artifact surface
-- [ ] All five D-06 covering-smoke items recorded (see section 5)
-- [ ] User confirmation line present
+- [x] verify-downloaded → `DOWNLOADED ARTIFACT PASS` on the freshly downloaded DMG (agent download, SHA-256-identical to local build)
+- [x] App installed to Applications and launched normally without Gatekeeper bypass / right-click override (user, both the first DMG and the rebuilt one)
+- [x] Icon verified on the downloaded artifact surface (user: "DMG work", app launches and renders)
+- [x] All five D-06 covering-smoke items recorded (see section 5) — items a–e exercised across the first-DMG smoke and the rebuilt-DMG re-smoke
+- [x] User confirmation line present ("I tested dmg look good !")
+
+### Rebuild note (same session)
+
+The published asset is the **rebuilt** DMG `3fd008b2…` (15,942,200 B), not the first `d94b5ad0…` (15,942,003 B). The first build surfaced a packaged-only theme defect during D-06 smoke (physic-paint rail grey in medium theme). A user-approved scoped fix (`6f60951f`, TimelineRenderer hex-expansion) landed, the tag was moved to `e7c69501` by the user, and the signed rebuild was produced via the user wrapper and swapped into the draft before publish.
+
+`verify-downloaded` on the rebuilt bytes returned **DOWNLOADED ARTIFACT PASS** (exit 0) — run after publish as a retroactive confirmation (ordering miss, recorded in 53-STOP-CONDITIONS.md sequencing note 3). Pre-publish coverage for the rebuild: `xcrun stapler validate` OK, `codesign -dv` (Team `TCYJ9HH9RS`, Hardened Runtime), and the user's live re-smoke.
 
 ### 6.1 verify-downloaded output (agent-run, credential-free — 2026-10-11)
 
@@ -138,23 +144,30 @@ signature, notarization ticket, and Gatekeeper checks; the contained app passes
 Developer ID signature, team, Hardened Runtime, no-custom-entitlements, ticket, and
 Gatekeeper checks. Normal visible launch remains the user-owned check (next section).
 
-### 6.2 Install + normal launch (user-owned — PENDING)
+### 6.2 Install + normal launch (user-owned — PASS)
 
-_pending_
+- Downloaded the DMG from the draft in a normal browser (`/Volumes/T7/Téléchargements/…`, SHA matched the draft asset).
+- Launched the installed app with a plain double-click — no Gatekeeper bypass, no right-click override.
+- Main window renders; theme switcher operates; config at `~/.config/efx-motion/builder-config.yaml` is honored (the defect was canvas-color derivation, not config IO).
+- After the rebuild, the same path again: "I tested dmg look good !"
 
-### 6.3 D-06 covering smoke results (PENDING)
+### 6.3 D-06 covering smoke results
 
 | # | Smoke item | Result |
 |---|-----------|--------|
-| a | Quarantine first-open resolves cleanly | _pending_ |
-| b | Through-line `.mce` opens via Finder double-click | _pending_ |
-| c | One paint stroke renders | _pending_ |
-| d | Save succeeds | _pending_ |
-| e | Short PNG export succeeds | _pending_ |
+| a | Quarantine first-open resolves cleanly | **PASS** — normal first-open path, no "damaged/unidentified developer" |
+| b | Through-line `.mce` opens via Finder double-click | **PASS** — v1.0.0-2.mce opened from Finder during the first-DMG smoke |
+| c | One paint stroke renders | **PASS** — exercised in both smokes; rebuilt build confirmed correct physic-paint rail + stroke |
+| d | Save succeeds | **PASS** — first-DMG smoke |
+| e | Short PNG export succeeds | **PASS** — first-DMG smoke |
 
-### 6.4 User confirmation (PENDING)
+Finding recorded, not fixed silently: the medium-theme physic-paint rail rendered grey in the packaged app (minified `#36e` + canvas alpha suffix). User-approved scoped fix `6f60951f`; rebuilt + re-smoked before publish. D-21 honored via the explicit user authorization (same pattern as the #90 fix).
 
-_pending — the completed ledger is submitted for the user's explicit approval before the checkpoint resolves_
+### 6.4 User confirmation
+
+> "I tested dmg look good ! you switch to public !"
+
+— user, 2026-10-11, after re-smoke-testing the rebuilt DMG. Publish executed on this instruction; post-publish verifications recorded in 53-RELEASE.md.
 
 ---
 *Phase: 53-integrated-v1-0-0-acceptance · Plan 53-04 · seeded 2026-10-11*

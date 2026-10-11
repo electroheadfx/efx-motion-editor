@@ -117,4 +117,46 @@ The frame runtime moved from base64 data URLs to bytes/ImageBitmap, with PNG→W
 **Prohibition (frontmatter, ACC-03 sequence lock):** MUST NOT publish (`--draft=false`) and MUST NOT set `--latest` in this plan — that is 53-05's gated decision.
 
 ---
-*Phase: 53-integrated-v1-0-0-acceptance · Plan 53-04 · created 2026-10-11*
+
+## Publish ledger (53-05 — appended 2026-10-11)
+
+### Decision
+
+**Publish** — user's explicit instruction ("you switch to public !") after re-smoke-testing the rebuilt DMG ("I tested dmg look good"). 53-STOP-CONDITIONS.md shows ZERO active stop conditions (14/14 cited).
+
+### Intervening rebuild (recorded in full in 53-STOP-CONDITIONS.md sequencing notes)
+
+| Step | Record |
+|------|--------|
+| First DMG | `d94b5ad0…`, 15,942,003 B — verify-downloaded PASS, draft created |
+| D-06 smoke finding | Packaged-only theme defect: medium `#3366EE` minified to `#36e`, canvas alpha suffix invalid → physic-paint rail grey |
+| Scoped fix | `6f60951f` (user-approved under D-21, two-file-safe scope kept to TimelineRenderer.ts) + `e7c69501` STATE |
+| Tag move | user deleted-and-retagged `v1.0.0` → `e7c69501` (agent never retags) |
+| Signed rebuild | `3fd008b2…`, 15,942,200 B — user wrapper (D-22), notarized + stapled |
+| Draft asset | replaced via `gh release upload v1.0.0 --clobber` |
+| User re-smoke | "I tested dmg look good !" |
+
+### Publish command (as-run)
+
+```
+gh release edit v1.0.0 --repo electroheadfx/efx-motion-editor --draft=false --latest
+→ exit 0
+```
+
+One command applied both flags. The documented HTTP-422 case is `gh release create --draft --latest` combined; `gh release edit` on an existing draft accepted both. Recorded as-run.
+
+### Post-publish verification (all green)
+
+| Check | Output |
+|-------|--------|
+| `gh api …/releases/latest --jq .tag_name` | `v1.0.0` — `isLatest: true` |
+| `gh release list --limit 3 --json tagName,isDraft` | `v1.0.0` `isDraft: false` |
+| `git ls-remote --tags origin v1.0.0` | `4087c5a0…` (annotated; peels to `e7c69501`) |
+| `git show v1.0.0:app/package.json` | `"version": "1.0.0"` |
+
+Notes at publish time: unchanged D-18 milestone summary (multi-track Frames and Reveal, .mce package format, HD native runtime) + the release-verification footer.
+
+**Published:** 2026-10-11 · https://github.com/electroheadfx/efx-motion-editor/releases/tag/v1.0.0
+
+---
+*Phase: 53-integrated-v1-0-0-acceptance · Plan 53-04 + 53-05 · created 2026-10-11*
