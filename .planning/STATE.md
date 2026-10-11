@@ -5,11 +5,11 @@ milestone_name: EFX Paint Multi-Track Frames and Reveal
 current_phase: 53
 current_phase_name: Integrated v1.0.0 Acceptance
 status: executing
-stopped_at: "Phase 53 wave 1 complete: 53-01 + 53-02 merged to main (950f341d, 705f4033); D-21 #90 fix landed 2075e873; post-merge gate next; acceptance 3 (live flatten check) pending user"
-last_updated: "2026-10-11T08:35:51.612Z"
+stopped_at: "Wave 2 dispatch 53-03 HALTED: stale fork base — harness worktree forked origin-side d081eb5c vs EXPECTED_BASE 9e83080c (11 behind, fast-forwardable); agent ac865076e402c198e exit 42, no commits, no writes. Awaiting user decision (push main / pinned-worktree re-dispatch / sequential degrade). NO hatch widening, NO degrade applied per standing watch. Also pending: fix acceptance 3 (live non-1920x1080 flatten check)."
+last_updated: "2026-10-11T08:51:54.488Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 53 execution started
-state_head: 705f40331bc2a908abbed4ede2042a827c9511b7
+state_head: 9e83080c72dead63aec07d71fa6f49546f258470
 progress:
   total_phases: 14
   completed_phases: 19
@@ -540,6 +540,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-11T08:35:50.314Z
-Stopped at: Phase 53 wave 1 complete: 53-01 + 53-02 merged to main (950f341d, 705f4033); D-21 #90 fix landed 2075e873; post-merge gate next; acceptance 3 (live flatten check) pending user
+Last session: 2026-10-11T08:51:53.107Z
+Stopped at: Wave 2 dispatch 53-03 HALTED: stale fork base — harness worktree forked origin-side d081eb5c vs EXPECTED_BASE 9e83080c (11 behind, fast-forwardable); agent ac865076e402c198e exit 42, no commits, no writes. Awaiting user decision (push main / pinned-worktree re-dispatch / sequential degrade). NO hatch widening, NO degrade applied per standing watch. Also pending: fix acceptance 3 (live non-1920x1080 flatten check).
 Resume file: None
