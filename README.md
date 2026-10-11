@@ -11,7 +11,7 @@ A macOS desktop application for creating **cinematic stop-motion films** from ph
 - **Multi-track EFX Paint document** — one parent paint layer now holds a whole frame-animation document: internal tracks with hide/solo/opacity/blend, a deterministic compositor, a fixed Background track, a photo/reference track, and Reveal.
 - **Physics Paint Studio** — its own window (the main window hides while it is open): deterministic Roto timeline, project-scoped Scripts library, document sound track, pressure-driven physics look controls.
 - **`.mce` project package** — manifest + per-layer JSON + WebP frame sidecars; references-only, digest-verified, changed-files-only atomic saves.
-- **Modern HD frame runtime** — byte-backed frames with native Rust WebP decoding, a 512 MB decode LRU, and a raised 1920 px working-resolution cap.
+- **Modern HD frame runtime** — byte-backed frames with native Rust WebP decoding, a 512 MB decode LRU, a raised 1920 px working-resolution cap, and free canvas formats at project creation — HD landscape, vertical, portrait, square, or custom W×H.
 - **Reveal** — photo sources revealed through paint/Script coverage, baked into keys.
 - **Cinema pipeline** — 17 GPU shaders, 18 GL transitions, per-layer motion blur, multi-clip audio; ships as a signed and notarized macOS (Apple Silicon) build.
 
@@ -25,13 +25,13 @@ Import photos (JPEG, PNG, TIFF, HEIC) via drag & drop or file dialog, assign hol
 
 ### Multi-Sequence Timeline
 
-Create, reorder, duplicate, and rename sequences with per-sequence frame rate and resolution. Canvas timeline with zoom, scroll, thumbnail previews, and frame-accurate scrubbing.
+New projects pick a canvas format — HD 1920×1080, HD Vertical 1080×1920, Portrait 1080×1350, Square 1080×1080, or Custom W×H steppers clamped 16–1920 px — with presets labelled for social delivery (YouTube; Instagram/Facebook posts; Reels/Stories/Shorts/TikTok vertical), plus a frame-rate preset row (6–60 fps) shared by Settings and New Project. Create, reorder, duplicate, and rename sequences with per-sequence frame rate and resolution; the canvas timeline offers zoom, scroll, thumbnails, and frame-accurate scrubbing.
 
 <!-- Screenshot: Timeline with multiple sequences -->
 
 ### Layers & Compositor
 
-Stack static images, image sequences, or video layers with opacity, blend modes (normal, screen, multiply, overlay, add), and transforms (position, scale, rotation, crop) with live canvas drag handles.
+Stack static images, image sequences, or video layers with opacity, blend modes (normal, screen, multiply, overlay, add), and transforms (position, scale, rotation, crop) with live canvas drag handles. Reorder with a single drag to any slot including top and bottom, `+ Layer` lands on top with the next free name, and double-click renames inline — names never reshuffle on reorder.
 
 <!-- Screenshot: Layer compositing with transform handles -->
 
@@ -49,7 +49,7 @@ Per-layer keyframes with 4 interpolation curves (linear, ease-in, ease-out, ease
 
 ### Video Export
 
-Export PNG image sequences with resolution multipliers, or encode ProRes/H.264/AV1 directly via auto-provisioned FFmpeg. Full timeline or single sequence, progress tracking with metadata sidecars, and up to 128 sub-frame accumulation samples for motion blur. Paint content exports through the compositor — paint-only projects render every frame of the range in both canvas orientations.
+Export PNG image sequences with resolution multipliers, or encode ProRes/H.264/AV1 directly via auto-provisioned FFmpeg, following the project frame rate. Full timeline or single sequence; clicking Export shows immediate "Preparing" feedback (cancel works during preparation), then progress tracking with metadata sidecars and up to 128 sub-frame accumulation samples for motion blur. Paint content exports through the compositor — paint-only projects render every frame of the range in both canvas orientations.
 
 <!-- Screenshot: Export dialog -->
 
@@ -68,15 +68,16 @@ Physics-driven rotoscoping ships as **efx-physic-paint**, a complete interactive
 ### Deterministic Roto Timeline
 
 - Stable physical-frame keys with direct frame positioning, generated interpolation, dynamic interpolation spacing controls, and a document-level interpolation mode.
-- NLE-style ruler seek with a playhead bar; the timeline viewport auto-scrolls to the frame you opened.
+- NLE-style ruler seek with a playhead bar — drags update only the playhead and audio mid-drag (full navigation settles on release); the viewport scrolls the complete frame range independent of the current selection, and on open it scrolls to the frame you launched.
 - Live PNG pixel caching with durable alpha composites, cached playback, and real-key repaint.
 - Undo/redo: accepted-only history, 10 levels per brush.
 - Movement & groups: single-key drag, rigid multi-select group drag, group delete, and Force Spacing.
+- Editing: Scissor splits generated frames mid-interpolation; + Key joins an existing rail when it lands inside a segment (or clears an interpolated frame to empty); Select All; Clear blanks the selected real key.
 - Clipboard: group Copy, Paste, Duplicate, and fail-closed Cut.
 
 ### Roto Scripts Library
 
-- Durable project-scoped library of reusable JSON presets with WebP thumbnails, plus a Copy Script / Apply Script clipboard.
+- Durable project-scoped library of reusable JSON presets with WebP thumbnails, plus a Copy Script / Apply Script clipboard. Tab bars and the Actions toolbar stay pinned while only the scripts list scrolls.
 - Apply creates a Loop Clip on the main timeline — link to an existing cycle or create a new one; Play Script replays a multi-frame sequence into the source cycle (the former separate Play workflow lives here).
 - Every Action from every physics layer is visible in the Scripts panel and applies to the layer that is current when you apply — with an All / current-layer scope selector.
 - Apply and Clear live in the Tools popover under an Actions section.
@@ -94,7 +95,7 @@ Physics-driven rotoscoping ships as **efx-physic-paint**, a complete interactive
 ### Pressure & Look Controls
 
 - Tablet pressure drives stroke thickness: the settled silhouette follows the gesture (hairlines and tapers stay clean) with held-pose determinism, so frames do not boil.
-- **Spread**, **Shape detail** (fractal outline noise scaled to local stroke width), paper grain scale (Tools), brush smoothing, and water controls shape the wet-media look; a pressure-varying ribbon previews each stroke before it settles.
+- **Spread**, **Shape detail** (fractal outline noise scaled to local stroke width), paper grain scale (Tools, canvas + export, with post-bake paper tooth and a live dry overlay), brush smoothing, and water controls shape the wet-media look; a pressure-varying ribbon previews each stroke before it settles.
 - Bristle deposit lays coherent translucent streaks along the ribbon — build-up by overlap, not salt-and-pepper.
 - Tools: brush, eraser (fresh stroke clears the whole stroke; dry paint is a pixel eraser), temporary erase while Alt is held, Move for fresh strokes, and a Photoshop-style foreground/background swatch with X-swap.
 
@@ -104,9 +105,9 @@ Physics-driven rotoscoping ships as **efx-physic-paint**, a complete interactive
 
 One parent paint layer holds a complete multi-track frame-animation document — a v1.0 clean break: pre-v1.0 paint data is rejected with an explicit dialog, never migrated.
 
-- Multiple internal frame tracks with track-local paint/Roto/PlayScript state, revisions, and caches; track CRUD, active selection, hide/solo, opacity/blend, and cross-track drags.
+- Multiple internal frame tracks with track-local paint/Roto/PlayScript state, revisions, and caches; track CRUD, active selection, hide/solo (hide is a hard off-switch), opacity/blend, and cross-track drags — all from inline track-row controls (grip, hide, solo, blend), plus a document-level interpolation mode.
 - Deterministic internal compositor: one flattened parent raster per frame, feeding both preview and export.
-- Fixed Background track with imported Loop Clips (finite/infinite repeat, gaps, transparent fallback).
+- Fixed Background track with imported Loop Clips (finite/infinite repeat, gaps, transparent fallback); background images imported from the Studio gallery persist across close/reopen, and the background can be moved, scaled, and rotated with the photo-reference transform handles — lockable in place.
 - Photo/reference track: reference-only, reveal-source, or masked-transform-source modes.
 - Read-only, frame-synchronized audio monitoring while editing — audible scrub and play-from-cursor.
 
@@ -140,7 +141,7 @@ Hollywood-style per-layer directional blur with cinematographic shutter angle (0
 
 ### Audio
 
-Import WAV, MP3, AAC, or FLAC with waveforms rendered on the timeline below content tracks. Multiple clips per project with per-clip gain (dB), fade in/out with curves, position and trim controls, mute, and drag offset; playback stays synced and audio persists across save/reopen as disk references.
+Import WAV, MP3, AAC, or FLAC with waveforms rendered on the timeline below content tracks. Multiple clips per project with per-clip gain (dB), fade in/out with curves (exponential by default), position and trim controls with fit-to-view, mute, and drag offset; a shared audio properties panel lives in the editor sidebar and the Studio, playback stays synced, and audio persists across save/reopen as disk references.
 
 <!-- Screenshot: Audio waveform on timeline -->
 
