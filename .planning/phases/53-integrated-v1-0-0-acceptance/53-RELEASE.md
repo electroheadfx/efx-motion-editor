@@ -1,7 +1,7 @@
 # Phase 53: Signed Release Ledger (v1.0.0)
 
 **Plan:** 53-04 — distribution: user push + immutable tag (D-19) → GitHub draft with D-18 notes → downloaded-artifact verification (ACC-03)
-**Status:** IN PROGRESS — Task 1 CLEARED (user pushed tag; agent verified read-only 2026-10-11); executing Task 2 (D-18 notes + draft release)
+**Status:** IN PROGRESS — Task 1 CLEARED (tag verified) + Task 2 DONE (D-18 notes + draft release created, still unpublished); awaiting Task 3 human-verify (downloaded-artifact verification)
 **Recorded:** 2026-10-11 (agent, read-only checks only — no push, no credential file touched)
 **Sequence lock (D-05 + skill §1):** push `main` + annotated tag → agent verifies read-only → `gh release create --draft` with notes + DMG → verify-downloaded + install/smoke → (53-05: stop conditions + publish decision)
 
@@ -61,31 +61,58 @@ task; the draft comes next (Task 2).
 > If any check had failed, execution would stop and be flagged: a pushed tag is immutable release
 > history — only the user may decide a delete-and-retag (v0.8.0 lesson).
 
-## Release notes (D-18) — TO BE WRITTEN in Task 2
+## Release notes (D-18) — WRITTEN in Task 2, filled into the draft before any publish step
 
-Skill template shape (`SKILL.md:91-105`), notes filled into the draft **before** any publish step:
+Authored per the skill template (`SKILL.md:91-105`): three D-18 headline sections + the verbatim
+release-verification footer. The exact text below is byte-identical to the draft's `body`
+(`gh release view v1.0.0 --json body` diffed clean against the notes file used at create time).
 
 ```markdown
 ## What shipped
 
 ### Multi-track Frames and Reveal
+
+EFX Paint is now a full multi-track frame document: independent Paint tracks with hide/solo, opacity and blend modes, filmstrip capsules, a fixed Background track with imported still/sequence Loop Clips (finite or infinite repeats, gaps, fallback), and a durable Photo/Reference track for painting reference and Reveal source. **Frames and Reveal** exposes it all in the timeline — paint and rotoscope across tracks, then reveal the photo source through animated coverage baked into keys from one or more Paint tracks. Read-only audio preview stays synchronized while you play (play-from-cursor and audible scrub included), and a WYSIWYG compositor export renders every painted frame — paint-only or mixed projects, both canvas orientations — so what you see on the canvas is what lands in the PNG sequence or video.
+
 ### Project package format (.mce)
+
+Projects are now macOS document packages: `Name.mce` holds a light manifest, per-layer sub-files, and `frames/` media as references only, with a machine-local derived cache and a multi-file save transaction. The package is self-contained for sharing, opens by Finder double-click with a single icon, and the legacy flat format is rejected explicitly — a clean break with no silent migration.
+
 ### HD native runtime + performance work
+
+The frame runtime moved from base64 data URLs to bytes/ImageBitmap, with PNG→WebP-lossless encode/decode in Rust and a byte-budgeted LRU sidecar cache — raising the working resolution to native HD so big projects paint without main-thread jank or heap blowup. Alongside it: structured bristle footprints that keep the gesture in every stroke, deterministic stop-motion physics, native Tauri window and frame sync, and the release-path hardening (version contract, icon contract, credential-free preflight) that makes a signed build reproducible.
 
 ---
 
 **Release verification:** signed and notarized with Apple Developer ID; passed Gatekeeper assessment, downloaded-artifact verification, and normal launch without security overrides.
 ```
 
-(Exact prose authored in Task 2 — three D-18 headline sections, verbatim footer.)
+## Draft release creation (Task 2) — DONE 2026-10-11
 
-## Draft release creation (Task 2) — TO BE FILLED
+- **Command (exactly as the plan specifies):**
+  `gh release create v1.0.0 --draft --title "EFX Motion Editor v1.0.0" --notes-file <notes> "<DMG path>"`
+  - Notes file: `/tmp/53-04-v1.0.0-notes.md` (the text reproduced above)
+  - DMG path: `app/src-tauri/target/release/bundle/dmg/EFX Motion Editor_1.0.0_aarch64.dmg` —
+    main-repo build output (worktrees hold no `target/`), stat-checked against this ledger's
+    pre-conditions row 3 immediately before upload: **15,942,003 bytes, mtime Oct 11 12:11:14 2026
+    (local)** — unchanged since the 53-03 signing run, exactly one `*_1.0.0_*.dmg` present.
+- **Draft URL:** https://github.com/electroheadfx/efx-motion-editor/releases/tag/untagged-6774ba4d622d57031c05
+  (drafts show an `untagged-…` slug until published — expected; `tagName` is already `v1.0.0`)
+- **Asset name:** `EFX.Motion.Editor_1.0.0_aarch64.dmg` — 15,942,003 bytes (GitHub converts
+  spaces → dots; matches the v0.8.1/v0.9.0 naming pattern)
+- **Create timestamp:** `2026-10-11T15:54:27Z`
+- **Verification JSON excerpts (captured right after create):**
 
-- Command: `gh release create v1.0.0 --draft --title "EFX Motion Editor v1.0.0" --notes-file <notes> app/src-tauri/target/release/bundle/dmg/*_1.0.0_*.dmg`
-- Draft URL: _pending_
-- Asset name: _pending_ (GitHub converts spaces → dots: `EFX.Motion.Editor_1.0.0_aarch64.dmg`)
-- `gh release view v1.0.0 --json isDraft` → `true` (required)
-- Create timestamp + verification JSON excerpts: _pending_
+```json
+{"isDraft": true, "tagName": "v1.0.0", "url": "https://github.com/electroheadfx/efx-motion-editor/releases/tag/untagged-6774ba4d622d57031c05", "createdAt": "2026-10-11T15:54:27Z", "assets": [{"name": "EFX.Motion.Editor_1.0.0_aarch64.dmg", "size": 15942003}]}
+```
+
+- **Plan gate (`<verify>`) result:** `TASK2_GATE_PASS` — `gh release view v1.0.0 --json isDraft`
+  → `"isDraft":true`, and the assets list holds exactly one name matching `_1.0.0_.*\.dmg`.
+- **Notes-before-publish (skill hard rule 2):** notes were passed via `--notes-file` at create
+  time; a `diff` of the draft body against the notes file is clean — the draft never existed empty.
+- No pre-existing release was found before create (`gh release view v1.0.0` → "release not
+  found"), so nothing was mutated (D-21 discipline).
 
 **Prohibition (frontmatter, ACC-03 sequence lock):** MUST NOT publish (`--draft=false`) and MUST NOT set `--latest` in this plan — that is 53-05's gated decision.
 
