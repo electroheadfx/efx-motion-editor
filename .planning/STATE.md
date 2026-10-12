@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v1.0.1
 milestone_name: Debt Patch Release
-current_phase_name: defining requirements
-status: planning
+current_phase: "53.1"
+current_phase_name: Frame-model fix
+status: Phase inserted — ready to plan
 stopped_at: Phase 53 complete — all phases complete
-last_updated: "2026-10-12T13:58:17.310Z"
+last_updated: "2026-10-12T15:57:23.022Z"
 last_activity: 2026-10-12
 last_activity_desc: Quick 3 (261012-exn) document-sound decode readiness — UAT APPROVED 4/4; SND-01/02 closed; 8/10 v1.0.1 requirements approved
-state_head: b2722a753b4af581df5328f26e8fd598ff3fddab
+state_head: 1312f6eafcf16d366f66a2b0ab2cf2cbf961c9dc
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -24,13 +24,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v1.0.1 PATCH milestone (3 debt quicks, no phases) — then v1.1.0 = phases 54-57 (Preact / paint-host / aquarelle / spectral)
+**Current focus:** v1.0.1 PATCH milestone (3 debt quicks + inserted Phase 53.1 Frame-model fix, then release) — then v1.1.0 = phases 54-57 (Preact / paint-host / aquarelle / spectral)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 53.1 — Frame-model fix (not planned yet)
 Plan: —
-Status: Defining requirements
+Status: Phase inserted — ready to plan
 Last activity: 2026-10-12 - Completed quick task 261012-kxg: Export video readiness (v1.0.1 release blocker) — loadeddata preload + seeked settle + fail-closed (VID-04); automated-ready, native UAT pending
 
 ## Performance Metrics
@@ -443,6 +443,7 @@ None yet.
 - Phase 52.3 inserted after Phase 52: Paint content export — per-frame compositor enumeration (quick 260919-azh verdict NEVER-WIRED; blocks Phase 53 acceptance) (URGENT)
 - Phase 52.4 inserted after Phase 52: Real-paint kill the salt-and-pepper (URGENT)
 - Phase 52.5 inserted after Phase 52: Physic Paint document sound track (Studio waveform/reposition/start-end + main-editor playback of the layer clip) (URGENT)
+- Phase 53.1 inserted after Phase 53: Frame-model fix (release blocker from debug frame-model-coherence) (URGENT)
 
 ## Deferred Items
 

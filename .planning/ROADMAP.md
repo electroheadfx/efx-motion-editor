@@ -16,19 +16,20 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - ✅ **v0.8.0 Standalone Physics Paint** — Phases 34-38.1 (shipped 2026-08-01)
 - ✅ **v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity** — Phases 39-44 (shipped 2026-08-21)
 - ✅ **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (shipped 2026-10-12)
-- 🚧 **v1.0.1 Debt Patch Release** — quicks only, no phases (in progress)
+- 🚧 **v1.0.1 Debt Patch Release** — quicks + inserted Phase 53.1, then release (in progress)
 
 ## Phases
 
 <details>
-<summary>🚧 v1.0.1 Debt Patch Release (quicks only, no phases) — IN PROGRESS</summary>
+<summary>🚧 v1.0.1 Debt Patch Release (quicks + inserted Phase 53.1, then release) — IN PROGRESS</summary>
 
-PATCH milestone per the semver ladder locked 2026-10-12 (PATCH for debt, MINOR for features). No GSD phases — the three debt quicks are dispatched inside the milestone, then the release. Phase numbering stays untouched: 54 remains the first free slot for v1.1.0.
+PATCH milestone per the semver ladder locked 2026-10-12 (PATCH for debt, MINOR for features). Debt quicks are dispatched inside the milestone, plus one urgent inserted phase (53.1 Frame-model fix — release blocker from debug `frame-model-coherence`), then the release. Phase numbering stays untouched: 54 remains the first free slot for v1.1.0.
 
 - [ ] Quick 1: Display-class save token — `|bgT:` + `|photoDisplay:` in `buildEfxPaintLayerChangeTokenValue`, `|photoDisplay:` in `buildEfxPaintSaveFingerprint`; save-twice regression test (SAVE-01..03, Known Gaps PKG-06/BKG-09)
 - [ ] Quick 2: Video import joins the disk-reference law — never-copy, `source_path` recorded verbatim; retire `videos/` provisioning (`project_io.rs`), add `video_assets` to `MceProject` (`models/project.rs`) (VID-01..03)
 - [ ] Quick 3: Document-sound decode readiness — `audioEngine.ts` / `audioExportMixer.ts` await or refuse a missing buffer, never silently drop (SND-01..02, Known Gap SND-07)
-- [ ] Release: version single-source bump to 1.0.1 (REL-01) + signed/notarized DMG via `efx-motion-release`, published as GitHub Latest (REL-02)
+- [ ] Phase 53.1: Frame-model fix (INSERTED) — timeline frame-model coherence; release blocker; see Phase Details
+- [ ] Release: version single-source bump to 1.0.1 (REL-01) + signed/notarized DMG via `efx-motion-release`, published as GitHub Latest (REL-02) — runs AFTER 53.1 live UAT
 
 </details>
 
@@ -209,6 +210,35 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 
 </details>
 
+## Phase Details
+
+### Phase 53.1: Frame-model fix (INSERTED)
+
+**Goal**: Timeline frame-model coherence — the export writes exactly the frames the law predicts (last frame = paint OVER video, never paint on black); ruler ticks, playhead reach, fade-bar extent and clip ranges are mutually consistent. Four DECIDED target laws from debug `frame-model-coherence` (FRAME-MODEL.md §7) — do not re-open the model.
+**Depends on**: Phase 53 (v1.0.0 complete)
+**Requirements**: TBD (decided laws per `53.1-CONTEXT.md` / `FRAME-MODEL.md` §7)
+**Release blocker**: v1.0.1 release stays blocked until this phase's live UAT passes. No version bump, no release action in this phase.
+**Success Criteria** (what must be TRUE):
+
+  1. RED then GREEN: `exportEngine.frameList.test.ts` asserts the TARGET laws (not just pins actual), including video-seek fps legs; all four GREEN legs land under TDD.
+  2. Target laws hold: (1) untrimmed content-overlay follows N, resized `out` is authoritative, past SOURCE = HOLD default with explicit per-clip LOOP, never a silent black frame (timeline gap marker + export diagnostic); (2) playhead can sit on tick N (END STATE), export still writes 0..N-1, tick N is the end limit; (3) sequence fps follows project fps, video seek uses project fps.
+  3. Guardrails hold: exclusive `outFrame` `[in, out)` unchanged; 260918-o0n span-drag law unchanged; drag mapping unchanged.
+  4. Live UAT on the signed build passes (user judges).
+
+**Order** (locked, each step gated):
+
+1. RED — extend `app/src/lib/exportEngine.frameList.test.ts` from "pin actual" to "assert TARGET laws" + add video-seek fps legs
+2. GREEN I-4 — sequence.fps follows project fps; video seek uses project fps
+3. GREEN I-1/I-2 — tail policy (untrimmed follows N; resized `out` authoritative; gap marker + export diagnostic)
+4. GREEN I-5 — past SOURCE = HOLD last frame by default; LOOP explicit per-clip
+5. GREEN I-3 — playhead can sit on tick N (END STATE); export still writes 0..N-1; tick N is the end limit
+6. Live UAT on the signed build (user judges)
+
+**Plans:** 0/0 plans — not planned yet
+
+Context: `.planning/phases/53.1-frame-model-fix/53.1-CONTEXT.md`
+Truth table: `.planning/debug/resolved/FRAME-MODEL.md`
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -223,4 +253,4 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
 | 45-53 (14 phases) | v1.0.0 | 80/80 | Complete | 2026-10-12 |
-| quicks only | v1.0.1 | 0/4 | In Progress | — |
+| quicks + 53.1 | v1.0.1 | 0/5 | In Progress | — |
