@@ -47,13 +47,14 @@
  * ASVS V12).
  */
 
-import type { DocumentSoundClip, EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
+import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import {
   buildEfxPaintCompositeRevision,
   buildEfxPaintDocumentRevision,
-  encodeCanonicalBackgroundTransform,
+  encodeCanonicalBackgroundDisplay,
   encodeCanonicalAudios,
+  encodeCanonicalPhotoReferenceDisplay,
 } from '../efx-paint/document/efxPaintDocumentRevision';
 import { hashCanonicalPhysicalValue } from '../efx-paint/document/efxPaintCanonicalEncoder';
 import {
@@ -505,25 +506,29 @@ export function projectLayerDocument(
 
 /**
  * The `layer:<layerId>` change token VALUE (52.5-01b Rule 2, PERSIST-01,
- * retargeted by 261008-ig1): both revision legs plus the canonical `audios`
- * term.
+ * retargeted by 261008-ig1, grown by 261012-c9a): both revision legs plus the
+ * canonical `audios`, background-display and photo-display terms.
  *
- * The audios member is excluded from BOTH `documentRevision` and
- * `compositeRevision` by design (display-class member — clip edits must never
- * rotate the pixel revision), so the bare `${revision}+${composite}` value
- * cannot see a clip-only edit: the change set stays empty, the layer loop
- * skips `layers/<layerId>.json`, and save/reopen silently drops the clips.
- * Appending `|audios:` (one canonical encoder, rd4 `|bgT:` precedent at the
- * authoritative gate) rotates the token exactly when any clip changes while an
- * unchanged list keeps the identical value — the no-op-save contract (D-11)
- * holds for everything else.
+ * Three member classes are excluded from BOTH `documentRevision` and
+ * `compositeRevision` by design (display-class members — clip and display
+ * edits must never rotate the pixel revision), so the bare
+ * `${revision}+${composite}` value cannot see them: the change set stays empty,
+ * the layer loop skips `layers/<layerId>.json`, and save/reopen silently drops
+ * the edit. Appending `|audios:` (one canonical encoder, rd4 `|bgT:` precedent
+ * at the authoritative gate) rotates the token exactly when any clip changes;
+ * appending `|bgT:` (the background transform AND the transform lock, via
+ * `encodeCanonicalBackgroundDisplay`) and `|photoDisplay:` (the photo
+ * reference's visible/opacity/transform/lock) rides the token for the same
+ * reason — without them a display-only edit dedupes as a no-op save and the
+ * sub-file is never rewritten (PKG-06 / BKG-09). Equal inputs still yield the
+ * identical value — the no-op-save contract (D-11) holds for everything else.
  */
 export function buildEfxPaintLayerChangeTokenValue(
   documentRevision: string,
   compositeRevision: string,
-  audios: readonly DocumentSoundClip[],
+  document: EfxPaintDocument,
 ): string {
-  return `${documentRevision}+${compositeRevision}|audios:${encodeCanonicalAudios(audios)}`;
+  return `${documentRevision}+${compositeRevision}|audios:${encodeCanonicalAudios(document.audios)}|bgT:${encodeCanonicalBackgroundDisplay(document.background)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}`;
 }
 
 /**
@@ -616,12 +621,16 @@ export function buildEfxPaintSaveFingerprint(
   const terms: string[] = [];
   for (const [layerId, input] of documents) {
     const document = parseEfxPaintDocument(input.document);
-    // 260922-rd4: `|bgT:` — the background display transform is NOT a
-    // document-revision term (display pref, D-07 vs D-11/D-12/D-13), so a
-    // transform-only edit would otherwise dedupe as a no-op save. One
-    // canonical encoder; the photo-reference contribution (the docrev hash
-    // fed by encodeCanonicalPhotoReference) stays byte-identical.
-    terms.push(`${layerId.length}:${layerId}:${buildEfxPaintDocumentRevision(document)}|bgT:${encodeCanonicalBackgroundTransform(document.background.transform)}`);
+    // 260922-rd4 / 261012-c9a: `|bgT:` — the background display term (the
+    // transform AND, since c9a, the transform LOCK via
+    // `encodeCanonicalBackgroundDisplay`) is NOT a document-revision term
+    // (display pref, D-07 vs D-11/D-12/D-13), so a display-only edit would
+    // otherwise dedupe as a no-op save. `|photoDisplay:` joins for the same
+    // reason: the photo reference's visible/opacity/transform/lock are excluded
+    // from BOTH revision legs. One canonical encoder per class; the
+    // photo-reference contribution (the docrev hash fed by
+    // encodeCanonicalPhotoReference) stays byte-identical.
+    terms.push(`${layerId.length}:${layerId}:${buildEfxPaintDocumentRevision(document)}|bgT:${encodeCanonicalBackgroundDisplay(document.background)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}`);
     for (const track of document.tracks) {
       const trackFrames = input.frames.get(track.id);
       if (!trackFrames) continue;
@@ -1117,7 +1126,7 @@ export async function savePackage(
     layers.push(layer);
     nextTokens.set(
       layer.layerToken,
-      buildEfxPaintLayerChangeTokenValue(layer.documentRevision, layer.compositeRevision, layer.document.audios),
+      buildEfxPaintLayerChangeTokenValue(layer.documentRevision, layer.compositeRevision, layer.document),
     );
     for (const frame of layer.frames) nextTokens.set(frame.token, frame.contentToken);
   }

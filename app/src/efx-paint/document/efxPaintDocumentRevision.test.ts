@@ -11,11 +11,14 @@
  *   per-clip full-field encoding, same output for equal lists regardless of
  *   member insertion order inside a clip, distinct output when ANY field of ANY
  *   clip changes, and array ORDER is canonical (swap two clips -> rotate).
- * - (t4) [Rule 2 — PERSIST-01] an audios-only edit rotates the savePackage
- *   layer change-token value: the authoritative layer write gate is
+ * - (t4) [Rule 2 — PERSIST-01, signature widened by 261012-c9a] an
+ *   audios-only edit rotates the savePackage layer change-token value: the
+ *   authoritative layer write gate is
  *   `${documentRevision}+${compositeRevision}`, both of which stay put for a
  *   display-class clip edit, so without an audios term the layers/<id>.json
- *   write is skipped and save/reopen silently drops the clips.
+ *   write is skipped and save/reopen silently drops the clips. The builder now
+ *   takes the PARSED DOCUMENT (third parameter), so it can also carry the
+ *   background-display and photo-display terms c9a appended after `|audios:`.
  *
  * TDD RED first: these assertions fail against the singleton-era surface
  * (fingerprint has a `sound:` term, not `audios:`; encodeCanonicalAudios and
@@ -167,12 +170,12 @@ describe('save layer change token — audios-only edit rotation (261008-ig1 Rule
       buildEfxPaintLayerChangeTokenValue?: (
         documentRevision: string,
         compositeRevision: string,
-        audios: readonly DocumentSoundClip[],
+        document: EfxPaintDocument,
       ) => string;
     };
     const build = persistence.buildEfxPaintLayerChangeTokenValue;
 
-    // THE RED: the authoritative save gate composes
+    // THE RED (261008-ig1): the authoritative save gate composes
     // `${documentRevision}+${compositeRevision}` inline — the singleton-era
     // builder takes `sound: DocumentSoundClip | null`, so an audios list cannot
     // rotate it and a clip-only edit dedupes as a no-op save (the layer
@@ -181,6 +184,10 @@ describe('save layer change token — audios-only edit rotation (261008-ig1 Rule
 
     const withoutAudio = docWithAudios([]);
     const withAudio = docWithAudios([CLIP]);
+    // The third document: the SAME single clip with a changed gain — equal
+    // revisions, distinct content, proving the token reads the DOCUMENT's
+    // clips rather than some external carrier.
+    const withLouderAudio = docWithAudios([clipWith({ gain: 42 })]);
 
     // Both revision legs stay put across the audios edit (the whole reason the
     // token needs its own term).
@@ -192,21 +199,30 @@ describe('save layer change token — audios-only edit rotation (261008-ig1 Rule
     const tokenWithout = build!(
       revision.buildEfxPaintDocumentRevision(withoutAudio),
       revision.buildEfxPaintCompositeRevision(withoutAudio),
-      withoutAudio.audios,
+      withoutAudio,
     );
     const tokenWith = build!(
       revision.buildEfxPaintDocumentRevision(withAudio),
       revision.buildEfxPaintCompositeRevision(withAudio),
-      withAudio.audios,
+      withAudio,
     );
     expect(tokenWith).not.toBe(tokenWithout);
+
+    // The token reads the DOCUMENT's clip content: a gain change at the SAME
+    // revisions rotates it too.
+    const tokenLouder = build!(
+      revision.buildEfxPaintDocumentRevision(withLouderAudio),
+      revision.buildEfxPaintCompositeRevision(withLouderAudio),
+      withLouderAudio,
+    );
+    expect(tokenLouder).not.toBe(tokenWith);
 
     // Idempotence: the same clips at the same revisions yield the same token,
     // so an identical re-save still dedupes to a no-op (D-11 preserved).
     const tokenWithAgain = build!(
       revision.buildEfxPaintDocumentRevision(withAudio),
       revision.buildEfxPaintCompositeRevision(withAudio),
-      [clipWith({ gain: 0 })],
+      docWithAudios([clipWith({ gain: 0 })]),
     );
     expect(tokenWithAgain).toBe(tokenWith);
   });

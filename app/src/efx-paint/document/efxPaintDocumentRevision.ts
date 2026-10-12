@@ -21,6 +21,7 @@ import {
 } from './efxPaintCanonicalEncoder';
 import type {
   BackgroundFallback,
+  BackgroundTrack,
   DocumentSoundClip,
   EfxPaintDocument,
   FrameLoopClip,
@@ -121,12 +122,16 @@ function encodeCanonicalPhotoReference(track: PhotoReferenceTrack | null): strin
 /**
  * Canonical display-preference term of the photo/reference track (D-11/D-12/
  * D-13): `visibleInStudio`, `opacity`, `transform`, `transformLocked`. The
- * canonical document revision EXCLUDES these fields by design, so the sync
- * channel's change detection — which must ship them, since they persist in the
- * package — appends this term to the revision instead of widening the revision
- * itself. A null track contributes an empty term (D-29 idiom).
+ * canonical document revision EXCLUDES these fields by design — they are
+ * display preferences, never content — so the change-detection CARRIERS append
+ * this term instead of widening the revision itself. This is now the SINGLE
+ * photo-display encoder (261012-c9a): the sync fingerprint's `|photoDisplay:`
+ * term, the save fingerprint's `|photoDisplay:` term and the layer change
+ * token's `|photoDisplay:` term (the authoritative `layers/<layerId>.json`
+ * write gate, PKG-06) all call it — never a second hand-written display
+ * encoding. A null track contributes an empty term (D-29 idiom).
  */
-function encodeCanonicalPhotoReferenceDisplay(track: PhotoReferenceTrack | null): string {
+export function encodeCanonicalPhotoReferenceDisplay(track: PhotoReferenceTrack | null): string {
   if (track === null) return '';
   const transform = track.transform;
   return [
@@ -144,12 +149,16 @@ function encodeCanonicalPhotoReferenceDisplay(track: PhotoReferenceTrack | null)
 /**
  * Canonical background display-transform term (260922-rd4): x, y, scaleX,
  * scaleY, rotation (DEGREES — the one photo-handles/bounds/compositor unit).
- * The LOCK is deliberately excluded: it changes no pixels and no package
- * content worth a fingerprint term — unlocking is mirrored onto the track
- * member, which the parser roundtrip already preserves. THIS is the single
- * encoder (T-49-03-02): the sync fingerprint (`|bgDisplay:`), the save
- * fingerprint (`|bgT:`) and the flattened cache key (`bgtransform:`) all call
- * it — never a second hand-written transform encoding.
+ *
+ * The LOCK is deliberately excluded from THIS encoder because it also feeds the
+ * flattened cache key's `bgtransform:` term (efxPaintCompositeCache.ts:153) and
+ * a lock flip is a display preference that must never rebake the flattened
+ * composite (T-261012-C9A-02). The three display carriers — the sync
+ * fingerprint (`|bgDisplay:`), the layer change token (`|bgT:`) and the save
+ * fingerprint (`|bgT:`) — call `encodeCanonicalBackgroundDisplay` instead, which
+ * delegates to this encoder and appends the lock. THIS stays the single
+ * transform encoder (T-49-03-02): never a second hand-written transform
+ * encoding anywhere.
  */
 export function encodeCanonicalBackgroundTransform(transform: PhotoReferenceTransform): string {
   return [
@@ -159,6 +168,20 @@ export function encodeCanonicalBackgroundTransform(transform: PhotoReferenceTran
     encodeCanonicalNumber(transform.scaleY),
     encodeCanonicalNumber(transform.rotation),
   ].join('');
+}
+
+/**
+ * Canonical background DISPLAY composition (261012-c9a): the bare transform
+ * encoding (delegated — single-encoder law T-49-03-02, never re-encoded) plus
+ * a fixed delimiter plus the `transformLocked` boolean. The lock is a display
+ * preference the document revisions exclude (D-07 vs D-11/D-12/D-13), so the
+ * three display carriers (sync fingerprint, layer change token, save
+ * fingerprint) would otherwise never see a lock-only flip and save/reopen
+ * would silently revert it (BKG-09). The bare encoder above keeps feeding
+ * `bgtransform:` ONLY — a lock flip must not rebake the composite.
+ */
+export function encodeCanonicalBackgroundDisplay(background: BackgroundTrack): string {
+  return `${encodeCanonicalBackgroundTransform(background.transform)}|${validatedBoolean(background.transformLocked)}`;
 }
 
 /**
@@ -247,20 +270,21 @@ export function buildEfxPaintDocumentRevision(value: unknown): string {
 /**
  * Change-detection fingerprint of the child→main document sync channel: the
  * canonical document revision PLUS the photo/reference display-preference term
- * the revision deliberately excludes PLUS the background display-transform
- * term (260922-rd4, same display-preference class) PLUS the document `audios`
- * term (261008-ig1, LAST term — the audios member is excluded from the
- * revision by design so clip edits ship through the sync guards, never
- * through the pixel revision; T-52.5-02). Display preferences persist in the
- * package but never bump the revision (D-07 vs D-11/D-12/D-13), so the
- * channel's two change-detection points — the child's push guard and the
- * parent's register guard — compare THIS fingerprint; comparing the bare
- * revision silently drops every display-only (and clip-only) change from the
- * sync.
+ * the revision deliberately excludes PLUS the background display term
+ * (260922-rd4 transform, 261012-c9a now INCLUDING the `transformLocked` lock
+ * via `encodeCanonicalBackgroundDisplay`) PLUS the document `audios` term
+ * (261008-ig1, LAST term — the audios member is excluded from the revision by
+ * design so clip edits ship through the sync guards, never through the pixel
+ * revision; T-52.5-02). Display preferences persist in the package but never
+ * bump the revision (D-07 vs D-11/D-12/D-13), so the channel's two
+ * change-detection points — the child's push guard and the parent's register
+ * guard — compare THIS fingerprint; comparing the bare revision silently drops
+ * every display-only (and clip-only) change from the sync. Term order is
+ * pinned: audios stays LAST.
  */
 export function buildEfxPaintDocumentSyncFingerprint(value: unknown): string {
   const document = parseEfxPaintDocument(value);
-  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}|bgDisplay:${encodeCanonicalBackgroundTransform(document.background.transform)}|audios:${encodeCanonicalAudios(document.audios)}`;
+  return `${computeDocumentRevision(document)}|photoDisplay:${encodeCanonicalPhotoReferenceDisplay(document.photoReference)}|bgDisplay:${encodeCanonicalBackgroundDisplay(document.background)}|audios:${encodeCanonicalAudios(document.audios)}`;
 }
 
 /**
