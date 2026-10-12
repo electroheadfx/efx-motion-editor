@@ -32,6 +32,10 @@ export interface ExportProgress {
   estimatedSecondsRemaining: number | null;
   /** Error message if status === 'error' */
   errorMessage: string | null;
+  /** Named coverage-gap diagnostics (D-06/D-14). Parallel to but independent of
+   *  errorMessage — warnings NEVER abort and never set error status. A gap is a
+   *  valid compositional state; errorMessage keeps its abort semantics. */
+  warnings: string[];
   /** Frame number to resume from if error occurred (per D-29) */
   resumeFromFrame: number | null;
   /** Path to the export output folder */

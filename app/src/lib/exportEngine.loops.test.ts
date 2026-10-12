@@ -48,6 +48,13 @@ vi.mock('./frameMap', () => ({
   frameMap: { peek: () => hoisted.fm },
   crossDissolveOverlaps: { peek: () => [] },
   getTimelineOverlaySequenceOutFrame: (seq: { outFrame?: number }, fallback: number) => seq.outFrame ?? fallback,
+  // 53.1-05 D-06/D-14: exportEngine collects gap warnings through this helper.
+  getOverlaySkipRange: (clip: { outFrame?: number }, N: number) => {
+    if (clip.outFrame == null) return null;
+    if (!Number.isInteger(clip.outFrame) || !Number.isFinite(N)) return null;
+    if (clip.outFrame >= N) return null;
+    return { start: clip.outFrame, endExclusive: N };
+  },
 }));
 
 vi.mock('../stores/sequenceStore', () => ({

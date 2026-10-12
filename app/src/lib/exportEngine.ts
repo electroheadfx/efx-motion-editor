@@ -1,7 +1,7 @@
 import { PreviewRenderer } from './previewRenderer';
 import { renderGlobalFrame, renderFrameWithMotionBlur, preloadExportImages } from './exportRenderer';
 import { requestPhysicPaintFlush } from './physicPaintFlush';
-import { frameMap, crossDissolveOverlaps } from './frameMap';
+import { frameMap, crossDissolveOverlaps, getOverlaySkipRange } from './frameMap';
 import { sequenceStore } from '../stores/sequenceStore';
 import { projectStore } from '../stores/projectStore';
 import { exportStore } from '../stores/exportStore';
@@ -178,6 +178,32 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     exportStore.updateProgress({ status: 'error', errorMessage: loopBlock });
     return;
   }
+
+  // D-06/D-14: named coverage-gap warnings — NEVER abort. A visible clip with
+  // an authoritative out < N leaves frames uncovered; that is a valid
+  // compositional state (clip ends, paper/other layers continue), so the export
+  // still runs and writes 0..N-1. The range comes from getOverlaySkipRange —
+  // the same coverage source as the timeline hatch (D-05) and the inspector
+  // tail line (D-12). Message discipline follows SND-02 ("name the clip and
+  // the range") but rides warnings[], not errorMessage's abort shape.
+  const gapWarnings: string[] = [];
+  for (const seq of exportedSequences) {
+    if (seq.visible === false) continue;
+    const skip = getOverlaySkipRange({
+      inFrame: seq.inFrame ?? 0,
+      outFrame: seq.outFrame,
+      extrapolation: seq.extrapolation,
+      sourceFrameCount: 1,
+    }, total);
+    if (!skip) continue;
+    const kindLabel = seq.layers[0]?.type ?? 'clip';
+    const last = skip.endExclusive - 1;
+    const rangeText = skip.start === last
+      ? `frame ${skip.start}`
+      : `frames ${skip.start}..${last}`;
+    gapWarnings.push(`${kindLabel} "${seq.name}" does not cover ${rangeText}`);
+  }
+  exportStore.updateProgress({ warnings: gapWarnings });
 
   // Compute export resolution (D-05: project resolution * multiplier)
   // Do NOT apply devicePixelRatio (Research Pitfall 1)

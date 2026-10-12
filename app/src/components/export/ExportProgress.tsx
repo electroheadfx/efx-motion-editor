@@ -55,6 +55,17 @@ export function ExportProgress() {
           </div>
         )}
 
+        {/* Coverage-gap warnings (D-06/D-14) — non-blocking. A gap is a valid
+            compositional state; these name it without aborting the export. */}
+        {p.warnings.length > 0 && p.status !== 'error' && (
+          <div class="text-xs text-amber-200 bg-amber-900/20 p-3 rounded space-y-1">
+            <div class="font-semibold">Coverage gaps</div>
+            {p.warnings.map((w) => (
+              <div key={w}>{w}</div>
+            ))}
+          </div>
+        )}
+
         {/* Action buttons */}
         <div class="flex gap-3 justify-end">
           {/* Cancel button during rendering */}

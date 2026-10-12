@@ -67,6 +67,14 @@ vi.mock('./frameMap', () => ({
     if (globalFrame < inFrame || globalFrame >= outFrame) return { kind: 'skip' };
     return { kind: 'sample', localFrame: globalFrame - inFrame };
   },
+  // 53.1-05 D-06/D-14: exportEngine collects gap warnings through this helper.
+  // Mirror the real getOverlaySkipRange policy (absent out = no gap; out >= N = no gap).
+  getOverlaySkipRange: (clip: { outFrame?: number }, N: number) => {
+    if (clip.outFrame == null) return null;
+    if (!Number.isInteger(clip.outFrame) || !Number.isFinite(N)) return null;
+    if (clip.outFrame >= N) return null;
+    return { start: clip.outFrame, endExclusive: N };
+  },
 }));
 
 vi.mock('../stores/sequenceStore', () => ({

@@ -19,6 +19,7 @@ const progress = signal<ExportProgress>({
   totalFrames: 0,
   estimatedSecondsRemaining: null,
   errorMessage: null,
+  warnings: [],
   resumeFromFrame: null,
   outputPath: null,
 });
@@ -88,13 +89,22 @@ export const exportStore = {
   },
 
   updateProgress(partial: Partial<ExportProgress>) {
-    progress.value = { ...progress.value, ...partial };
+    // D-14: warnings is a required field — a Partial that omits it must never
+    // leave the field undefined. Keep the existing list unless the caller
+    // supplies one.
+    const current = progress.value;
+    progress.value = {
+      ...current,
+      ...partial,
+      warnings: partial.warnings ?? current.warnings ?? [],
+    };
   },
 
   resetProgress() {
     progress.value = {
       status: 'idle', currentFrame: 0, totalFrames: 0,
       estimatedSecondsRemaining: null, errorMessage: null,
+      warnings: [],
       resumeFromFrame: null, outputPath: null,
     };
     cancelled.value = false;
