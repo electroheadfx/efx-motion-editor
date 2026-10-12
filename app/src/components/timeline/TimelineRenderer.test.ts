@@ -505,6 +505,7 @@ describe('timeline pointer frame resolution (260918-o0n)', () => {
     const frameFromXSource = code.slice(frameFromXIndex, frameFromXIndex + 400);
 
     expect(frameFromXSource).toContain('resolveTimelinePointerFrame(');
-    expect(frameFromXSource).toContain('totalFrames > 0 ? totalFrames - 1 : 0');
+    // D-10: the default ceiling is N (tick N is reachable), not N-1.
+    expect(frameFromXSource).toContain('totalFrames > 0 ? totalFrames : 0');
   });
 });

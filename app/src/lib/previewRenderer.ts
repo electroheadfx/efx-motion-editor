@@ -84,11 +84,11 @@ export {blendModeToCompositeOp};
  * end-of-sequence position). Preview at N shows the last frame's result.
  * Exactly one line at the preview render boundary — no atEnd flag, no
  * per-consumer N fork (I-1 divergence class). Export never sees N (still
- * writes 0..N-1). N=0 maps to -1, which the render boundary treats as the
- * empty timeline (today's empty render).
+ * writes 0..N-1). N=0 has no end state: the frame passes through unchanged
+ * so the empty-timeline render (paint composite + clearRect) still runs.
  */
 export function mapPreviewEndStateFrame(playhead: number, N: number): number {
-  return playhead >= N ? N-1 : playhead;
+  return N > 0 && playhead >= N ? N - 1 : playhead;
 }
 
 /**

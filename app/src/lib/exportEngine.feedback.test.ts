@@ -42,6 +42,9 @@ vi.mock('./frameMap', () => ({
   frameMap: { peek: () => hoisted.fm },
   crossDissolveOverlaps: { peek: () => [] },
   getTimelineOverlaySequenceOutFrame: (seq: { outFrame?: number }, fallback: number) => seq.outFrame ?? fallback,
+  // 53.1-05: exportEngine reads the shared skip-range helper for gap warnings.
+  // These feedback tests are not about gaps, so no clip is trimmed.
+  getOverlaySkipRange: () => null,
 }));
 
 vi.mock('../stores/sequenceStore', () => ({
