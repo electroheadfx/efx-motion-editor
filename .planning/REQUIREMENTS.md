@@ -57,7 +57,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **BKG-06**: Gaps reveal the document fallback (solid color or transparency)
 - [x] **BKG-07**: Source-frame references remain linked across all repetitions; no durable asset duplication
 - [x] **BKG-08**: Undo/redo clip creation, move, repeat changes, import references, deletion, and fallback changes by reference
-- [x] **BKG-09**: Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen
+- [ ] **BKG-09**: Imported clips, source order, IDs, repeats, gaps, fallback, and effective rendering survive save/reopen — GAP 2026-10-11: background transform/lock display leg dropped by the layer change token (see v1.0.0-MILESTONE-AUDIT.md)
 
 ### REF — Photo/Reference Track (Phase 6)
 
@@ -90,7 +90,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **PKG-03**: Heavy media obey the same law as images — audio and video stay disk references (absolute on-disk paths) and are never copied into the package
 - [x] **PKG-04**: Clean break — pre-52.2 project data is refused explicitly; no migration shim, converter, or compatibility reader ships in the code
 - [x] **PKG-05**: Persistence granularity is per paint layer, never per key — layer metadata in a per-layer JSON sub-file, key rasters as media files in the media tree
-- [x] **PKG-06**: Save/reopen preserves the package — manifest, layer sub-files, media references, and cache identity — through the existing transactional save (staging -> hardlink unchanged -> fsync -> atomic rename-swap -> digest-bound commit/rollback)
+- [ ] **PKG-06**: Save/reopen preserves the package — manifest, layer sub-files, media references, and cache identity — through the existing transactional save (staging -> hardlink unchanged -> fsync -> atomic rename-swap -> digest-bound commit/rollback) — GAP 2026-10-11: display-class edits (bg transform/lock, photo-display prefs) never reach the layer write gate after the first save (see v1.0.0-MILESTONE-AUDIT.md)
 
 ### SND — Document Sound (GSD 52.5)
 
@@ -100,7 +100,7 @@ Requirements for milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal). Eac
 - [x] **SND-04**: Clip gain is a signed integer -100..+100 (0 = unity, +100 = double, -100 = silent), never a plain volume
 - [x] **SND-05**: Fade-in and fade-out each have a frame length and a curve (linear | exponential | logarithmic)
 - [x] **SND-06**: The per-clip `enabled` switch silences the clip everywhere (Studio preview, main-editor playback, export) without touching the main app's audio tracks
-- [ ] **SND-07**: Save/reopen restores every placed clip (identity, sourcePath, trim, gain, fades, enabled); a clip whose file has moved is surfaced as missing, never silently dropped
+- [x] **SND-07**: Save/reopen restores every placed clip (identity, sourcePath, trim, gain, fades, enabled); a clip whose file has moved is surfaced as missing, never silently dropped
 
 ### ACC — Integrated Acceptance (Phase 9)
 
@@ -183,7 +183,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BKG-06 | Phase 49 | Complete |
 | BKG-07 | Phase 49 | Complete |
 | BKG-08 | Phase 49 | Complete |
-| BKG-09 | Phase 49 | Complete |
+| BKG-09 | Phase 49 | Gap — transform save leg |
 | REF-01 | Phase 50 | Complete |
 | REF-02 | Phase 50 | Complete |
 | REF-03 | Phase 50 | Complete |
@@ -207,14 +207,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PKG-03 | Phase 52.2 | Complete |
 | PKG-04 | Phase 52.2 | Complete |
 | PKG-05 | Phase 52.2 | Complete |
-| PKG-06 | Phase 52.2 | Complete |
+| PKG-06 | Phase 52.2 | Gap — display-class save leg |
 | SND-01 | Phase 52.5 | Complete |
 | SND-02 | Phase 52.5 | Complete |
 | SND-03 | Phase 52.5 | Complete |
 | SND-04 | Phase 52.5 | Complete |
 | SND-05 | Phase 52.5 | Complete |
 | SND-06 | Phase 52.5 | Complete |
-| SND-07 | Phase 52.5 | Pending |
+| SND-07 | Phase 52.5 | Complete |
 
 **Coverage:**
 

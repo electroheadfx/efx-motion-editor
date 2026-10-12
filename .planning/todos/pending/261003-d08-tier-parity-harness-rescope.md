@@ -6,6 +6,9 @@ created: 2026-10-03
 resolves_phase: "53.1"
 source: 52.4-REVIEW.md CR-01
 severity: critical
+audit_acknowledged:
+  milestone: v1.0.0
+  at: 2026-10-12
 ---
 
 # Retire or re-scope the D-08 tier-parity harness row

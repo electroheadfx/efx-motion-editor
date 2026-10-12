@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos, paint/rotopaint) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, draw frame-by-frame with pressure-sensitive brush/shape/fill tools and onion skinning with expressive brush FX (watercolor, ink, charcoal, pencil, marker) via p5.brush with spectral pigment mixing, manage strokes with drag-reorder, visibility toggles, and multi-select, edit stroke paths as bezier curves with interactive anchor/handle manipulation, edit keyframe positions directly on canvas via motion path, apply per-layer GLSL velocity motion blur with shutter angle controls, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio and motion blur sub-frame accumulation. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar; v0.4.0 added canvas motion path editing and frame-by-frame paint/rotopaint layers; v0.5.0 added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export; v0.6.0 added stroke management, bezier path editing, and paint workflow UX improvements; v0.7.0 migrated to a pnpm monorepo (app/ + packages/efx-physic-paint/) with a 3-mode paint system and color picker polish; v0.8.0 proved efx-physic-paint as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline (durable cache, generated interpolation, multi-select group operations, Roto Script Play fusion, durable script library) and render-path performance via a structural/frame-split signal graph.
+A macOS desktop application for creating cinematic stop-motion films from photography keyframes. Users import key photographs, arrange them into timed sequences at 15/24 fps, add overlay layers (static images, image sequences, videos, paint/rotopaint) with blend modes, transforms, and keyframe animation, apply cinematic FX effects (film grain, vignette, color grade, blur, dirt/scratches, light leaks) and GLSL shader effects (17 Shadertoy + 18 GL transitions), add fade/cross-dissolve/GL transitions, import audio with waveform visualization and beat-synced editing, draw frame-by-frame with pressure-sensitive brush/shape/fill tools and onion skinning with expressive brush FX (watercolor, ink, charcoal, pencil, marker) via p5.brush with spectral pigment mixing, manage strokes with drag-reorder, visibility toggles, and multi-select, edit stroke paths as bezier curves with interactive anchor/handle manipulation, edit keyframe positions directly on canvas via motion path, apply per-layer GLSL velocity motion blur with shutter angle controls, preview in real-time on a canvas-based timeline with fullscreen mode, and export as PNG image sequences or video (ProRes/H.264/AV1) with audio and motion blur sub-frame accumulation. Built with Tauri 2.0 (Rust) + Preact + Preact Signals + Motion Canvas + Tailwind CSS v4. v0.1.0 delivered the editing foundation; v0.2.0 completed the pipeline with keyframe animation, GPU blur, content overlays, transitions, and multi-format export; v0.3.0 added audio with beat sync, GLSL shader effects/transitions, solid sequences with gradients, and a streamlined 2-panel adaptive sidebar; v0.4.0 added canvas motion path editing and frame-by-frame paint/rotopaint layers; v0.5.0 added expressive brush rendering with spectral pigment mixing and per-layer GLSL velocity motion blur with sub-frame accumulation for export; v0.6.0 added stroke management, bezier path editing, and paint workflow UX improvements; v0.7.0 migrated to a pnpm monorepo (app/ + packages/efx-physic-paint/) with a 3-mode paint system and color picker polish; v0.8.0 proved efx-physic-paint as a standalone interactive physics paint app/window with a deterministic physical-frame Roto timeline (durable cache, generated interpolation, multi-select group operations, Roto Script Play fusion, durable script library) and render-path performance via a structural/frame-split signal graph; v0.9.0 delivered PlayScript application modes, linked Hold Loop Clips with the Integrated Loop Rail, Timeline Toolbox, and a signed/notarized release; v1.0.0 turned one parent Paint layer into a complete multi-track frame animation document — a versioned EFX Paint document with stable internal track IDs, track-local state, an internal multi-track timeline, a deterministic compositor producing one flattened parent raster per frame, a fixed Background track with Loop Clips, a photo/reference track with Reveal, a read-only audio preview plus a document sound track, HD native-resolution paint with a bytes/WebP frame runtime, a clean-break references-only `.mce` package format, paint-content export, and a signed/notarized 1.0.0 release.
 
 ## Core Value
 
@@ -136,35 +136,26 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Read-only main-editor audio preview synchronized to the shared application-frame cursor during internal track playback — v1.0.0 Phase 51 (delivered via quicks 260902-cfa + amendments)
 - ✓ Shared mask compositor and Reveal using photo source plus internal Paint/PlayScript coverage — v1.0.0 Phase 52
 - ✓ Any project containing paint exports its painted frames end-to-end — dense per-frame compositor enumeration (FrameEntry content/paint/gap union), paint-only and mixed projects, both canvas orientations, selected-fx export with fx inFrame > 0 included (CR-01) — v1.0.0 Phase 52.3
+- ✓ Modern frame runtime: bytes/ImageBitmap frame identity, Rust WebP-lossless codec, byte-budgeted 512 MB LRU, working-resolution cap raised to 1920 — v1.0.0 Phase 52.1
+- ✓ References-only `.mce` package: manifest + `layers/*.json` + `frames/*.webp` with transactional multi-file save, digest-verified lazy read-back, and explicit pre-1.0 refusal — v1.0.0 Phase 52.2
+- ✓ Real-paint structured bristle footprint replacing salt-and-pepper deposit (seeded Poisson lanes, single finalize wet deposit, source-shape gates) — v1.0.0 Phase 52.4
+- ✓ Physic Paint document sound track: Studio waveform/reposition/trim, main-editor mixed playback, `.mce` reference persistence, export mix — v1.0.0 Phase 52.5
+- ✓ Integrated v1.0.0 acceptance: all six REL-01 gates green, 42-row signed-bundle UAT (36 pass / 6 na / 0 fail), signed/notarized 1.0.0 release published as GitHub Latest — v1.0.0 Phase 53
+- ✓ Staged export progress (preparation / rendering / encoding) with cancel-during-prep — quick 260919-sns
 
 ### Active
 
-- [ ] Save/reopen, undo/redo, clean-break legacy rejection, preview/export parity, and native UAT — v1.0.0 Phase 53
-- [ ] Staged export progress (preparation / rendering / encoding) so clicking Export never appears idle for seconds — user request 2026-09-19, routed to a quick
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
-## Latest Milestone: v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (Shipped 2026-08-21)
+## Latest Milestone: v1.0.0 EFX Paint Multi-Track Frames and Reveal (Shipped 2026-10-12)
+
+14 phases (45-53, incl. inserted 52.1-52.5), 80 plans, 1,578 commits (301 feat) over 49 days. Closeout `override_closeout`: audit verdict `gaps_found` — 65/68 requirements (Known Gaps PKG-06, BKG-09, SND-07 — all display-setter/export-mix save legs; see MILESTONES.md), 27 open artifacts acknowledged as deferred. Shipped as a signed/notarized 1.0.0 macOS release published as GitHub **Latest** on 2026-10-11 with all six REL-01 gates green and the 42-row signed-artifact UAT at 36 pass / 6 na / 0 fail. Source spec: `SPECS/milestone-v1.0.0-plan.md`. See `.planning/MILESTONES.md` and `milestones/v1.0.0-ROADMAP.md`.
+
+## Previous Milestone: v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity (Shipped 2026-08-21)
 
 12 phases (39-44, incl. inserted 43.1-43.6), 100 plans, 962 commits over 17 days. Audit verdict `passed`: 38/38 requirements satisfied, 12/12 phases verified, integration + E2E flows wired (43→44 signed-artifact boundary not dropped), Nyquist fully compliant. Shipped as a signed/notarized/stapled macOS release published as GitHub **Latest** on 2026-08-21 (ahead of the 2026-08-31 target) with all six REL-01 gates green, the 17-step packaged-app UAT approved, downloaded-artifact verification passed, and all 15 stop conditions recorded not active. See `.planning/MILESTONES.md`, `milestones/v0.9.0-MILESTONE-AUDIT.md`, and `milestones/v0.9.0-ROADMAP.md`.
-
-## Current Milestone: v1.0.0 EFX Paint Multi-Track Frames and Reveal
-
-**Goal:** Allow one parent Paint layer to contain a complete multi-track frame animation document inside EFX Paint — multiple internal Paint frame tracks composited into one flattened parent-layer result.
-
-**Target features:**
-- New versioned EFX Paint document (clean format break; pre-v1.0 Paint data rejected explicitly, no migration/compat shim)
-- Track-local Paint/Roto/PlayScript frames, linked Hold Loop Clips, and caches
-- Internal multi-track timeline with filmstrip capsules and controls (add/rename/duplicate/delete/reorder, hide/solo, opacity, blend)
-- Deterministic internal compositor → one flattened parent raster per frame
-- Fixed Background track with imported still/sequence Loop Clips + solid/transparent fallback
-- Photo/reference track (reference-only / reveal-source / masked-transform-source)
-- Read-only main-editor audio preview during internal track playback
-- Shared mask compositor and Reveal via Paint/PlayScript coverage
-- Integrated native UAT + signed release
-
-**Source spec:** `SPECS/milestone-v1.0.0-plan.md` (user-approved, locked ownership boundaries: main editor owns sequences/layers/audio and stays unchanged; multi-track means internal Paint frame tracks inside one opened EFX Paint document; all internal tracks share the parent application-frame axis and never change main-editor sequence duration)
 
 ## Previous Milestone: v0.8.0 Standalone Physics Paint (Shipped 2026-08-01)
 
@@ -192,12 +183,21 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ## Context
 
-Shipped v0.9.0 with 962 commits over 17 days (cumulative repo spans 2,094+ files). pnpm monorepo with app/ + packages/efx-physic-paint/ (a proven standalone interactive physics paint app/window with Tauri-native frame sync). Current codebase runs ~100k+ LOC TS/TSX across app/src and packages/.
-Tech stack: Tauri 2.0, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm workspaces, p5.brush (standalone), perfect-freehand, fit-curve, bezier-js.
-Architecture: 13 reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur/GLSL runtime/motion blur, 3-mode paint system, efx-physic-paint standalone window with deterministic physical-frame Roto timeline (canonical keyId/appFrame model, atomic transactions, generated interpolation, multi-select group operations via finalizeProposal single authority, Roto Script Play fusion, durable script library), signals-backed Roto session boundary, structural/frame-split render-path signal graph with canvas-first navigation paint, plus v0.9.0: Loop Clip Hold rails (one compact derived interval record, linked preview/export parity, one-Undo/Redo), stable-key incoming-break ownership for intentional gaps, Motion/Static Group stabilization + retained-Action lifecycle (leased parent-authoritative transactions, durable Rust Action recovery), Group/Key Rail drag, Timeline Toolbox + directional Push, and session-only multi-rail selection with batch operations.
-Project format: .mce v15 with backward compatibility (v1 through v15).
+Shipped v1.0.0 with 1,578 commits (301 feat) over 49 days; cumulative codebase ~137.8k LOC TS/TSX across app/src and packages/. pnpm monorepo with app/ + packages/efx-physic-paint/ (a proven standalone interactive physics paint app/window with Tauri-native frame sync).
+Tech stack: Tauri 2.11.5, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm workspaces, p5.brush (standalone), perfect-freehand, fit-curve, bezier-js, plus pinned XState v6 alpha + Effect v4 rc (pilot only).
+Architecture: 13+ reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur/GLSL runtime/motion blur, 3-mode paint system, efx-physic-paint standalone window with deterministic physical-frame Roto timeline (canonical keyId/appFrame model, atomic transactions, generated interpolation, multi-select group operations via finalizeProposal single authority, Roto Script Play fusion, durable script library), signals-backed Roto session boundary, structural/frame-split render-path signal graph, plus v0.9.0 Loop Clip Hold rails / Timeline Toolbox / multi-rail batch operations, plus v1.0.0: versioned EFX Paint document (track-addressed runtime, per-track revisions and leases), internal multi-track timeline, deterministic internal compositor producing the one flattened parent raster (`getFlattenedFrame` is the sole content path for preview and export), fixed Background track + photo/reference track + Reveal rail, HD bytes/WebP frame runtime with a 512 MB LRU, references-only `.mce` package with transactional multi-file save, document sound track, and an XState v6 stroke-finalization machine + Effect v4 bounded-turn flush queue (pilot, conventions in the `efx-async-orchestration` skill).
+Project format: `.mce` v1.0 clean break — `formatVersion` 16, references-only package (manifest + `layers/*.json` + `frames/*.webp`); pre-v1.0 projects rejected explicitly (no backward compat, by design).
 
 Known technical debt:
+- **PKG-06/BKG-09 Known Gap:** display-class setters (bg transform/lock, photo-display prefs) never rotate the layer change token → display-only edits revert on reopen after a settled save — v1.0.0 (see MILESTONES.md Known Gaps)
+- **SND-07 Known Gap:** moved/failed audio clip silently dropped from the exported mix (undecoded-buffer `continue`, no per-track diagnostic) — v1.0.0
+- WINDOWS.md ledger frontmatter counts disagree with entries — `windows append` refuses every write; needs a recount-repair pass — 52.2 deferred
+- Orphan package files: deleted keys/layers never remove `frames/<layerId>/<keyId>.webp` / `layers/<layerId>.json` (token diff is add-only, no GC owner) — 52.2 deferred
+- Two call sites still hand the package DIRECTORY to `projectStore.openProject` (`shortcuts.ts:95`, `WelcomeScreen.tsx:168`) → EISDIR on Cmd+O / welcome Open — 52.2 deferred, needs owner
+- `paintStore` ↔ `projectStore` circular-import init-order failure in `PhysicsPaintStudioView.test.ts` (collect-phase) — 52.5 deferred
+- `'move'` missing from the `ToolType` union (3 pre-existing typecheck errors) — 52.5 deferred
+- Hide/solo truth table duplicated: `efxPaintHideSolo.ts` (compositor/export) vs `previewRenderer.ts` (Studio) — logic-identical today, no shared import — v1.0.0 audit
+- `main.test.ts` unhandled rejection in full suite (`__TAURI_INTERNALS__.invoke` at cold-start drain) — 52.2 deferred, no scheduled owner
 - S key shortcut lacks isPaintEditMode() guard (low severity) — from v0.6.0
 - 2 medium-severity export edge cases (content-overlay image preload, FX generator frame offset) — carried from v0.2.0
 - Coalescing API partially resolved (motion path drag uses startCoalescing/stopCoalescing) — most UI interactions still unwired (carried from v0.1.0)
@@ -205,14 +205,12 @@ Known technical debt:
 - 3 pre-existing audioWaveform test failures (unrelated to v0.6.0 work)
 - Roto cache footprint measurement/compression deferred (PNG alpha encoding exists) — v0.8.0
 - Deterministic physical-resolver regression coverage authorized as follow-up test plan — v0.8.0 Phase 36.14
-- Code-review follow-ups CR-01/CR-02, WR-01..04 routed to follow-up quick — v0.8.0 Phase 36.14
 - Legacy source/display model still feeds useRotoTimelineActions.getModel (inert dual-model seam); legacy optional fallbacks in rotoOnionPreview/applyCanvas/deleteRotoFrame — v0.8.0
 - Dead playScriptMarkers field (no producer) and misleading physicPaintPlayScriptBridge.test.ts filename — v0.8.0 integration check I-01/I-02
-- macOS Developer ID credentialed signed release intentionally deferred post-close (prep complete, docs/macos-signed-release.md) — v0.8.0
+- macOS Developer ID credentialed signed release — RESOLVED (v0.9.0, re-run for 1.0.0 in Phase 53)
 - Phase 43.1 DF-01..04 deferred (non-blocking persistence/security hardening; NEW_SCOPE_FROM_VERIFIER) — cross-resource save transaction, directory sync on cache publication, provenance-only Loop Clip no-op, postMessage origin authentication — v0.9.0
 - Release-script warnings (frozen, pre-existing): `codesign --entitlements :-` deprecation and ~21 GB worktree preflight walk — v0.9.0 Phase 44 (WR-01/WR-02)
 - Spec-vs-implementation divergences recorded (judged against shipped): truncation label French-spec vs English shipped; chunk budget spec-1100 vs shipped-1120 — v0.9.0 Phase 44 (D-09)
-- State bookkeeping: `init.milestone-op` `completed_phases` 11 vs all-phases-complete — reconciled at v0.9.0 close
 
 ## Constraints
 
@@ -299,6 +297,14 @@ Known technical debt:
 | Phase 52.3 one shared `entry.globalFrame` predicate across enumeration, render gating, and export preload | Positional-vs-global conflation produced all-transparent selected-fx exports (RESEARCH Pitfall 1) and an empty preload window (review CR-01) at fx inFrame > 0 | ✓ Good — CR-01 closed RED-first (50ecd5e4 → 3e84c120); preload, render gate, and enumeration provably share one predicate |
 | Phase 52.3 playback activation of the owning fx sequence when the playhead enters paint frames is deliberate (D-08-consistent) | Dense enumeration makes playback cross fx-owned frames; deactivating would fight the selected-fx mental model | ✓ Good — pinned in playbackEngine tests; UAT Row 7 confirmed as callout, not a bug |
 | Phase 52.5 document sound as reference-only `audio/` persistence + closed bridge keys (LAUNCH_KEYS/DOCUMENT_AUDIO_KEYS fail-closed) + mix-not-contend clip dispatch | Sound bytes must never enter the .mce document; ad-hoc bridge keys would reopen the injection surface; Studio claim and main playback must mix rather than contend | ✓ Good — 10/10 UAT, threats_open: 0, single decode keyed by sound.id, export mix gated by tested pure functions |
+| v1.0.0 clean-break versioned EFX Paint document (no migration/compat shim; pre-v1.0 rejected at parse time) | Migration code for a format that never shipped publicly is dead weight; legacy data fails explicitly instead of rendering wrong | ✓ Good — 5-fixture rejection truth table; native UAT confirmed clean pre-v1 projects still open |
+| v1.0.0 one document format everywhere (D-03): session file, bridge launch context, standalone engine, main persistence all re-wired to the same v1.0 model | Divergent per-surface formats were the root of earlier persistence bugs | ✓ Good — SerializedProject consumer sweep completed; legacy version:2 session files distinctly rejected |
+| v1.0.0 track-addressed runtime (per-track maps, revision signals, track-scoped operation leases) over parent-layer addressing | Multi-track editing needs isolation guarantees at the store layer, not UI discipline | ✓ Good — Phase 46-47 UAT: edits never cross tracks; stale async commits fail closed |
+| v1.0.0 `getFlattenedFrame` as the sole content path for main preview and export (CMP-01 keystone) | Two composition paths guarantee preview/export drift | ✓ Good — pixel acceptance matrix + native parity UAT green |
+| v1.0.0 fond collapsed to one document-fallback authority (D-11) | The per-track roto metadata walk duplicated resolution logic across surfaces | ✓ Good — one resolution, two consumers (gate/draw) pinned by test; 260920-k34 approved |
+| v1.0.0 bytes/ImageBitmap frame runtime + Rust WebP-lossless + 512 MB LRU over base64 dataUrl strings | base64 strings caused decode storms and O(n) memory inflation at HD | ✓ Good — 52.1 leave-perf blocker resolved (5–8s → 120ms); HD native resolution shipped |
+| v1.0.0 references-only `.mce` package with per-file change tokens behind one transaction | Images/heavy media as disk refs keep documents light; transactional save keeps them consistent | ⚠️ Revisit — Known Gaps PKG-06/BKG-09: display-class setters skip the change-token rotation, so display-only edits revert on reopen |
+| v1.0.0 XState v6 + Effect v4 pilot on stroke finalization + flush pipeline (measured, not adopted on reputation) | Hand-rolled FSMs from timers/boolean flags caused races; conventions needed proof before widening | ✓ Good — pilot verdict admitted on T4/T5 + inspectability; `efx-async-orchestration` skill written |
 
 ## Evolution
 
@@ -318,4 +324,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-08 after Phase 52.5 — Physic Paint document sound track complete (10/10 UAT, threats_open: 0, UI audit 16/24 with advisory findings). Phase 53 (Integrated v1.0.0 Acceptance) is the final v1.0.0 phase. Previous milestone v0.9.0 shipped 2026-08-21 (signed/notarized/stapled macOS artifact published as GitHub Latest; 38/38 requirements, 12/12 phases).*
+*Last updated: 2026-10-12 after v1.0.0 milestone — 14 phases, 80 plans, 1,578 commits; signed/notarized 1.0.0 published as GitHub Latest (42-row UAT 36 pass / 6 na / 0 fail); closeout override with Known Gaps PKG-06/BKG-09/SND-07. Previous milestone v0.9.0 shipped 2026-08-21 (38/38 requirements, 12/12 phases).*

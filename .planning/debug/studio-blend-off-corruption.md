@@ -14,6 +14,10 @@ trigger: |
 created: 2026-10-05
 updated: 2026-10-05
 goal: find_and_fix
+audit_acknowledged:
+  milestone: v1.0.0
+  at: 2026-10-12
+  status: awaiting_human_verify
 ---
 
 # Debug Session: studio-blend-off-corruption
@@ -23,9 +27,11 @@ DATA_START
 ## Symptoms
 
 ### Expected behavior
+
 The per-track row blend button toggles interpolation on/off for its own track, on every track (base default and Studio-added). Toggling it must not damage the track's state — subsequent physical edits (rail move, rail delete, key delete, further blend changes) must keep working.
 
 ### Actual behavior
+
 1. **Blend on/off does not work on new tracks** — only the base default track responds. On Studio-added tracks the toggle has no effect.
 2. **Trying to turn frame blending OFF on a track corrupts that track's state** (user flash note). After that:
    - Rail delete fails: `Group lifecycle physical document became stale before proposal staging.`
@@ -37,13 +43,16 @@ The per-track row blend button toggles interpolation on/off for its own track, o
 5. **Quitting the app restores Studio functions** (move, delete come back). So this is in-session runtime state corruption, not persisted document corruption.
 
 ### Error messages (verbatim)
+
 - `Group lifecycle physical document became stale before proposal staging.`
   (`logDiagnostic (PhysicsPaintStudio.tsx:1197)` → `useRotoPhysicalEditCoordinator.ts:1098`)
 
 ### Timeline
+
 Follow-up to studio-track-physical-edits. The carrier fix (f3b08c78) landed and worked — cross-track move now succeeds. These remaining issues surfaced during the live retest on 2026-10-05.
 
 ### Reproduction (working hypothesis from user's flash note)
+
 1. Open the Physics Paint Studio on a project with a base default track (Track 1).
 2. Add a new track in the Studio (e.g. Paint 1 / Paint 2).
 3. On the new track, use the **per-track row blend button** to try to turn frame blending **OFF**.
@@ -52,19 +61,23 @@ Follow-up to studio-track-physical-edits. The carrier fix (f3b08c78) landed and 
 6. Quit and reopen the app — functions return.
 
 ### Control identity (CONFIRMED by user today)
+
 **Per-track row blend button** — the 2026-09-11 owner of interpolation on/off. (That note said frame-blend mode is coerced to `duplicate` at every store entry and its UI section was removed; the row blend button owns interpolation on/off. The button is the control the user means.)
 
 ## Leading hypothesis (NOT prescriptive — test it)
+
 Turning the per-track row blend button OFF on a non-default track writes a bad or divergent interpolation/blend state (possibly a stale revision, a wrong carrier, or a child/parent realm split). The write either is rejected and leaves the document "stale", or is applied to only one realm. Every later physical edit on that track then validates against the corrupted state and is rejected (`Group lifecycle physical document became stale before proposal staging.`). App restart clears the in-memory divergence, which is why functions return.
 
 Secondary shape to test: blend OFF on the base default track works and does not corrupt; blend OFF on a Studio-added track both fails AND corrupts. If that asymmetry holds, the bug is in the non-default-track path of the blend toggle (track identity / lease / revision selection).
 
 ## Prior-session context (do not re-fix)
+
 - `f3b08c78` preserved the raster carrier across payload rebuilds. Move now works. Do NOT revisit the `bytes`-vs-`media` carrier projection.
 - Cluster B observation from that run (NOT fixed, possibly related): cross-track move bypasses the coordinator via `physicPaintStore.moveTrackItems` (called directly from `PhysicsPaintWorkflowStrip.tsx`), leaving child/parent realms diverged. The blend-button trigger may be a second entry point into the same divergence. Check both, but fix ONE root cause.
 - Capture instrumentation is already wired and uncommitted (intentional): `app/src/lib/physicalEditCapture.ts` (new) writes `/tmp/efx-physical-edit-studio.json` + `/tmp/efx-physical-edit-main.json`; capture points in `useRotoPhysicalEditCoordinator.ts`, `PhysicsPaintStudio.tsx`, `physicPaintBridge.ts`. Extend it rather than replacing it.
 
 ## Guardrails (hard constraints)
+
 - User runs the live app. This is a Tauri/cross-webview path: **live or on-disk evidence is the verdict; unit probes are not admissible.**
 - Reuse the existing physical-edit coordinator and record-collection types. **No new transport.**
 - **Fix live first, regression tests after.**
@@ -117,12 +130,14 @@ Timeline:
 ### ROOT CAUSE (proven — code + capture agree)
 
 `useRotoPhysicalEditCoordinator.ts:446`:
+
 ```ts
 function payloadBytesEqual(left: unknown, right: unknown): boolean {
   if (!(left instanceof Uint8Array) || !(right instanceof Uint8Array)) return false;
   ...
 }
 ```
+
 A 52.2-02 D-07 reference-only record carries `media` and `bytes === undefined`. At every payload comparison, `payloadBytesEqual(undefined, undefined)` returns **false** — so `recordsEqual` (line 681, bytes-only compare at 693) reports "mismatch" for **byte-for-byte identical** staged/current record lists as soon as the collection holds ≥1 media-carrier record.
 
 Consequences (all symptoms, one defect):

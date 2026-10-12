@@ -17,6 +17,10 @@ trigger: |
 created: 2026-10-04
 updated: 2026-10-05
 goal: find_and_fix
+audit_acknowledged:
+  milestone: v1.0.0
+  at: 2026-10-12
+  status: fix-applied
 ---
 
 # Debug Session: studio-track-physical-edits
@@ -26,9 +30,11 @@ DATA_START
 ## Symptoms
 
 ### Expected behavior
+
 Physical edits in the Physics Paint Studio work on every track, including tracks added inside the Studio. This covers: add/insert paint key, delete key, move rails, frame-blending toggle/set, onion skinning across tracks.
 
 ### Actual behavior
+
 In the Physics Paint Studio with several tracks, tracks added there reject physical edits:
 
 1. **Add/insert key on a Studio-added track fails** with:
@@ -40,14 +46,17 @@ In the Physics Paint Studio with several tracks, tracks added there reject physi
 4. **Frame blending cannot be disabled on a new track, and frame-blending values cannot be set there.**
 
 ### Error messages (verbatim)
+
 - `Roto physical edit barriers failed. No state was changed.`
 - `Roto physical record validation failed: PhysicPaintRotoRealKeyRecordCollection: malformed real-key record.`
 - `Roto physical edit failed (parent-rejection): Could not apply physics paint output. Keep the standalone open and try again from the current layer/frame. Roto physical replay source snapshot does not match the original accepted command.`
 
 ### Timeline
+
 Noticed now while testing the finished quicks. Edits on pre-existing tracks work until a second track is touched.
 
 ### Reproduction
+
 In the Studio, add a second track, then:
 - (a) add/insert key on it
 - (b) delete keys on track 1 then delete on the new track
@@ -64,12 +73,15 @@ Run the repro as a truth table and report the matrix:
 Onion and frame blending are **characterization rows only** — split them into separate work if and only if they survive the root-cause fix.
 
 ## Suggested cause (NOT prescriptive — one hypothesis to test)
+
 A track added in the Studio yields a malformed real-key record and/or a stale replay source snapshot, and every later physical edit validates against it.
 
 ## Context note (2026-09-11 — verify before touching frame-blending code)
+
 As of 2026-09-11 frame-blend mode is coerced to `duplicate` at every store entry and its UI section was removed; the per-track row blend button owns interpolation on/off. If a frame-blending control is visible again today, that is newer than this note — **name the exact control meant before touching code.**
 
 ## Guardrails (hard constraints)
+
 - User runs the live app. This is a Tauri/cross-webview path: **live or on-disk evidence is the verdict; unit probes are not admissible.**
 - Reuse the existing physical-edit coordinator and record-collection types. **No new transport.**
 - **Fix live first, regression tests after.**
