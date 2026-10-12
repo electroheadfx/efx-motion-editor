@@ -5,16 +5,16 @@ milestone_name: Debt Patch Release
 current_phase: "53.1"
 current_phase_name: Frame-model fix (INSERTED)
 status: executing
-stopped_at: Completed 53.1-01-PLAN.md
-last_updated: "2026-10-12T21:08:00.999Z"
+stopped_at: Completed 53.1-02-PLAN.md
+last_updated: "2026-10-12T21:43:59.433Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 53.1 execution started
-state_head: a46aa5a1c59e6543541968250743ecd14de5e684
+state_head: 0ea16c1afa1bc61eda0cfde2f02e61cd99eb318a
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 ## Current Position
 
 Phase: 53.1 (Frame-model fix (INSERTED)) — EXECUTING
-Plan: 2 of 6
+Plan: 3 of 6
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 53.1 execution started
 
@@ -146,6 +146,7 @@ Last activity: 2026-10-12 — Phase 53.1 execution started
 | Phase quick-261010-g2n P261010-g2n | 11min | 3 tasks | 8 files |
 | Phase quick-261010-ht0 P261010-ht0 | 780 | 3 tasks | 29 files |
 | Phase 53.1 P53.1-01 | 31 | 2 tasks | 28 files |
+| Phase 53.1 P53.1-02 | 31 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -414,6 +415,8 @@ Recent decisions affecting current work:
 - [Phase 53.1]: 53.1-01: D-01/D-15 clean break — per-sequence fps deleted from Sequence/MceSequence/factories/serializer/parser; no shim, no migration
 - [Phase 53.1]: 53.1-01: D-02 shared reader — exportRenderer, previewRenderer video seek, and SequenceList all read projectStore.fps; frame 15 = 1.0s at 15fps
 - [Phase 53.1]: 53.1-01: target-law frame-LIST contract landed with four exact describes; tail-policy + past-source stay red until 53.1-02/03; I-6 fade pins byte-stable (D-13)
+- [Phase 53.1]: 53.1-02: D-03 resolveOverlaySample is the single tail-policy resolver — sample/skip/hold-last/loop discriminated union; callers use the returned localFrame uniformly and never recompute the hold index
+- [Phase 53.1]: 53.1-02: D-04 absent outFrame = untrimmed = follows N; createContentOverlaySequence no longer freezes outFrame at import (the I-2 root). Present outFrame stays authoritative — past out is nothing
 
 ### Pending Todos
 
@@ -491,8 +494,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-12T21:08:00.978Z
-Stopped at: Completed 53.1-01-PLAN.md
+Last session: 2026-10-12T21:43:59.412Z
+Stopped at: Completed 53.1-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

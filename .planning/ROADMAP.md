@@ -234,14 +234,14 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 5. GREEN I-3 — playhead can sit on tick N (END STATE); export still writes 0..N-1; tick N is the end limit
 6. Live UAT on the signed build (user judges)
 
-**Plans:** 1/6 plans executed
+**Plans:** 2/6 plans executed
 
 Plans:
 **Wave 1**
 - [x] 53.1-01-PLAN.md — RED target-law frame-LIST + GREEN I-4 project-fps timebase (tracer)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 53.1-02-PLAN.md — GREEN I-1/I-2 resolveOverlaySample + untrimmed outFrame
+- [x] 53.1-02-PLAN.md — GREEN I-1/I-2 resolveOverlaySample + untrimmed outFrame
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 53.1-03-PLAN.md — GREEN I-5 per-clip extrapolation + inspector Hold/Loop
