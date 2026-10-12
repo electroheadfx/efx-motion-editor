@@ -39,13 +39,19 @@ export function LeftPanel() {
   let selectedLayer = null;
   let fxSequenceId: string | null = null;
   let isContentOverlay = false;
+  /** Parent Sequence for the content-overlay inspector (D-08): the lookup loop
+   *  already finds it — pass it down so SidebarProperties does not second-lookup. */
+  let contentOverlaySequence = null;
   if (selectedId) {
     for (const seq of sequenceStore.sequences.value) {
       const found = seq.layers.find((l) => l.id === selectedId);
       if (found) {
         selectedLayer = found;
         if (seq.kind === 'fx') fxSequenceId = seq.id;
-        if (seq.kind === 'content-overlay') isContentOverlay = true;
+        if (seq.kind === 'content-overlay') {
+          isContentOverlay = true;
+          contentOverlaySequence = seq;
+        }
         break;
       }
     }
@@ -310,7 +316,11 @@ export function LeftPanel() {
           )}
           {!transitionSel && selectedLayer && !isFx && selectedLayer.type !== 'paint' && selectedLayer.type !== 'physic-paint' && (
             <SidebarScrollArea>
-              <SidebarProperties layer={selectedLayer} isContentOverlay={isContentOverlay} />
+              <SidebarProperties
+                layer={selectedLayer}
+                isContentOverlay={isContentOverlay}
+                sequence={isContentOverlay ? contentOverlaySequence : undefined}
+              />
             </SidebarScrollArea>
           )}
           {!transitionSel && !selectedLayer && selectedAudioTrack && (

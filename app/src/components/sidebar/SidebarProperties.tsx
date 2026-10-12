@@ -14,8 +14,24 @@ import { uiStore } from '../../stores/uiStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import { isFxLayer } from '../../types/layer';
 import type { Layer, BlendMode, KeyframeValues } from '../../types/layer';
+import type { Sequence } from '../../types/sequence';
 
 const BLEND_MODES: BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
+
+// Two-state button styles copied from PaintModeSelector (activeStyle / btnStyle).
+// D-08: Hold last frame / Loop lives here, not behind a context menu.
+const extrapolationActiveStyle = {
+  backgroundColor: 'var(--color-accent)',
+  color: '#fff',
+  border: 'none',
+  cursor: 'default',
+} as const;
+const extrapolationBtnStyle = {
+  backgroundColor: 'var(--sidebar-input-bg)',
+  color: 'var(--sidebar-text-primary)',
+  border: 'none',
+  cursor: 'pointer',
+} as const;
 
 // Track whether to restore blur after range slider drag
 let _rangeBlurRestore = false;
@@ -24,7 +40,14 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; isContentOverlay?: boolean }) {
+export function SidebarProperties({ layer, isContentOverlay, sequence }: {
+  layer: Layer;
+  isContentOverlay?: boolean;
+  /** Parent Sequence on the content-overlay path (D-08) — supplied by LeftPanel
+   *  so the inspector reads outFrame/extrapolation and calls setSequenceExtrapolation
+   *  without a second lookup. Absent on non-content-overlay call sites. */
+  sequence?: Sequence | null;
+}) {
   // Keyframe display values logic
   const kfDisplayValues = keyframeStore.displayValues.value;
   const hasKeyframes = !isFxLayer(layer) && !layer.isBase
@@ -129,6 +152,42 @@ export function SidebarProperties({ layer, isContentOverlay }: { layer: Layer; i
           >
             Change Source...
           </button>
+        </div>
+      )}
+
+      {/* D-08: per-clip past-source extrapolation (Law 1) — two-state control
+          beside the clip range in the content-overlay inspector. Not a context
+          menu: a Law-1 property must not hide behind right-click. Labels follow
+          the physics-paint left-sidebar naming style. Default Hold. */}
+      {isContentOverlay && sequence && (
+        <div class="pb-1 space-y-1">
+          <div class="text-[10px] uppercase tracking-wide" style={{ color: 'var(--sidebar-text-secondary)' }}>
+            Past source
+          </div>
+          <div class="flex items-center gap-1">
+            <button
+              class="text-[10px] px-3 py-1 rounded flex-1"
+              style={sequence.extrapolation === 'hold' ? extrapolationActiveStyle : extrapolationBtnStyle}
+              onClick={() => {
+                if (sequence.extrapolation !== 'hold') {
+                  sequenceStore.setSequenceExtrapolation(sequence.id, 'hold');
+                }
+              }}
+            >
+              Hold last frame
+            </button>
+            <button
+              class="text-[10px] px-3 py-1 rounded flex-1"
+              style={sequence.extrapolation === 'loop' ? extrapolationActiveStyle : extrapolationBtnStyle}
+              onClick={() => {
+                if (sequence.extrapolation !== 'loop') {
+                  sequenceStore.setSequenceExtrapolation(sequence.id, 'loop');
+                }
+              }}
+            >
+              Loop
+            </button>
+          </div>
         </div>
       )}
 
