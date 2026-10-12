@@ -80,6 +80,10 @@ function applyExportFadeSchedule(
  * Per D-01: guarantees fades and volume match preview playback exactly.
  * Per D-02: reuses audioEngine fade/volume/offset logic (no duplicate DSP in Rust).
  *
+ * 261012-exn (SND-02): buffers are validated UP FRONT — a missing non-muted
+ * buffer aborts with an Error naming every missing clip BEFORE any Web Audio
+ * object is constructed, so the clip can never be left out of a rendered mix.
+ *
  * @param signal - Optional AbortSignal to cancel rendering mid-flight.
  *   When aborted, rejects with a DOMException('Aborted', 'AbortError').
  *   Also includes a 60-second timeout safety net.
@@ -94,13 +98,30 @@ export async function renderMixedAudio(
   const sampleRate = 48000;
   // Pitfall 1: Math.ceil + 0.5s padding to prevent cut-off
   const totalSamples = Math.ceil((totalDurationSec + 0.5) * sampleRate);
-  const offline = new OfflineAudioContext(2, totalSamples, sampleRate);
 
+  // 261012-exn (SND-02) pre-scan: resolve every non-muted buffer BEFORE the
+  // OfflineAudioContext line — a bare `continue` used to drop the clip from
+  // the delivered mix with no trace.
+  const resolved: Array<{ track: AudioTrack; buffer: AudioBuffer }> = [];
+  const missing: AudioTrack[] = [];
   for (const track of tracks) {
     if (track.muted) continue;
     const buffer = audioEngine.getBuffer(track.id);
-    if (!buffer) continue;
+    if (buffer) {
+      resolved.push({ track, buffer });
+    } else {
+      missing.push(track);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `missing decoded audio buffer for ${missing.map(t => `"${t.name}"`).join(', ')} — mix aborted before rendering (SND-02). Export stopped; re-import the audio file.`,
+    );
+  }
 
+  const offline = new OfflineAudioContext(2, totalSamples, sampleRate);
+
+  for (const { track, buffer } of resolved) {
     const source = offline.createBufferSource();
     source.buffer = buffer;
     const gain = offline.createGain();

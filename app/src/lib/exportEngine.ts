@@ -358,12 +358,16 @@ export async function startExport(startFromFrame = 0): Promise<void> {
       }, 200);
 
       try {
-        // Pre-check: verify at least one audio buffer is loaded
-        const tracksWithBuffers = mixEntries.filter(
-          t => !t.muted && audioEngine.getBuffer(t.id),
-        );
-        if (tracksWithBuffers.length === 0) {
-          console.warn('[Export] No audio buffers loaded — audio will be skipped. Try re-importing or re-opening the project.');
+        // 261012-exn (SND-01/SND-02): the diagnostic must name EVERY missing
+        // non-muted entry — partial outage AND complete outage alike. The
+        // throw rides the existing catch below into exportStore's error
+        // status, so a clip can never be silently dropped from a delivered
+        // export; muted entries are exempt (they would never be mixed).
+        const missing = mixEntries.filter(t => !t.muted && !audioEngine.getBuffer(t.id));
+        if (missing.length > 0) {
+          throw new Error(
+            `missing decoded audio buffer for ${missing.map(t => `"${t.name}"`).join(', ')} — export stopped rather than silently dropping the clip (SND-02). Re-import the audio file or export with include audio off.`,
+          );
         }
 
         const totalDurationSec = total / projectStore.fps.peek();
