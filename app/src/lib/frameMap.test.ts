@@ -822,8 +822,9 @@ describe('resolveOverlaySample (D-03 tail policy)', () => {
     const wrapped = resolveOverlaySample(looping, 16, N);
     expect(wrapped.kind).toBe('loop');
     expect((wrapped as { localFrame: number }).localFrame).toBe(0);
-    // 17 past source with a longer clip: 17 mod 16 = 1.
-    const wrapped2 = resolveOverlaySample(looping, 17, 20);
+    // Longer clip: local 17 wraps to 1 (17 mod 16).
+    const longerLoop = clip({ outFrame: 20, extrapolation: 'loop' });
+    const wrapped2 = resolveOverlaySample(longerLoop, 17, 20);
     expect(wrapped2.kind).toBe('loop');
     expect((wrapped2 as { localFrame: number }).localFrame).toBe(1);
   });

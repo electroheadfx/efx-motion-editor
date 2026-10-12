@@ -333,14 +333,39 @@ export function resolveOverlaySample(
   globalFrame: number,
   N: number,
 ): OverlaySampleResult {
-  return { kind: 'sample', localFrame: 0 };
+  if (!Number.isInteger(globalFrame) || !Number.isFinite(N) || N < 0) return { kind: 'skip' };
+  if (!Number.isInteger(clip.sourceFrameCount) || clip.sourceFrameCount <= 0) return { kind: 'skip' };
+  const inFrame = clip.inFrame ?? 0;
+  if (!Number.isInteger(inFrame) || inFrame < 0) return { kind: 'skip' };
+  if (globalFrame < inFrame) return { kind: 'skip' };
+
+  // Effective out: absent outFrame = untrimmed = follows N (base layer).
+  // Present outFrame is AUTHORITATIVE — past out is nothing (D-04).
+  const outFrame = clip.outFrame ?? N;
+  if (!Number.isInteger(outFrame) || outFrame <= inFrame) return { kind: 'skip' };
+  if (globalFrame >= outFrame) return { kind: 'skip' };
+
+  const localFrame = globalFrame - inFrame;
+  if (localFrame < clip.sourceFrameCount) {
+    return { kind: 'sample', localFrame };
+  }
+  // Past the media source: HOLD the last sample by default; LOOP wraps (I-5).
+  if (clip.extrapolation === 'loop') {
+    return { kind: 'loop', localFrame: localFrame % clip.sourceFrameCount };
+  }
+  return { kind: 'hold-last', localFrame: clip.sourceFrameCount - 1 };
 }
 
 /** The ONE definition of "where does this clip not cover N" (D-05/D-06/D-12).
  *  Returns the past-out interval [outFrame, N) only when outFrame is present
- *  and less than N; null otherwise (untrimmed never gaps). */
+ *  and less than N; null otherwise (untrimmed never gaps). The timeline hatch
+ *  (D-05), export warning (D-06) and inspector tail line (D-12) all read this
+ *  helper — never a second computation. */
 export function getOverlaySkipRange(clip: OverlaySampleClip, N: number): OverlaySkipRange | null {
-  return null;
+  if (clip.outFrame == null) return null;
+  if (!Number.isInteger(clip.outFrame) || !Number.isFinite(N)) return null;
+  if (clip.outFrame >= N) return null;
+  return { start: clip.outFrame, endExclusive: N };
 }
 
 function fxColorForLayerType(type: LayerType): string {
