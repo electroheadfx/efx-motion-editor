@@ -28,6 +28,11 @@ pub struct MceProject {
     /// the gallery rows (same class of hole as `format_version` below).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_assets: Vec<MceAudioAssetRef>,
+    /// Gallery video assets (261012-d6q, VID-02). Declared here because
+    /// serde drops undeclared keys — without this field every save would erase
+    /// the gallery rows, same hole as `audio_assets` above.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub video_assets: Vec<MceVideoAssetRef>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_tracks: Vec<MceAudioTrack>,
     /// v1.0 EFX Paint documents keyed by parent layer id (F1). Carried
@@ -57,6 +62,16 @@ pub struct MceProject {
 /// `MceAudioTrack.source_path`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MceAudioAssetRef {
+    pub id: String,
+    pub name: String,
+    pub source_path: String,
+}
+
+/// Gallery video asset reference (261012-d6q, VID-01): absolute on-disk path,
+/// never copied into the package. Disk-reference law mirrors
+/// `MceAudioAssetRef` — the picked file stays at its origin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceVideoAssetRef {
     pub id: String,
     pub name: String,
     pub source_path: String,

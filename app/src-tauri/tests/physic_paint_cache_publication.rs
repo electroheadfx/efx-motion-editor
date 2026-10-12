@@ -1268,6 +1268,7 @@ fn manifest_project(name: &str) -> MceProject {
         sequences: vec![],
         images: vec![],
         audio_assets: vec![],
+        video_assets: vec![],
         audio_tracks: vec![],
         efx_paint_documents: std::collections::HashMap::new(),
         format_version: None,
@@ -1293,6 +1294,12 @@ fn package_creation_produces_layers_and_frames_without_a_package_cache() {
     assert!(
         !package.join("cache").exists(),
         "a package must carry no cache/ directory"
+    );
+    // 261012-d6q (VID-03): heavy media stay disk references — a fresh package
+    // provisions no videos/ tree.
+    assert!(
+        !package.join("videos").exists(),
+        "a package must carry no videos/ directory"
     );
     fs::remove_dir_all(root).expect("fixture cleanup");
 }

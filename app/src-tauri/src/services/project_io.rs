@@ -4,15 +4,15 @@ use std::io::Write;
 use std::path::Path;
 
 /// Create the package directory (52.2-05, D-04/D-05): `images/`,
-/// `images/.thumbs/`, `videos/`, `paint/`, `scripts/` plus the authoritative
-/// package layout `layers/` and `frames/`. No `cache/` is created inside the
-/// package — derived frames live in the machine-local cache root (D-05), so a
-/// package carries authoritative content only.
+/// `images/.thumbs/`, `paint/`, `scripts/` plus the authoritative package
+/// layout `layers/` and `frames/`. No `cache/` is created inside the package —
+/// derived frames live in the machine-local cache root (D-05), so a package
+/// carries authoritative content only. Heavy media stay disk references: no
+/// `videos/` tree is provisioned (261012-d6q, VID-03).
 pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
     let base = Path::new(dir_path);
     let images_dir = base.join("images");
     let thumbs_dir = images_dir.join(".thumbs");
-    let videos_dir = base.join("videos");
     let paint_dir = base.join("paint");
     let layers_dir = base.join("layers");
     let frames_dir = base.join("frames");
@@ -20,9 +20,6 @@ pub fn create_project_dir(dir_path: &str) -> Result<(), String> {
 
     fs::create_dir_all(&thumbs_dir)
         .map_err(|e| format!("Failed to create project directories: {}", e))?;
-
-    fs::create_dir_all(&videos_dir)
-        .map_err(|e| format!("Failed to create videos directory: {}", e))?;
 
     fs::create_dir_all(&paint_dir)
         .map_err(|e| format!("Failed to create paint directory: {}", e))?;
@@ -185,7 +182,7 @@ fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::models::project::{
-        MceImageRef, MceLayer, MceLayerSource, MceLayerTransform, MceSequence,
+        MceImageRef, MceLayer, MceLayerSource, MceLayerTransform, MceSequence, MceVideoAssetRef,
     };
 
     #[test]
@@ -296,6 +293,14 @@ mod tests {
                 format: "jpg".into(),
             }],
             audio_assets: vec![],
+            // 261012-d6q (VID-02): a non-empty gallery video entry proves the
+            // declared serde key survives save/open — an undeclared field
+            // would be dropped and every save would erase the row.
+            video_assets: vec![MceVideoAssetRef {
+                id: "vid-1".into(),
+                name: "clip.mp4".into(),
+                source_path: "/Users/test/Movies/clip.mp4".into(),
+            }],
             audio_tracks: vec![],
             efx_paint_documents: std::collections::HashMap::from([(
                 "layer-1".to_string(),
@@ -337,6 +342,15 @@ mod tests {
         );
         assert_eq!(loaded.efx_paint.len(), 1);
         assert_eq!(loaded.efx_paint.get("layer-1"), Some(&package_layer_index));
+        // 261012-d6q (VID-02): the gallery video disk reference round-trips
+        // byte-identical — id, name and the absolute source_path verbatim.
+        assert_eq!(loaded.video_assets.len(), 1);
+        assert_eq!(loaded.video_assets[0].id, "vid-1");
+        assert_eq!(loaded.video_assets[0].name, "clip.mp4");
+        assert_eq!(
+            loaded.video_assets[0].source_path,
+            "/Users/test/Movies/clip.mp4"
+        );
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -409,6 +423,7 @@ mod tests {
             sequences: vec![],
             images: vec![],
             audio_assets: vec![],
+            video_assets: vec![],
             audio_tracks: vec![],
             efx_paint_documents: std::collections::HashMap::new(),
             format_version: None,
@@ -454,6 +469,7 @@ mod tests {
             sequences: vec![],
             images: vec![],
             audio_assets: vec![],
+            video_assets: vec![],
             audio_tracks: vec![],
             efx_paint_documents: std::collections::HashMap::new(),
             format_version: Some(1),
@@ -507,6 +523,7 @@ mod tests {
             sequences: vec![],
             images: vec![],
             audio_assets: vec![],
+            video_assets: vec![],
             audio_tracks: vec![],
             efx_paint_documents: std::collections::HashMap::new(),
             format_version: Some(1),
@@ -716,6 +733,7 @@ mod tests {
             sequences: vec![content_seq, grain_seq, colorgrade_seq],
             images: vec![],
             audio_assets: vec![],
+            video_assets: vec![],
             audio_tracks: vec![],
             efx_paint_documents: std::collections::HashMap::new(),
             format_version: Some(1),
