@@ -148,6 +148,7 @@ export const sequenceStore = {
       ...getProjectDimensions(),
       keyPhotos: [],
       layers: [createBaseLayer()],
+      extrapolation: 'hold',
     };
     sequences.value = [...sequences.value, seq];
     activeSequenceId.value = seq.id;
@@ -281,6 +282,7 @@ export const sequenceStore = {
       layers: [layer],
       inFrame: opts?.inFrame ?? 0,
       outFrame: opts?.outFrame ?? (totalFrames > 0 ? totalFrames : 100),
+      extrapolation: 'hold',
     };
     sequences.value = opts?.position === 'end'
       ? [...sequences.value, seq]
@@ -317,6 +319,7 @@ export const sequenceStore = {
       layers: [layer],
       inFrame: opts?.inFrame ?? 0,
       ...(opts?.outFrame != null ? { outFrame: opts.outFrame } : {}),
+      extrapolation: 'hold',
     };
     // Content overlays land at the TOP of the stack (its only callers are the
     // + Layer content flow — 260923-kcs).
@@ -403,6 +406,27 @@ export const sequenceStore = {
     pushAction({
       id: crypto.randomUUID(),
       description: 'Update FX range',
+      timestamp: Date.now(),
+      undo: () => restore(before),
+      redo: () => restore(after),
+    });
+  },
+
+  /** Set the per-clip past-source extrapolation (D-07 / I-5). One undoable
+   *  store write — snapshot / map one sequence / markDirty / snapshot /
+   *  pushAction — matching updateFxSequenceRange exactly. No per-layer setter. */
+  setSequenceExtrapolation(id: string, extrapolation: 'hold' | 'loop') {
+    const before = snapshot();
+
+    sequences.value = sequences.value.map((s) =>
+      s.id === id ? {...s, extrapolation} : s,
+    );
+    markDirty();
+
+    const after = snapshot();
+    pushAction({
+      id: crypto.randomUUID(),
+      description: 'Set clip extrapolation',
       timestamp: Date.now(),
       undo: () => restore(before),
       redo: () => restore(after),

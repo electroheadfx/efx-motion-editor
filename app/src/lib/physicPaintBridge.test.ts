@@ -282,6 +282,7 @@ function setParentSequence(layers: Layer[], parentEndExclusive: number): void {
   sequenceStore.sequences.value = [{
     id: 'bridge-test-parent-sequence',
     kind: 'fx',
+    extrapolation: 'hold',
     name: 'Bridge test parent authority',
     width: 1920,
     height: 1080,
@@ -591,6 +592,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'parent-end-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Parent end authority',
       width: 1920,
       height: 1080,
@@ -705,6 +707,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'nonzero-launch-origin-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Nonzero launch origin authority',
       width: 1920,
       height: 1080,
@@ -788,6 +791,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'nonzero-later-launch-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Nonzero later launch authority',
       width: 1920,
       height: 1080,
@@ -811,6 +815,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.sequences.value = [{
       id: 'content-before-physical-sequence',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Content before physical sequence',
       width: 1920,
       height: 1080,
@@ -819,6 +824,7 @@ describe('physicPaintBridge', async () => {
     }, {
       id: 'content-physical-sequence',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Content physical authority',
       width: 1920,
       height: 1080,
@@ -852,6 +858,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.sequences.value = [{
       id: 'content-before-capacity-sequence',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Content before capacity sequence',
       width: 1920,
       height: 1080,
@@ -860,6 +867,7 @@ describe('physicPaintBridge', async () => {
     }, {
       id: 'content-capacity-sequence',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Content capacity authority',
       width: 1920,
       height: 1080,
@@ -881,6 +889,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.sequences.value = [{
       id: 'invalid-content-range-sequence',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Invalid content range authority',
       width: 1920,
       height: 1080,
@@ -898,6 +907,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'nonzero-play-script-authority-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Nonzero Play Script authority',
       width: 1920,
       height: 1080,
@@ -936,6 +946,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'invalid-parent-range-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Invalid parent range authority',
       width: 1920,
       height: 1080,
@@ -1990,6 +2001,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'bridge-override-move-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Bridge override move authority',
       width: 1920,
       height: 1080,
@@ -2206,6 +2218,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'bridge-key-rail-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Bridge Key Rail authority',
       width: 1920,
       height: 1080,
@@ -2347,6 +2360,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: `bridge-${operationKind}-sequence`,
       kind: 'fx',
+      extrapolation: 'hold',
       name: `Bridge ${operationKind} authority`,
       width: 1920,
       height: 1080,
@@ -2468,6 +2482,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.sequences.value = [{
       id: 'bridge-content-before-sequence',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Bridge content before authority',
       width: 1920,
       height: 1080,
@@ -2476,6 +2491,7 @@ describe('physicPaintBridge', async () => {
     }, {
       id: 'bridge-content-parent-end-sequence',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Bridge content parent end authority',
       width: 1920,
       height: 1080,
@@ -3282,6 +3298,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.sequences.value = [{
       id: 'content-before-fresh-play-script',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Content before fresh Play Script',
       width: 1920,
       height: 1080,
@@ -3290,6 +3307,7 @@ describe('physicPaintBridge', async () => {
     }, {
       id: 'content-fresh-play-script',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Fresh content Play Script',
       width: 1920,
       height: 1080,
@@ -3613,6 +3631,7 @@ describe('physicPaintBridge', async () => {
     sequenceStore.add({
       id: 'seq-physic-paint',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Physics paint sequence',
       width: 1920,
       height: 1080,
@@ -4727,6 +4746,7 @@ describe('Phase 43.2 parent-authoritative Group lifecycle proposals', async () =
     sequenceStore.add({
       id: 'bridge-delete-rails-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Bridge delete-rails authority',
       width: 1920,
       height: 1080,
@@ -5248,6 +5268,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
     sequenceStore.add({
       id: 'bridge-paste-rails-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Bridge paste-rails authority',
       width: 1920,
       height: 1080,
@@ -5404,6 +5425,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
     sequenceStore.add({
       id: 'bridge-paste-rails-undo-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Bridge paste-rails undo authority',
       width: 1920,
       height: 1080,
@@ -5537,6 +5559,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
     sequenceStore.add({
       id: 'bridge-loop-paste-undo-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Bridge loop-paste undo',
       width: 1920,
       height: 1080,
@@ -5674,6 +5697,7 @@ describe('Phase 43.6 parent recompute of rail-set paste (quick 260820-bjw)', asy
     sequenceStore.add({
       id: 'bridge-paste-rails-reject-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Bridge paste-rails reject',
       width: 1920,
       height: 1080,

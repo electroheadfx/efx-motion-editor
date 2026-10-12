@@ -267,6 +267,9 @@ function buildMceProject(): RuntimeMceProject {
       kind: seq.kind,
       ...(seq.inFrame != null ? { in_frame: seq.inFrame } : {}),
       ...(seq.outFrame != null ? { out_frame: seq.outFrame } : {}),
+      // D-09: always write the explicit choice so save -> close -> reopen
+      // preserves LOOP. Absent on disk still hydrates to 'hold'.
+      extrapolation: seq.extrapolation,
       ...(seq.fadeIn ? {
         fade_in: {
           type: seq.fadeIn.type,
@@ -606,6 +609,9 @@ function hydrateFromMce(
           }),
         ),
         layers,
+        // D-09 HOLD-everywhere: absent/unknown maps to 'hold'; only the
+        // literal 'loop' selects LOOP. No legacy-LOOP branch, no migration.
+        extrapolation: mceSeq.extrapolation === 'loop' ? 'loop' : 'hold',
         ...(mceSeq.in_frame != null ? { inFrame: mceSeq.in_frame } : {}),
         ...(mceSeq.out_frame != null ? { outFrame: mceSeq.out_frame } : {}),
         ...(mceSeq.fade_in ? {

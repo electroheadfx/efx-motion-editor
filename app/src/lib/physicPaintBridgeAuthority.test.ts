@@ -108,6 +108,7 @@ function mockParentAuthority(candidate: Layer): void {
   sequenceStore.sequences.value = [{
     id: 'authority-parent-sequence',
     kind: 'fx',
+    extrapolation: 'hold',
     name: 'Authority parent',
     width: 1920,
     height: 1080,

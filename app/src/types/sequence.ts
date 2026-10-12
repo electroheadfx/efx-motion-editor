@@ -44,7 +44,11 @@ export interface Sequence {
   keyPhotos: KeyPhoto[];
   layers: Layer[];  // Ordered bottom-to-top; layers[0] is always the base layer
   inFrame?: number;   // inclusive start frame (global timeline, FX sequences only)
-  outFrame?: number;  // exclusive end frame (global timeline, FX sequences only)
+  outFrame?: number;  // exclusive end frame (global timeline, FX sequences only) — ABSENT = follows N (D-04)
+  /** Per-clip past-source extrapolation (I-5 / D-07). Required in memory;
+   *  factories default 'hold'. Loader maps an absent .mce field to 'hold'
+   *  (D-09 HOLD-everywhere — no legacy-LOOP branch). */
+  extrapolation: 'hold' | 'loop';
   visible?: boolean;  // FX sequences: undefined/true = visible, false = hidden
   fadeIn?: Transition;       // optional fade-in at sequence start
   fadeOut?: Transition;      // optional fade-out at sequence end

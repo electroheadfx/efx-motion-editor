@@ -616,6 +616,7 @@ function addPhysicPaintLayer(layerId: string): void {
   sequenceStore.add({
     id: 'seq-1',
     kind: 'fx',
+    extrapolation: 'hold',
     name: 'Physics Paint',
     width: 1920,
     height: 1080,

@@ -193,6 +193,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     sequenceStore.add({
       id: 'target-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Target Physics Paint',
       width: 1920,
       height: 1080,
@@ -204,6 +205,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     sequenceStore.add({
       id: 'survivor-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Surviving Physics Paint',
       width: 1920,
       height: 1080,
@@ -284,6 +286,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
     sequenceStore.add({
       id: 'target-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Target Physics Paint',
       width: 1920,
       height: 1080,
@@ -316,6 +319,7 @@ describe('sequenceStore Physics Paint deletion lifecycle', () => {
       sequenceStore.add({
         id: sequenceId,
         kind: 'fx',
+        extrapolation: 'hold',
         name: sequenceId,
         width: 1920,
         height: 1080,

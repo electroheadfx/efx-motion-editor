@@ -675,6 +675,7 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', async () 
     sequenceStore.sequences.value = [{
       id: 'store-loop-bridge-parent-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Store Loop Clip bridge authority',
       width: 1920,
       height: 1080,

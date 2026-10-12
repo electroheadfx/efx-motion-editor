@@ -11,6 +11,10 @@ export interface VideoAsset {
   id: string;
   name: string;
   path: string; // absolute on-disk source path of the referenced video (disk reference, never copied)
+  /** Source length in frames at project fps, when known (53.1-03: feeds the
+   *  export gate's past-source extrapolation). Absent = unknown → the export
+   *  gate treats the source as unlimited (MAX_SAFE_INTEGER). */
+  sourceFrameCount?: number;
 }
 
 /** Metadata for an imported audio asset */

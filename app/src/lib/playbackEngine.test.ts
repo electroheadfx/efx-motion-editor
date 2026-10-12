@@ -415,6 +415,7 @@ function makeFxSequence(overrides: Partial<Sequence> = {}): Sequence {
   return {
     id: 'seq-fx',
     kind: 'fx',
+    extrapolation: 'hold',
     name: 'FX',
     width: 4,
     height: 3,

@@ -52,6 +52,7 @@ function makeFxSequence(id: string, name: string, layer: Layer): Sequence {
     id,
     name,
     kind: 'fx',
+    extrapolation: 'hold',
     width: 1920,
     height: 1080,
     keyPhotos: [],

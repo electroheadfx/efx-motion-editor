@@ -80,6 +80,9 @@ export interface MceSequence {
   kind?: string;       // 'content' | 'fx' (optional for v2/v3 compat, defaults to 'content')
   in_frame?: number;   // FX sequence start frame
   out_frame?: number;  // FX sequence end frame
+  /** Per-clip past-source extrapolation ('hold' | 'loop'). Optional on disk;
+   *  hydrate maps absent/unknown to 'hold' (D-09 clean break, no legacy-LOOP). */
+  extrapolation?: string;
   fade_in?: MceTransition;
   fade_out?: MceTransition;
   cross_dissolve?: MceTransition;

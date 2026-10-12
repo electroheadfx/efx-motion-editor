@@ -240,6 +240,7 @@ function makeSequence(layers: Layer[]): Sequence {
   return {
     id: 'seq-1',
     kind: 'content',
+    extrapolation: 'hold',
     name: 'Seq',
     width: 4,
     height: 3,

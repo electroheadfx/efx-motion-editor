@@ -53,6 +53,7 @@ function makeSequence(layer: Layer): Sequence {
   return {
     id: 'seq-1',
     kind: 'content',
+    extrapolation: 'hold',
     name: 'Sequence',
     width: 1000,
     height: 650,
@@ -417,6 +418,7 @@ describe('exportRenderer', () => {
     const makeFxPaintSequence = (layer: Layer): Sequence => ({
       id: 'fx-paint',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Paint',
       width: 1000,
       height: 650,
@@ -552,6 +554,7 @@ describe('exportRenderer', () => {
       const contentSeq: Sequence = {
         id: 'content-b',
         kind: 'content',
+        extrapolation: 'hold',
         name: 'Later content',
         width: 1000,
         height: 650,
@@ -620,6 +623,7 @@ describe('exportRenderer', () => {
     const makeFxPaintSequence = (layer: Layer): Sequence => ({
       id: 'fx-paint',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Paint',
       width: 1000,
       height: 650,
@@ -989,6 +993,7 @@ describe('261012-kxg motion-blur sub-frame settle (VID-04)', () => {
     const sequence: Sequence = {
       id: 'seq-1',
       kind: 'content',
+      extrapolation: 'hold',
       name: 'Seq',
       width: 4,
       height: 3,

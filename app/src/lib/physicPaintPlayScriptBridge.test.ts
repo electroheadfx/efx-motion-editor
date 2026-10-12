@@ -62,7 +62,7 @@ function installProject() {
   vi.spyOn(layerStore.layers, 'peek').mockReturnValue([candidate]);
   vi.spyOn(layerStore.overlayLayers, 'peek').mockReturnValue([]);
   vi.spyOn(projectStore.projectContextId, 'peek').mockReturnValue('11111111-1111-4111-8111-111111111111');
-  sequenceStore.add({ id: 'seq-1', kind: 'fx', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [candidate], inFrame: 0, outFrame: 10 });
+  sequenceStore.add({ id: 'seq-1', kind: 'fx', extrapolation: 'hold', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [candidate], inFrame: 0, outFrame: 10 });
   return candidate;
 }
 
@@ -121,11 +121,11 @@ describe('Play Script parent authority and complete-set bridge', async () => {
     sequenceStore.sequences.value = [];
     expect(authority('missing-sequence', 4)).toMatchObject({ ok: false, capacity: 0 });
 
-    sequenceStore.add({ id: 'seq-no-boundary', kind: 'fx', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0 });
+    sequenceStore.add({ id: 'seq-no-boundary', kind: 'fx', extrapolation: 'hold', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0 });
     expect(authority('missing-boundary', 4)).toMatchObject({ ok: false, capacity: 0 });
 
     sequenceStore.sequences.value = [];
-    sequenceStore.add({ id: 'seq-boundary', kind: 'fx', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: 10 });
+    sequenceStore.add({ id: 'seq-boundary', kind: 'fx', extrapolation: 'hold', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: 10 });
     // 43.4 defect 1: a start at or past the stale display outFrame is genuine
     // free space under the child document's capacity authority — it no longer
     // fails closed.
@@ -133,7 +133,7 @@ describe('Play Script parent authority and complete-set bridge', async () => {
     expect(authority('beyond-boundary', 11)).toMatchObject({ ok: true, capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES - 11, layerEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES });
 
     sequenceStore.sequences.value = [];
-    sequenceStore.add({ id: 'seq-large', kind: 'fx', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 100 });
+    sequenceStore.add({ id: 'seq-large', kind: 'fx', extrapolation: 'hold', name: 'FX', width: 100, height: 100, keyPhotos: [], layers: [layer()], inFrame: 0, outFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 100 });
     expect(authority('large-valid-range', 4)).toMatchObject({ ok: true, capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES - 4, layerEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES });
   });
 

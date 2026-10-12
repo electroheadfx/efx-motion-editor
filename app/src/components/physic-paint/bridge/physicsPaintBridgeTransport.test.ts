@@ -756,6 +756,7 @@ describe('Studio-origin document surfaces across the real pair (quick-260921-e21
     sequenceStore.sequences.value = [{
       id: 'e21-parent-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'e21 parent authority',
       width: 1920,
       height: 1080,
@@ -988,6 +989,7 @@ describe('project-context scope round trip (quick-260922-al1)', () => {
     sequenceStore.sequences.value = [{
       id: 'al1-parent-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'al1 parent authority',
       width: 1920,
       height: 1080,
@@ -1020,6 +1022,7 @@ describe('project-context scope round trip (quick-260922-al1)', () => {
     projectStore.scriptScope.value = 'layer-1';
     sequenceStore.sequences.value = [{
       id: 'al1-parent-sequence', kind: 'fx', name: 'al1 parent authority', width: 1920, height: 1080, keyPhotos: [],
+      extrapolation: 'hold',
       layers: [physicLayer('layer-2', 'Hair')],
     }];
     await publishPhysicPaintProjectContext();

@@ -127,7 +127,7 @@ beforeEach(() => {
   exportStore.resetProgress();
   exportStore.outputFolder.value = '/tmp/efx-export-feedback';
   hoisted.fm = [{ kind: 'content', globalFrame: 0, sequenceId: 'seq-1', keyPhotoId: 'kp', imageId: '', localFrame: 0 }];
-  hoisted.sequences = [{ id: 'seq-1', name: 'Seq', kind: 'content', fps: 24, width: 4, height: 3, keyPhotos: [], layers: [] } as Sequence];
+  hoisted.sequences = [{ id: 'seq-1', name: 'Seq', kind: 'content', width: 4, height: 3, keyPhotos: [], layers: [], extrapolation: 'hold' } as Sequence];
   hoisted.flushResolve = null;
   vi.clearAllMocks();
   vi.stubGlobal('window', { devicePixelRatio: 1 });

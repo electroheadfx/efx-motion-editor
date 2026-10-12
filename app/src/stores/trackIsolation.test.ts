@@ -816,6 +816,7 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', async () 
     sequenceStore.sequences.value = [{
       id: 'stale-async-parent-sequence',
       kind: 'fx',
+      extrapolation: 'hold',
       name: 'Authority parent',
       width: 1920,
       height: 1080,

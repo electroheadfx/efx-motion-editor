@@ -228,6 +228,7 @@ function makeVideoOverlaySequence(): Sequence {
     layers: [makeVideoLayer()],
     inFrame: 0,
     outFrame: 16,
+    extrapolation: 'hold',
   };
 }
 
@@ -245,6 +246,7 @@ function makeUntrimmedVideoOverlaySequence(): Sequence {
     keyPhotos: [],
     layers: [makeVideoLayer()],
     inFrame: 0,
+    extrapolation: 'hold',
   };
 }
 
@@ -253,7 +255,7 @@ function makeUntrimmedVideoOverlaySequence(): Sequence {
  * while the 16-frame source is exhausted — isolates I-5 (past-source) from
  * I-1/I-2 (past-out).
  */
-function makePastSourceVideoOverlaySequence(): Sequence {
+function makePastSourceVideoOverlaySequence(extrapolation: 'hold' | 'loop'): Sequence {
   return {
     id: 'video-overlay',
     name: 'HyperEspaceSUPP',
@@ -264,6 +266,7 @@ function makePastSourceVideoOverlaySequence(): Sequence {
     layers: [makeVideoLayer()],
     inFrame: 0,
     outFrame: 17,
+    extrapolation,
   };
 }
 
@@ -279,6 +282,7 @@ function makePaintFxSequence(): Sequence {
     layers: [makePhysicPaintLayer(LAYER)],
     inFrame: 0,
     outFrame: 17,
+    extrapolation: 'hold',
     fadeOut: {
       type: 'fade-out',
       duration: 3,
@@ -287,15 +291,6 @@ function makePaintFxSequence(): Sequence {
       color: '#000000',
     },
   };
-}
-
-/**
- * 53.1-03 replaces this cast with the real Sequence.extrapolation field (D-07).
- * The RED contract already states the hold/loop target so that plan can flip
- * these cases by wiring the field, not by rewriting the expectations.
- */
-function withExtrapolation(seq: Sequence, extrapolation: 'hold' | 'loop'): Sequence {
-  return { ...seq, extrapolation } as Sequence;
 }
 
 function makeRotoRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
@@ -350,7 +345,9 @@ beforeEach(() => {
   exportStore.motionBlurEnabled.value = false;
   exportStore.format.value = 'png';
   imageStore.videoAssets.value = [
-    { id: 'va-1', name: 'HyperEspaceSUPP.mov', path: '/Movies/HyperEspaceSUPP.mov' },
+    // 16-frame .mov: the export gate needs the source length to apply I-5
+    // past-source extrapolation (53.1-03 feeds the real count).
+    { id: 'va-1', name: 'HyperEspaceSUPP.mov', path: '/Movies/HyperEspaceSUPP.mov', sourceFrameCount: SOURCE_FRAME_COUNT },
   ];
 });
 
@@ -514,7 +511,8 @@ describe('tail policy (I-1/I-2)', () => {
 describe('past-source extrapolation (I-5)', () => {
   it('past the media source with default hold the last source sample is present', () => {
     // Clip spans [0, 17) so frame 16 is IN RANGE but past the 16-frame source.
-    arrangeRepro(withExtrapolation(makePastSourceVideoOverlaySequence(), 'hold'));
+    // extrapolation rides the real Sequence field (D-07) — no cast helper.
+    arrangeRepro(makePastSourceVideoOverlaySequence('hold'));
     const recorder = renderAllFrames();
 
     const f15 = callForLayer(recorder, 15, VIDEO_LAYER_ID);
@@ -530,7 +528,7 @@ describe('past-source extrapolation (I-5)', () => {
   });
 
   it('with loop the sample index wraps past the media source', () => {
-    arrangeRepro(withExtrapolation(makePastSourceVideoOverlaySequence(), 'loop'));
+    arrangeRepro(makePastSourceVideoOverlaySequence('loop'));
     const recorder = renderAllFrames();
 
     const f16 = callForLayer(recorder, 16, VIDEO_LAYER_ID);
