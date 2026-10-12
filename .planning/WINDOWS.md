@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 17
+open_count: 18
 waived_count: 5
 fixed_count: 69
-total_count: 91
-last_updated: 2026-10-07T09:28:34.433Z
+total_count: 92
+last_updated: 2026-10-12T10:09:09.907Z
 ---
 
 # Broken Windows Ledger
@@ -106,6 +106,7 @@ last_updated: 2026-10-07T09:28:34.433Z
 | 89 | quick-261004-hwa | deviation | app/src/stores/paintStore.fgBg.test.ts |  | Double-swap test asserts brushColor tracks foreground instead of plan's 'original brushColor' (defaults diverge by spec) | open |  | 2026-10-04T11:38:08.668Z |  |
 | 90 | quick-261006-bdk | deviation | app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts |  | Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md | open |  | 2026-10-06T07:22:49.055Z |  |
 | 91 | 52.5 | unrun-verify | .planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md |  | 01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest | open |  | 2026-10-07T09:28:34.433Z |  |
+| 92 | quick-261012-exn | deviation | app/src/lib/documentSoundPeaks.test.ts |  | Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits) | open |  | 2026-10-12T10:09:09.907Z |  |
 
 ````json
 [
@@ -1219,6 +1220,19 @@ last_updated: 2026-10-07T09:28:34.433Z
     "recorded_at": "2026-10-07T09:28:34.433Z",
     "resolved_at": null,
     "milestone": "v1.0.0"
+  },
+  {
+    "id": 92,
+    "kind": "deviation",
+    "phase": "quick-261012-exn",
+    "file": "app/src/lib/documentSoundPeaks.test.ts",
+    "line": null,
+    "description": "Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-12T10:09:09.907Z",
+    "resolved_at": null,
+    "milestone": "v1.0.1"
   }
 ]
 ````
