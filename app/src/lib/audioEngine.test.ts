@@ -224,4 +224,23 @@ describe('261012-exn decode readiness (SND-01)', () => {
       'the refusal must name the clip whose decode failed',
     ).toContain('Rejected Clip.wav');
   });
+
+  it('addAudioDecodeError dedupes identical messages (idempotent setter)', async () => {
+    const channel = await loadDecodeChannel();
+    channel.addAudioDecodeError?.('Audio "dup.wav" not played: no decoded buffer.');
+    channel.addAudioDecodeError?.('Audio "dup.wav" not played: no decoded buffer.');
+
+    const errors = channel.audioDecodeErrors?.value ?? [];
+    expect(errors.filter(e => e.includes('dup.wav'))).toHaveLength(1);
+  });
+
+  it('audioStore.reset() clears the refusal list (project close wipes stale refusals)', async () => {
+    const channel = await loadDecodeChannel();
+    channel.addAudioDecodeError?.('Audio "stale.wav" not played: no decoded buffer.');
+
+    const {audioStore} = await import('../stores/audioStore');
+    audioStore.reset();
+
+    expect(channel.audioDecodeErrors?.value ?? []).toHaveLength(0);
+  });
 });

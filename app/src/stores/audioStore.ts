@@ -3,7 +3,7 @@ import type {AudioTrack} from '../types/audio';
 import {pushAction} from '../lib/history';
 import {detectBPM} from '../lib/bpmDetector';
 import {computeBeatMarkers} from '../lib/beatMarkerEngine';
-import {audioEngine} from '../lib/audioEngine';
+import {audioEngine, clearAudioDecodeErrors} from '../lib/audioEngine';
 import {clampSlipOffsetFrames} from '../lib/slipOffsetBounds';
 
 const tracks = signal<AudioTrack[]>([]);
@@ -367,6 +367,8 @@ export const audioStore = {
       tracks.value = [];
       selectedTrackId.value = null;
     });
+    // 261012-exn: stale playback refusals must not survive a project close.
+    clearAudioDecodeErrors();
   },
 
   getTrack(trackId: string): AudioTrack | undefined {

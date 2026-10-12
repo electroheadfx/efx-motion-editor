@@ -11,7 +11,7 @@
  */
 
 import type {DocumentSoundClip} from '../efx-paint/document/efxPaintDocument';
-import {audioEngine} from './audioEngine';
+import {audioEngine, addAudioDecodeError} from './audioEngine';
 import {computeWaveformPeaks} from './audioWaveform';
 import {audioPeaksCache} from './audioPeaksCache';
 import {assetUrl} from './ipc';
@@ -50,6 +50,10 @@ export async function ensureDocumentSoundPeaks(
     }
   } catch (err) {
     console.error(`Failed to decode document sound "${sound.sourcePath}":`, err);
+    // 261012-exn (SND-01): surface the named failure on the visible strip too.
+    addAudioDecodeError(
+      `Failed to decode document sound "${sound.sourcePath}": ${err instanceof Error ? err.message : String(err)}`,
+    );
   } finally {
     inFlight.delete(sound.id);
   }

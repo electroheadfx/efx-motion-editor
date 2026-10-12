@@ -15,6 +15,9 @@ vi.mock('./audioEngine', () => ({
     decode: (...args: unknown[]) => decode(...args),
     getBuffer: (id: string) => engineBuffers.get(id),
   },
+  // 261012-exn: the surfaced-decode catch calls this named export — the
+  // factory must expose it or the catch itself throws in the mocked module.
+  addAudioDecodeError: vi.fn(),
 }));
 vi.mock('./audioWaveform', () => ({ computeWaveformPeaks: (...args: unknown[]) => computeWaveformPeaks(...args) }));
 vi.mock('./ipc', () => ({ assetUrl: (p: string) => `efxasset://localhost${p}` }));

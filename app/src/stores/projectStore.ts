@@ -15,7 +15,7 @@ import {timelineStore} from './timelineStore';
 import {layerStore} from './layerStore';
 import {historyStore} from './historyStore';
 import {playbackEngine} from '../lib/playbackEngine';
-import {audioEngine} from '../lib/audioEngine';
+import {audioEngine, addAudioDecodeError} from '../lib/audioEngine';
 import {computeWaveformPeaks} from '../lib/audioWaveform';
 import {audioPeaksCache} from '../lib/audioPeaksCache';
 import {startAutoSave, stopAutoSave} from '../lib/autoSave';
@@ -790,6 +790,11 @@ function hydrateFromMce(
         audioPeaksCache.set(track.id, peaks);
       } catch (err) {
         console.error(`Failed to decode audio track "${track.name}":`, err);
+        // 261012-exn (SND-01): console alone is never the only trace —
+        // surface a named message on the timeline's decode-error strip.
+        addAudioDecodeError(
+          `Failed to decode audio track "${track.name}": ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
     // 52.5-02 (T-52.5-10, PERSIST-01) + 261008-ig1: decode each placed clip

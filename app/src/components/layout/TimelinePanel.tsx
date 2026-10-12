@@ -6,6 +6,7 @@ import {isolationStore} from '../../stores/isolationStore';
 import {soloStore} from '../../stores/soloStore';
 import {audioStore} from '../../stores/audioStore';
 import {playbackEngine} from '../../lib/playbackEngine';
+import {audioDecodeErrors} from '../../lib/audioEngine';
 import {findPrevSequenceStart, findNextSequenceStart} from '../../lib/sequenceNav';
 import {totalFrames, trackLayouts} from '../../lib/frameMap';
 import {TimelineCanvas} from '../timeline/TimelineCanvas';
@@ -223,6 +224,16 @@ export function TimelinePanel() {
         {/* Add Audio */}
         <AddAudioButton />
       </div>
+
+      {/* Audio decode errors (261012-exn SND-01) — mirrors the ImportedView
+          import-error strip; signal read in render body only, no writes. */}
+      {audioDecodeErrors.value.length > 0 && (
+        <div class="px-4 py-1.5 bg-(--color-error-bg) shrink-0">
+          {audioDecodeErrors.value.map((err, i) => (
+            <span key={i} class="text-[9px] text-(--color-error-text) block truncate">{err}</span>
+          ))}
+        </div>
+      )}
 
       {/* Canvas Timeline (replaces time ruler, mock tracks) */}
       <div ref={canvasContainerRef} class="flex-1 min-h-0 overflow-hidden flex flex-row">

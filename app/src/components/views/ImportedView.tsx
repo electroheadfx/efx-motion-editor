@@ -368,6 +368,12 @@ export function ImportedView() {
       uiStore.setEditorMode('editor');
     } catch (err) {
       console.error('Failed to decode audio:', err);
+      // 261012-exn (SND-01): the existing import-error strip renders this —
+      // console output alone is never the only trace.
+      imageStore.importErrors.value = [
+        ...imageStore.importErrors.value,
+        `Failed to decode audio: ${err instanceof Error ? err.message : String(err)}`,
+      ];
     } finally {
       setIsDecodingAudio(false);
     }
