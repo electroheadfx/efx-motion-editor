@@ -19,6 +19,7 @@ vi.mock('../stores/projectStore', () => ({
   projectStore: {
     width: { peek: () => 4, value: 4 },
     height: { peek: () => 3, value: 3 },
+    fps: { peek: () => 24, value: 24 },
   },
 }));
 
@@ -516,7 +517,6 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
       id: 'content-at-100',
       name: 'Content at F100',
       kind: 'content',
-      fps: 24,
       width: 4,
       height: 3,
       keyPhotos: [{ id: 'kp-local-0', imageId: '', holdFrames: 1 }],
@@ -862,7 +862,6 @@ describe('260920-k34 fond preload gate (export parity)', () => {
     id: 'k34-sequence',
     name: 'K34',
     kind: 'content',
-    fps: 24,
     width: 4,
     height: 3,
     keyPhotos: [{ id: 'kp-1', imageId: '', holdFrames: 1 }],

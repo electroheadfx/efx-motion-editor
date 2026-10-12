@@ -39,7 +39,6 @@ export interface Sequence {
   id: string;
   kind: 'content' | 'fx' | 'content-overlay';  // Discriminator: content = key photos, fx = effects, content-overlay = timeline-level content layers
   name: string;
-  fps: number;
   width: number;
   height: number;
   keyPhotos: KeyPhoto[];

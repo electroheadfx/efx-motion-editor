@@ -229,7 +229,6 @@ function makeSequence(layers: Layer[]): Sequence {
     id: 'seq-1',
     kind: 'content',
     name: 'Seq',
-    fps: 24,
     width: 4,
     height: 3,
     keyPhotos: [],

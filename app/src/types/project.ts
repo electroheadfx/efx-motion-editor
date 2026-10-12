@@ -72,7 +72,6 @@ export type RuntimeMceProject = MceProject;
 export interface MceSequence {
   id: string;
   name: string;
-  fps: number;
   width: number;
   height: number;
   order: number;

@@ -164,7 +164,6 @@ function makeFxPaintSequence(id: string, layerId: string, inFrame: number, outFr
     id,
     name: id,
     kind: 'fx',
-    fps: 24,
     width: 4,
     height: 3,
     keyPhotos: [],

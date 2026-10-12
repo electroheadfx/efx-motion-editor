@@ -828,7 +828,10 @@ export class PreviewRenderer {
       this.videoReadyHandlers.set(layer.id, readyHandler);
     }
 
-    // Sync time to current frame (mod by duration for seamless looping)
+    // Sync time to current frame (mod by duration for seamless looping).
+    // fps is the project timebase (D-01/D-02): callers pass projectStore.fps
+    // so frame N always means N / projectFps seconds of source — the same
+    // reader as export time mapping. No per-sequence fps remains.
     const rawTargetTime = frame / fps;
     const targetTime = video.duration > 0 ? rawTargetTime % video.duration : rawTargetTime;
     if (Math.abs(video.currentTime - targetTime) > 0.01) {
@@ -966,15 +969,15 @@ export class PreviewRenderer {
    * no wait beyond readiness — per-frame seeks are settleVideoSeeks' job.
    */
   async preloadVideos(sequences: readonly Sequence[], signal?: AbortSignal): Promise<void> {
-    const targets: Array<{ seq: Sequence; layer: Layer }> = [];
+    const targets: Layer[] = [];
     for (const seq of sequences) {
       if (seq.visible === false) continue;
       for (const layer of seq.layers) {
-        if (layer.visible && layer.source.type === 'video') targets.push({ seq, layer });
+        if (layer.visible && layer.source.type === 'video') targets.push(layer);
       }
     }
-    await Promise.all(targets.map(async ({ seq, layer }) => {
-      this.resolveVideoSource(layer, 0, seq.fps);
+    await Promise.all(targets.map(async (layer) => {
+      this.resolveVideoSource(layer, 0, projectStore.fps.peek());
       const video = this.videoElements.get(layer.id);
       // Missing videoAsset row: resolveVideoSource returned before
       // registering the element — fail closed naming the clip.

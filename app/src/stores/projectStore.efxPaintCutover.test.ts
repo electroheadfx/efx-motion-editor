@@ -617,7 +617,6 @@ function addPhysicPaintLayer(layerId: string): void {
     id: 'seq-1',
     kind: 'fx',
     name: 'Physics Paint',
-    fps: 24,
     width: 1920,
     height: 1080,
     keyPhotos: [],

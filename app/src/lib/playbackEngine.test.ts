@@ -416,7 +416,6 @@ function makeFxSequence(overrides: Partial<Sequence> = {}): Sequence {
     id: 'seq-fx',
     kind: 'fx',
     name: 'FX',
-    fps: 24,
     width: 4,
     height: 3,
     keyPhotos: [],

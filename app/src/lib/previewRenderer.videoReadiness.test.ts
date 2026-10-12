@@ -20,6 +20,7 @@ vi.mock('../stores/projectStore', () => ({
   projectStore: {
     width: { peek: () => 4, value: 4 },
     height: { peek: () => 3, value: 3 },
+    fps: { peek: () => 24, value: 24 },
   },
 }));
 
@@ -132,7 +133,6 @@ function makeVideoSequence(): Sequence {
     id: 'seq-1',
     kind: 'content',
     name: 'Seq',
-    fps: 24,
     width: 4,
     height: 3,
     keyPhotos: [],

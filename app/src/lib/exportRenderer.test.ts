@@ -54,7 +54,6 @@ function makeSequence(layer: Layer): Sequence {
     id: 'seq-1',
     kind: 'content',
     name: 'Sequence',
-    fps: 24,
     width: 1000,
     height: 650,
     keyPhotos: [{ id: 'kp-1', imageId: 'base-image', holdFrames: 2 }],
@@ -143,7 +142,13 @@ describe('physics paint cache-first preview/export contract', () => {
     const renderFrameCalls = source.match(/\.renderFrame\(/g) ?? [];
 
     expect(renderFrameCalls.length).toBeGreaterThanOrEqual(4);
-    expect(source).toMatch(/renderer\.renderFrame\(\s*interpolatedLayers,\s*localFrame,\s*seqFrames,\s*seq\.fps,\s*true,\s*fadeOpacity,\s*globalFrame,\s*localFrame\s*\)/);
+    // 53.1-01 (D-01/D-02): project fps is the only timebase — no per-sequence
+    // fps reader may survive in the export render path.
+    expect(source).toMatch(/renderer\.renderFrame\(\s*interpolatedLayers,\s*localFrame,\s*seqFrames,\s*projectStore\.fps\.peek\(\),\s*true,\s*fadeOpacity,\s*globalFrame,\s*localFrame\s*\)/);
+    expect(source).not.toMatch(/seq\.fps/);
+    expect(source).not.toMatch(/overlaySeq\.fps/);
+    expect(source).not.toMatch(/outSeq\.fps/);
+    expect(source).not.toMatch(/inSeq\.fps/);
     expect(source).not.toMatch(/if \([^)]*missing/i);
     expect(source).not.toMatch(/background-only/);
   });
@@ -413,7 +418,6 @@ describe('exportRenderer', () => {
       id: 'fx-paint',
       kind: 'fx',
       name: 'Paint',
-      fps: 24,
       width: 1000,
       height: 650,
       keyPhotos: [],
@@ -549,7 +553,6 @@ describe('exportRenderer', () => {
         id: 'content-b',
         kind: 'content',
         name: 'Later content',
-        fps: 24,
         width: 1000,
         height: 650,
         keyPhotos: [{ id: 'kp-b', imageId: 'base-image', holdFrames: 5 }],
@@ -618,7 +621,6 @@ describe('exportRenderer', () => {
       id: 'fx-paint',
       kind: 'fx',
       name: 'Paint',
-      fps: 24,
       width: 1000,
       height: 650,
       keyPhotos: [],
@@ -988,7 +990,6 @@ describe('261012-kxg motion-blur sub-frame settle (VID-04)', () => {
       id: 'seq-1',
       kind: 'content',
       name: 'Seq',
-      fps: 24,
       width: 4,
       height: 3,
       keyPhotos: [{ id: 'kp-1', imageId: '', holdFrames: 3 }],

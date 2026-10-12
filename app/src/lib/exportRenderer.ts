@@ -4,6 +4,7 @@ import {computeFadeOpacity, computeSolidFadeAlpha, computeCrossDissolveOpacity, 
 import {renderGlslTransition} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {motionBlurStore} from '../stores/motionBlurStore';
+import {projectStore} from '../stores/projectStore';
 import {isFxLayer} from '../types/layer';
 import type {LayerSourceData} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
@@ -211,14 +212,14 @@ export function renderGlobalFrame(
             const outFrames = buildSequenceFrames(outSeq);
             const outLayers = interpolateLayers(outSeq, outLocalFrame);
             const rendererA = renderer.cloneForCanvas(offA);
-            rendererA.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, 1.0, globalFrame, outLocalFrame);
+            rendererA.renderFrame(outLayers, outLocalFrame, outFrames, projectStore.fps.peek(), true, 1.0, globalFrame, outLocalFrame);
 
             // Render incoming sequence to offscreen B (share image cache with main renderer)
             const inLocalFrame = overlap.incomingLocalFrameStart + framesIntoOverlap;
             const inFrames = buildSequenceFrames(inSeq);
             const inLayers = interpolateLayers(inSeq, inLocalFrame);
             const rendererB = renderer.cloneForCanvas(offB);
-            rendererB.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, true, 1.0, globalFrame, inLocalFrame);
+            rendererB.renderFrame(inLayers, inLocalFrame, inFrames, projectStore.fps.peek(), true, 1.0, globalFrame, inLocalFrame);
 
             // Compute eased progress (per D-07)
             const progress = computeTransitionProgress(
@@ -268,7 +269,7 @@ export function renderGlobalFrame(
           const fadeOpacity = computeFadeOpacity(outLocalFrame, outSeqTotalFrames, undefined, outSeq.fadeOut);
           effectiveOutOpacity *= fadeOpacity;
         }
-        renderer.renderFrame(outLayers, outLocalFrame, outFrames, outSeq.fps, true, effectiveOutOpacity, globalFrame, outLocalFrame);
+        renderer.renderFrame(outLayers, outLocalFrame, outFrames, projectStore.fps.peek(), true, effectiveOutOpacity, globalFrame, outLocalFrame);
       }
 
       // --- Render incoming sequence ON TOP ---
@@ -288,7 +289,7 @@ export function renderGlobalFrame(
           effectiveInOpacity *= fadeOpacity;
         }
         // clearCanvas=false so incoming composites ON TOP of outgoing
-        renderer.renderFrame(inLayers, inLocalFrame, inFrames, inSeq.fps, false, effectiveInOpacity, globalFrame, inLocalFrame);
+        renderer.renderFrame(inLayers, inLocalFrame, inFrames, projectStore.fps.peek(), false, effectiveInOpacity, globalFrame, inLocalFrame);
       }
 
       break; // Only one cross dissolve can be active at a time
@@ -312,7 +313,7 @@ export function renderGlobalFrame(
 
     if (isSolidMode) {
       // Solid mode: render content at full opacity, then overlay solid color
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, 1.0, globalFrame, localFrame);
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, projectStore.fps.peek(), true, 1.0, globalFrame, localFrame);
       const solidAlpha = computeSolidFadeAlpha(localFrame, totalSeqFrames, seq.fadeIn, seq.fadeOut);
       if (solidAlpha > 0) {
         const color = activeFade?.color ?? '#000000';
@@ -326,7 +327,7 @@ export function renderGlobalFrame(
       }
     } else {
       // Transparency mode: render content with reduced opacity via sequenceOpacity
-      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, seq.fps, true, fadeOpacity, globalFrame, localFrame);
+      renderer.renderFrame(interpolatedLayers, localFrame, seqFrames, projectStore.fps.peek(), true, fadeOpacity, globalFrame, localFrame);
     }
   }
   } // end if (hasContentEntry)
@@ -364,7 +365,7 @@ export function renderGlobalFrame(
         // Apply fade opacity to content-overlay sequence (transparency mode only)
         const overlayTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
         const overlayFadeOpacity = computeFadeOpacity(overlayLocalFrame, overlayTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(overlayLayers, overlayLocalFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, overlayFadeOpacity, globalFrame, overlayLocalFrame);
+        renderer.renderFrame(overlayLayers, overlayLocalFrame, hasContentEntry ? seqFrames : [], projectStore.fps.peek(), false, overlayFadeOpacity, globalFrame, overlayLocalFrame);
       }
     } else {
       // FX sequence: apply keyframe interpolation to FX layers
@@ -389,7 +390,7 @@ export function renderGlobalFrame(
       if (fxLayers.length > 0) {
         // Apply fade opacity to FX sequence (transparency mode only)
         const fxFadeOpacity = computeFadeOpacity(fxLocalFrame, fxTotalFrames, overlaySeq.fadeIn, overlaySeq.fadeOut);
-        renderer.renderFrame(fxLayers, localFrame, hasContentEntry ? seqFrames : [], overlaySeq.fps, false, fxFadeOpacity, globalFrame, fxLocalFrame);
+        renderer.renderFrame(fxLayers, localFrame, hasContentEntry ? seqFrames : [], projectStore.fps.peek(), false, fxFadeOpacity, globalFrame, fxLocalFrame);
       }
     }
   }

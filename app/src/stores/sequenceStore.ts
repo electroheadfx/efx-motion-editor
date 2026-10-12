@@ -145,7 +145,6 @@ export const sequenceStore = {
       id: genId(),
       kind: 'content',
       name,
-      fps: 24,
       ...getProjectDimensions(),
       keyPhotos: [],
       layers: [createBaseLayer()],
@@ -277,7 +276,6 @@ export const sequenceStore = {
       id: genId(),
       kind: 'fx',
       name,
-      fps: 24,
       ...getProjectDimensions(),
       keyPhotos: [],
       layers: [layer],
@@ -309,7 +307,6 @@ export const sequenceStore = {
       id: genId(),
       kind: 'content-overlay',
       name,
-      fps: 24,
       ...getProjectDimensions(),
       keyPhotos: [],
       layers: [layer],
@@ -438,25 +435,6 @@ export const sequenceStore = {
     pushAction({
       id: crypto.randomUUID(),
       description: 'Rename sequence',
-      timestamp: Date.now(),
-      undo: () => restore(before),
-      redo: () => restore(after),
-    });
-  },
-
-  /** Set per-sequence fps */
-  setSequenceFps(id: string, fps: number) {
-    const before = snapshot();
-
-    sequences.value = sequences.value.map((s) =>
-      s.id === id ? {...s, fps} : s,
-    );
-    markDirty();
-
-    const after = snapshot();
-    pushAction({
-      id: crypto.randomUUID(),
-      description: 'Change sequence FPS',
       timestamp: Date.now(),
       undo: () => restore(before),
       redo: () => restore(after),

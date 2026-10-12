@@ -3,6 +3,7 @@ import {createPortal} from 'preact/compat';
 import Sortable from 'sortablejs';
 import {GripVertical, Ellipsis, Clapperboard, Layers} from 'lucide-preact';
 import {sequenceStore} from '../../stores/sequenceStore';
+import {projectStore} from '../../stores/projectStore';
 import {isolationStore} from '../../stores/isolationStore';
 import {uiStore} from '../../stores/uiStore';
 import {audioStore} from '../../stores/audioStore';
@@ -93,7 +94,7 @@ function SequenceItem({seq, isActive}: SequenceItemProps) {
     (sum, kp) => sum + kp.holdFrames,
     0,
   );
-  const duration = keyCount > 0 ? (totalFrames / seq.fps).toFixed(1) : '0.0';
+  const duration = keyCount > 0 ? (totalFrames / projectStore.fps.value).toFixed(1) : '0.0';
 
   // Get first key photo thumbnail if available
   const firstKp = seq.keyPhotos[0];

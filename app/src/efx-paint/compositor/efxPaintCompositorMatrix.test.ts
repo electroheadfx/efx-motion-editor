@@ -844,6 +844,7 @@ vi.mock('../../stores/projectStore', () => ({
   projectStore: {
     width: { peek: () => 4, value: 4 },
     height: { peek: () => 3, value: 3 },
+    fps: { peek: () => 24, value: 24 },
   },
 }));
 

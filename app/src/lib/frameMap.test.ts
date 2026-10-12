@@ -53,7 +53,6 @@ function makeFxSequence(id: string, name: string, layer: Layer): Sequence {
     id,
     name,
     kind: 'fx',
-    fps: 24,
     width: 1920,
     height: 1080,
     keyPhotos: [],

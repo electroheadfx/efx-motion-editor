@@ -757,7 +757,6 @@ describe('Studio-origin document surfaces across the real pair (quick-260921-e21
       id: 'e21-parent-sequence',
       kind: 'fx',
       name: 'e21 parent authority',
-      fps: 24,
       width: 1920,
       height: 1080,
       keyPhotos: [],
@@ -990,7 +989,6 @@ describe('project-context scope round trip (quick-260922-al1)', () => {
       id: 'al1-parent-sequence',
       kind: 'fx',
       name: 'al1 parent authority',
-      fps: 24,
       width: 1920,
       height: 1080,
       keyPhotos: [],
@@ -1021,7 +1019,7 @@ describe('project-context scope round trip (quick-260922-al1)', () => {
   it('PUBLISH CLAMP: a stored scope whose layer no longer exists degrades to all on the wire', async () => {
     projectStore.scriptScope.value = 'layer-1';
     sequenceStore.sequences.value = [{
-      id: 'al1-parent-sequence', kind: 'fx', name: 'al1 parent authority', fps: 24, width: 1920, height: 1080, keyPhotos: [],
+      id: 'al1-parent-sequence', kind: 'fx', name: 'al1 parent authority', width: 1920, height: 1080, keyPhotos: [],
       layers: [physicLayer('layer-2', 'Hair')],
     }];
     await publishPhysicPaintProjectContext();

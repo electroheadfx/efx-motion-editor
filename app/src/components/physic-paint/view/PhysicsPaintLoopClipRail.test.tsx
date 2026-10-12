@@ -1495,7 +1495,6 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
       id: 'loop-tracer-sequence',
       name: 'Loop tracer',
       kind: 'fx',
-      fps: 24,
       width: 1920,
       height: 1080,
       keyPhotos: [],

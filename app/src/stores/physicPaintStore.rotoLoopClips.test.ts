@@ -676,7 +676,6 @@ describe('replace-roto-physical-map loopClips acceptance (D-06/D-10)', async () 
       id: 'store-loop-bridge-parent-sequence',
       kind: 'fx',
       name: 'Store Loop Clip bridge authority',
-      fps: 24,
       width: 1920,
       height: 1080,
       keyPhotos: [],

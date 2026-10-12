@@ -817,7 +817,6 @@ describe('physicPaintBridge per-track stale-async law (46-04 Task 3)', async () 
       id: 'stale-async-parent-sequence',
       kind: 'fx',
       name: 'Authority parent',
-      fps: 24,
       width: 1920,
       height: 1080,
       keyPhotos: [],

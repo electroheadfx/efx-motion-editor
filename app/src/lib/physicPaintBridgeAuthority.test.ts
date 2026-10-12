@@ -109,7 +109,6 @@ function mockParentAuthority(candidate: Layer): void {
     id: 'authority-parent-sequence',
     kind: 'fx',
     name: 'Authority parent',
-    fps: 24,
     width: 1920,
     height: 1080,
     keyPhotos: [],

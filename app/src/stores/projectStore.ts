@@ -261,7 +261,6 @@ function buildMceProject(): RuntimeMceProject {
     (seq: Sequence, index: number): MceSequence => ({
       id: seq.id,
       name: seq.name,
-      fps: seq.fps,
       width: seq.width,
       height: seq.height,
       order: index,
@@ -586,7 +585,6 @@ function hydrateFromMce(
         id: mceSeq.id,
         kind: (mceSeq.kind as 'content' | 'fx' | 'content-overlay') ?? 'content',
         name: mceSeq.name,
-        fps: mceSeq.fps,
         width: mceSeq.width,
         height: mceSeq.height,
         keyPhotos: sortedKps.map(
