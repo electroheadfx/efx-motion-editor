@@ -1,7 +1,7 @@
 import {describe,it, expect, beforeEach} from 'vitest';
 import {sequenceStore} from '../stores/sequenceStore';
 import {defaultTransform, type Layer} from '../types/layer';
-import {frameMap, fxTrackLayouts, resolveSequenceTimelineRange, totalFrames, trackLayouts} from './frameMap';
+import {frameMap, fxTrackLayouts, resolveSequenceTimelineRange, totalFrames, trackLayouts, resolveOverlaySample, getOverlaySkipRange, type OverlaySampleClip} from './frameMap';
 import {physicPaintStore} from '../stores/physicPaintStore';
 import {registerDocument, reset as resetEfxPaintStore} from '../stores/efxPaintStore';
 import {createEfxPaintDocument} from '../efx-paint/document/efxPaintDocument';
@@ -40,7 +40,6 @@ function makeSequence(overrides: Partial<Sequence> & { keyPhotos: any[] }): Sequ
     id: 'seq-1',
     name: 'Test',
     kind: 'content',
-    fps: 24,
     width: 1920,
     height: 1080,
     layers: [],
@@ -756,5 +755,143 @@ describe('derived timeline span growth (260918-o0n)', () => {
     sequenceStore.updateFxSequenceRange('overlay-span', 0, 140);
     expect(totalFrames.value).toBe(140);
     expect(fxTrackLayouts.value[0].outFrame).toBe(140);
+  });
+});
+
+// 53.1-02 (D-03): single tail-policy resolver truth table. Pure calls, no
+// canvas, real types. The clip view is what callers already have; the resolver
+// is the only hold/loop/skip branch (I-1/I-2/I-5 divergence class dies here).
+describe('resolveOverlaySample (D-03 tail policy)', () => {
+  // 16-frame source at project fps (the repro's .mov). N = 17 (paint grows the timeline).
+  const SOURCE_FRAME_COUNT = 16;
+  const N = 17;
+
+  const clip = (overrides: Partial<OverlaySampleClip> = {}): OverlaySampleClip => ({
+    inFrame: 0,
+    extrapolation: 'hold',
+    sourceFrameCount: SOURCE_FRAME_COUNT,
+    ...overrides,
+  });
+
+  it('inside range returns kind sample with the local frame', () => {
+    // in=0, out=16 authoritative: frames 0..15 are in range with local 0..15.
+    const trimmed = clip({ outFrame: 16 });
+    expect(resolveOverlaySample(trimmed, 0, N).kind).toBe('sample');
+    expect((resolveOverlaySample(trimmed, 15, N) as { localFrame: number }).localFrame).toBe(15);
+
+    // Non-zero in: global 5 at in=3 is local 2.
+    const shifted = resolveOverlaySample(clip({ inFrame: 3, outFrame: 10 }), 5, N);
+    expect(shifted.kind).toBe('sample');
+    expect((shifted as { localFrame: number }).localFrame).toBe(2);
+  });
+
+  it('globalFrame before inFrame returns kind skip', () => {
+    expect(resolveOverlaySample(clip({ inFrame: 3, outFrame: 10 }), 2, N).kind).toBe('skip');
+    expect(resolveOverlaySample(clip({ inFrame: 5 }), 0, N).kind).toBe('skip');
+  });
+
+  it('globalFrame past an authoritative outFrame returns kind skip (exclusive [in, out))', () => {
+    // out=16 exclusive: frame 16 is the first past-out frame.
+    const trimmed = clip({ outFrame: 16 });
+    expect(resolveOverlaySample(trimmed, 16, N).kind).toBe('skip');
+    expect(resolveOverlaySample(trimmed, 20, N).kind).toBe('skip');
+  });
+
+  it('untrimmed clip (absent outFrame) never skips inside 0..N; effective out is N', () => {
+    const untrimmed = clip(); // no outFrame
+    for (let f = 0; f < N; f++) {
+      const sample = resolveOverlaySample(untrimmed, f, N);
+      expect(sample.kind, `untrimmed must not skip at frame ${f}`).not.toBe('skip');
+    }
+    // Past N is outside the composition — skip.
+    expect(resolveOverlaySample(untrimmed, N, N).kind).toBe('skip');
+  });
+
+  it('past sourceFrameCount with hold returns kind hold-last at sourceFrameCount - 1', () => {
+    // Clip spans [0, 17) so frame 16 is IN RANGE but past the 16-frame source.
+    const holding = clip({ outFrame: 17, extrapolation: 'hold' });
+    expect(resolveOverlaySample(holding, 15, N).kind).toBe('sample');
+    const pastSource = resolveOverlaySample(holding, 16, N);
+    expect(pastSource.kind).toBe('hold-last');
+    expect((pastSource as { localFrame: number }).localFrame).toBe(SOURCE_FRAME_COUNT - 1);
+  });
+
+  it('past sourceFrameCount with loop returns kind loop with the wrapped local frame', () => {
+    const looping = clip({ outFrame: 17, extrapolation: 'loop' });
+    // 16 mod 16 = 0.
+    const wrapped = resolveOverlaySample(looping, 16, N);
+    expect(wrapped.kind).toBe('loop');
+    expect((wrapped as { localFrame: number }).localFrame).toBe(0);
+    // 17 past source with a longer clip: 17 mod 16 = 1.
+    const wrapped2 = resolveOverlaySample(looping, 17, 20);
+    expect(wrapped2.kind).toBe('loop');
+    expect((wrapped2 as { localFrame: number }).localFrame).toBe(1);
+  });
+
+  it('fail-closed on malformed input returns skip / null, never throws', () => {
+    expect(resolveOverlaySample(clip({ sourceFrameCount: 0 }), 0, N).kind).toBe('skip');
+    expect(resolveOverlaySample(clip({ sourceFrameCount: -1 }), 0, N).kind).toBe('skip');
+    expect(resolveOverlaySample(clip(), Number.NaN, N).kind).toBe('skip');
+  });
+});
+
+// 53.1-02 Task 3 (D-05/D-06/D-12): the skip-range helper is the ONE definition
+// of a coverage gap. Later surfaces (timeline hatch, export warning, inspector
+// tail line) all read this helper — never a second computation.
+describe('getOverlaySkipRange (single coverage-gap definition)', () => {
+  const SOURCE_FRAME_COUNT = 16;
+  const N = 17;
+
+  const clip = (overrides: Partial<OverlaySampleClip> = {}): OverlaySampleClip => ({
+    inFrame: 0,
+    extrapolation: 'hold',
+    sourceFrameCount: SOURCE_FRAME_COUNT,
+    ...overrides,
+  });
+
+  it('returns the past-out interval [out, N) when out is present and out < N', () => {
+    const gap16 = getOverlaySkipRange(clip({ outFrame: 16 }), N);
+    expect(gap16).not.toBeNull();
+    expect(gap16!.start).toBe(16);
+    expect(gap16!.endExclusive).toBe(17);
+
+    const gap10 = getOverlaySkipRange(clip({ outFrame: 10 }), N);
+    expect(gap10).not.toBeNull();
+    expect(gap10!.start).toBe(10);
+    expect(gap10!.endExclusive).toBe(17);
+  });
+
+  it('returns null when out is absent (untrimmed never gaps) or out >= N', () => {
+    expect(getOverlaySkipRange(clip(), N)).toBeNull();
+    expect(getOverlaySkipRange(clip({ outFrame: 17 }), N)).toBeNull();
+    expect(getOverlaySkipRange(clip({ outFrame: 20 }), N)).toBeNull();
+  });
+
+  it('helper range agrees with the resolver skip region for a trimmed clip with N past out', () => {
+    const trimmed = clip({ outFrame: 16 });
+    const range = getOverlaySkipRange(trimmed, N);
+    expect(range).not.toBeNull();
+
+    // Every frame inside the helper range resolves to skip…
+    for (let f = range!.start; f < range!.endExclusive; f++) {
+      expect(resolveOverlaySample(trimmed, f, N).kind, `frame ${f} in skip range must skip`).toBe('skip');
+    }
+    // …and every skip past out lies inside that range.
+    for (let f = 0; f < N; f++) {
+      const sample = resolveOverlaySample(trimmed, f, N);
+      if (sample.kind === 'skip') {
+        expect(f, `skip at ${f} must lie inside [${range!.start}, ${range!.endExclusive})`)
+          .toBeGreaterThanOrEqual(range!.start);
+        expect(f).toBeLessThan(range!.endExclusive);
+      }
+    }
+  });
+
+  it('untrimmed clip yields a null skip range and no skips inside 0..N', () => {
+    const untrimmed = clip();
+    expect(getOverlaySkipRange(untrimmed, N)).toBeNull();
+    for (let f = 0; f < N; f++) {
+      expect(resolveOverlaySample(untrimmed, f, N).kind, `untrimmed must not skip at ${f}`).not.toBe('skip');
+    }
   });
 });

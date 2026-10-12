@@ -296,6 +296,53 @@ export function getTimelineOverlaySequenceOutFrame(seq: Sequence, fallbackOutFra
   return outFrame;
 }
 
+/** Clip view the tail-policy resolver reads (D-03). Callers supply sourceFrameCount
+ *  (video duration in frames at project fps, or the image-sequence length) so the
+ *  resolver stays pure. extrapolation is the I-5 input — 53.1-03 adds the Sequence
+ *  field; until then callers pass a literal. */
+export interface OverlaySampleClip {
+  readonly inFrame?: number;
+  readonly outFrame?: number;
+  readonly extrapolation: 'hold' | 'loop';
+  readonly sourceFrameCount: number;
+}
+
+/** Discriminated union returned by resolveOverlaySample (D-03). Callers use the
+ *  returned localFrame uniformly for every kind that carries one (including
+ *  hold-last) and never recompute the hold index — no second policy site. */
+export type OverlaySampleResult =
+  | { readonly kind: 'sample'; readonly localFrame: number }
+  | { readonly kind: 'skip' }
+  | { readonly kind: 'hold-last'; readonly localFrame: number }
+  | { readonly kind: 'loop'; readonly localFrame: number };
+
+/** The past-out coverage gap [start, endExclusive) — one shared definition
+ *  (D-05/D-06/D-12 all read this helper, never a second gap computation). */
+export interface OverlaySkipRange {
+  readonly start: number;
+  readonly endExclusive: number;
+}
+
+/** Single tail-policy resolver (D-03): answers "what sample does this clip
+ *  contribute at global frame f". Exclusive [in, out) law unchanged. Absent
+ *  outFrame = untrimmed = covers the composition through N. A resized out is
+ *  authoritative — past out is nothing. Fail-closed on malformed input (skip /
+ *  null, no throw), matching resolveSequenceTimelineRange. */
+export function resolveOverlaySample(
+  clip: OverlaySampleClip,
+  globalFrame: number,
+  N: number,
+): OverlaySampleResult {
+  return { kind: 'sample', localFrame: 0 };
+}
+
+/** The ONE definition of "where does this clip not cover N" (D-05/D-06/D-12).
+ *  Returns the past-out interval [outFrame, N) only when outFrame is present
+ *  and less than N; null otherwise (untrimmed never gaps). */
+export function getOverlaySkipRange(clip: OverlaySampleClip, N: number): OverlaySkipRange | null {
+  return null;
+}
+
 function fxColorForLayerType(type: LayerType): string {
   return FX_TRACK_COLORS[type] ?? FX_DEFAULT_COLOR;
 }
