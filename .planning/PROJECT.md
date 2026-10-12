@@ -145,9 +145,21 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
+- [ ] Display-class save token (PKG-06/BKG-09): `|bgT:` + `|photoDisplay:` in `buildEfxPaintLayerChangeTokenValue`, `|photoDisplay:` in `buildEfxPaintSaveFingerprint`; save-twice regression test — v1.0.1
+- [ ] Video import joins the disk-reference law: never-copy, `source_path` verbatim; retire `videos/` provisioning, add `video_assets` to `MceProject` — v1.0.1
+- [ ] Document-sound decode readiness (SND-07): audio playback/export must await or refuse a missing buffer, never silently drop — v1.0.1
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
+
+## Current Milestone: v1.0.1 Debt Patch Release
+
+**Goal:** Fix the three known gaps carried out of the v1.0.0 audit, then ship a signed/notarized PATCH release.
+
+**Target features:**
+- Display-class save token fix (PKG-06/BKG-09) — display-only edits survive reopen
+- Video import joins the disk-reference law (never-copy, `source_path` verbatim)
+- Document-sound decode readiness (SND-07) — no silent audio drop in playback/export
 
 ## Latest Milestone: v1.0.0 EFX Paint Multi-Track Frames and Reveal (Shipped 2026-10-12)
 
@@ -324,4 +336,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-12 after v1.0.0 milestone — 14 phases, 80 plans, 1,578 commits; signed/notarized 1.0.0 published as GitHub Latest (42-row UAT 36 pass / 6 na / 0 fail); closeout override with Known Gaps PKG-06/BKG-09/SND-07. Previous milestone v0.9.0 shipped 2026-08-21 (38/38 requirements, 12/12 phases).*
+*Last updated: 2026-10-12 after v1.0.1 milestone start — debt-patch milestone opened (3 quicks: PKG-06/BKG-09 save token, video disk-ref law, SND-07 decode readiness) + release. Previous: v1.0.0 shipped 2026-10-12 (14 phases, 80 plans, 1,578 commits; signed/notarized 1.0.0 as GitHub Latest; Known Gaps PKG-06/BKG-09/SND-07).*
