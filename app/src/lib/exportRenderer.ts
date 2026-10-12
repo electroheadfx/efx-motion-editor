@@ -5,6 +5,7 @@ import {renderGlslTransition} from './glslRuntime';
 import {getShaderById} from './shaderLibrary';
 import {motionBlurStore} from '../stores/motionBlurStore';
 import {projectStore} from '../stores/projectStore';
+import {imageStore} from '../stores/imageStore';
 import {isFxLayer} from '../types/layer';
 import type {LayerSourceData} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
@@ -64,21 +65,31 @@ function interpolateLayers(seq: Sequence, localFrame: number) {
 }
 
 /** Build the clip view for resolveOverlaySample (D-03) at the export overlay gate.
- *  53.1-03 replaces the hold literal with seq.extrapolation.
- *  sourceFrameCount: image-sequences know their length; video duration in frames is
- *  resolved at seek time in previewRenderer; FX generators have no source limit.
+ *  extrapolation is the I-5 input (D-07): the Sequence field, never a literal.
+ *  sourceFrameCount: image-sequences know their length; video uses the cached
+ *  VideoAsset.sourceFrameCount when known (53.1-03) and falls back to unlimited
+ *  when the media metadata has not been probed yet; FX generators have no
+ *  source limit.
  *  outFrame carries the roto-extended effective end (getTimelineOverlaySequenceOutFrame)
  *  so a trimmed FX clip whose physic-paint display runs past the authored out still
  *  renders its roto content — absent outFrame stays absent (untrimmed follows N). */
 function buildOverlaySampleClip(seq: Sequence, N: number): OverlaySampleClip {
   const primaryLayer = seq.layers[0];
-  const sourceFrameCount = primaryLayer?.source.type === 'image-sequence'
-    ? Math.max(1, primaryLayer.source.imageIds.length)
-    : Number.MAX_SAFE_INTEGER;
+  let sourceFrameCount = Number.MAX_SAFE_INTEGER;
+  if (primaryLayer?.source.type === 'image-sequence') {
+    sourceFrameCount = Math.max(1, primaryLayer.source.imageIds.length);
+  } else if (primaryLayer?.source.type === 'video') {
+    const videoAssetId = primaryLayer.source.videoAssetId;
+    const asset = imageStore.videoAssets.peek().find((v) => v.id === videoAssetId);
+    const known = asset?.sourceFrameCount;
+    if (typeof known === 'number' && Number.isInteger(known) && known > 0) {
+      sourceFrameCount = known;
+    }
+  }
   return {
     inFrame: seq.inFrame,
     outFrame: seq.outFrame != null ? getTimelineOverlaySequenceOutFrame(seq, N) : undefined,
-    extrapolation: 'hold',
+    extrapolation: seq.extrapolation,
     sourceFrameCount,
   };
 }

@@ -18,6 +18,7 @@ import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
 import {blendModeToCompositeOp} from '../efx-paint/compositor/efxPaintCompositor';
 import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
 import {projectStore} from '../stores/projectStore';
+import {sequenceStore} from '../stores/sequenceStore';
 import {applyMotionBlur} from './glMotionBlur';
 import {motionBlurStore} from '../stores/motionBlurStore';
 import {VelocityCache, isStationary} from './motionBlurEngine';
@@ -832,13 +833,26 @@ export class PreviewRenderer {
     // 53.1-02 D-03: seek through the shared tail-policy resolver — HOLD/LOOP is
     // decided only in resolveOverlaySample, never a local modulo on
     // video.duration. fps is the project timebase (D-01/D-02). Fractional
-    // frames (motion-blur sub-frames) ride through the resolver. 53.1-03
-    // replaces the hold literal with seq.extrapolation.
+    // frames (motion-blur sub-frames) ride through the resolver.
+    // 53.1-03 D-07: extrapolation comes from the parent Sequence field.
+    const parentSeq = sequenceStore.sequences.peek().find((s) =>
+      s.layers.some((l) => l.id === layer.id),
+    );
     const sourceFrameCount = video.duration > 0
       ? Math.max(1, Math.round(video.duration * fps))
       : Number.MAX_SAFE_INTEGER;
+    // Cache the probed count on the VideoAsset so the export gate can feed the
+    // same past-source law without re-probing (53.1-03).
+    if (video.duration > 0 && source.type === 'video') {
+      const asset = imageStore.videoAssets.peek().find((v) => v.id === source.videoAssetId);
+      if (asset && asset.sourceFrameCount !== sourceFrameCount) {
+        imageStore.videoAssets.value = imageStore.videoAssets.value.map((v) =>
+          v.id === asset.id ? { ...v, sourceFrameCount } : v,
+        );
+      }
+    }
     const sample = resolveOverlaySample(
-      { extrapolation: 'hold', sourceFrameCount },
+      { extrapolation: parentSeq?.extrapolation ?? 'hold', sourceFrameCount },
       Math.max(0, frame),
       Number.MAX_SAFE_INTEGER,
     );
