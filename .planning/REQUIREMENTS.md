@@ -9,9 +9,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### SAVE — Display-class Save Token (PKG-06/BKG-09)
 
-- [ ] **SAVE-01**: Display-only background edits (transform/lock) persist across save → close → reopen
-- [ ] **SAVE-02**: Display-only photo-reference edits (visible/opacity/transform/lock) persist across save → close → reopen
-- [ ] **SAVE-03**: Regression test saves twice (the first save masks the missing token) and fails against the pre-fix token builder
+- [x] **SAVE-01**: Display-only background edits (transform/lock) persist across save → close → reopen
+- [x] **SAVE-02**: Display-only photo-reference edits (visible/opacity/transform/lock) persist across save → close → reopen
+- [x] **SAVE-03**: Regression test saves twice (the first save masks the missing token) and fails against the pre-fix token builder
 
 ### VID — Video Import Disk-Reference Law
 
@@ -55,9 +55,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SAVE-01 | Quick 1 | Pending |
-| SAVE-02 | Quick 1 | Pending |
-| SAVE-03 | Quick 1 | Pending |
+| SAVE-01 | Quick 1 | Approved (UAT 2026-10-12) |
+| SAVE-02 | Quick 1 | Approved (UAT 2026-10-12) |
+| SAVE-03 | Quick 1 | Approved (UAT 2026-10-12) |
 | VID-01 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-02 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-03 | Quick 2 | Approved (UAT 2026-10-12) |
@@ -75,4 +75,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-12*
-*Last updated: 2026-10-12 — VID-01/02/03 approved after native UAT (Quick 2, 261012-d6q)*
+*Last updated: 2026-10-12 — SAVE-01/02/03 (Quick 1) and VID-01/02/03 (Quick 2) approved after native UAT; SND-01/02 next (Quick 3)*
