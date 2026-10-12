@@ -5,10 +5,10 @@ milestone_name: Debt Patch Release
 current_phase_name: defining requirements
 status: planning
 stopped_at: Phase 53 complete — all phases complete
-last_updated: "2026-10-12T11:16:16.113Z"
+last_updated: "2026-10-12T13:58:17.310Z"
 last_activity: 2026-10-12
 last_activity_desc: Quick 3 (261012-exn) document-sound decode readiness — UAT APPROVED 4/4; SND-01/02 closed; 8/10 v1.0.1 requirements approved
-state_head: 28080ea0e79811555b0ae2d9e52cc4ccd8077851
+state_head: b2722a753b4af581df5328f26e8fd598ff3fddab
 progress:
   total_phases: 0
   completed_phases: 0
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 Phase: Not started (defining requirements)
 Plan: —
 Status: Defining requirements
-Last activity: 2026-10-12 - Completed quick task 261012-hw3: v1.0.1 Release machinery (REL-01 bump + README + hygiene + gates green) — awaiting user review; sign/notarize/push/publish user-run
+Last activity: 2026-10-12 - Completed quick task 261012-kxg: Export video readiness (v1.0.1 release blocker) — loadeddata preload + seeked settle + fail-closed (VID-04); automated-ready, native UAT pending
 
 ## Performance Metrics
 
@@ -433,6 +433,7 @@ None yet.
 | 261012-d6q | Video disk-reference law (v1.0.1 Quick 2) | 2026-10-12 | a2afe490 | [261012-d6q-video-disk-reference-law-v1-0-1-quick-2-](./quick/261012-d6q-video-disk-reference-law-v1-0-1-quick-2-/) |
 | 261012-exn | Document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4 (2026-10-12) | 2026-10-12 | f19399e6 | [261012-exn-document-sound-decode-readiness-v1-0-1-q](./quick/261012-exn-document-sound-decode-readiness-v1-0-1-q/) |
 | 261012-hw3 | v1.0.1 Release machinery (REL-01 bump + README + hygiene + gates green) — awaiting user review; sign/notarize/push/publish user-run | 2026-10-12 | 28080ea0 | [261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum](./quick/261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum/) |
+| 261012-kxg | Export video readiness (v1.0.1 release blocker) — loadeddata preload + seeked settle + fail-closed naming clip (VID-04); automated-ready, native UAT pending | 2026-10-12 | b2722a75 | [261012-kxg-export-video-readiness-v1-0-1-release-bl](./quick/261012-kxg-export-video-readiness-v1-0-1-release-bl/) |
 
 ### Roadmap Evolution
 
