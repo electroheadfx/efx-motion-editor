@@ -1,4 +1,4 @@
-import {getPreviewPhysicPaintFrameCacheKey, PreviewRenderer, type PreviewPhysicPaintFrameSource} from './previewRenderer';
+import {getPreviewPhysicPaintFrameCacheKey, PreviewRenderer, mapPreviewEndStateFrame, type PreviewPhysicPaintFrameSource} from './previewRenderer';
 import {interpolateAt} from './keyframeEngine';
 import {computeFadeOpacity, computeSolidFadeAlpha, computeCrossDissolveOpacity, computeTransitionProgress} from './transitionEngine';
 import {renderGlslTransition} from './glslRuntime';
@@ -170,6 +170,9 @@ export function renderGlobalFrame(
   overlaps: CrossDissolveOverlap[],
   soloActive: boolean = false,
 ): void {
+  // D-10 END-STATE (Law 2): playhead N shows the last frame's result. One line
+  // at the preview render boundary (export never passes N — still 0..N-1).
+  globalFrame = mapPreviewEndStateFrame(globalFrame, fm.length);
   // Support fractional globalFrame for sub-frame motion blur accumulation
   const frameIndex = Math.floor(globalFrame);
   const fractionalOffset = globalFrame - frameIndex;

@@ -80,6 +80,18 @@ export function createCanvasGradient(
 export {blendModeToCompositeOp};
 
 /**
+ * D-10 END-STATE mapping (Law 2): the playhead may sit on tick N (the
+ * end-of-sequence position). Preview at N shows the last frame's result.
+ * Exactly one line at the preview render boundary — no atEnd flag, no
+ * per-consumer N fork (I-1 divergence class). Export never sees N (still
+ * writes 0..N-1). N=0 maps to -1, which the render boundary treats as the
+ * empty timeline (today's empty render).
+ */
+export function mapPreviewEndStateFrame(playhead: number, N: number): number {
+  return playhead >= N ? N-1 : playhead;
+}
+
+/**
  * 47-01 hide/solo preview filter (TML-04/Pitfall M8). The truth table:
  * - no solo armed → every track whose `visible !== false` resolves visible;
  * - any solo armed → only tracks that are `visible !== false` AND soloed show;

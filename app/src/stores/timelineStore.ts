@@ -60,6 +60,16 @@ effect(() => {
   }
 });
 
+// D-10 edge pin: N shrinks below the current playhead -> clamp down to the new
+// N. N grows while the playhead sits on N -> playhead stays (tick N is still a
+// legal end-of-sequence position).
+effect(() => {
+  const max = totalFramesSignal.value;
+  if (currentFrame.peek() > max) {
+    currentFrame.value = max;
+  }
+});
+
 export const timelineStore = {
   currentFrame,
   displayFrame,
@@ -85,7 +95,8 @@ export const timelineStore = {
   },
   seek(frame: number) {
     const max = totalFramesSignal.value;
-    const upper = max > 0 ? max - 1 : 0;
+    // D-10: ceiling is N inclusive — tick N is the end-of-sequence position.
+    const upper = max;
     currentFrame.value = Math.max(0, Math.min(frame, upper));
   },
   setPlaying(v: boolean) {
@@ -96,7 +107,8 @@ export const timelineStore = {
   },
   stepForward() {
     const max = totalFramesSignal.value;
-    const upper = max > 0 ? max - 1 : 0;
+    // D-10: step onto tick N; never past it.
+    const upper = max;
     if (currentFrame.value < upper) {
       currentFrame.value += 1;
     }

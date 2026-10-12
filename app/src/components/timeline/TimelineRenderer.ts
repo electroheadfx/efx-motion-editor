@@ -1555,7 +1555,7 @@ export class TimelineRenderer {
     scrollX: number,
     zoom: number,
     totalFrames: number,
-    maxFrame: number | null = totalFrames > 0 ? totalFrames - 1 : 0,
+    maxFrame: number | null = totalFrames > 0 ? totalFrames : 0,
   ): number {
     return resolveTimelinePointerFrame(clientX, canvasRect.left, scrollX, zoom, maxFrame);
   }
