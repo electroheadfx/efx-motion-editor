@@ -53,12 +53,34 @@ export function ExportPreview() {
 
     const renderer = new PreviewRenderer(canvas);
     const sampleFrame = Math.floor(frames / 2);
+    // 261012-kxg (VID-04): local abort spans the video preload + settle chain;
+    // cleanup aborts it so an unmount mid-wait never leaks listeners.
+    const abort = new AbortController();
 
-    preloadExportImages(renderer, fm, undefined, allSeqs).then(() => {
+    preloadExportImages(renderer, fm, undefined, allSeqs).then(async () => {
+      // Initial readiness on the dialog's own renderer. The dialog canvas is
+      // NOT a delivered artifact, so a broken source degrades to a console
+      // warning here — the export itself fail-closes naming the clip (the
+      // VID-04 asymmetry).
+      try {
+        await renderer.preloadVideos(allSeqs, abort.signal);
+      } catch (err) {
+        console.warn('[ExportPreview] video not ready:', err);
+      }
       renderGlobalFrame(renderer, canvas, sampleFrame, fm, allSeqs, overlaps, soloStore.soloEnabled.value);
+      // Seek completion: render → settle → re-render (same seam as the
+      // export loop) so the sample frame shows the video, not the placeholder.
+      try {
+        if (await renderer.settleVideoSeeks(abort.signal)) {
+          renderGlobalFrame(renderer, canvas, sampleFrame, fm, allSeqs, overlaps, soloStore.soloEnabled.value);
+        }
+      } catch (err) {
+        if (!abort.signal.aborted) console.warn('[ExportPreview] video settle:', err);
+      }
     });
 
     return () => {
+      abort.abort();
       renderer.dispose();
     };
   }, [frames, outWidth, outHeight]);

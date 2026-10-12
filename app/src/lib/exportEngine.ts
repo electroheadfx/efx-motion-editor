@@ -189,6 +189,15 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     currentFrame: startFromFrame,
   });
 
+  // 261012-kxg (VID-04): ONE AbortController spans image preload, video
+  // preload, and every frame-loop video wait; the existing 200ms
+  // isCancelled poll drives it, and the outer finally clears the interval on
+  // EVERY exit path (success, preload failure, cancel, write failure, throw).
+  const exportAbort = new AbortController();
+  const cancelCheckInterval = setInterval(() => {
+    if (exportStore.isCancelled()) exportAbort.abort();
+  }, 200);
+
   try {
     // 1. Create export directory (D-18: timestamped subfolder)
     // If resuming, reuse the existing outputPath instead of creating new
@@ -213,22 +222,21 @@ export async function startExport(startFromFrame = 0): Promise<void> {
     // 3. Create renderer for the offscreen canvas
     const renderer = new PreviewRenderer(canvas);
 
-    // 4. Preload all images (with cancel support and timeout safety net)
-    const preloadAbort = new AbortController();
-    const preloadCancelCheck = setInterval(() => {
-      if (exportStore.isCancelled()) preloadAbort.abort();
-    }, 200);
+    // 4. Preload all images (with cancel support and timeout safety net),
+    // then every video layer's readiness (VID-04 initial gate, 261012-kxg):
+    // preloadVideos is fail-CLOSED — an unready/broken video rejects naming
+    // the clip and falls through to the outer catch → error status, while an
+    // abort lands as 'cancelled'.
     try {
-      await preloadExportImages(renderer, fm, preloadAbort.signal, allSeqs);
+      await preloadExportImages(renderer, fm, exportAbort.signal, allSeqs);
+      await renderer.preloadVideos(allSeqs, exportAbort.signal);
     } catch (err) {
-      clearInterval(preloadCancelCheck);
-      if (preloadAbort.signal.aborted) {
+      if (exportAbort.signal.aborted) {
         exportStore.updateProgress({ status: 'cancelled' });
         return;
       }
       throw err;
     }
-    clearInterval(preloadCancelCheck);
 
     // 4.5. Read motion blur export settings
     const mbSettings = exportStore.settings.peek().motionBlur;
@@ -252,14 +260,36 @@ export async function startExport(startFromFrame = 0): Promise<void> {
 
       const frameStart = performance.now();
 
-      // Render frame (with motion blur if enabled)
-      if (mbEnabled) {
-        renderFrameWithMotionBlur(
-          renderer, canvas, frame, fm, allSeqs, overlaps,
-          mbSubFrames, mbShutterAngle, soloStore.soloEnabled.peek()
-        );
-      } else {
-        renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps, soloStore.soloEnabled.peek());
+      // VID-04 two-pass capture (261012-kxg): pass 1 lets the draw compute
+      // and register every seek target (the draw owns the local-frame/fps
+      // math — never duplicated here); settle awaits 'seeked'; pass 2 draws
+      // the settled frame and THAT image is captured. Pass-1 placeholder or
+      // stale pixels are never delivered. A cancel mid-wait routes to status
+      // 'cancelled' (with resumeFromFrame); a video error/timeout falls
+      // through to the outer catch → named error status.
+      try {
+        if (mbEnabled) {
+          // Motion blur: renderFrameWithMotionBlur settles per SUB-frame.
+          await renderFrameWithMotionBlur(
+            renderer, canvas, frame, fm, allSeqs, overlaps,
+            mbSubFrames, mbShutterAngle, soloStore.soloEnabled.peek(),
+            exportAbort.signal,
+          );
+        } else {
+          renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps, soloStore.soloEnabled.peek());
+          if (await renderer.settleVideoSeeks(exportAbort.signal)) {
+            renderGlobalFrame(renderer, canvas, frame, fm, allSeqs, overlaps, soloStore.soloEnabled.peek());
+          }
+        }
+      } catch (err) {
+        if (exportAbort.signal.aborted) {
+          exportStore.updateProgress({
+            status: 'cancelled',
+            resumeFromFrame: frame,
+          });
+          return;
+        }
+        throw err;
       }
 
       // Extract PNG
@@ -521,6 +551,10 @@ export async function startExport(startFromFrame = 0): Promise<void> {
       errorMessage: String(err),
       resumeFromFrame: exportStore.progress.peek().currentFrame,
     });
+  } finally {
+    // 261012-kxg (VID-04): the cancel poll dies on success, preload failure,
+    // cancel, write failure, and thrown errors alike — no path leaks it.
+    clearInterval(cancelCheckInterval);
   }
 }
 

@@ -133,10 +133,35 @@ function getPaperTextureUrl(paperGrain: string | undefined): string | null {
 }
 
 /**
+ * 261012-kxg (VID-04): export video readiness bounds.
+ * VIDEO_READY_TIMEOUT_MS mirrors the image preload's 30s safety net;
+ * VIDEO_SEEK_TIMEOUT_MS bounds a single per-frame 'seeked' wait so a hung
+ * file can never stall an export forever. Both are exported for tests.
+ */
+export const VIDEO_READY_TIMEOUT_MS = 30_000;
+export const VIDEO_SEEK_TIMEOUT_MS = 5_000;
+
+/** The three video maps cloneForCanvas shares alongside the image cache. */
+interface SharedVideoState {
+  elements: Map<string, HTMLVideoElement>;
+  readyHandlers: Map<string, () => void>;
+  layerNames: Map<string, string>;
+}
+
+/**
  * Canvas 2D compositing engine that renders all visible layers bottom-to-top.
  *
  * Designed to be reusable by Phase 10 (export) at arbitrary resolutions.
  * The renderer is decoupled from UI — it only needs a canvas and layer data.
+ *
+ * VID-04 (261012-kxg) export contract: `preloadVideos` forces every visible
+ * video layer to readyState >= 2 before the export frame loop starts, and
+ * `settleVideoSeeks` awaits 'seeked' after the draw registers each seek —
+ * render → settle → re-render, so a captured frame is always post-seek.
+ * Both are fail-CLOSED: an unready video rejects with an error NAMING the
+ * clip (unlike preloadExportImages, which stays fail-open for images — that
+ * asymmetry is the law). The live preview path (the loadeddata/seeked
+ * re-render listeners in resolveVideoSource) is intentionally untouched.
  */
 export class PreviewRenderer {
   private canvas: HTMLCanvasElement;
@@ -146,6 +171,7 @@ export class PreviewRenderer {
   private failedImages: Set<string>; // imageIds that failed to load
   private videoElements: Map<string, HTMLVideoElement>; // layerId -> video element
   private videoReadyHandlers: Map<string, () => void>; // layerId -> shared loadeddata/seeked handler
+  private videoLayerNames: Map<string, string>; // layerId -> layer name (VID-04 error copy)
   private offscreenCanvas: HTMLCanvasElement | null = null; // reusable offscreen canvas for video rasterization
   private blurOffscreen: HTMLCanvasElement | null = null; // reusable offscreen canvas for per-layer/generator blur
   private paperTextureSubscriptions = new Map<string, () => void>();
@@ -154,7 +180,7 @@ export class PreviewRenderer {
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
 
-  constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>) {
+  constructor(canvas: HTMLCanvasElement, sharedImageCache?: Map<string, HTMLImageElement>, sharedVideoState?: SharedVideoState) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
@@ -164,16 +190,26 @@ export class PreviewRenderer {
     this.imageCache = sharedImageCache ?? new Map();
     this.loadingImages = new Set();
     this.failedImages = new Set();
-    this.videoElements = new Map();
-    this.videoReadyHandlers = new Map();
+    // VID-04 (261012-kxg): clones adopt the parent's video maps so a
+    // GL-transition offscreen draw seeks the SAME element the main renderer
+    // settles — a clone's fresh readyState-0 element would draw the
+    // placeholder inside the transition.
+    this.videoElements = sharedVideoState?.elements ?? new Map();
+    this.videoReadyHandlers = sharedVideoState?.readyHandlers ?? new Map();
+    this.videoLayerNames = sharedVideoState?.layerNames ?? new Map();
   }
 
   /**
    * Create a lightweight renderer targeting a different canvas but sharing
-   * this renderer's image cache. Used for GL transition dual-capture rendering.
+   * this renderer's image cache AND video element maps. Used for GL transition
+   * dual-capture rendering.
    */
   cloneForCanvas(canvas: HTMLCanvasElement): PreviewRenderer {
-    return new PreviewRenderer(canvas, this.imageCache);
+    return new PreviewRenderer(canvas, this.imageCache, {
+      elements: this.videoElements,
+      readyHandlers: this.videoReadyHandlers,
+      layerNames: this.videoLayerNames,
+    });
   }
 
   preloadPaperTextures(paperGrains: string[]): void {
@@ -779,6 +815,10 @@ export class PreviewRenderer {
       if (!videoAsset) return null;
       video.src = assetUrl(videoAsset.path);
       this.videoElements.set(layer.id, video);
+      // VID-04 (261012-kxg): remember the display name for fail-closed
+      // error copy. Additive only — the live listeners/seek math/readyState
+      // gate below are intentionally untouched.
+      this.videoLayerNames.set(layer.id, layer.name);
 
       // Trigger re-render when video has enough data to display
       const readyHandler = () => { this.onImageLoaded?.(); };
@@ -799,6 +839,169 @@ export class PreviewRenderer {
     if (video.readyState < 2) return null;
 
     return video;
+  }
+
+  /**
+   * VID-04 (261012-kxg): the single fail-closed error builder. EVERY
+   * unready-video path routes through it so the clip name is always present
+   * in the export's errorMessage (same law as SND-02).
+   */
+  private videoBlockedError(name: string, detail: string): Error {
+    return new Error(`Export blocked — video "${name}" ${detail}. Restore the file, then export again.`);
+  }
+
+  /**
+   * VID-04 (261012-kxg): bounded, cancellable wait on one video element.
+   *
+   * Race discipline: listeners attach BEFORE the final state check (closes
+   * the attach/check race), the timeout and abort listeners reject, and the
+   * finally-equivalent cleanup removes every listener and clears the timer on
+   * ALL paths — no listener leaks. 'error' anywhere in `events` (or an
+   * already-present video.error) throws the named fail-closed error; abort
+   * throws the plain 'Export cancelled' copy preloadExportImages uses, so
+   * callers can never confuse a cancel with a broken video.
+   */
+  private waitForVideo(
+    video: HTMLVideoElement,
+    name: string,
+    isDone: () => boolean,
+    events: readonly string[],
+    timeoutMs: number,
+    signal: AbortSignal | undefined,
+    detailOnTimeout: string,
+  ): Promise<void> {
+    if (video.error) {
+      return Promise.reject(this.videoBlockedError(name, 'failed to load (file missing or unreadable)'));
+    }
+    if (signal?.aborted) return Promise.reject(new Error('Export cancelled'));
+    if (isDone()) return Promise.resolve();
+
+    return new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        for (const event of events) video.removeEventListener(event, onEvent);
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+      };
+      const settle = (): boolean => {
+        if (settled) return false;
+        settled = true;
+        cleanup();
+        return true;
+      };
+      const onEvent = (event: Event) => {
+        if (settled) return;
+        if (event.type === 'error') {
+          settle();
+          reject(this.videoBlockedError(name, 'failed to load (file missing or unreadable)'));
+          return;
+        }
+        if (isDone()) {
+          settle();
+          resolve();
+          return;
+        }
+        // Success event before the state flipped — re-arm (cleanup still
+        // removes this same handler from the `events` list).
+        video.addEventListener(event.type, onEvent, { once: true });
+      };
+      const onAbort = () => {
+        if (!settle()) return;
+        reject(new Error('Export cancelled'));
+      };
+      const timer = setTimeout(() => {
+        if (!settle()) return;
+        reject(this.videoBlockedError(name, detailOnTimeout));
+      }, timeoutMs);
+
+      for (const event of events) video.addEventListener(event, onEvent, { once: true });
+      signal?.addEventListener('abort', onAbort, { once: true });
+
+      // State re-check AFTER attaching (never before): if the element became
+      // ready between the caller's check and attachment, settle now.
+      if (isDone()) {
+        settle();
+        resolve();
+      }
+    });
+  }
+
+  /**
+   * VID-04 (261012-kxg): await one registered element through readiness AND
+   * seek completion, in order, with the named fail-closed errors at every
+   * violation (missing file / load error / 30s readiness / 5s seek / abort).
+   */
+  private async awaitVideoSettled(layerId: string, video: HTMLVideoElement, signal?: AbortSignal): Promise<void> {
+    const name = this.videoLayerNames.get(layerId) ?? layerId;
+    if (signal?.aborted) throw new Error('Export cancelled');
+    if (video.error) throw this.videoBlockedError(name, 'failed to load (file missing or unreadable)');
+    if (video.readyState < 2) {
+      await this.waitForVideo(
+        video, name, () => video.readyState >= 2,
+        ['loadeddata', 'error'], VIDEO_READY_TIMEOUT_MS, signal,
+        'did not become ready within 30s',
+      );
+    }
+    if (video.error) throw this.videoBlockedError(name, 'failed to load (file missing or unreadable)');
+    if (video.seeking) {
+      await this.waitForVideo(
+        video, name, () => !video.seeking,
+        ['seeked', 'error'], VIDEO_SEEK_TIMEOUT_MS, signal,
+        'did not finish seeking within 5s',
+      );
+    }
+    if (video.readyState < 2) throw this.videoBlockedError(name, 'did not become ready within 30s');
+    if (video.error) throw this.videoBlockedError(name, 'failed to load (file missing or unreadable)');
+  }
+
+  /**
+   * VID-04 (261012-kxg) INITIAL READINESS — the video twin of
+   * preloadExportImages, but fail-CLOSED (images stay fail-open; that
+   * asymmetry is the law). Runs where preloadExportImages runs, before the
+   * export frame loop: every visible video layer of the given sequences gets
+   * its element created through the untouched resolveVideoSource and awaits
+   * readyState >= 2 (or the export stops naming the clip).
+   *
+   * Frame 0 never initiates a seek (target time 0), so creation alone needs
+   * no wait beyond readiness — per-frame seeks are settleVideoSeeks' job.
+   */
+  async preloadVideos(sequences: readonly Sequence[], signal?: AbortSignal): Promise<void> {
+    const targets: Array<{ seq: Sequence; layer: Layer }> = [];
+    for (const seq of sequences) {
+      if (seq.visible === false) continue;
+      for (const layer of seq.layers) {
+        if (layer.visible && layer.source.type === 'video') targets.push({ seq, layer });
+      }
+    }
+    await Promise.all(targets.map(async ({ seq, layer }) => {
+      this.resolveVideoSource(layer, 0, seq.fps);
+      const video = this.videoElements.get(layer.id);
+      // Missing videoAsset row: resolveVideoSource returned before
+      // registering the element — fail closed naming the clip.
+      if (!video) {
+        throw this.videoBlockedError(layer.name, 'could not be prepared: its source file is not registered');
+      }
+      await this.awaitVideoSettled(layer.id, video, signal);
+    }));
+  }
+
+  /**
+   * VID-04 (261012-kxg) SEEK COMPLETION — render → settle → re-render.
+   * Pass 1 (the draw) registered every seek via the untouched
+   * resolveVideoSource — the draw owns the local-frame/fps math, so this
+   * method never duplicates it. Awaiting here then lets the caller re-render,
+   * and only that second pass is captured; a pass-1 placeholder or stale
+   * pre-seek frame is never delivered.
+   *
+   * Returns false immediately (no listeners) when every registered element is
+   * ready and not seeking — video-less exports render exactly once.
+   */
+  async settleVideoSeeks(signal?: AbortSignal): Promise<boolean> {
+    const pending = [...this.videoElements.entries()]
+      .filter(([, video]) => video.readyState < 2 || video.seeking);
+    if (pending.length === 0) return false;
+    await Promise.all(pending.map(([layerId, video]) => this.awaitVideoSettled(layerId, video, signal)));
+    return true;
   }
 
   /**

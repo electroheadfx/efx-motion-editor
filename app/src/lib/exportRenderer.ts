@@ -404,8 +404,14 @@ export function renderGlobalFrame(
  * The shutterAngle param temporarily overrides motionBlurStore.shutterAngle during the sub-frame
  * loop so that motionBlurStore.getStrength() (which PreviewRenderer reads inside renderGlobalFrame)
  * returns the export-specific value rather than the preview value. Per D-11.
+ *
+ * VID-04 (261012-kxg): EVERY sub-frame settles its video seeks
+ * (renderer.settleVideoSeeks) before its pixels are read — a sub-frame drawn
+ * between currentTime assignment and 'seeked' would bake a stale image into
+ * the accumulation. The signal lets a mid-wait cancel reject as
+ * 'Export cancelled' (routed to status 'cancelled' by exportEngine).
  */
-export function renderFrameWithMotionBlur(
+export async function renderFrameWithMotionBlur(
   renderer: PreviewRenderer,
   canvas: HTMLCanvasElement,
   globalFrame: number,
@@ -415,7 +421,8 @@ export function renderFrameWithMotionBlur(
   subFrames: number,
   shutterAngle: number,
   soloActive: boolean = false,
-): void {
+  signal?: AbortSignal,
+): Promise<void> {
   const w = canvas.width;
   const h = canvas.height;
 
@@ -440,6 +447,13 @@ export function renderFrameWithMotionBlur(
       // renderGlobalFrame uses interpolateAt() which supports fractional frames
       // Motion blur is applied per-layer inside PreviewRenderer (the renderer has velocityCache)
       renderGlobalFrame(renderer, canvas, subFrame, fm, allSeqs, overlaps, soloActive);
+
+      // VID-04 (261012-kxg): pass 1 registered this sub-frame's seek — settle
+      // awaits 'seeked', then a second pass draws the settled pixels. Only the
+      // post-seek image is read into the accumulator.
+      if (await renderer.settleVideoSeeks(signal)) {
+        renderGlobalFrame(renderer, canvas, subFrame, fm, allSeqs, overlaps, soloActive);
+      }
 
       // Read pixels and accumulate in float buffer
       const imageData = ctx.getImageData(0, 0, w, h);
