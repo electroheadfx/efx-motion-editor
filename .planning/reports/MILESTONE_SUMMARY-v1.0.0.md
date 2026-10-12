@@ -197,7 +197,7 @@ Aggregated from phase CONTEXT.md `<decisions>` sections and PROJECT.md. IDs refe
 
 ### Known Gaps (shipped with the release — top priority)
 
-1. **PKG-06 / BKG-09 display-class setters skip the layer change token** — display-only edits (bg transform/lock, photo-display prefs) revert on reopen after a settled save. Integration severity: **blocker**. Fix: add `|bgT:` / `|photoDisplay:` terms to the layer change token and/or make display setters rotate `documentRevision`.
+1. **PKG-06 / BKG-09 display-class setters skip the layer change token** — display-only edits (bg transform/lock, photo-display prefs) revert on reopen after a settled save. Integration severity: **blocker**. Fix is **two-gate** and must NOT rotate `documentRevision` (display prefs are excluded from it by D-07/D-11/D-12/D-13 — §5 Phase 50): append `|bgT:` + `|photoDisplay:` to `buildEfxPaintLayerChangeTokenValue` (`efxPaintPersistence.ts:521`), and `|photoDisplay:` to `buildEfxPaintSaveFingerprint` (`:612` — its `|bgT:` term already exists from 260922-rd4). Without the fingerprint term a photo-display-only edit never even triggers a save; without the layer-token term the save runs but `layers/<id>.json` is skipped as unchanged. The canonical encoders already exist (`encodeCanonicalBackgroundTransform`, the photo term in `efxPaintDocumentRevision.ts:131-140`) — this is an append of terms, not a new encoding.
 2. **SND-07 export mix edge** — moved/failed audio clip silently dropped from the exported mix. Integration severity: warning.
 3. **Duplicated hide/solo truth table** — `efxPaintHideSolo.ts` (compositor/export) vs `previewRenderer.ts` (Studio) are logic-identical today with no shared import. Drift would desync preview from export. Integration severity: warning.
 4. **Main playback silent no-op on undecoded document sound** — `audioEngine.play` returns silently when the buffer is absent; open-time decode is fire-and-forget. Same family as the export-mix warning.
@@ -207,12 +207,11 @@ Aggregated from phase CONTEXT.md `<decisions>` sections and PROJECT.md. IDs refe
 - **WINDOWS.md ledger frontmatter counts disagree with entries** — `windows append` refuses every write; froze cross-phase deviation logging for all of 52.2. Needs a recount-repair pass.
 - **Orphan package files:** deleted keys/layers never remove `frames/<layerId>/<keyId>.webp` / `layers/<layerId>.json` (token diff is add-only, no GC owner).
 - **Two call sites still hand the package DIRECTORY to `projectStore.openProject`** (`shortcuts.ts:95`, `WelcomeScreen.tsx:168`) → EISDIR on Cmd+O / welcome Open. Needs owner.
-- **`paintStore` ↔ `projectStore` circular-import init-order failure** in `PhysicsPaintStudioView.test.ts` (collect-phase).
 - **`'move'` missing from the `ToolType` union** (3 pre-existing typecheck errors).
 - **`main.test.ts` unhandled rejection** in full suite (`__TAURI_INTERNALS__.invoke` at cold-start drain). No scheduled owner.
 - **Phase 45 WR-01..WR-08:** eight non-blocking hardening warnings on error paths (sidecar load/save guards, commit-settlement error swallow, saveProjectAs rollback-after-write, stale mid-save marker, silent sidecar load failures, auto-save unhandled rejections, saveProjectAs/isSaving race, parentLayerId map-key check).
 - **Phase 46 F-01 (MEDIUM-LOW):** `applyPhysicPaintRotoGroupFramePaint` / `applyCommittedReferencedActionDeletion` resolve `activeTrackId` at apply time instead of the captured lease token — narrow window, fails closed on revision/equality guard.
-- **52.2-02 left 8 round-trip tests red by design** until plan 07/09's writer projected media references — resolved at plans 07/09.
+- ~~**52.2-02 left 8 round-trip tests red by design** until plan 07/09's writer projected media references~~ — **CLOSED** at plans 07/09; listed here only as history.
 - **Chunk budget overage at 52.1 close:** main chunk 1305.11 kB vs 1291.43 kB baseline; documented, left red pending sign-off on any future raise. (Later raises: 1320→1340 at 52.2-13, 1340→1355 at 53.)
 - **S key shortcut lacks `isPaintEditMode()` guard** (low severity) — from v0.6.0.
 - **2 medium-severity export edge cases** (content-overlay image preload, FX generator frame offset) — carried from v0.2.0.
