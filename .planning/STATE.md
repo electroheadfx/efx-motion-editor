@@ -5,16 +5,16 @@ milestone_name: Debt Patch Release
 current_phase: "53.1"
 current_phase_name: Frame-model fix (INSERTED)
 status: executing
-stopped_at: Completed 53.1-04-PLAN.md
-last_updated: "2026-10-12T22:24:21.506Z"
+stopped_at: Completed 53.1-05-PLAN.md
+last_updated: "2026-10-12T22:49:36.635Z"
 last_activity: 2026-10-12
 last_activity_desc: Phase 53.1 execution started
-state_head: 78d2f31f118cd117dd4e907fa9ded5f97a96fa33
+state_head: 9c22904c1b7c378a3462e51d8dbff60318602853
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 ## Current Position
 
 Phase: 53.1 (Frame-model fix (INSERTED)) — EXECUTING
-Plan: 5 of 6
+Plan: 6 of 6
 Status: Ready to execute
 Last activity: 2026-10-12 — Phase 53.1 execution started
 
@@ -149,6 +149,7 @@ Last activity: 2026-10-12 — Phase 53.1 execution started
 | Phase 53.1 P53.1-02 | 31 | 3 tasks | 7 files |
 | Phase 53.1 P53.1-03 | 16min | 2 tasks | 31 files |
 | Phase 53.1 P53.1-04 | 14min | 2 tasks | 5 files |
+| Phase 53.1 P53.1-05 | 20 | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -426,6 +427,9 @@ Recent decisions affecting current work:
 - [Phase 53.1]: D-10: playhead ceiling 0..N inclusive at the store boundary only (seek/stepForward upper = max; frameFromX default totalFrames); resolveTimelinePointerFrame byte-untouched
 - [Phase 53.1]: D-10 END-STATE: mapPreviewEndStateFrame one-liner (playhead >= N ? N-1 : playhead) applied once at renderGlobalFrame before the fm lookup; export never sees N
 - [Phase 53.1]: D-11: drawRuler isEndLimit at f === N is a taller tick + horizontal cap with no numeric label and no time glyph; ticks 0..N-1 unchanged
+- [Phase 53.1]: 53.1-05: D-05 hatched gap tail on the clip's own row from fxTrackLayouts.skipRange (getOverlaySkipRange on the authoritative outFrame); barW stays (out-in)*frameWidth, fades flush, hatch outside both
+- [Phase 53.1]: 53.1-05: D-06/D-14 warnings: string[] parallel to errorMessage — named gap warnings via getOverlaySkipRange never abort and never set error status; export still writes 0..N-1
+- [Phase 53.1]: 53.1-05: D-12 inspector Coverage readout (range line + Follows sequence end / Ends at N · gap) derived from getOverlaySkipRange — three surfaces, one coverage truth
 
 ### Pending Todos
 
@@ -503,8 +507,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-12T22:24:21.486Z
-Stopped at: Completed 53.1-04-PLAN.md
+Last session: 2026-10-12T22:49:36.614Z
+Stopped at: Completed 53.1-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
