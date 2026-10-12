@@ -234,7 +234,15 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 5. GREEN I-3 — playhead can sit on tick N (END STATE); export still writes 0..N-1; tick N is the end limit
 6. Live UAT on the signed build (user judges)
 
-**Plans:** 0/0 plans — not planned yet
+**Plans:** 6 plans
+
+Plans:
+- [ ] 53.1-01-PLAN.md — RED target-law frame-LIST + GREEN I-4 project-fps timebase (tracer)
+- [ ] 53.1-02-PLAN.md — GREEN I-1/I-2 resolveOverlaySample + untrimmed outFrame
+- [ ] 53.1-03-PLAN.md — GREEN I-5 per-clip extrapolation + inspector Hold/Loop
+- [ ] 53.1-04-PLAN.md — GREEN I-3 playhead clamp 0..N + ruler end limit
+- [ ] 53.1-05-PLAN.md — GREEN I-3 gap tail + export warnings + inspector coverage
+- [ ] 53.1-06-PLAN.md — Live signed-build UAT checklist (user judges)
 
 Context: `.planning/phases/53.1-frame-model-fix/53.1-CONTEXT.md`
 Truth table: `.planning/debug/resolved/FRAME-MODEL.md`
