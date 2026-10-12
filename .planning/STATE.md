@@ -5,10 +5,10 @@ milestone_name: Debt Patch Release
 current_phase_name: defining requirements
 status: planning
 stopped_at: Phase 53 complete — all phases complete
-last_updated: "2026-10-12T10:07:00.000Z"
+last_updated: "2026-10-12T11:16:16.113Z"
 last_activity: 2026-10-12
 last_activity_desc: Quick 3 (261012-exn) document-sound decode readiness — UAT APPROVED 4/4; SND-01/02 closed; 8/10 v1.0.1 requirements approved
-state_head: caa164c2db2fca79b05b24363f14d22ded7601e3
+state_head: 28080ea0e79811555b0ae2d9e52cc4ccd8077851
 progress:
   total_phases: 0
   completed_phases: 0
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 Phase: Not started (defining requirements)
 Plan: —
 Status: Defining requirements
-Last activity: 2026-10-12 - Completed quick task 261012-exn: document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4, SND-01/02 closed
+Last activity: 2026-10-12 - Completed quick task 261012-hw3: v1.0.1 Release machinery (REL-01 bump + README + hygiene + gates green) — awaiting user review; sign/notarize/push/publish user-run
 
 ## Performance Metrics
 
@@ -432,6 +432,7 @@ None yet.
 | 261012-c9a | Display-class save token (v1.0.1 Quick 1) | 2026-10-12 | caa164c2 | [261012-c9a-display-class-save-token-v1-0-1-quick-1](./quick/261012-c9a-display-class-save-token-v1-0-1-quick-1/) |
 | 261012-d6q | Video disk-reference law (v1.0.1 Quick 2) | 2026-10-12 | a2afe490 | [261012-d6q-video-disk-reference-law-v1-0-1-quick-2-](./quick/261012-d6q-video-disk-reference-law-v1-0-1-quick-2-/) |
 | 261012-exn | Document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4 (2026-10-12) | 2026-10-12 | f19399e6 | [261012-exn-document-sound-decode-readiness-v1-0-1-q](./quick/261012-exn-document-sound-decode-readiness-v1-0-1-q/) |
+| 261012-hw3 | v1.0.1 Release machinery (REL-01 bump + README + hygiene + gates green) — awaiting user review; sign/notarize/push/publish user-run | 2026-10-12 | 28080ea0 | [261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum](./quick/261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum/) |
 
 ### Roadmap Evolution
 
