@@ -2,6 +2,67 @@
 
 *A living document updated after each milestone. Lessons feed forward into future planning.*
 
+## Milestone: v1.0.0 — EFX Paint Multi-Track Frames and Reveal
+
+**Shipped:** 2026-10-12
+**Phases:** 14 (45-53, incl. inserted 52.1-52.5) | **Plans:** 80 | **Quick tasks:** 86 archived into the milestone
+
+### What Was Built
+
+- Versioned v1.0 EFX Paint document + clean cutover (45): deep-frozen factory, fail-closed parsers at every record level, 5-fixture legacy-rejection truth table, hard-deletion of the one-track persistence surface (DOC-04 grep contract)
+- Track-local state (46): per-track maps/revisions/leases, acknowledge-and-delete, track-aware clipboard + document-wide track-tagged undo
+- Internal multi-track timeline (47): pinned header CRUD, hide/solo/opacity/blend, cross-track drag, pill scrollbar + ensure-active-row-visible
+- Deterministic internal compositor (48): one flattened parent raster per frame, `getFlattenedFrame` as the sole preview/export path, pixel acceptance matrix + native parity UAT
+- Background track (49) + Photo/Reference track (50) + shared mask compositor with Reveal as 4th rail kind (52)
+- Read-only audio preview (51, via quicks) and the document sound track (52.5) — Studio waveform/trim/reposition, main-editor mix, `.mce` reference persistence
+- Modern frame runtime (52.1): Rust WebP-lossless codec, bytes/ImageBitmap identity, 512 MB LRU, 1920 cap
+- References-only `.mce` package (52.2): manifest + layers/ + frames/, per-file change tokens behind one transaction, formatVersion refusal gate, plus the XState v6 + Effect v4 stroke-finalization pilot
+- Paint-content export (52.3): FrameEntry content/paint/gap union, dense enumeration, both orientations
+- Real-paint bristle footprint (52.4): salt-and-pepper deposit deleted, Poisson lane geometry, tier-parity capture pins
+- Integrated acceptance + release (53): five-surface 1.0.0 bump, 42-row signed-bundle UAT (36 pass / 6 na / 0 fail), signed/notarized publish as GitHub Latest
+
+### What Worked
+
+- **Clean-break discipline (45/52.2):** no migration code anywhere; a pure parse-time refusal gate + fixture truth table replaced an entire compat surface, and every legacy carrier was deleted with a grep contract to keep it dead
+- **Keystone-module sequencing (48):** landing the shared pure compositor + `getFlattenedFrame` seam FIRST meant preview, export, and the program monitor all consumed one authority from day one — no parity chase later
+- **Inserted phases stayed cheap (52.1-52.5):** five inserts mid-milestone without roadmap confusion — decimal numbering + user-gated inserts (`gsd-phase --insert`) continues to pay off
+- **Measured tech adoption (52.2 async pilot):** XState v6/Effect v4 proven on one bounded pilot (stroke finalization + flush) with telemetry (serialize 4.6s → 1.4s, queue p95 104ms) before writing the conventions skill — adoption on evidence, not reputation
+- **Release-as-a-phase repeat (53):** the v0.9.0 pattern held — gates/UAT/signed bundle as planned plans ran without improvisation
+- **The milestone audit earned its keep:** the 2026-10-12 audit found a real blocker (display setters skipping the layer change-token rotation) with exact file:line evidence before close, converting a silent reopen-revert bug into a recorded Known Gap
+
+### What Was Inefficient
+
+- **Artifact debt for the third milestone running:** 141 open items at close (103 → 161 → 141) — the same lesson v0.7.0/v0.8.0/v0.9.0 recorded, still unaddressed between milestones
+- **WINDOWS.md ledger drift froze cross-phase deviation logging for ALL of 52.2** — 16 plans could not append their deviation rows because the frontmatter counts disagreed with entries; every deviation was scattered into SUMMARYs instead of the register
+- **Four quick SUMMARY frontmatters were unparseable YAML** (bare `: ` and backtick scalars) — blocked the audit acknowledge writer and required a fix pass at the close gate
+- **Legacy `failed_superseded` verification status** outside the accepted enum broke the whole audit scan until normalized — archived artifacts from v0.8.0 still carry pre-contract statuses
+- **Stale `init.manager` projection** (52.2-52.5/53 read `stale`/`complete=false` despite passed VERIFICATION.md) — readiness had to be cross-checked against the live phase tree again
+- **Two display-save legs slipped through "passed" verification:** PKG-06/BKG-09 were checked off transactionally while the display-class setter leg never rotated the change token — verification scoped to the transaction machinery missed the field-coverage axis
+
+### Patterns Established
+
+- Fail-closed parse at every record level + canonical deterministic encoder as the persistence contract (document, background, photo, sound, package)
+- Change-token diffing per package file behind one transaction (add-only today; GC/removal is the known next step)
+- One resolution function, two consumers (fond gate/draw parity by construction)
+- Source-shape contract tests (comment-stripped grep pins) to keep deleted mechanisms from returning
+- Override closeout with per-item CLI acknowledgement as the honest alternative to fake-green closes
+
+### Key Lessons
+
+1. **A save system's verification must cover every mutator class** — transaction-machinery tests passed while five display setters skipped the token rotation; enumerate setter classes, not just the pipeline
+2. **Ledger/infra drift blocks process at scale** — one broken counts frontmatter silently degraded 16 plans' deviation tracking; repair such writers immediately when first refused
+3. **Frontmatter is load-bearing** — YAML that "looks fine" in a SUMMARY will fail a machine parser at the worst moment; scalars with `: ` or leading backticks must be quoted
+4. **Cross-check readiness oracles against the live tree** — init.manager said stale, the phase dirs said passed; the artifact tree is ground truth
+5. **Bounded async pilots with telemetry are the way to adopt frameworks** — the XState/Effect pilot's measured wins (and its honestly recorded misses) made the conventions skill trustworthy
+
+### Cost Observations
+
+- Model mix: opus for planning/audit/release, sonnet for execution waves (same profile as v0.9.0)
+- Sessions: 49 days (2026-08-23 → 2026-10-11), the longest milestone to date — 1,578 commits (301 feat) for 80 plans (~20 commits/plan)
+- Notable: 52.2 (16 plans) was the heaviest phase; five inserted phases (52.1-52.5) added ~25 plans mid-milestone without rework
+
+---
+
 ## Milestone: v0.9.0 — PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 
 **Shipped:** 2026-08-21
@@ -477,6 +538,8 @@
 | v0.6.0 | ~8 | 4 | 14 | First proactive milestone audit; scope reduction (COMP-01-05 canceled); long gap context restoration |
 | v0.7.0 | ~4 | 2 | 23 | Adapter approach abandoned (Phases 27-32 failed); micro-plan iterative fixing (Phase 33) |
 | v0.8.0 | ~25+ | 21 | 170 | Standalone window + transport; MVP/TDD recovery phases; D-30 bounded recovery; UAT-first then regression |
+| v0.9.0 | ~10+ | 12 | 100 | Release as a first-class phase; decimal insert series (43.1-43.6); signed publish with stop-condition checklist |
+| v1.0.0 | ~15+ | 14 | 80 | Clean-break package format (no migration); 5 mid-milestone inserts (52.1-52.5); bounded async pilot (XState/Effect); override closeout with CLI acknowledgement |
 
 ### Cumulative Quality
 
@@ -490,6 +553,8 @@
 | v0.6.0 | 40,688 | 660+ | 5 (1 new + 4 carried) | 0 new |
 | v0.7.0 | ~45,000 | 700+ | 5 (carried) | 0 new |
 | v0.8.0 | ~93,287 | 2,094 changed | 11 (6 new + 5 carried) | 3 advisory (I-01 dead field, I-02 filename, I-03 dev-only origin) |
+| v0.9.0 | ~110,000 | 2,100+ | 9 (2 new + 7 carried) | 0 new (43→44 signed-artifact boundary verified) |
+| v1.0.0 | ~137,784 | 1,740 changed this milestone | 12 (9 new incl. 3 Known Gaps + carried) | 1 blocker + 3 warnings (display setters vs change token; export decode, hide/solo duplication, silent play no-op) |
 
 ### Top Lessons (Verified Across Milestones)
 
@@ -498,7 +563,7 @@
 3. Signal store architecture scales well — 6→9→11→12 stores with zero friction
 4. `.peek()` pattern is essential for performance-critical paths (rAF, event handlers)
 5. Quick tasks are the right vehicle for user-testing feedback — keeps formal phases focused
-6. Progressive .mce format migration (v1→v14) with serde(default) is the proven persistence pattern
+6. ~~Progressive .mce format migration (v1→v14) with serde(default) is the proven persistence pattern~~ — SUPERSEDED at v1.0.0 by a clean break: `formatVersion` refusal gate, no migration code (user law: no backward compat for old projects)
 7. Wave 0 test scaffolds accelerate implementation and catch integration issues early
 8. WebGL2 architecture investments pay compound returns across features (blur, shaders, transitions)
 9. Visual verification plans are essential for drawing/paint features — static analysis misses runtime rendering bugs
@@ -511,3 +576,4 @@
 16. A single mutation authority (e.g., finalizeProposal) compounds — later operations become incremental admissions, not new subsystems
 17. Production first, native UAT gate, then regression tests — approving visible behavior before locking tests eliminates test-thrash
 18. Measure before optimizing — profiler baselines (RED deltas) make render-path performance work provable instead of speculative
+19. Clean break beats migration for formats with no installed base — a pure refusal gate + fixture truth table deleted an entire compat surface and its tests at v1.0.0
