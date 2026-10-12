@@ -194,7 +194,7 @@ Each task was committed atomically:
 
 None — no hardcoded empties, placeholder text, or unwired data sources introduced.
 
-## Status: automated-ready pending user native UAT
+## Status: UAT APPROVED (2026-10-12)
 
 | # | Case | Pass condition |
 |---|------|----------------|
@@ -203,7 +203,7 @@ None — no hardcoded empties, placeholder text, or unwired data sources introdu
 | 3 | Manifest inspection | Saved .mce contains `video_assets[].source_path` equal to the picked path, no `relative_path` on that member |
 | 4 | Legacy refusal (optional) | An old .mce with a videos/-relative path shows the clean refusal — no silent join, no shim |
 
-Nothing is claimed done before the user's native UAT passes (no Chrome DevTools MCP; live visual judgment stays with the user).
+User native UAT passed 2026-10-12 — VID-01/VID-02/VID-03 marked Approved in .planning/REQUIREMENTS.md.
 
 ## User Setup Required
 
@@ -211,8 +211,8 @@ None — no external service configuration required.
 
 ## Next Phase Readiness
 
-- Quick 2 (261012-d6q) automated gates all green; ready for the user's native UAT, then Quick 3 (SND-07).
-- No blockers. Stop after this quick per plan scope.
+- Quick 2 (261012-d6q) CLOSED — native UAT approved 2026-10-12. Next: Quick 3 (SND-07), awaiting the user's go.
+- No blockers.
 
 ## Self-Check: PASSED
 

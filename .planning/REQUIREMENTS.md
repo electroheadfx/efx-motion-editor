@@ -15,9 +15,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### VID — Video Import Disk-Reference Law
 
-- [ ] **VID-01**: Imported video is referenced by absolute `source_path`, never copied into the package
-- [ ] **VID-02**: `.mce` manifest records video assets (`video_assets` on `MceProject`) and reopens from the source path
-- [ ] **VID-03**: `videos/` package provisioning retired — no video directory is written
+- [x] **VID-01**: Imported video is referenced by absolute `source_path`, never copied into the package
+- [x] **VID-02**: `.mce` manifest records video assets (`video_assets` on `MceProject`) and reopens from the source path
+- [x] **VID-03**: `videos/` package provisioning retired — no video directory is written
 
 ### SND — Document-sound Decode Readiness (SND-07)
 
@@ -58,9 +58,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SAVE-01 | Quick 1 | Pending |
 | SAVE-02 | Quick 1 | Pending |
 | SAVE-03 | Quick 1 | Pending |
-| VID-01 | Quick 2 | Pending |
-| VID-02 | Quick 2 | Pending |
-| VID-03 | Quick 2 | Pending |
+| VID-01 | Quick 2 | Approved (UAT 2026-10-12) |
+| VID-02 | Quick 2 | Approved (UAT 2026-10-12) |
+| VID-03 | Quick 2 | Approved (UAT 2026-10-12) |
 | SND-01 | Quick 3 | Pending |
 | SND-02 | Quick 3 | Pending |
 | REL-01 | Release | Pending |
@@ -75,4 +75,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-12*
-*Last updated: 2026-10-12 after initial definition*
+*Last updated: 2026-10-12 — VID-01/02/03 approved after native UAT (Quick 2, 261012-d6q)*
