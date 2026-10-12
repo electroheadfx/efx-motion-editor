@@ -16,6 +16,7 @@ import type {
 import { defaultTransform, type Layer } from '../types/layer';
 import type { Sequence } from '../types/sequence';
 import type { FrameEntry } from '../types/timeline';
+import type { AudioTrack } from '../types/audio';
 
 // 48-03 Task 3 (CMP-05): the export preflight (findUnresolvedExportLoop) must
 // scan ALL participating Paint tracks per the 48-01 truth table — no longer
@@ -32,6 +33,10 @@ const hoisted = vi.hoisted(() => ({
   activeSequenceId: 'seq-1',
   projectWidth: 4,
   projectHeight: 3,
+  // 261012-exn (SND-02): audio mix inputs — defaults keep every pre-existing
+  // test's behavior (no tracks, no buffers, exactly like the old hard-coded mocks).
+  audioTracks: [] as AudioTrack[],
+  audioBuffers: new Map<string, AudioBuffer>(),
 }));
 
 vi.mock('./ipc', () => ({
@@ -69,9 +74,11 @@ vi.mock('../stores/projectStore', () => ({
   },
 }));
 
-vi.mock('../stores/audioStore', () => ({ audioStore: { tracks: { peek: () => [] } } }));
+vi.mock('../stores/audioStore', () => ({ audioStore: { tracks: { peek: () => hoisted.audioTracks } } }));
 vi.mock('../stores/soloStore', () => ({ soloStore: { soloEnabled: { peek: () => false } } }));
-vi.mock('./audioEngine', () => ({ audioEngine: { getBuffer: () => null } }));
+vi.mock('./audioEngine', () => ({
+  audioEngine: { getBuffer: (id: string) => hoisted.audioBuffers.get(id) ?? null },
+}));
 vi.mock('./exportSidecar', () => ({ generateJsonSidecar: () => '{}', generateFcpxml: () => '' }));
 vi.mock('./audioExportMixer', () => ({ renderMixedAudio: vi.fn(async () => new Uint8Array()) }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: 'main' }) }));
@@ -84,6 +91,7 @@ vi.mock('./exportRenderer', () => ({
 }));
 
 import { startExport } from './exportEngine';
+import { renderMixedAudio } from './audioExportMixer';
 import {
   renderGlobalFrame as renderGlobalFrameMock,
   renderFrameWithMotionBlur as renderFrameWithMotionBlurMock,
@@ -254,6 +262,8 @@ beforeEach(() => {
   hoisted.activeSequenceId = 'seq-1';
   hoisted.projectWidth = 4;
   hoisted.projectHeight = 3;
+  hoisted.audioTracks = [];
+  hoisted.audioBuffers = new Map();
   vi.clearAllMocks();
   vi.stubGlobal('window', { devicePixelRatio: 1 });
   vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas() : {} });
@@ -366,5 +376,96 @@ describe('export sizing follows project dims (260918-ovi)', () => {
     const canvasArg = (vi.mocked(renderGlobalFrameMock).mock.calls[0] as unknown[])[1] as { width: number; height: number };
     expect(canvasArg.width).toBe(1080);
     expect(canvasArg.height).toBe(1920);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261012-exn Task 1 (RED): export buffer diagnostic (SND-02).
+//
+// includeAudio ON with a non-muted mix entry lacking a decoded buffer must
+// abort through exportStore's error status with the clip's name in
+// errorMessage, and renderMixedAudio must never run. RED today: the pre-check
+// only console.warns when ZERO buffers loaded, so partial outages render past
+// the missing clip and the export completes.
+// ---------------------------------------------------------------------------
+
+describe('261012-exn export buffer diagnostic (SND-02)', () => {
+  function makeAudioTrack(id: string, name: string, overrides: Partial<AudioTrack> = {}): AudioTrack {
+    return {
+      id,
+      audioAssetId: `asset-${id}`,
+      name,
+      filePath: `/Users/test/Music/${name}`,
+      originalFilename: name,
+      offsetFrame: 0,
+      inFrame: 0,
+      outFrame: 48,
+      volume: 1,
+      muted: false,
+      fadeInFrames: 0,
+      fadeOutFrames: 0,
+      fadeInCurve: 'linear',
+      fadeOutCurve: 'linear',
+      sampleRate: 48000,
+      duration: 2,
+      channelCount: 2,
+      order: 0,
+      trackHeight: 44,
+      slipOffset: 0,
+      totalFramesInFile: 48,
+      bpm: null,
+      beatOffsetFrames: 0,
+      beatMarkers: [],
+      showBeatMarkers: false,
+      ...overrides,
+    };
+  }
+
+  it('partial outage: aborts naming the missing clip and never calls the mixer', async () => {
+    exportStore.includeAudio.value = true;
+    hoisted.audioTracks = [
+      makeAudioTrack('aud-a', 'Music Bed.wav'),
+      makeAudioTrack('aud-b', 'Voiceover.wav'),
+    ];
+    hoisted.audioBuffers.set('aud-a', { duration: 10 } as AudioBuffer);
+    hoisted.fm = makeFm(4);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('error');
+    expect(exportStore.progress.peek().errorMessage ?? '').toContain('Voiceover.wav');
+    expect(
+      vi.mocked(renderMixedAudio),
+      'the mixer must never run while a non-muted entry lacks a buffer',
+    ).not.toHaveBeenCalled();
+  });
+
+  it('complete outage: same named diagnostic instead of the old zero-only warn path', async () => {
+    exportStore.includeAudio.value = true;
+    hoisted.audioTracks = [
+      makeAudioTrack('aud-a', 'Music Bed.wav'),
+      makeAudioTrack('aud-b', 'Voiceover.wav'),
+    ];
+    hoisted.fm = makeFm(4);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('error');
+    expect(exportStore.progress.peek().errorMessage ?? '').toContain('Music Bed.wav');
+    expect(vi.mocked(renderMixedAudio)).not.toHaveBeenCalled();
+  });
+
+  it('muted exemption: a muted mix entry missing its buffer never triggers the diagnostic', async () => {
+    exportStore.includeAudio.value = true;
+    hoisted.audioTracks = [
+      makeAudioTrack('aud-a', 'Music Bed.wav'),
+      makeAudioTrack('aud-b', 'Voiceover.wav', { muted: true }),
+    ];
+    hoisted.audioBuffers.set('aud-a', { duration: 10 } as AudioBuffer);
+    hoisted.fm = makeFm(4);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('complete');
   });
 });
