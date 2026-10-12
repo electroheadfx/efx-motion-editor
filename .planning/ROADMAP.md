@@ -16,8 +16,21 @@ EFX-Motion Editor goes from zero to a complete stop-motion-to-cinema pipeline. v
 - ✅ **v0.8.0 Standalone Physics Paint** — Phases 34-38.1 (shipped 2026-08-01)
 - ✅ **v0.9.0 PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity** — Phases 39-44 (shipped 2026-08-21)
 - ✅ **v1.0.0 EFX Paint Multi-Track Frames and Reveal** — Phases 45-53 (shipped 2026-10-12)
+- 🚧 **v1.0.1 Debt Patch Release** — quicks only, no phases (in progress)
 
 ## Phases
+
+<details>
+<summary>🚧 v1.0.1 Debt Patch Release (quicks only, no phases) — IN PROGRESS</summary>
+
+PATCH milestone per the semver ladder locked 2026-10-12 (PATCH for debt, MINOR for features). No GSD phases — the three debt quicks are dispatched inside the milestone, then the release. Phase numbering stays untouched: 54 remains the first free slot for v1.1.0.
+
+- [ ] Quick 1: Display-class save token — `|bgT:` + `|photoDisplay:` in `buildEfxPaintLayerChangeTokenValue`, `|photoDisplay:` in `buildEfxPaintSaveFingerprint`; save-twice regression test (SAVE-01..03, Known Gaps PKG-06/BKG-09)
+- [ ] Quick 2: Video import joins the disk-reference law — never-copy, `source_path` recorded verbatim; retire `videos/` provisioning (`project_io.rs`), add `video_assets` to `MceProject` (`models/project.rs`) (VID-01..03)
+- [ ] Quick 3: Document-sound decode readiness — `audioEngine.ts` / `audioExportMixer.ts` await or refuse a missing buffer, never silently drop (SND-01..02, Known Gap SND-07)
+- [ ] Release: version single-source bump to 1.0.1 (REL-01) + signed/notarized DMG via `efx-motion-release`, published as GitHub Latest (REL-02)
+
+</details>
 
 <details>
 <summary>✅ v1.0.0 EFX Paint Multi-Track Frames and Reveal (Phases 45-53) — SHIPPED 2026-10-12</summary>
@@ -210,3 +223,4 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
 | 45-53 (14 phases) | v1.0.0 | 80/80 | Complete | 2026-10-12 |
+| quicks only | v1.0.1 | 0/4 | In Progress | — |

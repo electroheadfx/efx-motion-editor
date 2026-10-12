@@ -55,22 +55,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SAVE-01 | — | Pending |
-| SAVE-02 | — | Pending |
-| SAVE-03 | — | Pending |
-| VID-01 | — | Pending |
-| VID-02 | — | Pending |
-| VID-03 | — | Pending |
-| SND-01 | — | Pending |
-| SND-02 | — | Pending |
-| REL-01 | — | Pending |
-| REL-02 | — | Pending |
+| SAVE-01 | Quick 1 | Pending |
+| SAVE-02 | Quick 1 | Pending |
+| SAVE-03 | Quick 1 | Pending |
+| VID-01 | Quick 2 | Pending |
+| VID-02 | Quick 2 | Pending |
+| VID-03 | Quick 2 | Pending |
+| SND-01 | Quick 3 | Pending |
+| SND-02 | Quick 3 | Pending |
+| REL-01 | Release | Pending |
+| REL-02 | Release | Pending |
 
 **Coverage:**
 
 - v1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️
+- Mapped to quicks/release: 10
+- Unmapped: 0 ✓
+- Note: v1.0.1 is quicks-only (no GSD phases); "Phase" column names the dispatch unit.
 
 ---
 *Requirements defined: 2026-10-12*
