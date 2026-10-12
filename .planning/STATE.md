@@ -7,7 +7,7 @@ status: planning
 stopped_at: Phase 53 complete — all phases complete
 last_updated: "2026-10-12T10:07:00.000Z"
 last_activity: 2026-10-12
-last_activity_desc: Quick 3 (261012-exn) document-sound decode readiness — code complete, automated-ready, native UAT pending (4 rows)
+last_activity_desc: Quick 3 (261012-exn) document-sound decode readiness — UAT APPROVED 4/4; SND-01/02 closed; 8/10 v1.0.1 requirements approved
 state_head: caa164c2db2fca79b05b24363f14d22ded7601e3
 progress:
   total_phases: 0
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 Phase: Not started (defining requirements)
 Plan: —
 Status: Defining requirements
-Last activity: 2026-10-12 - Completed quick task 261012-exn: document-sound decode readiness (v1.0.1 Quick 3) — automated-ready, native UAT pending
+Last activity: 2026-10-12 - Completed quick task 261012-exn: document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4, SND-01/02 closed
 
 ## Performance Metrics
 
@@ -431,7 +431,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 261012-c9a | Display-class save token (v1.0.1 Quick 1) | 2026-10-12 | caa164c2 | [261012-c9a-display-class-save-token-v1-0-1-quick-1](./quick/261012-c9a-display-class-save-token-v1-0-1-quick-1/) |
 | 261012-d6q | Video disk-reference law (v1.0.1 Quick 2) | 2026-10-12 | a2afe490 | [261012-d6q-video-disk-reference-law-v1-0-1-quick-2-](./quick/261012-d6q-video-disk-reference-law-v1-0-1-quick-2-/) |
-| 261012-exn | Document-sound decode readiness (v1.0.1 Quick 3) — automated-ready, native UAT pending | 2026-10-12 | f19399e6 | [261012-exn-document-sound-decode-readiness-v1-0-1-q](./quick/261012-exn-document-sound-decode-readiness-v1-0-1-q/) |
+| 261012-exn | Document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4 (2026-10-12) | 2026-10-12 | f19399e6 | [261012-exn-document-sound-decode-readiness-v1-0-1-q](./quick/261012-exn-document-sound-decode-readiness-v1-0-1-q/) |
 
 ### Roadmap Evolution
 

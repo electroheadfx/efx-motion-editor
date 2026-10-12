@@ -21,8 +21,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### SND — Document-sound Decode Readiness (SND-07)
 
-- [ ] **SND-01**: Playback never silently skips a clip whose buffer failed to decode — awaits the decode or refuses with a visible error
-- [ ] **SND-02**: Export mix never silently drops a clip — an undecodable clip surfaces a diagnostic instead of a bare `continue`
+- [x] **SND-01**: Playback never silently skips a clip whose buffer failed to decode — awaits the decode or refuses with a visible error
+- [x] **SND-02**: Export mix never silently drops a clip — an undecodable clip surfaces a diagnostic instead of a bare `continue`
 
 ### REL — Release
 
@@ -61,8 +61,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-01 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-02 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-03 | Quick 2 | Approved (UAT 2026-10-12) |
-| SND-01 | Quick 3 | Pending |
-| SND-02 | Quick 3 | Pending |
+| SND-01 | Quick 3 | Approved (UAT 2026-10-12) |
+| SND-02 | Quick 3 | Approved (UAT 2026-10-12) |
 | REL-01 | Release | Pending |
 | REL-02 | Release | Pending |
 
@@ -75,4 +75,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-10-12*
-*Last updated: 2026-10-12 — SAVE-01/02/03 (Quick 1) and VID-01/02/03 (Quick 2) approved after native UAT; SND-01/02 next (Quick 3)*
+*Last updated: 2026-10-12 — SAVE-01/02/03 (Quick 1), VID-01/02/03 (Quick 2), SND-01/02 (Quick 3) approved after native UAT; 8/10 approved, REL-01/02 next (Release quick)*

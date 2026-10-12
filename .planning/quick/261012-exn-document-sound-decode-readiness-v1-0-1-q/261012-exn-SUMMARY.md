@@ -198,16 +198,24 @@ Each task was committed atomically:
 
 None — no hardcoded empties, placeholder text, or unwired data sources introduced.
 
-## Status: automated-ready — native UAT pending (4 rows)
+## Status: UAT APPROVED (2026-10-12)
 
-| # | Case | Pass condition |
-|---|------|----------------|
-| 1 | Reopen race | Open a project and press play IMMEDIATELY — audio starts when the decode lands, or a red strip in the timeline names the track; silence with no message fails the row |
-| 2 | Broken source | Import/reopen a project whose audio file is missing/corrupt — the named failure appears in the UI (import strip or timeline strip), not only in the console |
-| 3 | Export with one bad clip | Export with include-audio on while one clip is undecodable — the export stops with an error naming that clip; a video-with-missing-audio output fails the row |
-| 4 | Clean export + playback | A fully decoded project plays and exports exactly as before this quick (no new strips, no behavior drift) |
+| # | Case | Pass condition | Result |
+|---|------|----------------|--------|
+| 1 | Reopen race | Open a project and press play IMMEDIATELY — audio starts when the decode lands, or a red strip in the timeline names the track; silence with no message fails the row | pass |
+| 2 | Broken source | Import/reopen a project whose audio file is missing/corrupt — the named failure appears in the UI (import strip or timeline strip), not only in the console | pass |
+| 3 | Export with one bad clip | Export with include-audio on while one clip is undecodable — the export stops with an error naming that clip; a video-with-missing-audio output fails the row | pass |
+| 4 | Clean export + playback | A fully decoded project plays and exports exactly as before this quick (no new strips, no behavior drift) | pass |
 
-**SND-01/SND-02 deliberately left `Pending` in REQUIREMENTS.md** — per the plan's success criteria ("status = automated-ready", nothing claimed done before UAT) and the standing rule that native UAT closes the rows. The orchestrator/user marks them Approved after the four rows pass.
+User native UAT passed 4/4 2026-10-12 — SND-01/SND-02 marked Approved in .planning/REQUIREMENTS.md.
+
+Row 2 evidence (user screenshot): `Failed to decode document sound ".../Drex3emRush-sansRouli.aiff": efxasset fetch failed (status 404)` — named failure visible in the UI strip.
+
+### Known-Accepted Behavior (not a defect — do not reopen as a v1.0.1 quick)
+
+- A document-sound clip whose source file is missing still plays from the in-memory decode cache while the session lives. `audioEngine.buffers` is never cleared by `audioStore.reset()` — buffers die only on track removal or app restart. So the same broken project plays during the session and is silent after a restart.
+- The visible strip in this case is the decode/peaks path (`documentSoundPeaks.ts`), not a playback refusal (that would read `Audio "<name>" not played: ...`). Quick 3 added the visibility; the cache predates it and is not a regression.
+- Accepted for the v1.0.1 PATCH. If ever revisited, it is a v1.1.0 item (proper media-offline state + cache invalidation policy), not a PATCH quick.
 
 ## User Setup Required
 
@@ -215,7 +223,7 @@ None — no external service configuration required.
 
 ## Next Phase Readiness
 
-- Quick 3 (261012-exn) code complete, automated-ready; awaiting the user's native UAT on the 4 rows above, then SND-01/SND-02 close and the v1.0.1 milestone continues.
+- Quick 3 (261012-exn) CLOSED — native UAT approved 4/4 2026-10-12. Milestone standing: 8/10 requirements approved. Next: Release quick (REL-01/02), dispatched separately by the user after a fresh go.
 - No blockers.
 
 ## Self-Check: PASSED
