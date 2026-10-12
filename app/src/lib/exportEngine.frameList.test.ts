@@ -22,21 +22,28 @@ import { defaultTransform, type Layer } from '../types/layer';
 import type { Sequence } from '../types/sequence';
 import type { FrameEntry } from '../types/timeline';
 
-// frame-model-coherence (2026-10-12) — AUTOMATED EXPORT FRAME-LIST MEASUREMENT.
+// frame-model-coherence (2026-10-12) — EXPORT FRAME-LIST TARGET-LAW CONTRACT.
 //
-// Measurement only, NO fix code. Asserts the export's frame LIST (count +
-// per-frame layer presence) for the release-blocker repro:
-//   16-frame .mov content-overlay (outFrame=16 exclusive) + Studio physic-paint
-//   FX (outFrame=17 exclusive, fade-out ending at the clip end) -> N=17,
-//   17 frames 0..16; frame 15 = video+paint; frame 16 = paint only (video
-//   gated at its exclusive outFrame). Also measures the I-6 fade-opacity
-//   sub-finding: paint opacity on the last frame given fade-out reaches 0.
+// Asserts the TARGET laws of FRAME-MODEL.md §7 for the release-blocker repro:
+//   16-frame .mov content-overlay + Studio physic-paint FX (outFrame=17
+//   exclusive, fade-out ending at the clip end) -> N=17, 17 frames 0..16.
+//
+// Laws under assertion (grouped so later GREEN legs can flip them one law at
+// a time via `vitest -t`):
+//   - "fps timebase (I-4)"            — project fps is the only timebase (D-01/D-02)
+//   - "tail policy (I-1/I-2)"         — untrimmed follows N; trimmed past-out is nothing (D-03/D-04)
+//   - "past-source extrapolation (I-5)" — HOLD last sample / LOOP wrap (D-07/D-09)
+//   - "law corroboration (unchanged)" — N-law count + exclusive outFrame gate stay green
+//
+// I-6 fade expectations (D-13) stay behavior pins — they are NOT law
+// assertions and must not be rewritten when the law assertions flip.
 //
 // Harness discipline: real frameMap (N law), real sequenceStore, real
 // exportRenderer.renderGlobalFrame (the overlay gate under measurement).
 // Tauri IPC and the surrounding stores are mocked; PreviewRenderer is a
 // recording stub passed into renderGlobalFrame — layer presence is the set of
-// layers handed to renderFrame per frame. Node env, vitest run only.
+// layers handed to renderFrame per frame, and the fps/localFrame arguments
+// are the timebase / sample-index quantities under law. Node env, vitest run.
 
 vi.mock('./ipc', () => ({
   exportCreateDir: vi.fn(async () => ({ ok: true as const, data: '/tmp/efx-export-frame-list' })),
@@ -72,8 +79,8 @@ import { frameMap, getTimelineOverlaySequenceOutFrame } from './frameMap';
 
 // --- Recording PreviewRenderer stub ------------------------------------------
 // Stands in for PreviewRenderer.renderFrame: records every renderFrame call's
-// layers + opacity so per-frame layer presence and fade opacity are measurable
-// without a real canvas draw.
+// layers + opacity + fps + localFrame so per-frame layer presence, fade
+// opacity, timebase, and sample index are measurable without a real canvas.
 
 interface RecordedRender {
   layerIds: string[];
@@ -82,10 +89,21 @@ interface RecordedRender {
   clearCanvas: boolean;
   globalFrame: number;
   physicPaintFrame: number;
+  localFrame: number;
+  fps: number;
 }
 
 function makeRecordingRenderer(): {
-  renderFrame: (...args: unknown[]) => void;
+  renderFrame: (
+    layers: Layer[],
+    frame: number,
+    frames: FrameEntry[],
+    fps: number,
+    clearCanvas?: boolean,
+    sequenceOpacity?: number,
+    globalFrame?: number,
+    physicPaintFrame?: number,
+  ) => void;
   calls: RecordedRender[];
 } {
   const calls: RecordedRender[] = [];
@@ -93,9 +111,9 @@ function makeRecordingRenderer(): {
     calls,
     renderFrame(
       layers: Layer[],
-      _frame: number,
+      frame: number,
       _frames: FrameEntry[],
-      _fps: number,
+      fps: number,
       clearCanvas = true,
       sequenceOpacity = 1.0,
       globalFrame?: number,
@@ -108,6 +126,8 @@ function makeRecordingRenderer(): {
         clearCanvas,
         globalFrame: globalFrame ?? -1,
         physicPaintFrame: physicPaintFrame ?? -1,
+        localFrame: frame,
+        fps,
       });
     },
   };
@@ -154,6 +174,9 @@ const LAYER = 'frame-list-paint-layer';
 const TEST_TRACK_ID = 'track-1';
 const VIDEO_LAYER_ID = 'video-layer';
 
+/** The repro's media source: a 16-frame .mov (source samples 0..15). */
+const SOURCE_FRAME_COUNT = 16;
+
 function makeTrackDocument(layerId: string): EfxPaintDocument {
   const document = createEfxPaintDocument(layerId);
   const track = document.tracks[0];
@@ -190,13 +213,15 @@ function makeVideoLayer(): Layer {
   };
 }
 
-/** Video content-overlay covering [0, 16) — outFrame exclusive. */
+/**
+ * Video content-overlay covering [0, 16) — outFrame exclusive.
+ * Dropped per-sequence fps (D-01): project fps is the only timebase.
+ */
 function makeVideoOverlaySequence(): Sequence {
   return {
     id: 'video-overlay',
     name: 'HyperEspaceSUPP',
     kind: 'content-overlay',
-    fps: 24,
     width: 4,
     height: 3,
     keyPhotos: [],
@@ -206,21 +231,71 @@ function makeVideoOverlaySequence(): Sequence {
   };
 }
 
+/**
+ * Untrimmed video content-overlay (absent outFrame = follows N, D-04).
+ * Hand-built so the factory's import-time outFrame freeze (I-2) is not in play.
+ */
+function makeUntrimmedVideoOverlaySequence(): Sequence {
+  return {
+    id: 'video-overlay',
+    name: 'HyperEspaceSUPP',
+    kind: 'content-overlay',
+    width: 4,
+    height: 3,
+    keyPhotos: [],
+    layers: [makeVideoLayer()],
+    inFrame: 0,
+  };
+}
+
+/**
+ * Video content-overlay spanning [0, 17) so the clip is IN RANGE at frame 16
+ * while the 16-frame source is exhausted — isolates I-5 (past-source) from
+ * I-1/I-2 (past-out).
+ */
+function makePastSourceVideoOverlaySequence(): Sequence {
+  return {
+    id: 'video-overlay',
+    name: 'HyperEspaceSUPP',
+    kind: 'content-overlay',
+    width: 4,
+    height: 3,
+    keyPhotos: [],
+    layers: [makeVideoLayer()],
+    inFrame: 0,
+    outFrame: 17,
+  };
+}
+
 /** Studio physic-paint FX covering [0, 17) — fade-out ends at the clip end (tick 17). */
 function makePaintFxSequence(): Sequence {
   return {
     id: 'paint-fx',
     name: 'Studio Paint',
     kind: 'fx',
-    fps: 24,
     width: 4,
     height: 3,
     keyPhotos: [],
     layers: [makePhysicPaintLayer(LAYER)],
     inFrame: 0,
     outFrame: 17,
-    fadeOut: { type: 'fade-out', duration: 3, curve: 'linear' },
+    fadeOut: {
+      type: 'fade-out',
+      duration: 3,
+      curve: 'linear',
+      mode: 'transparency',
+      color: '#000000',
+    },
   };
+}
+
+/**
+ * 53.1-03 replaces this cast with the real Sequence.extrapolation field (D-07).
+ * The RED contract already states the hold/loop target so that plan can flip
+ * these cases by wiring the field, not by rewriting the expectations.
+ */
+function withExtrapolation(seq: Sequence, extrapolation: 'hold' | 'loop'): Sequence {
+  return { ...seq, extrapolation } as Sequence;
 }
 
 function makeRotoRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
@@ -287,16 +362,185 @@ afterEach(() => {
 });
 
 /**
- * Repro arrange: video content-overlay out=16 + paint FX out=17.
+ * Repro arrange: video content-overlay + paint FX out=17.
  * Roto keys at appFrames 0..16 so the paint is a real render source on every
  * frame of its span (including the tail frame 16).
  */
-function arrangeRepro(): void {
-  sequenceStore.sequences.value = [makeVideoOverlaySequence(), makePaintFxSequence()];
+function arrangeRepro(videoSeq: Sequence = makeVideoOverlaySequence()): void {
+  sequenceStore.sequences.value = [videoSeq, makePaintFxSequence()];
   installRotoDocument(LAYER, Array.from({ length: 17 }, (_, i) => i));
 }
 
-describe('export frame-LIST measurement (frame-model-coherence)', () => {
+/**
+ * I-2 arrange via the REAL factory: import the video overlay while the
+ * timeline is 16 frames long (createContentOverlaySequence freezes outFrame
+ * at import), then grow N to 17 with the paint FX. The untrimmed law says the
+ * overlay follows N; the freeze is the I-2 root.
+ */
+function arrangeReproUntrimmedViaFactory(): void {
+  sequenceStore.createContentOverlaySequence('HyperEspaceSUPP', makeVideoLayer(), SOURCE_FRAME_COUNT);
+  const paint = sequenceStore.createFxSequence('Studio Paint', makePhysicPaintLayer(LAYER), 17, {
+    outFrame: 17,
+  });
+  sequenceStore.sequences.value = sequenceStore.sequences.value.map((s) =>
+    s.id === paint.id
+      ? {
+          ...s,
+          fadeOut: {
+            type: 'fade-out' as const,
+            duration: 3,
+            curve: 'linear' as const,
+            mode: 'transparency' as const,
+            color: '#000000',
+          },
+        }
+      : s,
+  );
+  installRotoDocument(LAYER, Array.from({ length: 17 }, (_, i) => i));
+}
+
+type Recording = ReturnType<typeof makeRecordingRenderer>;
+
+/** Drive the export loop's render call for every frame the export writes. */
+function renderAllFrames(): Recording {
+  const fm = frameMap.value;
+  const seqs = sequenceStore.sequences.value;
+  const recorder = makeRecordingRenderer();
+  const canvas = new TestCanvas() as unknown as HTMLCanvasElement;
+  for (let frame = 0; frame < fm.length; frame++) {
+    renderGlobalFrame(recorder as never, canvas, frame, fm, seqs, [], false);
+  }
+  return recorder;
+}
+
+/**
+ * Presence = which layers were handed to renderFrame while rendering that
+ * global frame. The overlay pass runs one renderFrame per surviving overlay.
+ */
+function presenceFor(recorder: Recording, globalFrame: number) {
+  const calls = recorder.calls.filter((c) => c.globalFrame === globalFrame);
+  const ids = new Set<string>();
+  const types = new Set<string>();
+  for (const call of calls) {
+    for (const id of call.layerIds) ids.add(id);
+    for (const type of call.layerTypes) types.add(type);
+  }
+  return { ids, types, calls };
+}
+
+/** The renderFrame call that carried a given layer on a given global frame. */
+function callForLayer(recorder: Recording, globalFrame: number, layerId: string): RecordedRender | undefined {
+  return recorder.calls.find((c) => c.globalFrame === globalFrame && c.layerIds.includes(layerId));
+}
+
+describe('fps timebase (I-4)', () => {
+  it('every renderFrame call receives project fps 15, not any per-sequence 24', () => {
+    arrangeRepro();
+    const recorder = renderAllFrames();
+
+    expect(recorder.calls.length).toBeGreaterThan(0);
+    for (const call of recorder.calls) {
+      expect(call.fps, `renderFrame fps at global ${call.globalFrame}`).toBe(15);
+    }
+  });
+
+  it('frame 15 maps to 1.0s at project fps 15 (not 0.625s from a 24fps-era sequence fps)', () => {
+    arrangeRepro();
+    const recorder = renderAllFrames();
+    const fpsUsed = recorder.calls[0].fps;
+
+    // Same formula as previewRenderer video seek: targetTime = frame / fps (D-02).
+    const seekTimeAtFrame15 = 15 / fpsUsed;
+    expect(seekTimeAtFrame15).toBeCloseTo(1.0, 5);
+    expect(seekTimeAtFrame15).not.toBeCloseTo(0.625, 5);
+  });
+});
+
+describe('tail policy (I-1/I-2)', () => {
+  it('untrimmed content-overlay (absent outFrame) covers every frame 0..N-1 including the last', () => {
+    arrangeRepro(makeUntrimmedVideoOverlaySequence());
+    const fm = frameMap.value;
+    expect(fm).toHaveLength(17);
+
+    const recorder = renderAllFrames();
+
+    // Target law: untrimmed = base layer = follows N. Video + paint on the
+    // tail frame 16 in the repro shape — never a silent black frame (I-1).
+    const f16 = presenceFor(recorder, 16);
+    expect(f16.ids.has(VIDEO_LAYER_ID)).toBe(true);
+    expect(f16.ids.has(LAYER)).toBe(true);
+
+    for (let frame = 0; frame <= 16; frame++) {
+      const presence = presenceFor(recorder, frame);
+      expect(presence.ids.has(VIDEO_LAYER_ID), `untrimmed video should cover frame ${frame}`).toBe(true);
+      expect(presence.ids.has(LAYER), `paint should cover frame ${frame}`).toBe(true);
+    }
+  });
+
+  it('factory-imported untrimmed overlay follows N after a sibling grows the timeline (I-2 freeze is the bug)', () => {
+    // Import while the timeline is 16 frames; the paint FX then grows N to 17.
+    arrangeReproUntrimmedViaFactory();
+    const fm = frameMap.value;
+    expect(fm).toHaveLength(17);
+
+    const recorder = renderAllFrames();
+    const f16 = presenceFor(recorder, 16);
+    expect(f16.ids.has(VIDEO_LAYER_ID), 'untrimmed overlay must follow N past its import-time end').toBe(true);
+  });
+
+  it('trimmed clip with out < N is absent past its exclusive out, and the uncovered range is exactly [16, 17)', () => {
+    arrangeRepro(makeVideoOverlaySequence());
+    const fm = frameMap.value;
+    expect(fm).toHaveLength(17);
+
+    const recorder = renderAllFrames();
+
+    // Exclusive law unchanged: outFrame=16 covers 0..15; past out = nothing.
+    const uncovered: number[] = [];
+    for (let frame = 0; frame < fm.length; frame++) {
+      if (!presenceFor(recorder, frame).ids.has(VIDEO_LAYER_ID)) uncovered.push(frame);
+    }
+    // Named range: frames 16..16 (out=16 exclusive, N=17) — the same range a
+    // gap marker / export warning must name (D-05/D-06/D-12).
+    expect(uncovered).toEqual([16]);
+
+    // Paint still covers the whole span.
+    for (let frame = 0; frame <= 16; frame++) {
+      expect(presenceFor(recorder, frame).ids.has(LAYER), `paint should cover frame ${frame}`).toBe(true);
+    }
+  });
+});
+
+describe('past-source extrapolation (I-5)', () => {
+  it('past the media source with default hold the last source sample is present', () => {
+    // Clip spans [0, 17) so frame 16 is IN RANGE but past the 16-frame source.
+    arrangeRepro(withExtrapolation(makePastSourceVideoOverlaySequence(), 'hold'));
+    const recorder = renderAllFrames();
+
+    const f15 = callForLayer(recorder, 15, VIDEO_LAYER_ID);
+    const f16 = callForLayer(recorder, 16, VIDEO_LAYER_ID);
+    expect(f15).toBeDefined();
+    expect(f16).toBeDefined();
+
+    // Last source sample is source index 15 (SOURCE_FRAME_COUNT - 1).
+    expect(f15!.localFrame).toBe(15);
+    expect(f16!.localFrame, 'HOLD keeps the last source sample past the media source').toBe(
+      SOURCE_FRAME_COUNT - 1,
+    );
+  });
+
+  it('with loop the sample index wraps past the media source', () => {
+    arrangeRepro(withExtrapolation(makePastSourceVideoOverlaySequence(), 'loop'));
+    const recorder = renderAllFrames();
+
+    const f16 = callForLayer(recorder, 16, VIDEO_LAYER_ID);
+    expect(f16).toBeDefined();
+    // 16 mod 16 = 0 — the sample index wraps.
+    expect(f16!.localFrame, 'LOOP wraps the sample index past the media source').toBe(0);
+  });
+});
+
+describe('law corroboration (unchanged)', () => {
   it('N law: frameMap enumerates exactly 17 frames (0..16) for video out=16 + paint out=17', () => {
     arrangeRepro();
 
@@ -317,133 +561,35 @@ describe('export frame-LIST measurement (frame-model-coherence)', () => {
     expect(getTimelineOverlaySequenceOutFrame(video, 17)).toBe(16);
     expect(getTimelineOverlaySequenceOutFrame(paint, 17)).toBe(17);
   });
+});
 
-  it('frame LIST: 17 frames; frames 0/1/15 = video+paint; frame 16 = paint only (video gated)', () => {
-    arrangeRepro();
-    const fm = frameMap.value;
-    const seqs = sequenceStore.sequences.value;
-    expect(fm).toHaveLength(17);
+// I-6 fade behavior pin (D-13) — NOT one of the four laws. Expectations are
+// byte-stable and must not be rewritten when the law assertions flip.
+it('I-6 sub-finding: paint fade-out reaches opacity 0 on the clip’s last frame (index 16)', () => {
+  arrangeRepro();
+  const recorder = renderAllFrames();
 
-    const recorder = makeRecordingRenderer();
-    const canvas = new TestCanvas() as unknown as HTMLCanvasElement;
+  // The paint FX render call carries the fade opacity as sequenceOpacity.
+  const paintOpacityAt = (globalFrame: number): number | null => {
+    const call = callForLayer(recorder, globalFrame, LAYER);
+    return call ? call.opacity : null;
+  };
 
-    // Drive the export loop's render call for every frame the export writes.
-    for (let frame = 0; frame < fm.length; frame++) {
-      renderGlobalFrame(
-        recorder as never,
-        canvas,
-        frame,
-        fm,
-        seqs,
-        [],
-        false,
-      );
-    }
+  const opacity15 = paintOpacityAt(15);
+  const opacity16 = paintOpacityAt(16);
 
-    // --- MEASURED per-frame layer presence ---------------------------------
-    // Presence = which layers were handed to renderFrame while rendering that
-    // global frame. The overlay pass runs one renderFrame per surviving overlay.
-    const presenceFor = (globalFrame: number) => {
-      const calls = recorder.calls.filter((c) => c.globalFrame === globalFrame);
-      const ids = new Set<string>();
-      const types = new Set<string>();
-      for (const call of calls) {
-        for (const id of call.layerIds) ids.add(id);
-        for (const type of call.layerTypes) types.add(type);
-      }
-      return { ids, types, calls };
-    };
+  // fadeOut.duration=3 over a 17-frame clip: active on local 14..16.
+  // local 15 (global 15): framesFromEnd = 1 → t = 1/3.
+  // local 16 (global 16): framesFromEnd = 0 → t = 0 → opacity 0.
+  expect(opacity16).not.toBeNull();
+  expect(opacity16).toBeCloseTo(0, 5);
+  expect(opacity15).not.toBeNull();
+  expect(opacity15!).toBeGreaterThan(0);
+  expect(opacity15!).toBeLessThan(1);
 
-    const f0 = presenceFor(0);
-    const f1 = presenceFor(1);
-    const f15 = presenceFor(15);
-    const f16 = presenceFor(16);
-
-    // First two frames: video + paint.
-    expect(f0.ids.has(VIDEO_LAYER_ID)).toBe(true);
-    expect(f0.ids.has(LAYER)).toBe(true);
-    expect(f1.ids.has(VIDEO_LAYER_ID)).toBe(true);
-    expect(f1.ids.has(LAYER)).toBe(true);
-
-    // Frame 15 (last video frame): video + paint.
-    expect(f15.ids.has(VIDEO_LAYER_ID)).toBe(true);
-    expect(f15.ids.has(LAYER)).toBe(true);
-
-    // Frame 16 (tail): paint ONLY — video gated at outFrame=16 exclusive.
-    expect(f16.ids.has(LAYER)).toBe(true);
-    expect(f16.ids.has(VIDEO_LAYER_ID)).toBe(false);
-
-    // Every frame in 0..15 must carry the video; only 16 drops it.
-    for (let frame = 0; frame <= 15; frame++) {
-      expect(presenceFor(frame).ids.has(VIDEO_LAYER_ID), `frame ${frame} should carry video`).toBe(true);
-    }
-    // Every frame in 0..16 must carry the paint.
-    for (let frame = 0; frame <= 16; frame++) {
-      expect(presenceFor(frame).ids.has(LAYER), `frame ${frame} should carry paint`).toBe(true);
-    }
-  });
-
-  it('I-6 sub-finding: paint fade-out reaches opacity 0 on the clip’s last frame (index 16)', () => {
-    arrangeRepro();
-    const fm = frameMap.value;
-    const seqs = sequenceStore.sequences.value;
-
-    const recorder = makeRecordingRenderer();
-    const canvas = new TestCanvas() as unknown as HTMLCanvasElement;
-
-    for (let frame = 0; frame < fm.length; frame++) {
-      renderGlobalFrame(recorder as never, canvas, frame, fm, seqs, [], false);
-    }
-
-    // The paint FX render call carries the fade opacity as sequenceOpacity.
-    const paintOpacityAt = (globalFrame: number): number | null => {
-      const call = recorder.calls.find(
-        (c) => c.globalFrame === globalFrame && c.layerIds.includes(LAYER),
-      );
-      return call ? call.opacity : null;
-    };
-
-    const opacity15 = paintOpacityAt(15);
-    const opacity16 = paintOpacityAt(16);
-
-    // fadeOut.duration=3 over a 17-frame clip: active on local 14..16.
-    // local 15 (global 15): framesFromEnd = 1 → t = 1/3.
-    // local 16 (global 16): framesFromEnd = 0 → t = 0 → opacity 0.
-    expect(opacity16).not.toBeNull();
-    expect(opacity16).toBeCloseTo(0, 5);
-    expect(opacity15).not.toBeNull();
-    expect(opacity15!).toBeGreaterThan(0);
-    expect(opacity15!).toBeLessThan(1);
-
-    // MEASURED I-6 verdict: renderFrame IS called for paint on frame 16 (the
-    // layer is in range) but with fade opacity 0 — the fade ramp does reach 0
-    // exactly on the clip's last frame as coded. A visible paint-on-black on
-    // the true last frame would therefore require a different fade object /
-    // duration / solid mode than this repro's fade-out ending at tick 17.
-  });
-
-  it('frame LIST summary (measured values pinned): count 17, indices 0..16, video 0..15, paint 0..16', () => {
-    arrangeRepro();
-    const fm = frameMap.value;
-    const seqs = sequenceStore.sequences.value;
-    const recorder = makeRecordingRenderer();
-    const canvas = new TestCanvas() as unknown as HTMLCanvasElement;
-    for (let frame = 0; frame < fm.length; frame++) {
-      renderGlobalFrame(recorder as never, canvas, frame, fm, seqs, [], false);
-    }
-
-    const videoFrames: number[] = [];
-    const paintFrames: number[] = [];
-    for (let frame = 0; frame < fm.length; frame++) {
-      const calls = recorder.calls.filter((c) => c.globalFrame === frame);
-      const ids = new Set(calls.flatMap((c) => c.layerIds));
-      if (ids.has(VIDEO_LAYER_ID)) videoFrames.push(frame);
-      if (ids.has(LAYER)) paintFrames.push(frame);
-    }
-
-    // MEASURED vs PREDICTED — the frame LIST itself.
-    expect(fm).toHaveLength(17);
-    expect(videoFrames).toEqual(Array.from({ length: 16 }, (_, i) => i)); // 0..15
-    expect(paintFrames).toEqual(Array.from({ length: 17 }, (_, i) => i)); // 0..16
-  });
+  // MEASURED I-6 verdict: renderFrame IS called for paint on frame 16 (the
+  // layer is in range) but with fade opacity 0 — the fade ramp does reach 0
+  // exactly on the clip's last frame as coded. A visible paint-on-black on
+  // the true last frame would therefore require a different fade object /
+  // duration / solid mode than this repro's fade-out ending at tick 17.
 });
