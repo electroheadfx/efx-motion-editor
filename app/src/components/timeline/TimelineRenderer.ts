@@ -1529,9 +1529,28 @@ export class TimelineRenderer {
     const lastVisible = Math.min(totalFrames, Math.ceil((scrollX + width - TRACK_HEADER_WIDTH) / frameWidth));
 
     for (let f = firstVisible; f <= lastVisible; f++) {
-      if (f % interval !== 0) continue;
+      // D-11: tick N is the end limit, not a frame number. The end-limit branch
+      // is the ONLY behavioral change in the ruler loop; ticks 0..N-1 keep
+      // their frame numbers exactly as today.
+      const isEndLimit = f === totalFrames;
+      if (!isEndLimit && f % interval !== 0) continue;
       const x = f * frameWidth - scrollX + TRACK_HEADER_WIDTH;
       if (x < TRACK_HEADER_WIDTH || x > width) continue;
+
+      if (isEndLimit) {
+        // END LIMIT: taller tick stroke with a small horizontal cap.
+        // NO numeric label and NO time glyph — a styled number at N would
+        // still assert "frame N exists"; a time label mixes units on a frame ruler.
+        ctx.strokeStyle = colors.rulerText;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, RULER_HEIGHT - 12);
+        ctx.lineTo(x, RULER_HEIGHT);
+        ctx.moveTo(x - 4, RULER_HEIGHT - 12);
+        ctx.lineTo(x + 4, RULER_HEIGHT - 12);
+        ctx.stroke();
+        continue;
+      }
 
       // Tick mark
       ctx.strokeStyle = colors.rulerText;
