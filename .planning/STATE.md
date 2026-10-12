@@ -24,7 +24,7 @@ current_phase: 53
 See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Planning next milestone (v1.0.1 / phases 54-57 per the roadmap direction)
+**Current focus:** v1.0.1 PATCH milestone (3 debt quicks, no phases) — then v1.1.0 = phases 54-57 (Preact / paint-host / aquarelle / spectral)
 
 ## Current Position
 
