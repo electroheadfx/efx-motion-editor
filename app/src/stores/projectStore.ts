@@ -48,7 +48,7 @@ import {
   _setEfxPaintMarkDirtyCallback,
 } from './efxPaintStore';
 import {readAudioSourceBytes} from '../lib/mainAppAudioSources';
-import {readMceAudioSourcePath} from '../lib/mceAudioSourcePath';
+import {readMceAudioSourcePath, readMceVideoLayerPath} from '../lib/mceAudioSourcePath';
 
 // --- Signals ---
 
@@ -437,6 +437,7 @@ function buildMceProject(): RuntimeMceProject {
     sequences: mceSequences,
     images: imageStore.toMceImages(projectRoot),
     audio_assets: imageStore.toMceAudioAssets(),
+    video_assets: imageStore.toMceVideoAssets(),
     audio_tracks: audioStore.tracks.value.map((track, index): MceAudioTrack => ({
       id: track.id,
       audio_asset_id: track.audioAssetId,
@@ -498,6 +499,9 @@ function hydrateFromMce(
     // 2. Load images (converts relative to absolute)
     imageStore.loadFromMceImages(project.images, projectRoot);
     imageStore.loadFromMceAudioAssets(project.audio_assets ?? []);
+    // 261012-d6q: the wholesale gallery set runs BEFORE the sequence loop, so
+    // the layer re-discovery below dedupes against rows already in place.
+    imageStore.loadFromMceVideoAssets(project.video_assets ?? []);
 
     // 3. Convert MceSequences to frontend Sequence type and load into sequenceStore
     sequenceStore.reset();
@@ -536,9 +540,11 @@ function hydrateFromMce(
                     if (t === 'image-sequence') return {type: t, imageIds: ml.source.image_ids ?? []} as LayerSourceData;
                     if (t === 'video') {
                       const videoAssetId = ml.source.video_asset_id ?? crypto.randomUUID();
-                      const videoPath = ml.source.video_path ?? '';
-                      const absVideoPath = videoPath && !videoPath.startsWith('/') ? projectRoot + '/' + videoPath : videoPath;
-                      videoAssetIdToPath.set(videoAssetId, absVideoPath);
+                      // 261012-d6q: fail-closed reader — an absolute path is
+                      // returned verbatim; the retired relative form throws.
+                      // The projectRoot join is gone: never join a disk reference.
+                      const videoPath = readMceVideoLayerPath(ml.source, 'video layer source');
+                      videoAssetIdToPath.set(videoAssetId, videoPath);
                       return {type: t, videoAssetId} as LayerSourceData;
                     }
                     if (t === 'generator-grain') return {type: t, density: ml.source.density ?? 0.3, size: ml.source.size ?? 1, intensity: ml.source.intensity ?? 0.5, lockSeed: ml.source.lock_seed ?? true, seed: ml.source.seed ?? 42} as LayerSourceData;

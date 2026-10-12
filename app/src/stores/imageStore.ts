@@ -1,8 +1,8 @@
 import {signal, computed, batch} from '@preact/signals';
 import type {ImportResult, ImportedImage} from '../types/image';
-import type {MceAudioAssetRef, MceImageRef} from '../types/project';
+import type {MceAudioAssetRef, MceImageRef, MceVideoAssetRef} from '../types/project';
 import {importImages as ipcImportImages, assetUrl} from '../lib/ipc';
-import {readMceAudioSourcePath} from '../lib/mceAudioSourcePath';
+import {readMceAudioSourcePath, readMceVideoAssetSourcePath} from '../lib/mceAudioSourcePath';
 
 const POOL_MAX = 50;
 
@@ -10,8 +10,7 @@ const POOL_MAX = 50;
 export interface VideoAsset {
   id: string;
   name: string;
-  path: string; // absolute path in project videos/ directory
-  relativePath?: string; // relative path within project dir (for serialization)
+  path: string; // absolute on-disk source path of the referenced video (disk reference, never copied)
 }
 
 /** Metadata for an imported audio asset */
@@ -104,8 +103,9 @@ export const imageStore = {
     }
   },
 
-  /** Register a video file as an imported asset */
+  /** Register a video file as an imported asset (idempotent by id). */
   addVideoAsset(asset: VideoAsset) {
+    if (videoAssets.value.some((existing) => existing.id === asset.id)) return;
     videoAssets.value = [...videoAssets.value, asset];
     _markDirty?.();
   },
@@ -230,6 +230,35 @@ export const imageStore = {
     }));
   },
 
+  /**
+   * Restore gallery video assets from a saved project — disk references, path
+   * verbatim from `source_path` (no projectRoot join, no root strip). Fail
+   * closed through `readMceVideoAssetSourcePath` (261012-d6q/VID-02).
+   */
+  loadFromMceVideoAssets(refs: readonly unknown[]) {
+    const loaded = refs.map((ref) => {
+      const sourcePath = readMceVideoAssetSourcePath(ref, 'video_assets[]');
+      const record = ref as {id: unknown; name: unknown};
+      return {
+        id: String(record.id ?? ''),
+        name: String(record.name ?? ''),
+        path: sourcePath,
+      };
+    });
+    batch(() => {
+      videoAssets.value = loaded;
+    });
+  },
+
+  /** Convert current gallery video assets to disk-reference refs (for project save). */
+  toMceVideoAssets(): MceVideoAssetRef[] {
+    return videoAssets.value.map((asset) => ({
+      id: asset.id,
+      name: asset.name,
+      source_path: asset.path,
+    }));
+  },
+
   /** Convert current images to MceImageRef array (for project save).
    *  Makes paths relative by stripping the project root prefix. */
   toMceImages(projectRoot: string): MceImageRef[] {
@@ -250,16 +279,13 @@ export const imageStore = {
   },
 
   /** Update image paths after project dir migration (temp -> real project).
-   *  Audio asset paths are disk references outside the project — never remapped. */
+   *  Disk references (audio AND video) are never rewritten — a root-prefix
+   *  replace over a path outside the project would corrupt it (261012-d6q). */
   updateProjectPaths(oldRoot: string, newRoot: string) {
     images.value = images.value.map((img) => ({
       ...img,
       project_path: img.project_path.replace(oldRoot, newRoot),
       thumbnail_path: img.thumbnail_path.replace(oldRoot, newRoot),
-    }));
-    videoAssets.value = videoAssets.value.map((asset) => ({
-      ...asset,
-      path: asset.path.replace(oldRoot, newRoot),
     }));
   },
 

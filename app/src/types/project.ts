@@ -23,6 +23,10 @@ export interface MceProject {
    *  this the gallery is rebuilt from `audio_tracks` alone and a Studio
    *  document-sound import vanishes on reload. */
   audio_assets?: MceAudioAssetRef[];
+  /** 261012-d6q/VID-02: gallery video assets (imported, used or not).
+   *  Declared here because serde drops undeclared keys — without this member
+   *  every save erases the gallery video rows (same hole class as audio). */
+  video_assets?: MceVideoAssetRef[];
   audio_tracks?: MceAudioTrack[];  // Optional for backward compat with v7
   motion_blur?: {
     enabled: boolean;
@@ -117,7 +121,10 @@ export interface MceLayerSource {
   // Content layer fields (existing)
   image_id?: string;
   image_ids?: string[];
-  video_path?: string;      // Kept for v8 backward compat reading
+  // 261012-d6q: the verbatim ABSOLUTE on-disk source path of the referenced
+  // video — same disk-reference role as MceAudioTrack.source_path. The retired
+  // relative form (e.g. videos/clip.mp4) is refused at the load door.
+  video_path?: string;
   video_asset_id?: string;  // Stable asset reference (v9+)
   // Generator common fields
   lock_seed?: boolean;
@@ -211,6 +218,15 @@ export interface MceKeyPhoto {
 
 /** Audio asset reference in the project -- Absolute path to the audio file on disk (disk reference) */
 export interface MceAudioAssetRef {
+  id: string;
+  name: string;
+  source_path: string;
+}
+
+/** Video asset reference in the project -- absolute on-disk path of the
+ *  referenced video (disk reference, 261012-d6q/VID-01: never copied into the
+ *  package; the file stays at its origin on disk). */
+export interface MceVideoAssetRef {
   id: string;
   name: string;
   source_path: string;

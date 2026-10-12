@@ -1,7 +1,7 @@
 import {useState, useCallback, useEffect} from 'preact/hooks';
 import {open} from '@tauri-apps/plugin-dialog';
-import {copyFile, mkdir} from '@tauri-apps/plugin-fs';
 import {readAudioSourceBytes, registerPickedAudioSource} from '../../lib/mainAppAudioSources';
+import {registerPickedVideoSource} from '../../lib/mainAppVideoSources';
 import {imageStore} from '../../stores/imageStore';
 import {projectStore} from '../../stores/projectStore';
 import {sequenceStore} from '../../stores/sequenceStore';
@@ -393,16 +393,9 @@ export function ImportedView() {
         filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'webm', 'avi'] }],
       });
       if (!selected) return;
-      const dir = projectStore.dirPath.value ?? tempProjectDir.value;
-      if (!dir) return;
       const filePath = typeof selected === 'string' ? selected : selected;
-      const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? 'video';
-      const sep = dir.endsWith('/') ? '' : '/';
-      const videosDir = `${dir}${sep}videos`;
-      try { await mkdir(videosDir, { recursive: true }); } catch { /* exists */ }
-      const destPath = `${videosDir}/${filename}`;
-      try { await copyFile(filePath, destPath); } catch (err) { console.error('Failed to copy video:', err); return; }
-      imageStore.addVideoAsset({ id: crypto.randomUUID(), name: filename, path: destPath });
+      // 261012-d6q: disk reference — never copied into the package.
+      registerPickedVideoSource(filePath);
     } else {
       // Image import flow (existing behavior)
       const selected = await open({
