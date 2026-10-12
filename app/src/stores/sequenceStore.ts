@@ -299,8 +299,13 @@ export const sequenceStore = {
     return seq;
   },
 
-  /** Create a content overlay sequence with a single content layer, positioned globally on the timeline */
-  createContentOverlaySequence(name: string, layer: Layer, totalFrames: number, opts?: { inFrame?: number; outFrame?: number }): Sequence {
+  /** Create a content overlay sequence with a single content layer, positioned globally on the timeline.
+   *  D-04 (53.1-02): outFrame is written ONLY when opts supplies it — absent outFrame
+   *  means untrimmed = follows N (base layer). The old import-time freeze
+   *  (`opts?.outFrame ?? totalFrames`) was the I-2 root: the overlay stopped covering
+   *  the moment a sibling grew the timeline past the import-time end.
+   *  `_totalFrames` is retained for call-site compatibility; it no longer seeds outFrame. */
+  createContentOverlaySequence(name: string, layer: Layer, _totalFrames: number, opts?: { inFrame?: number; outFrame?: number }): Sequence {
     const before = snapshot();
 
     const seq: Sequence = {
@@ -311,7 +316,7 @@ export const sequenceStore = {
       keyPhotos: [],
       layers: [layer],
       inFrame: opts?.inFrame ?? 0,
-      outFrame: opts?.outFrame ?? (totalFrames > 0 ? totalFrames : 100),
+      ...(opts?.outFrame != null ? { outFrame: opts.outFrame } : {}),
     };
     // Content overlays land at the TOP of the stack (its only callers are the
     // + Layer content flow — 260923-kcs).

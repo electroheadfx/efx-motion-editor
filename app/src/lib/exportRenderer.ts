@@ -9,7 +9,7 @@ import {isFxLayer} from '../types/layer';
 import type {LayerSourceData} from '../types/layer';
 import type {FrameEntry} from '../types/timeline';
 import type {Sequence} from '../types/sequence';
-import {getTimelineOverlaySequenceOutFrame, type CrossDissolveOverlap} from './frameMap';
+import {getTimelineOverlaySequenceOutFrame, resolveOverlaySample, type CrossDissolveOverlap, type OverlaySampleClip} from './frameMap';
 
 /**
  * Build a synthetic FrameEntry array for a given sequence.
@@ -63,6 +63,26 @@ function interpolateLayers(seq: Sequence, localFrame: number) {
   });
 }
 
+/** Build the clip view for resolveOverlaySample (D-03) at the export overlay gate.
+ *  53.1-03 replaces the hold literal with seq.extrapolation.
+ *  sourceFrameCount: image-sequences know their length; video duration in frames is
+ *  resolved at seek time in previewRenderer; FX generators have no source limit.
+ *  outFrame carries the roto-extended effective end (getTimelineOverlaySequenceOutFrame)
+ *  so a trimmed FX clip whose physic-paint display runs past the authored out still
+ *  renders its roto content — absent outFrame stays absent (untrimmed follows N). */
+function buildOverlaySampleClip(seq: Sequence, N: number): OverlaySampleClip {
+  const primaryLayer = seq.layers[0];
+  const sourceFrameCount = primaryLayer?.source.type === 'image-sequence'
+    ? Math.max(1, primaryLayer.source.imageIds.length)
+    : Number.MAX_SAFE_INTEGER;
+  return {
+    inFrame: seq.inFrame,
+    outFrame: seq.outFrame != null ? getTimelineOverlaySequenceOutFrame(seq, N) : undefined,
+    extrapolation: 'hold',
+    sourceFrameCount,
+  };
+}
+
 function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: FrameEntry[], sequences: readonly Sequence[]): PreviewPhysicPaintFrameSource[] {
   const frameSources = new Map<string, PreviewPhysicPaintFrameSource>();
   const addSources = (layers: ReturnType<typeof interpolateLayers>, frame: number) => {
@@ -84,21 +104,19 @@ function collectExportPhysicPaintFrameSources(renderer: PreviewRenderer, fm: Fra
 
   for (const seq of sequences) {
     if (seq.kind === 'content' || seq.visible === false) continue;
-    // 52.3 CR-01: share the render gate's predicate — drive the overlay window
-    // from entry.globalFrame, never the positional fm length. A selected
-    // (rebased, exportEngine.ts:148) export of an fx at inFrame > 0 must preload
-    // the same frames the render loop will draw; clamping on fm.length computed
-    // an empty window and exported silently transparent paint. Full exports stay
-    // byte-identical: dense enumeration covers [inFrame, outFrame) exactly.
-    const inFrame = seq.inFrame ?? 0;
-    const outFrame = getTimelineOverlaySequenceOutFrame(seq, fm.length);
+    // 52.3 CR-01 + 53.1-02 D-03: share the render gate's predicate — the same
+    // resolveOverlaySample call the overlay walk uses. A selected (rebased,
+    // exportEngine.ts:148) export of an fx at inFrame > 0 must preload the same
+    // frames the render loop will draw; clamping on fm.length computed an empty
+    // window and exported silently transparent paint.
+    const clip = buildOverlaySampleClip(seq, fm.length);
     for (const entry of fm) {
       if (!entry) continue;
       const overlayGlobalFrame = entry.globalFrame;
-      if (overlayGlobalFrame < inFrame) continue;
-      if (overlayGlobalFrame >= outFrame) continue;
-      const localFrame = overlayGlobalFrame - inFrame;
-      addSources(interpolateLayers(seq, localFrame), localFrame);
+      const sample = resolveOverlaySample(clip, overlayGlobalFrame, fm.length);
+      if (sample.kind === 'skip') continue;
+      const overlayLocalFrame = sample.localFrame;
+      addSources(interpolateLayers(seq, overlayLocalFrame), overlayLocalFrame);
     }
   }
 
@@ -337,12 +355,16 @@ export function renderGlobalFrame(
   const overlaySeqs = allSeqs.filter(s => s.kind !== 'content' && s.visible !== false);
   for (let i = overlaySeqs.length - 1; i >= 0; i--) {
     const overlaySeq = overlaySeqs[i];
-    if (overlaySeq.inFrame != null && overlayGlobalFrame < overlaySeq.inFrame) continue;
-    if (overlayGlobalFrame >= getTimelineOverlaySequenceOutFrame(overlaySeq, fm.length)) continue;
+    // 53.1-02 D-03: single tail-policy resolver — skip/sample/hold-last/loop
+    // and the localFrame all come from resolveOverlaySample. No local past-out
+    // gate and no recomputed hold index anywhere in this walk.
+    const overlaySample = resolveOverlaySample(buildOverlaySampleClip(overlaySeq, fm.length), overlayGlobalFrame, fm.length);
+    if (overlaySample.kind === 'skip') continue;
+    const resolvedOverlayLocalFrame = overlaySample.localFrame;
 
     if (overlaySeq.kind === 'content-overlay') {
-      // Content overlay: compute local frame relative to inFrame, apply keyframe interpolation
-      const overlayLocalFrame = overlayGlobalFrame - (overlaySeq.inFrame ?? 0);
+      // Content overlay: resolver localFrame feeds keyframe interpolation + fade.
+      const overlayLocalFrame = resolvedOverlayLocalFrame;
       const overlayLayers = overlaySeq.layers.filter(l => l.visible).map(layer => {
         if (!layer.keyframes || layer.keyframes.length === 0) return layer;
         const values = interpolateAt(layer.keyframes, overlayLocalFrame);
@@ -368,8 +390,8 @@ export function renderGlobalFrame(
         renderer.renderFrame(overlayLayers, overlayLocalFrame, hasContentEntry ? seqFrames : [], projectStore.fps.peek(), false, overlayFadeOpacity, globalFrame, overlayLocalFrame);
       }
     } else {
-      // FX sequence: apply keyframe interpolation to FX layers
-      const fxLocalFrame = overlayGlobalFrame - (overlaySeq.inFrame ?? 0);
+      // FX sequence: resolver localFrame feeds keyframe interpolation + fade.
+      const fxLocalFrame = resolvedOverlayLocalFrame;
       const fxTotalFrames = (overlaySeq.outFrame ?? 100) - (overlaySeq.inFrame ?? 0);
       const fxLayers = overlaySeq.layers.filter((l) => l.visible).map(layer => {
         if (!layer.keyframes || layer.keyframes.length === 0) return layer;

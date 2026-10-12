@@ -23,6 +23,7 @@ import {motionBlurStore} from '../stores/motionBlurStore';
 import {VelocityCache, isStationary} from './motionBlurEngine';
 import {interpolateAt} from './keyframeEngine';
 import {clearProjectPaperRasterCache, isProjectPaperTextureResolved, subscribeProjectPaperCanvas} from './projectPaperRaster';
+import {resolveOverlaySample} from './frameMap';
 
 /**
  * Create a Canvas 2D gradient from GradientData.
@@ -828,12 +829,21 @@ export class PreviewRenderer {
       this.videoReadyHandlers.set(layer.id, readyHandler);
     }
 
-    // Sync time to current frame (mod by duration for seamless looping).
-    // fps is the project timebase (D-01/D-02): callers pass projectStore.fps
-    // so frame N always means N / projectFps seconds of source — the same
-    // reader as export time mapping. No per-sequence fps remains.
-    const rawTargetTime = frame / fps;
-    const targetTime = video.duration > 0 ? rawTargetTime % video.duration : rawTargetTime;
+    // 53.1-02 D-03: seek through the shared tail-policy resolver — HOLD/LOOP is
+    // decided only in resolveOverlaySample, never a local modulo on
+    // video.duration. fps is the project timebase (D-01/D-02). Fractional
+    // frames (motion-blur sub-frames) ride through the resolver. 53.1-03
+    // replaces the hold literal with seq.extrapolation.
+    const sourceFrameCount = video.duration > 0
+      ? Math.max(1, Math.round(video.duration * fps))
+      : Number.MAX_SAFE_INTEGER;
+    const sample = resolveOverlaySample(
+      { extrapolation: 'hold', sourceFrameCount },
+      Math.max(0, frame),
+      Number.MAX_SAFE_INTEGER,
+    );
+    const seekLocalFrame = 'localFrame' in sample ? sample.localFrame : 0;
+    const targetTime = seekLocalFrame / fps;
     if (Math.abs(video.currentTime - targetTime) > 0.01) {
       video.currentTime = targetTime;
     }

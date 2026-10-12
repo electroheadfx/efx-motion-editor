@@ -333,7 +333,8 @@ export function resolveOverlaySample(
   globalFrame: number,
   N: number,
 ): OverlaySampleResult {
-  if (!Number.isInteger(globalFrame) || !Number.isFinite(N) || N < 0) return { kind: 'skip' };
+  // Finite numbers only — motion-blur sub-frame seeks pass fractional frames.
+  if (!Number.isFinite(globalFrame) || !Number.isFinite(N) || N < 0) return { kind: 'skip' };
   if (!Number.isInteger(clip.sourceFrameCount) || clip.sourceFrameCount <= 0) return { kind: 'skip' };
   const inFrame = clip.inFrame ?? 0;
   if (!Number.isInteger(inFrame) || inFrame < 0) return { kind: 'skip' };
@@ -350,6 +351,8 @@ export function resolveOverlaySample(
     return { kind: 'sample', localFrame };
   }
   // Past the media source: HOLD the last sample by default; LOOP wraps (I-5).
+  // Fractional parts ride through the wrap (16.5 % 16 = 0.5) so motion-blur
+  // sub-frame seeks keep their offset.
   if (clip.extrapolation === 'loop') {
     return { kind: 'loop', localFrame: localFrame % clip.sourceFrameCount };
   }
@@ -413,7 +416,7 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       headerLabel: seq.name,
       kind: seq.kind as 'fx' | 'content-overlay',
       inFrame: seq.inFrame ?? 0,
-      outFrame: getTimelineOverlaySequenceOutFrame(seq, 100),
+      outFrame: getTimelineOverlaySequenceOutFrame(seq, totalFrames.value),
       color,
       visible: seq.visible !== false,
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,

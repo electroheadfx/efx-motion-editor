@@ -55,6 +55,18 @@ vi.mock('./frameMap', () => ({
   frameMap: { peek: () => hoisted.fm },
   crossDissolveOverlaps: { peek: () => [] },
   getTimelineOverlaySequenceOutFrame: (seq: { outFrame?: number }, fallback: number) => seq.outFrame ?? fallback,
+  // 53.1-02 D-03: previewRenderer video seek routes through resolveOverlaySample.
+  // Mirror the in-range/skip policy here; past-source hold/loop is 53.1-03.
+  resolveOverlaySample: (
+    clip: { inFrame?: number; outFrame?: number },
+    globalFrame: number,
+    N: number,
+  ) => {
+    const inFrame = clip.inFrame ?? 0;
+    const outFrame = clip.outFrame ?? N;
+    if (globalFrame < inFrame || globalFrame >= outFrame) return { kind: 'skip' };
+    return { kind: 'sample', localFrame: globalFrame - inFrame };
+  },
 }));
 
 vi.mock('../stores/sequenceStore', () => ({
