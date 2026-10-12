@@ -836,9 +836,11 @@ describe('resolveOverlaySample (D-03 tail policy)', () => {
   });
 });
 
-// 53.1-02 Task 3 (D-05/D-06/D-12): the skip-range helper is the ONE definition
-// of a coverage gap. Later surfaces (timeline hatch, export warning, inspector
-// tail line) all read this helper — never a second computation.
+// 53.1-02 Task 3 (D-05/D-06/D-12 one-coverage-truth): getOverlaySkipRange is
+// the ONLY exported definition of a coverage gap. The timeline hatch (D-05),
+// export warning (D-06) and inspector tail line (D-12) all read this helper —
+// never a second computation. This describe locks the contract before 53.1-05
+// draws any of those surfaces.
 describe('getOverlaySkipRange (single coverage-gap definition)', () => {
   const SOURCE_FRAME_COUNT = 16;
   const N = 17;
@@ -886,6 +888,22 @@ describe('getOverlaySkipRange (single coverage-gap definition)', () => {
         expect(f).toBeLessThan(range!.endExclusive);
       }
     }
+  });
+
+  it('names only the past-out gap — a before-in region is not part of the coverage-gap range (D-05/D-06/D-12)', () => {
+    // in=3, out=10, N=17: skips are [0, 3) before-in AND [10, 17) past-out.
+    // The helper must name ONLY the past-out gap — the single range the timeline
+    // hatch (D-05), export warning (D-06) and inspector tail line (D-12) draw.
+    const shifted = clip({ inFrame: 3, outFrame: 10 });
+    const range = getOverlaySkipRange(shifted, N);
+    expect(range).not.toBeNull();
+    expect(range!.start).toBe(10);
+    expect(range!.endExclusive).toBe(17);
+
+    // Before-in frames skip but are NOT in the coverage-gap range.
+    expect(resolveOverlaySample(shifted, 0, N).kind).toBe('skip');
+    expect(resolveOverlaySample(shifted, 2, N).kind).toBe('skip');
+    expect(0).toBeLessThan(range!.start);
   });
 
   it('untrimmed clip yields a null skip range and no skips inside 0..N', () => {
