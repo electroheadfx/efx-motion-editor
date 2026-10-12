@@ -205,6 +205,9 @@ mod tests {
         // is split so the DOC-04 grep contract stays green.
         assert!(!test_dir.join("cache").exists());
         assert!(!test_dir.join("cache").join("physic-paint").exists());
+        // 261012-d6q (VID-03): heavy media stay disk references — a fresh
+        // package provisions NO videos/ tree and no code path ever writes one.
+        assert!(!test_dir.join("videos").exists());
         let _ = std::fs::remove_dir_all(&test_dir);
     }
 

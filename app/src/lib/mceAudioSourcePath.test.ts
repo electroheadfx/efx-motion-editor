@@ -40,3 +40,64 @@ describe('readMceAudioSourcePath (261009-rko clean-break load door)', () => {
     expect(() => readMceAudioSourcePath('audio/take.wav', 'audio_assets[]')).toThrow();
   });
 });
+
+// 261012-d6q: the two video load doors share the module with audio. The
+// members do not exist yet at RED time — duck-typed OPTIONAL members through a
+// dynamic import keep each failure under its own test name instead of taking
+// the file down as a collection failure.
+describe('readMceVideoAssetSourcePath / readMceVideoLayerPath (261012-d6q load doors)', () => {
+  async function loadVideoReaders() {
+    const mod = (await import('./mceAudioSourcePath')) as {
+      readMceVideoAssetSourcePath?: (record: unknown, label: string) => string;
+      readMceVideoLayerPath?: (record: unknown, label: string) => string;
+    };
+    return mod;
+  }
+
+  it('readMceVideoAssetSourcePath exists and returns source_path verbatim', async () => {
+    const readers = await loadVideoReaders();
+    expect(typeof readers.readMceVideoAssetSourcePath).toBe('function');
+    const read = readers.readMceVideoAssetSourcePath!;
+    expect(
+      read({id: 'v1', name: 'clip.mp4', source_path: '/Users/test/Movies/clip.mp4'}, 'video_assets[]'),
+    ).toBe('/Users/test/Movies/clip.mp4');
+  });
+
+  it('readMceVideoAssetSourcePath throws on relative_path, a missing/empty source_path, and a non-record', async () => {
+    const readers = await loadVideoReaders();
+    const read = readers.readMceVideoAssetSourcePath!;
+    expect(() =>
+      read(
+        {id: 'v1', name: 'clip.mp4', relative_path: 'videos/clip.mp4', source_path: '/Users/test/Movies/clip.mp4'},
+        'video_assets[]',
+      ),
+    ).toThrow(/relative_path/);
+    expect(() => read({id: 'v1', name: 'clip.mp4'}, 'video_assets[]')).toThrow(/source_path/);
+    expect(() => read({id: 'v1', name: 'clip.mp4', source_path: ''}, 'video_assets[]')).toThrow(/source_path/);
+    expect(() => read(null, 'video_assets[]')).toThrow();
+    expect(() => read('videos/clip.mp4', 'video_assets[]')).toThrow();
+  });
+
+  it('readMceVideoLayerPath exists and returns an absolute video_path verbatim, "" for absent or empty', async () => {
+    const readers = await loadVideoReaders();
+    expect(typeof readers.readMceVideoLayerPath).toBe('function');
+    const read = readers.readMceVideoLayerPath!;
+    expect(read({type: 'video', video_path: '/Users/test/Movies/clip.mp4'}, 'video layer source')).toBe(
+      '/Users/test/Movies/clip.mp4',
+    );
+    expect(read({type: 'video'}, 'video layer source')).toBe('');
+    expect(read({type: 'video', video_path: ''}, 'video layer source')).toBe('');
+  });
+
+  it('readMceVideoLayerPath throws for the retired relative video_path form and for a relative_path member', async () => {
+    const readers = await loadVideoReaders();
+    const read = readers.readMceVideoLayerPath!;
+    expect(() => read({type: 'video', video_path: 'videos/clip.mp4'}, 'video layer source')).toThrow(
+      /video_path/,
+    );
+    expect(() =>
+      read({type: 'video', relative_path: 'videos/clip.mp4'}, 'video layer source'),
+    ).toThrow(/relative_path/);
+    expect(() => read(null, 'video layer source')).toThrow();
+  });
+});

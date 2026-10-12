@@ -30,12 +30,18 @@ vi.mock('../lib/ipc', async (importOriginal) => {
 });
 // 261009-rko: plugin-fs readFile is the retired main-app audio decode door.
 // Spy it so the reopen-loop test can pin the efxasset fetch path instead.
+// 261012-d6q: mkdir/copyFile are the retired video copy door — spy them so the
+// never-copy pins can prove the save/hydrate chain writes no video bytes.
 const mockReadFile = vi.hoisted(() => vi.fn());
+const mockMkdir = vi.hoisted(() => vi.fn());
+const mockCopyFile = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/plugin-fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tauri-apps/plugin-fs')>();
   return {
     ...actual,
     readFile: mockReadFile,
+    mkdir: mockMkdir,
+    copyFile: mockCopyFile,
   };
 });
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
@@ -429,6 +435,186 @@ describe('261009-rko source_path format law', () => {
 
     decodeSpy.mockRestore();
     vi.unstubAllGlobals();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261012-d6q: video disk-reference law — the `video_assets` manifest member
+// round-trips byte-for-byte, BOTH load doors refuse the retired relative
+// forms, migration never rewrites a video disk reference, and the
+// build/hydrate chain performs no plugin-fs write (VID-01/VID-02/VID-03).
+// ---------------------------------------------------------------------------
+describe('261012-d6q video disk-reference law', () => {
+  beforeEach(() => {
+    audioStore.reset();
+    sequenceStore.reset();
+    physicPaintStore.reset();
+    imageStore.reset();
+    mockReadFile.mockReset();
+    mockMkdir.mockReset();
+    mockCopyFile.mockReset();
+  });
+
+  function makeMinimalMceProject(overrides: Record<string, unknown> = {}): RuntimeMceProject {
+    return {
+      version: 16,
+      name: 'Test Project',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      created_at: '2026-01-01',
+      modified_at: '2026-01-01',
+      sequences: [],
+      images: [],
+      ...overrides,
+    } as unknown as RuntimeMceProject;
+  }
+
+  /** One content sequence carrying a single video layer (manifest shape). */
+  function makeVideoSequence(videoPath: string) {
+    return {
+      id: 'seq-video',
+      name: 'Video Seq',
+      fps: 24,
+      width: 1920,
+      height: 1080,
+      order: 0,
+      key_photos: [],
+      layers: [
+        {
+          id: 'l1',
+          name: 'Clip',
+          type: 'video',
+          visible: true,
+          opacity: 1,
+          blend_mode: 'normal',
+          transform: {
+            x: 0, y: 0, scale_x: 1, scale_y: 1, rotation: 0,
+            crop_top: 0, crop_right: 0, crop_bottom: 0, crop_left: 0,
+          },
+          source: {type: 'video', video_asset_id: 'v1', video_path: videoPath},
+          is_base: false,
+          order: 0,
+          keyframes: [],
+        },
+      ],
+    };
+  }
+
+  it('emit-verbatim: buildMceProject carries video_assets[0].source_path byte-equal with no relative_path key', () => {
+    imageStore.addVideoAsset({id: 'v1', name: 'clip.mp4', path: '/Users/test/Movies/clip.mp4'});
+
+    const project = projectStore.buildMceProject();
+    const assets = (project as unknown as {video_assets?: Array<Record<string, unknown>>}).video_assets;
+
+    expect(assets).toBeDefined();
+    expect(assets![0].source_path).toBe('/Users/test/Movies/clip.mp4');
+    const json = JSON.stringify(assets);
+    expect(json).toContain('source_path');
+    expect(json).not.toContain('relative_path');
+  });
+
+  it('hydrate-verbatim: hydrateFromMce restores a gallery video row from video_assets with no projectRoot join', () => {
+    const project = makeMinimalMceProject({
+      video_assets: [{id: 'v1', name: 'clip.mp4', source_path: '/Users/test/Movies/clip.mp4'}],
+    });
+
+    projectStore.hydrateFromMce(project, '/test/project');
+
+    expect(imageStore.videoAssets.value).toHaveLength(1);
+    expect(imageStore.videoAssets.value[0].path).toBe('/Users/test/Movies/clip.mp4');
+  });
+
+  it('refusal A: loadFromMceVideoAssets throws for a relative_path member and for a missing source_path', () => {
+    const store = imageStore as unknown as {
+      loadFromMceVideoAssets?: (refs: readonly unknown[]) => void;
+    };
+    expect(() =>
+      store.loadFromMceVideoAssets!([
+        {id: 'v1', name: 'clip.mp4', relative_path: 'videos/clip.mp4'},
+      ]),
+    ).toThrow(/relative_path/);
+    expect(() =>
+      store.loadFromMceVideoAssets!([{id: 'v1', name: 'clip.mp4'}]),
+    ).toThrow(/source_path/);
+  });
+
+  it('refusal B: hydrateFromMce THROWS on a video layer whose source video_path is relative', () => {
+    const project = makeMinimalMceProject({
+      sequences: [makeVideoSequence('videos/clip.mp4')],
+    });
+
+    expect(() => projectStore.hydrateFromMce(project, '/test/project')).toThrow(/video_path/);
+  });
+
+  it('reader unit: readMceVideoAssetSourcePath enforces the video_assets[] load door', async () => {
+    const readers = (await import('../lib/mceAudioSourcePath')) as unknown as {
+      readMceVideoAssetSourcePath?: (record: unknown, label: string) => string;
+    };
+    expect(typeof readers.readMceVideoAssetSourcePath).toBe('function');
+    const read = readers.readMceVideoAssetSourcePath!;
+    expect(
+      read({id: 'v1', name: 'clip.mp4', source_path: '/Users/test/Movies/clip.mp4'}, 'video_assets[]'),
+    ).toBe('/Users/test/Movies/clip.mp4');
+    expect(() =>
+      read({id: 'v1', name: 'clip.mp4', relative_path: 'videos/clip.mp4'}, 'video_assets[]'),
+    ).toThrow(/relative_path/);
+    expect(() => read({id: 'v1', name: 'clip.mp4'}, 'video_assets[]')).toThrow(/source_path/);
+  });
+
+  it('reader unit: readMceVideoLayerPath returns absolute paths verbatim, empty for absent, and throws on the retired relative form', async () => {
+    const readers = (await import('../lib/mceAudioSourcePath')) as unknown as {
+      readMceVideoLayerPath?: (record: unknown, label: string) => string;
+    };
+    expect(typeof readers.readMceVideoLayerPath).toBe('function');
+    const read = readers.readMceVideoLayerPath!;
+    expect(read({type: 'video', video_path: '/Users/test/Movies/clip.mp4'}, 'video layer source')).toBe(
+      '/Users/test/Movies/clip.mp4',
+    );
+    expect(read({type: 'video'}, 'video layer source')).toBe('');
+    expect(read({type: 'video', video_path: ''}, 'video layer source')).toBe('');
+    expect(() => read({type: 'video', video_path: 'videos/clip.mp4'}, 'video layer source')).toThrow(
+      /video_path/,
+    );
+    expect(() =>
+      read({type: 'video', relative_path: 'videos/clip.mp4'}, 'video layer source'),
+    ).toThrow(/relative_path/);
+  });
+
+  it('no-remap: updateProjectPaths leaves a video disk reference byte-identical', () => {
+    imageStore.addVideoAsset({id: 'v1', name: 'clip.mp4', path: '/Users/test/Movies/clip.mp4'});
+
+    imageStore.updateProjectPaths('/Users/test/Movies', '/Users/other');
+
+    expect(imageStore.videoAssets.value).toHaveLength(1);
+    expect(imageStore.videoAssets.value[0].path).toBe('/Users/test/Movies/clip.mp4');
+  });
+
+  it('dedupe pin: a video_assets row and a layer sharing id v1 hydrate to EXACTLY ONE gallery row', () => {
+    const project = makeMinimalMceProject({
+      video_assets: [{id: 'v1', name: 'clip.mp4', source_path: '/Users/test/Movies/clip.mp4'}],
+      sequences: [makeVideoSequence('/Users/test/Movies/clip.mp4')],
+    });
+
+    projectStore.hydrateFromMce(project, '/test/project');
+
+    expect(imageStore.videoAssets.value).toHaveLength(1);
+    expect(imageStore.videoAssets.value[0].path).toBe('/Users/test/Movies/clip.mp4');
+  });
+
+  it('never-called pin: buildMceProject and hydrateFromMce invoke neither plugin-fs mkdir nor copyFile', () => {
+    imageStore.addVideoAsset({id: 'v1', name: 'clip.mp4', path: '/Users/test/Movies/clip.mp4'});
+    mockMkdir.mockReset();
+    mockCopyFile.mockReset();
+
+    projectStore.buildMceProject();
+    const project = makeMinimalMceProject({
+      video_assets: [{id: 'v1', name: 'clip.mp4', source_path: '/Users/test/Movies/clip.mp4'}],
+    });
+    projectStore.hydrateFromMce(project, '/test/project');
+
+    expect(mockMkdir).not.toHaveBeenCalled();
+    expect(mockCopyFile).not.toHaveBeenCalled();
   });
 });
 
