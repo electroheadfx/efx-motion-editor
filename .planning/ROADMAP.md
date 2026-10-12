@@ -234,7 +234,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 5. GREEN I-3 — playhead can sit on tick N (END STATE); export still writes 0..N-1; tick N is the end limit
 6. Live UAT on the signed build (user judges)
 
-**Plans:** 3/6 plans executed
+**Plans:** 4/6 plans executed
 
 Plans:
 **Wave 1**
@@ -247,7 +247,7 @@ Plans:
 - [x] 53.1-03-PLAN.md — GREEN I-5 per-clip extrapolation + inspector Hold/Loop
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 53.1-04-PLAN.md — GREEN I-3 playhead clamp 0..N + ruler end limit
+- [x] 53.1-04-PLAN.md — GREEN I-3 playhead clamp 0..N + ruler end limit
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 53.1-05-PLAN.md — GREEN I-3 gap tail + export warnings + inspector coverage
