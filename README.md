@@ -209,7 +209,7 @@ Alongside the phases, **84 completed quick tasks** (2026-08-27 → 2026-10-10, r
 | Export | Export "Preparing" hoisted ahead of the Studio flush; paint-content enumeration verdict feeding phase 52.3 |
 | Main-app integration | Physics layer row with double-click-to-Studio, layer spans the visible timeline view, new layers stack at the top, layer-stack reorder |
 
-v1.0.0 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. Production packaging safeguards include a complete frontend bundle entry, the generated EFX application icon set, system codesign resolution, and a production CSP with narrow data-URL grants.
+v1.0.1 ships as a Developer ID signed and Apple-notarized macOS (Apple Silicon) DMG. Production packaging safeguards include a complete frontend bundle entry, the generated EFX application icon set, system codesign resolution, and a production CSP with narrow data-URL grants. v1.0.1 is a debt patch over v1.0.0: a display-class save token, the video disk-reference law, and document-sound decode readiness.
 
 ## Canvas Motion Fork
 
