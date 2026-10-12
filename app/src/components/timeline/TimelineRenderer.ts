@@ -1000,6 +1000,64 @@ export class TimelineRenderer {
         ctx.fillRect(rightEdge - 3, barY + 2, 3, barH - 4);
       }
     }
+
+    // D-05 hatched gap tail — "clip ends, composition continues". Drawn AFTER
+    // the clip bar's right edge on the clip's OWN row (no new timeline lane).
+    // barW stays (out-in)*frameWidth and the fades stay flush against the bar;
+    // the hatch sits outside both. Range comes from fxTrack.skipRange
+    // (getOverlaySkipRange — the single coverage source shared with the export
+    // warning and the inspector tail line). Fires only for a visible clip with
+    // an authoritative out < N; untrimmed clips never gap; a LOOP clip never
+    // hatches inside its own source repeat (tail is past an authoritative out,
+    // independent of extrapolation).
+    if (isVisible && fxTrack.skipRange) {
+      const hatchStartX = barX + barW;
+      const hatchEndX = fxTrack.skipRange.endExclusive * frameWidth - scrollX + TRACK_HEADER_WIDTH;
+      const hatchLeft = Math.max(hatchStartX, TRACK_HEADER_WIDTH);
+      const hatchRight = Math.min(hatchEndX, canvasWidth);
+      const hatchW = hatchRight - hatchLeft;
+      if (hatchW > 0) {
+        this.drawCoverageGapTail(ctx, hatchLeft, barY, hatchW, barH, resolvedColor);
+      }
+    }
+  }
+
+  /** Diagonal-stripe hatch marking the uncovered tail past a clip's exclusive
+   *  out (D-05). Reads as "clip ends, composition continues" — not content and
+   *  not a hard error. */
+  private drawCoverageGapTail(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    color: string,
+  ): void {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+
+    // Muted bed so the hatch reads as a distinct region without shouting.
+    ctx.fillStyle = withAlpha(color, '18');
+    ctx.fillRect(x, y, w, h);
+
+    // Diagonal stripes (top-left → bottom-right), 6px pitch.
+    ctx.strokeStyle = withAlpha(color, '55');
+    ctx.lineWidth = 1;
+    const pitch = 6;
+    ctx.beginPath();
+    for (let offset = -h; offset < w + h; offset += pitch) {
+      ctx.moveTo(x + offset, y);
+      ctx.lineTo(x + offset + h, y + h);
+    }
+    ctx.stroke();
+
+    // Faint outline so the tail is delimited even at low contrast.
+    ctx.strokeStyle = withAlpha(color, '40');
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+    ctx.restore();
   }
 
   /** Draw a Photoshop-style checkerboard pattern in a clipped rectangle (per D-17) */

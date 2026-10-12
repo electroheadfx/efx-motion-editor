@@ -410,6 +410,20 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
     // 261008-ig1: one layout entry per placed clip. Peaks stay SOURCE-keyed
     // (`audioPeaksCache.get(sourceId)`) — duplicates share one cached decode.
     const documentAudios = physicPaintLayerId !== null ? getEfxPaintDocument(physicPaintLayerId)?.audios ?? [] : [];
+    // D-05 one coverage source: the skip range rides getOverlaySkipRange on the
+    // AUTHORITATIVE outFrame (absent = untrimmed = never gaps). Roto-extended
+    // effective out only widens the bar, never creates a hatch inside its own
+    // content. LOOP clips are covered by the same rule — the tail is past an
+    // authoritative out, independent of extrapolation (D-08 gap-tail pin).
+    const skipRange = getOverlaySkipRange(
+      {
+        inFrame: seq.inFrame ?? 0,
+        outFrame: seq.outFrame,
+        extrapolation: seq.extrapolation,
+        sourceFrameCount: 1,
+      },
+      totalFrames.value,
+    );
     layouts.push({
       sequenceId: seq.id,
       sequenceName: seq.name,
@@ -419,6 +433,7 @@ export const fxTrackLayouts = computed<FxTrackLayout[]>(() => {
       outFrame: getTimelineOverlaySequenceOutFrame(seq, totalFrames.value),
       color,
       visible: seq.visible !== false,
+      skipRange,
       thumbnailImageId: seq.kind === 'content-overlay' ? getThumbnailImageId(primaryLayer) : undefined,
       layerType: primaryLayer?.type,
       rotoKeyFrames: physicPaintLayerId !== null

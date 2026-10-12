@@ -118,6 +118,10 @@ export interface FxTrackLayout {
   soundClips?: readonly TimelineSoundClip[];
   fadeIn?: { duration: number };
   fadeOut?: { duration: number };
+  /** Past-out coverage gap [start, endExclusive) from getOverlaySkipRange (D-05).
+   *  null/absent = untrimmed or out >= N — no gap tail. Shape matches
+   *  frameMap's OverlaySkipRange (kept structural to avoid a cycle). */
+  skipRange?: { readonly start: number; readonly endExclusive: number } | null;
 }
 
 /** Frame range for a single key photo within a track */
