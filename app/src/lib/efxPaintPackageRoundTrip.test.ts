@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EfxPaintDocument, PhotoReferenceTransform } from '../efx-paint/document/efxPaintDocument';
 import { EFX_PAINT_PACKAGE_MANIFEST_FILE, EFX_PAINT_PACKAGE_STAGING_PREFIX, loadEfxPaintPackage, savePackage } from './efxPaintPersistence';
 import { resolveFrameMediaBitmap } from './efxPaintMediaRead';
 import type { FrameMediaDecode, FrameMediaLru } from './efxPaintMediaRead';
@@ -683,4 +684,173 @@ describe('efxPaintPackageRoundTrip: the on-disk package contract (52.2-09, D-05/
       buildFrameMediaRelativePath(fixture.rotoLayerId, fixture.groupOverrideKeyIds[0]),
     ]));
   });
+});
+
+/**
+ * 261012-c9a Task 1 RED — the SAVE-01/02/03 save-TWICE on-disk regression
+ * (Known Gaps PKG-06 / BKG-09).
+ *
+ * The first save masks the bug: it populates `savedCacheFingerprints` and
+ * `packageFileTokens`, so a single-save test passes vacuously. Every case here
+ * therefore saves #1 with the baseline document, clears the mocks that record
+ * save #2's OWN work, then saves again with exactly ONE display field edited
+ * and asserts on the SECOND save's `changedFiles` + cache publication, plus a
+ * reopen that must hold the edit. Against the pre-fix builders all six cases
+ * fail at the layer-file containment assertion — the layer change token never
+ * saw the display fields, so `layers/<rotoLayerId>.json` is never staged.
+ */
+describe('display-class edits survive save-close-reopen (261012-c9a)', () => {
+  /** The display-class slice of a document — what a display edit may move. */
+  interface DisplaySnapshot {
+    readonly photo: {
+      readonly visibleInStudio: boolean;
+      readonly opacity: number;
+      readonly transform: PhotoReferenceTransform;
+      readonly transformLocked: boolean;
+    } | null;
+    readonly background: {
+      readonly transform: PhotoReferenceTransform;
+      readonly transformLocked: boolean;
+    };
+  }
+
+  function displaySnapshot(document: EfxPaintDocument): DisplaySnapshot {
+    const photo = document.photoReference;
+    return {
+      photo: photo === null
+        ? null
+        : {
+            visibleInStudio: photo.visibleInStudio,
+            opacity: photo.opacity,
+            transform: { ...photo.transform },
+            transformLocked: photo.transformLocked,
+          },
+      background: {
+        transform: { ...document.background.transform },
+        transformLocked: document.background.transformLocked,
+      },
+    };
+  }
+
+  /** Save #2's own work: replace ONLY the roto layer's document, leave the plain layer alone. */
+  async function saveWithDisplayEdit(
+    fixture: PackageFixture,
+    mutate: (document: EfxPaintDocument) => EfxPaintDocument,
+  ) {
+    const documents = fixture.documents();
+    const entry = documents.get(fixture.rotoLayerId);
+    if (!entry) throw new Error(`fixture has no roto layer "${fixture.rotoLayerId}"`);
+    documents.set(fixture.rotoLayerId, { ...entry, document: mutate(entry.document) });
+    return savePackage(fixture.root, {
+      project: fixture.project,
+      documents,
+      projectId: fixture.projectId,
+      cacheRoot: fixture.cacheRoot,
+    });
+  }
+
+  const photoTrack = (document: EfxPaintDocument) => {
+    const photo = document.photoReference;
+    if (photo === null) throw new Error('fixture roto document has no photoReference');
+    return photo;
+  };
+
+  /** The SAME six display fields as the unit suite — one field per entry. */
+  const DISPLAY_EDITS: ReadonlyArray<{
+    readonly label: string;
+    readonly patch: (document: EfxPaintDocument) => EfxPaintDocument;
+  }> = [
+    {
+      label: 'photo-visible',
+      patch: (document) => ({
+        ...document,
+        photoReference: { ...photoTrack(document), visibleInStudio: false },
+      }),
+    },
+    {
+      label: 'photo-opacity',
+      patch: (document) => ({
+        ...document,
+        photoReference: { ...photoTrack(document), opacity: 0.35 },
+      }),
+    },
+    {
+      label: 'photo-transform',
+      patch: (document) => ({
+        ...document,
+        photoReference: {
+          ...photoTrack(document),
+          transform: { x: 40, y: -20, scaleX: 1.5, scaleY: 1.5, rotation: 15 },
+        },
+      }),
+    },
+    {
+      label: 'photo-lock',
+      patch: (document) => ({
+        ...document,
+        photoReference: { ...photoTrack(document), transformLocked: true },
+      }),
+    },
+    {
+      label: 'background-transform',
+      patch: (document) => ({
+        ...document,
+        background: {
+          ...document.background,
+          transform: { x: 12, y: -8, scaleX: 1.25, scaleY: 1.25, rotation: 30 },
+        },
+      }),
+    },
+    {
+      label: 'background-lock',
+      patch: (document) => ({
+        ...document,
+        background: { ...document.background, transformLocked: false },
+      }),
+    },
+  ];
+
+  for (const edit of DISPLAY_EDITS) {
+    it(`${edit.label}: the SECOND save rewrites the roto layer sub-file, publishes the cache leg, and reopen holds the edit`, async () => {
+      const fixture = useFixture(`c9a-${edit.label}`);
+      // SAVE #1 — the settled baseline whose fingerprints mask the bug.
+      await saveFixture(fixture);
+
+      // Clear only the recorders of save #2's own work; implementations stay.
+      publishPhysicPaintCacheGeneration.mockClear();
+      ipcEfxPaintWritePackageLayerFile.mockClear();
+      ipcProjectSave.mockClear();
+      fsWriteFile.mockClear();
+
+      const baselineDocument = (() => {
+        const entry = fixture.documents().get(fixture.rotoLayerId);
+        if (!entry) throw new Error(`fixture has no roto layer "${fixture.rotoLayerId}"`);
+        return entry.document;
+      })();
+      const baselineSnapshot = displaySnapshot(baselineDocument);
+      const editedSnapshot = displaySnapshot(edit.patch(baselineDocument));
+      // The edit is real, not a no-op: the two snapshots are relationships
+      // between named values before anything is asserted about persistence.
+      expect(editedSnapshot).not.toEqual(baselineSnapshot);
+
+      const second = await saveWithDisplayEdit(fixture, edit.patch);
+
+      // THE regression (SAVE-03): the second save rewrites the layer sub-file.
+      expect([...second.changedFiles]).toContain(buildLayerFileRelativePath(fixture.rotoLayerId));
+      // The derived-frame cache leg published instead of deduping to a null
+      // publication (the save fingerprint rotated with the display edit).
+      expect(publishPhysicPaintCacheGeneration).toHaveBeenCalled();
+      expect(ipcEfxPaintWritePackageLayerFile).toHaveBeenCalledWith(
+        fixture.root,
+        expect.any(String),
+        buildLayerFileRelativePath(fixture.rotoLayerId),
+        expect.any(String),
+      );
+
+      // SAVE-01/SAVE-02: reopen holds the edit.
+      const loaded = await reopen(fixture);
+      const roto = loaded.get(fixture.rotoLayerId) as NonNullable<ReturnType<typeof loaded.get>>;
+      expect(displaySnapshot(roto.document)).toEqual(editedSnapshot);
+    });
+  }
 });
