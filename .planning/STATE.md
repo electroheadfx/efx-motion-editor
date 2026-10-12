@@ -21,10 +21,10 @@ current_phase: 53
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-08 after Phase 52.5)
+See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 53 — Integrated v1.0.0 Acceptance
+**Current focus:** Planning next milestone (v1.0.1 / phases 54-57 per the roadmap direction)
 
 ## Current Position
 
