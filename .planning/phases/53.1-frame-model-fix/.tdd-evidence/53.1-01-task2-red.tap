@@ -1,0 +1,50 @@
+TAP version 13
+1..10
+not ok 1 - src/lib/exportEngine.frameList.test.ts > fps timebase (I-4) > every renderFrame call receives project fps 15, not any per-sequence 24 # time=12.35ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "renderFrame fps at global 0: expected undefined to be 15 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/exportEngine.frameList.test.ts:443:73"
+    actual: "undefined"
+    expected: "15"
+    ...
+not ok 2 - src/lib/exportEngine.frameList.test.ts > fps timebase (I-4) > frame 15 maps to 1.0s at project fps 15 (not 0.625s from a 24fps-era sequence fps) # time=0.91ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "expected NaN to be close to 1, received difference is NaN, but expected 0.000005"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/exportEngine.frameList.test.ts:454:31"
+    ...
+ok 3 - src/lib/exportEngine.frameList.test.ts > tail policy (I-1/I-2) > untrimmed content-overlay (absent outFrame) covers every frame 0..N-1 including the last # time=1.21ms
+not ok 4 - src/lib/exportEngine.frameList.test.ts > tail policy (I-1/I-2) > factory-imported untrimmed overlay follows N after a sibling grows the timeline (I-2 freeze is the bug) # time=1.45ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "untrimmed overlay must follow N past its import-time end: expected false to be true // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/exportEngine.frameList.test.ts:488:101"
+    actual: "false"
+    expected: "true"
+    ...
+ok 5 - src/lib/exportEngine.frameList.test.ts > tail policy (I-1/I-2) > trimmed clip with out < N is absent past its exclusive out, and the uncovered range is exactly [16, 17) # time=0.78ms
+not ok 6 - src/lib/exportEngine.frameList.test.ts > past-source extrapolation (I-5) > past the media source with default hold the last source sample is present # time=0.73ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "HOLD keeps the last source sample past the media source: expected 16 to be 15 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/exportEngine.frameList.test.ts:527:88"
+    actual: "16"
+    expected: "15"
+    ...
+not ok 7 - src/lib/exportEngine.frameList.test.ts > past-source extrapolation (I-5) > with loop the sample index wraps past the media source # time=0.68ms
+    ---
+    error:
+        name: "AssertionError"
+        message: "LOOP wraps the sample index past the media source: expected 16 to be +0 // Object.is equality"
+    at: "/Users/lmarques/Dev/efx-motion-editor/app/src/lib/exportEngine.frameList.test.ts:539:82"
+    actual: "16"
+    expected: "0"
+    ...
+ok 8 - src/lib/exportEngine.frameList.test.ts > law corroboration (unchanged) > N law: frameMap enumerates exactly 17 frames (0..16) for video out=16 + paint out=17 # time=0.56ms
+ok 9 - src/lib/exportEngine.frameList.test.ts > law corroboration (unchanged) > overlay outFrame gate is exclusive (corroboration of the law under measurement) # time=0.45ms
+ok 10 - src/lib/exportEngine.frameList.test.ts > I-6 sub-finding: paint fade-out reaches opacity 0 on the clip’s last frame (index 16) # time=1.84ms

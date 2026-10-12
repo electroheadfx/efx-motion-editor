@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 18
+open_count: 20
 waived_count: 5
 fixed_count: 69
-total_count: 92
-last_updated: 2026-10-12T10:09:09.907Z
+total_count: 94
+last_updated: 2026-10-12T21:07:58.234Z
 ---
 
 # Broken Windows Ledger
@@ -107,6 +107,8 @@ last_updated: 2026-10-12T10:09:09.907Z
 | 90 | quick-261006-bdk | deviation | app/src/components/physic-paint/view/PhysicsPaintStudioView.test.ts |  | Pre-existing full-suite failure at module load: _setPaintMarkDirtyCallback is not a function (paintStore/projectStore circular init); reproduced at base 06db7a46, out of scope for 261006-bdk, logged in deferred-items.md | open |  | 2026-10-06T07:22:49.055Z |  |
 | 91 | 52.5 | unrun-verify | .planning/phases/52.5-physic-paint-document-sound-track/52.5-01b-PLAN.md |  | 01b live/native visual UAT (must_haves human-check block: stain/trim/launcher gesture truth table rows) not yet run — routed to user retest | open |  | 2026-10-07T09:28:34.433Z |  |
 | 92 | quick-261012-exn | deviation | app/src/lib/documentSoundPeaks.test.ts |  | Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits) | open |  | 2026-10-12T10:09:09.907Z |  |
+| 93 | 53.1 | deviation | app/src/types/sequence.ts |  | Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2) | open |  | 2026-10-12T21:07:57.950Z |  |
+| 94 | 53.1 | deviation | app/src/lib/previewRenderer.ts |  | Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param) | open |  | 2026-10-12T21:07:58.234Z |  |
 
 ````json
 [
@@ -1231,6 +1233,32 @@ last_updated: 2026-10-12T10:09:09.907Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-12T10:09:09.907Z",
+    "resolved_at": null,
+    "milestone": "v1.0.1"
+  },
+  {
+    "id": 93,
+    "kind": "deviation",
+    "phase": "53.1",
+    "file": "app/src/types/sequence.ts",
+    "line": null,
+    "description": "Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-12T21:07:57.950Z",
+    "resolved_at": null,
+    "milestone": "v1.0.1"
+  },
+  {
+    "id": 94,
+    "kind": "deviation",
+    "phase": "53.1",
+    "file": "app/src/lib/previewRenderer.ts",
+    "line": null,
+    "description": "Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-12T21:07:58.234Z",
     "resolved_at": null,
     "milestone": "v1.0.1"
   }

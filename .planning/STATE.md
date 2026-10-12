@@ -4,17 +4,17 @@ milestone: v1.0.1
 milestone_name: Debt Patch Release
 current_phase: "53.1"
 current_phase_name: Frame-model fix (INSERTED)
-status: Ready to execute
-stopped_at: Phase 53.1 planned — 6 plans
-last_updated: "2026-10-12T21:20:00.000Z"
+status: executing
+stopped_at: Completed 53.1-01-PLAN.md
+last_updated: "2026-10-12T21:08:00.999Z"
 last_activity: 2026-10-12
-last_activity_desc: Phase 53.1 planned — 6 plans (locked order 1→6); plan-checker iter 2 (1 blocker owned at 02→03 extrapolation edge, accepted at wrap-up)
-state_head: 08accf6415518d35ba9adf3f763d9402f8482f2c
+last_activity_desc: Phase 53.1 execution started
+state_head: a46aa5a1c59e6543541968250743ecd14de5e684
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 6
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v1.0.1 PATCH milestone (3 debt quicks + inserted Phase 53.1 Frame-model fix, then release) — then v1.1.0 = phases 54-57 (Preact / paint-host / aquarelle / spectral)
+**Current focus:** Phase 53.1 — Frame-model fix (INSERTED)
 
 ## Current Position
 
-Phase: 53.1 (Frame-model fix (INSERTED)) — READY TO EXECUTE
-Plan: 6 plans (53.1-01..53.1-06) — locked order 1→6, one user gate per plan
+Phase: 53.1 (Frame-model fix (INSERTED)) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
-Last activity: 2026-10-12 - Phase 53.1 planned — 6 plans (RED → I-4 → I-1/I-2 → I-5 → I-3 → UAT); commit 08accf64
+Last activity: 2026-10-12 — Phase 53.1 execution started
 
 ## Performance Metrics
 
@@ -145,6 +145,7 @@ Last activity: 2026-10-12 - Phase 53.1 planned — 6 plans (RED → I-4 → I-1/
 | Phase quick-261010-en9 P261010-en9 | 14min | 3 tasks | 28 files |
 | Phase quick-261010-g2n P261010-g2n | 11min | 3 tasks | 8 files |
 | Phase quick-261010-ht0 P261010-ht0 | 780 | 3 tasks | 29 files |
+| Phase 53.1 P53.1-01 | 31 | 2 tasks | 28 files |
 
 ## Accumulated Context
 
@@ -410,6 +411,9 @@ Recent decisions affecting current work:
 - [Phase quick-261010-g2n]: Replace file-row is a real small-button; handleReplace never-copy body byte-stable
 - [Phase quick-261010-ht0]: fadeCurves.ts is the single home of f(t); fade-in loudness = 1-f(1-t) mirrors fade-out = 1-f(t)
 - [Phase quick-261010-ht0]: sourceFrames is a required positive integer (clean break); Offset bounds read it first, trim-out fallback gone
+- [Phase 53.1]: 53.1-01: D-01/D-15 clean break — per-sequence fps deleted from Sequence/MceSequence/factories/serializer/parser; no shim, no migration
+- [Phase 53.1]: 53.1-01: D-02 shared reader — exportRenderer, previewRenderer video seek, and SequenceList all read projectStore.fps; frame 15 = 1.0s at 15fps
+- [Phase 53.1]: 53.1-01: target-law frame-LIST contract landed with four exact describes; tail-policy + past-source stay red until 53.1-02/03; I-6 fade pins byte-stable (D-13)
 
 ### Pending Todos
 
@@ -487,9 +491,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-12T16:51:35.221Z
-Stopped at: Phase 53.1 planned — 6 plans
-Resume file: .planning/phases/53.1-frame-model-fix/53.1-01-PLAN.md
+Last session: 2026-10-12T21:08:00.978Z
+Stopped at: Completed 53.1-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
