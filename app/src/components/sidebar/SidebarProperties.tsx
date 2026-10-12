@@ -12,6 +12,7 @@ import { blurStore } from '../../stores/blurStore';
 import { sequenceStore } from '../../stores/sequenceStore';
 import { uiStore } from '../../stores/uiStore';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
+import { getOverlaySkipRange, totalFrames } from '../../lib/frameMap';
 import { isFxLayer } from '../../types/layer';
 import type { Layer, BlendMode, KeyframeValues } from '../../types/layer';
 import type { Sequence } from '../../types/sequence';
@@ -190,6 +191,47 @@ export function SidebarProperties({ layer, isContentOverlay, sequence }: {
           </div>
         </div>
       )}
+
+      {/* D-12: per-clip coverage law readout — one compact readout derived from
+          the I-1 resolver skip region via getOverlaySkipRange (never a second
+          gap computation). Names the same gap the timeline hatches (D-05) and
+          the export warns about (D-06). No playhead/end transient: the playhead
+          is transient state, not clip law. */}
+      {isContentOverlay && sequence && (() => {
+        const N = totalFrames.value;
+        const inFrame = sequence.inFrame ?? 0;
+        const outFrame = sequence.outFrame;
+        const skip = getOverlaySkipRange({
+          inFrame,
+          outFrame,
+          extrapolation: sequence.extrapolation,
+          sourceFrameCount: 1,
+        }, N);
+        const rangeLine = `${inFrame} → ${outFrame ?? N} (exclusive)`;
+        let tailLine: string;
+        if (outFrame == null) {
+          tailLine = 'Follows sequence end';
+        } else if (skip) {
+          const last = skip.endExclusive - 1;
+          const gapText = skip.start === last ? `${skip.start}` : `${skip.start}..${last}`;
+          tailLine = `Ends at ${outFrame} · sequence runs to ${N} · gap ${gapText}`;
+        } else {
+          tailLine = `Ends at ${outFrame}`;
+        }
+        return (
+          <div class="pb-1 space-y-0.5">
+            <div class="text-[10px] uppercase tracking-wide" style={{ color: 'var(--sidebar-text-secondary)' }}>
+              Coverage
+            </div>
+            <div class="text-[11px]" style={{ color: 'var(--sidebar-text-primary)' }}>
+              {rangeLine}
+            </div>
+            <div class="text-[11px]" style={{ color: 'var(--sidebar-text-secondary)' }}>
+              {tailLine}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Keyframe nav bar + Blur slider (same row, gap 16px per Pencil spec) -- only for non-base layers */}
       {!layer.isBase && (
