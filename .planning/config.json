@@ -2,24 +2,48 @@
   "mode": "yolo",
   "parallelization": false,
   "commit_docs": true,
-  "model_profile": "quality",
+  "model_profile": "adaptive",
   "workflow": {
-    "research": true,
+    "research": false,
     "plan_check": true,
     "verifier": true,
     "_auto_chain_active": false,
     "tdd_mode": true,
-    "use_worktrees": true,
+    "use_worktrees": false,
     "nyquist_validation": true,
     "ai_integration_phase": true,
     "test_command": "pnpm --filter efx-motion-editor exec vitest run",
-    "ui_safety_gate": true
+    "ui_safety_gate": true,
+    "pattern_mapper": true,
+    "ui_phase": true,
+    "code_review": true,
+    "ui_review": true,
+    "auto_advance": false,
+    "compact_content": false,
+    "research_before_questions": false,
+    "skip_discuss": false,
+    "code_review_depth": "deep"
   },
   "granularity": "fine",
   "git": {
-    "allow_default_branch_commits": true
+    "allow_default_branch_commits": true,
+    "branching_strategy": "phase",
+    "create_tag": false,
+    "base_branch": "dev"
   },
   "mempalace": {
     "enabled": true
+  },
+  "intel": {
+    "enabled": false
+  },
+  "graphify": {
+    "enabled": false
+  },
+  "plan_review": {
+    "source_grounding": true
+  },
+  "hooks": {
+    "context_warnings": true
   }
 }
