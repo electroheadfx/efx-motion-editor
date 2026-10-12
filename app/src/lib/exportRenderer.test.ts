@@ -13,9 +13,11 @@ import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPain
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildPhysicPaintRotoPhysicalRevision, requirePhysicPaintRotoInlineBytes } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
-import type { PreviewPhysicPaintFrameSource, PreviewRenderer } from './previewRenderer';
+import type { PreviewPhysicPaintFrameSource } from './previewRenderer';
+import { PreviewRenderer } from './previewRenderer';
+import { imageStore } from '../stores/imageStore';
 import type { FrameEntry } from '../types/timeline';
-import { preloadExportImages, renderGlobalFrame } from './exportRenderer';
+import { preloadExportImages, renderGlobalFrame, renderFrameWithMotionBlur } from './exportRenderer';
 import { resolveMissingRotoFrameDraw } from './rotoFrameDraw';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
@@ -842,5 +844,183 @@ describe('exportRenderer', () => {
     it.todo('preserves existing cross-dissolve rendering when overlap has no glTransition');
     it.todo('creates and reuses offscreen canvases for dual-capture');
     it.todo('computes eased progress via computeTransitionProgress');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261012-kxg motion-blur sub-frame settle (VID-04).
+//
+// renderFrameWithMotionBlur must settle the video seek after EVERY sub-frame
+// render (the second pass draws the post-seek pixels — the placeholder is
+// never accumulated) and the element must land on the FINAL sub-frame's
+// target time: globalFrame 0, 3 subFrames -> (2/3) / fps. Node env: scoped
+// vi.stubGlobal harness (window/document/HTMLVideoElement), real
+// PreviewRenderer, FakeVideo always 'ready'.
+// ---------------------------------------------------------------------------
+
+describe('261012-kxg motion-blur sub-frame settle (VID-04)', () => {
+  class FakeVideo extends EventTarget {
+    readyState = 0;
+    seeking = false;
+    duration = 10;
+    error: { code: number } | null = null;
+    videoWidth = 4;
+    videoHeight = 3;
+    preload = '';
+    muted = false;
+    playsInline = false;
+    private currentSrc = '';
+    private time = 0;
+
+    get src(): string {
+      return this.currentSrc;
+    }
+
+    set src(value: string) {
+      this.currentSrc = value;
+      setTimeout(() => {
+        this.readyState = 2;
+        this.dispatchEvent(new Event('loadeddata'));
+      }, 0);
+    }
+
+    get currentTime(): number {
+      return this.time;
+    }
+
+    set currentTime(value: number) {
+      this.time = value;
+      this.seeking = true;
+      setTimeout(() => {
+        this.seeking = false;
+        this.dispatchEvent(new Event('seeked'));
+      }, 0);
+    }
+
+    pause(): void {}
+    load(): void {}
+    removeAttribute(name: string): void {
+      if (name === 'src') this.currentSrc = '';
+    }
+  }
+
+  // Noop 2d context: draw ops are inert; pixel reads/writes back the
+  // accumulator contract (getImageData/createImageData/putImageData).
+  class NoopContext {
+    fillStyle = '#000';
+    globalAlpha = 1;
+    globalCompositeOperation = 'source-over';
+    font = '';
+    textAlign = 'left';
+    textBaseline = 'alphabetic';
+    save(): void {}
+    restore(): void {}
+    scale(): void {}
+    translate(): void {}
+    rotate(): void {}
+    clearRect(): void {}
+    setTransform(): void {}
+    fillRect(): void {}
+    fillText(): void {}
+    drawImage(): void {}
+    getImageData(_x: number, _y: number, w: number, h: number): { data: Uint8ClampedArray } {
+      return { data: new Uint8ClampedArray(w * h * 4) };
+    }
+    createImageData(w: number, h: number): { data: Uint8ClampedArray } {
+      return { data: new Uint8ClampedArray(w * h * 4) };
+    }
+    putImageData(): void {}
+  }
+
+  class NoopCanvas {
+    width = 4;
+    height = 3;
+    clientWidth = 0;
+    clientHeight = 0;
+    offsetWidth = 0;
+    offsetHeight = 0;
+    getContext(contextId: string): unknown {
+      return contextId === '2d' ? new NoopContext() : null;
+    }
+  }
+
+  const createdVideos: FakeVideo[] = [];
+
+  beforeEach(() => {
+    createdVideos.length = 0;
+    vi.stubGlobal('window', { devicePixelRatio: 1 });
+    vi.stubGlobal('document', {
+      createElement: (tag: string) => {
+        if (tag === 'canvas') return new NoopCanvas();
+        if (tag === 'video') {
+          const video = new FakeVideo();
+          createdVideos.push(video);
+          return video;
+        }
+        return {};
+      },
+    });
+    vi.stubGlobal('HTMLVideoElement', FakeVideo);
+    vi.stubGlobal('HTMLImageElement', class {});
+    vi.stubGlobal('HTMLCanvasElement', NoopCanvas);
+  });
+
+  afterEach(() => {
+    imageStore.videoAssets.value = [];
+    vi.unstubAllGlobals();
+  });
+
+  it('settles once per motion-blur sub-frame and lands on the final sub-frame time', async () => {
+    imageStore.videoAssets.value = [
+      { id: 'va-1', name: 'HyperEspaceSUPP.mov', path: '/Movies/HyperEspaceSUPP.mov' },
+    ];
+    const videoLayer: Layer = {
+      id: 'video-layer',
+      name: 'Vidéo SUPP',
+      type: 'video',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'video', videoAssetId: 'va-1' },
+    };
+    const sequence: Sequence = {
+      id: 'seq-1',
+      kind: 'content',
+      name: 'Seq',
+      fps: 24,
+      width: 4,
+      height: 3,
+      keyPhotos: [{ id: 'kp-1', imageId: '', holdFrames: 3 }],
+      layers: [videoLayer],
+    };
+    const fm: FrameEntry[] = [0, 1, 2].map((globalFrame) => ({
+      kind: 'content' as const,
+      globalFrame,
+      sequenceId: 'seq-1',
+      keyPhotoId: 'kp-1',
+      imageId: '',
+      localFrame: globalFrame,
+    }));
+    const renderer = new PreviewRenderer(new NoopCanvas() as unknown as HTMLCanvasElement);
+    const settleSpy = vi.spyOn(renderer, 'settleVideoSeeks');
+
+    await renderFrameWithMotionBlur(
+      renderer,
+      new NoopCanvas() as unknown as HTMLCanvasElement,
+      0,
+      fm,
+      [sequence],
+      [],
+      3,   // subFrames
+      180, // shutterAngle
+      false,
+    );
+
+    expect(settleSpy).toHaveBeenCalledTimes(3);
+    expect(createdVideos).toHaveLength(1);
+    // Final sub-frame: i = subFrames - 1 = 2 -> t = 2/3 -> time = (2/3) / fps.
+    expect(createdVideos[0].currentTime).toBeCloseTo((2 / 3) / 24, 5);
+    renderer.dispose();
   });
 });

@@ -18,6 +18,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **VID-01**: Imported video is referenced by absolute `source_path`, never copied into the package
 - [x] **VID-02**: `.mce` manifest records video assets (`video_assets` on `MceProject`) and reopens from the source path
 - [x] **VID-03**: `videos/` package provisioning retired — no video directory is written
+- [ ] **VID-04**: Exported frames never bake the video loading placeholder; video layers await loadeddata and seeked, or the export stops naming the clip
 
 ### SND — Document-sound Decode Readiness (SND-07)
 
@@ -61,6 +62,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-01 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-02 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-03 | Quick 2 | Approved (UAT 2026-10-12) |
+| VID-04 | Quick 4 | Pending |
 | SND-01 | Quick 3 | Approved (UAT 2026-10-12) |
 | SND-02 | Quick 3 | Approved (UAT 2026-10-12) |
 | REL-01 | Release | Pending |
@@ -68,11 +70,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 **Coverage:**
 
-- v1 requirements: 10 total
-- Mapped to quicks/release: 10
+- v1 requirements: 11 total
+- Mapped to quicks/release: 11
 - Unmapped: 0 ✓
 - Note: v1.0.1 is quicks-only (no GSD phases); "Phase" column names the dispatch unit.
 
 ---
 *Requirements defined: 2026-10-12*
 *Last updated: 2026-10-12 — SAVE-01/02/03 (Quick 1), VID-01/02/03 (Quick 2), SND-01/02 (Quick 3) approved after native UAT; 8/10 approved, REL-01/02 next (Release quick)*
+*2026-10-12 — VID-04 defined (Quick 4, export video readiness); 11/11 mapped, status Pending until native UAT*

@@ -8,6 +8,7 @@ import { registerDocument, reset as resetEfxPaintStore } from '../stores/efxPain
 import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import type { EfxPaintDocument, InternalPaintTrack } from '../efx-paint/document/efxPaintDocument';
 import { exportStore } from '../stores/exportStore';
+import { imageStore } from '../stores/imageStore';
 import type {
   PhysicPaintRotoLoopClip,
   PhysicPaintRotoRealKeyPayload,
@@ -97,7 +98,7 @@ import {
   renderFrameWithMotionBlur as renderFrameWithMotionBlurMock,
   preloadExportImages as preloadExportImagesMock,
 } from './exportRenderer';
-import { exportCreateDir as exportCreateDirMock } from './ipc';
+import { exportCreateDir as exportCreateDirMock, exportWritePng as exportWritePngMock } from './ipc';
 
 // --- Minimal canvas harness (same discipline as exportEngine.loops.test.ts) ---
 
@@ -247,6 +248,64 @@ function makeFm(count: number): FrameEntry[] {
   }));
 }
 
+// --- FakeVideo harness (261012-kxg, VID-04) ---------------------------------
+// Module-scope videoMode drives construction behavior: 'ready' fires loadeddata
+// (readyState 2) on the next macrotask after src is set; 'error' fires 'error'.
+// Installed as BOTH document.createElement('video') and the global
+// HTMLVideoElement so previewRenderer's instanceof checks match.
+
+type VideoMode = 'ready' | 'error';
+let videoMode: VideoMode = 'ready';
+
+class FakeVideo extends EventTarget {
+  readyState = 0;
+  seeking = false;
+  duration = 10;
+  error: { code: number } | null = null;
+  videoWidth = 4;
+  videoHeight = 3;
+  preload = '';
+  muted = false;
+  playsInline = false;
+  private currentSrc = '';
+  private time = 0;
+
+  get src(): string {
+    return this.currentSrc;
+  }
+
+  set src(value: string) {
+    this.currentSrc = value;
+    setTimeout(() => {
+      if (videoMode === 'ready') {
+        this.readyState = 2;
+        this.dispatchEvent(new Event('loadeddata'));
+      } else {
+        this.dispatchEvent(new Event('error'));
+      }
+    }, 0);
+  }
+
+  get currentTime(): number {
+    return this.time;
+  }
+
+  set currentTime(value: number) {
+    this.time = value;
+    this.seeking = true;
+    setTimeout(() => {
+      this.seeking = false;
+      this.dispatchEvent(new Event('seeked'));
+    }, 0);
+  }
+
+  pause(): void {}
+  load(): void {}
+  removeAttribute(name: string): void {
+    if (name === 'src') this.currentSrc = '';
+  }
+}
+
 beforeEach(() => {
   _setPhysicPaintMarkDirtyCallback(() => {});
   physicPaintStore.reset();
@@ -266,14 +325,19 @@ beforeEach(() => {
   hoisted.audioBuffers = new Map();
   vi.clearAllMocks();
   vi.stubGlobal('window', { devicePixelRatio: 1 });
-  vi.stubGlobal('document', { createElement: (tag: string) => tag === 'canvas' ? new TestCanvas() : {} });
+  vi.stubGlobal('document', {
+    createElement: (tag: string) =>
+      tag === 'canvas' ? new TestCanvas() : tag === 'video' ? new FakeVideo() : {},
+  });
   vi.stubGlobal('HTMLCanvasElement', TestCanvas);
   vi.stubGlobal('HTMLImageElement', class {});
-  vi.stubGlobal('HTMLVideoElement', class {});
+  vi.stubGlobal('HTMLVideoElement', FakeVideo);
 });
 
 afterEach(() => {
   physicPaintStore.reset();
+  imageStore.videoAssets.value = [];
+  videoMode = 'ready';
   vi.unstubAllGlobals();
 });
 
@@ -467,5 +531,63 @@ describe('261012-exn export buffer diagnostic (SND-02)', () => {
     await startExport();
 
     expect(exportStore.progress.peek().status).toBe('complete');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 261012-kxg export fail-closed video (VID-04).
+//
+// The export loop must never bake the "Loading <name>..." placeholder: a video
+// source that errors (or never reaches readyState 2) fail-CLOSES the export
+// with an error naming the clip BEFORE any frame/PNG is written (SND-02 law),
+// while a healthy video exports all frames (settle returns false → one render
+// per frame). exportRenderer is mocked here; the readiness chain runs on the
+// real PreviewRenderer against the FakeVideo harness above.
+// ---------------------------------------------------------------------------
+
+describe('261012-kxg export fail-closed video (VID-04)', () => {
+  function makeVideoLayer(): Layer {
+    return {
+      id: 'video-layer',
+      name: 'Vidéo SUPP',
+      type: 'video',
+      visible: true,
+      opacity: 1,
+      blendMode: 'normal',
+      transform: defaultTransform(),
+      source: { type: 'video', videoAssetId: 'va-1' },
+    };
+  }
+
+  function seedVideoAssets(): void {
+    imageStore.videoAssets.value = [
+      { id: 'va-1', name: 'HyperEspaceSUPP.mov', path: '/Movies/HyperEspaceSUPP.mov' },
+    ];
+  }
+
+  it('a video that errors fail-closes naming the clip before any frame or PNG', async () => {
+    seedVideoAssets();
+    videoMode = 'error';
+    hoisted.sequences = [makeSequence([makeVideoLayer()])];
+    hoisted.fm = makeFm(4);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('error');
+    expect(exportStore.progress.peek().errorMessage ?? '').toContain('Vidéo SUPP');
+    expect(renderGlobalFrameMock).not.toHaveBeenCalled();
+    expect(exportWritePngMock).not.toHaveBeenCalled();
+  });
+
+  it('a ready video exports every frame (settle is a no-op when nothing seeks)', async () => {
+    seedVideoAssets();
+    videoMode = 'ready';
+    hoisted.sequences = [makeSequence([makeVideoLayer()])];
+    hoisted.fm = makeFm(4);
+
+    await startExport();
+
+    expect(exportStore.progress.peek().status).toBe('complete');
+    expect(renderGlobalFrameMock).toHaveBeenCalledTimes(4);
   });
 });
