@@ -7,7 +7,7 @@ TAURI_DIR="$REPO_ROOT/app/src-tauri"
 CONFIG_PATH="$TAURI_DIR/tauri.conf.json"
 TARGET_DIR="$TAURI_DIR/target"
 PRODUCT_NAME="EFX Motion Editor"
-PRODUCT_VERSION="1.0.0"
+PRODUCT_VERSION="1.0.1"
 PRODUCT_IDENTIFIER="com.efxlab.motion-editor"
 
 CODESIGN=/usr/bin/codesign
