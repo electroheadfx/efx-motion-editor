@@ -237,11 +237,22 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 **Plans:** 6 plans
 
 Plans:
+**Wave 1**
 - [ ] 53.1-01-PLAN.md — RED target-law frame-LIST + GREEN I-4 project-fps timebase (tracer)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 53.1-02-PLAN.md — GREEN I-1/I-2 resolveOverlaySample + untrimmed outFrame
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 53.1-03-PLAN.md — GREEN I-5 per-clip extrapolation + inspector Hold/Loop
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 53.1-04-PLAN.md — GREEN I-3 playhead clamp 0..N + ruler end limit
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 53.1-05-PLAN.md — GREEN I-3 gap tail + export warnings + inspector coverage
+
+**Wave 6** *(blocked on Wave 5 completion)*
 - [ ] 53.1-06-PLAN.md — Live signed-build UAT checklist (user judges)
 
 Context: `.planning/phases/53.1-frame-model-fix/53.1-CONTEXT.md`

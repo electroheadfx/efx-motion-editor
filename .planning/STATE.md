@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0.1
 milestone_name: Debt Patch Release
 current_phase: "53.1"
-current_phase_name: Frame-model fix
-status: Phase inserted — ready to plan
-stopped_at: Phase 53.1 context gathered
-last_updated: "2026-10-12T16:51:35.240Z"
+current_phase_name: Frame-model fix (INSERTED)
+status: Ready to execute
+stopped_at: Phase 53.1 planned — 6 plans
+last_updated: "2026-10-12T21:20:00.000Z"
 last_activity: 2026-10-12
-last_activity_desc: Quick 3 (261012-exn) document-sound decode readiness — UAT APPROVED 4/4; SND-01/02 closed; 8/10 v1.0.1 requirements approved
-state_head: 9948572beb1e6a69e1d13519fce21af0b2231299
+last_activity_desc: Phase 53.1 planned — 6 plans (locked order 1→6); plan-checker iter 2 (1 blocker owned at 02→03 extrapolation edge, accepted at wrap-up)
+state_head: 08accf6415518d35ba9adf3f763d9402f8482f2c
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 6
   completed_plans: 0
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 
 ## Current Position
 
-Phase: 53.1 — Frame-model fix (not planned yet)
-Plan: —
-Status: Phase inserted — ready to plan
-Last activity: 2026-10-12 - Completed quick task 261012-kxg: Export video readiness (v1.0.1 release blocker) — loadeddata preload + seeked settle + fail-closed (VID-04); automated-ready, native UAT pending
+Phase: 53.1 (Frame-model fix (INSERTED)) — READY TO EXECUTE
+Plan: 6 plans (53.1-01..53.1-06) — locked order 1→6, one user gate per plan
+Status: Ready to execute
+Last activity: 2026-10-12 - Phase 53.1 planned — 6 plans (RED → I-4 → I-1/I-2 → I-5 → I-3 → UAT); commit 08accf64
 
 ## Performance Metrics
 
@@ -488,8 +488,8 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-10-12T16:51:35.221Z
-Stopped at: Phase 53.1 context gathered
-Resume file: .planning/phases/53.1-frame-model-fix/53.1-CONTEXT.md
+Stopped at: Phase 53.1 planned — 6 plans
+Resume file: .planning/phases/53.1-frame-model-fix/53.1-01-PLAN.md
 
 ## Operator Next Steps
 
