@@ -11,11 +11,14 @@ export interface VideoAsset {
   id: string;
   name: string;
   path: string; // absolute on-disk source path of the referenced video (disk reference, never copied)
-  /** Source length in frames at project fps, when known (53.1-03: feeds the
-   *  export gate's past-source extrapolation). Absent = unknown → the export
-   *  gate treats the source as unlimited (MAX_SAFE_INTEGER). */
-  sourceFrameCount?: number;
 }
+
+/** Probed source length in frames per video asset id (53.1-03: feeds the export
+ *  gate's past-source extrapolation). Plain Map, NOT a signal — this is a
+ *  draw-path → export-gate handoff, and a reactivity write from the canvas draw
+ *  path is a Rule 6 cycle ("Cycle detected"). Absent = unknown → the export gate
+ *  treats the source as unlimited (MAX_SAFE_INTEGER). */
+const videoSourceFrameCounts = new Map<string, number>();
 
 /** Metadata for an imported audio asset */
 export interface AudioAsset {
@@ -124,7 +127,19 @@ export const imageStore = {
   /** Remove a video asset from the store */
   removeVideoAsset(id: string) {
     videoAssets.value = videoAssets.value.filter(v => v.id !== id);
+    videoSourceFrameCounts.delete(id);
     _markDirty?.();
+  },
+
+  /** Record the probed source length (frames) for a video asset. Plain cache
+   *  write — never touches a signal, so it is legal on the canvas draw path. */
+  setVideoSourceFrameCount(assetId: string, count: number) {
+    videoSourceFrameCounts.set(assetId, count);
+  },
+
+  /** Probed source length for a video asset, or undefined when not yet known. */
+  getVideoSourceFrameCount(assetId: string): number | undefined {
+    return videoSourceFrameCounts.get(assetId);
   },
 
   /** Remove an audio asset from the store */
@@ -303,5 +318,6 @@ export const imageStore = {
       isImporting.value = false;
       importErrors.value = [];
     });
+    videoSourceFrameCounts.clear();
   },
 };

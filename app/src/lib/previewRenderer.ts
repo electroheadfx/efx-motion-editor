@@ -998,24 +998,25 @@ export class PreviewRenderer {
    * no wait beyond readiness — per-frame seeks are settleVideoSeeks' job.
    */
   /**
-   * Cache the probed `sourceFrameCount` on the VideoAsset row so the export
-   * gate (`buildOverlaySampleClip`) feeds the same past-source law as the seek
+   * Cache the probed source length (frames) so the export gate
+   * (`buildOverlaySampleClip`) feeds the same past-source law as the seek
    * path. Called from `resolveVideoSource` (preview draws) and from
    * `preloadVideos` AFTER settle — at preload time `video.duration` is still 0
    * when `resolveVideoSource` first runs, so the cache would otherwise stay
    * cold through a reopen→export that never previews.
+   *
+   * Writes a plain Map, never `imageStore.videoAssets` — a reactivity write on
+   * the canvas draw path cascades past signals-core's batchIteration guard
+   * ("Cycle detected"). Rule 6: no signal writes from a draw path.
    */
   private cacheVideoSourceFrameCount(layer: Layer, video: HTMLVideoElement, fps: number): void {
     if (video.duration <= 0) return;
     const source = layer.source;
     if (source.type !== 'video') return;
-    const sourceFrameCount = Math.max(1, Math.round(video.duration * fps));
-    const asset = imageStore.videoAssets.peek().find((v) => v.id === source.videoAssetId);
-    if (asset && asset.sourceFrameCount !== sourceFrameCount) {
-      imageStore.videoAssets.value = imageStore.videoAssets.value.map((v) =>
-        v.id === asset.id ? { ...v, sourceFrameCount } : v,
-      );
-    }
+    imageStore.setVideoSourceFrameCount(
+      source.videoAssetId,
+      Math.max(1, Math.round(video.duration * fps)),
+    );
   }
 
   async preloadVideos(sequences: readonly Sequence[], signal?: AbortSignal): Promise<void> {

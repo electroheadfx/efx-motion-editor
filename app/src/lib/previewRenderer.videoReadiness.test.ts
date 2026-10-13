@@ -190,19 +190,35 @@ describe('261012-kxg export video readiness (VID-04)', () => {
     expect(createdVideos[0].readyState).toBe(2);
   });
 
-  // LOOP-persist audit (WARNING-2): the export gate reads
-  // VideoAsset.sourceFrameCount. At preload time duration is still 0 when
+  // LOOP-persist audit (WARNING-2): the export gate reads the probed
+  // source-length cache. At preload time duration is still 0 when
   // resolveVideoSource first runs, so the count must be re-probed AFTER
   // settle or a reopen -> export that never previews falls back to
   // MAX_SAFE_INTEGER and disagrees with the seek path.
-  it('A1b: caches sourceFrameCount on the VideoAsset after preload settle', async () => {
+  it('A1b: caches the probed source length after preload settle', async () => {
     seedVideoAssets();
 
     await renderer.preloadVideos([makeVideoSequence()]);
 
     // FakeVideo.duration = 10, projectStore.fps = 24 -> 240 frames.
-    const asset = imageStore.videoAssets.peek().find((v) => v.id === 'va-1');
-    expect(asset?.sourceFrameCount).toBe(240);
+    expect(imageStore.getVideoSourceFrameCount('va-1')).toBe(240);
+  });
+
+  // Rule 6 (efx-preact-reactivity): a reactivity write from the canvas draw
+  // path cascades past signals-core's batchIteration guard ("Cycle detected").
+  // The probed source length is a plain cache — the draw must never touch
+  // imageStore.videoAssets. This pin watches the signal's array identity.
+  it('A1c: the draw path never writes the videoAssets signal', () => {
+    seedVideoAssets();
+    const before = imageStore.videoAssets.value;
+
+    // resolveVideoSource is the draw-path entry that used to write the signal.
+    (renderer as unknown as {
+      resolveVideoSource: (l: Layer, frame: number, fps: number) => unknown;
+    }).resolveVideoSource(makeVideoLayer(), 0, 24);
+
+    expect(imageStore.videoAssets.value).toBe(before);
+    expect(imageStore.getVideoSourceFrameCount('va-1')).toBe(240);
   });
 
   it('A2: a video that fires error rejects naming the clip (fail-closed)', async () => {

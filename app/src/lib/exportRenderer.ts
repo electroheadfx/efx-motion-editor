@@ -66,10 +66,10 @@ function interpolateLayers(seq: Sequence, localFrame: number) {
 
 /** Build the clip view for resolveOverlaySample (D-03) at the export overlay gate.
  *  extrapolation is the I-5 input (D-07): the Sequence field, never a literal.
- *  sourceFrameCount: image-sequences know their length; video uses the cached
- *  VideoAsset.sourceFrameCount when known (53.1-03) and falls back to unlimited
- *  when the media metadata has not been probed yet; FX generators have no
- *  source limit.
+ *  sourceFrameCount: image-sequences know their length; video uses the probed
+ *  source-length cache (imageStore.getVideoSourceFrameCount) when known (53.1-03)
+ *  and falls back to unlimited when the media metadata has not been probed yet;
+ *  FX generators have no source limit.
  *  outFrame carries the roto-extended effective end (getTimelineOverlaySequenceOutFrame)
  *  so a trimmed FX clip whose physic-paint display runs past the authored out still
  *  renders its roto content — absent outFrame stays absent (untrimmed follows N). */
@@ -79,9 +79,7 @@ function buildOverlaySampleClip(seq: Sequence, N: number): OverlaySampleClip {
   if (primaryLayer?.source.type === 'image-sequence') {
     sourceFrameCount = Math.max(1, primaryLayer.source.imageIds.length);
   } else if (primaryLayer?.source.type === 'video') {
-    const videoAssetId = primaryLayer.source.videoAssetId;
-    const asset = imageStore.videoAssets.peek().find((v) => v.id === videoAssetId);
-    const known = asset?.sourceFrameCount;
+    const known = imageStore.getVideoSourceFrameCount(primaryLayer.source.videoAssetId);
     if (typeof known === 'number' && Number.isInteger(known) && known > 0) {
       sourceFrameCount = known;
     }

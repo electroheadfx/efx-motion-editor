@@ -62,7 +62,7 @@ describe('ExportProgress coverage-gap warnings (WARNING-1)', () => {
       resumeFromFrame: null,
     };
 
-    const tree = ExportProgress({}) as unknown;
+    const tree = ExportProgress() as unknown;
     const text = collectText(tree).join('\n');
 
     expect(text).toContain('Vidéo SUPP could not be prepared');
@@ -81,7 +81,7 @@ describe('ExportProgress coverage-gap warnings (WARNING-1)', () => {
       resumeFromFrame: null,
     };
 
-    const text = collectText(ExportProgress({}) as unknown).join('\n');
+    const text = collectText(ExportProgress() as unknown).join('\n');
     expect(text).toContain('runs to 17 but its clip ends at 16');
   });
 
@@ -96,7 +96,7 @@ describe('ExportProgress coverage-gap warnings (WARNING-1)', () => {
       resumeFromFrame: null,
     };
 
-    const text = collectText(ExportProgress({}) as unknown).join('\n');
+    const text = collectText(ExportProgress() as unknown).join('\n');
     expect(text).not.toContain('Coverage gaps');
   });
 });

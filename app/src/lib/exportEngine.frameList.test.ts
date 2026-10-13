@@ -345,16 +345,18 @@ beforeEach(() => {
   exportStore.motionBlurEnabled.value = false;
   exportStore.format.value = 'png';
   imageStore.videoAssets.value = [
-    // 16-frame .mov: the export gate needs the source length to apply I-5
-    // past-source extrapolation (53.1-03 feeds the real count).
-    { id: 'va-1', name: 'HyperEspaceSUPP.mov', path: '/Movies/HyperEspaceSUPP.mov', sourceFrameCount: SOURCE_FRAME_COUNT },
+    { id: 'va-1', name: 'HyperEspaceSUPP.mov', path: '/Movies/HyperEspaceSUPP.mov' },
   ];
+  // 16-frame .mov: the export gate reads the probed source-length cache to
+  // apply I-5 past-source extrapolation (53.1-03 feeds the real count).
+  imageStore.setVideoSourceFrameCount('va-1', SOURCE_FRAME_COUNT);
 });
 
 afterEach(() => {
   physicPaintStore.reset();
   resetEfxPaintStore();
   imageStore.videoAssets.value = [];
+  imageStore.reset();
   vi.unstubAllGlobals();
 });
 
