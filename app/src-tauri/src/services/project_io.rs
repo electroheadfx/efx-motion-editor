@@ -282,7 +282,28 @@ mod tests {
             height: 1080,
             created_at: "2026-03-03T10:00:00Z".into(),
             modified_at: "2026-03-03T10:00:00Z".into(),
-            sequences: vec![],
+            sequences: vec![MceSequence {
+                id: "seq-1".into(),
+                name: "Looping Clip".into(),
+                fps: 24,
+                width: 1920,
+                height: 1080,
+                order: 0,
+                key_photos: vec![],
+                layers: vec![],
+                kind: None,
+                // 53.1 D-07 / I-5 (LOOP-persist fix): the past-source law must
+                // survive save -> close -> reopen. An undeclared Rust field is
+                // silently dropped by serde and every save would erase LOOP.
+                extrapolation: Some("loop".into()),
+                in_frame: None,
+                out_frame: None,
+                visible: None,
+                fade_in: None,
+                fade_out: None,
+                cross_dissolve: None,
+                gl_transition: None,
+            }],
             images: vec![MceImageRef {
                 id: "img-1".into(),
                 original_filename: "photo.jpg".into(),
@@ -351,6 +372,10 @@ mod tests {
             loaded.video_assets[0].source_path,
             "/Users/test/Movies/clip.mp4"
         );
+        // 53.1 D-07 / I-5: LOOP survives the serde round-trip. Without the
+        // declared field this is None and hydrate silently reverts to 'hold'.
+        assert_eq!(loaded.sequences.len(), 1);
+        assert_eq!(loaded.sequences[0].extrapolation.as_deref(), Some("loop"));
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -628,6 +653,7 @@ mod tests {
                 keyframes: vec![],
             }],
             kind: Some("content".into()),
+            extrapolation: None,
             in_frame: None,
             out_frame: None,
             visible: None,
@@ -669,6 +695,7 @@ mod tests {
                 keyframes: vec![],
             }],
             kind: Some("fx".into()),
+            extrapolation: None,
             in_frame: Some(0),
             out_frame: Some(100),
             visible: None,
@@ -713,6 +740,7 @@ mod tests {
                 keyframes: vec![],
             }],
             kind: Some("fx".into()),
+            extrapolation: None,
             in_frame: Some(10),
             out_frame: Some(90),
             visible: Some(true),

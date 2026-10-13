@@ -136,6 +136,12 @@ pub struct MceSequence {
     /// "content" or "fx" (None defaults to "content" on frontend)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// Per-clip past-source extrapolation (53.1 D-07 / I-5): "hold" or "loop".
+    /// MUST be declared here as well as in the TS `MceSequence` — the open path
+    /// deserializes through serde (`open_project`), which silently drops any key
+    /// this struct does not name (261012-d6q dual-language law).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extrapolation: Option<String>,
     /// FX sequence start frame
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub in_frame: Option<u32>,
