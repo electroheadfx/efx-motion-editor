@@ -148,6 +148,94 @@ pub struct VideoQualityArgs {
     pub prores_profile: String,
 }
 
+/// Build the full FFmpeg argv (everything after the binary) for `encode_video`.
+/// Pure: no process spawn, no filesystem. Single source of output options so a
+/// second call site cannot drift (261013-ctd).
+/// Per D-03: ProRes (prores_ks), H.264 (libx264), AV1 (libsvtav1)
+/// Per D-13: Sensible defaults per codec
+/// Audio muxing: if audio_path is Some, muxes pre-rendered WAV into output.
+/// ProRes uses pcm_s16le; H.264/AV1 use AAC at 192k.
+pub(crate) fn encode_video_args(
+    png_dir: &str,
+    glob_pattern: &str,
+    output_path: &str,
+    codec: &str,
+    fps: u32,
+    quality_args: &VideoQualityArgs,
+    audio_path: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let input_pattern = format!("{}/{}", png_dir, glob_pattern);
+
+    let mut args: Vec<String> = Vec::new();
+    args.push("-y".to_string());
+    args.push("-framerate".to_string());
+    args.push(fps.to_string());
+    args.push("-i".to_string());
+    args.push(input_pattern);
+
+    // Add audio input BEFORE any output options (FFmpeg requires all inputs first)
+    if let Some(audio) = audio_path {
+        args.push("-i".to_string());
+        args.push(audio.to_string());
+    }
+
+    // Codec-specific video arguments per D-03, D-13
+    match codec {
+        "prores" => {
+            args.push("-c:v".to_string());
+            args.push("prores_ks".to_string());
+            args.push("-profile:v".to_string());
+            args.push(prores_profile_num(&quality_args.prores_profile).to_string());
+            args.push("-pix_fmt".to_string());
+            args.push("yuva444p10le".to_string()); // RGBA ProRes
+        }
+        "h264" => {
+            args.push("-c:v".to_string());
+            args.push("libx264".to_string());
+            args.push("-crf".to_string());
+            args.push(quality_args.h264_crf.to_string());
+            args.push("-preset".to_string());
+            args.push("medium".to_string());
+            args.push("-pix_fmt".to_string());
+            args.push("yuv420p".to_string());
+        }
+        "av1" => {
+            args.push("-c:v".to_string());
+            args.push("libsvtav1".to_string());
+            args.push("-crf".to_string());
+            args.push(quality_args.av1_crf.to_string());
+            args.push("-pix_fmt".to_string());
+            args.push("yuv420p".to_string());
+        }
+        _ => return Err(format!("Unknown codec: {codec}")),
+    }
+
+    // Audio muxing (per D-01, replaces D-15's -an when audio is provided)
+    if audio_path.is_some() {
+        args.push("-map".to_string());
+        args.push("0:v:0".to_string());
+        args.push("-map".to_string());
+        args.push("1:a:0".to_string());
+        // Pitfall 3: audio codec depends on container
+        match codec {
+            "prores" => {
+                args.push("-c:a".to_string());
+                args.push("pcm_s16le".to_string());
+            }
+            _ => {
+                args.push("-c:a".to_string());
+                args.push("aac".to_string());
+                args.push("-b:a".to_string());
+                args.push("192k".to_string());
+            }
+        };
+    } else {
+        args.push("-an".to_string());
+    }
+    args.push(output_path.to_string());
+    Ok(args)
+}
+
 /// Encode a video from a PNG image sequence using FFmpeg.
 /// Per D-03: ProRes (prores_ks), H.264 (libx264), AV1 (libsvtav1)
 /// Per D-13: Sensible defaults per codec
@@ -167,56 +255,18 @@ pub fn encode_video(
         return Err("FFmpeg binary not found. Download it first.".to_string());
     }
 
-    let input_pattern = format!("{}/{}", png_dir, glob_pattern);
+    let args = encode_video_args(
+        png_dir,
+        glob_pattern,
+        output_path,
+        codec,
+        fps,
+        quality_args,
+        audio_path,
+    )?;
 
-    let mut cmd = Command::new(&ffmpeg);
-    cmd.args(["-y", "-framerate", &fps.to_string()]);
-    cmd.args(["-i", &input_pattern]);
-
-    // Add audio input BEFORE any output options (FFmpeg requires all inputs first)
-    if let Some(audio) = audio_path {
-        cmd.args(["-i", audio]);
-    }
-
-    // Codec-specific video arguments per D-03, D-13
-    match codec {
-        "prores" => {
-            cmd.args(["-c:v", "prores_ks"]);
-            cmd.args(["-profile:v", prores_profile_num(&quality_args.prores_profile)]);
-            cmd.args(["-pix_fmt", "yuva444p10le"]); // RGBA ProRes
-        }
-        "h264" => {
-            cmd.args(["-c:v", "libx264"]);
-            cmd.args(["-crf", &quality_args.h264_crf.to_string()]);
-            cmd.args(["-preset", "medium"]);
-            cmd.args(["-pix_fmt", "yuv420p"]);
-        }
-        "av1" => {
-            cmd.args(["-c:v", "libsvtav1"]);
-            cmd.args(["-crf", &quality_args.av1_crf.to_string()]);
-            cmd.args(["-pix_fmt", "yuv420p"]);
-        }
-        _ => return Err(format!("Unknown codec: {codec}")),
-    }
-
-    // Audio muxing (per D-01, replaces D-15's -an when audio is provided)
-    if audio_path.is_some() {
-        cmd.args(["-map", "0:v:0", "-map", "1:a:0"]);
-        // Pitfall 3: audio codec depends on container
-        match codec {
-            "prores" => {
-                cmd.args(["-c:a", "pcm_s16le"]);
-            }
-            _ => {
-                cmd.args(["-c:a", "aac", "-b:a", "192k"]);
-            }
-        };
-    } else {
-        cmd.arg("-an");
-    }
-    cmd.arg(output_path);
-
-    let output = cmd
+    let output = Command::new(&ffmpeg)
+        .args(&args)
         .output()
         .map_err(|e| format!("FFmpeg failed to start: {e}"))?;
 
@@ -226,4 +276,121 @@ pub fn encode_video(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn quality() -> VideoQualityArgs {
+        VideoQualityArgs {
+            h264_crf: 23,
+            av1_crf: 30,
+            prores_profile: "hq".into(),
+        }
+    }
+
+    /// Leg (a): audio Some + h264 — argv carries the mux-truncation output
+    /// option and both map flags; audio codec arm is aac 192k.
+    /// RED today: the extract still omits the mux-truncation option.
+    #[test]
+    fn encode_video_args_audio_h264_carries_shortest_and_maps() {
+        let argv = encode_video_args(
+            "/tmp/pngs",
+            "frame-%04d.png",
+            "/tmp/out.mp4",
+            "h264",
+            24,
+            &quality(),
+            Some("mix.wav"),
+        )
+        .expect("h264 audio argv builds");
+
+        assert!(
+            argv.contains(&"-map".to_string()),
+            "audio arm must map both streams: {argv:?}"
+        );
+        assert!(argv.contains(&"0:v:0".to_string()), "missing video map: {argv:?}");
+        assert!(argv.contains(&"1:a:0".to_string()), "missing audio map: {argv:?}");
+        assert!(
+            argv.contains(&"-shortest".to_string()),
+            "mux-truncation output option missing — container will keep the longer stream (EXP-01): {argv:?}"
+        );
+        assert!(argv.contains(&"aac".to_string()), "missing aac: {argv:?}");
+        assert!(argv.contains(&"192k".to_string()), "missing 192k: {argv:?}");
+        assert_eq!(
+            argv.last().map(String::as_str),
+            Some("/tmp/out.mp4"),
+            "output_path must be last: {argv:?}"
+        );
+    }
+
+    /// Leg (b): audio Some + prores — same mux-truncation option; pcm_s16le.
+    /// RED today: same omission.
+    #[test]
+    fn encode_video_args_audio_prores_carries_shortest_and_pcm() {
+        let argv = encode_video_args(
+            "/tmp/pngs",
+            "frame-%04d.png",
+            "/tmp/out.mov",
+            "prores",
+            24,
+            &quality(),
+            Some("mix.wav"),
+        )
+        .expect("prores audio argv builds");
+
+        assert!(
+            argv.contains(&"-shortest".to_string()),
+            "mux-truncation output option missing (EXP-01): {argv:?}"
+        );
+        assert!(argv.contains(&"pcm_s16le".to_string()), "missing pcm_s16le: {argv:?}");
+        assert!(argv.contains(&"yuva444p10le".to_string()), "missing yuva444p10le: {argv:?}");
+    }
+
+    /// Leg (c): audio None — argv keeps `-an`, has no audio map pair, and
+    /// omits the mux-truncation option (video-only encode is unchanged).
+    /// Green after extract (non-regression arm).
+    #[test]
+    fn encode_video_args_no_audio_keeps_an_and_omits_shortest() {
+        let argv = encode_video_args(
+            "/tmp/pngs",
+            "frame-%04d.png",
+            "/tmp/out.mp4",
+            "h264",
+            24,
+            &quality(),
+            None,
+        )
+        .expect("video-only argv builds");
+
+        assert!(argv.contains(&"-an".to_string()), "video-only must keep -an: {argv:?}");
+        assert!(
+            !argv.contains(&"-map".to_string()),
+            "video-only must not map an audio stream: {argv:?}"
+        );
+        assert!(
+            !argv.contains(&"-shortest".to_string()),
+            "video-only must not carry the mux-truncation option: {argv:?}"
+        );
+    }
+
+    /// Leg (d): unknown codec still returns Err (fail-closed, existing law).
+    #[test]
+    fn encode_video_args_unknown_codec_errors() {
+        let err = encode_video_args(
+            "/tmp/pngs",
+            "frame-%04d.png",
+            "/tmp/out.gif",
+            "gif",
+            24,
+            &quality(),
+            None,
+        )
+        .expect_err("unknown codec must fail closed");
+        assert!(
+            err.contains("gif"),
+            "error must name the codec: {err}"
+        );
+    }
 }

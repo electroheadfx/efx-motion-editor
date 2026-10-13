@@ -91,3 +91,19 @@ describe('261012-exn mixer buffer pre-scan (SND-02)', () => {
     ).rejects.toThrow(/Broken Vocals\.wav/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 261013-ctd export mux duration pad (EXP-01).
+//
+// The mixer's anti-cut-off duration pad stays INTERNAL. The export mux duration
+// law truncates the longer stream at mux time in ffmpeg (option 2), never by
+// dropping the pad. This source-scan pin is green-at-birth — it guards the
+// brief's do-not-touch law, it is not the RED leg.
+// ---------------------------------------------------------------------------
+
+describe('261013-ctd export mux duration pad (EXP-01)', () => {
+  it('keeps the anti-cut-off duration pad expression', () => {
+    const source = readSource('./audioExportMixer.ts');
+    expect(source).toContain('totalDurationSec + 0.5');
+  });
+});
