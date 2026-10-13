@@ -28,12 +28,9 @@ export interface MceProject {
    *  every save erases the gallery video rows (same hole class as audio). */
   video_assets?: MceVideoAssetRef[];
   audio_tracks?: MceAudioTrack[];  // Optional for backward compat with v7
-  motion_blur?: {
-    enabled: boolean;
-    shutter_angle: number;        // 0-360 degrees
-    preview_quality: string;       // 'off' | 'low' | 'medium'
-    export_sub_frames: number;     // 4, 8, or 16
-  };
+  /** Motion-blur prefs (N2). MUST be declared in Rust `MceProject` too —
+   *  serde drops undeclared keys, so a one-language field resets on reopen. */
+  motion_blur?: MceMotionBlur;
   /**
    * v1.0 EFX Paint documents keyed by parent layer id (F1 co-change with Rust).
    *
@@ -83,9 +80,18 @@ export interface MceSequence {
   /** Per-clip past-source extrapolation ('hold' | 'loop'). Optional on disk;
    *  hydrate maps absent/unknown to 'hold' (D-09 clean break, no legacy-LOOP). */
   extrapolation?: string;
+  /** FX sequence visibility (N4). Absent/true = visible, false = hidden.
+   *  MUST be emitted by buildMceProject and declared in Rust `MceSequence`
+   *  — the dual-language law (261012-d6q): a key either language omits is
+   *  silently dropped at the serde boundary. */
+  visible?: boolean;
   fade_in?: MceTransition;
   fade_out?: MceTransition;
   cross_dissolve?: MceTransition;
+  /** GL shader transition to the next sequence (mutually exclusive with
+   *  cross_dissolve). Was emitted untyped via a spread before the field-diff
+   *  contract existed. */
+  gl_transition?: MceGlTransition;
 }
 
 /** Layer definition within a sequence in the .mce file */
@@ -171,6 +177,22 @@ export interface MceTransition {
   mode: string;        // 'transparency' | 'solid'
   color: string;       // hex color
   curve: string;       // EasingType string
+}
+
+/** GL shader transition definition within a sequence */
+export interface MceGlTransition {
+  shader_id: string;
+  params: Record<string, number>;
+  duration: number;
+  curve: string;
+}
+
+/** Motion-blur prefs carried on the project (N2, dual-language law). */
+export interface MceMotionBlur {
+  enabled: boolean;
+  shutter_angle: number;        // 0-360 degrees
+  preview_quality: string;       // 'off' | 'low' | 'medium'
+  export_sub_frames: number;     // 4, 8, or 16
 }
 
 /** Keyframe definition for serialization (snake_case fields) */

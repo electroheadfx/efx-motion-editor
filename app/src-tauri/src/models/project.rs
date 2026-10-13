@@ -55,6 +55,20 @@ pub struct MceProject {
     /// TS owns the schema (52.2-02 `buildPackageManifest`).
     #[serde(default, rename = "efxPaint", skip_serializing_if = "HashMap::is_empty")]
     pub efx_paint: HashMap<String, Value>,
+    /// Motion-blur prefs (N2). MUST be declared here as well as in the TS
+    /// `MceProject` — serde drops undeclared keys, so without this field every
+    /// save -> close -> reopen reset the prefs to defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion_blur: Option<MceMotionBlur>,
+}
+
+/// Motion-blur prefs carried on the project (N2, dual-language law).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceMotionBlur {
+    pub enabled: bool,
+    pub shutter_angle: f64,
+    pub preview_quality: String,
+    pub export_sub_frames: u32,
 }
 
 /// Gallery audio asset reference (261009-rko): absolute on-disk path, never
@@ -249,6 +263,11 @@ pub struct MceLayerSource {
     pub image_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_path: Option<String>,
+    /// Stable video asset reference (N1). MUST be declared here as well as in
+    /// the TS `MceLayerSource` — serde drops undeclared keys, so without this
+    /// field every open fell back to a fresh UUID and duplicated the gallery row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_asset_id: Option<String>,
     // Generator common fields
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lock_seed: Option<bool>,
@@ -329,6 +348,10 @@ pub struct MceKeyframeValues {
     pub rotation: f64,
     #[serde(default)]
     pub blur: f64,
+    /// FX layer source-property overrides (N3). MUST be declared here as well
+    /// as in the TS `MceKeyframeValues` — serde drops undeclared keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_overrides: Option<std::collections::HashMap<String, f64>>,
 }
 
 /// Gradient stop in the .mce file format (v13+)

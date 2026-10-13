@@ -270,6 +270,9 @@ function buildMceProject(): RuntimeMceProject {
       // D-09: always write the explicit choice so save -> close -> reopen
       // preserves LOOP. Absent on disk still hydrates to 'hold'.
       extrapolation: seq.extrapolation,
+      // N4: FX hide/show must be written explicitly — an omitted key is
+      // dropped at the serde boundary and the sequence reopens visible.
+      ...(seq.visible != null ? { visible: seq.visible } : {}),
       ...(seq.fadeIn ? {
         fade_in: {
           type: seq.fadeIn.type,
@@ -612,6 +615,9 @@ function hydrateFromMce(
         // D-09 HOLD-everywhere: absent/unknown maps to 'hold'; only the
         // literal 'loop' selects LOOP. No legacy-LOOP branch, no migration.
         extrapolation: mceSeq.extrapolation === 'loop' ? 'loop' : 'hold',
+        // N4: FX hide/show hydrates from the same explicit key buildMceProject
+        // writes. Absent = visible (the store's undefined/true = visible law).
+        ...(mceSeq.visible != null ? { visible: mceSeq.visible } : {}),
         ...(mceSeq.in_frame != null ? { inFrame: mceSeq.in_frame } : {}),
         ...(mceSeq.out_frame != null ? { outFrame: mceSeq.out_frame } : {}),
         ...(mceSeq.fade_in ? {

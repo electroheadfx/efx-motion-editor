@@ -182,7 +182,8 @@ fn move_file(src: &Path, dst: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::models::project::{
-        MceImageRef, MceLayer, MceLayerSource, MceLayerTransform, MceSequence, MceVideoAssetRef,
+        MceImageRef, MceKeyframe, MceKeyframeValues, MceLayer, MceLayerSource, MceLayerTransform,
+        MceMotionBlur, MceSequence, MceVideoAssetRef,
     };
 
     #[test]
@@ -290,7 +291,58 @@ mod tests {
                 height: 1080,
                 order: 0,
                 key_photos: vec![],
-                layers: vec![],
+                layers: vec![MceLayer {
+                    id: "layer-vid".into(),
+                    name: "Video".into(),
+                    layer_type: "video".into(),
+                    visible: true,
+                    opacity: 1.0,
+                    blend_mode: "normal".into(),
+                    transform: MceLayerTransform {
+                        x: 0.0,
+                        y: 0.0,
+                        scale_x: 1.0,
+                        scale_y: 1.0,
+                        scale: None,
+                        rotation: 0.0,
+                        crop_top: 0.0,
+                        crop_right: 0.0,
+                        crop_bottom: 0.0,
+                        crop_left: 0.0,
+                    },
+                    source: MceLayerSource {
+                        source_type: "video".into(),
+                        video_path: Some("/Users/test/Movies/clip.mp4".into()),
+                        // N1: the stable asset reference must survive the serde
+                        // boundary or every open regenerates a fresh UUID and
+                        // duplicates the gallery row.
+                        video_asset_id: Some("vid-1".into()),
+                        ..default_source()
+                    },
+                    is_base: false,
+                    order: 0,
+                    blur: None,
+                    paint_bg_color: None,
+                    keyframes: vec![MceKeyframe {
+                        frame: 10,
+                        easing: "linear".into(),
+                        values: MceKeyframeValues {
+                            opacity: 1.0,
+                            x: 0.0,
+                            y: 0.0,
+                            scale_x: 1.0,
+                            scale_y: 1.0,
+                            rotation: 0.0,
+                            blur: 0.0,
+                            // N3: FX source-property overrides must survive the
+                            // serde boundary (same drop-hole class as N1).
+                            source_overrides: Some(std::collections::HashMap::from([
+                                ("density".to_string(), 0.35),
+                                ("size".to_string(), 2.0),
+                            ])),
+                        },
+                    }],
+                }],
                 kind: None,
                 // 53.1 D-07 / I-5 (LOOP-persist fix): the past-source law must
                 // survive save -> close -> reopen. An undeclared Rust field is
@@ -298,7 +350,8 @@ mod tests {
                 extrapolation: Some("loop".into()),
                 in_frame: None,
                 out_frame: None,
-                visible: None,
+                // N4: FX hide/show must survive the serde boundary.
+                visible: Some(false),
                 fade_in: None,
                 fade_out: None,
                 cross_dissolve: None,
@@ -333,6 +386,12 @@ mod tests {
                 "layer-1".to_string(),
                 package_layer_index.clone(),
             )]),
+            motion_blur: Some(MceMotionBlur {
+                enabled: true,
+                shutter_angle: 180.0,
+                preview_quality: "medium".into(),
+                export_sub_frames: 8,
+            }),
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -376,6 +435,26 @@ mod tests {
         // declared field this is None and hydrate silently reverts to 'hold'.
         assert_eq!(loaded.sequences.len(), 1);
         assert_eq!(loaded.sequences[0].extrapolation.as_deref(), Some("loop"));
+        // N4: FX hide/show survives the serde round-trip.
+        assert_eq!(loaded.sequences[0].visible, Some(false));
+        // N1: the layer's stable video asset reference survives the serde
+        // round-trip — without the declared field this is None and hydrate
+        // falls back to crypto.randomUUID(), duplicating the gallery row.
+        assert_eq!(loaded.sequences[0].layers.len(), 1);
+        let src = &loaded.sequences[0].layers[0].source;
+        assert_eq!(src.video_asset_id.as_deref(), Some("vid-1"));
+        assert_eq!(src.video_path.as_deref(), Some("/Users/test/Movies/clip.mp4"));
+        // N3: FX source-property overrides survive the serde round-trip.
+        let kv = &loaded.sequences[0].layers[0].keyframes[0].values;
+        let so = kv.source_overrides.as_ref().expect("source_overrides survives");
+        assert_eq!(so.get("density"), Some(&0.35));
+        assert_eq!(so.get("size"), Some(&2.0));
+        // N2: motion-blur prefs survive the serde round-trip.
+        let mb = loaded.motion_blur.as_ref().expect("motion_blur survives");
+        assert!(mb.enabled);
+        assert_eq!(mb.shutter_angle, 180.0);
+        assert_eq!(mb.preview_quality, "medium");
+        assert_eq!(mb.export_sub_frames, 8);
 
         let _ = std::fs::remove_dir_all(&test_dir);
     }
@@ -509,6 +588,7 @@ mod tests {
             format_version: None,
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
+            motion_blur: None,
         };
 
         let mce_path = test_dir.join("empty_keys.mce");
@@ -555,6 +635,7 @@ mod tests {
             format_version: Some(1),
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
+            motion_blur: None,
         };
 
         // A package save hands the manifest its STAGING path, and the renderer
@@ -609,6 +690,7 @@ mod tests {
             format_version: Some(1),
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
+            motion_blur: None,
         };
 
         let mce_path = test_dir.join("test.mce");
@@ -649,6 +731,7 @@ mod tests {
             image_id: None,
             image_ids: vec![],
             video_path: None,
+            video_asset_id: None,
             lock_seed: None,
             seed: None,
             density: None,
@@ -822,6 +905,7 @@ mod tests {
             format_version: Some(1),
             project_id: None,
             efx_paint: std::collections::HashMap::new(),
+            motion_blur: None,
         };
 
         // Save
