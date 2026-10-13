@@ -36,7 +36,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### REL — Release
 
 - [x] **REL-01**: v1.0.1 version single-source across all five surfaces
-- [ ] **REL-02**: Signed/notarized DMG published as GitHub Latest via `efx-motion-release`
+- [x] **REL-02**: Signed/notarized DMG published as GitHub Latest via `efx-motion-release`
 
 ## v2 Requirements
 
@@ -76,7 +76,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXP-01 | Quick 5 | Approved (UAT 2026-10-13) |
 | MBL-01 | Quick 6 (field-drop-hole closure) | Satisfied (deterministic pin, no UAT gate) |
 | REL-01 | Release | Approved (release 2026-10-13) |
-| REL-02 | Release | Pending (re-release) |
+| REL-02 | Release | Approved (published 2026-10-13, re-release) |
 
 **Coverage:**
 
@@ -94,3 +94,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 *2026-10-13 — v1.0.1 RELEASE PUBLISHED (GitHub Latest, signed/notarized DMG, SHA256 ec28c913…0f1c, downloaded-artifact verified). VID-04 approved (video exports clean on the signed build, loading placeholder never baked); REL-01 approved (releaseContract 11/11, five surfaces pinned to 1.0.1); REL-02 approved. **12/12 v1 requirements approved — milestone complete.**
 *2026-10-13 — Quick 6 (field-drop-hole closure): MBL-01 defined and satisfied by deterministic pin — motion-blur prefs persist across save → close → reopen. N1 video_asset_id / N2 motion_blur / N3 source_overrides / N4 Sequence.visible all closed with round-trip pins + a TS↔Rust field-diff contract test. 13/13 mapped.*
 *2026-10-13 — The 2026-10-13 v1.0.1 publish was DELETED (known-broken: LOOP persistence + save + Preact cycle; hard rule 11). Milestone stays OPEN through remediation. Quick 261013-fdh closed N1-N4 and added the TS↔Rust field-diff contract test (mechanical enforcement of the dual-language law). REL-02 reverts to Pending (re-release); awaiting the new publish sequence.*
+*2026-10-13 — v1.0.1 REPUBLISHED (GitHub Latest, tag v1.0.1 → ffde6e6a, signed/notarized DMG SHA256 b6fcd11f…3058d). Order held this time: fixes → audit run 2 → field-diff contract pin → gates 6/6 green (vitest, typecheck, build, cargo 152 tests, bash -n, preflight) → signed-build UAT → downloaded-artifact verification PASS on a separate browser download → normal launch without Gatekeeper bypass → publish. REL-02 approved. **13/13 v1 requirements approved.** Stop-conditions 13/13 NOT ACTIVE.*
