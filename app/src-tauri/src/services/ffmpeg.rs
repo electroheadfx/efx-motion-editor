@@ -229,6 +229,10 @@ pub(crate) fn encode_video_args(
                 args.push("192k".to_string());
             }
         };
+        // EXP-01: truncate the longer stream at mux time so container audio and
+        // video durations match (the shorter one). The mixer's anti-cut-off
+        // duration pad stays internal — never dropped.
+        args.push("-shortest".to_string());
     } else {
         args.push("-an".to_string());
     }
@@ -241,6 +245,8 @@ pub(crate) fn encode_video_args(
 /// Per D-13: Sensible defaults per codec
 /// Audio muxing: if audio_path is Some, muxes pre-rendered WAV into output.
 /// ProRes uses pcm_s16le; H.264/AV1 use AAC at 192k.
+/// Audio muxing truncates at mux time so container stream durations match
+/// (EXP-01); the mixer's duration pad stays internal.
 pub fn encode_video(
     png_dir: &str,
     glob_pattern: &str,

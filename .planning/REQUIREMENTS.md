@@ -25,6 +25,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **SND-01**: Playback never silently skips a clip whose buffer failed to decode — awaits the decode or refuses with a visible error
 - [x] **SND-02**: Export mix never silently drops a clip — an undecodable clip surfaces a diagnostic instead of a bare `continue`
 
+### EXP — Export Mux Duration Law
+
+- [ ] **EXP-01**: The exported container's audio and video streams have the same duration (the shorter one)
+
 ### REL — Release
 
 - [ ] **REL-01**: v1.0.1 version single-source across all five surfaces
@@ -65,13 +69,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-04 | Quick 4 | Pending |
 | SND-01 | Quick 3 | Approved (UAT 2026-10-12) |
 | SND-02 | Quick 3 | Approved (UAT 2026-10-12) |
+| EXP-01 | Quick 5 | Pending |
 | REL-01 | Release | Pending |
 | REL-02 | Release | Pending |
 
 **Coverage:**
 
-- v1 requirements: 11 total
-- Mapped to quicks/release: 11
+- v1 requirements: 12 total
+- Mapped to quicks/release: 12
 - Unmapped: 0 ✓
 - Note: v1.0.1 is quicks-only (no GSD phases); "Phase" column names the dispatch unit.
 
@@ -79,3 +84,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 *Requirements defined: 2026-10-12*
 *Last updated: 2026-10-12 — SAVE-01/02/03 (Quick 1), VID-01/02/03 (Quick 2), SND-01/02 (Quick 3) approved after native UAT; 8/10 approved, REL-01/02 next (Release quick)*
 *2026-10-12 — VID-04 defined (Quick 4, export video readiness); 11/11 mapped, status Pending until native UAT*
+*2026-10-13 — EXP-01 defined (Quick 5, export mux duration law, option 2); 12/12 mapped, status Pending until native UAT*
