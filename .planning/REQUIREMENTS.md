@@ -27,7 +27,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### EXP — Export Mux Duration Law
 
-- [ ] **EXP-01**: The exported container's audio and video streams have the same duration (the shorter one)
+- [x] **EXP-01**: The exported container's audio and video streams have the same duration (the shorter one)
 
 ### REL — Release
 
@@ -69,7 +69,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-04 | Quick 4 | Pending |
 | SND-01 | Quick 3 | Approved (UAT 2026-10-12) |
 | SND-02 | Quick 3 | Approved (UAT 2026-10-12) |
-| EXP-01 | Quick 5 | Pending |
+| EXP-01 | Quick 5 | Approved (UAT 2026-10-13) |
 | REL-01 | Release | Pending |
 | REL-02 | Release | Pending |
 
@@ -85,3 +85,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 *Last updated: 2026-10-12 — SAVE-01/02/03 (Quick 1), VID-01/02/03 (Quick 2), SND-01/02 (Quick 3) approved after native UAT; 8/10 approved, REL-01/02 next (Release quick)*
 *2026-10-12 — VID-04 defined (Quick 4, export video readiness); 11/11 mapped, status Pending until native UAT*
 *2026-10-13 — EXP-01 defined (Quick 5, export mux duration law, option 2); 12/12 mapped, status Pending until native UAT*
+*2026-10-13 — EXP-01 (Quick 5) approved after native UAT: container audio duration == video duration on a short export with audio; Preview/VLC/QuickTime agree on the last frame. 9/12 approved (VID-04, REL-01/02 pending)*

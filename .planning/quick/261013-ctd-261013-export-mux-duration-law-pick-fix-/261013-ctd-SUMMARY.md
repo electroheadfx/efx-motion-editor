@@ -44,6 +44,8 @@ patterns-established:
   - "encode_video_args is the single pure argv builder encode_video consumes — the mux-truncation pin lives there, never in a second call site"
 
 requirements-completed: [EXP-01]
+uat_status: passed
+uat_date: 2026-10-13
 
 # Coverage metadata (#1602) — one entry per shipped deliverable. Drives DETERMINISTIC UAT routing in verify-work.
 coverage:
@@ -67,7 +69,11 @@ coverage:
   - id: D2
     description: "Short export with audio — ffprobe confirms container audio duration == video duration (the shorter one); no player divergence on the tail frame"
     requirement: "EXP-01"
-    verification: []
+    verification:
+      - kind: human-uat
+        ref: "live short export with audio, 2026-10-13"
+        status: pass
+        note: "Container audio duration == video duration (the shorter one); player divergence gone (macOS Preview / VLC / QuickTime agree on the last frame)"
     human_judgment: true
     rationale: "Native ffprobe/player judgment on a real export is the acceptance row; the executor does not run the server or perform live UAT"
 
@@ -126,13 +132,15 @@ None — the new surface is exactly the plan's T-261013-CTD-01 mitigation (mux-l
 - `pnpm --filter efx-motion-editor exec vitest run src/lib/audioExportMixer.test.ts` — 7 passed (6 existing byte-untouched + 1 new pad-stay pin).
 - Guardrails: `git diff app/src/lib/audioExportMixer.ts app/src/lib/exportEngine.ts app/src-tauri/src/commands/export.rs` empty; 53.1 frame-model files, version surfaces, exportRenderer/previewRenderer untouched; no version bump.
 
-### Native UAT (user-owned, status = automated-ready)
+### Native UAT (user-owned) — **PASSED 2026-10-13**
 
 | # | Case | Pass condition | Status |
 |---|------|----------------|--------|
-| 1 | Short export with audio, ffprobe | container audio duration == video duration (the shorter one); no player divergence on the tail frame | PENDING |
+| 1 | Short export with audio, ffprobe | container audio duration == video duration (the shorter one); no player divergence on the tail frame | **PASSED** (user live verdict 2026-10-13) |
 
-After UAT pass: this quick is non-blocking for the v1.0.1 release (53.1 frame-model UAT remains the only release gate).
+**UAT verdict (user, 2026-10-13):** exported container audio duration == video duration (the shorter one), confirmed live on a short export with audio. The player divergence is gone — macOS Preview / VLC / QuickTime now agree on the last frame.
+
+This quick is non-blocking for the v1.0.1 release (53.1 frame-model UAT remains the only release gate).
 
 ## Decisions Made
 

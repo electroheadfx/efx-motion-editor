@@ -457,7 +457,7 @@ None yet.
 | 261012-exn | Document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4 (2026-10-12) | 2026-10-12 | f19399e6 | [261012-exn-document-sound-decode-readiness-v1-0-1-q](./quick/261012-exn-document-sound-decode-readiness-v1-0-1-q/) |
 | 261012-hw3 | v1.0.1 Release machinery (REL-01 bump + README + hygiene + gates green) — awaiting user review; sign/notarize/push/publish user-run | 2026-10-12 | 28080ea0 | [261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum](./quick/261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum/) |
 | 261012-kxg | Export video readiness (v1.0.1 release blocker) — loadeddata preload + seeked settle + fail-closed naming clip (VID-04); automated-ready, native UAT pending | 2026-10-12 | b2722a75 | [261012-kxg-export-video-readiness-v1-0-1-release-bl](./quick/261012-kxg-export-video-readiness-v1-0-1-release-bl/) |
-| 261013-ctd | Export mux duration law (v1.0.1 Quick 5) — ffmpeg -shortest on audio arm (EXP-01); automated-ready, native UAT pending | 2026-10-13 | c27b9428 | [261013-ctd-261013-export-mux-duration-law-pick-fix-](./quick/261013-ctd-261013-export-mux-duration-law-pick-fix-/) |
+| 261013-ctd | Export mux duration law (v1.0.1 Quick 5) — ffmpeg -shortest on audio arm (EXP-01) — UAT APPROVED (2026-10-13) | 2026-10-13 | c27b9428 | [261013-ctd-261013-export-mux-duration-law-pick-fix-](./quick/261013-ctd-261013-export-mux-duration-law-pick-fix-/) |
 
 ### Roadmap Evolution
 
