@@ -1274,6 +1274,7 @@ fn manifest_project(name: &str) -> MceProject {
         format_version: None,
         project_id: None,
         efx_paint: std::collections::HashMap::new(),
+        motion_blur: None,
     }
 }
 
