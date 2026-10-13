@@ -1,0 +1,11 @@
+{
+  "command": "cargo test --manifest-path app/src-tauri/Cargo.toml encode_video --lib",
+  "exitCode": 101,
+  "output": "TAP version 13\n1..4\nok 1 - services::ffmpeg::tests::encode_video_args_no_audio_keeps_an_and_omits_shortest\nok 2 - services::ffmpeg::tests::encode_video_args_unknown_codec_errors\nnot ok 3 - services::ffmpeg::tests::encode_video_args_audio_prores_carries_shortest_and_pcm\nnot ok 4 - services::ffmpeg::tests::encode_video_args_audio_h264_carries_shortest_and_maps\n",
+  "targetTest": "services::ffmpeg::tests::encode_video_args_audio_h264_carries_shortest_and_maps",
+  "targetFile": "app/src-tauri/src/services/ffmpeg.rs",
+  "expected": "argv contains -shortest (mux-truncation output option) and both map flags",
+  "actual": "argv omits -shortest; maps present; test panicked at the mux-truncation assertion",
+  "semanticAssessment": "Target test executed and FAILED on the planned mux-truncation assertion for the intended reason (option absent from the extracted builder). Sister RED leg encode_video_args_audio_prores_carries_shortest_and_pcm failed on the same omission. Legs (c) no-audio and (d) unknown-codec passed as planned. No syntax/collection/fixture faults. Format note: cargo libtest has no TAP reporter in this repo, so a faithful parser adapter mapped the real libtest ok/FAILED lines to TAP; counters derived from that real run (4 tests, 2 pass, 2 fail). Raw cargo text preserved outside this report.",
+  "rawCargoOutputPath": "/tmp/ctd-cargo-red-full.txt"
+}

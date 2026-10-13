@@ -5,11 +5,11 @@ milestone_name: Debt Patch Release
 current_phase: "53.1"
 current_phase_name: Frame-model fix (INSERTED)
 status: executing
-stopped_at: Completed 53.1-05-PLAN.md
-last_updated: "2026-10-12T22:49:36.635Z"
-last_activity: 2026-10-12
-last_activity_desc: Phase 53.1 execution started
-state_head: 9c22904c1b7c378a3462e51d8dbff60318602853
+stopped_at: Completed 261013-ctd (export mux duration law, EXP-01)
+last_updated: "2026-10-13T07:28:43.224Z"
+last_activity: 2026-10-13
+last_activity_desc: Completed quick task 261013-ctd: Export mux duration law (EXP-01)
+state_head: c27b94281fe6a9bbaac5377ea89462385c33a3d5
 progress:
   total_phases: 1
   completed_phases: 0
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 Phase: 53.1 (Frame-model fix (INSERTED)) — EXECUTING
 Plan: 6 of 6
 Status: Ready to execute
-Last activity: 2026-10-12 — Phase 53.1 execution started
+Last activity: 2026-10-13 — Completed quick task 261013-ctd: Export mux duration law (EXP-01)
 
 ## Performance Metrics
 
@@ -150,6 +150,7 @@ Last activity: 2026-10-12 — Phase 53.1 execution started
 | Phase 53.1 P53.1-03 | 16min | 2 tasks | 31 files |
 | Phase 53.1 P53.1-04 | 14min | 2 tasks | 5 files |
 | Phase 53.1 P53.1-05 | 20 | 3 tasks | 12 files |
+| Phase quick-261013-ctd P261013-ctd | 7min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -430,6 +431,8 @@ Recent decisions affecting current work:
 - [Phase 53.1]: 53.1-05: D-05 hatched gap tail on the clip's own row from fxTrackLayouts.skipRange (getOverlaySkipRange on the authoritative outFrame); barW stays (out-in)*frameWidth, fades flush, hatch outside both
 - [Phase 53.1]: 53.1-05: D-06/D-14 warnings: string[] parallel to errorMessage — named gap warnings via getOverlaySkipRange never abort and never set error status; export still writes 0..N-1
 - [Phase 53.1]: 53.1-05: D-12 inspector Coverage readout (range line + Follows sequence end / Ends at N · gap) derived from getOverlaySkipRange — three surfaces, one coverage truth
+- [Phase quick-261013-ctd]: Option 2 only: ffmpeg -shortest on the audio arm; mixer anti-cut-off pad stays internal (EXP-01)
+- [Phase quick-261013-ctd]: encode_video_args is the single pure argv builder; mux-truncation pin lives only in its audio arm
 
 ### Pending Todos
 
@@ -454,6 +457,7 @@ None yet.
 | 261012-exn | Document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4 (2026-10-12) | 2026-10-12 | f19399e6 | [261012-exn-document-sound-decode-readiness-v1-0-1-q](./quick/261012-exn-document-sound-decode-readiness-v1-0-1-q/) |
 | 261012-hw3 | v1.0.1 Release machinery (REL-01 bump + README + hygiene + gates green) — awaiting user review; sign/notarize/push/publish user-run | 2026-10-12 | 28080ea0 | [261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum](./quick/261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum/) |
 | 261012-kxg | Export video readiness (v1.0.1 release blocker) — loadeddata preload + seeked settle + fail-closed naming clip (VID-04); automated-ready, native UAT pending | 2026-10-12 | b2722a75 | [261012-kxg-export-video-readiness-v1-0-1-release-bl](./quick/261012-kxg-export-video-readiness-v1-0-1-release-bl/) |
+| 261013-ctd | Export mux duration law (v1.0.1 Quick 5) — ffmpeg -shortest on audio arm (EXP-01); automated-ready, native UAT pending | 2026-10-13 | c27b9428 | [261013-ctd-261013-export-mux-duration-law-pick-fix-](./quick/261013-ctd-261013-export-mux-duration-law-pick-fix-/) |
 
 ### Roadmap Evolution
 
@@ -507,8 +511,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-12T22:49:36.614Z
-Stopped at: Completed 53.1-05-PLAN.md
+Last session: 2026-10-13T07:28:42.975Z
+Stopped at: Completed 261013-ctd (export mux duration law, EXP-01)
 Resume file: None
 
 ## Operator Next Steps

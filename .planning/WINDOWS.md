@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 20
+open_count: 21
 waived_count: 5
 fixed_count: 69
-total_count: 94
-last_updated: 2026-10-12T21:07:58.234Z
+total_count: 95
+last_updated: 2026-10-13T07:28:42.229Z
 ---
 
 # Broken Windows Ledger
@@ -109,6 +109,7 @@ last_updated: 2026-10-12T21:07:58.234Z
 | 92 | quick-261012-exn | deviation | app/src/lib/documentSoundPeaks.test.ts |  | Rule 3 mock maintenance: vi.mock('./audioEngine') factory gained addAudioDecodeError after Task 2 surfaced the catch (zero assertion edits) | open |  | 2026-10-12T10:09:09.907Z |  |
 | 93 | 53.1 | deviation | app/src/types/sequence.ts |  | Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2) | open |  | 2026-10-12T21:07:57.950Z |  |
 | 94 | 53.1 | deviation | app/src/lib/previewRenderer.ts |  | Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param) | open |  | 2026-10-12T21:07:58.234Z |  |
+| 95 | quick-261013-ctd | deviation | app/src-tauri/src/services/ffmpeg.rs |  | TDD GREEN commit typed fix(...) per plan locked style; generic gate table expects feat(...) | open |  | 2026-10-13T07:28:42.229Z |  |
 
 ````json
 [
@@ -1259,6 +1260,19 @@ last_updated: 2026-10-12T21:07:58.234Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-12T21:07:58.234Z",
+    "resolved_at": null,
+    "milestone": "v1.0.1"
+  },
+  {
+    "id": 95,
+    "kind": "deviation",
+    "phase": "quick-261013-ctd",
+    "file": "app/src-tauri/src/services/ffmpeg.rs",
+    "line": null,
+    "description": "TDD GREEN commit typed fix(...) per plan locked style; generic gate table expects feat(...)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-13T07:28:42.229Z",
     "resolved_at": null,
     "milestone": "v1.0.1"
   }
