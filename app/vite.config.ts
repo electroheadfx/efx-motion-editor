@@ -275,7 +275,13 @@ export default defineConfig({
     // (gallery `audio_assets` persistence + gain/fade-curve overlays). The
     // budget is a routing knob, not a behavior contract — raised 1390 → 1420
     // (measured + ~30 kB headroom) on the user's explicit OK.
-    chunkSizeWarningLimit: 1420,
+    // Measured 2026-10-13: 1,423.53 kB after the 53.1 frame-model fix
+    // (resolveOverlaySample tail-policy resolver, Sequence.extrapolation
+    // model, export gap warnings, ruler end-limit + inspector coverage
+    // readout). This is a desktop app shipped in a DMG — there is no
+    // web-download budget. Budget raised 1420 → 2000 on explicit OK
+    // (user decision 2026-10-13: "monte cette limite à 2 MO").
+    chunkSizeWarningLimit: 2000,
     minify: !process.env.TAURI_ENV_DEBUG ? 'esbuild' : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
   },

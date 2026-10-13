@@ -132,10 +132,10 @@ describe('production vite build', () => {
   );
 
   it(
-    'resolved chunkSizeWarningLimit is exactly the documented 1420 desktop budget',
+    'resolved chunkSizeWarningLimit is exactly the documented 2000 desktop budget',
     { timeout: 180_000 },
     () => {
-      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 1420 desktop budget').toBe(1420);
+      expect(captured.chunkLimit, 'chunkSizeWarningLimit must resolve to the documented 2000 desktop budget').toBe(2000);
     },
   );
 
@@ -179,7 +179,7 @@ describe('production vite build', () => {
   );
 
   it(
-    'emits no chunk-size warning at the 1420 desktop budget',
+    'emits no chunk-size warning at the 2000 desktop budget',
     { timeout: 180_000 },
     () => {
       // Measured 2026-08-18: 1107.57 kB after Phase 43.6 (+7.57 kB vs the
@@ -248,11 +248,17 @@ describe('production vite build', () => {
       // 1370 → 1390 (measured value + ~15 kB headroom). Measured 2026-10-07:
       // 1,390.23 kB after the 52.5 UAT round 4 work; budget raised 1390 → 1420
       // on explicit OK (measured + ~30 kB headroom).
+      // Measured 2026-10-13: 1,423.53 kB after the 53.1 frame-model fix
+      // (resolveOverlaySample tail-policy resolver, Sequence.extrapolation
+      // model, export gap warnings, ruler end-limit + inspector coverage
+      // readout). This is a desktop app shipped in a DMG — there is no
+      // web-download budget. Budget raised 1420 → 2000 on explicit OK
+      // (user decision 2026-10-13: "monte cette limite à 2 MO").
       // The production build must not complain about chunk size at all.
       const chunkSizeWarnings = warnings.filter((w) => /chunk.*(size|larger than)/i.test(w));
       expect(
         chunkSizeWarnings.length,
-        'no chunk-size warning may be emitted at the 1420 desktop budget',
+        'no chunk-size warning may be emitted at the 2000 desktop budget',
       ).toBe(0);
     },
   );
