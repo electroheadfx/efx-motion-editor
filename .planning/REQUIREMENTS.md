@@ -18,7 +18,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **VID-01**: Imported video is referenced by absolute `source_path`, never copied into the package
 - [x] **VID-02**: `.mce` manifest records video assets (`video_assets` on `MceProject`) and reopens from the source path
 - [x] **VID-03**: `videos/` package provisioning retired — no video directory is written
-- [ ] **VID-04**: Exported frames never bake the video loading placeholder; video layers await loadeddata and seeked, or the export stops naming the clip
+- [x] **VID-04**: Exported frames never bake the video loading placeholder; video layers await loadeddata and seeked, or the export stops naming the clip
 
 ### SND — Document-sound Decode Readiness (SND-07)
 
@@ -31,8 +31,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### REL — Release
 
-- [ ] **REL-01**: v1.0.1 version single-source across all five surfaces
-- [ ] **REL-02**: Signed/notarized DMG published as GitHub Latest via `efx-motion-release`
+- [x] **REL-01**: v1.0.1 version single-source across all five surfaces
+- [x] **REL-02**: Signed/notarized DMG published as GitHub Latest via `efx-motion-release`
 
 ## v2 Requirements
 
@@ -66,12 +66,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VID-01 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-02 | Quick 2 | Approved (UAT 2026-10-12) |
 | VID-03 | Quick 2 | Approved (UAT 2026-10-12) |
-| VID-04 | Quick 4 | Pending |
+| VID-04 | Quick 4 | Approved (UAT 2026-10-13) |
 | SND-01 | Quick 3 | Approved (UAT 2026-10-12) |
 | SND-02 | Quick 3 | Approved (UAT 2026-10-12) |
 | EXP-01 | Quick 5 | Approved (UAT 2026-10-13) |
-| REL-01 | Release | Pending |
-| REL-02 | Release | Pending |
+| REL-01 | Release | Approved (release 2026-10-13) |
+| REL-02 | Release | Approved (published 2026-10-13) |
 
 **Coverage:**
 
@@ -86,3 +86,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 *2026-10-12 — VID-04 defined (Quick 4, export video readiness); 11/11 mapped, status Pending until native UAT*
 *2026-10-13 — EXP-01 defined (Quick 5, export mux duration law, option 2); 12/12 mapped, status Pending until native UAT*
 *2026-10-13 — EXP-01 (Quick 5) approved after native UAT: container audio duration == video duration on a short export with audio; Preview/VLC/QuickTime agree on the last frame. 9/12 approved (VID-04, REL-01/02 pending)*
+*2026-10-13 — v1.0.1 RELEASE PUBLISHED (GitHub Latest, signed/notarized DMG, SHA256 ec28c913…0f1c, downloaded-artifact verified). VID-04 approved (video exports clean on the signed build, loading placeholder never baked); REL-01 approved (releaseContract 11/11, five surfaces pinned to 1.0.1); REL-02 approved. **12/12 v1 requirements approved — milestone complete.**
