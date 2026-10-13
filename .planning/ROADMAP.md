@@ -28,7 +28,7 @@ PATCH milestone per the semver ladder locked 2026-10-12 (PATCH for debt, MINOR f
 - [ ] Quick 1: Display-class save token — `|bgT:` + `|photoDisplay:` in `buildEfxPaintLayerChangeTokenValue`, `|photoDisplay:` in `buildEfxPaintSaveFingerprint`; save-twice regression test (SAVE-01..03, Known Gaps PKG-06/BKG-09)
 - [ ] Quick 2: Video import joins the disk-reference law — never-copy, `source_path` recorded verbatim; retire `videos/` provisioning (`project_io.rs`), add `video_assets` to `MceProject` (`models/project.rs`) (VID-01..03)
 - [ ] Quick 3: Document-sound decode readiness — `audioEngine.ts` / `audioExportMixer.ts` await or refuse a missing buffer, never silently drop (SND-01..02, Known Gap SND-07)
-- [ ] Phase 53.1: Frame-model fix (INSERTED) — timeline frame-model coherence; release blocker; see Phase Details
+- [x] Phase 53.1: Frame-model fix (INSERTED) — timeline frame-model coherence; release blocker; see Phase Details — COMPLETE 2026-10-13 (live signed-build UAT PASSED)
 - [ ] Release: version single-source bump to 1.0.1 (REL-01) + signed/notarized DMG via `efx-motion-release`, published as GitHub Latest (REL-02) — runs AFTER 53.1 live UAT
 
 </details>
@@ -234,7 +234,7 @@ See: `milestones/v0.8.0-ROADMAP.md` for full details.
 5. GREEN I-3 — playhead can sit on tick N (END STATE); export still writes 0..N-1; tick N is the end limit
 6. Live UAT on the signed build (user judges)
 
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans executed
 
 Plans:
 **Wave 1**
@@ -253,7 +253,7 @@ Plans:
 - [x] 53.1-05-PLAN.md — GREEN I-3 gap tail + export warnings + inspector coverage
 
 **Wave 6** *(blocked on Wave 5 completion)*
-- [ ] 53.1-06-PLAN.md — Live signed-build UAT checklist (user judges)
+- [x] 53.1-06-PLAN.md — Live signed-build UAT checklist (user judges) — PASSED 2026-10-13
 
 Context: `.planning/phases/53.1-frame-model-fix/53.1-CONTEXT.md`
 Truth table: `.planning/debug/resolved/FRAME-MODEL.md`
@@ -272,4 +272,4 @@ Truth table: `.planning/debug/resolved/FRAME-MODEL.md`
 | 34-38.1 (21 phases) | v0.8.0 | 170/170 | Complete | 2026-08-01 |
 | 39-44 (12 phases) | v0.9.0 | 100/100 | Complete | 2026-08-21 |
 | 45-53 (14 phases) | v1.0.0 | 80/80 | Complete | 2026-10-12 |
-| quicks + 53.1 | v1.0.1 | 0/5 | In Progress | — |
+| quicks + 53.1 | v1.0.1 | 6/6 | 53.1 Complete — release pending | 2026-10-13 |

@@ -4,17 +4,17 @@ milestone: v1.0.1
 milestone_name: Debt Patch Release
 current_phase: "53.1"
 current_phase_name: Frame-model fix (INSERTED)
-status: executing
-stopped_at: Completed 261013-ctd (export mux duration law, EXP-01)
-last_updated: "2026-10-13T07:28:43.224Z"
+status: complete
+stopped_at: Phase 53.1 COMPLETE (live signed-build UAT PASSED 2026-10-13)
+last_updated: "2026-10-13"
 last_activity: 2026-10-13
-last_activity_desc: Completed quick task 261013-ctd: Export mux duration law (EXP-01)
+last_activity_desc: Phase 53.1 COMPLETE — live signed-build UAT PASSED (5/5 rows)
 state_head: c27b94281fe6a9bbaac5377ea89462385c33a3d5
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 53.1 — Frame-model fix (INSERTED)
+**Current focus:** v1.0.1 release (Phase 53.1 complete — release merges user-sequenced)
 
 ## Current Position
 
-Phase: 53.1 (Frame-model fix (INSERTED)) — EXECUTING
+Phase: 53.1 (Frame-model fix (INSERTED)) — **COMPLETE**
 Plan: 6 of 6
-Status: Ready to execute
-Last activity: 2026-10-13 — Completed quick task 261013-ctd: Export mux duration law (EXP-01)
+Status: Live signed-build UAT PASSED 2026-10-13 (5/5 rows) — no further work in this phase
+Last activity: 2026-10-13 — Phase 53.1 COMPLETE (live signed-build UAT PASSED)
 
 ## Performance Metrics
 
@@ -433,6 +433,7 @@ Recent decisions affecting current work:
 - [Phase 53.1]: 53.1-05: D-12 inspector Coverage readout (range line + Follows sequence end / Ends at N · gap) derived from getOverlaySkipRange — three surfaces, one coverage truth
 - [Phase quick-261013-ctd]: Option 2 only: ffmpeg -shortest on the audio arm; mixer anti-cut-off pad stays internal (EXP-01)
 - [Phase quick-261013-ctd]: encode_video_args is the single pure argv builder; mux-truncation pin lives only in its audio arm
+- [Phase 53.1]: PHASE CLOSED 2026-10-13 — live signed-build UAT PASSED (5/5 rows: black-hole frame 16 gone; tick N end-limit + playhead reachable; 15fps I-4 export timings; gap marker + named export warning; clean project exports no regression). Guardrails held: exclusive outFrame [in, out) unchanged, 260918-o0n span-drag law unchanged, resolveTimelinePointerFrame floor unchanged, no version bump, no release action. Verdict in `53.1-UAT.md`. No further work in this phase — v1.0.1 release unblocks, merges user-sequenced.
 
 ### Pending Todos
 
@@ -511,8 +512,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-13T07:28:42.975Z
-Stopped at: Completed 261013-ctd (export mux duration law, EXP-01)
+Last session: 2026-10-13
+Stopped at: Phase 53.1 COMPLETE (live signed-build UAT PASSED 2026-10-13)
 Resume file: None
 
 ## Operator Next Steps
