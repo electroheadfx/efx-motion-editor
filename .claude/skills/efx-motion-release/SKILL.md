@@ -18,11 +18,14 @@ Proven path from v0.8.1 and v0.9.0. The final phase of every milestone follows t
 7. **CSP/permission questions are proven on the packaged build only**, never the dev server.
 8. **The stop-condition checklist is a hard gate.** Any active condition blocks publish. No silent pass, no warnings-mode.
 9. **Release phase = zero functional code changes.** A UAT bug stops the phase; the fix lands in a follow-up quick/debug, then the release phase re-runs.
+10. **NEVER publish a tag or a DMG before the milestone's fix work is finished and tested.** The milestone stays OPEN through the whole remediation. The pre-publish order is: finish every fix the milestone produces → UAT the dev build (open / save / playback) → `/gsd-audit-milestone` and close every gap it finds → flip every REQUIREMENTS case except `REL-02` (which *is* the publish act) → then tag and release. Only after publish do you flip `REL-02`, run `/gsd-milestone-summary`, and `/gsd-complete-milestone`. *v1.0.1 incident (2026-10-13): the tag and DMG went out before the audit, which then found a LOOP-persistence blocker plus two warnings, and subsequent fixes broke save and introduced a Preact signal cycle — the published Latest was known-broken and had to be deleted and redone.*
+11. **If a known-broken release does go out, delete it and re-run the whole sequence.** Do not patch forward on a published artifact. `gh release delete <tag> --yes` → `git push origin :refs/tags/<tag>` → `git tag -d <tag>`. `Latest` reverts to the previous version until the new publish. Anyone who already downloaded the broken DMG keeps it — that is why rule 10 exists.
 
 ## Sequence
 
 ### 1. Pre-flight repository state
 
+- [ ] **Milestone readiness (hard rule 10):** every fix the milestone produces is landed, the dev build is UAT'd (open / save / playback), and `/gsd-audit-milestone` has run with every gap closed. Only `REL-02` is left unticked. If any of this is missing, STOP — do not sign, do not tag, do not publish.
 - [ ] README release section updated to the new version
 - [ ] Version bumped atomically on all 5 surfaces: `app/package.json`, `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml`, the `efx-motion-editor` entry in `app/src-tauri/Cargo.lock`, `PRODUCT_VERSION` in `scripts/macos-release.sh` — verified green by `releaseContract.test.ts`
 - [ ] Icon contract intact: the 5 canonical desktop icons (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns`, `icon.ico`) tracked; extras and the 1024×1024 source stay out of Git (regenerable via `pnpm --dir app tauri icon src-tauri/app-icon.png`; source must be SQUARE)
