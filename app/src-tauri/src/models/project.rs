@@ -126,6 +126,12 @@ pub struct MceAudioTrack {
 pub struct MceSequence {
     pub id: String,
     pub name: String,
+    /// Retired on the TS side (53.1-01: project fps is the only timebase), but
+    /// kept here defaulted so pre-53.1 manifests still parse and a save payload
+    /// that omits it is accepted. No Rust reader touches this — see the
+    /// dual-language law (261012-d6q): a required field one language stops
+    /// sending is a hard parse rejection on the other.
+    #[serde(default)]
     pub fps: u32,
     pub width: u32,
     pub height: u32,

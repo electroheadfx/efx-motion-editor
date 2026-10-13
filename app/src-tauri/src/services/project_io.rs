@@ -381,6 +381,61 @@ mod tests {
     }
 
     #[test]
+    fn test_save_payload_without_sequence_fps_parses() {
+        // 53.1-01 (a46aa5a1) retired per-sequence fps on the TS side — project
+        // fps is the only timebase. buildMceProject no longer sends it, but
+        // MceSequence.fps was still a required field here, so every
+        // `project_save` was rejected with `missing field \`fps\``.
+        //
+        // This is the exact hole (same class as LOOP-persist): a field one
+        // language stops sending must not be required in the other. The payload
+        // below is shaped like what TS actually sends — sequence has NO `fps`.
+        let test_dir = std::env::temp_dir().join("efx_test_no_seq_fps");
+        let _ = std::fs::remove_dir_all(&test_dir);
+        std::fs::create_dir_all(&test_dir).unwrap();
+
+        let ts_payload = serde_json::json!({
+            "version": 1,
+            "name": "Post-53.1 Project",
+            "fps": 15,
+            "width": 1920,
+            "height": 1080,
+            "created_at": "2026-10-13T10:00:00Z",
+            "modified_at": "2026-10-13T10:00:00Z",
+            "sequences": [{
+                "id": "seq-1",
+                "name": "Scene 1",
+                // no "fps" — the TS side stopped sending it in 53.1-01
+                "width": 1920,
+                "height": 1080,
+                "order": 0,
+                "key_photos": [],
+                "layers": []
+            }],
+            "images": [],
+            "audio_tracks": [],
+        });
+        let payload_str = ts_payload.to_string();
+
+        // 1. The save argument itself must deserialize (this is the
+        //    `project_save` rejection site).
+        let parsed: MceProject = serde_json::from_str(&payload_str)
+            .expect("project_save arg must accept a sequence without fps");
+        assert_eq!(parsed.sequences.len(), 1);
+        assert_eq!(parsed.sequences[0].id, "seq-1");
+        assert_eq!(parsed.sequences[0].fps, 0); // serde(default) for u32
+
+        // 2. And the same payload must survive the on-disk open path.
+        let mce_path = test_dir.join("test.mce");
+        std::fs::write(&mce_path, &payload_str).unwrap();
+        let loaded = open_project(mce_path.to_str().unwrap()).unwrap();
+        assert_eq!(loaded.sequences.len(), 1);
+        assert_eq!(loaded.sequences[0].id, "seq-1");
+
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+
+    #[test]
     fn test_pre_52_2_file_opens_with_retired_carrier_key_ignored() {
         let test_dir = std::env::temp_dir().join("efx_test_pre_52_2_open");
         let _ = std::fs::remove_dir_all(&test_dir);
