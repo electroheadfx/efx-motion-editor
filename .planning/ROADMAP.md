@@ -73,7 +73,7 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 - [ ] **QUICK-01**: audio-trim-to-view (parked from pre-53)
 
 **Phase checklist:**
-- [ ] **Phase 54: Preact 11 update** - Hard `@preact/signals` ↔ Preact 11 probe gate first (STOP if red), then mechanical Preact 11 migration with live reactivity UAT closing before Phase 55
+- [x] **Phase 54: Preact 11 update** - Hard `@preact/signals` ↔ Preact 11 probe gate first (STOP if red), then mechanical Preact 11 migration with live reactivity UAT closing before Phase 55 (completed 2026-10-14)
 - [ ] **Phase 55: efx-paint-host (engine-1 host split)** - Studio script law moves into a generic engine-agnostic host; engine-1 behavior unchanged (format-identical)
 - [ ] **Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)** - Animatable watercolour engine + paper pack (all paints) + module switcher over the one shared Studio
 - [ ] **Phase 57: efx-spectral (MIT spectral.js, shared)** - Shared subtractive pigment-mixing package, consumed by engine 2 now; API frozen for engine-1 adoption in v2.1.0
@@ -91,7 +91,7 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
   3. App and standalone packages run on Preact 11 with exactly one `preact` copy; mechanical migrations (useRef initial values, JSX types → preact namespace, defaultProps/auto-px → compat, `lucide-preact` bump) leave behavior identical
   4. Live UAT of the reactivity paths (paintVersion, store setters — rows A1–A5) is user-asserted and CLOSED; this is the hard gate before Phase 55 opens
 
-**Plans**: 5/5 plans executed
+**Plans**: 5/5 plans complete
 Plans:
 **Wave 1**
 - [x] 54-01-PLAN.md — RUN-01 two-leg throwaway compatibility probe (stop-if-red gate)
@@ -156,7 +156,7 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 54. Preact 11 update | 5/5 | In Progress | - |
+| 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
 | 55. efx-paint-host (engine-1 host split) | 0/TBD | Not started | - |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/TBD | Not started | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
