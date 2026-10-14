@@ -141,8 +141,14 @@ function childrenOf(node: unknown): unknown[] {
   if (!node || typeof node !== 'object') return [];
   const vnode = node as AnyVNode;
   if (typeof vnode.type === 'function') {
-    const rendered = (vnode.type as (props: Record<string, any>) => unknown)(vnode.props);
-    return [vnode, ...childrenOf(rendered)];
+    // Preact 11 + lucide-preact 1.57: icon components call useContext and cannot
+    // be invoked outside a hook dispatcher. Keep them as opaque leaves.
+    try {
+      const rendered = (vnode.type as (props: Record<string, any>) => unknown)(vnode.props);
+      return [vnode, ...childrenOf(rendered)];
+    } catch {
+      return [vnode];
+    }
   }
   const children = vnode.props?.children;
   return [vnode, ...childrenOf(children)];

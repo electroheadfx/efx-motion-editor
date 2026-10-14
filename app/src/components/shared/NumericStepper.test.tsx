@@ -49,7 +49,15 @@ function materialize(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(materialize);
   if (typeof node !== 'object') return node;
   const vnode = node as TestVNode;
-  if (typeof vnode.type === 'function') return materialize(vnode.type(vnode.props));
+  if (typeof vnode.type === 'function') {
+    // Preact 11 + lucide-preact 1.57: icon components call useContext and cannot
+    // be invoked outside a hook dispatcher. Keep them as opaque leaves.
+    try {
+      return materialize(vnode.type(vnode.props));
+    } catch {
+      return vnode;
+    }
+  }
   return {
     ...vnode,
     props: {
