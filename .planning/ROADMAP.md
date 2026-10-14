@@ -119,7 +119,31 @@ Plans:
   3. Cross-engine or malformed Apply refuses with a named visible error and never half-applies
   4. Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist
 
-**Plans**: TBD
+**Plans**: 8 plans
+Plans:
+**Wave 1**
+- [ ] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 55-02-PLAN.md — Host package scaffold + move animation/ + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 55-03-PLAN.md — TDD generic StudioStroke/P envelope + EngineAdapter + fail-closed parse (HOST-02, D-19; assumption-delta PROMOTE)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+- [ ] 55-04-PLAN.md — TDD fixed integer tick grid + uncapped cuisson mechanism (DATA-03, D-20/D-23)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+- [ ] 55-05-PLAN.md — TDD engine-1 codec on StudioScriptEnvelope + clean-break refusal (DATA-01, D-13..D-16)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+- [ ] 55-06-PLAN.md — TDD four named Apply refusals + no-partial pin (HOST-05, DATA-02, D-09..D-12)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+- [ ] 55-07-PLAN.md — Fake engine-2 A5 pin + import-graph pin + bake-host pattern port (HOST-04, D-05..D-08/D-21)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+- [ ] 55-08-PLAN.md — Suite/typecheck green + live UAT A1–A4 close (R5.1–R5.3; A5 stays automated)
 
 ### Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)
 
@@ -157,7 +181,7 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
-| 55. efx-paint-host (engine-1 host split) | 0/TBD | Not started | - |
+| 55. efx-paint-host (engine-1 host split) | 0/8 | Planned | - |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/TBD | Not started | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |
