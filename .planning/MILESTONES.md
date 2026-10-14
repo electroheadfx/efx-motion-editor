@@ -1,5 +1,19 @@
 # Milestones
 
+## v1.0.1 Debt Patch Release (Shipped: 2026-10-14)
+
+**Phases completed:** 1 phases, 6 plans, 12 tasks
+
+**Key accomplishments:**
+- Target-law export frame-LIST contract with project fps as the only timebase (I-4 GREEN); tail-policy and past-source describes locked red for 53.1-02/03
+- resolveOverlaySample owns clip coverage; absent outFrame follows N; authoritative out means past-out is nothing — the I-1/I-2 black-hole class is dead
+- Every clip carries an explicit extrapolation choice — HOLD everywhere by default, LOOP only when the user opts in from the inspector, persisted across save/reopen (I-5 GREEN; unfiltered frameList run fully green)
+- Tick N is a reachable NLE end-of-sequence position: the playhead can sit on it, preview shows the last frame's END STATE, the ruler caps it without a frame number, and export still writes 0..N-1
+- A visible clip that stops before N is never silent black: the timeline hatches the tail, the export names the gap and still writes 0..N-1, and the inspector states the coverage law — all three from getOverlaySkipRange
+- Phase 53.1 COMPLETE.
+
+---
+
 ## v1.0.0 EFX Paint Multi-Track Frames and Reveal (Shipped: 2026-10-12)
 
 **Phases completed:** 14 phases, 80 plans, 202 tasks

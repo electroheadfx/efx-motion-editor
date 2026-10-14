@@ -2,19 +2,19 @@
 gsd_state_version: "1.0"
 milestone: v1.0.1
 milestone_name: Debt Patch Release
-current_phase: "53.1"
-current_phase_name: Frame-model fix (INSERTED)
-status: complete
-stopped_at: Phase 53.1 COMPLETE (live signed-build UAT PASSED 2026-10-13)
-last_updated: "2026-10-13"
-last_activity: 2026-10-13
-last_activity_desc: Phase 53.1 COMPLETE — live signed-build UAT PASSED (5/5 rows)
-state_head: c27b94281fe6a9bbaac5377ea89462385c33a3d5
+status: Awaiting next milestone
+stopped_at: Milestone v1.0.1 summary generated
+last_updated: "2026-10-14T06:25:23.463Z"
+last_activity: 2026-10-14
+last_activity_desc: Milestone v1.0.1 completed and archived
+state_head: b79fa8597e861087a3068c66d6f7dc3ed4d19851
 progress:
   total_phases: 1
   completed_phases: 1
   total_plans: 6
   completed_plans: 6
+current_phase: "53.1"
+current_phase_name: Frame-model fix (INSERTED)
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
 
 ## Current Position
 
-Phase: 53.1 (Frame-model fix (INSERTED)) — **COMPLETE**
-Plan: 6 of 6
-Status: Live signed-build UAT PASSED 2026-10-13 (5/5 rows) — no further work in this phase
-Last activity: 2026-10-13 — Phase 53.1 COMPLETE (live signed-build UAT PASSED)
+Phase: Milestone v1.0.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-10-14 — Milestone v1.0.1 completed and archived
 
 ## Performance Metrics
 
@@ -453,12 +453,6 @@ None yet.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
-| 261012-c9a | Display-class save token (v1.0.1 Quick 1) | 2026-10-12 | caa164c2 | [261012-c9a-display-class-save-token-v1-0-1-quick-1](./quick/261012-c9a-display-class-save-token-v1-0-1-quick-1/) |
-| 261012-d6q | Video disk-reference law (v1.0.1 Quick 2) | 2026-10-12 | a2afe490 | [261012-d6q-video-disk-reference-law-v1-0-1-quick-2-](./quick/261012-d6q-video-disk-reference-law-v1-0-1-quick-2-/) |
-| 261012-exn | Document-sound decode readiness (v1.0.1 Quick 3) — UAT APPROVED 4/4 (2026-10-12) | 2026-10-12 | f19399e6 | [261012-exn-document-sound-decode-readiness-v1-0-1-q](./quick/261012-exn-document-sound-decode-readiness-v1-0-1-q/) |
-| 261012-hw3 | v1.0.1 Release machinery (REL-01 bump + README + hygiene + gates green) — awaiting user review; sign/notarize/push/publish user-run | 2026-10-12 | 28080ea0 | [261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum](./quick/261012-hw3-v1-0-1-release-rel-01-rel-02-version-bum/) |
-| 261012-kxg | Export video readiness (v1.0.1 release blocker) — loadeddata preload + seeked settle + fail-closed naming clip (VID-04); automated-ready, native UAT pending | 2026-10-12 | b2722a75 | [261012-kxg-export-video-readiness-v1-0-1-release-bl](./quick/261012-kxg-export-video-readiness-v1-0-1-release-bl/) |
-| 261013-ctd | Export mux duration law (v1.0.1 Quick 5) — ffmpeg -shortest on audio arm (EXP-01) — UAT APPROVED (2026-10-13) | 2026-10-13 | c27b9428 | [261013-ctd-261013-export-mux-duration-law-pick-fix-](./quick/261013-ctd-261013-export-mux-duration-law-pick-fix-/) |
 
 ### Roadmap Evolution
 
@@ -512,9 +506,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-13
-Stopped at: Phase 53.1 COMPLETE (live signed-build UAT PASSED 2026-10-13)
-Resume file: None
+Last session: 2026-10-14T05:57:19.412Z
+Stopped at: Milestone v1.0.1 summary generated
+Resume file: .planning/reports/MILESTONE_SUMMARY-v1.0.1.md
 
 ## Operator Next Steps
 
