@@ -126,7 +126,7 @@ Resolved during planning, not tracked as REQ-IDs:
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
+Which phases cover which requirements. Updated 2026-10-14 after roadmap creation — mapping validated 38/38 + QUICK-01.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -167,15 +167,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-01 | Phase 55 | Pending |
 | DATA-02 | Phase 55 | Pending |
 | DATA-03 | Phase 55 | Pending |
-| DATA-04 | Phase 55 | Pending |
+| DATA-04 | Phase 56 | Pending |
 | QUICK-01 | Quick (in-milestone) | Pending |
 
 **Coverage:**
 - v2.0.0 requirements: 38 total (RUN 6 + HOST 5 + AQUA 8 + PAPER 4 + MOD 6 + SPEC 5 + DATA 4)
-- Quick tasks: 1 (QUICK-01)
-- Mapped to phases: 38
+- Quick tasks: 1 (QUICK-01 — in-milestone quick, never a phase)
+- Mapped to phases: 38/38
 - Unmapped: 0 ✓
+- Orphaned: 0 ✓
+- Duplicates: 0 ✓
+
+**Phase rollup:**
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| 54 Preact 11 update | RUN-01..RUN-06 | 6 |
+| 55 efx-paint-host | HOST-01..HOST-05, DATA-01..DATA-03 | 8 |
+| 56 efx-watercolor | AQUA-01..AQUA-08, PAPER-01..PAPER-04, MOD-01..MOD-06, DATA-04 | 19 |
+| 57 efx-spectral | SPEC-01..SPEC-05 | 5 |
+| Quick (in-milestone) | QUICK-01 | 1 |
 
 ---
 *Requirements defined: 2026-10-14*
-*Last updated: 2026-10-14 after initial definition*
+*Last updated: 2026-10-14 after roadmap creation (phases 54–57 locked; coverage 38/38 + QUICK-01)*

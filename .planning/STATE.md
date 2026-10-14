@@ -17,17 +17,24 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-12 after v1.0.0 milestone)
+See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** v1.0.1 release (Phase 53.1 complete — release merges user-sequenced)
+**Current focus:** v2.0.0 Multi-Module Paint Workstation — Phase 54 (Preact 11 update) ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 54 of 54–57 (Preact 11 update)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-10-14 — Milestone v2.0.0 started
+Status: Ready to plan
+Last activity: 2026-10-14 — ROADMAP created for v2.0.0 (locked phases 54–57 + QUICK-01)
+
+Progress: [░░░░░░░░░░] 0%
+
+**v2.0.0 phase map (locked 2026-10-14):**
+- 54 Preact 11 (RUN-01..06) → 55 efx-paint-host (HOST-01..05 + DATA-01..04) → 56 efx-watercolor (AQUA-01..08 + PAPER-01..04 + MOD-01..06) → 57 efx-spectral (SPEC-01..05)
+- Hard gate: 54 live UAT closes before 55 opens
+- QUICK-01 audio-trim-to-view is an in-milestone quick, never a phase
 
 ## Performance Metrics
 
@@ -502,10 +509,11 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-14T05:57:19.412Z
-Stopped at: Milestone v1.0.1 summary generated
-Resume file: .planning/reports/MILESTONE_SUMMARY-v1.0.1.md
+Last session: 2026-10-14T12:20:00.000Z
+Stopped at: v2.0.0 ROADMAP written (locked phases 54–57, 38/38 requirements mapped + QUICK-01)
+Resume file: None
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Plan Phase 54 with /gsd-plan-phase 54 (hard probe gate first: RUN-01 @preact/signals ↔ Preact 11, STOP if red)
+- Do not open Phase 55 until Phase 54 live UAT (RUN-06 / A1–A5) is user-asserted CLOSED
