@@ -19,8 +19,14 @@ const paintOverlay = readFileSync(PAINT_OVERLAY, 'utf8');
 const physicPaintStore = readFileSync(PHYSIC_PAINT_STORE, 'utf8');
 const paintStore = readFileSync(PAINT_STORE, 'utf8');
 
-/** Marker of the PaintOverlay requestPreview idiom (the shape D-11 protects). */
-const SUBSCRIBE_READ = 'paintStore.paintVersion.value';
+/**
+ * A READ of the paintVersion clock: `paintStore.paintVersion.value` NOT
+ * followed by an increment, decrement, or assignment. A write form
+ * (`value++`, `value = …`) must never satisfy the subscribe assertion —
+ * a write-in-effect is the OOM-loop class D-11 exists to prevent, and a
+ * substring match on the bare `.value` text silently accepts it.
+ */
+const SUBSCRIBE_READ = /paintStore\.paintVersion\.value(?!\s*(?:\+\+|--|[+\-*/%]?=))/;
 
 /**
  * Find `useEffect` blocks in a source string by scanning brace depth from each
@@ -100,7 +106,7 @@ describe('paintVersion discipline contract (D-11 / RUN-05)', () => {
     const subscribers = blocks.filter((block) => {
       const body = effectBody(block);
       const deps = depArray(block);
-      return body.includes(SUBSCRIBE_READ) && deps.includes(SUBSCRIBE_READ);
+      return SUBSCRIBE_READ.test(body) && SUBSCRIBE_READ.test(deps);
     });
 
     expect(
@@ -109,7 +115,7 @@ describe('paintVersion discipline contract (D-11 / RUN-05)', () => {
     ).toBeGreaterThan(0);
 
     // Named-surface message so a failure names the scanned file.
-    expect(paintOverlay, 'PaintOverlay.tsx source scan').toContain(SUBSCRIBE_READ);
+    expect(paintOverlay, 'PaintOverlay.tsx source scan').toMatch(SUBSCRIBE_READ);
   });
 
   it('physicPaintStore.ts bumpTrackRevision still increments the version clock (entry.paint.value++, entry.roto.value++, physicPaintVersion.value++)', () => {
@@ -183,17 +189,21 @@ describe('paintVersion discipline contract (D-11 / RUN-05)', () => {
       body,
       'setRotoPlaybackSettings must still compare current.loop/current.fps to the incoming settings and return false before any write (idempotent setter — no bump on a no-op)',
     ).toMatch(/current\?\.loop === settings\.loop/);
-    expect(body, 'setRotoPlaybackSettings equality guard must still early-return').toMatch(
-      /return false/,
-    );
-    // (3) the early return must come BEFORE the write (.set( — the mutation)
-    const returnIdx = body.search(/return false/);
+    // (3) the idempotence guard's own `return false` — NOT the first `return
+    // false` in the body (that is the validation guard above the compare).
+    // Search from the equality compare so deleting the guard makes this RED.
+    const guardCompareIdx = body.search(/current\?\.loop === settings\.loop/);
+    expect(guardCompareIdx, 'setRotoPlaybackSettings equality compare must exist').toBeGreaterThanOrEqual(0);
+    const guardReturnIdx = body.indexOf('return false', guardCompareIdx);
     const writeIdx = body.search(/\.set\(/);
-    expect(returnIdx, 'setRotoPlaybackSettings must have an early return').toBeGreaterThanOrEqual(0);
+    expect(
+      guardReturnIdx,
+      'setRotoPlaybackSettings must still early-return false right after the equality compare (idempotence guard — the validation return does not count)',
+    ).toBeGreaterThanOrEqual(0);
     expect(
       writeIdx,
       'setRotoPlaybackSettings must still write via Map.set after the guard',
-    ).toBeGreaterThan(returnIdx);
+    ).toBeGreaterThan(guardReturnIdx);
   });
 
   it('physicPaintStore.ts setRotoBackgroundMetadata early-returns before any write when the multi-field value equals the current one (compare-then-write)', () => {
