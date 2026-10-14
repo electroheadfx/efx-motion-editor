@@ -63,6 +63,50 @@
 
 ---
 
+## Milestone: v1.0.1 — Debt Patch Release
+
+**Shipped:** 2026-10-13
+**Units:** 8 (7 quicks + phase 53.1) | **Plans:** 6 | **Commits:** 100
+
+### What Was Built
+- Display-class save token (SAVE-01..03): display-only edits survive save → close → reopen
+- Video disk-reference law (VID-01..03): never-copy import, `video_assets` declared in both languages
+- Document-sound decode readiness (SND-01..02): no silent audio drop
+- Export video readiness (VID-04): no loading placeholder in exported frames
+- Export mux duration law (EXP-01): container streams share the shorter duration
+- Frame-model fix (Phase 53.1): physical-frame timing cutover, Law-1..4 / I-1..5
+- Field-drop-hole closure (N1-N4) + TS↔Rust field-diff contract test
+- Signed/notarized v1.0.1 published as GitHub Latest
+
+### What Worked
+- Quicks-first delivery: 6 debt quicks shipped in 3 days with full UAT on each
+- Round-trip pin pattern (Rust save→open + TS build→hydrate) made schema fixes deterministic
+- The field-diff contract test turned a recurring bug class into a build failure
+- Two milestone audits caught real blockers that execution-time verification missed
+
+### What Was Inefficient
+- First publish went out before the audit (hard rule 10 violation) — had to be deleted and redone
+- Three quick SUMMARY files had unparseable YAML frontmatter (backtick-starting scalars) that blocked the close-out tooling
+- The 8-hour stall during milestone summary generation (tooling/lunch break)
+
+### Patterns Established
+- Dual-language declaration law: a `.mce` key exists in the TS interface AND the Rust struct
+- Round-trip pin pattern for every persistence fix
+- Release hard rules 10+11: audit-before-publish; delete-and-rerun a known-broken release
+- Schema bugs close on deterministic pins, not live UAT theater
+
+### Key Lessons
+- The dual-language class recurred twice (first audit LOOP blocker, second audit N1-N4) before the contract test existed — structural enforcement ends the class
+- Publish-before-audit is the most expensive mistake in the release process; rule 10 now makes it a hard gate
+- YAML frontmatter in SUMMARY files needs quoting for values starting with backticks or containing `: `
+
+### Cost Observations
+- Model mix: opus for audit/summary/close, sonnet for execution
+- Sessions: 3 days (2026-10-11 → 2026-10-13) — fastest milestone to date
+- Notable: 100 commits for 8 units (~12.5 commits/unit); the contract test is 193 lines that prevent an entire bug class
+
+---
+
 ## Milestone: v0.9.0 — PlayScript Workflow, EFX Paint Audio Preview, and macOS Identity
 
 **Shipped:** 2026-08-21
