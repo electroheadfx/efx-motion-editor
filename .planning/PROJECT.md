@@ -142,24 +142,23 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 - ✓ Physic Paint document sound track: Studio waveform/reposition/trim, main-editor mixed playback, `.mce` reference persistence, export mix — v1.0.0 Phase 52.5
 - ✓ Integrated v1.0.0 acceptance: all six REL-01 gates green, 42-row signed-bundle UAT (36 pass / 6 na / 0 fail), signed/notarized 1.0.0 release published as GitHub Latest — v1.0.0 Phase 53
 - ✓ Staged export progress (preparation / rendering / encoding) with cancel-during-prep — quick 260919-sns
+- ✓ Display-class save token (PKG-06/BKG-09): display-only edits survive save → close → reopen — v1.0.1 Quick 1 (261012-c9a)
+- ✓ Video import joins the disk-reference law (VID-01..03): never-copy, `source_path` verbatim, `video_assets` declared in both languages — v1.0.1 Quick 2 (261012-d6q)
+- ✓ Document-sound decode readiness (SND-01..02): playback/export await or refuse, never silently drop — v1.0.1 Quick 3 (261012-exn)
+- ✓ Export video readiness (VID-04): no loading placeholder baked into exported frames — v1.0.1 Quick 4 (261012-kxg)
+- ✓ Export mux duration law (EXP-01): container audio and video streams share the shorter duration — v1.0.1 Quick 5 (261013-ctd)
+- ✓ Motion-blur prefs persistence (MBL-01): `enabled`, `shutter_angle`, `preview_quality`, `export_sub_frames` survive reopen — v1.0.1 Quick 6 (261013-fdh)
+- ✓ TS↔Rust field-diff contract test enforcing the dual-language `.mce` law mechanically — v1.0.1 Quick 6 (261013-fdh)
 
 ### Active
 
-- [ ] Display-class save token (PKG-06/BKG-09): `|bgT:` + `|photoDisplay:` in `buildEfxPaintLayerChangeTokenValue`, `|photoDisplay:` in `buildEfxPaintSaveFingerprint`; save-twice regression test — v1.0.1
-- [ ] Video import joins the disk-reference law: never-copy, `source_path` verbatim; retire `videos/` provisioning, add `video_assets` to `MceProject` — v1.0.1
-- [ ] Document-sound decode readiness (SND-07): audio playback/export must await or refuse a missing buffer, never silently drop — v1.0.1
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
 
-## Current Milestone: v1.0.1 Debt Patch Release
+## Latest Milestone: v1.0.1 Debt Patch Release (Shipped 2026-10-13)
 
-**Goal:** Fix the three known gaps carried out of the v1.0.0 audit, then ship a signed/notarized PATCH release.
-
-**Target features:**
-- Display-class save token fix (PKG-06/BKG-09) — display-only edits survive reopen
-- Video import joins the disk-reference law (never-copy, `source_path` verbatim)
-- Document-sound decode readiness (SND-07) — no silent audio drop in playback/export
+Quicks-first PATCH milestone: 7 quicks + 1 inserted phase (53.1 frame-model fix), 100 commits over 3 days. 13/13 v1 requirements approved. Two milestone audits run; all findings closed with deterministic round-trip pins. The TS↔Rust field-diff contract test (`app/src/lib/mceFieldContract.test.ts`) now enforces the dual-language `.mce` law mechanically. Published as signed/notarized GitHub Latest (tag `v1.0.1` → `ffde6e6a`, DMG SHA256 `b6fcd11f…3058d`), downloaded-artifact verification PASS, stop-conditions 13/13 NOT ACTIVE. Closeout `override_closeout`: 5 tracking-state items acknowledged (4 quick frontmatter YAML fixes + 1 UAT row with 0 pending scenarios). See `.planning/MILESTONES.md` and `milestones/v1.0.1-ROADMAP.md`.
 
 ## Latest Milestone: v1.0.0 EFX Paint Multi-Track Frames and Reveal (Shipped 2026-10-12)
 
@@ -195,7 +194,7 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ## Context
 
-Shipped v1.0.0 with 1,578 commits (301 feat) over 49 days; cumulative codebase ~137.8k LOC TS/TSX across app/src and packages/. pnpm monorepo with app/ + packages/efx-physic-paint/ (a proven standalone interactive physics paint app/window with Tauri-native frame sync).
+Shipped v1.0.1 (Debt Patch Release) with 100 commits over 3 days; cumulative codebase ~139.4k LOC TS/TSX across app/src and packages/. The dual-language `.mce` law is now mechanically enforced. pnpm monorepo with app/ + packages/efx-physic-paint/.
 Tech stack: Tauri 2.11.5, Preact + Preact Signals, Motion Canvas (@efxlab v4.0.0), Vite 5, Tailwind CSS v4, pnpm workspaces, p5.brush (standalone), perfect-freehand, fit-curve, bezier-js, plus pinned XState v6 alpha + Effect v4 rc (pilot only).
 Architecture: 13+ reactive signal stores, Rust image pipeline, Canvas 2D PreviewRenderer with multi-layer compositing, WebGL2 GPU blur/GLSL runtime/motion blur, 3-mode paint system, efx-physic-paint standalone window with deterministic physical-frame Roto timeline (canonical keyId/appFrame model, atomic transactions, generated interpolation, multi-select group operations via finalizeProposal single authority, Roto Script Play fusion, durable script library), signals-backed Roto session boundary, structural/frame-split render-path signal graph, plus v0.9.0 Loop Clip Hold rails / Timeline Toolbox / multi-rail batch operations, plus v1.0.0: versioned EFX Paint document (track-addressed runtime, per-track revisions and leases), internal multi-track timeline, deterministic internal compositor producing the one flattened parent raster (`getFlattenedFrame` is the sole content path for preview and export), fixed Background track + photo/reference track + Reveal rail, HD bytes/WebP frame runtime with a 512 MB LRU, references-only `.mce` package with transactional multi-file save, document sound track, and an XState v6 stroke-finalization machine + Effect v4 bounded-turn flush queue (pilot, conventions in the `efx-async-orchestration` skill).
 Project format: `.mce` v1.0 clean break — `formatVersion` 16, references-only package (manifest + `layers/*.json` + `frames/*.webp`); pre-v1.0 projects rejected explicitly (no backward compat, by design).
@@ -317,6 +316,10 @@ Known technical debt:
 | v1.0.0 bytes/ImageBitmap frame runtime + Rust WebP-lossless + 512 MB LRU over base64 dataUrl strings | base64 strings caused decode storms and O(n) memory inflation at HD | ✓ Good — 52.1 leave-perf blocker resolved (5–8s → 120ms); HD native resolution shipped |
 | v1.0.0 references-only `.mce` package with per-file change tokens behind one transaction | Images/heavy media as disk refs keep documents light; transactional save keeps them consistent | ⚠️ Revisit — Known Gaps PKG-06/BKG-09: display-class setters skip the change-token rotation, so display-only edits revert on reopen |
 | v1.0.0 XState v6 + Effect v4 pilot on stroke finalization + flush pipeline (measured, not adopted on reputation) | Hand-rolled FSMs from timers/boolean flags caused races; conventions needed proof before widening | ✓ Good — pilot verdict admitted on T4/T5 + inspectability; `efx-async-orchestration` skill written |
+| v1.0.1 dual-language `.mce` law: every field declared in BOTH TS interface and Rust struct | serde silently drops undeclared keys on open; TS mocks never cross the boundary | ✓ Good — enforced mechanically by mceFieldContract.test.ts |
+| v1.0.1 contract test diffs TS interfaces vs Rust structs (not call sites) | Interface IS the emit contract; catches declared-but-not-emitted too | ✓ Good — 4/4 tests green, self-test proves the diff is live |
+| v1.0.1 round-trip pin pattern: Rust save→open + TS build→hydrate for every persistence fix | A fix that patches one side can still lose the value at the other boundary | ✓ Good — N1-N4 all carry both pins |
+| v1.0.1 release hard rules 10+11: never publish before audit; delete-and-rerun a known-broken release | v1.0.1 incident: first publish went out pre-audit and was known-broken | ✓ Good — rule enforced in efx-motion-release skill |
 
 ## Evolution
 
@@ -336,4 +339,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-12 after v1.0.1 milestone start — debt-patch milestone opened (3 quicks: PKG-06/BKG-09 save token, video disk-ref law, SND-07 decode readiness) + release. Previous: v1.0.0 shipped 2026-10-12 (14 phases, 80 plans, 1,578 commits; signed/notarized 1.0.0 as GitHub Latest; Known Gaps PKG-06/BKG-09/SND-07).*
+*Last updated: 2026-10-14 after v1.0.1 milestone complete — 7 quicks + phase 53.1, 100 commits, 13/13 requirements approved, TS↔Rust field-diff contract established, signed/notarized GitHub Latest published. Previous: v1.0.0 shipped 2026-10-12 (14 phases, 80 plans, 1,578 commits).*
