@@ -89,7 +89,13 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
   2. User paints a stroke, undoes/redoes, and switches tracks in Studio and the canvas and timeline follow live — the `paintVersion` bump+subscribe discipline is preserved, not rewritten into effect cleanups
   3. App and standalone packages run on Preact 11 with exactly one `preact` copy; mechanical migrations (useRef initial values, JSX types → preact namespace, defaultProps/auto-px → compat, `lucide-preact` bump) leave behavior identical
   4. Live UAT of the reactivity paths (paintVersion, store setters — rows A1–A5) is user-asserted and CLOSED; this is the hard gate before Phase 55 opens
-**Plans**: TBD
+**Plans**: 5 plans
+Plans:
+- [ ] 54-01-PLAN.md — RUN-01 two-leg throwaway compatibility probe (stop-if-red gate)
+- [ ] 54-02-PLAN.md — Package legitimacy gate for the locked Preact 11 pins
+- [ ] 54-03-PLAN.md — D-04 one-way peer door + one-preact-copy TDD pin + workspace bump (RUN-02, RUN-03)
+- [ ] 54-04-PLAN.md — JSX namespace migration in three D-07 files (RUN-04)
+- [ ] 54-05-PLAN.md — paintVersion discipline pin + live UAT A1-A5 close (RUN-05, RUN-06)
 
 ### Phase 55: efx-paint-host (engine-1 host split)
 **Goal**: The shared Studio script law (animation schedules, traceSeed, script envelope, ticks + diffusionFrames) lives in a generic engine-agnostic host; engine-1 observable behavior is unchanged
@@ -133,7 +139,7 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 54. Preact 11 update | 0/TBD | Not started | - |
+| 54. Preact 11 update | 0/5 | Not started | - |
 | 55. efx-paint-host (engine-1 host split) | 0/TBD | Not started | - |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/TBD | Not started | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
