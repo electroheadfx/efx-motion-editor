@@ -91,13 +91,13 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
   3. App and standalone packages run on Preact 11 with exactly one `preact` copy; mechanical migrations (useRef initial values, JSX types → preact namespace, defaultProps/auto-px → compat, `lucide-preact` bump) leave behavior identical
   4. Live UAT of the reactivity paths (paintVersion, store setters — rows A1–A5) is user-asserted and CLOSED; this is the hard gate before Phase 55 opens
 
-**Plans**: 1/5 plans executed
+**Plans**: 2/5 plans executed
 Plans:
 **Wave 1**
 - [x] 54-01-PLAN.md — RUN-01 two-leg throwaway compatibility probe (stop-if-red gate)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 54-02-PLAN.md — Package legitimacy gate for the locked Preact 11 pins
+- [x] 54-02-PLAN.md — Package legitimacy gate for the locked Preact 11 pins
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 54-03-PLAN.md — D-04 one-way peer door + one-preact-copy TDD pin + workspace bump (RUN-02, RUN-03)
@@ -156,7 +156,7 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 54. Preact 11 update | 1/5 | In Progress | - |
+| 54. Preact 11 update | 2/5 | In Progress | - |
 | 55. efx-paint-host (engine-1 host split) | 0/TBD | Not started | - |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/TBD | Not started | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
