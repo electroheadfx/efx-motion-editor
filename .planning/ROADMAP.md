@@ -81,6 +81,7 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 ## Phase Details
 
 ### Phase 54: Preact 11 update
+
 **Goal**: The workstation runs on Preact 11 with the signals reactivity law intact, proven live before any engine work begins
 **Depends on**: Nothing (first phase of the milestone)
 **Requirements**: RUN-01, RUN-02, RUN-03, RUN-04, RUN-05, RUN-06
@@ -89,15 +90,26 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
   2. User paints a stroke, undoes/redoes, and switches tracks in Studio and the canvas and timeline follow live — the `paintVersion` bump+subscribe discipline is preserved, not rewritten into effect cleanups
   3. App and standalone packages run on Preact 11 with exactly one `preact` copy; mechanical migrations (useRef initial values, JSX types → preact namespace, defaultProps/auto-px → compat, `lucide-preact` bump) leave behavior identical
   4. Live UAT of the reactivity paths (paintVersion, store setters — rows A1–A5) is user-asserted and CLOSED; this is the hard gate before Phase 55 opens
+
 **Plans**: 5 plans
 Plans:
+**Wave 1**
 - [ ] 54-01-PLAN.md — RUN-01 two-leg throwaway compatibility probe (stop-if-red gate)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 54-02-PLAN.md — Package legitimacy gate for the locked Preact 11 pins
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 54-03-PLAN.md — D-04 one-way peer door + one-preact-copy TDD pin + workspace bump (RUN-02, RUN-03)
+
+**Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 54-04-PLAN.md — JSX namespace migration in three D-07 files (RUN-04)
+
+**Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 54-05-PLAN.md — paintVersion discipline pin + live UAT A1-A5 close (RUN-05, RUN-06)
 
 ### Phase 55: efx-paint-host (engine-1 host split)
+
 **Goal**: The shared Studio script law (animation schedules, traceSeed, script envelope, ticks + diffusionFrames) lives in a generic engine-agnostic host; engine-1 observable behavior is unchanged
 **Depends on**: Phase 54 — HARD GATE: Phase 54 live UAT (RUN-06) must CLOSE before Phase 55 opens
 **Requirements**: HOST-01, HOST-02, HOST-03, HOST-04, HOST-05, DATA-01, DATA-02, DATA-03
@@ -106,9 +118,11 @@ Plans:
   2. A fake engine-2 stroke payload (pts, ticks, cuisson, motion, brush id + toolOverrides) compiles and round-trips through record → play → bake on the host with zero engine-1 types in the host API
   3. Cross-engine or malformed Apply refuses with a named visible error and never half-applies
   4. Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist
+
 **Plans**: TBD
 
 ### Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)
+
 **Goal**: Users can paint and animate real watercolour under the shared Studio script law, choose papers for every paint, and switch modules from the top bar
 **Depends on**: Phase 55 (and transitively Phase 54). Dependency hook: this phase CONSUMES `efx-spectral` — if plan-time shows spectral is needed first, create `packages/efx-spectral` early inside 56 (or pull 57's content forward); never duplicate the mixing code inside the watercolor engine
 **Requirements**: AQUA-01, AQUA-02, AQUA-03, AQUA-04, AQUA-05, AQUA-06, AQUA-07, AQUA-08, PAPER-01, PAPER-02, PAPER-03, PAPER-04, MOD-01, MOD-02, MOD-03, MOD-04, MOD-05, MOD-06, DATA-04
@@ -118,10 +132,12 @@ Plans:
   3. User picks among 10 named procedural papers plus the 3 recovered real paper backgrounds (`paper_1/2/3.jpg`); paper composites for ALL paints through the same `paperPass` with no rebake on paper change; paper display state (id, strength, scale) undoes and saves on the document/fond
   4. User switches "Brush | Water color | Krita" from the top-bar MODULE SWITCHER; each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) serves all modules; Krita is visible but inert ("coming in v2.1.0")
   5. Brush-pack snapshots travel in `.mce` (deliberate exception to the 52.2 refs-only law); every new `.mce` field added by this phase (aquarelle brush properties, per-engine stroke payload in the envelope, paper state on the fond, brush-pack snapshot) is declared in BOTH TS and Rust (`mceFieldContract` law); unreadable/cross-engine scripts refuse with a named visible error — never half-apply, never silent drop
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 57: efx-spectral (MIT spectral.js, shared — NOT watercolour-only)
+
 **Goal**: Shared MIT spectral pigment mixing is hardened and API-frozen for engine 2 now and engine-1 adoption in v2.1.0
 **Depends on**: Phase 56 (content may have been created early inside 56 via the dependency hook; 57 hardens, attributes, tests, and freezes the API)
 **Requirements**: SPEC-01, SPEC-02, SPEC-03, SPEC-04, SPEC-05
@@ -130,6 +146,7 @@ Plans:
   2. Display rebuild matches the bake (16-band quadrature + `exp(−A)` → sRGB)
   3. The watercolor engine consumes `packages/efx-spectral` — pigment mixing exists in one shared place, never duplicated inside the engine
   4. Package ships vendored MIT reflectance data + its own ESM surface + `NOTICE`; the API is frozen for engine-1 adoption in v2.1.0 (the adoption itself is out of scope)
+
 **Plans**: TBD
 
 ## Progress
