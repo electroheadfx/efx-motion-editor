@@ -152,9 +152,39 @@ Users can import key photographs, arrange them into timed sequences with FX laye
 
 ### Active
 
+- [ ] Phase 54 — Preact 11 update: hard `@preact/signals` ↔ Preact 11 compatibility gate first (STOP if red), then ESM-only / useRef initial value / defaultProps + auto-px → compat / deferred useEffect cleanups vs paintVersion / JSX types → preact namespace. Live UAT of reactivity paths (paintVersion, store setters) must CLOSE before Phase 55 opens. Spec: `SPECS/v1.1.0-preact11/context.md`
+- [ ] Phase 55 — efx-paint-host (engine-1 host split): move animation schedules / traceSeed / script envelope / ticks + diffusionFrames out of efx-physic-paint; host APIs generic over the per-engine stroke payload (pts, ticks, cuisson, motion, brush id + toolOverrides), never engine-specific params. Format-identical split (R5.2 / A4 replay parity) is a refactor guard. Hard prerequisite of engines 2 and 3. Spec: `SPECS/v1.1.0-paint-host/context.md`
+- [ ] Phase 56 — efx-watercolor (engine 2, paint-aquarelle, clean-room): oracle msurguy/watercolor-playground (Preact + WebGL2, engine UI-free). Paper pack (10 procedural papers for ALL paints) rides this phase. Consumes efx-spectral — if plan-time shows it needs spectral first, create `packages/efx-spectral` early inside 56 or pull 57 forward; never duplicate mixing code inside the watercolor engine. Spec: `SPECS/v1.1.0-water-color/` (00-grill-context.md + 01-gsd-context.md)
+- [ ] Phase 57 — efx-spectral (MIT spectral.js, shared — NOT watercolour-only): consumed by engine 2 now; engine 1 adopts it in v2.1.0
+- [ ] Module switcher: top-bar MODULE SWITCHER icon near the existing icons ("Brush | Water color | Krita"); each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) for all modules. v2.0.0 ships Brush + Water color only — Krita is the v2.1.0 slot (do NOT implement krita here). Gray zones (top-bar placement, iconography, panel layout, option grouping) resolved at discuss-phase
+- [ ] Quick: audio-trim-to-view (parked from pre-53) — lives inside this milestone, never standalone
 - [ ] Decide gap-entry active-sequence semantics on scrub (52.3 review WR-01) and overlapping-fx export ownership (52.3 review WR-03) — design questions, follow-up candidates
 - [ ] Future physics-paint integration contract must define typed transport/cache messages without implementing editor runtime integration — v0.8.0 follow-up (was earmarked for a Phase 37 that became multi-select Roto keys)
 - [ ] The failed headless adapter approach remains excluded; physics paint must preserve interactive incremental simulation behavior — v0.8.0
+
+## Current Milestone: v2.0.0 Multi-Module Paint Workstation (MAJOR)
+
+**Goal:** Change the product shape into a multi-module paint workstation — a module switcher (Brush | Water color | Krita) over ONE shared Studio engine, shipping Brush + Water color, unlocked by a Preact 11 bump and an engine-1 host split.
+
+**Target features:**
+- Phase 54 — Preact 11 update (hard @preact/signals compatibility gate first; live reactivity UAT closes before 55)
+- Phase 55 — efx-paint-host engine-1 host split (tranche 0b out of efx-physic-paint; generic host APIs over per-engine stroke payload)
+- Phase 56 — efx-watercolor engine 2 (paint-aquarelle, clean-room) + paper pack (10 procedural papers for ALL paints)
+- Phase 57 — efx-spectral shared MIT spectral.js package (consumed by engine 2 now; engine 1 adopts in v2.1.0)
+- Module switcher + per-module options panels over the one shared Studio engine (Brush + Water color ships; Krita is the v2.1.0 slot)
+- Quick inside this milestone: audio-trim-to-view (parked from pre-53)
+
+**Why 2.0.0 (user 2026-10-14):** the module switcher changes the product shape, the `.mce` clean break is accepted, and a full paint engine is not a 1.x minor. Semver law from now on: **MAJOR = new product shape / accepted break · MINOR = module or major feature · PATCH = debt.**
+
+**Compatibility stance (DECIDED 2026-10-14 — do not reopen):** CLEAN BREAK ACCEPTED. v1.0.1 projects/scripts may stop opening or replaying. NO migration code, NO dual-format readers, NO backward-compat shims, NO compat branches. Do not slow the engines down for compatibility. Still never drop data silently: any unreadable script/asset refuses with a named visible error (53.1 law). Fail-closed is data honesty, not compatibility.
+
+**Sequencing gates (hard):** no watercolour work before the Preact 11 bump (satisfied by 54 → 56) · Phase 54 live UAT closes before Phase 55 opens · v2.1.0 (Krita module) is planned only AFTER v2.0.0 closes.
+
+**Architecture invariants (do not violate):** 3 engines / 4 paints (engine 3 krita/libmypaint is v2.1.0, OUT of scope) · Studio script law shared (record → play physics → WebP bake → cache), engine AND UI isolated per paint · script shape = shared Studio envelope + per-engine stroke payload, fail-closed Apply across engines · brush-pack snapshot travels in `.mce` (deliberate exception to the 52.2 refs-only law) · time = fixed tick grid (~1/60 s), integer ticks, never raw ms · determinism: same script ⇒ same pixels, seeded per stroke (FNV-1a traceSeed), no `Math.random()` in deposit or sim path.
+
+**Out of scope for v2.0.0:** paint-krita / libmypaint · engine-1 spectral mixing (adopts in v2.1.0) · 2K · AI.
+
+**Release:** `efx-motion-release` at close, hard rules 10–11 (audit BEFORE tag/publish).
 
 ## Latest Milestone: v1.0.1 Debt Patch Release (Shipped 2026-10-13)
 
@@ -320,6 +350,15 @@ Known technical debt:
 | v1.0.1 contract test diffs TS interfaces vs Rust structs (not call sites) | Interface IS the emit contract; catches declared-but-not-emitted too | ✓ Good — 4/4 tests green, self-test proves the diff is live |
 | v1.0.1 round-trip pin pattern: Rust save→open + TS build→hydrate for every persistence fix | A fix that patches one side can still lose the value at the other boundary | ✓ Good — N1-N4 all carry both pins |
 | v1.0.1 release hard rules 10+11: never publish before audit; delete-and-rerun a known-broken release | v1.0.1 incident: first publish went out pre-audit and was known-broken | ✓ Good — rule enforced in efx-motion-release skill |
+| v2.0.0 is MAJOR: module switcher = new product shape + accepted `.mce` clean break; full paint engine is not a 1.x minor | Semver law from now on: MAJOR = new product shape / accepted break · MINOR = module or major feature · PATCH = debt | — Pending |
+| v2.0.0 CLEAN BREAK ACCEPTED — no migration code, no dual-format readers, no backward-compat shims/branches; engines must not be slowed for compatibility | The release matters more than compatibility; v1.0.1 projects/scripts may stop opening or replaying | — Pending |
+| v2.0.0 fail-closed is data honesty, not compatibility — any unreadable script/asset refuses with a named visible error (53.1 law); never drop data silently | Clean break does not license silent data loss | — Pending |
+| v2.0.0 ONE shared Studio engine (script, cache, timeline) for all modules; modules change only the options/features surface | Studio script law is shared; engine AND UI isolated per paint | — Pending |
+| v2.0.0 host APIs are generic over the per-engine stroke payload (pts, ticks, cuisson, motion, brush id + toolOverrides) — never engine-specific params | Engine-1 host split is the hard prerequisite of engines 2 and 3; pay it once | — Pending |
+| v2.0.0 efx-watercolor CONSUMES efx-spectral; if plan-time shows 56 needs spectral first, create `packages/efx-spectral` early inside 56 (or pull 57's content forward) | Never duplicate the mixing code inside the watercolor engine | — Pending |
+| v2.0.0 brush-pack snapshot travels in `.mce` | Deliberate exception to the 52.2 refs-only law | — Pending |
+| v2.0.0 time = fixed tick grid (~1/60 s), integer ticks, never raw ms; determinism = same script ⇒ same pixels, FNV-1a traceSeed per stroke, no `Math.random()` in deposit/sim path | Script replay parity and engine reproducibility | — Pending |
+| v2.0.0 module switcher designed for three modules (Brush \| Water color \| Krita); only Brush + Water color ship here | Krita is the v2.1.0 slot — do NOT implement krita in v2.0.0 | — Pending |
 
 ## Evolution
 
@@ -339,4 +378,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-14 after v1.0.1 milestone complete — 7 quicks + phase 53.1, 100 commits, 13/13 requirements approved, TS↔Rust field-diff contract established, signed/notarized GitHub Latest published. Previous: v1.0.0 shipped 2026-10-12 (14 phases, 80 plans, 1,578 commits).*
+*Last updated: 2026-10-14 after milestone v2.0.0 started — MAJOR (multi-module paint workstation), global phases 54–57, locked scope + clean-break + UI/UX stances recorded. Previous: v1.0.1 shipped 2026-10-13 (7 quicks + phase 53.1, 100 commits, 13/13 requirements approved).*
