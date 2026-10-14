@@ -1,188 +1,209 @@
 # Project Research Summary
 
-**Project:** EFX Motion Editor — milestone v1.0.0 (EFX Paint Multi-Track Frames and Reveal)
-**Domain:** macOS stop-motion editor (Tauri 2.0 + Preact Signals monorepo) — multi-track internal EFX Paint frame documents, deterministic internal compositor, fixed Background track with Loop Clips, photo/reference track, shared mask compositor + Reveal, read-only audio preview
-**Researched:** 2026-08-23
+**Project:** EFX Motion Editor — v2.0.0 multi-module paint workstation
+**Domain:** Tauri + Preact monorepo; clean-room paint engines behind one shared Studio script/bake/timeline law
+**Researched:** 2026-10-14
 **Confidence:** HIGH
 
 ## Executive Summary
 
-Milestone v1.0.0 turns one parent Paint layer into a complete multi-track frame animation document. The locked architectural invariant is: **one parent Paint layer → one EFX Paint document → many internal Paint frame tracks → one flattened frame result delivered to the unchanged main-editor compositor.** The main editor never iterates internal tracks; it composites the parent raster exactly once with the unchanged outer layer stack. All multi-track editing happens inside the EFX Paint window.
+EFX Motion Editor is a mature Tauri desktop paint/animation workstation (Preact + `@preact/signals`, Rust-backed `.mce` IO, WebP cache timeline). v2.0.0 turns it into a **multi-module paint workstation**: a top-bar MODULE SWITCHER (Brush | Water color | Krita) over ONE shared Studio engine. Only Brush + Water color ship; Krita is an inert v2.1.0 slot. The recommended approach is a strict dependency ladder — Phase 54 Preact 11 (hard `@preact/signals` probe gate first), Phase 55 `efx-paint-host` engine-agnostic split, Phase 56 clean-room `efx-watercolor` + 10-paper pack, Phase 57 `efx-spectral` MIT spectral package (may be created early inside 56). Net new third-party runtime deps for the whole milestone: at most one (`simplex-noise`).
 
-The research confirms the spec is implementable on existing machinery with **zero new dependencies**. Every new capability is a pure TypeScript data-model + Canvas 2D + existing signal-store extension of proven code: the internal compositor is a second Canvas 2D pass reusing `previewRenderer.ts`'s `blendModeToCompositeOp`; track-local state extends the `Map<layerId, Map<number, T>>` store pattern to `Map<layerId, Map<trackId, Map<number, T>>>`; Background Loop Clips reuse the existing Loop Clip resolver verbatim; the photo/reference track is a data-model mode flag; audio preview reuses v0.9.0 Phase 41 as-is; Reveal is offscreen `globalCompositeOperation` mask compositing. The only genuinely new work is the v1.0.0 `.mce` document schema (a clean break with explicit pre-v1.0 rejection) and the multi-row timeline strip.
+The stack verdict is **GREEN on declared compatibility**: `@preact/signals@2.11.3` explicitly supports Preact 11 (`peerDependencies: ">= 10.25.0 || >=11.0.0-0"`) and ships a Preact-11-specific deferred-dispose fix; `lucide-preact` is the one real gate-blocker (0.577.0 peers `^10.27.2` only — bump to `^1.57.0`, floor 1.50.0). GREEN does **not** waive the R1.1 throwaway probe: runtime effect-subscription behaviour under deferred cleanups is still live-verified before the bump lands. The project `paintVersion` bump-and-subscribe law is deliberately *not* cleanup-based — do not rewrite it into React-style effects.
 
-The key risks are all data-corruption and output-parity traps, not ecosystem unknowns: track identity via array position, stale async commits to the wrong track, track-local cache keys missing `trackId`, parent opacity/blend double-application, Studio/main/export divergence, and loop off-by-one seams. Every risk has a proven prevention pattern already in the repo (stable IDs, parent/document/track revision authority, per-track cache keys, one shared composition path, half-open loop intervals). The 9-phase structure in the spec is confirmed as the correct build order, with Phase 1 (clean break) as the mandatory foundation and Phase 4 (compositor) as the keystone.
+The main risks are (1) trusting peer ranges instead of running the probe and live UAT, (2) engine-specific types leaking into the host seam (the phases 27-32 adapter failure class), (3) replay non-determinism from wall-clock/unseeded RNG, and (4) a **licence contradiction**: PITFALLS.md found the on-disk oracle `LICENSE` is MIT (Maksim Surguy 2026) while STACK/ARCHITECTURE/FEATURES still treat the oracle as unlicensed clean-room-only. Until the user decides at 56 plan time, prohibition P1 stands — method only, no code copy.
 
 ## Key Findings
 
 ### Recommended Stack
 
-**Zero new runtime or dev dependencies.** All existing dependencies are on caret ranges that already resolve to current versions; no bump is required. Vite stays pinned at 5.4.21 (the v0.9.0 decision — `@efxlab/motion-canvas-vite-plugin` 4.0.0 interop is delicately patched). The only "new" work is the v1.0.0 document schema (Rust serde + PNG sidecar, same pattern as `physicPaintPersistence.ts`) and the multi-row timeline strip (extension of the existing Canvas 2D Roto strip).
+Dependency bumps plus three new workspace packages; everything else is unchanged. Stay on Vite 5.4.21 (motion-canvas plugin peer pin) and TypeScript `~5.9.3` (do not jump to TS 7). All new packages are ESM, Preact-free (except optional `./preact` entries), and dep-free except one optional 3 KB noise helper.
 
-**Core technologies (all existing, all reused):**
-- **Canvas 2D compositing** (`previewRenderer.ts` + `blendModeToCompositeOp`): the internal multi-track compositor is a second self-contained pass producing one flattened parent raster per frame. Guarantees Studio/preview/export parity because all three share one compositing path.
-- **Preact Signals store pattern** (`physicPaintStore.ts`, `paintVersion`/`rotoPhysicalRevision` counters): track-local state adds a `trackId` key level; the counter-signal + lease-authority pattern is unchanged.
-- **Loop Clip resolver** (`physicsPaintRotoPhysicalResolver.ts` / `physicsPaintRotoLoopClips.ts`): reuse verbatim for Background clips (`sourceKind: 'imported-background'`) and Hold clips (`sourceKind: 'playscript-hold'`). Modulo source mapping, finite repeat 1..∞, next-clip interruption, half-open intervals.
-- **`imageStore` LRU pool + Rust image pipeline** (`importImages` IPC, `assetUrl`): imported still/sequence Background clips and photo source.
-- **Web Audio read-only preview** (v0.9.0 Phase 41 `efxPaintAudioPreviewStore`/`efxPaintAudioMonitor`/`efxPaintAudioOwnership`): reuse as-is; the spec's audio requirements are a subset of the Phase 41 contract.
-- **Canvas 2D offscreen mask compositing** (`globalCompositeOperation` `destination-in`/`source-in`/`source-atop`): shared mask compositor + Reveal; same technique already used for eraser/onion skin.
-- **Rust serde persistence** (`.mce` format): v1.0.0 clean-break document schema with explicit pre-v1.0 rejection, no migration shim.
-- **Canvas 2D multi-row timeline strip** (`PhysicsPaintWorkflowStrip.tsx` pattern): N Paint rows + one fixed Background row + one photo/reference row with the same renderer.
+**Core technologies:**
+- `preact@11.0.1`: UI framework — current stable; engines 2-3 must not build on a dead major. Mechanical migration measured on the live tree (0 bare `useRef()`, 0 `defaultProps`, 3 files with `JSX.*` types).
+- `@preact/signals@2.11.3`: the project only state layer — same 2.x major (no reactivity rewrite); 2.11.3 is the Preact-11-ready release (deferred `useSignalEffect` dispose fix).
+- `lucide-preact@^1.57.0`: **required** companion bump — 1.50.0 is the first version whose peer range allows Preact 11; do not suppress the peer warning with overrides.
+- `packages/efx-paint-host`: pure extraction (animation/, traceSeed, script envelope, tick/cuisson timing, bake-queue pattern) — **no new deps**, Preact-free core.
+- `packages/efx-watercolor`: clean-room WebGL2 fluid grid — **no new runtime deps**; raw WebGL2 matching existing `glBlur`/`glslRuntime` seams; no Three/regl/Pixi.
+- `packages/efx-spectral`: vendored MIT spectral.js reflectance data + own ESM surface + `NOTICE` — do **not** depend on the npm `spectral.js` bundle (script-style, not ESM).
+- Procedural paper pack: `simplex-noise@4.0.3` (optional, recommended) + in-house seeded PRNG; output is `PaperPassTile` shapes into the Studio paper library.
 
-**What NOT to use:** any new compositing/scene-graph library (PixiJS/Konva), any new state-management library (XState/Zustand), any new timeline/UI library, any new audio library, any new image-decoding library, any new mask/alpha library, any new schema/validation library, any new undo library, any new DnD library, Vite 6/7/8, new Rust crates, or a second audio engine. Each would fork a proven path and break parity.
+**Critical version requirements:** `@preact/signals` **must** be 2.11.3 (not 2.11.2); `lucide-preact` **must** be >= 1.50.0; after 54 closes, raise `efx-physic-paint` peer floor to `preact >=11`; verify one `preact` copy via `pnpm why preact`.
+
+**What NOT to add:** Mixbox (CC BY-NC, banned), any oracle/inkwash code until the licence decision, `spectral.js` as a runtime dep, Web Workers for bake, React/`useState`/codemods, Vite or TS major bumps, GPU fluid on the timeline, forced Dry at frame boundaries, backward-compat shims (clean break accepted 2026-10-14).
 
 ### Expected Features
 
-**Must have (table stakes):** versioned v1.0 document owned by one parent layer ID; track CRUD (add/rename/duplicate/delete/reorder); active track selection; per-track hide/solo; per-track opacity/blend; deterministic internal compositor → one flattened parent raster per frame; fixed Background track with imported still/sequence Loop Clips; Loop Clips (finite/infinite repeat, gaps, fallback); photo/reference track; Reveal via Paint/PlayScript coverage; read-only audio preview; filmstrip capsule timeline; save/reopen, undo/redo, clean-break legacy rejection, preview/export parity.
+Full detail in FEATURES.md. Launch scope is locked; the differentiator is **animateable** watercolour via the Studio script law — the oracle and competitors cannot script blooms over time.
 
-**Should have (differentiators):** deterministic physical-frame Roto timeline per internal track; linked Hold Loop Clips with linked source-frame references (no duplicated assets); PlayScript progressive/static/hold application per track; Reveal through animated coverage; read-only cross-window audio preview; clean-break v1.0 format with explicit legacy rejection.
+**Must have (table stakes):**
+- Top-bar module switcher, 3 named slots, Krita visible-but-inert ("coming in v2.1.0")
+- ONE shared Studio engine — script/cache/timeline never fork per module
+- Per-module option drain (brush pack + sliders) into the panels
+- Fail-closed cross-engine Apply (named visible refusal, never half-apply)
+- Aquarelle wet look surviving bake: wet-in-wet blooms, hard wet-on-dry edges, dark tide lines
+- Subtractive pigment mixing (yellow + blue = green) via `efx-spectral`
+- Four tools only: `brush | water | pen | lift`; 14 tips + custom import; 8 global params (`size, water, load, flow, bleed, dry, edge, granulation`) + per-brush multipliers
+- Studio script law for aquarelle: record -> play (no forced Dry) -> WebP bake (`diffusionFrames` <= 600) -> cache; bake survives leaving the frame
+- Acceptance rows A1-A5 (replay parity, identical bakes, bloom/tide in baked frames, independent cache ranges, transparent export)
+- 10 procedural papers in the Studio paper library — composite-only, ALL paints, document-owned paper state (undo + save)
 
-**Defer (v2+):** multiple Background tracks; Background crossfades/transitions; nested track groups; track effects stacks; independent per-track transforms; multiple masks/vector masks/mask keyframes; advanced retiming; independent EFX Paint audio editing; online AI providers (v1.1 Codex+MMX AI is already on the roadmap).
+**Should have (competitive):**
+- Animateable watercolour / scripted blooms over time (the headline differentiator vs Rebelle/oracle)
+- Property-rich brush set (tip/aspect/rotation/size-curve/scatter/capacity/grain/wetRound) drained by the module surface
+- White gouache pigment channel; wet-region-only sim + stop-when-dry
+- Brush-pack snapshot travelling in `.mce` (deliberate exception to the 52.2 refs-only law)
+- Third-module readiness proven by two (the seam is validated before Krita)
+
+**Defer (v2.1.0 / later):**
+- Krita module (libmypaint WASM + .myb) — v2.1.0 slot; do not implement now
+- Engine-1 `efx-spectral` adoption (replaces RYB `mixSubtractive`) — v2.1.0, Q5-gated
+- Fill tool (bucket wash) — own tranche; Text/Shape/Hand annex tools — v2.2+
+- User-imported paper scans; 2K resolution; AI features; Paint-timeline waveform (existing FUT backlog)
+
+**Anti-features to refuse:** layer/module conversion commands; live per-frame engine switching; Studio forks per module; v1.0.1 migration code; pre-decided panel layout/iconography (user decides at discuss-phase); forced Dry at frame boundaries; live GPU fluid on the timeline; paper baked into WebPs; best-effort Apply.
 
 ### Architecture Approach
 
-The invariant is locked: one parent Paint layer → one EFX Paint document → many internal Paint frame tracks → one flattened frame result delivered to the unchanged main-editor compositor. New code lives in a new `app/src/efx-paint/` domain folder (document model, compositor, background, photo-reference, mask) kept separate from the existing `physic-paint/` component tree. The main editor's `previewRenderer.ts` is unmodified — it consumes one flattened raster via the existing parent-layer boundary.
+One Studio, N engines. `efx-paint-host` is the Preact-free Studio law sitting between `app/` and engines; engines are opaque payload carriers behind `EngineAdapter<P>` (`applyStroke` / `stepTick` / `captureFrame` / `dispose` + `payloadCodec`). The host owns `StudioStroke<P>` (shared: `pts`, integer `ticks`, `cuisson`, `motion`, `brushId`, `toolOverrides`, `traceSeed`) and `StudioScriptEnvelope<P>` (shared metadata + opaque `engine: P` + `engineId` fail-closed discriminator); host code never inspects `P`. Determinism is host-owned: FNV-1a `traceSeed` + fixed integer tick grid (~1/60 s) + arc-length-keyed seeded draws.
 
 **Major components:**
-1. `efxPaintStore.ts` + `efx-paint/document/` — the v1.0.0 document model, fail-closed parsers, revision builders, clean-break rejection.
-2. `efx-paint/compositor/` — the deterministic internal compositor (one shared path for Studio preview and flattened output), hide/solo truth table, track-revision-keyed cache.
-3. `efx-paint/background/` + `efx-paint/photo-reference/` + `efx-paint/mask/` — the three track types and the Reveal mask compositor.
-4. Modified `physicPaintStore.ts`/`paintStore.ts` — track-local addressing (`layerId → trackId → frame`).
-5. Modified `physicPaintBridge.ts` — document/track revisioned messages; async PlayScript/Reveal revalidate parent+document+track revision before commit.
-6. Modified `PhysicsPaintWorkflowStrip.tsx`/`useRotoTimelineModel.ts` — multi-row timeline with filmstrip capsules.
-7. Reused verbatim: Loop Clip resolver, Phase 41 audio, `imageStore`, `previewRenderer.ts` boundary.
+1. `packages/efx-paint-host` — Studio law: animation schedules, traceSeed, generic script envelope, tick/cuisson mechanism, bake host (port the `finalizationQueue` Effect v4 bounded-queue pattern — no new cancellation model, no Web Worker)
+2. `packages/efx-physic-paint` — engine 1 (refactor only): keeps brush/core/engine/render/paper; loses animation/ + traceSeed; behaviour unchanged (R5.2 replay parity vs pre-move golden)
+3. `packages/efx-watercolor` — engine 2, clean-room WebGL2 fluid grid (velocity/wet/ink/fixed/paper textures; wet-gated diffusion, capillary tide line, fix/dry); consumes `efx-spectral`
+4. `packages/efx-spectral` — tiny shared MIT spectral package (7-coeff absorbance basis, CPU helpers + GLSL basis export, `NOTICE`); engine 1 adopts in v2.1.0; krita never uses it
+5. `app/` module registry + top-bar switcher + per-module option panels + 4th paint layer kind + paper-pack library — compositor `getFlattenedFrame` path unchanged (CMP-01)
 
-**Key patterns:** one parent layer → one document → many tracks → one flattened result (the invariant); track-local addressing; revision-based async authority (parent/document/track); one shared internal composition path; linked source-frame references + modulo resolver; staging/commit persistence transaction; real-key/cache boundary per track; clean-break document boundary.
+**Key patterns:** generic envelope + opaque payload; EngineAdapter plug point; bake host = ported `finalizationQueue`; composite-only paper (`PaperPassTile` valley/peak swap, no rebake); determinism by seeded draws only. Paper pack rides 56 but is Studio-library-shaped from the first commit (all paints).
 
 ### Critical Pitfalls
 
-1. **Track identity via array position** — reorder/undo/cache/Reveal silently retarget to the wrong track. Avoid: stable `trackId` strings never rewritten by reorder; all maps `Map<layerId, Map<trackId, ...>>`; every cache key embeds `trackId`. (Phase 1/2)
-2. **Legacy one-track schema/renderer remains reachable** — a "temporary" compat branch becomes permanent dual maintenance. Avoid: delete or make unreachable the old one-track renderer and persistence path; reject pre-v1.0 data explicitly with a loud, testable failure. (Phase 1)
-3. **Stale async commit to wrong track** — an async PlayScript/Reveal/Background-import started on track A commits to track B after a switch. Avoid: async authority checks include parent + document + track revision; fail-closed on deleted track. (Phase 2)
-4. **Track-local cache keys missing `trackId` (and a single global `paintVersion`)** — cross-track cache pollution and over-invalidation. Avoid: every cache key embeds `trackId`; per-track `paintVersion` bump + subscribe keyed to active track. (Phase 2/4)
-5. **Parent opacity/blend double-applied** — the internal compositor bakes parent opacity/blend, then the main editor applies it again. Avoid: internal compositor produces a flat raster with internal track opacity/blend applied once in a locked order; parent applies opacity/blend exactly once. Contract test: parent 50% + internal 50% = 25%. (Phase 4)
-6. **Studio/main/export divergence** — three surfaces drift if the compositor is re-implemented per surface. Avoid: one shared internal composition path; one resolver owns Background effective-duration; pixel acceptance matrix is the gate. (Phase 4/5/8)
-7. **Loop next-clip interruption off-by-one** — seam frames overlap or gap. Avoid: lock half-open `[start, start + effectiveDuration)` intervals; truth-table tests before implementation; one resolver owns effective-duration. (Phase 5)
-8. **Reference photo leaks into output** — reference visibility accidentally enters flattened output. Avoid: explicit source mode (`reference-only`/`reveal-source`/`masked-transform-source`); exclusion tests. (Phase 6/8)
-9. **Scope creep via forbidden sequence-level assumptions** — the milestone grows into a main-editor rewrite. Avoid: enforce locked ownership boundaries as review gates; no `Sequence.frameTracks`, no main-editor rows for internal tracks, no direct main-renderer iteration. (All phases)
+1. **Trusting the signals peer range instead of running the R1.1 probe** (Phase 54) — reactivity can die silently (`paintVersion` bumps, no re-render). Run the throwaway probe BEFORE any bump; if RED -> STOP and escalate (R1.2). No shims, no git-sha pins.
+2. **Rewriting `paintVersion` subscriptions into React-style effect cleanups** (Phase 54) — Preact 11 defers cleanups until after paint; rewriting the bump-and-subscribe discipline creates zombie effects. Treat the 13+ `paintVersion` consumer files as a freeze-list; re-verify teardown, change nothing.
+3. **Engine-specific params leaking into the host API** (Phase 55) — `physicsMode` / `waterAmount` / krita names on host types re-creates the phases 27-32 adapter failure. A5 (fake engine-2 payload round-trips with zero engine-1 types) is the detector. Format-identical is a *replay* guard, not a license to entangle types.
+4. **Replay parity drift "fixed" with compat shims** (Phase 55) — capture the pre-split golden bake BEFORE moving anything; fix drift at the source (seed inputs, iteration order, schedule defaults); NEVER add a dual reader (clean break law).
+5. **Porting the oracle unseeded randomness** (Phase 56) — `Math.random()` scatter/jitter/paperSeed must become seeded, arc-length-keyed draws; `paperSeed` is data. Define the A2 GPU pixel-delta tolerance honestly at plan time.
+
+Also critical and easy to miss: opening 55 before 54 live UAT closes (vitest is blind to cross-webview/Tauri behaviour); wall-clock time in the host; baking paper into WebPs / forced Dry / live sim on the timeline; GPU texture footprint re-triggering the WKWebView OOM class (chunk ceiling 2000 kB is a lock); module switcher forking Studio or shipping Krita; duplicated spectral mixing; silent `.mce` field loss (every new field in TS **and** Rust + `mceFieldContract.test.ts`); eroded fail-closed Apply.
 
 ## Implications for Roadmap
 
-The spec's 9-phase structure is confirmed as the correct build order. The research validates the ordering rationale and adds specific pitfalls each phase must avoid.
+Based on research, suggested phase structure (maps to locked phases 54-57 + the switcher/paper slices; user drives insertion via `gsd-phase --insert`):
 
-### Phase 1: New EFX Paint document and clean cutover
-**Rationale:** The document model and clean-break rejection are the foundation; every later phase addresses state inside the document. Deleting the legacy path first prevents any new feature from accidentally depending on it.
-**Delivers:** versioned v1.0 document, stable track IDs, one default Paint track + one fixed Background track, document revision, active track ID, explicit pre-v1.0 rejection.
-**Addresses:** versioned document, clean-break legacy rejection (FEATURES.md table stakes).
-**Avoids:** Pitfall 2 (legacy path reachable), Pitfall 1 (track identity model locked here).
+### Phase 54: Preact 11 + signals hard gate
+**Rationale:** Nothing later may build on a dead major; the probe is the milestone first hard gate.
+**Delivers:** `preact@11.0.1` + `@preact/signals@2.11.3` + `lucide-preact@^1.57.0`; mechanical migration (3-file `JSX.*` type fix, property-aware style units, `RefObject` type annotations); single `preact` copy; `efx-physic-paint` peer floor -> `>=11`.
+**Addresses:** the foundation everything else assumes; keeps signals-only law intact.
+**Avoids:** Pitfalls 1-5 (probe, paintVersion cleanups, auto-px/JSX types, dual preact, premature 55).
+**Hard stop:** R1.1 probe RED -> STOP and escalate as a blocking decision. Exit gate: R4.2 rows A1-A5 user-asserted live before 55 opens.
 
-### Phase 2: Track-local Paint/Roto/PlayScript and caches
-**Rationale:** The multi-row timeline shows frame keys/caches on the correct row — it needs track-local state to exist first.
-**Delivers:** `layerId → trackId → frame` addressing, track-local frames/caches/revision/dirty state, shared Loop Clip resolver, track-aware invalidation, parent/document/track async authority.
-**Uses:** Preact Signals store pattern, Loop Clip resolver (STACK.md).
-**Implements:** track-local addressing + revision authority patterns (ARCHITECTURE.md).
-**Avoids:** Pitfall 1 (addressing), Pitfall 3 (stale async), Pitfall 4 (cache keys), Pitfall 5 (undo wrong track), Pitfall 9 (loop asset duplication), Pitfall 17 (raster bytes in undo).
+### Phase 55: `efx-paint-host` split (tranche 0b)
+**Rationale:** Pay the generic seam ONCE before engines 2 and 3 exist; 55 is the hard prerequisite of both 56 and 57.
+**Delivers:** host package (animation/, traceSeed, script envelope, time/, bake host); engine-1 re-pointed with replay parity vs pre-move golden; generic `StudioStroke<P>` + `EngineAdapter<P>`; fail-closed Apply contract.
+**Uses:** tsup ESM build mirroring `efx-physic-paint`; no new deps.
+**Implements:** ARCHITECTURE seam map sections 2.2-2.3.
+**Avoids:** Pitfalls 6-10, 17 (host leakage, parity drift + shims, brush-pack "fix", new cancellation model, wall-clock, Apply erosion).
+**Signature row:** A5 fake engine-2 payload compiles and round-trips with zero engine-1 types. First task is golden-bake capture, not file moves.
 
-### Phase 3: Internal multi-track timeline and controls
-**Rationale:** The compositor consumes track-local state and the hide/solo/opacity/blend controls the timeline exposes.
-**Delivers:** multi-row strip, filmstrip capsules, track CRUD UI, active selection, hide/solo/opacity/blend controls, fixed Background row, distinct photo/reference/audio surfaces.
-**Uses:** Canvas 2D multi-row timeline strip (STACK.md).
-**Avoids:** Pitfall 12 (Background overlap/reorder), Pitfall M2 (active-track routing), Pitfall M8 (hide/solo truth table drift), minor pitfalls (banned `clip bloquant` term, requested/effective duration visibility).
+### Phase 56: `efx-watercolor` engine 2 + 10-paper pack + switcher slice
+**Rationale:** Consumes the host seam; mixing may pull 57 content forward (locked fallback — never duplicate spectral code).
+**Delivers:** clean-room WebGL2 fluid engine (`brush|water|pen|lift`, 14 tips + custom, 8-param surface); Studio script law for aquarelle A1-A5; paper pack -> Studio library for ALL paints; module switcher shell + per-module option drain (Krita inert).
+**Uses:** raw WebGL2; `efx-spectral` (created early if needed); `finalizationQueue` pattern; `PaperPassTile`/`paperPass`; 52.1 WebP/LRU cache path.
+**Implements:** EngineAdapter, 4th paint layer kind, module registry.
+**Avoids:** Pitfalls 11-16 (oracle non-determinism, stale licence, paper/Dry/live-sim violations, GPU footprint, Studio fork / Krita ship, misplaced spectral).
+**User decision at plan time:** oracle licence P1 (see Research Flags).
 
-### Phase 4: Internal compositor and flattened parent result
-**Rationale:** The flattened-result contract is the milestone's keystone; Background (5), photo/reference (6), and Reveal (8) all feed the same compositor. Landing it first keeps each later track type a clean addition. **Hard dependency:** Phase 4's flattened output must be the ONLY path — do not build a Studio-only preview path in Phase 3 that Phase 4 has to replace.
-**Delivers:** one shared internal composition path, hide/solo truth table, per-track opacity/blend in stable order, one flattened raster + composite revision, pixel acceptance matrix.
-**Uses:** Canvas 2D compositing + `blendModeToCompositeOp` (STACK.md).
-**Implements:** `efx-paint/compositor/` (ARCHITECTURE.md).
-**Avoids:** Pitfall 6 (parent opacity/blend double-apply), Pitfall 7 (premultiplied alpha), Pitfall 8 (Studio/main/export divergence), Pitfall 13 (Background gaps differ), Pitfall M4/M6.
-
-### Phase 5: Fixed Background track and imported Loop Clips
-**Rationale:** The Background track's Loop Clip resolver is the same machinery Reveal's source handling builds on.
-**Delivers:** one fixed non-overlapping Background row, imported still/sequence clips, finite/infinite repeat, gaps/fallback, filmstrip capsules, collision rejection.
-**Uses:** Loop Clip resolver, `imageStore` LRU + Rust image pipeline (STACK.md).
-**Avoids:** Pitfall 9 (asset duplication), Pitfall 10 (off-by-one), Pitfall 11 (infinite loop expanded range), Pitfall 12 (overlap/reorder), Pitfall 13 (gaps differ).
-
-### Phase 6: Photo/reference track
-**Rationale:** Distinct from Background; supplies the source for Reveal (Phase 8).
-**Delivers:** one photo/reference track, three source modes, reference-only Studio visibility, exclusion from flattened output, frame-aligned source resolution, missing-source recovery.
-**Uses:** `imageStore` LRU + Rust image pipeline (STACK.md).
-**Avoids:** Pitfall 14 (reference leak), Pitfall M5 (frame-aligned resolution).
-
-### Phase 7: Read-only audio preview
-**Rationale:** Independent — reuses Phase 41 as-is; can land any time after the shared application-frame cursor exists (Phase 3).
-**Delivers:** read-only synchronized audio monitoring across internal tracks, shared application-frame cursor, no doubled engine.
-**Uses:** Phase 41 audio preview (STACK.md) — reuse as-is, no new code.
-**Avoids:** Pitfall 15 (audio drift/mutation).
-
-### Phase 8: Shared mask compositor and Reveal
-**Rationale:** Reveal layers on the compositor (4), the photo/reference track (6), and Paint/PlayScript coverage (2). It is the deepest integration, so it lands last.
-**Delivers:** one offscreen source-plus-mask compositor, alpha-vs-luma interpretation, optional inversion, Reveal result written to an internal Paint/result track.
-**Uses:** Canvas 2D offscreen mask compositing (STACK.md).
-**Implements:** `efx-paint/mask/` (ARCHITECTURE.md).
-**Avoids:** Pitfall 16 (Reveal overlay leak), Pitfall 14 (reference leak).
-
-### Phase 9: Integrated v1.0.0 acceptance
-**Rationale:** The enforcement backstop for all stop conditions.
-**Delivers:** automated gates (vitest, typecheck, build, cargo test, release preflight) + native UAT + signed/notarized release.
-**Avoids:** Pitfall 18 (scope creep) — Phase 9 stop conditions are the enforcement backstop.
+### Phase 57: `efx-spectral` hardening
+**Rationale:** Owns the shared colour contract and MIT attribution; must not block 56 on ceremony — content may be created inside 56, 57 freezes the API for engine-1 adoption.
+**Delivers:** vendored MIT reflectance data + `NOTICE`; CPU helpers + `displayBasisGLSL()`; CPU/GPU parity test (deltaE_OK approx 0.1-0.2); API freeze.
+**Avoids:** Pitfall 16 (duplication/misplacement); licence breach on missing attribution.
 
 ### Phase Ordering Rationale
 
-- **1 before everything:** the document model and clean-break rejection are the foundation; deleting the legacy path first prevents accidental dependency on it.
-- **2 before 3:** the multi-row timeline needs track-local state to exist first.
-- **3 before 4:** the compositor consumes the hide/solo/opacity/blend controls the timeline exposes.
-- **4 before 5/6/8:** the flattened-result contract is the keystone; Background, photo/reference, and Reveal all feed the same compositor.
-- **5 before 6:** the Background Loop Clip resolver is the same machinery Reveal's source handling builds on.
-- **7 is independent:** audio preview reuses Phase 41 as-is; can land any time after the shared application-frame cursor exists (Phase 3).
-- **8 last:** Reveal is the deepest integration, layering on the compositor, photo/reference track, and Paint/PlayScript coverage.
+- **54 -> 55 -> 56 is hard** — the watercolour stack targets Preact 11; the host split is "pay once, ride forever"; 56 must not re-grow script/tick/bake machinery.
+- **57 may interleave with 56** — if pigment work needs the package first, create `packages/efx-spectral` early inside 56; 57 then finishes NOTICE/tests/API freeze. Never fold spectral into the watercolor engine or the host.
+- **Paper pack and switcher ride 56** — paper is engine-agnostic Studio library content; the switcher needs >=2 modules to be meaningful and is a consumer of the 55 seam. Layout/iconography are discuss-phase (user decides).
+- **Krita, engine-1 spectral, Fill/Text/Shape/Hand are out** — v2.1.0+ only; the milestone is already large and clean-break + GPU work is the risk concentration.
 
 ### Research Flags
 
-Phases likely needing deeper research during planning:
-- **Phase 1:** exact `.mce` v1.0 schema field-level design (the spec's canonical document concept is illustrative, not locked). Needs a schema decision before planning.
-- **Phase 4:** opacity/blend application order (opacity before blend, AE convention) must be locked and documented; the pixel acceptance matrix needs full enumeration.
-- **Phase 8:** Reveal result track semantics (written to vs represented by an internal Paint/result track) need a decision.
+Phases likely needing deeper research during planning (`/gsd-plan-phase --research-phase`):
+- **Phase 56:** highest residual uncertainty — GPU determinism tolerance policy (A2), wet-region perf laws at HD, texture footprint budget, licence P1 outcome, layer-kind naming (UI-SPEC). The physics/look is method-specified but the runtime fit is not.
+- **Phase 55:** seam map is well-specified from live code, but the golden-parity procedure and envelope/payload split of `physicsPaintRotoScriptSchema.ts` deserve a focused plan-time pass (Q1/Q2 types.ts shape).
 
 Phases with standard patterns (skip research-phase):
-- **Phase 2:** track-local addressing and revision authority are direct extensions of proven store patterns.
-- **Phase 5:** Loop Clip resolution is a verbatim reuse of the existing resolver.
-- **Phase 7:** audio preview is a verbatim reuse of Phase 41.
+- **Phase 54:** mechanical migration fully measured on the live tree; the gate is the probe + live UAT, not research.
+- **Phase 57:** vendoring MIT data + tests + NOTICE is a known shape once 56 consumption is proven.
+
+### Hard Stops, User Decisions, Plan-Time Items
+
+**Hard stops:**
+1. R1.1 signals probe RED -> STOP, escalate, do not shim or pin unofficial combos.
+2. Phase 55 must not open until 54 R4.2 rows A1-A5 are user-asserted live (not "automated-ready").
+3. No oracle/inkwash code copy until the licence decision is recorded; P1 stands meanwhile.
+4. Never duplicate spectral mixing; never add compat/migration readers; never bump the 2000 kB chunk ceiling without an explicit user decision.
+
+**User decisions:**
+- Oracle licence at 56 plan time: relax P1 to "MIT port with attribution" or stay clean-room (record in PROJECT.md Key Decisions).
+- `simplex-noise` vs in-house seeded noise (research recommends `simplex-noise@4.0.3`).
+- Host Preact-free core vs default `./preact` entry (lean Preact-free; Q3).
+- Module switcher placement/iconography/panel layout (discuss-phase gray zones — do not pre-decide).
+- Chunk-budget line move, if shaders/spectral/papers pressure the 2000 kB ceiling.
+- kmerp vs spectral sufficiency for engine 1 — only at v2.0.0 close, not now.
+
+**Plan-time items:**
+- Exact tick-grid value (~1/60 s) and types.ts split shape (paint-host Q1/Q2).
+- 4th paint layer-kind naming (Water/Aquarelle/Wash — UI-SPEC).
+- A2 determinism acceptance: stated pixel-delta threshold or CPU reference path (GPU float pipelines are not bit-stable).
+- Raise `efx-physic-paint` peer floor and re-verify `pnpm why preact` single copy as 54 exit checklist.
+
+### Contradictions Resolved / Flagged
+
+| Tension | Resolution |
+|---|---|
+| STACK says signals/Preact 11 is GREEN; PITFALLS says never trust the peer range | **Both true.** Metadata + 2.11.3 fix justify no milestone block; the R1.1 probe + live UAT remain mandatory before the bump is accepted. |
+| PITFALLS: on-disk oracle LICENSE is MIT; STACK/ARCH/FEATURES: unlicensed, clean-room only | **Unresolved — user decision at 56 plan time.** Until recorded, P1 stands (method only). The grill reopening clause ("if either ever lands an OSI licence...") may already be satisfied; the locked prohibition is what the plan inherits. |
+| 57 scheduled after 56 but 56 needs spectral | **Locked fallback:** create `packages/efx-spectral` early inside 56 (or pull 57 forward); 57 hardens/freezes. Never inline mixing in the engine. |
+| "Format-identical" split vs generic payload | Parity applies to **replay pixels** (R5.2), not type ownership. Host types are generic; engine-1 payload stays as-is (including legacy `timestamp` as an engine-1 detail only). |
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | All capabilities map onto existing, proven machinery verified by direct repo inspection; version claims cross-checked against npm registry; zero new dependencies |
-| Features | HIGH | Spec is user-locked and authoritative; competitive patterns cross-checked against TVPaint, Harmony, Krita, Blender GP, Procreate, AE, Nuke, Flame/Smoke, Photoshop, Unity, MNG |
-| Architecture | HIGH | All integration points verified by direct repo inspection of the locked spec and existing stores/bridge/renderer/persistence code; open questions are internal seam choices, not ecosystem unknowns |
-| Pitfalls | HIGH | Grounded in the spec risk register, required truth tables, forbidden sequence-level assumptions, and v0.7.0/v0.8.0/v0.9.0 post-mortems; web-derived patterns tagged LOW and used only to confirm prevention strategies |
+| Stack | HIGH | First-party peerDependency ranges + changelogs + npm metadata; blast radius measured on the live tree (171 `useRef`, 0 `defaultProps`, 3 `JSX.` files). Residual runtime risk is exactly what R1.1 + R4.2 close. |
+| Features | HIGH | Oracle/local tree read directly (`BrushPreset`, `PaperPreset`, `Params`, tools); competitor tier MEDIUM (Rebelle page; Krita/CSP/Procreate knowledge tier). Scope is locked in PROJECT.md. |
+| Architecture | HIGH | Seam map derived from locked specs + live inspection of `efx-physic-paint` and `app/`; MEDIUM only on spectral.js upstream API details (local `spectral.ts` is the working reference). |
+| Pitfalls | HIGH | Upgrade-guide and codebase findings verified on disk; GPU bit-stability is LOW-MEDIUM (general knowledge) — treat as a design constraint to specify, not a measured claim. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Exact `.mce` v1.0 schema:** the spec's canonical document concept is illustrative, not a locked field-level implementation. Phase 1 planning must lock the field-level schema (document, track, photo-reference, background, FrameLoopClip) before code.
-- **Track cache key composition:** the exact composition of the track cache key (track revision + which composition dependencies) must be specified in Phase 4 planning so unchanged tracks skip re-composite.
-- **Opacity/blend application order:** opacity-before-blend (AE convention) must be locked and documented in Phase 4; the pixel acceptance matrix must enumerate it.
-- **Reveal result track semantics:** whether the Reveal result is written to a new internal Paint/result track or represented by an existing track must be decided in Phase 8 planning.
-- **Track-aware `paintVersion` reactivity model:** the exact mechanism (per-track counter vs track-aware reactivity) must be decided in Phase 2 planning to avoid over-invalidation.
+- **Oracle licence verdict** — re-verify on-disk LICENSE + upstream at 56 plan time; explicit user decision on P1; record in Key Decisions. Until then, clean-room only.
+- **GPU determinism policy** — define A2 acceptance shape (pixel-delta threshold vs CPU reference) at plan time; do not discover it mid-56.
+- **Tick-grid exact value and types.ts split** — plan-time pins for 55 `time/` module and envelope/payload split.
+- **Paper-pack memory footprint** — 10 tile pairs at HD stress the deferred cache-footprint issue; generate at working resolution on demand and measure before stacking.
+- **Licence/NOTICE hygiene checklist** — `efx-spectral` ships `NOTICE`; whatever is reused after the licence decision carries attribution; Mixbox stays banned; fonts stay out.
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `SPECS/milestone-v1.0.0-plan.md` — architectural invariant, ownership boundaries, locked MVP scope, required truth tables, canonical document concept, identity/asset/history rules, clean-break boundary, composition order, loop resolution formula, forbidden sequence-level assumptions, risk register, 9-phase structure
-- Direct repo inspection: `app/src/lib/previewRenderer.ts`, `app/src/stores/physicPaintStore.ts`, `app/src/stores/paintStore.ts`, `app/src/lib/physicPaintBridge.ts`, `app/src/lib/physicPaintPersistence.ts`, `app/src/lib/paintPersistence.ts`, `app/src/stores/projectStore.ts`, `app/src/types/project.ts`, `app/src/types/physicPaint.ts`, `app/src/types/paint.ts`, `app/src/types/layer.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalModel.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts`, `app/src/components/physic-paint/roto/physicsPaintRotoLoopClips.ts`, `app/src/components/physic-paint/audio/efxPaintAudioPreviewStore.ts` + `efxPaintAudioMonitor.ts` + `efxPaintAudioOwnership.ts`, `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` + `hooks/useRotoTimelineModel.ts`, `app/src/stores/imageStore.ts`, `app/src/lib/history.ts`, `app/package.json`
-- `.planning/PROJECT.md` — Key Decisions and post-mortems (Phases 27-32 adapter failure, 36.14 canonical physical-frame cutover, Phase 41 audio anchor model, Phase 43 Loop Clip resolver, Phase 43.6 batch ops, v0.8.1 CSP fix)
+- npm registry (`npm view`) — preact, @preact/signals, lucide-preact, @preact/preset-vite, spectral.js, simplex-noise, motion-canvas-vite-plugin peers/versions
+- Preact 11 upgrade guide — https://preactjs.com/guide/v11/upgrade-guide/ (breaking-change list; zero signals mentions)
+- @preact/signals releases — 2.11.3 Preact-11 deferred-dispose fix; peer `>= 10.25.0 || >=11.0.0-0`
+- rvanwijnen/spectral.js — MIT method + reflectance data (attribution required)
+- Locked specs: `SPECS/v1.1.0-preact11/context.md`, `SPECS/v1.1.0-paint-host/context.md`, `SPECS/v1.1.0-water-color/{00-grill,01-gsd}-context.md`
+- Live code: `packages/efx-physic-paint` (animation/, traceSeed, types), `app/.../physicsPaintRotoScriptSchema.ts`, `finalizationQueue.ts`, `paperPass.ts`, `mceFieldContract.test.ts`
+- `.planning/PROJECT.md` — v2.0.0 milestone lock (semver, clean break, invariants)
 
 ### Secondary (MEDIUM confidence)
-- npm registry (https://registry.npmjs.org/@preact/signals, /@tauri-apps/api, /preact, /tailwindcss, /@tauri-apps/plugin-fs, /@tauri-apps/plugin-dialog, /@tauri-apps/plugin-store) — current version verification
-- Tauri v2 release page (https://v2.tauri.app/release/) — `@tauri-apps/api` 2.11.1, cli 2.11.4
-- Tailwind CSS v4.3 blog (https://tailwindcss.com/blog/tailwindcss-v4-3) — v4.3.x line
+- Local oracle `SPECS/v1.1.0-water-color/watercolor-playground/` — method/behaviour reference only; **on-disk LICENSE is MIT (2026 Maksim Surguy) contradicting the grill no-licence premise — user decision required**
+- Rebelle product page — competitor feature tier (marketing-level)
+- GPU float bit-stability — general rendering knowledge; specify tolerance, do not treat as measured
 
-### Tertiary (LOW confidence — cross-referenced patterns only)
-- TVPaint, Toon Boom Harmony, Krita, Blender Grease Pencil, Procreate, After Effects, Nuke, Flame/Smoke, Photoshop, Unity Streaming Image Sequence, MNG spec — competitive feature patterns (FEATURES.md)
-- NLE opacity/blend order divergence (FCP vs Resolve), double-premultiplied alpha dark halos, hidden black V0 layer, AE track-matte leak, Harmony Transform-Loop seam, Godot audio self-overlap, AudioContext clock drift, undo byte-budget/one-stack, schema-evolution silent-breakage — pitfall prevention confirmation (PITFALLS.md)
+### Tertiary (LOW confidence)
+- Krita / CSP / Procreate feature knowledge tier (docs URLs 404 at research time)
 
 ---
-*Research completed: 2026-08-23*
+*Research completed: 2026-10-14*
 *Ready for roadmap: yes*

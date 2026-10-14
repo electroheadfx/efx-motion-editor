@@ -1,145 +1,274 @@
 # Stack Research
 
-**Domain:** Tauri v2 macOS desktop app — milestone v1.0.0 multi-track internal EFX Paint frame documents (track-local Paint/Roto/PlayScript state, internal multi-track compositor, fixed Background track with imported Loop Clips, photo/reference track, shared Reveal mask compositor, read-only audio preview)
-**Researched:** 2026-08-23
-**Confidence:** HIGH (all new capabilities map onto existing, proven machinery verified by direct repo inspection; version claims cross-checked against the npm registry; zero new runtime dependencies)
+**Domain:** Stack additions/changes for the v2.0.0 multi-module paint workstation (Preact 11 bump · `efx-paint-host` split · `efx-watercolor` engine 2 · `efx-spectral` shared spectral package · 10-procedural-paper pack · module switcher)
+**Researched:** 2026-10-14
+**Mode:** Ecosystem (stack decisions for NEW capabilities only)
+**Confidence:** HIGH on declared package compatibility (first-party peerDependency ranges + first-party changelogs); MEDIUM on runtime fit of our specific effect patterns (that is exactly what Phase 54 R1.1 probe + R4.2 live UAT exist to close)
 
-## Executive Summary
+---
 
-Milestone v1.0.0 requires **no new runtime or dev dependencies**. Every new capability is a pure TypeScript data-model + Canvas 2D + existing signal-store extension of machinery already in the repo and already proven by v0.8.0/v0.9.0:
+## HARD GATE: `@preact/signals` ↔ Preact 11
 
-- **Multi-track compositor** → the existing Canvas 2D compositing pass in `previewRenderer.ts` (with `blendModeToCompositeOp` mapping the existing `BlendMode` enum to `globalCompositeOperation`) already composites multiple layers with opacity/blend. The internal compositor is a second, self-contained compositing pass that produces one flattened parent raster per frame; the main editor keeps compositing that parent raster exactly once.
-- **Track-local state/caches** → the existing `physicPaintStore.ts` already keys per-layer state with `Map<string, Map<number, ...>>` plus a `paintVersion`/`rotoPhysicalRevision` counter-signal pattern. Track-local state adds one key level (`layerId → trackId → frame`); the signal-store + revision-authority pattern is unchanged.
-- **Background track + Loop Clips** → the Loop Clip resolver already implemented in `physicsPaintRotoPhysicalResolver.ts` / `physicsPaintRotoLoopClips.ts` (modulo source mapping, finite repeat from 1, infinity, next-clip interruption, half-open intervals) is exactly the resolution the spec's Background track requires. The main editor already imports still images and ordered image sequences through `imageStore` (LRU pool) + the Rust image pipeline.
-- **Photo/reference track** → a source reference plus Canvas 2D `drawImage`; the spec's `reference-only` / `reveal-source` / `masked-transform-source` modes are data-model flags, not new rendering tech.
-- **Read-only audio preview** → already shipped in v0.9.0 Phase 41 (`efxPaintAudioPreviewStore.ts`, `efxPaintAudioMonitor.ts`, `efxPaintAudioOwnership.ts`, `efxasset://` transport, revisioned context). Reuse as-is; the spec's "read-only synchronized monitoring" is the exact Phase 41 contract.
-- **Shared mask compositor + Reveal** → Canvas 2D offscreen compositing with `globalCompositeOperation` (`destination-in`/`source-in`/`source-atop`), the same technique already used in `paintRenderer.ts` for eraser (`destination-out`) and onion skin. No mask library needed.
+**Verdict: GREEN** — declared compatibility is explicit, first-party, and current. The official Preact 11 upgrade guide is silent on signals (the spec's premise was correct), **but the package's own `peerDependencies` field states it.**
 
-The only "new" work is the v1.0.0 EFX Paint document schema (a clean-break `.mce` format addition with explicit pre-v1.0 rejection) and the multi-row timeline strip (an extension of the existing Canvas 2D Roto strip). Both are pure TypeScript + Rust serde work on established patterns.
+### Exact versions
 
-All existing dependencies are on caret ranges that already resolve to current versions (`@preact/signals` ^2.8.1 → 2.11.x, `@tauri-apps/api` ^2.10.1 → 2.11.x, `preact` ^10.28.4 → 10.29.x, `tailwindcss` ^4.0.0 → 4.3.x, Tauri plugins → current). No bump is required. Vite stays pinned at 5.4.21 (the v0.9.0 decision: `@efxlab/motion-canvas-vite-plugin` 4.0.0 interop is delicately patched; Vite 8 is not a target).
+| Package | Currently pinned | Recommended | Latest (2026-10-14) |
+|---|---|---|---|
+| `preact` | `10.29.8` | **`11.0.1`** | `11.0.1` (11.0.0 → 2026-09-30; 11.0.1 → 2026-10-08) |
+| `@preact/signals` | `2.11.2` | **`2.11.3`** | `2.11.3` (released 2026-09-30 — same day as Preact 11.0.0) |
+
+### Quoted peerDependency ranges (npm registry, verbatim)
+
+```
+@preact/signals@2.11.2  peerDependencies: { "preact": ">= 10.25.0 || >=11.0.0-0" }
+@preact/signals@2.11.3  peerDependencies: { "preact": ">= 10.25.0 || >=11.0.0-0" }
+```
+
+`>=11.0.0-0` is npm's prerelease-inclusive major-11 range: it accepts `11.0.0-beta.*`, `11.0.0-rc.*`, `11.0.0`, and `11.0.1`. The range has been present since `@preact/signals@2.8.0` — Preact 11 support is long-declared, not a last-minute patch.
+
+### Corroborating first-party changelog (the runtime half)
+
+`@preact/signals@2.11.3` release notes, authored by the Preact team (JoviDeCroock):
+
+> Don't re-run a `useSignalEffect` for a component that was unmounted by the same update. **Preact 11 disposes it after paint**, so the effect could otherwise run once more against an unmounted component.
+
+This is the signals maintainers explicitly coding against Preact 11's new deferred-cleanup semantics — the exact change our `paintVersion` subscription law cares about. `2.11.3` is the Preact-11-ready release; `2.11.2` predates Preact 11.0.0 by 26 days and does not carry this fix.
+
+### Why the guide's silence is not a red flag
+
+The Preact 11 upgrade guide (`https://preactjs.com/guide/v11/upgrade-guide/`) contains **zero** mentions of `@preact/signals`, signals versions, or a required signals upgrade. That is expected: `@preact/signals` is a **separately versioned package** with its own release cadence and its own peer range. Compatibility is declared in `package.json`, not in the framework upgrade guide. The guide's own package-compatibility notes cover only `preact-root-fragment`, `preact/compat` CJS wrappers, and `createPortal`.
+
+### Residual risk (not the gate — the gate is GREEN)
+
+What is **not** proven by metadata alone: that *this codebase's* effect-subscription patterns survive the deferred-cleanup change at runtime. That is a live-behaviour question, and Phase 54 already designs the answer:
+
+- R1.1 throwaway probe (run **before** the bump, as specified)
+- R2.4 explicitly re-verifies `paintVersion` render-effect subscriptions still tear down, and **forbids** rewriting them into React-style cleanups
+- R4.2 A1–A5 live UAT rows close the question on visible behaviour before Phase 55 opens
+
+**Do not skip the probe.** GREEN means "the publisher declares support and has shipped a Preact-11-specific fix" — it does not mean "skip verification." It does mean the milestone is **not** blocked on an unknown.
+
+### Gate-blocker that WAS found: `lucide-preact`
+
+| Package | Pinned | Its `peerDependencies` | vs Preact 11 |
+|---|---|---|---|
+| `lucide-preact@0.577.0` | `^0.577.0` | `{ "preact": "^10.27.2" }` | **RED** — range excludes 11 |
+| `lucide-preact@1.49.0` | — | `{ "preact": "^10.27.2" }` | **RED** |
+| `lucide-preact@1.50.0` | — | `{ "preact": "^10.27.2 \|\| ^11.0.0-0" }` | **GREEN** — first version that allows 11 |
+| `lucide-preact@1.57.0` (latest) | — | `{ "preact": "^10.27.2 \|\| ^11.0.0-0" }` | **GREEN** |
+
+**`1.50.0` is the exact floor.** The currently pinned `0.577.0` will peer-warn (or hard-fail under strict pnpm resolution) against Preact 11. This is the one companion-package bump the milestone needs; it resolves the preact11 spec's open question Q2.
+
+---
+
+## Recommended Stack Changes (summary)
+
+| # | Change | From | To | Kind |
+|---|---|---|---|---|
+| 1 | `preact` | `10.29.8` | `11.0.1` | major bump (Phase 54) |
+| 2 | `@preact/signals` | `2.11.2` | `2.11.3` | patch bump — carries the Preact 11 deferred-dispose fix |
+| 3 | `lucide-preact` | `^0.577.0` | `^1.57.0` | **required** bump (peer floor 1.50.0) |
+| 4 | `packages/efx-paint-host` | — | new workspace package | **no new deps** — pure extraction |
+| 5 | `packages/efx-spectral` | — | new workspace package | **no new runtime deps** — vendored MIT data + our ESM implementation |
+| 6 | `packages/efx-watercolor` | — | new workspace package | **no new runtime deps** — clean-room WebGL2 |
+| 7 | procedural paper pack | — | 10 papers → `PaperPassTile` | **one optional 3 KB dep** (`simplex-noise`), else none |
+
+**Net new third-party runtime dependencies for the entire milestone: at most one (`simplex-noise`).** Everything else is either a version bump of something already present or a workspace-internal package split.
+
+---
 
 ## Recommended Stack
 
-### Core Technologies
+### Core Technologies (changes only — everything else is unchanged)
 
 | Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| Canvas 2D compositing (`previewRenderer.ts` pattern + `blendModeToCompositeOp`) | Platform (WKWebView) | Internal multi-track compositor → one flattened parent raster per frame | **No new dependency.** The existing compositor already resolves multiple layers with the exact `BlendMode` enum the spec requires (normal/screen/multiply/overlay/add → `source-over`/`screen`/`multiply`/`overlay`/`lighter`). The internal compositor is a second pass that composites Background → Paint tracks in stable order with hide/solo/opacity/blend, then publishes one raster through the existing parent Paint-layer boundary. Canvas 2D guarantees Studio/preview/export parity because all three already share the same compositing path. |
-| Preact Signals store pattern (`physicPaintStore.ts`, `paintVersion`/`rotoPhysicalRevision` counters) | `@preact/signals` ^2.8.1 (resolves 2.11.x) | Track-local Paint/Roto/PlayScript frames, caches, revision, dirty state | **No new dependency.** The store already uses `Map<string, Map<number, T>>` keyed by layerId with a counter signal for controlled re-renders. Track-local state adds a `trackId` key level and a per-track revision; the authority/revision guard pattern (parent/document/track revision revalidation before async commit) is the established Phase 36.8/43.2 lease pattern. |
-| Loop Clip resolver (`physicsPaintRotoPhysicalResolver.ts`, `physicsPaintRotoLoopClips.ts`) | Existing (pure TS) | Background track Loop Clips: modulo source mapping, finite repeat 1..∞, next-clip interruption, half-open intervals | **No new dependency.** The resolver already implements `sourceIndex = (frame - start) mod cycleLength`, `requestedDuration = cycleLength × repeatCount`, `effectiveDuration = min(requestedDuration, boundary - start)`, and next-clip priority — the exact formula the spec's Background loop resolution requires. Background clips reuse the same resolver with `sourceKind: 'imported-background'`; Hold clips keep `sourceKind: 'playscript-hold'`. |
-| `imageStore` LRU pool + Rust image pipeline (`importImages` IPC, `assetUrl`) | Existing | Imported still/sequence Background clips, photo/reference source | **No new dependency.** The main editor already imports still images and ordered image sequences (content overlay layers) with LRU eviction and Rust thumbnail generation. Background clips reference the same `ImportedImage`/sequence assets by linked source-frame reference; repetitions never duplicate durable images. |
-| Web Audio read-only preview (`efxPaintAudioPreviewStore.ts`, `efxPaintAudioMonitor.ts`, `efxPaintAudioOwnership.ts`) | Existing (v0.9.0 Phase 41) | Read-only main-editor audio monitoring during internal track playback | **No new dependency, no new code.** Phase 41 already delivers revisioned read-only audio context over the `physic-paint:*` bridge with `efxasset://` byte transport, drift-free `AudioContext.currentTime` scheduling, doubled-audio ownership guard, and engine release on close. The v1.0.0 spec's audio requirements are a subset of the Phase 41 contract. |
-| Canvas 2D offscreen mask compositing (`globalCompositeOperation` `destination-in`/`source-in`/`source-atop`) | Platform (WKWebView) | Shared mask compositor + Reveal (photo source + Paint/PlayScript coverage) | **No new dependency.** The project already uses offscreen canvas compositing for eraser (`destination-out`) and onion skin. Reveal = draw photo source into an offscreen canvas, then apply mask alpha via `destination-in` (or `source-in` on a mask canvas). Explicit alpha-vs-luma interpretation is a data-model flag, not new tech. |
-| Rust serde persistence (`.mce` format) | Existing (Tauri 2.x) | v1.0.0 EFX Paint document schema (clean break) | **No new dependency.** The project has a proven `.mce` progressive-format pipeline (v1→v15). v1.0.0 is a clean break: a new versioned document schema with explicit rejection of pre-v1.0 Paint data, no migration shim. Same serde + PNG sidecar pattern as `physicPaintPersistence.ts`. |
-| Canvas 2D multi-row timeline strip (`PhysicsPaintWorkflowStrip.tsx` pattern) | Existing | Internal multi-track timeline with filmstrip capsules | **No new dependency.** The Roto timeline is already a custom Canvas 2D strip with semantic cell rendering and the Phase 43 filmstrip loop capsule (source cycle + hatched repetition band + ×N/∞ badge). Multi-track = render N Paint rows + one fixed Background row + one photo/reference row with the same renderer. |
+|---|---|---|---|
+| `preact` | `11.0.1` | UI framework, all surfaces | Watercolour reference stack targets Preact 11; engines 2 and 3 must not be built on a dead major. 11.0.1 is the current stable patch. The bump is a **deliberate sequencing gate**, not a hard dependency of the engine (the engine is Preact-free) — do not unlock watercolour work early. |
+| `@preact/signals` | `2.11.3` | Reactive state (the project's only state layer) | Same major line as today (2.x), so **no reactivity rewrite**. 2.11.3 specifically fixes `useSignalEffect` against Preact 11's deferred dispose. Keeps `feedback_no_usestate_only_signals` intact — still signals only, no `useState`, no React, no new state library. |
+| `@preact/preset-vite` | `2.10.6` (unchanged) | Vite integration | Its peers are `vite: 2.x\|\|…\|\|8.x` + `@babel/core: 7.x` — **no `preact` peer at all**, so it needs no bump for Preact 11. |
+| TypeScript | `~5.9.3` (unchanged) | Types | Preact 11 requires **TS ≥ 5.1**. We are on 5.9.3 — comfortably green. **Do not** jump to TypeScript 7.x (a different compiler generation, out of scope). |
+| `lucide-preact` | `^1.57.0` | Icons | Required companion bump. Floor for Preact 11 is `1.50.0`. |
 
-### Supporting Libraries
+### Per-feature stack
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `@preact/signals` | ^2.8.1 (resolves 2.11.x) | Track-local reactive state, active-track selection, hide/solo/opacity/blend signals | Already in use; no change. The `computed`/`effect`/`signal` API covers all track-local reactivity. |
-| `@tauri-apps/api` (event `emit`/`listen`) | ^2.10.1 (resolves 2.11.x) | Parent/document/track revisioned bridge messages, audio preview context | Already in use; the `physic-paint:*` bridge carries the revisioned context. No new event surface beyond the existing bridge. |
-| `@tauri-apps/plugin-dialog` | ^2.6.0 (resolves 2.7.x) | Native file dialog for Background still/sequence import | Already in use for image import; reuse the existing `importImages` IPC path. |
-| `@tauri-apps/plugin-fs` | ^2.4.5 (resolves 2.5.x) | Project-local asset reads (Background source frames, photo source) | Already in use; the `efxasset://` protocol + `assetUrl` handles asset reads in the paint window. |
-| `@tauri-apps/plugin-store` | ^2.4.2 (resolves 2.4.x) | Session-local EFX Paint document state | Already in use for session persistence; reuse for the v1.0.0 document session file. |
-| `sortablejs` | ^1.15.7 | Track reorder drag in the multi-row timeline | Already in use for sidebar drag-reorder with `forceFallback:true` (bypasses Tauri native DnD interception). Reuse for track reorder; do not add a new DnD library. |
-| `perfect-freehand` | ^1.2.3 | Basic paint track stroke rendering | Already in use; per-track paint frames reuse the same stroke engine. |
-| `p5.brush` | 2.1.3-beta | FX paint track rendering | Already in use; per-track FX frames reuse the same adapter. |
-| `@efxlab/efx-physic-paint` | workspace:* | Physics/Roto paint track rendering | Already in use; per-track Roto real keys and generated interpolation reuse the same engine host. |
+#### (a) Preact 11 bump — Phase 54
 
-### Development Tools
+Additions: **none** beyond the bumps above. This is a dependency + mechanical migration.
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| Vitest 2.x (current) | Regression coverage: track-local mutation, Loop Clip resolution, hide/solo truth table, opacity/blend pixel matrix, Reveal alpha/luma truth table, clean-break rejection | Reuse the existing config — no new test setup (project constraint). The pixel-acceptance matrix and truth tables are pure data-model + offscreen-canvas tests. |
-| `cargo test` + `pnpm --dir app run typecheck` + `pnpm build` | v1.0.0 automated gates (Phase 9) | Already wired; the spec's gate list is the existing pipeline. |
-| `bash scripts/macos-release.sh preflight` | Release preflight | Already wired (v0.8.1/v0.9.0 release pipeline); unchanged for v1.0.0. |
+Breaking-change surface verified against the official upgrade guide, with our blast radius measured on the live tree:
 
-## Installation
+| Preact 11 breaking change | Affects this repo? | Measured blast radius |
+|---|---|---|
+| ESM-only (`.module.js` / CJS / UMD removed) | Low | Both packages are `"type": "module"` already; `efx-physic-paint` publishes `.mjs` via tsup. Verify `exports` maps + `@preact/preset-vite` resolution (R2.1). |
+| `useRef` now requires an initial value | **None found** | 171 `useRef(` call sites; **0** match `useRef()` / `useRef<T>()` with no arg. Already compliant. Re-verify at typecheck (R2.2). |
+| `defaultProps` → `preact/compat` | **None found** | Zero `defaultProps` occurrences in `app/src` or `packages/`. |
+| Automatic `px` suffixing → `preact/compat` | Negligible | Style objects use explicit string lengths (`'12px'`, `'34px'`) or CSS vars. Audit numeric-only style values at typecheck (R2.3). |
+| `useEffect` cleanups deferred until after paint | **Yes — but already the project's shape** | Project law is `paintVersion` bump-and-subscribe in render effects (`feedback_paintversion`); it does **not** rely on effect cleanup for correctness. R2.4 re-verifies teardown and **forbids** rewriting into React-style cleanups. The signals 2.11.3 fix is aimed at exactly this change. |
+| `JSX.*` namespace reduced; most types move to `preact` | Small | 29 `JSX.` references across **3 files** (`NumericStepper.tsx`, `SliderStepper.tsx`, +1). Mechanical type-import fix (R2.5). |
+| `render()` third arg `replaceNode` removed | **None found** | Two `render(<App/>, root)` call sites in `main.tsx`, no third argument. |
+| `Component.base` removed | **None found** | — |
+| `SuspenseList` removed from compat | **None found** | — |
+| Refs forwarded by default; `forwardRef` unnecessary | Low | `createPortal` / `memo` are imported from `preact/compat` (5 sites) — `createPortal` is now in core but **compat still re-exports it**, so imports keep working. |
 
-```bash
-# No new packages. Zero additions to app/package.json dependencies or devDependencies.
-# No changes to packages/efx-physic-paint/package.json.
-# No Rust crate additions to app/src-tauri/Cargo.toml.
+**Conclusion for (a):** the migration is genuinely mechanical and small. The two real tasks are the type-import fix (3 files) and the `lucide-preact` bump. No `useState`/React/state-library introduction is warranted or permitted.
+
+#### (b) `packages/efx-paint-host` — Phase 55
+
+**No new dependencies.** This is a move + contract extraction out of `packages/efx-physic-paint`:
+
+- Moves: `animation/` (player + progressive/static schedules + recorded motion), `util/traceSeed.ts` (FNV-1a), the script **envelope**, tick + `diffusionFrames` timing.
+- Build: same as `efx-physic-paint` — **`tsup`** (already a devDep there, `^8.5.1`), `"type": "module"`, `exports` map with a root entry.
+- **Preact-free by default.** The watercolour engine is Preact-free; the host should be too. If a Preact binding is ever needed, it goes in a `./preact` entry exactly like `efx-physic-paint` does today (open question Q3 — lean Preact-free core + optional `./preact` entry).
+- API shape: generic over the per-engine stroke payload (`pts`, `ticks`, `cuisson`, `motion`, `brush id` + `toolOverrides`). Never `waterAmount` / `physicsMode` / krita property names in the host surface.
+
+#### (c) `packages/efx-watercolor` — Phase 56 (engine 2, paint-aquarelle)
+
+**No new runtime dependencies.** Clean-room reimplementation of published physics; the licence boundary forbids vendoring the reference.
+
+| Need | Choice | Why |
+|---|---|---|
+| GPU fluid grid (velocity / wet / mobile pigment / fixed pigment / paper) | **Raw WebGL2** | The repo already runs WebGL2 (`glBlur.ts`, `glslRuntime`, `glMotionBlur`) in WKWebView. The reference engine is explicitly UI-free WebGL2. No Three.js / regl / Pixi — a single extra WebGL abstraction would fight the existing GL seams and the determinism law. |
+| Float render targets | WebGL2 `RG16F` / `RGBA16F` via `EXT_color_buffer_float` / `EXT_color_buffer_half_float` | Platform-native; no wrapper library. |
+| Pigment colour model | **`packages/efx-spectral`** (workspace) | Mandatory consumer. Never duplicate mixing code inside the engine. |
+| Determinism | existing `traceSeed` philosophy (FNV-1a per stroke) + fixed tick grid (~1/60 s, integer ticks) | Host-owned timing. No `Math.random()` / bare `rand()` in deposit or sim paths. |
+| Brush pack | data records + snapshot travelling in `.mce` | Deliberate exception to the 52.2 refs-only law. |
+| Baking | existing `finalizationQueue` pattern (Effect v4 bounded turn queue) | **No Web Worker.** Port the pattern; do not invent a new cancellation model. |
+
+Texture layout to implement (from the reference's published shader comments — method, not code):
+
+```
+velocity  RG16F   sim grid     water flow (sim texels / s)
+wet       R16F    doc grid     standing water (dries over time)
+ink       2×RGBA16F            mobile pigment: A = absorbance 0..3, B.rgb = 4..6, B.a = gouache
+fixed     2×RGBA16F            settled pigment (no white)
+paper     RGBA8                r = lit relief, g = height, b = mottle, a = fleck
 ```
 
-## Alternatives Considered
+Perf laws to honour: simulate only the wet region (wet-mask readback), stop when dry, cap sheet (~2048×1536 / MAX_DOC_PIXELS), bounded undo tiles.
 
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| Canvas 2D internal compositor (reuse `previewRenderer.ts` pattern) | PixiJS / Konva / any WebGL scene-graph compositor | Never for this spec: the existing Canvas 2D compositor already produces the exact blend-mode output the pixel-acceptance matrix requires, and Studio/preview/export parity is only guaranteed by sharing one compositing path. A scene-graph library would fork the render path and break parity. |
-| Reuse `physicsPaintRotoPhysicalResolver.ts` for Background Loop Clips | A new Background-specific loop scheduler | Never: the resolver already implements the spec's exact loop formula (modulo, finite/infinite, next-clip interruption, half-open intervals). A second scheduler would duplicate the off-by-one risk the spec's risk register calls out. |
-| Reuse v0.9.0 Phase 41 audio preview (`efxPaintAudioPreviewStore.ts`) | A new audio engine in the paint window | Never: Phase 41 already delivers read-only synchronized monitoring with drift-free scheduling and the doubled-audio guard. A second engine is the exact doubled-audio pitfall. |
-| Canvas 2D offscreen mask compositing (`destination-in`/`source-in`) | A mask library (e.g. `@rive-app`, `gl-matrix`-based mask compositor) | Never: the project already uses offscreen `globalCompositeOperation` for eraser/onion skin. Reveal is a two-canvas `drawImage` + `destination-in` operation. |
-| Extend the existing Canvas 2D Roto strip to multi-row | A timeline UI library (e.g. `dnd-kit`, `react-timeline-editor`) | Never: the project constraint is "no heavy UI libraries", and the Roto strip already renders semantic cells + filmstrip capsules. A UI library would fight the custom renderer and add bundle weight against the 1100 kB budget. |
-| New `.mce` v1.0 document schema (clean break) | Progressive migration from pre-v1.0 Paint data | Explicitly excluded by the locked spec: v1.0.0 is a clean format break with explicit rejection of pre-v1.0 data. No migration shim, no legacy reader, no compatibility branch. |
-| Stay on Vite 5.4.21 | Vite 6/7/8 upgrade | Never for this milestone: the v0.9.0 research locked Vite 5.4.21 because `@efxlab/motion-canvas-vite-plugin` 4.0.0 interop (CJS default interop, `motion-canvas:project` input contribution, esbuild config-hook repair) is delicately patched in `vite.config.ts`. A Vite upgrade is a separate, risky effort with zero v1.0.0 benefit. |
+#### (d) `packages/efx-spectral` — Phase 57 (shared MIT spectral package)
 
-## What NOT to Use
+| Need | Choice | Why |
+|---|---|---|
+| Colour model | Own ESM package implementing the **published single-constant Kubelka-Munk / spectral.js method** | Licence table in the watercolour spec: `rvanwijnen/spectral.js` is **MIT** — "method and reflectance data may be used, with attribution." The watercolour oracle itself is unlicensed (clean-room only), so the method must be sourced from the MIT project, not from the reference tree. |
+| Upstream | `spectral.js@3.0.0` on npm (MIT, `main: spectral.js`, **no `exports` map, no `module`, no `type`**) | Do **not** add it as a runtime dependency: it is a script-style bundle, not ESM, and our monorepo (and Preact 11) is ESM-only. Instead **vendor the MIT reflectance basis data** into `packages/efx-spectral` with a `NOTICE` file attributing `rvanwijnen/spectral.js`, and implement our own ESM surface. |
+| Surface | 7-coeff absorbance basis (white, cyan, magenta, yellow, red, green, blue), 16-band quadrature display, **CPU helpers + GLSL basis export** | The watercolour engine needs the basis as GPU-friendly data (uniforms/textures), which is a different shape from upstream's `mix()` API. Engine 1 adopts the same package in v2.1.0 (replacing the `mixSubtractive` RYB heuristic). |
+| Placement | `packages/efx-spectral` — **not** inside `efx-watercolor`, **not** inside `efx-paint-host` | Inside watercolour would make engine 1 depend on engine 2. Inside the host would turn the Studio law into a colour toolbox. Both rejected in the spec. |
+
+API shape to aim for: pure functions, no I/O, no DOM, deterministic, tree-shakeable. Zero runtime dependencies.
+
+#### (e) 10-procedural-paper pack
+
+Rides Phase 56. Target shape is already in the repo: `PaperPassTile { valley: HTMLCanvasElement; peak: HTMLCanvasElement }` from `app/src/lib/paperPass.ts` — conditioned height map → valley (multiply) + peak (lighten) maps, applied by `drawImage` + `globalCompositeOperation` at the composite seam. **Paper is composite-only**: no rebake on paper change, swap tiles.
+
+| Need | Choice | Why |
+|---|---|---|
+| Procedural fields (height / mottle / fleck) | Clean-room generation, seeded | Must satisfy the determinism law. |
+| Seeded noise | **`simplex-noise@4.0.3`** (MIT, 0 deps, `sideEffects: false`, ESM+CJS) — **optional** | Its API is `createNoise2D(random?: PRNG)`, so it is deterministic when handed a seeded PRNG. ~3 KB unpacked overhead beyond the PRNG. A tiny in-house seeded value-noise + hash-noise is an acceptable alternative if the project prefers zero new deps; fractal octaves + a fleck field are ~100 lines. **Recommendation: take `simplex-noise`** — subtle non-determinism in hand-rolled gradient noise is a known footgun and this package is explicitly designed for seeded use. |
+| Seeded PRNG | In-house (FNV-1a-seeded xorshift or mulberry32) — **no dep** | Same family as `traceSeed`. Do not add `alea` / `seedrandom` for one PRNG. |
+
+The 10 papers (cold press, hot press, rough, khadi, washi, kraft, …) are **data + generation parameters**, not shader copies. Export each as height-map tiles in the `PaperPassTile` shape and register them in the **Studio paper library**, usable by every paint (normal, physic, aquarelle, and later krita) through the same `paperPass`.
+
+#### Module switcher (Brush | Water color | Krita)
+
+**No new dependencies.** A top-bar control over the one shared Studio engine; modules drain their own options/features into the panels. Krita is the v2.1.0 slot — do not implement it. Gray zones (placement, iconography, panel layout) are discuss-phase scope.
+
+---
+
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| Any new compositing/scene-graph library (PixiJS, Konva, Two.js, etc.) | The existing Canvas 2D compositor already produces the exact blend-mode output; a scene-graph would fork the render path and break Studio/preview/export parity | Extend `previewRenderer.ts` with an internal compositor pass |
-| Any new state-management library (XState, Zustand, Redux, MobX) | The Phase 36.8 decision explicitly rejected XState; the signal-store + revision-authority pattern is proven across v0.8.0/v0.9.0 | Preact Signals stores with per-track revision counters |
-| Any new timeline/UI library | Project constraint: no heavy UI libraries; the Roto strip already renders semantic cells + filmstrip capsules | Extend the existing Canvas 2D strip to multi-row |
-| Any new audio library (howler.js, tone.js, etc.) | Phase 41 already ships read-only synchronized audio preview with drift-free scheduling | Reuse `efxPaintAudioPreviewStore.ts` |
-| Any new image-decoding library (sharp, jimp, etc.) | The Rust image pipeline + WKWebView decode already handle all accepted formats; `imageStore` LRU manages memory | Reuse `imageStore` + `importImages` IPC |
-| Any new mask/alpha library | Canvas 2D `globalCompositeOperation` (`destination-in`/`source-in`) already implements mask compositing; the project uses it for eraser/onion skin | Offscreen canvas compositing |
-| Any new schema/validation library (zod, io-ts, etc.) | The project uses hand-rolled fail-closed type guards (`isPhysicPaint*` in `types/physicPaint.ts`) with exhaustive unions | Hand-rolled guards for the v1.0.0 document schema |
-| Any new undo library | The custom command-pattern undo (`history.ts`, `historyStore.ts`) is proven across all store mutations | Extend the command pattern with track-scoped commands |
-| Any new DnD library | `sortablejs` with `forceFallback:true` already handles drag-reorder reliably | Reuse `sortablejs` for track reorder |
-| Vite 6/7/8 or Rolldown upgrade | Deliberately excluded (v0.9.0 decision); motion-canvas-vite-plugin 4.0.0 interop is delicately patched | Stay on Vite 5.4.21 |
-| New Rust crates for image sequence / compositing | The existing Rust image pipeline + Canvas 2D compositor cover the spec; new crates add compile weight and IPC surface | Reuse existing Rust commands + Canvas 2D |
-| A second audio engine in the paint window | The doubled-audio ownership guard (Phase 41) exists precisely to prevent this | Single preview authority: only the paint window's Phase 41 engine starts sources |
+|---|---|---|
+| **Mixbox** (any form — code, LUTs, spectra) | **CC BY-NC** — already banned project-wide; not needed here | `packages/efx-spectral` (MIT) for subtractive pigment mixing |
+| Any code / shader transliteration from `SPECS/v1.1.0-water-color/watercolor-playground-main/` (= `msurguy/watercolor-playground`) or `johnowhitaker/inkwash` | **Both unlicensed.** Clean-room rule is hard | Reimplement the published physics (Beer–Lambert glazes, wet-gated pigment fluxes, capillary tide line, fix/dry, procedural paper tooth) in our own TS/WebGL, seeded through existing determinism machinery |
+| `spectral.js` as a **runtime dependency** | npm package is a script-style bundle (`main: spectral.js`, no `exports`/`module`/`type`) — not ESM; fights Preact 11's ESM-only world | Vendor the MIT data into `packages/efx-spectral` + own ESM surface + `NOTICE` attribution |
+| **Web Worker** for the bake host | Explicitly out of scope (Phase 55 R4, watercolour R3.3). WebGL2 + canvas encode are main-thread anyway | Port the `finalizationQueue` pattern (Effect v4 bounded turn queue, generation-stale commits, `beginFlush`) |
+| React, `useState`, or any new state/reaction library | Project law (`feedback_no_usestate_only_signals`); Preact 11 does not change this | `@preact/signals` (bumped to 2.11.3) |
+| Blind React migration codemods | This is Preact, not React | Mechanical fixes listed in Phase 54 R2 only |
+| Rewriting `paintVersion` subscriptions into effect-cleanup patterns | Preact 11 defers cleanups; the project deliberately does **not** depend on cleanup for correctness | Keep bump-and-subscribe (`feedback_paintversion`); R2.4 forbids the rewrite |
+| A flat shared `PaintScript` for every engine, or a standalone parallel script library | Kills per-engine brush vocabularies / breaks the Studio law | Shared Studio **envelope** + per-engine stroke **payload** + fail-closed Apply |
+| Engine-specific params in the host API (`waterAmount`, `physicsMode`, krita property names) | Host must stay generic over the payload | Payload lives in the engine slot the host carries opaquely |
+| GPU fluid sim on the timeline | Cache is the only playback path | Bake to WebP, timeline reads cache only |
+| Forced Dry at frame boundaries | Kills the wet-in-wet / tide-line look the engine is bought for | Per-stroke `diffusionFrames` (cap 600), script-owned duration |
+| Vite 6/7/8 bump | `@efxlab/motion-canvas-vite-plugin@4.0.0` peers `vite: 4.x\|\|5.x`; the v0.9.0 decision pins **Vite 5.4.21** (delicately patched interop) | Stay on `5.4.21` |
+| TypeScript 7.x | Different compiler generation; not required (Preact 11 needs TS ≥ 5.1) | Stay on `~5.9.3` |
+| `alea` / `seedrandom` / `@thi.ng/random` | One seeded PRNG does not justify a dependency | In-house FNV-1a-seeded PRNG |
+| Three.js / regl / Pixi / WebGL abstraction layer | Would fight the existing `glBlur` / `glslRuntime` / `glMotionBlur` seams and the determinism law | Raw WebGL2, same as the existing GL modules |
+| Backward-compat shims, dual-format readers, migration code | **CLEAN BREAK ACCEPTED** (2026-10-14, do not reopen) | Fail-closed: any unreadable script/asset refuses with a named visible error (53.1 law) |
+| `@preact/signals-react` / `@preact/signals-preact-transform` | React-oriented / babel-transform tooling; this project uses plain signals imports | Direct `@preact/signals` imports (current pattern) |
 
-## Stack Patterns by Variant
-
-**Internal multi-track compositor (Phase 4):**
-- One shared internal composition path for Studio preview and flattened output — never two paths. The compositor resolves document fallback → Background clip (modulo/repeat/interruption) → participating Paint tracks (hide/solo truth table) → per-track real/generated/cached content → composite in stable order with per-track opacity/blend → one flattened raster + composite revision.
-- Parent opacity/blend is applied once by the main editor after flattening; never copied into internal tracks (the spec's double-apply stop condition).
-- Track cache key includes track revision + composition dependencies; parent cache invalidates when any participating track, Background clip, source image, or fallback changes.
-
-**Track-local state (Phase 2):**
-- Extend the `physicPaintStore` `Map<string, Map<number, T>>` pattern to `Map<layerId, Map<trackId, Map<number, T>>>`. Keep the counter-signal pattern (`paintVersion`-style) for controlled re-renders; never make the Maps reactive.
-- Async PlayScript/Reveal operations revalidate parent + document + track revision before commit (the Phase 36.8/43.2 lease pattern). Stale work must fail closed.
-- Undo snapshots metadata and asset references, never large PNG bytes (the spec's memory rule).
-
-**Background track + Loop Clips (Phase 5):**
-- Reuse the existing Loop Clip resolver verbatim: `sourceIndex = (frame - start) mod cycleLength`, `requestedDuration = cycleLength × repeatCount`, `effectiveDuration = min(requestedDuration, boundary - start)`, `boundary = min(nextClipStart, parentEnd)`. Half-open intervals so adjacent clips meet without off-by-one overlap.
-- Background clips never overlap; move/insert rejects or snaps collisions. Gaps reveal the document fallback (solid color or transparency checkerboard).
-- Filmstrip capsule: reuse the Phase 43 capsule renderer (source cycle + hatched repetition band + ×N/∞ badge + diagonal partial-cycle cut). Label the interrupting clip `clip suivant — interrompt la boucle`, never `clip bloquant`.
-
-**Photo/reference track (Phase 6):**
-- `reference-only` / `reveal-source` / `masked-transform-source` are data-model mode flags on a source reference. Reference visibility in Studio never leaks into flattened output (the spec's leak stop condition).
-- Source revision invalidates dependent Reveal/transformation results.
-
-**Reveal mask compositor (Phase 8):**
-- One offscreen source-plus-mask compositor shared by Studio and flattened output. Photo source → offscreen canvas; Paint/PlayScript coverage → mask alpha; `destination-in` applies the mask. Explicit alpha-vs-luma interpretation and optional inversion are data-model flags.
-- Empty mask reveals nothing; full mask reveals the entire source; partial alpha creates soft edges; eraser removes coverage.
-
-**Audio preview (Phase 7):**
-- Reuse Phase 41 as-is: revisioned read-only context over the `physic-paint:*` bridge, `efxasset://` byte transport, `AudioContext.currentTime` scheduling, doubled-audio guard, engine release on close. All internal tracks share one application-frame playback cursor; audio monitoring follows that cursor.
+---
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| `@preact/signals` ^2.8.1 | `preact` ^10.28.4 | Caret ranges resolve to current (signals 2.11.x, preact 10.29.x); peer `preact >= 10.25` satisfied. No bump needed. |
-| `@tauri-apps/api` ^2.10.1 | `@tauri-apps/cli` ^2.10.0, Tauri 2.x runtime | Caret ranges resolve to 2.11.x. No bump needed for any v1.0.0 feature. |
-| `@tauri-apps/plugin-fs` ^2.4.5 / `plugin-dialog` ^2.6.0 / `plugin-store` ^2.4.2 | `@tauri-apps/api` ^2.11.0 | Caret ranges resolve to current (fs 2.5.x, dialog 2.7.x, store 2.4.x). No bump needed. |
-| `tailwindcss` ^4.0.0 | `@tailwindcss/vite` ^4.0.0 | Caret ranges resolve to 4.3.x. No bump needed. |
-| Vite 5.4.21 | `@efxlab/motion-canvas-vite-plugin` 4.0.0 | Deliberately pinned (v0.9.0 decision). Do not upgrade for v1.0.0. |
-| Canvas 2D compositing | WKWebView (macOS) | All `globalCompositeOperation` modes used (`source-over`, `screen`, `multiply`, `overlay`, `lighter`, `destination-in`, `source-in`, `destination-out`) are standard Canvas 2D; no WebKit gaps. |
-| Loop Clip resolver (pure TS) | `physicPaintStore` revision signals | Pure data-model module; no version coupling. |
+|---|---|---|
+| `preact@11.0.1` | `@preact/signals@2.11.3` | **GREEN** — peer `>= 10.25.0 \|\| >=11.0.0-0`; 2.11.3 ships a Preact-11-specific `useSignalEffect` dispose fix |
+| `preact@11.0.1` | `@preact/signals@2.11.2` (current) | Declared **GREEN** (same peer range) but **use 2.11.3** — it carries the deferred-dispose fix 2.11.2 lacks |
+| `preact@11.0.1` | `lucide-preact@^1.50.0` | **GREEN** — peer `^10.27.2 \|\| ^11.0.0-0`. **0.577.0 is RED** (peer `^10.27.2` only) — must bump |
+| `preact@11.0.1` | `@preact/preset-vite@2.10.6` | **GREEN** — no `preact` peer; peers only `vite 2.x–8.x` + `@babel/core 7.x` |
+| `preact@11.0.1` | `preact/compat` (`createPortal`, `memo`) | **GREEN** — compat still re-exports `createPortal`; our 5 import sites keep working |
+| `preact@11.0.1` | TypeScript `~5.9.3` | **GREEN** — Preact 11 requires TS ≥ 5.1 |
+| `preact@11.0.1` | `preact-render-to-string` | Optional peer `>=6.7.0` on preact 11 (`>=6.8.0` latest also allows 11). **Not used by this project** — no action |
+| `efx-physic-paint` peer `preact >=10.0.0` | Preact 11 | Technically satisfied, but **raise the floor to `>=11.0.0`** after Phase 54 (spec open question Q3) so the declared tested floor matches reality |
+| `@efxlab/motion-canvas-*@4.0.0` | Vite `5.4.21` | Unchanged — the pinned interop. Do not bump Vite |
+| `simplex-noise@4.0.3` | ESM + CJS, 0 deps | Safe under the ESM-only world; `sideEffects: false` |
+
+---
+
+## Installation
+
+```bash
+# Phase 54 — Preact 11 bump (workspace root / app/)
+pnpm --filter efx-motion-editor add preact@11.0.1 @preact/signals@2.11.3 lucide-preact@^1.57.0
+
+# Phase 55 — new workspace package (no deps to install)
+#   packages/efx-paint-host  → tsup (devDep, mirrors efx-physic-paint)
+
+# Phase 56 — new workspace package + optional paper noise
+pnpm --filter @efxlab/efx-watercolor add simplex-noise@4.0.3   # optional; else in-house noise
+
+# Phase 57 — new workspace package (no deps; vendored MIT data + NOTICE)
+#   packages/efx-spectral
+
+# After 54 closes — raise the declared floor
+#   packages/efx-physic-paint/package.json → peerDependencies.preact = ">=11.0.0"
+```
+
+Verification gates (already specified in the phase contexts, restated as stack acceptance):
+
+```bash
+pnpm typecheck          # must be green — the JSX.* type fixes land here
+pnpm vitest run         # never watch
+pnpm build              # + cargo
+```
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | When to Use Alternative |
+|---|---|---|
+| `preact@11.0.1` + `@preact/signals@2.11.3` | Stay on Preact 10.29.8 | Only if the R1.1 probe goes **RED** — then STOP and escalate as a blocking decision (spec R1.2). Do not shim, do not pin an unofficial combo. |
+| `lucide-preact@^1.57.0` | Keep `0.577.0` with a `pnpm` peer-workaround / `overrides` | Never — the peer range is a declaration of what was tested. Suppressing it hides a real matrix hole. |
+| Vendored MIT data in `packages/efx-spectral` | Depend on `spectral.js@3.0.0` npm | Only if upstream ships a proper ESM `exports` map **and** exposes the 7-coeff basis as data. Today it does neither. |
+| `simplex-noise@4.0.3` for paper fields | In-house seeded value/worley noise | Prefer in-house if the project wants zero new deps and accepts owning noise determinism. Both are acceptable; `simplex-noise` is the safer default. |
+| Preact-free `efx-paint-host` core | Host carries a `./preact` entry by default | If the split proves to need a Preact binding at the seam, add `./preact` exactly like `efx-physic-paint` (Q3, decide at plan time). |
+| Raw WebGL2 for engine 2 | Adopt a WebGL framework (Three/regl/Pixi) | Never for this engine — it must stay seedable, deterministic, and seam-compatible with the existing GL modules. |
+
+---
 
 ## Sources
 
-- npm registry (https://registry.npmjs.org/@preact/signals, /@tauri-apps/api, /preact, /tailwindcss, /@tauri-apps/plugin-fs, /@tauri-apps/plugin-dialog, /@tauri-apps/plugin-store) — current version verification (MEDIUM, cross-checked against project `package.json` caret ranges)
-- Tauri v2 release page (https://v2.tauri.app/release/) — `@tauri-apps/api` 2.11.1, cli 2.11.4 (MEDIUM)
-- Tailwind CSS v4.3 blog (https://tailwindcss.com/blog/tailwindcss-v4-3) — v4.3.x line (MEDIUM)
-- Local codebase (HIGH, direct evidence): `app/src/lib/previewRenderer.ts` (Canvas 2D compositor + `blendModeToCompositeOp`), `app/src/stores/physicPaintStore.ts` (Map-keyed per-layer state + revision signals + lease authority), `app/src/components/physic-paint/roto/physicsPaintRotoPhysicalResolver.ts` + `physicsPaintRotoLoopClips.ts` (Loop Clip resolver: modulo, finite/infinite, next-clip interruption), `app/src/lib/paintRenderer.ts` (offscreen `globalCompositeOperation` compositing), `app/src/stores/imageStore.ts` (LRU image/sequence pool), `app/src/components/physic-paint/audio/efxPaintAudioPreviewStore.ts` + `efxPaintAudioMonitor.ts` + `efxPaintAudioOwnership.ts` (Phase 41 read-only audio preview), `app/src/components/physic-paint/view/PhysicsPaintWorkflowStrip.tsx` (Canvas 2D Roto strip + filmstrip capsule), `app/src/lib/physicPaintPersistence.ts` (serde + PNG sidecar persistence), `app/package.json` (current dependency ranges)
+- **npm registry (`npm view`)** — `preact`, `@preact/signals`, `lucide-preact`, `@preact/preset-vite`, `spectral.js`, `simplex-noise`, `preact-render-to-string`, `@efxlab/motion-canvas-vite-plugin`: versions, `peerDependencies`, `exports`, `license`, publish timestamps. First-party package metadata — the authoritative machine-readable compatibility contract. **HIGH** for the version/peer claims quoted above.
+- **`https://preactjs.com/guide/v11/upgrade-guide/`** (official Preact docs, fetched 2026-10-14) — complete breaking-change list (ESM-only, `useRef` initial value, `defaultProps`/auto-`px` → compat, deferred `useEffect` cleanups, `JSX` namespace reduction, `render()`/`replaceNode` removal, `Component.base` removal, `SuspenseList` removal, refs-forwarded-by-default, hydration 2.0, `Object.is` hook comparison). Confirmed: **zero mentions of `@preact/signals`**. **HIGH** for the breaking-change list.
+- **`https://github.com/preactjs/signals` releases** (`@preact/signals@2.11.3`, `2.11.2`, `2.11.1`) — first-party changelogs. 2.11.3 quote: *"Preact 11 disposes it after paint, so the effect could otherwise run once more against an unmounted component."* **HIGH** for the runtime-fix claim.
+- **`https://github.com/rvanwijnen/spectral.js`** — MIT `LICENSE`, README describing the single-constant Kubelka-Munk method and the seven primary reflectance curves (White, Cyan, Magenta, Yellow, Red, Green, Blue). Repo contains `spectral.js`, `spectral.min.js`, `shader/`, and **no root `package.json` on `master`** — reinforces the "vendor the data, don't depend on the bundle" recommendation. **HIGH** for the licence + method-surface claims.
+- **Local oracle (read-only, method only)** — `SPECS/v1.1.0-water-color/watercolor-playground-main/` texture layout and algorithm map, as recorded in `SPECS/v1.1.0-water-color/00-grill-context.md` §7. **Unlicensed — clean-room boundary, no code.**
+- **Live repo inspection** — `app/package.json`, `packages/efx-physic-paint/package.json`, `app/src/lib/paperPass.ts` (`PaperPassTile`), and grep sweeps for `useRef(`, `defaultProps`, `preact/compat`, `JSX.`, `render(`. **HIGH** for the blast-radius counts.
+- **Existing research (superseded)** — previous `.planning/research/STACK.md` (v1.0.0 milestone, 2026-08-23): confirmed the Vite 5.4.21 pin and the "no new deps" pattern. Both carried forward unchanged.
 
 ---
-*Stack research for: EFX-Motion Editor v1.0.0 multi-track EFX Paint frames and Reveal*
-*Researched: 2026-08-23*
+*Stack research for: v2.0.0 multi-module paint workstation — NEW capabilities only (Preact 11 / efx-paint-host / efx-watercolor / efx-spectral / procedural paper / module switcher)*
+*Researched: 2026-10-14*
