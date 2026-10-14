@@ -5,16 +5,16 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 54
 current_phase_name: Preact 11 update
 status: executing
-stopped_at: Completed 54-02-PLAN.md
-last_updated: "2026-10-14T14:52:42.138Z"
+stopped_at: Completed 54-03-PLAN.md
+last_updated: "2026-10-14T15:15:49.915Z"
 last_activity: 2026-10-14
 last_activity_desc: Phase 54 execution started
-state_head: dae54dd275576ffa14b75d306a04fc9e5971da7f
+state_head: 529bdb4ca3375ac0f3018d3d57e4b27047ba7666
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 54 (Preact 11 update) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-10-14 — Phase 54 execution started
 
@@ -161,6 +161,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase quick-261013-ctd P261013-ctd | 7min | 2 tasks | 3 files |
 | Phase 54 P54-01 | 9min | 2 tasks | 3 files |
 | Phase 54 P54-02 | 6min | 1 tasks | 1 files |
+| Phase 54 P54-03 | 11min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -447,6 +448,10 @@ Recent decisions affecting current work:
 - [Phase 54]: 54-01 RUN-01 satisfied: two-leg throwaway probe green on preact@11.0.1 + @preact/signals@2.11.3 (pattern teardown-clean + pairing witness typecheck/build); probe deleted per D-02; workspace pins untouched
 - [Phase 54]: 54-02 option A: four Preact 11 bump targets confirmed legitimate on npm (preact@11.0.1 preactjs org, @preact/signals@2.11.3 preactjs org, lucide-preact@1.57.0 ericfennis with peer ^10.27.2 || ^11.0.0-0, @preact/preset-vite@2.10.6 preactjs org with no preact peer); no [SLOP] admitted
 - [Phase 54]: 54-02 D-13 concrete target: align every @preact/preset-vite pin on 2.10.6 (app/package.json already uses it), replacing the 2.10.3 / 2.10.5 / 2.10.6 triple and closing the extra pnpm resolution lane riding preact@10.28.4
+- [Phase 54]: Option A (D-04 one-way door): efx-physic-paint peerDependencies.preact >=11.0.0 AND devDependencies.preact ^11.0.1 in the SAME commit; no dual-major range (clean-break law)
+- [Phase 54]: Workspace on preact@11.0.1 + @preact/signals@2.11.3 with exactly one preact copy; D-06 divergence eliminated
+- [Phase 54]: lucide-preact ^1.57.0 and every @preact/preset-vite pin aligned on 2.10.6 (D-10, D-13)
+- [Phase 54]: Standing one-preact-copy contract pin at app/src/preactSingleCopyContract.test.ts (RED first, GREEN after bump)
 
 ### Pending Todos
 
@@ -519,8 +524,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-14T14:52:42.117Z
-Stopped at: Completed 54-02-PLAN.md
+Last session: 2026-10-14T15:15:49.894Z
+Stopped at: Completed 54-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
