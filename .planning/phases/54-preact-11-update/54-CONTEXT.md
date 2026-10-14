@@ -30,10 +30,11 @@ Scope anchor: RUN-01 (stop-if-red probe) → RUN-02 (one preact copy on 11.0.1 +
 
 ### Package peer floor (spec Q3 — CLOSED)
 - **D-04:** `packages/efx-physic-paint` bumps BOTH fields in the same commit: `peerDependencies.preact` → `">=11.0.0"` (no dual-major range — clean-break law) AND `devDependencies.preact` from `^10.29.0` → the 11.x line. A peer-only bump leaves a live 10.x pin that can re-pin workspace resolution to 10 and contradict the bump. The root `pnpm.overrides.preact` (`^10.29.8` today) moves to the 11.x line as part of the bump itself. — **Reversibility:** one-way — published peer-range contract; no dual-major range left to fall back on, and the clean-break law forbids reintroducing one.
+- **D-13:** `@preact/preset-vite` is the one remaining peer-bearing dependency beside `lucide-preact`, and it is the **JSX transform plugin** — a peer mismatch would either break the install or silently reintroduce the second copy D-05 exists to prevent. RUN-02's pairing measurement MUST confirm its peer range accepts Preact 11 and bump it if not, landing that check **alongside the `lucide-preact` bump (RUN-03)**. Pins today: `2.10.6` in `app/package.json`, `^2.10.5` in `packages/efx-physic-paint/package.json`. Measured tree (2026-10-14): three resolved copies — `2.10.3` under `app/` (resolved beside `preact@10.28.4`, the same second-copy lane as D-06), plus `2.10.5` and `2.10.6` at root. The published peer list on 2.10.5/2.10.6 is `@babel/core: 7.x` + `vite: 2.x..8.x` (no explicit `preact` peer), but the pnpm resolution suffix still couples each instance to a concrete preact — so "no preact peer" is not a free pass. Align the pins as part of the one-copy proof; do not leave the 2.10.3 instance riding the old preact.
 
 ### One-preact-copy proof (RUN-02)
-- **D-05:** Proven twice. (1) **Close evidence:** a documented lockfile / `pnpm why preact` measurement showing exactly one `preact` copy across app + packages. (2) **Standing pin:** a normal `.test.ts` contract test (existing vitest setup, no one-off config) asserts the root `overrides.preact` stays on the 11.x line and that no workspace package pins a second `preact` in `dependencies` / `devDependencies` / `peerDependencies`. The measurement proves today's state; the pin keeps a future install or a new workspace package from silently reintroducing a second copy. Dual-preact failures are non-obvious at runtime (two signals runtimes, zombie state) — this must fail loudly at test time.
-- **D-06:** A second preact copy exists **today** (measured fact): `app/node_modules/.pnpm/preact@10.28.4` sits beside root `node_modules/.pnpm/preact@10.29.8`, under a root `overrides.preact: ^10.29.8`. RUN-02's measurement must explain this divergence and eliminate it; the contract pin must prevent its return. This is the concrete validation of D-04 (peer `>=11` AND devDep 11.x, same commit).
+- **D-05:** Proven twice. (1) **Close evidence:** a documented lockfile / `pnpm why preact` measurement showing exactly one `preact` copy across app + packages — this measurement also covers D-13's `@preact/preset-vite` peer acceptance and pin alignment. (2) **Standing pin:** a normal `.test.ts` contract test (existing vitest setup, no one-off config) asserts the root `overrides.preact` stays on the 11.x line and that no workspace package pins a second `preact` in `dependencies` / `devDependencies` / `peerDependencies`. The measurement proves today's state; the pin keeps a future install or a new workspace package from silently reintroducing a second copy. Dual-preact failures are non-obvious at runtime (two signals runtimes, zombie state) — this must fail loudly at test time.
+- **D-06:** A second preact copy exists **today** (measured fact): `app/node_modules/.pnpm/preact@10.28.4` sits beside root `node_modules/.pnpm/preact@10.29.8`, under a root `overrides.preact: ^10.29.8`. RUN-02's measurement must explain this divergence and eliminate it; the contract pin must prevent its return. This is the concrete validation of D-04 (peer `>=11` AND devDep 11.x, same commit). The `@preact/preset-vite@2.10.3` instance under `app/` rides that same `preact@10.28.4` lane (D-13) — eliminating the second preact means aligning that plugin instance too.
 
 ### Mechanical migration named work item (RUN-04)
 - **D-07:** The JSX namespace reduction is a **known deterministic `tsc --noEmit` break** — name it as a work item planned against RUN-01's gate sequence so it is fixed deliberately, never discovered mid-bump. Guide clause: "Reduction in JSX namespace" — only `Element` / `IntrinsicElements` stay in `JSX`; `CSSProperties` and `Targeted*Event` move to the `preact` namespace. Affected files (verified in tree):
@@ -94,8 +95,8 @@ Scope anchor: RUN-01 (stop-if-red probe) → RUN-02 (one preact copy on 11.0.1 +
 
 ### Version manifests
 - `package.json` — root `pnpm.overrides.preact` / `@preact/signals`
-- `app/package.json` — `preact`, `@preact/signals`, `lucide-preact`
-- `packages/efx-physic-paint/package.json` — `peerDependencies.preact` (line ~47) and `devDependencies.preact` (line ~64)
+- `app/package.json` — `preact`, `@preact/signals`, `lucide-preact`, `@preact/preset-vite` (2.10.6)
+- `packages/efx-physic-paint/package.json` — `peerDependencies.preact` (line ~47), `devDependencies.preact` (line ~64), `@preact/preset-vite` (`^2.10.5`)
 
 </canonical_refs>
 
@@ -118,6 +119,7 @@ Scope anchor: RUN-01 (stop-if-red probe) → RUN-02 (one preact copy on 11.0.1 +
 
 ### Measured tree facts (2026-10-14)
 - `app/node_modules/.pnpm/preact@10.28.4` **and** `node_modules/.pnpm/preact@10.29.8` — two copies today (D-06)
+- `@preact/preset-vite` resolves as three copies — `2.10.3` (app, beside `preact@10.28.4`), `2.10.5` and `2.10.6` (root) (D-13)
 - 0 uninit `useRef()` call sites; 0 `defaultProps`; `JSX.*` type refs confined to the three D-07 files
 - `lucide-preact@0.577.0` currently pinned — peer-range excludes Preact 11
 

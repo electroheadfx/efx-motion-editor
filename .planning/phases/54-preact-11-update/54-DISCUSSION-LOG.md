@@ -78,6 +78,10 @@ Follow-up question — probe disposal:
 3. **Guide items verified as no-impact** (auto-px, defaultProps/forwardRef/SuspenseList/Component.base/render() 3rd arg, Hydration 2.0, Object.is/NaN deps, TS floor, ESM-only, useRef initial values) — not carried as risk.
 4. **Scope note:** wet / cuisson Studio tools are a Phase 56 UI gray zone and must not be pulled into 54.
 
+## User-supplied addition (post-context, before planning)
+
+5. **`@preact/preset-vite` is the remaining peer-bearing dependency.** 2.10.6 in `app/package.json`, `^2.10.5` in `packages/efx-physic-paint`. RUN-02's pairing measurement must confirm its peer range accepts Preact 11 and bump it if not, alongside the `lucide-preact` bump (RUN-03). It is the JSX transform plugin, so a peer mismatch would either break the install or silently reintroduce the second copy D-05 exists to prevent. Tree measured: three resolved copies (`2.10.3` under app beside `preact@10.28.4`, `2.10.5` + `2.10.6` at root).
+
 ---
 
 ## Claude's Discretion
