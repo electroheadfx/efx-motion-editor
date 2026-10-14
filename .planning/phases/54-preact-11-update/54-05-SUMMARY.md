@@ -12,7 +12,7 @@ requires:
     provides: "tsc green on Preact 11 after mechanical JSX/Ref type migration"
 provides:
   - "Standing paintVersion discipline contract pin (D-11 / RUN-05) at app/src/paintVersionDisciplineContract.test.ts"
-  - "A1-A5 live UAT row set prepared for the RUN-06 hard gate (NOT yet user-asserted)"
+  - "A1-A5 live UAT row set user-asserted PASS (RUN-06) — Phase 54 hard gate cleared"
 affects: [55-efx-paint-host, phase-54-close]
 
 # Actuals (#2632) — pairs with the plan's `estimate` to calibrate future estimates.
@@ -38,12 +38,12 @@ key-decisions:
   - "Preservation pin is green at birth on unchanged sources — recorded honestly (PINS_GREEN_AT_BIRTH), not manufactured red; the plan explicitly names this path for a D-11 preservation pin"
   - "D-11 held: no subscribe effect rewritten into cleanup-based correctness; no production source touched by this plan"
   - "Compare-then-write truth pinned as source shape (early-return before write) — setRotoPlaybackSettings + setRotoBackgroundMetadata"
-  - "RUN-05 marked complete on the pin's proof; RUN-06 left OPEN until the user asserts A1-A5 live — the hard gate before Phase 55"
+  - "RUN-05 marked complete on the pin's proof; RUN-06 closed on live UAT (A1-A5 all PASS 2026-10-14) — Phase 54 hard gate cleared"
 
 patterns-established:
   - "paintVersion discipline contract pin: PaintOverlay requestPreview idiom (body read + same .value in dep array) + bump helpers + compare-then-write setters"
 
-requirements-completed: [RUN-05]
+requirements-completed: [RUN-05, RUN-06]
 
 # Coverage metadata (#1602) — one entry per shipped deliverable. Drives DETERMINISTIC UAT routing in verify-work.
 coverage:
@@ -58,7 +58,10 @@ coverage:
   - id: D2
     description: "Live UAT rows A1-A5 — reactivity paths under Preact 11 (paint stroke, undo/redo, track switch, Studio open/close dispose, standalone ./preact mount)"
     requirement: "RUN-06"
-    verification: []
+    verification:
+      - kind: manual_procedural
+        ref: "Live UAT 2026-10-14 — A1-A5 all PASS (user-asserted, see Live UAT Rows section)"
+        status: pass
     human_judgment: true
     rationale: "A1-A5 are live-judged reactivity paths (D-03 hard gate). A4 (no orphaned subscription after Studio dispose) and A5 (package entry still mounts) cannot be unit-pinned. Export smoke and chunk-budget checks are release gates and do NOT enter this row set."
 
@@ -70,14 +73,14 @@ status: complete
 
 # Phase 54 Plan 05: paintVersion discipline pin + A1-A5 live UAT Summary
 
-**D-11 paintVersion bump+subscribe source-contract pin green at birth; A1-A5 live UAT rows prepared and awaiting human assertion (RUN-06 hard gate)**
+**D-11 paintVersion bump+subscribe source-contract pin green at birth; A1-A5 live UAT all PASS — RUN-06 hard gate cleared for Phase 55**
 
 ## Performance
 
 - **Duration:** 5 min
 - **Started:** 2026-10-14T15:37:10Z
 - **Completed:** 2026-10-14T15:42:25Z
-- **Tasks:** 2 (Task 1 committed; Task 2 automated-ready, live UAT PENDING)
+- **Tasks:** 2 (Task 1 committed; Task 2 live UAT asserted PASS 2026-10-14)
 - **Files modified:** 1 (created)
 
 ## Accomplishments
@@ -85,7 +88,7 @@ status: complete
 - Standing paintVersion discipline contract pin at `app/src/paintVersionDisciplineContract.test.ts` (5 source-scan assertions, permanent)
 - Positive source assertions on the three named surfaces: `PaintOverlay.tsx` requestPreview idiom, `physicPaintStore.ts` bump helpers + compare-then-write setters, `paintStore.ts` `_notifyVisualChange`
 - Full suite green (4926 passed / 271 files) and `tsc --noEmit` clean before the rows were presented
-- A1-A5 live UAT rows prepared for the RUN-06 hard gate — **NOT user-asserted; Phase 55 must not open**
+- A1-A5 live UAT **all PASS (user-asserted 2026-10-14)** — RUN-06 hard gate cleared; Phase 55 may open
 
 ## Task Commits
 
@@ -123,29 +126,27 @@ Each task was committed atomically:
 | Contract pin | `pnpm --filter efx-motion-editor exec vitest run src/paintVersionDisciplineContract.test.ts` | **PASS** — 5/5 |
 | Typecheck | `pnpm --filter efx-motion-editor run typecheck` | **PASS** — `tsc --noEmit` clean |
 
-## Live UAT Rows A1-A5 — PENDING USER ASSERTION (RUN-06 hard gate)
+## Live UAT Rows A1-A5 — USER-ASSERTED PASS (RUN-06 hard gate CLEARED)
 
-> **This plan is AUTOMATED-READY, never "done" before live UAT. Phase 55 must not open until all five rows are user-asserted PASS.**
+> All five rows asserted PASS by the user on 2026-10-14. Phase 55 may open.
 > Export smoke and chunk-budget checks are release gates, not Preact gates — they do NOT enter this row set (D-03).
 
-| Row | What to check | Live observation |
-|-----|---------------|------------------|
-| **A1** | Paint a stroke in Studio — canvas reflects it without a manual refresh (paintVersion bump + subscribe path) | _pending_ |
-| **A2** | Undo/redo — canvas and timeline rail both follow | _pending_ |
-| **A3** | Track switch / active-track change — runtime view follows without a stale render | _pending_ |
-| **A4** | Studio open/close round trip — no orphaned subscription, no zombie effect after dispose | _pending_ |
-| **A5** | `packages/efx-physic-paint` standalone entry (`./preact`) still mounts | _pending_ |
+| Row | What to check | Live observation | Result |
+|-----|---------------|------------------|--------|
+| **A1** | Paint a stroke in Studio — canvas reflects it without a manual refresh (paintVersion bump + subscribe path) | Stroke appears on the Studio canvas immediately, no manual refresh, no slowdown or visual artifact. paintVersion bump + subscribe path is live. | **PASS** |
+| **A2** | Undo/redo — canvas and timeline rail both follow | Undo/redo keeps canvas and timeline rail in sync, no desync between the two surfaces. | **PASS** |
+| **A3** | Track switch / active-track change — runtime view follows without a stale render | Active-track switch updates the runtime view with no stale render from the previous track. | **PASS** |
+| **A4** | Studio open/close round trip — no orphaned subscription, no zombie effect after dispose | No zombie effect. Profile counters show the dispose path actually ran: `lifecycle.canvasMount.beforeDestroy: 1` and `observer.canvasMount.resize.cleanup: 1` against `install: 2` (one closed instance cleaned up, one currently mounted). No idle `render.*` churn, no slowdown after close, `decode.*` all zero. | **PASS** |
+| **A5** | `packages/efx-physic-paint` standalone entry (`./preact`) still mounts | `packages/efx-physic-paint` standalone `./preact` entry mounts via the package demo, no `import/preact` error. | **PASS** |
 
-A4 and A5 see this phase's two named failure modes (zombie subscriptions after Preact 11 deferred cleanups; package-entry breakage from the single-preact-copy proof).
-
-**Reply format:** `A1 PASS|FAIL <one-line observation>` … `A5 PASS|FAIL <one-line observation>`
+A4 and A5 see this phase's two named failure modes (zombie subscriptions after Preact 11 deferred cleanups; package-entry breakage from the single-preact-copy proof) — both disproved live.
 
 ## Decisions Made
 
 - **PINS_GREEN_AT_BIRTH recorded honestly.** The pin passed on first run against unchanged sources. This is a preservation pin of D-11 discipline, not a feature — the plan's action names this path. No RED was manufactured.
 - **Positive source assertions, not file-wide negative greps.** Each assertion names its surface in the failure message (PaintOverlay.tsx / physicPaintStore.ts / paintStore.ts) and scopes the scan to the named helper (function-body slice) rather than the whole file.
 - **Compare-then-write pinned as source shape.** Both setters must early-return before `Map.set` / `bumpTrackRevision` — "called 1000× with the same value, does it bump 0 times?" must be yes (efx-preact-reactivity rule 3).
-- **RUN-05 complete on the pin's proof; RUN-06 left OPEN.** Live UAT is the hard gate; marking RUN-06 complete before user assertion would close the gate the plan exists to hold.
+- **RUN-05 complete on the pin's proof; RUN-06 closed on live UAT.** All five rows user-asserted PASS 2026-10-14. The hard gate held until live evidence arrived; now cleared.
 
 ## Deviations from Plan
 
@@ -165,9 +166,9 @@ None - no external service configuration required.
 
 ## Next Phase Readiness
 
-- **AUTOMATED-READY.** RUN-05 satisfied. RUN-06 (live UAT A1-A5) is the hard gate before Phase 55 opens — **do not open Phase 55 until all five rows are user-asserted PASS**.
+- **DONE — live UAT cleared.** RUN-05 and RUN-06 both satisfied. All five A1-A5 rows user-asserted PASS 2026-10-14. **Phase 55 may open** (orchestrator owns phase completion).
 - Standing pin will catch any future rewrite of the bump+subscribe shape into cleanup-based correctness (T-54-09 mitigation).
-- A4 remains the backstop for zombie-subscription dispose behavior (T-54-10); profile counters (`efx.physicsPaint.profile`) remain the standing detection tool if a loop appears.
+- A4 profile counters (`lifecycle.canvasMount.beforeDestroy`, `observer.canvasMount.resize.cleanup`) remain the standing detection tool for zombie-subscription dispose regressions (T-54-10).
 
 ---
 *Phase: 54-preact-11-update*

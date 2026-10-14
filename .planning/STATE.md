@@ -5,11 +5,11 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 54
 current_phase_name: Preact 11 update
 status: verifying
-stopped_at: Completed 54-05-PLAN.md (automated-ready; A1-A5 live UAT pending)
-last_updated: "2026-10-14T15:43:52.700Z"
+stopped_at: Completed 54-05-PLAN.md (RUN-06 live UAT A1-A5 all PASS; Phase 54 unblocked)
+last_updated: "2026-10-14T16:39:43.833Z"
 last_activity: 2026-10-14
 last_activity_desc: Phase 54 execution started
-state_head: 6cfd50135f56380dc8b42a24f0c2a822c402b124
+state_head: 1b601fb5913c1eb0a6b924919179877ec0990fa7
 progress:
   total_phases: 4
   completed_phases: 0
@@ -458,6 +458,7 @@ Recent decisions affecting current work:
 - [Phase 54]: Rule 3 scope expansion: Preact 11 also removed MutableRef and changed useRef overloads to RefObject<T | null> — type-only mechanical fixes beyond the three D-07 files, required for tsc green
 - [Phase 54]: Hook-using lucide-preact 1.57 icons stay opaque leaves in six no-DOM vnode materializers; full vitest suite green (4921 passed)
 - [Phase 54]: PINS_GREEN_AT_BIRTH: paintVersion discipline contract pin green at birth on unchanged sources — preservation pin (D-11/RUN-05), not manufactured RED; is-behavior-adding=false (test-only) — Plan action explicitly names the green-at-birth path for a preservation pin. Manufacturing a RED by breaking production source would be theater. RUN-05 marked complete on the pin proof; RUN-06 left OPEN until user asserts A1-A5.
+- [Phase 54]: RUN-06 closed on live UAT: A1-A5 all PASS 2026-10-14 (paintVersion bump+subscribe live; undo/redo sync; track switch clean; Studio dispose profile counters clean; standalone ./preact mounts) — Phase 54 hard gate cleared
 
 ### Pending Todos
 
@@ -530,8 +531,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-14T15:43:42.015Z
-Stopped at: Completed 54-05-PLAN.md (automated-ready; A1-A5 live UAT pending)
+Last session: 2026-10-14T16:39:43.662Z
+Stopped at: Completed 54-05-PLAN.md (RUN-06 live UAT A1-A5 all PASS; Phase 54 unblocked)
 Resume file: None
 
 ## Operator Next Steps
