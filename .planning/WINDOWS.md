@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 21
+open_count: 22
 waived_count: 5
 fixed_count: 69
-total_count: 95
-last_updated: 2026-10-13T07:28:42.229Z
+total_count: 96
+last_updated: 2026-10-14T15:33:20.833Z
 ---
 
 # Broken Windows Ledger
@@ -110,6 +110,7 @@ last_updated: 2026-10-13T07:28:42.229Z
 | 93 | 53.1 | deviation | app/src/types/sequence.ts |  | Rule 3: Sequence.fps removal required mechanical fps-cleanup across 19 test files + 2 projectStore mocks (53.1-01 Task 2) | open |  | 2026-10-12T21:07:57.950Z |  |
 | 94 | 53.1 | deviation | app/src/lib/previewRenderer.ts |  | Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param) | open |  | 2026-10-12T21:07:58.234Z |  |
 | 95 | quick-261013-ctd | deviation | app/src-tauri/src/services/ffmpeg.rs |  | TDD GREEN commit typed fix(...) per plan locked style; generic gate table expects feat(...) | open |  | 2026-10-13T07:28:42.229Z |  |
+| 96 | 54 | deviation | app/src/components/shared/NumericStepper.tsx |  | Rule 3 scope expansion: MutableRef/RefObject Preact 11 type fallout fixed beyond the three D-07 files (20 files total) | open |  | 2026-10-14T15:33:20.833Z |  |
 
 ````json
 [
@@ -1275,6 +1276,19 @@ last_updated: 2026-10-13T07:28:42.229Z
     "recorded_at": "2026-10-13T07:28:42.229Z",
     "resolved_at": null,
     "milestone": "v1.0.1"
+  },
+  {
+    "id": 96,
+    "kind": "deviation",
+    "phase": "54",
+    "file": "app/src/components/shared/NumericStepper.tsx",
+    "line": null,
+    "description": "Rule 3 scope expansion: MutableRef/RefObject Preact 11 type fallout fixed beyond the three D-07 files (20 files total)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-14T15:33:20.833Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
   }
 ]
 ````
