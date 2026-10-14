@@ -15,7 +15,7 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 - [x] **RUN-02**: App runs on `preact@11.0.1` + `@preact/signals@2.11.3` with exactly one `preact` copy across app + packages
 - [x] **RUN-03**: `lucide-preact` bumped to `^1.57.0` (first version whose peer range allows Preact 11)
 - [x] **RUN-04**: Mechanical migration handled: JSX types → preact namespace, `useRef` initial values, `defaultProps`/auto-px → compat
-- [ ] **RUN-05**: `paintVersion` bump+subscribe discipline preserved — NOT rewritten into effect cleanups
+- [x] **RUN-05**: `paintVersion` bump+subscribe discipline preserved — NOT rewritten into effect cleanups
 - [ ] **RUN-06**: Live UAT of the reactivity paths (paintVersion, store setters) CLOSES before Phase 55 opens
 
 ### Engine Host Split (Phase 55 — efx-paint-host)
@@ -134,7 +134,7 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | RUN-02 | Phase 54 | Complete |
 | RUN-03 | Phase 54 | Complete |
 | RUN-04 | Phase 54 | Complete |
-| RUN-05 | Phase 54 | Pending |
+| RUN-05 | Phase 54 | Complete |
 | RUN-06 | Phase 54 | Pending |
 | HOST-01 | Phase 55 | Pending |
 | HOST-02 | Phase 55 | Pending |
