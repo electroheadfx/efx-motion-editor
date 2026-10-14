@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { Minus, Plus } from 'lucide-preact';
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, CSSProperties, JSX, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 
 /**
@@ -100,9 +100,9 @@ export interface NumericStepperProps {
   ariaDescribedBy?: string;
   class?: string;
   inputClass?: string;
-  inputStyle?: JSX.CSSProperties;
+  inputStyle?: CSSProperties;
   buttonClass?: string;
-  buttonStyle?: JSX.CSSProperties;
+  buttonStyle?: CSSProperties;
   /** Optional leading content — the NumericInput label + drag-to-scrub wrapper. */
   children?: ComponentChildren;
 }
@@ -211,7 +211,7 @@ export function commitStepperInput(raw: string, options: StepperCommitOptions): 
   return clampToStep(parsed, effectiveStep, options.min, options.max);
 }
 
-const WRAPPER_STYLE: JSX.CSSProperties = {
+const WRAPPER_STYLE: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: '4px',
@@ -227,7 +227,7 @@ const WRAPPER_STYLE: JSX.CSSProperties = {
  * re-add a box key: overrides merge OVER these styles, so the audit in
  * NumericStepper.test.tsx pins exactly one box-drawing element per stepper.
  */
-const PILL_STYLE: JSX.CSSProperties = {
+const PILL_STYLE: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   boxSizing: 'border-box',
@@ -241,7 +241,7 @@ const PILL_STYLE: JSX.CSSProperties = {
   background: 'var(--sidebar-input-bg, rgba(127, 131, 138, 0.18))',
 };
 
-const BASE_BUTTON_STYLE: JSX.CSSProperties = {
+const BASE_BUTTON_STYLE: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -256,7 +256,7 @@ const BASE_BUTTON_STYLE: JSX.CSSProperties = {
   touchAction: 'none',
 };
 
-const BASE_INPUT_STYLE: JSX.CSSProperties = {
+const BASE_INPUT_STYLE: CSSProperties = {
   flex: '1 1 0',
   minWidth: 0,
   width: '100%',
@@ -359,7 +359,7 @@ export function NumericStepper({
     if (next !== value) onChange(next);
   };
 
-  const handlePressStart = (direction: 1 | -1) => (event: JSX.TargetedPointerEvent<HTMLButtonElement>) => {
+  const handlePressStart = (direction: 1 | -1) => (event: TargetedPointerEvent<HTMLButtonElement>) => {
     // Component-level disable OR a preset list end in this direction: refuse
     // the press entirely (the end button is already visibly disabled).
     if (disabled || !canStepInDirection(direction)) return;
@@ -382,7 +382,7 @@ export function NumericStepper({
     stopCoalescing();
   };
 
-  const handleClick = (direction: 1 | -1) => (event: JSX.TargetedMouseEvent<HTMLButtonElement>) => {
+  const handleClick = (direction: 1 | -1) => (event: TargetedMouseEvent<HTMLButtonElement>) => {
     // A pointer press already stepped on pointerdown; only a keyboard/AT
     // activation (detail === 0) steps here.
     if (disabled || event.detail !== 0 || !canStepInDirection(direction)) return;

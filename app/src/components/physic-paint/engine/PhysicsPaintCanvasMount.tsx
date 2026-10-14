@@ -1,4 +1,4 @@
-import type { JSX } from 'preact';
+import type { CSSProperties } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { CompletedPaintMutation, EfxPaintEngine, InputActivityKind, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
@@ -16,7 +16,7 @@ const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper
  * globalCompositeOperation analogues over the monitor beneath. 'add' maps to
  * the CSS additive 'plus-lighter' (the canvas 'lighter' equivalent).
  */
-const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, JSX.CSSProperties['mixBlendMode']> = {
+const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, CSSProperties['mixBlendMode']> = {
   normal: 'normal',
   screen: 'screen',
   multiply: 'multiply',
@@ -99,7 +99,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
           mixBlendMode: TRACK_BLEND_TO_CSS_MIX[trackBlendMode],
         }
       : {}),
-  } as JSX.CSSProperties;
+  } as CSSProperties;
   const handleEngineReady = useCallback((engine: EfxPaintEngine) => {
     engine.setTool('paint');
     // 48-06: the program monitor owns the visible background (the flattened

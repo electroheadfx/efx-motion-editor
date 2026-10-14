@@ -266,7 +266,7 @@ export interface PhysicsPaintStyledTooltipProps {
    */
   avoidRowOverlap?: boolean;
   /** Explicit anchor used when the pill is portaled out of overflow-clipping chrome. */
-  anchorRef?: RefObject<HTMLElement>;
+  anchorRef?: RefObject<HTMLElement | null>;
   /** Render in document.body so timeline overflow cannot clip the tooltip. */
   topmost?: boolean;
   children: ComponentChildren;

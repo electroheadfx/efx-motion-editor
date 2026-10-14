@@ -1,4 +1,5 @@
-import { useCallback, type Dispatch, type MutableRef, type StateUpdater } from 'preact/hooks';
+import { useCallback, type Dispatch, type StateUpdater } from 'preact/hooks';
+import type { RefObject } from 'preact';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
@@ -55,14 +56,14 @@ export interface UseRotoPersistenceIntegrationInput {
     loadFrame: (frame: number, engine: PreviewBackgroundEngine | null, refreshedFrame?: PhysicPaintRotoCacheFrame | null) => void;
   };
   cache: {
-    confirmedFramesRef: MutableRef<Map<number, RenderedFramePayload>>;
-    latestFramesRef: MutableRef<PhysicPaintRotoCacheFrame[]>;
+    confirmedFramesRef: RefObject<Map<number, RenderedFramePayload>>;
+    latestFramesRef: RefObject<PhysicPaintRotoCacheFrame[]>;
     removeFrame: (frame: number) => void;
   };
   lifecycle: {
-    activeOperationIdRef: MutableRef<string | null>;
-    pendingFrameSyncRef: MutableRef<number | null>;
-    pendingKeyActionMessageRef: MutableRef<string | null>;
+    activeOperationIdRef: RefObject<string | null>;
+    pendingFrameSyncRef: RefObject<number | null>;
+    pendingKeyActionMessageRef: RefObject<string | null>;
   };
   navigation: RotoNavigationIntegrationPort;
   status: {

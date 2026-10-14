@@ -13,7 +13,7 @@ export interface PhysicsPaintScriptsPanelProps {
   library: RotoScriptLibraryController;
   playScript: RotoPlayScriptController;
   rotoScript: RotoScriptClipboardController;
-  playButtonRef: RefObject<HTMLButtonElement>;
+  playButtonRef: RefObject<HTMLButtonElement | null>;
   selectedLoopClip?: PhysicsPaintLoopClipPresentation | null;
   linkedGroupNavigation?: {
     currentIndex: number;

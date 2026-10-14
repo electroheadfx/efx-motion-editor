@@ -147,7 +147,7 @@ export function KeyPhotoStripInline({sequenceId}: {sequenceId: string}) {
 /** Hold frames popover with +/- buttons and number input */
 interface FramesPopoverProps {
   holdFrames: number;
-  anchorRef: preact.RefObject<HTMLButtonElement>;
+  anchorRef: preact.RefObject<HTMLButtonElement | null>;
   onCommit: (frames: number) => void;
   onClose: () => void;
   startFrame: number;

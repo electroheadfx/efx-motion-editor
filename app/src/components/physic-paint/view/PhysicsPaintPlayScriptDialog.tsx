@@ -10,7 +10,7 @@ export interface PhysicsPaintPlayScriptDialogProps {
   // dialog is read-only toward it — the Custom pane renders it and Generate snapshots it via
   // the controller getBrushColor port; the dialog never copies it into local state.
   brushColor: string;
-  returnFocusRef: RefObject<HTMLButtonElement>;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
 }
 
 // D-05: locked mode options, labels, and helper copy (42-UI-SPEC Copywriting Contract).

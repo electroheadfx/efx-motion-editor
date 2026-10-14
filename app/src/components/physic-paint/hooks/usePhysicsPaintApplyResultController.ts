@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, type MutableRef } from 'preact/hooks';
+import { useCallback, useEffect, useRef } from 'preact/hooks';
+import type { RefObject } from 'preact';
 import type { PhysicPaintApplyPayload, PhysicPaintApplyResult } from '../../../types/physicPaint';
 import type { PhysicsPaintBridgeMode } from '../bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintApplyResultBridge } from '../bridge/usePhysicsPaintParentBridge';
@@ -79,7 +80,7 @@ interface PlaybackSettingsRoute {
 }
 
 interface GeneralResultPorts {
-  pendingKeyActionMessageRef: MutableRef<string | null>;
+  pendingKeyActionMessageRef: RefObject<string | null>;
   setApplyStatus: (status: ApplyStatus) => void;
   setApplyMessage: (message: string | null | ((current: string | null) => string | null)) => void;
   setLastError: (message: string | null) => void;

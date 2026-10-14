@@ -23,7 +23,7 @@ import {
 // ---------------------------------------------------------------------------
 
 interface PaintOverlayProps {
-  containerRef: RefObject<HTMLDivElement>;
+  containerRef: RefObject<HTMLDivElement | null>;
   isSpaceHeld: RefObject<boolean>;
   onPanStart: (e: PointerEvent) => void;
 }

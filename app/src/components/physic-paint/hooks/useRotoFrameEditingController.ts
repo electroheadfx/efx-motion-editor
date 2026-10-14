@@ -1,4 +1,5 @@
-import { useCallback, useEffect, type MutableRef } from 'preact/hooks';
+import { useCallback, useEffect } from 'preact/hooks';
+import type { RefObject } from 'preact';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
@@ -7,7 +8,7 @@ import { shouldPersistRotoFrame, type RotoEditableState } from '../roto/rotoEdit
 import type { RotoTimelineSelectionKind } from '../roto/rotoTimelineSelectors';
 
 interface RotoEditBufferPort<TEditable> {
-  dirtyFramesRef: MutableRef<Set<number>>;
+  dirtyFramesRef: RefObject<Set<number>>;
   markDirty: (frame: number) => void;
   undoOverlay: (frame: number) => 'empty' | 'dirty' | 'unchanged';
   redoOverlay?: (frame: number) => boolean;

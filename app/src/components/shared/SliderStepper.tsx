@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { signal } from '@preact/signals';
-import type { ComponentChildren, JSX } from 'preact';
+import type { ComponentChildren, CSSProperties, JSX, TargetedMouseEvent, TargetedPointerEvent } from 'preact';
 import { startCoalescing, stopCoalescing } from '../../lib/history';
 import {
   commitStepperInput,
@@ -60,7 +60,7 @@ export interface SliderStepperProps {
   class?: string;
 }
 
-const FIELD_STYLE: JSX.CSSProperties = {
+const FIELD_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '4px',
@@ -68,7 +68,7 @@ const FIELD_STYLE: JSX.CSSProperties = {
   minWidth: 0,
 };
 
-const LABEL_ROW_STYLE: JSX.CSSProperties = {
+const LABEL_ROW_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'flex-start',
@@ -76,7 +76,7 @@ const LABEL_ROW_STYLE: JSX.CSSProperties = {
   minHeight: '17px',
 };
 
-const LABEL_CELL_STYLE: JSX.CSSProperties = {
+const LABEL_CELL_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '2px',
@@ -84,7 +84,7 @@ const LABEL_CELL_STYLE: JSX.CSSProperties = {
 };
 
 /** Follows the sidebar theme; the fallback keeps the pre-quick Studio gray. */
-const LABEL_STYLE: JSX.CSSProperties = {
+const LABEL_STYLE: CSSProperties = {
   fontSize: '11px',
   fontWeight: 600,
   letterSpacing: '0.08px',
@@ -95,7 +95,7 @@ const LABEL_STYLE: JSX.CSSProperties = {
 };
 
 /** The value reads as an input box sitting next to the label (SPECS snapshot). */
-const VALUE_STYLE: JSX.CSSProperties = {
+const VALUE_STYLE: CSSProperties = {
   width: '46px',
   height: '17px',
   boxSizing: 'border-box',
@@ -112,14 +112,14 @@ const VALUE_STYLE: JSX.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 };
 
-const BAR_ROW_STYLE: JSX.CSSProperties = {
+const BAR_ROW_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '6px',
 };
 
 /** Second row under the bar (fade-curve select) — kept clear of the bar. */
-const BELOW_STYLE: JSX.CSSProperties = {
+const BELOW_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '6px',
@@ -135,7 +135,7 @@ const BELOW_STYLE: JSX.CSSProperties = {
  * over `#3e3f41` (0.22 × rgb(127,131,138) over #3e3f41), so Studio (which does
  * not define the var) renders byte-identical.
  */
-const BAR_STYLE: JSX.CSSProperties = {
+const BAR_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   boxSizing: 'border-box',
@@ -148,7 +148,7 @@ const BAR_STYLE: JSX.CSSProperties = {
 };
 
 /** 30px hit cell — the glyph inside carries no box of its own. */
-const CELL_STYLE: JSX.CSSProperties = {
+const CELL_STYLE: CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -166,7 +166,7 @@ const CELL_STYLE: JSX.CSSProperties = {
   touchAction: 'none',
 };
 
-const TRACK_STYLE: JSX.CSSProperties = {
+const TRACK_STYLE: CSSProperties = {
   position: 'relative',
   flex: '1 1 0',
   height: '100%',
@@ -177,7 +177,7 @@ const TRACK_STYLE: JSX.CSSProperties = {
 
 /* Centered on the track midline so the rail shares the −/+ glyph row (UAT:
    fixed px offsets left the line ~1px above the glyph centers). */
-const TRACK_LINE_STYLE: JSX.CSSProperties = {
+const TRACK_LINE_STYLE: CSSProperties = {
   position: 'absolute',
   left: 0,
   top: 'calc(50% - 2px)',
@@ -187,7 +187,7 @@ const TRACK_LINE_STYLE: JSX.CSSProperties = {
   background: 'var(--sidebar-border-unselected, #363c47)',
 };
 
-const PROGRESS_STYLE: JSX.CSSProperties = {
+const PROGRESS_STYLE: CSSProperties = {
   position: 'absolute',
   left: 0,
   top: 'calc(50% - 2px)',
@@ -196,7 +196,7 @@ const PROGRESS_STYLE: JSX.CSSProperties = {
   background: 'var(--color-accent, #2f67e8)',
 };
 
-const KNOB_STYLE: JSX.CSSProperties = {
+const KNOB_STYLE: CSSProperties = {
   position: 'absolute',
   top: 'calc(50% - 5.5px)',
   width: '11px',
@@ -300,7 +300,7 @@ export function SliderStepper({
     if (next !== value) onChange(next);
   };
 
-  const handlePressStart = (direction: 1 | -1) => (event: JSX.TargetedPointerEvent<HTMLButtonElement>) => {
+  const handlePressStart = (direction: 1 | -1) => (event: TargetedPointerEvent<HTMLButtonElement>) => {
     if (disabled || (presets != null && presets.length > 0 && nextPresetFrom(presets, value, direction) === undefined)) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -320,7 +320,7 @@ export function SliderStepper({
     stopCoalescing();
   };
 
-  const handleClick = (direction: 1 | -1) => (event: JSX.TargetedMouseEvent<HTMLButtonElement>) => {
+  const handleClick = (direction: 1 | -1) => (event: TargetedMouseEvent<HTMLButtonElement>) => {
     if (disabled || event.detail !== 0) return;
     if (presets != null && presets.length > 0 && nextPresetFrom(presets, value, direction) === undefined) return;
     stepBy(direction);
@@ -357,7 +357,7 @@ export function SliderStepper({
     if (next !== value) onChange(next);
   };
 
-  const handleTrackPointerDown = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+  const handleTrackPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (disabled || trackSpan <= 0) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -366,7 +366,7 @@ export function SliderStepper({
     emitTrackValue(valueFromPointer(event.currentTarget, event.clientX));
   };
 
-  const handleTrackPointerMove = (event: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+  const handleTrackPointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return;
     emitTrackValue(valueFromPointer(event.currentTarget, event.clientX));
   };

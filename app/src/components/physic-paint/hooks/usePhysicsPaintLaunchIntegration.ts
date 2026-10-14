@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, type Dispatch, type MutableRef, type StateUpdater } from 'preact/hooks';
+import { useCallback, useEffect, useRef, type Dispatch, type StateUpdater } from 'preact/hooks';
+import type { RefObject } from 'preact';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
@@ -69,9 +70,9 @@ export function createPhysicsPaintLaunchReplacementCoordinator(input: {
 }
 
 interface LaunchLifecyclePorts {
-  pendingFrameSyncRef: MutableRef<number | null>;
-  pendingApplyRef: MutableRef<PendingPhysicPaintApply | null>;
-  activeOperationIdRef: MutableRef<string | null>;
+  pendingFrameSyncRef: RefObject<number | null>;
+  pendingApplyRef: RefObject<PendingPhysicPaintApply | null>;
+  activeOperationIdRef: RefObject<string | null>;
   prepareScriptLaunchReplacement: () => Promise<void>;
   preparePlaybackSettingsLaunchReplacement: () => Promise<void>;
   completeScriptLaunchReplacement: () => void;
@@ -88,12 +89,12 @@ interface LaunchStatePorts {
 }
 
 export function usePhysicsPaintLaunchIntegration(input: {
-  engineRef: MutableRef<EfxPaintEngine | null>;
+  engineRef: RefObject<EfxPaintEngine | null>;
   lifecycle: LaunchLifecyclePorts;
   state: LaunchStatePorts;
   peekLaunchContext: () => PhysicPaintLaunchContext | null;
   resetPersistenceForLaunch: () => void;
-  resetNavigationForLaunchRef: MutableRef<(settings: PhysicPaintRotoPlaybackSettings) => void>;
+  resetNavigationForLaunchRef: RefObject<(settings: PhysicPaintRotoPlaybackSettings) => void>;
   hydratePlaybackSettingsForLaunch: (context: PhysicPaintLaunchContext, settings: PhysicPaintRotoPlaybackSettings) => void;
   resetCachedReference: () => void;
   loadCachedReferenceFrame: (frame: number, engine?: PreviewBackgroundEngine) => void;

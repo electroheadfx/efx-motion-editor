@@ -34,7 +34,7 @@ import type {KeyframeValues} from '../../types/layer';
 // ---------------------------------------------------------------------------
 
 interface TransformOverlayProps {
-  containerRef: RefObject<HTMLDivElement>;
+  containerRef: RefObject<HTMLDivElement | null>;
   getSourceDimensions: (layer: Layer) => {w: number; h: number} | null;
   isSpaceHeld: RefObject<boolean>;
   onPanStart: (e: PointerEvent) => void;

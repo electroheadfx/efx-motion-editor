@@ -1057,8 +1057,8 @@ export function computeToolboxPopoverPlacement(options: {
  * position:fixed and must keep the viewport as its containing block.
  */
 function PhysicsPaintToolboxPopover(props: {
-  anchorRef: RefObject<HTMLSpanElement>;
-  panelRef: RefObject<HTMLDivElement>;
+  anchorRef: RefObject<HTMLSpanElement | null>;
+  panelRef: RefObject<HTMLDivElement | null>;
   open: boolean;
   ariaLabel: string;
   children: ComponentChildren;
@@ -1110,8 +1110,8 @@ function PhysicsPaintToolboxPopover(props: {
  * position:fixed keeps the viewport as its containing block.
  */
 function PhysicsPaintRailCreateMenu(props: {
-  anchorRef: RefObject<HTMLSpanElement>;
-  panelRef: RefObject<HTMLDivElement>;
+  anchorRef: RefObject<HTMLSpanElement | null>;
+  panelRef: RefObject<HTMLDivElement | null>;
   open: boolean;
   children: ComponentChildren;
 }) {
