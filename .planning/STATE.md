@@ -6,10 +6,10 @@ current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
 stopped_at: Completed 55-04-PLAN.md
-last_updated: "2026-10-15T06:45:23.764Z"
+last_updated: "2026-10-15T06:45:54.382Z"
 last_activity: 2026-10-15
 last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
-state_head: 7b084208ab892f571e9e63907673f0b893748513
+state_head: 2a05c33e140d44b52291206b8c7a7803f8018aa7
 progress:
   total_phases: 4
   completed_phases: 1
@@ -474,6 +474,8 @@ Recent decisions affecting current work:
 - [Phase 55]: 55-03: schema version fixed at 1 (exact match, fail-closed); named failures return null without throwing (D-12 refuse-before-write)
 - [Phase 55]: PINS_GREEN_AT_BIRTH for hostAnimationResidueContract — 55-02 move landed; detection proven by in-memory matcher self-test
 - [Phase 55]: Residue pin never unbreaks 55-02 — a red pin opens a 55-02 gap, no local re-point
+- [Phase 55]: 55-04: HOST_TICK_HZ resolved to 60 (D-23); integer ticks only, named RangeError domain door, never raw ms (DATA-03)
+- [Phase 55]: 55-04: cuisson mechanism host-owned and uncapped (D-20) — cuissonTicks has no ceiling; clampCuissonTicks requires caller bounds; engine-1 frame cap stays engine-side
 
 ### Pending Todos
 
