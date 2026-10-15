@@ -30,12 +30,27 @@ const PACKAGE_TRACE_SEED = resolve(
   '../../../../packages/efx-physic-paint/src/util/traceSeed.ts',
 );
 
+/**
+ * PINS_GREEN_AT_BIRTH: this standing pin is green at birth against the
+ * unchanged pre-split sources. It is a preservation pin — manufacturing a
+ * red by breaking production code would be theater. A future host-split
+ * regression flips it the moment animation schedules, held-pose motion, or
+ * the traceSeed determinism law drift.
+ */
+const PINS_GREEN_AT_BIRTH = true as const;
+
 describe('pre-split golden replay parity pin (HOST-03 / R5.2)', () => {
   it('re-bakes every stored frame at delta zero on pre-split code (PINS_GREEN_AT_BIRTH)', () => {
+    expect(PINS_GREEN_AT_BIRTH).toBe(true);
     const fixture = loadPreSplitGoldenFixture();
     expect(fixture.bakes.length).toBeGreaterThan(0);
 
     fixture.bakes.forEach((bake, bakeIndex) => {
+      // A wiped/empty golden would false-green the comparator (zero frames to
+      // check). The stored capture must carry exactly frameCount frames.
+      expect(bake.frames.length, `bake[${bakeIndex}] golden frames must be non-empty`).toBe(
+        bake.frameCount,
+      );
       const rebaked = bakePreSplitGoldenFrames(fixture.script, bake);
       expect(rebaked.length).toBe(bake.frameCount);
       const mismatch = comparePreSplitGoldenBake(bakeIndex, bake, rebaked);
@@ -70,6 +85,19 @@ describe('pre-split golden replay parity pin (HOST-03 / R5.2)', () => {
     expect(mismatch!.frameIndex).toBe(1);
     expect(mismatch!.pixelDeltaCount).toBeGreaterThan(0);
     expect(describePreSplitGoldenMismatch(mismatch!)).toContain('frame 1');
+  });
+
+  it('rejects a wiped golden (empty frames cannot false-green the pin)', () => {
+    const fixture = loadPreSplitGoldenFixture();
+    const bake = fixture.bakes[0];
+    const wiped = { ...bake, frames: [] as typeof bake.frames };
+    // The pin's non-empty guard is the assertion inside the main test; this
+    // case proves the comparator itself is also a no-op on empty goldens, so
+    // the guard is load-bearing rather than decorative.
+    expect(comparePreSplitGoldenBake(0, wiped, bakePreSplitGoldenFrames(fixture.script, wiped))).toBeNull();
+    expect(wiped.frames.length).toBe(0);
+    expect(bake.frames.length).toBe(bake.frameCount);
+    expect(bake.frames.length).toBeGreaterThan(0);
   });
 
   it('keeps the fixture script as RotoPaintScript runtime input (not PersistedRotoScriptV1)', () => {
