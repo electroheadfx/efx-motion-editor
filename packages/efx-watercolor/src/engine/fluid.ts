@@ -5,14 +5,19 @@
 //  pigment, fixed pigment, plus mobile/fixed colour mass so
 //  baked pixels carry the deposited hue. `step` orchestrates
 //  transport + drying over the wet region only (R1.6 idle dry
-//  sheet is a no-op). Integer ticks only (DATA-03).
+//  sheet is a no-op). Integer ticks only (DATA-03) — dt is in
+//  tick units, never raw milliseconds.
 //
-//  56-03 RED stub — allocation and export surface only; the
-//  physics (transport/drying) is intentionally unimplemented so
-//  the look-law tests fail on assertions, not on imports.
+//  Look laws this sheet must produce (fluid.test.ts):
+//    wet-in-wet bloom · hard wet-on-dry edge · tide line ·
+//    conservation (never seeps onto dry paper) · four tools ·
+//    same script ⇒ same pixels (D-20).
 // ============================================================
 
-/** Wetness below this is treated as dry for the transport gate. */
+import { transportStep } from './transport'
+import { fixDrying } from './drying'
+
+/** Wetness at or below this is treated as dry for the transport gate. */
 export const WET_EPS = 1e-4
 
 export interface FluidSheet {
@@ -60,14 +65,25 @@ export function createSheet(width: number, height: number): FluidSheet {
   }
 }
 
+/** True when the sheet carries no wet pixel (R1.6 idle dry sheet). */
+export function isDrySheet(sheet: FluidSheet): boolean {
+  const wet = sheet.wet
+  for (let i = 0; i < wet.length; i++) {
+    if ((wet[i] ?? 0) > WET_EPS) return false
+  }
+  return true
+}
+
 /**
  * Advance the sim by one tick of `dt` (integer-tick units).
- * Wet-gated transport + drying. dt<=0 and an idle dry sheet
- * are no-ops (flagged assumptions AQUA-01).
+ * Wet-gated transport + drying. dt<=0 and an idle dry sheet are
+ * no-ops (flagged assumptions AQUA-01) and cost no work.
  */
-export function step(_sheet: FluidSheet, _dt: number): void {
-  // 56-03 RED stub — intentionally does nothing. GREEN lands
-  // transportStep + fixDrying here.
+export function step(sheet: FluidSheet, dt: number): void {
+  if (!(dt > 0)) return
+  if (isDrySheet(sheet)) return
+  transportStep(sheet, dt)
+  fixDrying(sheet, dt)
 }
 
 /** Total pigment density (mobile + fixed) over the whole sheet. */
@@ -115,4 +131,42 @@ export function sheetToBytes(sheet: FluidSheet): Uint8Array {
     offset += b.byteLength
   }
   return out
+}
+
+/** Linear index of (x, y) — shared helper for the engine modules. */
+export function sheetIndex(sheet: FluidSheet, x: number, y: number): number {
+  return y * sheet.width + x
+}
+
+/**
+ * Transfer `amount` of mobile pigment (and proportional colour
+ * mass) from pixel `from` to pixel `to`. Amount may be negative
+ * (reverse direction). Never drives a density below zero.
+ */
+export function transferMobile(
+  sheet: FluidSheet,
+  from: number,
+  to: number,
+  amount: number,
+): void {
+  if (amount === 0) return
+  if (amount > 0) {
+    const available = sheet.mobile[from] ?? 0
+    const moved = amount > available ? available : amount
+    if (moved <= 0) return
+    const share = available > 0 ? moved / available : 0
+    const r = (sheet.mobileR[from] ?? 0) * share
+    const g = (sheet.mobileG[from] ?? 0) * share
+    const b = (sheet.mobileB[from] ?? 0) * share
+    sheet.mobile[from] = available - moved
+    sheet.mobileR[from] = (sheet.mobileR[from] ?? 0) - r
+    sheet.mobileG[from] = (sheet.mobileG[from] ?? 0) - g
+    sheet.mobileB[from] = (sheet.mobileB[from] ?? 0) - b
+    sheet.mobile[to] = (sheet.mobile[to] ?? 0) + moved
+    sheet.mobileR[to] = (sheet.mobileR[to] ?? 0) + r
+    sheet.mobileG[to] = (sheet.mobileG[to] ?? 0) + g
+    sheet.mobileB[to] = (sheet.mobileB[to] ?? 0) + b
+    return
+  }
+  transferMobile(sheet, to, from, -amount)
 }

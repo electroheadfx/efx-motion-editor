@@ -15,7 +15,7 @@ import type {
   StudioStroke,
 } from '@efxlab/efx-paint-host'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
-import { toStudioStroke } from '../payload/toStudioStroke'
+import { AQUARELLE_TOOLS, toStudioStroke } from '../payload/toStudioStroke'
 import { depositStroke } from '../engine/deposit'
 import type { DepositCanvas } from '../engine/deposit'
 import type { AquarelleToolOverrides } from '../brushes/tips'
@@ -91,6 +91,8 @@ function parseStroke(raw: unknown): StudioStroke<AquarelleStrokePayload> | null 
   if (typeof engine !== 'object' || engine === null) return null
   const e = engine as Record<string, unknown>
   if (typeof e['tool'] !== 'string') return null
+  // Fail-closed on the closed tool union (AQUA-02 / D-18) — no fifth kind.
+  if (!(AQUARELLE_TOOLS as readonly string[]).includes(e['tool'])) return null
   if (typeof e['brushId'] !== 'string') return null
   if (typeof e['params'] !== 'object' || e['params'] === null) return null
   if (typeof e['timestamp'] !== 'number' || !Number.isFinite(e['timestamp'])) return null

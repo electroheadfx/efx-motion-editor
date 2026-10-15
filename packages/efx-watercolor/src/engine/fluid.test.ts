@@ -13,7 +13,7 @@
 //  plus the flagged idle/no-op assumptions (empty sheet, dt=0).
 //
 //  Small synthetic sheets (32×32), integer ticks — never wall
-//  clock (DATA-03). No Math.random (D-20).
+//  clock (DATA-03). No unseeded RNG (D-20).
 // ============================================================
 
 import { describe, expect, it } from 'vitest'

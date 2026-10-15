@@ -26,9 +26,24 @@ import { hashMutationId } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
 
+/**
+ * The only four tools that carry pts/brush payload (AQUA-02 / D-18).
+ * Closed union — no fifth kind. Dry is a recorded timeline event,
+ * not a paint tool (D-15).
+ */
+export type AquarelleTool = 'brush' | 'water' | 'pen' | 'lift'
+
+/** Exhaustive tool list — the engine union is closed on these four. */
+export const AQUARELLE_TOOLS: readonly AquarelleTool[] = Object.freeze([
+  'brush',
+  'water',
+  'pen',
+  'lift',
+] as const)
+
 /** Engine-2 private fields carried in the opaque `engine: P` slot. */
 export interface AquarelleStrokePayload {
-  tool: string
+  tool: AquarelleTool
   color: string | null
   params: Record<string, number>
   brushId: string
@@ -54,7 +69,7 @@ export interface AquarellePoint {
 
 /** Runtime stroke shape the engine records (pre-projection). */
 export interface AquarelleStroke {
-  tool: string
+  tool: AquarelleTool
   color: string | null
   params: Record<string, number>
   brushId: string
