@@ -1440,6 +1440,24 @@ export function PhysicsPaintStudio() {
       setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
     }
   };
+  // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's ports —
+  // display-class edits through the store's paper setters (fond + change
+  // token), plus the Studio settings mirror so the slider readouts stay live.
+  const handlePaperIdChange = (paperId: string) => {
+    const layerId = launchContext?.layerId;
+    if (layerId) physicPaintStore.setPaperId(layerId, paperId);
+    setBackground(paperId as StudioBackgroundMode);
+  };
+  const handlePaperStrengthChange = (strength: number) => {
+    const layerId = launchContext?.layerId;
+    if (layerId) physicPaintStore.setPaperStrength(layerId, strength);
+    setGrainStrength(strength);
+  };
+  const handlePaperScaleChange = (scale: number) => {
+    const layerId = launchContext?.layerId;
+    if (layerId) physicPaintStore.setPaperScale(layerId, scale);
+    setGrainScale(scale);
+  };
   const replacePhysicalRecordsWithOwnership = (
     layerId: string,
     records: readonly PhysicPaintRotoRealKeyRecord[],
@@ -3642,7 +3660,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handlePaperStrengthChange, handlePaperScaleChange], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3692,6 +3710,13 @@ export function PhysicsPaintStudio() {
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
     // to Track option and a Bg rail selection opens the Background option tab.
     toolTab: rightPanelToolTab,
+    // 56-05 (D-09..D-12): shared-panel Paper section ports.
+    paperId: settings.background.startsWith('paper/') ? settings.background : 'paper/cold-press',
+    paperStrength: settings.grainStrength,
+    paperScale: settings.grainScale,
+    onPaperIdChange: handlePaperIdChange,
+    onPaperStrengthChange: handlePaperStrengthChange,
+    onPaperScaleChange: handlePaperScaleChange,
     onColorChange: (color: string, opacity: number) => {
       setBrushColor(color, opacity);
       paintStore.setForeground(color);

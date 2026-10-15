@@ -23,6 +23,7 @@ import { SectionLabel } from '../../shared/SectionLabel';
 import { activeModule } from '../../shared/activeModule';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
+import { PaperPicker } from './PaperPicker';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -78,6 +79,17 @@ export interface PhysicsPaintRightPanelProps {
    * (backgroundClipSectionPortsRef precedent).
    */
   audioSectionPorts?: AudioSectionPorts;
+  /**
+   * 56-05 (D-09..D-12 / PAPER-03): paper display state for the shared-panel
+   * Paper section. State lives on the document fond; these are the controls'
+   * read/write ports (D-10).
+   */
+  paperId?: string;
+  paperStrength?: number;
+  paperScale?: number;
+  onPaperIdChange?: (id: string) => void;
+  onPaperStrengthChange?: (value: number) => void;
+  onPaperScaleChange?: (value: number) => void;
 }
 
 /** The five BlendMode values offered by the track Blend select (TML-04). */
@@ -220,6 +232,12 @@ export function PhysicsPaintRightPanel({
   backgroundClipSection,
   audioSectionPorts,
   toolTab: toolTabSignal,
+  paperId,
+  paperStrength,
+  paperScale,
+  onPaperIdChange,
+  onPaperStrengthChange,
+  onPaperScaleChange,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
   // 49-06 (S5): the selected Bg clip id drives the Background-tab exclusivity.
@@ -652,9 +670,15 @@ export function PhysicsPaintRightPanel({
               </div>
               <div class="physics-paint-option-group">
                 <SectionLabel text="Paper" />
-                <div class="physics-paint-option-row" data-paper-picker-placeholder>
-                  <span class="physics-paint-right-label">—</span>
-                </div>
+                <PaperPicker
+                  paperId={paperId ?? 'paper/cold-press'}
+                  strength={paperStrength ?? 0.65}
+                  scale={paperScale ?? 1}
+                  onPaperIdChange={(id) => onPaperIdChange?.(id)}
+                  onStrengthChange={(value) => onPaperStrengthChange?.(value)}
+                  onScaleChange={(value) => onPaperScaleChange?.(value)}
+                  disabled={engineControlsDisabled}
+                />
               </div>
             </div>
 
