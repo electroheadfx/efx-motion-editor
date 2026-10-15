@@ -26,3 +26,15 @@ export type {
   StudioStrokeMotion,
 } from './script'
 export { parseStudioScriptEnvelope } from './script'
+
+// Host time law: fixed integer tick grid + uncapped cuisson mechanism
+// (DATA-03 / D-20 / D-23). Integer ticks only, never raw ms; the host
+// owns the cuisson MECHANISM with no cap constant (engine owns policy).
+export {
+  HOST_TICK_HZ,
+  ticksFromSeconds,
+  secondsFromTicks,
+  snapSampleToTick,
+  cuissonTicks,
+  clampCuissonTicks,
+} from './time'

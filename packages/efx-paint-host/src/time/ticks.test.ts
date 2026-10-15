@@ -115,7 +115,7 @@ describe('HOST_TICK_HZ fixed integer tick grid (DATA-03 / D-23)', () => {
 // ---------------------------------------------------------------------------
 
 describe('diffusion/cuisson tick-budget mechanism (D-20, no host ceiling)', () => {
-  it('cuissonTicks({ cuisson: 10000 }) returns 10000 unchanged (no 600 ceiling)', async () => {
+  it('cuissonTicks({ cuisson: 10000 }) returns 10000 unchanged (no host ceiling)', async () => {
     const { cuissonTicks } = await loadDiffusion()
     expect(cuissonTicks, './diffusion must export cuissonTicks').toBeTypeOf('function')
     expect(cuissonTicks!({ cuisson: 10000 })).toBe(10000)
