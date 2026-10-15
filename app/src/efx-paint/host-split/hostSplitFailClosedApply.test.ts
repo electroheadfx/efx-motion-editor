@@ -73,7 +73,7 @@ function harness(probe: ReturnType<typeof createWriteProbe>) {
   const engine = {
     getStrokes: () => [],
     getStrokeCount: () => 0,
-    enqueueRecordedStroke: vi.fn((group: RecordedStrokeGroup) => {
+    enqueueRecordedStroke: vi.fn((_group: RecordedStrokeGroup) => {
       probe.noteStroke();
       return 900 + probe.strokes;
     }),
