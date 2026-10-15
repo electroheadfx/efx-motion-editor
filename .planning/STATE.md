@@ -5,17 +5,17 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
-stopped_at: Completed 55-02-PLAN.md
-last_updated: "2026-10-15T05:56:05Z"
+stopped_at: Completed 55-03-PLAN.md
+last_updated: "2026-10-15T06:22:29.155Z"
 last_activity: 2026-10-15
 last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
-state_head: 1b4c6d077fce07dbc71149fc3425766df923a3d8
+state_head: cc1f6ff08f42165f1a5ccad1bba50279ce10a4d2
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 7
-  percent: 28
+  completed_plans: 8
+  percent: 25
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
-Plan: 3 of 9
+Plan: 4 of 9
 Status: Ready to execute
 Last activity: 2026-10-15 — Plan 55-02 complete (host split)
 
-Progress: [████░░░░░░] 28%
+Progress: [███░░░░░░░] 25%
 
 **v2.0.0 phase map (locked 2026-10-14):**
 - 54 Preact 11 (RUN-01..06) → 55 efx-paint-host (HOST-01..05 + DATA-01..04) → 56 efx-watercolor (AQUA-01..08 + PAPER-01..04 + MOD-01..06) → 57 efx-spectral (SPEC-01..05)
@@ -166,6 +166,7 @@ Progress: [████░░░░░░] 28%
 | Phase 54 P54-04 | 13min | 2 tasks | 20 files |
 | Phase 54 P54-05 | 5min | 2 tasks | 1 files |
 | Phase 55 P55-01 | 10min | 2 tasks | 2 files |
+| Phase 55 P55-03 | 20min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -467,6 +468,8 @@ Recent decisions affecting current work:
 - [Phase 55]: 55-02: ONE StudioStroke<P> contract (pts/ticks/cuisson/motion/brushId/toolOverrides/traceSeed/recordedOrder/playFrame/color/engine: P); color kept as shared field so held-pose hashStroke stays byte-identical
 - [Phase 55]: 55-02: AnimationPlayer drives generic EngineAdapter<P> (live + bake surface); AnimationStrokeStyleOverride<P> is generic with opaque engine slot (D-18)
 - [Phase 55]: 55-02: atomic move + 13-site consumer re-point in one change set (D-18 clean-break); toStudioStroke/fromStudioStroke at the seam (FIELD-MAPPING CONTRACT)
+- [Phase 55]: 55-03: script payload types re-export StudioStroke<P> from animation/types.ts (one schedule contract); EngineAdapter<P> in payload.ts with full surface (engineId + payloadCodec + live + bake); parse validates envelope fields only, engine slot untouched
+- [Phase 55]: 55-03: schema version fixed at 1 (exact match, fail-closed); named failures return null without throwing (D-12 refuse-before-write)
 
 ### Pending Todos
 
@@ -539,8 +542,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T05:56:05Z
-Stopped at: Completed 55-02-PLAN.md
+Last session: 2026-10-15T06:22:29.126Z
+Stopped at: Completed 55-03-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
