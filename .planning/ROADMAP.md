@@ -119,11 +119,11 @@ Plans:
   3. Cross-engine or malformed Apply refuses with a named visible error and never half-applies
   4. Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist
 
-**Plans**: 10 plans (9 executed + 1 gap-closure)
+**Plans**: 10/10 plans executed (9 executed + 1 gap-closure)
 Plans:
 **Wave 1**
 - [x] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
-- [ ] 55-10-PLAN.md — GAP-55-01 closure: paint audio snippet on app-timeline scrub (UAT row A2, phase 51 audible-scrub contract)
+- [x] 55-10-PLAN.md — GAP-55-01 closure: paint audio snippet on app-timeline scrub (UAT row A2, phase 51 audible-scrub contract)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 55-02-PLAN.md — Host package scaffold + ATOMIC move animation/ + all 13 consumer re-points + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25) (completed 2026-10-15)
@@ -183,7 +183,7 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
-| 55. efx-paint-host (engine-1 host split) | 9/9 | In Progress | - |
+| 55. efx-paint-host (engine-1 host split) | 10/10 | In Progress | - |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/TBD | Not started | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |
