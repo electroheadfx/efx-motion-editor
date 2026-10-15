@@ -627,6 +627,47 @@ button.destructive {
   outline-offset: 2px;
 }
 
+/* 56-02 (D-01): ModuleSwitcher geometry — locked per UI-SPEC exceptions table.
+   Reuses the physics-paint-segmented-button family (one CSS language). */
+.module-switcher {
+  flex-shrink: 0;
+  gap: 0;
+  flex-wrap: nowrap;
+}
+
+.module-switcher-slot {
+  height: 24px;
+  min-width: 72px;
+  padding: 0 10px;
+  border-radius: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+/* First/last slot rounded to read as one inset track. */
+.module-switcher-slot:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.module-switcher-slot:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+/* Krita inert slot (D-03): muted, never accent, never hover-activated. */
+.module-switcher-slot-inert,
+.module-switcher-slot-inert:hover:not(:disabled),
+.module-switcher-slot-inert.active {
+  color: var(--color-text-dim, #6b7280);
+  background: #505255;
+  border-color: #696d72;
+  cursor: default;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
 .physics-paint-canvas-region {
   position: relative;
   grid-row: 2;

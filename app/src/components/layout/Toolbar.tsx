@@ -9,6 +9,7 @@ import {NewProjectDialog} from '../project/NewProjectDialog';
 import {blurStore} from '../../stores/blurStore';
 import {motionBlurStore} from '../../stores/motionBlurStore';
 import {ThemeSwitcher} from './ThemeSwitcher';
+import {ModuleSwitcher} from '../shared/ModuleSwitcher';
 import { FilePlus, FolderOpen, Save as SaveIcon, Ban, Images, Settings, Download, Zap, ChevronDown } from 'lucide-preact';
 
 export function Toolbar() {
@@ -213,6 +214,9 @@ export function Toolbar() {
       </div>
       <div class="w-px h-6 bg-(--color-border-subtle)" />
       <ThemeSwitcher />
+      <div class="w-px h-6 bg-(--color-border-subtle)" />
+      {/* 56-02 (D-01): module switcher — one shared component, one signal */}
+      <ModuleSwitcher />
       {/* Spacer */}
       <div class="flex-1" />
       {/* Imported button */}

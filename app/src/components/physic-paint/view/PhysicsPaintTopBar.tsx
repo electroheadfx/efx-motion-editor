@@ -1,5 +1,6 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import { SliderStepper } from '../../shared/SliderStepper';
+import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
@@ -109,6 +110,9 @@ export function PhysicsPaintTopBar({
       <div class="physics-paint-topbar-status" aria-live="polite">
         <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
       </div>
+
+      {/* 56-02 (D-01): module switcher — one shared component, one signal */}
+      <ModuleSwitcher />
 
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} disabled={disabled} />

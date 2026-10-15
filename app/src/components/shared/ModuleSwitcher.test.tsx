@@ -66,7 +66,7 @@ function* walk(node: unknown): Generator<TestVNode> {
 }
 
 function renderSwitcher(): TestVNode {
-  return materialize(ModuleSwitcher({})) as TestVNode;
+  return materialize(ModuleSwitcher()) as TestVNode;
 }
 
 function findButtons(tree: TestVNode): TestVNode[] {
