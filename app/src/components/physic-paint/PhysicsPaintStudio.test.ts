@@ -2249,18 +2249,27 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // the script apply path.
     expect(loadAndApplyBody).toContain('clearOwnedScriptApplyRefusal();');
     expect(applyScriptBody).toContain('clearOwnedScriptApplyRefusal();');
-    for (const [name, body] of [['handleSelectedScriptLoadAndApply', loadAndApplyBody], ['handleApplyScript', applyScriptBody]] as const) {
+    // 55-06: handleSelectedScriptLoadAndApply has TWO mutually exclusive error
+    // publications — the refused-row branch (host codes, D-09/D-11) and the
+    // apply-failure branch (clipboard codes). handleApplyScript keeps one.
+    for (const [name, body, expectedErrors] of [
+      ['handleSelectedScriptLoadAndApply', loadAndApplyBody, 2],
+      ['handleApplyScript', applyScriptBody, 1],
+    ] as const) {
       const clears = body.split('setLastError(null);').length - 1;
       expect(clears, `${name} must clear the last error exactly once`).toBe(1);
-      // Exactly one error publication, and it sits AFTER the success clear — a
-      // success can never take the error branch.
+      // Error publications sit AFTER the success clear — a success can never
+      // take an error branch.
       const errors = body.split("setApplyStatus('error');").length - 1;
-      expect(errors, `${name} must mark an error exactly once`).toBe(1);
-      expect(body.indexOf('setLastError(null);')).toBeLessThan(body.indexOf("setApplyStatus('error');"));
-      // Ownership is taken on the failure branch only, exactly once.
+      expect(errors, `${name} must mark an error ${expectedErrors === 1 ? 'exactly once' : 'in each refusal branch'}`).toBe(expectedErrors);
+      // The success clear precedes the apply-failure error publication — the
+      // refused-row branch (55-06) is an EARLY RETURN before the success path,
+      // so success can never reach it. lastIndexOf finds the apply-failure one.
+      expect(body.indexOf('setLastError(null);')).toBeLessThan(body.lastIndexOf("setApplyStatus('error');"));
+      // Ownership is taken on failure branches only.
       const owns = body.split('scriptApplyRefusalOwnedRef.current = true;').length - 1;
-      expect(owns, `${name} must take refusal ownership exactly once`).toBe(1);
-      expect(body.indexOf('setLastError(null);')).toBeLessThan(body.indexOf('scriptApplyRefusalOwnedRef.current = true;'));
+      expect(owns, `${name} must take refusal ownership on each error branch`).toBe(expectedErrors);
+      expect(body.indexOf('setLastError(null);')).toBeLessThan(body.lastIndexOf('scriptApplyRefusalOwnedRef.current = true;'));
     }
     // The helper is ownership-gated and returns the capsule to idle — it can
     // never wipe a message another surface posted, and never claims 'success'.
@@ -2285,9 +2294,12 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     expect(rowActivateBody).not.toContain('buildRotoScriptApplyRefusalMessage');
   });
 
-  it('adds no second refusal route: the mapper is imported once and called only at the two apply sites', () => {
+  it('adds no second refusal route: the mapper is imported once and called only at the apply/refusal sites', () => {
+    // 55-06 (D-09): one import + three call sites — two in
+    // handleSelectedScriptLoadAndApply (refused-row branch + apply-failure
+    // branch) and one in handleApplyScript. No fourth route, no second import.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(3); // one import + the two apply call sites
+    expect(mentions).toBe(4); // one import + three call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 

@@ -1310,7 +1310,24 @@ export function PhysicsPaintStudio() {
     if (!preparation) return;
     try {
       const loaded = await rotoScriptLibrary.activateAndLoad(selectedId, preparation);
-      if (!loaded) return;
+      if (!loaded) {
+        // 55-06 (D-09/D-11): a refused library row must name what went wrong
+        // on the EXISTING owned-refusal surface — no second error channel.
+        // The host yields codes; this mapper names them. The library's raw
+        // `Refused script: <code>` log is not the user-facing line.
+        const row = rotoScriptLibrary.rows.value.find((candidate) => candidate.id === selectedId);
+        const refusal = row && 'refusal' in row ? (row.refusal as string | undefined) : undefined;
+        if (refusal) {
+          const message = buildRotoScriptApplyRefusalMessage({ code: refusal });
+          if (message) {
+            setLastError(message);
+            setApplyMessage(message);
+            setApplyStatus('error');
+            scriptApplyRefusalOwnedRef.current = true;
+          }
+        }
+        return;
+      }
       const applied = await rotoScript.applyPreparedScript(preparation);
       if (applied) {
         setLastError(null);

@@ -220,6 +220,13 @@ export const createPersistedRotoScript = serializeRotoScript;
 export function parseRotoScript(raw: unknown): RotoScriptParseResult {
   const classified = classifyEnvelopeParseFailure(raw);
   if (classified !== null) return { ok: false, refusal: { code: classified } };
+  // 55-06 (D-11): a known engine that is not engine-1's codec is an
+  // engine-mismatch, not a malformed payload. The envelope parsed cleanly —
+  // it is simply for a different paint module. Detail carries the package-id
+  // pair so the Studio mapper can name both engines (D-15).
+  if (isRecord(raw) && typeof raw.engineId === 'string' && raw.engineId.length > 0 && raw.engineId !== ROTO_SCRIPT_ENGINE_ID) {
+    return { ok: false, refusal: { code: 'engine-mismatch', detail: `${raw.engineId}:${ROTO_SCRIPT_ENGINE_ID}` } };
+  }
   if (!isPersistedRotoScriptV1(raw)) return { ok: false, refusal: { code: 'malformed-engine-payload' } };
   return { ok: true, document: raw };
 }
