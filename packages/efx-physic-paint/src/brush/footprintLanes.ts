@@ -23,7 +23,7 @@
 //  (D-02).
 // ============================================================
 
-import { seededDraw } from '../util/traceSeed'
+import { seededDraw } from '@efxlab/efx-paint-host'
 
 /** Core streak alpha (D-10/D-11) — top of the locked [0.4, 0.55]
  *  band, judged at UAT. PIN 0 is the COMPOSITE body opacity

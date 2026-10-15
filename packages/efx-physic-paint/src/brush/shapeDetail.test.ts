@@ -25,7 +25,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { gauss } from '../util/math'
-import * as traceSeedNs from '../util/traceSeed'
+import * as traceSeedNs from '@efxlab/efx-paint-host'
 import * as strokeNs from './stroke'
 import { drawBristleFootprint } from './paint'
 import type { PenPoint } from '../types'

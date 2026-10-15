@@ -16,7 +16,7 @@ function measurePrimitive<T>(observer: PaintPrimitiveTimingObserver | undefined,
   }
 }
 import { lerp, clamp, curveBounds } from '../util/math'
-import { hashMutationId, seededRng } from '../util/traceSeed'
+import { hashMutationId, seededRng } from '@efxlab/efx-paint-host'
 import { smooth, resample, ribbonWithScales, deformNScaled, deformScaled } from './stroke'
 import { fillFlat } from './paint'
 

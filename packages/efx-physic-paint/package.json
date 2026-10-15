@@ -43,6 +43,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@efxlab/efx-paint-host": "workspace:*"
+  },
   "peerDependencies": {
     "preact": ">=11.0.0"
   },

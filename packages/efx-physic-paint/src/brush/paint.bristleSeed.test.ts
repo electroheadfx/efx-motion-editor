@@ -13,7 +13,7 @@ import {
   RIM_WIDTH_MIN,
   RIM_WIDTH_MAX,
 } from './footprintLanes'
-import { hashMutationId } from '../util/traceSeed'
+import { hashMutationId } from '@efxlab/efx-paint-host'
 import type { BrushOpts, PenPoint, WetBuffers } from '../types'
 
 // 260929-t2o (R7 amended 2026-09-29b, USER SPEC ACT) — capsule-sweep

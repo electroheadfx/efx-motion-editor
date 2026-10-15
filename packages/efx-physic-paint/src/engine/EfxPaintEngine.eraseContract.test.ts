@@ -179,7 +179,7 @@ vi.mock('../core/fluids', async (importOriginal) => {
 import { EfxPaintEngine } from './EfxPaintEngine'
 import { applyEraseStroke } from '../brush/erase'
 import { DEPOSIT_KEEP_TIER, DEPOSIT_DENSITY_SCALE, PAPER_ADSORPTION_GAMMA } from '../core/wet-layer'
-import { seededRng, hashMutationId } from '../util/traceSeed'
+import { seededRng, hashMutationId } from '@efxlab/efx-paint-host'
 import { deformNScaled } from '../brush/stroke'
 import type { BrushOpts, PenPoint } from '../types'
 

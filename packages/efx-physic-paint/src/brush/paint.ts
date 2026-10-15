@@ -8,7 +8,7 @@
 import type { PenPoint, BrushOpts, WetBuffers, SavedWetBuffers, PaintPrimitiveTimingObserver } from '../types'
 import { hexRgb, rgbHex, mixSubtractive } from '../util/color'
 import { lerp, clamp, curveBounds } from '../util/math'
-import { hashMutationId, seededDraw, seededRng, traceShapeNoise } from '../util/traceSeed'
+import { hashMutationId, seededDraw, seededRng, traceShapeNoise } from '@efxlab/efx-paint-host'
 import { transferToWetLayerClipped } from '../core/wet-layer'
 import { smooth, resample, ribbonWithScales, avgPenData, deformSampleSides } from './stroke'
 import {

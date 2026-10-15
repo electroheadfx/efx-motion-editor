@@ -27,7 +27,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_TRACE_SEED = resolve(
   HERE,
-  '../../../../packages/efx-physic-paint/src/util/traceSeed.ts',
+  '../../../../packages/efx-paint-host/src/util/traceSeed.ts',
 );
 
 /**
