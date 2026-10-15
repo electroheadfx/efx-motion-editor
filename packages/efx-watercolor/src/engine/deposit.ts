@@ -1,14 +1,21 @@
 // ============================================================
-//  depositStroke — engine-2 pigment deposit along a stroke path.
+//  deposit — engine-2 pigment deposit along a stroke path.
 //
-//  Thin path (56-01 tracer): stamps pigment along `stroke.pts`
-//  using mixSpectral for colour (subtractive, R1.2) and
-//  seededRng(traceSeed, 'deposit') for any scatter — ZERO
-//  unseeded RNG in this path (D-20). Unpainted pixels stay
-//  untouched (alpha 0).
+//  Two surfaces:
+//    1. depositStroke (56-01 tracer): stamps pigment along
+//       `stroke.pts` onto a 2d canvas using mixSpectral for
+//       colour (subtractive, R1.2) and seededRng(traceSeed,
+//       'deposit') for any scatter — ZERO unseeded RNG in this
+//       path (D-20). Unpainted pixels stay untouched (alpha 0).
+//    2. sheet deposit (56-03): stampTool / depositStrokeOnSheet
+//       drive the FluidSheet via the four tools
+//       (brush | water | pen | lift) — the fluid-core path the
+//       look laws pin. All randomness from seededRng(traceSeed,
+//       streamKey) with distinct stream keys per role
+//       ('water' | 'pigment' | 'granulation', D-20).
 //
-//  Full fluid physics (advection / wet-gated diffusion / tide
-//  line) lands in 56-03 — this file grows in place.
+//  Full fluid physics lives in fluid.ts / transport.ts /
+//  drying.ts; this module only deposits.
 // ============================================================
 
 import { mixSpectral } from '@efxlab/efx-spectral'
@@ -17,6 +24,81 @@ import { seededRng } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import type { AquarelleTip } from '../brushes/tips'
+import type { FluidSheet } from './fluid'
+
+// ---------------------------------------------------------------------------
+// Four-tool union (AQUA-02 / D-18) — exactly these four, no fifth kind.
+// ---------------------------------------------------------------------------
+
+/** The only four tools that carry pts/brush payload (AQUA-02 / D-18). */
+export type AquarelleTool = 'brush' | 'water' | 'pen' | 'lift'
+
+/** Exhaustive tool list — the engine union is closed on these four. */
+export const AQUARELLE_TOOLS: readonly AquarelleTool[] = Object.freeze([
+  'brush',
+  'water',
+  'pen',
+  'lift',
+] as const)
+
+const TOOL_SET: ReadonlySet<string> = new Set<string>(AQUARELLE_TOOLS)
+
+/** Fail-closed tool guard — throws on any kind outside the closed union. */
+export function assertAquarelleTool(tool: string): asserts tool is AquarelleTool {
+  if (!TOOL_SET.has(tool)) {
+    throw new RangeError(`Unknown aquarelle tool: ${tool} (expected brush | water | pen | lift)`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sheet deposit (56-03) — the fluid-core path the look laws pin.
+// ---------------------------------------------------------------------------
+
+export interface ToolStampOptions {
+  /** Stamp radius in pixels. */
+  radius: number
+  /** Pigment strength / pressure multiplier (0..1 typical). */
+  strength?: number
+  /** Wetness added by the stamp (0..1 typical). */
+  water?: number
+  /** Pigment colour (hex string or Rgb). Absent = default dark. */
+  color?: string | null
+}
+
+/**
+ * Stamp one tool application at (cx, cy) onto the sheet.
+ * Fail-closed: an unknown tool throws (no silent fifth mode).
+ *
+ * 56-03 RED stub — validates the tool union then does nothing;
+ * the four-tool deposit semantics land in GREEN.
+ */
+export function stampTool(
+  _sheet: FluidSheet,
+  tool: AquarelleTool,
+  _cx: number,
+  _cy: number,
+  _options: ToolStampOptions,
+  _rng?: () => number,
+): void {
+  assertAquarelleTool(tool)
+  // 56-03 RED stub — intentionally deposits nothing.
+}
+
+/**
+ * Deposit a full stroke onto the sheet using the payload's tool.
+ * Randomness draws from seededRng(stroke.traceSeed, streamKey)
+ * with distinct stream keys per role (D-20).
+ *
+ * 56-03 RED stub — validates the tool then deposits nothing.
+ */
+export function depositStrokeOnSheet(
+  _sheet: FluidSheet,
+  stroke: StudioStroke<AquarelleStrokePayload>,
+  _tip?: AquarelleTip,
+): void {
+  assertAquarelleTool(stroke.engine.tool)
+  // 56-03 RED stub — intentionally deposits nothing.
+}
 
 export interface DepositOptions {
   width: number
