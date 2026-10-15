@@ -5,16 +5,16 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
-stopped_at: Completed 55-05-PLAN.md
-last_updated: "2026-10-15T07:17:59.054Z"
+stopped_at: Completed 55-06-PLAN.md
+last_updated: "2026-10-15T07:44:13.453Z"
 last_activity: 2026-10-15
 last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
-state_head: ce8d63acaca318bc526b482905cfb4f3303e262a
+state_head: 4ae4938f32d1b341bfcd096b775debcd30812659
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 11
+  completed_plans: 12
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
-Plan: 7 of 9
+Plan: 8 of 9
 Status: Ready to execute
 Last activity: 2026-10-15 — Plan 55-02 complete (host split)
 
@@ -170,6 +170,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 55 P55-09 | 7min | 1 tasks | 1 files |
 | Phase 55 P04 | 4min | 2 tasks | 5 files |
 | Phase 55-efx-paint-host-engine-1-host-split P05 | 19min | 2 tasks | 17 files |
+| Phase 55 P55-06 | 14min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -480,6 +481,7 @@ Recent decisions affecting current work:
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: PersistedRotoScriptV1 IS StudioScriptEnvelope<PhysicStrokePayload> — one saved shape (D-13) — Avoid a second document type; engine-1 payload rides the opaque engine slot
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: brushPack pinned as { kind: efx-physic-paint, entries: [] } (landed 55-03 field name) — Keep the landed BrushPackSnapshot type; plan prose said brushes
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: Rust durable path cut over with the codec (Rule 2) so save/scan keep working — Cutover without it would break every save; D-16 refused rows need scan emission
+- [Phase 55]: 55-06: Four host codes map to four distinct named English lines on the existing owned-refusal surface (D-09/D-10); engine-mismatch detail carries package-id pair with D-15 display-name mapping; parseRotoScript discriminates engine-mismatch from malformed-engine-payload (Rule 2)
 
 ### Pending Todos
 
@@ -552,8 +554,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T07:17:59.022Z
-Stopped at: Completed 55-05-PLAN.md
+Last session: 2026-10-15T07:44:13.421Z
+Stopped at: Completed 55-06-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
