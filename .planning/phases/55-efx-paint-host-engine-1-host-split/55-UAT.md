@@ -17,12 +17,12 @@ expected: Loop Clip lands; canvas matches the pre-split golden look
 result: PASS
 
 ### 2. Play-from-cursor + audible scrub (phase 51 contract)
-expected: Play starts at the cursor; scrub is audible. In the paint editor ("le son du paint") an audio snippet must be heard while scrubbing.
+expected: Play starts at the cursor; scrub is audible. Scrubbing the app timeline (main editor) must play the paint audio snippet.
 result: FAIL
 detail: |
-  Play-from-cursor works. Audible scrub is SILENT on the paint-editor surface —
-  no audio snippet while scrubbing ("le son du paint"). The user reports the scrub
-  audio is gone on the editor surface.
+  Play-from-cursor works. Audible scrub is SILENT in the app timeline (the main
+  editor) — scrubbing there plays no paint audio snippet. This is NOT the paint
+  Studio surface; the failing surface is the main-app timeline.
 
   Measured scope check: Phase 55 changed 0 files matching audio|scrub|sound|waveform|
   transport (`git diff dev...HEAD`). Not a host-split regression — same latent class
@@ -52,12 +52,12 @@ blocked: 0
 
 ## Gaps
 
-### GAP-55-01 — audible scrub silent in the paint editor (A2)
+### GAP-55-01 — audible scrub silent in the app timeline (editor, not the paint studio) (A2)
 
 - row: A2
-- surface: paint editor ("le son du paint")
-- expected: audible audio snippet while scrubbing (phase 51 audible-scrub contract)
-- actual: scrub is silent on the editor surface
+- surface: app timeline (main editor) — NOT the paint Studio
+- expected: scrubbing the app timeline plays the paint audio snippet (phase 51 audible-scrub contract)
+- actual: scrub is silent in the app timeline
 - severity: blocks phase close — A2 is a must-have UAT row
 - scope: NOT a Phase 55 host-split regression. `git diff dev...HEAD` shows 0 files
   matching audio|scrub|sound|waveform|transport. Same latent class as
