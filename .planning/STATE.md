@@ -3,18 +3,18 @@ gsd_state_version: "1.0"
 milestone: v2.0.0
 milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
-current_phase_name: efx-paint-host-engine-1-host-split
+current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
-stopped_at: Phase 55 context gathered
-last_updated: "2026-10-15T04:48:38.047Z"
-last_activity: 2026-10-14
-last_activity_desc: Phase 54 complete, transitioned to Phase 55
-state_head: 39ad42f72a8c982047e74d106613ac2af5581227
+stopped_at: Completed 55-01-PLAN.md
+last_updated: "2026-10-15T05:18:33.642Z"
+last_activity: 2026-10-15
+last_activity_desc: Phase 55 execution started
+state_head: ac55964c918be1c5b97837ef8a261d3892054959
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 5
+  completed_plans: 6
   percent: 25
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 
 **Core value:** Users can import key photographs, arrange them into timed sequences with FX layers, preview in real-time, and export as PNG image sequences — the complete stop-motion-to-cinema pipeline must work end-to-end.
-**Current focus:** Phase 54 — Preact 11 update
+**Current focus:** Phase 55 — efx-paint-host (engine-1 host split)
 
 ## Current Position
 
-Phase: 55 (efx-paint-host-engine-1-host-split) — READY TO EXECUTE
-Plan: Not started
+Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
+Plan: 2 of 9
 Status: Ready to execute
-Last activity: 2026-10-14 — Phase 54 complete, transitioned to Phase 55
+Last activity: 2026-10-15 — Phase 55 execution started
 
 Progress: [███░░░░░░░] 25%
 
@@ -165,6 +165,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 54 P54-03 | 11min | 3 tasks | 6 files |
 | Phase 54 P54-04 | 13min | 2 tasks | 20 files |
 | Phase 54 P54-05 | 5min | 2 tasks | 1 files |
+| Phase 55 P55-01 | 10min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -460,6 +461,8 @@ Recent decisions affecting current work:
 - [Phase 54]: Hook-using lucide-preact 1.57 icons stay opaque leaves in six no-DOM vnode materializers; full vitest suite green (4921 passed)
 - [Phase 54]: PINS_GREEN_AT_BIRTH: paintVersion discipline contract pin green at birth on unchanged sources — preservation pin (D-11/RUN-05), not manufactured RED; is-behavior-adding=false (test-only) — Plan action explicitly names the green-at-birth path for a preservation pin. Manufacturing a RED by breaking production source would be theater. RUN-05 marked complete on the pin proof; RUN-06 left OPEN until user asserts A1-A5.
 - [Phase 54]: RUN-06 closed on live UAT: A1-A5 all PASS 2026-10-14 (paintVersion bump+subscribe live; undo/redo sync; track switch clean; Studio dispose profile counters clean; standalone ./preact mounts) — Phase 54 hard gate cleared
+- [Phase 55]: 55-01: D-04 sequencing held — golden captured entirely on pre-split code before any module move; fixture stores RotoPaintScript (renderer runtime input) not PersistedRotoScriptV1 so 55-05's envelope cutover leaves these files untouched
+- [Phase 55]: 55-01: one shared deterministic bake entry (production animation schedules + transformRecordedStrokeForHeldPose + traceSeed mirrors) drives both capture and pin; PINS_GREEN_AT_BIRTH recorded honestly; D-01 independent oracle (no tier-parity metrics helper)
 
 ### Pending Todos
 
@@ -532,9 +535,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-14T19:41:24.530Z
-Stopped at: Phase 55 context gathered
-Resume file: .planning/phases/55-efx-paint-host-engine-1-host-split/55-CONTEXT.md
+Last session: 2026-10-15T05:18:33.612Z
+Stopped at: Completed 55-01-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 

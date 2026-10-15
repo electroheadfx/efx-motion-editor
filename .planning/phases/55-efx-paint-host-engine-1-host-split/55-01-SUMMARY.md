@@ -144,3 +144,13 @@ None - no external service configuration required.
 ---
 *Phase: 55-efx-paint-host-engine-1-host-split*
 *Completed: 2026-10-15*
+
+## Self-Check: PASSED
+
+- FOUND: `app/src/efx-paint/host-split/preSplitGoldenFixture.ts`
+- FOUND: `app/src/efx-paint/host-split/preSplitGoldenParity.test.ts`
+- FOUND: `app/src/efx-paint/host-split/55-01-SUMMARY.md`
+- FOUND: task commit `73ef9d56`
+- FOUND: task commit `d4c471c4`
+- Re-run `pnpm --filter efx-motion-editor exec vitest run src/efx-paint/host-split/preSplitGoldenParity.test.ts` — 1 file / 6 tests passed
+- Re-run plan verification: `git diff --name-only` shows zero `packages/` paths across the plan
