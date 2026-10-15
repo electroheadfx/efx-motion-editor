@@ -810,4 +810,14 @@ describe('playbackEngine document clip source contract (52.5-02)', () => {
     // from the export decision (exportClipEnabled reads the clip alone).
     expect(source.includes('audioPreviewEnabled')).toBe(false);
   });
+
+  it('(s4) startAudioSnippet carries the document-clip collection seam (GAP-55-01)', () => {
+    // Same family as (s1): the scrub arm must keep the clip leg wired through
+    // the shared enumerator so it can never silently drop paint clips again.
+    const source = readSource('./playbackEngine.ts');
+    const fnAt = source.indexOf('private startAudioSnippet');
+    expect(fnAt >= 0).toBe(true);
+    const fnBody = source.slice(fnAt, source.indexOf('private stepForward'));
+    expect(fnBody.includes('collectEnabledDocumentClipsAt')).toBe(true);
+  });
 });
