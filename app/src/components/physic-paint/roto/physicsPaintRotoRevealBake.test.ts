@@ -40,7 +40,8 @@ const harness = vi.hoisted(() => ({
   objectUrlCalls: [] as Array<{ parts?: Uint8Array[] }>,
 }));
 
-vi.mock('@efxlab/efx-physic-paint', () => ({
+vi.mock('@efxlab/efx-physic-paint', async (importOriginal) => ({
+  ...(await importOriginal()),
   EfxPaintEngine: class {
     async init() {}
     setAnimationMode() {}

@@ -821,7 +821,8 @@ describe('Roto script clipboard controller', () => {
       color: copied?.brushes[0].primary.color,
       params: copied?.brushes[0].primary.params,
     });
-    expect(test.submitted[0].primary.physicsMode).toBe(copied?.brushes[0].primary.physicsMode);
+    // toStudioStroke normalizes optional physicsMode to explicit null (FIELD-MAPPING CONTRACT)
+    expect(test.submitted[0].primary.physicsMode).toBe(copied?.brushes[0].primary.physicsMode ?? null);
     test.controller.observeCompletedMutation(test.engine, completion(100));
 
     await expect(applying).resolves.toBe(true);
