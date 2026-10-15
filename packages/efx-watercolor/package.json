@@ -35,6 +35,14 @@
     "./papers": {
       "types": "./dist/papers.d.ts",
       "import": "./dist/papers.mjs"
+    },
+    "./brushes": {
+      "types": "./dist/brushes.d.ts",
+      "import": "./dist/brushes.mjs"
+    },
+    "./payload": {
+      "types": "./dist/payload.d.ts",
+      "import": "./dist/payload.mjs"
     }
   },
   "files": [
