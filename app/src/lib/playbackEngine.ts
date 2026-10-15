@@ -16,6 +16,8 @@ import {
   mainPlaybackClipEnabled,
   toDocumentSoundAudioTrack,
 } from './documentSoundGates';
+import type {AudioTrack} from '../types/audio';
+import type {DocumentSoundClip} from '../efx-paint/document/efxPaintDocument';
 
 export const isFullSpeed = signal(false);
 
@@ -23,6 +25,21 @@ export const isFullSpeed = signal(false);
  * the EFX Paint monitor's D-02 scrub constants (120ms / 4 frames). */
 const TIMELINE_SCRUB_AUDIO_THROTTLE_MS = 120;
 const TIMELINE_SCRUB_AUDIO_SNIPPET_FRAMES = 4;
+
+/** An enabled document-sound clip resolved for the main-editor mix: its place
+ * on the global timeline and the AudioTrack record the engine consumes. */
+interface EnabledDocumentClip {
+  readonly sound: DocumentSoundClip;
+  readonly trackRecord: AudioTrack;
+  readonly clipStartOnTimeline: number;
+  readonly effectiveEnd: number;
+}
+
+/** The same clip with the play-path frame math resolved relative to a frame. */
+interface EnabledDocumentClipAtFrame extends EnabledDocumentClip {
+  readonly sourceOffsetSec: number;
+  readonly remainingFrames: number;
+}
 
 /**
  * PlaybackEngine: rAF-based frame-rate-limited playback tick loop.
@@ -156,7 +173,65 @@ export class PlaybackEngine {
     audioEngine.stopAll();
   }
 
-  /** All unmuted tracks audible at `frame`, each capped to the snippet window. */
+  /** Shared membership + gate + effective-end clamp (52.5-02 MAIN-MIX): the
+   * enabled document-sound clips of physic-paint layers on fx sequences, each
+   * with its global timeline window and the AudioTrack record the engine
+   * consumes. Single source for the play leg and the scrub snippet leg so the
+   * two cannot drift. */
+  private collectEnabledDocumentClips(): EnabledDocumentClip[] {
+    const fps = projectStore.fps.peek();
+    const maxFrames = totalFrames.peek();
+    const soloActive = soloStore.soloEnabled.peek();
+    const results: EnabledDocumentClip[] = [];
+    for (const entry of collectDocumentSoundClips(sequenceStore.sequences.peek(), getDocument)) {
+      const {sound, sequence} = entry;
+      const owner = sequence.layers.find((layer) =>
+        layer.type === 'physic-paint' && layer.source.type === 'physic-paint'
+          ? layer.source.layerId === entry.layerId
+          : layer.id === entry.layerId,
+      );
+      const sequenceVisible = sequence.visible !== false && owner?.visible !== false;
+      if (!mainPlaybackClipEnabled(sound, sequenceVisible, soloActive)) continue;
+
+      const clipStartOnTimeline = entry.timelineStartFrame;
+      const trimDuration = sound.outFrame - sound.inFrame;
+      const clipEndOnTimeline = clipStartOnTimeline + trimDuration;
+      // "Sound follows the composite exactly like the layer's pixels": the clip
+      // stops where the layer stops being composited (its sequence's overlay
+      // out), and never past the timeline.
+      const sequenceOut = getTimelineOverlaySequenceOutFrame(sequence, maxFrames);
+      const effectiveEnd = Math.min(clipEndOnTimeline, sequenceOut, maxFrames);
+      if (clipStartOnTimeline >= effectiveEnd) continue;
+
+      const assetUrl = sound.sourcePath;
+      // offsetFrame is the GLOBAL timeline start for the main realm (the Studio
+      // adapter's document-local value would misplace the clip in the export mix).
+      const trackRecord = {
+        ...toDocumentSoundAudioTrack(sound, assetUrl, fps),
+        offsetFrame: clipStartOnTimeline,
+      };
+      results.push({sound, trackRecord, clipStartOnTimeline, effectiveEnd});
+    }
+    return results;
+  }
+
+  /** Clips whose timeline window covers `frame`, with the play-path frame math
+   * resolved. Shared by startAudioPlayback's immediate arm and startAudioSnippet
+   * (GAP-55-01) so play and scrub dispatch identical membership/offsets. */
+  private collectEnabledDocumentClipsAt(frame: number): EnabledDocumentClipAtFrame[] {
+    const fps = projectStore.fps.peek();
+    return this.collectEnabledDocumentClips()
+      .filter((clip) => frame >= clip.clipStartOnTimeline && frame < clip.effectiveEnd)
+      .map((clip) => ({
+        ...clip,
+        sourceOffsetSec: (clip.sound.inFrame + clip.sound.slipOffset + (frame - clip.clipStartOnTimeline)) / fps,
+        remainingFrames: clip.effectiveEnd - frame,
+      }));
+  }
+
+  /** All unmuted tracks + enabled paint document-sound clips audible at `frame`,
+   * each capped to the snippet window. GAP-55-01: the clip leg rides the same
+   * membership/gate/frame math as startAudioPlayback's immediate arm. */
   private startAudioSnippet(frame: number): void {
     const fps = projectStore.fps.peek();
     const maxFrames = totalFrames.peek();
@@ -172,6 +247,13 @@ export class PlaybackEngine {
         const maxPlayFrames = Math.min(effectiveEnd - frame, TIMELINE_SCRUB_AUDIO_SNIPPET_FRAMES);
         audioEngine.play(track.id, sourceOffset, track, fps, maxPlayFrames / fps);
       }
+    }
+    // GAP-55-01 (A2 / phase-51 D-02): paint document-sound clips mix into the
+    // scrub snippet exactly like the main tracks above — never playDelayed
+    // (a snippet is what sounds AT the dragged frame).
+    for (const clip of this.collectEnabledDocumentClipsAt(frame)) {
+      const maxPlayFrames = Math.min(clip.remainingFrames, TIMELINE_SCRUB_AUDIO_SNIPPET_FRAMES);
+      audioEngine.play(clip.sound.id, clip.sourceOffsetSec, clip.trackRecord, fps, maxPlayFrames / fps);
     }
   }
 
@@ -309,49 +391,21 @@ export class PlaybackEngine {
 
     // 52.5-02 (D-12/D-13/D-14, MAIN-MIX-01/02): the document clip leg MIXES with
     // the main tracks above — same claim guard, same stopAll funnels, same
-    // schedule math. Sound follows the composite exactly like the layer's
-    // pixels: `mainPlaybackClipEnabled` folds the clip's own `enabled` switch
-    // (D-12) and `layerInComposite` (D-13 — hidden fx sequence or solo ON makes
-    // the clip inaudible). The clip's global start is sequence-rebased
-    // (`seq.inFrame + sound.startFrame`); buffers are keyed by `sound.id`, the
-    // same identity projectStore's re-decode step decodes them under.
-    const soloActive = soloStore.soloEnabled.peek();
-    for (const entry of collectDocumentSoundClips(sequenceStore.sequences.peek(), getDocument)) {
-      const {sound, sequence} = entry;
-      const owner = sequence.layers.find((layer) =>
-        layer.type === 'physic-paint' && layer.source.type === 'physic-paint'
-          ? layer.source.layerId === entry.layerId
-          : layer.id === entry.layerId,
-      );
-      const sequenceVisible = sequence.visible !== false && owner?.visible !== false;
-      if (!mainPlaybackClipEnabled(sound, sequenceVisible, soloActive)) continue;
-
-      const clipStartOnTimeline = entry.timelineStartFrame;
-      const trimDuration = sound.outFrame - sound.inFrame;
-      const clipEndOnTimeline = clipStartOnTimeline + trimDuration;
-      // "Sound follows the composite exactly like the layer's pixels": the clip
-      // stops where the layer stops being composited (its sequence's overlay
-      // out), and never past the timeline.
-      const sequenceOut = getTimelineOverlaySequenceOutFrame(sequence, maxFrames);
-      const effectiveEnd = Math.min(clipEndOnTimeline, sequenceOut, maxFrames);
-      if (clipStartOnTimeline >= effectiveEnd) continue;
-
-      const assetUrl = sound.sourcePath;
-      // offsetFrame is the GLOBAL timeline start for the main realm (the Studio
-      // adapter's document-local value would misplace the clip in the export mix).
-      const trackRecord = {
-        ...toDocumentSoundAudioTrack(sound, assetUrl, fps),
-        offsetFrame: clipStartOnTimeline,
-      };
-
-      if (currentFrame >= clipStartOnTimeline && currentFrame < effectiveEnd) {
-        const framesIntoClip = currentFrame - clipStartOnTimeline;
-        const sourceOffset = (sound.inFrame + sound.slipOffset + framesIntoClip) / fps;
-        audioEngine.play(sound.id, sourceOffset, trackRecord, fps, (effectiveEnd - currentFrame) / fps);
-      } else if (currentFrame < clipStartOnTimeline) {
-        const delaySec = (clipStartOnTimeline - currentFrame) / fps;
-        const sourceOffset = (sound.inFrame + sound.slipOffset) / fps;
-        audioEngine.playDelayed(sound.id, delaySec, sourceOffset, trackRecord, fps, (effectiveEnd - clipStartOnTimeline) / fps);
+    // schedule math. Membership/gate/frame math is single-sourced in
+    // collectEnabledDocumentClips(At) so the scrub snippet (GAP-55-01) cannot
+    // drift from this play arm.
+    //
+    // Immediate arm: window covers the cursor — same enumerator the snippet uses.
+    for (const clip of this.collectEnabledDocumentClipsAt(currentFrame)) {
+      audioEngine.play(clip.sound.id, clip.sourceOffsetSec, clip.trackRecord, fps, clip.remainingFrames / fps);
+    }
+    // Future arm: clips that start after the cursor — playDelayed (play leg
+    // only; a scrub snippet never schedules future clips).
+    for (const clip of this.collectEnabledDocumentClips()) {
+      if (currentFrame < clip.clipStartOnTimeline) {
+        const delaySec = (clip.clipStartOnTimeline - currentFrame) / fps;
+        const sourceOffset = (clip.sound.inFrame + clip.sound.slipOffset) / fps;
+        audioEngine.playDelayed(clip.sound.id, delaySec, sourceOffset, clip.trackRecord, fps, (clip.effectiveEnd - clip.clipStartOnTimeline) / fps);
       }
     }
   }

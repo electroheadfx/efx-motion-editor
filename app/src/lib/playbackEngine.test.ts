@@ -777,7 +777,10 @@ describe('playbackEngine document clip source contract (52.5-02)', () => {
     const fnAt = source.indexOf('private startAudioPlayback');
     expect(fnAt >= 0).toBe(true);
     const fnBody = source.slice(fnAt, source.indexOf('private tick'));
-    expect(fnBody.includes('collectDocumentSoundClips')).toBe(true);
+    // GAP-55-01 extraction: the play arm points at the shared clip enumerator
+    // (collectEnabledDocumentClipsAt), which is where collectDocumentSoundClips
+    // now lives — the seam moved, the membership source did not.
+    expect(fnBody.includes('collectEnabledDocumentClipsAt')).toBe(true);
   });
 
   it('(s2) the clip decodes once by sound.id through the bare sourcePath (261009-ofk)', () => {
