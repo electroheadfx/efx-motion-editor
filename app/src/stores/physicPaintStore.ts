@@ -2947,6 +2947,21 @@ export const physicPaintStore = {
     bumpTrackRevision(layerId, trackId);
   },
 
+  // 56-05 (PAPER-03 / D-22): paper display setters — display-class edits that
+  // join the document fond (id / strength / scale). RED stubs (always no-op)
+  // until GREEN.
+  setPaperId(_layerId: string, _paperId: string): boolean {
+    return false;
+  },
+
+  setPaperStrength(_layerId: string, _strength: number): boolean {
+    return false;
+  },
+
+  setPaperScale(_layerId: string, _scale: number): boolean {
+    return false;
+  },
+
   getRotoPlaybackSettings(layerId: string, trackId: string): PhysicPaintRotoPlaybackSettings | null {
     const settings = _rotoPlaybackSettings.get(layerId)?.get(trackId);
     return settings ? { ...settings } : null;
