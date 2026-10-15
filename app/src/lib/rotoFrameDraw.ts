@@ -134,5 +134,9 @@ function backgroundColorForRotoMode(mode: PhysicPaintRotoBackgroundMetadata['bac
     case 'canvas2': return '#ebe3d2';
     case 'canvas3': return '#ded2bc';
     case 'transparent': return 'transparent';
+    // 56-05 (PAPER-01): Studio paper library ids share one warm paper tone
+    // until the picker's lit-relief tint lands; the paperPass tooth carries
+    // the per-paper character.
+    default: return '#f4efe3';
   }
 }

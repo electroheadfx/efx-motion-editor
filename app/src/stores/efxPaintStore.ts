@@ -628,7 +628,10 @@ function _isValidFallback(fallback: BackgroundFallback): boolean {
   if (fallback.mode === 'transparent') return true;
   if (fallback.mode === 'solid') return typeof fallback.color === 'string' && fallback.color.length > 0;
   if (fallback.mode === 'paper') {
-    return (fallback.texture === 'canvas1' || fallback.texture === 'canvas2' || fallback.texture === 'canvas3')
+    // 56-05 (PAPER-01): legacy canvas aliases + Studio paper library ids.
+    const textureOk = fallback.texture === 'canvas1' || fallback.texture === 'canvas2' || fallback.texture === 'canvas3'
+      || (typeof fallback.texture === 'string' && fallback.texture.startsWith('paper/'));
+    return textureOk
       && typeof fallback.grainStrength === 'number'
       && Number.isFinite(fallback.grainStrength)
       && fallback.grainStrength >= 0

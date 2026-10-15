@@ -2,7 +2,20 @@ const PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
   canvas2: '/img/paper_2.jpg',
   canvas3: '/img/paper_3.jpg',
+  // 56-05 (PAPER-04): the 13-paper library's recovered real scans ride the
+  // same shipped assets under their library ids (D-12 one library).
+  'paper/real-1': '/img/paper_1.jpg',
+  'paper/real-2': '/img/paper_2.jpg',
+  'paper/real-3': '/img/paper_3.jpg',
 };
+
+/**
+ * 56-05 (PAPER-01): procedural library papers have no image to decode —
+ * they are seeded height-map fields, always "resolved".
+ */
+export function isProceduralPaperTexture(paperTexture: string): boolean {
+  return paperTexture.startsWith('paper/') && !(paperTexture in PAPER_TEXTURE_URLS);
+}
 
 const textureCache = new Map<string, HTMLImageElement>();
 const paperCanvasCache = new Map<string, HTMLCanvasElement>();
@@ -137,6 +150,7 @@ export function getProjectPaperTextureImage(paperTexture: string): HTMLImageElem
 }
 
 export function isProjectPaperTextureResolved(paperTexture: string): boolean {
+  if (isProceduralPaperTexture(paperTexture)) return true;
   return !PAPER_TEXTURE_URLS[paperTexture] || textureCache.has(paperTexture);
 }
 

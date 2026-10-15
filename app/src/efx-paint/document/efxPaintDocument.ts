@@ -16,8 +16,13 @@ export const EFX_PAINT_DOCUMENT_VERSION = 1;
 /** Main-editor blend mode union (mirrors `app/src/types/layer.ts`). */
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay' | 'add';
 
-/** Paper texture identifiers carried by the paper fallback arm (D-11). */
-export type PaperTexture = 'canvas1' | 'canvas2' | 'canvas3';
+/**
+ * Paper texture identifiers carried by the paper fallback arm (D-11).
+ * 56-05 (PAPER-01): the Studio paper library joins the arm — the 3 recovered
+ * real scans keep their canvas1/2/3 aliases AND the 13-paper pack ids
+ * (`paper/cold-press` … `paper/real-3`) are first-class textures.
+ */
+export type PaperTexture = 'canvas1' | 'canvas2' | 'canvas3' | `paper/${string}`;
 
 /**
  * Paper grain SCALE bounds (260923-bcm, T-260923-01): the pattern-transform

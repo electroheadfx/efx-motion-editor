@@ -1,5 +1,8 @@
 import { conditionHeightMap } from '@efxlab/efx-physic-paint';
-import { getProjectPaperTextureImage, normalizeGrainScale } from './projectPaperRaster';
+// 56-05 (PAPER-01 / R2.4): the 13-paper library's procedural height fields.
+// The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
+import { proceduralHeightMap } from '@efxlab/efx-watercolor/papers';
+import { getProjectPaperTextureImage, isProceduralPaperTexture, normalizeGrainScale } from './projectPaperRaster';
 
 // 260925-iy6 — the dynamic post-bake paper pass.
 //
@@ -143,12 +146,24 @@ export function getPaperPassTile(
 ): PaperPassTile | null {
   const k = clampStrength(strength);
   if (!paperTexture || !(k > 0) || width <= 0 || height <= 0) return null;
-  const image = getProjectPaperTextureImage(paperTexture);
-  if (!image) return null;
   const scale = normalizeGrainScale(grainScale);
   const key = `v1:${paperTexture}:${width}x${height}:${scale}:${k}`;
   const cached = tileCache.get(key);
   if (cached) return cached.tile;
+
+  // 56-05 (PAPER-01 / R2.4): procedural library papers are seeded height
+  // fields — no image decode, no async resolve. Same encode/cache tail as the
+  // image path (one conditioner, one encoder, one cache).
+  if (isProceduralPaperTexture(paperTexture)) {
+    const raw = proceduralHeightMap(paperTexture, 1, width, height);
+    if (!raw) return null;
+    return _finishPaperPassTile(key, raw, width, height, k, {
+      r: 230, g: 224, b: 212,
+    });
+  }
+
+  const image = getProjectPaperTextureImage(paperTexture);
+  if (!image) return null;
 
   const probe = document.createElement('canvas');
   probe.width = width;
@@ -197,8 +212,24 @@ export function getPaperPassTile(
     greenSum += pixels[offset + 1];
     blueSum += pixels[offset + 2];
   }
-  const conditioned = conditionHeightMap(raw);
   const tint = { r: redSum / count, g: greenSum / count, b: blueSum / count };
+  return _finishPaperPassTile(key, raw, width, height, k, tint);
+}
+
+/**
+ * Shared encode + cache tail (260925-dso law — one conditioner, no
+ * re-derivation). Both the image probe and the procedural height field land
+ * here so the two paper sources cannot drift apart.
+ */
+function _finishPaperPassTile(
+  key: string,
+  raw: Float32Array,
+  width: number,
+  height: number,
+  k: number,
+  tint: { r: number; g: number; b: number },
+): PaperPassTile | null {
+  const conditioned = conditionHeightMap(raw);
   const { valley, peak } = encodePassTiles(conditioned, width, height, k, tint);
   const valleyCanvas = mapToCanvas(width, height, valley);
   const peakCanvas = mapToCanvas(width, height, peak);

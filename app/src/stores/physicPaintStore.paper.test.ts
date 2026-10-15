@@ -22,7 +22,7 @@
  * diagnostics stay one-line and the RED evidence classifier can parse the
  * report.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,7 +43,7 @@ import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDoc
 const LAYER = 'layer-56-05-paper';
 
 beforeEach(() => {
-  _setPhysicPaintMarkDirtyCallback(null);
+  _setPhysicPaintMarkDirtyCallback(() => {});
   resetEfxPaintStore();
   physicPaintStore.reset();
   const document = createEfxPaintDocument(LAYER);
@@ -60,7 +60,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  _setPhysicPaintMarkDirtyCallback(null);
   resetEfxPaintStore();
   physicPaintStore.reset();
 });
@@ -116,18 +115,27 @@ describe('paper display setters on physicPaintStore (PAPER-03)', () => {
   });
 
   it('a different-value paper edit clears the flattened memo (fresh composite, not a stale paper)', () => {
-    // Observable seam: the setter bodies must route through the existing
-    // fond-signature rotation (_rotateFlattenedMemoOnFondChange) so a paper
-    // change never serves the previous paper's memoized raster. The live
-    // getFlattenedFrame path needs a canvas harness — the rotation contract
-    // itself is what PAPER-03 / D-22 requires.
+    // Observable seam: the setter bodies must route through the paper display
+    // write helper, which owns the fond-signature rotation
+    // (_rotateFlattenedMemoOnFondChange) so a paper change never serves the
+    // previous paper's memoized raster. The live getFlattenedFrame path needs
+    // a canvas harness — the rotation contract itself is what PAPER-03 / D-22
+    // requires.
     const storePath = resolve(dirname(fileURLToPath(import.meta.url)), './physicPaintStore.ts');
     const storeSource = readFileSync(storePath, 'utf8');
     for (const name of ['setPaperId', 'setPaperStrength', 'setPaperScale']) {
       const start = storeSource.indexOf(`${name}(`);
       const body = storeSource.slice(start, storeSource.indexOf('\n  },', start) + 5);
-      expect(body.includes('_rotateFlattenedMemoOnFondChange') || body.includes('_flattenedMemo.delete')).toBe(true);
+      expect(
+        body.includes('_writePaperDisplay')
+        || body.includes('_rotateFlattenedMemoOnFondChange')
+        || body.includes('_flattenedMemo.delete'),
+      ).toBe(true);
     }
+    // The write helper itself owns the rotation (single write path).
+    const helperStart = storeSource.indexOf('function _writePaperDisplay');
+    const helperBody = storeSource.slice(helperStart, storeSource.indexOf('\n}', helperStart));
+    expect(helperBody.includes('_rotateFlattenedMemoOnFondChange')).toBe(true);
   });
 
   it('strength and scale clamp to their slider bounds (scale = 0 never reaches the tile key)', () => {

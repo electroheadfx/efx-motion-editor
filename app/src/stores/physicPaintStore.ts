@@ -31,7 +31,8 @@ import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPh
 // efxPaintStore document registry. The efxPaintStore ↔ physicPaintStore import
 // cycle is safe: efxPaintStore references physicPaintStore ONLY inside function
 // bodies (never in its module body), so no TDZ `let` is written mid-evaluation.
-import { getDocument as getEfxPaintDocument } from './efxPaintStore';
+import { getDocument as getEfxPaintDocument, setBackgroundFallback } from './efxPaintStore';
+import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN, type PaperTexture } from '../efx-paint/document/efxPaintDocument';
 // 49-02 Task 3 (BKG-09): the reopen-path hydration resolves each background
 // clip source ref to its library asset URL (efxasset://) and decodes bytes.
 // imageStore imports only ipc + types — no cycle with this store.
@@ -1621,6 +1622,86 @@ function _rotateFlattenedMemoOnFondChange(layerId: string, efxDocument: EfxPaint
 }
 
 /**
+ * 56-05 (PAPER-03 / D-22): the ONE paper display write. Display-class edits
+ * (id / strength / scale) update the document fond (fallback arm) so the
+ * display-class change token rotates and save/reopen does not revert (the
+ * PKG-06/BKG-09 lesson), AND the active track's paper mirror so the fond
+ * resolution and the paperPass seam see the same value. Same-value sets are
+ * revision-stable no-ops (idempotence guard). Never touches any baked WebP
+ * cache path (PAPER-02 / D-21 — paper is composite-only).
+ */
+function _writePaperDisplay(
+  layerId: string,
+  edit: { paperId?: string; strength?: number; scale?: number },
+): boolean {
+  const efxDocument = getEfxPaintDocument(layerId);
+  if (!efxDocument) return false;
+  const source = _resolveFondSource(layerId, efxDocument);
+  const current = source?.kind === 'paper'
+    ? {
+      background: source.metadata.background as string,
+      grainStrength: source.metadata.grainStrength,
+      grainScale: source.metadata.grainScale ?? 1,
+    }
+    : { background: '', grainStrength: 0, grainScale: 1 };
+
+  const nextBackground = edit.paperId ?? current.background;
+  const rawStrength = edit.strength ?? current.grainStrength;
+  // WR-01 mirror: strength is clamped BEFORE it is stored.
+  const grainStrength = Number.isFinite(rawStrength)
+    ? (rawStrength < 0 ? 0 : rawStrength > 1 ? 1 : rawStrength)
+    : 0;
+  const rawScale = edit.scale ?? current.grainScale;
+  // Scale 0 / NaN is clamped to the minimum — never a divide-by-zero in the
+  // tile cache key (flagged assumption PAPER-03 adjacency).
+  const grainScale = Number.isFinite(rawScale) && rawScale > 0
+    ? (rawScale < GRAIN_SCALE_MIN ? GRAIN_SCALE_MIN : rawScale > GRAIN_SCALE_MAX ? GRAIN_SCALE_MAX : rawScale)
+    : GRAIN_SCALE_MIN;
+
+  // Idempotence guard: compare CLAMPED values so a clamped write cannot thrash
+  // the revision on every re-sync of the same out-of-range input.
+  if (
+    current.background === nextBackground
+    && current.grainStrength === grainStrength
+    && current.grainScale === grainScale
+  ) return false;
+
+  // Document fallback arm — setBackgroundFallback bumps documentRevision, so
+  // the display-class change token rotates (D-22 / PAPER-03 save participation).
+  const wrote = setBackgroundFallback(layerId, {
+    mode: 'paper',
+    texture: nextBackground as PaperTexture,
+    grainStrength,
+    grainScale,
+  });
+  if (!wrote.ok) return false;
+
+  // Active track's paper mirror — the fond resolution prefers the mirror, and
+  // the write clears both flattened memos (48-03 T-48-07).
+  const trackId = efxDocument.activeTrackId;
+  const metadata: PhysicPaintRotoBackgroundMetadata = {
+    background: nextBackground as PhysicPaintRotoBackgroundMetadata['background'],
+    grainStrength,
+    grainScale,
+  };
+  const currentMirror = _rotoBackgroundMetadata.get(layerId)?.get(trackId);
+  if (!currentMirror
+    || currentMirror.background !== metadata.background
+    || currentMirror.grainStrength !== metadata.grainStrength
+    || (currentMirror.grainScale ?? 1) !== metadata.grainScale) {
+    _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, metadata);
+    _flattenedMemo.delete(layerId);
+    _trackRasterMemo.delete(layerId);
+    bumpTrackRevision(layerId, trackId);
+  }
+
+  // Fond signature rotation (the explicit-edit arm of 260920-k34).
+  const latest = getEfxPaintDocument(layerId);
+  if (latest) _rotateFlattenedMemoOnFondChange(layerId, latest);
+  return true;
+}
+
+/**
  * Fond paper textures load asynchronously; while loading the fond draws the
  * deterministic color-fill fallback. One module-level resolve subscription per
  * texture watches the arrival: the flattened memos clear (the fond is not a
@@ -2948,18 +3029,19 @@ export const physicPaintStore = {
   },
 
   // 56-05 (PAPER-03 / D-22): paper display setters — display-class edits that
-  // join the document fond (id / strength / scale). RED stubs (always no-op)
-  // until GREEN.
-  setPaperId(_layerId: string, _paperId: string): boolean {
-    return false;
+  // join the document fond (id / strength / scale). Same-value sets are
+  // revision-stable no-ops; different-value sets rotate the change token and
+  // clear the flattened memo. Never touch a baked WebP cache path.
+  setPaperId(layerId: string, paperId: string): boolean {
+    return _writePaperDisplay(layerId, { paperId });
   },
 
-  setPaperStrength(_layerId: string, _strength: number): boolean {
-    return false;
+  setPaperStrength(layerId: string, strength: number): boolean {
+    return _writePaperDisplay(layerId, { strength });
   },
 
-  setPaperScale(_layerId: string, _scale: number): boolean {
-    return false;
+  setPaperScale(layerId: string, scale: number): boolean {
+    return _writePaperDisplay(layerId, { scale });
   },
 
   getRotoPlaybackSettings(layerId: string, trackId: string): PhysicPaintRotoPlaybackSettings | null {

@@ -1,21 +1,24 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
-import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
+import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN, type PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+
+/** 56-05 (PAPER-01): selector segments + Studio paper library textures. */
+export type TopBarBackgroundMode = BgMode | PaperTexture;
 
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
   opacity: number;
-  background: BgMode;
+  background: TopBarBackgroundMode;
   grainStrength: number;
   grainScale: number;
   ready: boolean;
   disabled?: boolean;
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
-  onBackgroundChange: (mode: BgMode) => void;
+  onBackgroundChange: (mode: TopBarBackgroundMode) => void;
   onGrainStrengthChange: (value: number) => void;
   onGrainScaleChange: (scale: number) => void;
 }

@@ -200,8 +200,11 @@ export type BackgroundFallback =
   | { readonly mode: 'solid'; readonly color: string }
   | {
       readonly mode: 'paper'
-      readonly texture: 'canvas1' | 'canvas2' | 'canvas3'
+      /** 56-05 (PAPER-01): legacy canvas aliases + Studio paper library ids. */
+      readonly texture: 'canvas1' | 'canvas2' | 'canvas3' | `paper/${string}`
       readonly grainStrength: number
+      /** 260923-bcm: optional paper pattern scale (1 = natural tile). */
+      readonly grainScale?: number
     }
 
 /** Repeat policy of a Background Loop Clip (mirrors the app-side schema). */

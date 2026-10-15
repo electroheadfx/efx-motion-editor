@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
+import type { PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintApplyPayload, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoInterpolationSettings } from '../../../types/physicPaint';
 import { requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysicalModel';
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
@@ -216,7 +217,8 @@ export async function routeRotoPhysicalPaintFrame(
 
 export interface UseRotoFramePersistenceCoordinatorInput {
   workflowMode: PhysicsPaintWorkflowMode;
-  backgroundMode: BgMode;
+  /** 56-05 (PAPER-01): selector segments + Studio paper library textures. */
+  backgroundMode: BgMode | PaperTexture;
   launchContext: PhysicPaintLaunchContext | null;
   latestFramesRef: { current: PhysicPaintRotoCacheFrame[] };
   setLaunchContext: (update: (current: PhysicPaintLaunchContext | null) => PhysicPaintLaunchContext | null) => void;

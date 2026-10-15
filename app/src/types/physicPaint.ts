@@ -1802,7 +1802,18 @@ const FORBIDDEN_APPLY_FIELDS = new Set(['engine', 'internals', 'strokes']);
 
 export type PhysicPaintApplyKind = 'apply-canvas' | 'delete-roto-frame' | 'replace-roto-key-frames' | 'replace-roto-physical-map' | 'update-roto-interpolation-settings' | 'update-roto-playback-settings';
 export type PhysicPaintRotoFrameSource = 'real-key' | 'generated-interpolation' | 'background-only-support';
-export type PhysicPaintRotoBackgroundMode = 'transparent' | 'white' | 'canvas1' | 'canvas2' | 'canvas3';
+/**
+ * 56-05 (PAPER-01): the Studio paper library joins the background metadata —
+ * `paper/<id>` library textures are first-class alongside the legacy
+ * canvas1/2/3 aliases.
+ */
+export type PhysicPaintRotoBackgroundMode =
+  | 'transparent'
+  | 'white'
+  | 'canvas1'
+  | 'canvas2'
+  | 'canvas3'
+  | `paper/${string}`;
 
 export interface PhysicPaintRotoBackgroundMetadata {
   background: PhysicPaintRotoBackgroundMode;
@@ -2424,8 +2435,16 @@ export function normalizePhysicPaintRotoSegmentSpacingOverrides(value: unknown):
 
 export function isPhysicPaintRotoBackgroundMetadata(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
   if (!isRecord(value)) return false;
+  const backgroundOk =
+    value.background === 'transparent'
+    || value.background === 'white'
+    || value.background === 'canvas1'
+    || value.background === 'canvas2'
+    || value.background === 'canvas3'
+    // 56-05 (PAPER-01): Studio paper library ids (`paper/<id>`).
+    || (typeof value.background === 'string' && value.background.startsWith('paper/'));
   return (
-    (value.background === 'transparent' || value.background === 'white' || value.background === 'canvas1' || value.background === 'canvas2' || value.background === 'canvas3') &&
+    backgroundOk &&
     typeof value.grainStrength === 'number' &&
     Number.isFinite(value.grainStrength) &&
     value.grainStrength >= 0 &&

@@ -77,7 +77,11 @@ const FALLBACK_SOLID_KEYS = new Set(['mode', 'color']);
 // absent/invalid) — the required-members check below owns presence, the
 // allowlist owns shape.
 const FALLBACK_PAPER_KEYS = new Set(['mode', 'texture', 'grainStrength', 'grainScale']);
+// 56-05 (PAPER-01): legacy canvas aliases + the 13-paper library ids (`paper/…`).
 const PAPER_TEXTURES = new Set(['canvas1', 'canvas2', 'canvas3']);
+function isPaperTextureValue(value: unknown): value is PaperTexture {
+  return typeof value === 'string' && (PAPER_TEXTURES.has(value) || value.startsWith('paper/'));
+}
 const LOOP_CLIP_KEYS = new Set(['id', 'startFrame', 'sourceFrameRefs', 'repeat', 'sourceKind', 'revision', 'scale']);
 const REPEAT_FINITE_KEYS = new Set(['mode', 'count']);
 const REPEAT_INFINITE_KEYS = new Set(['mode']);
@@ -316,8 +320,8 @@ function parseBackgroundFallback(value: unknown): BackgroundFallback {
     if (!hasOnlyKeys(value, FALLBACK_PAPER_KEYS) || required.some((key) => !(key in value))) {
       throw new Error('BackgroundTrack: paper fallback must contain mode, texture, grainStrength (grainScale optional) and no other members.');
     }
-    if (typeof value.texture !== 'string' || !PAPER_TEXTURES.has(value.texture)) {
-      throw new Error('BackgroundTrack: paper fallback texture must be canvas1, canvas2, or canvas3.');
+    if (!isPaperTextureValue(value.texture)) {
+      throw new Error('BackgroundTrack: paper fallback texture must be canvas1, canvas2, canvas3, or a paper/<id> library texture.');
     }
     if (typeof value.grainStrength !== 'number' || !Number.isFinite(value.grainStrength) || value.grainStrength < 0) {
       throw new Error('BackgroundTrack: paper fallback grainStrength must be a finite non-negative number.');

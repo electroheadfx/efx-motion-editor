@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'preact/hooks';
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import type { Dispatch, StateUpdater } from 'preact/hooks';
-import type { PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
+import type { PhysicsPaintStudioSettings, StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 
 export interface PhysicsPaintEngineActionsInput {
   engine: EfxPaintEngine | null;
@@ -43,9 +43,15 @@ export function createPhysicsPaintEngineActions(input: PhysicsPaintEngineActions
     updateSetting('opacity', opacity);
   };
 
-  const setBackground = (background: BgMode) => {
+  const setBackground = (background: StudioBackgroundMode) => {
     if (!canMutate()) return;
-    input.engine!.setBgMode(background);
+    // 56-05 (PAPER-01): library paper ids never reach the engine's BgMode —
+    // the engine draws its own paper for the deposit role only; the display
+    // fond is paperPass. Selector segments pass through unchanged.
+    const engineMode: BgMode = (background === 'transparent' || background === 'white' || background === 'canvas1' || background === 'canvas2' || background === 'canvas3' || background === 'photo')
+      ? background
+      : 'transparent';
+    input.engine!.setBgMode(engineMode);
     updateSetting('background', background);
   };
 

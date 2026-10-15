@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'preact/hooks';
 import type { BgMode } from '@efxlab/efx-physic-paint';
+import type { PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
 import { buildFrameBytesToken, isPngBytes, isWebpBytes } from '../../../types/physicPaint';
@@ -133,7 +134,7 @@ export function findAcceptedRotoReferenceFrame<Frame extends RotoReferenceFrame>
 
 export interface RotoReferenceLoaderInput<Frame extends RotoReferenceFrame> {
   getWorkflowMode: () => PhysicsPaintWorkflowMode;
-  getSettingsBackground: () => BgMode;
+  getSettingsBackground: () => BgMode | PaperTexture;
   dirtyFrames: Set<number>;
   liveOverlayActionCounts: Map<number, number>;
   getReferenceFrame: (appFrame: number) => Frame | null;
@@ -220,7 +221,12 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       : input.resolveContentToken?.(cachedFrame?.contentRevision);
     input.setReferenceUrl(null);
     input.setRepaintBaseFrame(cachedFrame);
-    engine.setBgMode(input.getSettingsBackground());
+    const settingsBg = input.getSettingsBackground();
+    engine.setBgMode(
+      settingsBg === 'transparent' || settingsBg === 'white' || settingsBg === 'canvas1' || settingsBg === 'canvas2' || settingsBg === 'canvas3' || settingsBg === 'photo'
+        ? settingsBg
+        : 'transparent',
+    );
     if (paintBytes) {
       // Acceptance reloads (an explicit generation — the completion reconcile /
       // guard repair) paint bytes that ALREADY contain the dry strokes. Wiping
@@ -252,7 +258,8 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
 
 export interface UseRotoReferenceControllerInput<Frame extends RotoReferenceFrame> {
   workflowMode: PhysicsPaintWorkflowMode;
-  settingsBackground: BgMode;
+  /** 56-05 (PAPER-01): selector segments + Studio paper library textures. */
+  settingsBackground: BgMode | PaperTexture;
   getPhysicalRenderSource: (appFrame: number) => PhysicPaintRotoPhysicalRenderSource | null;
   getPreviewFrames: () => ReadonlyMap<number, Frame>;
   getDirtyFrames: () => Set<number>;
