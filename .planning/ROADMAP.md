@@ -159,13 +159,13 @@ Plans:
   4. User switches "Brush | Water color | Krita" from the top-bar MODULE SWITCHER; each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) serves all modules; Krita is visible but inert ("coming in v2.1.0")
   5. Brush-pack snapshots travel in `.mce` (deliberate exception to the 52.2 refs-only law); every new `.mce` field added by this phase (aquarelle brush properties, per-engine stroke payload in the envelope, paper state on the fond, brush-pack snapshot) is declared in BOTH TS and Rust (`mceFieldContract` law); unreadable/cross-engine scripts refuse with a named visible error — never half-apply, never silent drop
 
-**Plans**: 10 plans
+**Plans**: 2/10 plans executed
 **UI hint**: yes
 
 Plans:
 **Wave 1**
-- [ ] 56-01-PLAN.md — TRACER: efx-spectral (vendored MIT) + efx-watercolor thin end-to-end stroke through EngineAdapter (AQUA-06, DATA-04, D-29)
-- [ ] 56-02-PLAN.md — Module switcher + shared/module panel-split shell (MOD-01/02/03/06, D-01..D-05)
+- [x] 56-01-PLAN.md — TRACER: efx-spectral (vendored MIT) + efx-watercolor thin end-to-end stroke through EngineAdapter (AQUA-06, DATA-04, D-29)
+- [x] 56-02-PLAN.md — Module switcher + shared/module panel-split shell (MOD-01/02/03/06, D-01..D-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 56-03-PLAN.md — TDD engine core physics: blooms, tide lines, four tools (AQUA-01, AQUA-02)
@@ -205,6 +205,6 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 |-------|----------------|--------|-----------|
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
 | 55. efx-paint-host (engine-1 host split) | 10/10 | Complete    | 2026-10-15 |
-| 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/10 | Planning complete | - |
+| 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 2/10 | Planning complete | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |
