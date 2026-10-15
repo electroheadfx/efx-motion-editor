@@ -1,0 +1,55 @@
+{
+  "name": "@efxlab/efx-watercolor",
+  "version": "0.1.0",
+  "license": "GPL-2.0-only",
+  "description": "Animatable watercolour engine 2 — spectral pigment, fluid deposit, Studio script law (Preact-free core)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/efxlab/efx-motion-editor.git",
+    "directory": "packages/efx-watercolor"
+  },
+  "author": "Laurent Marques <laurentefx@icloud.com>",
+  "homepage": "https://github.com/efxlab/efx-motion-editor#readme",
+  "bugs": {
+    "url": "https://github.com/efxlab/efx-motion-editor/issues"
+  },
+  "keywords": [
+    "watercolor",
+    "aquarelle",
+    "paint",
+    "spectral",
+    "pigment",
+    "animation"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@efxlab/efx-paint-host": "workspace:*",
+    "@efxlab/efx-spectral": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev:watch": "tsup --watch",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.0",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9.3",
+    "vitest": "^2.1.9"
+  }
+}
