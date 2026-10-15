@@ -8,6 +8,17 @@ import {
 } from './physicsPaintRotoScriptApplyRefusal';
 import type { RotoScriptOperationError, RotoScriptOperationErrorCode } from './physicsPaintRotoScriptClipboard';
 
+/**
+ * 55-06 (HOST-05 / DATA-02 / D-09..D-11): the four named cross-engine refusal
+ * codes the host yields (55-05) must each map to their own visible English line
+ * on the EXISTING owned-refusal surface. The mapper stays pure/total; the host
+ * supplies codes, the Studio names them.
+ */
+type HostCode = 'unknown-engine-id' | 'malformed-engine-payload' | 'engine-mismatch' | 'unreadable-legacy-script';
+function hostRefusal(code: HostCode, detail?: string): never {
+  return (detail === undefined ? { code } : { code, detail }) as never;
+}
+
 const source = readFileSync(fileURLToPath(new URL('./physicsPaintRotoScriptApplyRefusal.ts', import.meta.url)), 'utf8');
 
 function operationError(code: RotoScriptOperationErrorCode, message = 'clipboard message', cause?: string): RotoScriptOperationError {
@@ -114,5 +125,93 @@ describe('quick-260922-al1 Action-apply refusal copy', () => {
     expect(source).not.toContain('@preact/signals');
     expect(source).not.toContain('window.');
     expect(source).not.toContain('document.');
+  });
+});
+
+describe('55-06 four named cross-engine Apply refusals (HOST-05 / D-09..D-11)', () => {
+  it('maps unknown-engine-id to a named line about the unknown module', () => {
+    const copy = buildRotoScriptApplyRefusalMessage(hostRefusal('unknown-engine-id'));
+    expect(copy).not.toBeNull();
+    expect(typeof copy).toBe('string');
+    expect(copy!.length).toBeGreaterThan(0);
+    expect(copy).toContain('Apply rejected');
+    expect(copy).toContain('Nothing changed');
+    expect(copy!.toLowerCase()).toContain('unknown');
+  });
+
+  it('maps malformed-engine-payload to a named line about an unreadable script', () => {
+    const copy = buildRotoScriptApplyRefusalMessage(hostRefusal('malformed-engine-payload'));
+    expect(copy).not.toBeNull();
+    expect(typeof copy).toBe('string');
+    expect(copy!.length).toBeGreaterThan(0);
+    expect(copy).toContain('Apply rejected');
+    expect(copy).toContain('Nothing changed');
+    expect(copy!.toLowerCase()).toMatch(/unreadable|could not be read|malformed/);
+  });
+
+  it('maps engine-mismatch to a line naming BOTH engines (script engine first, target second)', () => {
+    // D-11: "this script is for Water color, not Brush" shape — display names
+    // mapped from package ids (D-15). detail carries "<scriptEngineId>:<targetEngineId>".
+    const copy = buildRotoScriptApplyRefusalMessage(
+      hostRefusal('engine-mismatch', 'efx-watercolor:efx-physic-paint'),
+    );
+    expect(copy).not.toBeNull();
+    expect(typeof copy).toBe('string');
+    expect(copy!.length).toBeGreaterThan(0);
+    expect(copy).toContain('Apply rejected');
+    expect(copy).toContain('Water color');
+    expect(copy).toContain('Brush');
+    expect(copy).toContain('Nothing changed');
+    // Never leak the raw package id into the visible line.
+    expect(copy).not.toContain('efx-watercolor');
+    expect(copy).not.toContain('efx-physic-paint');
+  });
+
+  it('maps engine-mismatch without detail to a still-distinct generic mismatch line', () => {
+    const copy = buildRotoScriptApplyRefusalMessage(hostRefusal('engine-mismatch'));
+    expect(copy).not.toBeNull();
+    expect(typeof copy).toBe('string');
+    expect(copy!.length).toBeGreaterThan(0);
+    expect(copy).toContain('Apply rejected');
+    expect(copy).toContain('Nothing changed');
+  });
+
+  it('maps unreadable-legacy-script to a line naming an older-version script', () => {
+    const copy = buildRotoScriptApplyRefusalMessage(hostRefusal('unreadable-legacy-script'));
+    expect(copy).not.toBeNull();
+    expect(typeof copy).toBe('string');
+    expect(copy!.length).toBeGreaterThan(0);
+    expect(copy).toContain('Apply rejected');
+    expect(copy).toContain('Nothing changed');
+    expect(copy!.toLowerCase()).toMatch(/older version|older/);
+  });
+
+  it('the four host codes map to four DISTINCT named lines (not one shared fallback)', () => {
+    const lines = [
+      buildRotoScriptApplyRefusalMessage(hostRefusal('unknown-engine-id')),
+      buildRotoScriptApplyRefusalMessage(hostRefusal('malformed-engine-payload')),
+      buildRotoScriptApplyRefusalMessage(hostRefusal('engine-mismatch', 'efx-watercolor:efx-physic-paint')),
+      buildRotoScriptApplyRefusalMessage(hostRefusal('unreadable-legacy-script')),
+    ];
+    for (const line of lines) {
+      expect(line).not.toBeNull();
+      expect(typeof line).toBe('string');
+      expect(line!.length).toBeGreaterThan(0);
+    }
+    expect(new Set(lines).size, `four distinct lines required, got: ${JSON.stringify(lines)}`).toBe(4);
+  });
+
+  it('null and undefined still map to null (no invented line)', () => {
+    expect(buildRotoScriptApplyRefusalMessage(null)).toBeNull();
+    expect(buildRotoScriptApplyRefusalMessage(undefined)).toBeNull();
+  });
+
+  it('existing clipboard codes keep their copy unchanged (regression lock)', () => {
+    // The four host codes must not disturb the pre-existing switch arms.
+    expect(buildRotoScriptApplyRefusalMessage(operationError('apply-empty-target-failed'))).toBe(ROTO_SCRIPT_APPLY_REFUSAL_EMPTY_TARGET);
+    expect(buildRotoScriptApplyRefusalMessage(operationError('apply-invalidated'))).toBe(ROTO_SCRIPT_APPLY_REFUSAL_INVALIDATED);
+    expect(buildRotoScriptApplyRefusalMessage(operationError('apply-partial-failure', 'stopped'))).toBe('stopped');
+    expect(buildRotoScriptApplyRefusalMessage(operationError('apply-cancelled', 'cancelled'))).toBe('cancelled');
+    expect(buildRotoScriptApplyRefusalMessage(operationError('apply-enqueue-failed'))).toBeNull();
   });
 });
