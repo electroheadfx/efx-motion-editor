@@ -287,7 +287,11 @@ describe('D-07 static import-graph pin — zero engine-1 types in the host', () 
     expect(staticHits).toHaveLength(2);
     expect(staticHits[0].label).toMatch(/engine-1/);
 
-    const plantedDynamic = `const mod = await import('@efxlab/efx-physic-paint/animation');`;
+    // Build the dynamic-import plant at runtime so the retired animation
+    // subpath literal never appears in this file's source (the 55-09 residue
+    // pin scans for that contiguous string and must not be self-invalidated).
+    const plantedDynamicSpecifier = ['@efxlab/efx-physic-paint', 'animation'].join('/');
+    const plantedDynamic = `const mod = await import('${plantedDynamicSpecifier}');`;
     const dynamicHits = findForbiddenSpecifiers(extractSpecifiers(stripComments(plantedDynamic)));
     expect(dynamicHits).toHaveLength(1);
 

@@ -39,3 +39,15 @@ export {
   cuissonTicks,
   clampCuissonTicks,
 } from './time'
+
+// Bake host — ported finalizationQueue pattern (D-21 / HOST-04).
+// Phase 56 consumer API: exported now, no app/ bake path rewired this phase.
+export { createBakeHost, BAKE_TURN_CONCURRENCY } from './bake'
+export type {
+  BakeHost,
+  BakeHostOptions,
+  BakeHostTurn,
+  BakeTurnMode,
+  BakeTurnOutcome,
+  BakeTurnStage,
+} from './bake'
