@@ -25,7 +25,8 @@ export type {
   StudioStroke,
   StudioStrokeMotion,
 } from './script'
-export { parseStudioScriptEnvelope } from './script'
+export { parseStudioScriptEnvelope, classifyEnvelopeParseFailure, makeRefusal } from './script'
+export type { HostScriptRefusal, HostScriptRefusalCode } from './script'
 
 // Host time law: fixed integer tick grid + uncapped cuisson mechanism
 // (DATA-03 / D-20 / D-23). Integer ticks only, never raw ms; the host

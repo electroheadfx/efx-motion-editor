@@ -36,8 +36,11 @@ function avalanche(hash: number): number {
  * Stroke seed from the mutation id. Falls back to a fixed seed when the
  * stroke carries no mutationId (loaded-from-disk strokes) — same fixed
  * pattern, same as any fixed-seed brush parameter.
+ *
+ * Accepts a string key so disk serialize can seed per stroke index
+ * (`hashMutationId(mutationId ?? String(strokeIndex))`, D-25 / 55-05).
  */
-export function hashMutationId(mutationId: number | undefined): number {
+export function hashMutationId(mutationId: number | string | undefined): number {
   return avalanche(fnv1a(`mutation:${mutationId ?? 0}`))
 }
 

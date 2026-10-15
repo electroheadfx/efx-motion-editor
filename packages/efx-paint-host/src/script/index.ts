@@ -11,3 +11,5 @@ export type {
   StudioStrokeMotion,
 } from './payload'
 export { parseStudioScriptEnvelope } from './parse'
+export type { HostScriptRefusal, HostScriptRefusalCode } from './refusal'
+export { classifyEnvelopeParseFailure, makeRefusal } from './refusal'

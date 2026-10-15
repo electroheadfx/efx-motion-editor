@@ -12,7 +12,7 @@ import { ROTO_SCRIPT_SCOPE_ALL } from './physicsPaintRotoScriptScope';
 import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
-import { createPersistedRotoScript, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
+import { createPersistedRotoScript, isRefusedRotoScriptRow, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
@@ -316,13 +316,19 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     }
     return null;
   });
-  const availability = computed<RotoScriptLibraryAvailability>(() => ({
-    canSave: projectSaved.value && actionMutationDisabledReason.value === null,
-    saveDisabledReason: !projectSaved.value ? 'Save the project first.' : actionMutationDisabledReason.value,
-    canLoad: Boolean(selected.value) && actionMutationDisabledReason.value === null,
-    canRename: Boolean(selected.value) && actionMutationDisabledReason.value === null,
-    canDelete: Boolean(selected.value) && actionMutationDisabledReason.value === null,
-  }));
+  const availability = computed<RotoScriptLibraryAvailability>(() => {
+    // D-16: a refused (clean-break) row stays listed and deletable, but is not
+    // loadable — the format refuses to parse, and deletion is the user's action.
+    const row = selected.value;
+    const refused = row ? isRefusedRotoScriptRow(row) : false;
+    return {
+      canSave: projectSaved.value && actionMutationDisabledReason.value === null,
+      saveDisabledReason: !projectSaved.value ? 'Save the project first.' : actionMutationDisabledReason.value,
+      canLoad: Boolean(row) && !refused && actionMutationDisabledReason.value === null,
+      canRename: Boolean(row) && !refused && actionMutationDisabledReason.value === null,
+      canDelete: Boolean(row) && actionMutationDisabledReason.value === null,
+    };
+  });
 
   function contextIdentity(context: PhysicPaintLaunchContext | null): string { return context?.project ? `${context.project.contextId}:${context.layerId}` : 'closed'; }
   function operationId(kind: string): string { return `roto-library-${kind}-${Date.now()}-${crypto.randomUUID()}`; }
@@ -520,6 +526,12 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   async function activateAndLoad(id: string, preparation?: PreparedRotoScriptLoadAndApply): Promise<boolean> {
     const row = rows.peek().find((candidate) => candidate.id === id);
     if (!row || busy.peek()) return false;
+    // D-16 / D-14: a refused row stays listed and deletable but never loads.
+    if (isRefusedRotoScriptRow(row)) {
+      status.value = `Refused script: ${row.refusal}`;
+      ports.log(status.value, true);
+      return false;
+    }
     const previousSelectedId = selectedId.peek();
     const result = await execute({ kind: 'load', operationId: operationId('load'), scriptId: row.id }, undefined, false);
     if (!result.ok || !result.script) {

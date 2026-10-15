@@ -242,7 +242,7 @@ describe('Roto script library controller', () => {
     expect(test.controller.status.value).toBe('Unreadable preset');
     expect(test.log).toHaveBeenCalledWith('Unreadable preset', true);
 
-    test.request.mockImplementationOnce(async (input) => result(input, [row('b', 'B')], { script: { ...loadedScript('b', 'B'), brushes: [] } }));
+    test.request.mockImplementationOnce(async (input) => result(input, [row('b', 'B')], { script: { ...loadedScript('b', 'B'), strokes: [] } }));
     await expect(test.controller.activateAndLoad('b')).resolves.toBe(false);
     expect(test.controller.rows.value).toEqual(acceptedRows);
     expect(test.controller.selectedId.value).toBe('a');
@@ -263,6 +263,30 @@ describe('Roto script library controller', () => {
     expect(test.clipboard.current).toBe(acceptedClipboard);
     expect(test.controller.status.value).toBe('Loaded script could not replace the clipboard.');
     expect(test.log).toHaveBeenCalledWith('Loaded script could not replace the clipboard.', true);
+  });
+
+  // D-16 / DATA-02: a clean-break script stays visible as a refused row.
+  // Deletion remains the user's explicit action — never a silent drop.
+  it('keeps a clean-break script listed as a refused row (unreadable-legacy-script) that cannot load but can delete', async () => {
+    const test = harness();
+    const refused = {
+      ...row('a', 'Old preset'),
+      refusal: 'unreadable-legacy-script' as const,
+    };
+    test.request.mockImplementation(async (input) => {
+      test.requests.push(input);
+      return result(input, [refused]);
+    });
+    await test.controller.refresh();
+    expect(test.controller.rows.value).toHaveLength(1);
+    expect(test.controller.rows.value[0]).toMatchObject({ id: 'a', refusal: 'unreadable-legacy-script' });
+    test.controller.select('a');
+    expect(test.controller.selected.value?.refusal).toBe('unreadable-legacy-script');
+    expect(test.controller.availability.value.canLoad).toBe(false);
+    expect(test.controller.availability.value.canDelete).toBe(true);
+    await expect(test.controller.activateAndLoad('a')).resolves.toBe(false);
+    expect(test.controller.rows.value).toHaveLength(1);
+    expect(test.replaceClipboard).not.toHaveBeenCalled();
   });
 });
 

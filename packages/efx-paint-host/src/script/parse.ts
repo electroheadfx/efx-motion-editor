@@ -69,9 +69,9 @@ export function parseStudioScriptEnvelope(
     name: raw.name,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
-    source: raw.source as StudioScriptEnvelope<unknown>['source'],
-    thumbnail: raw.thumbnail as StudioScriptEnvelope<unknown>['thumbnail'],
-    brushPack: raw.brushPack as StudioScriptEnvelope<unknown>['brushPack'],
-    strokes: raw.strokes as StudioScriptEnvelope<unknown>['strokes'],
+    source: raw.source as unknown as StudioScriptEnvelope<unknown>['source'],
+    thumbnail: raw.thumbnail as unknown as StudioScriptEnvelope<unknown>['thumbnail'],
+    brushPack: raw.brushPack as unknown as StudioScriptEnvelope<unknown>['brushPack'],
+    strokes: raw.strokes as unknown as StudioScriptEnvelope<unknown>['strokes'],
   }
 }
