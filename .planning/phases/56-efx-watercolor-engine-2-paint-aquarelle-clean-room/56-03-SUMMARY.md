@@ -19,10 +19,12 @@ affects: [56-04, 56-06, 56-07, 56-09]
 
 # Actuals (#2632) — pairs with the plan's `estimate` to calibrate future estimates.
 # commits: MEASURED via git rev-list --count plan_head_before..HEAD (#3968).
+# plan_head_after is the last content commit (GREEN); the docs SUMMARY commit
+# closes the count (56-01 precedent).
 actuals:
   tokens: 14488
   tasks: 2
-  commits: 2
+  commits: 3
 plan_head_before: 63aad1229e565a7f0412853c1a696f5438820f0b
 plan_head_after: 3daabd7054e6694fa3ed025f4634ed1db9d4a5d9
 
