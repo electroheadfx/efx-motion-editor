@@ -4,17 +4,25 @@
 //  active tool; snapshot at record time, never at play time
 //  (AQUA-04 / D-08 / R1.7).
 //
-//  RED stub: the snapshot is intentionally empty so the panel
-//  contract pins fail until the seam is implemented.
+//  Setters are compare-then-write (efx-preact-reactivity rule 3)
+//  so a same-value commit is a no-op (no undo record, no revision
+//  bump). The snapshot is the sole params channel — never a
+//  second bag.
 // ============================================================
 
 import { signal } from '@preact/signals';
-import type {
-  AquarelleDryEvent,
-  AquarelleStrokePayload,
-  AquarelleTool,
-  AquarelleToolOverrides,
+import {
+  createDryEvent,
+  type AquarelleDryEvent,
+  type AquarelleStrokePayload,
+  type AquarelleTool,
 } from '@efxlab/efx-watercolor/payload';
+import {
+  NEUTRAL_TOOL_OVERRIDES,
+  findTip,
+  toolOverridesFromTip,
+  type AquarelleToolOverrides,
+} from '@efxlab/efx-watercolor/brushes';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
 export interface AquarelleGlobalParams {
@@ -63,14 +71,7 @@ export const aquarelleParams = signal<AquarelleGlobalParams>({
 export const aquarelleActiveTool = signal<AquarelleTool>('brush');
 export const aquarelleSelectedTipId = signal<string | null>(null);
 export const aquarelleToolOverrides = signal<AquarelleToolOverrides>({
-  tip: 1,
-  aspect: 1,
-  rotation: 1,
-  sizeCurve: 1,
-  scatter: 1,
-  capacity: 1,
-  grain: 1,
-  wetRound: 1,
+  ...NEUTRAL_TOOL_OVERRIDES,
 });
 
 /** Compare-then-write (efx-preact-reactivity rule 3). */
@@ -86,9 +87,19 @@ export function setAquarelleTool(tool: AquarelleTool): void {
   aquarelleActiveTool.value = tool;
 }
 
+/**
+ * Select a tip and load its per-brush multipliers into the Brush
+ * response surface (D-07 / R1.7). A null id clears the selection
+ * and resets multipliers to neutral.
+ */
 export function selectAquarelleTip(tipId: string | null): void {
-  if (aquarelleSelectedTipId.value === tipId) return;
-  aquarelleSelectedTipId.value = tipId;
+  const tip = tipId ? findTip(tipId) : undefined;
+  const nextId = tip ? tip.id : null;
+  if (aquarelleSelectedTipId.value === nextId) return;
+  aquarelleSelectedTipId.value = nextId;
+  aquarelleToolOverrides.value = tip
+    ? toolOverridesFromTip(tip)
+    : { ...NEUTRAL_TOOL_OVERRIDES };
 }
 
 export function setAquarelleMultiplier(
@@ -127,27 +138,36 @@ export const MULTIPLIER_BASE_KEYS: Readonly<
   wetRound: 'water',
 });
 
-/** Record-time snapshot of the live bag (RED: intentionally empty). */
+/** Human-readable multiplier row labels (toolOverride field names). */
+export const MULTIPLIER_LABELS: Readonly<Record<keyof AquarelleToolOverrides, string>> =
+  Object.freeze({
+    tip: 'Tip',
+    aspect: 'Aspect',
+    rotation: 'Rotation',
+    sizeCurve: 'SizeCurve',
+    scatter: 'Scatter',
+    capacity: 'Capacity',
+    grain: 'Grain',
+    wetRound: 'Wet round',
+  });
+
+/** Record-time snapshot of the live bag (AQUA-04 / R1.7). */
 export function snapshotAquarelleRecord(): {
   params: Record<string, number>;
   toolOverrides: AquarelleToolOverrides;
   brushId: string;
   tool: AquarelleTool;
 } {
+  const live = aquarelleParams.value;
+  const params: Record<string, number> = {};
+  for (const key of AQUARELLE_GLOBAL_KEYS) {
+    params[key] = live[key];
+  }
   return {
-    params: {},
-    toolOverrides: {
-      tip: 1,
-      aspect: 1,
-      rotation: 1,
-      sizeCurve: 1,
-      scatter: 1,
-      capacity: 1,
-      grain: 1,
-      wetRound: 1,
-    },
-    brushId: '',
-    tool: 'brush',
+    params,
+    toolOverrides: { ...aquarelleToolOverrides.value },
+    brushId: aquarelleSelectedTipId.value ?? '',
+    tool: aquarelleActiveTool.value,
   };
 }
 
@@ -177,13 +197,13 @@ export function onAquarelleDry(sink: AquarelleDrySink): () => void {
   };
 }
 
-/** Fire a recorded Dry event (D-15) onto the record path. */
+/**
+ * Fire a recorded Dry event (D-15) onto the record path.
+ * `tick` is the host-grid tick; recordedOrder is the shared
+ * ordering key (Date.now() until the Studio record clock owns it).
+ */
 export function emitAquarelleDry(tick: number): AquarelleDryEvent {
-  const event: AquarelleDryEvent = {
-    kind: 'dry',
-    tick,
-    recordedOrder: Date.now(),
-  };
+  const event = createDryEvent(Math.max(0, Math.trunc(tick)), Date.now());
   for (const sink of drySinks) sink(event);
   return event;
 }

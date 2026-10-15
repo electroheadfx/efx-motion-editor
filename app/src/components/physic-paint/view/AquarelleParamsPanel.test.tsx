@@ -22,8 +22,6 @@ import {
   MULTIPLIER_MIN,
   buildAquarelleStrokePayload,
   effectiveMultiplierValue,
-  aquarelleParams,
-  aquarelleToolOverrides,
   aquarelleSelectedTipId,
   setAquarelleParam,
   setAquarelleMultiplier,
@@ -132,13 +130,6 @@ function collectLabels(tree: TestVNode): string[] {
   return labels;
 }
 
-function findSliderByLabel(tree: TestVNode, label: string): TestVNode | null {
-  for (const node of walk(tree)) {
-    if (node.props?.['label'] === label) return node;
-  }
-  return null;
-}
-
 const GLOBAL_LABELS = ['Water', 'Load', 'Flow', 'Bleed', 'Dry rate', 'Edge', 'Granulation'] as const;
 
 describe('AquarelleParamsPanel globals (AQUA-04 / D-05 / D-06)', () => {
@@ -203,11 +194,12 @@ describe('AquarelleParamsPanel record-path commit (AQUA-04 / R1.7)', () => {
     for (const [key, value] of Object.entries(DEFAULT_AQUARELLE_PARAMS)) {
       setAquarelleParam(key as keyof typeof DEFAULT_AQUARELLE_PARAMS, value);
     }
+    // Select the tip first (loads its multipliers), then edit response.
+    selectAquarelleTip('wc/round-medium');
     setAquarelleParam('water', 70);
     setAquarelleParam('bleed', 30);
     setAquarelleMultiplier('tip', 1.5);
     setAquarelleMultiplier('grain', 0.8);
-    selectAquarelleTip('wc/round-medium');
 
     const payload = buildAquarelleStrokePayload();
 
