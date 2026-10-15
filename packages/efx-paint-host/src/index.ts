@@ -12,3 +12,17 @@ export {
   seededRange,
   traceShapeNoise,
 } from './util/traceSeed'
+
+// Generic script payload / envelope contract (HOST-02 / D-19)
+export type {
+  BrushPackSnapshot,
+  EngineAdapter,
+  EngineId,
+  StudioPoint,
+  StudioScriptEnvelope,
+  StudioScriptSource,
+  StudioScriptThumbnail,
+  StudioStroke,
+  StudioStrokeMotion,
+} from './script'
+export { parseStudioScriptEnvelope } from './script'
