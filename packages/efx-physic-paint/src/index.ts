@@ -7,6 +7,8 @@ export type { CompletedPaintMutation, InputActivityKind, PaintHistoryAvailabilit
 // 261002 look-delta — MEASURE-ONLY probe types + its read-only sampler.
 export type { LookDeltaReport, LookDeltaMomentSample, LookDeltaRun, LookDeltaRgba, LookDeltaPixelRead, LookDeltaAppliedBase, LookDeltaStrokeMeta, LookDeltaMoment } from './engine/lookDeltaProbe'
 export { LOOK_DELTA_MOMENTS, LOOK_DELTA_SIGNATURE_LAW, srcOverStraight, readStudioPixel } from './engine/lookDeltaProbe'
+export { toStudioStroke, fromStudioStroke } from './payload/toStudioStroke'
+export type { PhysicStrokePayload } from './payload/toStudioStroke'
 import type { EfxPaintDocument } from './types'
 export type {
   EngineConfig,
