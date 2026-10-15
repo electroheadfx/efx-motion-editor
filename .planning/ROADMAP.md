@@ -119,10 +119,11 @@ Plans:
   3. Cross-engine or malformed Apply refuses with a named visible error and never half-applies
   4. Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist
 
-**Plans**: 9/9 plans executed
+**Plans**: 10 plans (9 executed + 1 gap-closure)
 Plans:
 **Wave 1**
 - [x] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
+- [ ] 55-10-PLAN.md — GAP-55-01 closure: paint audio snippet on app-timeline scrub (UAT row A2, phase 51 audible-scrub contract)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [x] 55-02-PLAN.md — Host package scaffold + ATOMIC move animation/ + all 13 consumer re-points + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25) (completed 2026-10-15)
