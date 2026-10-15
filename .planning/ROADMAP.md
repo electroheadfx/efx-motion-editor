@@ -74,7 +74,7 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 
 **Phase checklist:**
 - [x] **Phase 54: Preact 11 update** - Hard `@preact/signals` ↔ Preact 11 probe gate first (STOP if red), then mechanical Preact 11 migration with live reactivity UAT closing before Phase 55 (completed 2026-10-14)
-- [ ] **Phase 55: efx-paint-host (engine-1 host split)** - Studio script law moves into a generic engine-agnostic host; engine-1 behavior unchanged (format-identical)
+- [x] **Phase 55: efx-paint-host (engine-1 host split)** - Studio script law moves into a generic engine-agnostic host; engine-1 behavior unchanged (format-identical) (completed 2026-10-15)
 - [ ] **Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)** - Animatable watercolour engine + paper pack (all paints) + module switcher over the one shared Studio
 - [ ] **Phase 57: efx-spectral (MIT spectral.js, shared)** - Shared subtractive pigment-mixing package, consumed by engine 2 now; API frozen for engine-1 adoption in v2.1.0
 
@@ -119,7 +119,7 @@ Plans:
   3. Cross-engine or malformed Apply refuses with a named visible error and never half-applies
   4. Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist
 
-**Plans**: 10/10 plans executed (9 executed + 1 gap-closure)
+**Plans**: 10/10 plans complete (9 executed + 1 gap-closure)
 Plans:
 **Wave 1**
 - [x] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
@@ -183,7 +183,7 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
-| 55. efx-paint-host (engine-1 host split) | 10/10 | In Progress | - |
+| 55. efx-paint-host (engine-1 host split) | 10/10 | Complete    | 2026-10-15 |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/TBD | Not started | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |
