@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
  * DOC-04 clean-break grep contract (Phase 45-07).
  *
  * The audit standard is "the code does not exist" (D-02): this test walks
- * app/src, app/src-tauri/src, and packages/efx-physic-paint/src and proves
+ * app/src, app/src-tauri/src, packages/efx-physic-paint/src, and
+ * packages/efx-paint-host/src and proves
  * that no reference to the legacy one-track Physic Paint persistence/format
  * surface remains outside the explicit allowlist. The RED failure list of
  * this test IS the deletion checklist for the phase.
@@ -36,6 +37,9 @@ const SCAN_ROOTS = [
   resolve(APP_ROOT, 'src'),
   resolve(APP_ROOT, 'src-tauri/src'),
   resolve(REPO_ROOT, 'packages/efx-physic-paint/src'),
+  // 55-07 (PATTERNS gotcha 8): the host package joins the clean-break walk —
+  // a legacy persistence/format token must not hide inside efx-paint-host.
+  resolve(REPO_ROOT, 'packages/efx-paint-host/src'),
 ];
 
 const TEXT_EXTENSIONS = new Set(['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'rs', 'json', 'html', 'css']);
