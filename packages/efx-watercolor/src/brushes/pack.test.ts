@@ -79,12 +79,22 @@ function makeTip(
   } as AquarelleTip
 }
 
-/** Stub the browser decoder. ok=false rejects like a corrupt body. */
-function stubDecoder(ok: boolean, onCall?: () => void): void {
+/**
+ * Stub the browser decoder. ok=false rejects like a corrupt body.
+ * onEnter/onExit bracket the decode so concurrency is observable —
+ * the stub yields a macrotask mid-decode so unserialized imports
+ * would overlap and push maxActive above 1.
+ */
+function stubDecoder(
+  ok: boolean,
+  opts?: { onEnter?: () => void; onExit?: () => void },
+): void {
   vi.stubGlobal(
     'createImageBitmap',
     vi.fn(async () => {
-      onCall?.()
+      opts?.onEnter?.()
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      opts?.onExit?.()
       if (!ok) throw new Error('decode failed')
       return { width: 8, height: 8 }
     }),
@@ -181,8 +191,10 @@ describe('importTip', () => {
 
   it('rejects SVG text with the named failure (magic sniff, never a decode)', async () => {
     let decoderCalls = 0
-    stubDecoder(true, () => {
-      decoderCalls += 1
+    stubDecoder(true, {
+      onEnter: () => {
+        decoderCalls += 1
+      },
     })
     const result = await importTip(SVG_BYTES, 'icon.svg')
     expect(isRejected(result)).toBe(true)
@@ -220,9 +232,14 @@ describe('importTip', () => {
   it('is single-flight: concurrent imports queue and never interleave mid-decode', async () => {
     let active = 0
     let maxActive = 0
-    stubDecoder(true, () => {
-      active += 1
-      maxActive = Math.max(maxActive, active)
+    stubDecoder(true, {
+      onEnter: () => {
+        active += 1
+        maxActive = Math.max(maxActive, active)
+      },
+      onExit: () => {
+        active -= 1
+      },
     })
     const [a, b, c] = await Promise.all([
       importTip(PNG_BYTES, 'a.png'),

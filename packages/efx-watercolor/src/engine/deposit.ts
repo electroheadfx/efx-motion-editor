@@ -29,6 +29,7 @@ import {
   type AquarelleTool,
 } from '../payload/toStudioStroke'
 import type { AquarelleTip } from '../brushes/tips'
+import { toolOverridesFromTip } from '../brushes/tips'
 import { WET_EPS, type FluidSheet } from './fluid'
 
 // Re-exported so callers can name the closed tool union from the
@@ -301,7 +302,7 @@ export function depositStrokeOnSheet(
   const pts = stroke.pts
   if (pts.length === 0) return
 
-  const overrides = stroke.engine.toolOverrides ?? tip?.defaults
+  const overrides = stroke.engine.toolOverrides ?? (tip ? toolOverridesFromTip(tip) : undefined)
   const sizeParam = stroke.engine.params['size']
   const baseRadius = Math.max(1, (Number.isFinite(sizeParam) ? Number(sizeParam) : 12) / 2)
   const radius = Math.max(1, baseRadius * (overrides?.tip ?? 1))
@@ -406,7 +407,7 @@ export function depositStroke(
   if (pts.length === 0) return
 
   const pigment = parseHexColor(stroke.color ?? stroke.engine.color ?? null)
-  const overrides = stroke.engine.toolOverrides ?? tip.defaults
+  const overrides = stroke.engine.toolOverrides ?? toolOverridesFromTip(tip)
   const sizeParam = stroke.engine.params['size']
   const baseRadius = Math.max(1, (Number.isFinite(sizeParam) ? Number(sizeParam) : 12) / 2)
   // Pen is thinner than brush at equal size (AQUA-02) — same law as the sheet path.
