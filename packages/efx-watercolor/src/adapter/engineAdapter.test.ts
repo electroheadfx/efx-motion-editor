@@ -137,7 +137,7 @@ describe('toStudioStroke payload round-trip', () => {
     expect(projected.cuisson).toBeLessThanOrEqual(600)
 
     const adapter = createAquarelleEngineAdapter()
-    const reparsed = adapter.payloadCodec.parse(projected)
+    const reparsed = adapter.payloadCodec.parse(adapter.payloadCodec.serialize(projected))
     expect(reparsed).not.toBeNull()
     expect(reparsed?.traceSeed).toBe(hashMutationId(42))
     expect(reparsed?.cuisson).toBe(DIFFUSION_CAP)

@@ -138,3 +138,19 @@ export function fixDrying(sheet: FluidSheet, dt: number): void {
     }
   }
 }
+
+/**
+ * User-initiated Dry (D-15) — flash-dry the sheet at its tick.
+ * Locks every wet pixel's mobile pigment into the fixed buffers
+ * and zeroes wetness. This is an explicit recorded gesture, NOT
+ * the prohibited forced Dry at frame boundaries (P4 / D-28).
+ */
+export function forceDrySheet(sheet: FluidSheet): void {
+  const { width: w, height: h, wet, mobile } = sheet
+  const n = w * h
+  for (let i = 0; i < n; i++) {
+    if ((wet[i] ?? 0) <= 0 && (mobile[i] ?? 0) <= 0) continue
+    fixAllAt(sheet, i)
+    wet[i] = 0
+  }
+}

@@ -60,11 +60,29 @@ export function payloadEventOrderKey(event: AquarellePayloadEvent): PayloadEvent
 
 /**
  * Total-order comparator on (tick, recordedOrder). Equal ticks
- * keep recordedOrder (stable recording sequence).
+ * keep recordedOrder (stable recording sequence). Never throws.
  */
 export function comparePayloadEvents(
   a: AquarellePayloadEvent,
   b: AquarellePayloadEvent,
 ): number {
-  return 0
+  const ka = payloadEventOrderKey(a)
+  const kb = payloadEventOrderKey(b)
+  if (ka.tick !== kb.tick) return ka.tick - kb.tick
+  return ka.recordedOrder - kb.recordedOrder
+}
+
+/**
+ * Build a Dry event on the host tick grid. `tick` and
+ * `recordedOrder` must be finite numbers; non-finite input is
+ * rejected by a named RangeError (DATA-03 domain door).
+ */
+export function createDryEvent(tick: number, recordedOrder: number): AquarelleDryEvent {
+  if (!Number.isFinite(tick) || !Number.isInteger(tick) || tick < 0) {
+    throw new RangeError('createDryEvent: tick must be a non-negative integer')
+  }
+  if (!Number.isFinite(recordedOrder)) {
+    throw new RangeError('createDryEvent: recordedOrder must be a finite number')
+  }
+  return { kind: 'dry', tick, recordedOrder }
 }

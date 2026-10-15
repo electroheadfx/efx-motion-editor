@@ -20,11 +20,19 @@
 //    recordedOrder ← timestamp (ordering key, never a playback clock)
 //    playFrame    ← playFrame ?? null
 //    engine       ← opaque engine-2 private fields
+//
+//  The ONE payload union (D-16) also carries Dry events — see
+//  dryEvent.ts. This module owns the stroke projection; the union
+//  type is re-exported here so callers meet both members at the
+//  payload boundary.
 // ============================================================
 
 import { hashMutationId } from '@efxlab/efx-paint-host'
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation'
 import type { AquarelleToolOverrides } from '../brushes/tips'
+
+// The one payload union accepts Dry events alongside strokes (D-16).
+export type { AquarelleDryEvent, AquarellePayloadEvent } from './dryEvent'
 
 /**
  * The only four tools that carry pts/brush payload (AQUA-02 / D-18).

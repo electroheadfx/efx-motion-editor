@@ -3,22 +3,33 @@
 //  plug point (HOST-02 / D-19). engineId 'efx-watercolor' is
 //  already named in the host EngineId union.
 //
-//  payloadCodec.parse is total and fail-closed (null on any
+//  payloadCodec is the 56-06 script codec (one payload union,
+//  D-16) — parse is total and fail-closed (null on any
 //  malformed input, never throws) — the host never reads P
 //  (T-56-03 mitigation).
+//
+//  Play path: applyStroke deposits strokes; Dry events call the
+//  engine's wet-state fix at their tick (D-15). Frame indices
+//  never force-dry (P4 / D-28).
 // ============================================================
 
 import type {
   EngineAdapter,
   EngineId,
-  StudioPoint,
   StudioStroke,
 } from '@efxlab/efx-paint-host'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
-import { AQUARELLE_TOOLS, toStudioStroke } from '../payload/toStudioStroke'
+import { toStudioStroke } from '../payload/toStudioStroke'
+import {
+  isAquarelleDryEvent,
+  type AquarelleDryEvent,
+  type AquarellePayloadEvent,
+} from '../payload/dryEvent'
+import { payloadCodec } from '../payload/codec'
 import { depositStroke } from '../engine/deposit'
 import type { DepositCanvas } from '../engine/deposit'
-import type { AquarelleToolOverrides } from '../brushes/tips'
+import { createSheet, isDrySheet, type FluidSheet } from '../engine/fluid'
+import { forceDrySheet } from '../engine/drying'
 import { findTip, TIPS } from '../brushes/tips'
 
 export interface AquarelleAdapterOptions {
@@ -27,85 +38,17 @@ export interface AquarelleAdapterOptions {
   canvas?: HTMLCanvasElement | DepositCanvas
 }
 
-const TOOL_OVERRIDE_KEYS = [
-  'tip',
-  'aspect',
-  'rotation',
-  'sizeCurve',
-  'scatter',
-  'capacity',
-  'grain',
-  'wetRound',
-] as const
-
-function isFiniteNumber(v: unknown): v is number {
-  return typeof v === 'number' && Number.isFinite(v)
-}
-
-function isPoint(v: unknown): v is StudioPoint {
-  if (typeof v !== 'object' || v === null) return false
-  const p = v as Record<string, unknown>
-  return (
-    isFiniteNumber(p['x']) &&
-    isFiniteNumber(p['y']) &&
-    isFiniteNumber(p['p']) &&
-    isFiniteNumber(p['tx']) &&
-    isFiniteNumber(p['ty']) &&
-    isFiniteNumber(p['tw']) &&
-    isFiniteNumber(p['tick'])
-  )
-}
-
-function isToolOverrides(v: unknown): v is AquarelleToolOverrides {
-  if (typeof v !== 'object' || v === null) return false
-  const o = v as Record<string, unknown>
-  for (const key of TOOL_OVERRIDE_KEYS) {
-    const value = o[key]
-    if (value !== undefined && !isFiniteNumber(value)) return false
-  }
-  return true
-}
-
 /**
- * Total, fail-closed parse (EngineAdapter contract). Returns null on ANY
- * malformed input and never throws — a malformed payload must never reach
- * the sim (threat register T-56-03).
+ * Accept an in-memory stroke/Dry (play path) by round-tripping it
+ * through the script codec — same fail-closed validation the host
+ * sees, plus the D-19 diffusion clamp.
  */
-function parseStroke(raw: unknown): StudioStroke<AquarelleStrokePayload> | null {
+function acceptEvent(raw: unknown): AquarellePayloadEvent | null {
   if (typeof raw !== 'object' || raw === null) return null
-  const s = raw as Record<string, unknown>
-
-  if (!Array.isArray(s['pts'])) return null
-  if (!s['pts'].every(isPoint)) return null
-  if (!isFiniteNumber(s['ticks']) || s['ticks'] < 1) return null
-  if (!isFiniteNumber(s['cuisson']) || s['cuisson'] < 0) return null
-  if (!('motion' in s)) return null
-  if (typeof s['brushId'] !== 'string') return null
-  if (!isToolOverrides(s['toolOverrides'])) return null
-  if (!isFiniteNumber(s['traceSeed'])) return null
-  if (!isFiniteNumber(s['recordedOrder'])) return null
-  if (!('playFrame' in s)) return null
-  if (!('color' in s)) return null
-
-  const engine = s['engine']
-  if (typeof engine !== 'object' || engine === null) return null
-  const e = engine as Record<string, unknown>
-  if (typeof e['tool'] !== 'string') return null
-  // Fail-closed on the closed tool union (AQUA-02 / D-18) — no fifth kind.
-  if (!(AQUARELLE_TOOLS as readonly string[]).includes(e['tool'])) return null
-  if (typeof e['brushId'] !== 'string') return null
-  if (typeof e['params'] !== 'object' || e['params'] === null) return null
-  if (typeof e['timestamp'] !== 'number' || !Number.isFinite(e['timestamp'])) return null
-
-  return raw as StudioStroke<AquarelleStrokePayload>
-}
-
-function serializeStroke(raw: unknown): StudioStroke<AquarelleStrokePayload> {
-  if (typeof raw === 'object' && raw !== null && Array.isArray((raw as Record<string, unknown>)['pts'])) {
-    const parsed = parseStroke(raw)
-    if (parsed) return parsed
+  if (isAquarelleDryEvent(raw)) {
+    return payloadCodec.parse(payloadCodec.serialize(raw))
   }
-  throw new TypeError('payloadCodec.serialize: expected a StudioStroke<AquarelleStrokePayload>')
+  return payloadCodec.parse(payloadCodec.serialize(raw as AquarellePayloadEvent))
 }
 
 export function createAquarelleEngineAdapter(
@@ -117,6 +60,8 @@ export function createAquarelleEngineAdapter(
   const height = options.height ?? 0
   const canvas = options.canvas
   let disposed = false
+  let sheet: FluidSheet | null =
+    width > 0 && height > 0 ? createSheet(width, height) : null
 
   const depositAll = (limit?: number): void => {
     if (disposed || !canvas) return
@@ -131,12 +76,22 @@ export function createAquarelleEngineAdapter(
     }
   }
 
+  /** User-initiated Dry (D-15) — wet-state fix at the event's tick. */
+  const applyDry = (_dry: AquarelleDryEvent): void => {
+    if (disposed) return
+    if (sheet && !isDrySheet(sheet)) forceDrySheet(sheet)
+  }
+
   return {
     engineId,
+    // The 56-06 codec covers the one payload union (strokes + Dry).
+    // The host EngineAdapter type is stroke-shaped because the host
+    // never reads P and never sees Dry — cast through unknown at this
+    // seam only (T-56-17: host never inspects the engine slot).
     payloadCodec: {
-      serialize: serializeStroke,
-      parse: parseStroke,
-    },
+      serialize: (raw: unknown) => payloadCodec.serialize(raw as AquarellePayloadEvent),
+      parse: (raw: unknown) => payloadCodec.parse(raw),
+    } as unknown as EngineAdapter<AquarelleStrokePayload>['payloadCodec'],
     setInputLocked(_locked: boolean): void {
       /* live playback surface — AnimationPlayer wiring lands in a later plan */
     },
@@ -164,8 +119,14 @@ export function createAquarelleEngineAdapter(
     },
     applyStroke(stroke: StudioStroke<AquarelleStrokePayload>): void {
       if (disposed) return
-      const parsed = parseStroke(stroke)
-      if (!parsed) return
+      // Dry is a distinguished payload union member (D-16) — one
+      // applyStroke seam, wet-state fix at the recorded tick.
+      if (isAquarelleDryEvent(stroke)) {
+        applyDry(stroke)
+        return
+      }
+      const parsed = acceptEvent(stroke)
+      if (!parsed || isAquarelleDryEvent(parsed)) return
       strokes.push(parsed)
       if (!canvas) return
       const tip = findTip(parsed.brushId) ?? TIPS[0]
@@ -173,7 +134,7 @@ export function createAquarelleEngineAdapter(
       depositStroke(canvas, parsed, tip, { width, height })
     },
     stepTick(_tick: number): void {
-      /* cuisson ticks — diffusion/drying lands in 56-03 */
+      /* continuous physics tick — frame indices never force-dry (P4) */
     },
     captureFrame(): CanvasImageSource {
       return canvas as unknown as CanvasImageSource
@@ -181,6 +142,7 @@ export function createAquarelleEngineAdapter(
     dispose(): void {
       disposed = true
       strokes.length = 0
+      sheet = null
     },
   }
 }
