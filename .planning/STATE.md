@@ -5,16 +5,16 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
-stopped_at: Completed 55-04-PLAN.md
-last_updated: "2026-10-15T06:45:54.382Z"
+stopped_at: Completed 55-05-PLAN.md
+last_updated: "2026-10-15T07:17:59.054Z"
 last_activity: 2026-10-15
 last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
-state_head: 2a05c33e140d44b52291206b8c7a7803f8018aa7
+state_head: ce8d63acaca318bc526b482905cfb4f3303e262a
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 10
+  completed_plans: 11
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
-Plan: 6 of 9
+Plan: 7 of 9
 Status: Ready to execute
 Last activity: 2026-10-15 — Plan 55-02 complete (host split)
 
@@ -169,6 +169,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 55 P55-03 | 20min | 2 tasks | 5 files |
 | Phase 55 P55-09 | 7min | 1 tasks | 1 files |
 | Phase 55 P04 | 4min | 2 tasks | 5 files |
+| Phase 55-efx-paint-host-engine-1-host-split P05 | 19min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -476,6 +477,9 @@ Recent decisions affecting current work:
 - [Phase 55]: Residue pin never unbreaks 55-02 — a red pin opens a 55-02 gap, no local re-point
 - [Phase 55]: 55-04: HOST_TICK_HZ resolved to 60 (D-23); integer ticks only, named RangeError domain door, never raw ms (DATA-03)
 - [Phase 55]: 55-04: cuisson mechanism host-owned and uncapped (D-20) — cuissonTicks has no ceiling; clampCuissonTicks requires caller bounds; engine-1 frame cap stays engine-side
+- [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: PersistedRotoScriptV1 IS StudioScriptEnvelope<PhysicStrokePayload> — one saved shape (D-13) — Avoid a second document type; engine-1 payload rides the opaque engine slot
+- [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: brushPack pinned as { kind: efx-physic-paint, entries: [] } (landed 55-03 field name) — Keep the landed BrushPackSnapshot type; plan prose said brushes
+- [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: Rust durable path cut over with the codec (Rule 2) so save/scan keep working — Cutover without it would break every save; D-16 refused rows need scan emission
 
 ### Pending Todos
 
@@ -548,8 +552,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T06:45:23.733Z
-Stopped at: Completed 55-04-PLAN.md
+Last session: 2026-10-15T07:17:59.022Z
+Stopped at: Completed 55-05-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

@@ -63,7 +63,7 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 
 ### Data Honesty & Format
 
-- [ ] **DATA-01**: Clean break accepted — no migration code, no dual-format readers, no backward-compat shims/branches
+- [x] **DATA-01**: Clean break accepted — no migration code, no dual-format readers, no backward-compat shims/branches
 - [ ] **DATA-02**: Any unreadable script/asset refuses with a named visible error — never drop data silently
 - [x] **DATA-03**: Time = fixed tick grid (~1/60 s), integer ticks, never raw ms
 - [ ] **DATA-04**: Every new `.mce` field declared in BOTH TS and Rust (`mceFieldContract` law)
@@ -164,7 +164,7 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | SPEC-03 | Phase 57 | Pending |
 | SPEC-04 | Phase 57 | Pending |
 | SPEC-05 | Phase 57 | Pending |
-| DATA-01 | Phase 55 | Pending |
+| DATA-01 | Phase 55 | Complete |
 | DATA-02 | Phase 55 | Pending |
 | DATA-03 | Phase 55 | Complete |
 | DATA-04 | Phase 56 | Pending |
