@@ -5,16 +5,16 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
-stopped_at: Completed 55-03-PLAN.md
-last_updated: "2026-10-15T06:22:29.155Z"
+stopped_at: Completed 55-09-PLAN.md
+last_updated: "2026-10-15T06:34:30.744Z"
 last_activity: 2026-10-15
 last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
-state_head: cc1f6ff08f42165f1a5ccad1bba50279ce10a4d2
+state_head: 4615382e8b6ca373cfadbb69813b7d1750dc26a7
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 8
+  completed_plans: 9
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-10-15 — Plan 55-02 complete (host split)
 
@@ -167,6 +167,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 54 P54-05 | 5min | 2 tasks | 1 files |
 | Phase 55 P55-01 | 10min | 2 tasks | 2 files |
 | Phase 55 P55-03 | 20min | 2 tasks | 5 files |
+| Phase 55 P55-09 | 7min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -470,6 +471,8 @@ Recent decisions affecting current work:
 - [Phase 55]: 55-02: atomic move + 13-site consumer re-point in one change set (D-18 clean-break); toStudioStroke/fromStudioStroke at the seam (FIELD-MAPPING CONTRACT)
 - [Phase 55]: 55-03: script payload types re-export StudioStroke<P> from animation/types.ts (one schedule contract); EngineAdapter<P> in payload.ts with full surface (engineId + payloadCodec + live + bake); parse validates envelope fields only, engine slot untouched
 - [Phase 55]: 55-03: schema version fixed at 1 (exact match, fail-closed); named failures return null without throwing (D-12 refuse-before-write)
+- [Phase 55]: PINS_GREEN_AT_BIRTH for hostAnimationResidueContract — 55-02 move landed; detection proven by in-memory matcher self-test
+- [Phase 55]: Residue pin never unbreaks 55-02 — a red pin opens a 55-02 gap, no local re-point
 
 ### Pending Todos
 
@@ -542,8 +545,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T06:22:29.126Z
-Stopped at: Completed 55-03-PLAN.md
+Last session: 2026-10-15T06:34:30.714Z
+Stopped at: Completed 55-09-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
