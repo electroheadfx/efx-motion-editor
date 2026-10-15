@@ -4,17 +4,17 @@ milestone: v2.0.0
 milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
-status: executing
-stopped_at: Completed 55-07-PLAN.md
-last_updated: "2026-10-15T08:15:45.064Z"
+status: verifying
+stopped_at: Completed 55-08-PLAN.md (automated-ready; live UAT A1-A4 pending)
+last_updated: "2026-10-15T08:35:45.292Z"
 last_activity: 2026-10-15
 last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
-state_head: 0aae681de1d8787d7e55acc3aec6608da129fb0f
+state_head: 0d06b16780e5e9753168536581f01c84fd8d4687
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 13
+  completed_plans: 14
   percent: 25
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 
 Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-15 — Plan 55-02 complete (host split)
 
 Progress: [███░░░░░░░] 25%
@@ -172,6 +172,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 55-efx-paint-host-engine-1-host-split P05 | 19min | 2 tasks | 17 files |
 | Phase 55 P55-06 | 14min | 2 tasks | 6 files |
 | Phase 55 P55-07 | 25min | 3 tasks | 10 files |
+| Phase 55-efx-paint-host-engine-1-host-split P08 | 12min | 1 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -486,6 +487,8 @@ Recent decisions affecting current work:
 - [Phase 55]: A5 play path is ONE shape: AnimationPlayer on StudioStroke<P> + bake via applyStroke/stepTick*/captureFrame on the same stub (D-05/D-06)
 - [Phase 55]: Import-graph pin walks the whole packages/efx-paint-host/src tree; dispose() does not bump generation for surviving flush-survives-navigation turns (D-21)
 - [Phase 55]: createBakeHost is the Phase 56 consumer API — PlayScript stays on finalizationQueue this phase (R1.3); deferral recorded in 55-07-SUMMARY
+- [Phase 55-efx-paint-host-engine-1-host-split]: 55-08: suite gate asserts pin visibility (present + collectable + non-empty + still-has-tests) on the shared vitest include; PINS_GREEN_AT_BIRTH preservation gate
+- [Phase 55-efx-paint-host-engine-1-host-split]: 55-08: live UAT A1-A4 staged PENDING (human_judgment) — phase stays automated-ready; A5 stays the automated pin (D-05)
 
 ### Pending Todos
 
@@ -558,8 +561,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T08:15:45.033Z
-Stopped at: Completed 55-07-PLAN.md
+Last session: 2026-10-15T08:35:45.262Z
+Stopped at: Completed 55-08-PLAN.md (automated-ready; live UAT A1-A4 pending)
 Resume file: None
 
 ## Operator Next Steps

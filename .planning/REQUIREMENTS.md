@@ -22,9 +22,9 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 
 - [x] **HOST-01**: `packages/efx-paint-host` owns animation schedules, traceSeed, script envelope, ticks + diffusionFrames — moved out of efx-physic-paint
 - [x] **HOST-02**: Host APIs are generic over the per-engine stroke payload (pts, ticks, cuisson, motion, brush id + toolOverrides) — never engine-specific params
-- [ ] **HOST-03**: Format-identical split proven against a pre-move golden bake (R5.2 / A4 replay parity) — a refactor guard, not a compatibility surface
+- [x] **HOST-03**: Format-identical split proven against a pre-move golden bake (R5.2 / A4 replay parity) — a refactor guard, not a compatibility surface
 - [x] **HOST-04**: Generic `StudioStroke<P>` + `EngineAdapter<P>` seam proven by a fake engine-2 payload (A5) with zero engine-1 types
-- [ ] **HOST-05**: Fail-closed Apply contract across engines — named visible refusal, never half-apply
+- [x] **HOST-05**: Fail-closed Apply contract across engines — named visible refusal, never half-apply
 
 ### Watercolor Engine (Phase 56 — efx-watercolor)
 
@@ -64,7 +64,7 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 ### Data Honesty & Format
 
 - [x] **DATA-01**: Clean break accepted — no migration code, no dual-format readers, no backward-compat shims/branches
-- [ ] **DATA-02**: Any unreadable script/asset refuses with a named visible error — never drop data silently
+- [x] **DATA-02**: Any unreadable script/asset refuses with a named visible error — never drop data silently
 - [x] **DATA-03**: Time = fixed tick grid (~1/60 s), integer ticks, never raw ms
 - [ ] **DATA-04**: Every new `.mce` field declared in BOTH TS and Rust (`mceFieldContract` law)
 
@@ -138,9 +138,9 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | RUN-06 | Phase 54 | Complete |
 | HOST-01 | Phase 55 | Complete |
 | HOST-02 | Phase 55 | Complete |
-| HOST-03 | Phase 55 | Pending |
+| HOST-03 | Phase 55 | Complete |
 | HOST-04 | Phase 55 | Complete |
-| HOST-05 | Phase 55 | Pending |
+| HOST-05 | Phase 55 | Complete |
 | AQUA-01 | Phase 56 | Pending |
 | AQUA-02 | Phase 56 | Pending |
 | AQUA-03 | Phase 56 | Pending |
@@ -165,7 +165,7 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | SPEC-04 | Phase 57 | Pending |
 | SPEC-05 | Phase 57 | Pending |
 | DATA-01 | Phase 55 | Complete |
-| DATA-02 | Phase 55 | Pending |
+| DATA-02 | Phase 55 | Complete |
 | DATA-03 | Phase 55 | Complete |
 | DATA-04 | Phase 56 | Pending |
 | QUICK-01 | Quick (in-milestone) | Pending |
