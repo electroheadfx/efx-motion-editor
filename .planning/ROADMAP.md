@@ -125,7 +125,7 @@ Plans:
 - [x] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 55-02-PLAN.md — Host package scaffold + ATOMIC move animation/ + all 13 consumer re-points + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25)
+- [x] 55-02-PLAN.md — Host package scaffold + ATOMIC move animation/ + all 13 consumer re-points + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25) (completed 2026-10-15)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 55-03-PLAN.md — TDD generic StudioStroke/P envelope + EngineAdapter + fail-closed parse (HOST-02, D-19; assumption-delta PROMOTE)

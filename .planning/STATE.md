@@ -5,17 +5,17 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
-stopped_at: Completed 55-01-PLAN.md
-last_updated: "2026-10-15T05:18:33.642Z"
+stopped_at: Completed 55-02-PLAN.md
+last_updated: "2026-10-15T05:56:05Z"
 last_activity: 2026-10-15
-last_activity_desc: Phase 55 execution started
-state_head: ac55964c918be1c5b97837ef8a261d3892054959
+last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
+state_head: 1b4c6d077fce07dbc71149fc3425766df923a3d8
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 6
-  percent: 25
+  completed_plans: 7
+  percent: 28
 ---
 
 # Project State
@@ -30,11 +30,11 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
-Last activity: 2026-10-15 — Phase 55 execution started
+Last activity: 2026-10-15 — Plan 55-02 complete (host split)
 
-Progress: [███░░░░░░░] 25%
+Progress: [████░░░░░░] 28%
 
 **v2.0.0 phase map (locked 2026-10-14):**
 - 54 Preact 11 (RUN-01..06) → 55 efx-paint-host (HOST-01..05 + DATA-01..04) → 56 efx-watercolor (AQUA-01..08 + PAPER-01..04 + MOD-01..06) → 57 efx-spectral (SPEC-01..05)
@@ -463,6 +463,10 @@ Recent decisions affecting current work:
 - [Phase 54]: RUN-06 closed on live UAT: A1-A5 all PASS 2026-10-14 (paintVersion bump+subscribe live; undo/redo sync; track switch clean; Studio dispose profile counters clean; standalone ./preact mounts) — Phase 54 hard gate cleared
 - [Phase 55]: 55-01: D-04 sequencing held — golden captured entirely on pre-split code before any module move; fixture stores RotoPaintScript (renderer runtime input) not PersistedRotoScriptV1 so 55-05's envelope cutover leaves these files untouched
 - [Phase 55]: 55-01: one shared deterministic bake entry (production animation schedules + transformRecordedStrokeForHeldPose + traceSeed mirrors) drives both capture and pin; PINS_GREEN_AT_BIRTH recorded honestly; D-01 independent oracle (no tier-parity metrics helper)
+- [Phase 55]: 55-02: packages/efx-paint-host created Preact-free (D-17) with animation/ + util/traceSeed + util/noise moved; seededRng signature byte-stable (D-25); golden pin green after move
+- [Phase 55]: 55-02: ONE StudioStroke<P> contract (pts/ticks/cuisson/motion/brushId/toolOverrides/traceSeed/recordedOrder/playFrame/color/engine: P); color kept as shared field so held-pose hashStroke stays byte-identical
+- [Phase 55]: 55-02: AnimationPlayer drives generic EngineAdapter<P> (live + bake surface); AnimationStrokeStyleOverride<P> is generic with opaque engine slot (D-18)
+- [Phase 55]: 55-02: atomic move + 13-site consumer re-point in one change set (D-18 clean-break); toStudioStroke/fromStudioStroke at the seam (FIELD-MAPPING CONTRACT)
 
 ### Pending Todos
 
@@ -535,8 +539,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T05:18:33.612Z
-Stopped at: Completed 55-01-PLAN.md
+Last session: 2026-10-15T05:56:05Z
+Stopped at: Completed 55-02-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
