@@ -16,10 +16,14 @@ provides:
 affects: [56-02, 56-03, 56-04, 56-09, 57-efx-spectral]
 
 # Actuals (#2632) — pairs with the plan's `estimate` to calibrate future estimates.
+# commits: MEASURED via git rev-list --count plan_head_before..HEAD (includes this
+# closing metadata commit; plan_head_after is the last content commit 288fa606).
 actuals:
   tokens: 17182
   tasks: 2
-  commits: 3
+  commits: 6
+plan_head_before: 57ca0898158bd587e2b9a6140a752bedcf83350c
+plan_head_after: 288fa606eae7ef19952e4ab40361c3b6932beb87
 
 # Tech tracking
 tech-stack:
