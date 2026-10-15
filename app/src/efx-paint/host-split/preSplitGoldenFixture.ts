@@ -28,11 +28,13 @@ import {
   getProgressiveFrameStrokes,
   getStaticFrameStrokes,
   transformRecordedStrokeForHeldPose,
-} from '@efxlab/efx-physic-paint/animation';
+  type StudioStroke,
+  type StudioPoint,
+} from '@efxlab/efx-paint-host/animation';
 import type { RotoPaintScript } from '../../components/physic-paint/roto/physicsPaintRotoScriptClipboard';
 
 // ---------------------------------------------------------------------------
-// Trace-seed mirrors (byte-identical to packages/efx-physic-paint/src/util/traceSeed.ts)
+// Trace-seed mirrors (byte-identical to packages/efx-paint-host/src/util/traceSeed.ts)
 //
 // The package does not publicly export `hashMutationId` / `seededRng`
 // (`exports` maps only `.` / `./preact` / `./animation`). These three
@@ -270,12 +272,55 @@ export const PRE_SPLIT_GOLDEN_BAKE_CONFIGS: readonly PreSplitGoldenBakeConfig[] 
 // Shared deterministic bake entry
 // ---------------------------------------------------------------------------
 
+/** Engine-1 payload carried in the opaque `engine` slot of StudioStroke<P>. */
+interface GoldenEnginePayload {
+  tool: string;
+  color: string | null;
+  params: Record<string, number>;
+  mutationId?: number;
+  hasPenInput?: boolean;
+  physicsMode?: string | null;
+  diffusionFrames?: number;
+}
+
+/**
+ * Project an engine-1 `PaintStroke` onto the host `StudioStroke<P>` contract.
+ * Minimal field mapping for the golden bake — 55-02 Task 3 formalizes this as
+ * `toStudioStroke` in the engine-1 package surface.
+ */
+function toStudioStroke(s: Readonly<PaintStroke>): StudioStroke<GoldenEnginePayload> {
+  const pts: StudioPoint[] = s.points.map((p, i) => ({
+    x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, tick: i,
+  }));
+  return {
+    pts,
+    ticks: Math.max(1, s.points.length - 1),
+    cuisson: s.diffusionFrames !== undefined && s.diffusionFrames > 0 ? s.diffusionFrames : 0,
+    motion: null,
+    brushId: 'efx-physic-paint',
+    toolOverrides: {},
+    traceSeed: hashMutationId(s.mutationId),
+    recordedOrder: s.timestamp,
+    playFrame: s.playFrame ?? null,
+    color: s.color,
+    engine: {
+      tool: s.tool,
+      color: s.color,
+      params: { ...s.params },
+      mutationId: s.mutationId,
+      hasPenInput: s.hasPenInput,
+      physicsMode: s.physicsMode ?? null,
+      diffusionFrames: s.diffusionFrames,
+    },
+  };
+}
+
 /** Flatten a `RotoPaintScript` into the ordered stroke list the schedules consume. */
-export function flattenPreSplitGoldenStrokes(script: Readonly<RotoPaintScript>): PaintStroke[] {
-  const strokes: PaintStroke[] = [];
+export function flattenPreSplitGoldenStrokes(script: Readonly<RotoPaintScript>): StudioStroke<GoldenEnginePayload>[] {
+  const strokes: StudioStroke<GoldenEnginePayload>[] = [];
   for (const brush of script.brushes) {
-    strokes.push(cloneStroke(brush.primary));
-    for (const continuation of brush.continuations ?? []) strokes.push(cloneStroke(continuation));
+    strokes.push(toStudioStroke(cloneStroke(brush.primary)));
+    for (const continuation of brush.continuations ?? []) strokes.push(toStudioStroke(cloneStroke(continuation)));
   }
   return strokes;
 }
@@ -302,28 +347,29 @@ function parseHexColor(color: string | null): [number, number, number] {
  * Mirrors the erasePointerDelete mock-canvas ImageData idiom: a flat
  * `Uint8ClampedArray` of width*height*4, destination-out for erase.
  *
- * Every stroke's deposit is keyed by `hashMutationId(stroke.mutationId)` +
+ * Every stroke's deposit is keyed by `traceSeed` (pre-computed from
+ * `hashMutationId(stroke.mutationId)` in the projection) +
  * `seededRng(strokeSeed, streamKey)` — the traceSeed determinism law. A
- * positive `diffusionFrames` tail deposits a seeded diffusion halo so the
+ * positive `cuisson` tail deposits a seeded diffusion halo so the
  * field is pixel-load-bearing.
  */
 function rasterizeFrameStrokes(
-  frameStrokes: readonly { stroke: PaintStroke; pointCount: number }[],
+  frameStrokes: readonly { stroke: StudioStroke<GoldenEnginePayload>; pointCount: number }[],
   width: number,
   height: number,
 ): Uint8ClampedArray {
   const rgba = new Uint8ClampedArray(width * height * 4);
 
   for (const { stroke: s, pointCount } of frameStrokes) {
-    const strokeSeed = hashMutationId(s.mutationId);
-    const streamKey = s.tool === 'erase' ? 'erase-shape' : 'shape-detail';
+    const strokeSeed = s.traceSeed;
+    const streamKey = s.engine.tool === 'erase' ? 'erase-shape' : 'shape-detail';
     const rng = seededRng(strokeSeed, streamKey);
     const radius = 2 + Math.floor(rng() * 3);
     const [cr, cg, cb] = parseHexColor(s.color);
-    const visible = Math.max(0, Math.min(s.points.length, pointCount));
+    const visible = Math.max(0, Math.min(s.pts.length, pointCount));
 
     for (let i = 0; i < visible; i++) {
-      const p = s.points[i];
+      const p = s.pts[i];
       const jx = (rng() - 0.5) * 1.6;
       const jy = (rng() - 0.5) * 1.6;
       const cx = p.x + jx;
@@ -335,7 +381,7 @@ function rasterizeFrameStrokes(
           const y = Math.round(cy) + dy;
           if (x < 0 || y < 0 || x >= width || y >= height) continue;
           const o = (y * width + x) * 4;
-          if (s.tool === 'erase') {
+          if (s.engine.tool === 'erase') {
             rgba[o] = 0;
             rgba[o + 1] = 0;
             rgba[o + 2] = 0;
@@ -350,8 +396,8 @@ function rasterizeFrameStrokes(
       }
     }
 
-    // diffusionFrames tail: seeded halo so the field is load-bearing on pixels.
-    const diffusion = typeof s.diffusionFrames === 'number' ? Math.trunc(s.diffusionFrames) : 0;
+    // cuisson tail: seeded halo so the field is load-bearing on pixels.
+    const diffusion = s.cuisson > 0 ? Math.trunc(s.cuisson) : 0;
     if (diffusion > 0) {
       const haloCount = Math.min(12, Math.max(1, diffusion));
       for (let h = 0; h < haloCount; h++) {
@@ -365,7 +411,7 @@ function rasterizeFrameStrokes(
             const y = hy + dy;
             if (x < 0 || y < 0 || x >= width || y >= height) continue;
             const o = (y * width + x) * 4;
-            if (s.tool === 'erase') {
+            if (s.engine.tool === 'erase') {
               rgba[o] = 0;
               rgba[o + 1] = 0;
               rgba[o + 2] = 0;
@@ -408,11 +454,11 @@ export function bakePreSplitGoldenFrames(
   for (let frameIndex = 0; frameIndex < config.frameCount; frameIndex += 1) {
     const destination = config.canonicalStart + frameIndex;
     const transformFrameStroke = (
-      s: PaintStroke,
+      s: StudioStroke<GoldenEnginePayload>,
       _scheduleFrame: number,
       strokeIndex: number,
-    ): PaintStroke =>
-      s.points.length === 0
+    ): StudioStroke<GoldenEnginePayload> =>
+      s.pts.length === 0
         ? s
         : transformRecordedStrokeForHeldPose(s, {
             destinationSourceFrame: destination,

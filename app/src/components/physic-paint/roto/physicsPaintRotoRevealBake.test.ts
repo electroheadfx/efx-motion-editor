@@ -53,7 +53,7 @@ vi.mock('@efxlab/efx-physic-paint', () => ({
     destroy() {}
   },
 }));
-vi.mock('@efxlab/efx-physic-paint/animation', () => ({
+vi.mock('@efxlab/efx-paint-host/animation', () => ({
   buildProgressiveStrokeSchedule: harness.buildProgressive,
   getProgressiveFrameStrokes: harness.getProgressive,
   buildStaticStrokeSchedule: harness.buildStatic,
@@ -181,7 +181,7 @@ function enableScheduleFlow(): void {
   harness.buildStatic.mockImplementation((strokes: PaintStroke[]) => strokes);
   harness.buildProgressive.mockImplementation((strokes: PaintStroke[]) => strokes);
   const reveal = (schedule: PaintStroke[], frameIndex: number, transform?: (entry: PaintStroke, frame: number, index: number) => PaintStroke) =>
-    schedule.map((entry, strokeIndex) => ({ stroke: transform ? transform(entry, frameIndex, strokeIndex) : entry, pointCount: entry.points.length }));
+    schedule.map((entry, strokeIndex) => ({ stroke: transform ? transform(entry, frameIndex, strokeIndex) : entry, pointCount: (entry as { pts?: unknown[]; points?: unknown[] }).pts?.length ?? (entry as { points?: unknown[] }).points?.length ?? 0 }));
   harness.getStatic.mockImplementation(reveal);
   harness.getProgressive.mockImplementation(reveal);
 }

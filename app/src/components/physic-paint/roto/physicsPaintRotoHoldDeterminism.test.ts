@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   buildStaticStrokeSchedule,
   getStaticFrameStrokes,
   transformRecordedStrokeForHeldPose,
-} from '@efxlab/efx-physic-paint/animation';
+  type StudioStroke,
+  type StudioPoint,
+} from '@efxlab/efx-paint-host/animation';
 
 // 43-04 Task 1 (HOLD-02): byte-identical determinism proof for the shipped static/hold
 // machinery. This spec exercises the REAL animation modules (no mocks): the hash-seeded
@@ -15,17 +16,31 @@ import {
 // result is a genuine Phase 42 regression and routes through the bounded deviation
 // protocol (never asserted away, never fixed under this test-only plan).
 
-const point = (x: number, y: number) => ({ x, y, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 1 });
+interface TestPayload {
+  tool: string;
+  params: Record<string, number>;
+}
 
-const stroke = (tool: 'paint' | 'erase', color: string | null, pointCount: number, timestamp: number): PaintStroke => ({
-  tool,
+const point = (x: number, y: number): StudioPoint => ({ x, y, p: 0.5, tx: 0, ty: 0, tw: 0, tick: 0 });
+
+const stroke = (tool: 'paint' | 'erase', color: string | null, pointCount: number, recordedOrder: number): StudioStroke<TestPayload> => ({
+  pts: Array.from({ length: pointCount }, (_, index) => point(index * 3 + 1, index * 5 + 2)),
+  ticks: Math.max(1, pointCount - 1),
+  cuisson: 0,
+  motion: null,
+  brushId: 'test-brush',
+  toolOverrides: {},
+  traceSeed: recordedOrder,
+  recordedOrder,
+  playFrame: null,
   color,
-  timestamp,
-  points: Array.from({ length: pointCount }, (_, index) => point(index * 3 + 1, index * 5 + 2)),
-  params: { size: 8, opacity: 70, pressure: 65, waterAmount: 40, dryAmount: 30, edgeDetail: 10, pickup: 3, eraseStrength: 20, antiAlias: 1 },
+  engine: {
+    tool,
+    params: { size: 8, opacity: 70, pressure: 65, waterAmount: 40, dryAmount: 30, edgeDetail: 10, pickup: 3, eraseStrength: 20, antiAlias: 1 },
+  },
 });
 
-function scriptStrokes(): PaintStroke[] {
+function scriptStrokes(): StudioStroke<TestPayload>[] {
   return [
     stroke('paint', '#123456', 4, 111),
     stroke('erase', null, 2, 222),
@@ -47,7 +62,7 @@ describe('buildStaticStrokeSchedule complete-stroke-set mapping (HOLD-01)', () =
       expect(entry.stroke).toBe(strokes[index]);
       expect(entry.startFrame).toBe(0);
       expect(entry.endFrame).toBe(4);
-      expect(entry.pointsPerFrame).toBe(strokes[index].points.length);
+      expect(entry.pointsPerFrame).toBe(strokes[index].pts.length);
     }
   });
 
@@ -70,7 +85,7 @@ describe('buildStaticStrokeSchedule complete-stroke-set mapping (HOLD-01)', () =
       expect(revealed).toHaveLength(strokes.length);
       for (const [strokeIndex, entry] of revealed.entries()) {
         expect(entry.stroke).toBe(strokes[strokeIndex]);
-        expect(entry.pointCount).toBe(strokes[strokeIndex].points.length);
+        expect(entry.pointCount).toBe(strokes[strokeIndex].pts.length);
       }
     }
   });
@@ -108,7 +123,7 @@ describe('transformRecordedStrokeForHeldPose determinism (HOLD-02)', () => {
     const second = transformRecordedStrokeForHeldPose(input, pose);
     expect(fingerprint(first)).toBe(fingerprint(second));
     expect(first).not.toBe(input);
-    expect(first.points.some((candidate, index) => candidate.x !== input.points[index].x || candidate.y !== input.points[index].y)).toBe(true);
+    expect(first.pts.some((candidate, index) => candidate.x !== input.pts[index].x || candidate.y !== input.pts[index].y)).toBe(true);
   });
 
   it('double application with identical inputs produces byte-identical output at nonzero deformation Motion', () => {
@@ -140,7 +155,7 @@ describe('transformRecordedStrokeForHeldPose determinism (HOLD-02)', () => {
     const before = strokes.map((entry, strokeIndex) => transformRecordedStrokeForHeldPose(entry, { ...pose, strokeIndex }));
 
     // Simulate save/reopen: the persisted document crosses a JSON boundary.
-    const reopened = JSON.parse(JSON.stringify(strokes)) as PaintStroke[];
+    const reopened = JSON.parse(JSON.stringify(strokes)) as StudioStroke<TestPayload>[];
     const reopenedPose = JSON.parse(JSON.stringify(pose)) as typeof pose;
     const after = reopened.map((entry, strokeIndex) => transformRecordedStrokeForHeldPose(entry, { ...reopenedPose, strokeIndex }));
 
@@ -150,12 +165,12 @@ describe('transformRecordedStrokeForHeldPose determinism (HOLD-02)', () => {
   it('cache regeneration: a freshly rebuilt schedule from deserialized strokes reveals byte-identical frames', () => {
     const strokes = scriptStrokes();
     const schedule = buildStaticStrokeSchedule(strokes, 3);
-    const transform = (entry: PaintStroke, frameIndex: number, strokeIndex: number) =>
+    const transform = (entry: StudioStroke<TestPayload>, frameIndex: number, strokeIndex: number) =>
       transformRecordedStrokeForHeldPose(entry, { destinationSourceFrame: frameIndex, strokeIndex, deformation: 50, position: 25 });
     const firstPass = [0, 1, 2].map((frameIndex) => getStaticFrameStrokes(schedule, frameIndex, transform));
 
     // Cache-regeneration path: rebuild the schedule from a JSON round-trip and re-reveal.
-    const rebuilt = buildStaticStrokeSchedule(JSON.parse(JSON.stringify(strokes)) as PaintStroke[], 3);
+    const rebuilt = buildStaticStrokeSchedule(JSON.parse(JSON.stringify(strokes)) as StudioStroke<TestPayload>[], 3);
     const secondPass = [0, 1, 2].map((frameIndex) => getStaticFrameStrokes(rebuilt, frameIndex, transform));
 
     expect(fingerprint(secondPass)).toBe(fingerprint(firstPass));
@@ -190,7 +205,7 @@ describe('transformRecordedStrokeForHeldPose determinism (HOLD-02)', () => {
     const result = transformRecordedStrokeForHeldPose(input, pose);
     const rerun = transformRecordedStrokeForHeldPose(input, pose);
     expect(fingerprint(result)).toBe(fingerprint(rerun));
-    for (const candidate of result.points) {
+    for (const candidate of result.pts) {
       expect(Number.isFinite(candidate.x)).toBe(true);
       expect(Number.isFinite(candidate.y)).toBe(true);
     }

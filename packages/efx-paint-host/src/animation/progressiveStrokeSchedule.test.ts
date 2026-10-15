@@ -1,24 +1,41 @@
 import { describe, expect, it } from 'vitest';
-import type { PaintStroke, PenPoint } from '../types';
+import type { StudioPoint, StudioStroke } from './types';
 import { buildProgressiveStrokeSchedule, getProgressiveFrameStrokes } from './progressiveStrokeSchedule';
 
-const point = (index: number): PenPoint => ({ x: index, y: index * 2, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 1 });
-const stroke = (color: string, points: number, timestamp: number, playFrame?: number): PaintStroke => ({
-  tool: 'paint', color, timestamp, ...(playFrame === undefined ? {} : { playFrame }),
-  points: Array.from({ length: points }, (_, index) => point(index)),
-  params: { size: 8, opacity: 70, pressure: 65, waterAmount: 40, dryAmount: 30, edgeDetail: 10, pickup: 3, eraseStrength: 20, antiAlias: 1 },
-  physicsMode: color === '#physics' ? 'local' : null,
+interface TestPayload {
+  tool: string;
+  params: Record<string, number>;
+  physicsMode: string | null;
+}
+
+const point = (index: number): StudioPoint => ({ x: index, y: index * 2, p: 0.5, tx: 0, ty: 0, tw: 0, tick: index });
+const stroke = (color: string, points: number, recordedOrder: number, playFrame?: number): StudioStroke<TestPayload> => ({
+  pts: Array.from({ length: points }, (_, index) => point(index)),
+  ticks: Math.max(1, points - 1),
+  cuisson: 0,
+  motion: null,
+  brushId: 'test-brush',
+  toolOverrides: {},
+  traceSeed: recordedOrder,
+  recordedOrder,
+  playFrame: playFrame ?? null,
+  color,
+  engine: {
+    tool: 'paint',
+    params: { size: 8, opacity: 70, pressure: 65, waterAmount: 40, dryAmount: 30, edgeDetail: 10, pickup: 3, eraseStrength: 20, antiAlias: 1 },
+    physicsMode: color === '#physics' ? 'local' : null,
+  },
 });
-const reveal = (strokes: readonly PaintStroke[], frames: number, frame: number) => getProgressiveFrameStrokes(buildProgressiveStrokeSchedule(strokes, frames), frame);
+const reveal = (strokes: readonly StudioStroke<TestPayload>[], frames: number, frame: number) => getProgressiveFrameStrokes(buildProgressiveStrokeSchedule(strokes, frames), frame);
 const count = (frame: ReturnType<typeof reveal>, color: string) => frame.find((entry) => entry.stroke.color === color)?.pointCount ?? 0;
-const first = (strokes: readonly PaintStroke[], frames: number, color: string) => Array.from({ length: frames }, (_, frame) => reveal(strokes, frames, frame)).findIndex((entries) => count(entries, color) > 0);
+const first = (strokes: readonly StudioStroke<TestPayload>[], frames: number, color: string) => Array.from({ length: frames }, (_, frame) => reveal(strokes, frames, frame)).findIndex((entries) => count(entries, color) > 0);
 
 describe('shared progressive stroke scheduler', () => {
   it('reconstructs stable recorded order and retains per-stroke properties', () => {
     const strokes = [stroke('#h', 4, 1), stroke('#e', 4, 2), stroke('#C', 4, 0), stroke('#physics', 4, 3)];
     const final = reveal(strokes, 8, 7);
     expect(final.map((entry) => entry.stroke.color)).toEqual(['#C', '#h', '#e', '#physics']);
-    expect(final[3].stroke).toMatchObject({ physicsMode: 'local', params: { size: 8, opacity: 70, pressure: 65, pickup: 3 } });
+    expect(final[3].stroke.engine).toMatchObject({ physicsMode: 'local', params: { size: 8, opacity: 70, pressure: 65, pickup: 3 } });
     expect(final.map((entry) => entry.pointCount)).toEqual([4, 4, 4, 4]);
   });
 
@@ -53,6 +70,6 @@ describe('shared progressive stroke scheduler', () => {
     expect(firstFrames['#l']).toBeLessThan(firstFrames['#x']);
     expect(firstFrames['#x']).toBeLessThan(firstFrames['#o']);
     expect(firstFrames['#o']).toBeLessThan(firstFrames['#e']);
-    expect(reveal(strokes, 12, 11).every((entry) => entry.pointCount === entry.stroke.points.length)).toBe(true);
+    expect(reveal(strokes, 12, 11).every((entry) => entry.pointCount === entry.stroke.pts.length)).toBe(true);
   });
 });

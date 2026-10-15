@@ -19,6 +19,9 @@ importers:
 
   app:
     dependencies:
+      '@efxlab/efx-paint-host':
+        specifier: workspace:*
+        version: link:../packages/efx-paint-host
       '@efxlab/efx-physic-paint':
         specifier: workspace:*
         version: link:../packages/efx-physic-paint

@@ -28,7 +28,7 @@ vi.mock('@efxlab/efx-physic-paint', () => ({
     destroy() {}
   },
 }));
-vi.mock('@efxlab/efx-physic-paint/animation', () => ({
+vi.mock('@efxlab/efx-paint-host/animation', () => ({
   buildProgressiveStrokeSchedule: harness.buildProgressive,
   getProgressiveFrameStrokes: harness.getProgressive,
   buildStaticStrokeSchedule: harness.buildStatic,
@@ -85,7 +85,7 @@ function enableScheduleFlow(): void {
   harness.buildStatic.mockImplementation((strokes: PaintStroke[]) => strokes);
   harness.buildProgressive.mockImplementation((strokes: PaintStroke[]) => strokes);
   const reveal = (schedule: PaintStroke[], frameIndex: number, transform?: (entry: PaintStroke, frame: number, index: number) => PaintStroke) =>
-    schedule.map((entry, strokeIndex) => ({ stroke: transform ? transform(entry, frameIndex, strokeIndex) : entry, pointCount: entry.points.length }));
+    schedule.map((entry, strokeIndex) => ({ stroke: transform ? transform(entry, frameIndex, strokeIndex) : entry, pointCount: (entry as { pts?: unknown[]; points?: unknown[] }).pts?.length ?? (entry as { points?: unknown[] }).points?.length ?? 0 }));
   harness.getStatic.mockImplementation(reveal);
   harness.getProgressive.mockImplementation(reveal);
 }
@@ -194,13 +194,12 @@ describe('renderRotoPlayScriptFrames mode selection and color override', () => {
   it.each(modes)('applies the override after the Motion transform under %s mode: original color into the transform, point-identical geometry', async (mode) => {
     // Deterministic color-sensitive transform: recoloring BEFORE the transform would change geometry.
     const seenColors: Array<string | null | undefined> = [];
-    harness.transform.mockImplementation((entry: PaintStroke, pose: { deformation: number; position: number }) => {
+    harness.transform.mockImplementation((entry: { pts: Array<{ x: number; y: number }>; color: string | null; engine: { params: Record<string, number> } }, pose: { deformation: number; position: number }) => {
       seenColors.push(entry.color);
       const colorShift = (entry.color ?? '').length;
       return {
         ...entry,
-        points: entry.points.map((p) => ({ ...p, x: p.x + pose.position + colorShift, y: p.y + pose.deformation + colorShift })),
-        params: { ...entry.params },
+        pts: entry.pts.map((p) => ({ ...p, x: p.x + pose.position + colorShift, y: p.y + pose.deformation + colorShift })),
       };
     });
     const motion = { deformation: 60, position: 40 };

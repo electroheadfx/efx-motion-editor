@@ -1,25 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import { transformRecordedStrokeForHeldPose } from './recordedStrokeMotion'
-import type { PaintStroke } from '../types'
+import type { StudioStroke } from './types'
 
-function makeStroke(): PaintStroke {
+interface TestPayload {
+  tool: string
+  params: Record<string, number>
+  hasPenInput: boolean
+  diffusionFrames: number
+  physicsMode: string | null
+}
+
+function makeStroke(): StudioStroke<TestPayload> {
   return {
-    mutationId: 91,
-    tool: 'paint',
-    points: [
-      { x: 10, y: 20, p: 0.25, tx: 1, ty: 2, tw: 3, spd: 4 },
-      { x: 30, y: 50, p: 0.75, tx: 5, ty: 6, tw: 7, spd: 8 },
+    pts: [
+      { x: 10, y: 20, p: 0.25, tx: 1, ty: 2, tw: 3, tick: 0 },
+      { x: 30, y: 50, p: 0.75, tx: 5, ty: 6, tw: 7, tick: 1 },
     ],
-    color: '#123456',
-    params: {
-      size: 9, opacity: 80, pressure: 70, waterAmount: 60, dryAmount: 30,
-      edgeDetail: 12, pickup: 4, eraseStrength: 50, antiAlias: 2,
-    },
-    timestamp: 1234,
-    hasPenInput: true,
-    diffusionFrames: 6,
+    ticks: 1,
+    cuisson: 6,
+    motion: null,
+    brushId: 'test-brush',
+    toolOverrides: {},
+    traceSeed: 91,
+    recordedOrder: 1234,
     playFrame: 8,
-    physicsMode: 'local',
+    color: '#123456',
+    engine: {
+      tool: 'paint',
+      params: {
+        size: 9, opacity: 80, pressure: 70, waterAmount: 60, dryAmount: 30,
+        edgeDetail: 12, pickup: 4, eraseStrength: 50, antiAlias: 2,
+      },
+      hasPenInput: true,
+      diffusionFrames: 6,
+      physicsMode: 'local',
+    },
   }
 }
 
@@ -43,9 +58,9 @@ describe('transformRecordedStrokeForHeldPose', () => {
       position: 60,
     })
 
-    expect(pose(10).points).toEqual(pose(11).points)
-    expect(pose(12).points).not.toEqual(pose(10).points)
-    expect(pose(12).points).toEqual(pose(12).points)
+    expect(pose(10).pts).toEqual(pose(11).pts)
+    expect(pose(12).pts).not.toEqual(pose(10).pts)
+    expect(pose(12).pts).toEqual(pose(12).pts)
   })
 
   it('preserves Move spacing, varies Deform per point, and retains all metadata', () => {
@@ -63,25 +78,25 @@ describe('transformRecordedStrokeForHeldPose', () => {
       position: 0,
     })
 
-    expect(moved.points[1].x - moved.points[0].x).toBeCloseTo(stroke.points[1].x - stroke.points[0].x)
-    expect(moved.points[1].y - moved.points[0].y).toBeCloseTo(stroke.points[1].y - stroke.points[0].y)
-    expect(deformed.points[0].x - stroke.points[0].x).not.toBeCloseTo(deformed.points[1].x - stroke.points[1].x)
+    expect(moved.pts[1].x - moved.pts[0].x).toBeCloseTo(stroke.pts[1].x - stroke.pts[0].x)
+    expect(moved.pts[1].y - moved.pts[0].y).toBeCloseTo(stroke.pts[1].y - stroke.pts[0].y)
+    expect(deformed.pts[0].x - stroke.pts[0].x).not.toBeCloseTo(deformed.pts[1].x - stroke.pts[1].x)
     expect(moved).toMatchObject({
-      mutationId: 91,
-      tool: 'paint',
+      recordedOrder: 1234,
       color: '#123456',
-      params: stroke.params,
-      timestamp: 1234,
+      playFrame: 8,
+    })
+    expect(moved.engine).toMatchObject({
+      tool: 'paint',
       hasPenInput: true,
       diffusionFrames: 6,
-      playFrame: 8,
       physicsMode: 'local',
     })
-    expect(moved.points.map(({ p, tx, ty, tw, spd }) => ({ p, tx, ty, tw, spd }))).toEqual(
-      stroke.points.map(({ p, tx, ty, tw, spd }) => ({ p, tx, ty, tw, spd })),
+    expect(moved.engine.params).toBe(stroke.engine.params)
+    expect(moved.pts.map(({ p, tx, ty, tw, tick }) => ({ p, tx, ty, tw, tick }))).toEqual(
+      stroke.pts.map(({ p, tx, ty, tw, tick }) => ({ p, tx, ty, tw, tick })),
     )
-    expect(moved.points).not.toBe(stroke.points)
-    expect(moved.params).not.toBe(stroke.params)
+    expect(moved.pts).not.toBe(stroke.pts)
   })
 
   it('clamps finite percentages and treats non-finite values as zero', () => {
@@ -97,7 +112,7 @@ describe('transformRecordedStrokeForHeldPose', () => {
       strokeIndex: 2,
       deformation: 200,
       position: 200,
-    }).points).toEqual(maxed.points)
+    }).pts).toEqual(maxed.pts)
     expect(transformRecordedStrokeForHeldPose(stroke, {
       destinationSourceFrame: Number.NaN,
       strokeIndex: 2,

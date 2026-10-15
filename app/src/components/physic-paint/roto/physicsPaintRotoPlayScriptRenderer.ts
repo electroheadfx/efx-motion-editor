@@ -1,9 +1,70 @@
-import { EfxPaintEngine, type PaintStroke } from '@efxlab/efx-physic-paint';
-import { buildProgressiveStrokeSchedule, buildStaticStrokeSchedule, getProgressiveFrameStrokes, getStaticFrameStrokes, transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
+import { EfxPaintEngine, type PaintStroke, type PenPoint } from '@efxlab/efx-physic-paint';
+import { buildProgressiveStrokeSchedule, buildStaticStrokeSchedule, getProgressiveFrameStrokes, getStaticFrameStrokes, transformRecordedStrokeForHeldPose, type StudioStroke, type StudioPoint } from '@efxlab/efx-paint-host/animation';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import { mergeRotoAlphaCanvases } from './physicsPaintRotoAlphaMerge';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
+
+// — Minimal engine-1 ↔ StudioStroke projection at the seam (HOST-02 / D-19).
+// 55-02 Task 3 formalizes toStudioStroke in the engine-1 package surface.
+interface Engine1Payload {
+  tool: string;
+  color: string | null;
+  params: Record<string, number>;
+  mutationId?: number;
+  hasPenInput?: boolean;
+  physicsMode?: string | null;
+  diffusionFrames?: number;
+  timestamp: number;
+  playFrame?: number;
+}
+
+function toStudioStroke(s: PaintStroke): StudioStroke<Engine1Payload> {
+  const pts: StudioPoint[] = s.points.map((p, i) => ({
+    x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, tick: i,
+  }));
+  return {
+    pts,
+    ticks: Math.max(1, s.points.length - 1),
+    cuisson: s.diffusionFrames !== undefined && s.diffusionFrames > 0 ? s.diffusionFrames : 0,
+    motion: null,
+    brushId: 'efx-physic-paint',
+    toolOverrides: {},
+    traceSeed: 0,
+    recordedOrder: s.timestamp,
+    playFrame: s.playFrame ?? null,
+    color: s.color,
+    engine: {
+      tool: s.tool,
+      color: s.color,
+      params: { ...s.params } as Record<string, number>,
+      mutationId: s.mutationId,
+      hasPenInput: s.hasPenInput,
+      physicsMode: s.physicsMode ?? null,
+      diffusionFrames: s.diffusionFrames,
+      timestamp: s.timestamp,
+      playFrame: s.playFrame,
+    },
+  };
+}
+
+function fromStudioStroke(s: StudioStroke<Engine1Payload>): PaintStroke {
+  const points: PenPoint[] = s.pts.map((p) => ({
+    x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: 0,
+  }));
+  return {
+    tool: s.engine.tool as PaintStroke['tool'],
+    points,
+    color: s.color,
+    params: s.engine.params as unknown as PaintStroke['params'],
+    timestamp: s.recordedOrder,
+    mutationId: s.engine.mutationId,
+    hasPenInput: s.engine.hasPenInput,
+    diffusionFrames: s.engine.diffusionFrames,
+    playFrame: s.playFrame ?? undefined,
+    physicsMode: s.engine.physicsMode as PaintStroke['physicsMode'],
+  };
+}
 
 const MAX_FRAME_COUNT = 10_000;
 const MAX_AGGREGATE_RGBA_BYTES = 512 * 1024 * 1024;
@@ -121,8 +182,8 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
         referenceImages.set(referenceBytes, referenceImage);
       }
       throwIfAborted(input.signal);
-      const transformFrameStroke = (stroke: PaintStroke, _scheduleFrame: number, strokeIndex: number): PaintStroke => {
-        const transformed = stroke.points.length === 0
+      const transformFrameStroke = (stroke: StudioStroke<Engine1Payload>, _scheduleFrame: number, strokeIndex: number): StudioStroke<Engine1Payload> => {
+        const transformed = stroke.pts.length === 0
           ? stroke
           : transformRecordedStrokeForHeldPose(stroke, {
             destinationSourceFrame: destination,
@@ -138,7 +199,7 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
       let scriptAlpha: HTMLCanvasElement | null = null;
       let masked: HTMLCanvasElement | null = null;
       try {
-        scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes);
+        scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes.map((fs) => ({ stroke: fromStudioStroke(fs.stroke), pointCount: fs.pointCount })));
         throwIfAborted(input.signal);
         masked = compositeRevealMask(referenceImage, scriptAlpha, input.size, input.reference.transform, input.reference.zoom);
         throwIfAborted(input.signal);
@@ -257,8 +318,8 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
     for (let frameIndex = 0; frameIndex < input.frameCount; frameIndex += 1) {
       throwIfAborted(input.signal);
       const destination = input.canonicalStart + frameIndex;
-      const transformFrameStroke = (stroke: PaintStroke, _scheduleFrame: number, strokeIndex: number): PaintStroke => {
-        const transformed = stroke.points.length === 0
+      const transformFrameStroke = (stroke: StudioStroke<Engine1Payload>, _scheduleFrame: number, strokeIndex: number): StudioStroke<Engine1Payload> => {
+        const transformed = stroke.pts.length === 0
           ? stroke
           : transformRecordedStrokeForHeldPose(stroke, {
             destinationSourceFrame: destination,
@@ -268,7 +329,7 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
           });
         // Color override applies AFTER the Motion transform (the determinism seed hashes the original color),
         // recolors paint strokes only, and never touches erase strokes (D-11).
-        return input.overrideColor != null && transformed.tool !== 'erase'
+        return input.overrideColor != null && transformed.engine.tool !== 'erase'
           ? { ...transformed, color: input.overrideColor }
           : transformed;
       };
@@ -278,7 +339,7 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
       let scriptAlpha: HTMLCanvasElement | null = null;
       let merged: HTMLCanvasElement | null = null;
       try {
-        scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes);
+        scriptAlpha = engine.renderProgressiveAlphaFrame(frameStrokes.map((fs) => ({ stroke: fromStudioStroke(fs.stroke), pointCount: fs.pointCount })));
         throwIfAborted(input.signal);
         merged = await mergeRotoAlphaCanvases(input.existingFrames.get(destination) ?? null, scriptAlpha, input.size);
         throwIfAborted(input.signal);
@@ -307,11 +368,11 @@ export async function renderRotoPlayScriptFrames(input: RotoPlayScriptRenderInpu
   }
 }
 
-function flattenScriptStrokes(script: Readonly<RotoPaintScript>): PaintStroke[] {
-  const strokes: PaintStroke[] = [];
+function flattenScriptStrokes(script: Readonly<RotoPaintScript>): StudioStroke<Engine1Payload>[] {
+  const strokes: StudioStroke<Engine1Payload>[] = [];
   for (const brush of script.brushes) {
-    strokes.push(cloneStroke(brush.primary));
-    for (const continuation of brush.continuations ?? []) strokes.push(cloneStroke(continuation));
+    strokes.push(toStudioStroke(cloneStroke(brush.primary)));
+    for (const continuation of brush.continuations ?? []) strokes.push(toStudioStroke(cloneStroke(continuation)));
   }
   return strokes;
 }

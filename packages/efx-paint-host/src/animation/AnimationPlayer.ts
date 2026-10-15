@@ -2,28 +2,28 @@
 //  AnimationPlayer — Frame-based stroke replay engine
 //  Timed playback delegates all ordering and revelation to the
 //  shared progressive schedule used by offline consumers.
+//  Drives the generic EngineAdapter<P> seam — never a concrete
+//  engine class (HOST-02 / D-19).
 // ============================================================
 
-import type { EfxPaintEngine } from '../engine/EfxPaintEngine'
-import type { AnimationConfig, AnimationState, FrameStroke } from './types'
-import type { PaintStroke } from '../types'
+import type { EngineAdapter, AnimationConfig, AnimationState, FrameStroke, StudioStroke } from './types'
 import { transformRecordedStrokeForHeldPose } from './recordedStrokeMotion'
 import { buildProgressiveStrokeSchedule, getProgressiveFrameStrokes } from './progressiveStrokeSchedule'
 
-export class AnimationPlayer {
-  private readonly engine: EfxPaintEngine
-  private config: AnimationConfig | null = null
+export class AnimationPlayer<P = unknown> {
+  private readonly engine: EngineAdapter<P>
+  private config: AnimationConfig<P> | null = null
   private playing = false
   private currentFrame = 0
   private rafId = 0
   private lastFrameTime = 0
-  private frameStrokes: FrameStroke[] = []
+  private frameStrokes: FrameStroke<P>[] = []
 
-  constructor(engine: EfxPaintEngine) {
+  constructor(engine: EngineAdapter<P>) {
     this.engine = engine
   }
 
-  play(config: AnimationConfig): void {
+  play(config: AnimationConfig<P>): void {
     this.config = config
     this.playing = true
     this.currentFrame = 0
@@ -86,7 +86,7 @@ export class AnimationPlayer {
     ))
   }
 
-  private prepareRenderStroke(stroke: PaintStroke, frameIndex: number, strokeIndex: number): PaintStroke {
+  private prepareRenderStroke(stroke: StudioStroke<P>, frameIndex: number, strokeIndex: number): StudioStroke<P> {
     const wiggle = this.config?.wiggle
     return this.applyStrokeStyleOverride(transformRecordedStrokeForHeldPose(stroke, {
       destinationSourceFrame: frameIndex,
@@ -96,15 +96,14 @@ export class AnimationPlayer {
     }))
   }
 
-  private applyStrokeStyleOverride(stroke: PaintStroke): PaintStroke {
+  private applyStrokeStyleOverride(stroke: StudioStroke<P>): StudioStroke<P> {
     const override = this.config?.strokeStyleOverride
     if (!override) return stroke
     return {
       ...stroke,
-      tool: override.tool,
-      color: override.color,
-      params: { ...stroke.params, ...override.params },
-      physicsMode: override.physicsMode ?? null,
+      ...(override.brushId !== undefined ? { brushId: override.brushId } : {}),
+      toolOverrides: { ...stroke.toolOverrides, ...override.toolOverrides },
+      ...(override.engine !== undefined ? { engine: override.engine } : {}),
     }
   }
 }

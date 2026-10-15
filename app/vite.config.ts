@@ -158,7 +158,6 @@ export default defineConfig({
       '@efxlab/efx-paint-host/animation': fileURLToPath(new URL('../packages/efx-paint-host/src/animation/index.ts', import.meta.url)),
       '@efxlab/efx-paint-host': fileURLToPath(new URL('../packages/efx-paint-host/src/index.ts', import.meta.url)),
       '@efxlab/efx-physic-paint/preact': fileURLToPath(new URL('../packages/efx-physic-paint/src/preact.tsx', import.meta.url)),
-      '@efxlab/efx-physic-paint/animation': fileURLToPath(new URL('../packages/efx-physic-paint/src/animation/index.ts', import.meta.url)),
       '@efxlab/efx-physic-paint': fileURLToPath(new URL('../packages/efx-physic-paint/src/index.ts', import.meta.url)),
     },
   },

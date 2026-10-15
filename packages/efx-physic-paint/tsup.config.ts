@@ -4,7 +4,6 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     preact: 'src/preact.tsx',
-    animation: 'src/animation/index.ts',
   },
   format: ['esm'],
   dts: true,

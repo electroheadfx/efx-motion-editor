@@ -62,7 +62,7 @@ function App() {
 ## Animation Player
 
 ```ts
-import { AnimationPlayer } from '@efxlab/efx-physic-paint/animation'
+import { AnimationPlayer } from '@efxlab/efx-paint-host/animation'
 
 const player = new AnimationPlayer(engine, {
   strokes: savedStrokes,

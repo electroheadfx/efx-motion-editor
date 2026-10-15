@@ -1,4 +1,4 @@
-import type { PaintStroke, PenPoint } from '../types'
+import type { StudioStroke, StudioPoint } from './types'
 
 const STOP_MOTION_HOLD_FRAMES = 2
 const MOVE_AMPLITUDE_PX = 12
@@ -11,14 +11,14 @@ export type RecordedStrokeHeldPose = {
   position: number
 }
 
-export function transformRecordedStrokeForHeldPose(
-  stroke: Readonly<PaintStroke>,
+export function transformRecordedStrokeForHeldPose<P = unknown>(
+  stroke: Readonly<StudioStroke<P>>,
   pose: Readonly<RecordedStrokeHeldPose>,
-): PaintStroke {
+): StudioStroke<P> {
   const deformation = clampPercent(pose.deformation) / 100
   const position = clampPercent(pose.position) / 100
 
-  if (deformation === 0 && position === 0) return stroke as PaintStroke
+  if (deformation === 0 && position === 0) return stroke as StudioStroke<P>
 
   const seed = hashStroke(stroke, pose.strokeIndex)
   const poseFrame = quantizeStopMotionFrame(pose.destinationSourceFrame)
@@ -29,7 +29,7 @@ export function transformRecordedStrokeForHeldPose(
 
   return {
     ...stroke,
-    points: stroke.points.map((point, pointIndex) => applyStopMotionPose(
+    pts: stroke.pts.map((point, pointIndex) => applyStopMotionPose(
       point,
       pointIndex,
       seed,
@@ -38,7 +38,6 @@ export function transformRecordedStrokeForHeldPose(
       offsetY,
       deformationAmplitude,
     )),
-    params: { ...stroke.params },
   }
 }
 
@@ -47,8 +46,10 @@ function clampPercent(value: unknown): number {
   return Math.max(0, Math.min(100, value))
 }
 
-function hashStroke(stroke: Readonly<PaintStroke>, strokeIndex: number): number {
-  const source = `${strokeIndex}:${stroke.timestamp}:${stroke.color ?? ''}:${stroke.points.length}`
+function hashStroke<P>(stroke: Readonly<StudioStroke<P>>, strokeIndex: number): number {
+  // Source string kept byte-identical to the pre-split form so the golden
+  // pin's held-pose deformation stays delta-zero across the move (D-25).
+  const source = `${strokeIndex}:${stroke.recordedOrder}:${stroke.color ?? ''}:${stroke.pts.length}`
   let hash = 2166136261
   for (let index = 0; index < source.length; index += 1) {
     hash ^= source.charCodeAt(index)
@@ -63,14 +64,14 @@ function quantizeStopMotionFrame(frameIndex: number): number {
 }
 
 function applyStopMotionPose(
-  point: Readonly<PenPoint>,
+  point: Readonly<StudioPoint>,
   pointIndex: number,
   seed: number,
   poseFrame: number,
   offsetX: number,
   offsetY: number,
   deformationAmplitude: number,
-): PenPoint {
+): StudioPoint {
   if (deformationAmplitude === 0) {
     return { ...point, x: point.x + offsetX, y: point.y + offsetY }
   }

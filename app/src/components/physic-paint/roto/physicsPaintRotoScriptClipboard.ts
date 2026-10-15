@@ -1,6 +1,6 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
-import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
-import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-physic-paint/animation';
+import type { CompletedPaintMutation, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
+import { transformRecordedStrokeForHeldPose, type StudioStroke, type StudioPoint } from '@efxlab/efx-paint-host/animation';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
@@ -606,12 +606,12 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const brush = operation.script.brushes[brushIndex];
     const motion = ports.getMotion();
     const transformed: RecordedStrokeGroup = {
-      primary: transformRecordedStrokeForHeldPose(brush.primary, {
+      primary: fromStudioStroke(transformRecordedStrokeForHeldPose(toStudioStroke(brush.primary), {
         destinationSourceFrame: operation.destinationAppFrame,
         strokeIndex: brushIndex,
         deformation: motion.deformation,
         position: motion.position,
-      }),
+      })),
       continuations: brush.continuations?.map(cloneStroke),
     };
     if (activeApply !== operation || operation.cancelled || launchGeneration !== operation.launchGeneration) {
@@ -935,6 +935,67 @@ export function normalizeLogicalBrushes(strokes: readonly PaintStroke[]): Readon
 
 function cloneStroke(stroke: Readonly<PaintStroke>): PaintStroke {
   return { ...stroke, points: stroke.points.map((point) => ({ ...point })), params: { ...stroke.params } };
+}
+
+// — Minimal engine-1 ↔ StudioStroke projection at the seam (HOST-02 / D-19).
+// 55-02 Task 3 formalizes toStudioStroke in the engine-1 package surface.
+interface Engine1Payload {
+  tool: string;
+  color: string | null;
+  params: Record<string, number>;
+  mutationId?: number;
+  hasPenInput?: boolean;
+  physicsMode?: string | null;
+  diffusionFrames?: number;
+  timestamp: number;
+  playFrame?: number;
+}
+
+function toStudioStroke(s: Readonly<PaintStroke>): StudioStroke<Engine1Payload> {
+  const pts: StudioPoint[] = s.points.map((p, i) => ({
+    x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, tick: i,
+  }));
+  return {
+    pts,
+    ticks: Math.max(1, s.points.length - 1),
+    cuisson: s.diffusionFrames !== undefined && s.diffusionFrames > 0 ? s.diffusionFrames : 0,
+    motion: null,
+    brushId: 'efx-physic-paint',
+    toolOverrides: {},
+    traceSeed: 0,
+    recordedOrder: s.timestamp,
+    playFrame: s.playFrame ?? null,
+    color: s.color,
+    engine: {
+      tool: s.tool,
+      color: s.color,
+      params: { ...s.params } as Record<string, number>,
+      mutationId: s.mutationId,
+      hasPenInput: s.hasPenInput,
+      physicsMode: s.physicsMode ?? null,
+      diffusionFrames: s.diffusionFrames,
+      timestamp: s.timestamp,
+      playFrame: s.playFrame,
+    },
+  };
+}
+
+function fromStudioStroke(s: StudioStroke<Engine1Payload>): PaintStroke {
+  const points: PenPoint[] = s.pts.map((p) => ({
+    x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: 0,
+  }));
+  return {
+    tool: s.engine.tool as PaintStroke['tool'],
+    points,
+    color: s.color,
+    params: s.engine.params as unknown as PaintStroke['params'],
+    timestamp: s.recordedOrder,
+    mutationId: s.engine.mutationId,
+    hasPenInput: s.engine.hasPenInput,
+    diffusionFrames: s.engine.diffusionFrames,
+    playFrame: s.playFrame ?? undefined,
+    physicsMode: s.engine.physicsMode as PaintStroke['physicsMode'],
+  };
 }
 
 function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
