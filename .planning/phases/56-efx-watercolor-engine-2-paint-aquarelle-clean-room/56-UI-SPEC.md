@@ -1,7 +1,8 @@
 ---
 phase: "56"
 slug: "efx-watercolor-engine-2-paint-aquarelle-clean-room"
-status: draft
+status: approved
+reviewed_at: "2026-10-15"
 shadcn_initialized: false
 preset: none
 created: "2026-10-15"
@@ -216,29 +217,35 @@ Accepted homonyms (not defects): the word `Water` appears as both a tool-row but
 
 ## UI Considerations
 
-Applicable state considerations resolved: 12 covered, 2 backstop, 0 unresolved
+Applicable state considerations resolved: 23 explicit, 2 backstop, 0 unresolved (41 dismissed as non-applicable per element kind)
 
 | Category | Element(s) | Status | Resolution / Reason |
 |----------|------------|--------|---------------------|
-| empty | Brushes docker tip list (search/filter yields zero) | ✅ covered | Renders the documented `No brushes match` / `Try another search term or choose All categories.` copy from the Copywriting Contract |
-| empty | Brushes docker category group after filter | ✅ covered | A filtered-to-zero category hides its rows and shows the same zero-results body once at list level; no empty category headers linger |
-| empty | Paper picker grid | ✅ covered | Never empty — 13 papers ship with the phase (PAPER-01/04). No empty state required; if a tile fails to decode the cell shows the paper name on `--color-bg-input` (see error row) |
-| loading | Paper picker tile thumbnails | ✅ covered | Cells render at fixed `64px` with `--color-bg-input` placeholder fill and the paper name in Label role until the tile decodes; layout never shifts |
-| loading | Brush tip vignettes (Brushes docker rows) | ✅ covered | `24px` thumbnail slot holds a `--color-icon-placeholder` fill until the vignette decodes; row height stays `32px` |
-| loading | Custom tip import (PNG/JPG) | ✅ covered | The Import button enters a disabled + `opacity: 0.5` state for the duration; the list does not reorder until the tip lands in its category |
-| error | Cross-engine / unreadable script Apply (MOD-05) | ✅ covered | Named visible line through the existing owned-refusal surface, exact copy from the Copywriting Contract Error state row. Never half-applies, never a second error channel |
-| error | Custom tip import failure | ✅ covered | Inline Label-role line under the Brushes docker toolbar: `Import failed — this file is not a readable PNG or JPG. Nothing changed.` (matches the refusal house style). List unchanged |
-| error | Paper tile decode failure | ✅ covered | Cell keeps its placeholder fill + paper name; no blank cell, no crash |
-| populated | Brushes docker at typical volume (14 base tips + a few custom) | ✅ covered | Vertical scroll inside the list region only; toolbar, filter row, and footer stay pinned (matches the pinned-chrome convention) |
-| populated | Paper picker at 13 cells | ✅ covered | Two group headers (`Procedural`, `Real`), 3-column grid, popover scrolls if the viewport is short |
-| partial | Script references a brush id missing from the pack snapshot | ✅ covered | The row still renders from the snapshot in `.mce` (MOD-04); if the id is truly absent the Brushes docker shows a Label-role placeholder row `Missing brush — {id}` and the stroke keeps its recorded `toolOverrides` |
-| overflow | Brushes docker list | ✅ covered | Scrolls internally; the panel itself does not gain a second scrollbar |
+| empty | Brushes docker tip list (search/filter yields zero) | ✅ explicit | Renders the documented `No brushes match` / `Try another search term or choose All categories.` copy from the Copywriting Contract |
+| empty | Brushes docker category group after filter | ✅ explicit | A filtered-to-zero category hides its rows and shows the same zero-results body once at list level; no empty category headers linger |
+| empty | Paper picker grid | ✅ explicit | Never empty — 13 papers ship with the phase (PAPER-01/04). No empty state required; if a tile fails to decode the cell shows the paper name on `--color-bg-input` (see error row) |
+| loading | Paper picker tile thumbnails | ✅ explicit | Cells render at fixed `64px` with `--color-bg-input` placeholder fill and the paper name in Label role until the tile decodes; layout never shifts |
+| loading | Brush tip vignettes (Brushes docker rows) | ✅ explicit | `24px` thumbnail slot holds a `--color-icon-placeholder` fill until the vignette decodes; row height stays `32px` |
+| loading | Custom tip import (PNG/JPG) | ✅ explicit | The Import button enters a disabled + `opacity: 0.5` state for the duration; the list does not reorder until the tip lands in its category |
+| error | Cross-engine / unreadable script Apply (MOD-05) | ✅ explicit | Named visible line through the existing owned-refusal surface, exact copy from the Copywriting Contract Error state row. Never half-applies, never a second error channel |
+| error | Custom tip import failure | ✅ explicit | Inline Label-role line under the Brushes docker toolbar: `Import failed — this file is not a readable PNG or JPG. Nothing changed.` (matches the refusal house style). List unchanged |
+| error | Paper tile decode failure | ✅ explicit | Cell keeps its placeholder fill + paper name; no blank cell, no crash |
+| error | Dry action button (D-15) | ✅ explicit | Dry is fire-and-forget — the script records the event; no error UI, no retry affordance. If the bake queue rejects it, the owned-refusal surface handles it (same channel as MOD-05) |
+| populated | Brushes docker at typical volume (14 base tips + a few custom) | ✅ explicit | Vertical scroll inside the list region only; toolbar, filter row, and footer stay pinned (matches the pinned-chrome convention) |
+| populated | Paper picker at 13 cells | ✅ explicit | Two group headers (`Procedural`, `Real`), 3-column grid, popover scrolls if the viewport is short |
+| populated | Tool row (brush / water / pen / lift) | ✅ explicit | 4-button row renders all 4 tools at `32px × 32px` with the active tool filled in accent; inactive tools use the standard ghost-button treatment |
+| populated | Paper sliders (Strength / Scale) | ✅ explicit | Two SliderStepper rows render under the picker trigger with live numeric readouts; both params carry defaults from the paper definition |
+| partial | Script references a brush id missing from the pack snapshot | ✅ explicit | The row still renders from the snapshot in `.mce` (MOD-04); if the id is truly absent the Brushes docker shows a Label-role placeholder row `Missing brush — {id}` and the stroke keeps its recorded `toolOverrides` |
+| overflow | Brushes docker list | ✅ explicit | Scrolls internally; the panel itself does not gain a second scrollbar |
 | overflow | Brush name / category name longer than the row | 🧪 backstop | Truncate with ellipsis at the row's name cell; full name in the tooltip. Holds as `{ statement, verification: backstop }` — a held-out visual check that a 48-character custom tip filename ellipsizes and the tooltip shows it whole |
-| overflow | Paper picker at short viewport heights | ✅ covered | Popover body scrolls; group headers use `position: sticky` within the popover |
-| zero-one-many | Brush category groups | ✅ covered | Zero → hidden (see empty row); one → header reads `{Category} — 1`; many → header reads `{Category} — {n}`. No singular/plural grammar on `brushes` in the footer (`1 brushes` is acceptable and stable) |
-| zero-one-many | Search results | ✅ covered | Zero → empty copy; one → single row, no group header collapse weirdness; many → grouped as usual |
+| overflow | Paper picker at short viewport heights | ✅ explicit | Popover body scrolls; group headers use `position: sticky` within the popover |
+| overflow | Cross-engine refusal message | ✅ explicit | Message wraps within the owned-refusal container; no horizontal scroll, no truncation of engine names |
+| zero-one-many | Brush category groups | ✅ explicit | Zero → hidden (see empty row); one → header reads `{Category} — 1`; many → header reads `{Category} — {n}`. No singular/plural grammar on `brushes` in the footer (`1 brushes` is acceptable and stable) |
+| zero-one-many | Search results | ✅ explicit | Zero → empty copy; one → single row, no group header collapse weirdness; many → grouped as usual |
+| zero-one-many | Per-brush multiplier rows (Brush response collapsible) | ✅ explicit | Zero (no brush selected) → collapsible shows a Label-role placeholder `Select a brush to edit response`; one → single multiplier row; many → one row per active brush. The collapsible is collapsed by default regardless of count |
 | long-text | Custom imported tip filename | 🧪 backstop | Same ellipsis + tooltip rule as the overflow row. Holds as `{ statement, verification: backstop }` |
-| long-text | ModuleSwitcher labels at narrow top-bar widths | ✅ covered | Segments are `min-width: 72px`, non-wrapping, and the switcher is `flex-shrink: 0`; the surrounding top-bar items give way before the switcher truncates |
+| long-text | ModuleSwitcher labels at narrow top-bar widths | ✅ explicit | Segments are `min-width: 72px`, non-wrapping, and the switcher is `flex-shrink: 0`; the surrounding top-bar items give way before the switcher truncates |
+| long-text | Cross-engine refusal message with long engine names | ✅ explicit | Engine names can exceed the container; message wraps at word boundaries inside the owned-refusal surface. Never clips, never horizontal-scrolls |
 
 ---
 
@@ -252,12 +259,12 @@ Applicable state considerations resolved: 12 covered, 2 backstop, 0 unresolved
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: FLAG (non-blocking — D-07 view-mode toggles unlabeled; Dry CTA shape intentional)
+- [x] Dimension 2 Visuals: FLAG (non-blocking — favorite star lacks tooltip/aria-label)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: FLAG (non-blocking — 10/11/12/13 scale is dense; Heading below Body)
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved (2026-10-15) — 4/7 PASS, 3/7 FLAG (non-blocking). Planning may proceed.
