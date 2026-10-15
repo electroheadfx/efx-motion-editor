@@ -9,7 +9,11 @@ use std::sync::Mutex;
 use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
-pub const SCRIPT_KIND: &str = "efx-physics-paint-roto-script";
+/// Saved script envelope kind (55-05 D-13 clean break).
+pub const SCRIPT_KIND: &str = "efx-studio-paint-script";
+/// Pre-envelope kind — recognized ONLY to refuse it as a clean-break row (D-16).
+pub const LEGACY_SCRIPT_KIND: &str = "efx-physics-paint-roto-script";
+pub const SCRIPT_ENGINE_ID: &str = "efx-physic-paint";
 pub const SCRIPT_VERSION: u64 = 1;
 pub const SCRIPT_EXTENSION: &str = ".efx-roto-script.json";
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -193,6 +197,9 @@ pub struct ScriptLibraryRow {
     pub source: Value,
     pub thumbnail: Value,
     pub brush_count: usize,
+    /// D-16: present when this row is a clean-break / unreadable refused row.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1989,8 +1996,16 @@ fn scan_root(root: &Path) -> Result<ScriptLibraryScan, String> {
             if bytes.len() as u64 > MAX_FILE_BYTES {
                 return Err("Managed script exceeds the size limit".to_string());
             }
-            let value = serde_json::from_slice(&bytes)
+            let value: Value = serde_json::from_slice(&bytes)
                 .map_err(|error| format!("Could not parse managed script: {error}"))?;
+            // D-16: a legacy-kind script is a refused row, not a silent skip.
+            if value
+                .get("kind")
+                .and_then(Value::as_str)
+                .is_some_and(|kind| kind == LEGACY_SCRIPT_KIND)
+            {
+                return Ok(row_from_legacy_document(&value, &bytes, expected_id));
+            }
             let value = validate_document(value, Some(expected_id))?;
             row_from_document(&value, &bytes)
         })();
@@ -2101,6 +2116,9 @@ pub(crate) fn validate_document(value: Value, expected_id: Option<&str>) -> Resu
     if object.get("kind").and_then(Value::as_str) != Some(SCRIPT_KIND) {
         return Err("Invalid script kind".to_string());
     }
+    if object.get("engineId").and_then(Value::as_str) != Some(SCRIPT_ENGINE_ID) {
+        return Err("Invalid script engineId".to_string());
+    }
     if object.get("schemaVersion").and_then(Value::as_u64) != Some(SCRIPT_VERSION) {
         return Err("Unsupported script schemaVersion".to_string());
     }
@@ -2125,7 +2143,8 @@ pub(crate) fn validate_document(value: Value, expected_id: Option<&str>) -> Resu
     }
     validate_source(object.get("source"))?;
     validate_thumbnail(object.get("thumbnail"))?;
-    validate_brushes(object.get("brushes"))?;
+    validate_brush_pack(object.get("brushPack"))?;
+    validate_strokes(object.get("strokes"))?;
     Ok(value)
 }
 
@@ -2195,28 +2214,43 @@ fn validate_thumbnail(value: Option<&Value>) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_brushes(value: Option<&Value>) -> Result<(), String> {
-    let brushes = value
+fn validate_brush_pack(value: Option<&Value>) -> Result<(), String> {
+    let pack = value
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Invalid brushPack".to_string())?;
+    if pack.get("kind").and_then(Value::as_str).is_none() {
+        return Err("Invalid brushPack kind".to_string());
+    }
+    if pack.get("entries").and_then(Value::as_array).is_none() {
+        return Err("Invalid brushPack entries".to_string());
+    }
+    Ok(())
+}
+
+/// Flattened StudioStroke list (55-05 D-23 field mapping).
+/// cuisson > 0 = continuation of the previous primary; cuisson == 0 = new group.
+fn validate_strokes(value: Option<&Value>) -> Result<(), String> {
+    let strokes = value
         .and_then(Value::as_array)
-        .ok_or_else(|| "Invalid brushes".to_string())?;
-    if brushes.is_empty() || brushes.len() > MAX_BRUSHES {
-        return Err("Brush count is outside the supported range".to_string());
+        .ok_or_else(|| "Invalid strokes".to_string())?;
+    if strokes.is_empty() || strokes.len() > MAX_BRUSHES + MAX_BRUSHES * MAX_CONTINUATIONS {
+        return Err("Stroke count is outside the supported range".to_string());
     }
     let mut total_points = 0usize;
-    for brush in brushes {
-        let brush = brush
-            .as_object()
-            .ok_or_else(|| "Invalid logical brush".to_string())?;
-        total_points += validate_stroke(brush.get("primary"), false)?;
-        let continuations = brush
-            .get("continuations")
-            .and_then(Value::as_array)
-            .ok_or_else(|| "Invalid continuation list".to_string())?;
-        if continuations.len() > MAX_CONTINUATIONS {
-            return Err("Too many brush continuations".to_string());
-        }
-        for continuation in continuations {
-            validate_stroke(Some(continuation), true)?;
+    let mut continuations_in_group = 0usize;
+    for stroke in strokes {
+        let continuation = stroke
+            .get("cuisson")
+            .and_then(Value::as_u64)
+            .is_some_and(|value| value > 0);
+        total_points += validate_envelope_stroke(stroke, continuation)?;
+        if continuation {
+            continuations_in_group += 1;
+            if continuations_in_group > MAX_CONTINUATIONS {
+                return Err("Too many brush continuations".to_string());
+            }
+        } else {
+            continuations_in_group = 0;
         }
         if total_points > MAX_TOTAL_POINTS {
             return Err("Script has too many total points".to_string());
@@ -2225,32 +2259,42 @@ fn validate_brushes(value: Option<&Value>) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_stroke(value: Option<&Value>, continuation: bool) -> Result<usize, String> {
+fn validate_envelope_stroke(value: &Value, continuation: bool) -> Result<usize, String> {
     let stroke = value
-        .and_then(Value::as_object)
+        .as_object()
         .ok_or_else(|| "Invalid stroke".to_string())?;
-    match stroke.get("tool").and_then(Value::as_str) {
-        Some("paint" | "erase") => {}
-        _ => return Err("Invalid stroke tool".to_string()),
-    }
-    let points = stroke
-        .get("points")
+    let pts = stroke
+        .get("pts")
         .and_then(Value::as_array)
-        .ok_or_else(|| "Invalid stroke points".to_string())?;
+        .ok_or_else(|| "Invalid stroke pts".to_string())?;
     if continuation {
-        if !points.is_empty() {
+        if !pts.is_empty() {
             return Err("Continuation strokes must have zero points".to_string());
         }
-    } else if points.is_empty() || points.len() > MAX_POINTS_PER_BRUSH {
+    } else if pts.is_empty() || pts.len() > MAX_POINTS_PER_BRUSH {
         return Err("Primary stroke point count is outside the supported range".to_string());
     }
-    for point in points {
+    for point in pts {
         validate_point(point)?;
+        non_negative_integer(point.get("tick"), "tick")?;
     }
-    if continuation {
-        positive_integer(stroke.get("diffusionFrames"), "diffusionFrames", 600)?;
-    } else if stroke.contains_key("diffusionFrames") {
-        return Err("Primary strokes cannot carry diffusionFrames".to_string());
+    non_negative_integer(stroke.get("ticks"), "ticks")?;
+    non_negative_integer(stroke.get("cuisson"), "cuisson")?;
+    if !stroke.get("motion").is_some_and(Value::is_null) {
+        return Err("Stroke motion must be null".to_string());
+    }
+    if stroke.get("brushId").and_then(Value::as_str) != Some(SCRIPT_ENGINE_ID) {
+        return Err("Invalid stroke brushId".to_string());
+    }
+    if stroke.get("toolOverrides").and_then(Value::as_object).is_none() {
+        return Err("Invalid stroke toolOverrides".to_string());
+    }
+    finite_number(stroke.get("traceSeed"), "traceSeed")?;
+    finite_number(stroke.get("recordedOrder"), "recordedOrder")?;
+    if let Some(play_frame) = stroke.get("playFrame") {
+        if !play_frame.is_null() {
+            non_negative_integer(Some(play_frame), "playFrame")?;
+        }
     }
     if let Some(color) = stroke.get("color") {
         if !color.is_null()
@@ -2263,7 +2307,30 @@ fn validate_stroke(value: Option<&Value>, continuation: bool) -> Result<usize, S
             return Err("Invalid stroke color".to_string());
         }
     }
-    let params = stroke
+    validate_engine_payload(stroke.get("engine"), continuation)?;
+    Ok(pts.len())
+}
+
+fn validate_engine_payload(value: Option<&Value>, continuation: bool) -> Result<(), String> {
+    let engine = value
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Invalid engine payload".to_string())?;
+    match engine.get("tool").and_then(Value::as_str) {
+        Some("paint" | "erase") => {}
+        _ => return Err("Invalid stroke tool".to_string()),
+    }
+    if let Some(color) = engine.get("color") {
+        if !color.is_null()
+            && !color.as_str().is_some_and(|value| {
+                value.len() == 7
+                    && value.starts_with('#')
+                    && value[1..].chars().all(|c| c.is_ascii_hexdigit())
+            })
+        {
+            return Err("Invalid stroke color".to_string());
+        }
+    }
+    let params = engine
         .get("params")
         .and_then(Value::as_object)
         .ok_or_else(|| "Invalid stroke params".to_string())?;
@@ -2287,27 +2354,35 @@ fn validate_stroke(value: Option<&Value>, continuation: bool) -> Result<usize, S
     {
         return Err("Invalid antiAlias".to_string());
     }
-    non_negative_integer(stroke.get("timestamp"), "timestamp")?;
-    if let Some(value) = stroke.get("hasPenInput") {
+    non_negative_integer(engine.get("timestamp"), "timestamp")?;
+    if let Some(value) = engine.get("hasPenInput") {
         if !value.is_boolean() {
             return Err("Invalid hasPenInput".to_string());
         }
     }
-    if let Some(value) = stroke.get("playFrame") {
+    if let Some(value) = engine.get("diffusionFrames") {
+        // Engine cap policy (D-20) stays engine-side.
+        positive_integer(Some(value), "diffusionFrames", 600)?;
+    } else if continuation {
+        return Err("Continuation strokes require diffusionFrames".to_string());
+    }
+    if let Some(value) = engine.get("playFrame") {
         non_negative_integer(Some(value), "playFrame")?;
     }
-    if let Some(value) = stroke.get("physicsMode") {
-        if !value.is_null() && value.as_str() != Some("local") {
+    if let Some(value) = engine.get("physicsMode") {
+        if !value.is_null() && !matches!(value.as_str(), Some("local" | "last" | "all")) {
             return Err("Invalid physicsMode".to_string());
         }
     }
-    Ok(points.len())
+    Ok(())
 }
 
 fn validate_point(value: &Value) -> Result<(), String> {
     let point = value
         .as_object()
         .ok_or_else(|| "Invalid point".to_string())?;
+    // Shared StudioPoint (55-05): x/y/p/tx/ty/tw + integer tick. No raw-ms,
+    // no engine-private spd on the shared sample.
     for (key, min, max) in [
         ("x", -1_000_000.0, 1_000_000.0),
         ("y", -1_000_000.0, 1_000_000.0),
@@ -2315,17 +2390,38 @@ fn validate_point(value: &Value) -> Result<(), String> {
         ("tx", -90.0, 90.0),
         ("ty", -90.0, 90.0),
         ("tw", -360.0, 360.0),
-        ("spd", 0.0, 100_000.0),
     ] {
         finite_range(point.get(key), key, min, max)?;
     }
     Ok(())
 }
 
+fn finite_number(value: Option<&Value>, label: &str) -> Result<(), String> {
+    match value.and_then(Value::as_f64) {
+        Some(number) if number.is_finite() => Ok(()),
+        _ => Err(format!("Invalid {label}")),
+    }
+}
+
 fn row_from_document(value: &Value, exact_bytes: &[u8]) -> Result<ScriptLibraryRow, String> {
     let object = value
         .as_object()
         .ok_or_else(|| "Invalid script".to_string())?;
+    // brushCount = number of groups = number of primaries (cuisson == 0).
+    let brush_count = object["strokes"]
+        .as_array()
+        .map(|strokes| {
+            strokes
+                .iter()
+                .filter(|stroke| {
+                    !stroke
+                        .get("cuisson")
+                        .and_then(Value::as_u64)
+                        .is_some_and(|value| value > 0)
+                })
+                .count()
+        })
+        .unwrap_or(0);
     Ok(ScriptLibraryRow {
         id: object["id"].as_str().unwrap().into(),
         revision: document_revision(value)?,
@@ -2335,8 +2431,73 @@ fn row_from_document(value: &Value, exact_bytes: &[u8]) -> Result<ScriptLibraryR
         updated_at: object["updatedAt"].as_str().unwrap().into(),
         source: object["source"].clone(),
         thumbnail: object["thumbnail"].clone(),
-        brush_count: object["brushes"].as_array().map_or(0, Vec::len),
+        brush_count,
+        refusal: None,
     })
+}
+
+/// D-16: a legacy-kind script stays visible as a refused row. Clean break means
+/// the format refuses to parse — never that the app destroys or hides data.
+fn row_from_legacy_document(
+    value: &Value,
+    exact_bytes: &[u8],
+    expected_id: &str,
+) -> ScriptLibraryRow {
+    let object = value.as_object().cloned().unwrap_or_default();
+    let text = |key: &str| -> String {
+        object
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .into()
+    };
+    ScriptLibraryRow {
+        id: if object
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| managed_filename(id).is_ok())
+        {
+            text("id")
+        } else {
+            expected_id.to_string()
+        },
+        revision: document_revision(value).unwrap_or_else(|_| "legacy".into()),
+        integrity_sha256: format!("{:x}", Sha256::digest(exact_bytes)),
+        name: {
+            let name = text("name");
+            if name.is_empty() {
+                "Legacy script".into()
+            } else {
+                name
+            }
+        },
+        created_at: {
+            let created = text("createdAt");
+            if created.is_empty() {
+                "1970-01-01T00:00:00Z".into()
+            } else {
+                created
+            }
+        },
+        updated_at: {
+            let updated = text("updatedAt");
+            if updated.is_empty() {
+                "1970-01-01T00:00:00Z".into()
+            } else {
+                updated
+            }
+        },
+        source: object
+            .get("source")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Default::default())),
+        thumbnail: object
+            .get("thumbnail")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Default::default())),
+        brush_count: 0,
+        refusal: Some("unreadable-legacy-script".into()),
+    }
 }
 
 fn atomic_write_bytes(path: &Path, bytes: &[u8], replace: bool) -> Result<(), String> {

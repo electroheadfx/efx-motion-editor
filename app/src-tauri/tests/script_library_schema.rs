@@ -7,15 +7,24 @@ use uuid::Uuid;
 
 fn document(id: &str, webp_base64: &str) -> Value {
     json!({
-        "kind": "efx-physics-paint-roto-script", "schemaVersion": 1, "id": id, "name": "Preset",
+        "kind": "efx-studio-paint-script", "engineId": "efx-physic-paint", "schemaVersion": 1, "id": id, "name": "Preset",
         "createdAt": "2026-07-16T12:00:00Z", "updatedAt": "2026-07-16T12:00:00Z",
         "source": { "projectName": "Project", "layerId": "layer-1", "layerName": "Ink", "sourceFrame": 2, "displayFrame": 4, "width": 1920, "height": 1080,
             "background": { "background": "transparent", "grainStrength": 0.0 } },
         "thumbnail": { "mimeType": "image/webp", "width": 2, "height": 2, "quality": 0.8, "dataUrl": format!("data:image/webp;base64,{webp_base64}") },
-        "brushes": [{ "primary": { "tool": "paint", "points": [{"x":1.0,"y":2.0,"p":0.5,"tx":0.0,"ty":0.0,"tw":0.0,"spd":0.0}], "color":"#112233",
-            "params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},
-            "timestamp":1,"hasPenInput":true,"playFrame":0,"physicsMode":"local" },
-            "continuations": [{ "tool":"paint","points":[],"color":"#112233","params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},"timestamp":2,"diffusionFrames":3 }] }]
+        "brushPack": { "kind": "efx-physic-paint", "entries": [] },
+        "strokes": [{"pts":[{"x":1.0,"y":2.0,"p":0.5,"tx":0.0,"ty":0.0,"tw":0.0,"tick":0}],"ticks":1,"cuisson":0,"motion":null,"brushId":"efx-physic-paint","toolOverrides":{},"traceSeed":1,"recordedOrder":1,"playFrame":null,"color":"#112233","engine":{"tool":"paint","color":"#112233","params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},"timestamp":1,"hasPenInput":true,"playFrame":0,"physicsMode":"local"}}, {"pts":[],"ticks":1,"cuisson":3,"motion":null,"brushId":"efx-physic-paint","toolOverrides":{},"traceSeed":2,"recordedOrder":2,"playFrame":null,"color":"#112233","engine":{"tool":"paint","color":"#112233","params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},"timestamp":2,"diffusionFrames":3}}]
+    })
+}
+
+fn legacy_document(id: &str, webp_base64: &str) -> Value {
+    json!({
+        "kind": "efx-physics-paint-roto-script", "schemaVersion": 1, "id": id, "name": "Old preset",
+        "createdAt": "2026-07-16T12:00:00Z", "updatedAt": "2026-07-16T12:00:00Z",
+        "source": { "projectName": "Project", "layerId": "layer-1", "layerName": "Ink", "sourceFrame": 2, "displayFrame": 4, "width": 1920, "height": 1080,
+            "background": { "background": "transparent", "grainStrength": 0.0 } },
+        "thumbnail": { "mimeType": "image/webp", "width": 2, "height": 2, "quality": 0.8, "dataUrl": format!("data:image/webp;base64,{webp_base64}") },
+        "brushes": []
     })
 }
 
@@ -46,7 +55,7 @@ fn rejects_malformed_limits_dates_and_webp_metadata() {
     value["updatedAt"] = json!("2026-07-15T12:00:00Z");
     assert!(validate_document(value, Some(&id)).is_err());
     let mut value = document(&id, &base64);
-    value["brushes"][0]["primary"]["timestamp"] = json!(9_007_199_254_740_992u64);
+    value["strokes"][0]["engine"]["timestamp"] = json!(9_007_199_254_740_992u64);
     assert!(validate_document(value, Some(&id)).is_err());
     let mut value = document(&id, &base64);
     value["thumbnail"]["width"] = json!(3);
@@ -82,6 +91,23 @@ fn scan_isolates_malformed_managed_documents() {
     assert_eq!(scan.rows.len(), 1);
     assert_eq!(scan.skipped_invalid_count, 1);
     assert!(fs::read_dir(fixture.scripts_root()).unwrap().count() >= 2);
+}
+
+#[test]
+fn legacy_scripts_stay_visible_as_refused_rows() {
+    let fixture = FixtureLibrary::new().unwrap();
+    let (_, base64) = webp();
+    let id = Uuid::new_v4().to_string();
+    // Legacy scripts are never saved through validate_document (clean break) —
+    // they are already on disk from v1.0.1. Write the file raw, then scan.
+    let document = legacy_document(&id, &base64);
+    fixture
+        .write_managed_raw(&format!("{id}.efx-roto-script.json"), &document.to_string())
+        .unwrap();
+    let scan = fixture.scan().unwrap();
+    assert_eq!(scan.rows.len(), 1);
+    assert_eq!(scan.skipped_invalid_count, 0);
+    assert_eq!(scan.rows[0].refusal.as_deref(), Some("unreadable-legacy-script"));
 }
 
 fn decode(input: &str) -> Vec<u8> {
