@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 22
+open_count: 24
 waived_count: 5
 fixed_count: 69
-total_count: 96
-last_updated: 2026-10-14T15:33:20.833Z
+total_count: 98
+last_updated: 2026-10-15T22:36:41.962Z
 ---
 
 # Broken Windows Ledger
@@ -111,6 +111,8 @@ last_updated: 2026-10-14T15:33:20.833Z
 | 94 | 53.1 | deviation | app/src/lib/previewRenderer.ts |  | Rule 3: preloadVideos targets narrowed to Layer[] after seq.fps repoint (unused param) | open |  | 2026-10-12T21:07:58.234Z |  |
 | 95 | quick-261013-ctd | deviation | app/src-tauri/src/services/ffmpeg.rs |  | TDD GREEN commit typed fix(...) per plan locked style; generic gate table expects feat(...) | open |  | 2026-10-13T07:28:42.229Z |  |
 | 96 | 54 | deviation | app/src/components/shared/NumericStepper.tsx |  | Rule 3 scope expansion: MutableRef/RefObject Preact 11 type fallout fixed beyond the three D-07 files (20 files total) | open |  | 2026-10-14T15:33:20.833Z |  |
+| 97 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 140 | setInputLocked/setAnimationMode are no-op flag sinks; AnimationPlayer wiring lands in a later plan (tracer slice) | open |  | 2026-10-15T22:36:41.860Z |  |
+| 98 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 175 | stepTick is a no-op; diffusion/drying cuisson lands in 56-03 (tracer pins one-stroke deposit only) | open |  | 2026-10-15T22:36:41.962Z |  |
 
 ````json
 [
@@ -1287,6 +1289,32 @@ last_updated: 2026-10-14T15:33:20.833Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-14T15:33:20.833Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 97,
+    "kind": "stub",
+    "phase": "56",
+    "file": "packages/efx-watercolor/src/adapter/engineAdapter.ts",
+    "line": 140,
+    "description": "setInputLocked/setAnimationMode are no-op flag sinks; AnimationPlayer wiring lands in a later plan (tracer slice)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-15T22:36:41.860Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 98,
+    "kind": "stub",
+    "phase": "56",
+    "file": "packages/efx-watercolor/src/adapter/engineAdapter.ts",
+    "line": 175,
+    "description": "stepTick is a no-op; diffusion/drying cuisson lands in 56-03 (tracer pins one-stroke deposit only)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-15T22:36:41.962Z",
     "resolved_at": null,
     "milestone": "v2.0.0"
   }
