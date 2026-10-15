@@ -14,7 +14,6 @@ import { signal } from '@preact/signals';
 import type { JSX } from 'preact';
 import { PAPER_LIBRARY, proceduralHeightMap, type PaperDefinition } from '@efxlab/efx-watercolor/papers';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { SectionLabel } from '../../shared/SectionLabel';
 
 export interface PaperPickerProps {
   paperId: string;
@@ -326,9 +325,4 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
       </div>
     </div>
   );
-}
-
-/** Test seam: the picker's section label (shared-panel mount copy). */
-export function PaperSectionLabel(): JSX.Element {
-  return <SectionLabel text="Paper" />;
 }
