@@ -620,6 +620,148 @@ describe('playbackEngine document clip dispatch (52.5-02, MAIN-MIX-01/02)', () =
 });
 
 // ---------------------------------------------------------------------------
+// GAP-55-01 (UAT row A2, phase-51 / 260902-cfa D-02 audible-scrub contract):
+// the app-timeline (main editor) scrub snippet must dispatch the paint
+// document-sound-clip leg exactly like play-from-cursor does — same membership,
+// same D-12/D-13 gate, same frame-space law — capped to the 4-frame snippet
+// window. The Studio ruler path (usePhysicsPaintRulerScrub →
+// useRotoCachedPlayback → efxPaintAudioMonitor) is the reference, not the patient.
+// ---------------------------------------------------------------------------
+
+describe('playbackEngine paint-clip audible scrub (GAP-55-01)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedClaimed.mockReturnValue(false);
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    audioStore.tracks.value = [];
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    soloStore.setSolo(false);
+    // Singleton scrub state reset (throttle timestamp + snippet flag).
+    playbackEngine.scrubAudioEnd();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    playbackEngine.scrubAudioEnd();
+    playbackEngine.stop();
+    audioStore.tracks.value = [];
+    sequenceStore.sequences.value = [];
+    resetEfxPaintStore();
+    soloStore.setSolo(false);
+    timelineStore.setPlaying(false);
+    timelineStore.seek(0);
+    vi.unstubAllGlobals();
+  });
+
+  function seed(sound: DocumentSoundClip | null, sequence: Sequence) {
+    sequenceStore.sequences.value = [sequence];
+    registerSoundDocument(sound);
+  }
+
+  it('(p1) a clip-only project dispatches exactly one paint snippet at the dragged frame (A2 repro)', () => {
+    // A2's acceptance leg: audioStore.tracks is empty — the paint document-sound
+    // clip is the project's only audio. Before the fix, startAudioSnippet
+    // iterated only audioStore.tracks and scrub was totally silent.
+    seed(makeSound(), makeFxSequence());
+    playbackEngine.scrubToFrame(96);
+    expect(mockedAudio.play.mock.calls.map((call) => call[0]).join(',')).toBe('sound-clip-1');
+  });
+
+  it('(p2) the paint snippet uses the play-path source offset and the 4-frame cap', () => {
+    // sourceOffset = (inFrame + slipOffset + framesIntoClip) / fps
+    //   = (0 + 24 + (96 - 48)) / 24 = 72 / 24 = 3.0
+    // maxPlaySeconds = min(effectiveEnd - frame, 4) / fps = 4 / 24
+    seed(makeSound({startFrame: 48, inFrame: 0, outFrame: 240, slipOffset: 24}), makeFxSequence());
+    playbackEngine.scrubToFrame(96);
+    expect(mockedAudio.play.mock.calls.length).toBe(1);
+    const call = mockedAudio.play.mock.calls[0];
+    expect(call[0]).toBe('sound-clip-1');
+    expect(call[1]).toBe(3.0);
+    expect(call[3]).toBe(24);
+    expect(call[4]).toBe(4 / 24);
+  });
+
+  it('(p2b) a clip ending inside the snippet window uses the remaining frames as the cap', () => {
+    // Clip window [48, 52): scrub at 50 → remaining 2 frames, sourceOffset (0+0+2)/24.
+    seed(makeSound({startFrame: 48, inFrame: 0, outFrame: 4}), makeFxSequence());
+    playbackEngine.scrubToFrame(50);
+    expect(mockedAudio.play.mock.calls.length).toBe(1);
+    const call = mockedAudio.play.mock.calls[0];
+    expect(call[0]).toBe('sound-clip-1');
+    expect(call[1]).toBe(2 / 24);
+    expect(call[4]).toBe(2 / 24);
+  });
+
+  it('(p3) enabled=false silences the paint snippet (D-12 gate during scrub)', () => {
+    seed(makeSound({enabled: false}), makeFxSequence());
+    playbackEngine.scrubToFrame(96);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(p4) solo ON silences the paint snippet (D-13 gate during scrub)', () => {
+    seed(makeSound(), makeFxSequence());
+    soloStore.setSolo(true);
+    playbackEngine.scrubToFrame(96);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(p5) a hidden fx sequence silences the paint snippet (D-13 gate during scrub)', () => {
+    seed(makeSound(), makeFxSequence({visible: false}));
+    playbackEngine.scrubToFrame(96);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(p6) main-track and paint-clip snippets mix in one scrubToFrame', () => {
+    seed(makeSound(), makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    // Both sound at frame 48: main track window [0, 240), clip window [48, 288).
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play.mock.calls.map((call) => call[0]).join(',')).toBe('audio-1,sound-clip-1');
+    const paintCall = mockedAudio.play.mock.calls[1];
+    expect(paintCall[1]).toBe(0);
+    expect(paintCall[4]).toBe(4 / 24);
+  });
+
+  it('(p7) a clip starting after the dragged frame is silent — never playDelayed from a snippet', () => {
+    // A snippet is what sounds AT the dragged frame, never a future-clip schedule.
+    seed(makeSound({startFrame: 48}), makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    playbackEngine.scrubToFrame(10);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1); // main track only
+    expect(mockedAudio.play.mock.calls[0][0]).toBe('audio-1');
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(p8) a held child audio claim suppresses both the main-track and the paint-clip snippet (D-05)', () => {
+    seed(makeSound(), makeFxSequence());
+    audioStore.tracks.value = [makeMainAudioTrack()];
+    mockedClaimed.mockReturnValue(true);
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).not.toHaveBeenCalled();
+    expect(mockedAudio.playDelayed).not.toHaveBeenCalled();
+  });
+
+  it('(p9) scrubAudioEnd after a paint-clip snippet stops it and the next scrub is unthrottled', () => {
+    seed(makeSound(), makeFxSequence());
+    const nowSpy = vi.spyOn(performance, 'now');
+    nowSpy.mockReturnValue(3000);
+    playbackEngine.scrubToFrame(48);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(1);
+    playbackEngine.scrubAudioEnd();
+    expect(mockedAudio.stopAll).toHaveBeenCalled();
+    nowSpy.mockReturnValue(3010); // inside the OLD throttle window
+    playbackEngine.scrubToFrame(96);
+    expect(mockedAudio.play).toHaveBeenCalledTimes(2);
+    nowSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Source contract (plan acceptance criteria): the dispatch seam, the decode-once
 // seam, and the path-safe reference join.
 // ---------------------------------------------------------------------------
