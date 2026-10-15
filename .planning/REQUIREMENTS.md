@@ -23,7 +23,7 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 - [x] **HOST-01**: `packages/efx-paint-host` owns animation schedules, traceSeed, script envelope, ticks + diffusionFrames — moved out of efx-physic-paint
 - [x] **HOST-02**: Host APIs are generic over the per-engine stroke payload (pts, ticks, cuisson, motion, brush id + toolOverrides) — never engine-specific params
 - [ ] **HOST-03**: Format-identical split proven against a pre-move golden bake (R5.2 / A4 replay parity) — a refactor guard, not a compatibility surface
-- [ ] **HOST-04**: Generic `StudioStroke<P>` + `EngineAdapter<P>` seam proven by a fake engine-2 payload (A5) with zero engine-1 types
+- [x] **HOST-04**: Generic `StudioStroke<P>` + `EngineAdapter<P>` seam proven by a fake engine-2 payload (A5) with zero engine-1 types
 - [ ] **HOST-05**: Fail-closed Apply contract across engines — named visible refusal, never half-apply
 
 ### Watercolor Engine (Phase 56 — efx-watercolor)
@@ -139,7 +139,7 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | HOST-01 | Phase 55 | Complete |
 | HOST-02 | Phase 55 | Complete |
 | HOST-03 | Phase 55 | Pending |
-| HOST-04 | Phase 55 | Pending |
+| HOST-04 | Phase 55 | Complete |
 | HOST-05 | Phase 55 | Pending |
 | AQUA-01 | Phase 56 | Pending |
 | AQUA-02 | Phase 56 | Pending |

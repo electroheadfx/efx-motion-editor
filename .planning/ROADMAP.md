@@ -119,7 +119,7 @@ Plans:
   3. Cross-engine or malformed Apply refuses with a named visible error and never half-applies
   4. Scripts run on a fixed integer tick grid (~1/60 s, never raw ms); unreadable scripts refuse with named visible errors; no migration code, dual-format readers, or backward-compat shims exist
 
-**Plans**: 7/9 plans executed
+**Plans**: 8/9 plans executed
 Plans:
 **Wave 1**
 - [x] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
@@ -141,7 +141,7 @@ Plans:
 - [x] 55-06-PLAN.md — TDD four named Apply refusals + no-partial pin (HOST-05, DATA-02, D-09..D-12)
 
 **Wave 7** *(blocked on Wave 6 completion)*
-- [ ] 55-07-PLAN.md — Fake engine-2 A5 pin + import-graph pin + bake-host pattern port (HOST-04, D-05..D-08/D-21)
+- [x] 55-07-PLAN.md — Fake engine-2 A5 pin + import-graph pin + bake-host pattern port (HOST-04, D-05..D-08/D-21)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 - [ ] 55-08-PLAN.md — Suite/typecheck green + live UAT A1–A4 close (R5.1–R5.3; A5 stays automated)
@@ -182,7 +182,7 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
-| 55. efx-paint-host (engine-1 host split) | 7/9 | In Progress | - |
+| 55. efx-paint-host (engine-1 host split) | 8/9 | In Progress | - |
 | 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 0/TBD | Not started | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |

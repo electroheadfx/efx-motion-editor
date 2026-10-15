@@ -5,16 +5,16 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 55
 current_phase_name: efx-paint-host (engine-1 host split)
 status: executing
-stopped_at: Completed 55-06-PLAN.md
-last_updated: "2026-10-15T07:44:13.453Z"
+stopped_at: Completed 55-07-PLAN.md
+last_updated: "2026-10-15T08:15:45.064Z"
 last_activity: 2026-10-15
 last_activity_desc: Phase 55 Plan 55-02 complete — host split landed
-state_head: 4ae4938f32d1b341bfcd096b775debcd30812659
+state_head: 0aae681de1d8787d7e55acc3aec6608da129fb0f
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 14
-  completed_plans: 12
+  completed_plans: 13
   percent: 25
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 55 (efx-paint-host (engine-1 host split)) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-10-15 — Plan 55-02 complete (host split)
 
@@ -171,6 +171,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 55 P04 | 4min | 2 tasks | 5 files |
 | Phase 55-efx-paint-host-engine-1-host-split P05 | 19min | 2 tasks | 17 files |
 | Phase 55 P55-06 | 14min | 2 tasks | 6 files |
+| Phase 55 P55-07 | 25min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -482,6 +483,9 @@ Recent decisions affecting current work:
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: brushPack pinned as { kind: efx-physic-paint, entries: [] } (landed 55-03 field name) — Keep the landed BrushPackSnapshot type; plan prose said brushes
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-05: Rust durable path cut over with the codec (Rule 2) so save/scan keep working — Cutover without it would break every save; D-16 refused rows need scan emission
 - [Phase 55]: 55-06: Four host codes map to four distinct named English lines on the existing owned-refusal surface (D-09/D-10); engine-mismatch detail carries package-id pair with D-15 display-name mapping; parseRotoScript discriminates engine-mismatch from malformed-engine-payload (Rule 2)
+- [Phase 55]: A5 play path is ONE shape: AnimationPlayer on StudioStroke<P> + bake via applyStroke/stepTick*/captureFrame on the same stub (D-05/D-06)
+- [Phase 55]: Import-graph pin walks the whole packages/efx-paint-host/src tree; dispose() does not bump generation for surviving flush-survives-navigation turns (D-21)
+- [Phase 55]: createBakeHost is the Phase 56 consumer API — PlayScript stays on finalizationQueue this phase (R1.3); deferral recorded in 55-07-SUMMARY
 
 ### Pending Todos
 
@@ -554,8 +558,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T07:44:13.421Z
-Stopped at: Completed 55-06-PLAN.md
+Last session: 2026-10-15T08:15:45.033Z
+Stopped at: Completed 55-07-PLAN.md
 Resume file: None
 
 ## Operator Next Steps
