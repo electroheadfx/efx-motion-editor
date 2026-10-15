@@ -125,11 +125,11 @@ Plans:
 - [ ] 55-01-PLAN.md — Pre-split golden capture + standing delta-zero parity pin (HOST-03, D-01..D-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 55-02-PLAN.md — Host package scaffold + move animation/ + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25)
+- [ ] 55-02-PLAN.md — Host package scaffold + ATOMIC move animation/ + all 13 consumer re-points + traceSeed/noise + genericize boundary (HOST-01, D-17/D-18/D-25)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [ ] 55-03-PLAN.md — TDD generic StudioStroke/P envelope + EngineAdapter + fail-closed parse (HOST-02, D-19; assumption-delta PROMOTE)
-- [ ] 55-09-PLAN.md — App animation import re-points + host test collection (HOST-01, R1.3; scope split from 55-02)
+- [ ] 55-09-PLAN.md — Standing animation-residue + package-surface lock pin (HOST-01 clean-break guard; does not unbreak 55-02)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 - [ ] 55-04-PLAN.md — TDD fixed integer tick grid + uncapped cuisson mechanism (DATA-03, D-20/D-23)
