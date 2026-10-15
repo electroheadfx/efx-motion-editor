@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// gsd-hook-version: 1.16.0
+// gsd-hook-version: 1.17.0
 // GSD Agent Isolation Dispatch Guard — PreToolUse hook (#3045)
 //
 // Problem: `gsd-core/workflows/execute-phase/steps/executor-isolation-dispatch.md`

@@ -4,7 +4,6 @@
   "permissions": {
     "allow": [
       "Bash(node:*)",
-      "Bash(npx gsd-core *)",
       "Read(.planning/*)",
       "Read(STATE.md)",
       "Edit(.planning/*)",
