@@ -19,6 +19,10 @@ import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSecti
 import { PhysicsPaintAudioListSection, type AudioSectionPorts } from './PhysicsPaintAudioListSection';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
+import { SectionLabel } from '../../shared/SectionLabel';
+import { activeModule } from '../../shared/activeModule';
+import { WatercolorModuleSection } from './WatercolorModuleSection';
+import { BrushModuleSection } from './BrushModuleSection';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -173,19 +177,6 @@ function clampWiggleValue(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return 0;
   return Math.max(0, Math.min(100, Math.trunc(numeric)));
-}
-
-function SmoothingButton(props: { label: string; value: number; active: boolean; disabled?: boolean; onSelect: (value: number) => void }) {
-  return (
-    <button
-      type="button"
-      class={`physics-paint-segmented-button${props.active ? ' active' : ''}`}
-      disabled={props.disabled}
-      onClick={() => props.onSelect(props.value)}
-    >
-      {props.label}
-    </button>
-  );
 }
 
 // 38-11: the Studio render path mounts this panel through the preact/compat
@@ -648,20 +639,45 @@ export function PhysicsPaintRightPanel({
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {effectiveToolTab === 'paint' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
-            <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
-            {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
-            {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
-            {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} disabled={engineControlsDisabled} /> : null}
-
-            <div class="physics-paint-option-group">
-              <span class="physics-paint-right-label">Brush smoothing</span>
-              <div class="physics-paint-segmented-row" role="group" aria-label="Brush smoothing">
-                <SmoothingButton label="Off" value={0} disabled={engineControlsDisabled} active={smoothing === 0} onSelect={onSmoothingChange} />
-                <SmoothingButton label="Soft" value={1} disabled={engineControlsDisabled} active={smoothing === 1} onSelect={onSmoothingChange} />
-                <SmoothingButton label="Med" value={2} disabled={engineControlsDisabled} active={smoothing === 2} onSelect={onSmoothingChange} />
-                <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
+            {/* 56-02 (D-05): SHARED block — always visible regardless of activeModule */}
+            <div class="physics-paint-shared-block" data-shared-block>
+              <div class="physics-paint-option-group">
+                <SectionLabel text="Color" />
+              </div>
+              <div class="physics-paint-option-group">
+                <SectionLabel text="Size" />
+              </div>
+              <div class="physics-paint-option-group">
+                <SectionLabel text="Opacity" />
+              </div>
+              <div class="physics-paint-option-group">
+                <SectionLabel text="Paper" />
+                <div class="physics-paint-option-row" data-paper-picker-placeholder>
+                  <span class="physics-paint-right-label">—</span>
+                </div>
               </div>
             </div>
+
+            {/* 56-02 (D-05): MODULE-ONLY block — drains per activeModule */}
+            {activeModule.value === 'watercolor' ? (
+              <WatercolorModuleSection />
+            ) : (
+              <BrushModuleSection
+                activeTool={activeTool}
+                edgeDetail={edgeDetail}
+                pickup={pickup}
+                spread={spread}
+                smoothing={smoothing}
+                eraseStrength={eraseStrength}
+                physicsMode={physicsMode}
+                engineControlsDisabled={engineControlsDisabled}
+                onEdgeDetailChange={onEdgeDetailChange}
+                onPickupChange={onPickupChange}
+                onSpreadChange={onSpreadChange}
+                onSmoothingChange={onSmoothingChange}
+                onEraseStrengthChange={onEraseStrengthChange}
+              />
+            )}
           </div>
         ) : effectiveToolTab === 'background' ? (
           // 49-06 (S5): a selected Bg clip shows the Background Clip properties
