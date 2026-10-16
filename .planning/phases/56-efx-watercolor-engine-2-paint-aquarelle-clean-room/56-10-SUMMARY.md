@@ -194,3 +194,12 @@ None.
 ## Phase verdict
 
 **automated-ready.** Full suite + typecheck green; UAT rows A1–A5 staged. AQUA-08 closes only when the user asserts A1–A5 (A3 as live visual). Do not claim done before live UAT.
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/56-efx-watercolor-engine-2-paint-aquarelle-clean-room/56-VERIFICATION.md`
+- FOUND: `.planning/phases/56-efx-watercolor-engine-2-paint-aquarelle-clean-room/56-UAT.md`
+- FOUND: `.planning/phases/56-efx-watercolor-engine-2-paint-aquarelle-clean-room/56-10-SUMMARY.md`
+- FOUND: `f906bf84` (task 1)
+- FOUND: `da70b708` (task 2)
+
