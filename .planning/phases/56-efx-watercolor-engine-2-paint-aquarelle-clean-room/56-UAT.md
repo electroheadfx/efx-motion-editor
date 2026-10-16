@@ -71,3 +71,15 @@ rows_pending: 5
 ## Current state
 
 All rows **PENDING**. Phase is **automated-ready** (full suite + typecheck green — see `56-VERIFICATION.md`). Awaiting the end-of-phase human batch.
+
+---
+
+## Instruction to the user (end-of-phase batch)
+
+Please run the **native app** and close AQUA-08 by asserting rows A1–A5 above.
+
+- Automations already green: full vitest suite (5129 passed) + typecheck. Nothing left for Claude to click.
+- Your job is the live/disk judgment: A1/A2 golden WebP hashes, **A3 wet-in-wet bloom + tide line (visual only)**, A4 cache-range independence, A5 export alpha.
+- Record PASS/FAIL per row in the table with an evidence note. For A3, attach a screenshot or write a short visual confirmation — a unit-test cite is not acceptable evidence.
+- On any FAIL, stop and tell me — we route to a gap-closure plan. Do not paper over.
+- When all five rows read PASS, AQUA-08 closes and Phase 56 is complete.
