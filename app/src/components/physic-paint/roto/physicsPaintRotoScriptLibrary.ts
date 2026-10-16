@@ -705,6 +705,7 @@ function deepFreezeSnapshot(script: RotoPaintScript): RotoPaintScript {
       primary: cloneSnapshotStroke(brush.primary),
       continuations: brush.continuations?.map(cloneSnapshotStroke),
     })),
+    ...(script.engineId !== undefined ? { engineId: script.engineId } : {}),
   };
   Object.freeze(snapshot.provenance);
   for (const brush of snapshot.brushes) {

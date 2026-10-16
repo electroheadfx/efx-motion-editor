@@ -8,6 +8,7 @@ import type {
   PhysicPaintRotoPhysicalEditSemanticDelta,
 } from '../../../types/physicPaint';
 import type { RotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
+import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   createPhysicPaintRotoKeyId,
@@ -26,6 +27,14 @@ import {
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { isWebpBytes } from '../../../types/physicPaint';
+import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
+import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
+import { toStudioStroke, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import {
+  createAquarelleBake as defaultCreateAquarelleBake,
+  type AquarelleBake,
+  type AquarelleBakeOptions,
+} from '@efxlab/efx-watercolor/bake';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
@@ -219,6 +228,21 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
   ) => Promise<RotoPlayScriptCommitResult>;
   stopPlayback: () => void;
   log: (message: string, error?: boolean) => void;
+  /**
+   * 56-08: aquarelle bake consume branch. Defaults to createAquarelleBake
+   * from @efxlab/efx-watercolor/bake (flush-survives-navigation, D-21).
+   * Injectable for tests; never a second bake queue.
+   */
+  createAquarelleBake?: (
+    adapter: EngineAdapter<AquarelleStrokePayload>,
+    options?: AquarelleBakeOptions,
+  ) => AquarelleBake;
+  /**
+   * 56-08: engine-2 adapter factory for the aquarelle bake. Absent port
+   * falls back to createAquarelleEngineAdapter (lazy — keeps the fluid
+   * engine out of the default UI chunk, 56-07 lean-subexport law).
+   */
+  createAquarelleAdapter?: (size: { width: number; height: number }) => EngineAdapter<AquarelleStrokePayload>;
 }
 
 export interface RotoPlayScriptController {
@@ -346,6 +370,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   let generation = 0;
   let abortController: AbortController | null = null;
   let disposed = false;
+  /** 56-08: live aquarelle bake (flush-survives-navigation). Survives dispose(). */
+  let aquarelleBake: AquarelleBake | null = null;
 
   const disabledReason = computed(() => {
     ports.availabilityRevision?.value;
@@ -1181,6 +1207,57 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     return confirmGeneration();
   }
 
+  /**
+   * 56-08: the aquarelle consume branch. Runs the script through
+   * createAquarelleBake (mode 'flush-survives-navigation') so a long fluid
+   * cuisson survives leaving the frame (AQUA-07). Published frames land in
+   * the same staged cache shape the timeline reads (R3.4 — cache only).
+   */
+  async function bakeAquarelleScript(input: {
+    snapshot: RotoPaintScript;
+    count: number;
+    start: number;
+    size: { width: number; height: number };
+    acceptedGeneration: number;
+  }): Promise<PhysicPaintRotoCacheFrame[]> {
+    const { snapshot, count, start, size, acceptedGeneration } = input;
+    const adapter = ports.createAquarelleAdapter
+      ? ports.createAquarelleAdapter(size)
+      : await createDefaultAquarelleAdapter(size);
+    const createBake = ports.createAquarelleBake ?? defaultCreateAquarelleBake;
+    const bake = createBake(adapter, { width: size.width, height: size.height });
+    aquarelleBake = bake;
+    try {
+      const events = aquarelleEventsFromScript(snapshot);
+      const result = await bake.bake(events);
+      if (disposed || generation !== acceptedGeneration) {
+        throw new DOMException('Play Script generation cancelled.', 'AbortError');
+      }
+      if (!result.ok) {
+        throw new Error(result.reason === 'cancelled'
+          ? 'Aquarelle bake cancelled.'
+          : 'Aquarelle bake failed. Nothing changed.');
+      }
+      // Fail-closed: the staged range must match the requested Play Script
+      // span. Cadence mapping onto progressive/static schedules is a later
+      // plan's surface — never silently pad or truncate.
+      if (result.frames.length !== count) {
+        throw new Error(`Aquarelle bake produced ${result.frames.length} frame(s), expected ${count}.`);
+      }
+      return result.frames.map((frame, index) => ({
+        frameIndex: index,
+        appFrame: start + index,
+        bytes: frame.bytes,
+        width: frame.width,
+        height: frame.height,
+        source: 'real-key' as const,
+      }));
+    } finally {
+      // The bake host may still be settling a long cuisson; the reference
+      // stays live until dispose()/flush settles it (never abort-on-dispose).
+    }
+  }
+
   /* 52-05 (G-52-3): the Reveal Photo Rail confirm — creation IS the first bake
      (D-11), routed through the SAME create-reveal-rail mutation as every reveal
      path (the rail lands baked, one undo entry). The D-12 reference guard is
@@ -1364,10 +1441,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       }
       const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
       phase.value = 'rendering'; progress.value = { completed: 0, total: count }; status.value = `Rendering 0 / ${count}`;
-      const staged = await renderRotoPlayScriptFrames({
-        script: snapshot, frameCount: count, canonicalStart: start, motion, mode: renderMode, overrideColor: renderOverrideColor, existingFrames, size: ports.getSize(), signal: abortController.signal,
-        onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Rendering ${completed} / ${total}`; } },
-      });
+      // 56-08 consume branch: aquarelle scripts bake through createAquarelleBake
+      // with mode 'flush-survives-navigation' (AQUA-07 / D-21). The engine-1
+      // path below is byte-stable — this is a branch, not a rewrite.
+      const staged = snapshot.engineId === 'efx-watercolor'
+        ? await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration })
+        : await renderRotoPlayScriptFrames({
+            script: snapshot, frameCount: count, canonicalStart: start, motion, mode: renderMode, overrideColor: renderOverrideColor, existingFrames, size: ports.getSize(), signal: abortController.signal,
+            onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Rendering ${completed} / ${total}`; } },
+          });
       assertCurrent(acceptedGeneration);
       const commitAuthority = await ports.requestAuthority(nextOperationId('commit-check'), start);
       assertCurrent(acceptedGeneration);
@@ -1630,8 +1712,73 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     dialogMode, loopEditTargetId, loopEditTarget, loopEditSourceStart, sourceEditSharedLoopCount, regenerateDisabledReason, regenerateImpact, loopIntentActive, identicalSourceCycle, linkChoice,
     openLoopEdit, openSourceEdit, repairLoop, updateLoop, unlinkLoop, duplicateLinkedLoop, relinkLoop, findIdenticalSourceCycle,
     railTab, revealCountText, parsedRevealCount, revealValidationError, revealReferencePlaced, setRailTab, requestPhotoReference,
-    openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion, dispose: () => { disposed = true; generation += 1; stopStaticDefaults(); abortController?.abort(); abortController = null; },
+    openConfirmation, closeConfirmation, confirm, cancel, setMax, setInfinity, resetDialogMotion,
+    dispose: () => {
+      disposed = true;
+      generation += 1;
+      stopStaticDefaults();
+      // AQUA-07 / D-21: a long aquarelle cuisson SURVIVES dispose(). Settle
+      // in-flight turns through the bake host's flush — never abort them and
+      // never discard already-committed frames. The engine-1 abort below is
+      // the PlayScript renderer's own dispose semantics and stays as-is.
+      const liveBake = aquarelleBake;
+      aquarelleBake = null;
+      if (liveBake) {
+        void liveBake.flush().catch(() => undefined);
+      }
+      abortController?.abort();
+      abortController = null;
+    },
   };
+}
+
+/** Default engine-2 adapter — lazy so the fluid engine stays out of the UI chunk. */
+async function createDefaultAquarelleAdapter(
+  size: { width: number; height: number },
+): Promise<EngineAdapter<AquarelleStrokePayload>> {
+  const { createAquarelleEngineAdapter } = await import('@efxlab/efx-watercolor');
+  return createAquarelleEngineAdapter({ width: size.width, height: size.height });
+}
+
+/**
+ * Project a Roto script's recorded strokes onto the 56-06 payload union.
+ * Engine-1 field names never leak into P — this is the engine-2 projection
+ * seam (toStudioStroke field-mapping law). Dry events ride the same union.
+ */
+function aquarelleEventsFromScript(script: RotoPaintScript): StudioStroke<AquarelleStrokePayload>[] {
+  const events: StudioStroke<AquarelleStrokePayload>[] = [];
+  const project = (stroke: RotoPaintScript['brushes'][number]['primary']): StudioStroke<AquarelleStrokePayload> => {
+    const raw: AquarelleStroke = {
+      tool: 'brush',
+      color: stroke.color,
+      params: {
+        size: stroke.params.size,
+        water: stroke.params.waterAmount,
+        load: stroke.params.opacity,
+        flow: 50,
+        bleed: 50,
+        dry: stroke.params.dryAmount,
+        edge: stroke.params.edgeDetail,
+        granulation: 50,
+      },
+      brushId: 'wc/round-medium',
+      points: stroke.points.map((point) => ({
+        x: point.x, y: point.y, p: point.p, tx: point.tx, ty: point.ty, tw: point.tw,
+      })),
+      ...(stroke.mutationId !== undefined ? { mutationId: stroke.mutationId } : {}),
+      ...(stroke.diffusionFrames !== undefined ? { diffusionFrames: stroke.diffusionFrames } : {}),
+      timestamp: stroke.timestamp,
+      ...(stroke.playFrame !== undefined ? { playFrame: stroke.playFrame } : {}),
+    };
+    return toStudioStroke(raw);
+  };
+  for (const brush of script.brushes) {
+    events.push(project(brush.primary));
+    for (const continuation of brush.continuations ?? []) {
+      events.push(project(continuation));
+    }
+  }
+  return events;
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {

@@ -35,6 +35,13 @@ export interface RotoPaintScript {
   sourceDisplayFrame: number;
   sourceRevision: number;
   brushes: readonly Readonly<RecordedStrokeGroup>[];
+  /**
+   * 56-08: the envelope engine discriminator. Absent = engine-1
+   * ('efx-physic-paint'), which is the byte-stable default. Present as
+   * 'efx-watercolor' routes the Play Script bake through the aquarelle
+   * consume branch (flush-survives-navigation, AQUA-07).
+   */
+  engineId?: string;
 }
 
 export interface RotoScriptActionAvailability {
