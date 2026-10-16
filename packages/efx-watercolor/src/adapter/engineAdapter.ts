@@ -8,9 +8,11 @@
 //  malformed input, never throws) — the host never reads P
 //  (T-56-03 mitigation).
 //
-//  Play path: applyStroke deposits strokes; Dry events call the
-//  engine's wet-state fix at their tick (D-15). Frame indices
-//  never force-dry (P4 / D-28).
+//  Play/bake path (56-11, one stepping law live == bake):
+//  applyStroke deposits onto the FluidSheet via depositStrokeOnSheet;
+//  stepTick advances step(sheet, 1) per integer tick; captureFrame
+//  returns the sheet raster. Dry events call forceDrySheet at their
+//  tick (D-15). Frame indices never force-dry (P4 / D-28).
 // ============================================================
 
 import type {
@@ -26,10 +28,11 @@ import {
   type AquarellePayloadEvent,
 } from '../payload/dryEvent'
 import { payloadCodec } from '../payload/codec'
-import { depositStroke } from '../engine/deposit'
+import { depositStrokeOnSheet } from '../engine/deposit'
 import type { DepositCanvas } from '../engine/deposit'
-import { createSheet, isDrySheet, type FluidSheet } from '../engine/fluid'
+import { createSheet, isDrySheet, step, type FluidSheet } from '../engine/fluid'
 import { forceDrySheet } from '../engine/drying'
+import { drawSheetToCanvas } from '../engine/raster'
 import { findTip, TIPS } from '../brushes/tips'
 
 export interface AquarelleAdapterOptions {
@@ -63,17 +66,9 @@ export function createAquarelleEngineAdapter(
   let sheet: FluidSheet | null =
     width > 0 && height > 0 ? createSheet(width, height) : null
 
-  const depositAll = (limit?: number): void => {
-    if (disposed || !canvas) return
-    const tip = TIPS[0]
-    if (!tip) return
-    const count = limit === undefined ? strokes.length : Math.min(limit, strokes.length)
-    for (let i = 0; i < count; i++) {
-      const stroke = strokes[i]
-      if (!stroke) continue
-      const strokeTip = findTip(stroke.brushId) ?? tip
-      depositStroke(canvas, stroke, strokeTip, { width, height })
-    }
+  const rasterToCanvas = (): void => {
+    if (disposed || !sheet || !canvas) return
+    drawSheetToCanvas(sheet, canvas as HTMLCanvasElement)
   }
 
   /** User-initiated Dry (D-15) — wet-state fix at the event's tick. */
@@ -107,14 +102,22 @@ export function createAquarelleEngineAdapter(
       if (disposed) return
       for (const entry of strokeData) {
         const existing = strokes.find((s) => s.traceSeed === entry.stroke.traceSeed)
-        if (!existing) strokes.push(entry.stroke)
+        if (!existing) {
+          strokes.push(entry.stroke)
+          if (sheet) depositStrokeOnSheet(sheet, entry.stroke, findTip(entry.stroke.brushId) ?? TIPS[0])
+        }
       }
-      depositAll()
+      rasterToCanvas()
     },
     renderAllStrokes(): void {
-      depositAll()
+      if (disposed || !sheet) return
+      for (const stroke of strokes) {
+        depositStrokeOnSheet(sheet, stroke, findTip(stroke.brushId) ?? TIPS[0])
+      }
+      rasterToCanvas()
     },
     exportCompositeCanvas(): HTMLCanvasElement {
+      rasterToCanvas()
       return canvas as unknown as HTMLCanvasElement
     },
     applyStroke(stroke: StudioStroke<AquarelleStrokePayload>): void {
@@ -128,15 +131,20 @@ export function createAquarelleEngineAdapter(
       const parsed = acceptEvent(stroke)
       if (!parsed || isAquarelleDryEvent(parsed)) return
       strokes.push(parsed)
-      if (!canvas) return
+      if (!sheet) return
       const tip = findTip(parsed.brushId) ?? TIPS[0]
       if (!tip) return
-      depositStroke(canvas, parsed, tip, { width, height })
+      depositStrokeOnSheet(sheet, parsed, tip)
+      rasterToCanvas()
     },
     stepTick(_tick: number): void {
-      /* continuous physics tick — frame indices never force-dry (P4) */
+      // Integer ticks only (DATA-03). Frame indices never force-dry (P4).
+      if (disposed || !sheet) return
+      step(sheet, 1)
+      rasterToCanvas()
     },
     captureFrame(): CanvasImageSource {
+      rasterToCanvas()
       return canvas as unknown as CanvasImageSource
     },
     dispose(): void {
