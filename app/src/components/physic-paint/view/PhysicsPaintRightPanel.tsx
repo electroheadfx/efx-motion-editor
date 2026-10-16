@@ -665,20 +665,6 @@ export function PhysicsPaintRightPanel({
             {/* 56-02 (D-05): SHARED block — always visible regardless of activeModule */}
             <div class="physics-paint-shared-block" data-shared-block>
               <div class="physics-paint-option-group">
-                <SectionLabel text="Color" />
-                <div class="physics-paint-shared-color-row" aria-label="Shared brush color">
-                  <input
-                    type="color"
-                    class="physics-paint-color-chip"
-                    value={color}
-                    aria-label="Brush color"
-                    disabled={engineControlsDisabled}
-                    onInput={(event) => onColorChange((event.target as HTMLInputElement).value, opacity)}
-                  />
-                  <span class="physics-paint-shared-color-hex">{color}</span>
-                </div>
-              </div>
-              <div class="physics-paint-option-group">
                 <SectionLabel text="Size" />
                 {activeModule.value === 'watercolor' ? (
                   <SliderStepper

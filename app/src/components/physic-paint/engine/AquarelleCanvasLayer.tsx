@@ -183,7 +183,6 @@ function applyLiveConfig(engine: WatercolorEngine): void {
   engine.setBrush(
     buildBrushForStroke(brushIdForSelection(), aquarelleToolOverrides.value),
   );
-  engine.setPigment(pigmentFromHex('#103c65'));
 }
 
 export function AquarelleCanvasLayer(props: {
