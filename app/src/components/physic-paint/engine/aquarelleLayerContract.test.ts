@@ -98,4 +98,14 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('paperPresetForStudioId');
     expect(studio).toContain('getAquarellePaperId');
   });
+
+  it('CURSOR: brush-size preview ring — HTML pointer hidden, ring follows aquarelleParams.size', () => {
+    // The HTML pointer is replaced by the dual-ring cursor (UI checklist row 1).
+    expect(css).toContain('cursor: none');
+    expect(layer).toContain('AquarelleBrushCursor');
+    expect(layer).toContain('aquarelleParams.value.size');
+    // Dual-ring family: dark under-stroke + white over-stroke.
+    expect(layer).toContain('stroke="#111111"');
+    expect(layer).toContain('stroke="#ffffff"');
+  });
 });

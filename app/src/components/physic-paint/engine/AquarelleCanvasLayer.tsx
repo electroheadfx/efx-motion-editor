@@ -17,7 +17,8 @@
 //  editor, never p5.brush.
 // ============================================================
 
-import type { CSSProperties } from 'preact';
+import type { CSSProperties, JSX } from 'preact';
+import { signal } from '@preact/signals';
 import { useCallback, useRef } from 'preact/hooks';
 import {
   buildBrushForStroke,
@@ -45,6 +46,69 @@ const HOST_TICK_MS = 1000 / HOST_TICK_HZ;
 
 /** Engine.ts FIX_DURATION (1.2s) — Dry bakes the wet pigment over this window. */
 const FIX_SETTLE_MS = 1200;
+
+// ============================================================
+//  Brush-size preview cursor (UI checklist row 1). Same dual-ring
+//  family as engine-1's drawBrushCursor: dark under-stroke +
+//  white over-stroke, crosshair fallback under 8px. The ring
+//  follows the top-bar Brush size (aquarelleParams.size). DOM
+//  refs only — no state, no effect (efx-preact-reactivity).
+// ============================================================
+
+const CURSOR_CROSSHAIR_SIZE = 23;
+const cursorX = signal(-1);
+const cursorY = signal(-1);
+const cursorVisible = signal(false);
+
+function AquarelleBrushCursor(): JSX.Element {
+  const x = cursorX.value;
+  const y = cursorY.value;
+  const visible = cursorVisible.value;
+  if (!visible || x < 0) return null;
+
+  const brushSize = aquarelleParams.value.size;
+  const showCircle = brushSize >= 8;
+  const size = showCircle ? brushSize : CURSOR_CROSSHAIR_SIZE;
+  const r = size / 2 - 1.5;
+
+  return (
+    <div
+      class="aquarelle-brush-cursor"
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        left: `${x - size / 2}px`,
+        top: `${y - size / 2}px`,
+        width: `${size}px`,
+        height: `${size}px`,
+        pointerEvents: 'none',
+        zIndex: 50,
+      }}
+    >
+      {showCircle ? (
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible', display: 'block' }}>
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#111111" strokeWidth={3} vectorEffect="non-scaling-stroke" />
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#ffffff" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+        </svg>
+      ) : (
+        <svg width={CURSOR_CROSSHAIR_SIZE} height={CURSOR_CROSSHAIR_SIZE} viewBox={`0 0 ${CURSOR_CROSSHAIR_SIZE} ${CURSOR_CROSSHAIR_SIZE}`} style={{ overflow: 'visible', display: 'block' }}>
+          <g stroke="#111111" strokeWidth={3} vectorEffect="non-scaling-stroke">
+            <line x1={0} y1={11.5} x2={10} y2={11.5} />
+            <line x1={13} y1={11.5} x2={23} y2={11.5} />
+            <line x1={11.5} y1={0} x2={11.5} y2={10} />
+            <line x1={11.5} y1={13} x2={11.5} y2={23} />
+          </g>
+          <g stroke="#ffffff" strokeWidth={1} vectorEffect="non-scaling-stroke">
+            <line x1={0} y1={11.5} x2={10} y2={11.5} />
+            <line x1={13} y1={11.5} x2={23} y2={11.5} />
+            <line x1={11.5} y1={0} x2={11.5} y2={10} />
+            <line x1={11.5} y1={13} x2={11.5} y2={23} />
+          </g>
+        </svg>
+      )}
+    </div>
+  );
+}
 
 type RawSample = { x: number; y: number; p: number; tx: number; ty: number; t: number };
 
@@ -329,7 +393,19 @@ export function AquarelleCanvasLayer(props: {
   };
 
   return (
-    <div class="aquarelle-live-layer" style={{ position: 'absolute', inset: '0' }}>
+    <div
+      class="aquarelle-live-layer"
+      style={{ position: 'absolute', inset: '0' }}
+      onPointerMove={(event) => {
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        cursorX.value = event.clientX - rect.left;
+        cursorY.value = event.clientY - rect.top;
+        if (!cursorVisible.value) cursorVisible.value = true;
+      }}
+      onPointerLeave={() => {
+        cursorVisible.value = false;
+      }}
+    >
       <canvas
         key={`${props.width}x${props.height}`}
         ref={attachEngine}
@@ -339,6 +415,7 @@ export function AquarelleCanvasLayer(props: {
         style={style}
         aria-label="Water color canvas"
       />
+      <AquarelleBrushCursor />
     </div>
   );
 }

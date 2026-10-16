@@ -6480,6 +6480,8 @@ button.destructive {
 .demo-canvas-shell .aquarelle-live-canvas {
   z-index: 4 !important;
   mix-blend-mode: multiply;
+  /* UI checklist row 1: the HTML pointer is replaced by the brush-size ring. */
+  cursor: none;
 }
 
 /* 48-06 (N2/N3): the engine shell can carry the active track's opacity/blend
