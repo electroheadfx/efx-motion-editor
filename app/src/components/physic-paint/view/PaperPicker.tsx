@@ -36,16 +36,18 @@ const GRID_GAP = 8;
 /**
  * Height-map lit relief preview (D-11): a plain canvas shade of the
  * procedural height field. Pure presentation — no paperPass, no engine.
- * Cached per (id, size) so re-renders never regenerate.
+ * Cached as ImageData per (id, size) so re-renders never regenerate.
+ * Painted into a cell <canvas> — never a toDataURL string (52.1 D-19
+ * forbids the frame-transport base64 surface, including picker thumbs).
  */
-const reliefCache = new Map<string, string>();
-function proceduralReliefDataUrl(id: string): string | null {
+const reliefCache = new Map<string, ImageData | null>();
+function proceduralReliefImage(id: string): ImageData | null {
   const key = `${id}:${CELL_SIZE}`;
   const cached = reliefCache.get(key);
-  if (cached !== undefined) return cached || null;
+  if (cached !== undefined) return cached;
   const height = proceduralHeightMap(id, 1, CELL_SIZE, CELL_SIZE);
   if (!height) {
-    reliefCache.set(key, '');
+    reliefCache.set(key, null);
     return null;
   }
   // Lightweight relief shade: h as luminance, one-sided slope toward light.
@@ -54,7 +56,7 @@ function proceduralReliefDataUrl(id: string): string | null {
   canvas.height = CELL_SIZE;
   const ctx = canvas.getContext('2d');
   if (!ctx) {
-    reliefCache.set(key, '');
+    reliefCache.set(key, null);
     return null;
   }
   const image = ctx.createImageData(CELL_SIZE, CELL_SIZE);
@@ -74,10 +76,8 @@ function proceduralReliefDataUrl(id: string): string | null {
       image.data[offset + 3] = 255;
     }
   }
-  ctx.putImageData(image, 0, 0);
-  const dataUrl = canvas.toDataURL();
-  reliefCache.set(key, dataUrl);
-  return dataUrl;
+  reliefCache.set(key, image);
+  return image;
 }
 
 function PaperCell(props: {
@@ -87,7 +87,7 @@ function PaperCell(props: {
   disabled?: boolean;
 }): JSX.Element {
   const isReal = props.entry.group === 'real';
-  const relief = isReal ? null : proceduralReliefDataUrl(props.entry.id);
+  const relief = isReal ? null : proceduralReliefImage(props.entry.id);
   // Loading / decode-failure share one placeholder: --color-bg-input + name
   // (UI-SPEC loading + error rows — never a blank cell, never a crash).
   const showPlaceholder = isReal || relief === null;
@@ -128,11 +128,17 @@ function PaperCell(props: {
           />
         ) : null
       ) : (
-        <img
-          src={relief!}
-          alt={props.entry.name}
+        <canvas
           data-paper-tile="procedural"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          aria-label={props.entry.name}
+          width={CELL_SIZE}
+          height={CELL_SIZE}
+          ref={(el: HTMLCanvasElement | null) => {
+            if (!el) return;
+            const ctx = el.getContext('2d');
+            if (ctx && relief) ctx.putImageData(relief, 0, 0);
+          }}
+          style={{ width: '100%', height: '100%', display: 'block' }}
         />
       )}
       <span

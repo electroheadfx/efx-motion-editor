@@ -101,7 +101,27 @@ vi.mock('../../sidebar/SidebarScrollArea', () => ({
 vi.mock('./PhysicsPaintScriptsPanel', () => ({
   PhysicsPaintScriptsPanel: () => null,
 }));
-vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null, Trash2: () => null, AudioWaveform: () => null }));
+// Icons used by the panel tree pulled in through WatercolorModuleSection
+// (AquarelleToolRow + BrushesDocker) and the sections this harness walks.
+vi.mock('lucide-preact', () => {
+  const Icon = () => null;
+  return {
+    GripHorizontal: Icon,
+    X: Icon,
+    Trash2: Icon,
+    AudioWaveform: Icon,
+    Paintbrush: Icon,
+    Droplet: Icon,
+    Pen: Icon,
+    Eraser: Icon,
+    Plus: Icon,
+    FolderOpen: Icon,
+    Star: Icon,
+    ChevronDown: Icon,
+    ChevronRight: Icon,
+    Search: Icon,
+  };
+});
 // The Background Clip section is signals-driven (useSignal only); the harness
 // walks components as plain function calls, so useSignal maps to the real
 // signal core (the BackgroundAssetPickerView.test.ts pattern).
@@ -567,7 +587,9 @@ describe('PhysicsPaintRightPanel scroll hierarchy (260905-epb)', () => {
 
 describe('Physics Paint right panel pickup label (260930-ni6)', () => {
   it('labels the pickup slider Blending and keeps the physics-pickup control wiring', () => {
-    const panelSrc = readFileSync(new URL('./PhysicsPaintRightPanel.tsx', import.meta.url), 'utf8');
+    // 56-02 panel-split moved the Brush-module sliders into BrushModuleSection.
+    // The rename pin follows the control home (D-05 shared/module split).
+    const panelSrc = readFileSync(new URL('./BrushModuleSection.tsx', import.meta.url), 'utf8');
     // Presence of the new label proves the rename (the label prop holds exactly one value).
     expect(panelSrc).toContain('label="Blending"');
     // The id pin guards the control wiring — value/onChange stay on the same element.

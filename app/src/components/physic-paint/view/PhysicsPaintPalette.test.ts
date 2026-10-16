@@ -89,7 +89,25 @@ vi.mock('../../sidebar/SidebarScrollArea', () => ({
 vi.mock('./PhysicsPaintScriptsPanel', () => ({
   PhysicsPaintScriptsPanel: () => null,
 }));
-vi.mock('lucide-preact', () => ({ GripHorizontal: () => null, X: () => null }));
+// Icons used by the panel tree pulled in through WatercolorModuleSection
+// (AquarelleToolRow + BrushesDocker).
+vi.mock('lucide-preact', () => {
+  const Icon = () => null;
+  return {
+    GripHorizontal: Icon,
+    X: Icon,
+    Paintbrush: Icon,
+    Droplet: Icon,
+    Pen: Icon,
+    Eraser: Icon,
+    Plus: Icon,
+    FolderOpen: Icon,
+    Star: Icon,
+    ChevronDown: Icon,
+    ChevronRight: Icon,
+    Search: Icon,
+  };
+});
 
 import { PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
 

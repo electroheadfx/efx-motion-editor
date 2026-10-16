@@ -1399,7 +1399,8 @@ describe('Physics Paint background swatch write-through (49-04 UAT fix)', () => 
     // wrapper must call setBackgroundFallback with backgroundModeToFallback for
     // the launch layer, and the topBar must consume the wrapper, not the raw
     // engine action.
-    expect(studio).toContain('const handleBackgroundChange = (mode: BgMode) => {');
+    // 56-05 widened the handler parameter to StudioBackgroundMode (BgMode | PaperTexture).
+    expect(studio).toContain('const handleBackgroundChange = (mode: StudioBackgroundMode) => {');
     expect(studio).toContain('setBackground(mode);');
     expect(studio).toContain('setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));');
     // The topBar consumes the wrapper, and the memo re-resolves with the new
