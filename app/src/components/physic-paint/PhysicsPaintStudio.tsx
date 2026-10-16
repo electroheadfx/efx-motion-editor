@@ -160,7 +160,7 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { recordAquarelleStroke } from './view/aquarelleRecordState';
+import { recordAquarelleStroke, setAquarelleParam } from './view/aquarelleRecordState';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
@@ -3551,7 +3551,13 @@ export function PhysicsPaintStudio() {
     grainScale: settings.grainScale,
     ready: readyToApply,
     disabled: staticControlsLocked,
-    onBrushSizeChange: setBrushSize,
+    // UI checklist row 3: one shared Size slider. In Water color mode the
+    // top-bar Brush size drives aquarelleParams.size; in Brush mode it stays
+    // on settings.size. Routed at call time (activeModule is a signal).
+    onBrushSizeChange: (value: number) => {
+      if (activeModule.value === 'watercolor') setAquarelleParam('size', value);
+      else setBrushSize(value);
+    },
     onOpacityChange: setBrushOpacity,
     onBackgroundChange: handleBackgroundChange,
     onGrainStrengthChange: handleGrainStrengthChange,
@@ -3663,7 +3669,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setBrushSize, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handlePaperStrengthChange, handlePaperScaleChange], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handlePaperStrengthChange, handlePaperScaleChange], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3681,8 +3687,6 @@ export function PhysicsPaintStudio() {
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
-    size: settings.size,
-    onSizeChange: setBrushSize,
     edgeDetail: settings.edgeDetail,
     pickup: settings.pickup,
     spread: settings.spread,

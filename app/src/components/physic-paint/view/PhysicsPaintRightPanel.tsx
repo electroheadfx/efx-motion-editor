@@ -35,8 +35,6 @@ export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
   color: string;
   opacity: number;
-  size: number;
-  onSizeChange: (value: number) => void;
   edgeDetail: number;
   pickup: number;
   spread: number;
@@ -208,8 +206,6 @@ export function PhysicsPaintRightPanel({
   activeTool,
   color,
   opacity,
-  size,
-  onSizeChange,
   edgeDetail,
   pickup,
   spread,
@@ -664,34 +660,6 @@ export function PhysicsPaintRightPanel({
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
             {/* 56-02 (D-05): SHARED block — always visible regardless of activeModule */}
             <div class="physics-paint-shared-block" data-shared-block>
-              <div class="physics-paint-option-group">
-                <SectionLabel text="Size" />
-                {activeModule.value === 'watercolor' ? (
-                  <SliderStepper
-                    id="shared-size"
-                    label="Size"
-                    value={aquarelleParams.value.size}
-                    onChange={(v) => setAquarelleParam('size', v)}
-                    step={1}
-                    min={1}
-                    max={80}
-                    disabled={engineControlsDisabled}
-                    ariaLabel="Size"
-                  />
-                ) : (
-                  <SliderStepper
-                    id="shared-size"
-                    label="Size"
-                    value={size}
-                    onChange={onSizeChange}
-                    step={1}
-                    min={1}
-                    max={80}
-                    disabled={engineControlsDisabled}
-                    ariaLabel="Size"
-                  />
-                )}
-              </div>
               <div class="physics-paint-option-group">
                 <SectionLabel text="Opacity" />
                 {activeModule.value === 'watercolor' ? (

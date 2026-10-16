@@ -1,9 +1,11 @@
 import type { BgMode } from '@efxlab/efx-physic-paint';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
+import { activeModule } from '../../shared/activeModule';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN, type PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import { aquarelleParams } from './aquarelleRecordState';
 
 /** 56-05 (PAPER-01): selector segments + Studio paper library textures. */
 export type TopBarBackgroundMode = BgMode | PaperTexture;
@@ -107,6 +109,9 @@ export function PhysicsPaintTopBar({
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
   const statusTone = getPhysicsPaintEngineStatusTone({ ready });
+  // UI checklist row 3: one shared Size slider — the displayed Brush size is
+  // the live aquarelle size in Water color mode (signal read bypasses the memo).
+  const liveBrushSize = activeModule.value === 'watercolor' ? aquarelleParams.value.size : brushSize;
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -118,7 +123,7 @@ export function PhysicsPaintTopBar({
       <ModuleSwitcher />
 
       <div class="physics-paint-topbar-primary">
-        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={brushSize} onChange={onBrushSizeChange} disabled={disabled} />
+        <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
 
         <div class="physics-paint-topbar-control">
