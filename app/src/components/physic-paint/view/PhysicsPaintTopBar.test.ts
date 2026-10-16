@@ -79,17 +79,22 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(getCssRuleBlock(css(), '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
   });
 
-  it('reserves no fixed minimum side-column width in the topbar grid at any width', () => {
+  it('keeps the topbar as one non-wrapping row — tools pushed right, no grid columns', () => {
     const styles = css();
-    expect(getCssRuleBlock(styles, '.physics-paint-topbar {')).toContain('grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr)');
+    const bar = getCssRuleBlock(styles, '.physics-paint-topbar {');
+    expect(bar).toContain('display: flex');
+    expect(bar).toContain('flex-wrap: nowrap');
+    expect(bar).not.toContain('grid-template-columns');
     expect(styles).not.toContain('minmax(170px, 1fr)');
     expect(styles).not.toContain('minmax(120px, 1fr)');
   });
 
-  it('wraps the primary control cluster at the base level instead of only inside a breakpoint', () => {
+  it('pushes the tool cluster right and never wraps it', () => {
     const styles = css();
     const base = styles.slice(0, styles.indexOf('@media'));
-    expect(getCssRuleBlock(base, '.physics-paint-topbar-primary {')).toContain('flex-wrap: wrap');
+    const primary = getCssRuleBlock(base, '.physics-paint-topbar-primary {');
+    expect(primary).toContain('margin-left: auto');
+    expect(primary).toContain('flex-wrap: nowrap');
   });
 });
 

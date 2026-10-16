@@ -115,12 +115,13 @@ export function PhysicsPaintTopBar({
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
-      <div class="physics-paint-topbar-status" aria-live="polite">
-        <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
+      <div class="physics-paint-topbar-left">
+        <div class="physics-paint-topbar-status" aria-live="polite">
+          <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
+        </div>
+        {/* 56-02 (D-01): module switcher — one shared component, one signal */}
+        <ModuleSwitcher />
       </div>
-
-      {/* 56-02 (D-01): module switcher — one shared component, one signal */}
-      <ModuleSwitcher />
 
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />

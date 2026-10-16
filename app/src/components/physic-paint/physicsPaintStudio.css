@@ -440,8 +440,8 @@ button.destructive {
 
 .physics-paint-topbar {
   grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 14px;
   min-height: 58px;
@@ -450,15 +450,21 @@ button.destructive {
   background: #3e3f41;
 }
 
+/* UI checklist row 4: one row — left = status + modules, right = tools. */
+.physics-paint-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .physics-paint-topbar-primary {
   display: flex;
-  flex-wrap: wrap;
-  justify-self: center;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
+  margin-left: auto;
   gap: 8px 14px;
   min-width: 0;
-  max-width: 100%;
 }
 
 .physics-paint-topbar-control {
@@ -6609,15 +6615,11 @@ button.destructive {
 
 @media (max-width: 860px) {
   .physics-paint-topbar {
-    grid-template-columns: 1fr;
+    overflow-x: auto;
   }
 
   .physics-paint-topbar-status {
     justify-content: center;
-  }
-
-  .physics-paint-topbar-primary {
-    flex-wrap: wrap;
   }
 }
 
