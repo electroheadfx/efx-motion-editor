@@ -590,6 +590,19 @@ function hydrateFromMce(
       const seq: Sequence = {
         id: mceSeq.id,
         kind: (mceSeq.kind as 'content' | 'fx' | 'content-overlay') ?? 'content',
+        // roto-unknown-physic-layer: instrument the hydrate kind default.
+        // A sequence persisted without `kind` lands here as 'content', which
+        // drops it out of getOverlaySequences() for the whole session —
+        // the leading mechanism for "Unknown physics paint layer" at first init.
+        ...(mceSeq.kind === undefined || mceSeq.kind === null
+          ? (() => {
+              console.warn(
+                `[hydrate] sequence ${mceSeq.id} "${mceSeq.name}" has no persisted kind — defaulting to 'content'. ` +
+                `If this sequence holds physic-paint layers, apply lookups will miss it this session.`,
+              );
+              return {};
+            })()
+          : {}),
         name: mceSeq.name,
         width: mceSeq.width,
         height: mceSeq.height,
@@ -657,6 +670,14 @@ function hydrateFromMce(
         } : {}),
       };
       sequenceStore.add(seq);
+    }
+
+    // roto-unknown-physic-layer: boot-time sequence kind map.
+    // Logs every sequence's resolved kind so a session-scoped apply failure
+    // ("Unknown physics paint layer") can be diagnosed without a live capture.
+    {
+      const kindMap = sequenceStore.sequences.value.map((s) => ({ id: s.id, name: s.name, kind: s.kind }));
+      console.warn('[hydrate] sequence kind map at boot:', JSON.stringify(kindMap));
     }
 
     // Set first sequence as active if any exist
