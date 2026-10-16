@@ -526,7 +526,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     // stroke. Resolving the snapshot inside the idled/settled produce moves that
     // drain to the genuine stop, where the bounded rAF finalize loop has already
     // applied the pending rasters (queue empty -> fast copy).
-    liveAlphaCanvas: HTMLCanvasElement | (() => HTMLCanvasElement);
+    liveAlphaCanvas: HTMLCanvasElement | (() => HTMLCanvasElement | null);
     cachedBase: RenderedFramePayload | null;
     /** 261003-erase-uat (B): engine's erased copy of the cached paint (null when
      * no pixel erase ran). When set, the merge draws it instead of cachedBase
@@ -573,6 +573,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
           ? capture.liveAlphaCanvas()
           : capture.liveAlphaCanvas;
+        if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
         return capture.cachedBase || capture.baseCanvas
           ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas)
           : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);

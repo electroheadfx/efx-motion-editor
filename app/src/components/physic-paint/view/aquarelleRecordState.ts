@@ -13,7 +13,10 @@
 import { signal } from '@preact/signals';
 import {
   createDryEvent,
+  isAquarelleDryEvent,
+  toStudioStroke,
   type AquarelleDryEvent,
+  type AquarellePayloadEvent,
   type AquarelleStroke,
   type AquarelleStrokePayload,
   type AquarelleTool,
@@ -202,6 +205,10 @@ export function recordAquarelleStroke(
   stroke: AquarelleStroke,
 ): void {
   recordedStrokes.set(mutationId, stroke);
+  // The record clock advances by the stroke's own tick span so the next
+  // Dry lands after it on the host grid (toStudioStroke: ticks = max(1, pts-1)).
+  advanceRecordClock(Math.max(1, stroke.points.length - 1));
+  payloadTimeline.push(toStudioStroke(stroke));
 }
 
 export function getRecordedAquarelleStroke(
@@ -240,12 +247,64 @@ export function onAquarelleDry(sink: AquarelleDrySink): () => void {
 }
 
 /**
- * Fire a recorded Dry event (D-15) onto the record path.
- * `tick` is the host-grid tick; recordedOrder is the shared
- * ordering key (Date.now() until the Studio record clock owns it).
+ * Studio record clock (DATA-03 / D-15). One monotonic integer host-grid
+ * tick cursor for the whole recording session: every recorded stroke
+ * advances it by its own tick span, so a Dry lands at the position the
+ * user actually pressed it — never a hardcoded 0.
+ *
+ * This is the "Studio record clock" 56-07 deferred: it owns the Dry
+ * `tick`, and `recordedOrder` stays Date.now() for the (tick,
+ * recordedOrder) tiebreak until the clock owns that too.
  */
-export function emitAquarelleDry(tick: number): AquarelleDryEvent {
+let recordClockTick = 0;
+
+/** Current host-grid tick of the Studio record clock. */
+export function aquarelleRecordClock(): number {
+  return recordClockTick;
+}
+
+/** Advance the record clock by one recorded stroke's tick span. */
+function advanceRecordClock(ticks: number): void {
+  recordClockTick += Math.max(0, Math.trunc(ticks));
+}
+
+/**
+ * The ONE payload timeline (D-16): strokes and Dry events interleaved in
+ * recording order. Replay walks this list and re-applies every Dry
+ * between strokes (AQUA-06) — no second events array, no flag on the
+ * next stroke.
+ */
+const payloadTimeline: AquarellePayloadEvent[] = [];
+
+/** Recorded Dry events on the payload timeline, in recording order. */
+export function getRecordedAquarelleDryEvents(): readonly AquarelleDryEvent[] {
+  return payloadTimeline.filter(
+    (event): event is AquarelleDryEvent => isAquarelleDryEvent(event),
+  );
+}
+
+/**
+ * The whole recorded payload timeline in recording order (D-16 one
+ * union) — replay reads this so it can re-apply every Dry between
+ * strokes exactly where the user fired it (AQUA-06).
+ */
+export function getRecordedAquarellePayloadTimeline(): readonly AquarellePayloadEvent[] {
+  return payloadTimeline;
+}
+
+/**
+ * Fire a recorded Dry event (D-15) onto the record path.
+ * `tick` is the host-grid tick from the Studio record clock;
+ * recordedOrder is the shared ordering key (Date.now() until the
+ * Studio record clock owns it too).
+ *
+ * Both halves of the one event leave here: the sinks reach the live
+ * vendor engine (force-dry) and the event is appended to the payload
+ * timeline so replay re-applies it (AQUA-06).
+ */
+export function emitAquarelleDry(tick: number = aquarelleRecordClock()): AquarelleDryEvent {
   const event = createDryEvent(Math.max(0, Math.trunc(tick)), Date.now());
+  payloadTimeline.push(event);
   for (const sink of drySinks) sink(event);
   return event;
 }

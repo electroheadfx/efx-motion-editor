@@ -8,11 +8,18 @@
 //  malformed input, never throws) — the host never reads P
 //  (T-56-03 mitigation).
 //
-//  Play/bake path (56-11, one stepping law live == bake):
-//  applyStroke deposits onto the FluidSheet via depositStrokeOnSheet;
-//  stepTick advances step(sheet, 1) per integer tick; captureFrame
-//  returns the sheet raster. Dry events call forceDrySheet at their
+//  Play/bake path (56-12, one engine per script): replay runs
+//  on the vendored WatercolorEngine — the SAME simulation the
+//  live canvas paints with. One stepping law live == bake:
+//  each integer tick feeds that tick's recorded sample through
+//  the engine stamp path, then engine.tick(HOST_DT) advances
+//  the fluid. Dry events call engine.fix() at their recorded
 //  tick (D-15). Frame indices never force-dry (P4 / D-28).
+//
+//  Points are document uv (y up) — the engine's native space —
+//  so live and bake cannot drift. Params are the CANONICAL
+//  AQUA-04 globals mapped through toEngineParams(); never the
+//  mapped 0..1 bag.
 // ============================================================
 
 import type {
@@ -28,17 +35,19 @@ import {
   type AquarellePayloadEvent,
 } from '../payload/dryEvent'
 import { payloadCodec } from '../payload/codec'
-import { depositStrokeOnSheet } from '../engine/deposit'
-import type { DepositCanvas } from '../engine/deposit'
-import { createSheet, isDrySheet, step, type FluidSheet } from '../engine/fluid'
-import { forceDrySheet } from '../engine/drying'
-import { drawSheetToCanvas } from '../engine/raster'
-import { findTip, TIPS } from '../brushes/tips'
+import { WatercolorEngine, type Tool } from '../playground/Engine'
+import { toEngineParams } from '../playground/params'
+import { buildBrushForStroke } from '../playground/brushBridge'
+import { pigmentFromHex } from '../playground/spectral'
+
+/** Host tick grid — 60 Hz, integer ticks (Q2 / DATA-03). */
+export const HOST_TICK_HZ = 60
+const HOST_DT = 1 / HOST_TICK_HZ
 
 export interface AquarelleAdapterOptions {
   width?: number
   height?: number
-  canvas?: HTMLCanvasElement | DepositCanvas
+  canvas?: HTMLCanvasElement
 }
 
 /**
@@ -54,27 +63,110 @@ function acceptEvent(raw: unknown): AquarellePayloadEvent | null {
   return payloadCodec.parse(payloadCodec.serialize(raw as AquarellePayloadEvent))
 }
 
+/** mulberry32 — same family the vendor tip generator uses. */
+function seededRandom(seed: number): () => number {
+  let state = (seed | 0) || 1
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+const AQUARELLE_TOOL_SET = new Set<Tool>(['brush', 'water', 'pen', 'lift'])
+
+function asTool(raw: string): Tool {
+  return AQUARELLE_TOOL_SET.has(raw as Tool) ? (raw as Tool) : 'brush'
+}
+
 export function createAquarelleEngineAdapter(
   options: AquarelleAdapterOptions = {},
 ): EngineAdapter<AquarelleStrokePayload> {
   const engineId: EngineId = 'efx-watercolor'
   const strokes: StudioStroke<AquarelleStrokePayload>[] = []
-  const width = options.width ?? 0
-  const height = options.height ?? 0
-  const canvas = options.canvas
+  const width = Math.max(1, Math.trunc(options.width ?? 0))
+  const height = Math.max(1, Math.trunc(options.height ?? 0))
   let disposed = false
-  let sheet: FluidSheet | null =
-    width > 0 && height > 0 ? createSheet(width, height) : null
 
-  const rasterToCanvas = (): void => {
-    if (disposed || !sheet || !canvas) return
-    drawSheetToCanvas(sheet, canvas as HTMLCanvasElement)
+  // The vendor engine owns a WebGL2 surface. Bake runs on an offscreen
+  // canvas at document resolution (A5: transparent where unpainted).
+  const canvas =
+    options.canvas ??
+    (typeof document !== 'undefined' ? document.createElement('canvas') : null)
+  if (canvas && width > 0 && height > 0) {
+    canvas.width = width
+    canvas.height = height
+  }
+
+  let engine: WatercolorEngine | null = null
+  if (canvas) {
+    try {
+      engine = new WatercolorEngine(canvas, null, {}, width > 0 && height > 0 ? [width, height] : null)
+      engine.setManual(true)
+    } catch {
+      // No WebGL2 / float targets — fail closed at applyStroke, never crash the host.
+      engine = null
+    }
+  }
+
+  // Virtual clock + seeded RNG so two bakes of one script match (A2).
+  let virtualNow = 0
+  const advanceClock = (ms: number) => {
+    virtualNow += ms
+  }
+  engine?.setClock(() => virtualNow)
+  engine?.setRandom(seededRandom(1))
+
+  /** Pending stroke being walked on the tick grid. */
+  let active: {
+    stroke: StudioStroke<AquarelleStrokePayload>
+    index: number
+    started: boolean
+  } | null = null
+
+  const configure = (stroke: StudioStroke<AquarelleStrokePayload>): void => {
+    if (!engine) return
+    const payload = stroke.engine
+    engine.setParams(toEngineParams(payload.params))
+    engine.setBrush(buildBrushForStroke(payload.brushId ?? stroke.brushId, payload.toolOverrides ?? stroke.toolOverrides))
+    const hex = stroke.color ?? payload.color
+    if (typeof hex === 'string' && hex.length > 0) engine.setPigment(pigmentFromHex(hex))
+    engine.setTool(asTool(payload.tool))
+    // traceSeed is the D-20 per-stroke determinism key.
+    engine.setRandom(seededRandom(stroke.traceSeed || 1))
   }
 
   /** User-initiated Dry (D-15) — wet-state fix at the event's tick. */
-  const applyDry = (_dry: AquarelleDryEvent): void => {
-    if (disposed) return
-    if (sheet && !isDrySheet(sheet)) forceDrySheet(sheet)
+  const applyDry = (): void => {
+    if (!engine) return
+    engine.fix()
+    // Drain the fix flash synchronously so the next stroke starts dry.
+    for (let i = 0; i < 30; i += 1) {
+      advanceClock(1000 * HOST_DT)
+      engine.tick(HOST_DT)
+    }
+  }
+
+  /** Feed the next recorded sample for the active stroke, if its tick has arrived. */
+  const feedDueSample = (timelineTick: number): void => {
+    if (!engine || !active) return
+    const pts = active.stroke.pts
+    // pts[].tick is the sample index on the host grid (toStudioStroke law).
+    while (active.index < pts.length && pts[active.index]!.tick <= timelineTick) {
+      const p = pts[active.index]!
+      active.index += 1
+      advanceClock(1000 * HOST_DT)
+      if (!active.started) {
+        active.started = true
+        engine.scriptBegin(asTool(active.stroke.engine.tool), p.x, p.y, p.p, 'Stroke')
+      } else {
+        engine.scriptMove(p.x, p.y, p.p, virtualNow)
+      }
+    }
+    if (active.index >= pts.length && active.started) {
+      engine.scriptEnd()
+    }
   }
 
   return {
@@ -104,53 +196,69 @@ export function createAquarelleEngineAdapter(
         const existing = strokes.find((s) => s.traceSeed === entry.stroke.traceSeed)
         if (!existing) {
           strokes.push(entry.stroke)
-          if (sheet) depositStrokeOnSheet(sheet, entry.stroke, findTip(entry.stroke.brushId) ?? TIPS[0])
+          configure(entry.stroke)
+          active = { stroke: entry.stroke, index: 0, started: false }
+          // Walk every recorded sample immediately — partial preview.
+          feedDueSample(Number.MAX_SAFE_INTEGER)
+          advanceClock(1000 * HOST_DT)
+          engine?.tick(HOST_DT)
         }
       }
-      rasterToCanvas()
     },
     renderAllStrokes(): void {
-      if (disposed || !sheet) return
+      if (disposed || !engine) return
       for (const stroke of strokes) {
-        depositStrokeOnSheet(sheet, stroke, findTip(stroke.brushId) ?? TIPS[0])
+        configure(stroke)
+        active = { stroke, index: 0, started: false }
+        feedDueSample(Number.MAX_SAFE_INTEGER)
+        advanceClock(1000 * HOST_DT)
+        engine.tick(HOST_DT)
       }
-      rasterToCanvas()
+      active = null
     },
     exportCompositeCanvas(): HTMLCanvasElement {
-      rasterToCanvas()
-      return canvas as unknown as HTMLCanvasElement
+      const out = engine?.exportCanvas('transparent') ?? canvas
+      if (!out) throw new Error('createAquarelleEngineAdapter: no canvas to export — pass options.canvas')
+      return out as HTMLCanvasElement
     },
     applyStroke(stroke: StudioStroke<AquarelleStrokePayload>): void {
       if (disposed) return
       // Dry is a distinguished payload union member (D-16) — one
       // applyStroke seam, wet-state fix at the recorded tick.
       if (isAquarelleDryEvent(stroke)) {
-        applyDry(stroke)
+        applyDry()
         return
       }
       const parsed = acceptEvent(stroke)
       if (!parsed || isAquarelleDryEvent(parsed)) return
       strokes.push(parsed)
-      if (!sheet) return
-      const tip = findTip(parsed.brushId) ?? TIPS[0]
-      if (!tip) return
-      depositStrokeOnSheet(sheet, parsed, tip)
-      rasterToCanvas()
+      if (!engine) return
+      configure(parsed)
+      active = { stroke: parsed, index: 0, started: false }
+      // Bake contract: applyStroke deposits the whole stroke. Feed every
+      // recorded sample on the tick grid, then flush the stamp path once.
+      feedDueSample(Number.MAX_SAFE_INTEGER)
+      advanceClock(1000 * HOST_DT)
+      engine.tick(HOST_DT)
     },
     stepTick(_tick: number): void {
+      if (disposed || !engine) return
       // Integer ticks only (DATA-03). Frame indices never force-dry (P4).
-      if (disposed || !sheet) return
-      step(sheet, 1)
-      rasterToCanvas()
+      // Diffusion only — the stroke landed in applyStroke.
+      advanceClock(1000 * HOST_DT)
+      engine.tick(HOST_DT)
     },
     captureFrame(): CanvasImageSource {
-      rasterToCanvas()
-      return canvas as unknown as CanvasImageSource
+      const frame = engine?.exportCanvas('transparent') ?? canvas
+      if (!frame) throw new Error('createAquarelleEngineAdapter: no canvas to capture — pass options.canvas')
+      return frame as CanvasImageSource
     },
     dispose(): void {
       disposed = true
       strokes.length = 0
-      sheet = null
+      active = null
+      engine?.destroy()
+      engine = null
     },
   }
 }

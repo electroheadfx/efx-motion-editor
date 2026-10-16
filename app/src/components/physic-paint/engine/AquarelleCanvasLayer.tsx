@@ -1,136 +1,323 @@
 // ============================================================
-//  AquarelleCanvasLayer — Water color live surface on the shared
-//  Studio canvas (56-11). Sits in the same demo-canvas-shell as
-//  EfxPaintCanvas; captures pointer input while
-//  activeModule === 'watercolor' so the physics engine never sees
-//  the gesture. Preact-free core lives in aquarelleLiveSurface.
+//  AquarelleCanvasLayer — the Water color live surface on the
+//  shared Studio canvas (56-11 / 56-12).
+//
+//  The simulation and display are the MIT Watercolor Playground
+//  engine (vendored in @efxlab/efx-watercolor/playground). It owns
+//  pointer input, the fluid/liquid physics, brush tips and the
+//  paper composite — this component mounts it, keeps the tool +
+//  param signals in sync, and records the stroke at stroke end.
+//
+//  RECORD (56-12): points are document uv (y up) on the 60 Hz
+//  tick grid; params are the CANONICAL AQUA-04 globals (never the
+//  mapped 0..1 bag). Live and bake both map through
+//  toEngineParams() so they cannot drift (A1/A2).
+//
+//  PHYSIC PAINT STUDIO modal only. Never the inline EFX Paint
+//  editor, never p5.brush.
 // ============================================================
 
 import type { CSSProperties } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
-import type { AquarelleStroke } from '@efxlab/efx-watercolor';
+import { useCallback, useRef } from 'preact/hooks';
+import {
+  buildBrushForStroke,
+  DEFAULT_PAPER,
+  PAPERS,
+  pigmentFromHex,
+  toEngineParams,
+  WatercolorEngine,
+  type PaperPreset,
+  type Tool,
+} from '@efxlab/efx-watercolor';
+import type { AquarellePoint, AquarelleStroke, AquarelleTool } from '@efxlab/efx-watercolor';
 import {
   aquarelleActiveTool,
   aquarelleParams,
   aquarelleSelectedTipId,
   aquarelleToolOverrides,
+  onAquarelleDry,
+  snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
-import {
-  createAquarelleLiveSurface,
-  type AquarelleLiveSurface,
-} from './aquarelleLiveSurface';
+
+/** Host tick grid (toStudioStroke law: pts[].tick = sample index). */
+const HOST_TICK_HZ = 60;
+const HOST_TICK_MS = 1000 / HOST_TICK_HZ;
+
+/** Engine.ts FIX_DURATION (1.2s) — Dry bakes the wet pigment over this window. */
+const FIX_SETTLE_MS = 1200;
+
+type RawSample = { x: number; y: number; p: number; tx: number; ty: number; t: number };
+
+/**
+ * Resample a pointer path onto the 60 Hz tick grid so recorded
+ * sample spacing matches the bake's stepTick spacing (A1).
+ */
+function resampleToTickGrid(samples: readonly RawSample[]): AquarellePoint[] {
+  if (samples.length === 0) return [];
+  if (samples.length === 1) {
+    const s = samples[0]!;
+    return [{ x: s.x, y: s.y, p: s.p, tx: s.tx, ty: s.ty, tw: 0 }];
+  }
+  const start = samples[0]!.t;
+  const end = samples[samples.length - 1]!.t;
+  const totalTicks = Math.max(1, Math.round((end - start) / HOST_TICK_MS));
+  const out: AquarellePoint[] = [];
+  let cursor = 0;
+  for (let i = 0; i <= totalTicks; i += 1) {
+    const target = start + i * HOST_TICK_MS;
+    while (cursor < samples.length - 2 && samples[cursor + 1]!.t < target) cursor += 1;
+    const a = samples[cursor]!;
+    const b = samples[Math.min(cursor + 1, samples.length - 1)]!;
+    const span = b.t - a.t;
+    const u = span > 0 ? Math.max(0, Math.min(1, (target - a.t) / span)) : 0;
+    out.push({
+      x: a.x + (b.x - a.x) * u,
+      y: a.y + (b.y - a.y) * u,
+      p: a.p + (b.p - a.p) * u,
+      tx: a.tx + (b.tx - a.tx) * u,
+      ty: a.ty + (b.ty - a.ty) * u,
+      tw: 0,
+    });
+  }
+  return out;
+}
+
+function brushIdForSelection(): string {
+  return aquarelleSelectedTipId.value ?? 'wc/round-medium';
+}
+
+/**
+ * F3 (R2.3): the Studio paper id drives the aquarelle engine's DEPOSIT grain
+ * (granulation / dry-brush tooth). The display paper stays the Studio fond
+ * (paperPass) — never the vendor's own paper composite.
+ */
+const STUDIO_PAPER_TO_PRESET: Readonly<Record<string, string>> = Object.freeze({
+  'paper/cold-press': 'cold',
+  'paper/hot-press': 'hot',
+  'paper/rough': 'rough',
+  'paper/khadi': 'khadi',
+  'paper/washi': 'washi',
+  'paper/laid': 'laid',
+  'paper/canvas': 'canvas',
+  'paper/toned-sand': 'toned',
+  'paper/kraft': 'kraft',
+  'paper/student': 'cellulose',
+});
+
+function paperPresetForStudioId(studioId: string): PaperPreset {
+  const presetId = STUDIO_PAPER_TO_PRESET[studioId] ?? 'cold';
+  return PAPERS.find((p) => p.id === presetId) ?? DEFAULT_PAPER;
+}
+
+function toolForSelection(): AquarelleTool {
+  return aquarelleActiveTool.value;
+}
+
+function applyLiveConfig(engine: WatercolorEngine): void {
+  engine.setParams(toEngineParams(aquarelleParams.value));
+  engine.setTool(aquarelleActiveTool.value as Tool);
+  engine.setBrush(
+    buildBrushForStroke(brushIdForSelection(), aquarelleToolOverrides.value),
+  );
+  engine.setPigment(pigmentFromHex('#103c65'));
+}
 
 export function AquarelleCanvasLayer(props: {
   width: number;
   height: number;
   color: string;
+  /**
+   * FRAME SCOPE: live getter for the Studio edit frame this sheet previews.
+   * A getter (not a value prop) keeps the canvas-mount memo stable across
+   * frame navigation while the rAF poll still sees the live frame.
+   */
+  getPlayFrame: () => number;
+  /** F3: Studio paper id → the engine's deposit-grain preset (R2.3). */
+  getPaperId: () => string;
   disabled?: boolean;
-  onStrokeEnd: (stroke: AquarelleStroke) => void;
+  onStrokeEnd?: (stroke: AquarelleStroke) => void;
+  /**
+   * CACHE WRITE seam (56-12): invoked when the composited sheet must land in
+   * the WebP cache — at stroke end and once Dry has settled. The snapshot
+   * factory is resolved later by captureLivePixels (52.1 deferred-copy law).
+   */
+  onCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const cursorRef = useRef<HTMLDivElement>(null);
-  const surfaceRef = useRef<AquarelleLiveSurface | null>(null);
-  const onStrokeEndRef = useRef(props.onStrokeEnd);
-  const colorRef = useRef(props.color);
+  const engineRef = useRef<WatercolorEngine | null>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
   const disabledRef = useRef(props.disabled ?? false);
-  onStrokeEndRef.current = props.onStrokeEnd;
-  colorRef.current = props.color;
+  const colorRef = useRef(props.color ?? '#103c65');
+  const widthRef = useRef(props.width);
+  const heightRef = useRef(props.height);
+  const getPlayFrameRef = useRef(props.getPlayFrame);
+  const getPaperIdRef = useRef(props.getPaperId);
+  const onStrokeEndRef = useRef(props.onStrokeEnd);
+  const onCaptureFrameRef = useRef(props.onCaptureFrame);
   disabledRef.current = props.disabled ?? false;
+  colorRef.current = props.color ?? '#103c65';
+  widthRef.current = props.width;
+  heightRef.current = props.height;
+  getPlayFrameRef.current = props.getPlayFrame;
+  getPaperIdRef.current = props.getPaperId;
+  onStrokeEndRef.current = props.onStrokeEnd;
+  onCaptureFrameRef.current = props.onCaptureFrame;
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
+  // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
+  // leak the previous frame's paint (the user saw the same paint on every
+  // Studio frame). The cache owns the other frames. Detected in the rAF signal
+  // poll below — never a useEffect (efx-preact-reactivity).
+  const lastPlayFrameRef = useRef(props.getPlayFrame());
+
+  // Engine mount/unmount rides a Preact callback ref (efx-preact-reactivity:
+  // no useEffect). A key change on width/height remounts the canvas element,
+  // which re-runs this ref with null then the new node.
+  const attachEngine = useCallback((canvas: HTMLCanvasElement | null) => {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    engineRef.current = null;
     if (!canvas) return;
-    const surface = createAquarelleLiveSurface({
-      width: props.width,
-      height: props.height,
-      display: canvas,
-      getSnapshot: () => ({
-        params: { ...aquarelleParams.value },
-        toolOverrides: { ...aquarelleToolOverrides.value },
-        brushId: aquarelleSelectedTipId.value ?? '',
-        tool: aquarelleActiveTool.value,
-      }),
-      getColor: () => colorRef.current,
-      onStrokeEnd: (stroke) => onStrokeEndRef.current(stroke),
+
+    let engine: WatercolorEngine;
+    try {
+      engine = new WatercolorEngine(
+        canvas,
+        null,
+        {
+          onStrokeSample(sample) {
+            const sink = (engine as unknown as { __samples?: RawSample[] }).__samples;
+            if (sink) sink.push(sample);
+          },
+          onStrokeEnd() {
+            const carrier = engine as unknown as { __samples?: RawSample[] };
+            const raw = carrier.__samples ?? [];
+            carrier.__samples = [];
+            const points = resampleToTickGrid(raw);
+            if (points.length === 0) return;
+            const snap = snapshotAquarelleRecord();
+            const stroke: AquarelleStroke = {
+              tool: toolForSelection(),
+              color: colorRef.current,
+              // CANONICAL AQUA-04 globals — never the mapped bag.
+              params: { ...snap.params },
+              brushId: snap.brushId || brushIdForSelection(),
+              points,
+              toolOverrides: { ...snap.toolOverrides },
+              // Bake window: wetter paint keeps diffusing longer (D-19, cap 600).
+              diffusionFrames: Math.round(30 + 270 * (1 - (snap.params['dry'] ?? 50) / 100)),
+              timestamp: Date.now(),
+              // FRAME SCOPE: the stroke is anchored to the edit frame this sheet
+              // previews. toStudioStroke maps this to StudioStroke.playFrame.
+              playFrame: getPlayFrameRef.current(),
+            };
+            onStrokeEndRef.current?.(stroke);
+            // CACHE WRITE (settle) owns the commit — a stroke-end capture would
+            // land the WET (washed) sheet. The rAF poll watches engine.isAwake
+            // and captures the concentrated dry look.
+          },
+        },
+        [widthRef.current, heightRef.current],
+      );
+    } catch {
+      // No WebGL2 / float targets — leave the canvas blank rather than crash the Studio.
+      return;
+    }
+    (engine as unknown as { __samples?: RawSample[] }).__samples = [];
+    engineRef.current = engine;
+
+    // COMPOSITOR LAYER: exact-fit pointer mapping (no fit margin) + pigment
+    // display on transparent (the document fond is the compositor's — v1.0).
+    engine.setCompositorLayer(true);
+
+    applyLiveConfig(engine);
+    engine.setPigment(pigmentFromHex(colorRef.current));
+    // F3: deposit grain follows the Studio paper (R2.3) — never the vendor default.
+    let lastPaperId = '';
+    const applyPaper = () => {
+      const paperId = getPaperIdRef.current();
+      if (paperId === lastPaperId) return;
+      lastPaperId = paperId;
+      engine.setPaper(paperPresetForStudioId(paperId));
+    };
+    applyPaper();
+
+    // CACHE WRITE: the composited sheet (transparent background — A5 export
+    // law). Resolved later by captureLivePixels (52.1 deferred-copy law).
+    const snapshot = () => {
+      try {
+        return engine.exportCanvas('transparent');
+      } catch {
+        return null;
+      }
+    };
+
+    // D-15: user-initiated Dry is one event with two ends. The record end
+    // (aquarelleRecordState) already appended it to the payload timeline;
+    // this is the LIVE end — force-dry the wet sheet so the paint stops
+    // moving right where the user pressed Dry. No second channel.
+    const offDry = onAquarelleDry(() => {
+      engine.fix();
     });
-    surfaceRef.current = surface;
 
-    const toSample = (event: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = rect.width > 0 ? props.width / rect.width : 1;
-      const scaleY = rect.height > 0 ? props.height / rect.height : 1;
-      return {
-        x: (event.clientX - rect.left) * scaleX,
-        y: (event.clientY - rect.top) * scaleY,
-        p: event.pressure > 0 ? event.pressure : 0.5,
-        tx: event.tiltX ?? 0,
-        ty: event.tiltY ?? 0,
-        tw: 0,
-        t: event.timeStamp,
-      };
-    };
+    // CACHE WRITE (Dry settle): fix() bakes the wet pigment over FIX_DURATION.
+    // A second sink keeps the Dry wiring above untouched — this one only
+    // schedules the cache commit of the settled sheet. Stamped with the Dry-time
+    // frame so a navigation during settle never commits the next frame's sheet.
+    const pendingSettleTimers = new Set<number>();
+    const offDryCapture = onAquarelleDry(() => {
+      const dryPlayFrame = getPlayFrameRef.current();
+      const timer = window.setTimeout(() => {
+        pendingSettleTimers.delete(timer);
+        if (getPlayFrameRef.current() !== dryPlayFrame) return;
+        if (!engine.hasPaint) return;
+        onCaptureFrameRef.current?.(dryPlayFrame, snapshot);
+      }, FIX_SETTLE_MS);
+      pendingSettleTimers.add(timer);
+    });
 
-    let active = false;
-    const updateCursor = (event: PointerEvent) => {
-      const cursor = cursorRef.current;
-      if (!cursor) return;
-      const rect = canvas.getBoundingClientRect();
-      const snap = {
-        params: { ...aquarelleParams.value },
-        toolOverrides: { ...aquarelleToolOverrides.value },
-      };
-      const sizeParam = Number(snap.params['size']);
-      const baseRadius = Math.max(1, (Number.isFinite(sizeParam) ? sizeParam : 12) / 2);
-      const diameter = Math.max(4, baseRadius * (snap.toolOverrides.tip ?? 1) * 2 * (rect.width / props.width || 1));
-      cursor.style.display = 'block';
-      cursor.style.left = `${event.clientX - rect.left}px`;
-      cursor.style.top = `${event.clientY - rect.top}px`;
-      cursor.style.width = `${diameter}px`;
-      cursor.style.height = `${diameter}px`;
+    // Tool / params / tip / color are Preact signals — poll on rAF while mounted.
+    // FRAME SCOPE rides the same poll: a playFrame change wipes the sheet so the
+    // preview never leaks the previous edit frame's paint.
+    let raf = 0;
+    let wasAwake = engine.isAwake;
+    const tick = () => {
+      const playFrame = getPlayFrameRef.current();
+      if (lastPlayFrameRef.current !== playFrame) {
+        // CACHE WRITE: leaving a frame lands whatever the sheet holds before
+        // the wipe — never a blank sheet over existing cache.
+        if (engine.hasPaint) {
+          onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
+        }
+        lastPlayFrameRef.current = playFrame;
+        engine.clear();
+        // The new frame starts clean — a settle capture here would write the
+        // empty sheet over that frame's cache.
+        wasAwake = false;
+      }
+      // CACHE WRITE (settle): the dry (concentrated) look, not the wet stroke.
+      const awake = engine.isAwake;
+      if (wasAwake && !awake && engine.hasPaint) {
+        onCaptureFrameRef.current?.(playFrame, snapshot);
+      }
+      wasAwake = awake;
+      if (!disabledRef.current) {
+        applyLiveConfig(engine);
+        engine.setPigment(pigmentFromHex(colorRef.current));
+        applyPaper();
+      }
+      raf = requestAnimationFrame(tick);
     };
-    const onDown = (event: PointerEvent) => {
-      if (disabledRef.current) return;
-      if (event.button !== 0 && event.pointerType === 'mouse') return;
-      active = true;
-      canvas.setPointerCapture(event.pointerId);
-      surface.pointerDown(toSample(event));
-      updateCursor(event);
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    const onMove = (event: PointerEvent) => {
-      updateCursor(event);
-      if (!active) return;
-      surface.pointerMove(toSample(event));
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    const onUp = (event: PointerEvent) => {
-      if (!active) return;
-      active = false;
-      surface.pointerUp(toSample(event));
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    const onLeave = () => {
-      if (cursorRef.current) cursorRef.current.style.display = 'none';
-    };
+    raf = requestAnimationFrame(tick);
 
-    canvas.addEventListener('pointerdown', onDown);
-    canvas.addEventListener('pointermove', onMove);
-    canvas.addEventListener('pointerup', onUp);
-    canvas.addEventListener('pointercancel', onUp);
-    canvas.addEventListener('pointerleave', onLeave);
-    return () => {
-      canvas.removeEventListener('pointerdown', onDown);
-      canvas.removeEventListener('pointermove', onMove);
-      canvas.removeEventListener('pointerup', onUp);
-      canvas.removeEventListener('pointercancel', onUp);
-      canvas.removeEventListener('pointerleave', onLeave);
-      surface.dispose();
-      surfaceRef.current = null;
+    cleanupRef.current = () => {
+      offDry();
+      offDryCapture();
+      for (const timer of pendingSettleTimers) window.clearTimeout(timer);
+      pendingSettleTimers.clear();
+      cancelAnimationFrame(raf);
+      engine.destroy();
+      engineRef.current = null;
     };
-  }, [props.width, props.height]);
+  }, []);
 
   const style: CSSProperties = {
     position: 'absolute',
@@ -144,25 +331,13 @@ export function AquarelleCanvasLayer(props: {
   return (
     <div class="aquarelle-live-layer" style={{ position: 'absolute', inset: '0' }}>
       <canvas
-        ref={canvasRef}
+        key={`${props.width}x${props.height}`}
+        ref={attachEngine}
         class="aquarelle-live-canvas"
         width={props.width}
         height={props.height}
         style={style}
         aria-label="Water color canvas"
-      />
-      <div
-        ref={cursorRef}
-        class="aquarelle-brush-cursor"
-        style={{
-          position: 'absolute',
-          pointerEvents: 'none',
-          border: '1px solid rgba(255,255,255,0.85)',
-          borderRadius: '50%',
-          transform: 'translate(-50%, -50%)',
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.35)',
-          display: 'none',
-        }}
       />
     </div>
   );

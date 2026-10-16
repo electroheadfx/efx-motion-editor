@@ -29,8 +29,8 @@ import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer
 import { isWebpBytes } from '../../../types/physicPaint';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
-import { toStudioStroke, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
-import { getRecordedAquarellePayload, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
+import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
   type AquarelleBake,
@@ -1744,10 +1744,12 @@ async function createDefaultAquarelleAdapter(
 /**
  * Project a Roto script's recorded strokes onto the 56-06 payload union.
  * Engine-1 field names never leak into P — this is the engine-2 projection
- * seam (toStudioStroke field-mapping law). Dry events ride the same union.
+ * seam (toStudioStroke field-mapping law). Dry events ride the same union
+ * (D-16): they interleave with the strokes in recordedOrder so replay
+ * re-applies each one between the strokes around it (AQUA-06).
  */
-function aquarelleEventsFromScript(script: RotoPaintScript): StudioStroke<AquarelleStrokePayload>[] {
-  const events: StudioStroke<AquarelleStrokePayload>[] = [];
+function aquarelleEventsFromScript(script: RotoPaintScript): AquarellePayloadEvent[] {
+  const events: AquarellePayloadEvent[] = [];
   const project = (stroke: RotoPaintScript['brushes'][number]['primary']): StudioStroke<AquarelleStrokePayload> => {
     const storedStroke = stroke.mutationId !== undefined
       ? getRecordedAquarelleStroke(stroke.mutationId)
@@ -1794,7 +1796,35 @@ function aquarelleEventsFromScript(script: RotoPaintScript): StudioStroke<Aquare
       events.push(project(continuation));
     }
   }
-  return events;
+  // D-15/D-16: Dry fires in recorded order between stroke turns. Both
+  // members carry recordedOrder (the shared ordering key), so a stable
+  // merge on it places each Dry exactly where the user pressed it.
+  const drys = getRecordedAquarelleDryEvents();
+  if (drys.length === 0) return events;
+  const merged: AquarellePayloadEvent[] = [];
+  let strokeIndex = 0;
+  let dryIndex = 0;
+  while (strokeIndex < events.length && dryIndex < drys.length) {
+    const strokeOrder = events[strokeIndex]!.recordedOrder;
+    // Stroke first on a tie — a Dry pressed in the same ms as a stroke
+    // landed after it (recordedOrder is the shared ordering key).
+    if (drys[dryIndex]!.recordedOrder < strokeOrder) {
+      merged.push(drys[dryIndex]!);
+      dryIndex += 1;
+    } else {
+      merged.push(events[strokeIndex]!);
+      strokeIndex += 1;
+    }
+  }
+  while (strokeIndex < events.length) {
+    merged.push(events[strokeIndex]!);
+    strokeIndex += 1;
+  }
+  while (dryIndex < drys.length) {
+    merged.push(drys[dryIndex]!);
+    dryIndex += 1;
+  }
+  return merged;
 }
 
 function parseCount(value: string, capacity: number): { count: number | null; error: string | null } {

@@ -2,7 +2,7 @@ import { SectionLabel } from '../../shared/SectionLabel';
 import { AquarelleParamsPanel } from './AquarelleParamsPanel';
 import { AquarelleToolRow } from './AquarelleToolRow';
 import { BrushesDocker } from './BrushesDocker';
-import { emitAquarelleDry } from './aquarelleRecordState';
+import { aquarelleRecordClock, emitAquarelleDry } from './aquarelleRecordState';
 
 /** UI-SPEC copy — exact string, pinned by AquarelleToolRow.test.tsx. */
 const DRY_TOOLTIP = 'Flash-dry the sheet. Recorded in the script.';
@@ -22,24 +22,13 @@ export function WatercolorModuleSection() {
       <button
         type="button"
         data-testid="aquarelle-dry"
+        class="physics-paint-aquarelle-dry"
         title={DRY_TOOLTIP}
         onClick={() => {
-          // D-15: fire-and-forget recorded Dry at the current host tick.
-          // The tick source joins the Studio record clock in 56-08/09;
-          // until then the seam records tick 0 (the script start).
-          emitAquarelleDry(0);
-        }}
-        style={{
-          height: '28px',
-          width: '100%',
-          marginTop: '8px',
-          borderRadius: '3px',
-          border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
-          background: 'var(--sidebar-input-bg, rgba(127, 131, 138, 0.18))',
-          color: 'var(--sidebar-text-primary, #eceff2)',
-          fontSize: '10px',
-          fontWeight: 600,
-          cursor: 'pointer',
+          // D-15: one event, two ends. This fires the recorded Dry onto the
+          // payload timeline at the Studio record clock's CURRENT host tick —
+          // the live engine and the replay bake both re-apply it there.
+          emitAquarelleDry(aquarelleRecordClock());
         }}
       >
         Dry

@@ -20,6 +20,61 @@ import { fixDrying } from './drying'
 /** Wetness at or below this is treated as dry for the transport gate. */
 export const WET_EPS = 1e-4
 
+/**
+ * Pigment density ceiling. BOTH deposit and transfer honour it —
+ * without the transfer cap, tide-line pull piles every edge up to
+ * marker opacity and a wash dies into donuts. Tuned so a fully
+ * loaded wash tops out near 50% coverage: paper tooth stays visible
+ * through the darkest stroke (the oracle never goes opaque).
+ */
+export const MAX_DENSITY = 0.62
+
+/**
+ * Per-stroke sim response (AQUA-04 globals, normalised 0..1).
+ * Values scale the base transport/drying constants so a param of
+ * 0.5 reproduces the tuned defaults. Live and bake both feed this
+ * from the recorded param bag (one stepping law).
+ */
+export interface SimTuning {
+  /** Water motion strength (capillary tide-line velocity). */
+  flow: number
+  /** Pigment diffusion through wet paper. */
+  bleed: number
+  /** Drying speed. */
+  dry: number
+  /** Tide-line darkening at the receding wet front. */
+  edge: number
+  /** Pigment settling into the paper grain. */
+  granulation: number
+}
+
+/** Tuned defaults — param 0.5 on every axis. */
+export const DEFAULT_SIM_TUNING: Readonly<SimTuning> = Object.freeze({
+  flow: 0.5,
+  bleed: 0.5,
+  dry: 0.5,
+  edge: 0.5,
+  granulation: 0.5,
+})
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v
+}
+
+/** Resolve a partial tuning onto the defaults, clamped 0..1. */
+export function resolveTuning(partial?: Partial<SimTuning>): SimTuning {
+  const d = DEFAULT_SIM_TUNING
+  return {
+    flow: clamp01(Number.isFinite(partial?.flow) ? partial!.flow! : d.flow),
+    bleed: clamp01(Number.isFinite(partial?.bleed) ? partial!.bleed! : d.bleed),
+    dry: clamp01(Number.isFinite(partial?.dry) ? partial!.dry! : d.dry),
+    edge: clamp01(Number.isFinite(partial?.edge) ? partial!.edge! : d.edge),
+    granulation: clamp01(
+      Number.isFinite(partial?.granulation) ? partial!.granulation! : d.granulation,
+    ),
+  }
+}
+
 export interface FluidSheet {
   readonly width: number
   readonly height: number
@@ -79,11 +134,12 @@ export function isDrySheet(sheet: FluidSheet): boolean {
  * Wet-gated transport + drying. dt<=0 and an idle dry sheet are
  * no-ops (flagged assumptions AQUA-01) and cost no work.
  */
-export function step(sheet: FluidSheet, dt: number): void {
+export function step(sheet: FluidSheet, dt: number, tuning?: Partial<SimTuning>): void {
   if (!(dt > 0)) return
   if (isDrySheet(sheet)) return
-  transportStep(sheet, dt)
-  fixDrying(sheet, dt)
+  const resolved = resolveTuning(tuning)
+  transportStep(sheet, dt, resolved)
+  fixDrying(sheet, dt, resolved)
 }
 
 /** Total pigment density (mobile + fixed) over the whole sheet. */
@@ -152,7 +208,12 @@ export function transferMobile(
   if (amount === 0) return
   if (amount > 0) {
     const available = sheet.mobile[from] ?? 0
-    const moved = amount > available ? available : amount
+    // Never pile past MAX_DENSITY at the destination — the tide-line
+    // pull would otherwise stack every edge into a dark ring.
+    const destTotal = (sheet.mobile[to] ?? 0) + (sheet.fixed[to] ?? 0)
+    const room = Math.max(0, MAX_DENSITY - destTotal)
+    let moved = amount > available ? available : amount
+    if (moved > room) moved = room
     if (moved <= 0) return
     const share = available > 0 ? moved / available : 0
     const r = (sheet.mobileR[from] ?? 0) * share

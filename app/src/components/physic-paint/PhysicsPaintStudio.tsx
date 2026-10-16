@@ -3821,6 +3821,11 @@ export function PhysicsPaintStudio() {
       && Boolean(launchContext);
     if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
     if (acceptedTarget && !acceptedTarget.publishPixels) return;
+    // 56-12 CACHE WRITE: while Water color is live, the aquarelle sheet owns
+    // the cache pixels. engine-1 still observes the enqueued stroke for the
+    // script path above, but its hidden surface must never overwrite the
+    // aquarelle WebP.
+    if (activeModule.value === 'watercolor') return;
     const appFrame = acceptedTarget?.appFrame ?? currentFrame;
     const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());
     const completedTarget = acceptedTarget?.keyId
@@ -3987,7 +3992,49 @@ export function PhysicsPaintStudio() {
     }
   }, [recordAquarelleStroke]);
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd], () => {
+  // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
+  // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
+  // has settled, and on frame-leave.
+  //
+  // The snapshot is resolved EAGERLY here (not deferred like engine-1's 52.1
+  // factory). Aquarelle has no pending-finalization drain — exportCanvas is a
+  // GPU readback — and the live layer calls this right before engine.clear().
+  // A deferred factory would read the wiped sheet and commit empty.
+  const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null) => {
+    const launch = launchContextRef.current;
+    if (!launch) return;
+    const liveAlphaCanvas = snapshot();
+    if (!liveAlphaCanvas) return;
+    void rotoPersistenceRef.current.captureLivePixels({
+      layerId: launch.layerId,
+      appFrame: playFrame,
+      liveAlphaCanvas,
+      // The aquarelle export is the full sheet (A5 transparent law) — never a
+      // merge over engine-1's base.
+      cachedBase: null,
+      size: { width: canvasWidth, height: canvasHeight },
+    }).catch((error) => {
+      console.error('[PhysicsPaintStudio] Aquarelle cache write failed', error);
+    });
+  }, [canvasWidth, canvasHeight]);
+
+  // FRAME SCOPE: identity-stable getter so the canvas-mount memo never
+  // invalidates on frame navigation (the persistent Efx child contract).
+  const getAquarellePlayFrame = useCallback(
+    () => launchContextRef.current?.startFrame ?? 0,
+    [],
+  );
+
+  // F3 (R2.3): Studio paper → the aquarelle engine's deposit-grain preset.
+  // Identity-stable getter — paper changes must not invalidate the mount memo.
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const getAquarellePaperId = useCallback(
+    () => settingsRef.current.background,
+    [],
+  );
+
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleCaptureFrame, getAquarellePlayFrame, getAquarellePaperId], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -4012,7 +4059,12 @@ export function PhysicsPaintStudio() {
       trackBlendMode: mountActiveTrack?.blendMode ?? 'normal',
       aquarelleActive: activeModule.value === 'watercolor',
       color: settings.color,
+      // FRAME SCOPE: identity-stable getter — the sheet previews the live
+      // edit frame without invalidating the mount memo on navigation.
+      getAquarellePlayFrame,
+      getAquarellePaperId,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
+      onAquarelleCaptureFrame: handleAquarelleCaptureFrame,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the
@@ -4132,7 +4184,12 @@ export function PhysicsPaintStudio() {
         playbackTick: rotoCachedPlayback.playbackTick,
         onMissingSourcesChange: handleProgramMonitorMissingChange,
         liveOverlay: engineSurfaceHidden ? null : (engine?.getAppliedPreviewBaseContentToken() != null ? engine.getBakedCanvas() : null),
-        excludeActive: engineSurfaceHidden || (engine != null && engine.getAppliedPreviewBaseContentToken() != null),
+        // 56-12: the live aquarelle canvas SUPPLIES the active track's pixels.
+        // Including them here too double-composites (the "micro flash" when the
+        // cache write lands) and over-saturates the live look.
+        excludeActive: activeModule.value === 'watercolor'
+          || engineSurfaceHidden
+          || (engine != null && engine.getAppliedPreviewBaseContentToken() != null),
       } : null,
       // 50-04 (S3): the reference ghost monitor-paint layer — concrete values
       // only. The ghost layer subscribes to the store version clocks in its OWN

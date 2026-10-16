@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSheet } from './fluid'
+import { createSheet, MAX_DENSITY } from './fluid'
 import { sheetToRgba, drawSheetToCanvas } from './raster'
 
 function setPixel(
@@ -116,5 +116,25 @@ describe('drawSheetToCanvas', () => {
     expect(a).toBeGreaterThan(0)
     expect(Math.abs(r - 200)).toBeLessThanOrEqual(1)
     expect(rgbaAt(rgba, 4, 0, 0)[3]).toBe(0)
+  })
+})
+
+describe('translucency ceiling (the look law)', () => {
+  it('even a fully loaded pixel stays translucent — paper reads through', () => {
+    const sheet = createSheet(4, 4)
+    // Overload the pixel well past the ceiling — deposit AND transfer
+    // clamp, so the raster must still come out translucent.
+    setPixel(sheet, 1, 1, {
+      mobile: 50,
+      mobileR: 200 * 50,
+      mobileG: 40 * 50,
+      mobileB: 60 * 50,
+    })
+    const rgba = sheetToRgba(sheet)
+    const a = rgbaAt(rgba, 4, 1, 1)[3]
+    // ~50% coverage max: alpha must never read as opaque marker paint.
+    expect(a).toBeLessThan(150)
+    expect(a).toBeGreaterThan(80)
+    expect(MAX_DENSITY).toBeLessThan(1)
   })
 })

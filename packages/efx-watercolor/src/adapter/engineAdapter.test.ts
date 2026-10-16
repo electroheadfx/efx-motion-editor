@@ -1,12 +1,15 @@
 // ============================================================
-//  engineAdapter — tracer behaviors (56-01).
+//  engineAdapter — tracer behaviors (56-01 / 56-12).
 //
-//  Five pins on the thinnest end-to-end aquarelle path:
+//  Pins on the thinnest end-to-end aquarelle path:
 //    1. spectral mix: yellow + blue is green-dominant (subtractive)
 //    2. payload round-trip: traceSeed = hashMutationId, cuisson clamp
-//    3. E2E deposit: stroke bbox paints, far corner stays transparent
-//    4. determinism: two fresh replays are byte-identical
-//    5. fail-closed: payloadCodec.parse(malformed) === null, never throws
+//    3. fail-closed: payloadCodec.parse(malformed) === null, never throws
+//
+//  GPU pins (E2E deposit, determinism A2, stepping law) need a real
+//  WebGL2 context — vitest is blind there (project law
+//  `feedback_live_evidence_over_unit_probes`). They run only when
+//  WebGL2 is present and close on live/disk UAT A1/A2 otherwise.
 //
 //  Standing-pin family (paintVersionDisciplineContract /
 //  hostGenericityRoundTrip) — normal vitest .test.ts, no new config.
@@ -22,7 +25,24 @@ import { toStudioStroke, DIFFUSION_CAP } from '../payload/toStudioStroke'
 import type { AquarelleStroke } from '../payload/toStudioStroke'
 
 // ---------------------------------------------------------------------------
-// Mock canvas — same idiom as app/src/efx-paint/host-split/fakeEngine2Fixture.ts
+// WebGL2 gate — GPU pins skip cleanly when the context cannot exist.
+// ---------------------------------------------------------------------------
+
+function hasWebGL2(): boolean {
+  if (typeof document === 'undefined') return false
+  try {
+    const c = document.createElement('canvas')
+    const gl = c.getContext('webgl2')
+    return Boolean(gl && (gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float')))
+  } catch {
+    return false
+  }
+}
+
+const gpu = hasWebGL2()
+
+// ---------------------------------------------------------------------------
+// Canvas helper — a real canvas for GPU runs, a 2d stub otherwise.
 // ---------------------------------------------------------------------------
 
 interface MockImageData {
@@ -80,6 +100,16 @@ function makeMockCanvas(width: number, height: number): {
   return { canvas: canvasRef as unknown as HTMLCanvasElement, pixels }
 }
 
+function makeSurface(width: number, height: number): HTMLCanvasElement {
+  if (gpu && typeof document !== 'undefined') {
+    const c = document.createElement('canvas')
+    c.width = width
+    c.height = height
+    return c
+  }
+  return makeMockCanvas(width, height).canvas
+}
+
 function alphaAt(pixels: Uint8ClampedArray, width: number, x: number, y: number): number {
   return pixels[(y * width + x) * 4 + 3] ?? 0
 }
@@ -99,10 +129,10 @@ function makeStrokePayload(overrides: Partial<AquarelleStroke> = {}): AquarelleS
     params: { size: 12, water: 50, flow: 50 },
     brushId: 'wc/round-medium',
     points: [
-      { x: 20, y: 32, p: 0.5, tx: 0, ty: 0, tw: 0 },
-      { x: 28, y: 32, p: 0.6, tx: 0, ty: 0, tw: 0 },
-      { x: 36, y: 32, p: 0.5, tx: 0, ty: 0, tw: 0 },
-      { x: 44, y: 32, p: 0.4, tx: 0, ty: 0, tw: 0 },
+      { x: 0.3, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 0.4, y: 0.5, p: 0.6, tx: 0, ty: 0, tw: 0 },
+      { x: 0.5, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 0.6, y: 0.5, p: 0.4, tx: 0, ty: 0, tw: 0 },
     ],
     mutationId: 42,
     timestamp: 1000,
@@ -164,139 +194,26 @@ describe('toStudioStroke payload round-trip', () => {
     expect(reparsed?.pts.length).toBe(4)
     adapter.dispose()
   })
-})
 
-// ---------------------------------------------------------------------------
-// 3. E2E deposit — painted bbox, transparent far corner
-// ---------------------------------------------------------------------------
+  it('payload stores CANONICAL AQUA-04 globals, not mapped 0..1 values', () => {
+    const adapter = createAquarelleEngineAdapter()
+    const runtime = makeStrokePayload({
+      params: { size: 12, water: 50, load: 50, flow: 50, bleed: 50, dry: 50, edge: 50, granulation: 50 },
+    })
+    const projected = toStudioStroke(runtime)
+    const reparsed = adapter.payloadCodec.parse(adapter.payloadCodec.serialize(projected))
 
-describe('EngineAdapter E2E', () => {
-  it('applyStroke + stepTick + captureFrame paints the stroke bbox and leaves the far corner transparent', () => {
-    const width = 64
-    const height = 64
-    const { canvas } = makeMockCanvas(width, height)
-
-    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
-    const stroke = toStudioStroke(makeStrokePayload())
-
-    adapter.applyStroke(stroke)
-    for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
-
-    const frame = adapter.captureFrame()
-    const pixels = frameBytes(frame)
-
-    // Stroke runs along y=32 from x=20..44 — its bbox must carry alpha.
-    let painted = 0
-    for (let y = 24; y < 40; y++) {
-      for (let x = 16; x < 48; x++) {
-        if (alphaAt(pixels, width, x, y) > 0) painted++
-      }
-    }
-    expect(painted).toBeGreaterThan(0)
-
-    // Far corner (opposite the stroke) stays alpha 0 — unpainted pixels untouched.
-    expect(alphaAt(pixels, width, 0, 0)).toBe(0)
-    expect(alphaAt(pixels, width, width - 1, height - 1)).toBe(0)
-
+    // Canonical: size is 1..80 px, the rest 0..100. Mapped would be 0..1.
+    expect(reparsed?.engine.params['size']).toBe(12)
+    expect(reparsed?.engine.params['water']).toBe(50)
+    expect(reparsed?.engine.params['load']).toBe(50)
+    expect(reparsed?.engine.params['granulation']).toBe(50)
     adapter.dispose()
   })
 })
 
 // ---------------------------------------------------------------------------
-// 4. Determinism — same script ⇒ same pixels
-// ---------------------------------------------------------------------------
-
-describe('EngineAdapter determinism', () => {
-  it('two fresh applyStroke/stepTick/captureFrame runs produce byte-identical pixels', () => {
-    const width = 64
-    const height = 64
-    const runtime = makeStrokePayload()
-    const projected: StudioStroke<AquarelleStrokePayload> = toStudioStroke(runtime)
-
-    const runOnce = (): Uint8ClampedArray => {
-      const { canvas } = makeMockCanvas(width, height)
-      const adapter = createAquarelleEngineAdapter({ width, height, canvas })
-      adapter.applyStroke(projected)
-      for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
-      const bytes = frameBytes(adapter.captureFrame())
-      adapter.dispose()
-      return bytes
-    }
-
-    const a = runOnce()
-    const b = runOnce()
-    expect(a.length).toBe(b.length)
-    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 4b. FluidSheet stepping law (56-11) — live == bake, one engine per script
-// ---------------------------------------------------------------------------
-
-describe('EngineAdapter FluidSheet stepping law', () => {
-  it('applyStroke deposits onto the FluidSheet and stepTick advances the sim', () => {
-    const width = 64
-    const height = 64
-    const { canvas } = makeMockCanvas(width, height)
-    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
-
-    adapter.applyStroke(toStudioStroke(makeStrokePayload({ mutationId: 7, timestamp: 1 })))
-    const afterDeposit = frameBytes(adapter.captureFrame())
-
-    for (let tick = 0; tick < 12; tick++) adapter.stepTick(tick)
-    const afterSteps = frameBytes(adapter.captureFrame())
-
-    // The sim ran: the raster is not frozen at the deposit state.
-    expect(Buffer.from(afterDeposit).equals(Buffer.from(afterSteps))).toBe(false)
-
-    // Unpainted corner stays alpha 0 through the walk (AQUA-08).
-    expect(alphaAt(afterSteps, width, 0, 0)).toBe(0)
-    adapter.dispose()
-  })
-
-  it('a Dry event force-dries at its tick and never runs at frame indices', () => {
-    const width = 32
-    const height = 32
-    const { canvas } = makeMockCanvas(width, height)
-    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
-
-    adapter.applyStroke(toStudioStroke(makeStrokePayload({ mutationId: 8, timestamp: 2 })))
-    // Dry is the distinguished payload union member (D-16).
-    adapter.applyStroke({ kind: 'dry', tick: 3 } as unknown as StudioStroke<AquarelleStrokePayload>)
-
-    const pixels = frameBytes(adapter.captureFrame())
-    let painted = 0
-    for (let i = 3; i < pixels.length; i += 4) {
-      if ((pixels[i] ?? 0) > 0) painted++
-    }
-    expect(painted).toBeGreaterThan(0)
-    adapter.dispose()
-  })
-
-  it('two walks of one script produce byte-identical rasters (A2)', () => {
-    const width = 48
-    const height = 48
-    const projected = toStudioStroke(makeStrokePayload({ mutationId: 9, timestamp: 3 }))
-
-    const runOnce = (): Uint8ClampedArray => {
-      const { canvas } = makeMockCanvas(width, height)
-      const adapter = createAquarelleEngineAdapter({ width, height, canvas })
-      adapter.applyStroke(projected)
-      for (let tick = 0; tick < 6; tick++) adapter.stepTick(tick)
-      const bytes = frameBytes(adapter.captureFrame())
-      adapter.dispose()
-      return bytes
-    }
-
-    const a = runOnce()
-    const b = runOnce()
-    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 5. Fail-closed parse
+// 3. Fail-closed parse
 // ---------------------------------------------------------------------------
 
 describe('payloadCodec fail-closed', () => {
@@ -319,6 +236,94 @@ describe('payloadCodec fail-closed', () => {
       expect(adapter.payloadCodec.parse(raw)).toBeNull()
     }
 
+    adapter.dispose()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 4. GPU pins — E2E deposit, determinism (A2), stepping law.
+//    Skipped without WebGL2; close on live/disk UAT A1/A2.
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!gpu)('EngineAdapter GPU (WebGL2 required)', () => {
+  it('applyStroke + stepTick + captureFrame paints the stroke and leaves the far corner transparent (A5)', () => {
+    const width = 64
+    const height = 64
+    const canvas = makeSurface(width, height)
+
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+    adapter.applyStroke(toStudioStroke(makeStrokePayload()))
+    for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
+
+    const pixels = frameBytes(adapter.captureFrame())
+
+    let painted = 0
+    for (let y = 24; y < 40; y++) {
+      for (let x = 16; x < 48; x++) {
+        if (alphaAt(pixels, width, x, y) > 0) painted++
+      }
+    }
+    expect(painted).toBeGreaterThan(0)
+
+    expect(alphaAt(pixels, width, 0, 0)).toBe(0)
+    expect(alphaAt(pixels, width, width - 1, height - 1)).toBe(0)
+
+    adapter.dispose()
+  })
+
+  it('two fresh applyStroke/stepTick/captureFrame runs produce byte-identical pixels (A2)', () => {
+    const width = 64
+    const height = 64
+    const projected: StudioStroke<AquarelleStrokePayload> = toStudioStroke(makeStrokePayload())
+
+    const runOnce = (): Uint8ClampedArray => {
+      const canvas = makeSurface(width, height)
+      const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+      adapter.applyStroke(projected)
+      for (let tick = 0; tick <= 8; tick++) adapter.stepTick(tick)
+      const bytes = frameBytes(adapter.captureFrame())
+      adapter.dispose()
+      return bytes
+    }
+
+    const a = runOnce()
+    const b = runOnce()
+    expect(a.length).toBe(b.length)
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
+  })
+
+  it('stepTick advances the sim after applyStroke (one stepping law)', () => {
+    const width = 64
+    const height = 64
+    const canvas = makeSurface(width, height)
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+
+    adapter.applyStroke(toStudioStroke(makeStrokePayload({ mutationId: 7, timestamp: 1 })))
+    const afterDeposit = frameBytes(adapter.captureFrame())
+
+    for (let tick = 0; tick < 12; tick++) adapter.stepTick(tick)
+    const afterSteps = frameBytes(adapter.captureFrame())
+
+    expect(Buffer.from(afterDeposit).equals(Buffer.from(afterSteps))).toBe(false)
+    expect(alphaAt(afterSteps, width, 0, 0)).toBe(0)
+    adapter.dispose()
+  })
+
+  it('a Dry event force-dries at its tick (D-15) and never at frame indices (P4)', () => {
+    const width = 32
+    const height = 32
+    const canvas = makeSurface(width, height)
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+
+    adapter.applyStroke(toStudioStroke(makeStrokePayload({ mutationId: 8, timestamp: 2 })))
+    adapter.applyStroke({ kind: 'dry', tick: 3 } as unknown as StudioStroke<AquarelleStrokePayload>)
+
+    const pixels = frameBytes(adapter.captureFrame())
+    let painted = 0
+    for (let i = 3; i < pixels.length; i += 4) {
+      if ((pixels[i] ?? 0) > 0) painted++
+    }
+    expect(painted).toBeGreaterThan(0)
     adapter.dispose()
   })
 })

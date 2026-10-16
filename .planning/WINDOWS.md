@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 24
+open_count: 25
 waived_count: 5
 fixed_count: 69
-total_count: 98
-last_updated: 2026-10-15T22:36:41.962Z
+total_count: 99
+last_updated: 2026-10-16T00:15:12.513Z
 ---
 
 # Broken Windows Ledger
@@ -113,6 +113,7 @@ last_updated: 2026-10-15T22:36:41.962Z
 | 96 | 54 | deviation | app/src/components/shared/NumericStepper.tsx |  | Rule 3 scope expansion: MutableRef/RefObject Preact 11 type fallout fixed beyond the three D-07 files (20 files total) | open |  | 2026-10-14T15:33:20.833Z |  |
 | 97 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 140 | setInputLocked/setAnimationMode are no-op flag sinks; AnimationPlayer wiring lands in a later plan (tracer slice) | open |  | 2026-10-15T22:36:41.860Z |  |
 | 98 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 175 | stepTick is a no-op; diffusion/drying cuisson lands in 56-03 (tracer pins one-stroke deposit only) | open |  | 2026-10-15T22:36:41.962Z |  |
+| 99 | 56 | unrun-verify | app/src/components/physic-paint/view/PaperPicker.tsx | 78 | 56-09 verify leg efxPaintCleanBreakContract fails on pre-existing 56-05 PaperPicker toDataURL frame-transport token (out of scope; logged deferred-items.md) | open |  | 2026-10-16T00:15:12.513Z |  |
 
 ````json
 [
@@ -1315,6 +1316,19 @@ last_updated: 2026-10-15T22:36:41.962Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-15T22:36:41.962Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 99,
+    "kind": "unrun-verify",
+    "phase": "56",
+    "file": "app/src/components/physic-paint/view/PaperPicker.tsx",
+    "line": 78,
+    "description": "56-09 verify leg efxPaintCleanBreakContract fails on pre-existing 56-05 PaperPicker toDataURL frame-transport token (out of scope; logged deferred-items.md)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-16T00:15:12.513Z",
     "resolved_at": null,
     "milestone": "v2.0.0"
   }

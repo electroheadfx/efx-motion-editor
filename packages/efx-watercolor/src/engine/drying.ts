@@ -22,20 +22,36 @@
 //  continuously on the integer tick grid (DATA-03).
 // ============================================================
 
-import { WET_EPS, transferMobile, type FluidSheet } from './fluid'
+import { WET_EPS, transferMobile, type FluidSheet, type SimTuning } from './fluid'
 
-/** Wetness drop per tick for a fully-surrounded interior pixel. */
-const DRY_RATE = 0.010
+/** Wetness drop per tick for a fully-surrounded interior pixel at tuning 0.5. */
+const DRY_RATE = 0.018
 /** Extra dry-rate per missing wet neighbour (1.0 interior .. ~2.8 isolated). */
 const EDGE_DRY_EXTRA = 0.42
 /** Wetness below this fixes all remaining mobile pigment in place. */
 const FIX_THRESHOLD = 0.06
-/** Fraction of mobile pigment that settles per tick as wetness falls. */
-const GRANULATION = 0.035
-/** Drying-front pull strength — pigment migrates toward the receding edge. */
-const FRONT_PULL = 0.22
+/** Fraction of mobile pigment that settles per tick as wetness falls at tuning 0.5. */
+const GRANULATION = 0.07
+/** Drying-front pull strength at tuning 0.5 — pigment migrates toward the receding edge. */
+const FRONT_PULL = 0.05
 /** Cap on the fraction of a donor's mobile pigment the front may pull per tick. */
-const MAX_PULL_FRACTION = 0.35
+const MAX_PULL_FRACTION = 0.08
+
+/** Map a 0..1 param onto a multiplier that is 1.0 at 0.5. */
+function tuneScale(p: number): number {
+  return 0.35 + p * 1.3
+}
+
+/**
+ * Deterministic spatial hash in 0..1 — same (x, y) always yields
+ * the same value. Used to roughen the tide-line pull so the drying
+ * rim is irregular like real paper, not a uniform outline ring.
+ */
+function hash2(x: number, y: number): number {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0
+  h = Math.imul(h ^ (h >>> 13), 1274126177)
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+}
 
 function isWet(sheet: FluidSheet, i: number): boolean {
   return (sheet.wet[i] ?? 0) > WET_EPS
@@ -62,12 +78,18 @@ function fixAllAt(sheet: FluidSheet, i: number): void {
  * in deposit.ts (the deposit role) — it decides whether a low-
  * wetness stamp lands at all.
  */
-export function fixDrying(sheet: FluidSheet, dt: number): void {
+export function fixDrying(sheet: FluidSheet, dt: number, tuning: SimTuning): void {
   if (!(dt > 0)) return
   const { width: w, height: h, wet, mobile } = sheet
+  const dryRate = DRY_RATE * tuneScale(tuning.dry)
+  const frontPull = FRONT_PULL * tuneScale(tuning.edge)
+  const granulation = GRANULATION * tuneScale(tuning.granulation)
 
-  // 1. Drying-front pull — run BEFORE wetness drops so the front
-  //    is still well defined. Pigment moves toward lower wetness.
+  // 1. Drying-front pull — ONLY as the wash is actually setting.
+  //    A freshly laid stamp is uniformly wet; pulling on its edge
+  //    gradient would turn every stamp into an instant donut. Gate
+  //    on wetness so the tide line forms at the receding front.
+  const FRONT_WET_MAX = 0.32
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x
@@ -75,6 +97,7 @@ export function fixDrying(sheet: FluidSheet, dt: number): void {
       const donor = mobile[i] ?? 0
       if (donor <= 0) continue
       const wetI = wet[i] ?? 0
+      if (wetI > FRONT_WET_MAX) continue
 
       // Pull from this pixel toward each drier wet neighbour.
       const neighbours: number[] = []
@@ -88,7 +111,11 @@ export function fixDrying(sheet: FluidSheet, dt: number): void {
         const wetJ = wet[j] ?? 0
         const dw = wetI - wetJ
         if (dw <= 0) continue
-        const share = Math.min(MAX_PULL_FRACTION, FRONT_PULL * dw * dt)
+        // Roughen the pull with a spatial hash so the tide line
+        // gathers unevenly (real paper) instead of forming a
+        // uniform outline ring around the wash.
+        const rough = 0.7 + hash2(i & 1023, (i / 1024) | 0) * 0.6
+        const share = Math.min(MAX_PULL_FRACTION, frontPull * rough * dw * dt)
         transferMobile(sheet, i, j, donor * share)
       }
     }
@@ -108,14 +135,14 @@ export function fixDrying(sheet: FluidSheet, dt: number): void {
       if (y + 1 < h && isWet(sheet, i + w)) wetNeighbours++
 
       const edgeFactor = 1 + (4 - wetNeighbours) * EDGE_DRY_EXTRA
-      const nextWet = wetI - DRY_RATE * edgeFactor * dt
+      const nextWet = wetI - dryRate * edgeFactor * dt
       wet[i] = nextWet > 0 ? nextWet : 0
 
       // Granulation settle: a fraction of mobile pigment locks as
       // the sheet dries (DEPOSIT role, P6 — not a fifth role).
       const m = mobile[i] ?? 0
       if (m > 0) {
-        const settle = Math.min(1, GRANULATION * (1 - (wet[i] ?? 0)) * dt)
+        const settle = Math.min(1, granulation * (1 - (wet[i] ?? 0)) * dt)
         const moved = m * settle
         if (moved > 0) {
           const share = moved / m
