@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildRotoScriptApplyRefusalMessage,
@@ -179,5 +181,88 @@ describe('D-12 no-partial pin — every named refusal writes nothing (55-06)', (
     // Now the refused apply: zero writes.
     await test.controller.applyScript();
     expect(probe.total, 'refused apply must write nothing').toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 56 (MOD-05 / D-25): the named cross-engine Apply line, pinned
+// byte-exactly in BOTH directions, plus the display-name lock and the
+// zero-mutation law (a refused Apply never rotates a version signal).
+// ---------------------------------------------------------------------------
+
+describe('Phase 56 named cross-engine Apply line (MOD-05 / D-25)', () => {
+  const refusalSource = readFileSync(
+    fileURLToPath(new URL('../../components/physic-paint/roto/physicsPaintRotoScriptApplyRefusal.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it('Water color script → Brush layer refuses with the exact named line', () => {
+    const line = buildRotoScriptApplyRefusalMessage({
+      code: 'engine-mismatch',
+      detail: 'efx-watercolor:efx-physic-paint',
+    });
+    expect(line).toBe('Apply rejected — this script is for Water color, not Brush. Nothing changed.');
+  });
+
+  it('Brush script → Water color layer refuses with the exact named line (reverse direction)', () => {
+    // MOD-05 adjacency: BOTH directions refuse with the same line shape.
+    const line = buildRotoScriptApplyRefusalMessage({
+      code: 'engine-mismatch',
+      detail: 'efx-physic-paint:efx-watercolor',
+    });
+    expect(line).toBe('Apply rejected — this script is for Brush, not Water color. Nothing changed.');
+  });
+
+  it('fallback (no resolvable pair) keeps the generic mismatch line', () => {
+    const line = buildRotoScriptApplyRefusalMessage({ code: 'engine-mismatch' });
+    expect(line).toBe('Apply rejected — this script is for a different paint module. Nothing changed.');
+  });
+
+  it("ENGINE_DISPLAY_NAMES['efx-watercolor'] stays 'Water color' (unchanged string)", () => {
+    // D-15: package ids on disk, display names in the visible line. The
+    // mapping is a literal in the mapper module — pin it by source scan so a
+    // rename cannot silently change the visible copy.
+    expect(refusalSource).toContain("'efx-watercolor': 'Water color'");
+    expect(refusalSource).toContain("'efx-physic-paint': 'Brush'");
+    expect(refusalSource).toContain("'efx-krita': 'Krita'");
+  });
+
+  it('unreadable script refuses with a named visible line (never silent drop)', () => {
+    const malformed = buildRotoScriptApplyRefusalMessage({ code: 'malformed-engine-payload' });
+    expect(malformed).toBe('Apply rejected — this script could not be read. Nothing changed.');
+    const legacy = buildRotoScriptApplyRefusalMessage({ code: 'unreadable-legacy-script' });
+    expect(legacy).toBe('Apply rejected — this script is from an older version. Nothing changed.');
+  });
+
+  it('a refused Apply mutates zero store state — the mapper never rotates a version signal', async () => {
+    // Acceptance pin: "version signals unchanged". The refusal mapper is pure
+    // (no store, no signal), and the apply path on an empty clipboard writes
+    // nothing. Together they guarantee a refused Apply leaves physicPaintVersion
+    // / efxPaintVersion / paintVersion untouched.
+    expect(refusalSource).not.toContain('physicPaintVersion');
+    expect(refusalSource).not.toContain('efxPaintVersion');
+    expect(refusalSource).not.toContain('paintVersion');
+    expect(refusalSource).not.toContain('bumpTrackRevision');
+    expect(refusalSource).not.toContain('bumpDocumentRevision');
+    expect(refusalSource).not.toMatch(/^import\s+(?!type)/m);
+
+    const probe = createWriteProbe();
+    const test = harness(probe);
+    const before = probe.total;
+    await test.controller.applyScript();
+    expect(probe.total, 'refused Apply must not move any write/version counter').toBe(before);
+  });
+
+  it('idempotency: the same cross-engine refusal fires twice with the identical named line', () => {
+    const first = buildRotoScriptApplyRefusalMessage({
+      code: 'engine-mismatch',
+      detail: 'efx-watercolor:efx-physic-paint',
+    });
+    const second = buildRotoScriptApplyRefusalMessage({
+      code: 'engine-mismatch',
+      detail: 'efx-watercolor:efx-physic-paint',
+    });
+    expect(second).toBe(first);
+    expect(first).toBe('Apply rejected — this script is for Water color, not Brush. Nothing changed.');
   });
 });

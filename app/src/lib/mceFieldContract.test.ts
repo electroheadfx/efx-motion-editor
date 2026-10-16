@@ -190,3 +190,67 @@ describe('TS ↔ Rust .mce field-diff contract', () => {
     expect(diffMember('MceSequence', new Set(), new Set(['fps']))).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 56 field set (DATA-04 / D-27 / MOD-04)
+//
+// Four new .mce field groups join the dual-language law in this phase:
+//   1. paper display state on the fond (id, strength, scale) — PAPER-03 / D-22
+//   2. aquarelle brush properties (the 8-field per-brush surface) — AQUA-03 / R1.7
+//   3. per-engine stroke payload in the envelope (opaque engine slot) — HOST-02
+//   4. brush-pack snapshot (D-23 inline .mce data) — NOT a one-language field
+//
+// Each group is a named Mce* member in BOTH languages. The generic wire-key
+// diff above covers key-set equality; these rows pin the member names and the
+// exact keys the phase's feature block enumerates, so a rename cannot silently
+// drop a group out of the contract.
+// ---------------------------------------------------------------------------
+
+describe('Phase 56 .mce field set (DATA-04 / D-27)', () => {
+  const rust = parseRustStructs(RUST_SRC);
+  const ts = parseTsInterfaces(TS_SOURCES);
+
+  function expectMemberKeys(name: string, keys: readonly string[]): void {
+    expect(ts.has(name), `TS parser missed ${name}`).toBe(true);
+    expect(rust.has(name), `Rust parser missed ${name}`).toBe(true);
+    const tsKeys = ts.get(name)!;
+    const rustKeys = new Set(rust.get(name)!.values());
+    for (const key of keys) {
+      expect(tsKeys.has(key), `${name}.${key}: TS side is missing the key`).toBe(true);
+      expect(rustKeys.has(key), `${name}.${key}: Rust side is missing the key`).toBe(true);
+    }
+    // And no missing keys on either side for this member (the four groups must
+    // be complete two-language declarations, not partial sketches).
+    const problems = diffMember(name, tsKeys, rustKeys);
+    expect(problems, `${name} field-diff violations:\n${problems.join('\n')}`).toEqual([]);
+  }
+
+  it('declares paper display state on the fond (id, strength, scale) in both languages', () => {
+    // PAPER-03 / D-22: paper id + strength + scale ride the document fond.
+    expectMemberKeys('McePaperDisplayState', ['id', 'strength', 'scale']);
+  });
+
+  it('declares the aquarelle brush property surface in both languages', () => {
+    // AQUA-03 / R1.7 / D-08: the 8 per-brush multipliers.
+    expectMemberKeys('MceAquarelleBrushProperties', [
+      'tip', 'aspect', 'rotation', 'sizeCurve', 'scatter', 'capacity', 'grain', 'wetRound',
+    ]);
+  });
+
+  it('declares the per-engine stroke payload carrier (opaque engine slot) in both languages', () => {
+    // HOST-02 / D-19: the envelope's per-stroke engine payload slot.
+    expectMemberKeys('MceEngineStrokePayload', ['engine']);
+  });
+
+  it('declares the brush-pack snapshot in both languages (D-23 inline .mce data)', () => {
+    // MOD-04 / D-23: kind + entries travel IN the .mce as inline data.
+    expectMemberKeys('MceBrushPackSnapshot', ['kind', 'entries']);
+  });
+
+  it('brushPack is NOT an ALLOWED_ONE_LANGUAGE entry (D-23 two-language by design)', () => {
+    for (const entry of ALLOWED_ONE_LANGUAGE) {
+      expect(entry.toLowerCase()).not.toContain('brushpack');
+      expect(entry.toLowerCase()).not.toContain('brush_pack');
+    }
+  });
+});

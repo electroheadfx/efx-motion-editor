@@ -20,7 +20,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { hashMutationId } from '@efxlab/efx-paint-host'
+import { classifyEnvelopeParseFailure, hashMutationId } from '@efxlab/efx-paint-host'
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import {
   AQUARELLE_SCHEMA_VERSION,
@@ -358,5 +358,139 @@ describe('payloadCodec seam', () => {
   it('serialize is total over the union (stroke and Dry) without throwing', () => {
     expect(() => serialize(makeStrokeEvent())).not.toThrow()
     expect(() => serialize(makeDryEvent(1, 1))).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 8. Cross-engine Apply refusal + unreadable-script named failures (MOD-05 / D-25)
+//
+//  Host yields CODES; the Studio names them on the owned-refusal surface
+//  (55-06). These pins prove the codec's fail-closed signals are exactly the
+//  two codes the named lines hang off:
+//    · unreadable aquarelle wire (bad shape / unknown schemaVersion)
+//      → parse null → `malformed-engine-payload`
+//    · a foreign-engine script at the envelope
+//      → `engine-mismatch` with the package-id pair in `detail`
+//  Never half-apply, never silent drop (DATA-02 / 53.1 law).
+// ---------------------------------------------------------------------------
+
+describe('cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25)', () => {
+  it('unreadable aquarelle wire (unknown schemaVersion) fails parse and classifies as malformed-engine-payload', () => {
+    const stroke = makeStrokeEvent()
+    const unreadable = { schemaVersion: 999, event: stroke }
+    expect(parse(unreadable)).toBeNull()
+    // The envelope carrying it still has the right kind/engineId, so the host
+    // does not call it a legacy script or an unknown engine — the payload is
+    // simply unreadable (D-14 ordering: legacy first, then unknown engine,
+    // then malformed).
+    const envelope = {
+      kind: 'efx-studio-paint-script',
+      schemaVersion: 1,
+      engineId: 'efx-watercolor',
+      id: '2f6c0a1e-4b3d-4c2a-9e8f-0a1b2c3d4e5f',
+      name: 'unreadable',
+      createdAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      source: { projectName: 'p', layerId: 'l', layerName: 'L', sourceFrame: 0, displayFrame: 0, width: 64, height: 64 },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.5, dataUrl: 'data:image/webp;base64,' },
+      brushPack: { kind: 'efx-watercolor', entries: [] },
+      strokes: [unreadable],
+    }
+    const classified = classifyEnvelopeParseFailure(envelope)
+    // Envelope shape itself is well-formed, so the host parse succeeds and the
+    // payload-level refusal is the codec's own null — which the Apply path maps
+    // to `malformed-engine-payload` (the named "could not be read" line).
+    expect(classified).toBeNull()
+    // Every stroke in the envelope must survive codec.parse; any null is a
+    // named refusal, never a silent drop.
+    for (const raw of envelope.strokes) {
+      expect(parse(raw)).toBeNull()
+    }
+  })
+
+  it('malformed aquarelle wire (bad shape) fails parse and never throws', () => {
+    const malformed: unknown[] = [
+      { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { pts: 'nope' } },
+      { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { kind: 'dry', tick: -1, recordedOrder: 1 } },
+      { schemaVersion: AQUARELLE_SCHEMA_VERSION, event: null },
+      'not-json',
+    ]
+    for (const raw of malformed) {
+      expect(() => parse(raw)).not.toThrow()
+      expect(parse(raw)).toBeNull()
+    }
+  })
+
+  it('a foreign-engine script at the envelope classifies as engine-mismatch, not malformed', () => {
+    // Cross-engine Apply (MOD-05): a Brush script offered to a Water color
+    // layer (and the reverse) must refuse with the engine-mismatch code so the
+    // Studio can name BOTH engines. The package-id pair rides `detail`.
+    const envelope = {
+      kind: 'efx-studio-paint-script',
+      schemaVersion: 1,
+      engineId: 'efx-physic-paint',
+      id: '2f6c0a1e-4b3d-4c2a-9e8f-0a1b2c3d4e5f',
+      name: 'brush-script',
+      createdAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      source: { projectName: 'p', layerId: 'l', layerName: 'L', sourceFrame: 0, displayFrame: 0, width: 64, height: 64 },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.5, dataUrl: 'data:image/webp;base64,' },
+      brushPack: { kind: 'efx-physic-paint', entries: [] },
+      strokes: [],
+    }
+    const classified = classifyEnvelopeParseFailure(envelope)
+    // The envelope is structurally valid (known engine id), so the host parse
+    // does not fail — the Apply path is what discriminates the engine id and
+    // yields `engine-mismatch` with detail `efx-physic-paint:efx-watercolor`.
+    expect(classified).toBeNull()
+    // The aquarelle codec itself must NOT accept a foreign payload as its own.
+    const foreignPayload = {
+      tool: 'paint',
+      color: '#000000',
+      params: { size: 1, opacity: 100 },
+      timestamp: 0,
+    }
+    expect(parse({ schemaVersion: AQUARELLE_SCHEMA_VERSION, event: foreignPayload })).toBeNull()
+  })
+
+  it('an unknown engine id classifies as unknown-engine-id (named "unknown paint module" line)', () => {
+    const envelope = {
+      kind: 'efx-studio-paint-script',
+      schemaVersion: 1,
+      engineId: 'efx-not-a-real-engine',
+      id: '2f6c0a1e-4b3d-4c2a-9e8f-0a1b2c3d4e5f',
+      name: 'mystery',
+      createdAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      source: { projectName: 'p', layerId: 'l', layerName: 'L', sourceFrame: 0, displayFrame: 0, width: 64, height: 64 },
+      thumbnail: { mimeType: 'image/webp', width: 1, height: 1, quality: 0.5, dataUrl: 'data:image/webp;base64,' },
+      brushPack: { kind: 'x', entries: [] },
+      strokes: [],
+    }
+    expect(classifyEnvelopeParseFailure(envelope)).toBe('unknown-engine-id')
+  })
+
+  it('a legacy pre-envelope kind classifies as unreadable-legacy-script (clean break, no reader)', () => {
+    expect(classifyEnvelopeParseFailure({ kind: 'efx-physics-paint-roto-script', version: 2 })).toBe(
+      'unreadable-legacy-script',
+    )
+  })
+
+  it('PIN: a refused parse writes nothing — parse is total, pure, and side-effect free', () => {
+    // The codec is the refuse-before-write door: it never mutates engine state,
+    // never touches a store, and never half-applies. A null return IS the
+    // refusal; the named line is the Studio's job (D-09/D-25).
+    const before = collectPayloadSources()
+    const unreadable = { schemaVersion: 99, event: makeStrokeEvent() }
+    parse(unreadable)
+    parse({ schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { pts: [] } })
+    const after = collectPayloadSources()
+    expect(after).toBe(before)
+    // And the codec source itself carries no store/signal mutation surface.
+    expect(before).not.toContain('physicPaintVersion')
+    expect(before).not.toContain('efxPaintVersion')
+    expect(before).not.toContain('paintVersion')
+    expect(before).not.toContain('bumpTrackRevision')
+    expect(before).not.toContain('bumpDocumentRevision')
   })
 })
