@@ -160,7 +160,8 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { buildAquarelleStrokePayload, recordAquarellePayload } from './view/aquarelleRecordState';
+import { recordAquarelleStroke } from './view/aquarelleRecordState';
+import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -3810,9 +3811,6 @@ export function PhysicsPaintStudio() {
     physicPaintVersion.value++;
     rotoScript.observeCompletedMutation(mutationEngine, mutation);
     const { kind, isEmpty, mutationId } = mutation;
-    if (activeModule.value === 'watercolor' && kind !== 'clear' && kind !== 'undo' && kind !== 'redo') {
-      recordAquarellePayload(mutationId, buildAquarelleStrokePayload());
-    }
     rotoMoveHistory.observePaintMutation(mutationId, kind);
     const acceptedTarget = rotoScript.getAcceptedTarget(mutationEngine, mutationId);
     const publicationIdentity = acceptedTarget?.publicationIdentity;
@@ -3957,7 +3955,39 @@ export function PhysicsPaintStudio() {
       : mutationLocked
         ? 'Finish the current Roto script operation.'
         : undefined;
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value], () => {
+  // 56-11: stroke-end record seam for Water color. The live aquarelle
+  // surface owns rendering; this callback persists the full AquarelleStroke
+  // (points + params) and enqueues a PaintStroke so the Roto script path
+  // still sees the mark. Supersedes the params-only mutation-completion seam.
+  const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
+    const mutationEngine = engineRef.current;
+    if (!mutationEngine) return;
+    const paintStroke = {
+      tool: 'paint' as const,
+      points: stroke.points.map((p) => ({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: 0 })),
+      color: stroke.color,
+      params: {
+        size: Number(stroke.params['size']) || 12,
+        opacity: Number(stroke.params['load']) || 50,
+        pressure: 50,
+        waterAmount: Number(stroke.params['water']) || 50,
+        dryAmount: Number(stroke.params['dry']) || 50,
+        edgeDetail: Number(stroke.params['edge']) || 50,
+        pickup: 50,
+        eraseStrength: 50,
+        antiAlias: 1,
+      },
+      timestamp: stroke.timestamp,
+    };
+    try {
+      const mutationId = mutationEngine.enqueueRecordedStroke({ primary: paintStroke });
+      recordAquarelleStroke(mutationId, { ...stroke, mutationId });
+    } catch {
+      // A malformed recorded stroke must not kill the live surface — drop it.
+    }
+  }, [recordAquarelleStroke]);
+
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -3980,6 +4010,9 @@ export function PhysicsPaintStudio() {
       getStrokeMetadata,
       trackOpacity: mountActiveTrack?.opacity ?? 1,
       trackBlendMode: mountActiveTrack?.blendMode ?? 'normal',
+      aquarelleActive: activeModule.value === 'watercolor',
+      color: settings.color,
+      onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the

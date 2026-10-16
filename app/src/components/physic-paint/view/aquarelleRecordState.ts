@@ -14,6 +14,7 @@ import { signal } from '@preact/signals';
 import {
   createDryEvent,
   type AquarelleDryEvent,
+  type AquarelleStroke,
   type AquarelleStrokePayload,
   type AquarelleTool,
 } from '@efxlab/efx-watercolor/payload';
@@ -188,25 +189,44 @@ export function buildAquarelleStrokePayload(
 }
 
 /**
- * Record-time payload store keyed by mutationId. The live canvas
- * calls `recordAquarellePayload` at mutation completion when
- * `activeModule === 'watercolor'`; the PlayScript bake projection
- * reads it back so the aquarelle engine replays the exact params
- * the user painted with (no hardcoded fallbacks).
+ * Stroke-end record store (56-11 supersedes the params-only seam).
+ * The live aquarelle surface calls `recordAquarelleStroke` at stroke
+ * end with the full AquarelleStroke (points + ticks + params). The
+ * PlayScript bake projection reads it back so the aquarelle engine
+ * replays the exact marks the user painted.
  */
-const recordedPayloads = new Map<number, AquarelleStrokePayload>();
+const recordedStrokes = new Map<number, AquarelleStroke>();
 
-export function recordAquarellePayload(
+export function recordAquarelleStroke(
   mutationId: number,
-  payload: AquarelleStrokePayload,
+  stroke: AquarelleStroke,
 ): void {
-  recordedPayloads.set(mutationId, payload);
+  recordedStrokes.set(mutationId, stroke);
 }
 
+export function getRecordedAquarelleStroke(
+  mutationId: number,
+): AquarelleStroke | undefined {
+  return recordedStrokes.get(mutationId);
+}
+
+/** Params-only view of a recorded stroke (PlayScript fallback seam). */
 export function getRecordedAquarellePayload(
   mutationId: number,
 ): AquarelleStrokePayload | undefined {
-  return recordedPayloads.get(mutationId);
+  const stroke = recordedStrokes.get(mutationId);
+  if (!stroke) return undefined;
+  return {
+    tool: stroke.tool,
+    color: stroke.color,
+    params: { ...stroke.params },
+    brushId: stroke.brushId,
+    toolOverrides: stroke.toolOverrides ? { ...stroke.toolOverrides } : undefined,
+    mutationId: stroke.mutationId,
+    diffusionFrames: stroke.diffusionFrames,
+    timestamp: stroke.timestamp,
+    playFrame: stroke.playFrame,
+  };
 }
 
 export type AquarelleDrySink = (event: AquarelleDryEvent) => void;

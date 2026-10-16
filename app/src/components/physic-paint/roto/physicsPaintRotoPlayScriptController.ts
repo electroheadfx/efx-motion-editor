@@ -30,7 +30,7 @@ import { isWebpBytes } from '../../../types/physicPaint';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
-import { getRecordedAquarellePayload } from '../view/aquarelleRecordState';
+import { getRecordedAquarellePayload, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
   type AquarelleBake,
@@ -1749,6 +1749,9 @@ async function createDefaultAquarelleAdapter(
 function aquarelleEventsFromScript(script: RotoPaintScript): StudioStroke<AquarelleStrokePayload>[] {
   const events: StudioStroke<AquarelleStrokePayload>[] = [];
   const project = (stroke: RotoPaintScript['brushes'][number]['primary']): StudioStroke<AquarelleStrokePayload> => {
+    const storedStroke = stroke.mutationId !== undefined
+      ? getRecordedAquarelleStroke(stroke.mutationId)
+      : undefined;
     const stored = stroke.mutationId !== undefined
       ? getRecordedAquarellePayload(stroke.mutationId)
       : undefined;
@@ -1768,9 +1771,16 @@ function aquarelleEventsFromScript(script: RotoPaintScript): StudioStroke<Aquare
             granulation: 50,
           },
       brushId: stored?.brushId || 'wc/round-medium',
-      points: stroke.points.map((point) => ({
-        x: point.x, y: point.y, p: point.p, tx: point.tx, ty: point.ty, tw: point.tw,
-      })),
+      // 56-11: prefer the recorded aquarelle stroke's own points (the live
+      // surface is the record source of truth). Fall back to the script's
+      // points only when no aquarelle stroke was recorded for this id.
+      points: storedStroke
+        ? storedStroke.points.map((point) => ({
+            x: point.x, y: point.y, p: point.p, tx: point.tx, ty: point.ty, tw: point.tw,
+          }))
+        : stroke.points.map((point) => ({
+            x: point.x, y: point.y, p: point.p, tx: point.tx, ty: point.ty, tw: point.tw,
+          })),
       ...(stroke.mutationId !== undefined ? { mutationId: stroke.mutationId } : {}),
       ...(stroke.diffusionFrames !== undefined ? { diffusionFrames: stroke.diffusionFrames } : {}),
       timestamp: stroke.timestamp,

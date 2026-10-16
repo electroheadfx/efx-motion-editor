@@ -157,7 +157,7 @@ describe('PhysicsPaintCanvasMount directly executed hook behavior', () => {
       expect(rerendered.child.props[name], name).toBe(mounted.child.props[name]);
     }
 
-    const engine = { setTool: vi.fn(), setVisibleBackgroundSuppressed: vi.fn() } as unknown as EfxPaintEngine;
+    const engine = { setTool: vi.fn(), setVisibleBackgroundSuppressed: vi.fn(), setInputLocked: vi.fn() } as unknown as EfxPaintEngine;
     const penHandler = vi.fn() as unknown as NativePenInputHandler;
     const mutation = {} as CompletedPaintMutation;
     const sample = {} as PaintPerformanceSample;

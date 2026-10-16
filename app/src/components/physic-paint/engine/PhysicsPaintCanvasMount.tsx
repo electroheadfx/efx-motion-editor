@@ -2,9 +2,11 @@ import type { CSSProperties } from 'preact';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { EfxPaintCanvas } from '@efxlab/efx-physic-paint/preact';
 import type { CompletedPaintMutation, EfxPaintEngine, InputActivityKind, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
+import { AquarelleCanvasLayer } from './AquarelleCanvasLayer';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
 
@@ -26,11 +28,12 @@ const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, CSSProperties['mixBlendMode']> =
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; color?: string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
   const [displaySize, setDisplaySize] = useState<{ width: number; height: number } | null>(null);
+  const engineRef = useRef<EfxPaintEngine | null>(null);
   const onEngineReadyRef = useRef(props.onEngineReady);
   const onCanvasMountedRef = useRef(props.onCanvasMounted);
   const onNativePenInputReadyRef = useRef(props.onNativePenInputReady);
@@ -39,6 +42,8 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const onInputActivityRef = useRef(props.onInputActivity);
   const beforeEngineDestroyRef = useRef(props.beforeEngineDestroy);
   const getStrokeMetadataRef = useRef(props.getStrokeMetadata);
+  const onAquarelleStrokeEndRef = useRef(props.onAquarelleStrokeEnd);
+  const colorRef = useRef(props.color ?? '#103c65');
   onEngineReadyRef.current = props.onEngineReady;
   onCanvasMountedRef.current = props.onCanvasMounted;
   onNativePenInputReadyRef.current = props.onNativePenInputReady;
@@ -47,6 +52,13 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   onInputActivityRef.current = props.onInputActivity;
   beforeEngineDestroyRef.current = props.beforeEngineDestroy;
   getStrokeMetadataRef.current = props.getStrokeMetadata;
+  onAquarelleStrokeEndRef.current = props.onAquarelleStrokeEnd;
+  colorRef.current = props.color ?? '#103c65';
+
+  const aquarelleActive = props.aquarelleActive ?? false;
+  useEffect(() => {
+    engineRef.current?.setInputLocked(aquarelleActive);
+  }, [aquarelleActive]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -82,6 +94,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const trackBlendMode = props.trackBlendMode ?? 'normal';
   const trackTintActive = trackOpacity < 1 || trackBlendMode !== 'normal';
   const shellStyle = {
+    position: 'relative' as const,
     aspectRatio: `${props.width} / ${props.height}`,
     '--physics-paint-paper-texture-scale': props.paperTextureScale,
     ...(displaySize ? { width: `${displaySize.width}px`, height: `${displaySize.height}px` } : {}),
@@ -101,16 +114,18 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
       : {}),
   } as CSSProperties;
   const handleEngineReady = useCallback((engine: EfxPaintEngine) => {
+    engineRef.current = engine;
     engine.setTool('paint');
     // 48-06: the program monitor owns the visible background (the flattened
     // composite carries the paper fond) — the engine's canvases stay
     // transparent so the composite stacked beneath shows through.
     engine.setVisibleBackgroundSuppressed(true);
+    engine.setInputLocked(aquarelleActive);
     setMountError(null);
     onCanvasMountedRef.current(true);
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');
     return onEngineReadyRef.current(engine);
-  }, []);
+  }, [aquarelleActive]);
   const handleNativePenInputReady = useCallback((handler: NativePenInputHandler) => {
     onNativePenInputReadyRef.current(handler);
   }, []);
@@ -134,25 +149,38 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
 
   return (
     <div class="demo-canvas-shell" ref={shellRef} style={shellStyle}>
-      <EfxPaintCanvas
-        width={props.width}
-        height={props.height}
-        papers={[
-          { name: 'canvas1', url: '/img/paper_1.jpg' },
-          { name: 'canvas2', url: '/img/paper_2.jpg' },
-          { name: 'canvas3', url: '/img/paper_3.jpg' },
-        ]}
-        defaultPaper="canvas1"
-        paperTextureScale={props.paperTextureScale}
-        class="paint-canvas"
-        onNativePenInputReady={handleNativePenInputReady}
-        onCompletedMutation={handleCompletedMutation}
-        onPerformanceSample={handlePerformanceSample}
-        onInputActivity={handleInputActivity}
-        beforeEngineDestroy={handleBeforeEngineDestroy}
-        getStrokeMetadata={handleGetStrokeMetadata}
-        onEngineReady={handleEngineReady}
-      />
+      <div
+        class="physics-paint-engine-surface"
+        style={{ position: 'absolute', inset: '0', pointerEvents: aquarelleActive ? 'none' : 'auto', opacity: aquarelleActive ? 0 : 1 } as CSSProperties}
+      >
+        <EfxPaintCanvas
+          width={props.width}
+          height={props.height}
+          papers={[
+            { name: 'canvas1', url: '/img/paper_1.jpg' },
+            { name: 'canvas2', url: '/img/paper_2.jpg' },
+            { name: 'canvas3', url: '/img/paper_3.jpg' },
+          ]}
+          defaultPaper="canvas1"
+          paperTextureScale={props.paperTextureScale}
+          class="paint-canvas"
+          onNativePenInputReady={handleNativePenInputReady}
+          onCompletedMutation={handleCompletedMutation}
+          onPerformanceSample={handlePerformanceSample}
+          onInputActivity={handleInputActivity}
+          beforeEngineDestroy={handleBeforeEngineDestroy}
+          getStrokeMetadata={handleGetStrokeMetadata}
+          onEngineReady={handleEngineReady}
+        />
+      </div>
+      {aquarelleActive ? (
+        <AquarelleCanvasLayer
+          width={props.width}
+          height={props.height}
+          color={colorRef.current}
+          onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
+        />
+      ) : null}
       {mountError ? <p class="demo-error">{mountError}</p> : null}
     </div>
   );
