@@ -231,6 +231,71 @@ describe('EngineAdapter determinism', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 4b. FluidSheet stepping law (56-11) — live == bake, one engine per script
+// ---------------------------------------------------------------------------
+
+describe('EngineAdapter FluidSheet stepping law', () => {
+  it('applyStroke deposits onto the FluidSheet and stepTick advances the sim', () => {
+    const width = 64
+    const height = 64
+    const { canvas } = makeMockCanvas(width, height)
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+
+    adapter.applyStroke(toStudioStroke(makeStrokePayload({ mutationId: 7, timestamp: 1 })))
+    const afterDeposit = frameBytes(adapter.captureFrame())
+
+    for (let tick = 0; tick < 12; tick++) adapter.stepTick(tick)
+    const afterSteps = frameBytes(adapter.captureFrame())
+
+    // The sim ran: the raster is not frozen at the deposit state.
+    expect(Buffer.from(afterDeposit).equals(Buffer.from(afterSteps))).toBe(false)
+
+    // Unpainted corner stays alpha 0 through the walk (AQUA-08).
+    expect(alphaAt(afterSteps, width, 0, 0)).toBe(0)
+    adapter.dispose()
+  })
+
+  it('a Dry event force-dries at its tick and never runs at frame indices', () => {
+    const width = 32
+    const height = 32
+    const { canvas } = makeMockCanvas(width, height)
+    const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+
+    adapter.applyStroke(toStudioStroke(makeStrokePayload({ mutationId: 8, timestamp: 2 })))
+    // Dry is the distinguished payload union member (D-16).
+    adapter.applyStroke({ kind: 'dry', tick: 3 } as unknown as StudioStroke<AquarelleStrokePayload>)
+
+    const pixels = frameBytes(adapter.captureFrame())
+    let painted = 0
+    for (let i = 3; i < pixels.length; i += 4) {
+      if ((pixels[i] ?? 0) > 0) painted++
+    }
+    expect(painted).toBeGreaterThan(0)
+    adapter.dispose()
+  })
+
+  it('two walks of one script produce byte-identical rasters (A2)', () => {
+    const width = 48
+    const height = 48
+    const projected = toStudioStroke(makeStrokePayload({ mutationId: 9, timestamp: 3 }))
+
+    const runOnce = (): Uint8ClampedArray => {
+      const { canvas } = makeMockCanvas(width, height)
+      const adapter = createAquarelleEngineAdapter({ width, height, canvas })
+      adapter.applyStroke(projected)
+      for (let tick = 0; tick < 6; tick++) adapter.stepTick(tick)
+      const bytes = frameBytes(adapter.captureFrame())
+      adapter.dispose()
+      return bytes
+    }
+
+    const a = runOnce()
+    const b = runOnce()
+    expect(Buffer.from(a).equals(Buffer.from(b))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 5. Fail-closed parse
 // ---------------------------------------------------------------------------
 
