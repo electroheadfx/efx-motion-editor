@@ -159,7 +159,7 @@ Plans:
   4. User switches "Brush | Water color | Krita" from the top-bar MODULE SWITCHER; each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) serves all modules; Krita is visible but inert ("coming in v2.1.0")
   5. Brush-pack snapshots travel in `.mce` (deliberate exception to the 52.2 refs-only law); every new `.mce` field added by this phase (aquarelle brush properties, per-engine stroke payload in the envelope, paper state on the fond, brush-pack snapshot) is declared in BOTH TS and Rust (`mceFieldContract` law); unreadable/cross-engine scripts refuse with a named visible error — never half-apply, never silent drop
 
-**Plans**: 6/10 plans executed
+**Plans**: 9/10 plans executed
 **UI hint**: yes
 
 Plans:
@@ -174,11 +174,11 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 - [x] 56-06-PLAN.md — TDD script codec + Dry event + deterministic record/play (AQUA-05, AQUA-06)
-- [ ] 56-07-PLAN.md — Aquarelle panel + tool row + Dry button + Brushes docker UI (AQUA-02/03/04)
+- [x] 56-07-PLAN.md — Aquarelle panel + tool row + Dry button + Brushes docker UI (AQUA-02/03/04)
 
 **Wave 4** *(blocked on Wave 3 completion)*
-- [ ] 56-08-PLAN.md — Bake host + WebP cache, survives leaving the frame (AQUA-05, AQUA-07, AQUA-08)
-- [ ] 56-09-PLAN.md — TDD .mce field contract + brush-pack snapshot + fail-closed Apply (DATA-04, MOD-04, MOD-05)
+- [x] 56-08-PLAN.md — Bake host + WebP cache, survives leaving the frame (AQUA-05, AQUA-07, AQUA-08)
+- [x] 56-09-PLAN.md — TDD .mce field contract + brush-pack snapshot + fail-closed Apply (DATA-04, MOD-04, MOD-05)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 - [ ] 56-10-PLAN.md — Suite green + live UAT A1-A5 close (AQUA-08)
@@ -205,6 +205,6 @@ Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable
 |-------|----------------|--------|-----------|
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
 | 55. efx-paint-host (engine-1 host split) | 10/10 | Complete    | 2026-10-15 |
-| 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 6/10 | Planning complete | - |
+| 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 9/10 | Planning complete | - |
 | 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |
