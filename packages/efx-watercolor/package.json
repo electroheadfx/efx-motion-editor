@@ -43,6 +43,10 @@
     "./payload": {
       "types": "./dist/payload.d.ts",
       "import": "./dist/payload.mjs"
+    },
+    "./bake": {
+      "types": "./dist/bake.d.ts",
+      "import": "./dist/bake.mjs"
     }
   },
   "files": [

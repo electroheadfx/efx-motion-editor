@@ -1,15 +1,40 @@
 // ============================================================
-//  aquarelleBake — createBakeHost consumer (56-08, D-21).
+//  aquarelleBake — the createBakeHost consumer (56-08, D-21).
 //
-//  RED SCAFFOLD (intentionally unimplemented): bake() returns
-//  zero frames and never submits turns so the pins fail on
-//  assertions, not imports. GREEN replaces this body with the
-//  real createBakeHost consumer (mode 'flush-survives-navigation').
+//  Never re-ports the queue (55 D-21): every turn is submitted
+//  to createBakeHost in mode 'flush-survives-navigation' so a
+//  long fluid cuisson survives leaving the frame (AQUA-07).
+//
+//  Pattern properties preserved from finalizationQueue /
+//  bakeHost:
+//    - BOUNDED TURNS: BAKE_TURN_CONCURRENCY = 2 slot pool
+//    - GENERATION-STALE commit guard: a cancelled turn never
+//      commits (publish is the commit body)
+//    - beginFlush() forced-flush escape for nav/close/save/export
+//    - NEVER-REJECTING produce/commit: a bad bake is `failed`
+//      data, not a dead fiber
+//
+//  Bake-window law (D-19 / AQUA-05): the window is per-stroke
+//  `diffusionFrames` clamped to DIFFUSION_CAP = 600 — never
+//  inferred from wall clock. stepTick never force-dries (P4).
+//  Dry events (D-15) fire in recorded order between stroke
+//  turns on the same adapter chain. One captured WebP frame per
+//  stroke (zero-diffusionFrames → single frame). Unpainted
+//  pixels stay alpha 0 (AQUA-08) — the adapter never clears.
 // ============================================================
 
-import type { EngineAdapter } from '@efxlab/efx-paint-host'
-import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
-import type { AquarellePayloadEvent } from '../payload/dryEvent'
+import {
+  BAKE_TURN_CONCURRENCY,
+  createBakeHost,
+  type BakeTurnOutcome,
+  type EngineAdapter,
+  type StudioStroke,
+} from '@efxlab/efx-paint-host'
+import {
+  DIFFUSION_CAP,
+  type AquarelleStrokePayload,
+} from '../payload/toStudioStroke'
+import { isAquarelleDryEvent, type AquarellePayloadEvent } from '../payload/dryEvent'
 
 /** One committed WebP frame from a bake turn. */
 export interface AquarelleBakeFrame {
@@ -58,30 +83,179 @@ export interface AquarelleBake {
   readonly inFlight: number
 }
 
+/** Engine cap policy (D-19) — clamp before stepTick, never trust the bag. */
+function clampCuisson(raw: number | undefined): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return 0
+  return Math.min(DIFFUSION_CAP, Math.trunc(raw))
+}
+
+function readSize(frame: CanvasImageSource): { width: number; height: number } {
+  const carrier = frame as { width?: number; height?: number }
+  return { width: carrier.width ?? 0, height: carrier.height ?? 0 }
+}
+
+/** DOM fallback encoder — the app injects the Rust-backed one (R4.2). */
+async function defaultEncodeWebp(frame: CanvasImageSource): Promise<Uint8Array> {
+  const carrier = frame as { toDataURL?: (type?: string) => string }
+  if (typeof carrier.toDataURL !== 'function') {
+    throw new Error('createAquarelleBake: no WebP encoder available — pass options.encodeWebp')
+  }
+  const dataUrl = carrier.toDataURL('image/webp')
+  const comma = dataUrl.indexOf(',')
+  const binary = atob(comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
 export function createAquarelleBake(
-  _adapter: EngineAdapter<AquarelleStrokePayload>,
-  _options: AquarelleBakeOptions = {},
+  adapter: EngineAdapter<AquarelleStrokePayload>,
+  options: AquarelleBakeOptions = {},
 ): AquarelleBake {
-  // RED: never publishes. GREEN wires createBakeHost with
-  // mode 'flush-survives-navigation' and one turn per stroke.
+  // D-21: consume createBakeHost — never re-port the finalizationQueue.
+  const host = createBakeHost({
+    concurrency: Math.max(1, Math.floor(options.concurrency ?? BAKE_TURN_CONCURRENCY)),
+  })
+  const encodeWebp = options.encodeWebp ?? ((frame) => defaultEncodeWebp(frame))
+  const onCommit = options.onCommit
+
+  // Adapter mutations are serialized: applyStroke / stepTick / captureFrame
+  // never interleave mid-capture ("a third turn waits, never interleaves
+  // mid-capture"). Encoding stays free to overlap inside the 2-slot pool.
+  let adapterChain: Promise<unknown> = Promise.resolve()
+  const scheduleAdapter = <T>(work: () => T | Promise<T>): Promise<T> => {
+    const run = adapterChain.then(work)
+    adapterChain = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    return run
+  }
+
+  let sharedFlush: Promise<void> | null = null
+
+  const flush = (): Promise<void> => {
+    // Overlapping flush() calls share one drain outcome (AQUA-05 / 52.2-15).
+    if (sharedFlush) return sharedFlush
+    sharedFlush = (async () => {
+      const release = host.beginFlush()
+      try {
+        await host.drain()
+      } finally {
+        release()
+      }
+    })().finally(() => {
+      sharedFlush = null
+    })
+    return sharedFlush
+  }
+
+  const bake = async (events: readonly AquarellePayloadEvent[]): Promise<AquarelleBakeResult> => {
+    const frames: AquarelleBakeFrame[] = []
+    const outcomes: Promise<BakeTurnOutcome>[] = []
+    // FIFO commit barrier: a later stroke never commits before an earlier one,
+    // even when its encode finishes first. Released when each turn settles
+    // (committed OR cancelled) so a cancelled head never wedges the tail.
+    let commitBarrier: Promise<void> = Promise.resolve()
+    let strokeIndex = 0
+
+    for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+      const event = events[eventIndex]
+      if (!event) continue
+
+      if (isAquarelleDryEvent(event)) {
+        // D-15: Dry fires in recorded order BETWEEN stroke turns — same
+        // adapter chain, so it lands after earlier produce and before later.
+        // applyStroke is the adapter's one Dry seam (D-16 one-payload-union).
+        void scheduleAdapter(() => {
+          adapter.applyStroke(event as unknown as StudioStroke<AquarelleStrokePayload>)
+        })
+        continue
+      }
+
+      const stroke = event as StudioStroke<AquarelleStrokePayload>
+      const myStrokeIndex = strokeIndex
+      strokeIndex += 1
+      const cuisson = clampCuisson(
+        stroke.cuisson ?? (stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
+      )
+
+      // Reserve the adapter slot NOW so chain order is walk order, not
+      // produce-start order (the host defers produce behind the slot take).
+      const framePromise = scheduleAdapter(() => {
+        adapter.applyStroke(stroke)
+        // Bake-window law: stepTick across the stroke's own cuisson only.
+        // Frame indices never force-dry (P4 / D-28).
+        for (let tick = 0; tick < cuisson; tick += 1) {
+          adapter.stepTick(tick)
+        }
+        return adapter.captureFrame()
+      })
+
+      const myBarrier = commitBarrier
+      let releaseBarrier!: () => void
+      commitBarrier = new Promise<void>((resolve) => {
+        releaseBarrier = resolve
+      })
+
+      const outcome = host.submit<AquarelleBakeFrame>({
+        // AQUA-07 / D-21: long cuisson survives navigation and dispose().
+        mode: 'flush-survives-navigation',
+        produce: async () => {
+          const frame = await framePromise
+          const fallback = readSize(frame)
+          const width = options.width ?? fallback.width
+          const height = options.height ?? fallback.height
+          const bytes = await encodeWebp(frame, width, height)
+          return {
+            eventIndex,
+            strokeIndex: myStrokeIndex,
+            tick: cuisson,
+            bytes,
+            width,
+            height,
+          }
+        },
+        // Publish IS the commit body — the host's generation-stale guard is
+        // what keeps a cancelled/interrupted turn from reaching here (T-56-24).
+        commit: (value) =>
+          myBarrier.then(() => {
+            frames.push(value)
+            onCommit?.(value)
+            return true
+          }),
+      })
+      // Always advance the FIFO barrier once the turn settles, committed or not.
+      void outcome.then(
+        () => releaseBarrier(),
+        () => releaseBarrier(),
+      )
+      outcomes.push(outcome)
+    }
+
+    const settled = await Promise.all(outcomes)
+    // Dry events after the last stroke are not awaited by any turn.
+    await adapterChain
+
+    if (settled.some((o) => o === 'cancelled' || o === 'stale')) {
+      return { ok: false, reason: 'cancelled' }
+    }
+    if (settled.some((o) => o === 'failed' || o === 'rejected')) {
+      return { ok: false, reason: 'failed' }
+    }
+    return { ok: true, frames }
+  }
+
   return {
-    async bake(_events: readonly AquarellePayloadEvent[]): Promise<AquarelleBakeResult> {
-      return { ok: true, frames: [] }
-    },
-    async flush(): Promise<void> {
-      /* RED no-op */
-    },
-    beginFlush(): () => void {
-      return () => undefined
-    },
-    dispose(): void {
-      /* RED no-op */
-    },
-    interrupt(): void {
-      /* RED no-op */
-    },
+    bake,
+    flush,
+    beginFlush: () => host.beginFlush(),
+    // D-21: dispose() keeps flush-survives-navigation turns running. The
+    // navigation escape is beginFlush()/flush(), never an abort.
+    dispose: () => host.dispose(),
+    interrupt: () => host.interrupt(),
     get inFlight(): number {
-      return 0
+      return host.inFlight
     },
   }
 }
