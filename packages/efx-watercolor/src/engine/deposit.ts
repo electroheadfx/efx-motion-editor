@@ -372,6 +372,11 @@ export interface DepositOptions {
 /** Minimal 2d context surface the deposit writes through. */
 export interface DepositCanvas {
   getContext(id: '2d'): {
+    createImageData(w: number, h: number): {
+      width: number
+      height: number
+      data: Uint8ClampedArray
+    }
     getImageData(x: number, y: number, w: number, h: number): {
       width: number
       height: number

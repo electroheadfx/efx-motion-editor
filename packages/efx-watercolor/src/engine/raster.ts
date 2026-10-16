@@ -8,7 +8,6 @@
 // ============================================================
 
 import type { FluidSheet } from './fluid'
-import type { DepositCanvas } from './deposit'
 
 function clampByte(v: number): number {
   if (!Number.isFinite(v) || v <= 0) return 0
@@ -44,14 +43,26 @@ export function sheetToRgba(sheet: FluidSheet): Uint8ClampedArray {
   return out
 }
 
+/** Minimal 2d surface — createImageData so putImageData gets a real ImageData (WebKit rejects bags). */
+type SheetRasterContext = {
+  createImageData(w: number, h: number): { width: number; height: number; data: Uint8ClampedArray }
+  putImageData(
+    imageData: { width: number; height: number; data: Uint8ClampedArray },
+    x: number,
+    y: number,
+  ): void
+}
+
 /** Draw the sheet raster onto a 2d canvas. Unpainted pixels are cleared to alpha 0. */
-export function drawSheetToCanvas(sheet: FluidSheet, canvas: HTMLCanvasElement | DepositCanvas): void {
+export function drawSheetToCanvas(
+  sheet: FluidSheet,
+  canvas: { getContext(id: '2d'): SheetRasterContext | null },
+): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const rgba = sheetToRgba(sheet)
-  ctx.putImageData(
-    { width: sheet.width, height: sheet.height, data: rgba } as unknown as ImageData,
-    0,
-    0,
-  )
+  // WebKit rejects a plain {width,height,data} bag — putImageData needs a real ImageData.
+  const imageData = ctx.createImageData(sheet.width, sheet.height)
+  imageData.data.set(rgba)
+  ctx.putImageData(imageData, 0, 0)
 }
