@@ -689,7 +689,6 @@ export function PhysicsPaintRightPanel({
                 )}
               </div>
               <div class="physics-paint-option-group">
-                <SectionLabel text="Paper" />
                 <PaperPicker
                   paperId={paperId ?? 'paper/cold-press'}
                   strength={paperStrength ?? 0.65}
