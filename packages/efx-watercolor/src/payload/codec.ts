@@ -13,6 +13,7 @@
 // ============================================================
 
 import type { StudioStroke, StudioPoint } from '@efxlab/efx-paint-host/animation'
+import type { HostScriptRefusalCode } from '@efxlab/efx-paint-host'
 import {
   isAquarelleDryEvent,
   type AquarelleDryEvent,
@@ -194,4 +195,36 @@ export function parse(raw: unknown): AquarellePayloadEvent | null {
 export const payloadCodec = {
   serialize,
   parse,
+}
+
+// ---------------------------------------------------------------------------
+// Fail-closed refusal codes (MOD-05 / D-25 / DATA-02).
+//
+// Host yields CODES; the Studio names them on the owned-refusal surface
+// (55-06 D-09..D-11). These two helpers are the codec-side door: a null parse
+// is a named refusal, never a silent drop, never a half-apply. Cross-engine
+// discrimination is the envelope's engineId job — this codec only owns the
+// payload-shape arm.
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a failed aquarelle payload parse to the host refusal code. Returns
+ * `malformed-engine-payload` when the wire form is unreadable (bad shape /
+ * unknown schemaVersion), `null` when it parses. Never throws.
+ */
+export function classifyAquarellePayloadFailure(raw: unknown): HostScriptRefusalCode | null {
+  return parse(raw) === null ? 'malformed-engine-payload' : null
+}
+
+/**
+ * Build the engine-mismatch refusal for a foreign-engine script offered to an
+ * aquarelle target (or the reverse). `detail` carries the package-id pair
+ * `"<scriptEngineId>:<targetEngineId>"` so the Studio mapper can name both
+ * engines via ENGINE_DISPLAY_NAMES (D-15). Total; never throws.
+ */
+export function buildEngineMismatchRefusal(
+  scriptEngineId: string,
+  targetEngineId: string,
+): { code: 'engine-mismatch'; detail: string } {
+  return { code: 'engine-mismatch', detail: `${scriptEngineId}:${targetEngineId}` }
 }

@@ -401,3 +401,65 @@ pub struct MceImageRef {
     pub height: u32,
     pub format: String,
 }
+
+// ---------------------------------------------------------------------------
+// Phase 56 .mce field set (DATA-04 / D-27 / F1 co-change with TS).
+//
+// serde silently drops any key these structs do not name, so every new field
+// this phase persists is declared in BOTH languages in the same change set.
+// The four members below document the wire shapes that ride inside the v1.0
+// package carriers; declaring them here puts them under the field-diff pin.
+// ---------------------------------------------------------------------------
+
+/// Paper display state carried on the document fond (PAPER-03 / D-22).
+/// `id` = paper library texture id, `strength` = grain strength [0..1],
+/// `scale` = grain pattern scale. Display-class: rotates the change token,
+/// never rebakes paint pixels (D-21).
+///
+/// Contract declaration (DATA-04 / D-27): the wire shape is pinned in both
+/// languages so the field-diff test can see it; the v1.0 package carrier is
+/// still opaque (`HashMap<String, Value>`) and does not construct this yet.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McePaperDisplayState {
+    pub id: String,
+    pub strength: f64,
+    pub scale: f64,
+}
+
+/// Aquarelle per-brush property surface (AQUA-03 / R1.7 / D-08). The 8
+/// numeric multipliers snapshotted onto a stroke at record time; the same
+/// flat surface rides every brush-pack snapshot entry.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceAquarelleBrushProperties {
+    pub tip: f64,
+    pub aspect: f64,
+    pub rotation: f64,
+    #[serde(rename = "sizeCurve")]
+    pub size_curve: f64,
+    pub scatter: f64,
+    pub capacity: f64,
+    pub grain: f64,
+    #[serde(rename = "wetRound")]
+    pub wet_round: f64,
+}
+
+/// Per-engine stroke payload carrier in the shared script envelope (HOST-02 /
+/// D-19). The `engine` slot is opaque — the host never inspects it; carried
+/// as a serde_json::Value presence carrier (physic_paint_outputs style).
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceEngineStrokePayload {
+    pub engine: Option<Value>,
+}
+
+/// Brush-pack snapshot travelling in `.mce` (MOD-04 / D-23). Deliberate
+/// exception to the 52.2 refs-only law: entries are inline data, never a file
+/// reference. Two-language by design — NOT an ALLOWED_ONE_LANGUAGE entry.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MceBrushPackSnapshot {
+    pub kind: String,
+    pub entries: Vec<Value>,
+}

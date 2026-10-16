@@ -266,3 +266,64 @@ export interface MceImageRef {
   height: number;
   format: string;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 56 .mce field set (DATA-04 / D-27 / F1 co-change with Rust).
+//
+// Every new field this phase persists joins BOTH declaration surfaces in the
+// same change set — serde silently drops an undeclared key on open, so a
+// one-language field is lost on every save -> close -> reopen.
+//
+// These four members document the wire shapes that ride inside the v1.0
+// package carriers (`efx_paint_documents` layer sub-files + the durable script
+// envelope). Declaring them as Mce* types puts them under the field-diff pin
+// so the key set cannot drift between TS and Rust.
+// ---------------------------------------------------------------------------
+
+/**
+ * Paper display state carried on the document fond (PAPER-03 / D-22).
+ * id = the paper library texture id, strength = grain strength [0..1],
+ * scale = grain pattern scale. Display-class: a change rotates the change
+ * token (PKG-06/BKG-09 lesson) but never rebakes paint pixels (D-21).
+ */
+export interface McePaperDisplayState {
+  id: string;
+  strength: number;
+  scale: number;
+}
+
+/**
+ * Aquarelle per-brush property surface (AQUA-03 / R1.7 / D-08). The 8 numeric
+ * multipliers snapshotted onto a stroke at record time; the same flat surface
+ * rides every brush-pack snapshot entry.
+ */
+export interface MceAquarelleBrushProperties {
+  tip: number;
+  aspect: number;
+  rotation: number;
+  sizeCurve: number;
+  scatter: number;
+  capacity: number;
+  grain: number;
+  wetRound: number;
+}
+
+/**
+ * Per-engine stroke payload carrier in the shared script envelope (HOST-02 /
+ * D-19). The `engine` slot is opaque — the host never inspects it; the engine
+ * owns its schema. Mirrors the physic_paint_outputs presence-carrier style on
+ * the Rust side (serde_json::Value).
+ */
+export interface MceEngineStrokePayload {
+  engine: Record<string, unknown> | null;
+}
+
+/**
+ * Brush-pack snapshot travelling in `.mce` (MOD-04 / D-23). Deliberate
+ * exception to the 52.2 refs-only law: entries are inline data, never a file
+ * reference. Two-language by design — NOT an ALLOWED_ONE_LANGUAGE entry.
+ */
+export interface MceBrushPackSnapshot {
+  kind: string;
+  entries: unknown[];
+}

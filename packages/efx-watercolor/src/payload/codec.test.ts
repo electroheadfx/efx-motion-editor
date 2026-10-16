@@ -24,6 +24,8 @@ import { classifyEnvelopeParseFailure, hashMutationId } from '@efxlab/efx-paint-
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation'
 import {
   AQUARELLE_SCHEMA_VERSION,
+  buildEngineMismatchRefusal,
+  classifyAquarellePayloadFailure,
   parse,
   payloadCodec,
   serialize,
@@ -492,5 +494,22 @@ describe('cross-engine Apply refusal + unreadable named failures (MOD-05 / D-25)
     expect(before).not.toContain('paintVersion')
     expect(before).not.toContain('bumpTrackRevision')
     expect(before).not.toContain('bumpDocumentRevision')
+  })
+
+  it('classifyAquarellePayloadFailure maps parse-null to malformed-engine-payload and parse-ok to null', () => {
+    const good = serialize(makeStrokeEvent())
+    expect(classifyAquarellePayloadFailure(good)).toBeNull()
+    expect(classifyAquarellePayloadFailure({ schemaVersion: 99, event: makeStrokeEvent() })).toBe('malformed-engine-payload')
+    expect(classifyAquarellePayloadFailure({ schemaVersion: AQUARELLE_SCHEMA_VERSION, event: { pts: 'nope' } })).toBe('malformed-engine-payload')
+    expect(classifyAquarellePayloadFailure(null)).toBe('malformed-engine-payload')
+    expect(classifyAquarellePayloadFailure('not-json')).toBe('malformed-engine-payload')
+  })
+
+  it('buildEngineMismatchRefusal carries the package-id pair in detail for the named line', () => {
+    const refusal = buildEngineMismatchRefusal('efx-physic-paint', 'efx-watercolor')
+    expect(refusal.code).toBe('engine-mismatch')
+    expect(refusal.detail).toBe('efx-physic-paint:efx-watercolor')
+    const reverse = buildEngineMismatchRefusal('efx-watercolor', 'efx-physic-paint')
+    expect(reverse.detail).toBe('efx-watercolor:efx-physic-paint')
   })
 })
