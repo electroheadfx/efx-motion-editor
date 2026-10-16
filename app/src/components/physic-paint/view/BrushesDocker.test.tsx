@@ -124,10 +124,6 @@ function renderDocker(props?: Record<string, unknown>): TestVNode {
   return materialize(BrushesDocker(props ?? {})) as TestVNode;
 }
 
-function findButtons(tree: TestVNode): TestVNode[] {
-  return [...walk(tree)].filter((node) => node.type === 'button');
-}
-
 function tooltipOf(tree: TestVNode, title: string): boolean {
   for (const node of walk(tree)) {
     const t = node.props?.['title'] ?? node.props?.['data-tooltip'];

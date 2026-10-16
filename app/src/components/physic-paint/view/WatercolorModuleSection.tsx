@@ -1,6 +1,7 @@
 import { SectionLabel } from '../../shared/SectionLabel';
 import { AquarelleParamsPanel } from './AquarelleParamsPanel';
 import { AquarelleToolRow } from './AquarelleToolRow';
+import { BrushesDocker } from './BrushesDocker';
 import { emitAquarelleDry } from './aquarelleRecordState';
 
 /** UI-SPEC copy — exact string, pinned by AquarelleToolRow.test.tsx. */
@@ -8,7 +9,7 @@ const DRY_TOOLTIP = 'Flash-dry the sheet. Recorded in the script.';
 
 /**
  * 56-02/56-07 (D-05): the Water color module-only block.
- * Order: tool row (D-13) → params (D-04) → BrushesDocker slot →
+ * Order: tool row (D-13) → params (D-04) → BrushesDocker (D-07) →
  * Dry action at the bottom (D-15). Never shows mode selectors (D-14).
  */
 export function WatercolorModuleSection() {
@@ -17,6 +18,7 @@ export function WatercolorModuleSection() {
       <SectionLabel text="Water color" />
       <AquarelleToolRow />
       <AquarelleParamsPanel />
+      <BrushesDocker />
       <button
         type="button"
         data-testid="aquarelle-dry"
