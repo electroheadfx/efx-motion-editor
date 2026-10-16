@@ -27,18 +27,13 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
-  it('renders the Brush color section chrome-less and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group (47 UAT)', () => {
-    // The brush color section stays chrome-less (36.15-12, UAT Gap H-1/H-2).
-    // 47 UAT: the tool pane gained its own tab group — 'Paint' (default-open),
-    // 'Track', and (261008-ryq) 'Audio' — so the active track's options live
-    // in a pane section of their own instead of mixing with the brush tools.
-    expect(rightPanel).not.toContain('aria-label="Brush color panel"');
-    expect(rightPanel).not.toContain('aria-label="Tool panel"');
-    expect(rightPanel).not.toContain('physics-paint-tab-brush');
-    expect(rightPanel).not.toContain('physics-paint-tab-tool');
-    expect(rightPanel).not.toContain('physics-paint-single-tab"');
-    expect(rightPanel).not.toMatch(/>\s*Brush color\s*</);
-    expect(rightPanel).not.toMatch(/>\s*Tool\s*</);
+  it('renders the top pane with Color/Actions/Brush/Paper tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group', () => {
+    // UI checklist row 6: the top pane gained a tab row (Color | Actions |
+    // Brush | Paper) replacing the always-on color picker. Middle and bottom
+    // panes are unchanged.
+    expect(rightPanel).toContain('aria-label="Top pane panels"');
+    expect(rightPanel).toContain('physics-paint-tab-top-');
+    expect(rightPanel).toContain("'color' | 'actions' | 'brush' | 'paper'");
 
     // The tool pane's own tablist: Paint FIRST and default-open, Track second,
     // Audio third (261008-ryq — the clip list moved into this tab), and the
@@ -65,8 +60,8 @@ describe('native-approved Physics Paint right sidebar', () => {
 
     // Two tablists remain: the tool pane's tabs (Paint/Track/Audio + the
     // conditional Background option) + the lower group's three.
-    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(7);
+    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(3);
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(8);
 
     for (const label of ['Actions', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));

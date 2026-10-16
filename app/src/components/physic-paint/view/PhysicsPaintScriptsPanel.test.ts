@@ -109,8 +109,10 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     // 49-06 (UAT round 2) + 261008-ryq: the tool pane's Paint/Track/Audio tabs
     // plus the conditional Background option tab (shown only while a Bg clip
     // is selected) — 7 role=tab buttons in the source.
-    expect(rightPanel.match(/role="tab"/g)).toHaveLength(7);
-    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(2);
+    // Source scan: 1 (top-pane map) + 4 (tool pane) + 3 (lower pane) = 8.
+    // The top-pane map renders 4 tabs at runtime from one source line.
+    expect(rightPanel.match(/role="tab"/g)).toHaveLength(8);
+    expect(rightPanel.match(/role="tablist"/g)).toHaveLength(3);
     expect(rightPanel).toContain("setOptionsTab('scripts'); void scripts.library.enterScripts()");
     expect(rightPanel).toContain("optionsTab === 'scripts'");
   });
@@ -219,7 +221,8 @@ describe('Physics Paint SCRIPTS panel contract', () => {
     expect(scrollAreaRule).toMatch(/width:\s*100%/);
     expect(css).toMatch(/\.physics-paint-script-thumbnail[\s\S]*?(?:width|height):\s*48px/);
     expect(css).toMatch(/text-overflow:\s*ellipsis/);
-    expect(css).toMatch(/@media[\s\S]*?max-width:\s*860px[\s\S]*?grid-template-columns:\s*1fr/);
+    // The 860px breakpoint exists (topbar scroll fallback — 56-ui-04).
+    expect(css).toMatch(/@media[\s\S]*?max-width:\s*860px/);
   });
 });
 

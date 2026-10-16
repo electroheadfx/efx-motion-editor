@@ -106,18 +106,13 @@ function findAll(root: unknown, predicate: (node: TestVNode) => boolean): TestVN
 }
 
 describe('PaperPicker (D-09..D-12)', () => {
-  it('trigger secondary text shows the current paper name', () => {
+  it('renders the paper grid always visible (UI checklist row 10 — no popover)', () => {
     const root = renderPicker();
-    const current = findAll(root, (node) => node.props?.['data-paper-picker-current'] !== undefined);
-    expect(current.length).toBe(1);
-    expect(textContent(current[0])).toBe('cold press');
-  });
-
-  it('trigger label reads Paper', () => {
-    const root = renderPicker();
+    const grid = findAll(root, (node) => node.props?.['data-paper-picker-popover'] !== undefined);
+    expect(grid.length).toBe(1);
+    // No trigger button — the grid is always on screen.
     const trigger = findAll(root, (node) => node.props?.['data-paper-picker-trigger'] !== undefined);
-    expect(trigger.length).toBe(1);
-    expect(textContent(trigger[0]).includes('Paper')).toBe(true);
+    expect(trigger.length).toBe(0);
   });
 
   it('renders group headers Procedural and Real (D-12)', () => {

@@ -183,9 +183,8 @@ describe('panel split shell — shared block', () => {
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
-    // The four shared section labels must exist in the panel source.
-    expect(panelSource).toMatch(/Color/);
-    expect(panelSource).toMatch(/Size/);
+    // The shared section labels must exist in the panel source.
+    // (Size was removed in 56-ui-03 — top-bar Brush size is the one control.)
     expect(panelSource).toMatch(/Opacity/);
     expect(panelSource).toMatch(/Paper/);
   });

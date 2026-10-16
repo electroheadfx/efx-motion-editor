@@ -53,6 +53,10 @@ export interface PhysicsPaintRightPanelProps {
   onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
+  /** UI checklist row 6 Actions tab: Undo | Redo | Clear frame. */
+  onUndo: () => void;
+  onRedo: () => void;
+  onClearFrame: () => void;
   trackName: string;
   trackOpacity: number;
   trackBlendMode: BlendMode;
@@ -224,6 +228,9 @@ export function PhysicsPaintRightPanel({
   onEraseStrengthChange,
   onOnionChange,
   onPlayWiggleChange,
+  onUndo,
+  onRedo,
+  onClearFrame,
   trackName,
   trackOpacity,
   trackBlendMode,
@@ -245,6 +252,10 @@ export function PhysicsPaintRightPanel({
   // The signal read subscribes this memoized panel to selection changes (the
   // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
   const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
+  // UI checklist row 6: the top pane gets ONE tab row (Color | Actions |
+  // Brush | Paper) replacing the always-on color picker. Middle and bottom
+  // panes are unchanged.
+  const [topPaneTab, setTopPaneTab] = useState<'color' | 'actions' | 'brush' | 'paper'>('color');
   const [hexInput, setHexInput] = useState(color);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
@@ -483,9 +494,66 @@ export function PhysicsPaintRightPanel({
         style={{ gridTemplateRows: `minmax(0, ${brushSplit}fr) 32px minmax(0, ${toolSplit}fr) 32px minmax(0, ${100 - brushSplit - toolSplit}fr)` }}
       >
         <div class="physics-paint-right-pane physics-paint-right-pane-primary">
+          <div class="physics-paint-options-tabs physics-paint-options-tabs-top" role="tablist" aria-label="Top pane panels">
+            {(['color', 'actions', 'brush', 'paper'] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                class={`physics-paint-options-tab physics-paint-tab-top-${tab}${topPaneTab === tab ? ' active' : ''}`}
+                role="tab"
+                aria-selected={topPaneTab === tab}
+                onClick={() => setTopPaneTab(tab)}
+              >
+                {tab === 'color' ? 'Color' : tab === 'actions' ? 'Actions' : tab === 'brush' ? 'Brush' : 'Paper'}
+              </button>
+            ))}
+          </div>
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
+          {topPaneTab === 'actions' ? (
+            <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Actions">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button type="button" class="physics-paint-text-button" data-testid="actions-undo" disabled={engineControlsDisabled} onClick={onUndo}>Undo</button>
+                <button type="button" class="physics-paint-text-button" data-testid="actions-redo" disabled={engineControlsDisabled} onClick={onRedo}>Redo</button>
+                <button type="button" class="physics-paint-text-button" data-testid="actions-clear-frame" disabled={engineControlsDisabled} onClick={onClearFrame}>Clear frame</button>
+              </div>
+            </div>
+          ) : topPaneTab === 'brush' ? (
+            <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Brush">
+              {activeModule.value === 'watercolor' ? (
+                <WatercolorModuleSection />
+              ) : (
+                <BrushModuleSection
+                  activeTool={activeTool}
+                  edgeDetail={edgeDetail}
+                  pickup={pickup}
+                  spread={spread}
+                  smoothing={smoothing}
+                  eraseStrength={eraseStrength}
+                  physicsMode={physicsMode}
+                  engineControlsDisabled={engineControlsDisabled}
+                  onEdgeDetailChange={onEdgeDetailChange}
+                  onPickupChange={onPickupChange}
+                  onSpreadChange={onSpreadChange}
+                  onSmoothingChange={onSmoothingChange}
+                  onEraseStrengthChange={onEraseStrengthChange}
+                />
+              )}
+            </div>
+          ) : topPaneTab === 'paper' ? (
+            <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Paper">
+              <PaperPicker
+                paperId={paperId ?? 'paper/cold-press'}
+                strength={paperStrength ?? 0.65}
+                scale={paperScale ?? 1}
+                onPaperIdChange={(id) => onPaperIdChange?.(id)}
+                onStrengthChange={(value) => onPaperStrengthChange?.(value)}
+                onScaleChange={(value) => onPaperScaleChange?.(value)}
+                disabled={engineControlsDisabled}
+              />
+            </div>
+          ) : (
           <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel">
             <div class="physics-paint-color-picker" aria-label="Brush color picker">
               <canvas
@@ -577,6 +645,7 @@ export function PhysicsPaintRightPanel({
               ))}
             </div>
           </div>
+          )}
           </section>
             </div>
           </SidebarScrollArea>

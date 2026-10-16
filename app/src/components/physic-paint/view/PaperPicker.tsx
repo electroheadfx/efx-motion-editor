@@ -10,7 +10,6 @@
  * procedural papers, the shipped jpg for real scans. No engine involvement in
  * the picker (the composite seam is paperPass; this is presentation only).
  */
-import { signal } from '@preact/signals';
 import type { JSX } from 'preact';
 import { PAPER_LIBRARY, proceduralHeightMap, type PaperDefinition } from '@efxlab/efx-watercolor/papers';
 import { SliderStepper } from '../../shared/SliderStepper';
@@ -45,6 +44,10 @@ function proceduralReliefImage(id: string): ImageData | null {
   const key = `${id}:${CELL_SIZE}`;
   const cached = reliefCache.get(key);
   if (cached !== undefined) return cached;
+  if (typeof document === 'undefined') {
+    reliefCache.set(key, null);
+    return null;
+  }
   const height = proceduralHeightMap(id, 1, CELL_SIZE, CELL_SIZE);
   if (!height) {
     reliefCache.set(key, null);
@@ -167,68 +170,27 @@ function PaperCell(props: {
 }
 
 export function PaperPicker(props: PaperPickerProps): JSX.Element {
-  const open = signal(false);
   const procedural = PAPER_LIBRARY.filter((entry) => entry.group === 'procedural');
   const real = PAPER_LIBRARY.filter((entry) => entry.group === 'real');
 
-  const trigger = (
-    <button
-      type="button"
-      class="paper-picker-trigger"
-      data-paper-picker-trigger
-      disabled={props.disabled}
-      aria-expanded={open.value}
-      onClick={() => { open.value = !open.value; }}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        gap: '2px',
-        width: '100%',
-        padding: '6px 8px',
-        borderRadius: '5px',
-        border: '1px solid var(--color-border-subtle)',
-        background: 'var(--color-bg-settings)',
-        cursor: props.disabled ? 'default' : 'pointer',
-        textAlign: 'left',
-      }}
-    >
-      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>Paper</span>
-      <span
-        data-paper-picker-current
-        style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)' }}
-      >
-        {paperName(props.paperId)}
-      </span>
-    </button>
-  );
-
   return (
-    <div class="paper-picker" data-paper-picker style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {trigger}
-      {open.value ? (
-        <div
-          class="paper-picker-popover"
-          data-paper-picker-popover
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            marginTop: '4px',
-            width: 'min(280px, calc(100vw - 32px))',
-            maxHeight: '320px',
-            overflowY: 'auto',
-            background: 'var(--color-bg-toolbar)',
-            border: '1px solid var(--color-border-subtle)',
-            borderRadius: '8px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-            padding: '12px',
-            zIndex: 100,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-          }}
-        >
+    <div class="paper-picker" data-paper-picker style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div
+        class="paper-picker-popover"
+        data-paper-picker-popover
+        style={{
+          width: '100%',
+          maxHeight: '320px',
+          overflowY: 'auto',
+          background: 'var(--color-bg-toolbar)',
+          border: '1px solid var(--color-border-subtle)',
+          borderRadius: '8px',
+          padding: '12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+        }}
+      >
           <div
             class="paper-picker-group-header"
             data-paper-group-header="procedural"
@@ -302,9 +264,8 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
             ))}
           </div>
         </div>
-      ) : null}
-      {/* D-10: Strength + Scale sit directly under the trigger, always
-          reachable — never inside the popover. */}
+      {/* D-10: Strength + Scale sit directly under the grid, always
+          reachable — never inside a popover (UI checklist row 10). */}
       <div class="paper-picker-sliders" data-paper-picker-sliders style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
         <SliderStepper
           id="paper-strength"

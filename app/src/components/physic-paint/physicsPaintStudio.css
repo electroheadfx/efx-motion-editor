@@ -773,6 +773,7 @@ button.destructive {
   overflow: hidden;
 }
 
+.physics-paint-right-pane-primary,
 .physics-paint-right-pane-tools,
 .physics-paint-right-pane-secondary {
   flex-direction: column;

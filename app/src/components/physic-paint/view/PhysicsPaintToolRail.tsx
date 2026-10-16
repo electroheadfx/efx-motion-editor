@@ -1,6 +1,8 @@
 import { memo } from 'preact/compat';
 import type { PaintHistoryAvailability, ToolType } from '@efxlab/efx-physic-paint';
 import type { ReadonlySignal } from '@preact/signals';
+import { Droplet, Eraser, Paintbrush, Pen, Wind } from 'lucide-preact';
+import type { ComponentChildren } from 'preact';
 import paintModeNormalIcon from '../../../assets/physics-paint-ui/icons/paint-mode-normal.svg';
 import paintModePhysicsIcon from '../../../assets/physics-paint-ui/icons/paint-mode-physics.svg';
 import eraserIcon from '../../../assets/physics-paint-ui/icons/LineiconsEraser.svg';
@@ -8,8 +10,11 @@ import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';
 import undoIcon from '../../../assets/physics-paint-ui/icons/MaterialSymbolsUndo.svg';
 import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas-pencil.svg';
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
+import { activeModule } from '../../shared/activeModule';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { readEffectiveTool } from './physicsPaintTemporaryErase';
+import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
+import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 export type PhysicsPaintRailAction =
   | 'paint'
@@ -36,6 +41,59 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
   { id: 'redo', label: 'Redo', icon: undoIcon, kind: 'action' },
   { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },
 ];
+
+/** UI checklist rows 8/9: Water color rail = Brush | Water | Pen | Lift | Dry. */
+const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{ id: AquarelleTool; label: string; Icon: (props: { size?: number }) => ComponentChildren }> = Object.freeze([
+  { id: 'brush', label: 'Brush', Icon: Paintbrush },
+  { id: 'water', label: 'Water', Icon: Droplet },
+  { id: 'pen', label: 'Pen', Icon: Pen },
+  { id: 'lift', label: 'Lift', Icon: Eraser },
+]);
+
+function WatercolorRail({
+  disabled,
+  onActiveColorChanged,
+}: {
+  disabled: boolean;
+  onActiveColorChanged?: (color: string) => void;
+}) {
+  const active = aquarelleActiveTool.value;
+  return (
+    <nav class="physics-paint-tool-rail" aria-label="Water color tools">
+      {WATERCOLOR_RAIL_TOOLS.map(({ id, label, Icon }) => {
+        const isActive = active === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            class={`physics-paint-icon-button${isActive ? ' active' : ''}`}
+            disabled={disabled}
+            title={label}
+            aria-label={label}
+            aria-pressed={isActive}
+            onClick={() => setAquarelleTool(id)}
+          >
+            <Icon size={18} />
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        class="physics-paint-icon-button"
+        data-testid="aquarelle-dry"
+        disabled={disabled}
+        title="Flash-dry the sheet. Recorded in the script."
+        aria-label="Dry"
+        onClick={() => emitAquarelleDry(aquarelleRecordClock())}
+      >
+        <Wind size={18} />
+      </button>
+      <div style={{ marginTop: '8px' }}>
+        <ForegroundBackgroundSwatch onActiveColorChanged={onActiveColorChanged} />
+      </div>
+    </nav>
+  );
+}
 
 export interface PhysicsPaintToolRailProps {
   activeTool: ToolType;
@@ -109,6 +167,11 @@ function PhysicsPaintToolRailImpl({
   onActiveColorChanged,
 }: PhysicsPaintToolRailProps) {
   recordPhysicsPaintPerformanceCounter('render.toolRailImpl');
+  // UI checklist row 9: Water color mode replaces the rail with
+  // Brush | Water | Pen | Lift | Dry. Signal read bypasses the memo.
+  if (activeModule.value === 'watercolor') {
+    return <WatercolorRail disabled={disabled} onActiveColorChanged={onActiveColorChanged} />;
+  }
   // Held-Alt/Cmd display only: this narrow read re-renders just this rail (7
   // buttons) so the active highlight can show Erase/Move while Paint stays
   // selected.

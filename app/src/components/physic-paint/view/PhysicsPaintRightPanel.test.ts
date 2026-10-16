@@ -154,6 +154,9 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     onEraseStrengthChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
+    onClearFrame: vi.fn(),
     trackName: 'Paint 1',
     trackOpacity: 1,
     trackBlendMode: 'normal',
@@ -570,11 +573,11 @@ describe('PhysicsPaintRightPanel scroll hierarchy (260905-epb)', () => {
     expect(section).toBeDefined();
   });
 
-  it('keeps the primary pane chrome-less: no tablist, content inside the scroll area', () => {
+  it('keeps the primary pane tablist as a sibling of the scroll area (UI checklist row 6)', () => {
     const tree = renderPanel(baseProps());
     const primaryPane = findByClass(tree, 'physics-paint-right-pane-primary');
     const direct = directChildrenOf(primaryPane);
-    expect(direct.some((child) => hasClass(child, 'physics-paint-options-tabs'))).toBe(false);
+    expect(direct.some((child) => hasClass(child, 'physics-paint-options-tabs-top'))).toBe(true);
     const scrollAreaVnode = direct.find((child) => {
       const vnode = child as AnyVNode;
       return typeof vnode.type === 'function' && String(vnode.props?.class ?? '').includes('physics-paint-right-pane-scroll-area');
