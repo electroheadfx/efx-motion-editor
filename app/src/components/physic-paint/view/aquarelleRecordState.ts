@@ -187,6 +187,28 @@ export function buildAquarelleStrokePayload(
   };
 }
 
+/**
+ * Record-time payload store keyed by mutationId. The live canvas
+ * calls `recordAquarellePayload` at mutation completion when
+ * `activeModule === 'watercolor'`; the PlayScript bake projection
+ * reads it back so the aquarelle engine replays the exact params
+ * the user painted with (no hardcoded fallbacks).
+ */
+const recordedPayloads = new Map<number, AquarelleStrokePayload>();
+
+export function recordAquarellePayload(
+  mutationId: number,
+  payload: AquarelleStrokePayload,
+): void {
+  recordedPayloads.set(mutationId, payload);
+}
+
+export function getRecordedAquarellePayload(
+  mutationId: number,
+): AquarelleStrokePayload | undefined {
+  return recordedPayloads.get(mutationId);
+}
+
 export type AquarelleDrySink = (event: AquarelleDryEvent) => void;
 const drySinks = new Set<AquarelleDrySink>();
 

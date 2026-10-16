@@ -21,6 +21,7 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { SectionLabel } from '../../shared/SectionLabel';
 import { activeModule } from '../../shared/activeModule';
+import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
 import { PaperPicker } from './PaperPicker';
@@ -34,6 +35,8 @@ export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
   color: string;
   opacity: number;
+  size: number;
+  onSizeChange: (value: number) => void;
   edgeDetail: number;
   pickup: number;
   spread: number;
@@ -205,6 +208,8 @@ export function PhysicsPaintRightPanel({
   activeTool,
   color,
   opacity,
+  size,
+  onSizeChange,
   edgeDetail,
   pickup,
   spread,
@@ -664,9 +669,45 @@ export function PhysicsPaintRightPanel({
               </div>
               <div class="physics-paint-option-group">
                 <SectionLabel text="Size" />
+                {activeModule.value === 'watercolor' ? (
+                  <SliderStepper
+                    id="shared-size"
+                    label="Size"
+                    value={aquarelleParams.value.size}
+                    onChange={(v) => setAquarelleParam('size', v)}
+                    step={1}
+                    min={1}
+                    max={80}
+                    disabled={engineControlsDisabled}
+                    ariaLabel="Size"
+                  />
+                ) : (
+                  <SliderStepper
+                    id="shared-size"
+                    label="Size"
+                    value={size}
+                    onChange={onSizeChange}
+                    step={1}
+                    min={1}
+                    max={80}
+                    disabled={engineControlsDisabled}
+                    ariaLabel="Size"
+                  />
+                )}
               </div>
               <div class="physics-paint-option-group">
                 <SectionLabel text="Opacity" />
+                <SliderStepper
+                  id="shared-opacity"
+                  label="Opacity"
+                  value={opacity}
+                  onChange={(v) => onColorChange(color, v)}
+                  step={1}
+                  min={0}
+                  max={100}
+                  disabled={engineControlsDisabled}
+                  ariaLabel="Opacity"
+                />
               </div>
               <div class="physics-paint-option-group">
                 <SectionLabel text="Paper" />

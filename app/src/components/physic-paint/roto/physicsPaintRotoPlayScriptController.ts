@@ -30,6 +30,7 @@ import { isWebpBytes } from '../../../types/physicPaint';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import { getRecordedAquarellePayload } from '../view/aquarelleRecordState';
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
   type AquarelleBake,
@@ -1748,20 +1749,25 @@ async function createDefaultAquarelleAdapter(
 function aquarelleEventsFromScript(script: RotoPaintScript): StudioStroke<AquarelleStrokePayload>[] {
   const events: StudioStroke<AquarelleStrokePayload>[] = [];
   const project = (stroke: RotoPaintScript['brushes'][number]['primary']): StudioStroke<AquarelleStrokePayload> => {
+    const stored = stroke.mutationId !== undefined
+      ? getRecordedAquarellePayload(stroke.mutationId)
+      : undefined;
     const raw: AquarelleStroke = {
-      tool: 'brush',
+      tool: stored?.tool ?? 'brush',
       color: stroke.color,
-      params: {
-        size: stroke.params.size,
-        water: stroke.params.waterAmount,
-        load: stroke.params.opacity,
-        flow: 50,
-        bleed: 50,
-        dry: stroke.params.dryAmount,
-        edge: stroke.params.edgeDetail,
-        granulation: 50,
-      },
-      brushId: 'wc/round-medium',
+      params: stored
+        ? { ...stored.params }
+        : {
+            size: stroke.params.size,
+            water: stroke.params.waterAmount,
+            load: stroke.params.opacity,
+            flow: 50,
+            bleed: 50,
+            dry: stroke.params.dryAmount,
+            edge: stroke.params.edgeDetail,
+            granulation: 50,
+          },
+      brushId: stored?.brushId || 'wc/round-medium',
       points: stroke.points.map((point) => ({
         x: point.x, y: point.y, p: point.p, tx: point.tx, ty: point.ty, tw: point.tw,
       })),

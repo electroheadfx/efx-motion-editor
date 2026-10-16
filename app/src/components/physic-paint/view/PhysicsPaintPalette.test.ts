@@ -118,6 +118,8 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     activeTool: 'paint',
     color: '#103c65',
     opacity: 100,
+    size: 11,
+    onSizeChange: vi.fn(),
     edgeDetail: 50,
     pickup: 50,
     spread: 50,
