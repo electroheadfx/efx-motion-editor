@@ -28,6 +28,7 @@ export function AquarelleCanvasLayer(props: {
   onStrokeEnd: (stroke: AquarelleStroke) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cursorRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<AquarelleLiveSurface | null>(null);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
   const colorRef = useRef(props.color);
@@ -70,16 +71,35 @@ export function AquarelleCanvasLayer(props: {
     };
 
     let active = false;
+    const updateCursor = (event: PointerEvent) => {
+      const cursor = cursorRef.current;
+      if (!cursor) return;
+      const rect = canvas.getBoundingClientRect();
+      const snap = {
+        params: { ...aquarelleParams.value },
+        toolOverrides: { ...aquarelleToolOverrides.value },
+      };
+      const sizeParam = Number(snap.params['size']);
+      const baseRadius = Math.max(1, (Number.isFinite(sizeParam) ? sizeParam : 12) / 2);
+      const diameter = Math.max(4, baseRadius * (snap.toolOverrides.tip ?? 1) * 2 * (rect.width / props.width || 1));
+      cursor.style.display = 'block';
+      cursor.style.left = `${event.clientX - rect.left}px`;
+      cursor.style.top = `${event.clientY - rect.top}px`;
+      cursor.style.width = `${diameter}px`;
+      cursor.style.height = `${diameter}px`;
+    };
     const onDown = (event: PointerEvent) => {
       if (disabledRef.current) return;
       if (event.button !== 0 && event.pointerType === 'mouse') return;
       active = true;
       canvas.setPointerCapture(event.pointerId);
       surface.pointerDown(toSample(event));
+      updateCursor(event);
       event.preventDefault();
       event.stopPropagation();
     };
     const onMove = (event: PointerEvent) => {
+      updateCursor(event);
       if (!active) return;
       surface.pointerMove(toSample(event));
       event.preventDefault();
@@ -92,16 +112,21 @@ export function AquarelleCanvasLayer(props: {
       event.preventDefault();
       event.stopPropagation();
     };
+    const onLeave = () => {
+      if (cursorRef.current) cursorRef.current.style.display = 'none';
+    };
 
     canvas.addEventListener('pointerdown', onDown);
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerup', onUp);
     canvas.addEventListener('pointercancel', onUp);
+    canvas.addEventListener('pointerleave', onLeave);
     return () => {
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
+      canvas.removeEventListener('pointerleave', onLeave);
       surface.dispose();
       surfaceRef.current = null;
     };
@@ -117,13 +142,28 @@ export function AquarelleCanvasLayer(props: {
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      class="aquarelle-live-canvas"
-      width={props.width}
-      height={props.height}
-      style={style}
-      aria-label="Water color canvas"
-    />
+    <div class="aquarelle-live-layer" style={{ position: 'absolute', inset: '0' }}>
+      <canvas
+        ref={canvasRef}
+        class="aquarelle-live-canvas"
+        width={props.width}
+        height={props.height}
+        style={style}
+        aria-label="Water color canvas"
+      />
+      <div
+        ref={cursorRef}
+        class="aquarelle-brush-cursor"
+        style={{
+          position: 'absolute',
+          pointerEvents: 'none',
+          border: '1px solid rgba(255,255,255,0.85)',
+          borderRadius: '50%',
+          transform: 'translate(-50%, -50%)',
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.35)',
+          display: 'none',
+        }}
+      />
+    </div>
   );
 }

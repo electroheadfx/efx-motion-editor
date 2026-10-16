@@ -21,7 +21,6 @@ import {
   stampTool,
   drawSheetToCanvas,
   createDryEvent,
-  findTip,
   type AquarelleDryEvent,
   type AquarellePoint,
   type AquarelleStroke,
@@ -151,27 +150,28 @@ export function createAquarelleLiveSurface(
   let startMs = 0
   let tickIndex = 0
   let strokeSeed = 0
+  let strokeRng: (() => number) | null = null
+  let lastStamp: AquarelleLiveSample | null = null
   let dirty = false
 
   const tickMs = 1000 / HOST_TICK_HZ
 
   const draw = (): void => {
     if (disposed || !sheet || !dirty) return
-    drawSheetToCanvas(sheet, options.display)
+    drawSheetToCanvas(sheet, options.display, { showWet: true })
     dirty = false
   }
 
-  const stampSample = (s: AquarelleLiveSample): void => {
+  const stampAt = (s: AquarelleLiveSample): void => {
     if (disposed || !sheet) return
     const snap = options.getSnapshot()
-    const tip = findTip(snap.brushId)
     const overrides = snap.toolOverrides
     const sizeParam = Number(snap.params['size'])
     const baseRadius = Math.max(1, (Number.isFinite(sizeParam) ? sizeParam : 12) / 2)
     const radius = Math.max(1, baseRadius * (overrides.tip ?? 1) * scaleX)
     const waterParam = Number(snap.params['water'])
     const water = Number.isFinite(waterParam) ? waterParam / 100 : 0.5
-    const rng = seededRng(strokeSeed, 'live')
+    const rng = strokeRng ?? (() => 0.5)
     stampTool(
       sheet,
       snap.tool,
@@ -185,16 +185,40 @@ export function createAquarelleLiveSurface(
       },
       rng,
     )
-    void tip
     dirty = true
+    return
   }
 
-  const emitTicksThrough = (t: number): void => {
+  /** Stamp every pointer sample, bridging gaps so a fast stroke stays continuous. */
+  const stampSegment = (from: AquarelleLiveSample | null, to: AquarelleLiveSample): void => {
+    if (!from) {
+      stampAt(to)
+      return
+    }
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    const snap = options.getSnapshot()
+    const sizeParam = Number(snap.params['size'])
+    const baseRadius = Math.max(1, (Number.isFinite(sizeParam) ? sizeParam : 12) / 2)
+    const radius = Math.max(1, baseRadius * (snap.toolOverrides.tip ?? 1) * scaleX)
+    const steps = Math.max(1, Math.ceil(dist / Math.max(1, radius * 0.45)))
+    for (let i = 1; i <= steps; i++) {
+      const u = i / steps
+      stampAt({
+        ...to,
+        x: from.x + dx * u,
+        y: from.y + dy * u,
+        p: from.p + (to.p - from.p) * u,
+      })
+    }
+  }
+
+  const emitStepsThrough = (t: number): void => {
     if (disposed || !sheet) return
     const target = Math.max(0, Math.round((t - startMs) / tickMs))
     while (tickIndex < target) {
       tickIndex++
-      stampSample(interpolateAt(samples, startMs + tickIndex * tickMs))
       step(sheet, 1)
     }
     draw()
@@ -211,20 +235,28 @@ export function createAquarelleLiveSurface(
       startMs = s.t
       tickIndex = 0
       strokeSeed = Math.max(1, Math.trunc(s.t) ^ (Math.trunc(s.x) * 7919))
-      stampSample(s)
+      strokeRng = seededRng(strokeSeed, 'live')
+      lastStamp = s
+      stampAt(s)
       if (sheet) step(sheet, 1)
       dirty = true
       draw()
     },
     pointerMove(sample: AquarelleLiveSample): void {
       if (disposed || samples.length === 0) return
-      samples.push({ ...sample, p: clamp01(sample.p) })
-      emitTicksThrough(sample.t)
+      const s = { ...sample, p: clamp01(sample.p) }
+      samples.push(s)
+      stampSegment(lastStamp, s)
+      lastStamp = s
+      emitStepsThrough(s.t)
     },
     pointerUp(sample: AquarelleLiveSample): void {
       if (disposed || samples.length === 0) return
-      samples.push({ ...sample, p: clamp01(sample.p) })
-      emitTicksThrough(sample.t)
+      const s = { ...sample, p: clamp01(sample.p) }
+      samples.push(s)
+      stampSegment(lastStamp, s)
+      lastStamp = s
+      emitStepsThrough(s.t)
       draw()
 
       const snap = options.getSnapshot()
@@ -240,6 +272,8 @@ export function createAquarelleLiveSurface(
       }
       options.onStrokeEnd(stroke)
       samples = []
+      lastStamp = null
+      strokeRng = null
     },
     emitDry(tick: number): AquarelleDryEvent {
       const t = Math.max(0, Math.trunc(tick))
