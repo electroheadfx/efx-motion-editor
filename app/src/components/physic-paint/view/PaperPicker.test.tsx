@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PaperPicker, grainScaleStep } from './PaperPicker';
-import { makeInitialPhysicsPaintStudioSettings, type StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
+import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 import { commitStepperInput, parseStepperInput } from '../../shared/NumericStepper';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
@@ -76,18 +76,6 @@ function* walk(node: unknown): Generator<TestVNode> {
   const vnode = node as TestVNode;
   yield vnode;
   for (const child of childrenOf(vnode)) yield* walk(child);
-}
-
-function textContent(node: unknown): string {
-  const parts: string[] = [];
-  const walkText = (current: unknown) => {
-    if (typeof current === 'string' || typeof current === 'number') { parts.push(String(current)); return; }
-    if (!current || typeof current !== 'object') return;
-    if (Array.isArray(current)) { for (const child of current) walkText(child); return; }
-    walkText((current as TestVNode).props?.children);
-  };
-  walkText(node);
-  return parts.join(' ');
 }
 
 function pickerProps() {
