@@ -757,17 +757,6 @@ export function PhysicsPaintRightPanel({
                   />
                 )}
               </div>
-              <div class="physics-paint-option-group">
-                <PaperPicker
-                  paperId={paperId ?? 'paper/cold-press'}
-                  strength={paperStrength ?? 0.65}
-                  scale={paperScale ?? 1}
-                  onPaperIdChange={(id) => onPaperIdChange?.(id)}
-                  onStrengthChange={(value) => onPaperStrengthChange?.(value)}
-                  onScaleChange={(value) => onPaperScaleChange?.(value)}
-                  disabled={engineControlsDisabled}
-                />
-              </div>
             </div>
 
             {/* 56-02 (D-05): MODULE-ONLY block — drains per activeModule */}
