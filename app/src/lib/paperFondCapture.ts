@@ -51,6 +51,37 @@ export function captureLayerStack(root: HTMLElement | null): void {
       position: style.position,
     };
   };
+  const sampleCanvas = (selector: string): string => {
+    const canvas = root.querySelector(selector) ?? document.querySelector(selector);
+    if (!(canvas instanceof HTMLCanvasElement)) return 'missing';
+    try {
+      const probe = document.createElement('canvas');
+      probe.width = 4;
+      probe.height = 4;
+      const context = probe.getContext('2d');
+      if (!context) return 'no-2d';
+      context.drawImage(canvas, 0, 0, 4, 4);
+      const data = context.getImageData(2, 2, 1, 1).data;
+      return `${data[0]},${data[1]},${data[2]},${data[3]}`;
+    } catch (error) {
+      return `error:${error instanceof Error ? error.message : String(error)}`;
+    }
+  };
+  const engineCanvases = Array.from(root.querySelectorAll('.paint-canvas canvas')).map((canvas, index) => {
+    if (!(canvas instanceof HTMLCanvasElement)) return { index, kind: 'not-canvas' };
+    try {
+      const probe = document.createElement('canvas');
+      probe.width = 4;
+      probe.height = 4;
+      const context = probe.getContext('2d');
+      if (!context) return { index, kind: 'no-2d' };
+      context.drawImage(canvas, 0, 0, 4, 4);
+      const data = context.getImageData(2, 2, 1, 1).data;
+      return { index, kind: 'canvas', size: `${canvas.width}x${canvas.height}`, centerPixel: `${data[0]},${data[1]},${data[2]},${data[3]}` };
+    } catch (error) {
+      return { index, kind: 'error', error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   capturePaperFond('layer-stack', {
     fondLayer: describe('.physics-paint-fond-layer'),
     fondCanvas: describe('.physics-paint-cached-roto-playback-background'),
@@ -61,5 +92,7 @@ export function captureLayerStack(root: HTMLElement | null): void {
     aquarelleLayer: describe('.aquarelle-live-layer'),
     aquarelleCanvas: describe('.aquarelle-live-canvas'),
     programMonitor: describe('.physics-paint-program-monitor'),
+    programMonitorPixel: sampleCanvas('.physics-paint-program-monitor canvas'),
+    engineCanvases,
   });
 }
