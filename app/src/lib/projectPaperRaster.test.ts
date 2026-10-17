@@ -537,6 +537,55 @@ describe('I-07 procedural fond tile', () => {
     });
   });
 
+  it('studio-reopen-paper-washout: a null engine sheet retries and then delivers the real sheet', async () => {
+    await withPixelDocument(async () => {
+      resetProjectPaperRasterForTests();
+      const defaultSheet = engineMock.getEnginePaperSheet.getMockImplementation()!;
+      vi.useFakeTimers();
+      try {
+        let failNext = 2;
+        engineMock.getEnginePaperSheet.mockImplementation((id: string, width: number, height: number, scale: number) => {
+          if (!PROCEDURAL_IDS.has(id)) return null;
+          if (failNext > 0) {
+            failNext -= 1;
+            return null;
+          }
+          return defaultSheet(id, width, height, scale);
+        });
+        const delivered: Array<HTMLCanvasElement | null> = [];
+        const unsubscribe = subscribeProjectPaperCanvas('paper/cold-press', 64, 32, (canvas) => {
+          delivered.push(canvas);
+        });
+        expect(delivered[delivered.length - 1]).toBeNull();
+        await vi.advanceTimersByTimeAsync(200);
+        expect(delivered[delivered.length - 1]).not.toBeNull();
+        unsubscribe();
+      } finally {
+        vi.useRealTimers();
+        engineMock.getEnginePaperSheet.mockImplementation(defaultSheet);
+      }
+    });
+  });
+
+  it('studio-reopen-paper-washout: a permanently-null sheet stops after the bounded retries', async () => {
+    await withPixelDocument(async () => {
+      resetProjectPaperRasterForTests();
+      const defaultSheet = engineMock.getEnginePaperSheet.getMockImplementation()!;
+      vi.useFakeTimers();
+      try {
+        engineMock.getEnginePaperSheet.mockClear();
+        engineMock.getEnginePaperSheet.mockImplementation(() => null);
+        subscribeProjectPaperCanvas('paper/cold-press', 64, 32, () => {});
+        await vi.advanceTimersByTimeAsync(10_000);
+        // 1 initial + 8 retries — never an unbounded spin.
+        expect(engineMock.getEnginePaperSheet.mock.calls.length).toBeLessThanOrEqual(9);
+      } finally {
+        vi.useRealTimers();
+        engineMock.getEnginePaperSheet.mockImplementation(defaultSheet);
+      }
+    });
+  });
+
   it('source-scan: getProjectPaperCanvas carries the procedural branch and PAPER_TEXTURE_URLS gains no procedural keys', () => {
     const src = source('src/lib/projectPaperRaster.ts');
     const fnBody = src.slice(

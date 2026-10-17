@@ -32,6 +32,42 @@ const textureListeners = new Map<string, Set<() => void>>();
 const proceduralFondCache = new Map<string, HTMLCanvasElement>();
 
 /**
+ * studio-reopen-paper-washout (H2): a null engine sheet on the first call used
+ * to stick the fond on the flat-color arm forever — nothing re-asked the
+ * engine. The reopened Studio window generates the fond during early load,
+ * before the offscreen WatercolorEngine can produce a sheet (WebGL context not
+ * ready / one-shot throw). A bounded retry re-asks and then notifies, so
+ * existing subscriptions recomposite onto the real sheet when it lands.
+ */
+const proceduralFondRetries = new Map<string, ReturnType<typeof setTimeout>>();
+const proceduralFondRetryAttempts = new Map<string, number>();
+const PROCEDURAL_FOND_RETRY_LIMIT = 8;
+
+function scheduleProceduralFondRetry(
+  paperTexture: string,
+  width: number,
+  height: number,
+  scale: number,
+  cacheKey: string,
+): void {
+  if (proceduralFondRetries.has(cacheKey)) return;
+  const attempt = proceduralFondRetryAttempts.get(cacheKey) ?? 0;
+  if (attempt >= PROCEDURAL_FOND_RETRY_LIMIT) return;
+  proceduralFondRetryAttempts.set(cacheKey, attempt + 1);
+  const timer = setTimeout(() => {
+    proceduralFondRetries.delete(cacheKey);
+    buildProceduralPaperFond(paperTexture, width, height, scale);
+  }, 32 * (attempt + 1));
+  proceduralFondRetries.set(cacheKey, timer);
+}
+
+function clearProceduralFondRetries(): void {
+  for (const timer of proceduralFondRetries.values()) clearTimeout(timer);
+  proceduralFondRetries.clear();
+  proceduralFondRetryAttempts.clear();
+}
+
+/**
  * 261017-nnu: cache-read + engine call, never a generator. On hit, return the
  * cached canvas. On miss, take the sheet from the vendored engine the same
  * tick (no null-then-notify flight) and notifyTextureListeners so existing
@@ -50,7 +86,12 @@ function buildProceduralPaperFond(
   const cached = proceduralFondCache.get(cacheKey);
   if (cached) return cached;
   const sheet = getEnginePaperSheet(paperTexture, width, height, PAPER_UNITS / (height * normalized));
-  if (!sheet) return null;
+  if (!sheet) {
+    scheduleProceduralFondRetry(paperTexture, width, height, scale, cacheKey);
+    return null;
+  }
+  proceduralFondRetries.delete(cacheKey);
+  proceduralFondRetryAttempts.delete(cacheKey);
   proceduralFondCache.set(cacheKey, sheet);
   notifyTextureListeners(paperTexture);
   return sheet;
@@ -258,6 +299,7 @@ export function subscribeProjectPaperTextureResolve(paperTexture: string, listen
 export function clearProjectPaperRasterCache(): void {
   paperCanvasCache.clear();
   proceduralFondCache.clear();
+  clearProceduralFondRetries();
 }
 
 /**
@@ -273,4 +315,5 @@ export function resetProjectPaperRasterForTests(): void {
   textureCache.clear();
   loadingTextures.clear();
   textureListeners.clear();
+  clearProceduralFondRetries();
 }

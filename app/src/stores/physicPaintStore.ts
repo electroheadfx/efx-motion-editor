@@ -24,6 +24,7 @@ import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
+import { capturePaperFond } from '../lib/paperFondCapture';
 import { applyPaperPass, getPaperPassTile } from '../lib/paperPass';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
@@ -2908,7 +2909,14 @@ export const physicPaintStore = {
   getDocumentFondInstruction(layerId: string): Extract<MissingRotoFrameDrawInstruction, { kind: 'background-only' }> | null {
     const efxDocument = getEfxPaintDocument(layerId);
     if (!efxDocument) return null;
-    return _resolveDocumentFondInstruction(layerId, efxDocument);
+    const instruction = _resolveDocumentFondInstruction(layerId, efxDocument);
+    capturePaperFond('fond-resolve', {
+      layerId,
+      paperTexture: instruction?.paperTexture ?? null,
+      color: instruction?.color ?? null,
+      fallback: efxDocument.background.fallback,
+    });
+    return instruction;
   },
 
   /**

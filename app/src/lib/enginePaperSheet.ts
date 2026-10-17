@@ -9,6 +9,7 @@ import {
   STUDIO_PAPER_TO_PRESET,
   paperPresetForStudioId,
 } from '../components/physic-paint/engine/AquarelleCanvasLayer';
+import { capturePaperFond } from './paperFondCapture';
 
 let engine: WatercolorEngine | null = null;
 const sheetCache = new Map<string, HTMLCanvasElement>();
@@ -53,14 +54,22 @@ export function getEnginePaperSheet(
   const cached = sheetCache.get(key);
   if (cached) return cached;
   const preset = presetForStudioPaperId(studioPaperId);
-  if (!preset) return null;
+  if (!preset) {
+    capturePaperFond('sheet', { studioPaperId, width, height, scale, ok: false, reason: 'no-preset' });
+    return null;
+  }
   const eng = getOffscreenEngine();
-  if (!eng) return null;
+  if (!eng) {
+    capturePaperFond('sheet', { studioPaperId, width, height, scale, ok: false, reason: 'no-engine' });
+    return null;
+  }
   try {
     const canvas = eng.paperSheet(preset, width, height, scale);
     sheetCache.set(key, canvas);
+    capturePaperFond('sheet', { studioPaperId, width, height, scale, ok: true, sheet: `${canvas.width}x${canvas.height}` });
     return canvas;
-  } catch {
+  } catch (error) {
+    capturePaperFond('sheet', { studioPaperId, width, height, scale, ok: false, reason: 'throw', error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }

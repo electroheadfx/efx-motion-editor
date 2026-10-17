@@ -2,7 +2,7 @@
 status: awaiting_human_verify
 trigger: I-07 remainder — watercolor paper washes out on Studio leave + reopen (Phase 55 issues, SPECS/v1.1.0-water-color/phase-55-issues/index.md)
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-17 (H1 fix UAT failed; H2 stuck-null retry landed)
 ---
 
 # Debug Session: studio-reopen-paper-washout
@@ -38,7 +38,11 @@ updated: 2026-10-17
 - hypothesis: CONFIRMED H1 (runtime id degradation). The Studio paper pick splits across two writers with different gates: `setPaperId` writes the track mirror + document fallback UNCONDITIONALLY, while `setBackground`/`setGrainStrength`/`setGrainScale` update `settings` only when `canMutate()` (engine present + not locked). When the engine is not ready the settings stay on the unhydrated default (`canvas1` / `transparent`). The next `useRotoBackgroundMetadataSync` write (any settings change) and/or `handleGrainScaleChange`/`handleGrainStrengthChange` (`backgroundModeToFallback(settings.background)`) then clobber the mirror AND the fallback back to the stale id. The fond resolves the stale id: `canvas1`/`paper/real-N` → jpg wash arm (white + 0.18 faint grain); `white`/solid → flat white; absent mirror → no fond.
 - test: `usePhysicsPaintEngineActions.test.ts` — "setBackground / setGrainStrength update settings even with no engine". RED at base (setSettings called 0 times), GREEN after fix.
 - expecting: Fixed — paper-display settings updates no longer require an engine.
-- next_action: live UAT — reopen Studio after picking a procedural paper and confirm the dense engine sheet survives; if it still washes out, read /tmp captures for the resolved paper id at the fond draw.
+- UAT RESULT (2026-10-17): FAILED — same wash-out on leave + reopen after `3ca751af`. The H1 engine-gate split was real but was NOT the reopen-visible cause (or not the only one). H1's own falsification test now applies: if the resolved id is still `paper/*` at reopen, the cause is H2.
+- hypothesis: H2 (follow-up) — `getEnginePaperSheet` returns null on the reopened window's first fond draw (offscreen WatercolorEngine WebGL context not ready during early page load, or a one-shot `paperSheet` throw), and `buildProceduralPaperFond`/`subscribeProjectPaperCanvas` NEVER RETRIED: the first null delivery stuck the fond on `drawMissingRotoBackground`'s `instruction.color` arm (`#f4efe3` = "very lighter paper version"; `#ffffff` = white). First Studio session works because the Paper tab warms the engine before the fond re-subscribes on pick; reopen draws the fond at mount, cold engine → null → stuck.
+- test: `projectPaperRaster.test.ts` — "a null engine sheet retries and then delivers the real sheet" + "a permanently-null sheet stops after the bounded retries". RED at base (subscriber stays null forever), GREEN after the bounded retry.
+- expecting: Fixed — a null procedural sheet schedules a bounded retry (8 attempts) and notifies texture listeners when the real engine sheet lands; unknown ids still fail-soft with no spin.
+- next_action: live UAT with the new /tmp capture — reopen Studio after picking a procedural paper and confirm the dense engine sheet survives. If it still washes out, read `/tmp/studio-reopen-paper-washout.json` for the `fond-resolve` paperTexture and the `sheet` ok/reason at reopen.
 - reasoning_checkpoint:
   hypothesis: "handlePaperIdChange writes the store unconditionally but setBackground is gated on engine readiness, so settings.background desyncs; the next settings-driven write clobbers the paper id in the track mirror and document fallback, and the fond renders the jpg wash (canvas1) or white instead of the engine sheet."
   confirming_evidence:
@@ -89,43 +93,51 @@ updated: 2026-10-17
   found: `setBackground` is gated on `canMutate()` = `Boolean(engine) && !isMutationLocked()`. `handlePaperIdChange` calls `physicPaintStore.setPaperId(...)` (UNCONDITIONAL — writes mirror + document fallback) and then `setBackground(paperId)` (GATED — updates settings only if the engine is ready). Split-brain: store can hold `paper/kraft` while `settings.background` stays the unhydrated default `canvas1`/`transparent`.
   implication: A concrete H1 clobber mechanism. `useRotoBackgroundMetadataSync` writes `buildRotoBackgroundMetadata(settings)` to the track mirror on every settings change — with a stale `settings.background` it overwrites the correct mirror the pick just wrote. `_resolveFondSource` prefers the mirror, so the fond then renders the stale id (canvas1 jpg wash / transparent / white).
 
+- timestamp: 2026-10-17 (post-3ca751af UAT FAIL)
+  checked: applyBackgroundFallbackToSettings / reflectFallbackToBackgroundMode / backgroundModeToFallback / _isValidFallback / serializeRuntimeIntoDocument / createPhysicPaintLaunchContext / open_physics_paint_window
+  found: `StudioBackgroundMode = BgMode | PaperTexture` holds `paper/*` verbatim; `reflectFallbackToBackgroundMode` returns `fallback.texture` unchanged; `_isValidFallback` accepts `paper/`; `serializeRuntimeIntoDocument` preserves `document.background.fallback`; the Studio window is NAVIGATED on reopen (fresh JS context, fresh enginePaperSheet cache). The id-mapping chain is lossless end-to-end. The remaining reopen-specific failure is the fond's FIRST `getEnginePaperSheet` call happening at mount (cold offscreen WatercolorEngine) and `buildProceduralPaperFond` returning null with NO RETRY — `subscribeProjectPaperCanvas` delivers null once and never re-asks, so `drawMissingRotoBackground` takes the `instruction.color` arm forever. First session works because the Paper tab warms the engine before the pick re-subscribes the fond.
+  implication: H2 confirmed as the reopen-visible cause. Fix = bounded retry in buildProceduralPaperFond (8 attempts, notify on success) + /tmp capture at fond-resolve / sheet / mirror-write so a still-failing UAT names the arm.
+
 ## Eliminated
 
 ## Resolution
 
 - root_cause: >
-  H1 confirmed — runtime paper-id degradation caused by a settings/store split-brain.
-  `handlePaperIdChange` writes the track mirror and document fallback unconditionally
-  (`physicPaintStore.setPaperId`), but updates the Studio `settings` through
-  `setBackground`, which returns early when `canMutate()` is false (engine absent or
-  mutation-locked). With the engine not yet ready, `settings.background` stays on the
-  unhydrated default (`canvas1` / `transparent`) while the store holds `paper/kraft`.
-  Every later settings-driven write then reproduces the STALE id:
-  `useRotoBackgroundMetadataSync` clobbers the track mirror via
-  `setRotoBackgroundMetadata(buildRotoBackgroundMetadata(settings))`, and
-  `handleGrainScaleChange`/`handleGrainStrengthChange` clobber the document fallback via
-  `setBackgroundFallback(backgroundModeToFallback(settings.background, …))`. That
-  degraded fallback rides the child→parent document push and is what the next Studio
-  open hydrates from — so the reopen fond resolves `canvas1` (jpg wash arm = white +
-  0.18 faint grain) or `white`/absent (flat white / no fond) instead of the dense
-  engine sheet. The engine sheet generator itself (vendored WatercolorEngine.paperSheet)
-  is not implicated.
+  Two stacked causes. (1) H1 — settings/store split-brain: `handlePaperIdChange`
+  writes the track mirror and document fallback unconditionally, while
+  `setBackground`/`setGrainStrength`/`setGrainScale` returned early when the engine
+  was absent, so later settings-driven writes clobbered the picked id. Fixed in
+  3ca751af. (2) H2 — the reopen-visible cause: on the reopened Studio window the
+  fond's FIRST `getEnginePaperSheet` call happens at mount with a cold offscreen
+  WatercolorEngine and returns null; `buildProceduralPaperFond` then returned null
+  with NO RETRY and `subscribeProjectPaperCanvas` delivered null once and never
+  re-asked, so `drawMissingRotoBackground` took the `instruction.color` arm
+  (`#f4efe3` lighter / `#ffffff` white) for the rest of the session. The first
+  session works because the Paper tab warms the engine before the pick re-subscribes
+  the fond. The vendored WatercolorEngine.paperSheet generator itself is correct.
 - fix: >
-  Paper-display fields (background id, grain strength, grain scale) are composite-only —
-  the document fond/paperPass own the visible paper, never the engine. Their settings
-  updates are now gated on the mutation lock only, not on engine readiness; the engine
-  call (`setBgMode`/`setEmbossStrength`) stays best-effort (`input.engine?`). Engine
-  mutations (tool, brush, physics) keep the existing engine-presence gate unchanged.
+  (1) Paper-display settings updates gate on the mutation lock only, not engine
+  readiness (3ca751af). (2) `buildProceduralPaperFond` schedules a bounded retry
+  (8 attempts, 32ms·n backoff) when the engine sheet is null, and notifies texture
+  listeners when the real sheet lands — so a cold engine on reopen self-heals instead
+  of sticking the fond on the flat-color arm. Unknown paper ids stay fail-soft with
+  no spin. Measure-only /tmp capture added at fond-resolve / sheet / mirror-write.
 - verification: >
-  tdd_mode: failing test written first — `setBackground / setGrainStrength update
-  settings even with no engine (paper display is composite-only)` was RED at base
-  (setSettings called 0 times with engine=null), GREEN after the fix. Full regression:
-  224 tests pass across usePhysicsPaintEngineActions, physicsPaintStudioSettings,
-  physicPaintStore.paper, physicPaintStore, projectPaperRaster, enginePaperSheet and
-  the physic-paint engine suite. Live reopen UAT still pending (Tauri/cross-webview —
-  vitest cannot mount the Studio).
+  tdd_mode: failing tests written first — `setBackground / setGrainStrength update
+  settings even with no engine` (RED 0 setSettings calls → GREEN) and
+  `a null engine sheet retries and then delivers the real sheet` (RED subscriber
+  stuck null → GREEN after retry) + `a permanently-null sheet stops after the
+  bounded retries` (≤9 engine calls, no spin). Full regression: 5205 passed /
+  1 skipped / 96 todo (301 files); viteBuild under the 2 MB ceiling. Live reopen
+  UAT pending (Tauri/cross-webview — vitest cannot mount the Studio).
 - guardrail_verdict: accepted
-- oracle_type: specified (contract: paper-display settings updates must not require an engine; asserted on the action layer's setSettings call count)
+- oracle_type: specified (contract: a null procedural sheet must self-heal via a bounded retry; asserted on the subscribe delivery sequence and the engine-call count)
 - files_changed:
   - app/src/components/physic-paint/engine/usePhysicsPaintEngineActions.ts
   - app/src/components/physic-paint/engine/usePhysicsPaintEngineActions.test.ts
+  - app/src/lib/projectPaperRaster.ts
+  - app/src/lib/projectPaperRaster.test.ts
+  - app/src/lib/paperFondCapture.ts
+  - app/src/lib/enginePaperSheet.ts
+  - app/src/stores/physicPaintStore.ts
+  - app/src/components/physic-paint/hooks/useRotoBackgroundMetadataSync.ts
