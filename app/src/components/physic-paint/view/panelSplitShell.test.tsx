@@ -177,10 +177,11 @@ describe('panel split shell — module-only block', () => {
   });
 
   it('watercolor shell is settings only: no tool row, no Dry button (261017-w4x I-06)', () => {
-    // Q4: the Paint tab shows settings only — label + params + brushes.
-    // Tool row and Dry live in the left vertical rail. Note: "Dry rate" is a
-    // param slider inside AquarelleParamsPanel and stays — pins target the Dry
-    // control (data-testid / emit helper / tool-row mount), not the substring.
+    // Q4: the Paint tab shows settings only — label + params. BrushesDocker
+    // left with 261017-wmw I-01 (picker lives in the Brush tab). Tool row and
+    // Dry live in the left vertical rail. Note: "Dry speed" is a param slider
+    // inside the params panel and stays — pins target the Dry control
+    // (data-testid / emit helper / tool-row mount), not the substring.
     const tree = materialize(WatercolorModuleSection()) as TestVNode;
     const buttons = [...walk(tree)].filter((n) => n.type === 'button');
     expect(
@@ -197,10 +198,13 @@ describe('panel split shell — module-only block', () => {
     expect(body, 'tool-row mount must leave').not.toMatch(/<AquarelleToolRow\b/);
     expect(body, 'Dry emit helper must leave').not.toContain('emitAquarelleDry');
     expect(body, 'record clock must leave with the Dry button').not.toContain('aquarelleRecordClock');
-    // Label + params + brushes remain.
+    // Label + params remain; the brush picker leaves with I-01.
     expect(source).toMatch(/<SectionLabel text="Water color"/);
     expect(source).toMatch(/<AquarelleParamsPanel\b/);
-    expect(source).toMatch(/<BrushesDocker\b/);
+    expect(source, 'picker leaves the Paint-tab section (I-01)').not.toMatch(/<BrushesDocker\b/);
+    expect(source, 'response block leaves the Paint-tab section (I-01)').not.toMatch(
+      /<BrushResponsePanel\b/,
+    );
   });
 });
 
