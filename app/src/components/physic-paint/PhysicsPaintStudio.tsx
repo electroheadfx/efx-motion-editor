@@ -3584,7 +3584,14 @@ export function PhysicsPaintStudio() {
       if (activeModule.value === 'watercolor') setAquarelleParam('size', value);
       else setBrushSize(value);
     },
-    onOpacityChange: setBrushOpacity,
+    // 261017-w4x I-05 (Q3): Opacity is top-bar only for every paint mode. Same
+    // call-time module router as Brush size — watercolor drives
+    // aquarelleParams.load (Pigment); Brush mode drives settings.opacity.
+    // Routed at call time (activeModule is a signal, never a memo dep).
+    onOpacityChange: (value: number) => {
+      if (activeModule.value === 'watercolor') setAquarelleParam('load', value);
+      else setBrushOpacity(value);
+    },
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build

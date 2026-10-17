@@ -2426,3 +2426,54 @@ describe('261008-ig1 Task 2 — Studio multi-clip selection, open target, and re
     expect(studio).toContain('soundPeaksEnsureRef = useRef<Set<string>>(new Set())');
   });
 });
+
+// 261017-w4x I-05 (Q3): Opacity is top-bar only for every paint mode. The
+// top-bar slider must route at call time the same way Brush size already does
+// — watercolor writes aquarelleParams.load (Pigment), Brush mode writes
+// settings.opacity. Without the watercolor arm, deleting the Paint-tab Opacity
+// orphans Pigment until I-01 lands. Scalar predicates keep TAP diagnostics
+// one-line (project idiom).
+describe('261017-w4x I-05 top-bar opacity call-time router', () => {
+  it('onOpacityChange routes watercolor to setAquarelleParam(\'load\') and else to setBrushOpacity', () => {
+    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
+    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
+    expect(topBarStart, 'topBar memo must exist').toBeGreaterThan(-1);
+    expect(topBarEnd, 'topBar memo must end at toolRail').toBeGreaterThan(topBarStart);
+    const topBarBlock = studio.slice(topBarStart, topBarEnd);
+
+    // The handler body is an arrow assigned to onOpacityChange — not a bare setter.
+    const opacityHandlerStart = topBarBlock.indexOf('onOpacityChange:');
+    expect(opacityHandlerStart, 'onOpacityChange must be declared in the topBar memo').toBeGreaterThan(-1);
+    const opacityHandler = topBarBlock.slice(opacityHandlerStart);
+    expect(
+      opacityHandler.includes('setAquarelleParam(\'load\''),
+      'onOpacityChange watercolor arm must write aquarelleParams.load',
+    ).toBe(true);
+    expect(
+      opacityHandler.includes('setBrushOpacity'),
+      'onOpacityChange else-arm must write settings.opacity via setBrushOpacity',
+    ).toBe(true);
+    // Call-time module read — never capture activeModule in the memo deps.
+    expect(
+      opacityHandler.includes('activeModule.value === \'watercolor\''),
+      'onOpacityChange must read activeModule.value at call time',
+    ).toBe(true);
+    // The handler must not be the bare setter binding anymore.
+    expect(
+      topBarBlock.includes('onOpacityChange: setBrushOpacity,'),
+      'onOpacityChange must not be a bare setBrushOpacity binding',
+    ).toBe(false);
+    // Memo deps stay the slim set — no activeModule captured for the router.
+    const topBarDeps = topBarBlock.slice(0, topBarBlock.indexOf('], () =>'));
+    expect(topBarDeps.indexOf('activeModule'), 'topBar deps must not capture activeModule').toBe(-1);
+  });
+
+  it('Brush size router stays the locked pattern sibling of the opacity router', () => {
+    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
+    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
+    const topBarBlock = studio.slice(topBarStart, topBarEnd);
+    expect(topBarBlock).toContain('onBrushSizeChange:');
+    expect(topBarBlock).toContain("setAquarelleParam('size', value)");
+    expect(topBarBlock).toContain('setBrushSize(value)');
+  });
+});

@@ -19,9 +19,7 @@ import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSecti
 import { PhysicsPaintAudioListSection, type AudioSectionPorts } from './PhysicsPaintAudioListSection';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
-import { SectionLabel } from '../../shared/SectionLabel';
 import { activeModule } from '../../shared/activeModule';
-import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
 import { PaperPicker } from './PaperPicker';
@@ -736,39 +734,9 @@ export function PhysicsPaintRightPanel({
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {effectiveToolTab === 'paint' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
-            {/* 56-02 (D-05): SHARED block — always visible regardless of activeModule */}
-            <div class="physics-paint-shared-block" data-shared-block>
-              <div class="physics-paint-option-group">
-                <SectionLabel text="Opacity" />
-                {activeModule.value === 'watercolor' ? (
-                  <SliderStepper
-                    id="shared-opacity"
-                    label="Opacity"
-                    value={aquarelleParams.value.load}
-                    onChange={(v) => setAquarelleParam('load', v)}
-                    step={1}
-                    min={0}
-                    max={100}
-                    disabled={engineControlsDisabled}
-                    ariaLabel="Opacity"
-                  />
-                ) : (
-                  <SliderStepper
-                    id="shared-opacity"
-                    label="Opacity"
-                    value={opacity}
-                    onChange={(v) => onColorChange(color, v)}
-                    step={1}
-                    min={0}
-                    max={100}
-                    disabled={engineControlsDisabled}
-                    ariaLabel="Opacity"
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* 56-02 (D-05): MODULE-ONLY block — drains per activeModule */}
+            {/* 56-02 (D-05) / 261017-w4x I-05 (Q3): MODULE-ONLY block — drains
+                per activeModule. The shared Opacity option-group left with I-05;
+                Opacity is top-bar only for every paint mode. */}
             {activeModule.value === 'watercolor' ? (
               <WatercolorModuleSection />
             ) : (

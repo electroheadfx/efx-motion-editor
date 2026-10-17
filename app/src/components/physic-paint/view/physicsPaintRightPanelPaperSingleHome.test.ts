@@ -47,32 +47,48 @@ describe('261017-fz3 PaperPicker single home', () => {
     expect(mounts).toHaveLength(1);
   });
 
-  it('surviving mount sits in the Paper tab branch, not the Paint shared block', () => {
+  it('surviving mount sits in the Paper tab branch, not the Paint tool tab', () => {
     const paperTabIndex = panelSource.indexOf("topPaneTab === 'paper'");
     expect(paperTabIndex).toBeGreaterThan(-1);
 
-    const sharedBlockStart = panelSource.indexOf('physics-paint-shared-block');
-    expect(sharedBlockStart).toBeGreaterThan(-1);
+    // The Paint tool tab branch runs from the paint-tab test to the background
+    // arm; the single PaperPicker mount must not live in it.
+    const paintTabStart = panelSource.indexOf("effectiveToolTab === 'paint'");
+    expect(paintTabStart).toBeGreaterThan(-1);
+    const paintTabEnd = panelSource.indexOf("effectiveToolTab === 'background'", paintTabStart);
+    expect(paintTabEnd).toBeGreaterThan(paintTabStart);
+    const paintTab = panelSource.slice(paintTabStart, paintTabEnd);
+    expect(paintTab).not.toContain('<PaperPicker');
 
-    // The shared block runs until the MODULE-ONLY comment that follows it.
-    const sharedBlockEnd = panelSource.indexOf('MODULE-ONLY block', sharedBlockStart);
-    expect(sharedBlockEnd).toBeGreaterThan(sharedBlockStart);
-    const sharedBlock = panelSource.slice(sharedBlockStart, sharedBlockEnd);
-    expect(sharedBlock).not.toContain('<PaperPicker');
-
-    // The single mount is after the paper-tab branch marker and before the
-    // shared block (the Paper tab is the top pane; the shared block is the
-    // Paint tool tab below).
+    // The single mount is after the paper-tab branch marker.
     const mountIndex = panelSource.indexOf('<PaperPicker');
     expect(mountIndex).toBeGreaterThan(paperTabIndex);
   });
 
-  it('Paint tab shared block still contains the Opacity option-group (shared-opacity)', () => {
-    const sharedBlockStart = panelSource.indexOf('physics-paint-shared-block');
-    const sharedBlockEnd = panelSource.indexOf('MODULE-ONLY block', sharedBlockStart);
-    const sharedBlock = panelSource.slice(sharedBlockStart, sharedBlockEnd);
-    expect(sharedBlock).toContain('shared-opacity');
-    expect(sharedBlock).toContain('Opacity');
+  it('Paint tab branch has no Opacity option-group and starts at the MODULE-ONLY switch', () => {
+    // 261017-w4x I-05 (Q3): the shared wrapper + Opacity option-group leave the
+    // Paint tab — Opacity is top-bar only. The MODULE-ONLY switch is first.
+    const paintTabStart = panelSource.indexOf("effectiveToolTab === 'paint'");
+    expect(paintTabStart).toBeGreaterThan(-1);
+    const paintTabEnd = panelSource.indexOf("effectiveToolTab === 'background'", paintTabStart);
+    expect(paintTabEnd).toBeGreaterThan(paintTabStart);
+    const paintTab = panelSource.slice(paintTabStart, paintTabEnd);
+
+    // Negative region scan: none of the retired shared-block markers remain.
+    expect(paintTab.indexOf('physics-paint-shared-block'), 'shared wrapper must leave').toBe(-1);
+    expect(paintTab.indexOf('data-shared-block'), 'data-shared-block must leave').toBe(-1);
+    expect(paintTab.indexOf('shared-opacity'), 'shared-opacity must leave').toBe(-1);
+    expect(paintTab.indexOf('<SectionLabel text="Opacity"'), 'Opacity option-group must leave').toBe(-1);
+
+    // The MODULE-ONLY switch is the first thing in the paint-tab branch body.
+    expect(paintTab.indexOf('MODULE-ONLY block')).toBeGreaterThan(-1);
+    expect(paintTab.indexOf('WatercolorModuleSection')).toBeGreaterThan(-1);
+    expect(paintTab.indexOf('BrushModuleSection')).toBeGreaterThan(-1);
+    const moduleSwitchIndex = paintTab.indexOf('WatercolorModuleSection');
+    expect(paintTab.indexOf('shared-opacity')).toBe(-1);
+    // No option-group precedes the module switch in the surviving branch.
+    expect(paintTab.indexOf('physics-paint-option-group'), 'no option-group before module switch').toBe(-1);
+    expect(moduleSwitchIndex).toBeGreaterThan(paintTab.indexOf('MODULE-ONLY block'));
   });
 });
 
