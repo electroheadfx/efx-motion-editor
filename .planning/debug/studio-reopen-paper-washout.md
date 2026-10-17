@@ -1,8 +1,8 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: I-07 remainder — watercolor paper washes out on Studio leave + reopen (Phase 55 issues, SPECS/v1.1.0-water-color/phase-55-issues/index.md)
 created: 2026-10-17
-updated: 2026-10-17 (H1 fix UAT failed; H2 stuck-null retry landed)
+updated: 2026-10-17 (resolved — UAT passed on aa1c5135)
 ---
 
 # Debug Session: studio-reopen-paper-washout
@@ -42,7 +42,11 @@ updated: 2026-10-17 (H1 fix UAT failed; H2 stuck-null retry landed)
 - hypothesis: H2 (follow-up) — `getEnginePaperSheet` returns null on the reopened window's first fond draw (offscreen WatercolorEngine WebGL context not ready during early page load, or a one-shot `paperSheet` throw), and `buildProceduralPaperFond`/`subscribeProjectPaperCanvas` NEVER RETRIED: the first null delivery stuck the fond on `drawMissingRotoBackground`'s `instruction.color` arm (`#f4efe3` = "very lighter paper version"; `#ffffff` = white). First Studio session works because the Paper tab warms the engine before the fond re-subscribes on pick; reopen draws the fond at mount, cold engine → null → stuck.
 - test: `projectPaperRaster.test.ts` — "a null engine sheet retries and then delivers the real sheet" + "a permanently-null sheet stops after the bounded retries". RED at base (subscriber stays null forever), GREEN after the bounded retry.
 - expecting: Fixed — a null procedural sheet schedules a bounded retry (8 attempts) and notifies texture listeners when the real engine sheet lands; unknown ids still fail-soft with no spin.
-- next_action: live UAT with the new /tmp capture — reopen Studio after picking a procedural paper and confirm the dense engine sheet survives. If it still washes out, read `/tmp/studio-reopen-paper-washout.json` for the `fond-resolve` paperTexture and the `sheet` ok/reason at reopen.
+- next_action: live UAT with pixel probes (40ad4223) — reopen Studio after picking a procedural paper. Read `/tmp/studio-reopen-paper-washout.json` for the `sheet` pixels (is the engine readback white?) and the `fond-draw` arm + centerPixel (is the fond drawing the sheet or the flat color?).
+- CAPTURE RESULT (2026-10-17, after a756c42e): id is CORRECT end-to-end (`paper/toned-sand` in fallback, mirror-write, and fond-resolve) and `getEnginePaperSheet` returns `ok: true` at 1080x1080. H1 (id degradation) and H2 (null sheet) are both ELIMINATED by live evidence. The wash-out is downstream of generation: either the sheet pixels are white (WebGL readback failure on the reused window) or the fond draw takes a non-sheet arm / is covered. Pixel probes added at the sheet and the fond draw.
+- CAPTURE RESULT (2026-10-17, after 40ad4223): sheet pixels are DENSE kraft (`212,195,162` / `202,186,154` / `222,204,170`) and the fond draw is `arm: "sheet"` at full density with matching pixels. The fond canvas is CORRECT. The wash-out is a COVERING LAYER.
+- CAPTURE RESULT (2026-10-17, after 4e616529): layer-stack dump — `aquarelleCanvas: MISSING`, `engineSurface.opacity: 1`, `tracksGroup.isolation: isolate`, `tracksGroup.className: physics-paint-tracks-group` (no `aquarelle-compositing`). The user is in BRUSH mode at reopen: `activeModule` is a plain signal defaulting to `'brush'` and the Studio window NAVIGATES on every open, resetting JS state. Engine-1 is visible (its `setVisibleBackgroundSuppressed(true)` keeps its own paper off the visible canvases, but the module the user left is not restored). Fix e36a5bfe: persist `activeModule` in sessionStorage so reopen returns to Water color.
+- CAPTURE RESULT (2026-10-17, after e36a5bfe): engine canvas pixel probe — `engineCanvases[1]` (the DRY canvas, z-index 4, on top) is opaque `245,240,232,255` = `#f5f0e8`. That is `drawBg`'s fallback fill (bgMode `canvas*` with a texture not loaded, or `photo` with no photo) painted onto the VISIBLE dry canvas despite `visibleBackgroundSuppressed`. Two draws were unguarded: the constructor's initial `dryCtx.drawImage(bgCanvas)` and `clear()`'s `dryCtx.putImageData(bgPixels)`. `#f5f0e8` is exactly the reported "very lighter paper version" and it sits over the dense fond (`212,195,162`). Fix 7466fbd5: gate both draws on `!visibleBackgroundSuppressed` and make `setVisibleBackgroundSuppressed` re-assert the clear on every call.
 - reasoning_checkpoint:
   hypothesis: "handlePaperIdChange writes the store unconditionally but setBackground is gated on engine readiness, so settings.background desyncs; the next settings-driven write clobbers the paper id in the track mirror and document fallback, and the fond renders the jpg wash (canvas1) or white instead of the engine sheet."
   confirming_evidence:
@@ -100,38 +104,50 @@ updated: 2026-10-17 (H1 fix UAT failed; H2 stuck-null retry landed)
 
 ## Eliminated
 
+- H1 (id degradation to canvas1/white): ELIMINATED by capture — `paper/toned-sand` survives end-to-end (fallback, mirror-write, fond-resolve) at reopen. The 3ca751af engine-gate split was real but not the reopen-visible cause.
+- H2 (null engine sheet stuck): ELIMINATED by capture — `getEnginePaperSheet` returns `ok: true` at 1080x1080 with DENSE kraft pixels (`212,195,162`). The a756c42e bounded retry is a real robustness fix but not the reopen-visible cause.
+- H3 (fond instruction loses paperTexture): ELIMINATED — fond draw takes `arm: "sheet"` at full density with matching pixels. The fond canvas is CORRECT.
+
 ## Resolution
 
 - root_cause: >
-  Two stacked causes. (1) H1 — settings/store split-brain: `handlePaperIdChange`
-  writes the track mirror and document fallback unconditionally, while
-  `setBackground`/`setGrainStrength`/`setGrainScale` returned early when the engine
-  was absent, so later settings-driven writes clobbered the picked id. Fixed in
-  3ca751af. (2) H2 — the reopen-visible cause: on the reopened Studio window the
-  fond's FIRST `getEnginePaperSheet` call happens at mount with a cold offscreen
-  WatercolorEngine and returns null; `buildProceduralPaperFond` then returned null
-  with NO RETRY and `subscribeProjectPaperCanvas` delivered null once and never
-  re-asked, so `drawMissingRotoBackground` took the `instruction.color` arm
-  (`#f4efe3` lighter / `#ffffff` white) for the rest of the session. The first
-  session works because the Paper tab warms the engine before the pick re-subscribes
-  the fond. The vendored WatercolorEngine.paperSheet generator itself is correct.
+  COVERING LAYERS over a correct fond. Capture proved the fond canvas holds the
+  dense engine sheet; the wash-out was painted on top. Three stacked covers:
+  (1) engine-1's DRY canvas painted `drawBg`'s fallback `#f5f0e8` despite
+  `visibleBackgroundSuppressed` — the constructor's initial
+  `dryCtx.drawImage(bgCanvas)` and `clear()`'s `dryCtx.putImageData(bgPixels)`
+  were unguarded, and `getDryRestoreData()` restored `bgData` even when
+  suppressed. (2) `activeModule` is a plain signal defaulting to `'brush'`; the
+  Studio window NAVIGATES on every open, so reopen landed in Brush mode with the
+  aquarelle layer missing. (3) The aquarelle cache stores `MODE.transparent`
+  OPAQUE TRANSMITTANCE — the shader outputs `vec4(t, 1.0)` ("how much paper light
+  gets through"), designed for CSS `mix-blend-mode: multiply` over the fond, NOT
+  real alpha. Composited `source-over` it covers the paper with white. The Studio
+  program monitor needed the same multiply + an `isolation: auto` lift so the
+  blend reaches the fond.
 - fix: >
-  (1) Paper-display settings updates gate on the mutation lock only, not engine
-  readiness (3ca751af). (2) `buildProceduralPaperFond` schedules a bounded retry
-  (8 attempts, 32ms·n backoff) when the engine sheet is null, and notifies texture
-  listeners when the real sheet lands — so a cold engine on reopen self-heals instead
-  of sticking the fond on the flat-color arm. Unknown paper ids stay fail-soft with
-  no spin. Measure-only /tmp capture added at fond-resolve / sheet / mirror-write.
+  (1) Gate every engine-1 bg draw on `!visibleBackgroundSuppressed` and make
+  `getDryRestoreData()` return null when suppressed (7466fbd5, b90db315).
+  (2) Persist `activeModule` in sessionStorage so reopen returns to Water color
+  (e36a5bfe). (3) Keep the transmittance cache as-is and composite it with
+  MULTIPLY over the fond, branching on raster opacity: opaque → multiply
+  (aquarelle transmittance), real-alpha → source-over (engine-1). Probe lives in
+  `lib/rasterAlpha.ts` so the store stays free of pixel-array canvas APIs
+  (09c422e1, 04177803). (4) `.physics-paint-program-monitor` carries
+  `mix-blend-mode: multiply` and the tracks group lifts `isolation: auto` when
+  `:has(.physics-paint-program-monitor)` (04177803, aa1c5135). An earlier
+  alpha-flattening attempt (9f6a7a3d) was REVERTED — it kept transmittance RGB at
+  low coverage and produced a faint/white ghost.
 - verification: >
-  tdd_mode: failing tests written first — `setBackground / setGrainStrength update
-  settings even with no engine` (RED 0 setSettings calls → GREEN) and
-  `a null engine sheet retries and then delivers the real sheet` (RED subscriber
-  stuck null → GREEN after retry) + `a permanently-null sheet stops after the
-  bounded retries` (≤9 engine calls, no spin). Full regression: 5205 passed /
-  1 skipped / 96 todo (301 files); viteBuild under the 2 MB ceiling. Live reopen
-  UAT pending (Tauri/cross-webview — vitest cannot mount the Studio).
+  Full suite green after aa1c5135: 299 passed | 2 skipped (301) files;
+  5205 passed | 1 skipped | 96 todo (5302) tests. CSS contract pin
+  (`.physics-paint-program-monitor` block must contain `z-index: 0`) holds after
+  folding multiply into the original block. frame/export guard
+  (`physicPaintStore.ts` free of `getImageData|putImageData`) holds — the opacity
+  probe lives in `lib/rasterAlpha.ts`. Live UAT PASSED 2026-10-17: editor AND
+  Studio both show the stroke on the dense procedural paper.
 - guardrail_verdict: accepted
-- oracle_type: specified (contract: a null procedural sheet must self-heal via a bounded retry; asserted on the subscribe delivery sequence and the engine-call count)
+- oracle_type: specified (contract: the aquarelle cache is transmittance and MUST multiply over the fond; asserted on the composite-op branch and the CSS blend/isolation pins)
 - files_changed:
   - app/src/components/physic-paint/engine/usePhysicsPaintEngineActions.ts
   - app/src/components/physic-paint/engine/usePhysicsPaintEngineActions.test.ts
@@ -139,5 +155,12 @@ updated: 2026-10-17 (H1 fix UAT failed; H2 stuck-null retry landed)
   - app/src/lib/projectPaperRaster.test.ts
   - app/src/lib/paperFondCapture.ts
   - app/src/lib/enginePaperSheet.ts
+  - app/src/lib/rasterAlpha.ts
   - app/src/stores/physicPaintStore.ts
   - app/src/components/physic-paint/hooks/useRotoBackgroundMetadataSync.ts
+  - app/src/components/physic-paint/view/rotoPlaybackBackground.ts
+  - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
+  - app/src/components/physic-paint/physicsPaintStudio.css
+  - app/src/components/shared/activeModule.ts
+  - packages/efx-physic-paint/src/engine/EfxPaintEngine.ts
+  - packages/efx-watercolor/src/adapter/engineAdapter.ts
