@@ -1,6 +1,6 @@
 import type { BgMode, EfxPaintEngine, ToolType } from '@efxlab/efx-physic-paint';
 import type { BackgroundFallback, PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
-import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import type { PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoBackgroundMode } from '../../../types/physicPaint';
 
 /**
  * 56-05 (PAPER-01): the Studio's background field spans the selector's BgMode
@@ -118,9 +118,31 @@ function engineBgMode(mode: StudioBackgroundMode): BgMode {
     : 'transparent';
 }
 
+/**
+ * I-07 locked key policy for engine.setPaperGrain:
+ * - transparent / white / photo → '' (grain off)
+ * - canvas1/2/3 → as-is (the loaded shipped jpgs)
+ * - paper/real-1..3 → canvas1/2/3 (56-05 PAPER-04 / D-12 — same shipped jpgs
+ *   under their library ids; the engine already holds those height maps)
+ * - any other paper/* (procedural) → the id itself (a real value, never '')
+ *
+ * Q5a: aquarelle deposit grain is `engine.setPaper` (AquarelleCanvasLayer),
+ * not this key — real scans keep the `cold` preset there, untouched here.
+ * 260925-dso: no procedural height map is ever registered into the physics
+ * engine's paperTextures; the procedural id is a routing value only.
+ */
+function enginePaperGrainKey(background: StudioBackgroundMode | PhysicPaintRotoBackgroundMode): string {
+  if (background === 'canvas1' || background === 'canvas2' || background === 'canvas3') return background;
+  if (background === 'paper/real-1') return 'canvas1';
+  if (background === 'paper/real-2') return 'canvas2';
+  if (background === 'paper/real-3') return 'canvas3';
+  if (background.startsWith('paper/')) return background;
+  return '';
+}
+
 export function applyRotoBackgroundMetadataToEngine(engine: EfxPaintEngine, metadata: PhysicPaintRotoBackgroundMetadata): void {
   engine.setBgMode(engineBgMode(metadata.background));
-  engine.setPaperGrain(metadata.background === 'canvas1' || metadata.background === 'canvas2' || metadata.background === 'canvas3' ? metadata.background : '');
+  engine.setPaperGrain(enginePaperGrainKey(metadata.background));
   engine.setEmbossStrength(metadata.grainStrength);
 }
 
@@ -164,6 +186,6 @@ export function applyBackgroundFallbackToEngine(engine: EfxPaintEngine, fallback
     return;
   }
   engine.setBgMode(engineBgMode(fallback.texture));
-  engine.setPaperGrain(fallback.texture === 'canvas1' || fallback.texture === 'canvas2' || fallback.texture === 'canvas3' ? fallback.texture : '');
+  engine.setPaperGrain(enginePaperGrainKey(fallback.texture));
   engine.setEmbossStrength(fallback.grainStrength);
 }

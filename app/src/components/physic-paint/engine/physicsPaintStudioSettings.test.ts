@@ -216,3 +216,67 @@ describe('Physics Paint Studio settings', () => {
     expect(reflectFallbackToBackgroundMode({ mode: 'paper', texture: 'canvas3', grainStrength: 0 }) as string).not.toBe('photo');
   });
 });
+
+// I-07: setPaperGrain must receive a real key for every paper/* id (procedural
+// → the id; real scans → the canvas jpg keys) and still '' for transparent/white.
+// Q5a stays locked: aquarelle deposit grain rides engine.setPaper, not this key.
+describe('I-07 paper/* engine grain key + reopen reflection', () => {
+  const makeEngine = () => ({ setBgMode: vi.fn(), setPaperGrain: vi.fn(), setEmbossStrength: vi.fn() });
+
+  it('applyRotoBackgroundMetadataToEngine sends the procedural id itself to setPaperGrain (never "")', () => {
+    const engine = makeEngine();
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/cold-press', grainStrength: 0.45 });
+    expect(engine.setPaperGrain).toHaveBeenCalledWith('paper/cold-press');
+    expect(engine.setPaperGrain).not.toHaveBeenCalledWith('');
+    // engineBgMode collapse stays correct (BgMode enum has no paper/* arm).
+    expect(engine.setBgMode).toHaveBeenCalledWith('transparent');
+  });
+
+  it('applyRotoBackgroundMetadataToEngine maps paper/real-1..3 onto the canvas jpg grain keys', () => {
+    const engine = makeEngine();
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/real-1', grainStrength: 0.45 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas1');
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/real-2', grainStrength: 0.45 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas2');
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'paper/real-3', grainStrength: 0.45 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas3');
+  });
+
+  it('applyRotoBackgroundMetadataToEngine still passes "" for transparent and white', () => {
+    const engine = makeEngine();
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'transparent', grainStrength: 0.45 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('');
+    applyRotoBackgroundMetadataToEngine(engine as never, { background: 'white', grainStrength: 0.45 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('');
+  });
+
+  it('applyBackgroundFallbackToEngine routes paper/* grain keys and keeps the setBgMode collapse', () => {
+    const engine = makeEngine();
+    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'paper/cold-press', grainStrength: 0.45, grainScale: 2 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('paper/cold-press');
+    expect(engine.setBgMode).toHaveBeenLastCalledWith('transparent');
+
+    applyBackgroundFallbackToEngine(engine as never, { mode: 'paper', texture: 'paper/real-2', grainStrength: 0.45, grainScale: 1 });
+    expect(engine.setPaperGrain).toHaveBeenLastCalledWith('canvas2');
+    expect(engine.setBgMode).toHaveBeenLastCalledWith('transparent');
+  });
+
+  it('save → reopen keeps the paper/* id in the settings mirror (fallback + metadata round-trip)', () => {
+    const settings = { ...makeInitialPhysicsPaintStudioSettings(), grainStrength: 0.45, grainScale: 2 };
+    const fallback = backgroundModeToFallback('paper/cold-press', settings);
+    expect(fallback).toEqual({ mode: 'paper', texture: 'paper/cold-press', grainStrength: 0.45, grainScale: 2 });
+
+    const hydrated = applyBackgroundFallbackToSettings(fallback);
+    expect(hydrated.background).toBe('paper/cold-press');
+    expect(hydrated.grainStrength).toBe(0.45);
+    expect(hydrated.grainScale).toBe(2);
+
+    const fromMetadata = applyRotoBackgroundMetadataToSettings({ background: 'paper/cold-press', grainStrength: 0.45, grainScale: 2 });
+    expect(fromMetadata.background).toBe('paper/cold-press');
+    expect(fromMetadata.grainStrength).toBe(0.45);
+    expect(fromMetadata.grainScale).toBe(2);
+
+    // Verbatim id round-trip through the reflection.
+    expect(reflectFallbackToBackgroundMode(fallback)).toBe('paper/cold-press');
+  });
+});

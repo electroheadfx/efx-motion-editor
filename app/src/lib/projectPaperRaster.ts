@@ -1,3 +1,7 @@
+// 56-05 (PAPER-01): the 13-paper library's procedural height fields.
+// The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
+import { proceduralHeightMap } from '@efxlab/efx-watercolor/papers';
+
 const PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
   canvas2: '/img/paper_2.jpg',
@@ -21,6 +25,50 @@ const textureCache = new Map<string, HTMLImageElement>();
 const paperCanvasCache = new Map<string, HTMLCanvasElement>();
 const loadingTextures = new Map<string, HTMLImageElement>();
 const textureListeners = new Map<string, Set<() => void>>();
+/** I-07: fixed 256×256 relief tile per paper id (13 papers max — no eviction). */
+const proceduralTileCache = new Map<string, HTMLCanvasElement>();
+
+/** I-07 relief tile size — matches PROCEDURAL_TILE_SIZE's fixed shade canvas. */
+const PROCEDURAL_FOND_TILE = 256;
+
+/**
+ * I-07: proceduralHeightMap is the renderer — never jpeg. Build (and cache) a
+ * grayscale relief tile with the PaperPicker shade formula (PaperPicker.tsx
+ * `proceduralReliefImage` — h as luminance, one-sided slope toward light) so
+ * the picker and the editor fond agree on the paper's look. Unknown ids return
+ * null (deterministic fail-soft → the existing flat-color arm).
+ */
+function buildProceduralPaperTile(paperTexture: string): HTMLCanvasElement | null {
+  const cached = proceduralTileCache.get(paperTexture);
+  if (cached) return cached;
+  const height = proceduralHeightMap(paperTexture, 1, PROCEDURAL_FOND_TILE, PROCEDURAL_FOND_TILE);
+  if (!height) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = PROCEDURAL_FOND_TILE;
+  canvas.height = PROCEDURAL_FOND_TILE;
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  const image = context.createImageData(PROCEDURAL_FOND_TILE, PROCEDURAL_FOND_TILE);
+  for (let y = 0; y < PROCEDURAL_FOND_TILE; y++) {
+    for (let x = 0; x < PROCEDURAL_FOND_TILE; x++) {
+      const i = y * PROCEDURAL_FOND_TILE + x;
+      const h = height[i];
+      const hx = height[y * PROCEDURAL_FOND_TILE + Math.min(x + 1, PROCEDURAL_FOND_TILE - 1)];
+      const hy = height[Math.min(y + 1, PROCEDURAL_FOND_TILE - 1) * PROCEDURAL_FOND_TILE + x];
+      const slope = (hx - h) + (hy - h);
+      const shade = Math.max(0, Math.min(1, 0.55 + (h - 0.5) * 0.7 - slope * 2.2));
+      const channel = Math.round(shade * 255);
+      const offset = i * 4;
+      image.data[offset] = channel;
+      image.data[offset + 1] = channel;
+      image.data[offset + 2] = channel;
+      image.data[offset + 3] = 255;
+    }
+  }
+  context.putImageData(image, 0, 0);
+  proceduralTileCache.set(paperTexture, canvas);
+  return canvas;
+}
 
 /** Positive finite grain scale, else 1 (hostile input never hangs a tile loop). */
 export function normalizeGrainScale(scale: number): number {
@@ -94,12 +142,23 @@ export function getProjectPaperCanvas(
   height: number,
   scale = 1,
 ): HTMLCanvasElement | null {
-  const url = paperTexture ? PAPER_TEXTURE_URLS[paperTexture] : undefined;
-  if (!url || !paperTexture || width <= 0 || height <= 0) return null;
-  const texture = textureCache.get(paperTexture);
-  if (!texture) {
-    ensurePaperTextureLoading(paperTexture, url);
-    return null;
+  if (!paperTexture || width <= 0 || height <= 0) return null;
+  let texture: CanvasImageSource;
+  // I-07: proceduralHeightMap is the renderer — never jpeg. Procedural ids
+  // synthesize a relief tile in place of a decoded jpg.
+  if (isProceduralPaperTexture(paperTexture)) {
+    const tile = buildProceduralPaperTile(paperTexture);
+    if (!tile) return null;
+    texture = tile;
+  } else {
+    const url = PAPER_TEXTURE_URLS[paperTexture];
+    if (!url) return null;
+    const loaded = textureCache.get(paperTexture);
+    if (!loaded) {
+      ensurePaperTextureLoading(paperTexture, url);
+      return null;
+    }
+    texture = loaded;
   }
   // Isolate prepared canvases by grain scale so a rescale never reuses a
   // natural-size (or differently scaled) raster.
@@ -123,8 +182,18 @@ export function subscribeProjectPaperCanvas(
   listener: (canvas: HTMLCanvasElement | null) => void,
   scale = 1,
 ): () => void {
-  const url = paperTexture ? PAPER_TEXTURE_URLS[paperTexture] : undefined;
-  if (!url || !paperTexture || width <= 0 || height <= 0) {
+  if (!paperTexture || width <= 0 || height <= 0) {
+    listener(null);
+    return () => {};
+  }
+  // I-07: procedural papers are always resolved (isProjectPaperTextureResolved)
+  // — deliver the synthesized tile synchronously, no listener table.
+  if (isProceduralPaperTexture(paperTexture)) {
+    listener(getProjectPaperCanvas(paperTexture, width, height, scale));
+    return () => {};
+  }
+  const url = PAPER_TEXTURE_URLS[paperTexture];
+  if (!url) {
     listener(null);
     return () => {};
   }
@@ -172,6 +241,7 @@ export function subscribeProjectPaperTextureResolve(paperTexture: string, listen
 
 export function clearProjectPaperRasterCache(): void {
   paperCanvasCache.clear();
+  proceduralTileCache.clear();
 }
 
 /**
@@ -183,6 +253,7 @@ export function clearProjectPaperRasterCache(): void {
  */
 export function resetProjectPaperRasterForTests(): void {
   paperCanvasCache.clear();
+  proceduralTileCache.clear();
   textureCache.clear();
   loadingTextures.clear();
   textureListeners.clear();

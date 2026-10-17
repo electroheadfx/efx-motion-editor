@@ -256,3 +256,199 @@ describe('authoritative project paper raster parity', () => {
     }
   });
 });
+
+// I-07: procedural PAPER_LIBRARY ids must synthesize a fond tile (tooth) instead
+// of falling through to the flat #f4efe3 colour arm. proceduralHeightMap is the
+// renderer — never jpeg.
+describe('I-07 procedural fond tile', () => {
+  type HarnessCanvas = {
+    width: number;
+    height: number;
+    __pixels: Uint8ClampedArray | null;
+    getContext: (type: string) => unknown;
+  };
+
+  /** Mini canvas with real pixel storage so the relief tile can be compared. */
+  function makePixelCanvas(): HarnessCanvas {
+    const canvas: HarnessCanvas = {
+      width: 0,
+      height: 0,
+      __pixels: null,
+      getContext: () => context,
+    };
+    const context = {
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+      fillStyle: '#fff' as string | { __texture: HarnessCanvas },
+      save() {},
+      restore() {},
+      createImageData(width: number, height: number) {
+        return { data: new Uint8ClampedArray(width * height * 4), width, height };
+      },
+      putImageData(image: { data: Uint8ClampedArray; width: number; height: number }) {
+        canvas.__pixels = new Uint8ClampedArray(image.data);
+        canvas.width = image.width;
+        canvas.height = image.height;
+      },
+      getImageData(x: number, y: number, width: number, height: number) {
+        const out = new Uint8ClampedArray(width * height * 4);
+        const src = canvas.__pixels;
+        if (src && canvas.width > 0 && canvas.height > 0) {
+          for (let row = 0; row < height; row++) {
+            for (let col = 0; col < width; col++) {
+              const sx = x + col;
+              const sy = y + row;
+              if (sx < 0 || sy < 0 || sx >= canvas.width || sy >= canvas.height) continue;
+              const si = (sy * canvas.width + sx) * 4;
+              const di = (row * width + col) * 4;
+              out[di] = src[si];
+              out[di + 1] = src[si + 1];
+              out[di + 2] = src[si + 2];
+              out[di + 3] = src[si + 3];
+            }
+          }
+        }
+        return { data: out, width, height };
+      },
+      fillRect(_x: number, _y: number, width: number, height: number) {
+        const pixels = new Uint8ClampedArray(width * height * 4);
+        const style = this.fillStyle as string | { __texture: HarnessCanvas };
+        if (typeof style === 'string') {
+          pixels.fill(255);
+        } else if (style && style.__texture) {
+          const source = style.__texture;
+          const src = source.__pixels;
+          const alpha = this.globalAlpha;
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              const i = (y * width + x) * 4;
+              const sx = x % Math.max(1, source.width);
+              const sy = y % Math.max(1, source.height);
+              const si = (sy * source.width + sx) * 4;
+              for (let c = 0; c < 3; c++) {
+                const base = 255;
+                const sample = src ? src[si + c] : base;
+                pixels[i + c] = Math.round(sample * alpha + base * (1 - alpha));
+              }
+              pixels[i + 3] = 255;
+            }
+          }
+        }
+        canvas.__pixels = pixels;
+        canvas.width = width;
+        canvas.height = height;
+      },
+      createPattern(texture: HarnessCanvas) {
+        return { __texture: texture, setTransform() {} };
+      },
+      drawImage() {},
+    };
+    return canvas;
+  }
+
+  function samplePixel(canvas: HTMLCanvasElement, x: number, y: number): number {
+    const harness = canvas as unknown as HarnessCanvas;
+    const ctx = harness.getContext('2d') as { getImageData: (x: number, y: number, w: number, h: number) => { data: Uint8ClampedArray } };
+    const { data } = ctx.getImageData(x, y, 1, 1);
+    return data[0];
+  }
+
+  function withPixelDocument(run: () => void): void {
+    const originalDocument = globalThis.document;
+    const originalImage = globalThis.Image;
+    class FakeImage {
+      onload: null | (() => void) = null;
+      onerror: null | (() => void) = null;
+      width = 2;
+      height = 1;
+      set src(_value: string) {}
+    }
+    Object.assign(globalThis, {
+      document: { createElement: () => makePixelCanvas() },
+      Image: FakeImage,
+    });
+    try {
+      run();
+    } finally {
+      resetProjectPaperRasterForTests();
+      Object.assign(globalThis, { document: originalDocument, Image: originalImage });
+    }
+  }
+
+  it('returns a non-null fond canvas for procedural paper/cold-press and paper/rough', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const cold = getProjectPaperCanvas('paper/cold-press', 64, 32, 1);
+      const rough = getProjectPaperCanvas('paper/rough', 64, 32, 1);
+      expect(cold).not.toBeNull();
+      expect(rough).not.toBeNull();
+      expect(cold!.width).toBe(64);
+      expect(cold!.height).toBe(32);
+    });
+  });
+
+  it('two different procedural ids produce different pixels (the tile is paper-specific)', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const cold = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      const rough = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
+      const samples: Array<[number, number]> = [[0, 0], [5, 7], [11, 13], [17, 19], [23, 29]];
+      const coldPixels = samples.map(([x, y]) => samplePixel(cold, x, y));
+      const roughPixels = samples.map(([x, y]) => samplePixel(rough, x, y));
+      expect(coldPixels).not.toEqual(roughPixels);
+    });
+  });
+
+  it('empty string and unknown paper/* stay fail-soft null; paper/real-1 stays on the image URL path', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      expect(getProjectPaperCanvas('', 64, 32, 1)).toBeNull();
+      expect(getProjectPaperCanvas('paper/nope-not-in-library-but-procedural', 64, 32, 1)).toBeNull();
+      // Real scans keep the jpg path — null until the texture resolves.
+      expect(getProjectPaperCanvas('paper/real-1', 64, 32, 1)).toBeNull();
+    });
+  });
+
+  it('same id + size + scale returns the identical cached canvas; a different grainScale returns a different canvas', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const first = getProjectPaperCanvas('paper/cold-press', 64, 32, 1);
+      const again = getProjectPaperCanvas('paper/cold-press', 64, 32, 1);
+      const scaled = getProjectPaperCanvas('paper/cold-press', 64, 32, 2);
+      expect(again).toBe(first);
+      expect(scaled).not.toBeNull();
+      expect(scaled).not.toBe(first);
+    });
+  });
+
+  it('subscribeProjectPaperCanvas delivers a procedural canvas synchronously and returns a callable unsubscribe', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const delivered: Array<HTMLCanvasElement | null> = [];
+      const unsubscribe = subscribeProjectPaperCanvas('paper/cold-press', 64, 32, (canvas) => {
+        delivered.push(canvas);
+      });
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]).not.toBeNull();
+      expect(typeof unsubscribe).toBe('function');
+      unsubscribe();
+    });
+  });
+
+  it('source-scan: getProjectPaperCanvas carries the procedural branch and PAPER_TEXTURE_URLS gains no procedural keys', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    const fnBody = src.slice(
+      src.indexOf('export function getProjectPaperCanvas'),
+      src.indexOf('export function subscribeProjectPaperCanvas'),
+    );
+    expect(fnBody).toContain('isProceduralPaperTexture');
+    expect(fnBody).toContain('proceduralHeightMap');
+    const urlsBlock = src.slice(
+      src.indexOf('const PAPER_TEXTURE_URLS'),
+      src.indexOf('export function isProceduralPaperTexture'),
+    );
+    expect(urlsBlock).toContain("paper/real-1");
+    expect(urlsBlock).not.toContain('paper/cold-press');
+    expect(urlsBlock).not.toContain('paper/rough');
+  });
+});
