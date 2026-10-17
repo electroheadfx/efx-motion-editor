@@ -86,7 +86,8 @@ function resolveProjectPaperCanvas(
   return new Promise((resolve) => {
     let settled = false;
     let unsubscribe = () => {};
-    const timeout = window.setTimeout(() => {
+    // globalThis (not window) so the fail-soft timeout works in any host.
+    const timeout = globalThis.setTimeout(() => {
       if (settled) return;
       settled = true;
       unsubscribe();
@@ -95,7 +96,7 @@ function resolveProjectPaperCanvas(
     unsubscribe = subscribeProjectPaperCanvas(paperTexture, width, height, (canvas) => {
       if (!canvas || settled) return;
       settled = true;
-      window.clearTimeout(timeout);
+      globalThis.clearTimeout(timeout);
       unsubscribe();
       resolve(canvas);
     }, grainScale);

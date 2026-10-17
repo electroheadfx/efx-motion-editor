@@ -1,15 +1,29 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { drawProjectPaperRaster, getProjectPaperCanvas, resetProjectPaperRasterForTests, subscribeProjectPaperCanvas } from './projectPaperRaster';
+import { drawProjectPaperRaster, getProjectPaperCanvas, isProjectPaperTextureResolved, resetProjectPaperRasterForTests, subscribeProjectPaperCanvas, subscribeProjectPaperTextureResolve } from './projectPaperRaster';
 
-// 261017-lny: stub the GPU host so routing pins can choose a known sheet vs
-// null (CPU fallback). Default null keeps the existing CPU-port pixel pins
-// honest. 261017-mdr: the GPU entry hands out a canvas, not bytes.
-const glMock = vi.hoisted(() => ({
-  renderPaperSheetGl: vi.fn((_w: number, _h: number, _s: number, _seed: number, _preset: unknown) => null as HTMLCanvasElement | null),
+// 261017-mz9: the worker client is the only generation door. The mock runs the
+// pure capped field generator so pixel-look pins stay honest while the seam
+// stays async.
+const clientMock = vi.hoisted(() => ({
+  requestProceduralSheet: vi.fn(),
 }));
-vi.mock('./paperFieldGl', () => glMock);
+vi.mock('./paperSheetClient', async () => {
+  const field = await import('./paperSheetField');
+  clientMock.requestProceduralSheet.mockImplementation(async (request: {
+    paperTexture: string;
+    width: number;
+    height: number;
+    grainScale: number;
+  }) => {
+    const { fieldWidth, fieldHeight } = field.capFieldSize(request.width, request.height);
+    const pixels = field.generatePaperSheetCpu(request.paperTexture, fieldWidth, fieldHeight, request.grainScale);
+    if (!pixels) return null;
+    return { path: 'worker-cpu', fieldWidth, fieldHeight, durationMs: 1, pixels };
+  });
+  return clientMock;
+});
 
 interface Pixel { r: number; g: number; b: number; a: number }
 
@@ -346,7 +360,31 @@ function makePixelCanvas(): HarnessCanvas {
     createPattern(texture: HarnessCanvas) {
       return { __texture: texture, setTransform() {} };
     },
-    drawImage() {},
+    drawImage(source: HarnessCanvas, _x: number, _y: number, width?: number, height?: number) {
+      // Upscale blit: stamp the source field into this canvas at the requested
+      // size (the continuous-field upscale seam).
+      const outWidth = width ?? source.width;
+      const outHeight = height ?? source.height;
+      const out = new Uint8ClampedArray(outWidth * outHeight * 4);
+      const src = source.__pixels;
+      for (let y = 0; y < outHeight; y++) {
+        for (let x = 0; x < outWidth; x++) {
+          const sx = Math.min(source.width - 1, Math.floor((x / outWidth) * source.width));
+          const sy = Math.min(source.height - 1, Math.floor((y / outHeight) * source.height));
+          const si = (sy * source.width + sx) * 4;
+          const di = (y * outWidth + x) * 4;
+          if (src) {
+            out[di] = src[si];
+            out[di + 1] = src[si + 1];
+            out[di + 2] = src[si + 2];
+            out[di + 3] = src[si + 3];
+          }
+        }
+      }
+      canvas.__pixels = out;
+      canvas.width = outWidth;
+      canvas.height = outHeight;
+    },
   };
   return canvas;
 }
@@ -358,7 +396,7 @@ function samplePixel(canvas: HTMLCanvasElement, x: number, y: number): number {
   return data[0];
 }
 
-function withPixelDocument(run: () => void): void {
+async function withPixelDocument(run: () => Promise<void> | void): Promise<void> {
   const originalDocument = globalThis.document;
   const originalImage = globalThis.Image;
   class FakeImage {
@@ -373,11 +411,18 @@ function withPixelDocument(run: () => void): void {
     Image: FakeImage,
   });
   try {
-    run();
+    await run();
   } finally {
     resetProjectPaperRasterForTests();
     Object.assign(globalThis, { document: originalDocument, Image: originalImage });
   }
+}
+
+async function awaitFond(paperTexture: string, width: number, height: number, scale: number): Promise<HTMLCanvasElement> {
+  await vi.waitFor(() => {
+    expect(getProjectPaperCanvas(paperTexture, width, height, scale)).not.toBeNull();
+  });
+  return getProjectPaperCanvas(paperTexture, width, height, scale)!;
 }
 
 // I-07: procedural PAPER_LIBRARY ids must synthesize a fond tile (tooth) instead
@@ -385,11 +430,12 @@ function withPixelDocument(run: () => void): void {
 // field is the renderer — never jpeg.
 describe('I-07 procedural fond tile', () => {
 
-  it('returns a non-null fond canvas for procedural paper/cold-press and paper/rough', () => {
-    withPixelDocument(() => {
+  it('returns a fond canvas for procedural paper/cold-press and paper/rough after async delivery', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const cold = getProjectPaperCanvas('paper/cold-press', 64, 32, 1);
-      const rough = getProjectPaperCanvas('paper/rough', 64, 32, 1);
+      expect(getProjectPaperCanvas('paper/cold-press', 64, 32, 1)).toBeNull();
+      const cold = await awaitFond('paper/cold-press', 64, 32, 1);
+      const rough = await awaitFond('paper/rough', 64, 32, 1);
       expect(cold).not.toBeNull();
       expect(rough).not.toBeNull();
       expect(cold!.width).toBe(64);
@@ -397,11 +443,11 @@ describe('I-07 procedural fond tile', () => {
     });
   });
 
-  it('two different procedural ids produce different pixels (the tile is paper-specific)', () => {
-    withPixelDocument(() => {
+  it('two different procedural ids produce different pixels (the sheet is paper-specific)', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const cold = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
-      const rough = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
+      const cold = await awaitFond('paper/cold-press', 32, 32, 1);
+      const rough = await awaitFond('paper/rough', 32, 32, 1);
       const samples: Array<[number, number]> = [[0, 0], [5, 7], [11, 13], [17, 19], [23, 29]];
       const coldPixels = samples.map(([x, y]) => samplePixel(cold, x, y));
       const roughPixels = samples.map(([x, y]) => samplePixel(rough, x, y));
@@ -409,8 +455,8 @@ describe('I-07 procedural fond tile', () => {
     });
   });
 
-  it('empty string and unknown paper/* stay fail-soft null; paper/real-1 stays on the image URL path', () => {
-    withPixelDocument(() => {
+  it('empty string and unknown paper/* stay fail-soft null; paper/real-1 stays on the image URL path', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
       expect(getProjectPaperCanvas('', 64, 32, 1)).toBeNull();
       expect(getProjectPaperCanvas('paper/nope-not-in-library-but-procedural', 64, 32, 1)).toBeNull();
@@ -419,27 +465,29 @@ describe('I-07 procedural fond tile', () => {
     });
   });
 
-  it('same id + size + scale returns the identical cached canvas; a different grainScale returns a different canvas', () => {
-    withPixelDocument(() => {
+  it('same id + size + scale returns the identical cached canvas; a different grainScale returns a different canvas', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const first = getProjectPaperCanvas('paper/cold-press', 64, 32, 1);
+      const first = await awaitFond('paper/cold-press', 64, 32, 1);
       const again = getProjectPaperCanvas('paper/cold-press', 64, 32, 1);
-      const scaled = getProjectPaperCanvas('paper/cold-press', 64, 32, 2);
+      const scaled = await awaitFond('paper/cold-press', 64, 32, 2);
       expect(again).toBe(first);
       expect(scaled).not.toBeNull();
       expect(scaled).not.toBe(first);
     });
   });
 
-  it('subscribeProjectPaperCanvas delivers a procedural canvas synchronously and returns a callable unsubscribe', () => {
-    withPixelDocument(() => {
+  it('subscribeProjectPaperCanvas delivers null while pending, then the sheet; unsubscribe is callable', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
       const delivered: Array<HTMLCanvasElement | null> = [];
       const unsubscribe = subscribeProjectPaperCanvas('paper/cold-press', 64, 32, (canvas) => {
         delivered.push(canvas);
       });
-      expect(delivered).toHaveLength(1);
-      expect(delivered[0]).not.toBeNull();
+      expect(delivered).toEqual([null]);
+      await awaitFond('paper/cold-press', 64, 32, 1);
+      expect(delivered.length).toBeGreaterThanOrEqual(2);
+      expect(delivered[delivered.length - 1]).not.toBeNull();
       expect(typeof unsubscribe).toBe('function');
       unsubscribe();
     });
@@ -466,24 +514,19 @@ describe('I-07 procedural fond tile', () => {
 // 261017-ki6: the fond is the ported playground sheet — opaque paperColour
 // sRGB at full WxH, uScale = PAPER_UNITS / (height * grainScale), no tiling.
 describe('261017-ki6 ported playground fond', () => {
-  it('source-scan: the fond calls the port at full WxH with the PAPER_UNITS scale law', () => {
+  it('source-scan: the cache-key string shape from 20f9dfdc stays untouched', () => {
     const src = source('src/lib/projectPaperRaster.ts');
-    expect(src).toContain('PAPER_UNITS');
-    expect(src).toContain('renderPaperSheet');
-    expect(src).toContain('presetForPaperId');
-    expect(src).toContain('PAPER_UNITS / (height * normalized)');
-    // cache-key string shape from 20f9dfdc stays untouched
     expect(src).toContain('${paperTexture}|1|${width}x${height}|${normalized}');
   });
 
-  it('per-paper look differs (hot-press smoother than rough; washi ≠ student)', () => {
-    withPixelDocument(() => {
+  it('per-paper look differs (hot-press smoother than rough; washi ≠ student)', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const cold = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
-      const hot = getProjectPaperCanvas('paper/hot-press', 32, 32, 1)!;
-      const rough = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
-      const washi = getProjectPaperCanvas('paper/washi', 32, 32, 1)!;
-      const student = getProjectPaperCanvas('paper/student', 32, 32, 1)!;
+      const cold = await awaitFond('paper/cold-press', 32, 32, 1);
+      const hot = await awaitFond('paper/hot-press', 32, 32, 1);
+      const rough = await awaitFond('paper/rough', 32, 32, 1);
+      const washi = await awaitFond('paper/washi', 32, 32, 1);
+      const student = await awaitFond('paper/student', 32, 32, 1);
       const samples: Array<[number, number]> = [[8, 8], [12, 16], [20, 12], [24, 24], [16, 20]];
       const of = (canvas: HTMLCanvasElement) => samples.map(([x, y]) => samplePixel(canvas, x, y));
       expect(of(cold)).not.toEqual(of(hot));
@@ -492,21 +535,21 @@ describe('261017-ki6 ported playground fond', () => {
     });
   });
 
-  it('determinism across a cache clear: same id + size + scale rebuilds identical bytes', () => {
-    withPixelDocument(() => {
+  it('determinism across a cache clear: same id + size + scale rebuilds identical bytes', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const first = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      const first = await awaitFond('paper/cold-press', 32, 32, 1);
       const samples: Array<[number, number]> = [[0, 0], [5, 7], [11, 13], [17, 19], [23, 29]];
       const before = samples.map(([x, y]) => samplePixel(first, x, y));
       resetProjectPaperRasterForTests();
-      const rebuilt = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      const rebuilt = await awaitFond('paper/cold-press', 32, 32, 1);
       const after = samples.map(([x, y]) => samplePixel(rebuilt, x, y));
       expect(after).toEqual(before);
     });
   });
 
-  it('unknown paper/* still returns null (fail-soft to flat-color arm)', () => {
-    withPixelDocument(() => {
+  it('unknown paper/* still returns null (fail-soft to flat-color arm)', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
       expect(getProjectPaperCanvas('paper/nope-not-real', 32, 32, 1)).toBeNull();
       expect(getProjectPaperCanvas('', 32, 32, 1)).toBeNull();
@@ -516,10 +559,10 @@ describe('261017-ki6 ported playground fond', () => {
 
 // 261017-ki6: fond at full raster — no tiling, scale law, cache identity.
 describe('261017-ki6 fond no-tile continuous field', () => {
-  it('no tiling: at 64x64 the pixel at (0,y) differs from (32,y) for some interior y', () => {
-    withPixelDocument(() => {
+  it('no tiling: at 64x64 the pixel at (0,y) differs from (32,y) for some interior y', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const fond = getProjectPaperCanvas('paper/cold-press', 64, 64, 1)!;
+      const fond = await awaitFond('paper/cold-press', 64, 64, 1);
       expect(fond).not.toBeNull();
       let anyDiffers = false;
       for (let y = 8; y < 56; y += 4) {
@@ -532,11 +575,11 @@ describe('261017-ki6 fond no-tile continuous field', () => {
     });
   });
 
-  it('scale law: coarse grainScale 2 differs from fine grainScale 1 (uScale = PAPER_UNITS / (h * grain))', () => {
-    withPixelDocument(() => {
+  it('scale law: coarse grainScale 2 differs from fine grainScale 1', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const fine = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
-      const coarse = getProjectPaperCanvas('paper/cold-press', 32, 32, 2)!;
+      const fine = await awaitFond('paper/cold-press', 32, 32, 1);
+      const coarse = await awaitFond('paper/cold-press', 32, 32, 2);
       const samples: Array<[number, number]> = [[4, 4], [10, 12], [18, 8], [22, 20], [28, 26]];
       const fineVals = samples.map(([x, y]) => samplePixel(fine, x, y));
       const coarseVals = samples.map(([x, y]) => samplePixel(coarse, x, y));
@@ -544,12 +587,12 @@ describe('261017-ki6 fond no-tile continuous field', () => {
     });
   });
 
-  it('cache identity: same content key returns the identical canvas object; different scale returns a different canvas', () => {
-    withPixelDocument(() => {
+  it('cache identity: same content key returns the identical canvas object; different scale returns a different canvas', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const first = getProjectPaperCanvas('paper/cold-press', 64, 64, 1)!;
-      const again = getProjectPaperCanvas('paper/cold-press', 64, 64, 1)!;
-      const scaled = getProjectPaperCanvas('paper/cold-press', 64, 64, 2)!;
+      const first = await awaitFond('paper/cold-press', 64, 64, 1);
+      const again = getProjectPaperCanvas('paper/cold-press', 64, 64, 1);
+      const scaled = await awaitFond('paper/cold-press', 64, 64, 2);
       expect(again).toBe(first);
       expect(scaled).not.toBeNull();
       expect(scaled).not.toBe(first);
@@ -573,101 +616,127 @@ describe('261017-ki6 fond no-tile continuous field', () => {
   });
 });
 
-// 261017-lny: GPU-first fond + full-density opaque sheet.
-describe('261017-lny GPU fond + opaque density', () => {
-  it('source-scan: buildProceduralPaperFond prefers renderPaperSheetGl and falls back to renderPaperSheet', () => {
+// 261017-mz9: the fond seam is cache-read + async kick — never a generator.
+describe('261017-mz9 non-blocking fond seam', () => {
+  it('source-scan: the getProjectPaperCanvas / buildProceduralPaperFond region has no inline sheet build', () => {
     const src = source('src/lib/projectPaperRaster.ts');
-    const fnBody = src.slice(
+    const seam = src.slice(
       src.indexOf('function buildProceduralPaperFond'),
       src.indexOf('export function normalizeGrainScale'),
     );
-    expect(fnBody).toContain('renderPaperSheetGl');
-    expect(fnBody).toContain('renderPaperSheet');
-    // GPU first, CPU on null — never a second independent generator
-    expect(fnBody.indexOf('renderPaperSheetGl')).toBeLessThan(fnBody.indexOf('renderPaperSheet('));
-    // 261017-mdr: the GPU arm blits; only the CPU fallback writes ImageData.
-    expect(fnBody).toContain('drawImage(glSheet');
-    expect(fnBody).toContain('context.drawImage');
-    const gpuArm = fnBody.slice(fnBody.indexOf('if (glSheet)'), fnBody.indexOf('} else {'));
-    expect(gpuArm).toContain('drawImage');
-    expect(gpuArm).not.toContain('putImageData');
-    expect(gpuArm).not.toContain('createImageData');
-    // cache-key string shape from 20f9dfdc stays untouched
-    expect(fnBody).toContain('${paperTexture}|1|${width}x${height}|${normalized}');
+    expect(seam).toContain('requestProceduralSheet');
+    expect(seam).toContain('drawImage(fieldCanvas');
+    // The blocking entries are not reachable from the seam.
+    expect(seam).not.toContain('renderPaperSheet(');
+    expect(seam).not.toContain('renderPaperSheetGl');
+    expect(seam).not.toContain('PAPER_UNITS');
+    // Upscale is one continuous field, never a tile repeat.
+    expect(seam).not.toContain('createPattern');
   });
 
-  it('GPU arm blits into a dedicated cache canvas (never aliases the shared GL canvas)', () => {
-    const drawImageCalls: unknown[][] = [];
-    const makeCanvas = () => {
-      const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
-      const context = {
-        globalAlpha: 1,
-        globalCompositeOperation: 'source-over',
-        fillStyle: '#fff',
-        save() {},
-        restore() {},
-        fillRect() {},
-        createImageData(width: number, height: number) {
-          return { data: new Uint8ClampedArray(width * height * 4), width, height };
-        },
-        putImageData() {
-          throw new Error('GPU arm must not putImageData');
-        },
-        drawImage(...args: unknown[]) {
-          drawImageCalls.push(args);
-        },
-      } as unknown as CanvasRenderingContext2D;
-      Object.assign(canvas, { getContext: () => context });
-      return canvas;
-    };
-    const originalDocument = globalThis.document;
-    Object.assign(globalThis, { document: { createElement: () => makeCanvas() } });
-    try {
-      resetProjectPaperRasterForTests();
-      glMock.renderPaperSheetGl.mockClear();
-      const glSheet = { __sharedGlCanvas: true } as unknown as HTMLCanvasElement;
-      glMock.renderPaperSheetGl.mockReturnValue(glSheet);
-      const fond = getProjectPaperCanvas('paper/cold-press', 8, 8, 1)!;
-      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
-      expect(fond).not.toBeNull();
-      // The cached fond is the dedicated 2D copy, never the shared GL canvas.
-      expect(fond).not.toBe(glSheet);
-      expect(drawImageCalls).toHaveLength(1);
-      expect(drawImageCalls[0][0]).toBe(glSheet);
-    } finally {
-      resetProjectPaperRasterForTests();
-      glMock.renderPaperSheetGl.mockReset(() => null);
-      Object.assign(globalThis, { document: originalDocument });
-    }
+  it('source-scan: the worker client is the only generation door (import, no inline CPU/GL)', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    expect(src).toContain("from './paperSheetClient'");
+    expect(src).not.toContain("from './paperFieldGl'");
+    expect(src).not.toContain('renderPaperSheet');
+    expect(src).not.toContain('PAPER_UNITS');
   });
 
-  it('falls back to the CPU port when renderPaperSheetGl returns null', () => {
-    withPixelDocument(() => {
+  it('a cache miss returns null this tick and kicks exactly one client request', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      glMock.renderPaperSheetGl.mockClear();
-      glMock.renderPaperSheetGl.mockReturnValue(null);
-      const fond = getProjectPaperCanvas('paper/cold-press', 8, 8, 1)!;
-      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
-      // CPU sheet is a real paperColour raster, not the GPU stub colour
-      expect(samplePixel(fond, 1, 1)).not.toBe(10);
-      expect(fond).not.toBeNull();
+      clientMock.requestProceduralSheet.mockClear();
+      const first = getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
+      expect(first).toBeNull();
+      expect(clientMock.requestProceduralSheet).toHaveBeenCalledTimes(1);
+      const second = getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
+      expect(second).toBeNull();
+      // Still in flight — dedup lives in the client; the seam just kicks.
+      expect(clientMock.requestProceduralSheet).toHaveBeenCalledTimes(2);
+      await awaitFond('paper/cold-press', 16, 16, 1);
     });
-    glMock.renderPaperSheetGl.mockReset(() => null);
   });
 
-  it('cache hit: repeat (paper, W, H, grainScale) does not rebuild', () => {
-    withPixelDocument(() => {
+  it('isProjectPaperTextureResolved is false for a procedural id until a sheet is cached', async () => {
+    await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      glMock.renderPaperSheetGl.mockClear();
-      glMock.renderPaperSheetGl.mockReturnValue(null);
-      const first = getProjectPaperCanvas('paper/khadi', 16, 16, 1);
-      const again = getProjectPaperCanvas('paper/khadi', 16, 16, 1);
-      expect(again).toBe(first);
-      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
+      expect(isProjectPaperTextureResolved('paper/cold-press')).toBe(false);
+      getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
+      expect(isProjectPaperTextureResolved('paper/cold-press')).toBe(false);
+      await awaitFond('paper/cold-press', 16, 16, 1);
+      expect(isProjectPaperTextureResolved('paper/cold-press')).toBe(true);
     });
-    glMock.renderPaperSheetGl.mockReset(() => null);
   });
 
+  it('delivery fires the existing texture-resolve notify so the fond watcher recomposites', async () => {
+    await withPixelDocument(async () => {
+      resetProjectPaperRasterForTests();
+      let resolvedFired = 0;
+      const unsubscribe = subscribeProjectPaperTextureResolve('paper/cold-press', () => {
+        resolvedFired += 1;
+      });
+      getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
+      expect(resolvedFired).toBe(0);
+      await awaitFond('paper/cold-press', 16, 16, 1);
+      expect(resolvedFired).toBeGreaterThanOrEqual(1);
+      unsubscribe();
+    });
+  });
+
+  it('per-frame getProjectPaperCanvas for the same key is an identity cache hit after delivery', async () => {
+    await withPixelDocument(async () => {
+      resetProjectPaperRasterForTests();
+      clientMock.requestProceduralSheet.mockClear();
+      const first = await awaitFond('paper/cold-press', 32, 32, 1);
+      const second = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
+      const third = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
+      expect(second).toBe(first);
+      expect(third).toBe(first);
+      // One client request total — the later frames are pure cache hits.
+      expect(clientMock.requestProceduralSheet).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+// 261017-mdr: cache discipline the per-frame flatten path depends on. The
+// flattener's own per-frame document.createElement('canvas') composite is out
+// of scope (it is the composite target, not the paper sheet).
+describe('261017-mdr cache discipline', () => {
+  it('source-scan: proceduralFondCache.clear() occurs only in the two reset functions', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    const clearHits = src.match(/proceduralFondCache\.clear\(\)/g) ?? [];
+    expect(clearHits).toHaveLength(2);
+    const clearFn = src.slice(
+      src.indexOf('export function clearProjectPaperRasterCache'),
+      src.indexOf('export function resetProjectPaperRasterForTests'),
+    );
+    expect(clearFn).toContain('proceduralFondCache.clear()');
+    const resetFn = src.slice(src.indexOf('export function resetProjectPaperRasterForTests'));
+    expect(resetFn).toContain('proceduralFondCache.clear()');
+  });
+
+  it('source-scan: clearProjectPaperRasterCache is not called from physicPaintStore paint/revision paths', () => {
+    const storeSrc = source('src/stores/physicPaintStore.ts');
+    expect(storeSrc).not.toContain('clearProjectPaperRasterCache');
+  });
+
+  it('source-scan: the production clear caller is a dispose path, not a paint bump', () => {
+    const previewSrc = source('src/lib/previewRenderer.ts');
+    const callHits = previewSrc.match(/clearProjectPaperRasterCache\(\)/g) ?? [];
+    expect(callHits).toHaveLength(1);
+    const disposeBody = previewSrc.slice(previewSrc.indexOf('dispose(): void'));
+    expect(disposeBody).toContain('clearProjectPaperRasterCache()');
+  });
+
+  it('source-scan: proceduralFondCache.clear() is still only in the two reset functions', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    const clearHits = src.match(/proceduralFondCache\.clear\(\)/g) ?? [];
+    expect(clearHits).toHaveLength(2);
+  });
+});
+
+// Opaque-sheet density arm is unchanged (drawProjectPaperRaster options).
+describe('261017-lny opaque density', () => {
   it('opaque-sheet arm: globalAlpha = 1 and no white fillRect before the sheet draw', () => {
     const ops: string[] = [];
     let alphaAtDraw = 1;
@@ -705,63 +774,5 @@ describe('261017-lny GPU fond + opaque density', () => {
       { kind: 'fill', alpha: 1 },
       { kind: 'pattern', alpha: 0.18 },
     ]);
-  });
-
-  it('source-scan: procedural branch is reachable from getProjectPaperCanvas', () => {
-    const src = source('src/lib/projectPaperRaster.ts');
-    const fnBody = src.slice(
-      src.indexOf('export function getProjectPaperCanvas'),
-      src.indexOf('export function subscribeProjectPaperCanvas'),
-    );
-    expect(fnBody).toContain('isProceduralPaperTexture');
-    expect(fnBody).toContain('buildProceduralPaperFond');
-  });
-});
-
-// 261017-mdr: cache discipline the per-frame flatten path depends on. The
-// flattener's own per-frame document.createElement('canvas') composite is out
-// of scope (it is the composite target, not the paper sheet).
-describe('261017-mdr cache discipline', () => {
-  it('source-scan: proceduralFondCache.clear() occurs only in the two reset functions', () => {
-    const src = source('src/lib/projectPaperRaster.ts');
-    const clearHits = src.match(/proceduralFondCache\.clear\(\)/g) ?? [];
-    expect(clearHits).toHaveLength(2);
-    const clearFn = src.slice(
-      src.indexOf('export function clearProjectPaperRasterCache'),
-      src.indexOf('export function resetProjectPaperRasterForTests'),
-    );
-    expect(clearFn).toContain('proceduralFondCache.clear()');
-    const resetFn = src.slice(src.indexOf('export function resetProjectPaperRasterForTests'));
-    expect(resetFn).toContain('proceduralFondCache.clear()');
-  });
-
-  it('source-scan: clearProjectPaperRasterCache is not called from physicPaintStore paint/revision paths', () => {
-    const storeSrc = source('src/stores/physicPaintStore.ts');
-    expect(storeSrc).not.toContain('clearProjectPaperRasterCache');
-  });
-
-  it('source-scan: the production clear caller is a dispose path, not a paint bump', () => {
-    const previewSrc = source('src/lib/previewRenderer.ts');
-    const callHits = previewSrc.match(/clearProjectPaperRasterCache\(\)/g) ?? [];
-    expect(callHits).toHaveLength(1);
-    const disposeBody = previewSrc.slice(previewSrc.indexOf('dispose(): void'));
-    expect(disposeBody).toContain('clearProjectPaperRasterCache()');
-  });
-
-  it('per-frame getProjectPaperCanvas for the same (paper, W, H, grainScale) is an identity cache hit', () => {
-    withPixelDocument(() => {
-      resetProjectPaperRasterForTests();
-      glMock.renderPaperSheetGl.mockClear();
-      glMock.renderPaperSheetGl.mockReturnValue(null);
-      // Simulates the per-frame _resolveFlattenedFrame call with a stable key.
-      const first = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
-      const second = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
-      const third = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
-      expect(second).toBe(first);
-      expect(third).toBe(first);
-      // One build total — the later frames are pure cache hits.
-      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
-    });
-    glMock.renderPaperSheetGl.mockReset(() => null);
   });
 });

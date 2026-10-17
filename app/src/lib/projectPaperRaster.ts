@@ -2,12 +2,10 @@
 // The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
 // 261017-ki6: the fond is a 1:1 port of the watercolor-playground paper
 // shader (playgroundPaperField) — not an app-authored equivalent process.
-import {
-  PAPER_UNITS,
-  presetForPaperId,
-  renderPaperSheet,
-} from '@efxlab/efx-watercolor/papers';
-import { renderPaperSheetGl } from './paperFieldGl';
+// 261017-mz9: sheet generation moved off the main thread — this module is the
+// cache-read + async kick seam, never a generator.
+import { presetForPaperId } from '@efxlab/efx-watercolor/papers';
+import { requestProceduralSheet } from './paperSheetClient';
 
 const PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
@@ -36,16 +34,15 @@ const textureListeners = new Map<string, Set<() => void>>();
 const proceduralFondCache = new Map<string, HTMLCanvasElement>();
 
 /**
- * 261017-ki6: the fond is the ported playground sheet. Build (and cache) an
- * opaque paperColour sRGB raster at the fond's full W×H — field → light →
- * colour, no tiling, no createPattern, no grayscale relief overlay. Unknown
- * ids return null (deterministic fail-soft → the existing flat-color arm).
+ * 261017-mz9: cache-read + async kick, never a generator. On hit, return the
+ * cached canvas. On miss, request the sheet from the worker and return null
+ * this tick — the flat tint draws while the sheet is in flight. When the
+ * promise settles the delivered field is drawn scaled up into a dedicated
+ * fond-size cache canvas (one continuous field, never a createPattern tile
+ * repeat) and notifyTextureListeners fires so _ensureFondTextureSubscription
+ * recomposites onto the real sheet.
  *
- * Scale law (playground Engine.ts:353): uScale = PAPER_UNITS / (height *
- * grainScale) paper units per texel, so feature size is constant at any
- * canvas size; grainScale 2 halves units-per-texel and coarsens the grain,
- * matching the jpg pattern-transform zoom direction. Offset is [0, 0]; the
- * fond covers the whole sheet. Seed stays 1 (the cache key's seed term).
+ * Cache-key string shape from 20f9dfdc stays untouched.
  */
 function buildProceduralPaperFond(
   paperTexture: string,
@@ -59,28 +56,32 @@ function buildProceduralPaperFond(
   if (cached) return cached;
   const preset = presetForPaperId(paperTexture);
   if (!preset) return null;
-  const uScale = PAPER_UNITS / (height * normalized);
-  // 261017-lny: GPU first (playground GLSL on offscreen WebGL2), CPU port
-  // as the no-WebGL fallback. Same look — opaque paperColour sRGB.
-  // 261017-mdr: the GPU arm blits the shared GL canvas into a DEDICATED cache
-  // canvas — never alias the GL canvas itself (a later sheet render would
-  // overwrite it). One drawImage, no full-frame CPU copy.
-  const glSheet = renderPaperSheetGl(width, height, uScale, 1, preset);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) return null;
-  if (glSheet) {
-    context.drawImage(glSheet, 0, 0, width, height);
-  } else {
-    const rgba = renderPaperSheet(width, height, uScale, 1, preset);
-    const image = context.createImageData(width, height);
-    image.data.set(rgba);
-    context.putImageData(image, 0, 0);
-  }
-  proceduralFondCache.set(cacheKey, canvas);
-  return canvas;
+  void requestProceduralSheet({ paperTexture, width, height, grainScale: scale })
+    .then((result) => {
+      if (!result) return;
+      if (proceduralFondCache.has(cacheKey)) return;
+      const fieldCanvas = document.createElement('canvas');
+      fieldCanvas.width = result.fieldWidth;
+      fieldCanvas.height = result.fieldHeight;
+      const fieldCtx = fieldCanvas.getContext('2d');
+      if (!fieldCtx) return;
+      const image = fieldCtx.createImageData(result.fieldWidth, result.fieldHeight);
+      image.data.set(result.pixels);
+      fieldCtx.putImageData(image, 0, 0);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      // Upscale one continuous field to the fond size — never tile-repeat.
+      context.drawImage(fieldCanvas, 0, 0, width, height);
+      proceduralFondCache.set(cacheKey, canvas);
+      notifyTextureListeners(paperTexture);
+    })
+    .catch((error) => {
+      console.warn('projectPaperRaster: procedural sheet failed', error);
+    });
+  return null;
 }
 
 /** Positive finite grain scale, else 1 (hostile input never hangs a tile loop). */
@@ -216,11 +217,19 @@ export function subscribeProjectPaperCanvas(
     listener(null);
     return () => {};
   }
-  // I-07: procedural papers are always resolved (isProjectPaperTextureResolved)
-  // — deliver the synthesized tile synchronously, no listener table.
+  // 261017-mz9: procedural follows the jpg-style pending pattern — deliver
+  // immediately (null while the sheet is in flight) and re-deliver via the
+  // shared textureListeners when notifyTextureListeners fires on arrival.
   if (isProceduralPaperTexture(paperTexture)) {
-    listener(getProjectPaperCanvas(paperTexture, width, height, scale));
-    return () => {};
+    const notify = () => listener(getProjectPaperCanvas(paperTexture, width, height, scale));
+    const listeners = textureListeners.get(paperTexture) ?? new Set<() => void>();
+    listeners.add(notify);
+    textureListeners.set(paperTexture, listeners);
+    notify();
+    return () => {
+      listeners.delete(notify);
+      if (listeners.size === 0) textureListeners.delete(paperTexture);
+    };
   }
   const url = PAPER_TEXTURE_URLS[paperTexture];
   if (!url) {
@@ -249,7 +258,12 @@ export function getProjectPaperTextureImage(paperTexture: string): HTMLImageElem
 }
 
 export function isProjectPaperTextureResolved(paperTexture: string): boolean {
-  if (isProceduralPaperTexture(paperTexture)) return true;
+  if (isProceduralPaperTexture(paperTexture)) {
+    for (const key of proceduralFondCache.keys()) {
+      if (key.startsWith(`${paperTexture}|`)) return true;
+    }
+    return false;
+  }
   return !PAPER_TEXTURE_URLS[paperTexture] || textureCache.has(paperTexture);
 }
 

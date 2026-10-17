@@ -1,18 +1,15 @@
 /**
  * 261017-mdr: idle warm-up for the procedural paper fond.
+ * 261017-mz9: warm-up is a worker prefetch only — the heavy sheet work lives
+ * in paperSheet.worker.ts behind requestProceduralSheet. The main-thread cost
+ * is a map lookup + postMessage; nothing here builds a fond canvas inline.
  *
- * The first visible fond used to pay a synchronous full-canvas GPU readback +
- * two full-frame CPU copies. After the blit path (paperFieldGl /
- * projectPaperRaster) the remaining first-call cost is GL init + program
- * compile + sheet generation. This module pre-generates the currently selected
- * sheet (and the PaperPicker thumbs live beside it) in a deferred slot so the
- * first *visible* fond is a proceduralFondCache hit.
- *
- * Best-effort background work: never runs synchronously from the caller, never
- * throws into the Studio, and is idempotent by construction (repeat keys are
- * cache hits in getProjectPaperCanvas / the picker reliefCache).
+ * Best-effort background work: never runs heavy work on the caller's thread,
+ * never throws into the Studio, and is idempotent by construction (repeat keys
+ * are cache hits in requestProceduralSheet).
  */
-import { getProjectPaperCanvas, isProceduralPaperTexture } from './projectPaperRaster';
+import { requestProceduralSheet } from './paperSheetClient';
+import { isProceduralPaperTexture } from './projectPaperRaster';
 
 export interface ProceduralPaperWarmupInput {
   paperTexture: string;
@@ -32,21 +29,21 @@ function isWarmableInput(input: ProceduralPaperWarmupInput): boolean {
 }
 
 /**
- * Pre-generate one procedural sheet through getProjectPaperCanvas so it lands
- * in the same proceduralFondCache the flatten path reads. No-op for
- * non-procedural ids / hostile sizes. Never throws.
+ * Prefetch one procedural sheet through the worker client so the first
+ * *visible* fond is a cache hit. No-op for non-procedural ids / hostile sizes.
+ * Never throws.
  */
 export function warmProceduralPaperSheet(input: ProceduralPaperWarmupInput): void {
   try {
     if (!isWarmableInput(input)) return;
-    getProjectPaperCanvas(input.paperTexture, input.width, input.height, input.grainScale);
+    void requestProceduralSheet(input);
   } catch (error) {
     console.warn('paperSheetWarmup: warm-up failed', error);
   }
 }
 
 /**
- * Deferred warm-up: setTimeout(0) (the codebase's deferred-work pattern,
+ * Deferred prefetch: setTimeout(0) (the codebase's deferred-work pattern,
  * projectStore.ts), with requestIdleCallback as an optional accelerator when
  * the host exposes it. Never runs inline. A second schedule while one is in
  * flight is fine — it will just cache-hit.
