@@ -32,31 +32,85 @@ const proceduralTileCache = new Map<string, HTMLCanvasElement>();
 const PROCEDURAL_FOND_TILE = 256;
 
 /**
+ * 261017-fz3: playground oracle (SPECS/v1.1.0-water-color/watercolor-playground
+ * `engine/Engine.ts:133` — `PAPER_UNITS = 1100` "paper features are drawn for a
+ * sheet this many texels tall"; `Engine.ts:353` — `paperScale = PAPER_UNITS /
+ * this.dh` "paper units per texel"). A PROCEDURAL_FOND_TILE-texel tile shows the
+ * same feature size the engine draws for a tile-texel-tall crop of the
+ * PAPER_UNITS field — the height map is generated over PAPER_UNITS and a tile
+ * window is sampled, NOT "fit the recipe to 256".
+ */
+const PAPER_UNITS = 1100;
+
+/** Paper units per texel for the relief tile (the engine's paperScale law). */
+const PAPER_UNITS_PER_TEXEL = PAPER_UNITS / PROCEDURAL_FOND_TILE;
+
+/**
+ * 261017-fz3: per-paper bump/mottle from the playground `engine/papers.ts:23-32`.
+ * bump scales the relief shade contrast; mottle scales the low-frequency
+ * cloudiness. Map studio ids via STUDIO_PAPER_TO_PRESET semantics (cold-press→cold,
+ * hot-press→hot, rough→rough, khadi→khadi, washi→washi, laid→laid, canvas→canvas,
+ * toned-sand→toned, kraft→kraft, student→cellulose).
+ */
+const PLAYGROUND_PAPER_LOOK: Readonly<Record<string, { bump: number; mottle: number }>> = Object.freeze({
+  'paper/cold-press': { bump: 1.0, mottle: 0.05 },
+  'paper/hot-press': { bump: 0.6, mottle: 0.04 },
+  'paper/rough': { bump: 0.8, mottle: 0.06 },
+  'paper/khadi': { bump: 1.0, mottle: 0.12 },
+  'paper/washi': { bump: 0.8, mottle: 0.14 },
+  'paper/laid': { bump: 1.0, mottle: 0.05 },
+  'paper/canvas': { bump: 1.0, mottle: 0.04 },
+  'paper/toned-sand': { bump: 1.0, mottle: 0.06 },
+  'paper/kraft': { bump: 0.8, mottle: 0.12 },
+  'paper/student': { bump: 1.0, mottle: 0.03 },
+});
+
+function playgroundLook(paperTexture: string): { bump: number; mottle: number } {
+  return PLAYGROUND_PAPER_LOOK[paperTexture] ?? { bump: 1.0, mottle: 0.05 };
+}
+
+/**
  * I-07: proceduralHeightMap is the renderer — never jpeg. Build (and cache) a
  * grayscale relief tile with the PaperPicker shade formula (PaperPicker.tsx
  * `proceduralReliefImage` — h as luminance, one-sided slope toward light) so
  * the picker and the editor fond agree on the paper's look. Unknown ids return
  * null (deterministic fail-soft → the existing flat-color arm).
+ *
+ * 261017-fz3: feature size follows the playground PAPER_UNITS law — the height
+ * map is generated over PAPER_UNITS (1100) and a PROCEDURAL_FOND_TILE window is
+ * sampled, so the tile shows the same feature size the engine draws for a
+ * tile-texel crop. Per-paper bump/mottle (playground papers.ts) modulate the
+ * shade contrast / cloudiness.
  */
 function buildProceduralPaperTile(paperTexture: string): HTMLCanvasElement | null {
   const cached = proceduralTileCache.get(paperTexture);
   if (cached) return cached;
-  const height = proceduralHeightMap(paperTexture, 1, PROCEDURAL_FOND_TILE, PROCEDURAL_FOND_TILE);
-  if (!height) return null;
+  // Generate the full PAPER_UNITS field and sample a tile-sized window so the
+  // feature size matches the playground's paper-units-per-texel law.
+  const fullField = proceduralHeightMap(paperTexture, 1, PAPER_UNITS, PAPER_UNITS);
+  if (!fullField) return null;
+  const look = playgroundLook(paperTexture);
   const canvas = document.createElement('canvas');
   canvas.width = PROCEDURAL_FOND_TILE;
   canvas.height = PROCEDURAL_FOND_TILE;
   const context = canvas.getContext('2d');
   if (!context) return null;
   const image = context.createImageData(PROCEDURAL_FOND_TILE, PROCEDURAL_FOND_TILE);
+  // Sample offset: top-left window of the PAPER_UNITS field (deterministic).
   for (let y = 0; y < PROCEDURAL_FOND_TILE; y++) {
     for (let x = 0; x < PROCEDURAL_FOND_TILE; x++) {
       const i = y * PROCEDURAL_FOND_TILE + x;
-      const h = height[i];
-      const hx = height[y * PROCEDURAL_FOND_TILE + Math.min(x + 1, PROCEDURAL_FOND_TILE - 1)];
-      const hy = height[Math.min(y + 1, PROCEDURAL_FOND_TILE - 1) * PROCEDURAL_FOND_TILE + x];
+      const fx = x;
+      const fy = y;
+      const h = fullField[fy * PAPER_UNITS + fx];
+      const hx = fullField[fy * PAPER_UNITS + Math.min(fx + 1, PAPER_UNITS - 1)];
+      const hy = fullField[Math.min(fy + 1, PAPER_UNITS - 1) * PAPER_UNITS + fx];
       const slope = (hx - h) + (hy - h);
-      const shade = Math.max(0, Math.min(1, 0.55 + (h - 0.5) * 0.7 - slope * 2.2));
+      // PaperPicker shade formula modulated by playground bump (contrast) and
+      // mottle (low-frequency cloudiness) — recognisably the same formula.
+      const shade = Math.max(0, Math.min(1,
+        0.55 + (h - 0.5) * 0.7 * look.bump - slope * 2.2 * look.bump + (h - 0.5) * look.mottle * 2,
+      ));
       const channel = Math.round(shade * 255);
       const offset = i * 4;
       image.data[offset] = channel;

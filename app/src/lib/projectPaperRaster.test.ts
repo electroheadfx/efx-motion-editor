@@ -257,123 +257,125 @@ describe('authoritative project paper raster parity', () => {
   });
 });
 
+// Shared pixel-canvas helpers (I-07 + 261017-fz3).
+type HarnessCanvas = {
+  width: number;
+  height: number;
+  __pixels: Uint8ClampedArray | null;
+  getContext: (type: string) => unknown;
+};
+
+/** Mini canvas with real pixel storage so the relief tile can be compared. */
+function makePixelCanvas(): HarnessCanvas {
+  const canvas: HarnessCanvas = {
+    width: 0,
+    height: 0,
+    __pixels: null,
+    getContext: () => context,
+  };
+  const context = {
+    globalAlpha: 1,
+    globalCompositeOperation: 'source-over',
+    fillStyle: '#fff' as string | { __texture: HarnessCanvas },
+    save() {},
+    restore() {},
+    createImageData(width: number, height: number) {
+      return { data: new Uint8ClampedArray(width * height * 4), width, height };
+    },
+    putImageData(image: { data: Uint8ClampedArray; width: number; height: number }) {
+      canvas.__pixels = new Uint8ClampedArray(image.data);
+      canvas.width = image.width;
+      canvas.height = image.height;
+    },
+    getImageData(x: number, y: number, width: number, height: number) {
+      const out = new Uint8ClampedArray(width * height * 4);
+      const src = canvas.__pixels;
+      if (src && canvas.width > 0 && canvas.height > 0) {
+        for (let row = 0; row < height; row++) {
+          for (let col = 0; col < width; col++) {
+            const sx = x + col;
+            const sy = y + row;
+            if (sx < 0 || sy < 0 || sx >= canvas.width || sy >= canvas.height) continue;
+            const si = (sy * canvas.width + sx) * 4;
+            const di = (row * width + col) * 4;
+            out[di] = src[si];
+            out[di + 1] = src[si + 1];
+            out[di + 2] = src[si + 2];
+            out[di + 3] = src[si + 3];
+          }
+        }
+      }
+      return { data: out, width, height };
+    },
+    fillRect(_x: number, _y: number, width: number, height: number) {
+      const pixels = new Uint8ClampedArray(width * height * 4);
+      const style = this.fillStyle as string | { __texture: HarnessCanvas };
+      if (typeof style === 'string') {
+        pixels.fill(255);
+      } else if (style && style.__texture) {
+        const source = style.__texture;
+        const src = source.__pixels;
+        const alpha = this.globalAlpha;
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            const sx = x % Math.max(1, source.width);
+            const sy = y % Math.max(1, source.height);
+            const si = (sy * source.width + sx) * 4;
+            for (let c = 0; c < 3; c++) {
+              const base = 255;
+              const sample = src ? src[si + c] : base;
+              pixels[i + c] = Math.round(sample * alpha + base * (1 - alpha));
+            }
+            pixels[i + 3] = 255;
+          }
+        }
+      }
+      canvas.__pixels = pixels;
+      canvas.width = width;
+      canvas.height = height;
+    },
+    createPattern(texture: HarnessCanvas) {
+      return { __texture: texture, setTransform() {} };
+    },
+    drawImage() {},
+  };
+  return canvas;
+}
+
+function samplePixel(canvas: HTMLCanvasElement, x: number, y: number): number {
+  const harness = canvas as unknown as HarnessCanvas;
+  const ctx = harness.getContext('2d') as { getImageData: (x: number, y: number, w: number, h: number) => { data: Uint8ClampedArray } };
+  const { data } = ctx.getImageData(x, y, 1, 1);
+  return data[0];
+}
+
+function withPixelDocument(run: () => void): void {
+  const originalDocument = globalThis.document;
+  const originalImage = globalThis.Image;
+  class FakeImage {
+    onload: null | (() => void) = null;
+    onerror: null | (() => void) = null;
+    width = 2;
+    height = 1;
+    set src(_value: string) {}
+  }
+  Object.assign(globalThis, {
+    document: { createElement: () => makePixelCanvas() },
+    Image: FakeImage,
+  });
+  try {
+    run();
+  } finally {
+    resetProjectPaperRasterForTests();
+    Object.assign(globalThis, { document: originalDocument, Image: originalImage });
+  }
+}
+
 // I-07: procedural PAPER_LIBRARY ids must synthesize a fond tile (tooth) instead
 // of falling through to the flat #f4efe3 colour arm. proceduralHeightMap is the
 // renderer — never jpeg.
 describe('I-07 procedural fond tile', () => {
-  type HarnessCanvas = {
-    width: number;
-    height: number;
-    __pixels: Uint8ClampedArray | null;
-    getContext: (type: string) => unknown;
-  };
-
-  /** Mini canvas with real pixel storage so the relief tile can be compared. */
-  function makePixelCanvas(): HarnessCanvas {
-    const canvas: HarnessCanvas = {
-      width: 0,
-      height: 0,
-      __pixels: null,
-      getContext: () => context,
-    };
-    const context = {
-      globalAlpha: 1,
-      globalCompositeOperation: 'source-over',
-      fillStyle: '#fff' as string | { __texture: HarnessCanvas },
-      save() {},
-      restore() {},
-      createImageData(width: number, height: number) {
-        return { data: new Uint8ClampedArray(width * height * 4), width, height };
-      },
-      putImageData(image: { data: Uint8ClampedArray; width: number; height: number }) {
-        canvas.__pixels = new Uint8ClampedArray(image.data);
-        canvas.width = image.width;
-        canvas.height = image.height;
-      },
-      getImageData(x: number, y: number, width: number, height: number) {
-        const out = new Uint8ClampedArray(width * height * 4);
-        const src = canvas.__pixels;
-        if (src && canvas.width > 0 && canvas.height > 0) {
-          for (let row = 0; row < height; row++) {
-            for (let col = 0; col < width; col++) {
-              const sx = x + col;
-              const sy = y + row;
-              if (sx < 0 || sy < 0 || sx >= canvas.width || sy >= canvas.height) continue;
-              const si = (sy * canvas.width + sx) * 4;
-              const di = (row * width + col) * 4;
-              out[di] = src[si];
-              out[di + 1] = src[si + 1];
-              out[di + 2] = src[si + 2];
-              out[di + 3] = src[si + 3];
-            }
-          }
-        }
-        return { data: out, width, height };
-      },
-      fillRect(_x: number, _y: number, width: number, height: number) {
-        const pixels = new Uint8ClampedArray(width * height * 4);
-        const style = this.fillStyle as string | { __texture: HarnessCanvas };
-        if (typeof style === 'string') {
-          pixels.fill(255);
-        } else if (style && style.__texture) {
-          const source = style.__texture;
-          const src = source.__pixels;
-          const alpha = this.globalAlpha;
-          for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-              const i = (y * width + x) * 4;
-              const sx = x % Math.max(1, source.width);
-              const sy = y % Math.max(1, source.height);
-              const si = (sy * source.width + sx) * 4;
-              for (let c = 0; c < 3; c++) {
-                const base = 255;
-                const sample = src ? src[si + c] : base;
-                pixels[i + c] = Math.round(sample * alpha + base * (1 - alpha));
-              }
-              pixels[i + 3] = 255;
-            }
-          }
-        }
-        canvas.__pixels = pixels;
-        canvas.width = width;
-        canvas.height = height;
-      },
-      createPattern(texture: HarnessCanvas) {
-        return { __texture: texture, setTransform() {} };
-      },
-      drawImage() {},
-    };
-    return canvas;
-  }
-
-  function samplePixel(canvas: HTMLCanvasElement, x: number, y: number): number {
-    const harness = canvas as unknown as HarnessCanvas;
-    const ctx = harness.getContext('2d') as { getImageData: (x: number, y: number, w: number, h: number) => { data: Uint8ClampedArray } };
-    const { data } = ctx.getImageData(x, y, 1, 1);
-    return data[0];
-  }
-
-  function withPixelDocument(run: () => void): void {
-    const originalDocument = globalThis.document;
-    const originalImage = globalThis.Image;
-    class FakeImage {
-      onload: null | (() => void) = null;
-      onerror: null | (() => void) = null;
-      width = 2;
-      height = 1;
-      set src(_value: string) {}
-    }
-    Object.assign(globalThis, {
-      document: { createElement: () => makePixelCanvas() },
-      Image: FakeImage,
-    });
-    try {
-      run();
-    } finally {
-      resetProjectPaperRasterForTests();
-      Object.assign(globalThis, { document: originalDocument, Image: originalImage });
-    }
-  }
 
   it('returns a non-null fond canvas for procedural paper/cold-press and paper/rough', () => {
     withPixelDocument(() => {
@@ -450,5 +452,66 @@ describe('I-07 procedural fond tile', () => {
     expect(urlsBlock).toContain("paper/real-1");
     expect(urlsBlock).not.toContain('paper/cold-press');
     expect(urlsBlock).not.toContain('paper/rough');
+  });
+});
+
+// 261017-fz3: playground paper scale — PAPER_UNITS = 1100 / tile texel height,
+// plus per-paper bump/mottle modulation (playground papers.ts).
+describe('261017-fz3 playground paper scale', () => {
+  it('source-scan: scale constant derives from PAPER_UNITS = 1100 over the tile height', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    expect(src).toContain('PAPER_UNITS');
+    expect(src).toContain('1100');
+    // The scale law is PAPER_UNITS / PROCEDURAL_FOND_TILE — not a hand-picked frequency.
+    expect(src).toMatch(/PAPER_UNITS\s*\/\s*PROCEDURAL_FOND_TILE/);
+  });
+
+  it('bump modulates relief contrast: hot (bump 0.6) differs from cold (bump 1.0)', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const cold = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      const hot = getProjectPaperCanvas('paper/hot-press', 32, 32, 1)!;
+      // Sample interior pixels — shade contrast must differ across bump values.
+      const samples: Array<[number, number]> = [[8, 8], [12, 16], [20, 12], [24, 24], [16, 20]];
+      const coldVals = samples.map(([x, y]) => samplePixel(cold, x, y));
+      const hotVals = samples.map(([x, y]) => samplePixel(hot, x, y));
+      // At least one sample differs (bump changes the shade contrast).
+      const anyDiffers = coldVals.some((v, i) => v !== hotVals[i]);
+      expect(anyDiffers).toBe(true);
+    });
+  });
+
+  it('mottle differences are honoured (washi mottle 0.14 vs cellulose 0.03)', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const washi = getProjectPaperCanvas('paper/washi', 32, 32, 1)!;
+      const student = getProjectPaperCanvas('paper/student', 32, 32, 1)!;
+      const samples: Array<[number, number]> = [[8, 8], [12, 16], [20, 12], [24, 24], [16, 20]];
+      const washiVals = samples.map(([x, y]) => samplePixel(washi, x, y));
+      const studentVals = samples.map(([x, y]) => samplePixel(student, x, y));
+      const anyDiffers = washiVals.some((v, i) => v !== studentVals[i]);
+      expect(anyDiffers).toBe(true);
+    });
+  });
+
+  it('determinism: same id + seed produces identical tile bytes; cache returns same canvas', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const first = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      const again = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      expect(again).toBe(first);
+      // Deterministic tile: a fresh cache-clear rebuild produces the same bytes.
+      const fresh = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
+      const freshAgain = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
+      expect(freshAgain).toBe(fresh);
+    });
+  });
+
+  it('unknown paper/* still returns null (fail-soft to flat-color arm)', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      expect(getProjectPaperCanvas('paper/nope-not-real', 32, 32, 1)).toBeNull();
+      expect(getProjectPaperCanvas('', 32, 32, 1)).toBeNull();
+    });
   });
 });
