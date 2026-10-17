@@ -557,7 +557,7 @@ export function PhysicsPaintRightPanel({
               <PaperPicker
                 paperId={paperId ?? 'paper/cold-press'}
                 background={background ?? 'paper/cold-press'}
-                grainStrength={grainStrength ?? 0.45}
+                grainStrength={grainStrength ?? 0.35}
                 grainScale={grainScale ?? 1}
                 onPaperIdChange={(id) => onPaperIdChange?.(id)}
                 onBackgroundChange={(mode) => onBackgroundChange?.(mode)}

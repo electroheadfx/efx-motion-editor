@@ -24,7 +24,7 @@ export function RightPanelPaperTab(props: {
       <PaperPicker
         paperId={props.paperId ?? 'paper/cold-press'}
         background={props.background ?? 'paper/cold-press'}
-        grainStrength={props.grainStrength ?? 0.45}
+        grainStrength={props.grainStrength ?? 0.35}
         grainScale={props.grainScale ?? 1}
         onPaperIdChange={(id) => props.onPaperIdChange?.(id)}
         onBackgroundChange={(mode) => props.onBackgroundChange?.(mode)}

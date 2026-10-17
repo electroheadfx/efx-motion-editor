@@ -31,7 +31,7 @@ describe('Physics Paint Studio settings', () => {
   it('keeps the established painting defaults', () => {
     expect(makeInitialPhysicsPaintStudioSettings()).toMatchObject({
       tool: 'paint', color: '#103c65', size: 11, opacity: 100,
-      background: 'canvas1', grainStrength: 0.45,
+      background: 'canvas1', grainStrength: 0.35,
       edgeDetail: 20, pickup: 0, eraseStrength: 100, smoothing: 1, spread: 65,
       physicsMode: 'local', activePhysicsAction: null,
     });
@@ -71,7 +71,7 @@ describe('Physics Paint Studio settings', () => {
   it('260923-bcm: the paper fallback write-through carries the grain scale and round-trips 2', () => {
     const settings = { ...makeInitialPhysicsPaintStudioSettings(), grainScale: 2 };
     const fallback = backgroundModeToFallback('canvas1', settings);
-    expect(fallback).toEqual({ mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale: 2 });
+    expect(fallback).toEqual({ mode: 'paper', texture: 'canvas1', grainStrength: 0.35, grainScale: 2 });
     expect(applyBackgroundFallbackToSettings(fallback).grainScale).toBe(2);
   });
 
@@ -103,7 +103,7 @@ describe('Physics Paint Studio settings', () => {
 
   it('preserves Roto paper metadata and maps photo to transparent', () => {
     const settings = makeInitialPhysicsPaintStudioSettings();
-    expect(buildRotoBackgroundMetadata({ ...settings, background: 'photo' })).toMatchObject({ background: 'transparent', grainStrength: 0.45 });
+    expect(buildRotoBackgroundMetadata({ ...settings, background: 'photo' })).toMatchObject({ background: 'transparent', grainStrength: 0.35 });
     expect(buildRotoBackgroundMetadata({ ...settings, background: 'white' })).toMatchObject({ background: 'white', color: '#ffffff' });
     expect(applyRotoBackgroundMetadataToSettings({ background: 'white', grainStrength: 0.7, color: '#ffffff' })).toMatchObject({ background: 'white', grainStrength: 0.7 });
   });
@@ -130,7 +130,7 @@ describe('Physics Paint Studio settings', () => {
     // Paper modes carry the current grain controls: paperGrain boolean = the
     // grain texture matches the selected paper; grainStrength carried directly;
     // grainScale carried directly (260923-bcm — same class as grainStrength).
-    expect(backgroundModeToFallback('canvas1', settings)).toEqual({ mode: 'paper', texture: 'canvas1', grainStrength: 0.45, grainScale: 1 });
+    expect(backgroundModeToFallback('canvas1', settings)).toEqual({ mode: 'paper', texture: 'canvas1', grainStrength: 0.35, grainScale: 1 });
     expect(backgroundModeToFallback('canvas2', { grainStrength: 0.65, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas2', grainStrength: 0.65, grainScale: 1 });
     expect(backgroundModeToFallback('canvas3', { grainStrength: 0.35, grainScale: 1 })).toEqual({ mode: 'paper', texture: 'canvas3', grainStrength: 0.35, grainScale: 1 });
   });
