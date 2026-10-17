@@ -5,16 +5,16 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room)
 status: executing
-stopped_at: Phase 56 UI-SPEC approved
-last_updated: "2026-10-17T10:08:11.177Z"
+stopped_at: Completed quick 261017-iwm (procedural fond no-tile + PAPER_REFERENCE_HEIGHT scale law)
+last_updated: "2026-10-17T12:14:36.435Z"
 last_activity: 2026-10-17
 last_activity_desc: Phase 56 execution started
-state_head: 66c9eab0022255bfda78a543b339f9ba6d7bd0cb
+state_head: 8d292c4d766dbab5bd19fd627947c70c710ee488
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 25
-  completed_plans: 15
+  total_plans: 26
+  completed_plans: 26
   percent: 50
 ---
 
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 1 of 10
 Status: Executing Phase 56
-Last activity: 2026-10-17 — Completed quick task 261017-fz3: paper correctness (single PaperPicker home, paper in aquarelle bake/cache key, playground PAPER_UNITS scale)
+Last activity: 2026-10-17 — Completed quick task 261017-iwm: continuous procedural fond at WxH + PAPER_REFERENCE_HEIGHT=1100 scale law
 
 Progress: [█████░░░░░] 50%
 
@@ -174,6 +174,7 @@ Progress: [█████░░░░░] 50%
 | Phase 55 P55-06 | 14min | 2 tasks | 6 files |
 | Phase 55 P55-07 | 25min | 3 tasks | 10 files |
 | Phase 55-efx-paint-host-engine-1-host-split P08 | 12min | 1 tasks | 2 files |
+| Phase quick-261017-iwm P261017-iwm | 22min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -490,6 +491,8 @@ Recent decisions affecting current work:
 - [Phase 55]: createBakeHost is the Phase 56 consumer API — PlayScript stays on finalizationQueue this phase (R1.3); deferral recorded in 55-07-SUMMARY
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-08: suite gate asserts pin visibility (present + collectable + non-empty + still-has-tests) on the shared vitest include; PINS_GREEN_AT_BIRTH preservation gate
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-08: live UAT A1-A4 staged PENDING (human_judgment) — phase stays automated-ready; A5 stays the automated pin (D-05)
+- [Phase quick-261017-iwm]: PAPER_REFERENCE_HEIGHT = 1100 exported from procedural.ts as single home of the playground sheet-height constant; referenceHeight param uses isotropic f/refH cycles-per-texel
+- [Phase quick-261017-iwm]: Procedural fond arm returns WxH canvas directly (no createPattern repeat); lattice sized to cover span under referenceHeight to prevent wrap
 
 ### Pending Todos
 
@@ -512,6 +515,7 @@ None yet.
 | 261017-dc2 | Accept paper/* in the roto document parser and never write an empty-string background (fixes invalid background metadata crash killing timeline navigation) | 2026-10-17 | 1876f4b3 | [261017-dc2-fix-validator-divergence-document-parser](./quick/261017-dc2-fix-validator-divergence-document-parser/) |
 | 261017-e7n | Render procedural paper tooth in the editor fond + route engine grain keys (I-07 paper must show) | 2026-10-17 | 117cd92b | [261017-e7n-i-07-procedural-paper-must-show-in-the-e](./quick/261017-e7n-i-07-procedural-paper-must-show-in-the-e/) |
 | 261017-fz3 | Paper correctness: single PaperPicker home, paper in aquarelle bake+cache key, playground PAPER_UNITS relief scale | 2026-10-17 | 66c9eab0 | [261017-fz3-paper-correctness-round-1-remove-duplica](./quick/261017-fz3-paper-correctness-round-1-remove-duplica/) |
+| 261017-iwm | Continuous procedural fond at WxH + PAPER_REFERENCE_HEIGHT=1100 scale law (no more tile grid) | 2026-10-17 | 8d292c4d | [261017-iwm-fix-visible-tiling-and-wrong-scale-of-th](./quick/261017-iwm-fix-visible-tiling-and-wrong-scale-of-th/) |
 
 ### Roadmap Evolution
 
@@ -565,9 +569,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-15T18:37:52.848Z
-Stopped at: Phase 56 UI-SPEC approved
-Resume file: /Users/lmarques/Dev/efx-motion-editor/.planning/phases/56-efx-watercolor-engine-2-paint-aquarelle-clean-room/56-UI-SPEC.md
+Last session: 2026-10-17T12:13:34.237Z
+Stopped at: Completed quick 261017-iwm (procedural fond no-tile + PAPER_REFERENCE_HEIGHT scale law)
+Resume file: None
 
 ## Operator Next Steps
 
