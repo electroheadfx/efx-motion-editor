@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 25
+open_count: 27
 waived_count: 5
 fixed_count: 69
-total_count: 99
-last_updated: 2026-10-16T00:15:12.513Z
+total_count: 101
+last_updated: 2026-10-17T21:05:48.265Z
 ---
 
 # Broken Windows Ledger
@@ -114,6 +114,8 @@ last_updated: 2026-10-16T00:15:12.513Z
 | 97 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 140 | setInputLocked/setAnimationMode are no-op flag sinks; AnimationPlayer wiring lands in a later plan (tracer slice) | open |  | 2026-10-15T22:36:41.860Z |  |
 | 98 | 56 | stub | packages/efx-watercolor/src/adapter/engineAdapter.ts | 175 | stepTick is a no-op; diffusion/drying cuisson lands in 56-03 (tracer pins one-stroke deposit only) | open |  | 2026-10-15T22:36:41.962Z |  |
 | 99 | 56 | unrun-verify | app/src/components/physic-paint/view/PaperPicker.tsx | 78 | 56-09 verify leg efxPaintCleanBreakContract fails on pre-existing 56-05 PaperPicker toDataURL frame-transport token (out of scope; logged deferred-items.md) | open |  | 2026-10-16T00:15:12.513Z |  |
+| 100 | quick-261017-vcn | deviation | app/src/components/shared/NumericStepper.test.tsx |  | Rule 3: grainScaleStep import + GRAIN_CALL_SITE_REL retargeted to PaperPicker (ripple of the locked Q6 move) | open |  | 2026-10-17T21:05:48.124Z |  |
+| 101 | quick-261017-vcn | deviation | app/src/components/physic-paint/view/RightPanelPaperTab.tsx |  | Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two) | open |  | 2026-10-17T21:05:48.265Z |  |
 
 ````json
 [
@@ -1329,6 +1331,32 @@ last_updated: 2026-10-16T00:15:12.513Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-16T00:15:12.513Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 100,
+    "kind": "deviation",
+    "phase": "quick-261017-vcn",
+    "file": "app/src/components/shared/NumericStepper.test.tsx",
+    "line": null,
+    "description": "Rule 3: grainScaleStep import + GRAIN_CALL_SITE_REL retargeted to PaperPicker (ripple of the locked Q6 move)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-17T21:05:48.124Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 101,
+    "kind": "deviation",
+    "phase": "quick-261017-vcn",
+    "file": "app/src/components/physic-paint/view/RightPanelPaperTab.tsx",
+    "line": null,
+    "description": "Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-17T21:05:48.265Z",
     "resolved_at": null,
     "milestone": "v2.0.0"
   }

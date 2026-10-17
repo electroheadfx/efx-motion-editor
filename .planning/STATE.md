@@ -3,19 +3,19 @@ gsd_state_version: "1.0"
 milestone: v2.0.0
 milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
-current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room)
+current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
 status: executing
-stopped_at: Completed quick 261017-iwm (procedural fond no-tile + PAPER_REFERENCE_HEIGHT scale law)
-last_updated: "2026-10-17T15:46:44.323Z"
+stopped_at: Completed quick 261017-xa0 (I-03 brush tab = 14 playground brushes)
+last_updated: "2026-10-17T23:04:53.660Z"
 last_activity: 2026-10-17
-last_activity_desc: Phase 56 execution started
-state_head: aba8ebcdd6943795ce8c5967df2941f05a87564d
+last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
+state_head: 1b6146bee6c96d30a99ed8aef905aaa24c32cde0
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 26
   completed_plans: 26
-  percent: 50
+  percent: 75
 ---
 
 # Project State
@@ -30,13 +30,14 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 ## Current Position
 
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 56
-Last activity: 2026-10-17 — Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)
+Plan: 3 of 10
+Status: Ready to execute
+Last activity: 2026-10-18 — Completed the phase-55 watercolor UI queue (I-04, I-05, I-06, I-01, I-02, I-03, I-08, I-10, Row 11) via quicks 261017-vcn / 261017-w4x / 261017-wmw / 261017-xa0 / 261018-0ox; awaiting live UAT
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 **v2.0.0 phase map (locked 2026-10-14):**
+
 - 54 Preact 11 (RUN-01..06) → 55 efx-paint-host (HOST-01..05 + DATA-01..04) → 56 efx-watercolor (AQUA-01..08 + PAPER-01..04 + MOD-01..06) → 57 efx-spectral (SPEC-01..05)
 - Hard gate: 54 live UAT closes before 55 opens
 - QUICK-01 audio-trim-to-view is an in-milestone quick, never a phase
@@ -175,6 +176,8 @@ Progress: [█████░░░░░] 50%
 | Phase 55 P55-07 | 25min | 3 tasks | 10 files |
 | Phase 55-efx-paint-host-engine-1-host-split P08 | 12min | 1 tasks | 2 files |
 | Phase quick-261017-iwm P261017-iwm | 22min | 2 tasks | 4 files |
+| Phase quick-261017-vcn P261017-vcn | 17min | 2 tasks | 10 files |
+| Phase quick-261017-xa0 P261017-xa0 | 17 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -493,6 +496,13 @@ Recent decisions affecting current work:
 - [Phase 55-efx-paint-host-engine-1-host-split]: 55-08: live UAT A1-A4 staged PENDING (human_judgment) — phase stays automated-ready; A5 stays the automated pin (D-05)
 - [Phase quick-261017-iwm]: PAPER_REFERENCE_HEIGHT = 1100 exported from procedural.ts as single home of the playground sheet-height constant; referenceHeight param uses isotropic f/refH cycles-per-texel
 - [Phase quick-261017-iwm]: Procedural fond arm returns WxH canvas directly (no createPattern repeat); lattice sized to cover span under referenceHeight to prevent wrap
+- [Phase quick-261017-vcn]: Q6 grain widgets move to the TOP of the Paper tab; the D-10 bottom Strength/Scale pair is deleted so one pair survives
+- [Phase quick-261017-vcn]: Transparent + White sit between grain and grid as background arms wired to handleBackgroundChange; paper cells keep the paper-id path
+- [Phase quick-261017-vcn]: handleGrainStrengthChange / handleGrainScaleChange absorb setPaper* so one grain change hits settings + paper-display + track metadata + document fallback
+- [Phase quick-261017-w4x]: Top-bar Opacity routes at call time: watercolor -> aquarelleParams.load (Pigment), else settings.opacity — mirrors onBrushSizeChange
+- [Phase quick-261017-w4x]: Paint tab (watercolor) is settings only; Dry is rail-only with D-15 record seam unchanged; AquarelleToolRow.tsx stays on disk for I-10
+- [Phase quick-261017-xa0]: I-03 seam accepts BRUSH_PRESETS ids and forces Brush tool on any successful non-null pick
+- [Phase quick-261017-xa0]: Thumb painter ported app-side into watercolorStrokeThumb.ts with paint-once HTMLCanvasElement cache (no package surface)
 
 ### Pending Todos
 
@@ -520,6 +530,11 @@ None yet.
 | 261017-lny | Run paper shader on GPU (WebGL2, playground GLSL verbatim) + keep procedural sheet full density (no white+0.18 under-fill) | 2026-10-17 | a7eaf78a | [261017-lny-paper-performance-and-reopen-density-run](./quick/261017-lny-paper-performance-and-reopen-density-run/) |
 | 261017-mdr | Kill first-render stall: GPU blit instead of readPixels+y-flip loop, idle warm-up of the selected sheet + thumbs | 2026-10-17 | c93077c3 | [261017-mdr-kill-the-first-render-stall-on-the-proce](./quick/261017-mdr-kill-the-first-render-stall-on-the-proce/) |
 | 261017-nnu | Delete duplicate paper subsystem; render paper via vendored WatercolorEngine.paperSheet() (12ms @ 1920x1080, no wash) | 2026-10-17 | aba8ebcd | [261017-nnu-delete-the-duplicate-paper-subsystem-and](./quick/261017-nnu-delete-the-duplicate-paper-subsystem-and/) |
+| 261017-vcn | I-04 remainder: Paper tab single home (grain at top, Transparent/White arms, top-bar Background/Grain gone) | 2026-10-18 | 1b6146be | [261017-vcn-i-04-remainder-paper-tab-is-the-single-h](./quick/261017-vcn-i-04-remainder-paper-tab-is-the-single-h/) |
+| 261017-w4x | I-05 + I-06: Opacity top-bar only; tools leave Paint tab, Dry rail-only | 2026-10-18 | 1b6146be | [261017-w4x-i-05-i-06-paint-tab-shows-settings-only-](./quick/261017-w4x-i-05-i-06-paint-tab-shows-settings-only-/) |
+| 261017-wmw | I-01 + I-02: Paint = watercolor params (playground labels + Reset); Brush = brush response | 2026-10-18 | 1b6146be | [261017-wmw-i-01-i-02-paint-watercolor-params-brush-](./quick/261017-wmw-i-01-i-02-paint-watercolor-params-brush-/) |
+| 261017-xa0 | I-03: Brush tab = the 14 playground brushes with stroke thumbs | 2026-10-18 | 1b6146be | [261017-xa0-i-03-brush-tab-the-14-playground-brushes](./quick/261017-xa0-i-03-brush-tab-the-14-playground-brushes/) |
+| 261018-0ox | I-08 + I-10 + Row 11: Brush-mode gating pin, adopt RightPanel tab components, grain default 0.35 | 2026-10-18 | 1b6146be | [261018-0ox-i-08-i-10-row-11-context-gating-orphan-t](./quick/261018-0ox-i-08-i-10-row-11-context-gating-orphan-t/) |
 
 ### Roadmap Evolution
 
@@ -573,8 +588,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-17T12:13:34.237Z
-Stopped at: Completed quick 261017-iwm (procedural fond no-tile + PAPER_REFERENCE_HEIGHT scale law)
+Last session: 2026-10-17T22:26:38.199Z
+Stopped at: Completed quick 261018-0ox (I-08 + I-10 + Row 11) — phase-55 queue executed, live UAT pending
 Resume file: None
 
 ## Operator Next Steps
