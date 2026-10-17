@@ -9,8 +9,8 @@
 //
 //  Real entries point at the shipped jpg paths so the picker can
 //  draw the raw scan (D-11) with no engine involvement. Procedural
-//  entries wrap the clean-room generators via `source` = the stable
-//  paper id (proceduralHeightMap(paperId, seed)).
+//  entries ride the ported playground field via `source` = the stable
+//  paper id (playgroundPaperField / paperHeightMap).
 // ============================================================
 
 export interface PaperDefinition {
@@ -20,7 +20,7 @@ export interface PaperDefinition {
   readonly defaultStrength: number;
   readonly defaultScale: number;
   /**
-   * Procedural: the stable paper id feeding proceduralHeightMap.
+   * Procedural: the stable paper id feeding the ported playground field.
    * Real: the shipped jpg URL under app/public/img.
    */
   readonly source: string;

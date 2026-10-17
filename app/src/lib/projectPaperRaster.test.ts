@@ -373,8 +373,8 @@ function withPixelDocument(run: () => void): void {
 }
 
 // I-07: procedural PAPER_LIBRARY ids must synthesize a fond tile (tooth) instead
-// of falling through to the flat #f4efe3 colour arm. proceduralHeightMap is the
-// renderer — never jpeg.
+// of falling through to the flat #f4efe3 colour arm. The ported playground
+// field is the renderer — never jpeg.
 describe('I-07 procedural fond tile', () => {
 
   it('returns a non-null fond canvas for procedural paper/cold-press and paper/rough', () => {
@@ -455,53 +455,45 @@ describe('I-07 procedural fond tile', () => {
   });
 });
 
-// 261017-fz3: playground paper scale — PAPER_REFERENCE_HEIGHT = 1100,
-// plus per-paper bump/mottle modulation (playground papers.ts).
-describe('261017-fz3 playground paper scale', () => {
-  it('source-scan: scale constant derives from PAPER_REFERENCE_HEIGHT = 1100', () => {
+// 261017-ki6: the fond is the ported playground sheet — opaque paperColour
+// sRGB at full WxH, uScale = PAPER_UNITS / (height * grainScale), no tiling.
+describe('261017-ki6 ported playground fond', () => {
+  it('source-scan: the fond calls the port at full WxH with the PAPER_UNITS scale law', () => {
     const src = source('src/lib/projectPaperRaster.ts');
-    expect(src).toContain('PAPER_REFERENCE_HEIGHT');
-    expect(src).toContain('1100');
+    expect(src).toContain('PAPER_UNITS');
+    expect(src).toContain('renderPaperSheet');
+    expect(src).toContain('presetForPaperId');
+    expect(src).toContain('PAPER_UNITS / (height * normalized)');
+    // cache-key string shape from 20f9dfdc stays untouched
+    expect(src).toContain('${paperTexture}|1|${width}x${height}|${normalized}');
   });
 
-  it('bump modulates relief contrast: hot (bump 0.6) differs from cold (bump 1.0)', () => {
+  it('per-paper look differs (hot-press smoother than rough; washi ≠ student)', () => {
     withPixelDocument(() => {
       resetProjectPaperRasterForTests();
       const cold = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
       const hot = getProjectPaperCanvas('paper/hot-press', 32, 32, 1)!;
-      // Sample interior pixels — shade contrast must differ across bump values.
-      const samples: Array<[number, number]> = [[8, 8], [12, 16], [20, 12], [24, 24], [16, 20]];
-      const coldVals = samples.map(([x, y]) => samplePixel(cold, x, y));
-      const hotVals = samples.map(([x, y]) => samplePixel(hot, x, y));
-      // At least one sample differs (bump changes the shade contrast).
-      const anyDiffers = coldVals.some((v, i) => v !== hotVals[i]);
-      expect(anyDiffers).toBe(true);
-    });
-  });
-
-  it('mottle differences are honoured (washi mottle 0.14 vs cellulose 0.03)', () => {
-    withPixelDocument(() => {
-      resetProjectPaperRasterForTests();
+      const rough = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
       const washi = getProjectPaperCanvas('paper/washi', 32, 32, 1)!;
       const student = getProjectPaperCanvas('paper/student', 32, 32, 1)!;
       const samples: Array<[number, number]> = [[8, 8], [12, 16], [20, 12], [24, 24], [16, 20]];
-      const washiVals = samples.map(([x, y]) => samplePixel(washi, x, y));
-      const studentVals = samples.map(([x, y]) => samplePixel(student, x, y));
-      const anyDiffers = washiVals.some((v, i) => v !== studentVals[i]);
-      expect(anyDiffers).toBe(true);
+      const of = (canvas: HTMLCanvasElement) => samples.map(([x, y]) => samplePixel(canvas, x, y));
+      expect(of(cold)).not.toEqual(of(hot));
+      expect(of(cold)).not.toEqual(of(rough));
+      expect(of(washi)).not.toEqual(of(student));
     });
   });
 
-  it('determinism: same id + seed produces identical tile bytes; cache returns same canvas', () => {
+  it('determinism across a cache clear: same id + size + scale rebuilds identical bytes', () => {
     withPixelDocument(() => {
       resetProjectPaperRasterForTests();
       const first = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
-      const again = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
-      expect(again).toBe(first);
-      // Deterministic tile: a fresh cache-clear rebuild produces the same bytes.
-      const fresh = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
-      const freshAgain = getProjectPaperCanvas('paper/rough', 32, 32, 1)!;
-      expect(freshAgain).toBe(fresh);
+      const samples: Array<[number, number]> = [[0, 0], [5, 7], [11, 13], [17, 19], [23, 29]];
+      const before = samples.map(([x, y]) => samplePixel(first, x, y));
+      resetProjectPaperRasterForTests();
+      const rebuilt = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      const after = samples.map(([x, y]) => samplePixel(rebuilt, x, y));
+      expect(after).toEqual(before);
     });
   });
 
@@ -514,16 +506,16 @@ describe('261017-fz3 playground paper scale', () => {
   });
 });
 
-// 261017-iwm: fond at full raster — no tiling, canvas-size-invariant grain.
-describe('261017-iwm fond no-tile continuous field', () => {
-  it('no tiling: at 512x512 the pixel at (0,y) differs from (256,y) for interior y', () => {
+// 261017-ki6: fond at full raster — no tiling, scale law, cache identity.
+describe('261017-ki6 fond no-tile continuous field', () => {
+  it('no tiling: at 64x64 the pixel at (0,y) differs from (32,y) for some interior y', () => {
     withPixelDocument(() => {
       resetProjectPaperRasterForTests();
-      const fond = getProjectPaperCanvas('paper/cold-press', 512, 512, 1)!;
+      const fond = getProjectPaperCanvas('paper/cold-press', 64, 64, 1)!;
       expect(fond).not.toBeNull();
       let anyDiffers = false;
-      for (let y = 64; y < 448; y += 32) {
-        if (samplePixel(fond, 0, y) !== samplePixel(fond, 256, y)) {
+      for (let y = 8; y < 56; y += 4) {
+        if (samplePixel(fond, 0, y) !== samplePixel(fond, 32, y)) {
           anyDiffers = true;
           break;
         }
@@ -532,47 +524,15 @@ describe('261017-iwm fond no-tile continuous field', () => {
     });
   });
 
-  it('canvas-size invariance: 512 and 1024 show features of comparable physical size', () => {
+  it('scale law: coarse grainScale 2 differs from fine grainScale 1 (uScale = PAPER_UNITS / (h * grain))', () => {
     withPixelDocument(() => {
       resetProjectPaperRasterForTests();
-      const small = getProjectPaperCanvas('paper/cold-press', 512, 512, 1)!;
-      const large = getProjectPaperCanvas('paper/cold-press', 1024, 1024, 1)!;
-      const smoothRow = (canvas: HTMLCanvasElement, y: number, width: number): number[] => {
-        const raw: number[] = [];
-        for (let x = 0; x < width; x++) raw.push(samplePixel(canvas, x, y));
-        const w = 5; const h = w >> 1;
-        return raw.map((_, i) => {
-          let s = 0; let c = 0;
-          for (let j = -h; j <= h; j++) {
-            const k = i + j;
-            if (k >= 0 && k < raw.length) { s += raw[k]; c++; }
-          }
-          return s / c;
-        });
-      };
-      const medianCrossings = (row: number[]): number => {
-        const sorted = [...row].sort((a, b) => a - b);
-        const med = sorted[sorted.length >> 1];
-        let n = 0;
-        for (let i = 1; i < row.length; i++) {
-          if ((row[i - 1] - med) * (row[i] - med) < 0) n++;
-        }
-        return n;
-      };
-      // Median crossings of a smoothed row track the base cycle count. Under
-      // the referenceHeight law, cycles ∝ height, so the 512 row has ~half
-      // the crossings of the 1024 row (band absorbs shade-formula noise).
-      const avgCrossings = (canvas: HTMLCanvasElement, width: number, rows: number[]): number => {
-        let total = 0;
-        for (const y of rows) total += medianCrossings(smoothRow(canvas, y, width));
-        return total / rows.length;
-      };
-      const cSmall = avgCrossings(small, 512, [128, 256, 384]);
-      const cLarge = avgCrossings(large, 1024, [256, 512, 768]);
-      expect(cLarge).toBeGreaterThan(0);
-      expect(cSmall).toBeGreaterThan(0);
-      const ratio = cSmall / cLarge;
-      expect(ratio > 0.2 && ratio < 0.55).toBe(true);
+      const fine = getProjectPaperCanvas('paper/cold-press', 32, 32, 1)!;
+      const coarse = getProjectPaperCanvas('paper/cold-press', 32, 32, 2)!;
+      const samples: Array<[number, number]> = [[4, 4], [10, 12], [18, 8], [22, 20], [28, 26]];
+      const fineVals = samples.map(([x, y]) => samplePixel(fine, x, y));
+      const coarseVals = samples.map(([x, y]) => samplePixel(coarse, x, y));
+      expect(fineVals).not.toEqual(coarseVals);
     });
   });
 

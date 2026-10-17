@@ -1,6 +1,12 @@
 // 56-05 (PAPER-01): the 13-paper library's procedural height fields.
 // The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
-import { PAPER_REFERENCE_HEIGHT, proceduralHeightMap } from '@efxlab/efx-watercolor/papers';
+// 261017-ki6: the fond is a 1:1 port of the watercolor-playground paper
+// shader (playgroundPaperField) — not an app-authored equivalent process.
+import {
+  PAPER_UNITS,
+  presetForPaperId,
+  renderPaperSheet,
+} from '@efxlab/efx-watercolor/papers';
 
 const PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
@@ -29,41 +35,16 @@ const textureListeners = new Map<string, Set<() => void>>();
 const proceduralFondCache = new Map<string, HTMLCanvasElement>();
 
 /**
- * 261017-fz3: per-paper bump/mottle from the playground `engine/papers.ts:23-32`.
- * bump scales the relief shade contrast; mottle scales the low-frequency
- * cloudiness. Map studio ids via STUDIO_PAPER_TO_PRESET semantics (cold-press→cold,
- * hot-press→hot, rough→rough, khadi→khadi, washi→washi, laid→laid, canvas→canvas,
- * toned-sand→toned, kraft→kraft, student→cellulose).
- */
-const PLAYGROUND_PAPER_LOOK: Readonly<Record<string, { bump: number; mottle: number }>> = Object.freeze({
-  'paper/cold-press': { bump: 1.0, mottle: 0.05 },
-  'paper/hot-press': { bump: 0.6, mottle: 0.04 },
-  'paper/rough': { bump: 0.8, mottle: 0.06 },
-  'paper/khadi': { bump: 1.0, mottle: 0.12 },
-  'paper/washi': { bump: 0.8, mottle: 0.14 },
-  'paper/laid': { bump: 1.0, mottle: 0.05 },
-  'paper/canvas': { bump: 1.0, mottle: 0.04 },
-  'paper/toned-sand': { bump: 1.0, mottle: 0.06 },
-  'paper/kraft': { bump: 0.8, mottle: 0.12 },
-  'paper/student': { bump: 1.0, mottle: 0.03 },
-});
-
-function playgroundLook(paperTexture: string): { bump: number; mottle: number } {
-  return PLAYGROUND_PAPER_LOOK[paperTexture] ?? { bump: 1.0, mottle: 0.05 };
-}
-
-/**
- * I-07: proceduralHeightMap is the renderer — never jpeg. Build (and cache) a
- * grayscale relief fond with the PaperPicker shade formula (PaperPicker.tsx
- * `proceduralReliefImage` — h as luminance, one-sided slope toward light) so
- * the picker and the editor fond agree on the paper's look. Unknown ids return
- * null (deterministic fail-soft → the existing flat-color arm).
+ * 261017-ki6: the fond is the ported playground sheet. Build (and cache) an
+ * opaque paperColour sRGB raster at the fond's full W×H — field → light →
+ * colour, no tiling, no createPattern, no grayscale relief overlay. Unknown
+ * ids return null (deterministic fail-soft → the existing flat-color arm).
  *
- * 261017-iwm: the fond is generated at the actual raster W×H — one continuous
- * field, no createPattern repeat. Feature size follows the playground
- * PAPER_REFERENCE_HEIGHT = 1100 law (constant physical size at any canvas
- * size). Per-paper bump/mottle (playground papers.ts) modulate the shade
- * contrast / cloudiness.
+ * Scale law (playground Engine.ts:353): uScale = PAPER_UNITS / (height *
+ * grainScale) paper units per texel, so feature size is constant at any
+ * canvas size; grainScale 2 halves units-per-texel and coarsens the grain,
+ * matching the jpg pattern-transform zoom direction. Offset is [0, 0]; the
+ * fond covers the whole sheet. Seed stays 1 (the cache key's seed term).
  */
 function buildProceduralPaperFond(
   paperTexture: string,
@@ -75,38 +56,17 @@ function buildProceduralPaperFond(
   const cacheKey = `${paperTexture}|1|${width}x${height}|${normalized}`;
   const cached = proceduralFondCache.get(cacheKey);
   if (cached) return cached;
-  // grainScale 2 coarsens the field (referenceHeight doubles → features double),
-  // matching the jpg pattern-transform zoom direction.
-  const referenceHeight = PAPER_REFERENCE_HEIGHT * normalized;
-  const field = proceduralHeightMap(paperTexture, 1, width, height, referenceHeight);
-  if (!field) return null;
-  const look = playgroundLook(paperTexture);
+  const preset = presetForPaperId(paperTexture);
+  if (!preset) return null;
+  const uScale = PAPER_UNITS / (height * normalized);
+  const rgba = renderPaperSheet(width, height, uScale, 1, preset);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) return null;
   const image = context.createImageData(width, height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = y * width + x;
-      const h = field[i];
-      const hx = field[y * width + Math.min(x + 1, width - 1)];
-      const hy = field[Math.min(y + 1, height - 1) * width + x];
-      const slope = (hx - h) + (hy - h);
-      // PaperPicker shade formula modulated by playground bump (contrast) and
-      // mottle (low-frequency cloudiness) — recognisably the same formula.
-      const shade = Math.max(0, Math.min(1,
-        0.55 + (h - 0.5) * 0.7 * look.bump - slope * 2.2 * look.bump + (h - 0.5) * look.mottle * 2,
-      ));
-      const channel = Math.round(shade * 255);
-      const offset = i * 4;
-      image.data[offset] = channel;
-      image.data[offset + 1] = channel;
-      image.data[offset + 2] = channel;
-      image.data[offset + 3] = 255;
-    }
-  }
+  image.data.set(rgba);
   context.putImageData(image, 0, 0);
   proceduralFondCache.set(cacheKey, canvas);
   return canvas;
@@ -185,8 +145,8 @@ export function getProjectPaperCanvas(
   scale = 1,
 ): HTMLCanvasElement | null {
   if (!paperTexture || width <= 0 || height <= 0) return null;
-  // I-07: proceduralHeightMap is the renderer — never jpeg. Procedural ids
-  // synthesize a full-fond relief raster (261017-iwm: no tile repeat).
+  // I-07: the ported playground field is the renderer — never jpeg.
+  // Procedural ids synthesize a full-fond opaque sheet (no tile repeat).
   if (isProceduralPaperTexture(paperTexture)) {
     return buildProceduralPaperFond(paperTexture, width, height, scale);
   }
