@@ -6410,13 +6410,6 @@ button.destructive {
   isolation: auto;
 }
 
-/* studio-reopen-paper-washout: the monitor carries paint (transmittance cache
-   or engine-1 alpha) over the document fond — always multiply, never cover the
-   paper. Transparent pixels (engine-1) leave the fond untouched. */
-.physics-paint-program-monitor {
-  mix-blend-mode: multiply;
-}
-
 /* 48-06 (UAT-C): the paper fond layer — drawn BENEATH the isolated tracks
    group (the monitor reads the fond-less composite). */
 .physics-paint-fond-layer {
@@ -6521,12 +6514,15 @@ button.destructive {
 /* 48-05 (D-05): the program monitor sits BELOW the engine canvas (the engine
    canvases are z-index 2/4) and BELOW the onion overlay (z-index 5): monitor <
    engine < onion. It draws the flattened composite only — pointer-events none
-   so every interaction passes through to the engine canvas above. */
+   so every interaction passes through to the engine canvas above.
+   studio-reopen-paper-washout: multiply over the document fond (transmittance
+   cache) — never cover the paper; transparent engine-1 pixels leave it. */
 .physics-paint-program-monitor {
   position: absolute;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  mix-blend-mode: multiply;
 }
 
 .physics-paint-program-monitor > canvas {
