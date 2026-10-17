@@ -132,7 +132,11 @@ describe('native-approved Physics Paint right sidebar', () => {
     // — one between the brush color and tool sections, one between the tool
     // and scripts sections; Gap I-2 sets the fixed handle band to the user's
     // 32px spec.
-    expect(rightPanel).toContain("import { GripHorizontal, X } from 'lucide-preact'");
+    // 261018-0ox I-10: the swatch-remove X lives in RightPanelColorTab; the
+    // panel keeps GripHorizontal for the two resizer handles.
+    expect(rightPanel).toContain("import { GripHorizontal } from 'lucide-preact'");
+    const colorTab = readFileSync(fileURLToPath(new URL('./RightPanelColorTab.tsx', import.meta.url)), 'utf8');
+    expect(colorTab).toContain("import { X } from 'lucide-preact'");
     expect(rightPanel.match(/class="physics-paint-right-pane-resizer"/g)).toHaveLength(2);
     expect(rightPanel.match(/role="separator"/g)).toHaveLength(2);
     expect(rightPanel).toContain('aria-label="Resize brush color and tool sections"');

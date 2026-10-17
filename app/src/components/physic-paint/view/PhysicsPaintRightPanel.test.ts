@@ -79,6 +79,8 @@ function sameDeps(previous: unknown[] | undefined, next: unknown[]) {
 }
 
 let runtime = new HookRuntime();
+/** Per-component hook frames so extracted tabs keep state across expansions. */
+let componentFrames = new Map<string, { slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }> }>();
 // 49-06 (UAT round 2): the tool-pane tab is a Studio-owned signal. The harness
 // shares ONE signal across renders so a manual tab click sticks through
 // re-renders (the 47 UAT contract) and a Bg clip selection forces Background.
@@ -175,6 +177,43 @@ function renderPanel(props: PhysicsPaintRightPanelProps): AnyVNode {
   return tree;
 }
 
+/**
+ * Call a function component against a persistent per-component hook frame
+ * (I-10 adoption). Extracted tabs (RightPanelColorTab etc.) own their
+ * useState/useRef slots; a shared cursor would collide with the panel's own
+ * slots, and a per-call fresh frame would wipe palette state between
+ * lookups. One frame per component name mirrors Preact's per-instance hooks.
+ */
+function callComponent(type: (props: Record<string, any>) => unknown, props: Record<string, any>): unknown {
+  const name = type.name || 'anon';
+  const internals = runtime as unknown as {
+    cursor: number;
+    slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }>;
+    pendingEffects: Array<() => void>;
+  };
+  const savedCursor = internals.cursor;
+  const savedSlots = internals.slots;
+  let frame = componentFrames.get(name);
+  if (!frame) {
+    frame = { slots: [] };
+    componentFrames.set(name, frame);
+  }
+  internals.cursor = 0;
+  internals.slots = frame.slots;
+  const savedPending = internals.pendingEffects;
+  internals.pendingEffects = [];
+  try {
+    const result = type(props);
+    const ownEffects = internals.pendingEffects;
+    internals.pendingEffects = savedPending;
+    for (const effect of ownEffects) effect();
+    return result;
+  } finally {
+    internals.slots = savedSlots;
+    internals.cursor = savedCursor;
+  }
+}
+
 function childrenOf(node: unknown): unknown[] {
   if (Array.isArray(node)) return node.flatMap(childrenOf);
   if (!node || typeof node !== 'object') return [];
@@ -183,7 +222,7 @@ function childrenOf(node: unknown): unknown[] {
     // The harness invokes components by hand, so function vnodes stay
     // unexpanded in the returned tree — expand them so lookups and the text
     // walker reach the elements the component actually renders.
-    const rendered = (vnode.type as (props: Record<string, any>) => unknown)(vnode.props);
+    const rendered = callComponent(vnode.type as (props: Record<string, any>) => unknown, vnode.props);
     return [vnode, ...childrenOf(rendered)];
   }
   const children = vnode.props?.children;
@@ -196,7 +235,18 @@ function textContent(node: unknown): string {
     if (typeof current === 'string' || typeof current === 'number') { parts.push(String(current)); return; }
     if (!current || typeof current !== 'object') return;
     if (Array.isArray(current)) { for (const child of current) walk(child); return; }
-    walk((current as AnyVNode).props?.children);
+    const vnode = current as AnyVNode;
+    if (typeof vnode.type === 'function') {
+      // Expand extracted tab components so track/onion labels inside
+      // RightPanel*Tab reach the text walker (I-10).
+      try {
+        walk(callComponent(vnode.type as (props: Record<string, any>) => unknown, vnode.props));
+      } catch {
+        // Unrenderable mock leaf — contributes no text.
+      }
+      return;
+    }
+    walk(vnode.props?.children);
   };
   walk(node);
   return parts.join(' ');
@@ -270,6 +320,7 @@ function renderPanelWithTrackTab(props: PhysicsPaintRightPanelProps): AnyVNode {
 
 beforeEach(() => {
   runtime = new HookRuntime();
+  componentFrames = new Map();
   toolTabSignal = signal<'paint' | 'track' | 'background'>('paint');
   vi.clearAllMocks();
   mocks.loadFavoriteColors.mockResolvedValue([]);

@@ -169,27 +169,32 @@ export function RightPanelColorTab(props: {
     .filter((item, index, source) => source.indexOf(item) === index)
     .filter((item) => !hiddenPaletteColorSet.has(item));
 
+  // Markup matches the live Color-tab body: the color box is one sibling of
+  // the hue strip / input row / swatch grid (I-10 adoption keeps the panel's
+  // physics-paint-options-tab-panel wrapper as their parent).
   return (
-    <div class="physics-paint-color-picker" aria-label="Brush color picker">
-      <canvas
-        ref={colorBoxRef}
-        width={232}
-        height={160}
-        class="physics-paint-color-box"
-        aria-disabled={props.disabled}
-        style={{ pointerEvents: props.disabled ? 'none' : undefined }}
-        onPointerDown={(event) => {
-          draggingColorBox.current = true;
-          (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-          handleColorBoxPointer(event as unknown as PointerEvent);
-        }}
-        onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
-        onPointerUp={() => { draggingColorBox.current = false; }}
-      />
-      <span
-        class="physics-paint-color-cursor"
-        style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
-      />
+    <>
+      <div class="physics-paint-color-picker" aria-label="Brush color picker">
+        <canvas
+          ref={colorBoxRef}
+          width={232}
+          height={160}
+          class="physics-paint-color-box"
+          aria-disabled={props.disabled}
+          style={{ pointerEvents: props.disabled ? 'none' : undefined }}
+          onPointerDown={(event) => {
+            draggingColorBox.current = true;
+            (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+            handleColorBoxPointer(event as unknown as PointerEvent);
+          }}
+          onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
+          onPointerUp={() => { draggingColorBox.current = false; }}
+        />
+        <span
+          class="physics-paint-color-cursor"
+          style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
+        />
+      </div>
 
       <div
         ref={hueRef}
@@ -258,6 +263,6 @@ export function RightPanelColorTab(props: {
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }

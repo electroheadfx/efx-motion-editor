@@ -23,6 +23,10 @@ const panelSource = readFileSync(
   resolve(root, 'src/components/physic-paint/view/PhysicsPaintRightPanel.tsx'),
   'utf8',
 );
+const paperTabSource = readFileSync(
+  resolve(root, 'src/components/physic-paint/view/RightPanelPaperTab.tsx'),
+  'utf8',
+);
 const pickerSource = readFileSync(
   resolve(root, 'src/components/physic-paint/view/PaperPicker.tsx'),
   'utf8',
@@ -42,9 +46,14 @@ function stripComments(source: string): string {
 }
 
 describe('261017-fz3 PaperPicker single home', () => {
-  it('mounts PaperPicker exactly once in PhysicsPaintRightPanel.tsx', () => {
-    const mounts = panelSource.match(/<PaperPicker\b/g) ?? [];
+  it('mounts PaperPicker exactly once in RightPanelPaperTab.tsx (I-10 adoption)', () => {
+    // 261018-0ox I-10: the single PaperPicker home moved out of the panel into
+    // RightPanelPaperTab; the panel mounts that tab component once.
+    const mounts = paperTabSource.match(/<PaperPicker\b/g) ?? [];
     expect(mounts).toHaveLength(1);
+    expect(panelSource, 'panel no longer mounts PaperPicker directly').not.toMatch(/<PaperPicker\b/);
+    const panelMounts = panelSource.match(/<RightPanelPaperTab\b/g) ?? [];
+    expect(panelMounts, 'panel mounts RightPanelPaperTab once').toHaveLength(1);
   });
 
   it('surviving mount sits in the Paper tab branch, not the Paint tool tab', () => {
@@ -52,16 +61,17 @@ describe('261017-fz3 PaperPicker single home', () => {
     expect(paperTabIndex).toBeGreaterThan(-1);
 
     // The Paint tool tab branch runs from the paint-tab test to the background
-    // arm; the single PaperPicker mount must not live in it.
+    // arm; the Paper-tab component must not live in it.
     const paintTabStart = panelSource.indexOf("effectiveToolTab === 'paint'");
     expect(paintTabStart).toBeGreaterThan(-1);
     const paintTabEnd = panelSource.indexOf("effectiveToolTab === 'background'", paintTabStart);
     expect(paintTabEnd).toBeGreaterThan(paintTabStart);
     const paintTab = panelSource.slice(paintTabStart, paintTabEnd);
+    expect(paintTab).not.toContain('<RightPanelPaperTab');
     expect(paintTab).not.toContain('<PaperPicker');
 
-    // The single mount is after the paper-tab branch marker.
-    const mountIndex = panelSource.indexOf('<PaperPicker');
+    // The single RightPanelPaperTab mount is after the paper-tab branch marker.
+    const mountIndex = panelSource.indexOf('<RightPanelPaperTab');
     expect(mountIndex).toBeGreaterThan(paperTabIndex);
   });
 

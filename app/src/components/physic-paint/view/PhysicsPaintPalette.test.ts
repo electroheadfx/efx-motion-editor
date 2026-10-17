@@ -73,6 +73,8 @@ function sameDeps(previous: unknown[] | undefined, next: unknown[]) {
 }
 
 let runtime = new HookRuntime();
+/** Per-component hook frames so the extracted Color tab keeps palette state. */
+let componentFrames = new Map<string, { slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }> }>();
 
 vi.mock('preact/hooks', () => ({
   useState: <T,>(initial: T | (() => T)) => runtime.useState(initial),
@@ -150,6 +152,9 @@ function renderPanel(props: PhysicsPaintRightPanelProps): AnyVNode {
   runtime.beginRender();
   const tree = PhysicsPaintRightPanel(props) as AnyVNode;
   runtime.finishRender();
+  // I-10: RightPanelColorTab owns the palette hooks — expand it so its
+  // load effects run before the test awaits settleLoads.
+  childrenOf(tree);
   return tree;
 }
 
@@ -159,10 +164,51 @@ async function settleLoads(props: PhysicsPaintRightPanelProps): Promise<AnyVNode
   return renderPanel(props);
 }
 
+/**
+ * Call a function component against a persistent per-component hook frame
+ * (I-10 adoption). RightPanelColorTab owns the palette state — a shared
+ * cursor collides with the panel's slots, and a per-call fresh frame would
+ * wipe favorites between lookups. Effects queued during the call are drained
+ * so loadFavoriteColors / loadRecentColors / loadHiddenPaletteColors run.
+ */
+function callComponent(type: (props: Record<string, any>) => unknown, props: Record<string, any>): unknown {
+  const name = type.name || 'anon';
+  const internals = runtime as unknown as {
+    cursor: number;
+    slots: Array<{ value?: unknown; deps?: unknown[]; cleanup?: () => void }>;
+    pendingEffects: Array<() => void>;
+  };
+  const savedCursor = internals.cursor;
+  const savedSlots = internals.slots;
+  let frame = componentFrames.get(name);
+  if (!frame) {
+    frame = { slots: [] };
+    componentFrames.set(name, frame);
+  }
+  internals.cursor = 0;
+  internals.slots = frame.slots;
+  const savedPending = internals.pendingEffects;
+  internals.pendingEffects = [];
+  try {
+    const result = type(props);
+    const ownEffects = internals.pendingEffects;
+    internals.pendingEffects = savedPending;
+    for (const effect of ownEffects) effect();
+    return result;
+  } finally {
+    internals.slots = savedSlots;
+    internals.cursor = savedCursor;
+  }
+}
+
 function childrenOf(node: unknown): unknown[] {
   if (Array.isArray(node)) return node.flatMap(childrenOf);
   if (!node || typeof node !== 'object') return [];
   const vnode = node as AnyVNode;
+  if (typeof vnode.type === 'function') {
+    // Expand extracted tab components (RightPanelColorTab owns the palette).
+    return [vnode, ...childrenOf(callComponent(vnode.type as (props: Record<string, any>) => unknown, vnode.props))];
+  }
   const children = vnode.props?.children;
   return [vnode, ...childrenOf(children)];
 }
@@ -181,6 +227,7 @@ function paletteColors(tree: AnyVNode): string[] {
 
 beforeEach(() => {
   runtime = new HookRuntime();
+  componentFrames = new Map();
   vi.clearAllMocks();
   mocks.loadFavoriteColors.mockResolvedValue([]);
   mocks.loadRecentColors.mockResolvedValue([]);

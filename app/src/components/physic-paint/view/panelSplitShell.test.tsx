@@ -229,9 +229,11 @@ describe('panel split shell — shared block', () => {
     // The module-only switch is the first thing in the paint-tab branch.
     expect(paintTab.indexOf('WatercolorModuleSection'), 'module switch must remain').toBeGreaterThan(-1);
     expect(paintTab.indexOf('BrushModuleSection'), 'brush module must remain').toBeGreaterThan(-1);
-    // Opacity text remains for the Track tab and onion controls (untouched).
-    expect(panelSource).toMatch(/physics-track-opacity/);
-    expect(panelSource).toMatch(/physics-onion-opacity/);
+    // Opacity text remains for the Track tab and onion controls (I-10 homes).
+    const trackTabSource = readFileSync(resolve(__dirname, 'RightPanelTrackTab.tsx'), 'utf8');
+    const onionTabSource = readFileSync(resolve(__dirname, 'RightPanelOnionMotionTabs.tsx'), 'utf8');
+    expect(trackTabSource, 'track opacity id lives in RightPanelTrackTab').toMatch(/physics-track-opacity/);
+    expect(onionTabSource, 'onion opacity id lives in RightPanelOnionTab').toMatch(/physics-onion-opacity/);
   });
 
   it('module-only block switches on activeModule', () => {
@@ -257,6 +259,20 @@ describe('panel split shell — shared block', () => {
 
 describe('panel split shell — Brush-tab watercolor arm', () => {
   it('mounts WatercolorBrushLibrary then BrushResponsePanel (I-03 mount swap)', () => {
+    // 261018-0ox I-10: the Brush-tab body lives in RightPanelBrushTab.
+    const brushTabSource = readFileSync(
+      resolve(__dirname, 'RightPanelBrushTab.tsx'),
+      'utf8',
+    );
+    const libraryAt = brushTabSource.indexOf('<WatercolorBrushLibrary');
+    const responseAt = brushTabSource.indexOf('<BrushResponsePanel');
+    expect(libraryAt, 'brush tab mounts WatercolorBrushLibrary').toBeGreaterThan(-1);
+    expect(responseAt, 'brush tab mounts BrushResponsePanel').toBeGreaterThan(-1);
+    expect(libraryAt, 'library comes first').toBeLessThan(responseAt);
+    expect(brushTabSource, 'old tip-catalog picker is not mounted').not.toMatch(/<BrushesDocker\b/);
+    // The component file stays on disk (I-01 home; not deleted by I-10).
+    expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();
+    // The panel mounts the adopted tab component in the Brush branch.
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
@@ -266,13 +282,6 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
     const brushTabEnd = panelSource.indexOf("topPaneTab === 'paper'", brushTabStart);
     expect(brushTabEnd, 'brush-tab branch must end at the paper arm').toBeGreaterThan(brushTabStart);
     const brushTab = panelSource.slice(brushTabStart, brushTabEnd);
-    const libraryAt = brushTab.indexOf('<WatercolorBrushLibrary');
-    const responseAt = brushTab.indexOf('<BrushResponsePanel');
-    expect(libraryAt, 'brush tab mounts WatercolorBrushLibrary').toBeGreaterThan(-1);
-    expect(responseAt, 'brush tab mounts BrushResponsePanel').toBeGreaterThan(-1);
-    expect(libraryAt, 'library comes first').toBeLessThan(responseAt);
-    expect(brushTab, 'old tip-catalog picker is not mounted').not.toMatch(/<BrushesDocker\b/);
-    // The component file stays on disk for a later orphan pass (I-10).
-    expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();
+    expect(brushTab, 'panel mounts RightPanelBrushTab once in the brush branch').toMatch(/<RightPanelBrushTab\b/);
   });
 });

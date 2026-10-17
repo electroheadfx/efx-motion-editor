@@ -1,18 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { type Signal } from '@preact/signals';
-import { GripHorizontal, X } from 'lucide-preact';
+import { GripHorizontal } from 'lucide-preact';
 import type { ToolType } from '@efxlab/efx-physic-paint';
-import { SliderStepper } from '../../shared/SliderStepper';
-import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
-import {
-  loadFavoriteColors,
-  loadHiddenPaletteColors,
-  loadRecentColors,
-  saveFavoriteColors,
-  saveHiddenPaletteColors,
-  saveRecentColors,
-} from '../../../lib/paintPreferences';
-import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
+import { type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { PhysicsPaintScriptsPanel, type PhysicsPaintScriptsPanelProps } from './PhysicsPaintScriptsPanel';
 import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';
@@ -21,10 +11,13 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { activeModule } from '../../shared/activeModule';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
-import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
-import { BrushResponsePanel } from './BrushResponsePanel';
 import { BrushModuleSection } from './BrushModuleSection';
-import { PaperPicker } from './PaperPicker';
+import { RightPanelColorTab } from './RightPanelColorTab';
+import { RightPanelActionsTab } from './RightPanelActionsTab';
+import { RightPanelBrushTab } from './RightPanelBrushTab';
+import { RightPanelPaperTab } from './RightPanelPaperTab';
+import { RightPanelTrackTab } from './RightPanelTrackTab';
+import { RightPanelOnionTab, RightPanelMotionTab } from './RightPanelOnionMotionTabs';
 import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 
 export interface PhysicsPaintPlayWiggleSettings {
@@ -102,11 +95,6 @@ export interface PhysicsPaintRightPanelProps {
   onGrainScaleChange?: (scale: number) => void;
 }
 
-/** The five BlendMode values offered by the track Blend select (TML-04). */
-const TRACK_BLEND_MODES: readonly BlendMode[] = ['normal', 'screen', 'multiply', 'overlay', 'add'];
-
-const DEFAULT_PALETTE = ['#103c65', '#2d5be3', '#4caf70', '#f59e0b', '#ff6633', '#ff6666', '#f8fafc', '#111827'];
-
 /** Minimum sidebar section share (%) — every section keeps at least this much
  *  of the flexible height when its neighbors are resized (36.15-12, Gap H-4). */
 const MIN_PANE_SPLIT = 15;
@@ -148,59 +136,6 @@ export function createPhysicsPaintPaneResizeDrag(options: {
   return cleanup;
 }
 
-function normalizeHexInput(value: string): string | null {
-  const match = value.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/);
-  if (!match) return null;
-  let hex = match[1];
-  if (hex.length === 3) hex = hex.split('').map((char) => char + char).join('');
-  return `#${hex.slice(0, 6).toLowerCase()}`;
-}
-
-function PanelSlider(props: {
-  id: string;
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-  suffix?: string;
-  step?: number;
-  disabled?: boolean;
-  /**
-   * 48-06 (UAT): commit the value only when the thumb is RELEASED, not on every
-   * input move. The thumb still follows the mouse through a local signal draft;
-   * the parent's value only updates on release. Used by the track opacity
-   * slider, whose commit recomposites the surface.
-   */
-  commitOnRelease?: boolean;
-}) {
-  // The track opacity (0..1) can arrive out of range from the document;
-  // the slider display always clamps to the declared min/max (47-03 TML-04).
-  const clampedValue = Math.max(props.min, Math.min(props.max, props.value));
-  return (
-    <div class="physics-paint-option-row">
-      <SliderStepper
-        id={props.id}
-        label={props.label}
-        value={clampedValue}
-        onChange={props.onChange}
-        step={props.step ?? 1}
-        min={props.min}
-        max={props.max}
-        disabled={props.disabled}
-        ariaLabel={props.label}
-        commitOnRelease={props.commitOnRelease}
-      />
-    </div>
-  );
-}
-
-function clampWiggleValue(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) return 0;
-  return Math.max(0, Math.min(100, Math.trunc(numeric)));
-}
-
 // 38-11: the Studio render path mounts this panel through the preact/compat
 // memo wrapper in MemoizedPhysicsPaintRightPanel.ts — a startFrame-only
 // Studio render feeds referentially stable props (38-11 identity memo in the
@@ -211,6 +146,8 @@ function clampWiggleValue(value: unknown): number {
 // 38-11 fix: this module deliberately does NOT import preact/compat (see
 // MemoizedPhysicsPaintRightPanel.ts for why). The named export stays the
 // directly-callable implementation the palette contract tests invoke.
+// 261018-0ox I-10: each tab body lives in its RightPanel*Tab component —
+// this shell owns the pane layout, tab row, and tool-pane routing only.
 export function PhysicsPaintRightPanel({
   activeTool,
   color,
@@ -263,10 +200,6 @@ export function PhysicsPaintRightPanel({
   // Brush | Paper) replacing the always-on color picker. Middle and bottom
   // panes are unchanged.
   const [topPaneTab, setTopPaneTab] = useState<'color' | 'actions' | 'brush' | 'paper'>('color');
-  const [hexInput, setHexInput] = useState(color);
-  const [recentColors, setRecentColors] = useState<string[]>([]);
-  const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
-  const [hiddenPaletteColors, setHiddenPaletteColors] = useState<string[]>([]);
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
@@ -297,13 +230,8 @@ export function PhysicsPaintRightPanel({
   // the scripts section takes the remaining 100 - brushSplit - toolSplit.
   const [brushSplit, setBrushSplit] = useState(DEFAULT_BRUSH_SPLIT);
   const [toolSplit, setToolSplit] = useState(DEFAULT_TOOL_SPLIT);
-  const previousColorRef = useRef(color);
   const paneLayoutRef = useRef<HTMLDivElement>(null);
   const activePaneResizeCleanupRef = useRef<(() => void) | null>(null);
-  const colorBoxRef = useRef<HTMLCanvasElement>(null);
-  const hueRef = useRef<HTMLDivElement>(null);
-  const draggingColorBox = useRef(false);
-  const draggingHue = useRef(false);
 
   // Scripts is default-open: run the same project scripts folder scan that
   // clicking the Scripts tab performs (36.15-11, UAT Gap G-4).
@@ -312,125 +240,9 @@ export function PhysicsPaintRightPanel({
     void enterScripts();
   }, [enterScripts]);
 
-  useEffect(() => {
-    void loadRecentColors()
-      .then((colors) => setRecentColors(colors.map(normalizeHexInput).filter((item): item is string => item !== null)))
-      .catch((loadError) => console.error('Failed to load recent colors', loadError));
-    void loadFavoriteColors()
-      .then((colors) => setFavoriteColors(colors.map(normalizeHexInput).filter((item): item is string => item !== null)))
-      .catch((loadError) => console.error('Failed to load favorite colors', loadError));
-    void loadHiddenPaletteColors()
-      .then((colors) => setHiddenPaletteColors(colors.map(normalizeHexInput).filter((item): item is string => item !== null)))
-      .catch((loadError) => console.error('Failed to load hidden palette colors', loadError));
-  }, []);
-
   useEffect(() => () => {
     activePaneResizeCleanupRef.current?.();
     activePaneResizeCleanupRef.current = null;
-  }, []);
-
-  useEffect(() => {
-    if (previousColorRef.current === color) return;
-    previousColorRef.current = color;
-    setHexInput(color);
-  }, [color]);
-
-  const currentRgb = useMemo(() => hexToRgba(color), [color]);
-  const currentHex = useMemo(() => rgbaToHex(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
-  const currentHsv = useMemo(() => rgbToHsv(currentRgb.r, currentRgb.g, currentRgb.b), [currentRgb.b, currentRgb.g, currentRgb.r]);
-  useEffect(() => {
-    const canvas = colorBoxRef.current;
-    const context = canvas?.getContext('2d', { willReadFrequently: true });
-    if (!canvas || !context) return;
-    const hueRgb = hsvToRgb(currentHsv.h, 1, 1);
-    context.fillStyle = `rgb(${hueRgb.r}, ${hueRgb.g}, ${hueRgb.b})`;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    const white = context.createLinearGradient(0, 0, canvas.width, 0);
-    white.addColorStop(0, 'rgba(255,255,255,1)');
-    white.addColorStop(1, 'rgba(255,255,255,0)');
-    context.fillStyle = white;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    const black = context.createLinearGradient(0, 0, 0, canvas.height);
-    black.addColorStop(0, 'rgba(0,0,0,0)');
-    black.addColorStop(1, 'rgba(0,0,0,1)');
-    context.fillStyle = black;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }, [currentHsv.h]);
-
-  const commitColor = useCallback((nextColor: string, nextOpacity = opacity) => {
-    const normalized = normalizeHexInput(nextColor);
-    if (!normalized) {
-      setHexInput(currentHex);
-      return;
-    }
-    setHexInput(normalized);
-    onColorChange(normalized, nextOpacity);
-  }, [currentHex, onColorChange, opacity]);
-
-  const commitHsv = useCallback((h: number, s: number, v: number) => {
-    const rgb = hsvToRgb(h, s, v);
-    commitColor(rgbaToHex(rgb.r, rgb.g, rgb.b));
-  }, [commitColor]);
-
-  const handleColorBoxPointer = useCallback((event: PointerEvent) => {
-    const canvas = colorBoxRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const s = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const v = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
-    commitHsv(currentHsv.h, s, v);
-  }, [commitHsv, currentHsv.h]);
-
-  const handleHuePointer = useCallback((event: PointerEvent) => {
-    const slider = hueRef.current;
-    if (!slider) return;
-    const rect = slider.getBoundingClientRect();
-    const h = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    commitHsv(h, currentHsv.s, currentHsv.v);
-  }, [commitHsv, currentHsv.s, currentHsv.v]);
-
-  const addFavorite = useCallback(() => {
-    const nextHex = normalizeHexInput(hexInput) ?? currentHex;
-    if (nextHex !== currentHex) commitColor(nextHex);
-    setHiddenPaletteColors((colors) => {
-      const updated = colors.filter((item) => item !== nextHex);
-      if (updated.length !== colors.length) {
-        void saveHiddenPaletteColors(updated).catch((saveError) => console.error('Failed to restore palette color', saveError));
-      }
-      return updated;
-    });
-    setFavoriteColors((colors) => {
-      const normalized = colors.map(normalizeHexInput).filter((item): item is string => item !== null);
-      if (normalized.includes(nextHex)) return normalized;
-      const updated = [...normalized, nextHex];
-      void saveFavoriteColors(updated).catch((saveError) => console.error('Failed to save favorite colors', saveError));
-      return updated;
-    });
-  }, [commitColor, currentHex, hexInput]);
-
-  const removePaletteColor = useCallback((swatch: string) => {
-    setFavoriteColors((colors) => {
-      const updated = colors
-        .map(normalizeHexInput)
-        .filter((item): item is string => item !== null && item !== swatch);
-      void saveFavoriteColors(updated).catch((saveError) => console.error('Failed to remove favorite color', saveError));
-      return updated;
-    });
-    setRecentColors((colors) => {
-      const updated = colors
-        .map(normalizeHexInput)
-        .filter((item): item is string => item !== null && item !== swatch);
-      void saveRecentColors(updated).catch((saveError) => console.error('Failed to remove recent color', saveError));
-      return updated;
-    });
-    if (DEFAULT_PALETTE.includes(swatch)) {
-      setHiddenPaletteColors((colors) => {
-        if (colors.includes(swatch)) return colors;
-        const updated = [...colors, swatch];
-        void saveHiddenPaletteColors(updated).catch((saveError) => console.error('Failed to hide palette color', saveError));
-        return updated;
-      });
-    }
   }, []);
 
   const startPaneResize = useCallback((event: PointerEvent, handle: 'brush' | 'tool') => {
@@ -466,33 +278,6 @@ export function PhysicsPaintRightPanel({
     };
   }, [brushSplit, toolSplit]);
 
-  const normalizedFavoriteColors = favoriteColors
-    .map(normalizeHexInput)
-    .filter((item): item is string => item !== null);
-  const hiddenPaletteColorSet = new Set(hiddenPaletteColors);
-  const swatches = [...normalizedFavoriteColors].reverse().concat(DEFAULT_PALETTE, recentColors)
-    .map(normalizeHexInput)
-    .filter((item): item is string => item !== null)
-    .filter((item, index, source) => source.indexOf(item) === index)
-    .filter((item) => !hiddenPaletteColorSet.has(item));
-
-  const onionCount = clampOnionCount(onion.count);
-  const onionOpacity = clampOnionOpacity(onion.opacity);
-  const updateOnion = (next: Partial<PhysicsPaintOnionState>) => {
-    onOnionChange({
-      ...onion,
-      ...next,
-      count: clampOnionCount(next.count ?? onion.count),
-      opacity: clampOnionOpacity(next.opacity ?? onion.opacity),
-    });
-  };
-  const updatePlayWiggle = (key: keyof PhysicsPaintPlayWiggleSettings, value: unknown) => {
-    onPlayWiggleChange({
-      ...playWiggle,
-      [key]: clampWiggleValue(value),
-    });
-  };
-
   return (
     <aside class="physics-paint-right-panel" aria-label="Physics Paint color and tool options">
       <div
@@ -520,143 +305,53 @@ export function PhysicsPaintRightPanel({
           <section class="physics-paint-right-section physics-paint-single-tab-section">
           {topPaneTab === 'actions' ? (
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Actions">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button type="button" class="physics-paint-text-button" data-testid="actions-undo" disabled={engineControlsDisabled} onClick={onUndo}>Undo</button>
-                <button type="button" class="physics-paint-text-button" data-testid="actions-redo" disabled={engineControlsDisabled} onClick={onRedo}>Redo</button>
-                <button type="button" class="physics-paint-text-button" data-testid="actions-clear-frame" disabled={engineControlsDisabled} onClick={onClearFrame}>Clear frame</button>
-              </div>
+              <RightPanelActionsTab
+                onUndo={onUndo}
+                onRedo={onRedo}
+                onClearFrame={onClearFrame}
+                disabled={engineControlsDisabled}
+              />
             </div>
           ) : topPaneTab === 'brush' ? (
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Brush">
-              {activeModule.value === 'watercolor' ? (
-                /* 261017-xa0 I-03: 14-card playground grid, then per-brush response. */
-                <>
-                  <WatercolorBrushLibrary />
-                  <BrushResponsePanel />
-                </>
-              ) : (
-                <BrushModuleSection
-                  activeTool={activeTool}
-                  edgeDetail={edgeDetail}
-                  pickup={pickup}
-                  spread={spread}
-                  smoothing={smoothing}
-                  eraseStrength={eraseStrength}
-                  physicsMode={physicsMode}
-                  engineControlsDisabled={engineControlsDisabled}
-                  onEdgeDetailChange={onEdgeDetailChange}
-                  onPickupChange={onPickupChange}
-                  onSpreadChange={onSpreadChange}
-                  onSmoothingChange={onSmoothingChange}
-                  onEraseStrengthChange={onEraseStrengthChange}
-                />
-              )}
+              <RightPanelBrushTab
+                activeTool={activeTool}
+                edgeDetail={edgeDetail}
+                pickup={pickup}
+                spread={spread}
+                smoothing={smoothing}
+                eraseStrength={eraseStrength}
+                physicsMode={physicsMode}
+                engineControlsDisabled={engineControlsDisabled}
+                onEdgeDetailChange={onEdgeDetailChange}
+                onPickupChange={onPickupChange}
+                onSpreadChange={onSpreadChange}
+                onSmoothingChange={onSmoothingChange}
+                onEraseStrengthChange={onEraseStrengthChange}
+              />
             </div>
           ) : topPaneTab === 'paper' ? (
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Paper">
-              <PaperPicker
-                paperId={paperId ?? 'paper/cold-press'}
-                background={background ?? 'paper/cold-press'}
-                grainStrength={grainStrength ?? 0.35}
-                grainScale={grainScale ?? 1}
-                onPaperIdChange={(id) => onPaperIdChange?.(id)}
-                onBackgroundChange={(mode) => onBackgroundChange?.(mode)}
-                onGrainStrengthChange={(value) => onGrainStrengthChange?.(value)}
-                onGrainScaleChange={(scale) => onGrainScaleChange?.(scale)}
+              <RightPanelPaperTab
+                paperId={paperId}
+                background={background}
+                grainStrength={grainStrength}
+                grainScale={grainScale}
+                onPaperIdChange={onPaperIdChange}
+                onBackgroundChange={onBackgroundChange}
+                onGrainStrengthChange={onGrainStrengthChange}
+                onGrainScaleChange={onGrainScaleChange}
                 disabled={engineControlsDisabled}
               />
             </div>
           ) : (
           <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel">
-            <div class="physics-paint-color-picker" aria-label="Brush color picker">
-              <canvas
-                ref={colorBoxRef}
-                width={232}
-                height={160}
-                class="physics-paint-color-box"
-                aria-disabled={engineControlsDisabled}
-                style={{ pointerEvents: engineControlsDisabled ? 'none' : undefined }}
-                onPointerDown={(event) => {
-                  draggingColorBox.current = true;
-                  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-                  handleColorBoxPointer(event as unknown as PointerEvent);
-                }}
-                onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
-                onPointerUp={() => { draggingColorBox.current = false; }}
-              />
-              <span
-                class="physics-paint-color-cursor"
-                style={{ left: `${currentHsv.s * 100}%`, top: `${(1 - currentHsv.v) * 100}%`, backgroundColor: currentHex }}
-              />
-            </div>
-
-            <div
-              ref={hueRef}
-              class="physics-paint-hue-strip"
-              aria-label="Brush hue"
-              aria-disabled={engineControlsDisabled}
-              style={{ pointerEvents: engineControlsDisabled ? 'none' : undefined }}
-              onPointerDown={(event) => {
-                draggingHue.current = true;
-                (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-                handleHuePointer(event as unknown as PointerEvent);
-              }}
-              onPointerMove={(event) => draggingHue.current && handleHuePointer(event as unknown as PointerEvent)}
-              onPointerUp={() => { draggingHue.current = false; }}
-            >
-              <span class="physics-paint-hue-cursor" style={{ left: `${currentHsv.h * 100}%` }} />
-            </div>
-
-            <div class="physics-paint-color-input-row">
-              <input
-                type="color"
-                class="physics-paint-color-chip"
-                value={currentHex}
-                aria-label="Brush color"
-                disabled={engineControlsDisabled}
-                onInput={(event) => commitColor((event.target as HTMLInputElement).value)}
-              />
-              <input
-                type="text"
-                class="physics-paint-hex-input"
-                value={hexInput}
-                aria-label="Brush color hex value"
-                placeholder="#103c65"
-                disabled={engineControlsDisabled}
-                onInput={(event) => setHexInput((event.target as HTMLInputElement).value)}
-                onBlur={() => commitColor(hexInput)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') commitColor(hexInput);
-                }}
-              />
-              <button type="button" class="physics-paint-text-button physics-paint-add-swatch" disabled={engineControlsDisabled} onClick={addFavorite}>+</button>
-            </div>
-
-            <div class="physics-paint-swatch-grid" aria-label="Color palette">
-              {swatches.map((swatch) => (
-                <div key={swatch} class="physics-paint-swatch-cell">
-                  <button
-                    type="button"
-                    class="physics-paint-swatch"
-                    style={{ backgroundColor: swatch }}
-                    title={swatch}
-                    aria-label={`Use ${swatch}`}
-                    disabled={engineControlsDisabled}
-                    onClick={() => commitColor(swatch)}
-                  />
-                  <button
-                    type="button"
-                    class="physics-paint-swatch-remove"
-                    title={`Remove ${swatch} from palette`}
-                    aria-label={`Remove ${swatch} from palette`}
-                    disabled={engineControlsDisabled}
-                    onClick={() => removePaletteColor(swatch)}
-                  >
-                    <X aria-hidden="true" size={10} strokeWidth={2.4} />
-                  </button>
-                </div>
-              ))}
-            </div>
+            <RightPanelColorTab
+              color={color}
+              opacity={opacity}
+              disabled={engineControlsDisabled}
+              onColorChange={onColorChange}
+            />
           </div>
           )}
           </section>
@@ -773,23 +468,13 @@ export function PhysicsPaintRightPanel({
           // can never fall through to Track (T-261008-RYQ-04).
           audioSectionPorts ? <PhysicsPaintAudioListSection ports={audioSectionPorts} /> : null
         ) : (
-          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-track" role="tabpanel" aria-label="Track options">
-            <div class="physics-paint-option-group">
-              <span class="physics-paint-right-label">Track: {trackName}</span>
-              <PanelSlider id="physics-track-opacity" label="Opacity" min={0} max={1} step={0.01} value={trackOpacity} onChange={onTrackOpacityChange} commitOnRelease />
-              <label class="physics-paint-option-row" for="physics-track-blend">
-                <span class="physics-paint-right-label">Blend</span>
-                <select
-                  id="physics-track-blend"
-                  class="physics-paint-roto-interpolation-select"
-                  value={trackBlendMode}
-                  onChange={(event) => onTrackBlendChange((event.currentTarget as HTMLSelectElement).value as BlendMode)}
-                >
-                  {TRACK_BLEND_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
-                </select>
-              </label>
-            </div>
-          </div>
+          <RightPanelTrackTab
+            trackName={trackName}
+            trackOpacity={trackOpacity}
+            trackBlendMode={trackBlendMode}
+            onTrackOpacityChange={onTrackOpacityChange}
+            onTrackBlendChange={onTrackBlendChange}
+          />
         )}
           </section>
             </div>
@@ -853,31 +538,16 @@ export function PhysicsPaintRightPanel({
             <div class="physics-paint-right-pane-content">
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {optionsTab === 'onion' ? (
-          <div class={`physics-paint-options-tab-panel physics-paint-options-tab-panel-onion physics-paint-onion-tab-panel${onionDisabled ? ' disabled-control' : ''}`} role="tabpanel" aria-label="Onion skin controls">
-            <label class="physics-paint-onion-toggle-row">
-              <input type="checkbox" checked={onion.enabled} disabled={onionDisabled} onChange={(event) => updateOnion({ enabled: (event.currentTarget as HTMLInputElement).checked })} />
-              <span>Onion skin</span>
-            </label>
-            <div class="physics-paint-onion-toggle-grid">
-              <label><input type="checkbox" checked={onion.previous} disabled={onionDisabled} onChange={(event) => updateOnion({ previous: (event.currentTarget as HTMLInputElement).checked })} /> Previous</label>
-              <label><input type="checkbox" checked={onion.next} disabled={onionDisabled} onChange={(event) => updateOnion({ next: (event.currentTarget as HTMLInputElement).checked })} /> Next</label>
-            </div>
-            <label class="physics-paint-option-row physics-paint-onion-value-row" for="physics-onion-count">
-              <span class="physics-paint-right-label">Onion frames</span>
-              <input id="physics-onion-count" type="range" min={1} max={3} value={onionCount} disabled={onionDisabled} onInput={(event) => updateOnion({ count: Number((event.currentTarget as HTMLInputElement).value) })} />
-              <output>{onionCount}</output>
-            </label>
-            <label class="physics-paint-option-row physics-paint-onion-value-row" for="physics-onion-opacity">
-              <span class="physics-paint-right-label">Onion value</span>
-              <input id="physics-onion-opacity" type="range" min={0} max={100} step={1} value={onionOpacity} disabled={onionDisabled} onInput={(event) => updateOnion({ opacity: Number((event.currentTarget as HTMLInputElement).value) })} />
-              <output>{onionOpacity}%</output>
-            </label>
-          </div>
+          <RightPanelOnionTab
+            onion={onion}
+            onionDisabled={onionDisabled}
+            onOnionChange={onOnionChange}
+          />
         ) : optionsTab === 'motion' ? (
-          <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-motion" role="tabpanel" aria-label="Motion controls">
-            <PanelSlider id="physics-play-deform" label="Deform" min={0} max={100} value={playWiggle.strokeDeformation} onChange={(value) => updatePlayWiggle('strokeDeformation', value)} />
-            <PanelSlider id="physics-play-move" label="Move" min={0} max={100} value={playWiggle.strokePosition} onChange={(value) => updatePlayWiggle('strokePosition', value)} />
-          </div>
+          <RightPanelMotionTab
+            playWiggle={playWiggle}
+            onPlayWiggleChange={onPlayWiggleChange}
+          />
         ) : null}
           </section>
             </div>

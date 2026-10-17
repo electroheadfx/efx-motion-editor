@@ -1682,8 +1682,11 @@ describe('Physics Paint Background Clip section (49-06, S5 right-panel propertie
     expect(rightPanel).toContain("import { PhysicsPaintBackgroundClipSection, type PhysicsPaintBackgroundClipSectionProps } from './PhysicsPaintBackgroundClipSection';");
     expect(rightPanel).toContain('backgroundClipSection?: PhysicsPaintBackgroundClipSectionProps;');
     expect(rightPanel).toContain('<PhysicsPaintBackgroundClipSection key={selectedBackgroundClipId} {...backgroundClipSection!} />');
-    expect(rightPanel).toContain('aria-label="Track options"');
-    expect(rightPanel).toContain('Track: {trackName}');
+    // 261018-0ox I-10: the Track tab body lives in RightPanelTrackTab.
+    expect(rightPanel).toContain('<RightPanelTrackTab');
+    const trackTab = readFileSync(fileURLToPath(new URL('./view/RightPanelTrackTab.tsx', import.meta.url)), 'utf8');
+    expect(trackTab).toContain('aria-label="Track options"');
+    expect(trackTab).toContain('Track: {props.trackName}');
   });
 
   it('keeps the section copy and accessibility contract verbatim from the UI-SPEC table', () => {

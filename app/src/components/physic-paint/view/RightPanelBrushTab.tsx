@@ -1,16 +1,16 @@
 // ============================================================
 //  RightPanelBrushTab — the Brush tab content (UI checklist
-//  row 6). Water color: BrushesDocker + Brush response
-//  (261017-wmw I-02). Brush module: physics params.
+//  row 6). Water color: WatercolorBrushLibrary + Brush response
+//  (261017-xa0 I-03). Brush module: physics params.
 //
-//  Orphan surface (I-10 owns adoption into
-//  PhysicsPaintRightPanel) — kept compiling only.
+//  261018-0ox I-10: adopted into PhysicsPaintRightPanel.
+//  The activeModule branch stays inside this tab component.
 // ============================================================
 
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { activeModule } from '../../shared/activeModule';
 import { BrushResponsePanel } from './BrushResponsePanel';
-import { BrushesDocker } from './BrushesDocker';
+import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 import { BrushModuleSection } from './BrushModuleSection';
 
 export function RightPanelBrushTab(props: {
@@ -31,7 +31,7 @@ export function RightPanelBrushTab(props: {
   if (activeModule.value === 'watercolor') {
     return (
       <div data-testid="right-panel-brush-tab" data-module="watercolor">
-        <BrushesDocker />
+        <WatercolorBrushLibrary />
         <BrushResponsePanel />
       </div>
     );

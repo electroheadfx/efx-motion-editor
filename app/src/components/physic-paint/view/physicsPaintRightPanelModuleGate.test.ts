@@ -11,8 +11,9 @@
 //  Source-scan pin (same idiom as
 //  physicsPaintRightPanelPaperSingleHome.test.ts): readFileSync the
 //  owning files and assert the branch structure. 261018-0ox I-10
-//  adoption moves the Brush-tab mounts into RightPanelBrushTab.tsx —
-//  this pin follows those homes.
+//  moved the Brush-tab mounts into RightPanelBrushTab.tsx and the
+//  Paper-tab mount into RightPanelPaperTab.tsx — this pin follows
+//  those homes.
 // ============================================================
 
 import { readFileSync } from 'node:fs';
@@ -22,6 +23,14 @@ import { describe, expect, it } from 'vitest';
 const root = resolve(__dirname, '../../../..');
 const panelSource = readFileSync(
   resolve(root, 'src/components/physic-paint/view/PhysicsPaintRightPanel.tsx'),
+  'utf8',
+);
+const brushTabSource = readFileSync(
+  resolve(root, 'src/components/physic-paint/view/RightPanelBrushTab.tsx'),
+  'utf8',
+);
+const paperTabSource = readFileSync(
+  resolve(root, 'src/components/physic-paint/view/RightPanelPaperTab.tsx'),
   'utf8',
 );
 const toolRailSource = readFileSync(
@@ -76,16 +85,22 @@ function expectMountsBehindWatercolorGate(region: string, component: string): vo
 
 describe('I-08 Brush-mode context gating', () => {
   it('watercolor-only mounts in the Brush tab sit behind the watercolor branch', () => {
-    const brushTabStart = panelSource.indexOf("topPaneTab === 'brush'");
-    expect(brushTabStart, 'brush-tab branch must exist').toBeGreaterThan(-1);
-    const brushTabEnd = panelSource.indexOf("topPaneTab === 'paper'", brushTabStart);
-    expect(brushTabEnd, 'brush-tab branch must end at the paper arm').toBeGreaterThan(brushTabStart);
-    const brushTab = stripComments(panelSource.slice(brushTabStart, brushTabEnd));
+    // I-10: the Brush-tab body is RightPanelBrushTab (early-return module arm).
+    const body = stripComments(brushTabSource);
+    const gateAt = body.indexOf("activeModule.value === 'watercolor'");
+    expect(gateAt, 'Brush tab keeps its watercolor gate').toBeGreaterThan(-1);
+    const elseArmAt = body.indexOf('data-module="brush"');
+    expect(elseArmAt, 'brush-module arm stays the non-watercolor return').toBeGreaterThan(gateAt);
 
-    expectMountsBehindWatercolorGate(brushTab, 'WatercolorBrushLibrary');
-    expectMountsBehindWatercolorGate(brushTab, 'BrushResponsePanel');
-    // The non-watercolor arm is the existing brush-tools module section.
-    expect(brushTab, 'brush-module arm stays the else branch').toMatch(/BrushModuleSection/);
+    const watercolorArm = body.slice(gateAt, elseArmAt);
+    expectMountsBehindWatercolorGate(watercolorArm, 'WatercolorBrushLibrary');
+    expectMountsBehindWatercolorGate(watercolorArm, 'BrushResponsePanel');
+
+    const brushArm = body.slice(elseArmAt);
+    expect(brushArm, 'brush-module arm mounts BrushModuleSection').toMatch(/<BrushModuleSection\b/);
+    expect(brushArm, 'watercolor mounts never leak into the brush-module arm').not.toMatch(
+      /<WatercolorBrushLibrary\b|<BrushResponsePanel\b/,
+    );
   });
 
   it('watercolor-only mounts in the Paint tab sit behind the watercolor branch', () => {
@@ -134,14 +149,20 @@ describe('I-08 Brush-mode context gating', () => {
   });
 
   it('Paper tab branch mounts the paper surface with no activeModule gate', () => {
+    // I-10: the paper surface is RightPanelPaperTab (which mounts PaperPicker);
+    // both the panel arm and the tab component stay ungated (I-07 document fond).
     const paperTabStart = panelSource.indexOf("topPaneTab === 'paper'");
     expect(paperTabStart, 'paper-tab branch must exist').toBeGreaterThan(-1);
     const paperTabEnd = panelSource.indexOf('physics-paint-single-tab-panel', paperTabStart);
     expect(paperTabEnd, 'paper-tab branch ends before the color fallback').toBeGreaterThan(paperTabStart);
     const paperTab = stripComments(panelSource.slice(paperTabStart, paperTabEnd));
 
-    expect(paperTab, 'paper arm mounts the paper surface').toMatch(/<PaperPicker\b/);
+    expect(paperTab, 'paper arm mounts the paper tab component').toMatch(/<RightPanelPaperTab\b/);
     expect(paperTab, 'paper arm stays shared (document-fond, I-07)').not.toMatch(/activeModule/);
+
+    const paperTabBody = stripComments(paperTabSource);
+    expect(paperTabBody, 'RightPanelPaperTab mounts PaperPicker').toMatch(/<PaperPicker\b/);
+    expect(paperTabBody, 'RightPanelPaperTab stays ungated').not.toMatch(/activeModule/);
   });
 
   it('top-pane tab row stays color | actions | brush | paper', () => {

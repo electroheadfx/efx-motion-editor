@@ -1,8 +1,13 @@
 // ============================================================
 //  RightPanelOnionTab / RightPanelMotionTab — onion skin and
 //  play-wiggle controls (260905-epb scroll hierarchy).
+//
+//  261018-0ox I-10: Motion retargeted to SliderStepper so its
+//  markup matches the live PanelSlider rows (physics-play-deform
+//  / physics-play-move, Deform / Move, 0..100) before adoption.
 // ============================================================
 
+import { SliderStepper } from '../../shared/SliderStepper';
 import { clampOnionCount, clampOnionOpacity, type PhysicsPaintOnionState } from './physicsPaintWorkflowPresentation';
 
 export function RightPanelOnionTab(props: {
@@ -44,24 +49,43 @@ export function RightPanelOnionTab(props: {
   );
 }
 
+function clampWiggleValue(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(100, Math.trunc(numeric)));
+}
+
 export function RightPanelMotionTab(props: {
   playWiggle: { strokeDeformation: number; strokePosition: number };
   onPlayWiggleChange: (wiggle: { strokeDeformation: number; strokePosition: number }) => void;
 }) {
-  const clamp = (value: unknown): number => {
-    const numeric = typeof value === 'number' ? value : Number(value);
-    if (!Number.isFinite(numeric)) return 0;
-    return Math.max(0, Math.min(100, Math.trunc(numeric)));
-  };
+  // SliderStepper rows mirror PanelSlider's rendered markup
+  // (physics-paint-option-row > SliderStepper, clamp 0..100).
   return (
     <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-motion" role="tabpanel" aria-label="Motion controls">
       <div class="physics-paint-option-row">
-        <label class="physics-paint-right-label" for="physics-play-deform">Deform</label>
-        <input id="physics-play-deform" type="range" min={0} max={100} value={props.playWiggle.strokeDeformation} onChange={(event) => props.onPlayWiggleChange({ ...props.playWiggle, strokeDeformation: clamp((event.currentTarget as HTMLInputElement).value) })} />
+        <SliderStepper
+          id="physics-play-deform"
+          label="Deform"
+          value={clampWiggleValue(props.playWiggle.strokeDeformation)}
+          onChange={(value) => props.onPlayWiggleChange({ ...props.playWiggle, strokeDeformation: clampWiggleValue(value) })}
+          step={1}
+          min={0}
+          max={100}
+          ariaLabel="Deform"
+        />
       </div>
       <div class="physics-paint-option-row">
-        <label class="physics-paint-right-label" for="physics-play-move">Move</label>
-        <input id="physics-play-move" type="range" min={0} max={100} value={props.playWiggle.strokePosition} onChange={(event) => props.onPlayWiggleChange({ ...props.playWiggle, strokePosition: clamp((event.currentTarget as HTMLInputElement).value) })} />
+        <SliderStepper
+          id="physics-play-move"
+          label="Move"
+          value={clampWiggleValue(props.playWiggle.strokePosition)}
+          onChange={(value) => props.onPlayWiggleChange({ ...props.playWiggle, strokePosition: clampWiggleValue(value) })}
+          step={1}
+          min={0}
+          max={100}
+          ariaLabel="Move"
+        />
       </div>
     </div>
   );
