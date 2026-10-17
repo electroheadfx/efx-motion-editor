@@ -7,6 +7,7 @@ import {
   presetForPaperId,
   renderPaperSheet,
 } from '@efxlab/efx-watercolor/papers';
+import { renderPaperSheetGl } from './paperFieldGl';
 
 const PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
@@ -59,7 +60,10 @@ function buildProceduralPaperFond(
   const preset = presetForPaperId(paperTexture);
   if (!preset) return null;
   const uScale = PAPER_UNITS / (height * normalized);
-  const rgba = renderPaperSheet(width, height, uScale, 1, preset);
+  // 261017-lny: GPU first (playground GLSL on offscreen WebGL2), CPU port
+  // as the no-WebGL fallback. Same bytes contract — opaque paperColour sRGB.
+  const rgba = renderPaperSheetGl(width, height, uScale, 1, preset)
+    ?? renderPaperSheet(width, height, uScale, 1, preset);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -83,16 +87,34 @@ function flooredTileStep(base: number, scale: number): number {
   return Number.isFinite(step) && step >= 1 ? step : 1;
 }
 
+/**
+ * Draw a paper texture under paint.
+ *
+ * Two arms, never mixed:
+ * - `opaqueSheet` (procedural `paperColour` sheets from buildProceduralPaperFond):
+ *   already opaque with their own tint — draw at globalAlpha = 1 with NO white
+ *   under-fill and no createPattern repeat. The jpg overlay treatment would
+ *   destroy their density (261017-lny reopen wash-out).
+ * - default / real-jpg (`paper/real-1..3`, `canvas1..3`): white fill + grain
+ *   pattern at globalAlpha = 0.18.
+ */
 export function drawProjectPaperRaster(
   context: CanvasRenderingContext2D,
   texture: CanvasImageSource,
   width: number,
   height: number,
   scale = 1,
+  options?: { opaqueSheet?: boolean },
 ): void {
   context.save();
   context.globalCompositeOperation = 'source-over';
   context.globalAlpha = 1;
+  if (options?.opaqueSheet) {
+    // Full-density procedural sheet: no white under-fill, no 0.18 overlay.
+    context.drawImage(texture, 0, 0, width, height);
+    context.restore();
+    return;
+  }
   context.fillStyle = '#fff';
   context.fillRect(0, 0, width, height);
   context.globalAlpha = 0.18;

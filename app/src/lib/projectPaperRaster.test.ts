@@ -1,7 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { drawProjectPaperRaster, getProjectPaperCanvas, resetProjectPaperRasterForTests, subscribeProjectPaperCanvas } from './projectPaperRaster';
+
+// 261017-lny: stub the GPU host so routing pins can choose a known sheet vs
+// null (CPU fallback). Default null keeps the existing CPU-port pixel pins
+// honest.
+const glMock = vi.hoisted(() => ({
+  renderPaperSheetGl: vi.fn((_w: number, _h: number, _s: number, _seed: number, _preset: unknown) => null as Uint8ClampedArray | null),
+}));
+vi.mock('./paperFieldGl', () => glMock);
 
 interface Pixel { r: number; g: number; b: number; a: number }
 
@@ -562,5 +570,119 @@ describe('261017-ki6 fond no-tile continuous field', () => {
     } as unknown as CanvasRenderingContext2D;
     drawProjectPaperRaster(context, { width: 2, height: 1 } as CanvasImageSource, 8, 4);
     expect(fills).toContain('pattern');
+  });
+});
+
+// 261017-lny: GPU-first fond + full-density opaque sheet.
+describe('261017-lny GPU fond + opaque density', () => {
+  it('source-scan: buildProceduralPaperFond prefers renderPaperSheetGl and falls back to renderPaperSheet', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    const fnBody = src.slice(
+      src.indexOf('function buildProceduralPaperFond'),
+      src.indexOf('export function normalizeGrainScale'),
+    );
+    expect(fnBody).toContain('renderPaperSheetGl');
+    expect(fnBody).toContain('renderPaperSheet');
+    // GPU first, CPU on null — never a second independent generator
+    expect(fnBody.indexOf('renderPaperSheetGl')).toBeLessThan(fnBody.indexOf('?? renderPaperSheet'));
+    // cache-key string shape from 20f9dfdc stays untouched
+    expect(fnBody).toContain('${paperTexture}|1|${width}x${height}|${normalized}');
+  });
+
+  it('prefers the GPU sheet when renderPaperSheetGl returns bytes', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      glMock.renderPaperSheetGl.mockClear();
+      glMock.renderPaperSheetGl.mockImplementation((w: number, h: number) => {
+        const bytes = new Uint8ClampedArray(w * h * 4);
+        for (let i = 0; i < w * h; i++) {
+          bytes[i * 4] = 10;
+          bytes[i * 4 + 1] = 20;
+          bytes[i * 4 + 2] = 30;
+          bytes[i * 4 + 3] = 255;
+        }
+        return bytes;
+      });
+      const fond = getProjectPaperCanvas('paper/cold-press', 8, 8, 1)!;
+      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
+      expect(samplePixel(fond, 1, 1)).toBe(10);
+    });
+    glMock.renderPaperSheetGl.mockReset(() => null);
+  });
+
+  it('falls back to the CPU port when renderPaperSheetGl returns null', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      glMock.renderPaperSheetGl.mockClear();
+      glMock.renderPaperSheetGl.mockReturnValue(null);
+      const fond = getProjectPaperCanvas('paper/cold-press', 8, 8, 1)!;
+      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
+      // CPU sheet is a real paperColour raster, not the GPU stub colour
+      expect(samplePixel(fond, 1, 1)).not.toBe(10);
+      expect(fond).not.toBeNull();
+    });
+    glMock.renderPaperSheetGl.mockReset(() => null);
+  });
+
+  it('cache hit: repeat (paper, W, H, grainScale) does not rebuild', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      glMock.renderPaperSheetGl.mockClear();
+      glMock.renderPaperSheetGl.mockReturnValue(null);
+      const first = getProjectPaperCanvas('paper/khadi', 16, 16, 1);
+      const again = getProjectPaperCanvas('paper/khadi', 16, 16, 1);
+      expect(again).toBe(first);
+      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
+    });
+    glMock.renderPaperSheetGl.mockReset(() => null);
+  });
+
+  it('opaque-sheet arm: globalAlpha = 1 and no white fillRect before the sheet draw', () => {
+    const ops: string[] = [];
+    let alphaAtDraw = 1;
+    const context = {
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+      fillStyle: '#fff',
+      save() { ops.push('save'); },
+      restore() { ops.push('restore'); },
+      fillRect() { ops.push(`fill:${String(this.fillStyle)}:a=${this.globalAlpha}`); },
+      createPattern() { ops.push('pattern'); return 'textured-pattern'; },
+      drawImage() { ops.push(`draw:a=${this.globalAlpha}`); alphaAtDraw = this.globalAlpha; },
+    } as unknown as CanvasRenderingContext2D & { globalAlpha: number };
+    drawProjectPaperRaster(context, { width: 2, height: 1 } as CanvasImageSource, 8, 4, 1, { opaqueSheet: true });
+    expect(alphaAtDraw).toBe(1);
+    expect(ops).toEqual(['save', 'draw:a=1', 'restore']);
+    expect(ops.some((op) => op.startsWith('fill:'))).toBe(false);
+    expect(ops).not.toContain('pattern');
+  });
+
+  it('jpg arm keeps white + 0.18 (and the opaque flag is opt-in)', () => {
+    const ops: Array<{ kind: string; alpha: number }> = [];
+    const context = {
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+      fillStyle: '#fff',
+      save() {},
+      restore() {},
+      fillRect() { ops.push({ kind: String(this.fillStyle).startsWith('pattern') ? 'pattern' : 'fill', alpha: this.globalAlpha }); },
+      createPattern() { return 'pattern:fixture'; },
+      drawImage() { ops.push({ kind: 'draw', alpha: this.globalAlpha }); },
+    } as unknown as CanvasRenderingContext2D;
+    drawProjectPaperRaster(context, { width: 2, height: 1 } as CanvasImageSource, 8, 4);
+    expect(ops).toEqual([
+      { kind: 'fill', alpha: 1 },
+      { kind: 'pattern', alpha: 0.18 },
+    ]);
+  });
+
+  it('source-scan: procedural branch is reachable from getProjectPaperCanvas', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    const fnBody = src.slice(
+      src.indexOf('export function getProjectPaperCanvas'),
+      src.indexOf('export function subscribeProjectPaperCanvas'),
+    );
+    expect(fnBody).toContain('isProceduralPaperTexture');
+    expect(fnBody).toContain('buildProceduralPaperFond');
   });
 });

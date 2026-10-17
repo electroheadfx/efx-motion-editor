@@ -47,4 +47,30 @@ describe('Roto script thumbnail', () => {
     await expect(createRotoScriptThumbnail({ ...input, nativeEncoder: { encodeWebp: async () => ({ width: 1, height: 2, mimeType: 'image/webp', bytes: webpBytes }) } })).rejects.toThrow('invalid metadata');
     await expect(createRotoScriptThumbnail({ ...input, nativeEncoder: { encodeWebp: async () => { throw new Error('native failed'); } } })).rejects.toThrow('native failed');
   });
+
+  it('261017-lny: a paper/* id paints the sheet under the script, not only the flat wash', async () => {
+    const calls: string[] = [];
+    const context = {
+      fillStyle: '', fillRect: vi.fn(() => calls.push('fill')), drawImage: vi.fn(() => calls.push('draw')),
+      getImageData: vi.fn((_x: number, _y: number, width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4).fill(255) })),
+      createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4), width, height }),
+      putImageData: vi.fn(() => calls.push('put')),
+    };
+    const makeCanvas = () => ({ width: 0, height: 0, getContext: vi.fn(() => context), toBlob: vi.fn(() => {}) });
+    if (!globalThis.document) Object.defineProperty(globalThis, 'document', { configurable: true, value: { createElement: () => makeCanvas() } });
+    else vi.spyOn(document, 'createElement').mockImplementation(() => makeCanvas() as never);
+    const encodeWebp = vi.fn(async ({ width, height }: { width: number; height: number }) => ({ width, height, mimeType: 'image/webp' as const, bytes: webpBytes }));
+    await createRotoScriptThumbnail({
+      scriptAlphaCanvas: {} as HTMLCanvasElement,
+      sourceWidth: 16,
+      sourceHeight: 16,
+      background: { background: 'paper/cold-press', grainStrength: 1 },
+      nativeEncoder: { encodeWebp },
+    });
+    // flat fill (under) + fond build + opaque paper sheet + script alpha
+    expect(calls.filter((c) => c === 'draw').length).toBe(2);
+    expect(calls[0]).toBe('fill');
+    expect(calls[calls.length - 1]).toBe('draw');
+    expect(calls[calls.length - 2]).toBe('draw');
+  });
 });

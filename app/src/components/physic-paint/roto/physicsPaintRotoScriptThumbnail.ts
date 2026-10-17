@@ -26,9 +26,13 @@ export async function createRotoScriptThumbnail(input: {
     ? '#ffffff'
     : input.background.color ?? '#ffffff';
   context.fillRect(0, 0, width, height);
-  if (input.background.background.startsWith('canvas')) {
+  // 261017-lny: paper/* ids (procedural library + real scans) paint the sheet
+  // under the script too — a flat wash left paint on white (density bug).
+  // getProjectPaperCanvas already returns the opaque procedural sheet.
+  const paperId = input.background.background;
+  if (paperId.startsWith('canvas') || paperId.startsWith('paper/')) {
     const paper = await resolveProjectPaperCanvas(
-      input.background.background,
+      paperId,
       width,
       height,
       input.background.grainScale ?? 1,
