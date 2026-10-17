@@ -204,7 +204,7 @@ describe('Dry action button (D-15)', () => {
     const row = renderToolRow();
     expect(textContent(row)).not.toContain('Dry');
     const mod = renderModule();
-    // Note: "Dry rate" is a param slider inside AquarelleParamsPanel and stays —
+    // Note: "Dry speed" is a param slider inside AquarelleGlobalsPanel and stays —
     // pins target the Dry control (testid / button label), not the substring.
     expect(
       findButtons(mod).some((b) => b.props?.['data-testid'] === 'aquarelle-dry'),

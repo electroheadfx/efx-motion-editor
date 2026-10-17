@@ -22,6 +22,7 @@ import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { activeModule } from '../../shared/activeModule';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushesDocker } from './BrushesDocker';
+import { BrushResponsePanel } from './BrushResponsePanel';
 import { BrushModuleSection } from './BrushModuleSection';
 import { PaperPicker } from './PaperPicker';
 import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
@@ -528,9 +529,11 @@ export function PhysicsPaintRightPanel({
           ) : topPaneTab === 'brush' ? (
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Brush">
               {activeModule.value === 'watercolor' ? (
-                /* 261017-wmw I-01: the Brush tab owns the picker; the
-                   response block arrives here with I-02 (picker first). */
-                <BrushesDocker />
+                /* 261017-wmw I-02: picker first, then per-brush response. */
+                <>
+                  <BrushesDocker />
+                  <BrushResponsePanel />
+                </>
               ) : (
                 <BrushModuleSection
                   activeTool={activeTool}

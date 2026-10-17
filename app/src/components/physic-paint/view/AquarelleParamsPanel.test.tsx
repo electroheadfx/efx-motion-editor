@@ -26,7 +26,7 @@ import {
   setAquarelleMultiplier,
   snapshotAquarelleRecord,
 } from './aquarelleRecordState';
-import { AquarelleParamsPanel } from './AquarelleParamsPanel';
+import { AquarelleGlobalsPanel } from './AquarelleGlobalsPanel';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -114,7 +114,7 @@ function textContent(node: unknown): string {
 }
 
 function renderPanel(): TestVNode {
-  return materialize(AquarelleParamsPanel()) as TestVNode;
+  return materialize(AquarelleGlobalsPanel()) as TestVNode;
 }
 
 function collectLabels(tree: TestVNode): string[] {

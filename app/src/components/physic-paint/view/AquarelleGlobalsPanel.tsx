@@ -1,20 +1,18 @@
 // ============================================================
-//  AquarelleParamsPanel — the aquarelle module-only param
-//  surface (AQUA-04 / D-04/05/06/08, 261017-wmw I-01).
-//
-//  7 globals (size maps to the shared Size slider — D-05, no
-//  local size control) + a Reset control restoring the
-//  playground DEFAULT_PARAMS on the 0-100 slider band.
+//  AquarelleGlobalsPanel — the 7 watercolor globals + Reset
+//  (261017-wmw I-01/I-02). This is the Paint-tab content.
 //
 //  Labels and row order follow the playground SettingsPanel
 //  (Water, Pigment, Flow, Bleed, Edges, Grain, Dry speed).
 //  Param keys stay water/load/flow/bleed/edge/granulation/dry.
+//  `size` is NOT here — the shared Size slider owns it (D-05).
 //
-//  Slider commits go through the one record-path seam
-//  (aquarelleRecordState) — never a second params channel.
+//  Reset restores playground DEFAULT_PARAMS (0..1) ×100 onto the
+//  app 0-100 slider band for the 7 non-size keys via the one
+//  record-path seam (setAquarelleParam). Never writes size
+//  (top-bar Brush size owns it, Q1a / T-261017-WMW-01).
 //
-//  The Brush response block (8 ×multipliers) moved to
-//  BrushResponsePanel (I-02) — this panel never renders it.
+//  The Brush response block lives in BrushResponsePanel (I-02).
 // ============================================================
 
 import { DEFAULT_PARAMS } from '@efxlab/efx-watercolor';
@@ -59,7 +57,7 @@ function GlobalSlider(props: {
   );
 }
 
-export function AquarelleParamsPanel() {
+export function AquarelleGlobalsPanel() {
   // Narrow signal reads (efx-preact-reactivity rule 5) — each .value
   // read subscribes this panel to that bag only.
   const params = aquarelleParams.value;
@@ -78,7 +76,7 @@ export function AquarelleParamsPanel() {
   };
 
   return (
-    <div data-testid="aquarelle-params-panel">
+    <div data-testid="aquarelle-globals-panel">
       {GLOBAL_ROWS.map((row) => (
         <GlobalSlider
           key={String(row.key)}

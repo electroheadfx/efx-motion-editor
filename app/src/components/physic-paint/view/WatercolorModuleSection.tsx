@@ -1,8 +1,8 @@
 import { SectionLabel } from '../../shared/SectionLabel';
-import { AquarelleParamsPanel } from './AquarelleParamsPanel';
+import { AquarelleGlobalsPanel } from './AquarelleGlobalsPanel';
 
 /**
- * 56-02/56-07 (D-05) / 261017-w4x I-06 (Q4) / 261017-wmw I-01:
+ * 56-02/56-07 (D-05) / 261017-w4x I-06 (Q4) / 261017-wmw I-01/I-02:
  * the Water color module-only block. Paint-tab content is the section
  * label + the 7 watercolor globals + Reset only. The brush picker
  * (BrushesDocker) and the Brush response block live in the Brush tab.
@@ -15,7 +15,7 @@ export function WatercolorModuleSection() {
   return (
     <div class="physics-paint-module-section" data-module="watercolor">
       <SectionLabel text="Water color" />
-      <AquarelleParamsPanel />
+      <AquarelleGlobalsPanel />
     </div>
   );
 }

@@ -198,11 +198,12 @@ describe('panel split shell — module-only block', () => {
     expect(body, 'tool-row mount must leave').not.toMatch(/<AquarelleToolRow\b/);
     expect(body, 'Dry emit helper must leave').not.toContain('emitAquarelleDry');
     expect(body, 'record clock must leave with the Dry button').not.toContain('aquarelleRecordClock');
-    // Label + params remain; the brush picker leaves with I-01.
+    // Label + globals panel remain; picker and response live in the Brush tab.
     expect(source).toMatch(/<SectionLabel text="Water color"/);
-    expect(source).toMatch(/<AquarelleParamsPanel\b/);
+    expect(source, 'section mounts AquarelleGlobalsPanel (I-02)').toMatch(/<AquarelleGlobalsPanel\b/);
+    expect(source, 'old wrapper must be gone (I-02)').not.toMatch(/<AquarelleParamsPanel\b/);
     expect(source, 'picker leaves the Paint-tab section (I-01)').not.toMatch(/<BrushesDocker\b/);
-    expect(source, 'response block leaves the Paint-tab section (I-01)').not.toMatch(
+    expect(source, 'response block leaves the Paint-tab section (I-02)').not.toMatch(
       /<BrushResponsePanel\b/,
     );
   });
