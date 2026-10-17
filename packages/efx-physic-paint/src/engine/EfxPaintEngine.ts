@@ -817,7 +817,7 @@ export class EfxPaintEngine {
 
     // Draw initial background
     this.bgData = drawBg(this.bgCtx, this.state.bgMode, this.width, this.height, this.paperTextures, this.userPhoto)
-    this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
+    if (!this.visibleBackgroundSuppressed) this.dualCanvas.dryCtx.drawImage(this.bgCanvas, 0, 0)
 
     // Start render loop
     this.render()
@@ -939,8 +939,9 @@ export class EfxPaintEngine {
    * Default false: standalone consumers keep the engine-drawn background.
    */
   setVisibleBackgroundSuppressed(suppressed: boolean): void {
-    if (this.visibleBackgroundSuppressed === suppressed) return
     this.visibleBackgroundSuppressed = suppressed
+    // Always re-assert the visible surface: a re-call must clear any background
+    // fill that landed on the dry canvas while suppression was momentarily off.
     this.redrawPreviewBase()
     this.resetReplaySurface()
   }
@@ -1668,7 +1669,7 @@ export class EfxPaintEngine {
       this.baseSwapDryClearPending = true
     } else {
       this.dualCanvas.dryCtx.clearRect(0, 0, this.width, this.height)
-      if (!this.previewBaseEnabled) {
+      if (!this.previewBaseEnabled && !this.visibleBackgroundSuppressed) {
         const bgPixels = this.bgCtx.getImageData(0, 0, this.width, this.height)
         this.dualCanvas.dryCtx.putImageData(bgPixels, 0, 0)
       }
