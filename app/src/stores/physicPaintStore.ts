@@ -2804,7 +2804,25 @@ function _resolveFlattenedFrame(
     const fondCtx = fondCanvas.getContext('2d');
     if (!fondCtx) throw new Error('_resolveFlattenedFrame: 2d rendering context unavailable');
     drawMissingRotoBackground(fondCtx, fondInstruction, size.width, size.height, null, fondPaperCanvas);
+    // studio-reopen-paper-washout: the aquarelle cache is MODE.transparent
+    // transmittance (opaque — "how much paper light gets through") and must
+    // MULTIPLY over the fond, like the live layer. Engine-1 paint is real-alpha
+    // and stays source-over. Branch on opacity: an opaque raster is
+    // transmittance; a raster with transparent pixels is paint. Falls back to
+    // source-over when the context cannot be sampled (test mocks).
+    let isTransmittance = false;
+    try {
+      const rasterCtx = (result.raster as HTMLCanvasElement).getContext('2d');
+      if (rasterCtx && typeof rasterCtx.getImageData === 'function') {
+        const corner = rasterCtx.getImageData(0, 0, 1, 1).data;
+        isTransmittance = corner[3] === 255;
+      }
+    } catch {
+      isTransmittance = false;
+    }
+    fondCtx.globalCompositeOperation = isTransmittance ? 'multiply' : 'source-over';
     fondCtx.drawImage(result.raster, 0, 0);
+    fondCtx.globalCompositeOperation = 'source-over';
     raster = fondCanvas;
   }
   // G-52-8 (FIX 4): the record carries the raster; draw surfaces consume it

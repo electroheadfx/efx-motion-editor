@@ -6555,6 +6555,9 @@ button.destructive {
 .physics-paint-cached-roto-playback {
   z-index: 5;
   object-fit: fill;
+  /* studio-reopen-paper-washout: the aquarelle cache is opaque transmittance —
+     multiply over the fond (same law as the live layer) or it covers the paper. */
+  mix-blend-mode: multiply;
 }
 
 
