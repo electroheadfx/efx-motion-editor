@@ -12,7 +12,9 @@
  * vnode tree (no DOM environment).
  */
 import { describe, expect, it, vi } from 'vitest';
-import { aquarelleActiveTool, onAquarelleDry, setAquarelleTool, emitAquarelleDry } from './aquarelleRecordState';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { aquarelleActiveTool, onAquarelleDry, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
 import { AquarelleToolRow } from './AquarelleToolRow';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 
@@ -189,34 +191,52 @@ describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
 });
 
 describe('Dry action button (D-15)', () => {
-  it('label is exactly Dry and tooltip is exactly the UI-SPEC copy', () => {
-    const tree = renderModule();
-    const dry = findButtons(tree).find((b) => textContent(b).trim() === 'Dry');
-    expect(dry, 'no Dry button').toBeTruthy();
-    const title = dry!.props?.['title'] ?? dry!.props?.['data-tooltip'];
-    expect(String(title)).toBe(DRY_TOOLTIP);
+  // 261017-w4x I-06 (Q4): Dry lives ONLY in the left vertical tool rail
+  // (WatercolorRail in PhysicsPaintToolRail.tsx). The module section no longer
+  // mounts a Dry control — pins source-scan the rail, which is byte-untouched.
+  it('rail Dry carries the UI-SPEC tooltip and the aquarelle-dry testid', () => {
+    const railSource = readFileSync(resolve(__dirname, 'PhysicsPaintToolRail.tsx'), 'utf8');
+    expect(railSource.indexOf('data-testid="aquarelle-dry"'), 'rail must host the Dry entry point').toBeGreaterThan(-1);
+    expect(railSource.indexOf(`title="${DRY_TOOLTIP}"`), 'rail Dry keeps the UI-SPEC copy').toBeGreaterThan(-1);
   });
 
-  it('is not inside AquarelleToolRow (separate slot)', () => {
+  it('is not inside AquarelleToolRow nor the module section (rail-only slot)', () => {
     const row = renderToolRow();
     expect(textContent(row)).not.toContain('Dry');
     const mod = renderModule();
-    expect(textContent(mod)).toContain('Dry');
+    // Note: "Dry rate" is a param slider inside AquarelleParamsPanel and stays —
+    // pins target the Dry control (testid / button label), not the substring.
+    expect(
+      findButtons(mod).some((b) => b.props?.['data-testid'] === 'aquarelle-dry'),
+      'module must not host the Dry control',
+    ).toBe(false);
+    expect(
+      findButtons(mod).some((b) => textContent(b).trim() === 'Dry'),
+      'module must not host a Dry action button',
+    ).toBe(false);
+    const railSource = readFileSync(resolve(__dirname, 'PhysicsPaintToolRail.tsx'), 'utf8');
+    expect(railSource.indexOf('data-testid="aquarelle-dry"'), 'rail keeps the Dry control').toBeGreaterThan(-1);
   });
 
-  it('click emits the record-path Dry event', () => {
+  it('rail click path emits the record-path Dry event', () => {
+    const railSource = readFileSync(resolve(__dirname, 'PhysicsPaintToolRail.tsx'), 'utf8');
+    expect(railSource.indexOf('emitAquarelleDry(aquarelleRecordClock())'), 'rail must fire the record-clock Dry').toBeGreaterThan(-1);
+    // The module section must not be a second Dry emitter (comment-stripped so
+    // docs naming the rail seam never trip the negative scan).
+    const moduleSource = readFileSync(resolve(__dirname, 'WatercolorModuleSection.tsx'), 'utf8');
+    const moduleBody = moduleSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(moduleBody.indexOf('emitAquarelleDry'), 'module section must not emit Dry').toBe(-1);
+    // Pure emit path stays recorded (D-15 seam).
     const received: Array<{ kind: string; tick: number }> = [];
     const off = onAquarelleDry((event) => {
       received.push(event);
     });
-    const tree = renderModule();
-    const dry = findButtons(tree).find((b) => textContent(b).trim() === 'Dry');
-    expect(dry, 'no Dry button').toBeTruthy();
-    clickButton(dry!);
+    const event = emitAquarelleDry(aquarelleRecordClock());
     off();
     expect(received.length).toBe(1);
     expect(received[0]!.kind).toBe('dry');
-    expect(Number.isInteger(received[0]!.tick)).toBe(true);
+    expect(event.kind).toBe('dry');
+    expect(Number.isInteger(event.tick)).toBe(true);
   });
 
   it('emitAquarelleDry builds a Dry event with integer tick', () => {

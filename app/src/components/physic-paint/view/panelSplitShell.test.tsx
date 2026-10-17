@@ -175,18 +175,58 @@ describe('panel split shell — module-only block', () => {
     const text = textContent(tree);
     expect(text).toContain('Water color');
   });
+
+  it('watercolor shell is settings only: no tool row, no Dry button (261017-w4x I-06)', () => {
+    // Q4: the Paint tab shows settings only — label + params + brushes.
+    // Tool row and Dry live in the left vertical rail. Note: "Dry rate" is a
+    // param slider inside AquarelleParamsPanel and stays — pins target the Dry
+    // control (data-testid / emit helper / tool-row mount), not the substring.
+    const tree = materialize(WatercolorModuleSection()) as TestVNode;
+    const buttons = [...walk(tree)].filter((n) => n.type === 'button');
+    expect(
+      buttons.some((b) => b.props?.['data-testid'] === 'aquarelle-dry'),
+      'no Dry control in the module section',
+    ).toBe(false);
+    expect(
+      buttons.some((b) => textContent(b).trim() === 'Dry'),
+      'no Dry action button in the module section',
+    ).toBe(false);
+    const source = readFileSync(resolve(__dirname, 'WatercolorModuleSection.tsx'), 'utf8');
+    // Negative scans strip comments so docs naming the rail seam never trip.
+    const body = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(body, 'tool-row mount must leave').not.toMatch(/<AquarelleToolRow\b/);
+    expect(body, 'Dry emit helper must leave').not.toContain('emitAquarelleDry');
+    expect(body, 'record clock must leave with the Dry button').not.toContain('aquarelleRecordClock');
+    // Label + params + brushes remain.
+    expect(source).toMatch(/<SectionLabel text="Water color"/);
+    expect(source).toMatch(/<AquarelleParamsPanel\b/);
+    expect(source).toMatch(/<BrushesDocker\b/);
+  });
 });
 
 describe('panel split shell — shared block', () => {
-  it('shared section labels appear regardless of activeModule', () => {
+  it('paint-tab branch shows settings only: no Opacity option-group, module switch remains', () => {
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
-    // The shared section labels must exist in the panel source.
-    // (Size was removed in 56-ui-03 — top-bar Brush size is the one control.)
-    expect(panelSource).toMatch(/Opacity/);
-    expect(panelSource).toMatch(/Paper/);
+    // 261017-w4x I-05 (Q3): the shared block left — Opacity is top-bar only.
+    // The Paint-tab branch has no Opacity option-group; the module-only switch
+    // remains. Track-tab per-track opacity and onion opacity stay untouched.
+    const paintTabStart = panelSource.indexOf("effectiveToolTab === 'paint'");
+    expect(paintTabStart, 'paint-tab branch must exist').toBeGreaterThan(-1);
+    const paintTabEnd = panelSource.indexOf("effectiveToolTab === 'background'", paintTabStart);
+    expect(paintTabEnd, 'paint-tab branch must end at the background arm').toBeGreaterThan(paintTabStart);
+    const paintTab = panelSource.slice(paintTabStart, paintTabEnd);
+    expect(paintTab.indexOf('shared-opacity'), 'paint-tab must not host shared-opacity').toBe(-1);
+    expect(paintTab.indexOf('physics-paint-shared-block'), 'shared wrapper must leave').toBe(-1);
+    expect(paintTab.indexOf('<SectionLabel text="Opacity"'), 'Opacity option-group must leave').toBe(-1);
+    // The module-only switch is the first thing in the paint-tab branch.
+    expect(paintTab.indexOf('WatercolorModuleSection'), 'module switch must remain').toBeGreaterThan(-1);
+    expect(paintTab.indexOf('BrushModuleSection'), 'brush module must remain').toBeGreaterThan(-1);
+    // Opacity text remains for the Track tab and onion controls (untouched).
+    expect(panelSource).toMatch(/physics-track-opacity/);
+    expect(panelSource).toMatch(/physics-onion-opacity/);
   });
 
   it('module-only block switches on activeModule', () => {

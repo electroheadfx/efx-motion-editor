@@ -93,11 +93,20 @@ describe('Dry button has a real pressed state (D-15 UX)', () => {
     expect(css).toContain('.physics-paint-aquarelle-dry:active');
     expect(css).toContain('.physics-paint-aquarelle-dry:hover');
 
-    const tsx = readFileSync(resolve(__dirname, './WatercolorModuleSection.tsx'), 'utf8');
-    expect(tsx).toContain('physics-paint-aquarelle-dry');
+    // 261017-w4x I-06 (Q4): the surviving Dry entry point is the left rail
+    // (PhysicsPaintToolRail.tsx WatercolorRail). The module section no longer
+    // mounts Dry. The CSS-class rules stay in place for the rail.
+    const rail = readFileSync(resolve(__dirname, './PhysicsPaintToolRail.tsx'), 'utf8');
+    expect(rail).toContain('data-testid="aquarelle-dry"');
     // The hardcoded 0 tick is gone.
-    expect(tsx).not.toContain('emitAquarelleDry(0)');
-    expect(tsx).toContain('aquarelleRecordClock()');
+    expect(rail).not.toContain('emitAquarelleDry(0)');
+    expect(rail).toContain('emitAquarelleDry(aquarelleRecordClock())');
+
+    // Comment-stripped negative scan: docs naming the rail seam never trip it.
+    const moduleSection = readFileSync(resolve(__dirname, './WatercolorModuleSection.tsx'), 'utf8');
+    const moduleBody = moduleSection.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(moduleBody, 'module section must not host Dry').not.toContain('emitAquarelleDry');
+    expect(moduleBody, 'module section must not host the Dry control').not.toContain('aquarelle-dry');
   });
 });
 
