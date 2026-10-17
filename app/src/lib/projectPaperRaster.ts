@@ -61,17 +61,24 @@ function buildProceduralPaperFond(
   if (!preset) return null;
   const uScale = PAPER_UNITS / (height * normalized);
   // 261017-lny: GPU first (playground GLSL on offscreen WebGL2), CPU port
-  // as the no-WebGL fallback. Same bytes contract — opaque paperColour sRGB.
-  const rgba = renderPaperSheetGl(width, height, uScale, 1, preset)
-    ?? renderPaperSheet(width, height, uScale, 1, preset);
+  // as the no-WebGL fallback. Same look — opaque paperColour sRGB.
+  // 261017-mdr: the GPU arm blits the shared GL canvas into a DEDICATED cache
+  // canvas — never alias the GL canvas itself (a later sheet render would
+  // overwrite it). One drawImage, no full-frame CPU copy.
+  const glSheet = renderPaperSheetGl(width, height, uScale, 1, preset);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) return null;
-  const image = context.createImageData(width, height);
-  image.data.set(rgba);
-  context.putImageData(image, 0, 0);
+  if (glSheet) {
+    context.drawImage(glSheet, 0, 0, width, height);
+  } else {
+    const rgba = renderPaperSheet(width, height, uScale, 1, preset);
+    const image = context.createImageData(width, height);
+    image.data.set(rgba);
+    context.putImageData(image, 0, 0);
+  }
   proceduralFondCache.set(cacheKey, canvas);
   return canvas;
 }

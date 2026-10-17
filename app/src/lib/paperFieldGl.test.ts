@@ -43,6 +43,33 @@ describe('261017-lny paperFieldGl oracle GLSL', () => {
   });
 });
 
+describe('261017-mdr GPU-blit sheet present path', () => {
+  it('source-scan: no pixel readback and no per-row JS copy loop in the sheet path', () => {
+    const src = source('src/lib/paperFieldGl.ts');
+    expect(src).not.toContain('readPixels');
+    // The playground paperSwatch y-flip row loop is gone with the readback.
+    expect(src).not.toContain('height - 1 - y');
+    expect(src).not.toMatch(/for\s*\(\s*let\s+y\s*=\s*0\s*;\s*y\s*<\s*height/);
+  });
+
+  it('source-scan: pass 3 draws to the default framebuffer and the sheet is the GL canvas', () => {
+    const src = source('src/lib/paperFieldGl.ts');
+    const fnBody = src.slice(src.indexOf('export function renderPaperSheetGl'));
+    // Third FBO is gone — the sheet lands on the shared GL canvas.
+    expect(fnBody).not.toContain('createTarget(gl, width, height, false);\n    const out');
+    expect(fnBody).toContain('gl.bindFramebuffer(gl.FRAMEBUFFER, null)');
+    expect(fnBody).toContain('return _glCanvas');
+    // preserveDrawingBuffer stays true so callers can drawImage the canvas.
+    expect(src).toContain('preserveDrawingBuffer: true');
+  });
+
+  it('source-scan: PAPER_SHEET_FS keeps the oracle look (no vUv flip inserted)', () => {
+    expect(PAPER_SHEET_FS).toContain('vec4 paper = texture(uPaper, vUv);');
+    expect(PAPER_SHEET_FS).not.toContain('1.0 - vUv.y');
+    expect(PAPER_SHEET_FS).not.toContain('vec2(vUv.x, 1.0 - vUv.y)');
+  });
+});
+
 describe('261017-lny renderPaperSheetGl null-on-failure contract', () => {
   it('returns null (never throws) when WebGL2 is unavailable', () => {
     const canvas = { getContext: () => null, addEventListener: () => {} };

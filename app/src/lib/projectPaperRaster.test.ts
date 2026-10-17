@@ -5,9 +5,9 @@ import { drawProjectPaperRaster, getProjectPaperCanvas, resetProjectPaperRasterF
 
 // 261017-lny: stub the GPU host so routing pins can choose a known sheet vs
 // null (CPU fallback). Default null keeps the existing CPU-port pixel pins
-// honest.
+// honest. 261017-mdr: the GPU entry hands out a canvas, not bytes.
 const glMock = vi.hoisted(() => ({
-  renderPaperSheetGl: vi.fn((_w: number, _h: number, _s: number, _seed: number, _preset: unknown) => null as Uint8ClampedArray | null),
+  renderPaperSheetGl: vi.fn((_w: number, _h: number, _s: number, _seed: number, _preset: unknown) => null as HTMLCanvasElement | null),
 }));
 vi.mock('./paperFieldGl', () => glMock);
 
@@ -584,30 +584,61 @@ describe('261017-lny GPU fond + opaque density', () => {
     expect(fnBody).toContain('renderPaperSheetGl');
     expect(fnBody).toContain('renderPaperSheet');
     // GPU first, CPU on null — never a second independent generator
-    expect(fnBody.indexOf('renderPaperSheetGl')).toBeLessThan(fnBody.indexOf('?? renderPaperSheet'));
+    expect(fnBody.indexOf('renderPaperSheetGl')).toBeLessThan(fnBody.indexOf('renderPaperSheet('));
+    // 261017-mdr: the GPU arm blits; only the CPU fallback writes ImageData.
+    expect(fnBody).toContain('drawImage(glSheet');
+    expect(fnBody).toContain('context.drawImage');
+    const gpuArm = fnBody.slice(fnBody.indexOf('if (glSheet)'), fnBody.indexOf('} else {'));
+    expect(gpuArm).toContain('drawImage');
+    expect(gpuArm).not.toContain('putImageData');
+    expect(gpuArm).not.toContain('createImageData');
     // cache-key string shape from 20f9dfdc stays untouched
     expect(fnBody).toContain('${paperTexture}|1|${width}x${height}|${normalized}');
   });
 
-  it('prefers the GPU sheet when renderPaperSheetGl returns bytes', () => {
-    withPixelDocument(() => {
+  it('GPU arm blits into a dedicated cache canvas (never aliases the shared GL canvas)', () => {
+    const drawImageCalls: unknown[][] = [];
+    const makeCanvas = () => {
+      const canvas = { width: 0, height: 0 } as HTMLCanvasElement;
+      const context = {
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        fillStyle: '#fff',
+        save() {},
+        restore() {},
+        fillRect() {},
+        createImageData(width: number, height: number) {
+          return { data: new Uint8ClampedArray(width * height * 4), width, height };
+        },
+        putImageData() {
+          throw new Error('GPU arm must not putImageData');
+        },
+        drawImage(...args: unknown[]) {
+          drawImageCalls.push(args);
+        },
+      } as unknown as CanvasRenderingContext2D;
+      Object.assign(canvas, { getContext: () => context });
+      return canvas;
+    };
+    const originalDocument = globalThis.document;
+    Object.assign(globalThis, { document: { createElement: () => makeCanvas() } });
+    try {
       resetProjectPaperRasterForTests();
       glMock.renderPaperSheetGl.mockClear();
-      glMock.renderPaperSheetGl.mockImplementation((w: number, h: number) => {
-        const bytes = new Uint8ClampedArray(w * h * 4);
-        for (let i = 0; i < w * h; i++) {
-          bytes[i * 4] = 10;
-          bytes[i * 4 + 1] = 20;
-          bytes[i * 4 + 2] = 30;
-          bytes[i * 4 + 3] = 255;
-        }
-        return bytes;
-      });
+      const glSheet = { __sharedGlCanvas: true } as unknown as HTMLCanvasElement;
+      glMock.renderPaperSheetGl.mockReturnValue(glSheet);
       const fond = getProjectPaperCanvas('paper/cold-press', 8, 8, 1)!;
       expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
-      expect(samplePixel(fond, 1, 1)).toBe(10);
-    });
-    glMock.renderPaperSheetGl.mockReset(() => null);
+      expect(fond).not.toBeNull();
+      // The cached fond is the dedicated 2D copy, never the shared GL canvas.
+      expect(fond).not.toBe(glSheet);
+      expect(drawImageCalls).toHaveLength(1);
+      expect(drawImageCalls[0][0]).toBe(glSheet);
+    } finally {
+      resetProjectPaperRasterForTests();
+      glMock.renderPaperSheetGl.mockReset(() => null);
+      Object.assign(globalThis, { document: originalDocument });
+    }
   });
 
   it('falls back to the CPU port when renderPaperSheetGl returns null', () => {
@@ -684,5 +715,53 @@ describe('261017-lny GPU fond + opaque density', () => {
     );
     expect(fnBody).toContain('isProceduralPaperTexture');
     expect(fnBody).toContain('buildProceduralPaperFond');
+  });
+});
+
+// 261017-mdr: cache discipline the per-frame flatten path depends on. The
+// flattener's own per-frame document.createElement('canvas') composite is out
+// of scope (it is the composite target, not the paper sheet).
+describe('261017-mdr cache discipline', () => {
+  it('source-scan: proceduralFondCache.clear() occurs only in the two reset functions', () => {
+    const src = source('src/lib/projectPaperRaster.ts');
+    const clearHits = src.match(/proceduralFondCache\.clear\(\)/g) ?? [];
+    expect(clearHits).toHaveLength(2);
+    const clearFn = src.slice(
+      src.indexOf('export function clearProjectPaperRasterCache'),
+      src.indexOf('export function resetProjectPaperRasterForTests'),
+    );
+    expect(clearFn).toContain('proceduralFondCache.clear()');
+    const resetFn = src.slice(src.indexOf('export function resetProjectPaperRasterForTests'));
+    expect(resetFn).toContain('proceduralFondCache.clear()');
+  });
+
+  it('source-scan: clearProjectPaperRasterCache is not called from physicPaintStore paint/revision paths', () => {
+    const storeSrc = source('src/stores/physicPaintStore.ts');
+    expect(storeSrc).not.toContain('clearProjectPaperRasterCache');
+  });
+
+  it('source-scan: the production clear caller is a dispose path, not a paint bump', () => {
+    const previewSrc = source('src/lib/previewRenderer.ts');
+    const callHits = previewSrc.match(/clearProjectPaperRasterCache\(\)/g) ?? [];
+    expect(callHits).toHaveLength(1);
+    const disposeBody = previewSrc.slice(previewSrc.indexOf('dispose(): void'));
+    expect(disposeBody).toContain('clearProjectPaperRasterCache()');
+  });
+
+  it('per-frame getProjectPaperCanvas for the same (paper, W, H, grainScale) is an identity cache hit', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      glMock.renderPaperSheetGl.mockClear();
+      glMock.renderPaperSheetGl.mockReturnValue(null);
+      // Simulates the per-frame _resolveFlattenedFrame call with a stable key.
+      const first = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
+      const second = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
+      const third = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
+      expect(second).toBe(first);
+      expect(third).toBe(first);
+      // One build total — the later frames are pure cache hits.
+      expect(glMock.renderPaperSheetGl).toHaveBeenCalledTimes(1);
+    });
+    glMock.renderPaperSheetGl.mockReset(() => null);
   });
 });

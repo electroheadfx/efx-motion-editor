@@ -17,10 +17,15 @@
  *                 TO_SRGB          (520-524)→ TO_SRGB
  *     Engine.ts   drawPaper        (817-835)→ three-pass pipeline
  *                 paperUniforms    (838-844)→ colour uniforms
- *                 paperSwatch tail (802-811)→ readPixels y-flip
+ *
+ * 261017-mdr: the sheet is presented by handing out the shared GL canvas
+ * (pass 3 draws to the default framebuffer). No pixel readback, no per-row JS
+ * copy — the playground displays its GL target directly (Engine.ts drawPaper);
+ * only the thumbnail helper (paperSwatch) ever read pixels back, and that tail
+ * is not the sheet path.
  *
  * GL pattern: lazy shared offscreen WebGL2 in the shape of glMotionBlur.ts
- * (getGL / compileShader / createProgram / framebuffer / readPixels), with a
+ * (getGL / compileShader / createProgram / framebuffer), with a
  * null-on-failure contract like fxBlur.ts's GPU-first / CPU-fallback split.
  * Never throws into the Studio — renderPaperSheetGl returns null and the CPU
  * port fills in (AquarelleCanvasLayer precedent: no WebGL2 leaves the surface
@@ -520,11 +525,15 @@ function uniform(gl: WebGL2RenderingContext, program: WebGLProgram, name: string
  * Three-pass sheet render matching renderPaperSheet's semantics:
  *   1. paperFieldFS → field (RGBA16F when available, else RGBA8)
  *   2. paperLightFS → packed paper texel (uBump = (preset.bump * 1.4) / scale)
- *   3. PAPER_COLOUR + toSRGB at uTexture = 1 → opaque sRGB
- * then readPixels RGBA8 with the playground's paperSwatch y-flip.
+ *   3. PAPER_COLOUR + toSRGB at uTexture = 1 → opaque sRGB on the default
+ *      framebuffer (the shared GL canvas sized to the sheet).
  *
- * @returns opaque sRGB RGBA bytes, or null when WebGL2 / compile / render
- *          targets fail — never throws into the Studio.
+ * 261017-mdr: the sheet is the GL canvas itself — callers GPU-blit it with
+ * drawImage into their own cache. No pixel readback and no per-row JS copy.
+ *
+ * @returns the shared offscreen GL canvas (DOM orientation — the same look the
+ *          playground displays), or null when WebGL2 / compile / render-target
+ *          setup fails — never throws into the Studio.
  */
 export function renderPaperSheetGl(
   width: number,
@@ -532,23 +541,26 @@ export function renderPaperSheetGl(
   scale: number,
   seed: number,
   preset: StudioPaperPreset,
-): Uint8ClampedArray | null {
+): HTMLCanvasElement | null {
   try {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return null;
     if (!Number.isFinite(scale) || !(scale > 0) || !Number.isFinite(seed)) return null;
 
     const gl = getGL();
-    if (!gl) return null;
+    if (!gl || !_glCanvas) return null;
     const res = ensureResources(gl);
     if (!res) return null;
 
+    // The sheet lands on the default framebuffer at sheet resolution. Assigning
+    // width/height resets the drawing buffer — safe because every call redraws.
+    if (_glCanvas.width !== width) _glCanvas.width = width;
+    if (_glCanvas.height !== height) _glCanvas.height = height;
+
     const field = createTarget(gl, width, height, true);
     const paper = createTarget(gl, width, height, false);
-    const out = createTarget(gl, width, height, false);
-    if (!field || !paper || !out) {
+    if (!field || !paper) {
       field?.dispose();
       paper?.dispose();
-      out?.dispose();
       return null;
     }
 
@@ -578,7 +590,8 @@ export function renderPaperSheetGl(
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
       // Pass 3 — colour + toSRGB (Engine.ts:838-844 paperUniforms at uTexture = 1)
-      gl.bindFramebuffer(gl.FRAMEBUFFER, out.fbo);
+      // → the default framebuffer so the sheet lands on the shared GL canvas.
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.useProgram(res.sheetProgram);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, paper.tex);
@@ -589,22 +602,12 @@ export function renderPaperSheetGl(
       gl.uniform1f(uniform(gl, res.sheetProgram, 'uTexture'), 1);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-      // readPixels RGBA8 + playground paperSwatch y-flip (Engine.ts:802-811)
-      const px = new Uint8Array(width * height * 4);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, out.fbo);
-      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, px);
       gl.bindVertexArray(null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-      const rgba = new Uint8ClampedArray(width * height * 4);
-      for (let y = 0; y < height; y++) {
-        rgba.set(px.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4);
-      }
-      return rgba;
+      return _glCanvas;
     } finally {
       field.dispose();
       paper.dispose();
-      out.dispose();
     }
   } catch (error) {
     console.warn('paperFieldGl: falling back to CPU sheet', error);

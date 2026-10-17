@@ -78,6 +78,19 @@ function proceduralReliefImage(id: string): ImageData | null {
   return image;
 }
 
+/**
+ * 261017-mdr: pre-fill the procedural thumb cache so the picker opens without
+ * a first-open generation stall. Same renderPaperSheet + PAPER_UNITS /
+ * THUMB_WINDOW_UNITS path proceduralReliefImage already uses — repeat calls
+ * are reliefCache hits. Does not touch CELL_SIZE / GRID_GAP / the 3-column grid.
+ */
+export function warmProceduralReliefThumbs(): void {
+  for (const entry of PAPER_LIBRARY) {
+    if (entry.group !== 'procedural') continue;
+    proceduralReliefImage(entry.id);
+  }
+}
+
 function PaperCell(props: {
   entry: PaperDefinition;
   active: boolean;
