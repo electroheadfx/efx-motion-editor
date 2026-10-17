@@ -42,6 +42,25 @@ function cacheKey(studioPaperId: string, width: number, height: number, scale: n
   return `${studioPaperId}|${width}x${height}|${scale}`;
 }
 
+/** Measure-only: a few sheet pixels so a white readback is visible in the capture. */
+function sampleSheetPixels(canvas: HTMLCanvasElement): Array<{ x: number; y: number; rgba: string }> {
+  try {
+    const context = canvas.getContext('2d');
+    if (!context) return [{ x: -1, y: -1, rgba: 'no-2d-context' }];
+    const points: Array<[number, number]> = [
+      [Math.floor(canvas.width / 2), Math.floor(canvas.height / 2)],
+      [Math.floor(canvas.width / 4), Math.floor(canvas.height / 4)],
+      [1, 1],
+    ];
+    return points.map(([x, y]) => {
+      const data = context.getImageData(x, y, 1, 1).data;
+      return { x, y, rgba: `${data[0]},${data[1]},${data[2]},${data[3]}` };
+    });
+  } catch (error) {
+    return [{ x: -1, y: -1, rgba: `error:${error instanceof Error ? error.message : String(error)}` }];
+  }
+}
+
 /** Cached engine sheet (fond + thumbs). Repeat of the same key returns the identical canvas. */
 export function getEnginePaperSheet(
   studioPaperId: string,
@@ -66,7 +85,15 @@ export function getEnginePaperSheet(
   try {
     const canvas = eng.paperSheet(preset, width, height, scale);
     sheetCache.set(key, canvas);
-    capturePaperFond('sheet', { studioPaperId, width, height, scale, ok: true, sheet: `${canvas.width}x${canvas.height}` });
+    capturePaperFond('sheet', {
+      studioPaperId,
+      width,
+      height,
+      scale,
+      ok: true,
+      sheet: `${canvas.width}x${canvas.height}`,
+      pixels: sampleSheetPixels(canvas),
+    });
     return canvas;
   } catch (error) {
     capturePaperFond('sheet', { studioPaperId, width, height, scale, ok: false, reason: 'throw', error: error instanceof Error ? error.message : String(error) });
