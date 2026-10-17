@@ -861,6 +861,19 @@ export class WatercolorEngine {
   exportCanvas(background: ExportBackground = 'transparent', texture = true): HTMLCanvasElement {
     const { dw, dh } = this;
     const px = this.readback(false, MODE[background], texture);
+    // MODE.transparent yields OPAQUE transmittance (vec4(t, 1.0)) — that is
+    // the live display's multiply layer, not a cache frame. A cache composited
+    // with source-over needs REAL alpha or the opaque white covers the
+    // document fond (studio-reopen-paper-washout). Convert here so the live
+    // display path (drawDisplay) is untouched: alpha = 1 - transmittance.
+    if (background === 'transparent') {
+      for (let i = 0; i < px.length; i += 4) {
+        const t = px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114;
+        const coverage = 255 - t;
+        px[i + 3] = coverage <= 0 ? 0 : Math.min(255, Math.round(coverage));
+      }
+      return this.pixelsToCanvas(px, dw, dh);
+    }
     // displayFS writes PREMULTIPLIED alpha (F1). ImageData / WebP want
     // STRAIGHT alpha — un-premultiply here so the cache bytes match the
     // classic export. Opaque modes (a=255) are a no-op.
@@ -872,6 +885,10 @@ export class WatercolorEngine {
         px[i + 2] = Math.min(255, Math.round((px[i + 2] * 255) / a));
       }
     }
+    return this.pixelsToCanvas(px, dw, dh);
+  }
+
+  private pixelsToCanvas(px: Uint8Array, dw: number, dh: number): HTMLCanvasElement {
     const c = document.createElement('canvas');
     c.width = dw; c.height = dh;
     const ctx = c.getContext('2d')!;

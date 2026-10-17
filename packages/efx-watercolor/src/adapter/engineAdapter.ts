@@ -93,7 +93,7 @@ function asTool(raw: string): Tool {
 
 export function createAquarelleEngineAdapter(
   options: AquarelleAdapterOptions = {},
-): EngineAdapter<AquarelleStrokePayload> {
+): EngineAdapter<AquarelleStrokePayload> & { setPaper(paper: AquarelleBakePaper): void } {
   const engineId: EngineId = 'efx-watercolor'
   const strokes: StudioStroke<AquarelleStrokePayload>[] = []
   const width = Math.max(1, Math.trunc(options.width ?? 0))
