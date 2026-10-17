@@ -21,7 +21,7 @@ import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke, DIFFUSION_CAP, type AquarelleStroke } from '../payload/toStudioStroke'
 import { createDryEvent, isAquarelleDryEvent, type AquarellePayloadEvent } from '../payload/dryEvent'
-import { createAquarelleBake, type AquarelleBakeFrame } from './aquarelleBake'
+import { createAquarelleBake, aquarellePaperCacheFingerprint, type AquarelleBakeFrame, type AquarelleBakePaper } from './aquarelleBake'
 
 // ---------------------------------------------------------------------------
 // Mock canvas + fake adapter (same idiom as engineAdapter.test.ts)
@@ -399,5 +399,70 @@ describe('createAquarelleBake — flush-survives-navigation consumer', () => {
     expect(b.ok).toBe(true)
     if (!a.ok || !b.ok) return
     expect(a.frames.map((f) => Array.from(f.bytes))).toEqual(b.frames.map((f) => Array.from(f.bytes)))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 261017-fz3 paper-aware bake — paper id/strength/scale in the cache
+// fingerprint; setPaper before the first applyStroke; AQUA-08 alpha-0.
+// ---------------------------------------------------------------------------
+
+describe('261017-fz3 paper-aware bake', () => {
+  const paperA: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.65, grainScale: 1 }
+  const paperB: AquarelleBakePaper = { paperId: 'paper/rough', grainStrength: 0.65, grainScale: 1 }
+  const paperC: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.30, grainScale: 1 }
+  const paperD: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.65, grainScale: 2 }
+
+  it('fingerprint matches when id+strength+scale all match and differs when any one differs', () => {
+    const same: AquarelleBakePaper = { paperId: 'paper/cold-press', grainStrength: 0.65, grainScale: 1 }
+    expect(aquarellePaperCacheFingerprint(paperA)).toBe(aquarellePaperCacheFingerprint(same))
+    expect(aquarellePaperCacheFingerprint(paperA)).not.toBe(aquarellePaperCacheFingerprint(paperB))
+    expect(aquarellePaperCacheFingerprint(paperA)).not.toBe(aquarellePaperCacheFingerprint(paperC))
+    expect(aquarellePaperCacheFingerprint(paperA)).not.toBe(aquarellePaperCacheFingerprint(paperD))
+  })
+
+  it('setPaper is invoked before the first applyStroke (call order)', async () => {
+    const calls: string[] = []
+    const { adapter } = makeFakeAdapter()
+    const paperAware = adapter as EngineAdapter<AquarelleStrokePayload> & {
+      setPaper?: (paper: AquarelleBakePaper) => void
+    }
+    paperAware.setPaper = (paper) => {
+      calls.push(`setPaper:${paper.paperId}`)
+    }
+    const origApply = adapter.applyStroke.bind(adapter)
+    paperAware.applyStroke = (stroke) => {
+      calls.push('applyStroke')
+      origApply(stroke)
+    }
+    const bake = createAquarelleBake(paperAware, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      paper: paperA,
+    })
+    await bake.bake([makeStroke()])
+    const setPaperIndex = calls.indexOf('setPaper:paper/cold-press')
+    const applyIndex = calls.indexOf('applyStroke')
+    expect(setPaperIndex).toBeGreaterThanOrEqual(0)
+    expect(applyIndex).toBeGreaterThanOrEqual(0)
+    expect(setPaperIndex).toBeLessThan(applyIndex)
+  })
+
+  it('a captured frame\'s unpainted far-corner pixel is alpha 0 (AQUA-08) — never opaque white', async () => {
+    const { adapter, pixels } = makeFakeAdapter(16, 16)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 16,
+      height: 16,
+      paper: paperA,
+    })
+    const result = await bake.bake([makeStroke()])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    // Far corner (0,0) is outside the 2×2 block at (1,1) — must stay alpha 0.
+    expect(alphaAt(pixels, 16, 0, 0)).toBe(0)
+    expect(alphaAt(pixels, 16, 15, 15)).toBe(0)
   })
 })

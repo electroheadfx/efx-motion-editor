@@ -259,10 +259,17 @@ export function rejectRotoLoopPlaceholderSource(
   }
 }
 
+/** 261017-fz3: paper term for the aquarelle cache fingerprint (id+strength+scale). */
+function paperCacheTerm(background: { background: string; grainStrength: number; grainScale?: number } | null): string {
+  if (!background) return '';
+  return `:paper:${background.background}|str:${background.grainStrength}|scl:${background.grainScale ?? 1}`;
+}
+
 export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument): PhysicPaintRotoCacheFrame[] {
   // 52.2-02 (D-07): a runtime cache frame needs pixels, so the inline carrier is
   // asserted. A reference-only record is a persisted shape and never reaches
   // this projection — the document here was built from in-memory runtime records.
+  const paper = paperCacheTerm(document.background);
   return document.realKeyRecords.map((record) => ({
     ...record.payload,
     bytes: requirePhysicPaintRotoInlineBytes(record.payload),
@@ -270,7 +277,7 @@ export function recordsAsRuntimeFrames(document: PhysicPaintRotoPhysicalDocument
     source: 'real-key' as const,
     keyId: record.keyId,
     contentRevision: document.revision,
-    cacheRevision: `${document.revision}:real:${record.keyId}`,
+    cacheRevision: `${document.revision}:real:${record.keyId}${paper}`,
   }));
 }
 
@@ -309,6 +316,7 @@ export function recordsAsPublishableRuntimeFrames(document: PhysicPaintRotoPhysi
 export function recordsAsRuntimeFramesToleratingReferences(
   document: PhysicPaintRotoPhysicalDocument,
 ): PhysicPaintRotoCacheFrame[] {
+  const paper = paperCacheTerm(document.background);
   return document.realKeyRecords
     .filter((record) => record.payload.bytes !== undefined)
     .map((record) => ({
@@ -318,7 +326,7 @@ export function recordsAsRuntimeFramesToleratingReferences(
       source: 'real-key' as const,
       keyId: record.keyId,
       contentRevision: document.revision,
-      cacheRevision: `${document.revision}:real:${record.keyId}`,
+      cacheRevision: `${document.revision}:real:${record.keyId}${paper}`,
     }));
 }
 
@@ -496,7 +504,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       ...renderedFrame,
       keyId: route.keyId,
       contentRevision: route.contentRevision,
-      cacheRevision: `${route.contentRevision}:real:${route.keyId}`,
+      // 261017-fz3: paper id+strength+scale join the aquarelle cache fingerprint
+      // so a paper change is a cache miss (stale WebP frames are not served).
+      cacheRevision: `${route.contentRevision}:real:${route.keyId}${paperCacheTerm(inputRef.current.getBackgroundMetadata())}`,
     };
     confirmedFramesRef.current.set(renderedFrame.appFrame, accepted);
     editBuffer.acceptPixelCache(renderedFrame.appFrame);

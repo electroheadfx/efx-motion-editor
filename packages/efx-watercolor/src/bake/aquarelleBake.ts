@@ -56,6 +56,26 @@ export type AquarelleBakeEncoder = (
   height: number,
 ) => Promise<Uint8Array> | Uint8Array
 
+/**
+ * 261017-fz3: the Studio paper a bake must deposit with. `paperId` is the
+ * Studio id (fingerprint term); `grainStrength` feeds the engine's
+ * `paperTexture` setter; `grainScale` is the display-fond scale (fingerprint
+ * term only — deposit grain does not take it).
+ */
+export interface AquarelleBakePaper {
+  readonly paperId: string
+  readonly grainStrength: number
+  readonly grainScale: number
+}
+
+/**
+ * 261017-fz3: cache-key term for the aquarelle WebP frames. A paper change
+ * (id, strength, OR scale) must differ so stale frames are a miss.
+ */
+export function aquarellePaperCacheFingerprint(paper: AquarelleBakePaper): string {
+  return `paper:${paper.paperId}|str:${paper.grainStrength}|scl:${paper.grainScale}`
+}
+
 export interface AquarelleBakeOptions {
   /** WebP encoder. Defaults to canvas.toDataURL when available. */
   encodeWebp?: AquarelleBakeEncoder
@@ -64,6 +84,8 @@ export interface AquarelleBakeOptions {
   height?: number
   /** Called only for committed turns — a cancelled turn never reaches this. */
   onCommit?: (frame: AquarelleBakeFrame) => void
+  /** 261017-fz3: Studio paper — setPaper before replay + cache fingerprint. */
+  paper?: AquarelleBakePaper
 }
 
 export type AquarelleBakeResult =
@@ -158,6 +180,19 @@ export function createAquarelleBake(
     // (committed OR cancelled) so a cancelled head never wedges the tail.
     let commitBarrier: Promise<void> = Promise.resolve()
     let strokeIndex = 0
+
+    // 261017-fz3: paper feeds the engine BEFORE the first applyStroke so the
+    // replayed deposit carries the Studio paper's tooth / granulation. The
+    // adapter's optional setPaper seam keeps EngineAdapter unchanged.
+    if (options.paper) {
+      const paper = options.paper
+      void scheduleAdapter(() => {
+        const seam = adapter as EngineAdapter<AquarelleStrokePayload> & {
+          setPaper?: (p: AquarelleBakePaper) => void
+        }
+        seam.setPaper?.(paper)
+      })
+    }
 
     for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
       const event = events[eventIndex]

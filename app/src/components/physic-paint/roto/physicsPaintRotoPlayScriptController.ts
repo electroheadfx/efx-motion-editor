@@ -33,9 +33,12 @@ import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from
 import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
+  aquarellePaperCacheFingerprint,
   type AquarelleBake,
   type AquarelleBakeOptions,
+  type AquarelleBakePaper,
 } from '@efxlab/efx-watercolor/bake';
+import { paperPresetForStudioId } from '../engine/AquarelleCanvasLayer';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
@@ -242,8 +245,10 @@ export interface RotoPlayScriptControllerPorts {  library: RotoScriptLibraryCont
    * 56-08: engine-2 adapter factory for the aquarelle bake. Absent port
    * falls back to createAquarelleEngineAdapter (lazy — keeps the fluid
    * engine out of the default UI chunk, 56-07 lean-subexport law).
+   * 261017-fz3: `paper` carries the resolved Studio paper so the adapter
+   * can engine.setPaper before the first applyStroke.
    */
-  createAquarelleAdapter?: (size: { width: number; height: number }) => EngineAdapter<AquarelleStrokePayload>;
+  createAquarelleAdapter?: (size: { width: number; height: number }, paper?: AquarelleBakePaper) => EngineAdapter<AquarelleStrokePayload>;
 }
 
 export interface RotoPlayScriptController {
@@ -1222,11 +1227,23 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     acceptedGeneration: number;
   }): Promise<PhysicPaintRotoCacheFrame[]> {
     const { snapshot, count, start, size, acceptedGeneration } = input;
+    // 261017-fz3: paper enters the bake AND its cache key. Single source:
+    // ports.getBackgroundMetadata() (never a second paper source).
+    const bgMeta = ports.getBackgroundMetadata();
+    const bakePaper: AquarelleBakePaper = {
+      paperId: bgMeta.background,
+      grainStrength: bgMeta.grainStrength,
+      grainScale: bgMeta.grainScale ?? 1,
+    };
     const adapter = ports.createAquarelleAdapter
-      ? ports.createAquarelleAdapter(size)
-      : await createDefaultAquarelleAdapter(size);
+      ? ports.createAquarelleAdapter(size, bakePaper)
+      : await createDefaultAquarelleAdapter(size, bakePaper);
     const createBake = ports.createAquarelleBake ?? defaultCreateAquarelleBake;
-    const bake = createBake(adapter, { width: size.width, height: size.height });
+    const bake = createBake(adapter, {
+      width: size.width,
+      height: size.height,
+      paper: bakePaper,
+    });
     aquarelleBake = bake;
     try {
       const events = aquarelleEventsFromScript(snapshot);
@@ -1736,9 +1753,15 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
 /** Default engine-2 adapter — lazy so the fluid engine stays out of the UI chunk. */
 async function createDefaultAquarelleAdapter(
   size: { width: number; height: number },
+  paper?: AquarelleBakePaper,
 ): Promise<EngineAdapter<AquarelleStrokePayload>> {
   const { createAquarelleEngineAdapter } = await import('@efxlab/efx-watercolor');
-  return createAquarelleEngineAdapter({ width: size.width, height: size.height });
+  return createAquarelleEngineAdapter({
+    width: size.width,
+    height: size.height,
+    paperPreset: paper ? paperPresetForStudioId(paper.paperId) : undefined,
+    paperStrength: paper?.grainStrength,
+  });
 }
 
 /**

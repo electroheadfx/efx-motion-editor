@@ -39,6 +39,8 @@ import { WatercolorEngine, type Tool } from '../playground/Engine'
 import { toEngineParams } from '../playground/params'
 import { buildBrushForStroke } from '../playground/brushBridge'
 import { pigmentFromHex } from '../playground/spectral'
+import { DEFAULT_PAPER, PAPERS, type PaperPreset } from '../playground/papers'
+import type { AquarelleBakePaper } from '../bake/aquarelleBake'
 
 /** Host tick grid — 60 Hz, integer ticks (Q2 / DATA-03). */
 export const HOST_TICK_HZ = 60
@@ -48,6 +50,15 @@ export interface AquarelleAdapterOptions {
   width?: number
   height?: number
   canvas?: HTMLCanvasElement
+  /**
+   * 261017-fz3: resolved Studio paper preset (paperPresetForStudioId, app-side).
+   * The adapter calls engine.setPaper + engine.paperTexture before the first
+   * applyStroke so the deposit carries the Studio paper's tooth. Q5a cold
+   * fallback for paper/real-* stays in paperPresetForStudioId (app-side).
+   */
+  paperPreset?: PaperPreset
+  /** Paper strength 0..1 — engine.paperTexture (deposit grain visibility). */
+  paperStrength?: number
 }
 
 /**
@@ -118,6 +129,23 @@ export function createAquarelleEngineAdapter(
   engine?.setClock(() => virtualNow)
   engine?.setRandom(seededRandom(1))
 
+  // 261017-fz3: paper feeds the engine BEFORE the first applyStroke so the
+  // replayed deposit carries the Studio paper's tooth / granulation.
+  const applyPaper = (paper: AquarelleBakePaper | undefined, preset?: PaperPreset): void => {
+    if (!engine) return
+    const resolved = preset
+      ?? (paper ? PAPERS.find((p) => p.id === (paper.paperId.includes('/') ? 'cold' : paper.paperId)) ?? DEFAULT_PAPER : undefined)
+    if (resolved) engine.setPaper(resolved)
+    const strength = paper?.grainStrength
+    if (typeof strength === 'number' && Number.isFinite(strength)) {
+      engine.paperTexture = strength < 0 ? 0 : strength > 1 ? 1 : strength
+    }
+  }
+  applyPaper(undefined, options.paperPreset)
+  if (typeof options.paperStrength === 'number' && engine) {
+    engine.paperTexture = options.paperStrength < 0 ? 0 : options.paperStrength > 1 ? 1 : options.paperStrength
+  }
+
   /** Pending stroke being walked on the tick grid. */
   let active: {
     stroke: StudioStroke<AquarelleStrokePayload>
@@ -171,6 +199,11 @@ export function createAquarelleEngineAdapter(
 
   return {
     engineId,
+    // 261017-fz3: the bake calls setPaper before the first applyStroke (the
+    // EngineAdapter interface has no paper seam — optional extension).
+    setPaper(paper: AquarelleBakePaper): void {
+      applyPaper(paper)
+    },
     // The 56-06 codec covers the one payload union (strokes + Dry).
     // The host EngineAdapter type is stroke-shaped because the host
     // never reads P and never sees Dry — cast through unknown at this

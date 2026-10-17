@@ -154,8 +154,10 @@ function brushIdForSelection(): string {
  * F3 (R2.3): the Studio paper id drives the aquarelle engine's DEPOSIT grain
  * (granulation / dry-brush tooth). The display paper stays the Studio fond
  * (paperPass) — never the vendor's own paper composite.
+ * Exported in 261017-fz3 so the bake path (bakeAquarelleScript) can reuse the
+ * same map — one source for studio-id → PaperPreset.
  */
-const STUDIO_PAPER_TO_PRESET: Readonly<Record<string, string>> = Object.freeze({
+export const STUDIO_PAPER_TO_PRESET: Readonly<Record<string, string>> = Object.freeze({
   'paper/cold-press': 'cold',
   'paper/hot-press': 'hot',
   'paper/rough': 'rough',
@@ -168,7 +170,8 @@ const STUDIO_PAPER_TO_PRESET: Readonly<Record<string, string>> = Object.freeze({
   'paper/student': 'cellulose',
 });
 
-function paperPresetForStudioId(studioId: string): PaperPreset {
+export function paperPresetForStudioId(studioId: string): PaperPreset {
+  // Q5a: paper/real-1..3 have no procedural preset — fall back to cold.
   const presetId = STUDIO_PAPER_TO_PRESET[studioId] ?? 'cold';
   return PAPERS.find((p) => p.id === presetId) ?? DEFAULT_PAPER;
 }

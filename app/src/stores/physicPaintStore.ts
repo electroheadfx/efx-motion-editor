@@ -1627,8 +1627,11 @@ function _rotateFlattenedMemoOnFondChange(layerId: string, efxDocument: EfxPaint
  * display-class change token rotates and save/reopen does not revert (the
  * PKG-06/BKG-09 lesson), AND the active track's paper mirror so the fond
  * resolution and the paperPass seam see the same value. Same-value sets are
- * revision-stable no-ops (idempotence guard). Never touches any baked WebP
- * cache path (PAPER-02 / D-21 — paper is composite-only).
+ * revision-stable no-ops (idempotence guard). Display-fond paper is
+ * composite-only (PAPER-02 / D-21) — BUT engine-2 aquarelle frames re-bake
+ * on paper change (261017-fz3: paper genuinely changes the deposit tooth /
+ * granulation), so the aquarelle cache fingerprint includes paper id +
+ * strength + scale. Engine-1 frames are NOT widened to this exception.
  */
 function _writePaperDisplay(
   layerId: string,
