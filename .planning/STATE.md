@@ -6,10 +6,10 @@ current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room)
 status: executing
 stopped_at: Phase 56 UI-SPEC approved
-last_updated: "2026-10-17T08:40:27.828Z"
+last_updated: "2026-10-17T10:08:11.177Z"
 last_activity: 2026-10-17
 last_activity_desc: Phase 56 execution started
-state_head: 117cd92be065e3f99307ac87c21192ba4da1afa8
+state_head: 66c9eab0022255bfda78a543b339f9ba6d7bd0cb
 progress:
   total_phases: 4
   completed_phases: 2
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 1 of 10
 Status: Executing Phase 56
-Last activity: 2026-10-17 — Completed quick task 261017-e7n: render procedural paper tooth in the editor fond + route engine grain keys
+Last activity: 2026-10-17 — Completed quick task 261017-fz3: paper correctness (single PaperPicker home, paper in aquarelle bake/cache key, playground PAPER_UNITS scale)
 
 Progress: [█████░░░░░] 50%
 
@@ -511,6 +511,7 @@ None yet.
 |---|-------------|------|--------|-----------|
 | 261017-dc2 | Accept paper/* in the roto document parser and never write an empty-string background (fixes invalid background metadata crash killing timeline navigation) | 2026-10-17 | 1876f4b3 | [261017-dc2-fix-validator-divergence-document-parser](./quick/261017-dc2-fix-validator-divergence-document-parser/) |
 | 261017-e7n | Render procedural paper tooth in the editor fond + route engine grain keys (I-07 paper must show) | 2026-10-17 | 117cd92b | [261017-e7n-i-07-procedural-paper-must-show-in-the-e](./quick/261017-e7n-i-07-procedural-paper-must-show-in-the-e/) |
+| 261017-fz3 | Paper correctness: single PaperPicker home, paper in aquarelle bake+cache key, playground PAPER_UNITS relief scale | 2026-10-17 | 66c9eab0 | [261017-fz3-paper-correctness-round-1-remove-duplica](./quick/261017-fz3-paper-correctness-round-1-remove-duplica/) |
 
 ### Roadmap Evolution
 
