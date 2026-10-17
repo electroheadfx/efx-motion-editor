@@ -1,6 +1,6 @@
 // 56-05 (PAPER-01): the 13-paper library's procedural height fields.
 // The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
-import { proceduralHeightMap } from '@efxlab/efx-watercolor/papers';
+import { PAPER_REFERENCE_HEIGHT, proceduralHeightMap } from '@efxlab/efx-watercolor/papers';
 
 const PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
@@ -25,25 +25,8 @@ const textureCache = new Map<string, HTMLImageElement>();
 const paperCanvasCache = new Map<string, HTMLCanvasElement>();
 const loadingTextures = new Map<string, HTMLImageElement>();
 const textureListeners = new Map<string, Set<() => void>>();
-/** I-07: fixed 256×256 relief tile per paper id (13 papers max — no eviction). */
-const proceduralTileCache = new Map<string, HTMLCanvasElement>();
-
-/** I-07 relief tile size — matches PROCEDURAL_TILE_SIZE's fixed shade canvas. */
-const PROCEDURAL_FOND_TILE = 256;
-
-/**
- * 261017-fz3: playground oracle (SPECS/v1.1.0-water-color/watercolor-playground
- * `engine/Engine.ts:133` — `PAPER_UNITS = 1100` "paper features are drawn for a
- * sheet this many texels tall"; `Engine.ts:353` — `paperScale = PAPER_UNITS /
- * this.dh` "paper units per texel"). A PROCEDURAL_FOND_TILE-texel tile shows the
- * same feature size the engine draws for a tile-texel-tall crop of the
- * PAPER_UNITS field — the height map is generated over PAPER_UNITS and a tile
- * window is sampled, NOT "fit the recipe to 256".
- */
-const PAPER_UNITS = 1100;
-
-/** Paper units per texel for the relief tile (the engine's paperScale law). */
-const PAPER_UNITS_PER_TEXEL = PAPER_UNITS / PROCEDURAL_FOND_TILE;
+/** 261017-iwm: full-fond procedural rasters keyed by content (paper, seed, size, grain). */
+const proceduralFondCache = new Map<string, HTMLCanvasElement>();
 
 /**
  * 261017-fz3: per-paper bump/mottle from the playground `engine/papers.ts:23-32`.
@@ -71,40 +54,45 @@ function playgroundLook(paperTexture: string): { bump: number; mottle: number } 
 
 /**
  * I-07: proceduralHeightMap is the renderer — never jpeg. Build (and cache) a
- * grayscale relief tile with the PaperPicker shade formula (PaperPicker.tsx
+ * grayscale relief fond with the PaperPicker shade formula (PaperPicker.tsx
  * `proceduralReliefImage` — h as luminance, one-sided slope toward light) so
  * the picker and the editor fond agree on the paper's look. Unknown ids return
  * null (deterministic fail-soft → the existing flat-color arm).
  *
- * 261017-fz3: feature size follows the playground PAPER_UNITS law — the height
- * map is generated over PAPER_UNITS (1100) and a PROCEDURAL_FOND_TILE window is
- * sampled, so the tile shows the same feature size the engine draws for a
- * tile-texel crop. Per-paper bump/mottle (playground papers.ts) modulate the
- * shade contrast / cloudiness.
+ * 261017-iwm: the fond is generated at the actual raster W×H — one continuous
+ * field, no createPattern repeat. Feature size follows the playground
+ * PAPER_REFERENCE_HEIGHT = 1100 law (constant physical size at any canvas
+ * size). Per-paper bump/mottle (playground papers.ts) modulate the shade
+ * contrast / cloudiness.
  */
-function buildProceduralPaperTile(paperTexture: string): HTMLCanvasElement | null {
-  const cached = proceduralTileCache.get(paperTexture);
+function buildProceduralPaperFond(
+  paperTexture: string,
+  width: number,
+  height: number,
+  scale: number,
+): HTMLCanvasElement | null {
+  const normalized = normalizeGrainScale(scale);
+  const cacheKey = `${paperTexture}|1|${width}x${height}|${normalized}`;
+  const cached = proceduralFondCache.get(cacheKey);
   if (cached) return cached;
-  // Generate the full PAPER_UNITS field and sample a tile-sized window so the
-  // feature size matches the playground's paper-units-per-texel law.
-  const fullField = proceduralHeightMap(paperTexture, 1, PAPER_UNITS, PAPER_UNITS);
-  if (!fullField) return null;
+  // grainScale 2 coarsens the field (referenceHeight doubles → features double),
+  // matching the jpg pattern-transform zoom direction.
+  const referenceHeight = PAPER_REFERENCE_HEIGHT * normalized;
+  const field = proceduralHeightMap(paperTexture, 1, width, height, referenceHeight);
+  if (!field) return null;
   const look = playgroundLook(paperTexture);
   const canvas = document.createElement('canvas');
-  canvas.width = PROCEDURAL_FOND_TILE;
-  canvas.height = PROCEDURAL_FOND_TILE;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) return null;
-  const image = context.createImageData(PROCEDURAL_FOND_TILE, PROCEDURAL_FOND_TILE);
-  // Sample offset: top-left window of the PAPER_UNITS field (deterministic).
-  for (let y = 0; y < PROCEDURAL_FOND_TILE; y++) {
-    for (let x = 0; x < PROCEDURAL_FOND_TILE; x++) {
-      const i = y * PROCEDURAL_FOND_TILE + x;
-      const fx = x;
-      const fy = y;
-      const h = fullField[fy * PAPER_UNITS + fx];
-      const hx = fullField[fy * PAPER_UNITS + Math.min(fx + 1, PAPER_UNITS - 1)];
-      const hy = fullField[Math.min(fy + 1, PAPER_UNITS - 1) * PAPER_UNITS + fx];
+  const image = context.createImageData(width, height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const h = field[i];
+      const hx = field[y * width + Math.min(x + 1, width - 1)];
+      const hy = field[Math.min(y + 1, height - 1) * width + x];
       const slope = (hx - h) + (hy - h);
       // PaperPicker shade formula modulated by playground bump (contrast) and
       // mottle (low-frequency cloudiness) — recognisably the same formula.
@@ -120,7 +108,7 @@ function buildProceduralPaperTile(paperTexture: string): HTMLCanvasElement | nul
     }
   }
   context.putImageData(image, 0, 0);
-  proceduralTileCache.set(paperTexture, canvas);
+  proceduralFondCache.set(cacheKey, canvas);
   return canvas;
 }
 
@@ -197,14 +185,13 @@ export function getProjectPaperCanvas(
   scale = 1,
 ): HTMLCanvasElement | null {
   if (!paperTexture || width <= 0 || height <= 0) return null;
-  let texture: CanvasImageSource;
   // I-07: proceduralHeightMap is the renderer — never jpeg. Procedural ids
-  // synthesize a relief tile in place of a decoded jpg.
+  // synthesize a full-fond relief raster (261017-iwm: no tile repeat).
   if (isProceduralPaperTexture(paperTexture)) {
-    const tile = buildProceduralPaperTile(paperTexture);
-    if (!tile) return null;
-    texture = tile;
-  } else {
+    return buildProceduralPaperFond(paperTexture, width, height, scale);
+  }
+  let texture: CanvasImageSource;
+  {
     const url = PAPER_TEXTURE_URLS[paperTexture];
     if (!url) return null;
     const loaded = textureCache.get(paperTexture);
@@ -295,7 +282,7 @@ export function subscribeProjectPaperTextureResolve(paperTexture: string, listen
 
 export function clearProjectPaperRasterCache(): void {
   paperCanvasCache.clear();
-  proceduralTileCache.clear();
+  proceduralFondCache.clear();
 }
 
 /**
@@ -307,7 +294,7 @@ export function clearProjectPaperRasterCache(): void {
  */
 export function resetProjectPaperRasterForTests(): void {
   paperCanvasCache.clear();
-  proceduralTileCache.clear();
+  proceduralFondCache.clear();
   textureCache.clear();
   loadingTextures.clear();
   textureListeners.clear();

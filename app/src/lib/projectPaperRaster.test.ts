@@ -444,7 +444,7 @@ describe('I-07 procedural fond tile', () => {
       src.indexOf('export function subscribeProjectPaperCanvas'),
     );
     expect(fnBody).toContain('isProceduralPaperTexture');
-    expect(fnBody).toContain('proceduralHeightMap');
+    expect(fnBody).toContain('buildProceduralPaperFond');
     const urlsBlock = src.slice(
       src.indexOf('const PAPER_TEXTURE_URLS'),
       src.indexOf('export function isProceduralPaperTexture'),
@@ -455,15 +455,13 @@ describe('I-07 procedural fond tile', () => {
   });
 });
 
-// 261017-fz3: playground paper scale — PAPER_UNITS = 1100 / tile texel height,
+// 261017-fz3: playground paper scale — PAPER_REFERENCE_HEIGHT = 1100,
 // plus per-paper bump/mottle modulation (playground papers.ts).
 describe('261017-fz3 playground paper scale', () => {
-  it('source-scan: scale constant derives from PAPER_UNITS = 1100 over the tile height', () => {
+  it('source-scan: scale constant derives from PAPER_REFERENCE_HEIGHT = 1100', () => {
     const src = source('src/lib/projectPaperRaster.ts');
-    expect(src).toContain('PAPER_UNITS');
+    expect(src).toContain('PAPER_REFERENCE_HEIGHT');
     expect(src).toContain('1100');
-    // The scale law is PAPER_UNITS / PROCEDURAL_FOND_TILE — not a hand-picked frequency.
-    expect(src).toMatch(/PAPER_UNITS\s*\/\s*PROCEDURAL_FOND_TILE/);
   });
 
   it('bump modulates relief contrast: hot (bump 0.6) differs from cold (bump 1.0)', () => {
@@ -513,5 +511,96 @@ describe('261017-fz3 playground paper scale', () => {
       expect(getProjectPaperCanvas('paper/nope-not-real', 32, 32, 1)).toBeNull();
       expect(getProjectPaperCanvas('', 32, 32, 1)).toBeNull();
     });
+  });
+});
+
+// 261017-iwm: fond at full raster — no tiling, canvas-size-invariant grain.
+describe('261017-iwm fond no-tile continuous field', () => {
+  it('no tiling: at 512x512 the pixel at (0,y) differs from (256,y) for interior y', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const fond = getProjectPaperCanvas('paper/cold-press', 512, 512, 1)!;
+      expect(fond).not.toBeNull();
+      let anyDiffers = false;
+      for (let y = 64; y < 448; y += 32) {
+        if (samplePixel(fond, 0, y) !== samplePixel(fond, 256, y)) {
+          anyDiffers = true;
+          break;
+        }
+      }
+      expect(anyDiffers).toBe(true);
+    });
+  });
+
+  it('canvas-size invariance: 512 and 1024 show features of comparable physical size', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const small = getProjectPaperCanvas('paper/cold-press', 512, 512, 1)!;
+      const large = getProjectPaperCanvas('paper/cold-press', 1024, 1024, 1)!;
+      const smoothRow = (canvas: HTMLCanvasElement, y: number, width: number): number[] => {
+        const raw: number[] = [];
+        for (let x = 0; x < width; x++) raw.push(samplePixel(canvas, x, y));
+        const w = 5; const h = w >> 1;
+        return raw.map((_, i) => {
+          let s = 0; let c = 0;
+          for (let j = -h; j <= h; j++) {
+            const k = i + j;
+            if (k >= 0 && k < raw.length) { s += raw[k]; c++; }
+          }
+          return s / c;
+        });
+      };
+      const medianCrossings = (row: number[]): number => {
+        const sorted = [...row].sort((a, b) => a - b);
+        const med = sorted[sorted.length >> 1];
+        let n = 0;
+        for (let i = 1; i < row.length; i++) {
+          if ((row[i - 1] - med) * (row[i] - med) < 0) n++;
+        }
+        return n;
+      };
+      // Median crossings of a smoothed row track the base cycle count. Under
+      // the referenceHeight law, cycles ∝ height, so the 512 row has ~half
+      // the crossings of the 1024 row (band absorbs shade-formula noise).
+      const avgCrossings = (canvas: HTMLCanvasElement, width: number, rows: number[]): number => {
+        let total = 0;
+        for (const y of rows) total += medianCrossings(smoothRow(canvas, y, width));
+        return total / rows.length;
+      };
+      const cSmall = avgCrossings(small, 512, [128, 256, 384]);
+      const cLarge = avgCrossings(large, 1024, [256, 512, 768]);
+      expect(cLarge).toBeGreaterThan(0);
+      expect(cSmall).toBeGreaterThan(0);
+      const ratio = cSmall / cLarge;
+      expect(ratio > 0.2 && ratio < 0.55).toBe(true);
+    });
+  });
+
+  it('cache identity: same content key returns the identical canvas object; different scale returns a different canvas', () => {
+    withPixelDocument(() => {
+      resetProjectPaperRasterForTests();
+      const first = getProjectPaperCanvas('paper/cold-press', 64, 64, 1)!;
+      const again = getProjectPaperCanvas('paper/cold-press', 64, 64, 1)!;
+      const scaled = getProjectPaperCanvas('paper/cold-press', 64, 64, 2)!;
+      expect(again).toBe(first);
+      expect(scaled).not.toBeNull();
+      expect(scaled).not.toBe(first);
+    });
+  });
+
+  it('real-jpg arm still uses createPattern repeat (260923-bcm path unchanged)', () => {
+    const fills: string[] = [];
+    const context = {
+      globalAlpha: 1,
+      globalCompositeOperation: 'source-over',
+      fillStyle: '#fff',
+      save() {},
+      restore() {},
+      fillRect() { fills.push('fill'); },
+      createPattern() { fills.push('pattern'); return 'textured-pattern'; },
+      drawImage() {},
+    } as unknown as CanvasRenderingContext2D;
+    drawProjectPaperRaster(context, { width: 2, height: 1 } as CanvasImageSource, 8, 4);
+    expect(fills).toContain('pattern');
   });
 });

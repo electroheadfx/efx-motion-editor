@@ -24,7 +24,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PaperDefinition } from './library'
 import { PAPER_LIBRARY } from './library'
-import { PROCEDURAL_PAPER_IDS, proceduralHeightMap } from './procedural'
+import { PAPER_REFERENCE_HEIGHT, PROCEDURAL_PAPER_IDS, proceduralHeightMap } from './procedural'
 import { encodePassTiles } from './encode'
 
 /** The 10 procedural display names, in the locked stable order. */
@@ -175,6 +175,96 @@ describe('procedural height maps (PAPER-01 idempotency)', () => {
     const a = proceduralHeightMap('paper/rough', 11, 16, 16)
     const b = proceduralHeightMap('paper/rough', 11, 16, 16)
     expect(heightBytesHash(a!) === heightBytesHash(b!)).toBe(true)
+  })
+})
+
+// 261017-iwm: referenceHeight scale law — PAPER_REFERENCE_HEIGHT = 1100.
+// When referenceHeight is omitted the generator keeps today's bytes exactly
+// (PaperPicker thumbs / paperPass bake tooth stay put). When provided, recipe
+// frequency f is "cycles per referenceHeight texels of sheet height" —
+// isotropic cycles-per-texel f / referenceHeight.
+describe('261017-iwm referenceHeight scale law', () => {
+  it('exports PAPER_REFERENCE_HEIGHT = 1100 (playground sheet-height law)', () => {
+    expect(PAPER_REFERENCE_HEIGHT).toBe(1100)
+  })
+
+  it('default path (referenceHeight omitted) is byte-stable at 32x32', () => {
+    const map = proceduralHeightMap('paper/cold-press', 1, 32, 32)!
+    expect(heightBytesHash(map)).toBe(2760261721)
+  })
+
+  it('default path (referenceHeight omitted) is byte-stable at non-square 16x12', () => {
+    const map = proceduralHeightMap('paper/cold-press', 2, 16, 12)!
+    expect(heightBytesHash(map)).toBe(1254573053)
+  })
+
+  it('frequency scales with outputHeight / referenceHeight (512 row has ~half the cycles of 1024)', () => {
+    // Median-crossing count of a smoothed centre row tracks the base cycle
+    // count: under the referenceHeight law, cycles ∝ height, so the 512 row
+    // has ~half the crossings of the 1024 row. Under the default
+    // (cycles-across-the-map) formula both rows carry the same cycle count
+    // (ratio ~1) — so this pin discriminates the scale law.
+    const refH = PAPER_REFERENCE_HEIGHT
+    const smooth = (row: ArrayLike<number>, w: number): Float32Array => {
+      const out = new Float32Array(row.length)
+      const h = w >> 1
+      for (let i = 0; i < row.length; i++) {
+        let s = 0; let c = 0
+        for (let j = -h; j <= h; j++) {
+          const k = i + j
+          if (k >= 0 && k < row.length) { s += row[k]; c++ }
+        }
+        out[i] = s / c
+      }
+      return out
+    }
+    const medianCrossings = (row: ArrayLike<number>): number => {
+      const sorted = Array.from(row).sort((a, b) => a - b)
+      const med = sorted[sorted.length >> 1]
+      let n = 0
+      for (let i = 1; i < row.length; i++) {
+        if ((row[i - 1] - med) * (row[i] - med) < 0) n++
+      }
+      return n
+    }
+    const rowOf = (map: Float32Array, size: number, y: number): Float32Array => {
+      const row = new Float32Array(size)
+      for (let x = 0; x < size; x++) row[x] = map[y * size + x]
+      return row
+    }
+    const avgCrossings = (map: Float32Array, size: number, rows: number[]): number => {
+      let total = 0
+      for (const y of rows) total += medianCrossings(smooth(rowOf(map, size, y), 5))
+      return total / rows.length
+    }
+    const mapSmall = proceduralHeightMap('paper/cold-press', 1, 512, 512, refH)!
+    const mapLarge = proceduralHeightMap('paper/cold-press', 1, 1024, 1024, refH)!
+    const cSmall = avgCrossings(mapSmall, 512, [128, 256, 384])
+    const cLarge = avgCrossings(mapLarge, 1024, [256, 512, 768])
+    expect(cLarge).toBeGreaterThan(0)
+    expect(cSmall).toBeGreaterThan(0)
+    const ratio = cSmall / cLarge
+    expect(ratio > 0.2 && ratio < 0.55).toBe(true)
+  })
+
+  it('no tile repetition: a 512 map with referenceHeight 1100 has column 0 distinct from column 256', () => {
+    const size = 512
+    const map = proceduralHeightMap('paper/cold-press', 1, size, size, PAPER_REFERENCE_HEIGHT)!
+    let anyDiffers = false
+    for (let y = 0; y < size; y++) {
+      if (map[y * size] !== map[y * size + 256]) {
+        anyDiffers = true
+        break
+      }
+    }
+    expect(anyDiffers).toBe(true)
+  })
+
+  it('referenceHeight path stays total: unknown id / bad sizes / bad referenceHeight return null', () => {
+    expect(proceduralHeightMap('paper/nope', 1, 32, 32, PAPER_REFERENCE_HEIGHT)).toBe(null)
+    expect(proceduralHeightMap('paper/cold-press', 1, 0, 32, PAPER_REFERENCE_HEIGHT)).toBe(null)
+    expect(proceduralHeightMap('paper/cold-press', 1, 32, -4, PAPER_REFERENCE_HEIGHT)).toBe(null)
+    expect(proceduralHeightMap('paper/cold-press', 1, 8.5, 8, PAPER_REFERENCE_HEIGHT)).toBe(null)
   })
 })
 

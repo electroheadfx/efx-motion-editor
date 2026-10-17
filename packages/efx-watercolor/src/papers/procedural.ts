@@ -35,13 +35,29 @@ export type ProceduralPaperId = (typeof PROCEDURAL_PAPER_IDS)[number]
 export const PROCEDURAL_TILE_SIZE = 256
 
 /**
+ * Playground sheet-height law (numbers only, not shader provenance — P1):
+ * a sheet is PAPER_REFERENCE_HEIGHT texels tall in paper units, so grain has
+ * constant physical size at any document size. Recipe frequency `f` means
+ * "cycles per PAPER_REFERENCE_HEIGHT texels of sheet height".
+ */
+export const PAPER_REFERENCE_HEIGHT = 1100
+
+/**
  * Per-paper field recipe. The knobs shape one clean-room process
  * (tileable fBm tooth + low-frequency mottle + sparse flecks) — the
  * slider-bottom law's cousin: finer papers take a higher frequency and
  * a shallower amplitude on the SAME process, never a different look.
+ *
+ * Frequency semantics (two meanings, one number):
+ *  - Default (referenceHeight omitted): "cycles across the generated map"
+ *    — the 256-tile recipe domain PaperPicker / paperPass rely on.
+ *  - referenceHeight provided: "cycles per referenceHeight texels of sheet
+ *    height" — isotropic cycles-per-texel f / referenceHeight. At
+ *    PAPER_REFERENCE_HEIGHT = 1100 this is the playground constant-physical-
+ *    size law.
  */
 interface PaperFieldRecipe {
-  /** Tooth fBm base frequency (cycles across the tile). */
+  /** Tooth fBm base frequency (see frequency semantics above). */
   readonly toothFrequency: number
   /** Tooth fBm octaves. */
   readonly toothOctaves: number
@@ -49,7 +65,7 @@ interface PaperFieldRecipe {
   readonly toothAmplitude: number
   /** Low-frequency mottle amplitude. */
   readonly mottleAmplitude: number
-  /** Mottle frequency. */
+  /** Mottle frequency (see frequency semantics above). */
   readonly mottleFrequency: number
   /** Sparse fleck amplitude (signed). */
   readonly fleckAmplitude: number
@@ -57,7 +73,7 @@ interface PaperFieldRecipe {
   readonly fleckDensity: number
   /** Optional directional streak weight (washi / laid fiber). */
   readonly streakAmplitude: number
-  /** Streak frequency along the laid axis. */
+  /** Streak frequency along the laid axis (see frequency semantics above). */
   readonly streakFrequency: number
 }
 
@@ -194,49 +210,85 @@ function tileFbm(
  * Deterministic height map for a procedural paper.
  * Same (paperId, seed, width, height) ⇒ same bytes (T-56-13).
  * Unknown id → null (total, never a throw).
+ *
+ * `referenceHeight` (optional): when omitted the coordinate mapping is
+ * unchanged ("cycles across the generated map") so PaperPicker thumbs and
+ * paperPass bake tooth keep their bytes. When provided, recipe frequency `f`
+ * is "cycles per referenceHeight texels of sheet height" — isotropic
+ * cycles-per-texel f / referenceHeight (261017-iwm scale law).
  */
 export function proceduralHeightMap(
   paperId: string,
   seed: number,
   width = PROCEDURAL_TILE_SIZE,
   height = PROCEDURAL_TILE_SIZE,
+  referenceHeight?: number,
 ): Float32Array | null {
   if (!isProceduralPaperId(paperId)) return null
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) return null
   if (!Number.isFinite(seed)) return null
   const recipe = FIELD_RECIPES[paperId]
-  // Integer lattice period keeps the tile seamless: the noise domain repeats
-  // every `period` samples, and the map is generated over exactly one period.
-  const period = Math.max(4, Math.round(recipe.toothFrequency))
-  const mottlePeriod = Math.max(2, Math.round(recipe.mottleFrequency))
+  const useRefH = referenceHeight !== undefined && Number.isFinite(referenceHeight) && referenceHeight > 0
+
+  // Integer lattice period. Default path: one period across the map (seamless
+  // tile). referenceHeight path: lattice sized to cover the sampled span
+  // without wrapping — no repetition at any canvas size.
+  let period: number
+  let mottlePeriod: number
+  let streakPeriod: number
+  if (useRefH) {
+    const refH = referenceHeight!
+    const maxDim = Math.max(width, height)
+    const toothSpan = (maxDim / refH) * recipe.toothFrequency
+    const mottleSpan = (maxDim / refH) * recipe.mottleFrequency
+    const streakSpan = (maxDim / refH) * recipe.streakFrequency
+    period = Math.max(4, Math.ceil(toothSpan) + 1)
+    mottlePeriod = Math.max(2, Math.ceil(mottleSpan) + 1)
+    streakPeriod = Math.max(2, Math.ceil(streakSpan) + 1)
+  } else {
+    period = Math.max(4, Math.round(recipe.toothFrequency))
+    mottlePeriod = Math.max(2, Math.round(recipe.mottleFrequency))
+    streakPeriod = Math.max(2, Math.round(recipe.streakFrequency))
+  }
 
   const toothLattices: Float32Array[] = []
   for (let o = 0; o < Math.max(1, recipe.toothOctaves); o++) {
     toothLattices.push(tileLattice(seed, `${paperId}|tooth|${o}`, period << o))
   }
   const mottleLattice = tileLattice(seed, `${paperId}|mottle`, mottlePeriod)
-  const streakLattice = tileLattice(seed, `${paperId}|streak`, Math.max(2, Math.round(recipe.streakFrequency)))
+  const streakLattice = tileLattice(seed, `${paperId}|streak`, streakPeriod)
   const fleckRng = seededRng(seed, `${paperId}|fleck`)
 
   const out = new Float32Array(width * height)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const u = (x / width) * period
-      const v = (y / height) * period
+      let u: number
+      let v: number
+      let mu: number
+      let mv: number
+      let su: number
+      let sv: number
+      if (useRefH) {
+        const refH = referenceHeight!
+        // Isotropic cycles-per-texel: f / referenceHeight on both axes.
+        u = x * (recipe.toothFrequency / refH)
+        v = y * (recipe.toothFrequency / refH)
+        mu = x * (recipe.mottleFrequency / refH)
+        mv = y * (recipe.mottleFrequency / refH)
+        su = x * (recipe.streakFrequency / refH)
+        sv = y * (recipe.streakFrequency / refH) * 0.15
+      } else {
+        u = (x / width) * period
+        v = (y / height) * period
+        mu = (x / width) * mottlePeriod
+        mv = (y / height) * mottlePeriod
+        su = (x / width) * recipe.streakFrequency
+        sv = (y / height) * recipe.streakFrequency * 0.15
+      }
       const tooth = tileFbm(toothLattices, period, u, v, recipe.toothOctaves)
-      const mottle = sampleLattice(
-        mottleLattice,
-        mottlePeriod,
-        (x / width) * mottlePeriod,
-        (y / height) * mottlePeriod,
-      )
+      const mottle = sampleLattice(mottleLattice, mottlePeriod, mu, mv)
       const streak = recipe.streakAmplitude !== 0
-        ? sampleLattice(
-          streakLattice,
-          Math.max(2, Math.round(recipe.streakFrequency)),
-          (x / width) * recipe.streakFrequency,
-          (y / height) * recipe.streakFrequency * 0.15,
-        )
+        ? sampleLattice(streakLattice, streakPeriod, su, sv)
         : 0.5
       // One fleck draw per pixel — deterministic sequence, density-gated.
       const fleck = fleckRng() < recipe.fleckDensity ? (fleckRng() * 2 - 1) * recipe.fleckAmplitude : 0
