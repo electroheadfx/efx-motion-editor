@@ -23,6 +23,7 @@ import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import type { PhysicsPaintWorkflowRotoScriptState } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
+import { captureLayerStack } from '../../../lib/paperFondCapture';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 
@@ -119,12 +120,19 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
     if (!canvas) return;
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
-    return subscribeRotoPlaybackBackground({
+    const frame = requestAnimationFrame(() => {
+      captureLayerStack(canvas.closest('.physics-paint-canvas-stack') ?? canvas.parentElement);
+    });
+    const unsubscribe = subscribeRotoPlaybackBackground({
       context,
       width: props.width,
       height: props.height,
       background: props.background,
     });
+    return () => {
+      cancelAnimationFrame(frame);
+      unsubscribe();
+    };
   }, [props.background.background, props.background.color, props.background.grainStrength, props.background.grainScale, props.height, props.width]);
 
   return <canvas class="physics-paint-cached-roto-playback-background" ref={canvasRef} width={props.width} height={props.height} aria-hidden="true" />;

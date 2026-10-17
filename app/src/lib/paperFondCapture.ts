@@ -27,3 +27,39 @@ async function writePaperFondCapture(): Promise<void> {
     // Capture must never break the Studio.
   }
 }
+
+/**
+ * Measure-only: dump the layer-stack computed styles so a covering layer is
+ * visible in the capture (the fond canvas is proven dense — the wash-out is
+ * whatever sits on top of it).
+ */
+export function captureLayerStack(root: HTMLElement | null): void {
+  if (!root) return;
+  const describe = (selector: string): Record<string, string> | null => {
+    const element = root.querySelector(selector) ?? document.querySelector(selector);
+    if (!element) return { missing: 'true' };
+    const style = getComputedStyle(element);
+    return {
+      className: element.className,
+      display: style.display,
+      visibility: style.visibility,
+      opacity: style.opacity,
+      zIndex: style.zIndex,
+      mixBlendMode: style.mixBlendMode,
+      isolation: style.isolation,
+      backgroundColor: style.backgroundColor,
+      position: style.position,
+    };
+  };
+  capturePaperFond('layer-stack', {
+    fondLayer: describe('.physics-paint-fond-layer'),
+    fondCanvas: describe('.physics-paint-cached-roto-playback-background'),
+    tracksGroup: describe('.physics-paint-tracks-group'),
+    shell: describe('.demo-canvas-shell'),
+    paintCanvas: describe('.paint-canvas'),
+    engineSurface: describe('.physics-paint-engine-surface'),
+    aquarelleLayer: describe('.aquarelle-live-layer'),
+    aquarelleCanvas: describe('.aquarelle-live-canvas'),
+    programMonitor: describe('.physics-paint-program-monitor'),
+  });
+}

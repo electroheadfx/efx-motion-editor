@@ -6401,8 +6401,11 @@ button.destructive {
 /* F2a: aquarelle is a transmittance layer — its multiply must meet the
    document fond. The isolation group (which keeps engine-1's track CSS blend
    off the fond) would trap the blend on transparent black, so it lifts while
-   the water-colour layer is up. engine-1 is hidden in this mode anyway. */
-.physics-paint-tracks-group.aquarelle-compositing {
+   the water-colour layer is up. engine-1 is hidden in this mode anyway.
+   studio-reopen-paper-washout: also lift by DOM presence — the module signal
+   resets to 'brush' on Studio navigation, so the class can lag the layer. */
+.physics-paint-tracks-group.aquarelle-compositing,
+.physics-paint-tracks-group:has(.aquarelle-live-canvas) {
   isolation: auto;
 }
 
