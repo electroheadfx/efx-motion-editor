@@ -25,6 +25,7 @@ import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/ph
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
 import { capturePaperFond } from '../lib/paperFondCapture';
+import { isOpaqueRaster } from '../lib/rasterAlpha';
 import { applyPaperPass, getPaperPassTile } from '../lib/paperPass';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
@@ -2805,22 +2806,10 @@ function _resolveFlattenedFrame(
     if (!fondCtx) throw new Error('_resolveFlattenedFrame: 2d rendering context unavailable');
     drawMissingRotoBackground(fondCtx, fondInstruction, size.width, size.height, null, fondPaperCanvas);
     // studio-reopen-paper-washout: the aquarelle cache is MODE.transparent
-    // transmittance (opaque — "how much paper light gets through") and must
-    // MULTIPLY over the fond, like the live layer. Engine-1 paint is real-alpha
-    // and stays source-over. Branch on opacity: an opaque raster is
-    // transmittance; a raster with transparent pixels is paint. Falls back to
-    // source-over when the context cannot be sampled (test mocks).
-    let isTransmittance = false;
-    try {
-      const rasterCtx = (result.raster as HTMLCanvasElement).getContext('2d');
-      if (rasterCtx && typeof rasterCtx.getImageData === 'function') {
-        const corner = rasterCtx.getImageData(0, 0, 1, 1).data;
-        isTransmittance = corner[3] === 255;
-      }
-    } catch {
-      isTransmittance = false;
-    }
-    fondCtx.globalCompositeOperation = isTransmittance ? 'multiply' : 'source-over';
+    // transmittance (opaque) and must MULTIPLY over the fond; engine-1 paint is
+    // real-alpha and stays source-over. Branch on raster opacity (probe lives
+    // outside this file — the frame/export guard pins it pixel-API-free).
+    fondCtx.globalCompositeOperation = isOpaqueRaster(result.raster as HTMLCanvasElement) ? 'multiply' : 'source-over';
     fondCtx.drawImage(result.raster, 0, 0);
     fondCtx.globalCompositeOperation = 'source-over';
     raster = fondCanvas;

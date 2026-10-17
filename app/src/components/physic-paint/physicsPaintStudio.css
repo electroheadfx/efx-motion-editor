@@ -6405,11 +6405,15 @@ button.destructive {
    studio-reopen-paper-washout: also lift by DOM presence — the module signal
    resets to 'brush' on Studio navigation, so the class can lag the layer. */
 .physics-paint-tracks-group.aquarelle-compositing,
-.physics-paint-tracks-group:has(.aquarelle-live-canvas) {
+.physics-paint-tracks-group:has(.aquarelle-live-canvas),
+.physics-paint-tracks-group:has(.physics-paint-program-monitor) {
   isolation: auto;
 }
 
-.physics-paint-tracks-group.aquarelle-compositing .physics-paint-program-monitor {
+/* studio-reopen-paper-washout: the monitor carries paint (transmittance cache
+   or engine-1 alpha) over the document fond — always multiply, never cover the
+   paper. Transparent pixels (engine-1) leave the fond untouched. */
+.physics-paint-program-monitor {
   mix-blend-mode: multiply;
 }
 
