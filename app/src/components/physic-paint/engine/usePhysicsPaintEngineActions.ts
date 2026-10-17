@@ -12,8 +12,18 @@ export interface PhysicsPaintEngineActionsInput {
 
 export function createPhysicsPaintEngineActions(input: PhysicsPaintEngineActionsInput) {
   const canMutate = () => Boolean(input.engine) && !input.isMutationLocked?.();
+  // studio-reopen-paper-washout: paper-display fields (background id, grain
+  // strength/scale) are COMPOSITE-ONLY — the document fond / paperPass own the
+  // visible paper. They must survive an engine that is not ready yet, or the
+  // store mirror (written unconditionally by setPaperId) and the Studio
+  // settings diverge and the next background-metadata sync clobbers the pick.
+  const canUpdatePaperDisplay = () => !input.isMutationLocked?.();
   const updateSetting = <K extends keyof PhysicsPaintStudioSettings>(key: K, value: PhysicsPaintStudioSettings[K]) => {
     if (!canMutate()) return;
+    input.setSettings((current) => ({ ...current, [key]: value }));
+  };
+  const updatePaperDisplaySetting = <K extends keyof PhysicsPaintStudioSettings>(key: K, value: PhysicsPaintStudioSettings[K]) => {
+    if (!canUpdatePaperDisplay()) return;
     input.setSettings((current) => ({ ...current, [key]: value }));
   };
 
@@ -44,27 +54,29 @@ export function createPhysicsPaintEngineActions(input: PhysicsPaintEngineActions
   };
 
   const setBackground = (background: StudioBackgroundMode) => {
-    if (!canMutate()) return;
+    if (!canUpdatePaperDisplay()) return;
     // 56-05 (PAPER-01): library paper ids never reach the engine's BgMode —
     // the engine draws its own paper for the deposit role only; the display
     // fond is paperPass. Selector segments pass through unchanged.
-    const engineMode: BgMode = (background === 'transparent' || background === 'white' || background === 'canvas1' || background === 'canvas2' || background === 'canvas3' || background === 'photo')
-      ? background
-      : 'transparent';
-    input.engine!.setBgMode(engineMode);
-    updateSetting('background', background);
+    if (input.engine) {
+      const engineMode: BgMode = (background === 'transparent' || background === 'white' || background === 'canvas1' || background === 'canvas2' || background === 'canvas3' || background === 'photo')
+        ? background
+        : 'transparent';
+      input.engine.setBgMode(engineMode);
+    }
+    updatePaperDisplaySetting('background', background);
   };
 
   const setGrainStrength = (grainStrength: number) => {
-    if (!canMutate()) return;
-    input.engine!.setEmbossStrength(grainStrength);
-    updateSetting('grainStrength', grainStrength);
+    if (!canUpdatePaperDisplay()) return;
+    input.engine?.setEmbossStrength(grainStrength);
+    updatePaperDisplaySetting('grainStrength', grainStrength);
   };
 
   // 260923-bcm: grain SCALE is project-side paper pattern only — engine
   // visible background is suppressed (PhysicsPaintCanvasMount), so NO engine call.
   const setGrainScale = (grainScale: number) => {
-    updateSetting('grainScale', grainScale);
+    updatePaperDisplaySetting('grainScale', grainScale);
   };
 
   const setEdgeDetail = (edgeDetail: number) => {

@@ -93,4 +93,34 @@ describe('Physics Paint engine actions', () => {
       activePhysicsAction: null,
     });
   });
+
+  /**
+   * studio-reopen-paper-washout: paper display (background id + grain) is a
+   * COMPOSITE-ONLY field — it must never be gated on engine readiness. The
+   * Studio's paper pick path (handlePaperIdChange) writes the store mirror
+   * unconditionally via setPaperId but updates settings through this action;
+   * when the engine is not yet ready the settings write is dropped and
+   * settings.background stays the unhydrated default. The next
+   * useRotoBackgroundMetadataSync write then clobbers the track mirror with
+   * that stale id, and the fond renders the jpg wash (canvas1) instead of the
+   * engine sheet.
+   */
+  it('setBackground / setGrainStrength update settings even with no engine (paper display is composite-only)', () => {
+    const settings = makeInitialPhysicsPaintStudioSettings();
+    const setSettings = vi.fn((update: PhysicsPaintStudioSettings | ((current: PhysicsPaintStudioSettings) => PhysicsPaintStudioSettings)) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _next = typeof update === 'function' ? update(settings) : update;
+    });
+    const actions = createPhysicsPaintEngineActions({
+      engine: null,
+      settings,
+      setSettings,
+      isMutationLocked: () => false,
+    });
+
+    actions.setBackground('paper/kraft');
+    actions.setGrainStrength(0.8);
+
+    expect(setSettings).toHaveBeenCalledTimes(2);
+  });
 });

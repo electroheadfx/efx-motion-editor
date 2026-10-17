@@ -215,7 +215,10 @@ describe('260923-bcm Studio live wiring source pins', () => {
     const start = actions.indexOf('const setGrainScale');
     expect(start, 'setGrainScale must exist in usePhysicsPaintEngineActions').toBeGreaterThan(-1);
     const body = actions.slice(start, actions.indexOf('\n  const ', start + 1));
-    expect(body).toContain("updateSetting('grainScale'");
+    // studio-reopen-paper-washout: paper-display settings ride the engine-free
+    // updatePaperDisplaySetting helper (the grain scale must survive an engine
+    // that is not ready yet). The no-engine-call half of the contract is below.
+    expect(body.includes("updatePaperDisplaySetting('grainScale'") || body.includes("updateSetting('grainScale'")).toBe(true);
     expect(body).not.toContain('setVisibleBackground');
     expect(body).not.toContain('setBgMode');
     expect(body).not.toContain('setPaperGrain');
