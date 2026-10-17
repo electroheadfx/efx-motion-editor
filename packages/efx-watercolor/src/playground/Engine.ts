@@ -278,6 +278,7 @@ export class WatercolorEngine {
       paperField: this.g.program(S.paperFieldFS),
       paperLight: this.g.program(S.paperLightFS),
       paperSwatch: this.g.program(S.paperSwatchFS),
+      paperSheet: this.g.program(S.paperSheetFS),
       display: this.g.program(S.displayFS),
     };
     this.fitCanvas();
@@ -934,8 +935,72 @@ export class WatercolorEngine {
     return c;
   }
 
+  /**
+   * The sheet alone at `width`×`height` — the fond / thumb source. Same
+   * allocation + readPixels tail as `paperSwatch`, but `paperSheetFS`
+   * (no ultramarine wash) and the sheet origin + sheet scale law.
+   */
+  paperSheet(preset: PaperPreset, width: number, height: number, scale = PAPER_UNITS / height): HTMLCanvasElement {
+    if (!(width > 0) || !Number.isFinite(width) || !(height > 0) || !Number.isFinite(height)) {
+      throw new RangeError(`paperSheet: width and height must be positive and finite (got ${width}×${height})`);
+    }
+    if (!(scale > 0) || !Number.isFinite(scale)) {
+      throw new RangeError(`paperSheet: scale must be positive and finite (got ${scale})`);
+    }
+    const w = Math.round(width), h = Math.round(height);
+    const { gl, g } = this;
+    const paper = g.target(w, h, [RGBA8], gl.LINEAR);
+    const out = g.target(w, h, [RGBA8], gl.NEAREST);
+    this.drawPaper(paper, [0, 0], scale, preset);
+    const s = this.programs.paperSheet;
+    s.bind();
+    gl.uniform1i(s.u.uPaper, g.bindTex(0, paper.tex[0]));
+    this.paperUniforms(s, preset, 1);
+    g.draw(out);
+    const px = new Uint8Array(w * h * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, out.fbo);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    g.disposeTarget(paper);
+    g.disposeTarget(out);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d')!;
+    const img = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y++) img.data.set(px.subarray((h - 1 - y) * w * 4, (h - y) * w * 4), y * w * 4);
+    ctx.putImageData(img, 0, 0);
+    return c;
+  }
+
+  /**
+   * The height channel of the packed paper texel (paperLightFS: lit, height,
+   * mottle, fleck) as `width * height` floats in 0..1 — the bake tooth's field.
+   */
+  paperHeight(preset: PaperPreset, width: number, height: number, scale = PAPER_UNITS / height): Float32Array {
+    if (!(width > 0) || !Number.isFinite(width) || !(height > 0) || !Number.isFinite(height)) {
+      throw new RangeError(`paperHeight: width and height must be positive and finite (got ${width}×${height})`);
+    }
+    if (!(scale > 0) || !Number.isFinite(scale)) {
+      throw new RangeError(`paperHeight: scale must be positive and finite (got ${scale})`);
+    }
+    const w = Math.round(width), h = Math.round(height);
+    const { gl, g } = this;
+    const paper = g.target(w, h, [RGBA8], gl.LINEAR);
+    this.drawPaper(paper, [0, 0], scale, preset);
+    const px = new Uint8Array(w * h * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, paper.fbo);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    g.disposeTarget(paper);
+    const out = new Float32Array(w * h);
+    // y-flip like paperSheet so the height rows sit in canvas order
+    for (let y = 0; y < h; y++) {
+      const src = (h - 1 - y) * w * 4;
+      for (let x = 0; x < w; x++) out[y * w + x] = px[src + x * 4 + 1] / 255;
+    }
+    return out;
+  }
+
   /** Generate a paper into `t`: `offset` places it on the sheet (texels), `scale` is paper units per texel. */
-  private drawPaper(t: Target, offset: [number, number], scale: number, preset = this.paperPreset) {
+  drawPaper(t: Target, offset: [number, number], scale: number, preset = this.paperPreset) {
     const { gl, g } = this;
     const field = g.target(t.w, t.h, [HALF_FLOAT_RGBA], gl.NEAREST);
     const f = this.programs.paperField;

@@ -100,7 +100,6 @@ import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
 import { useRotoBackgroundMetadataSync } from './hooks/useRotoBackgroundMetadataSync';
-import { usePaperSheetWarmup } from './hooks/usePaperSheetWarmup';
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/rotoOnionPreview';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
 import { projectPhysicsPaintLoopClipPresentation } from './view/physicsPaintLoopClipPresentation';
@@ -1036,14 +1035,6 @@ export function PhysicsPaintStudio() {
   const canvasHeight = workingCanvasSize.height;
   const paperTextureScale = canvasWidth / projectCanvasWidth;
   const canvasKey = `${canvasWidth}x${canvasHeight}`;
-  // 261017-mdr: idle warm-up of the selected procedural sheet + picker thumbs.
-  // Deferred off first paint via the hook — never inline Studio warm-up logic.
-  usePaperSheetWarmup({
-    paperTexture: settings.background.startsWith('paper/') ? settings.background : 'paper/cold-press',
-    width: canvasWidth,
-    height: canvasHeight,
-    grainScale: settings.grainScale,
-  });
   const { engine, engineRef, canvasMounted, setCanvasMounted, handleEngineReady, handleNativePenInputReady } = usePhysicsPaintEngineLifecycle({
     canvasKey,
     canvasWidth,

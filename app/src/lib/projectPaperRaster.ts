@@ -1,11 +1,9 @@
 // 56-05 (PAPER-01): the 13-paper library's procedural height fields.
 // The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
-// 261017-ki6: the fond is a 1:1 port of the watercolor-playground paper
-// shader (playgroundPaperField) — not an app-authored equivalent process.
-// 261017-mz9: sheet generation moved off the main thread — this module is the
-// cache-read + async kick seam, never a generator.
-import { presetForPaperId } from '@efxlab/efx-watercolor/papers';
-import { requestProceduralSheet } from './paperSheetClient';
+// 261017-nnu: the fond sheet comes from the vendored WatercolorEngine via
+// enginePaperSheet — one generator, no port, no worker.
+import { PAPER_UNITS } from '@efxlab/efx-watercolor/papers';
+import { getEnginePaperSheet } from './enginePaperSheet';
 
 const PAPER_TEXTURE_URLS: Record<string, string> = {
   canvas1: '/img/paper_1.jpg',
@@ -34,13 +32,10 @@ const textureListeners = new Map<string, Set<() => void>>();
 const proceduralFondCache = new Map<string, HTMLCanvasElement>();
 
 /**
- * 261017-mz9: cache-read + async kick, never a generator. On hit, return the
- * cached canvas. On miss, request the sheet from the worker and return null
- * this tick — the flat tint draws while the sheet is in flight. When the
- * promise settles the delivered field is drawn scaled up into a dedicated
- * fond-size cache canvas (one continuous field, never a createPattern tile
- * repeat) and notifyTextureListeners fires so _ensureFondTextureSubscription
- * recomposites onto the real sheet.
+ * 261017-nnu: cache-read + engine call, never a generator. On hit, return the
+ * cached canvas. On miss, take the sheet from the vendored engine the same
+ * tick (no null-then-notify flight) and notifyTextureListeners so existing
+ * subscriptions recomposite onto the real sheet.
  *
  * Cache-key string shape from 20f9dfdc stays untouched.
  */
@@ -54,34 +49,11 @@ function buildProceduralPaperFond(
   const cacheKey = `${paperTexture}|1|${width}x${height}|${normalized}`;
   const cached = proceduralFondCache.get(cacheKey);
   if (cached) return cached;
-  const preset = presetForPaperId(paperTexture);
-  if (!preset) return null;
-  void requestProceduralSheet({ paperTexture, width, height, grainScale: scale })
-    .then((result) => {
-      if (!result) return;
-      if (proceduralFondCache.has(cacheKey)) return;
-      const fieldCanvas = document.createElement('canvas');
-      fieldCanvas.width = result.fieldWidth;
-      fieldCanvas.height = result.fieldHeight;
-      const fieldCtx = fieldCanvas.getContext('2d');
-      if (!fieldCtx) return;
-      const image = fieldCtx.createImageData(result.fieldWidth, result.fieldHeight);
-      image.data.set(result.pixels);
-      fieldCtx.putImageData(image, 0, 0);
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext('2d');
-      if (!context) return;
-      // Upscale one continuous field to the fond size — never tile-repeat.
-      context.drawImage(fieldCanvas, 0, 0, width, height);
-      proceduralFondCache.set(cacheKey, canvas);
-      notifyTextureListeners(paperTexture);
-    })
-    .catch((error) => {
-      console.warn('projectPaperRaster: procedural sheet failed', error);
-    });
-  return null;
+  const sheet = getEnginePaperSheet(paperTexture, width, height, PAPER_UNITS / (height * normalized));
+  if (!sheet) return null;
+  proceduralFondCache.set(cacheKey, sheet);
+  notifyTextureListeners(paperTexture);
+  return sheet;
 }
 
 /** Positive finite grain scale, else 1 (hostile input never hangs a tile loop). */

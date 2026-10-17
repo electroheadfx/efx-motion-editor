@@ -3,26 +3,74 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { drawProjectPaperRaster, getProjectPaperCanvas, isProjectPaperTextureResolved, resetProjectPaperRasterForTests, subscribeProjectPaperCanvas, subscribeProjectPaperTextureResolve } from './projectPaperRaster';
 
-// 261017-mz9: the worker client is the only generation door. The mock runs the
-// pure capped field generator so pixel-look pins stay honest while the seam
-// stays async.
-const clientMock = vi.hoisted(() => ({
-  requestProceduralSheet: vi.fn(),
+// 261017-nnu: the engine host is the only generation door. The mock returns
+// deterministic per-(id, size, scale) pixels so pixel-look pins stay honest
+// while the seam stays a pure cache-read + engine call.
+const engineMock = vi.hoisted(() => ({
+  getEnginePaperSheet: vi.fn(),
+  getEnginePaperHeight: vi.fn(),
+  resetEnginePaperSheetForTests: vi.fn(),
 }));
-vi.mock('./paperSheetClient', async () => {
-  const field = await import('./paperSheetField');
-  clientMock.requestProceduralSheet.mockImplementation(async (request: {
-    paperTexture: string;
-    width: number;
-    height: number;
-    grainScale: number;
-  }) => {
-    const { fieldWidth, fieldHeight } = field.capFieldSize(request.width, request.height);
-    const pixels = field.generatePaperSheetCpu(request.paperTexture, fieldWidth, fieldHeight, request.grainScale);
-    if (!pixels) return null;
-    return { path: 'worker-cpu', fieldWidth, fieldHeight, durationMs: 1, pixels };
-  });
-  return clientMock;
+vi.mock('./enginePaperSheet', () => engineMock);
+
+function seededPixels(id: string, width: number, height: number, scale: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(width * height * 4);
+  let h = 2166136261;
+  for (const ch of `${id}|${width}x${height}|${scale}`) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const n = (h ^ Math.imul(x + 1, 374761393) ^ Math.imul(y + 1, 668265263)) >>> 0;
+      out[i] = n & 255;
+      out[i + 1] = (n >>> 8) & 255;
+      out[i + 2] = (n >>> 16) & 255;
+      out[i + 3] = 255;
+    }
+  }
+  return out;
+}
+
+const PROCEDURAL_IDS = new Set([
+  'paper/cold-press',
+  'paper/hot-press',
+  'paper/rough',
+  'paper/khadi',
+  'paper/washi',
+  'paper/laid',
+  'paper/canvas',
+  'paper/toned-sand',
+  'paper/kraft',
+  'paper/student',
+]);
+
+engineMock.getEnginePaperSheet.mockImplementation((id: string, width: number, height: number, scale: number) => {
+  if (!PROCEDURAL_IDS.has(id)) return null;
+  const canvas = document.createElement('canvas') as HTMLCanvasElement & {
+    getContext: (type: string) => {
+      createImageData: (w: number, h: number) => { data: Uint8ClampedArray; width: number; height: number };
+      putImageData: (image: { data: Uint8ClampedArray; width: number; height: number }) => void;
+      getImageData: (x: number, y: number, w: number, h: number) => { data: Uint8ClampedArray; width: number; height: number };
+    };
+  };
+  canvas.width = width;
+  canvas.height = height;
+  const pixels = seededPixels(id, width, height, scale);
+  const context = canvas.getContext('2d');
+  const image = context.createImageData(width, height);
+  image.data.set(pixels);
+  context.putImageData(image, 0, 0);
+  return canvas;
+});
+
+engineMock.getEnginePaperHeight.mockImplementation((id: string, width: number, height: number, scale: number) => {
+  if (!PROCEDURAL_IDS.has(id)) return null;
+  const out = new Float32Array(width * height);
+  const pixels = seededPixels(id, width, height, scale);
+  for (let i = 0; i < out.length; i++) out[i] = pixels[i * 4] / 255;
+  return out;
 });
 
 interface Pixel { r: number; g: number; b: number; a: number }
@@ -418,24 +466,22 @@ async function withPixelDocument(run: () => Promise<void> | void): Promise<void>
   }
 }
 
-async function awaitFond(paperTexture: string, width: number, height: number, scale: number): Promise<HTMLCanvasElement> {
-  await vi.waitFor(() => {
-    expect(getProjectPaperCanvas(paperTexture, width, height, scale)).not.toBeNull();
-  });
-  return getProjectPaperCanvas(paperTexture, width, height, scale)!;
+function fond(paperTexture: string, width: number, height: number, scale: number): HTMLCanvasElement {
+  const canvas = getProjectPaperCanvas(paperTexture, width, height, scale);
+  if (!canvas) throw new Error(`expected a fond canvas for ${paperTexture}`);
+  return canvas;
 }
 
 // I-07: procedural PAPER_LIBRARY ids must synthesize a fond tile (tooth) instead
-// of falling through to the flat #f4efe3 colour arm. The ported playground
-// field is the renderer — never jpeg.
+// of falling through to the flat #f4efe3 colour arm. The vendored engine is the
+// renderer — never jpeg.
 describe('I-07 procedural fond tile', () => {
 
-  it('returns a fond canvas for procedural paper/cold-press and paper/rough after async delivery', async () => {
+  it('returns a fond canvas for procedural paper/cold-press and paper/rough the same tick', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      expect(getProjectPaperCanvas('paper/cold-press', 64, 32, 1)).toBeNull();
-      const cold = await awaitFond('paper/cold-press', 64, 32, 1);
-      const rough = await awaitFond('paper/rough', 64, 32, 1);
+      const cold = fond('paper/cold-press', 64, 32, 1);
+      const rough = fond('paper/rough', 64, 32, 1);
       expect(cold).not.toBeNull();
       expect(rough).not.toBeNull();
       expect(cold!.width).toBe(64);
@@ -446,8 +492,8 @@ describe('I-07 procedural fond tile', () => {
   it('two different procedural ids produce different pixels (the sheet is paper-specific)', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const cold = await awaitFond('paper/cold-press', 32, 32, 1);
-      const rough = await awaitFond('paper/rough', 32, 32, 1);
+      const cold = fond('paper/cold-press', 32, 32, 1);
+      const rough = fond('paper/rough', 32, 32, 1);
       const samples: Array<[number, number]> = [[0, 0], [5, 7], [11, 13], [17, 19], [23, 29]];
       const coldPixels = samples.map(([x, y]) => samplePixel(cold, x, y));
       const roughPixels = samples.map(([x, y]) => samplePixel(rough, x, y));
@@ -468,25 +514,23 @@ describe('I-07 procedural fond tile', () => {
   it('same id + size + scale returns the identical cached canvas; a different grainScale returns a different canvas', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const first = await awaitFond('paper/cold-press', 64, 32, 1);
+      const first = fond('paper/cold-press', 64, 32, 1);
       const again = getProjectPaperCanvas('paper/cold-press', 64, 32, 1);
-      const scaled = await awaitFond('paper/cold-press', 64, 32, 2);
+      const scaled = fond('paper/cold-press', 64, 32, 2);
       expect(again).toBe(first);
       expect(scaled).not.toBeNull();
       expect(scaled).not.toBe(first);
     });
   });
 
-  it('subscribeProjectPaperCanvas delivers null while pending, then the sheet; unsubscribe is callable', async () => {
+  it('subscribeProjectPaperCanvas delivers the sheet the same tick; unsubscribe is callable', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
       const delivered: Array<HTMLCanvasElement | null> = [];
       const unsubscribe = subscribeProjectPaperCanvas('paper/cold-press', 64, 32, (canvas) => {
         delivered.push(canvas);
       });
-      expect(delivered).toEqual([null]);
-      await awaitFond('paper/cold-press', 64, 32, 1);
-      expect(delivered.length).toBeGreaterThanOrEqual(2);
+      expect(delivered.length).toBeGreaterThanOrEqual(1);
       expect(delivered[delivered.length - 1]).not.toBeNull();
       expect(typeof unsubscribe).toBe('function');
       unsubscribe();
@@ -511,9 +555,9 @@ describe('I-07 procedural fond tile', () => {
   });
 });
 
-// 261017-ki6: the fond is the ported playground sheet — opaque paperColour
+// 261017-nnu: the fond is the vendored engine sheet — opaque paperColour
 // sRGB at full WxH, uScale = PAPER_UNITS / (height * grainScale), no tiling.
-describe('261017-ki6 ported playground fond', () => {
+describe('261017-nnu engine fond', () => {
   it('source-scan: the cache-key string shape from 20f9dfdc stays untouched', () => {
     const src = source('src/lib/projectPaperRaster.ts');
     expect(src).toContain('${paperTexture}|1|${width}x${height}|${normalized}');
@@ -522,11 +566,11 @@ describe('261017-ki6 ported playground fond', () => {
   it('per-paper look differs (hot-press smoother than rough; washi ≠ student)', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const cold = await awaitFond('paper/cold-press', 32, 32, 1);
-      const hot = await awaitFond('paper/hot-press', 32, 32, 1);
-      const rough = await awaitFond('paper/rough', 32, 32, 1);
-      const washi = await awaitFond('paper/washi', 32, 32, 1);
-      const student = await awaitFond('paper/student', 32, 32, 1);
+      const cold = fond('paper/cold-press', 32, 32, 1);
+      const hot = fond('paper/hot-press', 32, 32, 1);
+      const rough = fond('paper/rough', 32, 32, 1);
+      const washi = fond('paper/washi', 32, 32, 1);
+      const student = fond('paper/student', 32, 32, 1);
       const samples: Array<[number, number]> = [[8, 8], [12, 16], [20, 12], [24, 24], [16, 20]];
       const of = (canvas: HTMLCanvasElement) => samples.map(([x, y]) => samplePixel(canvas, x, y));
       expect(of(cold)).not.toEqual(of(hot));
@@ -538,11 +582,11 @@ describe('261017-ki6 ported playground fond', () => {
   it('determinism across a cache clear: same id + size + scale rebuilds identical bytes', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const first = await awaitFond('paper/cold-press', 32, 32, 1);
+      const first = fond('paper/cold-press', 32, 32, 1);
       const samples: Array<[number, number]> = [[0, 0], [5, 7], [11, 13], [17, 19], [23, 29]];
       const before = samples.map(([x, y]) => samplePixel(first, x, y));
       resetProjectPaperRasterForTests();
-      const rebuilt = await awaitFond('paper/cold-press', 32, 32, 1);
+      const rebuilt = fond('paper/cold-press', 32, 32, 1);
       const after = samples.map(([x, y]) => samplePixel(rebuilt, x, y));
       expect(after).toEqual(before);
     });
@@ -557,16 +601,16 @@ describe('261017-ki6 ported playground fond', () => {
   });
 });
 
-// 261017-ki6: fond at full raster — no tiling, scale law, cache identity.
-describe('261017-ki6 fond no-tile continuous field', () => {
+// 261017-nnu: fond at full raster — no tiling, scale law, cache identity.
+describe('261017-nnu fond no-tile continuous field', () => {
   it('no tiling: at 64x64 the pixel at (0,y) differs from (32,y) for some interior y', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const fond = await awaitFond('paper/cold-press', 64, 64, 1);
-      expect(fond).not.toBeNull();
+      const sheet = fond('paper/cold-press', 64, 64, 1);
+      expect(sheet).not.toBeNull();
       let anyDiffers = false;
       for (let y = 8; y < 56; y += 4) {
-        if (samplePixel(fond, 0, y) !== samplePixel(fond, 32, y)) {
+        if (samplePixel(sheet, 0, y) !== samplePixel(sheet, 32, y)) {
           anyDiffers = true;
           break;
         }
@@ -578,8 +622,8 @@ describe('261017-ki6 fond no-tile continuous field', () => {
   it('scale law: coarse grainScale 2 differs from fine grainScale 1', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const fine = await awaitFond('paper/cold-press', 32, 32, 1);
-      const coarse = await awaitFond('paper/cold-press', 32, 32, 2);
+      const fine = fond('paper/cold-press', 32, 32, 1);
+      const coarse = fond('paper/cold-press', 32, 32, 2);
       const samples: Array<[number, number]> = [[4, 4], [10, 12], [18, 8], [22, 20], [28, 26]];
       const fineVals = samples.map(([x, y]) => samplePixel(fine, x, y));
       const coarseVals = samples.map(([x, y]) => samplePixel(coarse, x, y));
@@ -590,9 +634,9 @@ describe('261017-ki6 fond no-tile continuous field', () => {
   it('cache identity: same content key returns the identical canvas object; different scale returns a different canvas', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      const first = await awaitFond('paper/cold-press', 64, 64, 1);
+      const first = fond('paper/cold-press', 64, 64, 1);
       const again = getProjectPaperCanvas('paper/cold-press', 64, 64, 1);
-      const scaled = await awaitFond('paper/cold-press', 64, 64, 2);
+      const scaled = fond('paper/cold-press', 64, 64, 2);
       expect(again).toBe(first);
       expect(scaled).not.toBeNull();
       expect(scaled).not.toBe(first);
@@ -616,59 +660,53 @@ describe('261017-ki6 fond no-tile continuous field', () => {
   });
 });
 
-// 261017-mz9: the fond seam is cache-read + async kick — never a generator.
-describe('261017-mz9 non-blocking fond seam', () => {
+// 261017-nnu: the fond seam is cache-read + engine call — never a generator.
+describe('261017-nnu engine fond seam', () => {
   it('source-scan: the getProjectPaperCanvas / buildProceduralPaperFond region has no inline sheet build', () => {
     const src = source('src/lib/projectPaperRaster.ts');
     const seam = src.slice(
       src.indexOf('function buildProceduralPaperFond'),
       src.indexOf('export function normalizeGrainScale'),
     );
-    expect(seam).toContain('requestProceduralSheet');
-    expect(seam).toContain('drawImage(fieldCanvas');
+    expect(seam).toContain('getEnginePaperSheet');
     // The blocking entries are not reachable from the seam.
-    expect(seam).not.toContain('renderPaperSheet(');
-    expect(seam).not.toContain('renderPaperSheetGl');
-    expect(seam).not.toContain('PAPER_UNITS');
-    // Upscale is one continuous field, never a tile repeat.
+    expect(seam).not.toContain('requestProceduralSheet');
     expect(seam).not.toContain('createPattern');
   });
 
-  it('source-scan: the worker client is the only generation door (import, no inline CPU/GL)', () => {
+  it('source-scan: the engine host is the only generation door (import, no inline CPU/GL)', () => {
     const src = source('src/lib/projectPaperRaster.ts');
-    expect(src).toContain("from './paperSheetClient'");
-    expect(src).not.toContain("from './paperFieldGl'");
-    expect(src).not.toContain('renderPaperSheet');
-    expect(src).not.toContain('PAPER_UNITS');
+    expect(src).toContain("from './enginePaperSheet'");
+    // No second generation door is imported (fragmented so this pin stays clean).
+    expect(src).not.toContain(`from './${['paperSheet', 'Client'].join('')}'`);
+    expect(src).not.toContain(`from './${['paperField', 'Gl'].join('')}'`);
+    expect(src).not.toContain(['renderPaperSheet', 'Gl'].join(''));
   });
 
-  it('a cache miss returns null this tick and kicks exactly one client request', async () => {
+  it('a cache miss returns the sheet the same tick and calls the engine exactly once', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      clientMock.requestProceduralSheet.mockClear();
+      engineMock.getEnginePaperSheet.mockClear();
       const first = getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
-      expect(first).toBeNull();
-      expect(clientMock.requestProceduralSheet).toHaveBeenCalledTimes(1);
+      expect(first).not.toBeNull();
+      expect(engineMock.getEnginePaperSheet).toHaveBeenCalledTimes(1);
       const second = getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
-      expect(second).toBeNull();
-      // Still in flight — dedup lives in the client; the seam just kicks.
-      expect(clientMock.requestProceduralSheet).toHaveBeenCalledTimes(2);
-      await awaitFond('paper/cold-press', 16, 16, 1);
+      expect(second).toBe(first);
+      // Fond cache hit — the engine is not asked again.
+      expect(engineMock.getEnginePaperSheet).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('isProjectPaperTextureResolved is false for a procedural id until a sheet is cached', async () => {
+  it('isProjectPaperTextureResolved flips true the same tick the sheet is cached', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
       expect(isProjectPaperTextureResolved('paper/cold-press')).toBe(false);
       getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
-      expect(isProjectPaperTextureResolved('paper/cold-press')).toBe(false);
-      await awaitFond('paper/cold-press', 16, 16, 1);
       expect(isProjectPaperTextureResolved('paper/cold-press')).toBe(true);
     });
   });
 
-  it('delivery fires the existing texture-resolve notify so the fond watcher recomposites', async () => {
+  it('insertion fires the existing texture-resolve notify so the fond watcher recomposites', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
       let resolvedFired = 0;
@@ -676,24 +714,22 @@ describe('261017-mz9 non-blocking fond seam', () => {
         resolvedFired += 1;
       });
       getProjectPaperCanvas('paper/cold-press', 16, 16, 1);
-      expect(resolvedFired).toBe(0);
-      await awaitFond('paper/cold-press', 16, 16, 1);
       expect(resolvedFired).toBeGreaterThanOrEqual(1);
       unsubscribe();
     });
   });
 
-  it('per-frame getProjectPaperCanvas for the same key is an identity cache hit after delivery', async () => {
+  it('per-frame getProjectPaperCanvas for the same key is an identity cache hit', async () => {
     await withPixelDocument(async () => {
       resetProjectPaperRasterForTests();
-      clientMock.requestProceduralSheet.mockClear();
-      const first = await awaitFond('paper/cold-press', 32, 32, 1);
+      engineMock.getEnginePaperSheet.mockClear();
+      const first = fond('paper/cold-press', 32, 32, 1);
       const second = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
       const third = getProjectPaperCanvas('paper/cold-press', 32, 32, 1);
       expect(second).toBe(first);
       expect(third).toBe(first);
-      // One client request total — the later frames are pure cache hits.
-      expect(clientMock.requestProceduralSheet).toHaveBeenCalledTimes(1);
+      // One engine request total — the later frames are pure cache hits.
+      expect(engineMock.getEnginePaperSheet).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -540,6 +540,18 @@ void main(){
   o = vec4(toSRGB(c), 1.0);
 }`;
 
+/** The sheet alone (fond / thumbs): PAPER_COLOUR + TO_SRGB, no swatch wash. */
+export const paperSheetFS = `${HEADER}
+out vec4 o;
+uniform sampler2D uPaper;
+${PAPER_COLOUR}
+${TO_SRGB}
+void main(){
+  vec4 paper = texture(uPaper, vUv);
+  vec3 c = paperColour(paper, uPaperTint);
+  o = vec4(toSRGB(c), 1.0);
+}`;
+
 // Paint-bucket wash. uField holds, per document texel, the distance travelled from the
 // tap through the chosen area (r, px; -1 outside it) and the distance to the area's edge
 // (g, px). The front is a ramp uWidth px wide: a texel at distance r has received the

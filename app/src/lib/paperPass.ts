@@ -1,8 +1,9 @@
 import { conditionHeightMap } from '@efxlab/efx-physic-paint';
 // 56-05 (PAPER-01 / R2.4): the 13-paper library's procedural height fields.
 // The `./papers` sub-export is the lean entry (no fluid engine, no brushes).
-// 261017-ki6: the bake tooth reads the ported playground field.
-import { PAPER_UNITS, paperHeightMap } from '@efxlab/efx-watercolor/papers';
+// 261017-nnu: the bake tooth reads the engine height channel.
+import { PAPER_UNITS } from '@efxlab/efx-watercolor/papers';
+import { getEnginePaperHeight } from './enginePaperSheet';
 import { getProjectPaperTextureImage, isProceduralPaperTexture, normalizeGrainScale } from './projectPaperRaster';
 
 // 260925-iy6 — the dynamic post-bake paper pass.
@@ -152,13 +153,13 @@ export function getPaperPassTile(
   const cached = tileCache.get(key);
   if (cached) return cached.tile;
 
-  // 56-05 (PAPER-01 / R2.4) + 261017-ki6: procedural library papers are
-  // ported playground height fields — no image decode, no async resolve.
+  // 56-05 (PAPER-01 / R2.4) + 261017-nnu: procedural library papers are
+  // engine height fields — no image decode, no async resolve.
   // Same scale law as the fond (uScale = PAPER_UNITS / (height * grainScale))
   // so the bake tooth matches the editor grain. Same encode/cache tail as
   // the image path (one conditioner, one encoder, one cache).
   if (isProceduralPaperTexture(paperTexture)) {
-    const raw = paperHeightMap(paperTexture, 1, width, height, PAPER_UNITS / (height * scale));
+    const raw = getEnginePaperHeight(paperTexture, width, height, PAPER_UNITS / (height * scale));
     if (!raw) return null;
     return _finishPaperPassTile(key, raw, width, height, k, {
       r: 230, g: 224, b: 212,

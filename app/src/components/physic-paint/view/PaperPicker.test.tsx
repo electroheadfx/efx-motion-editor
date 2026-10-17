@@ -154,13 +154,20 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(labels.includes('Scale')).toBe(true);
   });
 
-  it('no call into the fluid engine from PaperPicker.tsx', () => {
+  it('thumbs ride the engine paper host only — no fluid simulation, no WatercolorEngine construction', () => {
     const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), './PaperPicker.tsx');
     const source = readFileSync(sourcePath, 'utf8');
-    const engineTokens = /engine|deposit|fluid/i;
-    // Strip the header comment (mentions "no engine" by design) before the scan.
+    // 261017-nnu: the sheet comes from the vendored engine via the thin host.
+    expect(source).toContain("from '../../../lib/enginePaperSheet'");
+    expect(source).toContain('getEnginePaperSheet(');
+    // Strip comments before the negative scan.
     const body = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(engineTokens.test(body)).toBe(false);
+    // No fluid / deposit simulation, no direct engine construction, no paperPass.
+    expect(/\bdeposit\b/i.test(body)).toBe(false);
+    expect(/\bfluid\b/i.test(body)).toBe(false);
+    expect(body.includes('WatercolorEngine')).toBe(false);
+    expect(body.includes('paperPass')).toBe(false);
+    expect(body.includes('applyPaperPass')).toBe(false);
   });
 
   it('cells show raw tiles only — procedural relief and real jpg, no paperPass', () => {

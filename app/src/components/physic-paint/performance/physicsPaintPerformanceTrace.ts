@@ -25,7 +25,6 @@ export interface PhysicsPaintBakeParityFlushCapture {
   frameId: number | null;
   paperStrength: number | null;
   paperGrainKey: string;
-  paperHeightMapPresent: boolean;
   bbox: PhysicsPaintBakeParityBounds;
   bboxSource: 'dryRegionForStroke' | 'lastStrokeBounds' | 'full-frame';
   wet_total_alpha: number;

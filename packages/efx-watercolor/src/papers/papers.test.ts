@@ -3,36 +3,30 @@
 //
 //  Laws pinned here:
 //    PAPER-01 13 named papers in one library (10 procedural + 3 real)
-//    PAPER-01 procedural generation is seeded and byte-stable
 //    PAPER-04 the 3 recovered real papers ride the existing
 //             app/public/img assets (paper_1/2/3.jpg)
-//    R2.4     height maps encode to PaperPassTile-shaped valley+peak
-//             maps (now the ported playground field — 261017-ki6)
 //    D-12     one library grouped Procedural / Real, never tabs
+//    261017-nnu one generator (WatercolorEngine) — catalog only here
 //
 //  Flagged assumptions pinned:
 //    adjacency  two papers never share an id
 //    ordering   procedural lists the 10 names in a stable documented
 //               order; real lists paper_1, paper_2, paper_3
-//    idempotency same paper id + seed ⇒ same height-map bytes
 //
 //  Assertion style: scalar predicates (boolean/primitive toBe) so
 //  TAP diagnostics stay one-line and the RED evidence classifier
 //  can parse the report — vitest's object dumps break strict TAP.
 // ============================================================
 
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { PaperDefinition } from './library'
-import { PAPER_LIBRARY } from './library'
 import {
+  PAPER_LIBRARY,
   PAPER_PRESETS,
   PAPER_UNITS,
   PROCEDURAL_PAPER_IDS,
-  paperFieldMap,
-  paperHeightMap,
-} from './playgroundPaperField'
+  presetForPaperId,
+} from './library'
 import { encodePassTiles } from './encode'
 
 /** The 10 procedural display names, in the locked stable order. */
@@ -77,19 +71,6 @@ function isPaperDefinition(value: unknown): value is PaperDefinition {
     && typeof record.defaultScale === 'number'
     && typeof record.source === 'string'
 }
-
-/** Stable content hash over the float bytes (determinism pin, not crypto). */
-function heightBytesHash(height: Float32Array): number {
-  const bytes = new Uint8Array(height.buffer, height.byteOffset, height.byteLength)
-  let hash = 2166136261
-  for (let i = 0; i < bytes.length; i++) {
-    hash ^= bytes[i]
-    hash = Math.imul(hash, 16777619)
-  }
-  return hash >>> 0
-}
-
-const portSource = readFileSync(resolve(__dirname, 'playgroundPaperField.ts'), 'utf8')
 
 describe('paper library (PAPER-01 / PAPER-04)', () => {
   it('PAPER_LIBRARY contains exactly 13 papers', () => {
@@ -140,108 +121,38 @@ describe('paper library (PAPER-01 / PAPER-04)', () => {
   it('PAPER_PRESETS ids match the library procedural ids (one table, no drift)', () => {
     expect(PAPER_PRESETS.map((preset) => preset.id).join('|')).toBe(PROCEDURAL_IDS.join('|'))
   })
+
+  it('presetForPaperId resolves every procedural id and rejects real / unknown', () => {
+    expect(PROCEDURAL_IDS.every((id) => presetForPaperId(id) !== null)).toBe(true)
+    expect(presetForPaperId('paper/real-1')).toBe(null)
+    expect(presetForPaperId('paper/nope')).toBe(null)
+    expect(presetForPaperId('')).toBe(null)
+  })
 })
 
-describe('ported playground field (261017-ki6 idempotency)', () => {
+describe('catalog scale law (261017-nnu)', () => {
   it('exports PAPER_UNITS = 1100 (playground sheet-height law)', () => {
     expect(PAPER_UNITS).toBe(1100)
   })
 
-  it('every procedural id yields a Float32Array of width*height samples in [0, 1]', () => {
-    const width = 24
-    const height = 24
-    const scale = PAPER_UNITS / height
-    const ok = PROCEDURAL_IDS.every((id) => {
-      const map = paperHeightMap(id, 1, width, height, scale)
-      if (!map || map.length !== width * height) return false
-      for (let i = 0; i < map.length; i++) {
-        if (!(map[i] >= 0 && map[i] <= 1)) return false
-      }
-      return true
-    })
+  it('PAPER_PRESETS carry playground kind + bump + mottle + tints for the engine', () => {
+    const ok = PAPER_PRESETS.every((preset) =>
+      Number.isInteger(preset.kind)
+      && preset.kind >= 0
+      && preset.kind <= 9
+      && preset.bump > 0
+      && preset.mottle >= 0
+      && preset.tint.startsWith('#')
+      && preset.fleck.startsWith('#'))
     expect(ok).toBe(true)
-  })
-
-  it('two generator runs with the same paper id and seed produce identical height-map bytes', () => {
-    const scale = PAPER_UNITS / 48
-    const a = paperHeightMap('paper/cold-press', 7, 48, 48, scale)
-    const b = paperHeightMap('paper/cold-press', 7, 48, 48, scale)
-    expect(a !== null && b !== null).toBe(true)
-    expect(heightBytesHash(a!)).toBe(heightBytesHash(b!))
-  })
-
-  it('two generator runs with the same paper id and seed produce identical bytes for every paper', () => {
-    const scale = PAPER_UNITS / 24
-    const ok = PROCEDURAL_IDS.every((id) => {
-      const a = paperHeightMap(id, 3, 24, 24, scale)
-      const b = paperHeightMap(id, 3, 24, 24, scale)
-      return a !== null && b !== null && heightBytesHash(a) === heightBytesHash(b)
-    })
-    expect(ok).toBe(true)
-  })
-
-  it('distinct papers yield distinct height fields (adjacency — never the same bytes)', () => {
-    const scale = PAPER_UNITS / 32
-    const hashes = PROCEDURAL_IDS.map((id) => heightBytesHash(paperHeightMap(id, 5, 32, 32, scale)!))
-    expect(new Set(hashes).size).toBe(10)
-  })
-
-  it('unknown paper id returns null (total, never a throw)', () => {
-    expect(paperHeightMap('paper/nope', 1, 8, 8, 1)).toBe(null)
-    expect(paperHeightMap('', 1, 8, 8, 1)).toBe(null)
-    expect(paperHeightMap('paper/real-1', 1, 8, 8, 1)).toBe(null)
-  })
-
-  it('no generator path uses ambient randomness (pure function of id/seed/size/scale)', () => {
-    expect(portSource.includes('Math.random')).toBe(false)
-    const a = paperHeightMap('paper/rough', 11, 16, 16, PAPER_UNITS / 16)
-    const b = paperHeightMap('paper/rough', 11, 16, 16, PAPER_UNITS / 16)
-    expect(heightBytesHash(a!) === heightBytesHash(b!)).toBe(true)
-  })
-
-  it('bad sizes / bad scale stay total (null, never a throw)', () => {
-    expect(paperHeightMap('paper/cold-press', 1, 0, 32, PAPER_UNITS / 32)).toBe(null)
-    expect(paperHeightMap('paper/cold-press', 1, 32, -4, PAPER_UNITS / 32)).toBe(null)
-    expect(paperHeightMap('paper/cold-press', 1, 8.5, 8, PAPER_UNITS / 8)).toBe(null)
-    expect(paperHeightMap('paper/cold-press', Number.NaN, 8, 8, 1)).toBe(null)
-    expect(paperHeightMap('paper/cold-press', 1, 8, 8, 0)).toBe(null)
-    expect(paperHeightMap('paper/cold-press', 1, 8, 8, Number.NaN)).toBe(null)
-  })
-})
-
-// 261017-ki6: PAPER_UNITS = 1100 scale law — uScale is paper units per texel,
-// so feature size is constant at any canvas size (playground Engine.ts:353).
-describe('261017-ki6 PAPER_UNITS scale law', () => {
-  it('source-scan: the port carries PAPER_UNITS = 1100 and the uScale law', () => {
-    expect(portSource).toContain('PAPER_UNITS = 1100')
-    expect(portSource).toContain('preset.bump * 1.4')
-  })
-
-  it('no tile repetition: a 64×64 field has column 0 distinct from column 32', () => {
-    const map = paperFieldMap(64, 64, PAPER_UNITS / 64, 1, 0)
-    let anyDiffers = false
-    for (let y = 0; y < 64; y++) {
-      if (map.height[y * 64] !== map.height[y * 64 + 32]) {
-        anyDiffers = true
-        break
-      }
-    }
-    expect(anyDiffers).toBe(true)
-  })
-
-  it('scale is consumed: a finer uScale (more units per texel) differs from a coarser one', () => {
-    // grainScale 2 halves units-per-texel (features double) — the two must differ.
-    const fine = paperHeightMap('paper/cold-press', 1, 32, 32, PAPER_UNITS / 32)!
-    const coarse = paperHeightMap('paper/cold-press', 1, 32, 32, PAPER_UNITS / 64)!
-    expect(heightBytesHash(fine) === heightBytesHash(coarse)).toBe(false)
   })
 })
 
 describe('encodePassTiles shape match with PaperPassTile (R2.4)', () => {
-  it('encodePassTiles(procedural height) returns valley and peak arrays of pixel count width*height', () => {
+  it('encodePassTiles(height) returns valley and peak arrays of pixel count width*height', () => {
     const width = 16
     const heightPx = 12
-    const height = paperHeightMap('paper/cold-press', 2, width, heightPx, PAPER_UNITS / heightPx)!
+    const height = new Float32Array(width * heightPx).map((_, i) => (i % 7) / 7)
     const { valley, peak } = encodePassTiles(height, width, heightPx, 0.65, { r: 230, g: 224, b: 212 })
     expect(valley.length).toBe(width * heightPx * 4)
     expect(peak.length).toBe(width * heightPx * 4)
@@ -250,7 +161,7 @@ describe('encodePassTiles shape match with PaperPassTile (R2.4)', () => {
   it('encoded maps are RGBA with alpha 255 everywhere (straight-alpha D-02)', () => {
     const width = 8
     const heightPx = 8
-    const height = paperHeightMap('paper/washi', 4, width, heightPx, PAPER_UNITS / heightPx)!
+    const height = new Float32Array(width * heightPx).map((_, i) => (i % 5) / 5)
     const { valley, peak } = encodePassTiles(height, width, heightPx, 0.5, { r: 200, g: 190, b: 180 })
     let alphaOk = true
     for (let i = 3; i < valley.length; i += 4) {
@@ -265,7 +176,7 @@ describe('encodePassTiles shape match with PaperPassTile (R2.4)', () => {
   it('strength 0 is fully neutral (valley 255, peak 0 at every pixel)', () => {
     const width = 4
     const heightPx = 4
-    const height = paperHeightMap('paper/kraft', 9, width, heightPx, PAPER_UNITS / heightPx)!
+    const height = new Float32Array(width * heightPx).fill(0.3)
     const { valley, peak } = encodePassTiles(height, width, heightPx, 0, { r: 230, g: 224, b: 212 })
     let neutral = true
     for (let i = 0; i < valley.length; i += 4) {

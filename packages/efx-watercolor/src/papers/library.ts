@@ -9,9 +9,73 @@
 //
 //  Real entries point at the shipped jpg paths so the picker can
 //  draw the raw scan (D-11) with no engine involvement. Procedural
-//  entries ride the ported playground field via `source` = the stable
-//  paper id (playgroundPaperField / paperHeightMap).
+//  entries ride the vendored WatercolorEngine paper sheet via
+//  `source` = the stable paper id (Engine.paperSheet / paperHeight).
 // ============================================================
+
+/** Playground sheet-height law (Engine.ts PAPER_UNITS) — features drawn for a sheet this many texels tall. */
+export const PAPER_UNITS = 1100;
+
+// ------------------------------------------------------------
+// Studio ids (10 procedural papers) — PAPER_PRESETS maps these
+// onto playground kinds 0..9 so a preset change cannot drift
+// between the fond, the picker thumbs, and the bake tooth.
+// ------------------------------------------------------------
+export const PROCEDURAL_PAPER_IDS = [
+  'paper/cold-press',
+  'paper/hot-press',
+  'paper/rough',
+  'paper/khadi',
+  'paper/washi',
+  'paper/laid',
+  'paper/canvas',
+  'paper/toned-sand',
+  'paper/kraft',
+  'paper/student',
+] as const;
+
+export type ProceduralPaperId = (typeof PROCEDURAL_PAPER_IDS)[number];
+
+export interface StudioPaperPreset {
+  /** Studio id. */
+  readonly id: string;
+  /** Playground paperFieldFS kind (0 = coldPress … 9 = student). */
+  readonly kind: number;
+  /** Relief strength — paperLightFS uBump source (Engine.ts). */
+  readonly bump: number;
+  /** Cloudiness of the sheet (PAPER_COLOUR uMottle). */
+  readonly mottle: number;
+  /** Sheet colour (sRGB hex) — PAPER_COLOUR uPaperTint. */
+  readonly tint: string;
+  /** Dark specks / inclusions (sRGB hex) — PAPER_COLOUR uFleckTint. */
+  readonly fleck: string;
+}
+
+/**
+ * kind + bump + mottle + tint + fleck, unchanged from the playground
+ * papers.ts table. Studio id ↔ playground kind: cold-press→0,
+ * hot-press→1, rough→2, khadi→3, washi→4, laid→5, canvas→6,
+ * toned-sand→7, kraft→8, student→9 (playground id `cellulose`).
+ */
+export const PAPER_PRESETS: readonly StudioPaperPreset[] = Object.freeze([
+  { id: 'paper/cold-press', kind: 0, bump: 1.0, mottle: 0.05, tint: '#f6f3ec', fleck: '#8a8070' },
+  { id: 'paper/hot-press', kind: 1, bump: 0.6, mottle: 0.04, tint: '#f8f7f3', fleck: '#8a8478' },
+  { id: 'paper/rough', kind: 2, bump: 0.8, mottle: 0.06, tint: '#f5f1e8', fleck: '#857a68' },
+  { id: 'paper/khadi', kind: 3, bump: 1.0, mottle: 0.12, tint: '#efe7d6', fleck: '#6d5f4a' },
+  { id: 'paper/washi', kind: 4, bump: 0.8, mottle: 0.14, tint: '#f1ece0', fleck: '#7a6a52' },
+  { id: 'paper/laid', kind: 5, bump: 1.0, mottle: 0.05, tint: '#f2ebdb', fleck: '#8a7c64' },
+  { id: 'paper/canvas', kind: 6, bump: 1.0, mottle: 0.04, tint: '#f3efe6', fleck: '#8a8070' },
+  { id: 'paper/toned-sand', kind: 7, bump: 1.0, mottle: 0.06, tint: '#d9c8a6', fleck: '#6e5f45' },
+  { id: 'paper/kraft', kind: 8, bump: 0.8, mottle: 0.12, tint: '#b99872', fleck: '#4e3b28' },
+  { id: 'paper/student', kind: 9, bump: 1.0, mottle: 0.03, tint: '#f7f7f4', fleck: '#8a8a84' },
+]);
+
+export function presetForPaperId(paperId: string): StudioPaperPreset | null {
+  for (const preset of PAPER_PRESETS) {
+    if (preset.id === paperId) return preset;
+  }
+  return null;
+}
 
 export interface PaperDefinition {
   readonly id: string;

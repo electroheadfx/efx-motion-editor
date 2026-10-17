@@ -1,15 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// 261017-mz9: the sheet arrives from the worker client (async). Mock it at
-// module scope so the fond seam installs a field and the subscribe path
-// delivers the sheet — same door production uses, no inline generation.
-const clientMock = vi.hoisted(() => ({
-  requestProceduralSheet: vi.fn(),
+// 261017-nnu: the sheet comes from the vendored engine host. Mock it at
+// module scope so the fond seam gets a sheet — same door production uses,
+// no inline generation.
+const engineMock = vi.hoisted(() => ({
+  getEnginePaperSheet: vi.fn(),
+  getEnginePaperHeight: vi.fn(),
+  resetEnginePaperSheetForTests: vi.fn(),
 }));
-vi.mock('../../../lib/paperSheetClient', () => clientMock);
+vi.mock('../../../lib/enginePaperSheet', () => engineMock);
 
 import { createRotoScriptThumbnail } from './physicsPaintRotoScriptThumbnail';
-import { capFieldSize, generatePaperSheetCpu } from '../../../lib/paperSheetField';
 import { resetProjectPaperRasterForTests } from '../../../lib/projectPaperRaster';
 
 const webpBytes = Uint8Array.from(atob('UklGRhIAAABXRUJQVlA4IAoAAAAAAQCdASoBAAEAAUAmJaQAA3AA/v89WAAAAA=='), (char) => char.charCodeAt(0));
@@ -27,16 +28,18 @@ function installCanvas(toBlob: (callback: BlobCallback, type?: string, quality?:
 }
 
 beforeEach(() => {
-  clientMock.requestProceduralSheet.mockReset();
-  clientMock.requestProceduralSheet.mockImplementation(async (request: {
-    paperTexture: string;
-    width: number;
-    height: number;
-    grainScale: number;
-  }) => {
-    const { fieldWidth, fieldHeight } = capFieldSize(request.width, request.height);
-    const pixels = generatePaperSheetCpu(request.paperTexture, fieldWidth, fieldHeight, request.grainScale);
-    return pixels ? { path: 'worker-cpu', fieldWidth, fieldHeight, durationMs: 1, pixels } : null;
+  engineMock.getEnginePaperSheet.mockReset();
+  engineMock.getEnginePaperSheet.mockImplementation((id: string, width: number, height: number) => {
+    if (!id.startsWith('paper/') || id.startsWith('paper/real-')) return null;
+    const sheet = {
+      width,
+      height,
+      getContext: () => ({
+        drawImage() {},
+        getImageData: (_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4).fill(255), width: w, height: h }),
+      }),
+    } as unknown as HTMLCanvasElement;
+    return sheet;
   });
 });
 
@@ -98,9 +101,8 @@ describe('Roto script thumbnail', () => {
       background: { background: 'paper/cold-press', grainStrength: 1 },
       nativeEncoder: { encodeWebp },
     });
-    // flat fill (under) + field install + opaque paper sheet + script alpha
+    // flat fill (under) + opaque paper sheet + script alpha
     expect(calls[0]).toBe('fill');
-    expect(calls).toContain('put');
     expect(calls[calls.length - 1]).toBe('draw');
     expect(calls[calls.length - 2]).toBe('draw');
     expect(calls.filter((c) => c === 'draw').length).toBeGreaterThanOrEqual(2);
