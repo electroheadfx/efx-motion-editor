@@ -3,11 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
-import { PhysicsPaintTopBar, grainScaleStep, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
+import { PhysicsPaintTopBar, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
-import { commitStepperInput, parseStepperInput } from '../../shared/NumericStepper';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
 const css = () => readFileSync(cssPath, 'utf8');
@@ -32,15 +30,9 @@ function baseTopBarProps(): PhysicsPaintTopBarProps {
   return {
     brushSize: 11,
     opacity: 100,
-    background: 'canvas1',
-        grainStrength: 0.45,
-    grainScale: 1,
     ready: true,
     onBrushSizeChange: vi.fn(),
     onOpacityChange: vi.fn(),
-    onBackgroundChange: vi.fn(),
-    onGrainStrengthChange: vi.fn(),
-    onGrainScaleChange: vi.fn(),
   };
 }
 
@@ -62,12 +54,6 @@ function findByAria(tree: AnyVNode, label: string): AnyVNode {
   const match = childrenOf(tree).find((node) => (node as AnyVNode).props?.['aria-label'] === label) as AnyVNode | undefined;
   expect(match, `Missing element with aria-label ${label}`).toBeDefined();
   return match!;
-}
-
-function buttonsInGroup(tree: AnyVNode, groupLabel: string): AnyVNode[] {
-  return childrenOf(findByAria(tree, groupLabel)).filter(
-    (node) => (node as AnyVNode).type === 'button',
-  ) as AnyVNode[];
 }
 
 describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
@@ -98,116 +84,57 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
   });
 });
 
-// 260923-bcm UAT follow-up: Grain scale is a value stepper (− value +), not
-// preset buttons. The step rule is the contract: 0.5 strictly inside ]0.5, 2.0[,
-// 0.1 at/below 0.5 and at/above 2.0 — default 1.0 + → 1.5; 1.5 − − → 0.5;
-// 0.5 − → 0.4; 1.5 + → 2.0, 2.0 + → 2.1. Values live in the shared
-// [GRAIN_SCALE_MIN, GRAIN_SCALE_MAX] acceptance and route to onGrainScaleChange.
-describe('260923-bcm Grain scale value stepper (Tools surface)', () => {
-  it('renders a SliderStepper bound to grainScale with the shared bounds and live change handler', () => {
+// 261017-vcn Q6: the grain widgets left the top bar for the Paper tab. The
+// top bar keeps Brush size + Opacity only among the former top-bar controls.
+describe('261017-vcn top bar slim (I-04 remainder)', () => {
+  it('renders Brush size + Opacity and no Background / Grain rows', () => {
     const props = baseTopBarProps();
     const tree = renderTopBar(props);
-    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === SliderStepper) as AnyVNode | undefined;
-    expect(stepper, 'Grain scale must render the shared SliderStepper').toBeDefined();
-    expect(stepper!.props.value).toBe(1);
-    expect(stepper!.props.step).toBe(0.5);
-    expect(stepper!.props.min).toBe(GRAIN_SCALE_MIN);
-    expect(stepper!.props.max).toBe(GRAIN_SCALE_MAX);
-    expect(stepper!.props.ariaLabel).toBe('Grain scale');
-    expect(stepper!.props.resolveStep).toBe(grainScaleStep);
-    expect(stepper!.props.onChange).toBe(props.onGrainScaleChange);
-    // Free typed entry: any in-range number, no step-grid snap.
-    expect(stepper!.props.freeEntry).toBe(true);
-    // Beside the existing Grain strength control on the same Tools surface.
-    expect(findByAria(tree, 'Grain strength')).toBeDefined();
-    // No preset button row remains for Grain scale.
-    expect(() => findByAria(tree, 'Grain scale')).toThrow();
-  });
-
-  it('step rule walks the user click sequences: 1.0 + → 1.5 → 2.0 → 2.1 and 1.5 − − → 0.5 − → 0.4', () => {
-    let up = 1;
-    up += grainScaleStep(up);
-    expect(up).toBe(1.5);
-    up += grainScaleStep(up);
-    expect(up).toBe(2);
-    up += grainScaleStep(up);
-    expect(up).toBe(2.1);
-
-    let down = 1.5;
-    down -= grainScaleStep(down);
-    expect(down).toBe(1);
-    down -= grainScaleStep(down);
-    expect(down).toBe(0.5);
-    down -= grainScaleStep(down);
-    expect(down).toBeCloseTo(0.4, 10);
-
-    // Boundaries: interior keeps 0.5, the edges drop to 0.1.
-    expect(grainScaleStep(0.6)).toBe(0.5);
-    expect(grainScaleStep(0.5)).toBe(0.1);
-    expect(grainScaleStep(0.4)).toBe(0.1);
-    expect(grainScaleStep(1.9)).toBe(0.5);
-    expect(grainScaleStep(2)).toBe(0.1);
-    expect(grainScaleStep(9)).toBe(0.1);
-  });
-
-  it('grain strength / paper grain buttons still route to their own handlers', () => {
-    const props = baseTopBarProps();
-    const tree = renderTopBar(props);
-    const strength = buttonsInGroup(tree, 'Grain strength');
-    expect(strength.length).toBeGreaterThan(0);
-    strength[0].props.onClick();
-    expect(props.onGrainStrengthChange).toHaveBeenCalled();
-    expect(props.onGrainScaleChange).not.toHaveBeenCalled();
-  });
-
-  it('a non-default grainScale prop feeds the stepper value', () => {
-    const props = { ...baseTopBarProps(), grainScale: 0.4 };
-    const tree = renderTopBar(props);
-    const stepper = childrenOf(tree).find((node) => (node as AnyVNode).type === SliderStepper) as AnyVNode | undefined;
-    expect(stepper!.props.value).toBe(0.4);
-    expect(stepper!.props.step).toBe(0.1);
-  });
-
-  // UAT follow-up 2: free typed numbers + the European decimal comma.
-  it('accepts a free typed number: 1.3 stays 1.3 instead of snapping to the 0.5 band', () => {
-    const grain = { step: 0.5, resolveStep: grainScaleStep, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX } as const;
-    expect(commitStepperInput('1.3', grain)).toBe(1.3);
-    expect(commitStepperInput('0.75', grain)).toBe(0.75);
-    // The snap path is still what non-free fields get.
-    expect(commitStepperInput('1.3', { step: 0.5, resolveStep: grainScaleStep, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBe(1.5);
-  });
-
-  it('accepts the European decimal comma: "2,2" commits 2.2', () => {
-    expect(parseStepperInput('2,2')).toBe(2.2);
-    expect(parseStepperInput('0,5')).toBe(0.5);
-    expect(parseStepperInput('2.2')).toBe(2.2);
-    expect(commitStepperInput('2,2', { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBe(2.2);
-    expect(Number.isNaN(parseStepperInput('abc'))).toBe(true);
-    expect(commitStepperInput('abc', { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBeNull();
-  });
-
-  it('free entries still clamp to the shared grain scale bounds', () => {
-    const grain = { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX } as const;
-    expect(commitStepperInput('0', grain)).toBe(GRAIN_SCALE_MIN);
-    expect(commitStepperInput('99', grain)).toBe(GRAIN_SCALE_MAX);
+    // Brush size + Opacity remain among the former top-bar controls.
+    const sliders = childrenOf(tree).filter((node) => (node as AnyVNode).type === SliderStepper) as AnyVNode[];
+    const labels = sliders.map((s) => s.props.label);
+    expect(labels).toContain('Brush size');
+    expect(labels).toContain('Opacity');
+    expect(labels).not.toContain('Grain scale');
+    // The retired rows leave the render tree.
+    expect(() => findByAria(tree, 'Grain strength')).toThrow();
+    expect(() => findByAria(tree, 'Background')).toThrow();
   });
 });
 
 // 260923-bcm Task 3 (RED): one synchronous action writes settings + track
 // mirror + document fallback, never the engine visible background, and every
 // fond-input dep list names settings.grainScale / props.background.grainScale.
+// 261017-vcn I-04 remainder: the surviving grain pair also writes the
+// paper-display record (setPaper*) so the paper-display record and the
+// document fallback / track metadata stay in sync in the same turn.
 describe('260923-bcm Studio live wiring source pins', () => {
-  it('handleGrainScaleChange writes settings, mirror, and fallback without an engine call', () => {
+  it('handleGrainScaleChange writes settings, paper-display, mirror, and fallback without an engine call', () => {
     const studio = studioSource();
     const start = studio.indexOf('const handleGrainScaleChange');
     expect(start, 'handleGrainScaleChange must exist in PhysicsPaintStudio').toBeGreaterThan(-1);
     const body = studio.slice(start, studio.indexOf('\n  const ', start + 1) > -1 ? studio.indexOf('\n  const ', start + 1) : start + 800);
-    expect(body).toContain('setGrainScale');
-    expect(body).toContain('setRotoBackgroundMetadata');
-    expect(body).toContain('setBackgroundFallback');
-    expect(body).toContain('backgroundModeToFallback');
-    expect(body).not.toContain('setVisibleBackground');
-    expect(body).not.toContain('setBgMode');
+    expect(body.indexOf('setGrainScale'), 'must write the settings mirror').toBeGreaterThan(-1);
+    expect(body.indexOf('setPaperScale'), 'must write the paper-display record').toBeGreaterThan(-1);
+    expect(body.indexOf('setRotoBackgroundMetadata'), 'must write track metadata').toBeGreaterThan(-1);
+    expect(body.indexOf('setBackgroundFallback'), 'must write the document fallback').toBeGreaterThan(-1);
+    expect(body.indexOf('backgroundModeToFallback'), 'must map the mode to a fallback').toBeGreaterThan(-1);
+    expect(body.indexOf('setVisibleBackground'), 'no engine visible-background call').toBe(-1);
+    expect(body.indexOf('setBgMode'), 'no engine bg-mode call').toBe(-1);
+  });
+
+  it('handleGrainStrengthChange writes settings, paper-display, mirror, and fallback without an engine call', () => {
+    const studio = studioSource();
+    const start = studio.indexOf('const handleGrainStrengthChange');
+    expect(start, 'handleGrainStrengthChange must exist in PhysicsPaintStudio').toBeGreaterThan(-1);
+    const body = studio.slice(start, studio.indexOf('\n  const ', start + 1) > -1 ? studio.indexOf('\n  const ', start + 1) : start + 800);
+    expect(body.indexOf('setGrainStrength'), 'must write the settings mirror').toBeGreaterThan(-1);
+    expect(body.indexOf('setPaperStrength'), 'must write the paper-display record').toBeGreaterThan(-1);
+    expect(body.indexOf('setRotoBackgroundMetadata'), 'must write track metadata').toBeGreaterThan(-1);
+    expect(body.indexOf('setBackgroundFallback'), 'must write the document fallback').toBeGreaterThan(-1);
+    expect(body.indexOf('backgroundModeToFallback'), 'must map the mode to a fallback').toBeGreaterThan(-1);
+    expect(body.indexOf('setVisibleBackground'), 'no engine visible-background call').toBe(-1);
+    expect(body.indexOf('setBgMode'), 'no engine bg-mode call').toBe(-1);
   });
 
   it('setGrainScale is updateSetting only with no engine visible-background call', () => {
@@ -225,23 +152,40 @@ describe('260923-bcm Studio live wiring source pins', () => {
     expect(actions).toContain('setGrainScale');
   });
 
-  it('settings.grainScale appears in the TopBar memo, playback composition, and canvasStack deps', () => {
+  it('settings.grainScale rides the rightPanel memo (grain left the TopBar), playback composition, and canvasStack deps', () => {
     const studio = studioSource();
 
+    // 261017-vcn: the grain pair left the top bar — its memo no longer names
+    // grainScale. The dep belongs on the rightPanel memo now. Scalar predicates
+    // keep TAP diagnostics one-line.
     const topBarResolve = studio.slice(studio.indexOf('const topBar = topBarPropsMemo.resolve'));
     const topBarDeps = topBarResolve.slice(0, topBarResolve.indexOf('], () =>'));
-    expect(topBarDeps).toContain('settings.grainScale');
-    expect(topBarResolve.slice(0, topBarResolve.indexOf('});'))).toContain('grainScale: settings.grainScale');
-    expect(topBarResolve.slice(0, topBarResolve.indexOf('});'))).toContain('onGrainScaleChange: handleGrainScaleChange');
+    expect(topBarDeps.indexOf('settings.grainScale'), 'topBar deps must drop grainScale').toBe(-1);
+    expect(topBarDeps.indexOf('settings.grainStrength'), 'topBar deps must drop grainStrength').toBe(-1);
+    expect(topBarDeps.indexOf('settings.background'), 'topBar deps must drop background').toBe(-1);
+    const topBarBody = topBarResolve.slice(0, topBarResolve.indexOf('});'));
+    expect(topBarBody.indexOf('grainScale: settings.grainScale'), 'topBar body must drop grainScale').toBe(-1);
+    expect(topBarBody.indexOf('onGrainScaleChange:'), 'topBar body must drop onGrainScaleChange').toBe(-1);
+
+    const rightPanelResolve = studio.slice(studio.indexOf('const rightPanel = rightPanelPropsMemo.resolve'));
+    const rightPanelDeps = rightPanelResolve.slice(0, rightPanelResolve.indexOf('], () =>'));
+    expect(rightPanelDeps.indexOf('settings.grainScale'), 'rightPanel deps must name grainScale').toBeGreaterThan(-1);
+    expect(rightPanelDeps.indexOf('settings.grainStrength'), 'rightPanel deps must name grainStrength').toBeGreaterThan(-1);
+    expect(rightPanelDeps.indexOf('handleGrainStrengthChange'), 'rightPanel deps must name strength handler').toBeGreaterThan(-1);
+    expect(rightPanelDeps.indexOf('handleGrainScaleChange'), 'rightPanel deps must name scale handler').toBeGreaterThan(-1);
+    const rightPanelBody = rightPanelResolve.slice(0, rightPanelResolve.indexOf('onColorChange'));
+    expect(rightPanelBody.indexOf('grainScale: settings.grainScale'), 'rightPanel body must pass grainScale').toBeGreaterThan(-1);
+    expect(rightPanelBody.indexOf('onGrainScaleChange: handleGrainScaleChange'), 'rightPanel body must pass scale handler').toBeGreaterThan(-1);
+    expect(rightPanelBody.indexOf('onGrainStrengthChange: handleGrainStrengthChange'), 'rightPanel body must pass strength handler').toBeGreaterThan(-1);
 
     const composition = studio.slice(studio.indexOf('const cachedRotoPlaybackComposition'));
     const compositionDeps = composition.slice(0, composition.indexOf(']);'));
-    expect(compositionDeps).toContain('settings.grainScale');
+    expect(compositionDeps.indexOf('settings.grainScale'), 'playback composition must name grainScale').toBeGreaterThan(-1);
 
     const canvasStack = studio.slice(studio.indexOf('const canvasStack = canvasStackPropsMemo.resolve'));
     const canvasStackDeps = canvasStack.slice(0, canvasStack.indexOf('], () =>'));
-    expect(canvasStackDeps).toContain('settings.grainScale');
-    expect(canvasStackDeps).toContain('physicPaintVersion.value');
+    expect(canvasStackDeps.indexOf('settings.grainScale'), 'canvasStack deps must name grainScale').toBeGreaterThan(-1);
+    expect(canvasStackDeps.indexOf('physicPaintVersion.value'), 'canvasStack deps must name physicPaintVersion').toBeGreaterThan(-1);
   });
 
   it('StudioView PlaybackBackground effect deps include props.background.grainScale', () => {
@@ -252,10 +196,11 @@ describe('260923-bcm Studio live wiring source pins', () => {
     expect(deps).toContain('props.background.grainStrength');
   });
 
-  it('engine actions destructure and export setGrainScale for the TopBar', () => {
+  it('engine actions destructure and export setGrainScale for the grain handlers', () => {
     const studio = studioSource();
     const destructure = studio.slice(studio.indexOf('const {\n    selectTool,'), studio.indexOf('} = usePhysicsPaintEngineActions'));
     expect(destructure).toContain('setGrainScale');
+    expect(destructure).toContain('setGrainStrength');
   });
 });
 

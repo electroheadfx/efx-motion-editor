@@ -14,7 +14,7 @@ import { FPS_PRESETS } from '../../lib/fpsPresets';
 import { pushAction, resetHistory } from '../../lib/history';
 import { historyStore } from '../../stores/historyStore';
 import type { HistoryEntry } from '../../types/history';
-import { grainScaleStep } from '../physic-paint/view/PhysicsPaintTopBar';
+import { grainScaleStep } from '../physic-paint/view/PaperPicker';
 import {
   NUMERIC_STEPPER_REPEAT_DELAY_MS,
   NUMERIC_STEPPER_REPEAT_INTERVAL_MS,
@@ -360,7 +360,7 @@ describe('260924-d6l — constraint-injection contract pins', () => {
     expect(scale.mock.calls[0][0]).toBe(1.23);
   });
 
-  /** The grain element's exact option shape (PhysicsPaintTopBar grain field). */
+  /** The grain element's exact option shape (PaperPicker grain field — Q6). */
   function renderGrainStepper(value: number, onChange: (next: number) => void): unknown {
     return renderStepper({
       value,
@@ -488,8 +488,9 @@ function stepperElements(source: string): string[] {
   return source.match(/<(NumericStepper|SliderStepper)[\s\S]*?\/>/g) ?? [];
 }
 
-/** The sole allowed consumer of the exception options (260924-d6l Pin 3). */
-const GRAIN_CALL_SITE_REL = 'src/components/physic-paint/view/PhysicsPaintTopBar.tsx';
+/** The sole allowed consumer of the exception options (260924-d6l Pin 3).
+ *  261017-vcn Q6: the grain widget moved to the Paper tab (PaperPicker). */
+const GRAIN_CALL_SITE_REL = 'src/components/physic-paint/view/PaperPicker.tsx';
 
 /** The opt-in exception-option identifiers the paper grain field alone may pass. */
 const EXCEPTION_OPTION_IDENTIFIER = /\b(resolveStep|freeEntry)\b/;

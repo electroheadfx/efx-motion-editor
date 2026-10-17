@@ -3,10 +3,10 @@
  *
  * Laws pinned here:
  *   D-09   thumbnail grid popover in the shared panel (13 cells)
- *   D-10   Strength + Scale SliderStepper rows sit directly under the trigger
  *   D-11   cells show the raw tile (height-map lit relief / jpg), no engine
  *   D-12   one library grouped Procedural / Real headers
  *   UI-SPEC 3 columns, 64×64 cells, accent on the active cell only
+ *   261017-vcn Q6 grain pair at the TOP, Transparent/White next, grid last
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  * Render tests materialize the vnode tree (no DOM environment — same pattern
@@ -16,7 +16,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PaperPicker } from './PaperPicker';
+import { PaperPicker, grainScaleStep } from './PaperPicker';
+import { makeInitialPhysicsPaintStudioSettings, type StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
+import { commitStepperInput, parseStepperInput } from '../../shared/NumericStepper';
+import { SliderStepper } from '../../shared/SliderStepper';
+import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -89,11 +93,13 @@ function textContent(node: unknown): string {
 function pickerProps() {
   return {
     paperId: 'paper/cold-press',
-    strength: 0.65,
-    scale: 1,
+    background: 'paper/cold-press' as StudioBackgroundMode,
+    grainStrength: 0.65,
+    grainScale: 1,
     onPaperIdChange: () => {},
-    onStrengthChange: () => {},
-    onScaleChange: () => {},
+    onBackgroundChange: () => {},
+    onGrainStrengthChange: () => {},
+    onGrainScaleChange: () => {},
   };
 }
 
@@ -145,13 +151,95 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(source.includes("'1px solid var(--color-border-subtle)'")).toBe(true);
   });
 
-  it('Strength and Scale SliderStepper rows sit under the trigger (D-10)', () => {
+  it('Paper-tab order is grain → Transparent/White → grid; the D-10 bottom pair is gone', () => {
+    // 261017-vcn Q6: grain widgets move to the TOP of the Paper tab (names
+    // stay Grain strength + Grain scale), Transparent + White sit between the
+    // grain controls and the paper grid, and the former bottom pair leaves so
+    // one grain control pair survives.
     const root = renderPicker();
+    const text = textContent(root);
+    const grainIdx = text.indexOf('Grain strength');
+    const scaleIdx = text.indexOf('Grain scale');
+    const transparentIdx = text.indexOf('Transparent');
+    const whiteIdx = text.indexOf('White');
+    const proceduralIdx = text.indexOf('Procedural');
+    expect(grainIdx).toBeGreaterThan(-1);
+    expect(scaleIdx).toBeGreaterThan(-1);
+    expect(transparentIdx).toBeGreaterThan(-1);
+    expect(whiteIdx).toBeGreaterThan(-1);
+    expect(proceduralIdx).toBeGreaterThan(-1);
+    expect(grainIdx).toBeLessThan(proceduralIdx);
+    expect(scaleIdx).toBeLessThan(proceduralIdx);
+    expect(transparentIdx).toBeGreaterThan(scaleIdx);
+    expect(transparentIdx).toBeLessThan(proceduralIdx);
+    expect(whiteIdx).toBeGreaterThan(scaleIdx);
+    expect(whiteIdx).toBeLessThan(proceduralIdx);
+    // The D-10 bottom Strength/Scale pair is gone.
     const sliders = findAll(root, (node) => node.props?.['data-paper-picker-sliders'] !== undefined);
-    expect(sliders.length).toBe(1);
-    const labels = textContent(sliders[0]);
-    expect(labels.includes('Strength')).toBe(true);
-    expect(labels.includes('Scale')).toBe(true);
+    expect(sliders.length).toBe(0);
+    expect(text.includes('Strength')).toBe(false);
+    // Grid constants stay locked (UI-SPEC).
+    expect(findAll(root, (node) => node.props?.['data-paper-picker-popover'] !== undefined).length).toBe(1);
+  });
+
+  it('grain strength segments and grain scale stepper route to their own handlers', () => {
+    const onGrainStrengthChange = vi.fn();
+    const onGrainScaleChange = vi.fn();
+    const root = materialize(PaperPicker({
+      ...pickerProps(),
+      onGrainStrengthChange,
+      onGrainScaleChange,
+    }));
+    const strengthGroup = findAll(root, (node) => node.props?.['aria-label'] === 'Grain strength')[0];
+    expect(strengthGroup).toBeDefined();
+    const strengthButtons = findAll(strengthGroup, (node) => node.type === 'button');
+    expect(strengthButtons.length).toBe(4); // None / Soft / Med / Hard
+    strengthButtons[0].props.onClick!();
+    expect(onGrainStrengthChange).toHaveBeenCalledTimes(1);
+    expect(onGrainStrengthChange).toHaveBeenCalledWith(0);
+    expect(onGrainScaleChange).not.toHaveBeenCalled();
+
+    const stepper = findAll(root, (node) => node.type === SliderStepper)
+      .find((node) => (node.props as { ariaLabel?: string }).ariaLabel === 'Grain scale');
+    expect(stepper, 'Grain scale must render the shared SliderStepper').toBeDefined();
+    expect((stepper!.props as { value: number }).value).toBe(1);
+    expect((stepper!.props as { step: number }).step).toBe(0.5);
+    expect((stepper!.props as { min: number }).min).toBe(GRAIN_SCALE_MIN);
+    expect((stepper!.props as { max: number }).max).toBe(GRAIN_SCALE_MAX);
+    expect((stepper!.props as { resolveStep: unknown }).resolveStep).toBe(grainScaleStep);
+    expect((stepper!.props as { freeEntry: boolean }).freeEntry).toBe(true);
+    (stepper!.props as { onChange: (v: number) => void }).onChange(1.5);
+    expect(onGrainScaleChange).toHaveBeenCalledWith(1.5);
+  });
+
+  it('Transparent and White swatches call onBackgroundChange; paper cells keep the paper-id path', () => {
+    const onBackgroundChange = vi.fn();
+    const onPaperIdChange = vi.fn();
+    const root = materialize(PaperPicker({
+      ...pickerProps(),
+      onBackgroundChange,
+      onPaperIdChange,
+    }));
+    const arms = findAll(root, (node) => {
+      const label = node.props?.['aria-label'];
+      return label === 'Transparent' || label === 'White';
+    });
+    expect(arms.length).toBe(2);
+    for (const arm of arms) {
+      (arm.props as { onClick: () => void }).onClick();
+    }
+    expect(onBackgroundChange).toHaveBeenCalledTimes(2);
+    expect(onBackgroundChange).toHaveBeenNthCalledWith(1, 'transparent');
+    expect(onBackgroundChange).toHaveBeenNthCalledWith(2, 'white');
+    expect(onPaperIdChange).not.toHaveBeenCalled();
+
+    // A paper cell keeps the paper-id path (paths stay separate).
+    const cell = findAll(root, (node) => node.props?.['data-paper-id'] !== undefined)[0];
+    expect(cell).toBeDefined();
+    (cell!.props as { onClick: () => void }).onClick();
+    expect(onPaperIdChange).toHaveBeenCalledTimes(1);
+    expect(onPaperIdChange).toHaveBeenCalledWith(cell!.props['data-paper-id']);
+    expect(onBackgroundChange).toHaveBeenCalledTimes(2); // unchanged
   });
 
   it('thumbs ride the engine paper host only — no fluid simulation, no WatercolorEngine construction', () => {
@@ -187,5 +275,72 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(source.includes('const CELL_SIZE = 64')).toBe(true);
     expect(source.includes('const GRID_GAP = 8')).toBe(true);
     expect(source.includes('gridTemplateColumns: `repeat(3, ${CELL_SIZE}px)`')).toBe(true);
+  });
+});
+
+// 260923-bcm UAT follow-up + 261017-vcn Q6: Grain scale is a value stepper
+// (− value +), not preset buttons. The step rule is the contract: 0.5 strictly
+// inside ]0.5, 2.0[, 0.1 at/below 0.5 and at/above 2.0 — default 1.0 + → 1.5;
+// 1.5 − − → 0.5; 0.5 − → 0.4; 1.5 + → 2.0, 2.0 + → 2.1. Values live in the
+// shared [GRAIN_SCALE_MIN, GRAIN_SCALE_MAX] acceptance and route to
+// onGrainScaleChange. The widgets live at the TOP of the Paper tab (Q6).
+describe('260923-bcm Grain scale value stepper (Paper tab surface)', () => {
+  it('step rule walks the user click sequences: 1.0 + → 1.5 → 2.0 → 2.1 and 1.5 − − → 0.5 − → 0.4', () => {
+    let up = 1;
+    up += grainScaleStep(up);
+    expect(up).toBe(1.5);
+    up += grainScaleStep(up);
+    expect(up).toBe(2);
+    up += grainScaleStep(up);
+    expect(up).toBe(2.1);
+
+    let down = 1.5;
+    down -= grainScaleStep(down);
+    expect(down).toBe(1);
+    down -= grainScaleStep(down);
+    expect(down).toBe(0.5);
+    down -= grainScaleStep(down);
+    expect(down).toBeCloseTo(0.4, 10);
+
+    // Boundaries: interior keeps 0.5, the edges drop to 0.1.
+    expect(grainScaleStep(0.6)).toBe(0.5);
+    expect(grainScaleStep(0.5)).toBe(0.1);
+    expect(grainScaleStep(0.4)).toBe(0.1);
+    expect(grainScaleStep(1.9)).toBe(0.5);
+    expect(grainScaleStep(2)).toBe(0.1);
+    expect(grainScaleStep(9)).toBe(0.1);
+  });
+
+  it('a non-default grainScale prop feeds the stepper value', () => {
+    const root = materialize(PaperPicker({ ...pickerProps(), grainScale: 0.4 }));
+    const stepper = findAll(root, (node) => node.type === SliderStepper)
+      .find((node) => (node.props as { ariaLabel?: string }).ariaLabel === 'Grain scale');
+    expect(stepper).toBeDefined();
+    expect((stepper!.props as { value: number }).value).toBe(0.4);
+    expect((stepper!.props as { step: number }).step).toBe(0.1);
+  });
+
+  // UAT follow-up 2: free typed numbers + the European decimal comma.
+  it('accepts a free typed number: 1.3 stays 1.3 instead of snapping to the 0.5 band', () => {
+    const grain = { step: 0.5, resolveStep: grainScaleStep, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX } as const;
+    expect(commitStepperInput('1.3', grain)).toBe(1.3);
+    expect(commitStepperInput('0.75', grain)).toBe(0.75);
+    // The snap path is still what non-free fields get.
+    expect(commitStepperInput('1.3', { step: 0.5, resolveStep: grainScaleStep, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBe(1.5);
+  });
+
+  it('accepts the European decimal comma: "2,2" commits 2.2', () => {
+    expect(parseStepperInput('2,2')).toBe(2.2);
+    expect(parseStepperInput('0,5')).toBe(0.5);
+    expect(parseStepperInput('2.2')).toBe(2.2);
+    expect(commitStepperInput('2,2', { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBe(2.2);
+    expect(Number.isNaN(parseStepperInput('abc'))).toBe(true);
+    expect(commitStepperInput('abc', { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX })).toBeNull();
+  });
+
+  it('free entries still clamp to the shared grain scale bounds', () => {
+    const grain = { step: 0.1, freeEntry: true, min: GRAIN_SCALE_MIN, max: GRAIN_SCALE_MAX } as const;
+    expect(commitStepperInput('0', grain)).toBe(GRAIN_SCALE_MIN);
+    expect(commitStepperInput('99', grain)).toBe(GRAIN_SCALE_MAX);
   });
 });

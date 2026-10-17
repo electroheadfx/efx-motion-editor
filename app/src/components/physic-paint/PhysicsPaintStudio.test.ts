@@ -1400,13 +1400,28 @@ describe('Physics Paint background swatch write-through (49-04 UAT fix)', () => 
     // the launch layer, and the topBar must consume the wrapper, not the raw
     // engine action.
     // 56-05 widened the handler parameter to StudioBackgroundMode (BgMode | PaperTexture).
-    expect(studio).toContain('const handleBackgroundChange = (mode: StudioBackgroundMode) => {');
-    expect(studio).toContain('setBackground(mode);');
-    expect(studio).toContain('setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));');
-    // The topBar consumes the wrapper, and the memo re-resolves with the new
-    // handler identity (not the raw setBackground action).
-    expect(studio).toContain('onBackgroundChange: handleBackgroundChange,');
-    expect(studio).toContain('handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, setGrainScale]');
+    expect(studio.indexOf('const handleBackgroundChange = (mode: StudioBackgroundMode) => {')).toBeGreaterThan(-1);
+    expect(studio.indexOf('setBackground(mode);')).toBeGreaterThan(-1);
+    expect(studio.indexOf('setBackgroundFallback(layerId, backgroundModeToFallback(mode, settings));')).toBeGreaterThan(-1);
+    // 261017-vcn I-04 remainder: Background / Grain rows left the top bar —
+    // the topBar memo no longer names those handlers. The background path
+    // stays on handleBackgroundChange (consumed by the Paper tab's Transparent
+    // / White arms). Scalar predicates keep TAP diagnostics one-line.
+    expect(studio.indexOf('onBackgroundChange: handleBackgroundChange')).toBeGreaterThan(-1);
+    // topBar memo deps end at the slim brush/opacity set (no background/grain).
+    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
+    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
+    const topBarBlock = studio.slice(topBarStart, topBarEnd);
+    const topBarDeps = topBarBlock.slice(0, topBarBlock.indexOf('], () =>'));
+    expect(topBarDeps.indexOf('settings.size')).toBeGreaterThan(-1);
+    expect(topBarDeps.indexOf('settings.opacity')).toBeGreaterThan(-1);
+    expect(topBarDeps.indexOf('settings.background'), 'topBar deps must drop background').toBe(-1);
+    expect(topBarDeps.indexOf('settings.grainStrength'), 'topBar deps must drop grainStrength').toBe(-1);
+    expect(topBarDeps.indexOf('settings.grainScale'), 'topBar deps must drop grainScale').toBe(-1);
+    expect(topBarDeps.indexOf('handleBackgroundChange'), 'topBar deps must drop background handler').toBe(-1);
+    expect(topBarDeps.indexOf('handleGrainStrengthChange'), 'topBar deps must drop strength handler').toBe(-1);
+    expect(topBarDeps.indexOf('handleGrainScaleChange'), 'topBar deps must drop scale handler').toBe(-1);
+    expect(topBarDeps.indexOf('setGrainScale'), 'topBar deps must drop setGrainScale').toBe(-1);
   });
 });
 
