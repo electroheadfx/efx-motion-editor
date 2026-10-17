@@ -254,3 +254,25 @@ describe('panel split shell — shared block', () => {
     }
   });
 });
+
+describe('panel split shell — Brush-tab watercolor arm', () => {
+  it('mounts WatercolorBrushLibrary then BrushResponsePanel (I-03 mount swap)', () => {
+    const panelSource = readFileSync(
+      resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
+      'utf8',
+    );
+    const brushTabStart = panelSource.indexOf("topPaneTab === 'brush'");
+    expect(brushTabStart, 'brush-tab branch must exist').toBeGreaterThan(-1);
+    const brushTabEnd = panelSource.indexOf("topPaneTab === 'paper'", brushTabStart);
+    expect(brushTabEnd, 'brush-tab branch must end at the paper arm').toBeGreaterThan(brushTabStart);
+    const brushTab = panelSource.slice(brushTabStart, brushTabEnd);
+    const libraryAt = brushTab.indexOf('<WatercolorBrushLibrary');
+    const responseAt = brushTab.indexOf('<BrushResponsePanel');
+    expect(libraryAt, 'brush tab mounts WatercolorBrushLibrary').toBeGreaterThan(-1);
+    expect(responseAt, 'brush tab mounts BrushResponsePanel').toBeGreaterThan(-1);
+    expect(libraryAt, 'library comes first').toBeLessThan(responseAt);
+    expect(brushTab, 'old tip-catalog picker is not mounted').not.toMatch(/<BrushesDocker\b/);
+    // The component file stays on disk for a later orphan pass (I-10).
+    expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();
+  });
+});

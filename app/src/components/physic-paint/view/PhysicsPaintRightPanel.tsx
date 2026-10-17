@@ -21,7 +21,7 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { activeModule } from '../../shared/activeModule';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
-import { BrushesDocker } from './BrushesDocker';
+import { WatercolorBrushLibrary } from './WatercolorBrushLibrary';
 import { BrushResponsePanel } from './BrushResponsePanel';
 import { BrushModuleSection } from './BrushModuleSection';
 import { PaperPicker } from './PaperPicker';
@@ -529,9 +529,9 @@ export function PhysicsPaintRightPanel({
           ) : topPaneTab === 'brush' ? (
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Brush">
               {activeModule.value === 'watercolor' ? (
-                /* 261017-wmw I-02: picker first, then per-brush response. */
+                /* 261017-xa0 I-03: 14-card playground grid, then per-brush response. */
                 <>
-                  <BrushesDocker />
+                  <WatercolorBrushLibrary />
                   <BrushResponsePanel />
                 </>
               ) : (
