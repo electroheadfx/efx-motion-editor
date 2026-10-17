@@ -60,5 +60,9 @@ describe('paper with the grain off survives both background contracts', () => {
     expect(isPhysicPaintRotoBackgroundMetadata({ ...GRAIN_OFF, grainStrength: 2 })).toBe(false);
     expect(isPhysicPaintRotoBackgroundMetadata({ background: 'canvas3' })).toBe(false);
     expect(() => parsePhysicPaintRotoPhysicalDocument(documentWith({ ...GRAIN_OFF, background: 'photo' }), 'runtime')).toThrow(/invalid background metadata/);
+    // 261017-dc2: the empty-string write fallback joins the fail-closed reject
+    // set (parity pin keeps the accept side).
+    expect(isPhysicPaintRotoBackgroundMetadata({ ...GRAIN_OFF, background: '' })).toBe(false);
+    expect(() => parsePhysicPaintRotoPhysicalDocument(documentWith({ ...GRAIN_OFF, background: '' }), 'runtime')).toThrow(/invalid background metadata/);
   });
 });

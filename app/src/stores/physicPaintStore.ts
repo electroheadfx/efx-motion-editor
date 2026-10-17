@@ -1637,13 +1637,16 @@ function _writePaperDisplay(
   const efxDocument = getEfxPaintDocument(layerId);
   if (!efxDocument) return false;
   const source = _resolveFondSource(layerId, efxDocument);
+  // 261017-dc2: the legal "no paper" encoding is 'transparent' (see
+  // `_resolveFondSource`) — never construct `background: ''`, which is not a
+  // `PhysicPaintRotoBackgroundMode` and would poison the next document parse.
   const current = source?.kind === 'paper'
     ? {
       background: source.metadata.background as string,
       grainStrength: source.metadata.grainStrength,
       grainScale: source.metadata.grainScale ?? 1,
     }
-    : { background: '', grainStrength: 0, grainScale: 1 };
+    : { background: 'transparent', grainStrength: 0, grainScale: 1 };
 
   const nextBackground = edit.paperId ?? current.background;
   const rawStrength = edit.strength ?? current.grainStrength;
@@ -1666,14 +1669,24 @@ function _writePaperDisplay(
     && current.grainScale === grainScale
   ) return false;
 
+  // 261017-dc2: a strength/scale-only edit on a non-paper source has no paper
+  // to edit — return false without writing. A transparent track mirror would
+  // hide a solid-colour document fond (`_resolveFondSource` returns null on a
+  // transparent mirror and never falls through).
+  if (nextBackground === 'transparent' && edit.paperId === undefined) return false;
+
   // Document fallback arm — setBackgroundFallback bumps documentRevision, so
   // the display-class change token rotates (D-22 / PAPER-03 save participation).
-  const wrote = setBackgroundFallback(layerId, {
-    mode: 'paper',
-    texture: nextBackground as PaperTexture,
-    grainStrength,
-    grainScale,
-  });
+  // An explicit 'transparent' clear is the legal no-paper encoding
+  // (`{ mode: 'transparent' }`), never an illegal PaperTexture.
+  const wrote = nextBackground === 'transparent'
+    ? setBackgroundFallback(layerId, { mode: 'transparent' })
+    : setBackgroundFallback(layerId, {
+      mode: 'paper',
+      texture: nextBackground as PaperTexture,
+      grainStrength,
+      grainScale,
+    });
   if (!wrote.ok) return false;
 
   // Active track's paper mirror — the fond resolution prefers the mirror, and

@@ -519,7 +519,19 @@ function optionalDimension(value: unknown): boolean {
 
 function isPhysicPaintRotoBackground(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
   if (!isRecord(value) || !hasOnlyAllowedKeys(value, PHYSIC_PAINT_ROTO_BACKGROUND_KEYS)) return false;
-  if (value.background !== 'transparent' && value.background !== 'white' && value.background !== 'canvas1' && value.background !== 'canvas2' && value.background !== 'canvas3') return false;
+  // 261017-dc2: keep in lockstep with `isPhysicPaintRotoBackgroundMetadata`
+  // (types/physicPaint.ts) — 56-05 / PAPER-01 migrated the apply-payload
+  // validator and the type union to `paper/<id>`, not this parser guard. The
+  // parity pin (`physicsPaintRotoBackgroundValidatorParity.test.ts`) is the
+  // anti-divergence mechanism; do not export this predicate for tests.
+  const backgroundOk =
+    value.background === 'transparent'
+    || value.background === 'white'
+    || value.background === 'canvas1'
+    || value.background === 'canvas2'
+    || value.background === 'canvas3'
+    || (typeof value.background === 'string' && value.background.startsWith('paper/'));
+  if (!backgroundOk) return false;
   if (typeof value.grainStrength !== 'number' || !Number.isFinite(value.grainStrength) || value.grainStrength < 0 || value.grainStrength > 1) return false;
   if (value.color !== undefined && typeof value.color !== 'string') return false;
   // 260923-bcm / T-260923-01: optional grain scale — absent OK, present must be
