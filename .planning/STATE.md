@@ -6,10 +6,10 @@ current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room)
 status: executing
 stopped_at: Completed quick 261017-iwm (procedural fond no-tile + PAPER_REFERENCE_HEIGHT scale law)
-last_updated: "2026-10-17T13:57:59.108Z"
+last_updated: "2026-10-17T14:24:54.302Z"
 last_activity: 2026-10-17
 last_activity_desc: Phase 56 execution started
-state_head: a7eaf78a55db970ff1691cb51004a34017fe4626
+state_head: c93077c37bd65e6e5227015af28ad7d2b03ac62d
 progress:
   total_phases: 4
   completed_phases: 2
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 1 of 10
 Status: Executing Phase 56
-Last activity: 2026-10-17 — Completed quick task 261017-lny: paper shader on GPU (WebGL2) + procedural sheet kept at full density
+Last activity: 2026-10-17 — Completed quick task 261017-mdr: killed the first-render stall (GPU blit, no readPixels; idle warm-up)
 
 Progress: [█████░░░░░] 50%
 
@@ -518,6 +518,7 @@ None yet.
 | 261017-iwm | Continuous procedural fond at WxH + PAPER_REFERENCE_HEIGHT=1100 scale law (no more tile grid) | 2026-10-17 | 8d292c4d | [261017-iwm-fix-visible-tiling-and-wrong-scale-of-th](./quick/261017-iwm-fix-visible-tiling-and-wrong-scale-of-th/) |
 | 261017-ki6 | Transliterate playground paper shader to TS (paperFieldFS + paperLightFS + PAPER_COLOUR, 10 kinds, PAPER_UNITS=1100); clean-room procedural.ts deleted | 2026-10-17 | 71ea1277 | [261017-ki6-transliterate-the-watercolor-playground-](./quick/261017-ki6-transliterate-the-watercolor-playground-/) |
 | 261017-lny | Run paper shader on GPU (WebGL2, playground GLSL verbatim) + keep procedural sheet full density (no white+0.18 under-fill) | 2026-10-17 | a7eaf78a | [261017-lny-paper-performance-and-reopen-density-run](./quick/261017-lny-paper-performance-and-reopen-density-run/) |
+| 261017-mdr | Kill first-render stall: GPU blit instead of readPixels+y-flip loop, idle warm-up of the selected sheet + thumbs | 2026-10-17 | c93077c3 | [261017-mdr-kill-the-first-render-stall-on-the-proce](./quick/261017-mdr-kill-the-first-render-stall-on-the-proce/) |
 
 ### Roadmap Evolution
 
