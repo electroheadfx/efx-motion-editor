@@ -27,6 +27,7 @@ import {
   toolOverridesFromTip,
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
+import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
 export interface AquarelleGlobalParams {
@@ -95,10 +96,23 @@ export function setAquarelleTool(tool: AquarelleTool): void {
  * Select a tip and load its per-brush multipliers into the Brush
  * response surface (D-07 / R1.7). A null id clears the selection
  * and resets multipliers to neutral.
+ *
+ * 261017-xa0 I-03: a pick may also be a bare playground `BRUSH_PRESETS`
+ * id (`round`, `flat`, …). Presets carry their own shape via
+ * `buildBrush`, so a preset hit loads the neutral multiplier bag and
+ * keeps the id. Any successful non-null pick also forces the active
+ * tool back to `brush` (user directive 2026-10-16) — picking while
+ * Water / Pen / Lift is active returns the surface to Brush.
  */
 export function selectAquarelleTip(tipId: string | null): void {
   const tip = tipId ? findTip(tipId) : undefined;
-  const nextId = tip ? tip.id : null;
+  const preset = !tip && tipId
+    ? BRUSH_PRESETS.find((b) => b.id === tipId)
+    : undefined;
+  const nextId = tip ? tip.id : preset ? preset.id : null;
+  // A successful pick is a brush-tool variant pick — flip the tool first
+  // so a re-pick of the already-selected id still returns to Brush.
+  if (nextId !== null) setAquarelleTool('brush');
   if (aquarelleSelectedTipId.value === nextId) return;
   aquarelleSelectedTipId.value = nextId;
   aquarelleToolOverrides.value = tip
