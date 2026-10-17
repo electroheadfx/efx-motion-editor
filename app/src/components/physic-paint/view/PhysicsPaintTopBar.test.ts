@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { PhysicsPaintTopBar, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
-import { SliderStepper } from '../../shared/SliderStepper';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
 const css = () => readFileSync(cssPath, 'utf8');
@@ -90,9 +89,12 @@ describe('261017-vcn top bar slim (I-04 remainder)', () => {
   it('renders Brush size + Opacity and no Background / Grain rows', () => {
     const props = baseTopBarProps();
     const tree = renderTopBar(props);
-    // Brush size + Opacity remain among the former top-bar controls.
-    const sliders = childrenOf(tree).filter((node) => (node as AnyVNode).type === SliderStepper) as AnyVNode[];
-    const labels = sliders.map((s) => s.props.label);
+    // Host-only walk: TopBarSlider wraps SliderStepper and must not be
+    // expanded (hook state). The wrapper carries the label prop.
+    const controls = childrenOf(tree).filter(
+      (node) => typeof (node as AnyVNode).props?.label === 'string',
+    ) as AnyVNode[];
+    const labels = controls.map((s) => s.props.label);
     expect(labels).toContain('Brush size');
     expect(labels).toContain('Opacity');
     expect(labels).not.toContain('Grain scale');

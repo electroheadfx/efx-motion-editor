@@ -155,29 +155,31 @@ describe('PaperPicker (D-09..D-12)', () => {
     // 261017-vcn Q6: grain widgets move to the TOP of the Paper tab (names
     // stay Grain strength + Grain scale), Transparent + White sit between the
     // grain controls and the paper grid, and the former bottom pair leaves so
-    // one grain control pair survives.
-    const root = renderPicker();
-    const text = textContent(root);
-    const grainIdx = text.indexOf('Grain strength');
-    const scaleIdx = text.indexOf('Grain scale');
-    const transparentIdx = text.indexOf('Transparent');
-    const whiteIdx = text.indexOf('White');
-    const proceduralIdx = text.indexOf('Procedural');
-    expect(grainIdx).toBeGreaterThan(-1);
-    expect(scaleIdx).toBeGreaterThan(-1);
-    expect(transparentIdx).toBeGreaterThan(-1);
-    expect(whiteIdx).toBeGreaterThan(-1);
-    expect(proceduralIdx).toBeGreaterThan(-1);
-    expect(grainIdx).toBeLessThan(proceduralIdx);
-    expect(scaleIdx).toBeLessThan(proceduralIdx);
-    expect(transparentIdx).toBeGreaterThan(scaleIdx);
-    expect(transparentIdx).toBeLessThan(proceduralIdx);
-    expect(whiteIdx).toBeGreaterThan(scaleIdx);
-    expect(whiteIdx).toBeLessThan(proceduralIdx);
+    // one grain control pair survives. Anchor on the structural section
+    // markers in the host-only tree (SliderStepper stays an opaque function
+    // component).
+    const root = PaperPicker(pickerProps()) as TestVNode;
+    const nodes = [...walk(root)];
+    const grainSection = nodes.findIndex((node) => node.props?.['data-paper-picker-grain'] !== undefined);
+    const armsSection = nodes.findIndex((node) => node.props?.['data-paper-picker-backgrounds'] !== undefined);
+    const gridSection = nodes.findIndex((node) => node.props?.['data-paper-picker-popover'] !== undefined);
+    expect(grainSection).toBeGreaterThan(-1);
+    expect(armsSection).toBeGreaterThan(-1);
+    expect(gridSection).toBeGreaterThan(-1);
+    expect(grainSection).toBeLessThan(armsSection);
+    expect(armsSection).toBeLessThan(gridSection);
+    // Names stay Grain strength + Grain scale (Q6); arms are Transparent/White.
+    const joined = nodes
+      .flatMap((node) => [node.props?.['aria-label'], node.props?.['title'], node.props?.['label']])
+      .filter((value): value is string => typeof value === 'string')
+      .join(' | ');
+    expect(joined.indexOf('Grain strength')).toBeGreaterThan(-1);
+    expect(joined.indexOf('Grain scale')).toBeGreaterThan(-1);
+    expect(joined.indexOf('Transparent')).toBeGreaterThan(-1);
+    expect(joined.indexOf('White')).toBeGreaterThan(-1);
     // The D-10 bottom Strength/Scale pair is gone.
     const sliders = findAll(root, (node) => node.props?.['data-paper-picker-sliders'] !== undefined);
     expect(sliders.length).toBe(0);
-    expect(text.includes('Strength')).toBe(false);
     // Grid constants stay locked (UI-SPEC).
     expect(findAll(root, (node) => node.props?.['data-paper-picker-popover'] !== undefined).length).toBe(1);
   });
@@ -185,22 +187,24 @@ describe('PaperPicker (D-09..D-12)', () => {
   it('grain strength segments and grain scale stepper route to their own handlers', () => {
     const onGrainStrengthChange = vi.fn();
     const onGrainScaleChange = vi.fn();
-    const root = materialize(PaperPicker({
+    // Host-only walk (TopBar idiom): PaperPicker is invoked by hand; nested
+    // function components (SliderStepper) must not be expanded — they need
+    // hook state. Keep the SliderStepper vnode so its props stay readable.
+    const root = PaperPicker({
       ...pickerProps(),
       onGrainStrengthChange,
       onGrainScaleChange,
-    }));
+    }) as TestVNode;
     const strengthGroup = findAll(root, (node) => node.props?.['aria-label'] === 'Grain strength')[0];
     expect(strengthGroup).toBeDefined();
     const strengthButtons = findAll(strengthGroup, (node) => node.type === 'button');
     expect(strengthButtons.length).toBe(4); // None / Soft / Med / Hard
-    strengthButtons[0].props.onClick!();
+    (strengthButtons[0].props as { onClick: () => void }).onClick();
     expect(onGrainStrengthChange).toHaveBeenCalledTimes(1);
     expect(onGrainStrengthChange).toHaveBeenCalledWith(0);
     expect(onGrainScaleChange).not.toHaveBeenCalled();
 
-    const stepper = findAll(root, (node) => node.type === SliderStepper)
-      .find((node) => (node.props as { ariaLabel?: string }).ariaLabel === 'Grain scale');
+    const stepper = findAll(root, (node) => node.type === SliderStepper)[0] as TestVNode | undefined;
     expect(stepper, 'Grain scale must render the shared SliderStepper').toBeDefined();
     expect((stepper!.props as { value: number }).value).toBe(1);
     expect((stepper!.props as { step: number }).step).toBe(0.5);
@@ -312,9 +316,8 @@ describe('260923-bcm Grain scale value stepper (Paper tab surface)', () => {
   });
 
   it('a non-default grainScale prop feeds the stepper value', () => {
-    const root = materialize(PaperPicker({ ...pickerProps(), grainScale: 0.4 }));
-    const stepper = findAll(root, (node) => node.type === SliderStepper)
-      .find((node) => (node.props as { ariaLabel?: string }).ariaLabel === 'Grain scale');
+    const root = PaperPicker({ ...pickerProps(), grainScale: 0.4 }) as TestVNode;
+    const stepper = findAll(root, (node) => node.type === SliderStepper)[0] as TestVNode | undefined;
     expect(stepper).toBeDefined();
     expect((stepper!.props as { value: number }).value).toBe(0.4);
     expect((stepper!.props as { step: number }).step).toBe(0.1);

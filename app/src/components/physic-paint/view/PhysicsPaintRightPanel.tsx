@@ -25,6 +25,7 @@ import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
 import { PaperPicker } from './PaperPicker';
+import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 
 export interface PhysicsPaintPlayWiggleSettings {
   strokeDeformation: number;
@@ -85,16 +86,20 @@ export interface PhysicsPaintRightPanelProps {
    */
   audioSectionPorts?: AudioSectionPorts;
   /**
-   * 56-05 (D-09..D-12 / PAPER-03): paper display state for the shared-panel
-   * Paper section. State lives on the document fond; these are the controls'
-   * read/write ports (D-10).
+   * 56-05 (D-09..D-12 / PAPER-03) + 261017-vcn I-04 remainder: paper +
+   * background display state for the shared-panel Paper section. State lives
+   * on the document fond; these are the controls' read/write ports. The Paper
+   * tab is the SINGLE home for paper + background (Q6 grain pair at the top,
+   * Transparent + White arms, then the locked 13-cell grid).
    */
   paperId?: string;
-  paperStrength?: number;
-  paperScale?: number;
+  background?: StudioBackgroundMode;
+  grainStrength?: number;
+  grainScale?: number;
   onPaperIdChange?: (id: string) => void;
-  onPaperStrengthChange?: (value: number) => void;
-  onPaperScaleChange?: (value: number) => void;
+  onBackgroundChange?: (mode: StudioBackgroundMode) => void;
+  onGrainStrengthChange?: (value: number) => void;
+  onGrainScaleChange?: (scale: number) => void;
 }
 
 /** The five BlendMode values offered by the track Blend select (TML-04). */
@@ -241,11 +246,13 @@ export function PhysicsPaintRightPanel({
   audioSectionPorts,
   toolTab: toolTabSignal,
   paperId,
-  paperStrength,
-  paperScale,
+  background,
+  grainStrength,
+  grainScale,
   onPaperIdChange,
-  onPaperStrengthChange,
-  onPaperScaleChange,
+  onBackgroundChange,
+  onGrainStrengthChange,
+  onGrainScaleChange,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
   // 49-06 (S5): the selected Bg clip id drives the Background-tab exclusivity.
@@ -545,11 +552,13 @@ export function PhysicsPaintRightPanel({
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Paper">
               <PaperPicker
                 paperId={paperId ?? 'paper/cold-press'}
-                strength={paperStrength ?? 0.65}
-                scale={paperScale ?? 1}
+                background={background ?? 'paper/cold-press'}
+                grainStrength={grainStrength ?? 0.45}
+                grainScale={grainScale ?? 1}
                 onPaperIdChange={(id) => onPaperIdChange?.(id)}
-                onStrengthChange={(value) => onPaperStrengthChange?.(value)}
-                onScaleChange={(value) => onPaperScaleChange?.(value)}
+                onBackgroundChange={(mode) => onBackgroundChange?.(mode)}
+                onGrainStrengthChange={(value) => onGrainStrengthChange?.(value)}
+                onGrainScaleChange={(scale) => onGrainScaleChange?.(scale)}
                 disabled={engineControlsDisabled}
               />
             </div>

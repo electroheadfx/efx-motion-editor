@@ -80,22 +80,24 @@ describe('261017-fz3 PaperPicker single home', () => {
 // idiom as the single-home contract above (source-scan + vnode materialize).
 describe('261017-vcn I-04 remainder paper-tab single home', () => {
   it('Paper tab order is grain pair → Transparent/White → grid; the D-10 bottom pair is gone', () => {
-    // Pin 1: grain labels sit before the Procedural group; Transparent + White
-    // sit between grain and the grid; the former bottom pair is absent.
-    const grainIdx = pickerSource.indexOf('Grain strength');
-    const proceduralIdx = pickerSource.indexOf('Procedural');
-    const transparentIdx = pickerSource.indexOf('Transparent');
-    const whiteIdx = pickerSource.indexOf("'White'");
-    expect(grainIdx, 'Grain strength must live in PaperPicker').toBeGreaterThan(-1);
-    expect(proceduralIdx, 'Procedural group header must stay').toBeGreaterThan(-1);
-    expect(transparentIdx, 'Transparent arm must join the Paper tab').toBeGreaterThan(-1);
-    expect(whiteIdx, 'White arm must join the Paper tab').toBeGreaterThan(-1);
-    // Grain first, then Transparent/White, then the grid.
-    expect(grainIdx).toBeLessThan(proceduralIdx);
-    expect(transparentIdx).toBeGreaterThan(grainIdx);
-    expect(transparentIdx).toBeLessThan(proceduralIdx);
-    expect(whiteIdx).toBeGreaterThan(grainIdx);
-    expect(whiteIdx).toBeLessThan(proceduralIdx);
+    // Pin 1: the rendered Paper-tab order is grain pair → Transparent/White →
+    // grid. Anchor on the structural section markers (the JSX render order),
+    // not on label substrings (warmProceduralReliefThumbs also contains
+    // "Procedural"; BACKGROUND_ARMS constants sit above the component).
+    const body = stripComments(pickerSource);
+    const grainIdx = body.indexOf('data-paper-picker-grain');
+    const armsIdx = body.indexOf('data-paper-picker-backgrounds');
+    const gridIdx = body.indexOf('data-paper-picker-popover');
+    expect(grainIdx, 'grain section must sit at the top of the Paper tab').toBeGreaterThan(-1);
+    expect(armsIdx, 'Transparent/White arms must join the Paper tab').toBeGreaterThan(-1);
+    expect(gridIdx, 'Procedural/Real grid must stay').toBeGreaterThan(-1);
+    expect(grainIdx).toBeLessThan(armsIdx);
+    expect(armsIdx).toBeLessThan(gridIdx);
+    // Names stay Grain strength + Grain scale (Q6).
+    expect(body.indexOf('Grain strength'), 'Grain strength name must stay').toBeGreaterThan(-1);
+    expect(body.indexOf('Grain scale'), 'Grain scale name must stay').toBeGreaterThan(-1);
+    expect(body.indexOf('Transparent'), 'Transparent arm must stay').toBeGreaterThan(-1);
+    expect(body.indexOf("'White'"), 'White arm must stay').toBeGreaterThan(-1);
     // The D-10 bottom Strength/Scale pair leaves (one grain pair only).
     expect(pickerSource.indexOf('data-paper-picker-sliders'), 'bottom pair must leave').toBe(-1);
     expect(pickerSource.indexOf('paper-strength'), 'paper-strength id must leave').toBe(-1);

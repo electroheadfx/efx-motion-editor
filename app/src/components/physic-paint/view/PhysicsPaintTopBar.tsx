@@ -1,58 +1,23 @@
-import type { BgMode } from '@efxlab/efx-physic-paint';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
 import { activeModule } from '../../shared/activeModule';
-import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN, type PaperTexture } from '../../../efx-paint/document/efxPaintDocument';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { aquarelleParams } from './aquarelleRecordState';
 
-/** 56-05 (PAPER-01): selector segments + Studio paper library textures. */
-export type TopBarBackgroundMode = BgMode | PaperTexture;
-
+/**
+ * 261017-vcn I-04 remainder: the top bar keeps status pill + ModuleSwitcher +
+ * Brush size + Opacity in one row. Background / Grain strength / Grain scale
+ * rows and those props left for the Paper tab (PaperPicker) — one home for
+ * paper + background.
+ */
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
   opacity: number;
-  background: TopBarBackgroundMode;
-  grainStrength: number;
-  grainScale: number;
   ready: boolean;
   disabled?: boolean;
   onBrushSizeChange: (value: number) => void;
   onOpacityChange: (value: number) => void;
-  onBackgroundChange: (mode: TopBarBackgroundMode) => void;
-  onGrainStrengthChange: (value: number) => void;
-  onGrainScaleChange: (scale: number) => void;
-}
-
-const PAPER_TEXTURES = {
-  canvas1: '/img/paper_1.jpg',
-  canvas2: '/img/paper_2.jpg',
-  canvas3: '/img/paper_3.jpg',
-} as const;
-
-const BACKGROUND_OPTIONS: { label: string; value: BgMode; swatch: string }[] = [
-  { label: 'Transparent', value: 'transparent', swatch: 'repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px' },
-  { label: 'White', value: 'white', swatch: '#fff' },
-  { label: 'Paper 1', value: 'canvas1', swatch: `url(${PAPER_TEXTURES.canvas1}) center / cover` },
-  { label: 'Paper 2', value: 'canvas2', swatch: `url(${PAPER_TEXTURES.canvas2}) center / cover` },
-  { label: 'Paper 3', value: 'canvas3', swatch: `url(${PAPER_TEXTURES.canvas3}) center / cover` },
-];
-
-const GRAIN_STRENGTH_OPTIONS = [
-  { label: 'None', value: 0 },
-  { label: 'Soft', value: 0.35 },
-  { label: 'Med', value: 0.65 },
-  { label: 'Hard', value: 0.95 },
-];
-
-/**
- * Grain scale step (UAT follow-up): 0.5 strictly inside ]0.5, 2.0[ — the default
- * 1.0 walks 1.5 ⇄ 0.5 in 0.5 jumps — and 0.1 at/below 0.5 and at/above 2.0
- * (0.5 − → 0.4, 2.0 + → 2.1). Pure so hold-to-repeat resolves it per emission.
- */
-export function grainScaleStep(value: number): number {
-  return value > 0.5 && value < 2 ? 0.5 : 0.1;
 }
 
 function clampTopBarValue(value: unknown, min: number, max: number): number {
@@ -88,23 +53,13 @@ function TopBarSlider(props: {
   );
 }
 
-function segmentedButtonClass(active: boolean) {
-  return `physics-paint-segmented-button${active ? ' active' : ''}`;
-}
-
 export function PhysicsPaintTopBar({
   brushSize,
   opacity,
-  background,
-  grainStrength,
-  grainScale,
   ready,
   disabled = false,
   onBrushSizeChange,
   onOpacityChange,
-  onBackgroundChange,
-  onGrainStrengthChange,
-  onGrainScaleChange,
 }: PhysicsPaintTopBarProps) {
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
@@ -126,57 +81,6 @@ export function PhysicsPaintTopBar({
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
-
-        <div class="physics-paint-topbar-control">
-          <span>Background</span>
-          <div class="physics-paint-segmented-row" role="group" aria-label="Background">
-            {BACKGROUND_OPTIONS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                disabled={disabled}
-                class={`${segmentedButtonClass(background === option.value)} physics-paint-swatch-button`}
-                title={option.label}
-                aria-label={option.label}
-                onClick={() => onBackgroundChange(option.value)}
-              >
-                <span class="physics-paint-paper-swatch" style={{ background: option.swatch }} />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div class="physics-paint-topbar-control">
-          <span>Grain strength</span>
-          <div class="physics-paint-segmented-row" role="group" aria-label="Grain strength">
-            {GRAIN_STRENGTH_OPTIONS.map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                disabled={disabled}
-                class={segmentedButtonClass(grainStrength === option.value)}
-                onClick={() => onGrainStrengthChange(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div class="physics-paint-topbar-control physics-paint-topbar-slider">
-          <SliderStepper
-            label="Grain scale"
-            value={grainScale}
-            step={grainScaleStep(grainScale)}
-            resolveStep={grainScaleStep}
-            min={GRAIN_SCALE_MIN}
-            max={GRAIN_SCALE_MAX}
-            ariaLabel="Grain scale"
-            disabled={disabled}
-            freeEntry
-            onChange={onGrainScaleChange}
-          />
-        </div>
       </div>
 
     </header>

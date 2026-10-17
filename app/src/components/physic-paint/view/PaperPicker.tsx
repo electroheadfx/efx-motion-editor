@@ -1,10 +1,17 @@
 /**
  * 56-05 (D-09..D-12 / PAPER-01 / PAPER-04): the shared-panel Paper section.
  *
- * Trigger shows `Paper` + the current paper name. Clicking opens a thumbnail
- * grid popover: 3 columns, 64×64 cells, groups Procedural then Real (D-12 one
- * library, never tabs). Strength + scale SliderStepper rows sit directly under
- * the trigger, always reachable (D-10 / D-06).
+ * 261017-vcn I-04 remainder (Q6 + locked Paper-background decision): the Paper
+ * tab is the SINGLE home for paper + background. Top to bottom:
+ *   1. Grain strength segmented row + Grain scale SliderStepper (the former
+ *      top-bar widgets; names stay Grain strength + Grain scale).
+ *   2. Transparent + White background arms (background, not papers) — reuse
+ *      the top-bar swatch look, route through the existing background-change
+ *      path. A paper cell keeps the paper-id path.
+ *   3. The locked 13-cell grid (Procedural then Real, CELL_SIZE=64,
+ *      GRID_GAP=8, 3 columns) — UI-SPEC, never changes.
+ *
+ * The former D-10 bottom Strength/Scale pair leaves so one grain pair survives.
  *
  * Cells show the RAW paper tile only (D-11) — the ported playground sheet
  * for procedural papers, the shipped jpg for real scans. No engine
@@ -19,14 +26,21 @@ import {
 } from '@efxlab/efx-watercolor/papers';
 import { getEnginePaperSheet } from '../../../lib/enginePaperSheet';
 import { SliderStepper } from '../../shared/SliderStepper';
+import {
+  GRAIN_SCALE_MAX,
+  GRAIN_SCALE_MIN,
+} from '../../../efx-paint/document/efxPaintDocument';
+import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 
 export interface PaperPickerProps {
   paperId: string;
-  strength: number;
-  scale: number;
+  background: StudioBackgroundMode;
+  grainStrength: number;
+  grainScale: number;
   onPaperIdChange: (id: string) => void;
-  onStrengthChange: (value: number) => void;
-  onScaleChange: (value: number) => void;
+  onBackgroundChange: (mode: StudioBackgroundMode) => void;
+  onGrainStrengthChange: (value: number) => void;
+  onGrainScaleChange: (scale: number) => void;
   disabled?: boolean;
 }
 
@@ -37,6 +51,38 @@ function paperName(paperId: string): string {
 /** Cell size locked by UI-SPEC: 64×64 tiles, 8px grid gap. */
 const CELL_SIZE = 64;
 const GRID_GAP = 8;
+
+/** Q6: Grain strength segmented values (None / Soft / Med / Hard). */
+const GRAIN_STRENGTH_OPTIONS = [
+  { label: 'None', value: 0 },
+  { label: 'Soft', value: 0.35 },
+  { label: 'Med', value: 0.65 },
+  { label: 'Hard', value: 0.95 },
+] as const;
+
+/**
+ * Locked Paper-background decision: Transparent + White are background, not
+ * papers. They sit between the grain controls and the paper grid and reuse the
+ * top-bar swatch look.
+ */
+const BACKGROUND_ARMS: { label: 'Transparent' | 'White'; value: 'transparent' | 'white'; swatch: string }[] = [
+  { label: 'Transparent', value: 'transparent', swatch: 'repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px' },
+  { label: 'White', value: 'white', swatch: '#fff' },
+];
+
+/**
+ * Grain scale step (UAT follow-up): 0.5 strictly inside ]0.5, 2.0[ — the default
+ * 1.0 walks 1.5 ⇄ 0.5 in 0.5 jumps — and 0.1 at/below 0.5 and at/above 2.0
+ * (0.5 − → 0.4, 2.0 + → 2.1). Pure so hold-to-repeat resolves it per emission.
+ * 261017-vcn Q6: moved here with the grain widget from PhysicsPaintTopBar.
+ */
+export function grainScaleStep(value: number): number {
+  return value > 0.5 && value < 2 ? 0.5 : 0.1;
+}
+
+function segmentedButtonClass(active: boolean) {
+  return `physics-paint-segmented-button${active ? ' active' : ''}`;
+}
 
 /**
  * Engine sheet preview (D-11): the same paperColour sheet the editor fond
@@ -167,6 +213,62 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
 
   return (
     <div class="paper-picker" data-paper-picker style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* Q6: grain pair at the TOP of the Paper tab (former top-bar widgets). */}
+      <div
+        class="paper-picker-grain"
+        data-paper-picker-grain
+        style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+      >
+        <div class="physics-paint-segmented-row" role="group" aria-label="Grain strength">
+          {GRAIN_STRENGTH_OPTIONS.map((option) => (
+            <button
+              key={option.label}
+              type="button"
+              disabled={props.disabled}
+              class={segmentedButtonClass(props.grainStrength === option.value)}
+              onClick={() => props.onGrainStrengthChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <SliderStepper
+          label="Grain scale"
+          value={props.grainScale}
+          step={grainScaleStep(props.grainScale)}
+          resolveStep={grainScaleStep}
+          min={GRAIN_SCALE_MIN}
+          max={GRAIN_SCALE_MAX}
+          ariaLabel="Grain scale"
+          disabled={props.disabled}
+          freeEntry
+          onChange={props.onGrainScaleChange}
+        />
+      </div>
+
+      {/* Locked Paper-background decision: Transparent + White arms (background,
+          not papers) sit between the grain controls and the paper grid. */}
+      <div
+        class="physics-paint-segmented-row"
+        role="group"
+        aria-label="Background"
+        data-paper-picker-backgrounds
+      >
+        {BACKGROUND_ARMS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            disabled={props.disabled}
+            class={`${segmentedButtonClass(props.background === option.value)} physics-paint-swatch-button`}
+            title={option.label}
+            aria-label={option.label}
+            onClick={() => props.onBackgroundChange(option.value)}
+          >
+            <span class="physics-paint-paper-swatch" style={{ background: option.swatch }} />
+          </button>
+        ))}
+      </div>
+
       <div
         class="paper-picker-popover"
         data-paper-picker-popover
@@ -256,32 +358,6 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
             ))}
           </div>
         </div>
-      {/* D-10: Strength + Scale sit directly under the grid, always
-          reachable — never inside a popover (UI checklist row 10). */}
-      <div class="paper-picker-sliders" data-paper-picker-sliders style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <SliderStepper
-          id="paper-strength"
-          label="Strength"
-          value={props.strength}
-          onChange={props.onStrengthChange}
-          step={0.05}
-          min={0}
-          max={1}
-          ariaLabel="Strength"
-          disabled={props.disabled}
-        />
-        <SliderStepper
-          id="paper-scale"
-          label="Scale"
-          value={props.scale}
-          onChange={props.onScaleChange}
-          step={0.1}
-          min={0.1}
-          max={10}
-          ariaLabel="Scale"
-          disabled={props.disabled}
-        />
-      </div>
     </div>
   );
 }

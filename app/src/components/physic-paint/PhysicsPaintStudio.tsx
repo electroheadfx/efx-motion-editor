@@ -1433,11 +1433,16 @@ export function PhysicsPaintStudio() {
   // fallback — so the scale reaches playback/fond the same render and survives
   // reopen (settings hydrate only from document.background.fallback). No engine
   // call: visible background is suppressed at PhysicsPaintCanvasMount.
+  // 261017-vcn I-04 remainder: the surviving grain pair also writes the
+  // paper-display record (setPaper*) so the paper-display record and the
+  // document fallback / track metadata stay in sync in the same turn. The
+  // paper-only pair is gone — one pair only (Q6).
   const handleGrainScaleChange = (scale: number) => {
     const layerId = launchContext?.layerId;
     const nextSettings = { ...settings, grainScale: scale };
     setGrainScale(scale);
     if (layerId) {
+      physicPaintStore.setPaperScale(layerId, scale);
       physicPaintStore.setRotoBackgroundMetadata(layerId, studioActiveTrackId(), buildRotoBackgroundMetadata(nextSettings));
     }
     if (layerId && settings.background !== 'photo') {
@@ -1452,29 +1457,20 @@ export function PhysicsPaintStudio() {
     const nextSettings = { ...settings, grainStrength: strength };
     setGrainStrength(strength);
     if (layerId) {
+      physicPaintStore.setPaperStrength(layerId, strength);
       physicPaintStore.setRotoBackgroundMetadata(layerId, studioActiveTrackId(), buildRotoBackgroundMetadata(nextSettings));
     }
     if (layerId && settings.background !== 'photo') {
       setBackgroundFallback(layerId, backgroundModeToFallback(settings.background, nextSettings));
     }
   };
-  // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's ports —
-  // display-class edits through the store's paper setters (fond + change
-  // token), plus the Studio settings mirror so the slider readouts stay live.
+  // 56-05 (PAPER-03 / D-10): the shared-panel Paper section's paper-id port —
+  // display-class edit through the store's paper-id setter (fond + change
+  // token). Transparent / White route through handleBackgroundChange.
   const handlePaperIdChange = (paperId: string) => {
     const layerId = launchContext?.layerId;
     if (layerId) physicPaintStore.setPaperId(layerId, paperId);
     setBackground(paperId as StudioBackgroundMode);
-  };
-  const handlePaperStrengthChange = (strength: number) => {
-    const layerId = launchContext?.layerId;
-    if (layerId) physicPaintStore.setPaperStrength(layerId, strength);
-    setGrainStrength(strength);
-  };
-  const handlePaperScaleChange = (scale: number) => {
-    const layerId = launchContext?.layerId;
-    if (layerId) physicPaintStore.setPaperScale(layerId, scale);
-    setGrainScale(scale);
   };
   const replacePhysicalRecordsWithOwnership = (
     layerId: string,
@@ -3576,12 +3572,9 @@ export function PhysicsPaintStudio() {
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, settings.background, settings.grainStrength, settings.grainScale, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, setGrainScale], () => ({
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
-    background: settings.background,
-    grainStrength: settings.grainStrength,
-    grainScale: settings.grainScale,
     ready: readyToApply,
     disabled: staticControlsLocked,
     // UI checklist row 3: one shared Size slider. In Water color mode the
@@ -3592,9 +3585,6 @@ export function PhysicsPaintStudio() {
       else setBrushSize(value);
     },
     onOpacityChange: setBrushOpacity,
-    onBackgroundChange: handleBackgroundChange,
-    onGrainStrengthChange: handleGrainStrengthChange,
-    onGrainScaleChange: handleGrainScaleChange,
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -3702,7 +3692,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handlePaperStrengthChange, handlePaperScaleChange, undo, redo, clearActiveSource], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, undo, redo, clearActiveSource], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3752,13 +3742,16 @@ export function PhysicsPaintStudio() {
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
     // to Track option and a Bg rail selection opens the Background option tab.
     toolTab: rightPanelToolTab,
-    // 56-05 (D-09..D-12): shared-panel Paper section ports.
+    // 56-05 (D-09..D-12) + 261017-vcn I-04 remainder: shared-panel Paper
+    // section ports — paper + background + the one grain pair.
     paperId: settings.background.startsWith('paper/') ? settings.background : 'paper/cold-press',
-    paperStrength: settings.grainStrength,
-    paperScale: settings.grainScale,
+    background: settings.background,
+    grainStrength: settings.grainStrength,
+    grainScale: settings.grainScale,
     onPaperIdChange: handlePaperIdChange,
-    onPaperStrengthChange: handlePaperStrengthChange,
-    onPaperScaleChange: handlePaperScaleChange,
+    onBackgroundChange: handleBackgroundChange,
+    onGrainStrengthChange: handleGrainStrengthChange,
+    onGrainScaleChange: handleGrainScaleChange,
     onColorChange: (color: string, opacity: number) => {
       setBrushColor(color, opacity);
       paintStore.setForeground(color);
