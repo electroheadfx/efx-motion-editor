@@ -83,6 +83,7 @@ export function captureLayerStack(root: HTMLElement | null): void {
     }
   });
   capturePaperFond('layer-stack', {
+    codeMarker: 'dry-suppression-v2',
     fondLayer: describe('.physics-paint-fond-layer'),
     fondCanvas: describe('.physics-paint-cached-roto-playback-background'),
     tracksGroup: describe('.physics-paint-tracks-group'),

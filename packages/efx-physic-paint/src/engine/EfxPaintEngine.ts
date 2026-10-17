@@ -2902,7 +2902,9 @@ export class EfxPaintEngine {
   }
 
   private getDryRestoreData(): ImageData | null {
-    return this.previewBaseEnabled ? null : this.bgData
+    // studio-reopen-paper-washout: suppressed = the fond owns the visible
+    // background — there is nothing to "restore" onto the dry canvas.
+    return this.previewBaseEnabled || this.visibleBackgroundSuppressed ? null : this.bgData
   }
 
   /** Set by clear(preserveDry) — dry holds strokes already baked into the
