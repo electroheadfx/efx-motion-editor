@@ -208,6 +208,15 @@ export function AquarelleCanvasLayer(props: {
    * factory is resolved later by captureLivePixels (52.1 deferred-copy law).
    */
   onCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void;
+  /**
+   * NAV FLUSH (paint-cache-empty-frame-on-key): registers a synchronous
+   * flush-capture the Studio navigation calls BEFORE flushLivePixels. The rAF
+   * poll's frame-leave capture runs one rAF AFTER scheduleRotoStartFramePropagation,
+   * which is AFTER the navigation flush has drained — the late capture then sits
+   * in CAPTURE_PRODUCE_QUIET_MS and the return-to-key read shows the pre-capture
+   * cache (the intermittent empty frame). Mirrors onNativePenInputReady.
+   */
+  onFlushCaptureReady?: (flushCapture: () => void) => void;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -219,6 +228,7 @@ export function AquarelleCanvasLayer(props: {
   const getPaperIdRef = useRef(props.getPaperId);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
+  const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
   widthRef.current = props.width;
@@ -227,6 +237,7 @@ export function AquarelleCanvasLayer(props: {
   getPaperIdRef.current = props.getPaperId;
   onStrokeEndRef.current = props.onStrokeEnd;
   onCaptureFrameRef.current = props.onCaptureFrame;
+  onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
   // leak the previous frame's paint (the user saw the same paint on every
@@ -315,6 +326,17 @@ export function AquarelleCanvasLayer(props: {
         return null;
       }
     };
+
+    // NAV FLUSH: synchronous pre-leave capture the Studio navigation calls
+    // before flushLivePixels. The rAF poll's frame-change capture runs one rAF
+    // after scheduleRotoStartFramePropagation — i.e. AFTER the navigation flush
+    // has already drained — so without this the capture is queued too late and
+    // sits in CAPTURE_PRODUCE_QUIET_MS (the empty-frame-on-return race).
+    const flushCapture = () => {
+      if (!engine.hasPaint) return;
+      onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
+    };
+    onFlushCaptureReadyRef.current?.(flushCapture);
 
     // D-15: user-initiated Dry is one event with two ends. The record end
     // (aquarelleRecordState) already appended it to the payload timeline;

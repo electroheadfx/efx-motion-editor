@@ -2563,6 +2563,11 @@ export function PhysicsPaintStudio() {
     isMutationLocked: isPhysicalMutationLocked,
   });
   const beginRotoFrameEditImplRef = useRef<() => void>(() => {});
+  // NAV FLUSH (paint-cache-empty-frame-on-key): the aquarelle layer registers a
+  // synchronous flush-capture here; navigateToSyncedPhysicalFrame calls it BEFORE
+  // flushLivePixels so the frame-leave capture is queued in time (the rAF poll's
+  // capture runs one rAF after the flush has already drained).
+  const aquarelleFlushCaptureRef = useRef<(() => void) | null>(null);
   beginRotoFrameEditImplRef.current = () => {
     const launch = launchContextRef.current;
     const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;
@@ -2679,6 +2684,10 @@ export function PhysicsPaintStudio() {
       // it must NOT block on the flush's encode + parent push, or the scrub
       // release settle stalls (the "image scrub no work" regression).
       const snapshotStartedAtMs = performance.now();
+      // NAV FLUSH: force the aquarelle frame-leave capture BEFORE the live-pixel
+      // flush — the rAF poll would queue it one rAF after scheduleRotoStartFramePropagation,
+      // i.e. after this flush has already drained (the empty-frame-on-return race).
+      aquarelleFlushCaptureRef.current?.();
       rotoPersistence.snapshotLivePixels(currentFrame);
       recordPhysicsPaintPerformance({ stage: 'nav.snapshotLivePixels', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
@@ -4052,6 +4061,12 @@ export function PhysicsPaintStudio() {
     });
   }, [canvasWidth, canvasHeight]);
 
+  // NAV FLUSH (paint-cache-empty-frame-on-key): registration callback for the
+  // aquarelle layer's synchronous flush-capture (see navigateToSyncedPhysicalFrame).
+  const handleAquarelleFlushCaptureReady = useCallback((flushCapture: () => void) => {
+    aquarelleFlushCaptureRef.current = flushCapture;
+  }, []);
+
   // FRAME SCOPE: identity-stable getter so the canvas-mount memo never
   // invalidates on frame navigation (the persistent Efx child contract).
   const getAquarellePlayFrame = useCallback(
@@ -4099,6 +4114,7 @@ export function PhysicsPaintStudio() {
       getAquarellePaperId,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,
+      onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the

@@ -77,6 +77,24 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('wasAwake = false');
   });
 
+  it('NAV FLUSH: navigation forces an aquarelle frame-leave capture BEFORE flushing live pixels', () => {
+    // The aquarelle rAF poll queues its frame-leave capture AFTER
+    // scheduleRotoStartFramePropagation, which is AFTER navigateToSyncedPhysicalFrame
+    // has already drained flushLivePixels. Without a forced pre-flush capture the
+    // late capture sits in CAPTURE_PRODUCE_QUIET_MS (6s) and the return-to-key
+    // display reads the pre-capture cache — the intermittent empty-frame-on-return.
+    // The layer must expose a synchronous flush-capture registration …
+    expect(layer).toContain('onFlushCaptureReady');
+    expect(layer).toContain('flushCapture');
+    // … and the Studio navigation must invoke it before flushLivePixels.
+    const navBody = studio.slice(studio.indexOf('const navigateToSyncedPhysicalFrame'));
+    const preCaptureIdx = navBody.indexOf('aquarelleFlushCapture');
+    const flushIdx = navBody.indexOf('flushLivePixels(currentFrame)');
+    expect(preCaptureIdx).toBeGreaterThan(-1);
+    expect(flushIdx).toBeGreaterThan(-1);
+    expect(preCaptureIdx).toBeLessThan(flushIdx);
+  });
+
   it('no double composite: the live aquarelle layer replaces the active track in the monitor', () => {
     expect(studio).toContain("activeModule.value === 'watercolor'\n          || engineSurfaceHidden");
   });

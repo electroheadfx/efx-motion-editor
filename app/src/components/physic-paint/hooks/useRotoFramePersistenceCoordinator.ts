@@ -15,6 +15,7 @@ import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoord
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
 import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';
+import { capturePaintCacheEvent } from '../../../lib/paintCacheFrameEnterCapture';
 
 /** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
  * (superseded by a mid-sequence revision advance, or the frame vanished), the
@@ -508,6 +509,14 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // so a paper change is a cache miss (stale WebP frames are not served).
       cacheRevision: `${route.contentRevision}:real:${route.keyId}${paperCacheTerm(inputRef.current.getBackgroundMetadata())}`,
     };
+    // paint-cache-empty-frame-on-key instrument: record cache-write completion
+    // so the next occurrence can compare write time vs frame-enter read time.
+    capturePaintCacheEvent('cache-write-commit', {
+      appFrame: renderedFrame.appFrame,
+      keyId: route.keyId,
+      contentRevision: route.contentRevision,
+      bytesLen: renderedFrame.bytes instanceof Uint8Array ? renderedFrame.bytes.length : 0,
+    });
     confirmedFramesRef.current.set(renderedFrame.appFrame, accepted);
     editBuffer.acceptPixelCache(renderedFrame.appFrame);
     publishCurrentDocument(layerId, launchId);

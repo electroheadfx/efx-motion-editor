@@ -28,7 +28,7 @@ const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, CSSProperties['mixBlendMode']> =
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; color?: string; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; color?: string; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void; onAquarelleFlushCaptureReady?: (flushCapture: () => void) => void }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
@@ -44,6 +44,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const getStrokeMetadataRef = useRef(props.getStrokeMetadata);
   const onAquarelleStrokeEndRef = useRef(props.onAquarelleStrokeEnd);
   const onAquarelleCaptureFrameRef = useRef(props.onAquarelleCaptureFrame);
+  const onAquarelleFlushCaptureReadyRef = useRef(props.onAquarelleFlushCaptureReady);
   const getAquarellePlayFrameRef = useRef(props.getAquarellePlayFrame);
   const getAquarellePaperIdRef = useRef(props.getAquarellePaperId);
   const colorRef = useRef(props.color ?? '#103c65');
@@ -57,6 +58,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   getStrokeMetadataRef.current = props.getStrokeMetadata;
   onAquarelleStrokeEndRef.current = props.onAquarelleStrokeEnd;
   onAquarelleCaptureFrameRef.current = props.onAquarelleCaptureFrame;
+  onAquarelleFlushCaptureReadyRef.current = props.onAquarelleFlushCaptureReady;
   getAquarellePlayFrameRef.current = props.getAquarellePlayFrame;
   getAquarellePaperIdRef.current = props.getAquarellePaperId;
   colorRef.current = props.color ?? '#103c65';
@@ -189,6 +191,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
           disabled={false}
           onStrokeEnd={(stroke) => onAquarelleStrokeEndRef.current?.(stroke)}
           onCaptureFrame={(playFrame, snapshot) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot)}
+          onFlushCaptureReady={(flushCapture) => onAquarelleFlushCaptureReadyRef.current?.(flushCapture)}
         />
       ) : null}
       {mountError ? <p class="demo-error">{mountError}</p> : null}
