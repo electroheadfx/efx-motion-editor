@@ -630,7 +630,8 @@ export function PhysicsPaintStudio() {
         const liveTrackId = getEfxPaintDocument(next.layerId)?.activeTrackId ?? trackIdOfLaunch(next);
         // studio-realm-divergence probe: startFrame landed (propagation made
         // it through) — record where the document cursor stood BEFORE this
-        // reseed closes the gap.        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
+        // reseed closes the gap.
+        selectedKeyId.value = physicPaintStore.getRotoRealKeyRecordByAppFrame(next.layerId, liveTrackId, next.startFrame)?.keyId ?? null;
         physicPaintStore.setRotoPhysicalSelection(next.layerId, liveTrackId, selectedKeyId.value, next.startFrame);
         const spacingSelection = rotoSpacingSelection.peek();
         selectedKeyIds.value = spacingSelection?.selectedSourceKeyIds
@@ -964,6 +965,20 @@ export function PhysicsPaintStudio() {
   // (past the 4px threshold). navigateToSyncedPhysicalFrame routes the audio
   // funnel to scrub (audible snippet) vs seek (silent re-anchor) by this flag.
   const scrubActiveRef = useRef(false);
+  // I-09 belt: a scrub that never fired onScrubEnd (pointer capture lost,
+  // a throw in the release seek) used to leave scrubActiveRef armed forever —
+  // every later frame click was swallowed into scrub-only mode. A window-level
+  // pointerup/pointercancel always disarms the flag; onScrubEnd remains the
+  // braces that fires the release-settle navigation.
+  useEffect(() => {
+    const disarm = () => { scrubActiveRef.current = false; };
+    window.addEventListener('pointerup', disarm);
+    window.addEventListener('pointercancel', disarm);
+    return () => {
+      window.removeEventListener('pointerup', disarm);
+      window.removeEventListener('pointercancel', disarm);
+    };
+  }, []);
   // G-52-9 drag-gate: non-null ONLY while the ruler scrub gesture is armed.
   // The strip's playhead bar subscribes to this feed as a narrow leaf — during
   // a drag it is the ONLY UI that moves. No startFrame propagation, no flush,
@@ -2682,7 +2697,8 @@ export function PhysicsPaintStudio() {
       } catch {
         // studio-realm-divergence probe: the doc cursor was ALREADY written to
         // `frame` above, but this abort skips the startFrame propagation below
-        // — the two cursors diverge for the rest of the session.        setApplyStatus('error');
+        // — the two cursors diverge for the rest of the session.
+        setApplyStatus('error');
         setApplyMessage(`Could not save Roto frame ${currentFrame} before navigation.`);
         return false;
       }
@@ -3447,7 +3463,14 @@ export function PhysicsPaintStudio() {
     // release-settle propagation caught up (see the startFrame effect below).
     if (rotoScrubFrameSignal.peek() !== null) rotoScrubFrameSignal.value = null;
     publishOperationResult(null);
-    void requestRotoFrameNavigationRef.current(frame);
+    // I-09 belt: a refused navigation is never silent. The old `void request…`
+    // dropped a resolved `false` from prepareNavigation's busy/activeApply
+    // gate, so every click looked dead with no console error.
+    void requestRotoFrameNavigationRef.current(frame).then((navigated) => {
+      if (!navigated) {
+        setApplyMessage('Frame change is busy — try again.');
+      }
+    });
   }, [publishOperationResult, rotoCachedScrub, rotoScrubFrameSignal, loadCachedRotoReferenceFrame]);
   // 47 close-out: ONE-click cross-track selection. Clicking a frame/key cell
   // or a rail on a NON-active row activates the track and selects the target
@@ -3460,7 +3483,8 @@ export function PhysicsPaintStudio() {
     if (!layerId) return;
     // studio-realm-divergence probe: which route armed the cross-track guard,
     // and did it actually change the active track (a same-track arm is never
-    // consumed until a LATER switch's display-state change).    setActiveTrackId(layerId, trackId);
+    // consumed until a LATER switch's display-state change).
+    setActiveTrackId(layerId, trackId);
     crossTrackSelectionPendingRef.current = true;
     handleNavigateToSyncedFrame(frame);
     railSetSelection.value = null;
@@ -3669,7 +3693,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handlePaperStrengthChange, handlePaperScaleChange], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handlePaperStrengthChange, handlePaperScaleChange, undo, redo, clearActiveSource], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3737,6 +3761,12 @@ export function PhysicsPaintStudio() {
     onEraseStrengthChange: setEraseStrength,
     onOnionChange: setOnion,
     onPlayWiggleChange: updatePanelMotion,
+    // UI checklist row 6 Actions tab: Undo | Redo | Clear frame — required by
+    // PhysicsPaintRightPanel's props interface (I-09: they were missing and
+    // the Actions tab buttons called undefined).
+    onUndo: undo,
+    onRedo: redo,
+    onClearFrame: clearActiveSource,
     scripts: {
       library: rotoScriptLibrary,
       playScript: rotoPlayScript,

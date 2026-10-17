@@ -238,6 +238,11 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   let disposed = false;
   let disposalRequested = false;
   let navigationLockHeld = false;
+  /** The engine that took the navigation lease — completeNavigation MUST
+   *  release it even if engineState has since gone null (I-09 busy-lease
+   *  leak: a skipped endOperation left busy stuck true and every later
+   *  prepareNavigation silently returned false). */
+  let navigationLockEngine: RotoScriptEnginePort | null = null;
   let pendingOperationCount = 0;
   let resolveDisposal: (() => void) | null = null;
   let disposalPromise: Promise<void> | null = null;
@@ -322,10 +327,12 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     busy.value = true;
   }
 
-  function endOperation(engine: RotoScriptEnginePort): void {
+  function endOperation(engine: RotoScriptEnginePort | null): void {
     pendingOperationCount = Math.max(0, pendingOperationCount - 1);
-    lockedEngines.delete(engine);
-    engine.setInputLocked(false);
+    if (engine) {
+      lockedEngines.delete(engine);
+      engine.setInputLocked(false);
+    }
     if (pendingOperationCount === 0 && !navigationLockHeld) {
       for (const lockedEngine of lockedEngines) lockedEngine.setInputLocked(false);
       lockedEngines.clear();
@@ -808,6 +815,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const engine = engineState.peek();
     if (!engine) return true;
     navigationLockHeld = true;
+    navigationLockEngine = engine;
     beginOperation(engine);
     return true;
   }
@@ -815,8 +823,12 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   function completeNavigation(): void {
     if (!navigationLockHeld) return;
     navigationLockHeld = false;
-    const engine = engineState.peek();
-    if (engine) endOperation(engine);
+    // I-09: release the lease on the engine that TOOK it — never on
+    // engineState.peek(), which can be null after an engine swap/detach and
+    // used to skip endOperation entirely (busy stuck true forever).
+    // endOperation tolerates a null engine so the busy lease always drops.
+    endOperation(navigationLockEngine ?? engineState.peek());
+    navigationLockEngine = null;
   }
 
   function cancelApply(): void {

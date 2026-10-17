@@ -157,13 +157,18 @@ export function usePhysicsPaintRulerScrub(
         session.rulerElement.releasePointerCapture(session.pointerId);
       }
       // D-02 amendment: report the final position ONLY when scrub mode had
-      // armed — a plain click never fires onScrubEnd.
+      // armed — a plain click never fires onScrubEnd. I-09: onScrubEnd must
+      // run even if the final seek throws, or scrubActiveRef stays armed and
+      // every later frame click is swallowed into scrub-only mode.
       if (session.scrubbing) {
-        if (pendingFrame !== null && pendingFrame !== session.lastEmittedFrame) {
-          session.lastEmittedFrame = pendingFrame;
-          options.onSeek(pendingFrame);
+        try {
+          if (pendingFrame !== null && pendingFrame !== session.lastEmittedFrame) {
+            session.lastEmittedFrame = pendingFrame;
+            options.onSeek(pendingFrame);
+          }
+        } finally {
+          options.onScrubEnd?.(session.lastEmittedFrame);
         }
-        options.onScrubEnd?.(session.lastEmittedFrame);
       }
       if (sessionRef.current === session) sessionRef.current = null;
     };
