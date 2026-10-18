@@ -133,15 +133,22 @@ function clampParams(params: PaintStroke['params']) {
  * Same projection law as toStudioStroke (55-02) — keep the words identical.
  */
 export function serializeRotoScriptStroke(stroke: Readonly<PaintStroke>, strokeIndex: number): StudioStroke<PhysicStrokePayload> {
-  const pts: StudioPoint[] = stroke.points.map((point, i) => ({
-    x: schemaRange(point.x, -1_000_000, 1_000_000, 0),
-    y: schemaRange(point.y, -1_000_000, 1_000_000, 0),
-    p: schemaRange(point.p, 0, 1, 0),
-    tx: schemaRange(point.tx, -90, 90, 0),
-    ty: schemaRange(point.ty, -90, 90, 0),
-    tw: schemaRange(point.tw, -360, 360, 0),
-    tick: i,
-  }));
+  // Mouse input records p: 0 (PointerEvent.pressure is 0 for mouse). On replay
+  // the engine's strokeHasPenInput fallback (p !== 0.5) would read that as pen
+  // input and render zero-width. Normalize to 0.5 when no pen input is present.
+  const noPenInput = !stroke.hasPenInput;
+  const pts: StudioPoint[] = stroke.points.map((point, i) => {
+    const rawP = schemaRange(point.p, 0, 1, 0);
+    return {
+      x: schemaRange(point.x, -1_000_000, 1_000_000, 0),
+      y: schemaRange(point.y, -1_000_000, 1_000_000, 0),
+      p: noPenInput && rawP === 0 ? 0.5 : rawP,
+      tx: schemaRange(point.tx, -90, 90, 0),
+      ty: schemaRange(point.ty, -90, 90, 0),
+      tw: schemaRange(point.tw, -360, 360, 0),
+      tick: i,
+    };
+  });
   // Positive only (260925-iy6): the engine's `|| 0` round-trip must not leak
   // into cuisson or the engine slot. Continuation counts take the engine cap.
   const diffusion = typeof stroke.diffusionFrames === 'number' && stroke.diffusionFrames > 0
@@ -163,7 +170,7 @@ export function serializeRotoScriptStroke(stroke: Readonly<PaintStroke>, strokeI
       color: stroke.color,
       params: clampParams(stroke.params) as unknown as Record<string, number>,
       ...(stroke.mutationId !== undefined ? { mutationId: stroke.mutationId } : {}),
-      ...(stroke.hasPenInput !== undefined ? { hasPenInput: stroke.hasPenInput } : {}),
+      hasPenInput: stroke.hasPenInput === true,
       ...(diffusion > 0 ? { diffusionFrames: diffusion } : {}),
       ...(stroke.playFrame !== undefined ? { playFrame: stroke.playFrame } : {}),
       ...(stroke.physicsMode !== undefined ? { physicsMode: stroke.physicsMode } : {}),
