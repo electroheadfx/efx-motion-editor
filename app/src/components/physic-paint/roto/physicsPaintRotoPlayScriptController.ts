@@ -27,6 +27,7 @@ import {
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 import { renderRotoPlayScriptFrames } from './physicsPaintRotoPlayScriptRenderer';
 import { isWebpBytes } from '../../../types/physicPaint';
+import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
@@ -1239,10 +1240,27 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       ? ports.createAquarelleAdapter(size, bakePaper)
       : await createDefaultAquarelleAdapter(size, bakePaper);
     const createBake = ports.createAquarelleBake ?? defaultCreateAquarelleBake;
+    // Rust VP8L encoder — the bake's default toDataURL('image/webp') emits
+    // lossy VP8, which isWebpBytes rejects (it requires the VP8L chunk).
+    const encodeAquarelleWebp = async (frame: CanvasImageSource, width: number, height: number): Promise<Uint8Array> => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error('Could not create aquarelle bake encode canvas.');
+      ctx.drawImage(frame, 0, 0, width, height);
+      const imageData = ctx.getImageData(0, 0, width, height);
+      return encodeWebpFrame({
+        rgba: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength),
+        width,
+        height,
+      });
+    };
     const bake = createBake(adapter, {
       width: size.width,
       height: size.height,
       paper: bakePaper,
+      encodeWebp: encodeAquarelleWebp,
     });
     aquarelleBake = bake;
     try {
