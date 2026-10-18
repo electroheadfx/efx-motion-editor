@@ -6,10 +6,10 @@ current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
 status: executing
 stopped_at: Completed 261018-gqo third UAT round
-last_updated: "2026-10-18T10:26:58.071Z"
+last_updated: "2026-10-18T11:40:26.706Z"
 last_activity: 2026-10-18
 last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
-state_head: 4d6ed5c2f623ec26a29a25a88970fc13986318f6
+state_head: e0a00b612c46b2553e9fe46b80d0b4d06178b62d
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 4 of 10
 Status: Ready to execute
-Last activity: 2026-10-18 — Completed quick 261018-gqo: third UAT round on the watercolor/brush Studio UI (five moves, five commits) — awaiting live UAT
+Last activity: 2026-10-18 — Completed quick 261018-ias: fourth UAT round (Texture slider + 15 CSS adjustments, two commits) — awaiting live UAT
 
 Progress: [████████░░] 75%
 
@@ -551,6 +551,7 @@ None yet.
 | 261018-cy1 | UAT feedback batch on the phase-55 watercolor UI (images 59-65): tabs by mode, oracle brush list, centered top-bar controls, watercolor Undo/Redo/Trash, flat paper tab Real-first grain Soft, Actions tab removed | 2026-10-18 | bba5bc2b | [261018-cy1-uat-feedback-batch-on-the-phase-55-water](./quick/261018-cy1-uat-feedback-batch-on-the-phase-55-water/) |
 | 261018-f15 | Second UAT round on the watercolor/brush Studio UI: right-panel inset, flat paper tab with oracle wash thumbs 2-col, Water/Edges/Grain in top bar, duplicated size/opacity, brush smoothing first | 2026-10-18 | aba0b8c1 | [261018-f15-second-uat-round-on-the-watercolor-brush](./quick/261018-f15-second-uat-round-on-the-watercolor-brush/) |
 | 261018-gqo | Third UAT round: landscape paper cards, oracle paper catalog, spacing pass, light brush borders, centered top-bar group | 2026-10-18 | 4d6ed5c2 | [261018-gqo-third-uat-round-on-the-watercolor-brush](./quick/261018-gqo-third-uat-round-on-the-watercolor-brush/) |
+| 261018-ias | Fourth UAT round: Paper tab Texture slider + 15 CSS adjustments (images 78+) | 2026-10-18 | e0a00b61 | [261018-ias-fourth-uat-round-on-the-watercolor-brush](./quick/261018-ias-fourth-uat-round-on-the-watercolor-brush/) |
 
 ### Roadmap Evolution
 
