@@ -2537,12 +2537,22 @@ fn validate_point(value: &Value) -> Result<(), String> {
     for (key, min, max) in [
         ("x", -1_000_000.0, 1_000_000.0),
         ("y", -1_000_000.0, 1_000_000.0),
-        ("p", 0.0, 1.0),
+        // p: -1 is the aquarelle mouse sentinel (pushSample reports -1 when no
+        // pen pressure is available). Engine-1 normalizes to 0.5 before serialize.
+        ("p", -1.0, 1.0),
         ("tx", -90.0, 90.0),
         ("ty", -90.0, 90.0),
         ("tw", -360.0, 360.0),
     ] {
-        finite_range(point.get(key), key, min, max)?;
+        if key == "p" {
+            let p = point.get(key).and_then(Value::as_f64);
+            match p {
+                Some(v) if v == -1.0 || (v.is_finite() && v >= 0.0 && v <= 1.0) => {}
+                _ => return Err("Invalid p".to_string()),
+            }
+        } else {
+            finite_range(point.get(key), key, min, max)?;
+        }
     }
     Ok(())
 }

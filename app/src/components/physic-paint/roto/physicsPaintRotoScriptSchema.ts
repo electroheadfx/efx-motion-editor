@@ -635,7 +635,7 @@ function isEnvelopeStrokeAquarelle(value: unknown): value is StudioStroke<Aquare
     return isEnginePayloadAquarelleDry(value.engine);
   }
   if (value.pts.length < 1 || value.pts.length > ROTO_SCRIPT_LIMITS.pointsPerBrush) return false;
-  if (!value.pts.every(isEnvelopePoint)) return false;
+  if (!value.pts.every(isEnvelopePointAquarelle)) return false;
   if (!nonNegativeInteger(value.ticks) || (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts.length - 1))) return false;
   if (value.cuisson !== 0) return false;
   if (value.motion !== null) return false;
@@ -675,6 +675,19 @@ function isEnvelopePoint(value: unknown): value is StudioPoint {
   if (!isRecord(value)) return false;
   return finiteRange(value.x, -1_000_000, 1_000_000) && finiteRange(value.y, -1_000_000, 1_000_000)
     && finiteRange(value.p, 0, 1) && finiteRange(value.tx, -90, 90) && finiteRange(value.ty, -90, 90)
+    && finiteRange(value.tw, -360, 360) && nonNegativeInteger(value.tick);
+}
+
+/**
+ * 261018-odm fix: aquarelle envelope points accept p: -1 (the engine's mouse
+ * sentinel — pushSample reports -1 when no pen pressure is available). The
+ * engine's bake path resolves it internally via simPressure.
+ */
+function isEnvelopePointAquarelle(value: unknown): value is StudioPoint {
+  if (!isRecord(value)) return false;
+  return finiteRange(value.x, -1_000_000, 1_000_000) && finiteRange(value.y, -1_000_000, 1_000_000)
+    && (finiteRange(value.p, 0, 1) || value.p === -1)
+    && finiteRange(value.tx, -90, 90) && finiteRange(value.ty, -90, 90)
     && finiteRange(value.tw, -360, 360) && nonNegativeInteger(value.tick);
 }
 
