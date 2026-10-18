@@ -211,8 +211,10 @@ export function createAquarelleBake(
       const stroke = event as StudioStroke<AquarelleStrokePayload>
       const myStrokeIndex = strokeIndex
       strokeIndex += 1
+      // `||` not `??`: a stroke projected with cuisson 0 still falls back to
+      // the engine slot's diffusionFrames, so the fluid sim runs its window.
       const cuisson = clampCuisson(
-        stroke.cuisson ?? (stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
+        stroke.cuisson || (stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
       )
 
       // Reserve the adapter slot NOW so chain order is walk order, not

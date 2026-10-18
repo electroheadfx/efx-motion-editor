@@ -415,10 +415,16 @@ function aquarellePersistedToRuntime(document: PersistedRotoScriptAquarelleV1): 
       continue;
     }
     const engine = stroke.engine as AquarelleStrokePayload;
+    // Project the bake window from engine.diffusionFrames (the toStudioStroke
+    // law). Hardcoding cuisson:0 made the bake skip stepTick entirely — the
+    // fluid sim never bled/granulated and the replay drew only the deposit line.
+    const cuisson = typeof engine.diffusionFrames === 'number' && engine.diffusionFrames > 0
+      ? Math.min(600, Math.trunc(engine.diffusionFrames))
+      : 0;
     const projected: StudioStroke<AquarelleStrokePayload> = {
       pts: stroke.pts.map((point) => ({ ...point })),
       ticks: stroke.ticks,
-      cuisson: 0,
+      cuisson,
       motion: null,
       brushId: engine.brushId,
       toolOverrides: { ...stroke.toolOverrides },
