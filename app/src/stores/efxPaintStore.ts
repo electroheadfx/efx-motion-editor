@@ -1548,7 +1548,13 @@ export async function createRevealRail(
   // render-neutral shape the payload normalizer synthesizes).
   const revealCycleLength = bakeResult.records.length;
   const revealRepeat = input.repeat ?? 1;
-  const revealOriginalEnd = input.startFrame + revealCycleLength * (revealRepeat === 'infinity' ? 1 : revealRepeat);
+  // A Repeat may run past the timeline end — the resolver shortens the visible
+  // range — so the persisted Group extent is clamped to capacity; an unclamped
+  // extent makes the physical-document validator refuse the whole rail.
+  const revealOriginalEnd = Math.min(
+    input.startFrame + revealCycleLength * (revealRepeat === 'infinity' ? 1 : revealRepeat),
+    physicPaintStore.getRotoPhysicalCapacity(layerId, input.trackId),
+  );
   const loopClip: PhysicPaintRotoLoopClip = {
     loopId: createPhysicPaintRotoKeyId(),
     placementStart: input.startFrame,

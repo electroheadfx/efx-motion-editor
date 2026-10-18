@@ -1106,7 +1106,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
               ? resolvePhysicPaintRotoGroupEffectiveEnd(draftTarget, targetRanges)
               : target.originalEndExclusive!;
           })()
-        : target.phaseOrigin + cycleDuration * draftRepeat;
+        // A finite Repeat may run past the parent end ("shortened" by the
+        // resolver); the persisted Group extent must stay within capacity or
+        // the document validator refuses the whole edit.
+        : snapshot
+          ? Math.min(target.phaseOrigin + cycleDuration * draftRepeat, snapshot.capacity)
+          : target.phaseOrigin + cycleDuration * draftRepeat;
       if (target.frameOverrides?.some((override) => override.appFrame >= originalEndExclusive)) {
         fail(new Error('Repeat cannot remove locally painted Rail frames. Regenerate the Rail first.'));
         return false;
@@ -1423,15 +1428,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           identities: authority.physicalRecords.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
         });
         if (!freshMatch) throw new Error('The identical source cycle changed before commit.');
+        const linkedRepeat = infinity.peek() ? 'infinity' : parsedRepeat.peek().count!;
         const linkedLoop: PhysicPaintRotoLoopClip = {
           loopId: createPhysicPaintRotoKeyId(),
           placementStart: start,
           sourceKeyIds: freshMatch.sourceKeyIds,
-          repeat: infinity.peek() ? 'infinity' : parsedRepeat.peek().count!,
+          repeat: linkedRepeat,
           mode: renderMode,
           scriptId: selectedId,
           motion: { ...motion },
           overrideColor: renderOverrideColor,
+          ...(buildNewLoopLifecycle(start, freshMatch.sourceKeyIds.length, linkedRepeat, authority.physicalCapacity) ?? {}),
         };
         const publication = buildLoopOnlyPublication({
           authority,
@@ -1612,15 +1619,17 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       } else if (!isSourceEdit && loopIntentActive.peek()) {
         // D-09: new loops are created via Play Script Apply — the loop
         // references the freshly committed cycle keyIds.
+        const newLoopRepeat = infinity.peek() ? 'infinity' : parsedRepeat.peek().count!;
         const newLoop: PhysicPaintRotoLoopClip = {
           loopId: createPhysicPaintRotoKeyId(),
           placementStart: start,
           sourceKeyIds: Object.freeze([...cycleKeyIds]),
-          repeat: infinity.peek() ? 'infinity' : parsedRepeat.peek().count!,
+          repeat: newLoopRepeat,
           mode: renderMode,
           scriptId: selectedId,
           motion: { ...motion },
           overrideColor: renderOverrideColor,
+          ...(buildNewLoopLifecycle(start, cycleKeyIds.length, newLoopRepeat, commitAuthority.physicalCapacity) ?? {}),
         };
         loopClips = Object.freeze([...currentLoopClips(), newLoop]);
         // 52 UAT (AM-4): a new rail never receives incoming interpolation —
@@ -1999,6 +2008,35 @@ function parseRepeat(value: string, cycleLength: number | null): { count: number
     if (count > maxRepeat) return { count: null, error: 'Repeat is too large for this cycle length.' };
   }
   return { count, error: null };
+}
+
+/**
+ * Attach the creation-time Group lifecycle to a NEW finite Loop Clip, with the
+ * requested extent CLAMPED to the physical capacity. The Play dialog (and the
+ * resolver) explicitly allow a Repeat to run past the timeline end — the rail
+ * readout reports "Effective: X — shortened" — but an under-specified clip
+ * hydrates to the FULL requested extent (buildDefaultPhysicPaintRotoGroupLifecycle)
+ * and the physical-document validator then refuses the whole Play before it is
+ * dispatched ("Group ... exceeds capacity"). Stamping the clamped lifecycle at
+ * creation keeps the dialog's shortening promise and the document invariant.
+ * Infinity stays lifecycle-less — parse never invents one for it (260921-c7x).
+ */
+function buildNewLoopLifecycle(
+  placementStart: number,
+  cycleFrameCount: number,
+  repeat: number | 'infinity',
+  capacity: number,
+): Pick<PhysicPaintRotoLoopClip, 'syncState' | 'provenanceState' | 'phaseOrigin' | 'originalEndExclusive' | 'visibleRanges' | 'frameOverrides'> | null {
+  if (repeat === 'infinity') return null;
+  const endExclusive = Math.min(placementStart + cycleFrameCount * repeat, capacity);
+  return {
+    syncState: 'synchronized',
+    provenanceState: 'attached',
+    phaseOrigin: placementStart,
+    originalEndExclusive: endExclusive,
+    visibleRanges: Object.freeze([Object.freeze({ start: placementStart, endExclusive })]),
+    frameOverrides: Object.freeze([]),
+  };
 }
 
 function buildPhysicalPublication(input: {

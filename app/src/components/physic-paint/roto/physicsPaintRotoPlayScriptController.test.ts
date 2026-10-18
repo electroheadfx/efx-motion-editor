@@ -544,6 +544,47 @@ describe('createRotoPlayScriptController', () => {
     expect(rendered).toHaveBeenCalledWith(expect.objectContaining({ frameCount: 2 }));
   });
 
+  it('clamps a finite Repeat that runs past the parent end into the created Group lifecycle', async () => {
+    // Parent end at 9; cycle 4..6 (count 3) × repeat 2 requests 4..9 (exclusive
+    // 10) — the dialog reports it as shortened, so the persisted Group extent
+    // must be clamped to capacity or the document validator refuses the Play.
+    const test = harness({
+      requestAuthority: vi.fn(async () => authority({ capacity: 5, physicalCapacity: 9, layerEndExclusive: 9 })),
+    });
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    test.controller.repeatText.value = '2';
+    expect(await test.controller.confirm()).toBe(true);
+    const publication = expectPlayScriptPublication(test.commit.mock.calls[0][0]);
+    const loopClips = publication.loopClips ?? [];
+    expect(loopClips).toHaveLength(1);
+    expect(loopClips[0]).toMatchObject({
+      placementStart: 4,
+      repeat: 2,
+      syncState: 'synchronized',
+      provenanceState: 'attached',
+      phaseOrigin: 4,
+      originalEndExclusive: 9,
+      visibleRanges: [{ start: 4, endExclusive: 9 }],
+      frameOverrides: [],
+    });
+    const interpolation = { enabled: publication.interpolationEnabled, mode: publication.interpolationMode };
+    const revision = buildPhysicPaintRotoPhysicalRevision(publication.records, interpolation, loopClips);
+    expect(() => parsePhysicPaintRotoPhysicalDocument({
+      capacity: 9,
+      realKeyRecords: publication.records,
+      groupOverrideRecords: [],
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: publication.selectedKeyId,
+      cursorAppFrame: publication.selectedAppFrame ?? 0,
+      loopClips,
+      incomingInterpolationBreakKeyIds: [],
+      revision,
+    })).not.toThrow();
+  });
+
   it('dialog Motion edits trigger zero port writes; only getMotion reads may occur', async () => {
     const test = harness();
     await test.controller.openConfirmation();
