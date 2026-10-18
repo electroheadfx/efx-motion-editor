@@ -90,13 +90,13 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-right-pane-content')).toMatch(/padding-right:\s*6px/);
   });
 
-  it('removes the dead space at the top of the chrome-less brush color section', () => {
-    // 36.15-13, UAT Gap I-3: the shared tab-panel's 20px top padding was
-    // designed for the retired tab strip; the chrome-less color section now
-    // starts directly with the color picker via a padding-top: 0 override.
+  it('keeps the chrome-less brush color section top padding at the UAT 10px', () => {
+    // 36.15-13 UAT Gap I-3 set padding-top: 0. 261018-ias AREA 2 item 12
+    // overrides it to 10px (UAT list) — the shared tab-panel's 20px top is
+    // still trimmed for this section.
     expect(rightPanel).toContain('class="physics-paint-options-tab-panel physics-paint-single-tab-panel"');
     const panel = rule('.physics-paint-single-tab-panel');
-    expect(panel).toMatch(/padding-top:\s*0/);
+    expect(panel).toMatch(/padding-top:\s*10px/);
     // The override must follow the shared tab-panel rule so it wins at equal
     // specificity.
     expect(css.indexOf('.physics-paint-single-tab-panel {')).toBeGreaterThan(css.indexOf('.physics-paint-options-tab-panel {'));

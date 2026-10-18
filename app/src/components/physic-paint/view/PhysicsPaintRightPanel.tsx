@@ -322,11 +322,11 @@ export function PhysicsPaintRightPanel({
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
           {topPaneTab === 'brush' && isWatercolorModule ? (
-            <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Brush">
+            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Brush">
               <RightPanelBrushTab />
             </div>
           ) : topPaneTab === 'paper' ? (
-            <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Paper">
+            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Paper">
               <RightPanelPaperTab
                 paperId={paperId}
                 background={background}
@@ -434,7 +434,7 @@ export function PhysicsPaintRightPanel({
                 tab — a second home over the SAME handlers the top bar uses
                 (write-through, never a second setter). Display rules match the
                 top bar: live aquarelle size in watercolor, settings otherwise. */}
-            <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingBottom: '8px' }}>
+            <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '11px', paddingBottom: '8px' }}>
               <SliderStepper
                 id="paint-tab-brush-size"
                 label="Brush size"

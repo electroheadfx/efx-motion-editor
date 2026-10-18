@@ -51,9 +51,10 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
         gap: '4px',
         padding: '6px',
         borderRadius: '6px',
-        border: props.selected
-          ? '1px solid var(--sidebar-accent, #6ea8fe)'
-          : '1px solid #c8c8c8',
+        // 261018-ias AREA 2: light gray border on EVERY card (UAT list —
+        // never white / near-white). Selected keeps the accent background
+        // tint as the active cue.
+        border: '1px solid #c8c8c8',
         background: props.selected
           ? 'var(--sidebar-accent-soft, rgba(110, 168, 254, 0.16))'
           : 'transparent',

@@ -273,6 +273,15 @@ describe('panel split shell — shared block', () => {
     const onionTabSource = readFileSync(resolve(__dirname, 'RightPanelOnionMotionTabs.tsx'), 'utf8');
     expect(trackTabSource, 'track opacity id lives in RightPanelTrackTab').toMatch(/physics-track-opacity/);
     expect(onionTabSource, 'onion opacity id lives in RightPanelOnionTab').toMatch(/physics-onion-opacity/);
+    // 261018-ias AREA 2: Onion frames + Onion Value share ONE 2-column row.
+    expect(onionTabSource, 'one onion value row, not two stacked').toMatch(
+      /physics-paint-onion-value-row/,
+    );
+    expect(onionTabSource, 'two cells inside the shared row').toMatch(
+      /physics-paint-onion-value-cell[\s\S]*physics-onion-count[\s\S]*physics-paint-onion-value-cell[\s\S]*physics-onion-opacity/,
+    );
+    const onionRowMatches = onionTabSource.match(/physics-paint-onion-value-row/g) ?? [];
+    expect(onionRowMatches.length, 'exactly one onion-value-row container').toBe(1);
   });
 
   it('module-only block switches on activeModule', () => {

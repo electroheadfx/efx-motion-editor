@@ -240,13 +240,14 @@ describe('261018-gqo spacing rhythm', () => {
     );
   });
 
-  it('CSS gives rule headers margin and module sections a 10px row gap', () => {
+  it('CSS gives rule headers margin and module sections the UAT 15px row gap', () => {
+    // 261018-gqo locked 10px; 261018-ias AREA 2 item 4 overrides to 15px.
     const styles = readFileSync(
       resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'),
       'utf8',
     );
     expect(styles).toContain('.rule-section-header {');
     expect(styles).toMatch(/\.rule-section-header\s*\{[^}]*margin:\s*12px 0 8px/);
-    expect(styles).toMatch(/\.physics-paint-module-section\s*\{[^}]*gap:\s*10px/);
+    expect(styles).toMatch(/\.physics-paint-module-section\s*\{[^}]*gap:\s*15px/);
   });
 });

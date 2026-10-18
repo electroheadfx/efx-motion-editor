@@ -732,11 +732,13 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     expect(navigationBlock).toContain('#34383c');
     expect(navigationBlock).toContain('#575e66');
     // 260911-s1j follow-up: the Interpolation pill left the popover with its
-    // dropdown — its dedicated rules are retired outright.
+    // dropdown — its dedicated rules are retired outright. The select class
+    // itself is reused on the Track Blend select (261018-ias AREA 2 item 5
+    // gives it font-size 12px), so only the pill chrome stays gone.
     expect(styles).not.toContain('.physics-paint-pill--interpolation');
     expect(styles).not.toContain('.physics-paint-roto-interpolation-controls');
     expect(styles).not.toContain('.physics-paint-roto-interpolation-mode');
-    expect(styles).not.toContain('.physics-paint-roto-interpolation-select');
+    expect(styles).toMatch(/\.physics-paint-roto-interpolation-select\s*\{[^}]*font-size:\s*12px/);
     const playbackBlock = getCssRuleBlock(styles, '.physics-paint-pill--playback {');
     expect(playbackBlock).toContain('#34383c');
     expect(playbackBlock).toContain('#59616a');

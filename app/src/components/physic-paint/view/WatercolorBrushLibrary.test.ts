@@ -248,14 +248,15 @@ describe('WatercolorBrushLibrary 14-card grid (I-03)', () => {
     expect(librarySource, 'name is uppercase like the oracle label').toContain("textTransform: 'uppercase'");
   });
 
-  it('unselected card border is a light gray, not the dark sidebar border (261018-gqo)', () => {
+  it('every card border is a light gray; selected keeps the accent tint (261018-ias)', () => {
     const librarySource = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8');
-    expect(librarySource, 'light gray unselected border').toContain("'1px solid #c8c8c8'");
+    expect(librarySource, 'light gray border on every card').toContain("'1px solid #c8c8c8'");
     expect(librarySource, 'dark sidebar border is gone').not.toContain('var(--sidebar-border');
     expect(librarySource, 'no #2a3340 fallback').not.toContain('#2a3340');
-    // Selected accent border stays.
-    expect(librarySource, 'selected accent border stays').toContain(
-      "'1px solid var(--sidebar-accent, #6ea8fe)'",
+    // No white / near-white border state (thumb canvas may stay #fff).
+    expect(librarySource, 'no white border value').not.toMatch(/border:[^;]*#fff/i);
+    expect(librarySource, 'selected keeps accent background tint').toContain(
+      'var(--sidebar-accent-soft',
     );
   });
 

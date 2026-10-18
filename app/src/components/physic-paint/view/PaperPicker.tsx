@@ -177,7 +177,8 @@ function PaperCard(props: {
         borderRadius: '6px',
         overflow: 'hidden',
         cursor: props.disabled ? 'default' : 'pointer',
-        background: 'var(--color-bg-input)',
+        // 261018-ias AREA 2: UAT cell fill (was --color-bg-input).
+        background: '#c4c4c4',
       }}
     >
       <div
@@ -201,7 +202,8 @@ function PaperCard(props: {
           textAlign: 'center',
           padding: '2px 1px',
           lineHeight: 1.2,
-          color: props.active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+          // 261018-ias AREA 2: UAT name color (was active/secondary pair).
+          color: '#3d3d3d',
         }}
       >
         {props.name}
@@ -314,7 +316,7 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
       <div
         class="paper-picker-grain"
         data-paper-picker-grain
-        style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+        style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}
       >
         <div class="physics-paint-segmented-row" role="group" aria-label="Grain strength">
           {GRAIN_STRENGTH_OPTIONS.map((option) => (

@@ -506,17 +506,16 @@ button.destructive {
 }
 
 /* SPECS/slider-stepper: the blended field owns its own label row + bar, so the
-   old range/number/output rules are gone. 261018-gqo move 5: min-width trims
-   so Modes + Brush size + Opacity + Water/Edges/Grain fit as one centered
-   group without collision (labels stay readable; never wrap / absolute). */
+   old range/number/output rules are gone. 261018-ias AREA 2: min-width 140px
+   (UAT list; was 112px from 261018-gqo move 5). */
 .physics-paint-topbar-slider {
-  min-width: 112px;
+  min-width: 140px;
 }
 
 .physics-paint-segmented-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 11px;
 }
 
 .physics-paint-segmented-button,
@@ -596,7 +595,7 @@ button.destructive {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   padding: 10px;
   border-right: 1px solid #5a5e63;
   background: #3e3f41;
@@ -613,6 +612,13 @@ button.destructive {
   border: 1px solid #5a5e63;
   border-radius: 8px;
   background: #343638;
+}
+
+/* 261018-ias AREA 2: tool-rail buttons are 35×35 (UAT list). Scoped so other
+   icon buttons keep the shared 32px size. */
+.physics-paint-tool-rail .physics-paint-icon-button {
+  width: 35px;
+  height: 35px;
 }
 
 .physics-paint-icon-button img {
@@ -643,11 +649,13 @@ button.destructive {
 }
 
 /* 56-02 (D-01): ModuleSwitcher geometry — locked per UI-SPEC exceptions table.
-   Reuses the physics-paint-segmented-button family (one CSS language). */
+   Reuses the physics-paint-segmented-button family (one CSS language).
+   261018-ias AREA 2: margin-right 15px (UAT list). */
 .module-switcher {
   flex-shrink: 0;
   gap: 0;
   flex-wrap: nowrap;
+  margin-right: 15px;
 }
 
 .module-switcher-slot {
@@ -1003,12 +1011,12 @@ button.destructive {
 
 /* SPECS/slider-stepper: the blended field stacks label+value over the bar, so
    the old 3-column label | range | output grid is gone — the row is a plain
-   full-width stack. */
+   full-width stack. 261018-ias AREA 2: gap 10px (UAT list). */
 .physics-paint-option-row {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 10px;
   min-width: 0;
   min-height: 28px;
 }
@@ -1016,7 +1024,7 @@ button.destructive {
 .physics-paint-option-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 15px;
   padding-top: 2px;
 }
 
@@ -1027,12 +1035,12 @@ button.destructive {
 }
 
 /* 261018-gqo move 2: slider rows are not a zero-gap stack (Shape detail /
-   Blending / Spread, watercolor globals, brush response). Matches
-   .physics-paint-option-group's 10px row rhythm. */
+   Blending / Spread, watercolor globals, brush response). 261018-ias AREA 2:
+   gap 15px (UAT list; was 10px). */
 .physics-paint-module-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 15px;
 }
 
 .physics-paint-options-tabs-section,
@@ -1130,19 +1138,25 @@ button.destructive {
   box-shadow: none;
 }
 
+/* 261018-ias AREA 2: Brush + Paper panels start flush (0 top). Color / other
+   tabs keep the shared 20px top. Placed after the shared rule so it wins. */
+.physics-paint-options-tab-panel-flat {
+  padding: 0 14px 14px;
+}
+
 /* No top dead space on the chrome-less brush color section: the shared
-   tab-panel's 20px top padding was designed for the retired tab strip, so the
-   section starts directly with the color picker (36.15-13, UAT Gap I-3).
+   tab-panel's 20px top padding was designed for the retired tab strip.
+   261018-ias AREA 2: top 10px (UAT list; was 0 from 36.15-13 UAT Gap I-3).
    Placed after the shared rule so it wins at equal specificity. */
 .physics-paint-single-tab-panel {
-  padding-top: 0;
+  padding-top: 10px;
 }
 
 .physics-paint-scripts-panel {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 15px;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
@@ -2206,8 +2220,31 @@ button.destructive {
   accent-color: var(--color-accent, #2d5be3);
 }
 
+/* 261018-ias AREA 2: onion panel gap 15px (UAT list). */
+.physics-paint-options-tab-panel-onion.physics-paint-onion-tab-panel {
+  gap: 15px;
+}
+
+/* 261018-ias AREA 2: Onion frames + Onion Value share ONE 2-column row.
+   Each cell keeps its own label | range | output sub-grid. */
 .physics-paint-onion-value-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.physics-paint-onion-value-cell {
+  display: grid;
   grid-template-columns: 92px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 261018-ias AREA 2: roto interpolation select 12px (UAT list). */
+.physics-paint-roto-interpolation-select {
+  font-size: 12px;
 }
 
 .physics-paint-workflow-strip {
@@ -4958,6 +4995,7 @@ button.destructive {
 .physics-paint-audio-clip-import {
   align-self: stretch;
   margin-top: 2px;
+  padding: 15px;
 }
 
 /* 261009-ofk: missing-file row — subtle red border/tint on the row. */
