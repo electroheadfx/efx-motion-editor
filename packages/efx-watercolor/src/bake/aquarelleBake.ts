@@ -31,10 +31,14 @@ import {
   type StudioStroke,
 } from '@efxlab/efx-paint-host'
 import {
+  buildProgressiveStrokeSchedule,
+  getProgressiveFrameStrokes,
+} from '@efxlab/efx-paint-host/animation'
+import {
   DIFFUSION_CAP,
   type AquarelleStrokePayload,
 } from '../payload/toStudioStroke'
-import { isAquarelleDryEvent, type AquarellePayloadEvent } from '../payload/dryEvent'
+import { isAquarelleDryEvent, type AquarelleDryEvent, type AquarellePayloadEvent } from '../payload/dryEvent'
 
 /** One committed WebP frame from a bake turn. */
 export interface AquarelleBakeFrame {
@@ -86,6 +90,14 @@ export interface AquarelleBakeOptions {
   onCommit?: (frame: AquarelleBakeFrame) => void
   /** 261017-fz3: Studio paper — setPaper before replay + cache fingerprint. */
   paper?: AquarelleBakePaper
+  /**
+   * 261018 progressive Play: when set, bake() emits exactly `frameCount`
+   * frames with stroke length growing across the span (the same
+   * buildProgressiveStrokeSchedule law engine-1 Play uses) instead of one
+   * cumulative frame per stroke. Dry events fire at the next stroke's
+   * startFrame; diffusion stepTicks run every frame so the wash develops.
+   */
+  frameCount?: number
 }
 
 export type AquarelleBakeResult =
@@ -156,6 +168,136 @@ export function createAquarelleBake(
 
   let sharedFlush: Promise<void> | null = null
 
+  /**
+   * 261018 progressive Play: one captured frame per OUTPUT frame, with stroke
+   * length growing across the span via buildProgressiveStrokeSchedule — the
+   * same law engine-1 Play uses. Dry events fire at the next stroke's
+   * startFrame (D-15: between stroke turns). Diffusion stepTicks run every
+   * frame so the wash keeps blooming across the span.
+   */
+  const bakeProgressive = async (
+    events: readonly AquarellePayloadEvent[],
+    frameCount: number,
+  ): Promise<AquarelleBakeResult> => {
+    const frames: AquarelleBakeFrame[] = []
+    const outcomes: Promise<BakeTurnOutcome>[] = []
+    let commitBarrier: Promise<void> = Promise.resolve()
+
+    if (options.paper) {
+      const paper = options.paper
+      void scheduleAdapter(() => {
+        const seam = adapter as EngineAdapter<AquarelleStrokePayload> & {
+          setPaper?: (p: AquarelleBakePaper) => void
+        }
+        seam.setPaper?.(paper)
+      })
+    }
+
+    const strokes: StudioStroke<AquarelleStrokePayload>[] = []
+    for (const event of events) {
+      if (!isAquarelleDryEvent(event)) strokes.push(event as StudioStroke<AquarelleStrokePayload>)
+    }
+    const schedule = buildProgressiveStrokeSchedule(strokes, frameCount)
+
+    // Each Dry fires before the next stroke's first frame (recorded order).
+    const startFrameOf = new Map<StudioStroke<AquarelleStrokePayload>, number>()
+    for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
+    const drysByFrame = new Map<number, AquarelleDryEvent[]>()
+    let pendingDrys: AquarelleDryEvent[] = []
+    for (const event of events) {
+      if (isAquarelleDryEvent(event)) {
+        pendingDrys.push(event)
+        continue
+      }
+      const frame = startFrameOf.get(event as StudioStroke<AquarelleStrokePayload>)
+      if (frame !== undefined && pendingDrys.length > 0) {
+        const list = drysByFrame.get(frame) ?? []
+        list.push(...pendingDrys)
+        drysByFrame.set(frame, list)
+        pendingDrys = []
+      }
+    }
+    if (pendingDrys.length > 0) {
+      const frame = Math.max(0, frameCount - 1)
+      const list = drysByFrame.get(frame) ?? []
+      list.push(...pendingDrys)
+      drysByFrame.set(frame, list)
+    }
+
+    // Diffusion budget spread across the span so the wash develops in view.
+    let totalCuisson = 0
+    for (const stroke of strokes) {
+      totalCuisson += clampCuisson(
+        stroke.cuisson || (stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
+      )
+    }
+    const diffusionPerFrame = Math.max(1, Math.ceil(totalCuisson / frameCount))
+
+    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+      for (const dry of drysByFrame.get(frameIndex) ?? []) {
+        void scheduleAdapter(() => {
+          adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
+        })
+      }
+
+      const frameStrokes = getProgressiveFrameStrokes(schedule, frameIndex)
+      const framePromise = scheduleAdapter(() => {
+        adapter.renderPartialStrokes(frameStrokes)
+        for (let tick = 0; tick < diffusionPerFrame; tick += 1) {
+          adapter.stepTick(tick)
+        }
+        return adapter.captureFrame()
+      })
+
+      const myBarrier = commitBarrier
+      let releaseBarrier!: () => void
+      commitBarrier = new Promise<void>((resolve) => {
+        releaseBarrier = resolve
+      })
+
+      const outcome = host.submit<AquarelleBakeFrame>({
+        mode: 'flush-survives-navigation',
+        produce: async () => {
+          const frame = await framePromise
+          const fallback = readSize(frame)
+          const width = options.width ?? fallback.width
+          const height = options.height ?? fallback.height
+          const bytes = await encodeWebp(frame, width, height)
+          return {
+            eventIndex: frameIndex,
+            strokeIndex: frameIndex,
+            tick: diffusionPerFrame,
+            bytes,
+            width,
+            height,
+          }
+        },
+        commit: (value) =>
+          myBarrier.then(() => {
+            frames.push(value)
+            onCommit?.(value)
+            return true
+          }),
+      })
+      void outcome.then(
+        () => releaseBarrier(),
+        () => releaseBarrier(),
+      )
+      outcomes.push(outcome)
+    }
+
+    const settled = await Promise.all(outcomes)
+    await adapterChain
+
+    if (settled.some((o) => o === 'cancelled' || o === 'stale')) {
+      return { ok: false, reason: 'cancelled' }
+    }
+    if (settled.some((o) => o === 'failed' || o === 'rejected')) {
+      return { ok: false, reason: 'failed' }
+    }
+    return { ok: true, frames }
+  }
+
   const flush = (): Promise<void> => {
     // Overlapping flush() calls share one drain outcome (AQUA-05 / 52.2-15).
     if (sharedFlush) return sharedFlush
@@ -173,6 +315,9 @@ export function createAquarelleBake(
   }
 
   const bake = async (events: readonly AquarellePayloadEvent[]): Promise<AquarelleBakeResult> => {
+    if (options.frameCount && options.frameCount > 0) {
+      return bakeProgressive(events, Math.floor(options.frameCount))
+    }
     const frames: AquarelleBakeFrame[] = []
     const outcomes: Promise<BakeTurnOutcome>[] = []
     // FIFO commit barrier: a later stroke never commits before an earlier one,

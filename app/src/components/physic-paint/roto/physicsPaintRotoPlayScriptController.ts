@@ -34,7 +34,6 @@ import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from
 import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
-  aquarellePaperCacheFingerprint,
   type AquarelleBake,
   type AquarelleBakeOptions,
   type AquarelleBakePaper,
@@ -1245,6 +1244,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       height: size.height,
       paper: bakePaper,
       encodeWebp: encodeAquarelleWebpFrame,
+      // 261018 progressive Play: emit `count` frames with stroke growth
+      // across the span (buildProgressiveStrokeSchedule) — not one frame per
+      // stroke. This is what makes intermediate keys animate like brush mode.
+      frameCount: count,
     });
     aquarelleBake = bake;
     try {
@@ -1258,31 +1261,16 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           ? 'Aquarelle bake cancelled.'
           : 'Aquarelle bake failed. Nothing changed.');
       }
-      // Cadence mapping: the bake emits one cumulative frame per stroke;
-      // `count` is the requested output span. Stroke i lands at output frame
-      // floor(i * count / strokeCount); each output frame holds the latest
-      // landed bake frame (hold after the last stroke). count === strokeCount
-      // keeps the 1:1 mapping.
-      const strokeCount = result.frames.length;
-      if (strokeCount === 0) {
-        throw new Error('Aquarelle bake produced no frames.');
-      }
-      const staged: PhysicPaintRotoCacheFrame[] = [];
-      let bakeIndex = -1;
-      for (let j = 0; j < count; j += 1) {
-        while (bakeIndex + 1 < strokeCount && Math.floor(((bakeIndex + 1) * count) / strokeCount) <= j) {
-          bakeIndex += 1;
-        }
-        const frame = result.frames[Math.max(0, bakeIndex)]!;
-        staged.push({
-          frameIndex: j,
-          appFrame: start + j,
-          bytes: frame.bytes,
-          width: frame.width,
-          height: frame.height,
-          source: 'real-key' as const,
-        });
-      }
+      // 261018 progressive Play: frameCount emits exactly `count` frames with
+      // stroke growth across the span. Map them 1:1 onto the output range.
+      const staged: PhysicPaintRotoCacheFrame[] = result.frames.map((frame, j) => ({
+        frameIndex: j,
+        appFrame: start + j,
+        bytes: frame.bytes,
+        width: frame.width,
+        height: frame.height,
+        source: 'real-key' as const,
+      }));
       return staged;
     } finally {
       // The bake host may still be settling a long cuisson; the reference

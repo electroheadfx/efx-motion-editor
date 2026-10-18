@@ -153,6 +153,17 @@ export function createAquarelleEngineAdapter(
     started: boolean
   } | null = null
 
+  /**
+   * Per-stroke feed cursor for renderPartialStrokes (261018 progressive
+   * Play). Keyed by the StudioStroke instance — getProgressiveFrameStrokes
+   * returns the same object across frames, so identity is the stable key.
+   * `index` is how many pts are already on the paper; `ended` blocks refit.
+   */
+  const feedStates = new Map<
+    StudioStroke<AquarelleStrokePayload>,
+    { index: number; started: boolean; ended: boolean }
+  >()
+
   const configure = (stroke: StudioStroke<AquarelleStrokePayload>): void => {
     if (!engine) return
     const payload = stroke.engine
@@ -191,6 +202,10 @@ export function createAquarelleEngineAdapter(
       } else {
         engine.scriptMove(p.x, p.y, p.p, virtualNow)
       }
+      // Live==bake law (56-12): one sample then engine.tick advances the
+      // fluid. Skipping the tick deposits the whole stroke in one instant so
+      // the wash never blooms during the draw.
+      engine.tick(HOST_DT)
     }
     if (active.index >= pts.length && active.started) {
       engine.scriptEnd()
@@ -221,39 +236,6 @@ export function createAquarelleEngineAdapter(
     getStrokes(): readonly StudioStroke<AquarelleStrokePayload>[] {
       return strokes
     },
-    renderPartialStrokes(
-      strokeData: ReadonlyArray<{ stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }>,
-    ): void {
-      if (disposed) return
-      for (const entry of strokeData) {
-        const existing = strokes.find((s) => s.traceSeed === entry.stroke.traceSeed)
-        if (!existing) {
-          strokes.push(entry.stroke)
-          configure(entry.stroke)
-          active = { stroke: entry.stroke, index: 0, started: false }
-          // Walk every recorded sample immediately — partial preview.
-          feedDueSample(Number.MAX_SAFE_INTEGER)
-          advanceClock(1000 * HOST_DT)
-          engine?.tick(HOST_DT)
-        }
-      }
-    },
-    renderAllStrokes(): void {
-      if (disposed || !engine) return
-      for (const stroke of strokes) {
-        configure(stroke)
-        active = { stroke, index: 0, started: false }
-        feedDueSample(Number.MAX_SAFE_INTEGER)
-        advanceClock(1000 * HOST_DT)
-        engine.tick(HOST_DT)
-      }
-      active = null
-    },
-    exportCompositeCanvas(): HTMLCanvasElement {
-      const out = engine?.exportCanvas('transparent') ?? canvas
-      if (!out) throw new Error('createAquarelleEngineAdapter: no canvas to export — pass options.canvas')
-      return out as HTMLCanvasElement
-    },
     applyStroke(stroke: StudioStroke<AquarelleStrokePayload>): void {
       if (disposed) return
       // Dry is a distinguished payload union member (D-16) — one
@@ -273,6 +255,56 @@ export function createAquarelleEngineAdapter(
       feedDueSample(Number.MAX_SAFE_INTEGER)
       advanceClock(1000 * HOST_DT)
       engine.tick(HOST_DT)
+      active = null
+    },
+    renderAllStrokes(): void {
+      if (disposed || !engine) return
+      for (const stroke of strokes) {
+        configure(stroke)
+        active = { stroke, index: 0, started: false }
+        feedDueSample(Number.MAX_SAFE_INTEGER)
+        advanceClock(1000 * HOST_DT)
+        engine.tick(HOST_DT)
+      }
+      active = null
+    },
+    exportCompositeCanvas(): HTMLCanvasElement {
+      const out = engine?.exportCanvas('transparent') ?? canvas
+      if (!out) throw new Error('createAquarelleEngineAdapter: no canvas to export — pass options.canvas')
+      return out as HTMLCanvasElement
+    },
+    renderPartialStrokes(
+      strokeData: ReadonlyArray<{ stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }>,
+    ): void {
+      if (disposed || !engine) return
+      for (const entry of strokeData) {
+        const { stroke, pointCount } = entry
+        let state = feedStates.get(stroke)
+        if (!state) {
+          state = { index: 0, started: false, ended: false }
+          feedStates.set(stroke, state)
+          strokes.push(stroke)
+        }
+        if (state.ended) continue
+        // One-open-script law: the engine refuses a second scriptBegin while
+        // a stroke is on the paper, so a not-yet-started stroke waits for the
+        // open one to close (the sequential schedule guarantees it will).
+        if (active && active.stroke !== stroke) continue
+        if (!state.started) configure(stroke)
+        const cursor = { stroke, index: state.index, started: state.started }
+        active = cursor
+        // pts[].tick === the sample index (toStudioStroke law), so feeding the
+        // first `pointCount` samples means timelineTick = pointCount - 1.
+        feedDueSample(Math.max(0, Math.trunc(pointCount) - 1))
+        state.index = cursor.index
+        state.started = cursor.started
+        // Complete when every sample is on the paper (an empty stroke
+        // completes immediately — no scriptBegin ever ran).
+        if (state.index >= stroke.pts.length) {
+          state.ended = true
+          active = null
+        }
+      }
     },
     stepTick(_tick: number): void {
       if (disposed || !engine) return
