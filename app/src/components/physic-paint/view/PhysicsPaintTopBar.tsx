@@ -83,6 +83,9 @@ export function PhysicsPaintTopBar({
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
       </div>
 
+      {/* Balanced right side so the primary cluster sits in the true middle. */}
+      <div class="physics-paint-topbar-right" aria-hidden="true" />
+
     </header>
   );
 }

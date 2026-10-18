@@ -64,7 +64,7 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(getCssRuleBlock(css(), '.physics-paint-studio {')).toContain('grid-template-rows: minmax(58px, auto) minmax(0, 1fr) auto');
   });
 
-  it('keeps the topbar as one non-wrapping row — tools pushed right, no grid columns', () => {
+  it('keeps the topbar as one non-wrapping row — centered tools, no grid columns', () => {
     const styles = css();
     const bar = getCssRuleBlock(styles, '.physics-paint-topbar {');
     expect(bar).toContain('display: flex');
@@ -74,12 +74,17 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(styles).not.toContain('minmax(120px, 1fr)');
   });
 
-  it('pushes the tool cluster right and never wraps it', () => {
+  it('centers the tool cluster with balanced flex sides (261018-cy1)', () => {
     const styles = css();
     const base = styles.slice(0, styles.indexOf('@media'));
     const primary = getCssRuleBlock(base, '.physics-paint-topbar-primary {');
-    expect(primary).toContain('margin-left: auto');
+    expect(primary, 'no auto margin — the cluster is not pushed right').not.toContain('margin-left: auto');
     expect(primary).toContain('flex-wrap: nowrap');
+    expect(primary, 'primary is a fixed auto-width center cluster').toContain('flex: 0 0 auto');
+    const left = getCssRuleBlock(base, '.physics-paint-topbar-left {');
+    expect(left, 'left side shares flex').toContain('flex: 1 1 0');
+    const right = getCssRuleBlock(base, '.physics-paint-topbar-right {');
+    expect(right, 'right spacer shares flex').toContain('flex: 1 1 0');
   });
 });
 

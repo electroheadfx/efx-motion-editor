@@ -450,20 +450,27 @@ button.destructive {
   background: #3e3f41;
 }
 
-/* UI checklist row 4: one row — left = status + modules, right = tools. */
+/* UI checklist row 4: one row — left = status + modules, center = tools.
+   261018-cy1: balanced flex sides keep Brush size + Opacity optically centered. */
 .physics-paint-topbar-left {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-shrink: 0;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .physics-paint-topbar-primary {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  margin-left: auto;
+  flex: 0 0 auto;
   gap: 8px 14px;
+  min-width: 0;
+}
+
+.physics-paint-topbar-right {
+  flex: 1 1 0;
   min-width: 0;
 }
 
