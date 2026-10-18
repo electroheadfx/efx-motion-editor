@@ -6,7 +6,8 @@
 //  WatercolorRail) must sit behind `activeModule.value === 'watercolor'`.
 //  The Paper tab stays shared document-fond vocabulary (I-07) — no
 //  activeModule gate between the paper arm and the paper mount.
-//  The top-pane tab row stays `color | actions | brush | paper`.
+//  261018-cy1: the top-pane tab row is mode-derived (brush mode Color +
+//  Paper; watercolor Color + Brush + Paper) with no Actions entry.
 //
 //  Source-scan pin (same idiom as
 //  physicsPaintRightPanelPaperSingleHome.test.ts): readFileSync the
@@ -85,21 +86,18 @@ function expectMountsBehindWatercolorGate(region: string, component: string): vo
 
 describe('I-08 Brush-mode context gating', () => {
   it('watercolor-only mounts in the Brush tab sit behind the watercolor branch', () => {
-    // I-10: the Brush-tab body is RightPanelBrushTab (early-return module arm).
+    // I-10 + 261018-cy1: the Brush-tab body is RightPanelBrushTab (early-return
+    // watercolor arm). The brush-module duplicate arm is gone — the Paint tool
+    // tab owns the physics param bag.
     const body = stripComments(brushTabSource);
     const gateAt = body.indexOf("activeModule.value === 'watercolor'");
     expect(gateAt, 'Brush tab keeps its watercolor gate').toBeGreaterThan(-1);
-    const elseArmAt = body.indexOf('data-module="brush"');
-    expect(elseArmAt, 'brush-module arm stays the non-watercolor return').toBeGreaterThan(gateAt);
 
-    const watercolorArm = body.slice(gateAt, elseArmAt);
-    expectMountsBehindWatercolorGate(watercolorArm, 'WatercolorBrushLibrary');
-    expectMountsBehindWatercolorGate(watercolorArm, 'BrushResponsePanel');
+    expectMountsBehindWatercolorGate(body, 'WatercolorBrushLibrary');
+    expectMountsBehindWatercolorGate(body, 'BrushResponsePanel');
 
-    const brushArm = body.slice(elseArmAt);
-    expect(brushArm, 'brush-module arm mounts BrushModuleSection').toMatch(/<BrushModuleSection\b/);
-    expect(brushArm, 'watercolor mounts never leak into the brush-module arm').not.toMatch(
-      /<WatercolorBrushLibrary\b|<BrushResponsePanel\b/,
+    expect(body, 'BrushModuleSection is not mounted in the Brush tab').not.toMatch(
+      /<BrushModuleSection\b/,
     );
   });
 
@@ -165,15 +163,25 @@ describe('I-08 Brush-mode context gating', () => {
     expect(paperTabBody, 'RightPanelPaperTab stays ungated').not.toMatch(/activeModule/);
   });
 
-  it('top-pane tab row stays color | actions | brush | paper', () => {
-    expect(panelSource, 'tab id list unchanged').toContain("['color', 'actions', 'brush', 'paper']");
-    expect(panelSource, 'topPaneTab union unchanged').toContain(
-      "useState<'color' | 'actions' | 'brush' | 'paper'>",
+  it('top-pane tab row is mode-derived with no Actions entry', () => {
+    // 261018-cy1: brush mode = Color + Paper; watercolor mode = Color + Brush +
+    // Paper. The retired top-pane Actions entry is gone from the list.
+    expect(panelSource, 'brush-mode tab list').toContain("['color', 'paper']");
+    expect(panelSource, 'watercolor tab list').toContain("['color', 'brush', 'paper']");
+    expect(panelSource, 'no actions id in the tab list').not.toMatch(
+      /\[\s*'color',\s*'actions'/,
     );
-    // Labels stay the four human names (no restructure, no Watercolor tab).
+    expect(panelSource, 'topPaneTab union drops actions').toContain(
+      "useState<'color' | 'brush' | 'paper'>",
+    );
+    expect(panelSource, 'brush body is watercolor-gated').toContain(
+      "topPaneTab === 'brush' && isWatercolorModule",
+    );
+    // Labels stay the human names (no Watercolor tab).
     expect(panelSource, 'Color label stays').toContain("'Color'");
-    expect(panelSource, 'Actions label stays').toContain("'Actions'");
     expect(panelSource, 'Brush label stays').toContain("'Brush'");
     expect(panelSource, 'Paper label stays').toContain("'Paper'");
+    // Top-pane Actions routing is gone (the bottom-pane scripts tab keeps its label).
+    expect(panelSource, 'no RightPanelActionsTab mount').not.toMatch(/<RightPanelActionsTab\b/);
   });
 });

@@ -13,7 +13,6 @@ import { activeModule } from '../../shared/activeModule';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
-import { RightPanelActionsTab } from './RightPanelActionsTab';
 import { RightPanelBrushTab } from './RightPanelBrushTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
 import { RightPanelTrackTab } from './RightPanelTrackTab';
@@ -47,7 +46,7 @@ export interface PhysicsPaintRightPanelProps {
   onEraseStrengthChange: (value: number) => void;
   onOnionChange: (onion: PhysicsPaintOnionState) => void;
   onPlayWiggleChange: (wiggle: PhysicsPaintPlayWiggleSettings) => void;
-  /** UI checklist row 6 Actions tab: Undo | Redo | Clear frame. */
+  /** History actions — routed from the tool rail; the retired top-pane Actions tab is gone (261018-cy1). */
   onUndo: () => void;
   onRedo: () => void;
   onClearFrame: () => void;
@@ -170,9 +169,6 @@ export function PhysicsPaintRightPanel({
   onEraseStrengthChange,
   onOnionChange,
   onPlayWiggleChange,
-  onUndo,
-  onRedo,
-  onClearFrame,
   trackName,
   trackOpacity,
   trackBlendMode,
@@ -196,10 +192,18 @@ export function PhysicsPaintRightPanel({
   // The signal read subscribes this memoized panel to selection changes (the
   // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
   const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
-  // UI checklist row 6: the top pane gets ONE tab row (Color | Actions |
-  // Brush | Paper) replacing the always-on color picker. Middle and bottom
-  // panes are unchanged.
-  const [topPaneTab, setTopPaneTab] = useState<'color' | 'actions' | 'brush' | 'paper'>('color');
+  // 261018-cy1: the top-pane tab list is mode-derived. Brush mode offers
+  // Color + Paper; watercolor mode adds Brush. The retired top-pane Actions
+  // entry is gone in every mode (the bottom-pane scripts tab keeps its label).
+  const isWatercolorModule = activeModule.value === 'watercolor';
+  const topPaneTabs = (
+    isWatercolorModule ? ['color', 'brush', 'paper'] : ['color', 'paper']
+  ) as ReadonlyArray<'color' | 'brush' | 'paper'>;
+  // A stale 'brush' selection falls back to the Color body when the module
+  // leaves watercolor — derived in render, never via an effect.
+  const [topPaneTab, setTopPaneTab] = useState<'color' | 'brush' | 'paper'>('color');
+  const effectiveTopPaneTab: 'color' | 'brush' | 'paper' =
+    topPaneTab === 'brush' && !isWatercolorModule ? 'color' : topPaneTab;
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
@@ -287,48 +291,25 @@ export function PhysicsPaintRightPanel({
       >
         <div class="physics-paint-right-pane physics-paint-right-pane-primary">
           <div class="physics-paint-options-tabs physics-paint-options-tabs-top" role="tablist" aria-label="Top pane panels">
-            {(['color', 'actions', 'brush', 'paper'] as const).map((tab) => (
+            {topPaneTabs.map((tab) => (
               <button
                 key={tab}
                 type="button"
-                class={`physics-paint-options-tab physics-paint-tab-top-${tab}${topPaneTab === tab ? ' active' : ''}`}
+                class={`physics-paint-options-tab physics-paint-tab-top-${tab}${effectiveTopPaneTab === tab ? ' active' : ''}`}
                 role="tab"
-                aria-selected={topPaneTab === tab}
+                aria-selected={effectiveTopPaneTab === tab}
                 onClick={() => setTopPaneTab(tab)}
               >
-                {tab === 'color' ? 'Color' : tab === 'actions' ? 'Actions' : tab === 'brush' ? 'Brush' : 'Paper'}
+                {tab === 'color' ? 'Color' : tab === 'brush' ? 'Brush' : 'Paper'}
               </button>
             ))}
           </div>
           <SidebarScrollArea class="physics-paint-right-pane-scroll-area" interactive>
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
-          {topPaneTab === 'actions' ? (
-            <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Actions">
-              <RightPanelActionsTab
-                onUndo={onUndo}
-                onRedo={onRedo}
-                onClearFrame={onClearFrame}
-                disabled={engineControlsDisabled}
-              />
-            </div>
-          ) : topPaneTab === 'brush' ? (
+          {topPaneTab === 'brush' && isWatercolorModule ? (
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Brush">
-              <RightPanelBrushTab
-                activeTool={activeTool}
-                edgeDetail={edgeDetail}
-                pickup={pickup}
-                spread={spread}
-                smoothing={smoothing}
-                eraseStrength={eraseStrength}
-                physicsMode={physicsMode}
-                engineControlsDisabled={engineControlsDisabled}
-                onEdgeDetailChange={onEdgeDetailChange}
-                onPickupChange={onPickupChange}
-                onSpreadChange={onSpreadChange}
-                onSmoothingChange={onSmoothingChange}
-                onEraseStrengthChange={onEraseStrengthChange}
-              />
+              <RightPanelBrushTab />
             </div>
           ) : topPaneTab === 'paper' ? (
             <div class="physics-paint-options-tab-panel" role="tabpanel" aria-label="Paper">
