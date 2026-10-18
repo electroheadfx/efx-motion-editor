@@ -5,7 +5,9 @@
  * tab is the SINGLE home for paper + background. Top to bottom (261018-f15
  * flatten):
  *   1. RuleSectionHeader "Texture" + Grain strength segmented row + Grain
- *      scale SliderStepper (names stay Grain strength + Grain scale).
+ *      scale SliderStepper + Texture SliderStepper (names stay Grain strength
+ *      + Grain scale; Texture is the oracle PaperPanel texture control, a
+ *      continuous 0..1 view over the same grainStrength seam).
  *   2. RuleSectionHeader "Real" + a 2-column grid whose first two cells are
  *      the Transparent + White background arms (paper-card layout, still
  *      onBackgroundChange) followed by the real jpg scans (onPaperIdChange).
@@ -339,6 +341,27 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
           freeEntry
           onChange={props.onGrainScaleChange}
         />
+        {/* Oracle PaperPanel Texture slider (261018-ias): continuous 0..1 view
+            over the SAME grainStrength seam the segmented presets write. Rides
+            handleGrainStrengthChange unchanged — no second strength store
+            (261018-gqo). Tooltip is the oracle sentence on the row wrapper. */}
+        <div
+          class="paper-picker-texture-row"
+          data-paper-picker-texture
+          title="How strongly the paper's tooth, fibres and flecks show. Saved images use the same strength."
+        >
+          <SliderStepper
+            label="Texture"
+            value={props.grainStrength}
+            step={0.01}
+            min={0}
+            max={1}
+            ariaLabel="Texture"
+            disabled={props.disabled}
+            freeEntry
+            onChange={props.onGrainStrengthChange}
+          />
+        </div>
       </div>
 
       {/* Flat list (261018-f15): rule-and-label section titles, no card

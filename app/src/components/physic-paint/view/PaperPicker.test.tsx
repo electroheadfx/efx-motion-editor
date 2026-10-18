@@ -274,6 +274,63 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(onGrainScaleChange).toHaveBeenCalledWith(1.5);
   });
 
+  it('Texture slider sits under Grain scale and writes the grainStrength seam (261018-ias)', () => {
+    const onGrainStrengthChange = vi.fn();
+    const onGrainScaleChange = vi.fn();
+    const root = PaperPicker({
+      ...pickerProps(),
+      grainStrength: 0.5,
+      onGrainStrengthChange,
+      onGrainScaleChange,
+    }) as TestVNode;
+    const grainBlock = findAll(root, (node) => node.props?.['data-paper-picker-grain'] !== undefined)[0];
+    expect(grainBlock, 'grain block must render').toBeDefined();
+    const steppers = findAll(grainBlock!, (node) => node.type === SliderStepper);
+    expect(steppers.length, 'Grain scale then Texture').toBe(2);
+    expect(String((steppers[0].props as { label: string }).label)).toBe('Grain scale');
+    expect(String((steppers[1].props as { label: string }).label)).toBe('Texture');
+
+    const texture = steppers[1];
+    const textureProps = texture.props as {
+      value: number;
+      min: number;
+      max: number;
+      step: number;
+      freeEntry: boolean;
+      ariaLabel: string;
+      onChange: (value: number) => void;
+    };
+    // Oracle PaperPanel Texture: 0..1, step 0.01, rides grainStrength.
+    expect(textureProps.value).toBe(0.5);
+    expect(textureProps.min).toBe(0);
+    expect(textureProps.max).toBe(1);
+    expect(textureProps.step).toBe(0.01);
+    expect(textureProps.freeEntry).toBe(true);
+    expect(textureProps.ariaLabel).toBe('Texture');
+    textureProps.onChange(0.5);
+    expect(onGrainStrengthChange).toHaveBeenCalledWith(0.5);
+    expect(onGrainScaleChange).not.toHaveBeenCalled();
+  });
+
+  it('Texture row carries the oracle tooltip and stays inside the grain block', () => {
+    const root = PaperPicker(pickerProps()) as TestVNode;
+    const textureRow = findAll(root, (node) => node.props?.['data-paper-picker-texture'] !== undefined)[0];
+    expect(textureRow, 'texture row must render').toBeDefined();
+    expect(String(textureRow!.props?.['title'] ?? '')).toBe(
+      "How strongly the paper's tooth, fibres and flecks show. Saved images use the same strength.",
+    );
+    // DOM order inside the grain block: Grain strength group → Grain scale → Texture.
+    const nodes = [...walk(root)];
+    const grainBlockAt = nodes.findIndex((node) => node.props?.['data-paper-picker-grain'] !== undefined);
+    const strengthAt = nodes.findIndex((node) => node.props?.['aria-label'] === 'Grain strength');
+    const scaleAt = nodes.findIndex((node) => (node.props as { label?: string } | undefined)?.label === 'Grain scale');
+    const textureAt = nodes.findIndex((node) => node.props?.['data-paper-picker-texture'] !== undefined);
+    expect(grainBlockAt).toBeGreaterThan(-1);
+    expect(strengthAt).toBeGreaterThan(grainBlockAt);
+    expect(scaleAt).toBeGreaterThan(strengthAt);
+    expect(textureAt).toBeGreaterThan(scaleAt);
+  });
+
   it('grainStrength 0.35 marks Soft active; non-finite resolves to Soft (261018-cy1)', () => {
     const softRoot = PaperPicker({ ...pickerProps(), grainStrength: 0.35 }) as TestVNode;
     const softGroup = findAll(softRoot, (node) => node.props?.['aria-label'] === 'Grain strength')[0];
