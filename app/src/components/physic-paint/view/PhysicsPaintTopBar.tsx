@@ -14,6 +14,10 @@ import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
  * 261018-f15 C1: Water / Edges / Grain follow Opacity in Water color mode and
  * write setAquarelleParam('water' | 'edge' | 'granulation') — the same seam
  * the Paint-tab globals use. Brush mode keeps Brush size + Opacity only.
+ *
+ * 261018-gqo move 5: Engine ready is pinned left alone; Modes + Brush size +
+ * Opacity (+ Water/Edges/Grain) form ONE centered group. DOM grouping and CSS
+ * only — the write-through handlers are unchanged.
  */
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
@@ -74,15 +78,17 @@ export function PhysicsPaintTopBar({
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
+      {/* Left slot: the status pill alone (261018-gqo move 5). */}
       <div class="physics-paint-topbar-left">
         <div class="physics-paint-topbar-status" aria-live="polite">
           <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
         </div>
-        {/* 56-02 (D-01): module switcher — one shared component, one signal */}
-        <ModuleSwitcher />
       </div>
 
+      {/* Center: ONE group = Modes + Brush size + Opacity (+ Water/Edges/Grain). */}
       <div class="physics-paint-topbar-primary">
+        {/* 56-02 (D-01): module switcher — one shared component, one signal */}
+        <ModuleSwitcher />
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
         {activeModule.value === 'watercolor' ? (

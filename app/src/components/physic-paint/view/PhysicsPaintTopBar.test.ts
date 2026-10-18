@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
 import { PhysicsPaintTopBar, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
+import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
@@ -92,6 +93,50 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
     expect(left, 'left side shares flex').toContain('flex: 1 1 0');
     const right = getCssRuleBlock(base, '.physics-paint-topbar-right {');
     expect(right, 'right spacer shares flex').toContain('flex: 1 1 0');
+  });
+});
+
+// 261018-gqo move 5: Engine ready left alone; Modes + sliders are ONE group.
+describe('261018-gqo top bar centered Modes+settings group', () => {
+  it('ModuleSwitcher sits inside the primary cluster; status is not in that group', () => {
+    const tree = renderTopBar(baseTopBarProps());
+    const nodes = childrenOf(tree);
+    const left = nodes.find((n) => (n as AnyVNode).props?.['class'] === 'physics-paint-topbar-left') as AnyVNode | undefined;
+    const primary = nodes.find((n) => (n as AnyVNode).props?.['class'] === 'physics-paint-topbar-primary') as AnyVNode | undefined;
+    expect(left, 'left slot must render').toBeDefined();
+    expect(primary, 'primary cluster must render').toBeDefined();
+
+    const leftDesc = childrenOf(left);
+    const primaryDesc = childrenOf(primary);
+    const isSwitcher = (n: unknown) => (n as AnyVNode).type === ModuleSwitcher;
+
+    expect(primaryDesc.some(isSwitcher), 'ModuleSwitcher is in the primary cluster').toBe(true);
+    expect(leftDesc.some(isSwitcher), 'ModuleSwitcher left the status slot').toBe(false);
+    expect(
+      primaryDesc.some((n) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill')),
+      'status pill is not in the primary cluster',
+    ).toBe(false);
+    expect(
+      leftDesc.some((n) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill')),
+      'status pill stays in the left slot',
+    ).toBe(true);
+  });
+
+  it('source keeps the write-through pair and the balanced-side layout', () => {
+    const body = stripComments(topBarSource());
+    expect(body).toContain('onBrushSizeChange');
+    expect(body).toContain('onOpacityChange');
+    expect(body).toContain('setAquarelleParam');
+    // Status is the only left-slot child; ModuleSwitcher mounts in primary.
+    const leftStart = body.indexOf('class="physics-paint-topbar-left"');
+    const primaryStart = body.indexOf('class="physics-paint-topbar-primary"');
+    const switcherAt = body.indexOf('<ModuleSwitcher');
+    expect(leftStart).toBeGreaterThan(-1);
+    expect(primaryStart).toBeGreaterThan(leftStart);
+    expect(switcherAt, 'ModuleSwitcher follows the primary opening tag').toBeGreaterThan(primaryStart);
+    expect(switcherAt, 'ModuleSwitcher is not inside the left slot').toBeGreaterThan(
+      body.indexOf('</div>', leftStart),
+    );
   });
 });
 

@@ -450,8 +450,9 @@ button.destructive {
   background: #3e3f41;
 }
 
-/* UI checklist row 4: one row — left = status + modules, center = tools.
-   261018-cy1: balanced flex sides keep Brush size + Opacity optically centered. */
+/* UI checklist row 4: one row. 261018-gqo move 5: left = Engine ready alone,
+   center = Modes + Brush size + Opacity (+ Water/Edges/Grain) as ONE group.
+   261018-cy1: balanced flex sides keep the cluster optically centered. */
 .physics-paint-topbar-left {
   display: flex;
   align-items: center;
@@ -465,7 +466,7 @@ button.destructive {
   flex-wrap: nowrap;
   align-items: center;
   flex: 0 0 auto;
-  gap: 8px 14px;
+  gap: 8px 10px;
   min-width: 0;
 }
 
@@ -505,10 +506,11 @@ button.destructive {
 }
 
 /* SPECS/slider-stepper: the blended field owns its own label row + bar, so the
-   old range/number/output rules are gone. Sized ×1.2 over the UAT pass — the
-   bar was too cramped to read next to the segmented controls. */
+   old range/number/output rules are gone. 261018-gqo move 5: min-width trims
+   so Modes + Brush size + Opacity + Water/Edges/Grain fit as one centered
+   group without collision (labels stay readable; never wrap / absolute). */
 .physics-paint-topbar-slider {
-  min-width: 142px;
+  min-width: 112px;
 }
 
 .physics-paint-segmented-row {
