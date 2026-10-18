@@ -765,17 +765,12 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   }));
   // 52.2-02 (D-07): the wire `frames` projection is a runtime shape and needs
   // pixels, so the inline carrier is asserted here. A reference-only record
-  // (package file unreadable at launch) must NOT throw — the throw escapes the
-  // event listener and the child times out with a generic message. Fail closed
-  // with the real reason instead.
+  // (package file unreadable at launch) is already "missing content" everywhere
+  // else — skip it here rather than failing the whole authority, which would
+  // block Play for scripts that don't even read `frames` (the aquarelle bake).
   const frames: PhysicPaintRotoAuthorityResult['frames'] = [];
   for (const record of records) {
-    if (record.payload.bytes === undefined) {
-      return failure(
-        `Roto key "${record.keyId}" carries no inline raster bytes (its package file could not be read). Save the project or re-import the frame media, then retry Play.`,
-        { trackRevision: '', documentRevision: buildEfxPaintDocumentRevision(document) },
-      );
-    }
+    if (record.payload.bytes === undefined) continue;
     frames.push({
       ...record.payload,
       bytes: record.payload.bytes,
