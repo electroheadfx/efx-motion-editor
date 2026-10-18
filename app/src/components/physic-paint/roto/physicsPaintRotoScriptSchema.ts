@@ -471,7 +471,10 @@ function aquarelleEnvelopeToPaintStroke(
     },
     timestamp: engine.timestamp,
     ...(engine.mutationId !== undefined ? { mutationId: engine.mutationId } : {}),
-    ...(engine.diffusionFrames !== undefined && engine.diffusionFrames > 0 ? { diffusionFrames: engine.diffusionFrames } : {}),
+    // engine.diffusionFrames is the aquarelle cuisson window — never copy it
+    // here. In engine-1 PaintStroke, `diffusionFrames` marks a continuation
+    // (zero-point diffusion record); leaking it onto a primary makes
+    // enqueueRecordedStroke reject the stroke as "cannot be a continuation".
     ...(stroke.playFrame !== null ? { playFrame: stroke.playFrame } : {}),
   };
 }

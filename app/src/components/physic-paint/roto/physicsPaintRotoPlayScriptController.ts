@@ -1256,20 +1256,32 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           ? 'Aquarelle bake cancelled.'
           : 'Aquarelle bake failed. Nothing changed.');
       }
-      // Fail-closed: the staged range must match the requested Play Script
-      // span. Cadence mapping onto progressive/static schedules is a later
-      // plan's surface — never silently pad or truncate.
-      if (result.frames.length !== count) {
-        throw new Error(`Aquarelle bake produced ${result.frames.length} frame(s), expected ${count}.`);
+      // Cadence mapping: the bake emits one cumulative frame per stroke;
+      // `count` is the requested output span. Stroke i lands at output frame
+      // floor(i * count / strokeCount); each output frame holds the latest
+      // landed bake frame (hold after the last stroke). count === strokeCount
+      // keeps the 1:1 mapping.
+      const strokeCount = result.frames.length;
+      if (strokeCount === 0) {
+        throw new Error('Aquarelle bake produced no frames.');
       }
-      return result.frames.map((frame, index) => ({
-        frameIndex: index,
-        appFrame: start + index,
-        bytes: frame.bytes,
-        width: frame.width,
-        height: frame.height,
-        source: 'real-key' as const,
-      }));
+      const staged: PhysicPaintRotoCacheFrame[] = [];
+      let bakeIndex = -1;
+      for (let j = 0; j < count; j += 1) {
+        while (bakeIndex + 1 < strokeCount && Math.floor(((bakeIndex + 1) * count) / strokeCount) <= j) {
+          bakeIndex += 1;
+        }
+        const frame = result.frames[Math.max(0, bakeIndex)]!;
+        staged.push({
+          frameIndex: j,
+          appFrame: start + j,
+          bytes: frame.bytes,
+          width: frame.width,
+          height: frame.height,
+          source: 'real-key' as const,
+        });
+      }
+      return staged;
     } finally {
       // The bake host may still be settling a long cuisson; the reference
       // stays live until dispose()/flush settles it (never abort-on-dispose).
