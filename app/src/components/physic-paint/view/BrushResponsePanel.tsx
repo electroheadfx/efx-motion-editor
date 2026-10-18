@@ -89,7 +89,7 @@ export function BrushResponsePanel() {
   };
 
   return (
-    <div data-testid="brush-response-panel">
+    <div class="physics-paint-option-group" data-testid="brush-response-panel">
       <button
         type="button"
         data-testid="brush-response-toggle"

@@ -76,7 +76,7 @@ export function AquarelleGlobalsPanel() {
   };
 
   return (
-    <div data-testid="aquarelle-globals-panel">
+    <div class="physics-paint-option-group" data-testid="aquarelle-globals-panel">
       {GLOBAL_ROWS.map((row) => (
         <GlobalSlider
           key={String(row.key)}

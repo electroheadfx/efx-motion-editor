@@ -1018,6 +1018,21 @@ button.destructive {
   padding-top: 2px;
 }
 
+/* 261018-gqo move 2: section titles breathe (— TEXTURE — no longer crammed
+   into the grain chips / sliders). One shared rule over per-call padding. */
+.rule-section-header {
+  margin: 12px 0 8px;
+}
+
+/* 261018-gqo move 2: slider rows are not a zero-gap stack (Shape detail /
+   Blending / Spread, watercolor globals, brush response). Matches
+   .physics-paint-option-group's 10px row rhythm. */
+.physics-paint-module-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .physics-paint-options-tabs-section,
 .physics-paint-single-tab-section {
   gap: 0;

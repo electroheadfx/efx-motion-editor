@@ -13,6 +13,9 @@
  * Render tests materialize the vnode tree (no DOM environment).
  */
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   aquarelleParams,
   setAquarelleParam,
@@ -222,5 +225,28 @@ describe('AquarelleGlobalsPanel Reset (I-02 / T-261017-WMW-01)', () => {
     expect(params.dry, 'dry → 40').toBe(RESET_EXPECTED.dry);
     // T-261017-WMW-01: Reset must never write size (top-bar Brush size owns it).
     expect(params.size, 'size is untouched by Reset').toBe(77);
+  });
+});
+
+// 261018-gqo move 2: vertical breathing room — the shared option-group gap
+// stacks the seven rows, and RuleSectionHeader carries the section margin.
+describe('261018-gqo spacing rhythm', () => {
+  it('globals panel rides the shared option-group row gap', () => {
+    const tree = renderPanel() as TestVNode;
+    const root = [...walk(tree)].find((n) => n.props?.['data-testid'] === 'aquarelle-globals-panel');
+    expect(root, 'panel root must render').toBeTruthy();
+    expect(String(root!.props?.['class'] ?? ''), 'option-group class owns the row gap').toBe(
+      'physics-paint-option-group',
+    );
+  });
+
+  it('CSS gives rule headers margin and module sections a 10px row gap', () => {
+    const styles = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css'),
+      'utf8',
+    );
+    expect(styles).toContain('.rule-section-header {');
+    expect(styles).toMatch(/\.rule-section-header\s*\{[^}]*margin:\s*12px 0 8px/);
+    expect(styles).toMatch(/\.physics-paint-module-section\s*\{[^}]*gap:\s*10px/);
   });
 });
