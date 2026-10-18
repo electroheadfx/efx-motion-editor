@@ -5,11 +5,11 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
 status: executing
-stopped_at: Completed 261018-gqo third UAT round
-last_updated: "2026-10-18T13:47:34.588Z"
+stopped_at: Completed 261018-odm watercolor script playback (extend)
+last_updated: "2026-10-18T16:20:31.747Z"
 last_activity: 2026-10-18
 last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
-state_head: 77e64dcbdc8b93e3486682b7628ef1d7df1f0fcc
+state_head: d1e57be70f88b7a818d5284257bdbe4f5fb4f06a
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 4 of 10
 Status: Ready to execute
-Last activity: 2026-10-18 — Quick 261018-lqv: fix save-script validator (paper/* background) — awaiting user retry
+Last activity: 2026-10-18 — Quick 261018-odm: watercolor script playback (dual-engine schema + aquarelle bake route) — awaiting live UAT
 
 Progress: [████████░░] 75%
 
@@ -181,6 +181,7 @@ Progress: [████████░░] 75%
 | Phase quick-261018-cy1 P261018-cy1 | 8min | 3 tasks | 14 files |
 | Phase quick-261018-f15 P261018-f15 | 23 | 3 tasks | 16 files |
 | Phase quick-261018-gqo P261018-gqo | 8min | 3 tasks | 12 files |
+| Phase quick-261018-odm P261018-odm | 12min | 4 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -516,6 +517,7 @@ Recent decisions affecting current work:
 - [Phase quick-261018-gqo]: Landscape paper cards CARD_WIDTH=112/THUMB_HEIGHT=64/GRID_GAP=8 override the old 64x64 UI-SPEC lock
 - [Phase quick-261018-gqo]: Oracle Title Case paper names; PAPER-04 scans relabel to Scan 1/2/3 (no PAPER N placeholder, no invented paper types)
 - [Phase quick-261018-gqo]: Top bar Modes+settings one centered group; Engine ready left; slider min-width 112px; write-through pair unchanged
+- [Phase quick-261018-odm]: Dual-engine script envelope: document engineId discriminates efx-physic-paint vs efx-watercolor; aquarelle pts stay UV; Dry events persist as distinguished stroke entries (D-16)
 
 ### Pending Todos
 
@@ -556,6 +558,7 @@ None yet.
 | 261018-k1o | Top bar layout: ModuleSwitcher left near Engine ready; sliders stay centered | 2026-10-18 | 5491ee97 | [261018-k1o-top-bar-layout-tweak-move-moduleswitcher](./quick/261018-k1o-top-bar-layout-tweak-move-moduleswitcher/) |
 | 261018-l05 | Brush tab DOM cleanup: remove invisible toggle line + simplify brush card markup to stylesheet classes | 2026-10-18 | 0f059c19 | [261018-l05-brush-tab-dom-cleanup-1-remove-leftover-](./quick/261018-l05-brush-tab-dom-cleanup-1-remove-leftover-/) |
 | 261018-lqv | Fix save-script validator: isRotoBackground accepts paper/* + grainScale (parity with types validator) | 2026-10-18 | 77e64dcb | [261018-lqv-fix-captured-roto-script-is-not-persista](./quick/261018-lqv-fix-captured-roto-script-is-not-persista/) |
+| 261018-odm | Watercolor script playback: dual-engine schema + aquarelle save/play route + Rust validator | 2026-10-18 | d1e57be7 | [261018-odm-build-watercolor-script-playback-extend-](./quick/261018-odm-build-watercolor-script-playback-extend-/) |
 
 ### Roadmap Evolution
 
@@ -609,8 +612,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-18T10:26:20.726Z
-Stopped at: Completed 261018-gqo third UAT round
+Last session: 2026-10-18T16:18:58.641Z
+Stopped at: Completed 261018-odm watercolor script playback (extend)
 Resume file: None
 
 ## Operator Next Steps
