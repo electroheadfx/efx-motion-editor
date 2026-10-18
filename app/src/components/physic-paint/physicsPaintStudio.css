@@ -1157,6 +1157,49 @@ button.destructive {
   padding: 14px 14px 14px;
 }
 
+/* 261018-l05 watercolor brush cards */
+/* Brush tab 14-card grid cells. Card/button/thumb/name styles moved out of
+   WatercolorBrushLibrary inline style objects (261018-l05 move 2). Visual look
+   stays identical: white thumb, uppercase name, #777777 border on every card,
+   accent tint when selected (data-selected attribute). */
+.watercolor-brush-card {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  /* 261018-jlb move 2 / 261018-l05: #777777 1px border on EVERY card. */
+  border: 1px solid #777777;
+  background: transparent;
+  box-sizing: border-box;
+  align-items: center;
+}
+
+.watercolor-brush-card[data-selected="true"] {
+  background: var(--sidebar-accent-soft, rgba(110, 168, 254, 0.16));
+}
+
+.watercolor-brush-thumb {
+  /* Must equal STROKE_THUMB_WIDTH x STROKE_THUMB_HEIGHT (150 x 44). */
+  width: 150px;
+  height: 44px;
+  max-width: 100%;
+  display: block;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.watercolor-brush-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sidebar-text, #e6edf5);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
 /* No top dead space on the chrome-less brush color section: the shared
    tab-panel's 20px top padding was designed for the retired tab strip.
    261018-ias AREA 2: top 10px (UAT list; was 0 from 36.15-13 UAT Gap I-3).

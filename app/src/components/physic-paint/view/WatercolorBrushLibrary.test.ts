@@ -123,6 +123,26 @@ function renderLibrary(): TestVNode {
   return materialize(WatercolorBrushLibrary()) as TestVNode;
 }
 
+/** CSS stylesheet holding the watercolor brush-card classes (261018-l05). */
+function readStudioCss(): string {
+  return readFileSync(resolve(__dirname, '..', 'physicsPaintStudio.css'), 'utf8');
+}
+
+/**
+ * Extract one rule body (from `{` to matching `}`) for a selector substring.
+ * Region-scoped so whole-file negative greps cannot hit unrelated rules in the
+ * 7k+ line stylesheet (261018-l05).
+ */
+function cssRuleBody(css: string, selector: string): string {
+  const idx = css.indexOf(selector);
+  expect(idx, `css rule ${selector} must exist`).toBeGreaterThanOrEqual(0);
+  const open = css.indexOf('{', idx);
+  const close = css.indexOf('}', open);
+  expect(open, `css rule ${selector} must have a body`).toBeGreaterThanOrEqual(0);
+  expect(close, `css rule ${selector} must close`).toBeGreaterThan(open);
+  return css.slice(open, close + 1);
+}
+
 function cardNodes(tree: TestVNode): TestVNode[] {
   return [...walk(tree)].filter((n) => {
     const testId = n.props?.['data-testid'];
@@ -243,19 +263,26 @@ describe('WatercolorBrushLibrary 14-card grid (I-03)', () => {
   it('thumbs paint the oracle French Ultramarine on a white canvas', () => {
     const source = readFileSync(resolve(__dirname, 'watercolorStrokeThumb.ts'), 'utf8');
     expect(source, 'thumb hex is the oracle previewHex').toContain("STROKE_THUMB_HEX = '#2338a8'");
-    const librarySource = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8');
-    expect(librarySource, 'card canvas background is white').toContain("background: '#fff'");
-    expect(librarySource, 'name is uppercase like the oracle label').toContain("textTransform: 'uppercase'");
+    // 261018-l05: style source-greps ride the stylesheet (not the TSX inline objects).
+    const css = readStudioCss();
+    const thumbRule = cssRuleBody(css, '.watercolor-brush-thumb');
+    expect(thumbRule, 'card canvas background is white').toContain('background: #fff');
+    const nameRule = cssRuleBody(css, '.watercolor-brush-name');
+    expect(nameRule, 'name is uppercase like the oracle label').toContain('text-transform: uppercase');
   });
 
-  it('every card border is #777777; selected keeps the accent tint (261018-jlb)', () => {
-    const librarySource = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8');
-    expect(librarySource, '#777777 border on every card').toContain("'1px solid #777777'");
-    expect(librarySource, 'dark sidebar border is gone').not.toContain('var(--sidebar-border');
-    expect(librarySource, 'no #2a3340 fallback').not.toContain('#2a3340');
+  it('every card border is #777777; selected keeps the accent tint (261018-jlb / 261018-l05)', () => {
+    // Region-scoped to the card rules — the stylesheet is 7k+ lines and a
+    // whole-file negative grep would hit unrelated border/white values.
+    const css = readStudioCss();
+    const cardRule = cssRuleBody(css, '.watercolor-brush-card {');
+    const selectedRule = cssRuleBody(css, '.watercolor-brush-card[data-selected="true"]');
+    expect(cardRule, '#777777 border on every card').toContain('1px solid #777777');
+    expect(cardRule, 'dark sidebar border is gone').not.toContain('var(--sidebar-border');
+    expect(cardRule, 'no #2a3340 fallback').not.toContain('#2a3340');
     // No white / near-white border state (thumb canvas may stay #fff).
-    expect(librarySource, 'no white border value').not.toMatch(/border:[^;]*#fff/i);
-    expect(librarySource, 'selected keeps accent background tint').toContain(
+    expect(cardRule, 'no white border value').not.toMatch(/border:[^;]*#fff/i);
+    expect(selectedRule, 'selected keeps accent background tint').toContain(
       'var(--sidebar-accent-soft',
     );
   });

@@ -38,55 +38,23 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
   return (
     <button
       type="button"
+      class="watercolor-brush-card"
       data-testid={`watercolor-brush-card-${preset.id}`}
       data-selected={props.selected ? 'true' : 'false'}
       aria-pressed={props.selected}
       title={preset.hint}
       onClick={() => selectAquarelleTip(preset.id)}
-      style={{
-        all: 'unset',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-        padding: '6px',
-        borderRadius: '6px',
-        // 261018-jlb move 2: #777777 1px border on EVERY card (UAT fifth
-        // round). Selected keeps the accent background tint as the active cue.
-        border: '1px solid #777777',
-        background: props.selected
-          ? 'var(--sidebar-accent-soft, rgba(110, 168, 254, 0.16))'
-          : 'transparent',
-        boxSizing: 'border-box',
-        alignItems: 'center',
-      }}
     >
       <canvas
+        class="watercolor-brush-thumb"
         data-testid={`watercolor-brush-thumb-${preset.id}`}
         width={STROKE_THUMB_WIDTH}
         height={STROKE_THUMB_HEIGHT}
         ref={(el: HTMLCanvasElement | null) => {
           if (el) blitStrokeThumb(el, preset.id);
         }}
-        style={{
-          width: `${STROKE_THUMB_WIDTH}px`,
-          height: `${STROKE_THUMB_HEIGHT}px`,
-          maxWidth: '100%',
-          display: 'block',
-          borderRadius: '4px',
-          background: '#fff',
-        }}
       />
-      <span
-        style={{
-          fontSize: '10px',
-          fontWeight: 600,
-          color: 'var(--sidebar-text, #e6edf5)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.14em',
-          textAlign: 'center',
-        }}
-      >
+      <span class="watercolor-brush-name">
         {preset.name}
       </span>
     </button>
