@@ -5,11 +5,11 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
 status: executing
-stopped_at: Completed quick 261017-xa0 (I-03 brush tab = 14 playground brushes)
-last_updated: "2026-10-17T23:04:53.660Z"
-last_activity: 2026-10-17
+stopped_at: Completed quick-261018-cy1 (UAT feedback batch, 6 commits)
+last_updated: "2026-10-18T07:39:12.816Z"
+last_activity: 2026-10-18
 last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
-state_head: 1b6146bee6c96d30a99ed8aef905aaa24c32cde0
+state_head: bba5bc2b8d579172f1de5a8a39adde936802d8b1
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 3 of 10
 Status: Ready to execute
-Last activity: 2026-10-18 — Completed the phase-55 watercolor UI queue (I-04, I-05, I-06, I-01, I-02, I-03, I-08, I-10, Row 11) via quicks 261017-vcn / 261017-w4x / 261017-wmw / 261017-xa0 / 261018-0ox; awaiting live UAT
+Last activity: 2026-10-18 — Completed quick 261018-cy1: UAT feedback batch on the phase-55 watercolor UI (six moves, six commits) — awaiting live UAT
 
 Progress: [████████░░] 75%
 
@@ -178,6 +178,7 @@ Progress: [████████░░] 75%
 | Phase quick-261017-iwm P261017-iwm | 22min | 2 tasks | 4 files |
 | Phase quick-261017-vcn P261017-vcn | 17min | 2 tasks | 10 files |
 | Phase quick-261017-xa0 P261017-xa0 | 17 | 2 tasks | 7 files |
+| Phase quick-261018-cy1 P261018-cy1 | 8min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -503,6 +504,10 @@ Recent decisions affecting current work:
 - [Phase quick-261017-w4x]: Paint tab (watercolor) is settings only; Dry is rail-only with D-15 record seam unchanged; AquarelleToolRow.tsx stays on disk for I-10
 - [Phase quick-261017-xa0]: I-03 seam accepts BRUSH_PRESETS ids and forces Brush tool on any successful non-null pick
 - [Phase quick-261017-xa0]: Thumb painter ported app-side into watercolorStrokeThumb.ts with paint-once HTMLCanvasElement cache (no package surface)
+- [Phase quick-261018-cy1]: Top-pane Actions tab removed in every mode; bottom-pane scripts Actions label stays
+- [Phase quick-261018-cy1]: Thumb pigment is the single oracle constant #2338a8 in watercolorStrokeThumb.ts (SPECS/ read-only)
+- [Phase quick-261018-cy1]: Grain Soft active = nearest GRAIN_STRENGTH_OPTIONS match; non-finite -> 0.35; factory default untouched
+- [Phase quick-261018-cy1]: Watercolor rail history reuses PhysicsPaintHistoryActionButton + existing onUndo/onRedo/onClearFrame props
 
 ### Pending Todos
 
@@ -535,6 +540,7 @@ None yet.
 | 261017-wmw | I-01 + I-02: Paint = watercolor params (playground labels + Reset); Brush = brush response | 2026-10-18 | 1b6146be | [261017-wmw-i-01-i-02-paint-watercolor-params-brush-](./quick/261017-wmw-i-01-i-02-paint-watercolor-params-brush-/) |
 | 261017-xa0 | I-03: Brush tab = the 14 playground brushes with stroke thumbs | 2026-10-18 | 1b6146be | [261017-xa0-i-03-brush-tab-the-14-playground-brushes](./quick/261017-xa0-i-03-brush-tab-the-14-playground-brushes/) |
 | 261018-0ox | I-08 + I-10 + Row 11: Brush-mode gating pin, adopt RightPanel tab components, grain default 0.35 | 2026-10-18 | 1b6146be | [261018-0ox-i-08-i-10-row-11-context-gating-orphan-t](./quick/261018-0ox-i-08-i-10-row-11-context-gating-orphan-t/) |
+| 261018-cy1 | UAT feedback batch on the phase-55 watercolor UI (images 59-65): tabs by mode, oracle brush list, centered top-bar controls, watercolor Undo/Redo/Trash, flat paper tab Real-first grain Soft, Actions tab removed | 2026-10-18 | bba5bc2b | [261018-cy1-uat-feedback-batch-on-the-phase-55-water](./quick/261018-cy1-uat-feedback-batch-on-the-phase-55-water/) |
 
 ### Roadmap Evolution
 
@@ -588,8 +594,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-17T22:26:38.199Z
-Stopped at: Completed quick 261018-0ox (I-08 + I-10 + Row 11) — phase-55 queue executed, live UAT pending
+Last session: 2026-10-18T07:38:00.191Z
+Stopped at: Completed quick-261018-cy1 (UAT feedback batch, 6 commits)
 Resume file: None
 
 ## Operator Next Steps

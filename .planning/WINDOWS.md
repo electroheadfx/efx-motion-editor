@@ -1,10 +1,10 @@
 ---
 schema_version: 1
 open_count: 27
-waived_count: 5
+waived_count: 6
 fixed_count: 69
-total_count: 101
-last_updated: 2026-10-17T21:05:48.265Z
+total_count: 102
+last_updated: 2026-10-18T07:38:41.483Z
 ---
 
 # Broken Windows Ledger
@@ -116,6 +116,7 @@ last_updated: 2026-10-17T21:05:48.265Z
 | 99 | 56 | unrun-verify | app/src/components/physic-paint/view/PaperPicker.tsx | 78 | 56-09 verify leg efxPaintCleanBreakContract fails on pre-existing 56-05 PaperPicker toDataURL frame-transport token (out of scope; logged deferred-items.md) | open |  | 2026-10-16T00:15:12.513Z |  |
 | 100 | quick-261017-vcn | deviation | app/src/components/shared/NumericStepper.test.tsx |  | Rule 3: grainScaleStep import + GRAIN_CALL_SITE_REL retargeted to PaperPicker (ripple of the locked Q6 move) | open |  | 2026-10-17T21:05:48.124Z |  |
 | 101 | quick-261017-vcn | deviation | app/src/components/physic-paint/view/RightPanelPaperTab.tsx |  | Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two) | open |  | 2026-10-17T21:05:48.265Z |  |
+| 102 | quick-261018-cy1 | stub | none |  | no stubs | waived | Mistaken ledger append — this quick has no stubs; entry was a no-op probe, not a defect | 2026-10-18T07:38:06.691Z | 2026-10-18T07:38:41.483Z |
 
 ````json
 [
@@ -1358,6 +1359,19 @@ last_updated: 2026-10-17T21:05:48.265Z
     "reason": "",
     "recorded_at": "2026-10-17T21:05:48.265Z",
     "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 102,
+    "kind": "stub",
+    "phase": "quick-261018-cy1",
+    "file": "none",
+    "line": null,
+    "description": "no stubs",
+    "status": "waived",
+    "reason": "Mistaken ledger append — this quick has no stubs; entry was a no-op probe, not a defect",
+    "recorded_at": "2026-10-18T07:38:06.691Z",
+    "resolved_at": "2026-10-18T07:38:41.483Z",
     "milestone": "v2.0.0"
   }
 ]
