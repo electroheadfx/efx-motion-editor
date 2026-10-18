@@ -1772,6 +1772,12 @@ async function createDefaultAquarelleAdapter(
  * re-applies each one between the strokes around it (AQUA-06).
  */
 function aquarelleEventsFromScript(script: RotoPaintScript): AquarellePayloadEvent[] {
+  // 261018-odm: persisted-first. A reloaded watercolor snapshot carries the
+  // complete recorded-order timeline (strokes + Dry already interleaved) —
+  // return it as-is so bake.bake has zero dependency on the in-memory map.
+  if (script.aquarelleEvents && script.aquarelleEvents.length > 0) {
+    return [...script.aquarelleEvents];
+  }
   const events: AquarellePayloadEvent[] = [];
   const project = (stroke: RotoPaintScript['brushes'][number]['primary']): StudioStroke<AquarelleStrokePayload> => {
     const storedStroke = stroke.mutationId !== undefined

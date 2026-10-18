@@ -345,4 +345,76 @@ describe('aquarelle bake consume branch (56-08)', () => {
     expect(committed).toContain(kept);
     expect(fake.inFlightDuringDispose).toBeGreaterThanOrEqual(0);
   });
+
+  // 261018-odm: the persisted aquarelleEvents timeline feeds bake.bake
+  // exactly as recorded — no in-memory record-map dependency.
+  it('a snapshot with aquarelleEvents feeds bake.bake that exact timeline (stroke + Dry) with an empty record map', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [{ eventIndex: 0, strokeIndex: 0, tick: 0, bytes: webpStub('p'), width: 10, height: 10 }];
+    const createAquarelleBake = vi.fn(() => bake);
+    const createAquarelleAdapter = vi.fn(() => makeAdapter());
+
+    const stroke = {
+      pts: [{ x: 0.5, y: 0.5, p: 1, tx: 0, ty: 0, tw: 0, tick: 0 }],
+      ticks: 1,
+      cuisson: 0,
+      motion: null,
+      brushId: 'wc/round-medium',
+      toolOverrides: {},
+      traceSeed: 1,
+      recordedOrder: 10,
+      playFrame: null,
+      color: '#224466',
+      engine: {
+        tool: 'brush' as const,
+        color: '#224466',
+        params: { size: 12, water: 50, load: 50, flow: 50, bleed: 50, dry: 50, edge: 50, granulation: 50 },
+        brushId: 'wc/round-medium',
+        timestamp: 10,
+      },
+    };
+    const dry = { kind: 'dry' as const, tick: 2, recordedOrder: 20 };
+    const timeline = [stroke, dry];
+
+    const test = harness({ createAquarelleBake, createAquarelleAdapter });
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor', aquarelleEvents: timeline });
+
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '1';
+    const confirmPromise = test.controller.confirm();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fake.bakeGate.resolve();
+    await confirmPromise;
+
+    expect(fake.bakeCalls).toBe(1);
+    expect(fake.bakeEvents).toHaveLength(2);
+    expect(fake.bakeEvents[0]).toBe(stroke);
+    expect(fake.bakeEvents[1]).toBe(dry);
+  });
+
+  it('a snapshot without aquarelleEvents still reaches bake.bake via the in-memory fallback', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [{ eventIndex: 0, strokeIndex: 0, tick: 0, bytes: webpStub('p'), width: 10, height: 10 }];
+    const createAquarelleBake = vi.fn(() => bake);
+    const createAquarelleAdapter = vi.fn(() => makeAdapter());
+
+    const test = harness({ createAquarelleBake, createAquarelleAdapter });
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor' });
+
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '1';
+    const confirmPromise = test.controller.confirm();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    fake.bakeGate.resolve();
+    await confirmPromise;
+
+    expect(fake.bakeCalls).toBe(1);
+    expect(fake.bakeEvents.length).toBeGreaterThan(0);
+  });
 });
