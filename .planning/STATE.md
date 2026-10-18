@@ -5,11 +5,11 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
 status: executing
-stopped_at: Completed quick-261018-cy1 (UAT feedback batch, 6 commits)
-last_updated: "2026-10-18T07:39:12.816Z"
+stopped_at: Completed quick-261018-f15 (second UAT round, 6 commits)
+last_updated: "2026-10-18T09:27:52.784Z"
 last_activity: 2026-10-18
 last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
-state_head: bba5bc2b8d579172f1de5a8a39adde936802d8b1
+state_head: aba0b8c15dbe4f8d7bdc5b36928ca2a730c5942c
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 3 of 10
 Status: Ready to execute
-Last activity: 2026-10-18 — Completed quick 261018-cy1: UAT feedback batch on the phase-55 watercolor UI (six moves, six commits) — awaiting live UAT
+Last activity: 2026-10-18 — Completed quick 261018-f15: second UAT round on the watercolor/brush Studio UI (four areas, six commits) — awaiting live UAT
 
 Progress: [████████░░] 75%
 
@@ -179,6 +179,7 @@ Progress: [████████░░] 75%
 | Phase quick-261017-vcn P261017-vcn | 17min | 2 tasks | 10 files |
 | Phase quick-261017-xa0 P261017-xa0 | 17 | 2 tasks | 7 files |
 | Phase quick-261018-cy1 P261018-cy1 | 8min | 3 tasks | 14 files |
+| Phase quick-261018-f15 P261018-f15 | 23 | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -508,6 +509,9 @@ Recent decisions affecting current work:
 - [Phase quick-261018-cy1]: Thumb pigment is the single oracle constant #2338a8 in watercolorStrokeThumb.ts (SPECS/ read-only)
 - [Phase quick-261018-cy1]: Grain Soft active = nearest GRAIN_STRENGTH_OPTIONS match; non-finite -> 0.35; factory default untouched
 - [Phase quick-261018-cy1]: Watercolor rail history reuses PhysicsPaintHistoryActionButton + existing onUndo/onRedo/onClearFrame props
+- [Phase quick-261018-f15]: Paper-thumb wash ported app-side to Canvas 2D; engine.paperSwatch never called on the 1x1 offscreen engine
+- [Phase quick-261018-f15]: Brush size + Opacity routers extract to identity-stable useCallbacks; top bar and Paint tab share ONE write-through pair
+- [Phase quick-261018-f15]: Transparent/White join the Real section as paper-card cells via a display:contents hook wrapper
 
 ### Pending Todos
 
@@ -541,6 +545,7 @@ None yet.
 | 261017-xa0 | I-03: Brush tab = the 14 playground brushes with stroke thumbs | 2026-10-18 | 1b6146be | [261017-xa0-i-03-brush-tab-the-14-playground-brushes](./quick/261017-xa0-i-03-brush-tab-the-14-playground-brushes/) |
 | 261018-0ox | I-08 + I-10 + Row 11: Brush-mode gating pin, adopt RightPanel tab components, grain default 0.35 | 2026-10-18 | 1b6146be | [261018-0ox-i-08-i-10-row-11-context-gating-orphan-t](./quick/261018-0ox-i-08-i-10-row-11-context-gating-orphan-t/) |
 | 261018-cy1 | UAT feedback batch on the phase-55 watercolor UI (images 59-65): tabs by mode, oracle brush list, centered top-bar controls, watercolor Undo/Redo/Trash, flat paper tab Real-first grain Soft, Actions tab removed | 2026-10-18 | bba5bc2b | [261018-cy1-uat-feedback-batch-on-the-phase-55-water](./quick/261018-cy1-uat-feedback-batch-on-the-phase-55-water/) |
+| 261018-f15 | Second UAT round on the watercolor/brush Studio UI: right-panel inset, flat paper tab with oracle wash thumbs 2-col, Water/Edges/Grain in top bar, duplicated size/opacity, brush smoothing first | 2026-10-18 | aba0b8c1 | [261018-f15-second-uat-round-on-the-watercolor-brush](./quick/261018-f15-second-uat-round-on-the-watercolor-brush/) |
 
 ### Roadmap Evolution
 
@@ -594,8 +599,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-18T07:38:00.191Z
-Stopped at: Completed quick-261018-cy1 (UAT feedback batch, 6 commits)
+Last session: 2026-10-18T09:26:55.444Z
+Stopped at: Completed quick-261018-f15 (second UAT round, 6 commits)
 Resume file: None
 
 ## Operator Next Steps
