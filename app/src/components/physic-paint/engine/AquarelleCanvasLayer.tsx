@@ -203,6 +203,13 @@ export function AquarelleCanvasLayer(props: {
   disabled?: boolean;
   onStrokeEnd?: (stroke: AquarelleStroke) => void;
   /**
+   * PLAY FIDELITY (play-vs-paint): the sheet went to sleep and the last
+   * recorded stroke diffused for `ticks` host-grid ticks since it ended.
+   * The record path stamps that measured window as the stroke's cuisson so
+   * a replay cooks it exactly as long as the live paint did.
+   */
+  onStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void;
+  /**
    * CACHE WRITE seam (56-12): invoked when the composited sheet must land in
    * the WebP cache — at stroke end and once Dry has settled. The snapshot
    * factory is resolved later by captureLivePixels (52.1 deferred-copy law).
@@ -235,6 +242,7 @@ export function AquarelleCanvasLayer(props: {
   const getPlayFrameRef = useRef(props.getPlayFrame);
   const getPaperIdRef = useRef(props.getPaperId);
   const onStrokeEndRef = useRef(props.onStrokeEnd);
+  const onStrokeSettledRef = useRef(props.onStrokeSettled);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
   const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
@@ -245,6 +253,7 @@ export function AquarelleCanvasLayer(props: {
   getPlayFrameRef.current = props.getPlayFrame;
   getPaperIdRef.current = props.getPaperId;
   onStrokeEndRef.current = props.onStrokeEnd;
+  onStrokeSettledRef.current = props.onStrokeSettled;
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
   onSheetSessionEndRef.current = props.onSheetSessionEnd;
@@ -263,6 +272,17 @@ export function AquarelleCanvasLayer(props: {
     cleanupRef.current = null;
     engineRef.current = null;
     if (!canvas) return;
+
+    // PLAY FIDELITY: the last recorded stroke awaiting its measured settle
+    // window (stamped when the sheet sleeps or the frame changes).
+    let pendingSettle: { stroke: AquarelleStroke; endedAt: number } | null = null;
+    const stampPendingSettle = () => {
+      const pending = pendingSettle;
+      if (!pending) return;
+      pendingSettle = null;
+      const ticks = Math.round((performance.now() - pending.endedAt) / HOST_TICK_MS);
+      onStrokeSettledRef.current?.(pending.stroke, ticks);
+    };
 
     let engine: WatercolorEngine;
     try {
@@ -297,6 +317,9 @@ export function AquarelleCanvasLayer(props: {
               playFrame: getPlayFrameRef.current(),
             };
             onStrokeEndRef.current?.(stroke);
+            // PLAY FIDELITY: remember the stroke until the sheet sleeps; the
+            // measured awake window becomes its recorded cuisson (below).
+            pendingSettle = { stroke, endedAt: performance.now() };
             // CACHE WRITE (settle) owns the commit — a stroke-end capture would
             // land the WET (washed) sheet. The rAF poll watches engine.isAwake
             // and captures the concentrated dry look.
@@ -385,6 +408,9 @@ export function AquarelleCanvasLayer(props: {
         if (engine.hasPaint) {
           onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
         }
+        // PLAY FIDELITY: the sheet is about to be wiped — stamp the measured
+        // settle window for a stroke whose cooking never reached sleep.
+        stampPendingSettle();
         // aquarelle-cache-lost-on-return: the sheet session ends here. The
         // next session's first capture must re-read the CACHE as its multiply
         // base — the base pinned for the old session predates its commit and
@@ -401,6 +427,9 @@ export function AquarelleCanvasLayer(props: {
       if (wasAwake && !awake && engine.hasPaint) {
         onCaptureFrameRef.current?.(playFrame, snapshot);
       }
+      // PLAY FIDELITY: the sheet slept — the stroke's real diffusion window
+      // is now known; record it as its cuisson for the replay.
+      if (wasAwake && !awake) stampPendingSettle();
       wasAwake = awake;
       if (!disabledRef.current) {
         applyLiveConfig(engine);

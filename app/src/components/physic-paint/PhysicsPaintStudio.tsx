@@ -162,7 +162,7 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { recordAquarelleStroke, setAquarelleParam } from './view/aquarelleRecordState';
+import { recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
@@ -4070,17 +4070,27 @@ export function PhysicsPaintStudio() {
   // space (aquarelle = document UV y-up, engine-1 = canvas pixels y-down).
   // aquarelleStrokeToPaintStroke is the ONE crossing — without it the saved
   // script stores 0..1 in a pixel slot and Play draws at the origin.
+  // PLAY FIDELITY: the live layer reports the measured settle window on the
+  // SAME stroke instance it recorded — this map resolves it to its mutation id
+  // so the recorded cuisson can be replaced with the real one.
+  const aquarelleStrokeMutationIdsRef = useRef(new WeakMap<AquarelleStroke, number>());
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
     const mutationEngine = engineRef.current;
     if (!mutationEngine) return;
     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
     try {
       const mutationId = mutationEngine.enqueueRecordedStroke({ primary: paintStroke });
+      aquarelleStrokeMutationIdsRef.current.set(stroke, mutationId);
       recordAquarelleStroke(mutationId, { ...stroke, mutationId });
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }
   }, [recordAquarelleStroke, canvasWidth, canvasHeight]);
+  const handleAquarelleStrokeSettled = useCallback((stroke: AquarelleStroke, ticks: number) => {
+    const mutationId = aquarelleStrokeMutationIdsRef.current.get(stroke);
+    capturePaintCacheEvent('aquarelle-settle-measured', { ticks, mutationId: mutationId ?? null });
+    if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);
+  }, []);
 
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
@@ -4168,7 +4178,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, getAquarellePlayFrame, getAquarellePaperId], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, getAquarellePlayFrame, getAquarellePaperId], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -4198,6 +4208,7 @@ export function PhysicsPaintStudio() {
       getAquarellePlayFrame,
       getAquarellePaperId,
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
+      onAquarelleStrokeSettled: handleAquarelleStrokeSettled,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,
       onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,

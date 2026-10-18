@@ -99,6 +99,16 @@ interface Stroke {
 const DEG = Math.PI / 180;
 const SCRIPT_POINTER = -1;
 
+/**
+ * Scripted samples keep the live "no pen pressure" sentinel so a replayed
+ * mouse/trackpad stroke derives pressure from speed like the pointer path.
+ * Clamping the sentinel to the floor made every replayed dab minimum-pressure
+ * (pale, thin, under-wet) — the Play-vs-paint mismatch.
+ */
+function scriptPressure(p: number): number {
+  return p < 0 ? -1 : clamp(p, 0.02, 1);
+}
+
 interface StepMeta {
   wetAgo: number; wetPeak: number; active: Rect | null; painted: Rect | null;
   doc: DocState;
@@ -783,8 +793,15 @@ export class WatercolorEngine {
    * pass false to group several strokes (the letters of a word) into one. `maxRadius`
    * (document heights) shrinks a footprint that would be wider than that at full
    * pressure, so a big brush still writes small letters legibly.
+   *
+   * Studio integration: `pressure` keeps the live sentinel — a negative value
+   * means "no pen pressure available" (mouse / trackpad), so the stroke derives
+   * it from speed exactly like the pointer path. Clamping it to the floor made
+   * replayed mouse strokes land at minimum pressure (pale, thin, under-wet).
+   * `tiltX`/`tiltY` carry the recorded pen tilt so asymmetric tips keep their
+   * azimuth on replay.
    */
-  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number): boolean {
+  scriptBegin(tool: Tool, x: number, y: number, pressure: number, step: string | false = 'Stroke', maxRadius?: number, tiltX = 0, tiltY = 0): boolean {
     if (this.stroke) return false;
     if (step !== false) this.beginStep('script', step);
     this.scriptScale = maxRadius ? Math.min(1, maxRadius / this.radius(tool, 1, 0)) : 1;
@@ -793,15 +810,15 @@ export class WatercolorEngine {
       x: 0, y: 0, cx: 0, cy: 0, pr: 0, t: this.clock(), speed: 0, simPressure: 0.45, carry: 0, travelled: 0, moved: false,
       dx: this.lastDir[0], dy: this.lastDir[1], angle: this.lastAngle, azimuth: null,
     };
-    this.queue.push({ x, y, p: clamp(pressure, 0.02, 1), t: this.clock(), tx: 0, ty: 0 });
+    this.queue.push({ x, y, p: scriptPressure(pressure), t: this.clock(), tx: tiltX, ty: tiltY });
     this.schedule();
     return true;
   }
 
   /** Feed the scripted stroke a sample; `t` is a performance.now() timestamp. False once the stroke is gone (undo, clear). */
-  scriptMove(x: number, y: number, pressure: number, t: number): boolean {
+  scriptMove(x: number, y: number, pressure: number, t: number, tiltX = 0, tiltY = 0): boolean {
     if (!this.scripting) return false;
-    this.queue.push({ x, y, p: clamp(pressure, 0.02, 1), t, tx: 0, ty: 0 });
+    this.queue.push({ x, y, p: scriptPressure(pressure), t, tx: tiltX, ty: tiltY });
     this.schedule();
     return true;
   }

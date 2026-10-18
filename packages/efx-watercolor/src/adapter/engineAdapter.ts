@@ -198,9 +198,12 @@ export function createAquarelleEngineAdapter(
       advanceClock(1000 * HOST_DT)
       if (!active.started) {
         active.started = true
-        engine.scriptBegin(asTool(active.stroke.engine.tool), p.x, p.y, p.p, 'Stroke')
+        // p.p keeps the mouse sentinel (-1) — the engine derives pressure from
+        // speed exactly like the live pointer path. Tilt rides through too so
+        // asymmetric tips keep their recorded azimuth.
+        engine.scriptBegin(asTool(active.stroke.engine.tool), p.x, p.y, p.p, 'Stroke', undefined, p.tx, p.ty)
       } else {
-        engine.scriptMove(p.x, p.y, p.p, virtualNow)
+        engine.scriptMove(p.x, p.y, p.p, virtualNow, p.tx, p.ty)
       }
       // Live==bake law (56-12): one sample then engine.tick advances the
       // fluid. Skipping the tick deposits the whole stroke in one instant so

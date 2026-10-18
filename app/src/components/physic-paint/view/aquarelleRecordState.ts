@@ -12,6 +12,7 @@
 
 import { signal } from '@preact/signals';
 import {
+  DIFFUSION_CAP,
   createDryEvent,
   isAquarelleDryEvent,
   toStudioStroke,
@@ -213,6 +214,8 @@ export function buildAquarelleStrokePayload(
  * replays the exact marks the user painted.
  */
 const recordedStrokes = new Map<number, AquarelleStroke>();
+/** The projected timeline entry per stroke, so a measured cuisson can patch it. */
+const recordedStrokeEntries = new Map<number, ReturnType<typeof toStudioStroke>>();
 
 export function recordAquarelleStroke(
   mutationId: number,
@@ -222,7 +225,30 @@ export function recordAquarelleStroke(
   // The record clock advances by the stroke's own tick span so the next
   // Dry lands after it on the host grid (toStudioStroke: ticks = max(1, pts-1)).
   advanceRecordClock(Math.max(1, stroke.points.length - 1));
-  payloadTimeline.push(toStudioStroke(stroke));
+  const entry = toStudioStroke(stroke);
+  recordedStrokeEntries.set(mutationId, entry);
+  payloadTimeline.push(entry);
+}
+
+/**
+ * Play-vs-paint fidelity: replace the launch cuisson heuristic with the
+ * engine's MEASURED awake window (ticks the live sheet actually diffused
+ * after the stroke ended). Replays then cook each stroke for as long as the
+ * real paint did instead of stopping at 2.75 s — the under-bloomed look.
+ */
+export function setAquarelleStrokeDiffusionFrames(
+  mutationId: number,
+  frames: number,
+): void {
+  const stroke = recordedStrokes.get(mutationId);
+  if (!stroke) return;
+  const capped = Math.max(0, Math.min(DIFFUSION_CAP, Math.trunc(frames)));
+  stroke.diffusionFrames = capped;
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (entry) {
+    entry.cuisson = capped;
+    (entry.engine as AquarelleStrokePayload).diffusionFrames = capped;
+  }
 }
 
 export function getRecordedAquarelleStroke(
