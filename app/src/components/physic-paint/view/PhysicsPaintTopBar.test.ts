@@ -11,6 +11,8 @@ const css = () => readFileSync(cssPath, 'utf8');
 
 const studioPath = resolve(dirname(fileURLToPath(import.meta.url)), '../PhysicsPaintStudio.tsx');
 const studioSource = () => readFileSync(studioPath, 'utf8');
+const topBarPath = resolve(dirname(fileURLToPath(import.meta.url)), './PhysicsPaintTopBar.tsx');
+const topBarSource = () => readFileSync(topBarPath, 'utf8');
 const studioViewPath = resolve(dirname(fileURLToPath(import.meta.url)), './PhysicsPaintStudioView.tsx');
 const studioViewSource = () => readFileSync(studioViewPath, 'utf8');
 const engineActionsPath = resolve(dirname(fileURLToPath(import.meta.url)), '../engine/usePhysicsPaintEngineActions.ts');
@@ -21,6 +23,11 @@ function getCssRuleBlock(styles: string, selector: string): string {
   if (start === -1) return '';
   const end = styles.indexOf('}', start);
   return end === -1 ? '' : styles.slice(start, end + 1);
+}
+
+/** Strip block + line comments so negative scans never trip on docs. */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 }
 
 type AnyVNode = VNode<Record<string, any>>;
@@ -106,6 +113,68 @@ describe('261017-vcn top bar slim (I-04 remainder)', () => {
     // The retired rows leave the render tree.
     expect(() => findByAria(tree, 'Grain strength')).toThrow();
     expect(() => findByAria(tree, 'Background')).toThrow();
+  });
+});
+
+// 261018-f15 C1: Water / Edges / Grain ride the watercolor branch after
+// Opacity and write setAquarelleParam('water' | 'edge' | 'granulation').
+describe('261018-f15 watercolor top-bar aquarelle globals', () => {
+  it('watercolor branch shows Water / Edges / Grain after Opacity', async () => {
+    vi.resetModules();
+    vi.doMock('../../shared/activeModule', () => ({
+      activeModule: { value: 'watercolor' },
+    }));
+    vi.doMock('./aquarelleRecordState', () => ({
+      aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
+      setAquarelleParam: vi.fn(),
+    }));
+    try {
+      const { PhysicsPaintTopBar: WatercolorTopBar } = await import('./PhysicsPaintTopBar');
+      const tree = WatercolorTopBar(baseTopBarProps()) as AnyVNode;
+      const controls = childrenOf(tree).filter(
+        (node) => typeof (node as AnyVNode).props?.label === 'string',
+      ) as AnyVNode[];
+      const labels = controls.map((s) => s.props.label);
+      expect(labels).toEqual(['Brush size', 'Opacity', 'Water', 'Edges', 'Grain']);
+    } finally {
+      vi.doUnmock('../../shared/activeModule');
+      vi.doUnmock('./aquarelleRecordState');
+      vi.resetModules();
+    }
+  });
+
+  it('brush-mode branch shows Brush size + Opacity only (no aquarelle knobs)', async () => {
+    vi.resetModules();
+    vi.doMock('../../shared/activeModule', () => ({
+      activeModule: { value: 'brush' },
+    }));
+    vi.doMock('./aquarelleRecordState', () => ({
+      aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
+      setAquarelleParam: vi.fn(),
+    }));
+    try {
+      const { PhysicsPaintTopBar: BrushTopBar } = await import('./PhysicsPaintTopBar');
+      const tree = BrushTopBar(baseTopBarProps()) as AnyVNode;
+      const controls = childrenOf(tree).filter(
+        (node) => typeof (node as AnyVNode).props?.label === 'string',
+      ) as AnyVNode[];
+      const labels = controls.map((s) => s.props.label);
+      expect(labels).toEqual(['Brush size', 'Opacity']);
+    } finally {
+      vi.doUnmock('../../shared/activeModule');
+      vi.doUnmock('./aquarelleRecordState');
+      vi.resetModules();
+    }
+  });
+
+  it('Water / Edges / Grain route to setAquarelleParam (source pin)', () => {
+    const body = stripComments(topBarSource());
+    expect(body).toContain('setAquarelleParam');
+    expect(body).toContain("setAquarelleParam('water'");
+    expect(body).toContain("setAquarelleParam('edge'");
+    expect(body).toContain("setAquarelleParam('granulation'");
+    // Mode gate: the three knobs mount only behind the watercolor read.
+    expect(body).toContain("activeModule.value === 'watercolor'");
   });
 });
 

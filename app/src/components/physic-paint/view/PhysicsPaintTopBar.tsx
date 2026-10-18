@@ -3,13 +3,17 @@ import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
 import { activeModule } from '../../shared/activeModule';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { aquarelleParams } from './aquarelleRecordState';
+import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
 
 /**
  * 261017-vcn I-04 remainder: the top bar keeps status pill + ModuleSwitcher +
  * Brush size + Opacity in one row. Background / Grain strength / Grain scale
  * rows and those props left for the Paper tab (PaperPicker) — one home for
  * paper + background.
+ *
+ * 261018-f15 C1: Water / Edges / Grain follow Opacity in Water color mode and
+ * write setAquarelleParam('water' | 'edge' | 'granulation') — the same seam
+ * the Paint-tab globals use. Brush mode keeps Brush size + Opacity only.
  */
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
@@ -81,6 +85,37 @@ export function PhysicsPaintTopBar({
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
+        {activeModule.value === 'watercolor' ? (
+          <>
+            <TopBarSlider
+              id="physics-aquarelle-water"
+              label="Water"
+              min={0}
+              max={100}
+              value={aquarelleParams.value.water}
+              onChange={(value) => setAquarelleParam('water', value)}
+              disabled={disabled}
+            />
+            <TopBarSlider
+              id="physics-aquarelle-edges"
+              label="Edges"
+              min={0}
+              max={100}
+              value={aquarelleParams.value.edge}
+              onChange={(value) => setAquarelleParam('edge', value)}
+              disabled={disabled}
+            />
+            <TopBarSlider
+              id="physics-aquarelle-grain"
+              label="Grain"
+              min={0}
+              max={100}
+              value={aquarelleParams.value.granulation}
+              onChange={(value) => setAquarelleParam('granulation', value)}
+              disabled={disabled}
+            />
+          </>
+        ) : null}
       </div>
 
       {/* Balanced right side so the primary cluster sits in the true middle. */}
