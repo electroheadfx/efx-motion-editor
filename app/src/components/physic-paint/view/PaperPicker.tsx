@@ -8,8 +8,9 @@
  *   2. Transparent + White background arms (background, not papers) — reuse
  *      the top-bar swatch look, route through the existing background-change
  *      path. A paper cell keeps the paper-id path.
- *   3. The locked 13-cell grid (Procedural then Real, CELL_SIZE=64,
- *      GRID_GAP=8, 3 columns) — UI-SPEC, never changes.
+ *   3. The locked 13-cell grid (Real then Procedural, CELL_SIZE=64,
+ *      GRID_GAP=8, 3 columns) — UI-SPEC, never changes. 261018-cy1: the
+ *      grid sits flat in the tab body (no card chrome).
  *
  * The former D-10 bottom Strength/Scale pair leaves so one grain pair survives.
  *
@@ -82,6 +83,25 @@ export function grainScaleStep(value: number): number {
 
 function segmentedButtonClass(active: boolean) {
   return `physics-paint-segmented-button${active ? ' active' : ''}`;
+}
+
+/**
+ * Nearest GRAIN_STRENGTH_OPTIONS match (261018-cy1). A non-finite or missing
+ * strength resolves to Soft 0.35 — the factory default in
+ * physicsPaintStudioSettings.ts (which must not change).
+ */
+function activeGrainOptionValue(grainStrength: number): number {
+  const value = Number.isFinite(grainStrength) ? grainStrength : 0.35;
+  let best = GRAIN_STRENGTH_OPTIONS[0].value;
+  let bestDistance = Math.abs(value - best);
+  for (const option of GRAIN_STRENGTH_OPTIONS) {
+    const distance = Math.abs(value - option.value);
+    if (distance < bestDistance) {
+      best = option.value;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 /**
@@ -210,6 +230,7 @@ function PaperCell(props: {
 export function PaperPicker(props: PaperPickerProps): JSX.Element {
   const procedural = PAPER_LIBRARY.filter((entry) => entry.group === 'procedural');
   const real = PAPER_LIBRARY.filter((entry) => entry.group === 'real');
+  const activeGrainValue = activeGrainOptionValue(props.grainStrength);
 
   return (
     <div class="paper-picker" data-paper-picker style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -225,7 +246,7 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
               key={option.label}
               type="button"
               disabled={props.disabled}
-              class={segmentedButtonClass(props.grainStrength === option.value)}
+              class={segmentedButtonClass(activeGrainValue === option.value)}
               onClick={() => props.onGrainStrengthChange(option.value)}
             >
               {option.label}
@@ -269,6 +290,8 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
         ))}
       </div>
 
+      {/* Flat grouping hook (261018-cy1): content sits in the tab body —
+          no card chrome. Real papers come before Procedural. */}
       <div
         class="paper-picker-popover"
         data-paper-picker-popover
@@ -276,51 +299,15 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
           width: '100%',
           maxHeight: '320px',
           overflowY: 'auto',
-          background: 'var(--color-bg-toolbar)',
-          border: '1px solid var(--color-border-subtle)',
-          borderRadius: '8px',
-          padding: '12px',
+          background: 'transparent',
+          border: 'none',
+          borderRadius: 0,
+          padding: 0,
           display: 'flex',
           flexDirection: 'column',
           gap: '8px',
         }}
       >
-          <div
-            class="paper-picker-group-header"
-            data-paper-group-header="procedural"
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 1,
-              background: 'var(--color-bg-toolbar)',
-              fontSize: '13px',
-              fontWeight: 600,
-              lineHeight: 1.2,
-              color: 'var(--color-text-primary)',
-              padding: '4px 0',
-            }}
-          >
-            Procedural
-          </div>
-          <div
-            class="paper-picker-grid"
-            data-paper-group-grid="procedural"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(3, ${CELL_SIZE}px)`,
-              gap: `${GRID_GAP}px`,
-            }}
-          >
-            {procedural.map((entry) => (
-              <PaperCell
-                key={entry.id}
-                entry={entry}
-                active={entry.id === props.paperId}
-                onSelect={props.onPaperIdChange}
-                disabled={props.disabled}
-              />
-            ))}
-          </div>
           <div
             class="paper-picker-group-header"
             data-paper-group-header="real"
@@ -348,6 +335,42 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
             }}
           >
             {real.map((entry) => (
+              <PaperCell
+                key={entry.id}
+                entry={entry}
+                active={entry.id === props.paperId}
+                onSelect={props.onPaperIdChange}
+                disabled={props.disabled}
+              />
+            ))}
+          </div>
+          <div
+            class="paper-picker-group-header"
+            data-paper-group-header="procedural"
+            style={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 1,
+              background: 'var(--color-bg-toolbar)',
+              fontSize: '13px',
+              fontWeight: 600,
+              lineHeight: 1.2,
+              color: 'var(--color-text-primary)',
+              padding: '4px 0',
+            }}
+          >
+            Procedural
+          </div>
+          <div
+            class="paper-picker-grid"
+            data-paper-group-grid="procedural"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(3, ${CELL_SIZE}px)`,
+              gap: `${GRID_GAP}px`,
+            }}
+          >
+            {procedural.map((entry) => (
               <PaperCell
                 key={entry.id}
                 entry={entry}

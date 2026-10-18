@@ -121,6 +121,27 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(source.includes('data-paper-group-header')).toBe(true);
   });
 
+  it('Real papers come before Procedural (261018-cy1)', () => {
+    const root = PaperPicker(pickerProps()) as TestVNode;
+    const nodes = [...walk(root)];
+    const realHeader = nodes.findIndex((node) => node.props?.['data-paper-group-header'] === 'real');
+    const proceduralHeader = nodes.findIndex((node) => node.props?.['data-paper-group-header'] === 'procedural');
+    expect(realHeader, 'Real header must render').toBeGreaterThan(-1);
+    expect(proceduralHeader, 'Procedural header must render').toBeGreaterThan(-1);
+    expect(realHeader, 'Real group precedes Procedural').toBeLessThan(proceduralHeader);
+  });
+
+  it('paper grid sits flat in the tab body (no card chrome)', () => {
+    const root = PaperPicker(pickerProps()) as TestVNode;
+    const grid = findAll(root, (node) => node.props?.['data-paper-picker-popover'] !== undefined)[0];
+    expect(grid, 'grid grouping hook must render').toBeDefined();
+    const style = (grid!.props?.['style'] ?? {}) as Record<string, unknown>;
+    expect(String(style['background'] ?? ''), 'transparent background').toBe('transparent');
+    expect(String(style['border'] ?? ''), 'no border').toBe('none');
+    expect(Number(style['borderRadius'] ?? 0), 'no radius').toBe(0);
+    expect(Number(style['padding'] ?? 0), 'no padding').toBe(0);
+  });
+
   it('library-backed cell count is 13 (10 procedural + 3 real)', () => {
     // The grid is populated from PAPER_LIBRARY — pin the source wiring so the
     // picker can never ship a second, hand-kept list (D-12 one library).
@@ -202,6 +223,27 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect((stepper!.props as { freeEntry: boolean }).freeEntry).toBe(true);
     (stepper!.props as { onChange: (v: number) => void }).onChange(1.5);
     expect(onGrainScaleChange).toHaveBeenCalledWith(1.5);
+  });
+
+  it('grainStrength 0.35 marks Soft active; non-finite resolves to Soft (261018-cy1)', () => {
+    const softRoot = PaperPicker({ ...pickerProps(), grainStrength: 0.35 }) as TestVNode;
+    const softGroup = findAll(softRoot, (node) => node.props?.['aria-label'] === 'Grain strength')[0];
+    const softButtons = findAll(softGroup, (node) => node.type === 'button');
+    const activeLabels = softButtons
+      .filter((b) => String(b.props?.['class'] ?? '').includes('active'))
+      .map((b) => String((b.props as { children?: unknown }).children ?? '').trim());
+    expect(activeLabels, 'exactly one active grain chip').toEqual(['Soft']);
+
+    const missingRoot = PaperPicker({
+      ...pickerProps(),
+      grainStrength: Number.NaN,
+    }) as TestVNode;
+    const missingGroup = findAll(missingRoot, (node) => node.props?.['aria-label'] === 'Grain strength')[0];
+    const missingButtons = findAll(missingGroup, (node) => node.type === 'button');
+    const missingActive = missingButtons
+      .filter((b) => String(b.props?.['class'] ?? '').includes('active'))
+      .map((b) => String((b.props as { children?: unknown }).children ?? '').trim());
+    expect(missingActive, 'non-finite strength resolves to Soft').toEqual(['Soft']);
   });
 
   it('Transparent and White swatches call onBackgroundChange; paper cells keep the paper-id path', () => {
