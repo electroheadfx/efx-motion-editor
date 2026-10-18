@@ -448,15 +448,19 @@ button.destructive {
   padding: 7px 12px;
   border-bottom: 1px solid #5a5e63;
   background: #3e3f41;
+  /* 261018-k1o: tight widths scroll one row rather than overlap. */
+  overflow-x: auto;
 }
 
-/* UI checklist row 4: one row. 261018-gqo move 5: left = Engine ready alone,
-   center = Modes + Brush size + Opacity (+ Water/Edges/Grain) as ONE group.
+/* UI checklist row 4: one row. 261018-k1o: left = Engine ready + ModuleSwitcher,
+   center = Brush size + Opacity (+ Water/Edges/Grain) as ONE group.
    261018-cy1: balanced flex sides keep the cluster optically centered. */
 .physics-paint-topbar-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* 261018-k1o: gap 0 — the 15px module-switcher margin is the single
+     pill-to-switcher separator (never stack both). */
+  gap: 0;
   flex: 1 1 0;
   min-width: 0;
 }
@@ -650,12 +654,14 @@ button.destructive {
 
 /* 56-02 (D-01): ModuleSwitcher geometry — locked per UI-SPEC exceptions table.
    Reuses the physics-paint-segmented-button family (one CSS language).
-   261018-ias AREA 2: margin-right 15px (UAT list). */
+   261018-k1o: 15px separator faces the status pill (left-cluster gap is 0).
+   flex-shrink 1 lets the switcher compress inside the left flex share before
+   it collides with primary (per-slot min-width 72px floor stays). */
 .module-switcher {
-  flex-shrink: 0;
+  flex-shrink: 1;
   gap: 0;
   flex-wrap: nowrap;
-  margin-right: 15px;
+  margin-left: 15px;
 }
 
 .module-switcher-slot {
@@ -6690,10 +6696,6 @@ button.destructive {
 }
 
 @media (max-width: 860px) {
-  .physics-paint-topbar {
-    overflow-x: auto;
-  }
-
   .physics-paint-topbar-status {
     justify-content: center;
   }

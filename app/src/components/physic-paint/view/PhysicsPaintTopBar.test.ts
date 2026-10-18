@@ -96,9 +96,10 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
   });
 });
 
-// 261018-gqo move 5: Engine ready left alone; Modes + sliders are ONE group.
-describe('261018-gqo top bar centered Modes+settings group', () => {
-  it('ModuleSwitcher sits inside the primary cluster; status is not in that group', () => {
+// 261018-k1o: ModuleSwitcher seats in the top bar LEFT cluster after the
+// Engine ready status pill; primary holds the sliders only; right is unchanged.
+describe('261018-k1o top bar left ModuleSwitcher + centered sliders', () => {
+  it('ModuleSwitcher seats in the left slot after the status pill; primary holds sliders only', () => {
     const tree = renderTopBar(baseTopBarProps());
     const nodes = childrenOf(tree);
     const left = nodes.find((n) => (n as AnyVNode).props?.['class'] === 'physics-paint-topbar-left') as AnyVNode | undefined;
@@ -109,34 +110,46 @@ describe('261018-gqo top bar centered Modes+settings group', () => {
     const leftDesc = childrenOf(left);
     const primaryDesc = childrenOf(primary);
     const isSwitcher = (n: unknown) => (n as AnyVNode).type === ModuleSwitcher;
+    const isStatusPill = (n: unknown) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill');
 
-    expect(primaryDesc.some(isSwitcher), 'ModuleSwitcher is in the primary cluster').toBe(true);
-    expect(leftDesc.some(isSwitcher), 'ModuleSwitcher left the status slot').toBe(false);
-    expect(
-      primaryDesc.some((n) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill')),
-      'status pill is not in the primary cluster',
-    ).toBe(false);
-    expect(
-      leftDesc.some((n) => String((n as AnyVNode).props?.['class'] ?? '').includes('physics-paint-status-pill')),
-      'status pill stays in the left slot',
-    ).toBe(true);
+    expect(leftDesc.some(isSwitcher), 'ModuleSwitcher seats in the left slot').toBe(true);
+    expect(primaryDesc.some(isSwitcher), 'primary cluster holds sliders only').toBe(false);
+    expect(leftDesc.some(isStatusPill), 'status pill stays in the left slot').toBe(true);
+    expect(primaryDesc.some(isStatusPill), 'primary cluster holds sliders only').toBe(false);
+
+    const pillIdx = leftDesc.findIndex(isStatusPill);
+    const switcherIdx = leftDesc.findIndex(isSwitcher);
+    expect(pillIdx, 'status pill renders ahead of the switcher').toBeGreaterThan(-1);
+    expect(switcherIdx, 'ModuleSwitcher follows the status pill').toBeGreaterThan(pillIdx);
   });
 
-  it('source keeps the write-through pair and the balanced-side layout', () => {
+  it('source keeps the write-through pair and seats the switcher in the left slot', () => {
     const body = stripComments(topBarSource());
     expect(body).toContain('onBrushSizeChange');
     expect(body).toContain('onOpacityChange');
     expect(body).toContain('setAquarelleParam');
-    // Status is the only left-slot child; ModuleSwitcher mounts in primary.
     const leftStart = body.indexOf('class="physics-paint-topbar-left"');
     const primaryStart = body.indexOf('class="physics-paint-topbar-primary"');
     const switcherAt = body.indexOf('<ModuleSwitcher');
     expect(leftStart).toBeGreaterThan(-1);
     expect(primaryStart).toBeGreaterThan(leftStart);
-    expect(switcherAt, 'ModuleSwitcher follows the primary opening tag').toBeGreaterThan(primaryStart);
-    expect(switcherAt, 'ModuleSwitcher is not inside the left slot').toBeGreaterThan(
-      body.indexOf('</div>', leftStart),
-    );
+    expect(switcherAt, 'ModuleSwitcher follows the left-slot opening tag').toBeGreaterThan(leftStart);
+    expect(switcherAt, 'ModuleSwitcher precedes the primary cluster').toBeLessThan(primaryStart);
+    const statusAt = body.indexOf('physics-paint-topbar-status', leftStart);
+    expect(statusAt, 'status pill precedes the switcher in the left slot').toBeGreaterThan(leftStart);
+    expect(switcherAt, 'ModuleSwitcher follows the status pill').toBeGreaterThan(statusAt);
+  });
+
+  it('keeps the seating CSS contract: 15px pill gap, shrinkable switcher, one scrolling row', () => {
+    const styles = css();
+    const switcher = getCssRuleBlock(styles, '.module-switcher {');
+    expect(switcher, '15px separator faces the status pill').toContain('margin-left: 15px');
+    expect(switcher).not.toContain('margin-right: 15px');
+    expect(switcher, 'switcher compresses before colliding with primary').toContain('flex-shrink: 1');
+    const left = getCssRuleBlock(styles, '.physics-paint-topbar-left {');
+    expect(left, 'left cluster does not stack a second gap').toContain('gap: 0');
+    const bar = getCssRuleBlock(styles, '.physics-paint-topbar {');
+    expect(bar, 'tight widths scroll one row rather than overlap').toContain('overflow-x: auto');
   });
 });
 
