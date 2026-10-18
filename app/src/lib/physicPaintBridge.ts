@@ -29,7 +29,6 @@ import {
   type PhysicPaintRotoInterpolationState,
   type PhysicPaintRotoLoopClip,
   type PhysicPaintRotoPhysicalDocument,
-  requirePhysicPaintRotoInlineBytes,
   type PhysicPaintRotoRealKeyPayload,
   type PhysicPaintRotoRealKeyRecord,
 } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -766,12 +765,23 @@ export function getPhysicPaintRotoAuthority(request: PhysicPaintRotoAuthorityReq
   }));
   // 52.2-02 (D-07): the wire `frames` projection is a runtime shape and needs
   // pixels, so the inline carrier is asserted here. A reference-only record
-  // never reaches this path — the packed document is built from runtime records.
-  const frames = records.map((record) => ({
-    ...record.payload,
-    bytes: requirePhysicPaintRotoInlineBytes(record.payload),
-    source: 'real-key' as const,
-  }));
+  // (package file unreadable at launch) must NOT throw — the throw escapes the
+  // event listener and the child times out with a generic message. Fail closed
+  // with the real reason instead.
+  const frames: PhysicPaintRotoAuthorityResult['frames'] = [];
+  for (const record of records) {
+    if (record.payload.bytes === undefined) {
+      return failure(
+        `Roto key "${record.keyId}" carries no inline raster bytes (its package file could not be read). Save the project or re-import the frame media, then retry Play.`,
+        { trackRevision: '', documentRevision: buildEfxPaintDocumentRevision(document) },
+      );
+    }
+    frames.push({
+      ...record.payload,
+      bytes: record.payload.bytes,
+      source: 'real-key' as const,
+    });
+  }
   return {
     operationId: request.operationId,
     ok: true,

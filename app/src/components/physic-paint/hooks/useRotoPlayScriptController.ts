@@ -77,7 +77,7 @@ export function useRotoPlayScriptController<EngineState = unknown>(
         // launch snapshot); the parent revalidates the track dimension and
         // fails closed on a foreign trackId.
         await sendPhysicPaintRotoAuthorityRequest({ operationId, projectContextId: context.project.contextId, layerId: context.layerId, canonicalStart: start, trackId: portsRef.current.getActiveTrackId(context.layerId) }, mode);
-      }, authorityFailure(operationId, portsRef.current)),
+      }, (cause) => authorityFailure(operationId, portsRef.current, cause)),
       commit: async (publication, revalidateUnderLease) => {
         let leaseRejection: string | null = null;
         const operationKind = publication.semanticDelta.kind;
@@ -175,15 +175,16 @@ function sameAvailabilitySnapshot(left: ReturnType<typeof readAvailabilitySnapsh
     && left.appFrame === right.appFrame;
 }
 
-function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operationId: string, send: () => Promise<void>, fallback: T): Promise<T> {
+function requestWithTimeout<T>(pending: Map<string, (result: T) => void>, operationId: string, send: () => Promise<void>, fallback: (cause?: unknown) => T): Promise<T> {
   return new Promise((resolve) => {
-    const timeout = globalThis.setTimeout(() => { pending.delete(operationId); resolve(fallback); }, 15_000);
+    const timeout = globalThis.setTimeout(() => { pending.delete(operationId); resolve(fallback()); }, 15_000);
     pending.set(operationId, (result) => { globalThis.clearTimeout(timeout); resolve(result); });
-    void send().catch(() => { globalThis.clearTimeout(timeout); pending.delete(operationId); resolve(fallback); });
+    void send().catch((cause) => { globalThis.clearTimeout(timeout); pending.delete(operationId); resolve(fallback(cause)); });
   });
 }
-function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getActiveTrackId' | 'getSelection'>): PhysicPaintRotoAuthorityResult {
+function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControllerPorts, 'getLaunchContext' | 'getActiveTrackId' | 'getSelection'>, cause?: unknown): PhysicPaintRotoAuthorityResult {
   const context = ports.getLaunchContext(); const selection = ports.getSelection();
+  const causeMessage = cause instanceof Error && cause.message ? cause.message : null;
   return {
     operationId,
     ok: false,
@@ -203,7 +204,7 @@ function authorityFailure(operationId: string, ports: Pick<RotoPlayScriptControl
     interpolationMode: 'duplicate',
     frames: [],
     interpolationSettings: { enabled: false, inBetweenCount: 1, mode: 'duplicate', deform: 0, position: 0 },
-    error: 'Roto authority request timed out.',
+    error: causeMessage ?? 'Roto authority request timed out.',
   };
 }
 
