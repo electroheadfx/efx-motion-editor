@@ -1,17 +1,20 @@
 // ============================================================
-//  BrushResponsePanel — the collapsible "Brush response" block
-//  (AQUA-04 / D-04/08, 261017-wmw I-02). Brush-tab content.
+//  BrushResponsePanel — the "Brush response" block
+//  (AQUA-04 / D-08, 261017-wmw I-02, 261018-l05). Brush-tab content.
 //
 //  8 ×multipliers (0.5–2.0, default 1.0) showing the computed
 //  effective value (global × multiplier) per row, plus the
 //  Select-a-brush placeholder when no tip is selected.
+//
+//  The block is NOT collapsible: 261018-l05 revokes the D-04
+//  collapse (user decision). No toggle chrome, no chevron, no
+//  replacement label — sliders render whenever a tip is selected.
 //
 //  Multiplier commits go through setAquarelleMultiplier — the
 //  same record-path seam as before. The multiplier band and the
 //  effective-value formula are unchanged (D-08).
 // ============================================================
 
-import { signal } from '@preact/signals';
 import { SliderStepper } from '../../shared/SliderStepper';
 import {
   MULTIPLIER_BASE_KEYS,
@@ -36,9 +39,6 @@ const MULTIPLIER_FIELDS: ReadonlyArray<keyof AquarelleToolOverrides> = Object.fr
   'grain',
   'wetRound',
 ]);
-
-/** Collapsed-by-default Brush response (D-04). Local to this file (I-02). */
-const brushResponseOpen = signal(false);
 
 function MultiplierSlider(props: {
   field: keyof AquarelleToolOverrides;
@@ -81,7 +81,6 @@ export function BrushResponsePanel() {
   const params = aquarelleParams.value;
   const overrides = aquarelleToolOverrides.value;
   const selectedTipId = aquarelleSelectedTipId.value;
-  const open = brushResponseOpen.value;
 
   const onMultiplierChange = (field: keyof AquarelleToolOverrides) => (value: number) => {
     setAquarelleMultiplier(field, value);
@@ -89,35 +88,6 @@ export function BrushResponsePanel() {
 
   return (
     <div class="physics-paint-option-group" data-testid="brush-response-panel">
-      <button
-        type="button"
-        data-testid="brush-response-toggle"
-        aria-expanded={open}
-        aria-label="Brush response"
-        onClick={() => {
-          brushResponseOpen.value = !brushResponseOpen.value;
-        }}
-        style={{
-          all: 'unset',
-          cursor: 'pointer',
-          display: 'block',
-          width: '100%',
-          marginTop: '8px',
-        }}
-      >
-        {/* 261018-jlb move 1: bare rule is the whole toggle hit target —
-            the rule-and-label section title is gone (D-04 collapse stays). */}
-        <span
-          aria-hidden="true"
-          style={{
-            display: 'block',
-            width: '100%',
-            height: '1px',
-            background: 'rgb(205, 201, 201)',
-          }}
-        />
-      </button>
-
       {selectedTipId === null ? (
         <span
           data-testid="brush-response-placeholder"
@@ -129,7 +99,7 @@ export function BrushResponsePanel() {
         >
           Select a brush to edit response
         </span>
-      ) : open ? (
+      ) : (
         MULTIPLIER_FIELDS.map((field) => {
           const baseKey = MULTIPLIER_BASE_KEYS[field];
           const base = baseKey === null ? 1 : (params[baseKey] as number);
@@ -144,7 +114,7 @@ export function BrushResponsePanel() {
             />
           );
         })
-      ) : null}
+      )}
     </div>
   );
 }

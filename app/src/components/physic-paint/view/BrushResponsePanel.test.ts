@@ -1,10 +1,11 @@
 /**
- * 261017-wmw I-02 — BrushResponsePanel contract pins.
+ * 261017-wmw I-02 / 261018-l05 — BrushResponsePanel contract pins.
  *
  * Laws pinned here (one file per visual unit):
- *   the "Brush response" collapsible lives here (not in the globals panel)
+ *   the "Brush response" block lives here (not in the globals panel)
  *   placeholder "Select a brush to edit response" when no tip is selected
- *   toggle reveals the 8 MULTIPLIER_FIELDS rows when a tip is selected
+ *   no toggle chrome (D-04 collapse revoked by 261018-l05)
+ *   the 8 MULTIPLIER_FIELDS rows render whenever a tip is selected
  *   multiplier band stays 0.5–2.0, default 1.0
  *   effective-value readout = global × multiplier (D-08 formula unchanged)
  *
@@ -124,12 +125,6 @@ function collectLabels(tree: TestVNode): string[] {
   return labels;
 }
 
-function findButtonByTestId(tree: TestVNode, testId: string): TestVNode | undefined {
-  return [...walk(tree)].find(
-    (n) => n.type === 'button' && n.props?.['data-testid'] === testId,
-  );
-}
-
 const MULTIPLIER_LABELS = [
   'Tip',
   'Aspect',
@@ -141,40 +136,32 @@ const MULTIPLIER_LABELS = [
   'Wet round',
 ] as const;
 
-describe('BrushResponsePanel placeholder and toggle (I-02)', () => {
+describe('BrushResponsePanel placeholder and always-on sliders (I-02 / 261018-l05)', () => {
   it('shows the Select-a-brush placeholder when no tip is selected', () => {
     aquarelleSelectedTipId.value = null;
     const tree = renderPanel();
     expect(textContent(tree)).toContain('Select a brush to edit response');
   });
 
-  it('renders the brush-response toggle with no section title, collapsed by default', () => {
+  it('renders no toggle chrome and no section title; placeholder-only when no tip', () => {
     aquarelleSelectedTipId.value = null;
     const tree = renderPanel();
     const text = textContent(tree);
-    // 261018-jlb move 1: the rule-and-label section title is gone from the
-    // visible text; the toggle stays as a bare-rule hit target.
-    expect(text, 'visible section title text must be gone').not.toContain('Brush response');
-    const toggle = findButtonByTestId(tree, 'brush-response-toggle');
-    expect(toggle, 'response toggle must render').toBeTruthy();
-    expect(
-      String((toggle!.props as Record<string, unknown>)['aria-label'] ?? ''),
-      'toggle stays named for a11y',
-    ).toBe('Brush response');
-    // Collapsed by default → no multiplier rows in the tree yet.
+    // 261018-l05: D-04 collapse revoked — no toggle button, no bare-rule chrome,
+    // and the visible section title stays gone.
+    expect(text, 'visible section title text must stay gone').not.toContain('Brush response');
+    const toggleButtons = [...walk(tree)].filter(
+      (n) => n.type === 'button' && n.props?.['data-testid'] === 'brush-response-toggle',
+    );
+    expect(toggleButtons.length, 'no brush-response-toggle button in the tree').toBe(0);
+    // Placeholder-only: no multiplier rows while no tip is selected.
     const labels = collectLabels(tree);
-    expect(labels.some((l) => l === 'Tip'), 'Tip multiplier visible while collapsed').toBe(false);
+    expect(labels.some((l) => l === 'Tip'), 'Tip multiplier visible with no tip selected').toBe(false);
   });
 
-  it('toggle reveals the 8 multiplier rows when a tip is selected', () => {
+  it('renders the 8 multiplier rows on first render when a tip is selected', () => {
     selectAquarelleTip('wc/round-medium');
-    let tree = renderPanel();
-    const toggle = findButtonByTestId(tree, 'brush-response-toggle');
-    expect(toggle, 'response toggle must render').toBeTruthy();
-    // Open the block (local brushResponseOpen signal).
-    const onClick = (toggle!.props as { onClick?: () => void }).onClick;
-    onClick!();
-    tree = renderPanel();
+    const tree = renderPanel(); // no click — first render is enough
 
     const labels = collectLabels(tree);
     for (const name of MULTIPLIER_LABELS) {
