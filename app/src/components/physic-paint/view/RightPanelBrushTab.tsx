@@ -18,8 +18,8 @@ export function RightPanelBrushTab() {
   if (activeModule.value === 'watercolor') {
     return (
       <div data-testid="right-panel-brush-tab" data-module="watercolor">
-        <WatercolorBrushLibrary />
         <BrushResponsePanel />
+        <WatercolorBrushLibrary />
       </div>
     );
   }

@@ -170,13 +170,19 @@ describe('panel split shell — module-only block', () => {
     expect(() => materialize(WatercolorModuleSection())).not.toThrow();
     const tree = materialize(WatercolorModuleSection()) as TestVNode;
     const text = textContent(tree);
-    expect(text).toContain('Water color');
+    // 261018-f15: the parent section title is gone — the tab already names the
+    // surface. Negative scan strips comments (source-scan discipline).
+    expect(text).not.toContain('Water color');
   });
 
-  it('watercolor shell exposes the Water color section label', () => {
+  it('watercolor shell has no parent section title (261018-f15)', () => {
     const tree = materialize(WatercolorModuleSection()) as TestVNode;
     const text = textContent(tree);
-    expect(text).toContain('Water color');
+    expect(text).not.toContain('Water color');
+    const source = readFileSync(resolve(__dirname, 'WatercolorModuleSection.tsx'), 'utf8');
+    const body = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(body, 'no SectionLabel mount in the watercolor module section').not.toMatch(/<SectionLabel\b/);
+    expect(body, 'no Water color string left in the module section').not.toContain('Water color');
   });
 
   it('watercolor shell is settings only: no tool row, no Dry button (261017-w4x I-06)', () => {
@@ -201,14 +207,27 @@ describe('panel split shell — module-only block', () => {
     expect(body, 'tool-row mount must leave').not.toMatch(/<AquarelleToolRow\b/);
     expect(body, 'Dry emit helper must leave').not.toContain('emitAquarelleDry');
     expect(body, 'record clock must leave with the Dry button').not.toContain('aquarelleRecordClock');
-    // Label + globals panel remain; picker and response live in the Brush tab.
-    expect(source).toMatch(/<SectionLabel text="Water color"/);
+    // Globals panel remains; the parent section title left with 261018-f15.
+    // Picker and response live in the Brush tab.
     expect(source, 'section mounts AquarelleGlobalsPanel (I-02)').toMatch(/<AquarelleGlobalsPanel\b/);
     expect(source, 'old wrapper must be gone (I-02)').not.toMatch(/<AquarelleParamsPanel\b/);
     expect(source, 'picker leaves the Paint-tab section (I-01)').not.toMatch(/<BrushesDocker\b/);
     expect(source, 'response block leaves the Paint-tab section (I-02)').not.toMatch(
       /<BrushResponsePanel\b/,
     );
+  });
+});
+
+describe('panel split shell — right-panel chrome (261018-f15)', () => {
+  it('right panel starts 10px from its top edge; sides stay 10px', () => {
+    const css = readFileSync(
+      resolve(__dirname, '../physicsPaintStudio.css'),
+      'utf8',
+    );
+    const start = css.indexOf('.physics-paint-right-panel {');
+    expect(start, 'right-panel rule must exist').toBeGreaterThan(-1);
+    const block = css.slice(start, css.indexOf('}', start));
+    expect(block).toMatch(/padding:\s*10px 10px/);
   });
 });
 
@@ -261,8 +280,9 @@ describe('panel split shell — shared block', () => {
 });
 
 describe('panel split shell — Brush-tab watercolor arm', () => {
-  it('mounts WatercolorBrushLibrary then BrushResponsePanel (I-03 mount swap)', () => {
+  it('mounts BrushResponsePanel before WatercolorBrushLibrary (261018-f15)', () => {
     // 261018-0ox I-10: the Brush-tab body lives in RightPanelBrushTab.
+    // 261018-f15: Brush response moves ABOVE the brush cards.
     const brushTabSource = readFileSync(
       resolve(__dirname, 'RightPanelBrushTab.tsx'),
       'utf8',
@@ -271,7 +291,7 @@ describe('panel split shell — Brush-tab watercolor arm', () => {
     const responseAt = brushTabSource.indexOf('<BrushResponsePanel');
     expect(libraryAt, 'brush tab mounts WatercolorBrushLibrary').toBeGreaterThan(-1);
     expect(responseAt, 'brush tab mounts BrushResponsePanel').toBeGreaterThan(-1);
-    expect(libraryAt, 'library comes first').toBeLessThan(responseAt);
+    expect(responseAt, 'response comes first').toBeLessThan(libraryAt);
     expect(brushTabSource, 'old tip-catalog picker is not mounted').not.toMatch(/<BrushesDocker\b/);
     // The component file stays on disk (I-01 home; not deleted by I-10).
     expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();

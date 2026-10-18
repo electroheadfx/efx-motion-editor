@@ -758,7 +758,7 @@ button.destructive {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  padding: 20px 10px;
+  padding: 10px 10px;
   overflow: hidden;
   background: #3e3f41;
   color: var(--sidebar-text-primary, #e5edf8);
