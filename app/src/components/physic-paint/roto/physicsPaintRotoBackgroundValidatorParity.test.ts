@@ -16,10 +16,17 @@
  * empty-string fallback (the second live wire) — the write path must never
  * construct `background: ''`.
  *
+ * 261018-lqv — third contract leg: the script-schema validator (`isRotoBackground`,
+ * physicsPaintRotoScriptSchema.ts) is the save-path twin of the same divergence
+ * class. `serializeRotoScript` → `isPersistedRotoScriptV1` → `isSource` →
+ * `isRotoBackground` must accept / reject the IDENTICAL sets too, or capturing a
+ * script on a paper-backed frame throws `Captured Roto script is not persistable`.
+ *
  * `.test.ts` on purpose — Vitest only collects `*.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { isPhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import { isRotoBackground } from './physicsPaintRotoScriptSchema';
 import {
   buildPhysicPaintRotoPhysicalRevision,
   parsePhysicPaintRotoPhysicalDocument,
@@ -133,5 +140,44 @@ describe('NO EMPTY-STRING WRITE — _writePaperDisplay never stores background: 
     const cleared = physicPaintStore.getRotoBackgroundMetadata(LAYER, activeTrackId);
     expect(cleared?.background).toBe('transparent');
     expect(cleared === null || cleared.background !== '').toBe(true);
+  });
+});
+
+// 261018-lqv — third contract leg: the script-schema validator is the save-path
+// twin of the same divergence class. `serializeRotoScript` rejects a legal
+// `paper/*` source background at `isRotoBackground` unless the script-schema
+// guard mirrors `isPhysicPaintRotoBackgroundMetadata`.
+describe('script-schema and apply-payload background contracts stay in parity', () => {
+  it('SCRIPT-SCHEMA PARITY ACCEPT — the identical seven legal backgrounds pass both contracts', () => {
+    for (const background of LEGAL_BACKGROUNDS) {
+      const metadata = { background, grainStrength: 0.45 };
+      expect(isRotoBackground(metadata)).toBe(true);
+      expect(isPhysicPaintRotoBackgroundMetadata(metadata)).toBe(true);
+    }
+  });
+
+  it('SCRIPT-SCHEMA PARITY REJECT — the identical illegal shapes fail both contracts', () => {
+    const illegal: readonly unknown[] = [
+      { background: 'photo', grainStrength: 0.45 },
+      { background: '', grainStrength: 0.45 },
+      { background: 'canvas3', grainStrength: 2 },
+      { background: 'canvas3' },
+    ];
+    for (const metadata of illegal) {
+      expect(isRotoBackground(metadata)).toBe(false);
+      expect(isPhysicPaintRotoBackgroundMetadata(metadata)).toBe(false);
+    }
+  });
+
+  it('SCRIPT-SCHEMA GRAINSCALE FAIL-CLOSED — optional grainScale is accepted in-range and refused out-of-range by both contracts', () => {
+    const accepted = { background: 'paper/cold-press', grainStrength: 0.45, grainScale: 0.5 };
+    expect(isRotoBackground(accepted)).toBe(true);
+    expect(isPhysicPaintRotoBackgroundMetadata(accepted)).toBe(true);
+
+    for (const grainScale of [0, 11]) {
+      const metadata = { background: 'paper/cold-press', grainStrength: 0.45, grainScale };
+      expect(isRotoBackground(metadata)).toBe(false);
+      expect(isPhysicPaintRotoBackgroundMetadata(metadata)).toBe(false);
+    }
   });
 });

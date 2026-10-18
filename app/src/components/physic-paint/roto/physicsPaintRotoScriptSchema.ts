@@ -3,6 +3,7 @@ import type { PhysicStrokePayload } from '@efxlab/efx-physic-paint';
 import type { BrushPackSnapshot, StudioPoint, StudioScriptEnvelope, StudioStroke } from '@efxlab/efx-paint-host';
 import { classifyEnvelopeParseFailure, hashMutationId, type HostScriptRefusal } from '@efxlab/efx-paint-host';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import { isGrainScaleValue } from '../../../efx-paint/document/efxPaintDocument';
 import type { RecordedStrokeGroup, RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 
 /** On-disk envelope kind (host law). The legacy kind is refused, never produced. */
@@ -424,11 +425,18 @@ function isBrushParams(value: unknown): boolean {
     && Number.isInteger(value.antiAlias) && finiteRange(value.antiAlias, 0, 3);
 }
 
-function isRotoBackground(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
+export function isRotoBackground(value: unknown): value is PhysicPaintRotoBackgroundMetadata {
+  // 261018-lqv: keep in lockstep with `isPhysicPaintRotoBackgroundMetadata`
+  // (types/physicPaint.ts) — 56-05 / PAPER-01 migrated the apply-payload
+  // validator and the type union to `paper/<id>`, not this save-path guard.
+  // The parity pin (`physicsPaintRotoBackgroundValidatorParity.test.ts`) is the
+  // anti-divergence mechanism.
   return isRecord(value)
-    && (value.background === 'transparent' || value.background === 'white' || value.background === 'canvas1' || value.background === 'canvas2' || value.background === 'canvas3')
+    && (value.background === 'transparent' || value.background === 'white' || value.background === 'canvas1' || value.background === 'canvas2' || value.background === 'canvas3'
+      || (typeof value.background === 'string' && value.background.startsWith('paper/')))
     && finiteRange(value.grainStrength, 0, 1)
-    && (value.color === undefined || typeof value.color === 'string');
+    && (value.color === undefined || typeof value.color === 'string')
+    && (value.grainScale === undefined || isGrainScaleValue(value.grainScale));
 }
 
 function decodeBase64(value: string): Uint8Array {
