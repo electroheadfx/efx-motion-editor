@@ -1,6 +1,7 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import { toStudioStroke, fromStudioStroke, type CompletedPaintMutation, type PaintStroke } from '@efxlab/efx-physic-paint';
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-paint-host/animation';
+import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
@@ -42,6 +43,12 @@ export interface RotoPaintScript {
    * consume branch (flush-survives-navigation, AQUA-07).
    */
   engineId?: string;
+  /**
+   * 261018-odm: the persisted aquarelle payload timeline (strokes + Dry,
+   * recorded order). Present for aquarelle documents so Play Script Apply
+   * can rebuild the timeline without the in-memory record map.
+   */
+  aquarelleEvents?: readonly AquarellePayloadEvent[];
 }
 
 export interface RotoScriptActionAvailability {

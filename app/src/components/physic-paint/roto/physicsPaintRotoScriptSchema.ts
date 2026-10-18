@@ -2,14 +2,23 @@ import type { PaintStroke } from '@efxlab/efx-physic-paint';
 import type { PhysicStrokePayload } from '@efxlab/efx-physic-paint';
 import type { BrushPackSnapshot, StudioPoint, StudioScriptEnvelope, StudioStroke } from '@efxlab/efx-paint-host';
 import { classifyEnvelopeParseFailure, hashMutationId, type HostScriptRefusal } from '@efxlab/efx-paint-host';
+import type {
+  AquarelleDryEvent,
+  AquarellePayloadEvent,
+  AquarelleStrokePayload,
+} from '@efxlab/efx-watercolor/payload';
+import { AQUARELLE_TOOLS, isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { isGrainScaleValue } from '../../../efx-paint/document/efxPaintDocument';
+import { aquarelleUvToEnginePixel } from '../engine/aquarelleStrokeBridge';
 import type { RecordedStrokeGroup, RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 
 /** On-disk envelope kind (host law). The legacy kind is refused, never produced. */
 export const ROTO_SCRIPT_KIND = 'efx-studio-paint-script' as const;
 /** On-disk engine identity (D-15 package identity). */
 export const ROTO_SCRIPT_ENGINE_ID = 'efx-physic-paint' as const;
+/** 261018-odm: engine-2 (aquarelle) on-disk identity. */
+export const ROTO_SCRIPT_ENGINE_ID_AQUARELLE = 'efx-watercolor' as const;
 export const ROTO_SCRIPT_SCHEMA_VERSION = 1 as const;
 export const ROTO_SCRIPT_EXTENSION = '.efx-roto-script.json' as const;
 export const ROTO_SCRIPT_LIMITS = {
@@ -56,11 +65,29 @@ export type PersistedRotoScriptStrokeV1 = PhysicStrokePayload;
 /**
  * THE saved script shape (D-13): StudioScriptEnvelope + engineId.
  * `source` keeps the engine-1 display-hint fields (background) on top of
- * the host source contract.
+ * the host source contract. `engineId` is narrowed to the engine-1 literal
+ * so the dual-engine union discriminates on it (261018-odm).
  */
-export type PersistedRotoScriptV1 = Omit<StudioScriptEnvelope<PhysicStrokePayload>, 'source'> & {
+export type PersistedRotoScriptV1 = Omit<StudioScriptEnvelope<PhysicStrokePayload>, 'source' | 'engineId'> & {
+  engineId: typeof ROTO_SCRIPT_ENGINE_ID;
   source: PersistedRotoScriptSourceV1;
 };
+
+/**
+ * 261018-odm: the aquarelle envelope variant. Same envelope shape; the
+ * engine slot is `AquarelleStrokePayload` for paint strokes and
+ * `AquarelleDryEvent` for the distinguished Dry markers (D-16).
+ */
+export type PersistedRotoScriptAquarelleV1 = Omit<
+  StudioScriptEnvelope<AquarelleStrokePayload | AquarelleDryEvent>,
+  'source' | 'engineId'
+> & {
+  engineId: typeof ROTO_SCRIPT_ENGINE_ID_AQUARELLE;
+  source: PersistedRotoScriptSourceV1;
+};
+
+/** Dual-engine parse result document. */
+export type PersistedRotoScriptAnyV1 = PersistedRotoScriptV1 | PersistedRotoScriptAquarelleV1;
 
 export interface RotoScriptLibraryRow {
   id: string;
@@ -81,7 +108,7 @@ export interface RotoScriptLibraryRow {
 }
 
 export type RotoScriptParseResult =
-  | { ok: true; document: PersistedRotoScriptV1 }
+  | { ok: true; document: PersistedRotoScriptAnyV1 }
   | { ok: false; refusal: HostScriptRefusal };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -221,19 +248,94 @@ export function serializeRotoScript(input: {
 export const createPersistedRotoScript = serializeRotoScript;
 
 /**
+ * 261018-odm: serialize the aquarelle payload timeline into the dual-engine
+ * envelope. Each stroke event rides the vendor projection (UV pts + engine
+ * payload) with the envelope brushId stamped to the aquarelle engine id and
+ * cuisson forced 0 — diffusionFrames lives only in `engine.diffusionFrames`.
+ * Dry events persist as distinguished stroke entries (D-16).
+ */
+export function serializeAquarelleRotoScript(input: {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  source: PersistedRotoScriptSourceV1;
+  thumbnail: PersistedRotoScriptThumbnailV1;
+  events: readonly AquarellePayloadEvent[];
+}): PersistedRotoScriptAquarelleV1 {
+  const strokes: StudioStroke<AquarelleStrokePayload | AquarelleDryEvent>[] = [];
+  for (const event of input.events) {
+    if (isAquarelleDryEvent(event)) {
+      strokes.push({
+        pts: [],
+        ticks: 0,
+        cuisson: 0,
+        motion: null,
+        brushId: ROTO_SCRIPT_ENGINE_ID_AQUARELLE,
+        toolOverrides: {},
+        traceSeed: 0,
+        recordedOrder: event.recordedOrder,
+        playFrame: null,
+        color: null,
+        engine: { kind: 'dry', tick: event.tick, recordedOrder: event.recordedOrder },
+      });
+      continue;
+    }
+    strokes.push({
+      pts: event.pts.map((point) => ({ ...point })),
+      ticks: event.ticks,
+      cuisson: 0,
+      motion: null,
+      brushId: ROTO_SCRIPT_ENGINE_ID_AQUARELLE,
+      toolOverrides: { ...event.toolOverrides },
+      traceSeed: event.traceSeed,
+      recordedOrder: event.recordedOrder,
+      playFrame: event.playFrame,
+      color: event.color,
+      engine: { ...event.engine },
+    });
+  }
+  const brushPack: BrushPackSnapshot = { kind: ROTO_SCRIPT_ENGINE_ID_AQUARELLE, entries: [] };
+  const document: PersistedRotoScriptAquarelleV1 = {
+    kind: ROTO_SCRIPT_KIND,
+    schemaVersion: ROTO_SCRIPT_SCHEMA_VERSION,
+    engineId: ROTO_SCRIPT_ENGINE_ID_AQUARELLE,
+    id: input.id,
+    name: input.name,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt,
+    source: structuredClone(input.source),
+    thumbnail: { ...input.thumbnail },
+    brushPack,
+    strokes,
+  };
+  if (!isPersistedRotoScriptAquarelleV1(document)) throw new Error('Captured Roto script is not persistable');
+  return document;
+}
+
+/**
  * Parse a raw on-disk document. Accepts ONLY the envelope kind.
  * A legacy-kind document yields the clean-break refusal and never a script
  * (D-13/D-14). No alternate reader exists.
+ *
+ * 261018-odm: dual-engine. `efx-physic-paint` keeps the engine-1 shape
+ * guard; `efx-watercolor` falls through to the aquarelle shape guard. A
+ * third known engine still refuses with `engine-mismatch`.
  */
 export function parseRotoScript(raw: unknown): RotoScriptParseResult {
   const classified = classifyEnvelopeParseFailure(raw);
   if (classified !== null) return { ok: false, refusal: { code: classified } };
-  // 55-06 (D-11): a known engine that is not engine-1's codec is an
+  // 55-06 (D-11): a known engine that is not this reader's codec is an
   // engine-mismatch, not a malformed payload. The envelope parsed cleanly —
   // it is simply for a different paint module. Detail carries the package-id
   // pair so the Studio mapper can name both engines (D-15).
-  if (isRecord(raw) && typeof raw.engineId === 'string' && raw.engineId.length > 0 && raw.engineId !== ROTO_SCRIPT_ENGINE_ID) {
-    return { ok: false, refusal: { code: 'engine-mismatch', detail: `${raw.engineId}:${ROTO_SCRIPT_ENGINE_ID}` } };
+  const engineId = isRecord(raw) && typeof raw.engineId === 'string' ? raw.engineId : null;
+  if (engineId !== null && engineId !== ROTO_SCRIPT_ENGINE_ID && engineId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) {
+    return { ok: false, refusal: { code: 'engine-mismatch', detail: `${engineId}:${ROTO_SCRIPT_ENGINE_ID}` } };
+  }
+  if (engineId === ROTO_SCRIPT_ENGINE_ID_AQUARELLE) {
+    if (!isPersistedRotoScriptAquarelleV1(raw)) return { ok: false, refusal: { code: 'malformed-engine-payload' } };
+    return { ok: true, document: raw };
   }
   if (!isPersistedRotoScriptV1(raw)) return { ok: false, refusal: { code: 'malformed-engine-payload' } };
   return { ok: true, document: raw };
@@ -279,19 +381,102 @@ function reconstructGroups(strokes: readonly StudioStroke<PhysicStrokePayload>[]
   return groups;
 }
 
-export function persistedRotoScriptToRuntime(document: PersistedRotoScriptV1): RotoPaintScript {
+export function persistedRotoScriptToRuntime(document: PersistedRotoScriptAnyV1): RotoPaintScript {
   const parsed = parseRotoScript(document);
   if (!parsed.ok) throw new Error('Invalid persisted Roto script');
+  const doc = parsed.document;
+  if (doc.engineId === ROTO_SCRIPT_ENGINE_ID_AQUARELLE) {
+    return aquarellePersistedToRuntime(doc);
+  }
+  return {
+    provenance: { sessionId: `persisted:${doc.id}`, layerId: doc.source.layerId, sourceFrame: doc.source.sourceFrame },
+    sourceFrame: doc.source.sourceFrame,
+    sourceDisplayFrame: doc.source.displayFrame,
+    sourceRevision: 0,
+    engineId: doc.engineId,
+    brushes: reconstructGroups(doc.strokes),
+  };
+}
+
+/**
+ * 261018-odm: rebuild the aquarelle runtime snapshot from the persisted
+ * envelope. `aquarelleEvents` walks the strokes[] in order (Dry markers
+ * reconstruct to `AquarelleDryEvent`; paint entries rebuild
+ * `StudioStroke<AquarelleStrokePayload>`). `brushes` still carries
+ * pixel-space PaintStrokes so engine-1 consumers see a usable group list.
+ */
+function aquarellePersistedToRuntime(document: PersistedRotoScriptAquarelleV1): RotoPaintScript {
+  const events: AquarellePayloadEvent[] = [];
+  const brushes: RecordedStrokeGroup[] = [];
+  const size = { width: document.source.width, height: document.source.height };
+  for (const stroke of document.strokes) {
+    if (isAquarelleDryMarker(stroke.engine)) {
+      events.push({ kind: 'dry', tick: stroke.engine.tick, recordedOrder: stroke.engine.recordedOrder });
+      continue;
+    }
+    const engine = stroke.engine as AquarelleStrokePayload;
+    const projected: StudioStroke<AquarelleStrokePayload> = {
+      pts: stroke.pts.map((point) => ({ ...point })),
+      ticks: stroke.ticks,
+      cuisson: 0,
+      motion: null,
+      brushId: engine.brushId,
+      toolOverrides: { ...stroke.toolOverrides },
+      traceSeed: stroke.traceSeed,
+      recordedOrder: stroke.recordedOrder,
+      playFrame: stroke.playFrame,
+      color: stroke.color,
+      engine: { ...engine },
+    };
+    events.push(projected);
+    brushes.push({
+      primary: aquarelleEnvelopeToPaintStroke(stroke, engine, size),
+      continuations: [],
+    });
+  }
   return {
     provenance: { sessionId: `persisted:${document.id}`, layerId: document.source.layerId, sourceFrame: document.source.sourceFrame },
     sourceFrame: document.source.sourceFrame,
     sourceDisplayFrame: document.source.displayFrame,
     sourceRevision: 0,
-    brushes: reconstructGroups(parsed.document.strokes),
+    engineId: document.engineId,
+    aquarelleEvents: events,
+    brushes,
   };
 }
 
-export function rotoScriptLibraryRow(document: PersistedRotoScriptV1, revision: string, integritySha256: string): RotoScriptLibraryRow {
+/** Project one aquarelle envelope stroke into an engine-1 pixel-space PaintStroke. */
+function aquarelleEnvelopeToPaintStroke(
+  stroke: StudioStroke<AquarelleStrokePayload | AquarelleDryEvent>,
+  engine: AquarelleStrokePayload,
+  size: { width: number; height: number },
+): PaintStroke {
+  return {
+    tool: 'paint',
+    points: stroke.pts.map((point) => {
+      const pixel = aquarelleUvToEnginePixel({ x: point.x, y: point.y }, size);
+      return { x: pixel.x, y: pixel.y, p: point.p, tx: point.tx, ty: point.ty, tw: point.tw, spd: 0 };
+    }),
+    color: stroke.color,
+    params: {
+      size: Number(engine.params['size']) || 12,
+      opacity: Number(engine.params['load']) || 50,
+      pressure: 50,
+      waterAmount: Number(engine.params['water']) || 50,
+      dryAmount: Number(engine.params['dry']) || 50,
+      edgeDetail: Number(engine.params['edge']) || 50,
+      pickup: 50,
+      eraseStrength: 50,
+      antiAlias: 1,
+    },
+    timestamp: engine.timestamp,
+    ...(engine.mutationId !== undefined ? { mutationId: engine.mutationId } : {}),
+    ...(engine.diffusionFrames !== undefined && engine.diffusionFrames > 0 ? { diffusionFrames: engine.diffusionFrames } : {}),
+    ...(stroke.playFrame !== null ? { playFrame: stroke.playFrame } : {}),
+  };
+}
+
+export function rotoScriptLibraryRow(document: PersistedRotoScriptAnyV1, revision: string, integritySha256: string): RotoScriptLibraryRow {
   return {
     id: document.id,
     revision,
@@ -301,7 +486,7 @@ export function rotoScriptLibraryRow(document: PersistedRotoScriptV1, revision: 
     updatedAt: document.updatedAt,
     source: structuredClone(document.source),
     thumbnail: { ...document.thumbnail },
-    brushCount: document.strokes.filter((stroke) => stroke.cuisson === 0).length,
+    brushCount: document.strokes.filter((stroke) => stroke.cuisson === 0 && !isAquarelleDryMarker(stroke.engine)).length,
   };
 }
 
@@ -331,7 +516,20 @@ export function rotoScriptRefusedLibraryRow(input: {
   };
 }
 
-export function isPersistedRotoScriptV1(value: unknown): value is PersistedRotoScriptV1 {
+/**
+ * Dual-engine document guard (261018-odm). Dispatches on `engineId`:
+ * `efx-physic-paint` keeps the engine-1 shape law, `efx-watercolor` uses
+ * the aquarelle law (Dry markers do not consume brush/continuation slots).
+ * A third engineId stays false.
+ */
+export function isPersistedRotoScriptV1(value: unknown): value is PersistedRotoScriptAnyV1 {
+  if (!isRecord(value)) return false;
+  if (value.engineId === ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return isPersistedRotoScriptAquarelleV1(value);
+  return isPersistedRotoScriptEngine1(value);
+}
+
+/** Engine-1 document guard (unchanged shape law). */
+function isPersistedRotoScriptEngine1(value: unknown): value is PersistedRotoScriptV1 {
   if (!isRecord(value) || value.kind !== ROTO_SCRIPT_KIND || value.schemaVersion !== ROTO_SCRIPT_SCHEMA_VERSION) return false;
   if (value.engineId !== ROTO_SCRIPT_ENGINE_ID) return false;
   if (!isCanonicalRotoScriptId(value.id) || !normalizeRotoScriptName(value.name)) return false;
@@ -349,6 +547,32 @@ export function isPersistedRotoScriptV1(value: unknown): value is PersistedRotoS
       continuationsInGroup += 1;
       if (continuationsInGroup > ROTO_SCRIPT_LIMITS.continuationsPerBrush) return false;
     }
+    if (totalPoints > ROTO_SCRIPT_LIMITS.totalPoints) return false;
+  }
+  return true;
+}
+
+/**
+ * 261018-odm: aquarelle document guard. Same envelope law; the engine slot
+ * dispatches to the aquarelle stroke or Dry guard. Dry markers are legal
+ * with empty pts and do not count as brushes or continuations.
+ */
+export function isPersistedRotoScriptAquarelleV1(value: unknown): value is PersistedRotoScriptAquarelleV1 {
+  if (!isRecord(value) || value.kind !== ROTO_SCRIPT_KIND || value.schemaVersion !== ROTO_SCRIPT_SCHEMA_VERSION) return false;
+  if (value.engineId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return false;
+  if (!isCanonicalRotoScriptId(value.id) || !normalizeRotoScriptName(value.name)) return false;
+  if (!isIsoDate(value.createdAt) || !isIsoDate(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt)) return false;
+  if (!isSource(value.source) || !isThumbnail(value.thumbnail)) return false;
+  if (!isBrushPack(value.brushPack)) return false;
+  if (!Array.isArray(value.strokes) || value.strokes.length < 1 || value.strokes.length > ROTO_SCRIPT_LIMITS.brushes + ROTO_SCRIPT_LIMITS.brushes * ROTO_SCRIPT_LIMITS.continuationsPerBrush) return false;
+  let totalPoints = 0;
+  let brushes = 0;
+  for (const stroke of value.strokes) {
+    if (!isEnvelopeStrokeAquarelle(stroke)) return false;
+    if (isAquarelleDryMarker(stroke.engine)) continue;
+    brushes += 1;
+    if (brushes > ROTO_SCRIPT_LIMITS.brushes) return false;
+    totalPoints += stroke.pts.length;
     if (totalPoints > ROTO_SCRIPT_LIMITS.totalPoints) return false;
   }
   return true;
@@ -380,6 +604,71 @@ function isEnvelopeStroke(value: unknown): value is StudioStroke<PhysicStrokePay
   if (value.playFrame !== null && !nonNegativeInteger(value.playFrame)) return false;
   if (value.color !== null && (typeof value.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value.color))) return false;
   return isEnginePayload(value.engine);
+}
+
+/** 261018-odm: distinguish the Dry marker engine slot from a paint payload. */
+function isAquarelleDryMarker(value: unknown): value is AquarelleDryEvent {
+  return isRecord(value) && value.kind === 'dry';
+}
+
+/**
+ * 261018-odm: aquarelle envelope stroke. Empty pts is legal only for a Dry
+ * marker; a non-Dry primary still needs >= 1 point. cuisson is 0 for every
+ * aquarelle entry (diffusionFrames lives in the engine slot, never the
+ * engine-1 continuation grouping). brushId is the aquarelle engine id.
+ */
+function isEnvelopeStrokeAquarelle(value: unknown): value is StudioStroke<AquarelleStrokePayload | AquarelleDryEvent> {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.pts)) return false;
+  const dry = isAquarelleDryMarker(value.engine);
+  if (dry) {
+    if (value.pts.length !== 0) return false;
+    if (value.ticks !== 0) return false;
+    if (value.cuisson !== 0) return false;
+    if (value.motion !== null) return false;
+    if (value.brushId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return false;
+    if (!isRecord(value.toolOverrides) || Object.keys(value.toolOverrides).length !== 0) return false;
+    if (value.traceSeed !== 0) return false;
+    if (!safeInteger(value.recordedOrder)) return false;
+    if (value.playFrame !== null) return false;
+    if (value.color !== null) return false;
+    return isEnginePayloadAquarelleDry(value.engine);
+  }
+  if (value.pts.length < 1 || value.pts.length > ROTO_SCRIPT_LIMITS.pointsPerBrush) return false;
+  if (!value.pts.every(isEnvelopePoint)) return false;
+  if (!nonNegativeInteger(value.ticks) || (value.pts.length > 1 && value.ticks !== Math.max(1, value.pts.length - 1))) return false;
+  if (value.cuisson !== 0) return false;
+  if (value.motion !== null) return false;
+  if (value.brushId !== ROTO_SCRIPT_ENGINE_ID_AQUARELLE) return false;
+  if (!isRecord(value.toolOverrides)) return false;
+  if (typeof value.traceSeed !== 'number' || !Number.isFinite(value.traceSeed)) return false;
+  if (!safeInteger(value.recordedOrder)) return false;
+  if (value.playFrame !== null && !nonNegativeInteger(value.playFrame)) return false;
+  if (value.color !== null && (typeof value.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value.color))) return false;
+  return isEnginePayloadAquarelleStroke(value.engine);
+}
+
+/** 261018-odm: aquarelle stroke engine-slot guard. */
+function isEnginePayloadAquarelleStroke(value: unknown): value is AquarelleStrokePayload {
+  if (!isRecord(value)) return false;
+  if (typeof value.tool !== 'string' || !(AQUARELLE_TOOLS as readonly string[]).includes(value.tool)) return false;
+  if (value.color !== null && (typeof value.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value.color))) return false;
+  if (!isRecord(value.params) || !Object.values(value.params).every((v) => typeof v === 'number' && Number.isFinite(v))) return false;
+  if (typeof value.brushId !== 'string' || value.brushId.length === 0) return false;
+  if (!safeInteger(value.timestamp)) return false;
+  if (value.toolOverrides !== undefined && !isRecord(value.toolOverrides)) return false;
+  if (value.mutationId !== undefined && !nonNegativeInteger(value.mutationId)) return false;
+  if (value.playFrame !== undefined && !nonNegativeInteger(value.playFrame)) return false;
+  if (value.diffusionFrames !== undefined && !positiveInteger(value.diffusionFrames, DIFFUSION_CAP)) return false;
+  return true;
+}
+
+/** 261018-odm: aquarelle Dry-marker engine-slot guard. */
+function isEnginePayloadAquarelleDry(value: unknown): value is AquarelleDryEvent {
+  if (!isRecord(value)) return false;
+  if (value.kind !== 'dry') return false;
+  if (!nonNegativeInteger(value.tick)) return false;
+  return typeof value.recordedOrder === 'number' && Number.isFinite(value.recordedOrder);
 }
 
 function isEnvelopePoint(value: unknown): value is StudioPoint {
