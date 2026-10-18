@@ -4052,18 +4052,37 @@ export function PhysicsPaintStudio() {
   // factory). Aquarelle has no pending-finalization drain — exportCanvas is a
   // GPU readback — and the live layer calls this right before engine.clear().
   // A deferred factory would read the wiped sheet and commit empty.
+  //
+  // watercolor-clears-cached-paint: the sheet is frame-scoped opaque
+  // transmittance and does NOT carry the key's earlier paint (engine-1 or a
+  // prior aquarelle session). Merge it over the SESSION BASE (cache as of this
+  // sheet's start) with MULTIPLY so the transmittance glazes the existing
+  // paint. The base is snapshotted once per sheet — repeat captures (dry
+  // settle + frame-leave) stay idempotent and never double-apply the sheet
+  // onto a cache that already includes it.
+  const aquarelleMergeBaseRef = useRef<{ appFrame: number; base: RenderedFramePayload | null } | null>(null);
+  const findCachedRotoDisplayFrameRef = useRef(findCachedRotoDisplayFrame);
+  findCachedRotoDisplayFrameRef.current = findCachedRotoDisplayFrame;
   const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null) => {
     const launch = launchContextRef.current;
     if (!launch) return;
     const liveAlphaCanvas = snapshot();
     if (!liveAlphaCanvas) return;
+    if (aquarelleMergeBaseRef.current?.appFrame !== playFrame) {
+      aquarelleMergeBaseRef.current = {
+        appFrame: playFrame,
+        base: findCachedRotoDisplayFrameRef.current(playFrame),
+      };
+    }
     void rotoPersistenceRef.current.captureLivePixels({
       layerId: launch.layerId,
       appFrame: playFrame,
       liveAlphaCanvas,
-      // The aquarelle export is the full sheet (A5 transparent law) — never a
-      // merge over engine-1's base.
-      cachedBase: null,
+      cachedBase: aquarelleMergeBaseRef.current?.base ?? null,
+      // A5: MODE.transparent is opaque transmittance. Multiply matches the
+      // live CSS seam — white (no pigment) leaves the base untouched, pigment
+      // tints it. Source-over would cover the base with the full sheet.
+      mergeBlend: 'multiply',
       size: { width: canvasWidth, height: canvasHeight },
     }).catch((error) => {
       console.error('[PhysicsPaintStudio] Aquarelle cache write failed', error);
@@ -4074,6 +4093,10 @@ export function PhysicsPaintStudio() {
   // aquarelle layer's synchronous flush-capture (see navigateToSyncedPhysicalFrame).
   const handleAquarelleFlushCaptureReady = useCallback((flushCapture: () => void) => {
     aquarelleFlushCaptureRef.current = flushCapture;
+    // A fresh sheet (module enter / remount) starts a new merge session — the
+    // next capture re-reads the cache as its base so a later session never
+    // resurrects a stale one.
+    aquarelleMergeBaseRef.current = null;
   }, []);
 
   // FRAME SCOPE: identity-stable getter so the canvas-mount memo never

@@ -77,6 +77,20 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('wasAwake = false');
   });
 
+  it('CACHE: aquarelle capture composites over the existing cached paint (never replaces it)', () => {
+    // watercolor-clears-cached-paint: the aquarelle sheet is opaque transmittance
+    // and is frame-scoped — it does NOT contain the key's earlier (engine-1 or
+    // prior-session) paint. Passing cachedBase: null encoded only the live sheet
+    // and replaced the frame cache. The capture must merge against the session
+    // base (cache as of sheet start) with MULTIPLY so the transmittance glazes
+    // the existing paint instead of covering it.
+    expect(studio).not.toContain('cachedBase: null');
+    expect(studio).toContain("mergeBlend: 'multiply'");
+    expect(studio).toContain('aquarelleMergeBaseRef');
+    // Same seam engine-1 uses — no second cache system.
+    expect(studio).toContain('captureLivePixels');
+  });
+
   it('NAV FLUSH: navigation forces an aquarelle frame-leave capture BEFORE flushing live pixels', () => {
     // The aquarelle rAF poll queues its frame-leave capture AFTER
     // scheduleRotoStartFramePropagation, which is AFTER navigateToSyncedPhysicalFrame

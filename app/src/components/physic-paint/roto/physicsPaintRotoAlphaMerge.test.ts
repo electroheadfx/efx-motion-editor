@@ -12,13 +12,15 @@ import { mergeCachedRotoAlphaFrame } from './physicsPaintRotoAlphaMerge';
 
 type RecordedCanvasOp =
   | { type: 'clearRect'; x: number; y: number; w: number; h: number }
-  | { type: 'drawImage'; source: string; args: number[] };
+  | { type: 'drawImage'; source: string; args: number[]; compositeOp: string };
 
 let operations: RecordedCanvasOp[] = [];
 let failContext = false;
 let failImage = false;
 
 class RecordingCanvasContext {
+  globalCompositeOperation = 'source-over';
+
   clearRect(x: number, y: number, w: number, h: number): void {
     operations.push({ type: 'clearRect', x, y, w, h });
   }
@@ -29,6 +31,7 @@ class RecordingCanvasContext {
       type: 'drawImage',
       source: typedSource.marker ?? typedSource.src ?? 'unknown',
       args,
+      compositeOp: this.globalCompositeOperation,
     });
   }
 }
@@ -152,9 +155,26 @@ describe('mergeCachedRotoAlphaFrame', () => {
     });
     expect(operations).toEqual([
       { type: 'clearRect', x: 0, y: 0, w: 320, h: 180 },
-      { type: 'drawImage', source: 'cached-base-image', args: [0, 0, 320, 180] },
-      { type: 'drawImage', source: 'live-transparent-stroke-canvas', args: [0, 0, 320, 180] },
+      { type: 'drawImage', source: 'cached-base-image', args: [0, 0, 320, 180], compositeOp: 'source-over' },
+      { type: 'drawImage', source: 'live-transparent-stroke-canvas', args: [0, 0, 320, 180], compositeOp: 'source-over' },
     ]);
+  });
+
+  it('56-12/WATERCOLOR-CLEAR: multiply blend glazes the aquarelle transmittance over the cached base (never source-over cover)', async () => {
+    await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 }, undefined, undefined, 'multiply');
+
+    const draws = operations.filter((operation) => operation.type === 'drawImage');
+    expect(draws).toEqual([
+      { type: 'drawImage', source: 'cached-base-image', args: [0, 0, 320, 180], compositeOp: 'source-over' },
+      { type: 'drawImage', source: 'live-transparent-stroke-canvas', args: [0, 0, 320, 180], compositeOp: 'multiply' },
+    ]);
+  });
+
+  it('56-12/WATERCOLOR-CLEAR: default blend stays source-over so engine-1 merges are unchanged', async () => {
+    await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 });
+
+    const liveDraw = operations.find((operation) => operation.type === 'drawImage' && operation.source === 'live-transparent-stroke-canvas');
+    expect(liveDraw).toMatchObject({ compositeOp: 'source-over' });
   });
 
   it('D-02/36.11-ALPHA-ONLY-MERGE keeps paper, background support, PreviewRenderer output, and engine background out of the merge inputs', async () => {

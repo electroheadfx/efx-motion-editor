@@ -6,6 +6,16 @@ export interface RotoAlphaMergeSize {
   height: number;
 }
 
+/**
+ * How the live sheet meets the cached base.
+ * - `source-over` (default): engine-1 real-alpha strokes over the base.
+ * - `multiply`: aquarelle MODE.transparent transmittance (opaque) glazes the
+ *   base — white (no pigment) leaves the base untouched, pigment tints it.
+ *   Source-over would let the opaque sheet cover the base entirely
+ *   (watercolor-clears-cached-paint).
+ */
+export type RotoAlphaMergeBlend = 'source-over' | 'multiply';
+
 export async function mergeCachedRotoAlphaFrame(
   baseFrame: Pick<PhysicPaintRenderedFrame, 'bytes'> | null,
   liveAlphaCanvas: HTMLCanvasElement,
@@ -13,8 +23,9 @@ export async function mergeCachedRotoAlphaFrame(
   size: RotoAlphaMergeSize,
   mutationId?: number,
   baseCanvas?: HTMLCanvasElement | null,
+  blend: RotoAlphaMergeBlend = 'source-over',
 ): Promise<PhysicPaintRenderedFrame> {
-  const output = await mergeRotoAlphaCanvases(baseFrame, liveAlphaCanvas, size, baseCanvas);
+  const output = await mergeRotoAlphaCanvases(baseFrame, liveAlphaCanvas, size, baseCanvas, blend);
   return encodeRotoFrameFromCanvas(output, appFrame, undefined, mutationId);
 }
 
@@ -26,6 +37,7 @@ export async function mergeRotoAlphaCanvases(
   // pixel erase punched the preview base, merging the original cached bytes
   // resurrects the removed paint — draw the erased layer instead.
   baseCanvas?: HTMLCanvasElement | null,
+  blend: RotoAlphaMergeBlend = 'source-over',
 ): Promise<HTMLCanvasElement> {
   const output = document.createElement('canvas');
   output.width = size.width;
@@ -40,7 +52,9 @@ export async function mergeRotoAlphaCanvases(
     const baseImage = await loadCachedRotoBaseImage(baseFrame.bytes);
     context.drawImage(baseImage, 0, 0, size.width, size.height);
   }
+  context.globalCompositeOperation = blend;
   context.drawImage(scriptAlphaCanvas, 0, 0, size.width, size.height);
+  context.globalCompositeOperation = 'source-over';
   return output;
 }
 

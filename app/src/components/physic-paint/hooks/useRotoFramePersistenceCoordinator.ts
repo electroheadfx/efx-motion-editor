@@ -6,7 +6,7 @@ import { requirePhysicPaintRotoInlineBytes } from '../roto/physicsPaintRotoPhysi
 import type { PhysicPaintRotoPhysicalDocument, PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource, PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
 import { buildBlankRotoFrame, encodeRotoFrameFromCanvas, type RenderedFramePayload } from '../roto/rotoCanvasFrames';
-import { mergeCachedRotoAlphaFrame } from '../roto/physicsPaintRotoAlphaMerge';
+import { mergeCachedRotoAlphaFrame, type RotoAlphaMergeBlend } from '../roto/physicsPaintRotoAlphaMerge';
 import { createRotoLivePixelCacheTransactions, type RotoLivePixelIdentity } from '../roto/rotoLivePixelCacheTransactions';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
 import { useRotoEditBufferController } from './useRotoEditBufferController';
@@ -551,6 +551,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
      * no pixel erase ran). When set, the merge draws it instead of cachedBase
      * bytes so the capture records the removal. */
     baseCanvas?: HTMLCanvasElement | null;
+    /** watercolor-clears-cached-paint: `multiply` when the live sheet is
+     * aquarelle opaque transmittance (it glazes the base); default
+     * `source-over` for engine-1 real-alpha strokes. */
+    mergeBlend?: RotoAlphaMergeBlend;
     size: { width: number; height: number };
     mutationId?: number;
     interpolationSettings?: PhysicPaintRotoInterpolationSettings;
@@ -594,7 +598,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
           : capture.liveAlphaCanvas;
         if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
         return capture.cachedBase || capture.baseCanvas
-          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas)
+          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
           : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
       },
       commit: async (rendered, current) => {
