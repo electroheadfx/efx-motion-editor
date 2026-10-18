@@ -495,7 +495,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       updateOrdinaryKey: (updateLayerId, keyId, expectedContentRevision, payload, diagnostics) => inputRef.current.store.updateRotoPhysicalRealKeyPayload(updateLayerId, trackId, keyId, expectedContentRevision, payload, diagnostics),
       executePhysicalEdit: inputRef.current.executePhysicalEdit,
     });
-    if (!route.ok) return false;
+    if (!route.ok) {
+      capturePaintCacheEvent('cache-write-rejected', { appFrame: renderedFrame.appFrame, reason: route.reason });
+      return false;
+    }
     if (route.kind === 'group-frame') {
       // Group COW publication, cache settlement, canvas reconciliation, and
       // history are all deferred to the matching physical acknowledgement.
@@ -568,9 +571,15 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const trackId = inputRef.current.getActiveTrackId(capture.layerId);
     const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
-    if (!document || !contentRevision || document.revision !== contentRevision) return Promise.resolve(false);
+    if (!document || !contentRevision || document.revision !== contentRevision) {
+      capturePaintCacheEvent('live-capture-skip', { appFrame: capture.appFrame, reason: 'revision' });
+      return Promise.resolve(false);
+    }
     const identityKey = resolveRotoLivePixelIdentityKey(document, capture.appFrame);
-    if (identityKey === null) return Promise.resolve(false);
+    if (identityKey === null) {
+      capturePaintCacheEvent('live-capture-skip', { appFrame: capture.appFrame, reason: 'identity' });
+      return Promise.resolve(false);
+    }
     const identity: RotoLivePixelIdentity = {
       launchId,
       layerId: capture.layerId,
@@ -584,9 +593,16 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       resolveCurrent: () => {
         const currentDocument = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
         const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
-        if (!currentDocument || currentRevision !== contentRevision) return null;
+        if (!currentDocument || currentRevision !== contentRevision) {
+          capturePaintCacheEvent('live-capture-stale', { appFrame: capture.appFrame, reason: 'revision' });
+          return null;
+        }
         const currentIdentityKey = resolveRotoLivePixelIdentityKey(currentDocument, capture.appFrame);
-        return currentIdentityKey === identityKey ? identity : null;
+        if (currentIdentityKey !== identityKey) {
+          capturePaintCacheEvent('live-capture-stale', { appFrame: capture.appFrame, reason: 'identity' });
+          return null;
+        }
+        return identity;
       },
       recordPerformance: isPhysicsPaintProfilingEnabled() ? recordPhysicsPaintPerformance : undefined,
       produce: () => {

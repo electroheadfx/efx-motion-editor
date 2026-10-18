@@ -217,6 +217,14 @@ export function AquarelleCanvasLayer(props: {
    * cache (the intermittent empty frame). Mirrors onNativePenInputReady.
    */
   onFlushCaptureReady?: (flushCapture: () => void) => void;
+  /**
+   * CACHE MERGE BASE (aquarelle-cache-lost-on-return): a new sheet session
+   * begins when the edit frame changes and the engine is cleared. The next
+   * session's first capture must re-read the cache as its multiply base — a
+   * base pinned before the previous session's commit would drop that paint
+   * when the new session's sheet is merged over it.
+   */
+  onSheetSessionEnd?: () => void;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -229,6 +237,7 @@ export function AquarelleCanvasLayer(props: {
   const onStrokeEndRef = useRef(props.onStrokeEnd);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
+  const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
   widthRef.current = props.width;
@@ -238,6 +247,7 @@ export function AquarelleCanvasLayer(props: {
   onStrokeEndRef.current = props.onStrokeEnd;
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
+  onSheetSessionEndRef.current = props.onSheetSessionEnd;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
   // leak the previous frame's paint (the user saw the same paint on every
@@ -375,6 +385,11 @@ export function AquarelleCanvasLayer(props: {
         if (engine.hasPaint) {
           onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
         }
+        // aquarelle-cache-lost-on-return: the sheet session ends here. The
+        // next session's first capture must re-read the CACHE as its multiply
+        // base — the base pinned for the old session predates its commit and
+        // would drop that paint when the new sheet merges over it.
+        onSheetSessionEndRef.current?.();
         lastPlayFrameRef.current = playFrame;
         engine.clear();
         // The new frame starts clean — a settle capture here would write the

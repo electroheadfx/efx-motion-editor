@@ -1273,8 +1273,12 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       }));
       return staged;
     } finally {
-      // The bake host may still be settling a long cuisson; the reference
-      // stays live until dispose()/flush settles it (never abort-on-dispose).
+      // Release the offscreen bake engine's WebGL surface. bake.bake() has
+      // awaited every turn (including flush-survives-navigation work) before
+      // this runs, so nothing still reads the adapter. Leaking one context per
+      // Play starves the LIVE aquarelle canvas and its next capture can encode
+      // a blank sheet — the paint cache then looks wiped.
+      adapter.dispose();
     }
   }
 
@@ -1803,6 +1807,9 @@ export async function applyAquarelleEventsToKey(input: {
     });
   } finally {
     bake.dispose();
+    // Release the offscreen aquarelle WebGL surface — one Apply must not leave
+    // a live context competing with the Studio's own sheet.
+    adapter.dispose();
   }
 }
 

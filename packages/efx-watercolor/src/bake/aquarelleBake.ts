@@ -232,6 +232,21 @@ export function createAquarelleBake(
       )
     }
     const diffusionPerFrame = Math.max(1, Math.ceil(totalCuisson / frameCount))
+    // Ink-2 end-frame law: the LAST stroke has the fewest frames left to cook,
+    // so spread ticks alone can leave it under-developed at the final frame
+    // (the frame the artist compares with the settled paint). Catch it up to
+    // its own cuisson window on the last frame — the direct bake's look.
+    const lastStroke = strokes[strokes.length - 1]
+    const lastStrokeCuisson = lastStroke
+      ? clampCuisson(
+          lastStroke.cuisson || (lastStroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
+        )
+      : 0
+    const lastStrokeStart = lastStroke ? startFrameOf.get(lastStroke) ?? 0 : 0
+    const lastStrokeCatchUp = Math.max(
+      0,
+      lastStrokeCuisson - diffusionPerFrame * (frameCount - lastStrokeStart),
+    )
 
     for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
       for (const dry of drysByFrame.get(frameIndex) ?? []) {
@@ -241,9 +256,12 @@ export function createAquarelleBake(
       }
 
       const frameStrokes = getProgressiveFrameStrokes(schedule, frameIndex)
+      const tickBudget = frameIndex === frameCount - 1
+        ? diffusionPerFrame + lastStrokeCatchUp
+        : diffusionPerFrame
       const framePromise = scheduleAdapter(() => {
         adapter.renderPartialStrokes(frameStrokes)
-        for (let tick = 0; tick < diffusionPerFrame; tick += 1) {
+        for (let tick = 0; tick < tickBudget; tick += 1) {
           adapter.stepTick(tick)
         }
         return adapter.captureFrame()

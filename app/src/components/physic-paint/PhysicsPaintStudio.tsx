@@ -69,6 +69,7 @@ import {
 } from './roto/physicsPaintRotoRailSetSelection';
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { paintStore } from '../../stores/paintStore';
+import { capturePaintCacheEvent } from '../../lib/paintCacheFrameEnterCapture';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { applyAquarelleEventsToKey, mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
@@ -1192,17 +1193,38 @@ export function PhysicsPaintStudio() {
           grainStrength: bgMeta.grainStrength,
           grainScale: bgMeta.grainScale ?? 1,
         },
-        publish: (frame) => rotoPersistence.upsertCachedFrame(
-          { frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes, width: frame.width, height: frame.height },
-          false,
-          undefined,
-          undefined,
-          launchContext?.layerId,
-          undefined,
-          launchContext?.operationId,
-          bgMeta,
-          frame.keyId,
-        ),
+        publish: async (frame) => {
+          const ok = await rotoPersistence.upsertCachedFrame(
+            { frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes, width: frame.width, height: frame.height },
+            false,
+            undefined,
+            undefined,
+            launchContext?.layerId,
+            undefined,
+            launchContext?.operationId,
+            bgMeta,
+            frame.keyId,
+          );
+          // aquarelle-apply-invisible: a cache-only publish never reaches the
+          // display — the live aquarelle sheet is empty and the engine-1
+          // preview base still holds the pre-Apply bytes. Force the same
+          // content-token reconcile the completion path uses.
+          if (ok && launchContextRef.current?.startFrame === frame.appFrame) {
+            const generation = Math.max(
+              rotoPreviewBaseContentToken(),
+              engineRef.current?.getAppliedPreviewBaseContentToken?.() ?? 0,
+            );
+            loadCachedRotoReferenceFrame(
+              frame.appFrame,
+              engineRef.current as PreviewBackgroundEngine | null,
+              undefined,
+              true,
+              generation,
+            );
+            physicPaintVersion.value++;
+          }
+          return ok;
+        },
       });
     },
     onFirstAcceptedBrush: () => acceptRotoScriptBrushRef.current(),
@@ -4090,6 +4112,10 @@ export function PhysicsPaintStudio() {
         base: findCachedRotoDisplayFrameRef.current(playFrame),
       };
     }
+    capturePaintCacheEvent('aquarelle-capture-enqueue', {
+      appFrame: playFrame,
+      base: aquarelleMergeBaseRef.current?.base ? 'cache' : 'none',
+    });
     void rotoPersistenceRef.current.captureLivePixels({
       layerId: launch.layerId,
       appFrame: playFrame,
@@ -4100,10 +4126,21 @@ export function PhysicsPaintStudio() {
       // tints it. Source-over would cover the base with the full sheet.
       mergeBlend: 'multiply',
       size: { width: canvasWidth, height: canvasHeight },
+    }).then((ok) => {
+      capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok });
     }).catch((error) => {
+      capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: false, failed: true });
       console.error('[PhysicsPaintStudio] Aquarelle cache write failed', error);
     });
   }, [canvasWidth, canvasHeight]);
+
+  // CACHE MERGE BASE (aquarelle-cache-lost-on-return): a frame change clears
+  // the sheet, so the next session's first capture must re-read the cache as
+  // its multiply base. Keeping the previous session's base drops that paint.
+  const handleAquarelleSheetSessionEnd = useCallback(() => {
+    aquarelleMergeBaseRef.current = null;
+    capturePaintCacheEvent('aquarelle-session-end', {});
+  }, []);
 
   // NAV FLUSH (paint-cache-empty-frame-on-key): registration callback for the
   // aquarelle layer's synchronous flush-capture (see navigateToSyncedPhysicalFrame).
@@ -4131,7 +4168,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleCaptureFrame, getAquarellePlayFrame, getAquarellePaperId], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, getAquarellePlayFrame, getAquarellePaperId], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -4163,6 +4200,7 @@ export function PhysicsPaintStudio() {
       onAquarelleStrokeEnd: handleAquarelleStrokeEnd,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,
       onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
+      onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the
