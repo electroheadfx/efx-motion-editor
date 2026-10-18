@@ -42,7 +42,7 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 - [ ] **PAPER-01**: 10 named procedural papers (cold press, hot press, rough, khadi, washi, laid, canvas, toned sand, kraft, student)
 - [ ] **PAPER-02**: Usable by ALL paints through the same `paperPass` — composite-only, no rebake on paper change
 - [ ] **PAPER-03**: Paper display state (id, strength, scale) lives on the document/fond in undo + save, with display-class change-token rotation (learn from PKG-06/BKG-09)
-- [ ] **PAPER-04**: The 3 real paper backgrounds already in the repo (`app/public/img/paper_1.jpg` / `paper_2.jpg` / `paper_3.jpg` — today wired as canvas1/2/3 inside physic-paint) are recovered into the Studio paper library and usable by ALL paints through the same `paperPass`, alongside the 10 procedural papers. Not watercolour-only.
+- [x] **PAPER-04**: The 3 real paper backgrounds already in the repo (`app/public/img/paper_1.jpg` / `paper_2.jpg` / `paper_3.jpg` — today wired as canvas1/2/3 inside physic-paint) are recovered into the Studio paper library and usable by ALL paints through the same `paperPass`, alongside the 10 procedural papers. Not watercolour-only.
 
 ### Module Switcher & Shared Studio (Phase 56)
 
@@ -152,7 +152,7 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | PAPER-01 | Phase 56 | Pending |
 | PAPER-02 | Phase 56 | Pending |
 | PAPER-03 | Phase 56 | Pending |
-| PAPER-04 | Phase 56 | Pending |
+| PAPER-04 | Phase 56 | Complete |
 | MOD-01 | Phase 56 | Pending |
 | MOD-02 | Phase 56 | Pending |
 | MOD-03 | Phase 56 | Pending |
