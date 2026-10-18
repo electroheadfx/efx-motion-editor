@@ -58,6 +58,7 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
           ? 'var(--sidebar-accent-soft, rgba(110, 168, 254, 0.16))'
           : 'transparent',
         boxSizing: 'border-box',
+        alignItems: 'center',
       }}
     >
       <canvas
@@ -68,29 +69,25 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
           if (el) blitStrokeThumb(el, preset.id);
         }}
         style={{
-          width: '100%',
-          height: 'auto',
+          width: `${STROKE_THUMB_WIDTH}px`,
+          height: `${STROKE_THUMB_HEIGHT}px`,
+          maxWidth: '100%',
           display: 'block',
           borderRadius: '4px',
-          background: 'var(--sidebar-canvas, #1b222c)',
+          background: '#fff',
         }}
       />
       <span
         style={{
-          fontSize: '11px',
+          fontSize: '10px',
           fontWeight: 600,
           color: 'var(--sidebar-text, #e6edf5)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.14em',
+          textAlign: 'center',
         }}
       >
         {preset.name}
-      </span>
-      <span
-        style={{
-          fontSize: '10px',
-          color: 'var(--sidebar-text-secondary, #9aa5b1)',
-        }}
-      >
-        {preset.hint}
       </span>
     </button>
   );

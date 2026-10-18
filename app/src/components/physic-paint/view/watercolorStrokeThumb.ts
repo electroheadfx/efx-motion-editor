@@ -23,8 +23,11 @@ import {
 export const STROKE_THUMB_WIDTH = 150;
 export const STROKE_THUMB_HEIGHT = 44;
 
-/** One shared representative pigment for every thumb. */
-export const STROKE_THUMB_HEX = '#8c2f39';
+/**
+ * One shared representative pigment for every thumb — the oracle default
+ * previewHex (PALETTE[5] French Ultramarine, a blue/violet wash).
+ */
+export const STROKE_THUMB_HEX = '#2338a8';
 
 const DEGREES = Math.PI / 180;
 

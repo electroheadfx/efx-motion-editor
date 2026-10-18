@@ -3,7 +3,7 @@
  *
  * Laws pinned here:
  *   14 cards, one per BRUSH_PRESETS entry, in catalog order, 2-column grid
- *   each card = 150x44 stroke thumb canvas + name + hint
+ *   each card = 150x44 stroke thumb canvas + uppercase name + title tooltip
  *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id}
  *   no category filter / search / import affordance / wc/ size-variant rows
  *   card pick -> selectAquarelleTip(presetId) -> selection + Brush tool
@@ -220,7 +220,7 @@ describe('WatercolorBrushLibrary 14-card grid (I-03)', () => {
     expect(String(columns), 'root must be a 2-column grid').toMatch(/1fr\s+1fr|repeat\(\s*2\s*,/);
   });
 
-  it('each card carries the preset name, hint, and a 150x44 thumb canvas', () => {
+  it('each card is a compact oracle cell: name + 150x44 thumb + title tooltip, no description', () => {
     const tree = renderLibrary();
     for (const preset of BRUSH_PRESETS) {
       const card = cardNodes(tree).find(
@@ -229,13 +229,23 @@ describe('WatercolorBrushLibrary 14-card grid (I-03)', () => {
       expect(card, `card ${preset.id} must render`).toBeTruthy();
       const text = textContent(card);
       expect(text, `card ${preset.id} name`).toContain(preset.name);
-      expect(text, `card ${preset.id} hint`).toContain(preset.hint);
+      // Hint is a title tooltip only — never a description paragraph.
+      expect(card!.props?.['title'], `card ${preset.id} title tooltip`).toBe(preset.hint);
+      expect(text, `card ${preset.id} has no hint paragraph`).not.toContain(preset.hint);
       const canvases = [...walk(card)].filter((n) => n.type === 'canvas');
       expect(canvases.length, `card ${preset.id} thumb canvas`).toBe(1);
       const canvas = canvases[0]!;
       expect(canvas.props?.['width'], `card ${preset.id} thumb width`).toBe(STROKE_THUMB_WIDTH);
       expect(canvas.props?.['height'], `card ${preset.id} thumb height`).toBe(STROKE_THUMB_HEIGHT);
     }
+  });
+
+  it('thumbs paint the oracle French Ultramarine on a white canvas', () => {
+    const source = readFileSync(resolve(__dirname, 'watercolorStrokeThumb.ts'), 'utf8');
+    expect(source, 'thumb hex is the oracle previewHex').toContain("STROKE_THUMB_HEX = '#2338a8'");
+    const librarySource = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8');
+    expect(librarySource, 'card canvas background is white').toContain("background: '#fff'");
+    expect(librarySource, 'name is uppercase like the oracle label').toContain("textTransform: 'uppercase'");
   });
 
   it('has no category filter, search field, or import affordance', () => {
