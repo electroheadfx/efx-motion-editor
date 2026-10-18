@@ -152,15 +152,18 @@ describe('panel split shell — module-only block', () => {
     expect(text).toContain('Brush smoothing');
   });
 
-  it('Brush branch renders PaintModeSelector', () => {
+  it('Brush branch has no retired mode-selector control (261018-cy1)', () => {
     const source = readFileSync(
       resolve(__dirname, 'BrushModuleSection.tsx'),
       'utf8',
     );
-    expect(source).toMatch(/PaintModeSelector/);
+    // Source-scan discipline: the retired control is gone from the Paint tool
+    // tab (the top-bar ModuleSwitcher stays). Negative scan strips comments.
+    const body = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(body).not.toMatch(/PaintModeSelector/);
     const tree = materialize(BrushModuleSection(brushModuleProps())) as TestVNode;
     const labels = [...walk(tree)].map((n) => textContent(n)).join(' ');
-    expect(labels).toContain('PaintModeSelector');
+    expect(labels).not.toContain('PaintModeSelector');
   });
 
   it('empty watercolor shell renders without crashing', () => {

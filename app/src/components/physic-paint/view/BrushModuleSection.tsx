@@ -1,11 +1,10 @@
 import type { ToolType } from '@efxlab/efx-physic-paint';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { PaintModeSelector } from '../../sidebar/PaintModeSelector';
 
 /**
- * 56-02 (D-05, D-14): the Brush module-only block — the physics param bag
- * extracted from the panel stack, plus PaintModeSelector (D-14: mode selector
- * stays in the Brush module only; the watercolour branch never shows it).
+ * 56-02 (D-05): the Brush module-only block — the physics param bag
+ * extracted from the panel stack. 261018-cy1: the Paint tool tab shows
+ * the param bag only; the top-bar ModuleSwitcher owns module selection.
  */
 
 function PanelSlider(props: {
@@ -81,7 +80,6 @@ export function BrushModuleSection({
 }: BrushModuleSectionProps) {
   return (
     <div class="physics-paint-module-section" data-module="brush">
-      <PaintModeSelector />
       <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
       {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
       {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
