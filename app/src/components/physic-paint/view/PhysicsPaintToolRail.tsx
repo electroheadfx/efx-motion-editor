@@ -52,12 +52,23 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{ id: AquarelleTool; label: string; I
 
 function WatercolorRail({
   disabled,
+  historyAvailability,
+  onUndo,
+  onRedo,
+  onClearFrame,
   onActiveColorChanged,
 }: {
   disabled: boolean;
+  historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
+  onUndo: () => void;
+  onRedo: () => void;
+  onClearFrame: () => void;
   onActiveColorChanged?: (color: string) => void;
 }) {
   const active = aquarelleActiveTool.value;
+  const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
+  const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
+  const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, Icon }) => {
@@ -87,6 +98,30 @@ function WatercolorRail({
         onClick={() => emitAquarelleDry(aquarelleRecordClock())}
       >
         <Wind size={18} />
+      </button>
+      {/* Global history actions (261018-cy1): same disable semantics as the
+          brush-mode rail; Trash is the existing clear-frame action. */}
+      <PhysicsPaintHistoryActionButton
+        item={undoItem}
+        historyAvailability={historyAvailability}
+        disabled={disabled}
+        onAction={onUndo}
+      />
+      <PhysicsPaintHistoryActionButton
+        item={redoItem}
+        historyAvailability={historyAvailability}
+        disabled={disabled}
+        onAction={onRedo}
+      />
+      <button
+        type="button"
+        class="physics-paint-icon-button"
+        disabled={disabled}
+        title={clearItem.label}
+        aria-label="Trash"
+        onClick={onClearFrame}
+      >
+        <img src={clearItem.icon} alt="" aria-hidden="true" />
       </button>
       <div style={{ marginTop: '8px' }}>
         <ForegroundBackgroundSwatch onActiveColorChanged={onActiveColorChanged} />
@@ -170,7 +205,16 @@ function PhysicsPaintToolRailImpl({
   // UI checklist row 9: Water color mode replaces the rail with
   // Brush | Water | Pen | Lift | Dry. Signal read bypasses the memo.
   if (activeModule.value === 'watercolor') {
-    return <WatercolorRail disabled={disabled} onActiveColorChanged={onActiveColorChanged} />;
+    return (
+      <WatercolorRail
+        disabled={disabled}
+        historyAvailability={historyAvailability}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        onClearFrame={onClearFrame}
+        onActiveColorChanged={onActiveColorChanged}
+      />
+    );
   }
   // Held-Alt/Cmd display only: this narrow read re-renders just this rail (7
   // buttons) so the active highlight can show Erase/Move while Paint stays

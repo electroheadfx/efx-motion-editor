@@ -146,6 +146,18 @@ describe('I-08 Brush-mode context gating', () => {
     ).toBeLessThan(railNavAt);
   });
 
+  it('WatercolorRail shows Undo / Redo / Trash on the existing history path (261018-cy1)', () => {
+    const body = stripComments(toolRailSource);
+    expect(body, 'Undo/Redo reuse PhysicsPaintHistoryActionButton').toMatch(
+      /<PhysicsPaintHistoryActionButton\b/,
+    );
+    expect(body, 'Trash routes to onClearFrame').toContain('onClearFrame');
+    expect(body, 'rail mounts history actions').toContain('onUndo');
+    expect(body, 'rail mounts history actions').toContain('onRedo');
+    // No second history store — the existing props are the only path.
+    expect(body, 'no new history store').not.toMatch(/createPhysicsPaintHistory\b/);
+  });
+
   it('Paper tab branch mounts the paper surface with no activeModule gate', () => {
     // I-10: the paper surface is RightPanelPaperTab (which mounts PaperPicker);
     // both the panel arm and the tab component stay ungated (I-07 document fond).
