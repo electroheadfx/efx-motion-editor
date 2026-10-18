@@ -2167,9 +2167,13 @@ fn validate_source(value: Option<&Value>) -> Result<(), String> {
         .ok_or_else(|| "Invalid background metadata".to_string())?;
     match background.get("background").and_then(Value::as_str) {
         Some("transparent" | "white" | "canvas1" | "canvas2" | "canvas3") => {}
+        Some(s) if s.starts_with("paper/") => {}
         _ => return Err("Invalid background mode".to_string()),
     }
     finite_range(background.get("grainStrength"), "grainStrength", 0.0, 1.0)?;
+    if let Some(grain_scale) = background.get("grainScale") {
+        finite_range(Some(grain_scale), "grainScale", 0.1, 10.0)?;
+    }
     if let Some(color) = background.get("color") {
         if !color.is_string() {
             return Err("Invalid background color".to_string());
@@ -2784,5 +2788,37 @@ mod tests {
         // canonical form is base64, so a JSON number array must be rejected.
         let document = physical_document(json!([116, 101, 115, 116]));
         assert!(canonical_physical_hash(&document).is_err());
+    }
+
+    #[test]
+    fn validate_source_accepts_paper_background_and_grain_scale() {
+        // 261018-lqv: the TS schema accepted paper/* + grainScale but the Rust
+        // durable-save validator still rejected them ("Invalid background mode").
+        let source = json!({
+            "projectName": "p", "layerId": "l", "layerName": "n",
+            "sourceFrame": 0, "displayFrame": 0, "width": 100, "height": 100,
+            "background": { "background": "paper/cold-press", "grainStrength": 0.35, "grainScale": 1.5 }
+        });
+        assert!(validate_source(Some(&source)).is_ok(), "paper/* + grainScale must be accepted");
+    }
+
+    #[test]
+    fn validate_source_rejects_unknown_background_mode() {
+        let source = json!({
+            "projectName": "p", "layerId": "l", "layerName": "n",
+            "sourceFrame": 0, "displayFrame": 0, "width": 100, "height": 100,
+            "background": { "background": "bogus", "grainStrength": 0.5 }
+        });
+        assert!(validate_source(Some(&source)).is_err(), "unknown background mode must be rejected");
+    }
+
+    #[test]
+    fn validate_source_rejects_out_of_range_grain_scale() {
+        let source = json!({
+            "projectName": "p", "layerId": "l", "layerName": "n",
+            "sourceFrame": 0, "displayFrame": 0, "width": 100, "height": 100,
+            "background": { "background": "white", "grainStrength": 0.5, "grainScale": 99.0 }
+        });
+        assert!(validate_source(Some(&source)).is_err(), "out-of-range grainScale must be rejected");
     }
 }
