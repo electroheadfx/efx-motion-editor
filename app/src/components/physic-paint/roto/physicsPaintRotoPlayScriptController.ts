@@ -1240,27 +1240,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       ? ports.createAquarelleAdapter(size, bakePaper)
       : await createDefaultAquarelleAdapter(size, bakePaper);
     const createBake = ports.createAquarelleBake ?? defaultCreateAquarelleBake;
-    // Rust VP8L encoder — the bake's default toDataURL('image/webp') emits
-    // lossy VP8, which isWebpBytes rejects (it requires the VP8L chunk).
-    const encodeAquarelleWebp = async (frame: CanvasImageSource, width: number, height: number): Promise<Uint8Array> => {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) throw new Error('Could not create aquarelle bake encode canvas.');
-      ctx.drawImage(frame, 0, 0, width, height);
-      const imageData = ctx.getImageData(0, 0, width, height);
-      return encodeWebpFrame({
-        rgba: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength),
-        width,
-        height,
-      });
-    };
     const bake = createBake(adapter, {
       width: size.width,
       height: size.height,
       paper: bakePaper,
-      encodeWebp: encodeAquarelleWebp,
+      encodeWebp: encodeAquarelleWebpFrame,
     });
     aquarelleBake = bake;
     try {
@@ -1778,6 +1762,60 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       abortController = null;
     },
   };
+}
+
+/** Rust VP8L encoder for a squarelle bake frames — toDataURL emits lossy VP8. */
+async function encodeAquarelleWebpFrame(frame: CanvasImageSource, width: number, height: number): Promise<Uint8Array> {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Could not create aquarelle bake encode canvas.');
+  ctx.drawImage(frame, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
+  return encodeWebpFrame({
+    rgba: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength),
+    width,
+    height,
+  });
+}
+
+/**
+ * 261018: Apply seam for aquarelle scripts — replay the payload timeline
+ * through the aquarelle engine and publish the wash onto the target key.
+ * Engine-1 `enqueueRecordedStroke` draws only the guide line; this runs the
+ * fluid sim so the wash (bleed, granulation, tide lines) is what lands.
+ */
+export async function applyAquarelleEventsToKey(input: {
+  events: readonly AquarellePayloadEvent[];
+  target: { keyId: string; appFrame: number };
+  size: { width: number; height: number };
+  paper: AquarelleBakePaper;
+  publish: (frame: { keyId: string; appFrame: number; bytes: Uint8Array; width: number; height: number }) => Promise<boolean>;
+}): Promise<boolean> {
+  const adapter = await createDefaultAquarelleAdapter(input.size, input.paper);
+  const bake = defaultCreateAquarelleBake(adapter, {
+    width: input.size.width,
+    height: input.size.height,
+    paper: input.paper,
+    encodeWebp: encodeAquarelleWebpFrame,
+  });
+  try {
+    const result = await bake.bake(input.events);
+    if (!result.ok) return false;
+    const last = result.frames[result.frames.length - 1];
+    if (!last) return false;
+    await bake.flush();
+    return input.publish({
+      keyId: input.target.keyId,
+      appFrame: input.target.appFrame,
+      bytes: last.bytes,
+      width: last.width,
+      height: last.height,
+    });
+  } finally {
+    bake.dispose();
+  }
 }
 
 /** Default engine-2 adapter — lazy so the fluid engine stays out of the UI chunk. */

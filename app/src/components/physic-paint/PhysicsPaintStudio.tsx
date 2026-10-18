@@ -70,7 +70,7 @@ import {
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
-import { mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptController';
+import { applyAquarelleEventsToKey, mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptController';
 import { PhysicsPaintStudioView } from './view/PhysicsPaintStudioView';
 import type { EfxPaintProgramMonitorMissingSummary } from './view/PhysicsPaintProgramMonitor';
 import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
@@ -1179,6 +1179,32 @@ export function PhysicsPaintStudio() {
     } : null,
     prepareTarget: (source) => prepareRotoScriptTargetRef.current(source),
     flushSourcePublication: (appFrame) => rotoPersistence.flushLivePixels(appFrame),
+    // 261018: aquarelle Apply — replay through the fluid engine and publish
+    // the wash onto the target key (engine-1 draws only the guide line).
+    applyAquarelleEvents: async ({ events, target }) => {
+      const bgMeta = buildRotoBackgroundMetadata(settings);
+      return applyAquarelleEventsToKey({
+        events,
+        target,
+        size: { width: canvasWidth, height: canvasHeight },
+        paper: {
+          paperId: bgMeta.background,
+          grainStrength: bgMeta.grainStrength,
+          grainScale: bgMeta.grainScale ?? 1,
+        },
+        publish: (frame) => rotoPersistence.upsertCachedFrame(
+          { frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes, width: frame.width, height: frame.height },
+          false,
+          undefined,
+          undefined,
+          launchContext?.layerId,
+          undefined,
+          launchContext?.operationId,
+          bgMeta,
+          frame.keyId,
+        ),
+      });
+    },
     onFirstAcceptedBrush: () => acceptRotoScriptBrushRef.current(),
     setNavigationLocked: setRotoScriptNavigationLocked,
   });

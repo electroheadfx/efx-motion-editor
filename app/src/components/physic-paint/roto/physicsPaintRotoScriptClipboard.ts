@@ -111,6 +111,16 @@ export interface RotoScriptClipboardControllerPorts {
   getPublicationIdentity?: () => RotoScriptPublicationIdentity | null;
   prepareTarget: (source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>;
   flushSourcePublication?: (appFrame: number) => Promise<void>;
+  /**
+   * 261018: aquarelle Apply seam. When the script carries `aquarelleEvents`,
+   * applyScript routes through this (aquarelle engine replay + wash publish)
+   * instead of engine-1 `enqueueRecordedStroke` — engine-1 draws only the
+   * guide line, never the wash.
+   */
+  applyAquarelleEvents?: (input: {
+    events: readonly AquarellePayloadEvent[];
+    target: RotoScriptPhysicalTarget;
+  }) => Promise<boolean>;
   onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
 }
@@ -744,6 +754,25 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       }
       endOperation(engine);
       return false;
+    }
+
+    // 261018: aquarelle scripts replay through the aquarelle engine (wash,
+    // bleed, granulation), not engine-1 (which draws only the guide line).
+    if (script.aquarelleEvents && script.aquarelleEvents.length > 0 && ports.applyAquarelleEvents) {
+      status.value = 'Applying';
+      try {
+        const ok = await ports.applyAquarelleEvents({ events: script.aquarelleEvents, target });
+        status.value = ok ? 'Applied' : 'Failed';
+        if (!ok) error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.');
+        else error.value = null;
+        endOperation(engine);
+        return ok;
+      } catch (cause) {
+        status.value = 'Failed';
+        error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.', cause);
+        endOperation(engine);
+        return false;
+      }
     }
 
     applyProgressState.value = { completed: 0, total: script.brushes.length };
