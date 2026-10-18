@@ -325,12 +325,12 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(onBackgroundChange).toHaveBeenCalledTimes(2); // unchanged
   });
 
-  it('thumbs ride the engine paper host only — no fluid simulation, no WatercolorEngine construction', () => {
+  it('thumbs ride the paperThumb painter only — no fluid simulation, no WatercolorEngine construction', () => {
     const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), './PaperPicker.tsx');
     const source = readFileSync(sourcePath, 'utf8');
-    // 261017-nnu: the sheet comes from the vendored engine via the thin host.
-    expect(source).toContain("from '../../../lib/enginePaperSheet'");
-    expect(source).toContain('getEnginePaperSheet(');
+    // 261018-f15 B2: sheet + wash live in paperThumb; the picker blits.
+    expect(source).toContain("from './paperThumb'");
+    expect(source).toContain('getPaperThumb(');
     // Strip comments before the negative scan.
     const body = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     // No fluid / deposit simulation, no direct engine construction, no paperPass.
