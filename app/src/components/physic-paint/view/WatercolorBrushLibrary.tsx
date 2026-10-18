@@ -53,7 +53,7 @@ function BrushCard(props: { preset: BrushPreset; selected: boolean }) {
         borderRadius: '6px',
         border: props.selected
           ? '1px solid var(--sidebar-accent, #6ea8fe)'
-          : '1px solid var(--sidebar-border, #2a3340)',
+          : '1px solid #c8c8c8',
         background: props.selected
           ? 'var(--sidebar-accent-soft, rgba(110, 168, 254, 0.16))'
           : 'transparent',

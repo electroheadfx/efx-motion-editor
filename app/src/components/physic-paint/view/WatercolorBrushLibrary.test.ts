@@ -248,6 +248,17 @@ describe('WatercolorBrushLibrary 14-card grid (I-03)', () => {
     expect(librarySource, 'name is uppercase like the oracle label').toContain("textTransform: 'uppercase'");
   });
 
+  it('unselected card border is a light gray, not the dark sidebar border (261018-gqo)', () => {
+    const librarySource = readFileSync(resolve(__dirname, 'WatercolorBrushLibrary.tsx'), 'utf8');
+    expect(librarySource, 'light gray unselected border').toContain("'1px solid #c8c8c8'");
+    expect(librarySource, 'dark sidebar border is gone').not.toContain('var(--sidebar-border');
+    expect(librarySource, 'no #2a3340 fallback').not.toContain('#2a3340');
+    // Selected accent border stays.
+    expect(librarySource, 'selected accent border stays').toContain(
+      "'1px solid var(--sidebar-accent, #6ea8fe)'",
+    );
+  });
+
   it('has no category filter, search field, or import affordance', () => {
     const tree = renderLibrary();
     const inputs = [...walk(tree)].filter((n) => n.type === 'input');
