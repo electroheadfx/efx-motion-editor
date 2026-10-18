@@ -14,6 +14,7 @@ pub const SCRIPT_KIND: &str = "efx-studio-paint-script";
 /// Pre-envelope kind — recognized ONLY to refuse it as a clean-break row (D-16).
 pub const LEGACY_SCRIPT_KIND: &str = "efx-physics-paint-roto-script";
 pub const SCRIPT_ENGINE_ID: &str = "efx-physic-paint";
+pub const SCRIPT_ENGINE_ID_AQUARELLE: &str = "efx-watercolor";
 pub const SCRIPT_VERSION: u64 = 1;
 pub const SCRIPT_EXTENSION: &str = ".efx-roto-script.json";
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -2116,9 +2117,11 @@ pub(crate) fn validate_document(value: Value, expected_id: Option<&str>) -> Resu
     if object.get("kind").and_then(Value::as_str) != Some(SCRIPT_KIND) {
         return Err("Invalid script kind".to_string());
     }
-    if object.get("engineId").and_then(Value::as_str) != Some(SCRIPT_ENGINE_ID) {
-        return Err("Invalid script engineId".to_string());
-    }
+    let engine_id = object
+        .get("engineId")
+        .and_then(Value::as_str)
+        .filter(|id| *id == SCRIPT_ENGINE_ID || *id == SCRIPT_ENGINE_ID_AQUARELLE)
+        .ok_or_else(|| "Invalid script engineId".to_string())?;
     if object.get("schemaVersion").and_then(Value::as_u64) != Some(SCRIPT_VERSION) {
         return Err("Unsupported script schemaVersion".to_string());
     }
@@ -2144,7 +2147,7 @@ pub(crate) fn validate_document(value: Value, expected_id: Option<&str>) -> Resu
     validate_source(object.get("source"))?;
     validate_thumbnail(object.get("thumbnail"))?;
     validate_brush_pack(object.get("brushPack"))?;
-    validate_strokes(object.get("strokes"))?;
+    validate_strokes(object.get("strokes"), engine_id)?;
     Ok(value)
 }
 
@@ -2233,21 +2236,36 @@ fn validate_brush_pack(value: Option<&Value>) -> Result<(), String> {
 
 /// Flattened StudioStroke list (55-05 D-23 field mapping).
 /// cuisson > 0 = continuation of the previous primary; cuisson == 0 = new group.
-fn validate_strokes(value: Option<&Value>) -> Result<(), String> {
+/// 261018-odm: for an aquarelle document, Dry markers are legal empty-pt
+/// entries that do not consume a brush or continuation slot.
+fn validate_strokes(value: Option<&Value>, engine_id: &str) -> Result<(), String> {
     let strokes = value
         .and_then(Value::as_array)
         .ok_or_else(|| "Invalid strokes".to_string())?;
     if strokes.is_empty() || strokes.len() > MAX_BRUSHES + MAX_BRUSHES * MAX_CONTINUATIONS {
         return Err("Stroke count is outside the supported range".to_string());
     }
+    let aquarelle = engine_id == SCRIPT_ENGINE_ID_AQUARELLE;
     let mut total_points = 0usize;
     let mut continuations_in_group = 0usize;
+    let mut brushes = 0usize;
     for stroke in strokes {
-        let continuation = stroke
-            .get("cuisson")
-            .and_then(Value::as_u64)
-            .is_some_and(|value| value > 0);
-        total_points += validate_envelope_stroke(stroke, continuation)?;
+        let is_dry = aquarelle
+            && stroke
+                .get("engine")
+                .and_then(|e| e.get("kind"))
+                .and_then(Value::as_str)
+                == Some("dry");
+        if is_dry {
+            validate_envelope_stroke(stroke, false, engine_id)?;
+            continue;
+        }
+        let continuation = !aquarelle
+            && stroke
+                .get("cuisson")
+                .and_then(Value::as_u64)
+                .is_some_and(|value| value > 0);
+        total_points += validate_envelope_stroke(stroke, continuation, engine_id)?;
         if continuation {
             continuations_in_group += 1;
             if continuations_in_group > MAX_CONTINUATIONS {
@@ -2255,6 +2273,10 @@ fn validate_strokes(value: Option<&Value>) -> Result<(), String> {
             }
         } else {
             continuations_in_group = 0;
+            brushes += 1;
+            if brushes > MAX_BRUSHES {
+                return Err("Too many brushes".to_string());
+            }
         }
         if total_points > MAX_TOTAL_POINTS {
             return Err("Script has too many total points".to_string());
@@ -2263,7 +2285,11 @@ fn validate_strokes(value: Option<&Value>) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_envelope_stroke(value: &Value, continuation: bool) -> Result<usize, String> {
+fn validate_envelope_stroke(
+    value: &Value,
+    continuation: bool,
+    engine_id: &str,
+) -> Result<usize, String> {
     let stroke = value
         .as_object()
         .ok_or_else(|| "Invalid stroke".to_string())?;
@@ -2271,6 +2297,50 @@ fn validate_envelope_stroke(value: &Value, continuation: bool) -> Result<usize, 
         .get("pts")
         .and_then(Value::as_array)
         .ok_or_else(|| "Invalid stroke pts".to_string())?;
+    let aquarelle = engine_id == SCRIPT_ENGINE_ID_AQUARELLE;
+    let is_dry = aquarelle
+        && stroke
+            .get("engine")
+            .and_then(|e| e.get("kind"))
+            .and_then(Value::as_str)
+            == Some("dry");
+    if is_dry {
+        // Dry marker: empty pts, ticks 0, cuisson 0, brushId = aquarelle engine.
+        if !pts.is_empty() {
+            return Err("Dry marker must have zero points".to_string());
+        }
+        if stroke.get("ticks").and_then(Value::as_u64) != Some(0) {
+            return Err("Dry marker ticks must be 0".to_string());
+        }
+        if stroke.get("cuisson").and_then(Value::as_u64) != Some(0) {
+            return Err("Dry marker cuisson must be 0".to_string());
+        }
+        if !stroke.get("motion").is_some_and(Value::is_null) {
+            return Err("Stroke motion must be null".to_string());
+        }
+        if stroke.get("brushId").and_then(Value::as_str) != Some(SCRIPT_ENGINE_ID_AQUARELLE) {
+            return Err("Invalid stroke brushId".to_string());
+        }
+        if stroke
+            .get("toolOverrides")
+            .and_then(Value::as_object)
+            .is_some_and(|map| !map.is_empty())
+        {
+            return Err("Dry marker toolOverrides must be empty".to_string());
+        }
+        if stroke.get("traceSeed").and_then(Value::as_f64) != Some(0.0) {
+            return Err("Dry marker traceSeed must be 0".to_string());
+        }
+        finite_number(stroke.get("recordedOrder"), "recordedOrder")?;
+        if stroke.get("playFrame").is_some_and(|v| !v.is_null()) {
+            return Err("Dry marker playFrame must be null".to_string());
+        }
+        if stroke.get("color").is_some_and(|v| !v.is_null()) {
+            return Err("Dry marker color must be null".to_string());
+        }
+        validate_engine_payload_dry(stroke.get("engine"))?;
+        return Ok(0);
+    }
     if continuation {
         if !pts.is_empty() {
             return Err("Continuation strokes must have zero points".to_string());
@@ -2283,11 +2353,18 @@ fn validate_envelope_stroke(value: &Value, continuation: bool) -> Result<usize, 
         non_negative_integer(point.get("tick"), "tick")?;
     }
     non_negative_integer(stroke.get("ticks"), "ticks")?;
-    non_negative_integer(stroke.get("cuisson"), "cuisson")?;
+    if aquarelle {
+        // Aquarelle: cuisson is always 0 (diffusionFrames lives in the engine slot).
+        if stroke.get("cuisson").and_then(Value::as_u64) != Some(0) {
+            return Err("Aquarelle stroke cuisson must be 0".to_string());
+        }
+    } else {
+        non_negative_integer(stroke.get("cuisson"), "cuisson")?;
+    }
     if !stroke.get("motion").is_some_and(Value::is_null) {
         return Err("Stroke motion must be null".to_string());
     }
-    if stroke.get("brushId").and_then(Value::as_str) != Some(SCRIPT_ENGINE_ID) {
+    if stroke.get("brushId").and_then(Value::as_str) != Some(engine_id) {
         return Err("Invalid stroke brushId".to_string());
     }
     if stroke.get("toolOverrides").and_then(Value::as_object).is_none() {
@@ -2311,14 +2388,21 @@ fn validate_envelope_stroke(value: &Value, continuation: bool) -> Result<usize, 
             return Err("Invalid stroke color".to_string());
         }
     }
-    validate_engine_payload(stroke.get("engine"), continuation)?;
+    validate_engine_payload(stroke.get("engine"), continuation, engine_id)?;
     Ok(pts.len())
 }
 
-fn validate_engine_payload(value: Option<&Value>, continuation: bool) -> Result<(), String> {
+fn validate_engine_payload(
+    value: Option<&Value>,
+    continuation: bool,
+    engine_id: &str,
+) -> Result<(), String> {
     let engine = value
         .and_then(Value::as_object)
         .ok_or_else(|| "Invalid engine payload".to_string())?;
+    if engine_id == SCRIPT_ENGINE_ID_AQUARELLE {
+        return validate_engine_payload_aquarelle(engine);
+    }
     match engine.get("tool").and_then(Value::as_str) {
         Some("paint" | "erase") => {}
         _ => return Err("Invalid stroke tool".to_string()),
@@ -2378,6 +2462,69 @@ fn validate_engine_payload(value: Option<&Value>, continuation: bool) -> Result<
             return Err("Invalid physicsMode".to_string());
         }
     }
+    Ok(())
+}
+
+/// 261018-odm: aquarelle stroke engine-slot guard (AquarelleStrokePayload).
+fn validate_engine_payload_aquarelle(engine: &serde_json::Map<String, Value>) -> Result<(), String> {
+    match engine.get("tool").and_then(Value::as_str) {
+        Some("brush" | "water" | "pen" | "lift") => {}
+        _ => return Err("Invalid stroke tool".to_string()),
+    }
+    if let Some(color) = engine.get("color") {
+        if !color.is_null()
+            && !color.as_str().is_some_and(|value| {
+                value.len() == 7
+                    && value.starts_with('#')
+                    && value[1..].chars().all(|c| c.is_ascii_hexdigit())
+            })
+        {
+            return Err("Invalid stroke color".to_string());
+        }
+    }
+    let params = engine
+        .get("params")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Invalid stroke params".to_string())?;
+    for (key, value) in params {
+        if !value.as_f64().is_some_and(|n| n.is_finite()) {
+            return Err(format!("Invalid stroke param: {key}"));
+        }
+    }
+    let brush_id = engine
+        .get("brushId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Invalid brushId".to_string())?;
+    let _ = brush_id;
+    non_negative_integer(engine.get("timestamp"), "timestamp")?;
+    if let Some(value) = engine.get("toolOverrides") {
+        if !value.is_object() {
+            return Err("Invalid toolOverrides".to_string());
+        }
+    }
+    if let Some(value) = engine.get("mutationId") {
+        non_negative_integer(Some(value), "mutationId")?;
+    }
+    if let Some(value) = engine.get("playFrame") {
+        non_negative_integer(Some(value), "playFrame")?;
+    }
+    if let Some(value) = engine.get("diffusionFrames") {
+        positive_integer(Some(value), "diffusionFrames", 600)?;
+    }
+    Ok(())
+}
+
+/// 261018-odm: aquarelle Dry-marker engine-slot guard (AquarelleDryEvent).
+fn validate_engine_payload_dry(value: Option<&Value>) -> Result<(), String> {
+    let engine = value
+        .and_then(Value::as_object)
+        .ok_or_else(|| "Invalid engine payload".to_string())?;
+    if engine.get("kind").and_then(Value::as_str) != Some("dry") {
+        return Err("Invalid dry marker kind".to_string());
+    }
+    non_negative_integer(engine.get("tick"), "tick")?;
+    finite_number(engine.get("recordedOrder"), "recordedOrder")?;
     Ok(())
 }
 
@@ -2820,5 +2967,118 @@ mod tests {
             "background": { "background": "white", "grainStrength": 0.5, "grainScale": 99.0 }
         });
         assert!(validate_source(Some(&source)).is_err(), "out-of-range grainScale must be rejected");
+    }
+
+    // ---- 261018-odm: dual-engine aquarelle variant ----
+
+    fn aquarelle_document(engine_id: &str) -> Value {
+        json!({
+            "kind": SCRIPT_KIND,
+            "schemaVersion": SCRIPT_VERSION,
+            "engineId": engine_id,
+            "id": "123e4567-e89b-42d3-a456-426614174000",
+            "name": "Wash",
+            "createdAt": "2026-07-16T12:00:00.000Z",
+            "updatedAt": "2026-07-16T12:00:00.000Z",
+            "source": {
+                "projectName": "p", "layerId": "l", "layerName": "n",
+                "sourceFrame": 0, "displayFrame": 0, "width": 100, "height": 100,
+                "background": { "background": "canvas2", "grainStrength": 0.5 }
+            },
+            "thumbnail": {
+                "mimeType": "image/webp", "width": 1, "height": 1, "quality": 0.8,
+                "dataUrl": "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAUAmJaQAA3AA/vz0AAA="
+            },
+            "brushPack": { "kind": SCRIPT_ENGINE_ID_AQUARELLE, "entries": [] },
+            "strokes": [
+                {
+                    "pts": [{ "x": 0.25, "y": 0.75, "p": 0.8, "tx": 0, "ty": 0, "tw": 0, "tick": 0 }],
+                    "ticks": 1, "cuisson": 0, "motion": null,
+                    "brushId": SCRIPT_ENGINE_ID_AQUARELLE,
+                    "toolOverrides": {}, "traceSeed": 1,
+                    "recordedOrder": 10, "playFrame": null, "color": null,
+                    "engine": {
+                        "tool": "brush", "color": null,
+                        "params": { "size": 12.0, "water": 50.0, "load": 50.0, "flow": 50.0, "bleed": 50.0, "dry": 50.0, "edge": 50.0, "granulation": 50.0 },
+                        "brushId": "wc/round-medium", "timestamp": 10
+                    }
+                },
+                {
+                    "pts": [], "ticks": 0, "cuisson": 0, "motion": null,
+                    "brushId": SCRIPT_ENGINE_ID_AQUARELLE,
+                    "toolOverrides": {}, "traceSeed": 0,
+                    "recordedOrder": 20, "playFrame": null, "color": null,
+                    "engine": { "kind": "dry", "tick": 4, "recordedOrder": 20 }
+                }
+            ]
+        })
+    }
+
+    #[test]
+    fn validate_document_accepts_aquarelle_engine_and_dry_marker() {
+        let document = aquarelle_document(SCRIPT_ENGINE_ID_AQUARELLE);
+        assert!(
+            validate_document(document, None).is_ok(),
+            "aquarelle document with one stroke + one Dry marker must validate"
+        );
+    }
+
+    #[test]
+    fn validate_document_rejects_third_engine_id() {
+        let document = aquarelle_document("efx-krita");
+        assert!(
+            validate_document(document, None).is_err(),
+            "a third engineId must be rejected"
+        );
+    }
+
+    #[test]
+    fn validate_document_rejects_engine1_tool_on_aquarelle_stroke() {
+        let mut document = aquarelle_document(SCRIPT_ENGINE_ID_AQUARELLE);
+        document["strokes"][0]["engine"]["tool"] = json!("paint");
+        assert!(
+            validate_document(document, None).is_err(),
+            "an engine-1 tool id must refuse on an aquarelle document"
+        );
+    }
+
+    #[test]
+    fn validate_document_accepts_engine1_document() {
+        let document = json!({
+            "kind": SCRIPT_KIND,
+            "schemaVersion": SCRIPT_VERSION,
+            "engineId": SCRIPT_ENGINE_ID,
+            "id": "123e4567-e89b-42d3-a456-426614174000",
+            "name": "Preset",
+            "createdAt": "2026-07-16T12:00:00.000Z",
+            "updatedAt": "2026-07-16T12:00:00.000Z",
+            "source": {
+                "projectName": "p", "layerId": "l", "layerName": "n",
+                "sourceFrame": 0, "displayFrame": 0, "width": 100, "height": 100,
+                "background": { "background": "canvas2", "grainStrength": 0.5 }
+            },
+            "thumbnail": {
+                "mimeType": "image/webp", "width": 1, "height": 1, "quality": 0.8,
+                "dataUrl": "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAUAmJaQAA3AA/vz0AAA="
+            },
+            "brushPack": { "kind": SCRIPT_ENGINE_ID, "entries": [] },
+            "strokes": [{
+                "pts": [{ "x": 1.0, "y": 2.0, "p": 0.5, "tx": 0, "ty": 0, "tw": 0, "tick": 0 }],
+                "ticks": 1, "cuisson": 0, "motion": null,
+                "brushId": SCRIPT_ENGINE_ID,
+                "toolOverrides": {}, "traceSeed": 1,
+                "recordedOrder": 10, "playFrame": null, "color": null,
+                "engine": {
+                    "tool": "paint", "color": null,
+                    "params": {
+                        "size": 12.0, "opacity": 90.0, "pressure": 80.0,
+                        "waterAmount": 70.0, "dryAmount": 60.0, "edgeDetail": 50.0,
+                        "pickup": 40.0, "eraseStrength": 30.0, "antiAlias": 2
+                    },
+                    "timestamp": 10
+                }
+            }]
+        });
+        assert!(validate_document(document, None).is_ok(), "an engine-1 document must still validate");
     }
 }
