@@ -168,7 +168,8 @@ function PaperCard(props: {
       onClick={props.onSelect}
       {...props.attributes}
       style={{
-        width: `${CARD_WIDTH}px`,
+        // 261018-jlb move 6: grid 1fr track sizes the cell; fill the row width.
+        width: '100%',
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
@@ -177,14 +178,17 @@ function PaperCard(props: {
         borderRadius: '6px',
         overflow: 'hidden',
         cursor: props.disabled ? 'default' : 'pointer',
-        // 261018-ias AREA 2: UAT cell fill (was --color-bg-input).
-        background: '#c4c4c4',
+        // 261018-jlb move 5: UAT cell fill rgb(218, 218, 218) (was #c4c4c4).
+        background: 'rgb(218, 218, 218)',
       }}
     >
       <div
         style={{
           width: '100%',
-          height: `${THUMB_HEIGHT}px`,
+          // 261018-jlb move 6: landscape 112/64 thumb aspect scales with the
+          // cell. Display stretch is CSS-only — paint/cache stays 112×64.
+          aspectRatio: `${CARD_WIDTH} / ${THUMB_HEIGHT}`,
+          height: 'auto',
           overflow: 'hidden',
           flex: '0 0 auto',
         }}
@@ -200,7 +204,8 @@ function PaperCard(props: {
           letterSpacing: '0.14em',
           textTransform: 'uppercase',
           textAlign: 'center',
-          padding: '2px 1px',
+          // 261018-jlb move 4: name padding 3px 4px (was 2px 1px).
+          padding: '3px 4px',
           lineHeight: 1.2,
           // 261018-ias AREA 2: UAT name color (was active/secondary pair).
           color: '#3d3d3d',
@@ -390,7 +395,7 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
           data-paper-group-grid="real"
           style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(2, ${CARD_WIDTH}px)`,
+            gridTemplateColumns: 'repeat(2, 1fr)',
             gap: `${GRID_GAP}px`,
           }}
         >
@@ -427,7 +432,7 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
           data-paper-group-grid="procedural"
           style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(2, ${CARD_WIDTH}px)`,
+            gridTemplateColumns: 'repeat(2, 1fr)',
             gap: `${GRID_GAP}px`,
           }}
         >

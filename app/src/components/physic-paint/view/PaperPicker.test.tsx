@@ -412,12 +412,15 @@ describe('PaperPicker (D-09..D-12)', () => {
   it('uses the oracle landscape card constants (112×64, 2 columns); name stays below', () => {
     // 261018-gqo move 1: the live oracle-look instruction overrides the old
     // UI-SPEC 64×64 square lock. Cards are ~2:1 landscape (PaperPanel SWATCH).
+    // 261018-jlb move 6: 2-column grid stretches to the panel row (1fr tracks);
+    // the thumb window keeps the 112/64 landscape aspect via CSS only.
     const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), './PaperPicker.tsx');
     const source = readFileSync(sourcePath, 'utf8');
     expect(source.includes('const CARD_WIDTH = 112')).toBe(true);
     expect(source.includes('const THUMB_HEIGHT = 64')).toBe(true);
     expect(source.includes('const GRID_GAP = 8')).toBe(true);
-    expect(source.includes('gridTemplateColumns: `repeat(2, ${CARD_WIDTH}px)`')).toBe(true);
+    expect(source.includes("gridTemplateColumns: 'repeat(2, 1fr)'"), 'fill law 1fr columns').toBe(true);
+    expect(source.includes('aspectRatio: `${CARD_WIDTH} / ${THUMB_HEIGHT}`'), 'landscape thumb aspect').toBe(true);
     expect(source.includes('const CELL_SIZE = 64'), 'square cell idiom is gone').toBe(false);
   });
 
