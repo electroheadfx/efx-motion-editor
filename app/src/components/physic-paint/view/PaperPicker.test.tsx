@@ -5,7 +5,7 @@
  *   D-09   thumbnail grid popover in the shared panel (13 cells)
  *   D-11   cells show the raw tile (height-map lit relief / jpg), no engine
  *   D-12   one library grouped Procedural / Real headers
- *   UI-SPEC 3 columns, 64×64 cells, accent on the active cell only
+ *   UI-SPEC 2 columns, 64×64 cells, accent on the active cell only
  *   261017-vcn Q6 grain pair at the TOP, Transparent/White next, grid last
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
@@ -20,7 +20,13 @@ import { PaperPicker, grainScaleStep } from './PaperPicker';
 import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 import { commitStepperInput, parseStepperInput } from '../../shared/NumericStepper';
 import { SliderStepper } from '../../shared/SliderStepper';
+import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { GRAIN_SCALE_MAX, GRAIN_SCALE_MIN } from '../../../efx-paint/document/efxPaintDocument';
+
+/** Strip block + line comments so negative scans never trip on docs. */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
 
 vi.mock('preact/hooks', async (importOriginal) => {
   const actual = await importOriginal<typeof import('preact/hooks')>();
@@ -109,16 +115,24 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(trigger.length).toBe(0);
   });
 
-  it('renders group headers Procedural and Real (D-12)', () => {
-    // The popover is open-state; open the signal by re-rendering after a click
-    // is not available in the materializer, so assert the header constants
-    // from the module source AND the closed-tree structure (headers mount
-    // with the popover).
+  it('section titles are RuleSectionHeader rule-and-label bars (261018-f15)', () => {
+    const root = PaperPicker(pickerProps()) as TestVNode;
+    const nodes = [...walk(root)];
+    // Texture titles the grain pair; Real / Procedural title their grids.
+    const ruleHeaders = findAll(root, (node) => node.type === RuleSectionHeader);
+    const titles = ruleHeaders.map((n) => String((n.props as { text?: string }).text ?? ''));
+    expect(titles).toContain('Texture');
+    expect(titles).toContain('Real');
+    expect(titles).toContain('Procedural');
+    // No black sticky group-header bars remain.
+    const stickyBars = nodes.filter((node) => {
+      const style = (node.props?.['style'] ?? {}) as Record<string, unknown>;
+      return String(style['background'] ?? '').includes('bg-toolbar') || String(style['position'] ?? '') === 'sticky';
+    });
+    expect(stickyBars.length, 'no sticky toolbar-background bars').toBe(0);
     const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), './PaperPicker.tsx');
-    const source = readFileSync(sourcePath, 'utf8');
-    expect(source.includes('Procedural')).toBe(true);
-    expect(source.includes('Real')).toBe(true);
-    expect(source.includes('data-paper-group-header')).toBe(true);
+    const body = stripComments(readFileSync(sourcePath, 'utf8'));
+    expect(body, 'no toolbar-background fill left').not.toContain('var(--color-bg-toolbar)');
   });
 
   it('Real papers come before Procedural (261018-cy1)', () => {
@@ -160,13 +174,9 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(source.includes("'1px solid var(--color-border-subtle)'")).toBe(true);
   });
 
-  it('Paper-tab order is grain → Transparent/White → grid; the D-10 bottom pair is gone', () => {
-    // 261017-vcn Q6: grain widgets move to the TOP of the Paper tab (names
-    // stay Grain strength + Grain scale), Transparent + White sit between the
-    // grain controls and the paper grid, and the former bottom pair leaves so
-    // one grain control pair survives. Anchor on the structural section
-    // markers in the host-only tree (SliderStepper stays an opaque function
-    // component).
+  it('Paper-tab order is Texture grain → Real (arms first) → Procedural; D-10 bottom pair is gone', () => {
+    // 261017-vcn Q6: grain widgets at the TOP. 261018-f15: Transparent + White
+    // are the first two cells of the Real section (still onBackgroundChange).
     const root = PaperPicker(pickerProps()) as TestVNode;
     const nodes = [...walk(root)];
     const grainSection = nodes.findIndex((node) => node.props?.['data-paper-picker-grain'] !== undefined);
@@ -176,7 +186,8 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(armsSection).toBeGreaterThan(-1);
     expect(gridSection).toBeGreaterThan(-1);
     expect(grainSection).toBeLessThan(armsSection);
-    expect(armsSection).toBeLessThan(gridSection);
+    // Arms live INSIDE the flat popover (Real section), before the real papers.
+    expect(gridSection).toBeLessThan(armsSection);
     // Names stay Grain strength + Grain scale (Q6); arms are Transparent/White.
     const joined = nodes
       .flatMap((node) => [node.props?.['aria-label'], node.props?.['title'], node.props?.['label']])
@@ -191,6 +202,44 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(sliders.length).toBe(0);
     // Grid constants stay locked (UI-SPEC).
     expect(findAll(root, (node) => node.props?.['data-paper-picker-popover'] !== undefined).length).toBe(1);
+  });
+
+  it('Transparent and White are the first two cells of the Real section (261018-f15)', () => {
+    const root = materialize(PaperPicker(pickerProps()));
+    const nodes = [...walk(root)];
+    const realGrid = nodes.findIndex((node) => node.props?.['data-paper-group-grid'] === 'real');
+    expect(realGrid, 'real grid must render').toBeGreaterThan(-1);
+    // Collect the real-grid's cell order via data-paper-id / arm labels.
+    const cells: string[] = [];
+    for (let i = realGrid + 1; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (node.props?.['data-paper-group-grid'] === 'procedural') break;
+      const id = node.props?.['data-paper-id'];
+      if (typeof id === 'string') { cells.push(id); continue; }
+      const label = node.props?.['aria-label'];
+      if (label === 'Transparent' || label === 'White') cells.push(label);
+    }
+    expect(cells.slice(0, 2), 'arms lead the Real section').toEqual(['Transparent', 'White']);
+    expect(cells.length, 'arms + 3 real papers').toBe(5);
+  });
+
+  it('paper cards put the name BELOW the thumb (no caption overlay)', () => {
+    const root = materialize(PaperPicker(pickerProps()));
+    const cell = findAll(root, (node) => node.props?.['data-paper-id'] !== undefined)[0];
+    expect(cell).toBeDefined();
+    const style = (cell!.props?.['style'] ?? {}) as Record<string, unknown>;
+    // Card is a column: thumb then name — never absolute overlay.
+    expect(String(style['display'] ?? '')).toContain('flex');
+    expect(String(style['flexDirection'] ?? '')).toBe('column');
+    const name = findAll(cell!, (node) => String(node.props?.['class'] ?? '').includes('paper-picker-cell-name'))[0];
+    expect(name, 'name span must render').toBeDefined();
+    const nameStyle = (name!.props?.['style'] ?? {}) as Record<string, unknown>;
+    expect(String(nameStyle['position'] ?? ''), 'name is not an overlay').not.toBe('absolute');
+    expect(String(nameStyle['inset'] ?? ''), 'no inset overlay').toBe('');
+    expect(String(nameStyle['textTransform'] ?? '')).toBe('uppercase');
+    const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), './PaperPicker.tsx');
+    const body = stripComments(readFileSync(sourcePath, 'utf8'));
+    expect(body, 'no caption-strip gradient').not.toContain('linear-gradient(transparent 55%');
   });
 
   it('grain strength segments and grain scale stepper route to their own handlers', () => {
@@ -303,12 +352,12 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(body.includes('applyPaperPass')).toBe(false);
   });
 
-  it('uses the 64×64 cell and 8px gap constants (UI-SPEC)', () => {
+  it('uses the 64×64 cell and 8px gap constants (UI-SPEC); grid is 2 columns', () => {
     const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), './PaperPicker.tsx');
     const source = readFileSync(sourcePath, 'utf8');
     expect(source.includes('const CELL_SIZE = 64')).toBe(true);
     expect(source.includes('const GRID_GAP = 8')).toBe(true);
-    expect(source.includes('gridTemplateColumns: `repeat(3, ${CELL_SIZE}px)`')).toBe(true);
+    expect(source.includes('gridTemplateColumns: `repeat(2, ${CELL_SIZE}px)`')).toBe(true);
   });
 });
 

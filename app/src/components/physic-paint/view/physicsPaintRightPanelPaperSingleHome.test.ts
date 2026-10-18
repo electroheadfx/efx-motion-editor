@@ -105,20 +105,19 @@ describe('261017-fz3 PaperPicker single home', () => {
 // 261017-vcn I-04 remainder — three locked moves. Source-scan pins, same
 // idiom as the single-home contract above (source-scan + vnode materialize).
 describe('261017-vcn I-04 remainder paper-tab single home', () => {
-  it('Paper tab order is grain pair → Transparent/White → grid; the D-10 bottom pair is gone', () => {
-    // Pin 1: the rendered Paper-tab order is grain pair → Transparent/White →
-    // grid. Anchor on the structural section markers (the JSX render order),
-    // not on label substrings (warmProceduralReliefThumbs also contains
-    // "Procedural"; BACKGROUND_ARMS constants sit above the component).
+  it('Paper tab order is grain pair → flat popover (arms in Real); D-10 bottom pair is gone', () => {
+    // Pin 1: grain pair at the top; Transparent/White join the Real section
+    // INSIDE the flat popover (261018-f15). Anchor on structural markers.
     const body = stripComments(pickerSource);
     const grainIdx = body.indexOf('data-paper-picker-grain');
-    const armsIdx = body.indexOf('data-paper-picker-backgrounds');
     const gridIdx = body.indexOf('data-paper-picker-popover');
+    const armsIdx = body.indexOf('data-paper-picker-backgrounds');
     expect(grainIdx, 'grain section must sit at the top of the Paper tab').toBeGreaterThan(-1);
-    expect(armsIdx, 'Transparent/White arms must join the Paper tab').toBeGreaterThan(-1);
-    expect(gridIdx, 'Procedural/Real grid must stay').toBeGreaterThan(-1);
-    expect(grainIdx).toBeLessThan(armsIdx);
-    expect(armsIdx).toBeLessThan(gridIdx);
+    expect(gridIdx, 'flat popover must stay').toBeGreaterThan(-1);
+    expect(armsIdx, 'Transparent/White arms must join the Real section').toBeGreaterThan(-1);
+    expect(grainIdx).toBeLessThan(gridIdx);
+    // Arms live inside the popover (Real section), not before it.
+    expect(gridIdx).toBeLessThan(armsIdx);
     // Names stay Grain strength + Grain scale (Q6).
     expect(body.indexOf('Grain strength'), 'Grain strength name must stay').toBeGreaterThan(-1);
     expect(body.indexOf('Grain scale'), 'Grain scale name must stay').toBeGreaterThan(-1);
@@ -128,8 +127,9 @@ describe('261017-vcn I-04 remainder paper-tab single home', () => {
     expect(pickerSource.indexOf('data-paper-picker-sliders'), 'bottom pair must leave').toBe(-1);
     expect(pickerSource.indexOf('paper-strength'), 'paper-strength id must leave').toBe(-1);
     expect(pickerSource.indexOf('paper-scale'), 'paper-scale id must leave').toBe(-1);
-    // Names stay Grain strength + Grain scale (Q6).
-    expect(pickerSource.indexOf('Grain scale'), 'Grain scale name must stay').toBeGreaterThan(-1);
+    // 261018-f15: the inner scroller goes — the outer SidebarScrollArea owns it.
+    expect(body.indexOf('maxHeight'), 'no inner maxHeight').toBe(-1);
+    expect(body.indexOf('overflowY'), 'no inner overflowY').toBe(-1);
   });
 
   it('top bar keeps status + ModuleSwitcher + Brush size + Opacity only', () => {

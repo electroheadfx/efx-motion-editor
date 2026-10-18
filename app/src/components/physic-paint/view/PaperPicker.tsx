@@ -2,15 +2,20 @@
  * 56-05 (D-09..D-12 / PAPER-01 / PAPER-04): the shared-panel Paper section.
  *
  * 261017-vcn I-04 remainder (Q6 + locked Paper-background decision): the Paper
- * tab is the SINGLE home for paper + background. Top to bottom:
- *   1. Grain strength segmented row + Grain scale SliderStepper (the former
- *      top-bar widgets; names stay Grain strength + Grain scale).
- *   2. Transparent + White background arms (background, not papers) — reuse
- *      the top-bar swatch look, route through the existing background-change
- *      path. A paper cell keeps the paper-id path.
- *   3. The locked 13-cell grid (Real then Procedural, CELL_SIZE=64,
- *      GRID_GAP=8, 3 columns) — UI-SPEC, never changes. 261018-cy1: the
- *      grid sits flat in the tab body (no card chrome).
+ * tab is the SINGLE home for paper + background. Top to bottom (261018-f15
+ * flatten):
+ *   1. RuleSectionHeader "Texture" + Grain strength segmented row + Grain
+ *      scale SliderStepper (names stay Grain strength + Grain scale).
+ *   2. RuleSectionHeader "Real" + a 2-column grid whose first two cells are
+ *      the Transparent + White background arms (paper-card layout, still
+ *      onBackgroundChange) followed by the real jpg scans (onPaperIdChange).
+ *   3. RuleSectionHeader "Procedural" + the procedural papers in the same
+ *      2-column grid.
+ *
+ * Section titles are the decorative rule-and-label headers — no tab-naming
+ * heading, no black sticky group bars. Cards are thumb + name BELOW (the
+ * WatercolorBrushLibrary label pattern), never a caption overlay. The outer
+ * SidebarScrollArea owns scrolling (no inner maxHeight/overflowY).
  *
  * The former D-10 bottom Strength/Scale pair leaves so one grain pair survives.
  *
@@ -27,6 +32,7 @@ import {
 } from '@efxlab/efx-watercolor/papers';
 import { getEnginePaperSheet } from '../../../lib/enginePaperSheet';
 import { SliderStepper } from '../../shared/SliderStepper';
+import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import {
   GRAIN_SCALE_MAX,
   GRAIN_SCALE_MIN,
@@ -45,10 +51,6 @@ export interface PaperPickerProps {
   disabled?: boolean;
 }
 
-function paperName(paperId: string): string {
-  return PAPER_LIBRARY.find((entry) => entry.id === paperId)?.name ?? paperId;
-}
-
 /** Cell size locked by UI-SPEC: 64×64 tiles, 8px grid gap. */
 const CELL_SIZE = 64;
 const GRID_GAP = 8;
@@ -63,8 +65,7 @@ const GRAIN_STRENGTH_OPTIONS = [
 
 /**
  * Locked Paper-background decision: Transparent + White are background, not
- * papers. They sit between the grain controls and the paper grid and reuse the
- * top-bar swatch look.
+ * papers. 261018-f15: they join the Real section as its first two cells.
  */
 const BACKGROUND_ARMS: { label: 'Transparent' | 'White'; value: 'transparent' | 'white'; swatch: string }[] = [
   { label: 'Transparent', value: 'transparent', swatch: 'repeating-conic-gradient(#777 0% 25%, #d8d8d8 0% 50%) 0 0 / 8px 8px' },
@@ -132,13 +133,78 @@ function proceduralReliefImage(id: string): HTMLCanvasElement | null {
  * 261017-mdr: pre-fill the procedural thumb cache so the picker opens without
  * a first-open generation stall. Same engine path proceduralReliefImage
  * already uses — repeat calls are reliefCache hits. Does not touch
- * CELL_SIZE / GRID_GAP / the 3-column grid.
+ * CELL_SIZE / GRID_GAP / the 2-column grid.
  */
 export function warmProceduralReliefThumbs(): void {
   for (const entry of PAPER_LIBRARY) {
     if (entry.group !== 'procedural') continue;
     proceduralReliefImage(entry.id);
   }
+}
+
+/**
+ * Shared paper-card chrome (261018-f15): 64×64 thumb + small uppercase name
+ * BELOW it (WatercolorBrushLibrary label pattern). Never a caption overlay.
+ */
+function PaperCard(props: {
+  name: string;
+  active: boolean;
+  disabled?: boolean;
+  title: string;
+  attributes?: Record<string, string>;
+  onSelect: () => void;
+  thumb: JSX.Element;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      class={`paper-picker-cell${props.active ? ' active' : ''}`}
+      aria-pressed={props.active}
+      title={props.title}
+      disabled={props.disabled}
+      onClick={props.onSelect}
+      {...props.attributes}
+      style={{
+        width: `${CELL_SIZE}px`,
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: 0,
+        border: props.active ? '2px solid var(--color-accent)' : '1px solid var(--color-border-subtle)',
+        borderRadius: '6px',
+        overflow: 'hidden',
+        cursor: props.disabled ? 'default' : 'pointer',
+        background: 'var(--color-bg-input)',
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          height: `${CELL_SIZE}px`,
+          overflow: 'hidden',
+          flex: '0 0 auto',
+        }}
+      >
+        {props.thumb}
+      </div>
+      <span
+        class="paper-picker-cell-name"
+        style={{
+          display: 'block',
+          fontSize: '9px',
+          fontWeight: 600,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          textAlign: 'center',
+          padding: '2px 1px',
+          lineHeight: 1.2,
+          color: props.active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+        }}
+      >
+        {props.name}
+      </span>
+    </button>
+  );
 }
 
 function PaperCell(props: {
@@ -149,81 +215,87 @@ function PaperCell(props: {
 }): JSX.Element {
   const isReal = props.entry.group === 'real';
   const relief = isReal ? null : proceduralReliefImage(props.entry.id);
-  // Loading / decode-failure share one placeholder: --color-bg-input + name
-  // (UI-SPEC loading + error rows — never a blank cell, never a crash).
+  // Loading / decode-failure share one placeholder: --color-bg-input (UI-SPEC
+  // loading + error rows — never a blank cell, never a crash).
   const showPlaceholder = isReal || relief === null;
   return (
-    <button
-      type="button"
-      class={`paper-picker-cell${props.active ? ' active' : ''}`}
-      data-paper-id={props.entry.id}
-      data-paper-group={props.entry.group}
-      aria-pressed={props.active}
-      title={props.entry.name}
+    <PaperCard
+      name={props.entry.name}
+      active={props.active}
       disabled={props.disabled}
-      onClick={() => props.onSelect(props.entry.id)}
-      style={{
-        width: `${CELL_SIZE}px`,
-        height: `${CELL_SIZE}px`,
-        padding: 0,
-        border: props.active ? '2px solid var(--color-accent)' : '1px solid var(--color-border-subtle)',
-        borderRadius: '6px',
-        overflow: 'hidden',
-        cursor: props.disabled ? 'default' : 'pointer',
-        background: 'var(--color-bg-input)',
-        position: 'relative',
+      title={props.entry.name}
+      attributes={{
+        'data-paper-id': props.entry.id,
+        'data-paper-group': props.entry.group,
       }}
-    >
-      {showPlaceholder ? (
-        isReal ? (
-          <img
-            src={props.entry.source}
-            alt={props.entry.name}
-            data-paper-tile="real"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            onError={(event) => {
-              // Decode failure keeps the placeholder fill + name (UI-SPEC
-              // error row) — hide the broken image, never a blank crash.
-              (event.currentTarget as HTMLImageElement).style.display = 'none';
+      onSelect={() => props.onSelect(props.entry.id)}
+      thumb={
+        showPlaceholder ? (
+          isReal ? (
+            <img
+              src={props.entry.source}
+              alt={props.entry.name}
+              data-paper-tile="real"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              onError={(event) => {
+                // Decode failure keeps the placeholder fill (UI-SPEC error
+                // row) — hide the broken image, never a blank crash.
+                (event.currentTarget as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div
+              data-paper-tile="procedural"
+              aria-label={props.entry.name}
+              style={{ width: '100%', height: '100%', background: 'var(--color-bg-input)' }}
+            />
+          )
+        ) : (
+          <canvas
+            data-paper-tile="procedural"
+            aria-label={props.entry.name}
+            width={CELL_SIZE}
+            height={CELL_SIZE}
+            ref={(el: HTMLCanvasElement | null) => {
+              if (!el) return;
+              const ctx = el.getContext('2d');
+              if (ctx && relief) ctx.drawImage(relief, 0, 0);
             }}
+            style={{ width: '100%', height: '100%', display: 'block' }}
           />
-        ) : null
-      ) : (
-        <canvas
-          data-paper-tile="procedural"
-          aria-label={props.entry.name}
-          width={CELL_SIZE}
-          height={CELL_SIZE}
-          ref={(el: HTMLCanvasElement | null) => {
-            if (!el) return;
-            const ctx = el.getContext('2d');
-            if (ctx && relief) ctx.drawImage(relief, 0, 0);
-          }}
-          style={{ width: '100%', height: '100%', display: 'block' }}
+        )
+      }
+    />
+  );
+}
+
+function BackgroundArmCell(props: {
+  label: 'Transparent' | 'White';
+  value: 'transparent' | 'white';
+  swatch: string;
+  active: boolean;
+  disabled?: boolean;
+  onSelect: (mode: StudioBackgroundMode) => void;
+}): JSX.Element {
+  return (
+    <PaperCard
+      name={props.label}
+      active={props.active}
+      disabled={props.disabled}
+      title={props.label}
+      attributes={{
+        'data-paper-background': props.value,
+        'aria-label': props.label,
+      }}
+      onSelect={() => props.onSelect(props.value)}
+      thumb={
+        <div
+          class="physics-paint-paper-swatch"
+          data-paper-tile="background"
+          style={{ width: '100%', height: '100%', background: props.swatch }}
         />
-      )}
-      <span
-        class="paper-picker-cell-name"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '10px',
-          fontWeight: 600,
-          textAlign: 'center',
-          padding: '2px',
-          pointerEvents: 'none',
-          // The name stays visible on the placeholder; over a decoded tile it
-          // sits as a quiet caption strip so the raw tile still reads.
-          background: showPlaceholder ? 'transparent' : 'linear-gradient(transparent 55%, rgba(0,0,0,0.45))',
-          color: showPlaceholder ? 'var(--color-text-secondary)' : '#fff',
-        }}
-      >
-        {props.entry.name}
-      </span>
-    </button>
+      }
+    />
   );
 }
 
@@ -234,7 +306,8 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
 
   return (
     <div class="paper-picker" data-paper-picker style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Q6: grain pair at the TOP of the Paper tab (former top-bar widgets). */}
+      {/* Texture titles the grain pair (oracle Texture slider naming). */}
+      <RuleSectionHeader text="Texture" />
       <div
         class="paper-picker-grain"
         data-paper-picker-grain
@@ -267,38 +340,13 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
         />
       </div>
 
-      {/* Locked Paper-background decision: Transparent + White arms (background,
-          not papers) sit between the grain controls and the paper grid. */}
-      <div
-        class="physics-paint-segmented-row"
-        role="group"
-        aria-label="Background"
-        data-paper-picker-backgrounds
-      >
-        {BACKGROUND_ARMS.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            disabled={props.disabled}
-            class={`${segmentedButtonClass(props.background === option.value)} physics-paint-swatch-button`}
-            title={option.label}
-            aria-label={option.label}
-            onClick={() => props.onBackgroundChange(option.value)}
-          >
-            <span class="physics-paint-paper-swatch" style={{ background: option.swatch }} />
-          </button>
-        ))}
-      </div>
-
-      {/* Flat grouping hook (261018-cy1): content sits in the tab body —
-          no card chrome. Real papers come before Procedural. */}
+      {/* Flat list (261018-f15): rule-and-label section titles, no card
+          chrome, no inner scroller — the outer SidebarScrollArea owns it. */}
       <div
         class="paper-picker-popover"
         data-paper-picker-popover
         style={{
           width: '100%',
-          maxHeight: '320px',
-          overflowY: 'auto',
           background: 'transparent',
           border: 'none',
           borderRadius: 0,
@@ -308,79 +356,66 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
           gap: '8px',
         }}
       >
-          <div
-            class="paper-picker-group-header"
-            data-paper-group-header="real"
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 1,
-              background: 'var(--color-bg-toolbar)',
-              fontSize: '13px',
-              fontWeight: 600,
-              lineHeight: 1.2,
-              color: 'var(--color-text-primary)',
-              padding: '4px 0',
-            }}
-          >
-            Real
-          </div>
-          <div
-            class="paper-picker-grid"
-            data-paper-group-grid="real"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(3, ${CELL_SIZE}px)`,
-              gap: `${GRID_GAP}px`,
-            }}
-          >
-            {real.map((entry) => (
-              <PaperCell
-                key={entry.id}
-                entry={entry}
-                active={entry.id === props.paperId}
-                onSelect={props.onPaperIdChange}
-                disabled={props.disabled}
-              />
-            ))}
-          </div>
-          <div
-            class="paper-picker-group-header"
-            data-paper-group-header="procedural"
-            style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 1,
-              background: 'var(--color-bg-toolbar)',
-              fontSize: '13px',
-              fontWeight: 600,
-              lineHeight: 1.2,
-              color: 'var(--color-text-primary)',
-              padding: '4px 0',
-            }}
-          >
-            Procedural
-          </div>
-          <div
-            class="paper-picker-grid"
-            data-paper-group-grid="procedural"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(3, ${CELL_SIZE}px)`,
-              gap: `${GRID_GAP}px`,
-            }}
-          >
-            {procedural.map((entry) => (
-              <PaperCell
-                key={entry.id}
-                entry={entry}
-                active={entry.id === props.paperId}
-                onSelect={props.onPaperIdChange}
-                disabled={props.disabled}
-              />
-            ))}
-          </div>
+        <div data-paper-group-header="real">
+          <RuleSectionHeader text="Real" />
         </div>
+        <div
+          class="paper-picker-grid"
+          data-paper-group-grid="real"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(2, ${CELL_SIZE}px)`,
+            gap: `${GRID_GAP}px`,
+          }}
+        >
+          {/* Locked Paper-background decision: Transparent + White lead the
+              Real section as paper cards; the hook keeps the pair findable. */}
+          <div data-paper-picker-backgrounds style={{ display: 'contents' }}>
+            {BACKGROUND_ARMS.map((option) => (
+              <BackgroundArmCell
+                key={option.value}
+                label={option.label}
+                value={option.value}
+                swatch={option.swatch}
+                active={props.background === option.value}
+                disabled={props.disabled}
+                onSelect={props.onBackgroundChange}
+              />
+            ))}
+          </div>
+          {real.map((entry) => (
+            <PaperCell
+              key={entry.id}
+              entry={entry}
+              active={entry.id === props.paperId}
+              onSelect={props.onPaperIdChange}
+              disabled={props.disabled}
+            />
+          ))}
+        </div>
+        <div data-paper-group-header="procedural">
+          <RuleSectionHeader text="Procedural" />
+        </div>
+        <div
+          class="paper-picker-grid"
+          data-paper-group-grid="procedural"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(2, ${CELL_SIZE}px)`,
+            gap: `${GRID_GAP}px`,
+          }}
+        >
+          {procedural.map((entry) => (
+            <PaperCell
+              key={entry.id}
+              entry={entry}
+              active={entry.id === props.paperId}
+              onSelect={props.onPaperIdChange}
+              disabled={props.disabled}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
