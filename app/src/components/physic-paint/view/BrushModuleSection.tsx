@@ -80,12 +80,7 @@ export function BrushModuleSection({
 }: BrushModuleSectionProps) {
   return (
     <div class="physics-paint-module-section" data-module="brush">
-      <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
-      {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
-      {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
-      {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} disabled={engineControlsDisabled} /> : null}
-
-      <div class="physics-paint-option-group">
+      <div class="physics-paint-option-group" style={{ paddingBottom: '12px' }}>
         <span class="physics-paint-right-label">Brush smoothing</span>
         <div class="physics-paint-segmented-row" role="group" aria-label="Brush smoothing">
           <SmoothingButton label="Off" value={0} disabled={engineControlsDisabled} active={smoothing === 0} onSelect={onSmoothingChange} />
@@ -94,6 +89,10 @@ export function BrushModuleSection({
           <SmoothingButton label="High" value={3} disabled={engineControlsDisabled} active={smoothing === 3} onSelect={onSmoothingChange} />
         </div>
       </div>
+      <PanelSlider id="physics-edge-detail" label="Shape detail" min={0} max={100} value={edgeDetail} onChange={onEdgeDetailChange} disabled={engineControlsDisabled} />
+      {activeTool === 'paint' ? <PanelSlider id="physics-pickup" label="Blending" min={0} max={100} value={pickup} onChange={onPickupChange} disabled={engineControlsDisabled} /> : null}
+      {physicsMode === 'local' ? <PanelSlider id="physics-spread" label="Spread" min={0} max={100} value={spread} onChange={onSpreadChange} disabled={engineControlsDisabled} /> : null}
+      {activeTool === 'erase' ? <PanelSlider id="physics-erase-strength" label="Erase" min={0} max={100} value={eraseStrength} onChange={onEraseStrengthChange} disabled={engineControlsDisabled} /> : null}
     </div>
   );
 }

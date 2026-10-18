@@ -152,6 +152,16 @@ describe('panel split shell — module-only block', () => {
     expect(text).toContain('Brush smoothing');
   });
 
+  it('Brush smoothing sits at the top of the Brush-mode Paint tab (261018-f15)', () => {
+    const tree = materialize(BrushModuleSection(brushModuleProps())) as TestVNode;
+    const text = textContent(tree);
+    const smoothingAt = text.indexOf('Brush smoothing');
+    const shapeAt = text.indexOf('Shape detail');
+    expect(smoothingAt, 'Brush smoothing label must render').toBeGreaterThan(-1);
+    expect(shapeAt, 'Shape detail label must render').toBeGreaterThan(-1);
+    expect(smoothingAt, 'smoothing precedes Shape detail').toBeLessThan(shapeAt);
+  });
+
   it('Brush branch has no retired mode-selector control (261018-cy1)', () => {
     const source = readFileSync(
       resolve(__dirname, 'BrushModuleSection.tsx'),
