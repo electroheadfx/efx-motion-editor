@@ -99,23 +99,33 @@ export interface PaperDefinition {
 const DEFAULT_STRENGTH = 0.65;
 const DEFAULT_SCALE = 1;
 
+/**
+ * Display names are the oracle table (SPECS/.../engine/papers.ts `PAPERS`
+ * `name` fields) — Title Case as written there. The picker uppercases for
+ * the card label; the library never invents names.
+ */
 const PROCEDURAL_ENTRIES: readonly PaperDefinition[] = [
-  { id: 'paper/cold-press', name: 'cold press', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/cold-press' },
-  { id: 'paper/hot-press', name: 'hot press', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/hot-press' },
-  { id: 'paper/rough', name: 'rough', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/rough' },
-  { id: 'paper/khadi', name: 'khadi', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/khadi' },
-  { id: 'paper/washi', name: 'washi', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/washi' },
-  { id: 'paper/laid', name: 'laid', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/laid' },
-  { id: 'paper/canvas', name: 'canvas', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/canvas' },
-  { id: 'paper/toned-sand', name: 'toned sand', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/toned-sand' },
-  { id: 'paper/kraft', name: 'kraft', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/kraft' },
-  { id: 'paper/student', name: 'student', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/student' },
+  { id: 'paper/cold-press', name: 'Cold Press', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/cold-press' },
+  { id: 'paper/hot-press', name: 'Hot Press', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/hot-press' },
+  { id: 'paper/rough', name: 'Rough', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/rough' },
+  { id: 'paper/khadi', name: 'Khadi', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/khadi' },
+  { id: 'paper/washi', name: 'Washi', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/washi' },
+  { id: 'paper/laid', name: 'Laid', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/laid' },
+  { id: 'paper/canvas', name: 'Canvas', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/canvas' },
+  { id: 'paper/toned-sand', name: 'Toned Sand', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/toned-sand' },
+  { id: 'paper/kraft', name: 'Kraft', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/kraft' },
+  { id: 'paper/student', name: 'Student', group: 'procedural', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: 'paper/student' },
 ];
 
+/**
+ * PAPER-04 recovered scans. Labels are scan identities, never paper-type
+ * names and never the old `PAPER N` placeholder read (261018-gqo move 3).
+ * Sources stay the shipped jpg assets.
+ */
 const REAL_ENTRIES: readonly PaperDefinition[] = [
-  { id: 'paper/real-1', name: 'paper 1', group: 'real', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: '/img/paper_1.jpg' },
-  { id: 'paper/real-2', name: 'paper 2', group: 'real', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: '/img/paper_2.jpg' },
-  { id: 'paper/real-3', name: 'paper 3', group: 'real', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: '/img/paper_3.jpg' },
+  { id: 'paper/real-1', name: 'Scan 1', group: 'real', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: '/img/paper_1.jpg' },
+  { id: 'paper/real-2', name: 'Scan 2', group: 'real', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: '/img/paper_2.jpg' },
+  { id: 'paper/real-3', name: 'Scan 3', group: 'real', defaultStrength: DEFAULT_STRENGTH, defaultScale: DEFAULT_SCALE, source: '/img/paper_3.jpg' },
 ];
 
 /** The 13-paper Studio library — Procedural group first, then Real (D-12). */

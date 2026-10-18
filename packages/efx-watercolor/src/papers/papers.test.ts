@@ -29,19 +29,25 @@ import {
 } from './library'
 import { encodePassTiles } from './encode'
 
-/** The 10 procedural display names, in the locked stable order. */
+/**
+ * The 10 procedural display names, in the locked stable order — the oracle
+ * table (SPECS/.../engine/papers.ts `PAPERS` `name` fields), Title Case.
+ */
 const PROCEDURAL_NAMES = [
-  'cold press',
-  'hot press',
-  'rough',
-  'khadi',
-  'washi',
-  'laid',
-  'canvas',
-  'toned sand',
-  'kraft',
-  'student',
+  'Cold Press',
+  'Hot Press',
+  'Rough',
+  'Khadi',
+  'Washi',
+  'Laid',
+  'Canvas',
+  'Toned Sand',
+  'Kraft',
+  'Student',
 ] as const
+
+/** PAPER-04 scan labels — never `PAPER N` placeholder paper-type names. */
+const REAL_NAMES = ['Scan 1', 'Scan 2', 'Scan 3'] as const
 
 /** The 10 procedural stable ids, matching the names above. */
 const PROCEDURAL_IDS = [
@@ -96,6 +102,15 @@ describe('paper library (PAPER-01 / PAPER-04)', () => {
     expect(real.length).toBe(3)
     expect(real.map((entry) => entry.id).join('|')).toBe(REAL_IDS.join('|'))
     expect(real.map((entry) => entry.source).join('|')).toBe(REAL_SOURCES.join('|'))
+    expect(real.map((entry) => entry.name).join('|')).toBe(REAL_NAMES.join('|'))
+  })
+
+  it('no library label reads as a PAPER N placeholder paper-type name (261018-gqo)', () => {
+    const names = PAPER_LIBRARY.map((entry) => entry.name.toLowerCase())
+    expect(names.some((name) => /^paper\s*\d+$/.test(name))).toBe(false)
+    expect(names).not.toContain('paper 1')
+    expect(names).not.toContain('paper 2')
+    expect(names).not.toContain('paper 3')
   })
 
   it('two papers never share an id (adjacency)', () => {

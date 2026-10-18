@@ -363,6 +363,27 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(source.includes('gridTemplateColumns: `repeat(2, ${CARD_WIDTH}px)`')).toBe(true);
     expect(source.includes('const CELL_SIZE = 64'), 'square cell idiom is gone').toBe(false);
   });
+
+  it('named catalog carries the oracle ten papers; no PAPER N placeholder labels (261018-gqo)', () => {
+    const root = materialize(PaperPicker(pickerProps()));
+    const names = findAll(root, (node) => String(node.props?.['class'] ?? '').includes('paper-picker-cell-name'))
+      .map((node) => String((node.props as { children?: unknown }).children ?? '').trim());
+    // Card labels come from PAPER_LIBRARY — the ten oracle names + 3 scans + 2 arms.
+    for (const oracle of [
+      'Cold Press', 'Hot Press', 'Rough', 'Khadi', 'Washi',
+      'Laid', 'Canvas', 'Toned Sand', 'Kraft', 'Student',
+    ]) {
+      expect(names, `oracle name ${oracle} must render`).toContain(oracle);
+    }
+    const lowered = names.map((name) => name.toLowerCase());
+    expect(lowered, 'no PAPER 1 / PAPER 2 placeholder read').not.toContain('paper 1');
+    expect(lowered).not.toContain('paper 2');
+    expect(lowered.some((name) => /^paper\s*\d+$/.test(name))).toBe(false);
+    // PAPER-04 scans stay as scan cells (not paper-type names).
+    expect(names).toContain('Scan 1');
+    expect(names).toContain('Scan 2');
+    expect(names).toContain('Scan 3');
+  });
 });
 
 // 260923-bcm UAT follow-up + 261017-vcn Q6: Grain scale is a value stepper
