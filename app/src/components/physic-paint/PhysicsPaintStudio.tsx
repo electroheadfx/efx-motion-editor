@@ -99,6 +99,7 @@ import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, t
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
+import { aquarelleStrokeToPaintStroke } from './engine/aquarelleStrokeBridge';
 import { useRotoBackgroundMetadataSync } from './hooks/useRotoBackgroundMetadataSync';
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/rotoOnionPreview';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
@@ -4016,33 +4017,22 @@ export function PhysicsPaintStudio() {
   // surface owns rendering; this callback persists the full AquarelleStroke
   // (points + params) and enqueues a PaintStroke so the Roto script path
   // still sees the mark. Supersedes the params-only mutation-completion seam.
+  //
+  // script-playback-draws-nothing: the two engines disagree about point
+  // space (aquarelle = document UV y-up, engine-1 = canvas pixels y-down).
+  // aquarelleStrokeToPaintStroke is the ONE crossing — without it the saved
+  // script stores 0..1 in a pixel slot and Play draws at the origin.
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
     const mutationEngine = engineRef.current;
     if (!mutationEngine) return;
-    const paintStroke = {
-      tool: 'paint' as const,
-      points: stroke.points.map((p) => ({ x: p.x, y: p.y, p: p.p, tx: p.tx, ty: p.ty, tw: p.tw, spd: 0 })),
-      color: stroke.color,
-      params: {
-        size: Number(stroke.params['size']) || 12,
-        opacity: Number(stroke.params['load']) || 50,
-        pressure: 50,
-        waterAmount: Number(stroke.params['water']) || 50,
-        dryAmount: Number(stroke.params['dry']) || 50,
-        edgeDetail: Number(stroke.params['edge']) || 50,
-        pickup: 50,
-        eraseStrength: 50,
-        antiAlias: 1,
-      },
-      timestamp: stroke.timestamp,
-    };
+    const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
     try {
       const mutationId = mutationEngine.enqueueRecordedStroke({ primary: paintStroke });
       recordAquarelleStroke(mutationId, { ...stroke, mutationId });
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }
-  }, [recordAquarelleStroke]);
+  }, [recordAquarelleStroke, canvasWidth, canvasHeight]);
 
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
