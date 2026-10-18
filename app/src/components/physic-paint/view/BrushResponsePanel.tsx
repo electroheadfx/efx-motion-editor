@@ -13,7 +13,6 @@
 
 import { signal } from '@preact/signals';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import {
   MULTIPLIER_BASE_KEYS,
   MULTIPLIER_LABELS,
@@ -94,6 +93,7 @@ export function BrushResponsePanel() {
         type="button"
         data-testid="brush-response-toggle"
         aria-expanded={open}
+        aria-label="Brush response"
         onClick={() => {
           brushResponseOpen.value = !brushResponseOpen.value;
         }}
@@ -105,7 +105,17 @@ export function BrushResponsePanel() {
           marginTop: '8px',
         }}
       >
-        <RuleSectionHeader text="Brush response" />
+        {/* 261018-jlb move 1: bare rule is the whole toggle hit target —
+            the rule-and-label section title is gone (D-04 collapse stays). */}
+        <span
+          aria-hidden="true"
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '1px',
+            background: 'rgb(205, 201, 201)',
+          }}
+        />
       </button>
 
       {selectedTipId === null ? (

@@ -1144,6 +1144,13 @@ button.destructive {
   padding: 0 14px 14px;
 }
 
+/* 261018-jlb move 3: Brush tab alone gets 14px top padding (response title
+   removed — content would otherwise jam the tab strip). Paper / generic -flat
+   keep 0 14px 14px. Placed after -flat so it wins. */
+.physics-paint-options-tab-panel-brush {
+  padding: 14px 14px 14px;
+}
+
 /* No top dead space on the chrome-less brush color section: the shared
    tab-panel's 20px top padding was designed for the retired tab strip.
    261018-ias AREA 2: top 10px (UAT list; was 0 from 36.15-13 UAT Gap I-3).

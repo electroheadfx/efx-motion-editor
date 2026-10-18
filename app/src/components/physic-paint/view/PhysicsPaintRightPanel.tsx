@@ -322,7 +322,7 @@ export function PhysicsPaintRightPanel({
             <div class="physics-paint-right-pane-content">
           <section class="physics-paint-right-section physics-paint-single-tab-section">
           {topPaneTab === 'brush' && isWatercolorModule ? (
-            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Brush">
+            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-brush" role="tabpanel" aria-label="Brush">
               <RightPanelBrushTab />
             </div>
           ) : topPaneTab === 'paper' ? (

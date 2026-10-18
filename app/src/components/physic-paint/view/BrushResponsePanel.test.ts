@@ -148,13 +148,19 @@ describe('BrushResponsePanel placeholder and toggle (I-02)', () => {
     expect(textContent(tree)).toContain('Select a brush to edit response');
   });
 
-  it('renders the Brush response collapsible header, collapsed by default', () => {
+  it('renders the brush-response toggle with no section title, collapsed by default', () => {
     aquarelleSelectedTipId.value = null;
     const tree = renderPanel();
     const text = textContent(tree);
-    expect(text).toContain('Brush response');
+    // 261018-jlb move 1: the rule-and-label section title is gone from the
+    // visible text; the toggle stays as a bare-rule hit target.
+    expect(text, 'visible section title text must be gone').not.toContain('Brush response');
     const toggle = findButtonByTestId(tree, 'brush-response-toggle');
     expect(toggle, 'response toggle must render').toBeTruthy();
+    expect(
+      String((toggle!.props as Record<string, unknown>)['aria-label'] ?? ''),
+      'toggle stays named for a11y',
+    ).toBe('Brush response');
     // Collapsed by default → no multiplier rows in the tree yet.
     const labels = collectLabels(tree);
     expect(labels.some((l) => l === 'Tip'), 'Tip multiplier visible while collapsed').toBe(false);
