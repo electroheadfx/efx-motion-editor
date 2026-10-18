@@ -10,6 +10,8 @@ import { PhysicsPaintAudioListSection, type AudioSectionPorts } from './PhysicsP
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { activeModule } from '../../shared/activeModule';
+import { SliderStepper } from '../../shared/SliderStepper';
+import { aquarelleParams } from './aquarelleRecordState';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
@@ -28,6 +30,15 @@ export interface PhysicsPaintRightPanelProps {
   activeTool: ToolType;
   color: string;
   opacity: number;
+  /**
+   * 261018-f15 C2: the Paint-tab size/opacity pair is a second home over the
+   * SAME state the top bar writes (setAquarelleParam size/load in watercolor,
+   * setBrushSize/setBrushOpacity otherwise). These are the top-bar routers —
+   * never a second setter.
+   */
+  brushSize: number;
+  onBrushSizeChange: (value: number) => void;
+  onOpacityChange: (value: number) => void;
   edgeDetail: number;
   pickup: number;
   spread: number;
@@ -151,6 +162,9 @@ export function PhysicsPaintRightPanel({
   activeTool,
   color,
   opacity,
+  brushSize,
+  onBrushSizeChange,
+  onOpacityChange,
   edgeDetail,
   pickup,
   spread,
@@ -416,9 +430,34 @@ export function PhysicsPaintRightPanel({
       <section class="physics-paint-right-section physics-paint-options-tabs-section">
         {effectiveToolTab === 'paint' ? (
           <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-tool" role="tabpanel" aria-label="Paint options">
+            {/* 261018-f15 C2: Brush size + Opacity pair at the TOP of the Paint
+                tab — a second home over the SAME handlers the top bar uses
+                (write-through, never a second setter). Display rules match the
+                top bar: live aquarelle size in watercolor, settings otherwise. */}
+            <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingBottom: '8px' }}>
+              <SliderStepper
+                id="paint-tab-brush-size"
+                label="Brush size"
+                value={activeModule.value === 'watercolor' ? aquarelleParams.value.size : brushSize}
+                step={1}
+                min={1}
+                max={80}
+                ariaLabel="Brush size"
+                onChange={onBrushSizeChange}
+              />
+              <SliderStepper
+                id="paint-tab-brush-opacity"
+                label="Opacity"
+                value={opacity}
+                step={1}
+                min={10}
+                max={100}
+                ariaLabel="Opacity"
+                onChange={onOpacityChange}
+              />
+            </div>
             {/* 56-02 (D-05) / 261017-w4x I-05 (Q3): MODULE-ONLY block — drains
-                per activeModule. The shared Opacity option-group left with I-05;
-                Opacity is top-bar only for every paint mode. */}
+                per activeModule. The shared Opacity option-group left with I-05. */}
             {activeModule.value === 'watercolor' ? (
               <WatercolorModuleSection />
             ) : (

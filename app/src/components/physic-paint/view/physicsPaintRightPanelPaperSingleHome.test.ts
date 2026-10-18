@@ -75,9 +75,9 @@ describe('261017-fz3 PaperPicker single home', () => {
     expect(mountIndex).toBeGreaterThan(paperTabIndex);
   });
 
-  it('Paint tab branch has no Opacity option-group and starts at the MODULE-ONLY switch', () => {
-    // 261017-w4x I-05 (Q3): the shared wrapper + Opacity option-group leave the
-    // Paint tab — Opacity is top-bar only. The MODULE-ONLY switch is first.
+  it('Paint tab branch hosts the size/opacity pair above the MODULE-ONLY switch (261018-f15)', () => {
+    // 261017-w4x I-05 (Q3): the shared wrapper + Opacity option-group left.
+    // 261018-f15 C2: a Brush size + Opacity write-through pair sits at the TOP.
     const paintTabStart = panelSource.indexOf("effectiveToolTab === 'paint'");
     expect(paintTabStart).toBeGreaterThan(-1);
     const paintTabEnd = panelSource.indexOf("effectiveToolTab === 'background'", paintTabStart);
@@ -90,14 +90,14 @@ describe('261017-fz3 PaperPicker single home', () => {
     expect(paintTab.indexOf('shared-opacity'), 'shared-opacity must leave').toBe(-1);
     expect(paintTab.indexOf('<SectionLabel text="Opacity"'), 'Opacity option-group must leave').toBe(-1);
 
-    // The MODULE-ONLY switch is the first thing in the paint-tab branch body.
+    // The size/opacity pair precedes the MODULE-ONLY switch.
     expect(paintTab.indexOf('MODULE-ONLY block')).toBeGreaterThan(-1);
     expect(paintTab.indexOf('WatercolorModuleSection')).toBeGreaterThan(-1);
     expect(paintTab.indexOf('BrushModuleSection')).toBeGreaterThan(-1);
+    const pairAt = paintTab.indexOf('paint-tab-size-opacity');
     const moduleSwitchIndex = paintTab.indexOf('WatercolorModuleSection');
-    expect(paintTab.indexOf('shared-opacity')).toBe(-1);
-    // No option-group precedes the module switch in the surviving branch.
-    expect(paintTab.indexOf('physics-paint-option-group'), 'no option-group before module switch').toBe(-1);
+    expect(pairAt, 'size/opacity pair must mount').toBeGreaterThan(-1);
+    expect(pairAt, 'pair precedes the module switch').toBeLessThan(moduleSwitchIndex);
     expect(moduleSwitchIndex).toBeGreaterThan(paintTab.indexOf('MODULE-ONLY block'));
   });
 });

@@ -3572,26 +3572,30 @@ export function PhysicsPaintStudio() {
     onKeyDown: handlePhysicsPaintKeyDown,
     onSetRightPanelCollapsed: handleSetRightPanelCollapsed,
   }));
-  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, setBrushSize, setBrushOpacity], () => ({
+  // 261018-f15 C2: ONE write-through pair for Brush size + Opacity — the top
+  // bar and the Paint-tab duplicate both call these routers. Routed at call
+  // time (activeModule is a signal, never a memo dep).
+  const handleBrushSizeChange = useCallback((value: number) => {
+    if (activeModule.value === 'watercolor') setAquarelleParam('size', value);
+    else setBrushSize(value);
+  }, [setBrushSize]);
+  const handleOpacityChange = useCallback((value: number) => {
+    if (activeModule.value === 'watercolor') setAquarelleParam('load', value);
+    else setBrushOpacity(value);
+  }, [setBrushOpacity]);
+  const topBar = topBarPropsMemo.resolve([settings.size, settings.opacity, readyToApply, staticControlsLocked, handleBrushSizeChange, handleOpacityChange], () => ({
     brushSize: settings.size,
     opacity: settings.opacity,
     ready: readyToApply,
     disabled: staticControlsLocked,
     // UI checklist row 3: one shared Size slider. In Water color mode the
     // top-bar Brush size drives aquarelleParams.size; in Brush mode it stays
-    // on settings.size. Routed at call time (activeModule is a signal).
-    onBrushSizeChange: (value: number) => {
-      if (activeModule.value === 'watercolor') setAquarelleParam('size', value);
-      else setBrushSize(value);
-    },
+    // on settings.size.
+    onBrushSizeChange: handleBrushSizeChange,
     // 261017-w4x I-05 (Q3): Opacity is top-bar only for every paint mode. Same
     // call-time module router as Brush size — watercolor drives
     // aquarelleParams.load (Pigment); Brush mode drives settings.opacity.
-    // Routed at call time (activeModule is a signal, never a memo dep).
-    onOpacityChange: (value: number) => {
-      if (activeModule.value === 'watercolor') setAquarelleParam('load', value);
-      else setBrushOpacity(value);
-    },
+    onOpacityChange: handleOpacityChange,
   }));
   // 38-11: the tool rail props assemble behind the identity memo — the
   // single-line deps array below enumerates exactly the values the build
@@ -3699,7 +3703,7 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, undo, redo, clearActiveSource], () => {
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleOpacityChange, undo, redo, clearActiveSource], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -3717,6 +3721,11 @@ export function PhysicsPaintStudio() {
     activeTool: settings.tool,
     color: settings.color,
     opacity: settings.opacity,
+    // 261018-f15 C2: the Paint-tab size/opacity pair rides the same routers
+    // the top bar uses — one write-through pair, never a second setter.
+    brushSize: settings.size,
+    onBrushSizeChange: handleBrushSizeChange,
+    onOpacityChange: handleOpacityChange,
     edgeDetail: settings.edgeDetail,
     pickup: settings.pickup,
     spread: settings.spread,

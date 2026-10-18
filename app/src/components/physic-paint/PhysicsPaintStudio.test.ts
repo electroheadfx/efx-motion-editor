@@ -2437,31 +2437,33 @@ describe('261008-ig1 Task 2 — Studio multi-clip selection, open target, and re
 // orphans Pigment until I-01 lands. Scalar predicates keep TAP diagnostics
 // one-line (project idiom).
 describe('261017-w4x I-05 top-bar opacity call-time router', () => {
-  it('onOpacityChange routes watercolor to setAquarelleParam(\'load\') and else to setBrushOpacity', () => {
-    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
-    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
-    expect(topBarStart, 'topBar memo must exist').toBeGreaterThan(-1);
-    expect(topBarEnd, 'topBar memo must end at toolRail').toBeGreaterThan(topBarStart);
-    const topBarBlock = studio.slice(topBarStart, topBarEnd);
-
-    // The handler body is an arrow assigned to onOpacityChange — not a bare setter.
-    const opacityHandlerStart = topBarBlock.indexOf('onOpacityChange:');
-    expect(opacityHandlerStart, 'onOpacityChange must be declared in the topBar memo').toBeGreaterThan(-1);
-    const opacityHandler = topBarBlock.slice(opacityHandlerStart);
+  it('handleOpacityChange routes watercolor to setAquarelleParam(\'load\') and else to setBrushOpacity', () => {
+    // 261018-f15 C2: the routers extract to identity-stable useCallbacks so the
+    // Paint-tab pair can share ONE write-through. The call-time module read and
+    // both arms stay locked.
+    const routerStart = studio.indexOf('const handleOpacityChange = useCallback(');
+    expect(routerStart, 'handleOpacityChange must exist').toBeGreaterThan(-1);
+    const routerEnd = studio.indexOf('const topBar = topBarPropsMemo.resolve(', routerStart);
+    expect(routerEnd, 'router ends before the topBar memo').toBeGreaterThan(routerStart);
+    const opacityHandler = studio.slice(routerStart, routerEnd);
     expect(
       opacityHandler.includes('setAquarelleParam(\'load\''),
-      'onOpacityChange watercolor arm must write aquarelleParams.load',
+      'handleOpacityChange watercolor arm must write aquarelleParams.load',
     ).toBe(true);
     expect(
       opacityHandler.includes('setBrushOpacity'),
-      'onOpacityChange else-arm must write settings.opacity via setBrushOpacity',
+      'handleOpacityChange else-arm must write settings.opacity via setBrushOpacity',
     ).toBe(true);
     // Call-time module read — never capture activeModule in the memo deps.
     expect(
       opacityHandler.includes('activeModule.value === \'watercolor\''),
-      'onOpacityChange must read activeModule.value at call time',
+      'handleOpacityChange must read activeModule.value at call time',
     ).toBe(true);
-    // The handler must not be the bare setter binding anymore.
+    // The topBar memo binds the shared router (not a bare setter).
+    const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
+    const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
+    const topBarBlock = studio.slice(topBarStart, topBarEnd);
+    expect(topBarBlock).toContain('onOpacityChange: handleOpacityChange');
     expect(
       topBarBlock.includes('onOpacityChange: setBrushOpacity,'),
       'onOpacityChange must not be a bare setBrushOpacity binding',
@@ -2472,11 +2474,15 @@ describe('261017-w4x I-05 top-bar opacity call-time router', () => {
   });
 
   it('Brush size router stays the locked pattern sibling of the opacity router', () => {
+    const routerStart = studio.indexOf('const handleBrushSizeChange = useCallback(');
+    expect(routerStart, 'handleBrushSizeChange must exist').toBeGreaterThan(-1);
+    const routerEnd = studio.indexOf('const handleOpacityChange = useCallback(', routerStart);
+    const sizeHandler = studio.slice(routerStart, routerEnd);
+    expect(sizeHandler).toContain("setAquarelleParam('size', value)");
+    expect(sizeHandler).toContain('setBrushSize(value)');
     const topBarStart = studio.indexOf('const topBar = topBarPropsMemo.resolve(');
     const topBarEnd = studio.indexOf('const toolRail = toolRailPropsMemo.resolve(', topBarStart);
     const topBarBlock = studio.slice(topBarStart, topBarEnd);
-    expect(topBarBlock).toContain('onBrushSizeChange:');
-    expect(topBarBlock).toContain("setAquarelleParam('size', value)");
-    expect(topBarBlock).toContain('setBrushSize(value)');
+    expect(topBarBlock).toContain('onBrushSizeChange: handleBrushSizeChange');
   });
 });

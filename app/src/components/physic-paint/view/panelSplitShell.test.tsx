@@ -242,14 +242,14 @@ describe('panel split shell — right-panel chrome (261018-f15)', () => {
 });
 
 describe('panel split shell — shared block', () => {
-  it('paint-tab branch shows settings only: no Opacity option-group, module switch remains', () => {
+  it('paint-tab branch hosts the size/opacity pair above the module switch (261018-f15)', () => {
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
-    // 261017-w4x I-05 (Q3): the shared block left — Opacity is top-bar only.
-    // The Paint-tab branch has no Opacity option-group; the module-only switch
-    // remains. Track-tab per-track opacity and onion opacity stay untouched.
+    // 261017-w4x I-05 (Q3) kept the shared wrapper gone; 261018-f15 C2 puts a
+    // Brush size + Opacity write-through pair at the TOP of the paint tab.
+    // The I-05 shared-block wrapper class stays retired.
     const paintTabStart = panelSource.indexOf("effectiveToolTab === 'paint'");
     expect(paintTabStart, 'paint-tab branch must exist').toBeGreaterThan(-1);
     const paintTabEnd = panelSource.indexOf("effectiveToolTab === 'background'", paintTabStart);
@@ -258,9 +258,16 @@ describe('panel split shell — shared block', () => {
     expect(paintTab.indexOf('shared-opacity'), 'paint-tab must not host shared-opacity').toBe(-1);
     expect(paintTab.indexOf('physics-paint-shared-block'), 'shared wrapper must leave').toBe(-1);
     expect(paintTab.indexOf('<SectionLabel text="Opacity"'), 'Opacity option-group must leave').toBe(-1);
-    // The module-only switch is the first thing in the paint-tab branch.
-    expect(paintTab.indexOf('WatercolorModuleSection'), 'module switch must remain').toBeGreaterThan(-1);
+    // The size/opacity pair sits ABOVE the module switch.
+    const pairAt = paintTab.indexOf('paint-tab-size-opacity');
+    const moduleAt = paintTab.indexOf('WatercolorModuleSection');
+    expect(pairAt, 'size/opacity pair must mount').toBeGreaterThan(-1);
+    expect(moduleAt, 'module switch must remain').toBeGreaterThan(-1);
+    expect(pairAt, 'pair precedes the module switch').toBeLessThan(moduleAt);
     expect(paintTab.indexOf('BrushModuleSection'), 'brush module must remain').toBeGreaterThan(-1);
+    // The pair writes through the top-bar handlers (no second setter).
+    expect(paintTab).toContain('onBrushSizeChange');
+    expect(paintTab).toContain('onOpacityChange');
     // Opacity text remains for the Track tab and onion controls (I-10 homes).
     const trackTabSource = readFileSync(resolve(__dirname, 'RightPanelTrackTab.tsx'), 'utf8');
     const onionTabSource = readFileSync(resolve(__dirname, 'RightPanelOnionMotionTabs.tsx'), 'utf8');
