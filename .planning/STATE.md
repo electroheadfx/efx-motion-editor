@@ -6,10 +6,10 @@ current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
 status: executing
 stopped_at: Completed 261018-gqo third UAT round
-last_updated: "2026-10-18T12:38:53.979Z"
+last_updated: "2026-10-18T13:19:38.793Z"
 last_activity: 2026-10-18
 last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
-state_head: 5491ee977d501c9d158d33ec160690b144a0cb8c
+state_head: 0f059c1981d2538fed77afd5b6adc7c7018449e8
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 4 of 10
 Status: Ready to execute
-Last activity: 2026-10-18 — Completed quick 261018-k1o: top bar ModuleSwitcher left + sliders centered — awaiting live UAT
+Last activity: 2026-10-18 — Debug watercolor-clears-cached-paint resolved (bc37c89b) + quick 261018-l05 brush DOM cleanup — awaiting live UAT
 
 Progress: [████████░░] 75%
 
@@ -554,6 +554,7 @@ None yet.
 | 261018-ias | Fourth UAT round: Paper tab Texture slider + 15 CSS adjustments (images 78+) | 2026-10-18 | e0a00b61 | [261018-ias-fourth-uat-round-on-the-watercolor-brush](./quick/261018-ias-fourth-uat-round-on-the-watercolor-brush/) |
 | 261018-jlb | Fifth UAT round: six cosmetic moves (Brush response title, #777 borders, cell fill, full-width thumbs) | 2026-10-18 | 60f331cb | [261018-jlb-fifth-uat-round-on-the-watercolor-brush-](./quick/261018-jlb-fifth-uat-round-on-the-watercolor-brush-/) |
 | 261018-k1o | Top bar layout: ModuleSwitcher left near Engine ready; sliders stay centered | 2026-10-18 | 5491ee97 | [261018-k1o-top-bar-layout-tweak-move-moduleswitcher](./quick/261018-k1o-top-bar-layout-tweak-move-moduleswitcher/) |
+| 261018-l05 | Brush tab DOM cleanup: remove invisible toggle line + simplify brush card markup to stylesheet classes | 2026-10-18 | 0f059c19 | [261018-l05-brush-tab-dom-cleanup-1-remove-leftover-](./quick/261018-l05-brush-tab-dom-cleanup-1-remove-leftover-/) |
 
 ### Roadmap Evolution
 
