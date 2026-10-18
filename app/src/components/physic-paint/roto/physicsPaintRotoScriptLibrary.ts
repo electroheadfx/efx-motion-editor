@@ -12,7 +12,7 @@ import { ROTO_SCRIPT_SCOPE_ALL } from './physicsPaintRotoScriptScope';
 import { buildPhysicPaintRotoProjectEquality, type PhysicPaintRotoPhysicalDocument } from './physicsPaintRotoPhysicalModel';
 import { getCarriedRotoPhysical } from './rotoLaunchHydration';
 import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionGroupLifecycleImpact } from './physicsPaintRotoGroupLifecycle';
-import { createPersistedRotoScript, isRefusedRotoScriptRow, normalizeRotoScriptName, persistedRotoScriptToRuntime, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
+import { createPersistedRotoScript, isRefusedRotoScriptRow, normalizeRotoScriptName, persistedRotoScriptToRuntime, serializeAquarelleRotoScript, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
 
@@ -503,16 +503,21 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       const existing = new Set(rows.peek().map((row) => row.name));
       let name = base;
       for (let suffix = 2; existing.has(name); suffix += 1) name = `${base}-${suffix}`;
-      const script = createPersistedRotoScript({
-        id, name, createdAt: now, updatedAt: now,
-        source: {
-          projectName: context.project.name, layerId: context.layerId, layerName: context.layerName ?? context.layerId,
-          sourceFrame: scriptSnapshot.sourceFrame, displayFrame: scriptSnapshot.sourceDisplayFrame,
-          width: context.width ?? 1000, height: context.height ?? 650,
-          background: getCarriedRotoPhysical(context)?.background ?? { background: 'transparent', grainStrength: 0 },
-        },
-        thumbnail, brushes: scriptSnapshot.brushes,
-      });
+      const sourceBag = {
+        projectName: context.project.name, layerId: context.layerId, layerName: context.layerName ?? context.layerId,
+        sourceFrame: scriptSnapshot.sourceFrame, displayFrame: scriptSnapshot.sourceDisplayFrame,
+        width: context.width ?? 1000, height: context.height ?? 650,
+        background: getCarriedRotoPhysical(context)?.background ?? { background: 'transparent', grainStrength: 0 },
+      };
+      // 261018-odm: an aquarelle capture serializes as the efx-watercolor
+      // variant; anything else keeps the engine-1 serializer.
+      const script = scriptSnapshot.aquarelleEvents
+        ? serializeAquarelleRotoScript({ id, name, createdAt: now, updatedAt: now, source: sourceBag, thumbnail, events: scriptSnapshot.aquarelleEvents })
+        : createPersistedRotoScript({
+            id, name, createdAt: now, updatedAt: now,
+            source: sourceBag,
+            thumbnail, brushes: scriptSnapshot.brushes,
+          });
       const result = await execute({ kind: 'save', operationId: operationId('save'), script }, id);
       status.value = result.ok ? `Saved ${name}` : result.error ?? 'Save failed';
       return result.ok;
@@ -706,6 +711,7 @@ function deepFreezeSnapshot(script: RotoPaintScript): RotoPaintScript {
       continuations: brush.continuations?.map(cloneSnapshotStroke),
     })),
     ...(script.engineId !== undefined ? { engineId: script.engineId } : {}),
+    ...(script.aquarelleEvents !== undefined ? { aquarelleEvents: script.aquarelleEvents } : {}),
   };
   Object.freeze(snapshot.provenance);
   for (const brush of snapshot.brushes) {

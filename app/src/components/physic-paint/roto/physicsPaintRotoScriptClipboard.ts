@@ -1,8 +1,13 @@
 import { computed, signal, type ReadonlySignal, type Signal } from '@preact/signals';
 import { toStudioStroke, fromStudioStroke, type CompletedPaintMutation, type PaintStroke } from '@efxlab/efx-physic-paint';
 import { transformRecordedStrokeForHeldPose } from '@efxlab/efx-paint-host/animation';
-import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import {
+  isAquarelleDryEvent,
+  toStudioStroke as aquarelleToStudioStroke,
+  type AquarellePayloadEvent,
+} from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import { getRecordedAquarellePayloadTimeline, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
 export interface RotoScriptSourceSnapshot {
@@ -470,7 +475,16 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       if (disposed || disposalRequested || engineState.peek() !== engine || engineGeneration !== acceptedEngineGeneration || launchGeneration !== acceptedLaunchGeneration) return null;
       const brushes = normalizeLogicalBrushes(engine.getStrokes());
       if (brushes.length === 0 || !engine.copyLiveAlphaCanvas) return null;
-      const script = deepFreezeScript({ provenance: provenanceFor(source), sourceFrame: source.appFrame, sourceDisplayFrame: source.appFrame, sourceRevision: sourceRevision + 1, brushes });
+      // 261018-odm: when EVERY captured primary has a recorded AquarelleStroke,
+      // attach the aquarelle payload timeline so the save path serializes the
+      // efx-watercolor variant. A mixed engine-1 + watercolor key keeps the
+      // engine-1 serialize path (aquarelleEvents stays absent).
+      const aquarelleEvents = buildAquarelleEventsFromCapture(brushes);
+      const script = deepFreezeScript({
+        provenance: provenanceFor(source), sourceFrame: source.appFrame, sourceDisplayFrame: source.appFrame,
+        sourceRevision: sourceRevision + 1, brushes,
+        ...(aquarelleEvents ? { aquarelleEvents } : {}),
+      });
       return { script, scriptAlphaCanvas: engine.copyLiveAlphaCanvas() };
     } catch (cause) {
       error.value = operationError('copy', 'copy-drain-failed', 'Save Script could not finish accepted paint work', cause);
@@ -521,6 +535,20 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       provenance: { ...script.provenance }, sourceFrame: script.sourceFrame, sourceDisplayFrame: script.sourceDisplayFrame,
       sourceRevision: ++sourceRevision,
       brushes: script.brushes.map((brush) => ({ primary: cloneStroke(brush.primary), continuations: brush.continuations?.map(cloneStroke) })),
+      ...(script.engineId !== undefined ? { engineId: script.engineId } : {}),
+      ...(script.aquarelleEvents !== undefined ? { aquarelleEvents: script.aquarelleEvents.map((event) => isAquarelleDryEvent(event) ? { ...event } : {
+        pts: event.pts.map((point) => ({ ...point })),
+        ticks: event.ticks,
+        cuisson: event.cuisson,
+        motion: event.motion,
+        brushId: event.brushId,
+        toolOverrides: { ...event.toolOverrides },
+        traceSeed: event.traceSeed,
+        recordedOrder: event.recordedOrder,
+        playFrame: event.playFrame,
+        color: event.color,
+        engine: { ...event.engine },
+      }) } : {}),
     });
     status.value = null; error.value = null;
     return RotoScriptClipboardReplacementOutcome.Replaced;
@@ -979,5 +1007,57 @@ function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
     Object.freeze(brush);
   }
   Object.freeze(script.brushes);
+  if (script.aquarelleEvents) {
+    for (const event of script.aquarelleEvents) {
+      if (!isAquarelleDryEvent(event)) {
+        Object.freeze(event.pts);
+        Object.freeze(event.engine);
+      }
+      Object.freeze(event);
+    }
+    Object.freeze(script.aquarelleEvents);
+  }
   return Object.freeze(script);
+}
+
+/**
+ * 261018-odm: build the aquarelle payload timeline from the captured
+ * primaries. Returns undefined when any primary lacks a recorded
+ * AquarelleStroke (mixed key) so the engine-1 serialize path stays.
+ */
+function buildAquarelleEventsFromCapture(brushes: readonly Readonly<RecordedStrokeGroup>[]): AquarellePayloadEvent[] | undefined {
+  const projected: AquarellePayloadEvent[] = [];
+  for (const brush of brushes) {
+    const chain = [brush.primary, ...(brush.continuations ?? [])];
+    for (const stroke of chain) {
+      const mutationId = stroke.mutationId;
+      const recorded = mutationId !== undefined ? getRecordedAquarelleStroke(mutationId) : undefined;
+      if (!recorded) return undefined;
+      projected.push(aquarelleToStudioStroke(recorded));
+    }
+  }
+  const drys = getRecordedAquarellePayloadTimeline().filter(isAquarelleDryEvent);
+  if (drys.length === 0) return projected;
+  // Stroke wins a tie — same law as aquarelleEventsFromScript.
+  const merged: AquarellePayloadEvent[] = [];
+  let strokeIndex = 0;
+  let dryIndex = 0;
+  while (strokeIndex < projected.length && dryIndex < drys.length) {
+    if (drys[dryIndex]!.recordedOrder < projected[strokeIndex]!.recordedOrder) {
+      merged.push(drys[dryIndex]!);
+      dryIndex += 1;
+    } else {
+      merged.push(projected[strokeIndex]!);
+      strokeIndex += 1;
+    }
+  }
+  while (strokeIndex < projected.length) {
+    merged.push(projected[strokeIndex]!);
+    strokeIndex += 1;
+  }
+  while (dryIndex < drys.length) {
+    merged.push(drys[dryIndex]!);
+    dryIndex += 1;
+  }
+  return merged;
 }

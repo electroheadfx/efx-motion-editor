@@ -3,7 +3,7 @@ import { isGrainScaleValue } from '../efx-paint/document/efxPaintDocument';
 import { parseEfxPaintDocument } from '../efx-paint/document/efxPaintDocumentParsers';
 import type { FadeCurve } from './audio';
 import type { MceImageRef } from './project';
-import type { PersistedRotoScriptV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
+import type { PersistedRotoScriptAnyV1, RotoScriptLibraryRow } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { isCanonicalRotoScriptId, isPersistedRotoScriptV1, normalizeRotoScriptName } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import { getPhysicsPaintRotoSourceCycleId } from '../components/physic-paint/roto/physicsPaintRotoSpacingSelection';
 import type {
@@ -2163,7 +2163,7 @@ export interface PhysicPaintApplyResultMessage {
 export type PhysicPaintScriptLibraryKind = 'scan' | 'save' | 'load' | 'rename' | 'delete';
 export type PhysicPaintScriptLibraryRequest =
   | { kind: 'scan'; operationId: string }
-  | { kind: 'save'; operationId: string; script: PersistedRotoScriptV1 }
+  | { kind: 'save'; operationId: string; script: PersistedRotoScriptAnyV1 }
   | { kind: 'load'; operationId: string; scriptId: string }
   | { kind: 'rename'; operationId: string; scriptId: string; expectedRevision: string; name: string }
   | { kind: 'delete'; operationId: string; scriptId: string; expectedRevision: string };
@@ -2181,7 +2181,7 @@ export interface PhysicPaintScriptLibraryResult {
   rows: RotoScriptLibraryRow[];
   skippedInvalidCount: number;
   diagnostics: PhysicPaintScriptLibraryDiagnostic[];
-  script?: PersistedRotoScriptV1;
+  script?: PersistedRotoScriptAnyV1;
   error?: string;
 }
 
