@@ -352,12 +352,16 @@ describe('PaperPicker (D-09..D-12)', () => {
     expect(body.includes('applyPaperPass')).toBe(false);
   });
 
-  it('uses the 64×64 cell and 8px gap constants (UI-SPEC); grid is 2 columns', () => {
+  it('uses the oracle landscape card constants (112×64, 2 columns); name stays below', () => {
+    // 261018-gqo move 1: the live oracle-look instruction overrides the old
+    // UI-SPEC 64×64 square lock. Cards are ~2:1 landscape (PaperPanel SWATCH).
     const sourcePath = resolve(dirname(fileURLToPath(import.meta.url)), './PaperPicker.tsx');
     const source = readFileSync(sourcePath, 'utf8');
-    expect(source.includes('const CELL_SIZE = 64')).toBe(true);
+    expect(source.includes('const CARD_WIDTH = 112')).toBe(true);
+    expect(source.includes('const THUMB_HEIGHT = 64')).toBe(true);
     expect(source.includes('const GRID_GAP = 8')).toBe(true);
-    expect(source.includes('gridTemplateColumns: `repeat(2, ${CELL_SIZE}px)`')).toBe(true);
+    expect(source.includes('gridTemplateColumns: `repeat(2, ${CARD_WIDTH}px)`')).toBe(true);
+    expect(source.includes('const CELL_SIZE = 64'), 'square cell idiom is gone').toBe(false);
   });
 });
 

@@ -50,8 +50,14 @@ export interface PaperPickerProps {
   disabled?: boolean;
 }
 
-/** Cell size locked by UI-SPEC: 64×64 tiles, 8px grid gap. */
-const CELL_SIZE = 64;
+/**
+ * Oracle TEXTURE picker geometry (PaperPanel.tsx SWATCH_W = 112,
+ * SWATCH_H = 64): large landscape ~2:1 cards in 2 columns, name BELOW.
+ * The old UI-SPEC 64×64 square lock is overridden by the live oracle-look
+ * instruction (261018-gqo move 1). GRID_GAP stays 8.
+ */
+const CARD_WIDTH = 112;
+const THUMB_HEIGHT = 64;
 const GRID_GAP = 8;
 
 /** Q6: Grain strength segmented values (None / Soft / Med / Hard). */
@@ -115,10 +121,10 @@ function activeGrainOptionValue(grainStrength: number): number {
  */
 const reliefCache = new Map<string, HTMLCanvasElement | null>();
 function proceduralReliefImage(id: string): HTMLCanvasElement | null {
-  const key = `${id}:${CELL_SIZE}`;
+  const key = `${id}:${CARD_WIDTH}x${THUMB_HEIGHT}`;
   const cached = reliefCache.get(key);
   if (cached !== undefined) return cached;
-  const thumb = getPaperThumb(id, CELL_SIZE, CELL_SIZE);
+  const thumb = getPaperThumb(id, CARD_WIDTH, THUMB_HEIGHT);
   reliefCache.set(key, thumb);
   return thumb;
 }
@@ -126,19 +132,20 @@ function proceduralReliefImage(id: string): HTMLCanvasElement | null {
 /**
  * 261017-mdr: pre-fill the procedural thumb cache so the picker opens without
  * a first-open generation stall. 261018-f15 B2: warms the paperThumb cache
- * (sheet + wash) the cell painter reads. Does not touch CELL_SIZE / GRID_GAP
- * / the 2-column grid.
+ * (sheet + wash) the cell painter reads. Does not touch the landscape card
+ * constants / GRID_GAP / the 2-column grid.
  */
 export function warmProceduralReliefThumbs(): void {
   for (const entry of PAPER_LIBRARY) {
     if (entry.group !== 'procedural') continue;
-    getPaperThumb(entry.id, CELL_SIZE, CELL_SIZE);
+    getPaperThumb(entry.id, CARD_WIDTH, THUMB_HEIGHT);
   }
 }
 
 /**
- * Shared paper-card chrome (261018-f15): 64×64 thumb + small uppercase name
- * BELOW it (WatercolorBrushLibrary label pattern). Never a caption overlay.
+ * Shared paper-card chrome (261018-f15 / 261018-gqo move 1): landscape
+ * 112×64 thumb + small uppercase name BELOW it (oracle TEXTURE picker /
+ * WatercolorBrushLibrary label pattern). Never a caption overlay.
  */
 function PaperCard(props: {
   name: string;
@@ -159,7 +166,7 @@ function PaperCard(props: {
       onClick={props.onSelect}
       {...props.attributes}
       style={{
-        width: `${CELL_SIZE}px`,
+        width: `${CARD_WIDTH}px`,
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
@@ -174,7 +181,7 @@ function PaperCard(props: {
       <div
         style={{
           width: '100%',
-          height: `${CELL_SIZE}px`,
+          height: `${THUMB_HEIGHT}px`,
           overflow: 'hidden',
           flex: '0 0 auto',
         }}
@@ -248,8 +255,8 @@ function PaperCell(props: {
           <canvas
             data-paper-tile="procedural"
             aria-label={props.entry.name}
-            width={CELL_SIZE}
-            height={CELL_SIZE}
+            width={CARD_WIDTH}
+            height={THUMB_HEIGHT}
             ref={(el: HTMLCanvasElement | null) => {
               if (!el) return;
               const ctx = el.getContext('2d');
@@ -358,7 +365,7 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
           data-paper-group-grid="real"
           style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(2, ${CELL_SIZE}px)`,
+            gridTemplateColumns: `repeat(2, ${CARD_WIDTH}px)`,
             gap: `${GRID_GAP}px`,
           }}
         >
@@ -395,7 +402,7 @@ export function PaperPicker(props: PaperPickerProps): JSX.Element {
           data-paper-group-grid="procedural"
           style={{
             display: 'grid',
-            gridTemplateColumns: `repeat(2, ${CELL_SIZE}px)`,
+            gridTemplateColumns: `repeat(2, ${CARD_WIDTH}px)`,
             gap: `${GRID_GAP}px`,
           }}
         >
