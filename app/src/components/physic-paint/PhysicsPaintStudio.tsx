@@ -2034,6 +2034,25 @@ export function PhysicsPaintStudio() {
     });
   };
 
+  // RARE BLANK-AFTER-PLAY guard (user report 2026-10-19): one playback session
+  // ended with every key surface blank until a full Studio close/reopen.
+  // Playback itself only reads; the stop transition is the single place the
+  // editing surfaces take back over. Re-resolve the current frame once (this
+  // also kicks a cold decode) and bump the paint clock so every paint
+  // subscriber redraws when it lands. The diagnostic records resolvability so a
+  // recurrence can be pinned instead of guessed at.
+  const handleRotoPlaybackPlaying = useCallback((playing: boolean) => {
+    setIsPlaying(playing);
+    if (playing) return;
+    const layerId = launchContextRef.current?.layerId ?? null;
+    let flattened = false;
+    if (layerId) {
+      flattened = physicPaintStore.getFlattenedFrame(layerId, currentFrame) !== null;
+    }
+    capturePaintCacheEvent('roto-playback-stop', { frame: currentFrame, flattened });
+    physicPaintVersion.value++;
+  }, [currentFrame]);
+
   const rotoNavigation = useRotoNavigationCoordinator<RenderedFramePayload>({
     workflowMode,
     beforeNavigation: rotoScript.prepareNavigation,
@@ -2123,7 +2142,7 @@ export function PhysicsPaintStudio() {
       onFrame: (frameIndex) => {
         rotoPlaybackFrameIndex.value = frameIndex;
       },
-      setIsPlaying,
+      setIsPlaying: handleRotoPlaybackPlaying,
     },
   });
   const rotoKeyUtilities = rotoNavigation.keyUtilities;
