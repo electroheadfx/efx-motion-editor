@@ -2692,10 +2692,16 @@ function _resolveFlattenedFrame(
 
   const knownSources = new Set(_backgroundSourceImages.keys());
   let backgroundContext: PhysicPaintRotoLoopResolutionContext | null = null;
+  // Background CONTENT at this frame — the visibility flag alone is not enough
+  // (the Background track is visible by default with zero clips). A real clip
+  // here makes the flattened raster opaque for a legitimate reason; only a
+  // frame with no background content can be aquarelle transmittance.
+  let backgroundContentAtFrame = false;
   if (backgroundParticipates(efxDocument)) {
     backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
     const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
-    if (backgroundResolution.kind === 'content') {
+    backgroundContentAtFrame = backgroundResolution.kind === 'content';
+    if (backgroundContentAtFrame) {
       if (_resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
         return null;
       }
@@ -2832,7 +2838,7 @@ function _resolveFlattenedFrame(
   // frames keep real alpha, so the full-opacity probe leaves them false.
   const transmittance = fondInstruction === null
     && efxDocument.background.fallback.mode === 'transparent'
-    && !backgroundParticipates(efxDocument)
+    && !backgroundContentAtFrame
     && isFullyOpaqueRaster(raster);
   // G-52-8 (FIX 4): the record carries the raster; draw surfaces consume it
   // directly. The WebP encode is async (Rust codec) and memoized on first call
