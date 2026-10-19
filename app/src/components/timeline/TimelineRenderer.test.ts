@@ -509,3 +509,39 @@ describe('timeline pointer frame resolution (260918-o0n)', () => {
     expect(frameFromXSource).toContain('totalFrames > 0 ? totalFrames : 0');
   });
 });
+
+describe('FX track selection + visibility law (UAT 2026-10-19)', () => {
+  const fxTrackSource = () => {
+    const code = source();
+    return code.slice(code.indexOf('private drawFxTrack'), code.indexOf('private drawCoverageGapTail'));
+  };
+
+  it('beds the selected FX row in tool-select blue with the accent-orange trait', () => {
+    const code = source();
+    expect(code).toContain("const FX_SELECTED_BG = '#365ED6'");
+    expect(code).toContain("const FX_SELECTION_TRAIT = '#F5A623'");
+
+    const fx = fxTrackSource();
+    expect(fx).toContain('isSelected ? FX_SELECTED_BG');
+    expect(fx).toContain('FX_SELECTION_TRAIT');
+    expect(fx).not.toContain('#1A1520');
+    expect(fx).not.toContain('#151015');
+  });
+
+  it('replaces the header dot with a lucide-style eye/eye-off in a 24px hit zone', () => {
+    const code = source();
+    expect(code).toContain('export const FX_VISIBILITY_HIT_WIDTH = 24');
+    expect(code).toContain('private drawFxVisibilityIcon(');
+
+    const fx = fxTrackSource();
+    expect(fx).toContain('drawFxVisibilityIcon');
+    expect(fx).not.toContain('ctx.arc(dotX + 3');
+
+    const interaction = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), 'TimelineInteraction.ts'),
+      'utf8',
+    );
+    expect(interaction).toContain('localX < FX_VISIBILITY_HIT_WIDTH');
+    expect(interaction).not.toContain('localX < 18');
+  });
+});

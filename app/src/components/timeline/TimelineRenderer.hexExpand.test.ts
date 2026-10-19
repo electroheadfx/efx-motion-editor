@@ -161,7 +161,8 @@ describe('theme hex expansion at the canvas color boundary (6f60951f, ACC-03 D-0
     expect(harness.fills).toContain('#3366ee40');
     // Bar border: expanded 6-digit + '80'.
     expect(harness.strokes).toContain('#3366ee80');
-    // Header dot / edge handles use the bare expanded accent.
+    // Visibility eye stroke / edge handles use the bare expanded accent.
+    expect(harness.strokes).toContain('#3366ee');
     expect(harness.fills).toContain('#3366ee');
     // The pre-fix defect value must never be produced.
     expect(harness.fills).not.toContain('#36e40');
@@ -178,8 +179,8 @@ describe('theme hex expansion at the canvas color boundary (6f60951f, ACC-03 D-0
     const renderer = new TimelineRenderer(harness.canvas);
     renderer.draw(drawState([physicPaintRail(false)]));
 
-    // Hidden rail: header text color suffix '4D', bar fill '26', border '40'.
-    expect(harness.fills).toContain('#3366ee4D');
+    // Hidden rail: hidden eye stroke suffix '4D', bar fill '26', border '40'.
+    expect(harness.strokes).toContain('#3366ee4D');
     expect(harness.fills).toContain('#3366ee26');
     expect(harness.strokes).toContain('#3366ee40');
     expect(harness.fills).not.toContain('#36e4D');

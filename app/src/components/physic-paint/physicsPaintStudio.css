@@ -5343,15 +5343,16 @@ button.destructive {
   background: #3f4145;
 }
 
-/* Active-track marking (D-04): accent left border + row tint + bold name,
-   distinct from selection orange and rail purple/cyan. */
+/* Active-track marking (UAT 2026-10-19 selection law): the tool-select blue
+   bed (#365ed6, same as .physics-paint-segmented-button.active) with the
+   accent-orange trait (#f5a623, the timeline selection accent). */
 .physics-paint-track-row-header-active {
-  border-left: 3px solid #6f90ff;
-  background: #2f3a4d;
+  border-left: 3px solid #f5a623;
+  background: #365ed6;
 }
 
 .physics-paint-track-row-header-active:hover {
-  background: #33425a;
+  background: #3d66e0;
 }
 
 .physics-paint-track-row-header-active .physics-paint-track-row-label {

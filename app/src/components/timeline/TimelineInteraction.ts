@@ -9,7 +9,7 @@ import {paintStore} from '../../stores/paintStore';
 import {trackLayouts, fxTrackLayouts, audioTrackLayouts} from '../../lib/frameMap';
 import {startCoalescing, stopCoalescing} from '../../lib/history';
 import {snapToBeat} from '../../lib/beatMarkerEngine';
-import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRACK_HEIGHT} from './TimelineRenderer';
+import {BASE_FRAME_WIDTH, TRACK_HEADER_WIDTH, RULER_HEIGHT, FX_TRACK_HEIGHT, TRACK_HEIGHT, FX_VISIBILITY_HIT_WIDTH} from './TimelineRenderer';
 import type {TimelineRenderer} from './TimelineRenderer';
 import {isolationStore} from '../../stores/isolationStore';
 import {resolveFxSpanDragRange} from './timelineFxSpanDrag';
@@ -256,15 +256,15 @@ export class TimelineInteraction {
       }
       return;
     }
-    if (localX < 18) return;
+    if (localX < FX_VISIBILITY_HIT_WIDTH) return;
     const scrollY = this.renderer ? this.renderer.getScrollY() : timelineStore.scrollY.peek();
     timelineStore.fxRenameEdit.value = {
       sequenceId: track.sequenceId,
       original: track.sequenceName,
       value: track.sequenceName,
-      x: 18,
+      x: FX_VISIBILITY_HIT_WIDTH,
       y: RULER_HEIGHT + fxIdx * FX_TRACK_HEIGHT - scrollY,
-      width: TRACK_HEADER_WIDTH - 18,
+      width: TRACK_HEADER_WIDTH - FX_VISIBILITY_HIT_WIDTH,
       height: FX_TRACK_HEIGHT,
     };
     e.preventDefault();
@@ -676,8 +676,8 @@ export class TimelineInteraction {
       if (localX < TRACK_HEADER_WIDTH && fxIdx >= 0 && fxIdx < fxTracks.length) {
         const fxSeqId = fxTracks[fxIdx].sequenceId;
 
-        // Click on bullet/dot area (x < 18px) toggles visibility
-        if (localX < 18) {
+        // Click on the eye hit zone toggles visibility (16px glyph, 24px zone).
+        if (localX < FX_VISIBILITY_HIT_WIDTH) {
           sequenceStore.toggleFxSequenceVisibility(fxSeqId);
           return;
         }

@@ -25,6 +25,16 @@ export const RULER_HEIGHT = 24;
 export const FX_TRACK_HEIGHT = 28;
 export const AUDIO_TRACK_HEIGHT = 44;
 
+/** UAT 2026-10-19 selection law (Studio parity): the selected FX row uses the
+ *  tool-select blue bed (#365ed6) with the accent-orange trait (#f5a623). */
+const FX_SELECTED_BG = '#365ED6';
+const FX_SELECTION_TRAIT = '#F5A623';
+/** FX visibility eye: a 16px glyph inside a 24px click zone (the old 3px dot
+ *  was not discoverable). Shared with TimelineInteraction for hit testing. */
+export const FX_VISIBILITY_HIT_WIDTH = 24;
+const FX_VISIBILITY_ICON_LEFT = 4;
+const FX_VISIBILITY_ICON_SIZE = 16;
+
 export type { TimelinePlayScriptMarker } from '../../types/timeline';
 
 export interface TimelinePlayScriptMarkerGeometry {
@@ -370,15 +380,17 @@ export class TimelineRenderer {
       ctx.fillRect(0, ghostY, TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
       if (fromIndex < fxTracks.length) {
         const ghostTrack = fxTracks[fromIndex];
-        ctx.fillStyle = this.resolveTrackColor(ghostTrack);
-        ctx.beginPath();
-        ctx.arc(9, ghostY + FX_TRACK_HEIGHT / 2, 3, 0, Math.PI * 2);
-        ctx.fill();
+        const ghostMidY = ghostY + FX_TRACK_HEIGHT / 2;
         ctx.fillStyle = colors.trackName;
         ctx.font = '9px system-ui, sans-serif';
         ctx.textBaseline = 'middle';
-        const ghostName = this.truncateText(ctx, getTimelineFxHeaderLabel(ghostTrack), TRACK_HEADER_WIDTH - 16);
-        ctx.fillText(ghostName, 16, ghostY + FX_TRACK_HEIGHT / 2);
+        this.drawFxVisibilityIcon(ctx, FX_VISIBILITY_ICON_LEFT, ghostMidY, ghostTrack.visible, colors.trackName);
+        const ghostName = this.truncateText(
+          ctx,
+          getTimelineFxHeaderLabel(ghostTrack),
+          TRACK_HEADER_WIDTH - FX_VISIBILITY_HIT_WIDTH - 2,
+        );
+        ctx.fillText(ghostName, FX_VISIBILITY_HIT_WIDTH, ghostMidY);
       }
       ctx.fillStyle = colors.fxTrackBg;
       ctx.fillRect(TRACK_HEADER_WIDTH, ghostY, w - TRACK_HEADER_WIDTH, FX_TRACK_HEIGHT);
@@ -817,34 +829,38 @@ export class TimelineRenderer {
     const colors = getThemeColors();
     const resolvedColor = this.resolveTrackColor(fxTrack);
 
-    // Track background (highlight when selected)
-    ctx.fillStyle = isSelected ? '#1A1520' : colors.fxTrackBg;
+    // Track background — Studio selection law: tool-blue bed + orange trait.
+    ctx.fillStyle = isSelected ? FX_SELECTED_BG : colors.fxTrackBg;
     ctx.fillRect(0, y, canvasWidth, FX_TRACK_HEIGHT);
 
-    // Selection indicator: left accent border
+    // Selection indicator: accent-orange left trait
     if (isSelected) {
-      ctx.fillStyle = resolvedColor;
-      ctx.fillRect(0, y, 2, FX_TRACK_HEIGHT);
+      ctx.fillStyle = FX_SELECTION_TRAIT;
+      ctx.fillRect(0, y, 3, FX_TRACK_HEIGHT);
     }
 
     // Track header
     const isVisible = fxTrack.visible;
-    ctx.fillStyle = isSelected ? '#151015' : colors.fxHeaderBg;
-    ctx.fillRect(isSelected ? 2 : 0, y, TRACK_HEADER_WIDTH - (isSelected ? 2 : 0), FX_TRACK_HEIGHT);
-    ctx.fillStyle = isVisible ? resolvedColor : withAlpha(resolvedColor, '4D'); // 30% opacity when hidden
+    ctx.fillStyle = isSelected ? FX_SELECTED_BG : colors.fxHeaderBg;
+    ctx.fillRect(isSelected ? 3 : 0, y, TRACK_HEADER_WIDTH - (isSelected ? 3 : 0), FX_TRACK_HEIGHT);
+    const midY = y + FX_TRACK_HEIGHT / 2;
+    // Eye (open/closed) replaces the old dot — 16px glyph, 24px hit zone.
+    this.drawFxVisibilityIcon(
+      ctx,
+      FX_VISIBILITY_ICON_LEFT,
+      midY,
+      isVisible,
+      isSelected ? '#FFFFFF' : (isVisible ? resolvedColor : withAlpha(resolvedColor, '4D')),
+    );
+    ctx.fillStyle = isSelected ? '#FFFFFF' : (isVisible ? colors.trackName : colors.rulerText);
     ctx.font = '9px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    const name = this.truncateText(ctx, getTimelineFxHeaderLabel(fxTrack), TRACK_HEADER_WIDTH - 16);
-    // Color dot + name
-    const dotX = 6;
-    const dotY = y + FX_TRACK_HEIGHT / 2;
-    if (isVisible) {
-      ctx.beginPath();
-      ctx.arc(dotX + 3, dotY, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.fillStyle = isVisible ? colors.trackName : colors.rulerText;
-    ctx.fillText(name, dotX + 10, dotY);
+    const name = this.truncateText(
+      ctx,
+      getTimelineFxHeaderLabel(fxTrack),
+      TRACK_HEADER_WIDTH - FX_VISIBILITY_HIT_WIDTH - 2,
+    );
+    ctx.fillText(name, FX_VISIBILITY_HIT_WIDTH, midY);
 
     // Range bar
     const barX = fxTrack.inFrame * frameWidth - scrollX + TRACK_HEADER_WIDTH;
@@ -1057,6 +1073,43 @@ export class TimelineRenderer {
     ctx.strokeStyle = withAlpha(color, '40');
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+    ctx.restore();
+  }
+
+  /** Lucide-style eye / eye-off for the FX header. Canvas-only (the renderer is
+   *  DOM-free and tests pin that), stroked at ~1.3px like the 24px lucide glyph
+   *  scaled to 16px, so visibility is readable at a glance. */
+  private drawFxVisibilityIcon(
+    ctx: CanvasRenderingContext2D,
+    left: number,
+    centerY: number,
+    visible: boolean,
+    color: string,
+  ): void {
+    const size = FX_VISIBILITY_ICON_SIZE;
+    const cx = left + size / 2;
+    const halfW = size / 2;
+    const lid = size * 0.30;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - halfW, centerY);
+    ctx.quadraticCurveTo(cx, centerY - lid * 2, cx + halfW, centerY);
+    ctx.quadraticCurveTo(cx, centerY + lid * 2, cx - halfW, centerY);
+    ctx.stroke();
+    if (visible) {
+      ctx.beginPath();
+      ctx.arc(cx, centerY, size * 0.16, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(cx - halfW + 1, centerY - lid * 1.8);
+      ctx.lineTo(cx + halfW - 1, centerY + lid * 1.8);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
