@@ -235,6 +235,8 @@ export class WatercolorEngine {
   private wetPeak = 0;
   private minAwakeUntil = 0;
   private fixTimer = 0;
+  /** Studio settle-cap fix: the last step is a fix a new stroke may reopen (cancelAutoFix). */
+  private autoFix = false;
   private flowSpeed = 0;                       // upper bound on water speed (sim texels / s)
   private growCarry = 0;                       // fractional texels the active rect still has to grow
   private brushNow = { x: 0, y: 0, r: 0 };
@@ -402,6 +404,7 @@ export class WatercolorEngine {
     this.lastWet = -Infinity;
     this.wetPeak = 0;
     this.fixTimer = 0;
+    this.autoFix = false;
     this.flowSpeed = 0;
   }
 
@@ -418,6 +421,7 @@ export class WatercolorEngine {
     this.stroke = null;
     this.dropFill();
     this.queue = [];
+    this.autoFix = false;   // a newer step makes the settle-cap fix permanent
     const { g } = this;
     const ox = Math.round((w - ow) / 2), oy = Math.round((h - oh) / 2);
     const meta: StepMeta = { ...this.currentMeta(), whole: this.captureWhole(), paperOrigin: [...this.paperOrigin] };
@@ -535,6 +539,7 @@ export class WatercolorEngine {
    */
   recordChange(kind: StepKind, label: string, before: DocState) {
     this.dropFill();
+    this.autoFix = false;   // a newer step makes the settle-cap fix permanent
     this.history.begin({ kind, label }, { ...this.currentMeta(), doc: before } satisfies StepMeta);
     this.notifyHistory();
   }
@@ -1184,16 +1189,37 @@ export class WatercolorEngine {
     return t;
   }
 
-  /** Dry everything and bake the mobile pigment into the paper. */
-  fix() {
-    if (!this.painted || this.fixTimer > 0) return;
+  /**
+   * Dry everything and bake the mobile pigment into the paper. `auto` marks the
+   * Studio settle-cap fix: a later stroke may reopen it with cancelAutoFix() so
+   * wet-on-wet painting still blends. An explicit Dry disarms that reopen even
+   * when it cannot start (a fix is already running).
+   */
+  fix(auto = false): boolean {
+    if (!auto) this.autoFix = false;
+    if (!this.painted || this.fixTimer > 0) return false;
     this.beginStep('dry', 'Dry');
     // the fixed layer only ever changes here, so it is only snapshotted here
     this.history.protect(1, this.painted, this.fixed.views);
     this.fixTimer = FIX_DURATION;
+    this.autoFix = auto;
     // mobile pigment only exists where strokes have been, so only that needs settling
     this.touch(this.painted);
     this.schedule();
+    return true;
+  }
+
+  /**
+   * Reopen a settle-cap fix (Studio): the artist painted again, so the sheet
+   * goes back to its wet, blendable state instead of painting over dry paper.
+   * No-op unless the last step is an auto fix — an explicit Dry stays permanent.
+   */
+  cancelAutoFix(): boolean {
+    if (!this.autoFix) return false;
+    this.autoFix = false;
+    if (!this.history.canUndo) return false;
+    this.travel('undo');
+    return true;
   }
 
   /** Wipe the paint as one undo step. The sheet (and its grain) stays. */
@@ -1240,6 +1266,7 @@ export class WatercolorEngine {
 
   /** Step through history in either direction. */
   private travel(dir: 'undo' | 'redo', notify = true) {
+    this.autoFix = false;   // the last step is no longer the settle-cap fix
     this.stroke = null;
     this.dropFill();
     this.queue = [];
@@ -1822,6 +1849,7 @@ export class WatercolorEngine {
 
   private beginStep(kind: StepKind, label: string) {
     this.dropFill();   // a new action ends a running fill; its remaining bands never land in this step
+    this.autoFix = false;   // any newer action makes the settle-cap fix permanent
     this.history.begin({ kind, label }, this.currentMeta());
     this.notifyHistory();
   }

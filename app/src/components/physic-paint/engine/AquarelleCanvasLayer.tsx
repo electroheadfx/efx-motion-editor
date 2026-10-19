@@ -396,6 +396,17 @@ export function AquarelleCanvasLayer(props: {
       engine.fix();
     });
 
+    // BLEND REOPEN: the settle cap's fix bakes the mobile pigment into the paper,
+    // and fixed pigment cannot be moved by a later water stroke — wet-on-wet
+    // blending died after a pause. A new stroke reopens the cap fix (the engine
+    // restores the pre-fix wet state) so the sheet is blendable again. Capture
+    // on window so this runs BEFORE the engine's own canvas pointerdown.
+    const reopenSettleOnPaint = (event: PointerEvent) => {
+      if (event.target !== canvas || event.button === 1) return;
+      engine.cancelAutoFix();
+    };
+    window.addEventListener('pointerdown', reopenSettleOnPaint, true);
+
     // CACHE WRITE (Dry settle): fix() bakes the wet pigment over FIX_DURATION.
     // A second sink keeps the Dry wiring above untouched — this one only
     // schedules the cache commit of the settled sheet. Stamped with the Dry-time
@@ -444,12 +455,14 @@ export function AquarelleCanvasLayer(props: {
       }
       // VISIBLE SETTLE CAP: no wet input for the cap window → force-dry. The
       // fix bakes over 1.2 s and sleeps, so the settle capture lands the
-      // denser wash the bake's capped end frame holds.
+      // denser wash the bake's capped end frame holds. The cap fix is marked
+      // AUTO: the next stroke reopens it (see reopenSettleOnPaint) so it can
+      // still blend; an explicit Dry stays permanent.
       if (!painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {
         const capMs = aquarelleVisibleSettleTicks(aquarelleParams.value.dry) * HOST_TICK_MS;
         if (performance.now() - lastWetAt >= capMs) {
           settleCapArmed = true;
-          engine.fix();
+          engine.fix(true);
         }
       }
       // CACHE WRITE (settle): the dry (concentrated) look, not the wet stroke.
@@ -471,6 +484,7 @@ export function AquarelleCanvasLayer(props: {
     raf = requestAnimationFrame(tick);
 
     cleanupRef.current = () => {
+      window.removeEventListener('pointerdown', reopenSettleOnPaint, true);
       offDry();
       offDryCapture();
       for (const timer of pendingSettleTimers) window.clearTimeout(timer);
