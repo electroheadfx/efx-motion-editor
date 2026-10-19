@@ -14,6 +14,7 @@ import {getShaderById} from './shaderLibrary';
 import {renderPaintFrameWithBg} from './paintRenderer';
 import {paintStore} from '../stores/paintStore';
 import {physicPaintStore, physicPaintVersion, awaitPendingDecodes, type EfxPaintFlattenedFrameRecord} from '../stores/physicPaintStore';
+import {transmittanceToAlpha} from './rasterAlpha';
 import {getDocument as getEfxPaintDocument} from '../stores/efxPaintStore';
 import {blendModeToCompositeOp} from '../efx-paint/compositor/efxPaintCompositor';
 import { buildFrameBytesToken, type PhysicPaintRenderedFrame } from '../types/physicPaint';
@@ -190,6 +191,8 @@ export class PreviewRenderer {
   private blurOffscreen: HTMLCanvasElement | null = null; // reusable offscreen canvas for per-layer/generator blur
   private paperTextureSubscriptions = new Map<string, () => void>();
   private velocityCache = new VelocityCache();
+  /** Aquarelle transmittance → straight-alpha pigment, per flattened raster. */
+  private transmittanceAlphaCache = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 
   /** Callback invoked after an image finishes loading (triggers re-render) */
   onImageLoaded: (() => void) | null = null;
@@ -496,13 +499,26 @@ export class PreviewRenderer {
         ctx.save();
         // Aquarelle-over-video law: a fully opaque no-backdrop paint raster is
         // MODE.transparent transmittance (white = no pigment), not a white
-        // layer — MULTIPLY it so video/other layers show through. Engine-1
-        // paint and any layer with its own backdrop keep their blend mode.
-        ctx.globalCompositeOperation = flattened.transmittance
-          ? 'multiply'
-          : blendModeToCompositeOp(layer.blendMode);
+        // layer. Normal/multiply glazes it with MULTIPLY so video/other layers
+        // show through. Any other layer blend needs a real pigment raster: the
+        // transmittance is converted to straight alpha (once per flattened
+        // raster) and the user's blend applies (screen glows on dark video).
+        // If pixels are unavailable, keep the safe multiply — never a white
+        // sheet over the video. Engine-1 paint keeps its normal path.
+        let drawSource = source;
+        let compositeOp = blendModeToCompositeOp(layer.blendMode);
+        if (flattened.transmittance) {
+          if (layer.blendMode === 'normal' || layer.blendMode === 'multiply') {
+            compositeOp = 'multiply';
+          } else {
+            const alphaRaster = flattened.raster ? this.getTransmittanceAlphaRaster(flattened.raster) : null;
+            if (alphaRaster) drawSource = alphaRaster;
+            else compositeOp = 'multiply';
+          }
+        }
+        ctx.globalCompositeOperation = compositeOp;
         ctx.globalAlpha = effectiveOpacity;
-        if (source) ctx.drawImage(source, 0, 0, logicalW, logicalH);
+        if (drawSource) ctx.drawImage(drawSource, 0, 0, logicalW, logicalH);
         ctx.restore();
       } else if (layer.type === 'paint') {
         // Always render paint layer (solid bg even when no strokes)
@@ -706,6 +722,15 @@ export class PreviewRenderer {
       default:
         return null;
     }
+  }
+
+  /** Convert (once) a transmittance raster to straight-alpha pigment for a blend mode. */
+  private getTransmittanceAlphaRaster(raster: HTMLCanvasElement): HTMLCanvasElement | null {
+    const cached = this.transmittanceAlphaCache.get(raster);
+    if (cached) return cached;
+    const converted = transmittanceToAlpha(raster);
+    if (converted) this.transmittanceAlphaCache.set(raster, converted);
+    return converted;
   }
 
   private getPhysicPaintImageSource(frame: PreviewPhysicPaintFrameSource): CanvasImageSource | null {

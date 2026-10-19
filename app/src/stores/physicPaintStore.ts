@@ -2701,7 +2701,7 @@ function _resolveFlattenedFrame(
     backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
     const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
     backgroundContentAtFrame = backgroundResolution.kind === 'content';
-    if (backgroundContentAtFrame) {
+    if (backgroundResolution.kind === 'content') {
       if (_resolveBackgroundSourceImage(backgroundResolution.sourceRef) === null) {
         return null;
       }

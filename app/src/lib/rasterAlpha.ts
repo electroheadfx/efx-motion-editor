@@ -46,3 +46,53 @@ export function isFullyOpaqueRaster(canvas: HTMLCanvasElement): boolean {
     return false;
   }
 }
+
+/**
+ * Convert an opaque aquarelle transmittance raster into a STRAIGHT-ALPHA paint
+ * raster so the normal layer blend model (and the user's chosen blend mode) can
+ * apply. `t` is the transmittance (white = no pigment, dark = absorbs light):
+ *
+ *   alpha = 1 - min(t.r, t.g, t.b)      (the least-transmitted channel)
+ *   color = (t - min) / alpha            (the pigment colour, un-premultiplied)
+ *
+ * This is exact over white: alpha*color + (1-alpha) = t, so the paint keeps its
+ * watercolour look; unpainted white becomes fully transparent, and non-normal
+ * layer blends (screen/overlay/add) see a real pigment colour instead of a
+ * white background. Returns null when pixels cannot be read/written.
+ */
+export function transmittanceToAlpha(canvas: HTMLCanvasElement): HTMLCanvasElement | null {
+  try {
+    const width = canvas.width;
+    const height = canvas.height;
+    if (!width || !height) return null;
+    const source = canvas.getContext('2d', { willReadFrequently: true });
+    if (!source || typeof source.getImageData !== 'function') return null;
+    const image = source.getImageData(0, 0, width, height);
+    const data = image.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const min = Math.min(data[i], data[i + 1], data[i + 2]);
+      const alpha = 255 - min;
+      if (alpha === 0) {
+        data[i] = 0;
+        data[i + 1] = 0;
+        data[i + 2] = 0;
+        data[i + 3] = 0;
+        continue;
+      }
+      const scale = 255 / alpha;
+      data[i] = Math.min(255, Math.round((data[i] - min) * scale));
+      data[i + 1] = Math.min(255, Math.round((data[i + 1] - min) * scale));
+      data[i + 2] = Math.min(255, Math.round((data[i + 2] - min) * scale));
+      data[i + 3] = alpha;
+    }
+    const out = document.createElement('canvas');
+    out.width = width;
+    out.height = height;
+    const context = out.getContext('2d');
+    if (!context || typeof context.putImageData !== 'function') return null;
+    context.putImageData(image, 0, 0);
+    return out;
+  } catch {
+    return null;
+  }
+}

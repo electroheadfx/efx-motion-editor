@@ -780,6 +780,52 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(parentDraw!.globalAlpha).toBe(0.5);
   });
 
+  it('aquarelle transmittance follows a non-normal layer blend (screen) via an alpha pigment raster', () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
+    ]);
+    // Magenta transmittance: green absorbed at 51, so alpha = 204.
+    const pixels = new Uint8ClampedArray([255, 51, 255, 255]);
+    const raster = {
+      width: 1,
+      height: 1,
+      getContext: () => ({ getImageData: () => ({ data: pixels }) }),
+    } as unknown as HTMLCanvasElement;
+    const flattened = {
+      layerId: 'roto-layer',
+      frame: 1,
+      cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
+      raster,
+      renderedFrame: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('FLAT_1') },
+      encodeBytes: () => Promise.resolve(new Uint8Array(0)),
+      missing: [],
+      transmittance: true,
+    };
+    vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
+    // The conversion allocates its output canvas through document.createElement.
+    vi.stubGlobal('document', {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({ putImageData: () => {} }),
+      }),
+    });
+    const layer: Layer = { ...makeRotoLayer(), blendMode: 'screen' };
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
+
+    const draw = ctx.operations.find(
+      (op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> =>
+        op.type === 'drawImage' && op.globalCompositeOperation === 'screen',
+    );
+    expect(draw).toBeDefined();
+    // The converted pigment canvas is drawn (not the raw transmittance bitmap).
+    expect(draw!.source).toBe('unknown');
+    expect(Array.from(pixels)).toEqual([255, 0, 255, 204]);
+  });
+
   it('null flattened delivery draws nothing and contributes false to hasDrawable', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
