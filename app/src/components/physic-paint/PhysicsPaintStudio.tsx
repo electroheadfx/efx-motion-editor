@@ -4284,7 +4284,7 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, engine, engine?.getAppliedPreviewBaseContentToken(), launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale], () => {
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, engine, engine?.getAppliedPreviewBaseContentToken(), launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -4357,7 +4357,13 @@ export function PhysicsPaintStudio() {
         height: canvasHeight,
         playbackTick: rotoCachedPlayback.playbackTick,
         onMissingSourcesChange: handleProgramMonitorMissingChange,
-        liveOverlay: engineSurfaceHidden ? null : (engine?.getAppliedPreviewBaseContentToken() != null ? engine.getBakedCanvas() : null),
+        // Water color: the aquarelle canvas IS the active track's live pixels.
+        // The engine-1 baked canvas holds the same strokes re-drawn by the
+        // script-record bridge — a thinner duplicate line under the wash that
+        // the final bake never contains. Never show it in this module.
+        liveOverlay: engineSurfaceHidden || activeModule.value === 'watercolor'
+          ? null
+          : (engine?.getAppliedPreviewBaseContentToken() != null ? engine.getBakedCanvas() : null),
         // 56-12: the live aquarelle canvas SUPPLIES the active track's pixels.
         // Including them here too double-composites (the "micro flash" when the
         // cache write lands) and over-saturates the live look.
