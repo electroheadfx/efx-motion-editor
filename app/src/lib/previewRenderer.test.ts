@@ -749,6 +749,37 @@ describe('48-03 flattened physic-paint seam (D-11/CMP-01)', () => {
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: FLAT_1, globalAlpha: 0.25 }));
   });
 
+  it('aquarelle transmittance raster multiplies even when the parent blend is normal', async () => {
+    seedPhysicalRoto([
+      { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
+    ]);
+    const flattened = {
+      layerId: 'roto-layer',
+      frame: 1,
+      cacheKey: 'physic-paint:roto-layer:flattened:rev-1',
+      renderedFrame: { frameIndex: 0, appFrame: 1, bytes: testWebpBytes('FLAT_1') },
+      encodeBytes: () => Promise.resolve(new Uint8Array(0)),
+      missing: [],
+      transmittance: true,
+    };
+    vi.spyOn(physicPaintStore, 'getFlattenedFrame').mockReturnValue(flattened);
+    const layer: Layer = { ...makeRotoLayer(), opacity: 0.5, blendMode: 'normal' };
+    const ctx = new RecordingCanvasContext();
+    const renderer = new PreviewRenderer(makeCanvas(ctx));
+
+    renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
+    await flushDecode();
+    renderer.renderFrame([layer], 1, [], 24, true, 1, 1);
+
+    const parentDraw = ctx.operations.find(
+      (op): op is Extract<RecordedCanvasOp, { type: 'drawImage' }> => op.type === 'drawImage' && op.source === FLAT_1,
+    );
+    expect(parentDraw).toBeDefined();
+    // White = no pigment: source-over would hide video under the paint layer.
+    expect(parentDraw!.globalCompositeOperation).toBe('multiply');
+    expect(parentDraw!.globalAlpha).toBe(0.5);
+  });
+
   it('null flattened delivery draws nothing and contributes false to hasDrawable', () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },

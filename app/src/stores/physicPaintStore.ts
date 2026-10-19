@@ -25,7 +25,7 @@ import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/ph
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
 import { capturePaperFond } from '../lib/paperFondCapture';
-import { isOpaqueRaster } from '../lib/rasterAlpha';
+import { isFullyOpaqueRaster, isOpaqueRaster } from '../lib/rasterAlpha';
 import { applyPaperPass, getPaperPassTile } from '../lib/paperPass';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
@@ -882,6 +882,16 @@ export interface EfxPaintFlattenedFrameRecord {
   readonly renderedFrame: PhysicPaintRenderedFrame;
   readonly encodeBytes: () => Promise<Uint8Array>;
   readonly missing: readonly EfxPaintMissingSourceEntry[];
+  /**
+   * True when the raster is aquarelle MODE.transparent transmittance (fully
+   * opaque, white = no pigment) and the paint layer has no paper fond,
+   * background clip, or solid fallback — i.e. the sheet is meant to glaze the
+   * layers BENEATH it. Such a raster must be drawn with MULTIPLY; source-over
+   * would show its opaque white as a background and hide video underneath.
+   * Engine-1 frames and any layer carrying its own opaque backdrop leave this
+   * false and keep their normal alpha/blend path.
+   */
+  readonly transmittance?: boolean;
 }
 
 function _notifyRotoPhysicalOperationLeaseChange(): void {
@@ -2814,6 +2824,16 @@ function _resolveFlattenedFrame(
     fondCtx.globalCompositeOperation = 'source-over';
     raster = fondCanvas;
   }
+  // Aquarelle-over-video law: with no paper fond, no background clip and no
+  // solid fallback, a fully opaque raster can only be the aquarelle
+  // MODE.transparent transmittance (white = no pigment). The editor/export
+  // must MULTIPLY it over the layers beneath — source-over would show its
+  // opaque white as a background and hide video below the paint. Engine-1
+  // frames keep real alpha, so the full-opacity probe leaves them false.
+  const transmittance = fondInstruction === null
+    && efxDocument.background.fallback.mode === 'transparent'
+    && !backgroundParticipates(efxDocument)
+    && isFullyOpaqueRaster(raster);
   // G-52-8 (FIX 4): the record carries the raster; draw surfaces consume it
   // directly. The WebP encode is async (Rust codec) and memoized on first call
   // via encodeBytes() — transport/serialization readers (bridge, export, tests)
@@ -2824,6 +2844,7 @@ function _resolveFlattenedFrame(
     frame,
     cacheKey: flattenedKey,
     raster,
+    transmittance,
     renderedFrame: Object.freeze({
       frameIndex: frame,
       appFrame: frame,

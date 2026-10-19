@@ -494,7 +494,13 @@ export class PreviewRenderer {
         // Missing sources are transparent in the raster and surface via the
         // Studio capsule (D-09) — no placeholder pixels can reach this path.
         ctx.save();
-        ctx.globalCompositeOperation = blendModeToCompositeOp(layer.blendMode);
+        // Aquarelle-over-video law: a fully opaque no-backdrop paint raster is
+        // MODE.transparent transmittance (white = no pigment), not a white
+        // layer — MULTIPLY it so video/other layers show through. Engine-1
+        // paint and any layer with its own backdrop keep their blend mode.
+        ctx.globalCompositeOperation = flattened.transmittance
+          ? 'multiply'
+          : blendModeToCompositeOp(layer.blendMode);
         ctx.globalAlpha = effectiveOpacity;
         if (source) ctx.drawImage(source, 0, 0, logicalW, logicalH);
         ctx.restore();
