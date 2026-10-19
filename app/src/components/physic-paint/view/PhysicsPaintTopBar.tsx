@@ -80,6 +80,10 @@ export function PhysicsPaintTopBar({
   // UI checklist row 3: one shared Size slider — the displayed Brush size is
   // the live aquarelle size in Water color mode (signal read bypasses the memo).
   const liveBrushSize = activeModule.value === 'watercolor' ? aquarelleParams.value.size : brushSize;
+  // Opacity routes to aquarelle load in Water color; display the live value
+  // too, or the slider snaps back to engine-1's opacity (the setting looked
+  // dead: the paint changed, the thumb did not).
+  const liveOpacity = activeModule.value === 'watercolor' ? aquarelleParams.value.load : opacity;
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -95,7 +99,7 @@ export function PhysicsPaintTopBar({
       {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain). */}
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
-        <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={opacity} onChange={onOpacityChange} disabled={disabled} />
+        <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={liveOpacity} onChange={onOpacityChange} disabled={disabled} />
         {activeModule.value === 'watercolor' ? (
           <>
             <TopBarSlider

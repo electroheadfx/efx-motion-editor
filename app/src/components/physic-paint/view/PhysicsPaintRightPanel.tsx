@@ -448,7 +448,7 @@ export function PhysicsPaintRightPanel({
               <SliderStepper
                 id="paint-tab-brush-opacity"
                 label="Opacity"
-                value={opacity}
+                value={activeModule.value === 'watercolor' ? aquarelleParams.value.load : opacity}
                 step={1}
                 min={10}
                 max={100}
