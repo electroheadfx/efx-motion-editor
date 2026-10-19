@@ -97,6 +97,8 @@ export function createAquarelleEngineAdapter(
   setPaper(paper: AquarelleBakePaper): void
   /** Live awake gate — the bake's final cook-to-sleep probe. */
   isAwake(): boolean
+  /** 261019c: force-dry at the visible settle cap (the live sheet's cap). */
+  fix(): void
 } {
   const engineId: EngineId = 'efx-watercolor'
   const strokes: StudioStroke<AquarelleStrokePayload>[] = []
@@ -230,6 +232,11 @@ export function createAquarelleEngineAdapter(
     // settled state the live sheet (and its cache capture) reaches.
     isAwake(): boolean {
       return engine?.isAwake ?? false
+    },
+    // 261019c: the live sheet force-dries at the visible settle cap; the bake
+    // runs the same fix so the end key keeps the artist's denser look.
+    fix(): void {
+      engine?.fix()
     },
     // The 56-06 codec covers the one payload union (strokes + Dry).
     // The host EngineAdapter type is stroke-shaped because the host

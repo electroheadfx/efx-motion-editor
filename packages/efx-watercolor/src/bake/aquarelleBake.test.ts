@@ -21,7 +21,7 @@ import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host'
 import type { AquarelleStrokePayload } from '../payload/toStudioStroke'
 import { toStudioStroke, DIFFUSION_CAP, type AquarelleStroke } from '../payload/toStudioStroke'
 import { createDryEvent, isAquarelleDryEvent, type AquarellePayloadEvent } from '../payload/dryEvent'
-import { createAquarelleBake, aquarellePaperCacheFingerprint, type AquarelleBakeFrame, type AquarelleBakePaper } from './aquarelleBake'
+import { aquarelleVisibleSettleTicks, createAquarelleBake, aquarellePaperCacheFingerprint, type AquarelleBakeFrame, type AquarelleBakePaper } from './aquarelleBake'
 
 // ---------------------------------------------------------------------------
 // Mock canvas + fake adapter (same idiom as engineAdapter.test.ts)
@@ -479,17 +479,18 @@ interface TimelineLog {
   renders: { frame: number; strokes: readonly { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[]; stepsBefore: number }[]
   stepsByFrame: number[]
   captures: number
+  fixes: number
 }
 
-function makeTimelineAdapter(awakeTicks: number): {
-  adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean }
+function makeTimelineAdapter(awakeTicks: number, withFix = false): {
+  adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean; fix?: () => void }
   log: TimelineLog
 } {
   const { canvas } = makeMockCanvas(8, 8)
   let awake = awakeTicks
   let steps = 0
-  const log: TimelineLog = { renders: [], stepsByFrame: [], captures: 0 }
-  const adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean } = {
+  const log: TimelineLog = { renders: [], stepsByFrame: [], captures: 0, fixes: 0 }
+  const adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean; fix?: () => void } = {
     engineId: 'efx-watercolor',
     payloadCodec: {
       serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
@@ -518,6 +519,7 @@ function makeTimelineAdapter(awakeTicks: number): {
     dispose: () => undefined,
     // The settle probe: awake for `awakeTicks` checks on the FINAL frame.
     isAwake: () => awake-- > 0,
+    ...(withFix ? { fix: () => { log.fixes += 1 } } : {}),
   }
   return { adapter, log }
 }
@@ -531,6 +533,35 @@ function timedStroke(count: number, timestamp: number, playFrame: number | null,
     diffusionFrames,
   })
 }
+
+describe('261019c visible settle cap', () => {
+  it('maps Dry Speed to the visible settle window (dry 50 → 165 ticks)', () => {
+    expect(aquarelleVisibleSettleTicks(50)).toBe(165)
+    expect(aquarelleVisibleSettleTicks(100)).toBe(30)
+    expect(aquarelleVisibleSettleTicks(0)).toBe(300)
+    expect(aquarelleVisibleSettleTicks(Number.NaN)).toBe(165)
+  })
+
+  it('force-dries at the cap instead of cooking through the engine awake window', async () => {
+    // Measured awake window far beyond the cap: the old bake would cook to
+    // sleep (thousands of ticks) and wash the pigment out.
+    const stroke = timedStroke(5, 1000, 2, 1000)
+    const { adapter, log } = makeTimelineAdapter(1000, true)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+    })
+    const result = await bake.bake([stroke])
+    expect(result.ok).toBe(true)
+    expect(log.fixes).toBe(1)
+    // timelineEnd = last endTick (4) + cap (165); the final window steps the
+    // capped settle (169 - 5 from the previous window = 164) and the 1.2 s
+    // fix bake (72 ticks). The awake probe is never consulted.
+    expect(log.stepsByFrame[3]).toBe(164 + 72)
+  })
+})
 
 describe('261019 recorded-timeline progressive replay', () => {
   it('starts the animation at frame 0 (no playFrame anchor) and simulates the real inter-stroke gap', async () => {

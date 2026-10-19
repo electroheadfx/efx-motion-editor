@@ -21,6 +21,7 @@ import type { CSSProperties, JSX } from 'preact';
 import { signal } from '@preact/signals';
 import { useCallback, useRef } from 'preact/hooks';
 import {
+  aquarelleVisibleSettleTicks,
   buildBrushForStroke,
   DEFAULT_PAPER,
   PAPERS,
@@ -284,6 +285,14 @@ export function AquarelleCanvasLayer(props: {
       onStrokeSettledRef.current?.(pending.stroke, ticks);
     };
 
+    // 261019c VISIBLE SETTLE CAP (user decision): the wash force-dries at the
+    // same short window the bake uses, so the live sheet, its cache capture,
+    // and the Play end key keep the denser look instead of cooking to the
+    // engine's washed-out full awake state.
+    let painting = false;
+    let lastWetAt = 0;
+    let settleCapArmed = false;
+
     let engine: WatercolorEngine;
     try {
       engine = new WatercolorEngine(
@@ -291,10 +300,16 @@ export function AquarelleCanvasLayer(props: {
         null,
         {
           onStrokeSample(sample) {
+            painting = true;
+            lastWetAt = performance.now();
+            settleCapArmed = false;
             const sink = (engine as unknown as { __samples?: RawSample[] }).__samples;
             if (sink) sink.push(sample);
           },
           onStrokeEnd() {
+            painting = false;
+            lastWetAt = performance.now();
+            settleCapArmed = false;
             const carrier = engine as unknown as { __samples?: RawSample[] };
             const raw = carrier.__samples ?? [];
             carrier.__samples = [];
@@ -309,8 +324,9 @@ export function AquarelleCanvasLayer(props: {
               brushId: snap.brushId || brushIdForSelection(),
               points,
               toolOverrides: { ...snap.toolOverrides },
-              // Bake window: wetter paint keeps diffusing longer (D-19, cap 600).
-              diffusionFrames: Math.round(30 + 270 * (1 - (snap.params['dry'] ?? 50) / 100)),
+              // Visible settle window (D-19, cap 600) — the SAME cap the live
+              // sheet force-dries at and the bake replays.
+              diffusionFrames: aquarelleVisibleSettleTicks(snap.params['dry'] ?? 50),
               timestamp: Date.now(),
               // FRAME SCOPE: the stroke is anchored to the edit frame this sheet
               // previews. toStudioStroke maps this to StudioStroke.playFrame.
@@ -376,6 +392,7 @@ export function AquarelleCanvasLayer(props: {
     // this is the LIVE end — force-dry the wet sheet so the paint stops
     // moving right where the user pressed Dry. No second channel.
     const offDry = onAquarelleDry(() => {
+      settleCapArmed = true;
       engine.fix();
     });
 
@@ -420,7 +437,20 @@ export function AquarelleCanvasLayer(props: {
         engine.clear();
         // The new frame starts clean — a settle capture here would write the
         // empty sheet over that frame's cache.
+        painting = false;
+        lastWetAt = 0;
+        settleCapArmed = false;
         wasAwake = false;
+      }
+      // VISIBLE SETTLE CAP: no wet input for the cap window → force-dry. The
+      // fix bakes over 1.2 s and sleeps, so the settle capture lands the
+      // denser wash the bake's capped end frame holds.
+      if (!painting && !settleCapArmed && lastWetAt > 0 && engine.isAwake) {
+        const capMs = aquarelleVisibleSettleTicks(aquarelleParams.value.dry) * HOST_TICK_MS;
+        if (performance.now() - lastWetAt >= capMs) {
+          settleCapArmed = true;
+          engine.fix();
+        }
       }
       // CACHE WRITE (settle): the dry (concentrated) look, not the wet stroke.
       const awake = engine.isAwake;

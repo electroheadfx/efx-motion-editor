@@ -137,6 +137,25 @@ function clampCuisson(raw: number | undefined): number {
   return Math.min(DIFFUSION_CAP, Math.trunc(raw))
 }
 
+/**
+ * 261019c Studio override (user decision 2026-10-19): the sheet force-dries
+ * after this VISIBLE settle window instead of cooking through the engine's
+ * full awake window — the fully settled wash diffuses until it looks washed
+ * out. The live sheet, its cache capture, and the aquarelle bake share this
+ * cap so all three keep the denser look the artist sees while painting.
+ * Dry Speed still scales it (higher dry % = shorter window); dry 50 → 165
+ * ticks ≈ 2.75 s.
+ */
+export function aquarelleVisibleSettleTicks(dryPercent: number): number {
+  const dry = typeof dryPercent === 'number' && Number.isFinite(dryPercent)
+    ? Math.max(0, Math.min(100, dryPercent))
+    : 50
+  return Math.round(30 + 270 * (1 - dry / 100))
+}
+
+/** Engine FIX_DURATION (1.2 s) on the host tick grid — the force-dry bake. */
+const FIX_SETTLE_TICKS = Math.round(1.2 * 60)
+
 /** Host tick grid (DATA-03) — the recorded timeline's unit. */
 const HOST_TICK_MS = 1000 / 60
 
@@ -283,11 +302,21 @@ export function createAquarelleBake(
     const strokeAlias = new Map<StudioStroke<AquarelleStrokePayload>, StudioStroke<AquarelleStrokePayload>>()
     let timed = timedBase
     let timelineEnd = 0
+    // True when the settle hit the visible cap (the live sheet force-dries) —
+    // a naturally shorter sleep already baked itself and must not be fixed.
+    let settleCapped = false
     if (timedBase) {
       const lastEntry = timedBase[timedBase.length - 1]!
-      const settleEstimate = clampCuisson(
+      const lastStrokeDry = (lastEntry.stroke.engine as { params?: { dry?: number } } | undefined)?.params?.dry
+      const settleCap = aquarelleVisibleSettleTicks(typeof lastStrokeDry === 'number' ? lastStrokeDry : 50)
+      // 261019c: never cook past the visible settle cap — the measured awake
+      // window (often far longer) is the washed-out state the user rejected.
+      // A shorter measured window still wins.
+      const rawSettle = clampCuisson(
         lastEntry.stroke.cuisson || (lastEntry.stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
       )
+      settleCapped = rawSettle <= 0 || rawSettle >= settleCap
+      const settleEstimate = Math.min(rawSettle || settleCap, settleCap)
       // The last SAMPLE sits at endTick (ticks = pts - 1) — the timeline must
       // cover one more tick so a zero-settle stroke can still feed it.
       timelineEnd = Math.max(
@@ -471,11 +500,19 @@ export function createAquarelleBake(
             adapter.stepTick(tick)
           }
         }
-        // End-frame law: cook the last frame until the sheet sleeps — the
-        // engine's own definition of the settled look the live cache captures.
-        if (isFinalFrame && typeof awakeProbe.isAwake === 'function') {
-          for (let guard = 0; guard < SETTLE_MAX_TICKS && awakeProbe.isAwake(); guard += 1) {
-            adapter.stepTick(guard)
+        // End-frame law: force-dry at the visible settle cap — the same fix()
+        // the live sheet runs at its cap — and bake the fix window. The
+        // resulting state is the live cache's denser capture. Adapters without
+        // the seam (older / test doubles) keep the cook-to-sleep fallback.
+        if (isFinalFrame) {
+          const fixSeam = (adapter as EngineAdapter<AquarelleStrokePayload> & { fix?: () => void }).fix
+          if (settleCapped && typeof fixSeam === 'function') {
+            fixSeam.call(adapter)
+            for (let tick = 0; tick < FIX_SETTLE_TICKS; tick += 1) adapter.stepTick(tick)
+          } else if (typeof awakeProbe.isAwake === 'function') {
+            for (let guard = 0; guard < SETTLE_MAX_TICKS && awakeProbe.isAwake(); guard += 1) {
+              adapter.stepTick(guard)
+            }
           }
         }
         return adapter.captureFrame()
