@@ -1800,6 +1800,12 @@ export async function applyAquarelleEventsToKey(input: {
     height: input.size.height,
     paper: input.paper,
     encodeWebp: encodeAquarelleWebpFrame,
+    // 261019: Apply is Play's end frame. The single-frame timed bake replays
+    // the recorded session clock (real gaps, true sample ticks) and cooks to
+    // sleep, so the applied key lands the same settled wash the lived sheet
+    // reached — the old per-stroke branch stopped at the saved cuisson and
+    // came out denser than the paint.
+    frameCount: 1,
   });
   try {
     const result = await bake.bake(input.events);
@@ -1885,7 +1891,14 @@ function aquarelleEventsFromScript(script: RotoPaintScript): AquarellePayloadEve
             x: point.x, y: point.y, p: point.p, tx: point.tx, ty: point.ty, tw: point.tw,
           })),
       ...(stroke.mutationId !== undefined ? { mutationId: stroke.mutationId } : {}),
-      ...(stroke.diffusionFrames !== undefined ? { diffusionFrames: stroke.diffusionFrames } : {}),
+      // 261019: the measured settle (recorded after the user left the sheet)
+      // outranks the script's save-time cuisson — an Action saved before its
+      // settle landed still replays the real diffusion window this session.
+      ...(stored?.diffusionFrames !== undefined
+        ? { diffusionFrames: stored.diffusionFrames }
+        : stroke.diffusionFrames !== undefined
+          ? { diffusionFrames: stroke.diffusionFrames }
+          : {}),
       timestamp: stroke.timestamp,
       ...(stroke.playFrame !== undefined ? { playFrame: stroke.playFrame } : {}),
     };

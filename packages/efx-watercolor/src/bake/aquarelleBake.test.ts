@@ -476,7 +476,7 @@ describe('261017-fz3 paper-aware bake', () => {
 // ---------------------------------------------------------------------------
 
 interface TimelineLog {
-  renders: { frame: number; strokes: readonly { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[] }[]
+  renders: { frame: number; strokes: readonly { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[]; stepsBefore: number }[]
   stepsByFrame: number[]
   captures: number
 }
@@ -486,7 +486,6 @@ function makeTimelineAdapter(awakeTicks: number): {
   log: TimelineLog
 } {
   const { canvas } = makeMockCanvas(8, 8)
-  let frame = -1
   let awake = awakeTicks
   let steps = 0
   const log: TimelineLog = { renders: [], stepsByFrame: [], captures: 0 }
@@ -500,7 +499,9 @@ function makeTimelineAdapter(awakeTicks: number): {
     setAnimationMode: () => undefined,
     getStrokes: () => [],
     renderPartialStrokes: (entries) => {
-      log.renders.push({ frame, strokes: [...entries] })
+      // The produce chain is serialized, so the capture count IS the frame
+      // index of the render that follows it.
+      log.renders.push({ frame: log.captures, strokes: [...entries], stepsBefore: steps })
     },
     renderAllStrokes: () => undefined,
     exportCompositeCanvas: () => canvas,
@@ -512,7 +513,6 @@ function makeTimelineAdapter(awakeTicks: number): {
       log.stepsByFrame.push(steps)
       steps = 0
       log.captures += 1
-      frame += 1
       return canvas as unknown as CanvasImageSource
     },
     dispose: () => undefined,
@@ -552,24 +552,24 @@ describe('261019 recorded-timeline progressive replay', () => {
     expect(log.captures).toBe(10)
 
     // Frame 0 already paints stroke A — playFrame 3 never delays the start.
-    const first = log.renders[0]!.strokes
-    expect(first).toHaveLength(1)
-    expect(first[0]!.stroke).toBe(strokeA)
-    expect(first[0]!.pointCount).toBe(11)
+    // Only strokes that actually receive new samples in a window render.
+    expect(log.renders).toHaveLength(2)
+    const first = log.renders[0]!
+    expect(first.frame).toBe(0)
+    expect(first.strokes).toHaveLength(1)
+    expect(first.strokes[0]!.stroke).toBe(strokeA)
+    expect(first.strokes[0]!.pointCount).toBe(11)
 
-    // The gap frames still advance the fluid: frame 1 steps its whole window
-    // with no new samples on the paper.
-    expect(log.renders[1]!.strokes).toHaveLength(1)
-    expect(log.renders[1]!.strokes[0]!.pointCount).toBe(11)
+    // The gap frames still advance the fluid with no new samples on the paper.
     expect(log.stepsByFrame[1]).toBeGreaterThan(0)
 
-    // Stroke B starts only once its recorded tick arrives (frame 6 here).
-    const bFrames = log.renders
-      .map((entry, index) => ({ index, strokes: entry.strokes }))
-      .filter((entry) => entry.strokes.some((s) => s.stroke === strokeB))
-    expect(bFrames.length).toBeGreaterThan(0)
-    expect(bFrames[0]!.index).toBe(6)
-    expect(bFrames[0]!.strokes.find((s) => s.stroke === strokeB)!.pointCount).toBe(6)
+    // Stroke B starts only once its recorded tick arrives (frame 6 here), and
+    // the idle fluid time BEFORE it (125 - 114 = 11 ticks) is stepped first —
+    // samples never land before the gap they actually followed.
+    const bRender = log.renders.find((entry) => entry.strokes.some((s) => s.stroke === strokeB))!
+    expect(bRender.frame).toBe(6)
+    expect(bRender.stepsBefore).toBe(11)
+    expect(bRender.strokes.find((s) => s.stroke === strokeB)!.pointCount).toBe(6)
 
     // The final frame cooks until the awake gate closes (5 extra ticks).
     const lastFrameSteps = log.stepsByFrame[9]!

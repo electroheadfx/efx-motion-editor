@@ -265,13 +265,26 @@ export function createAquarelleBake(
       for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
     }
     const drysByFrame = new Map<number, AquarelleDryEvent[]>()
+    // Timed path: a Dry rides with the stroke that follows it in recorded
+    // order and fires at that stroke's first SAMPLE (not the frame start).
+    // A trailing Dry (no stroke after it) fires after the last samples.
+    const drysBeforeStroke = new Map<StudioStroke<AquarelleStrokePayload>, AquarelleDryEvent[]>()
+    const trailingDrys: AquarelleDryEvent[] = []
     let pendingDrys: AquarelleDryEvent[] = []
     for (const event of events) {
       if (isAquarelleDryEvent(event)) {
         pendingDrys.push(event)
         continue
       }
-      const frame = startFrameOf.get(event as StudioStroke<AquarelleStrokePayload>)
+      const stroke = event as StudioStroke<AquarelleStrokePayload>
+      if (timed) {
+        if (pendingDrys.length > 0) {
+          drysBeforeStroke.set(stroke, pendingDrys)
+          pendingDrys = []
+        }
+        continue
+      }
+      const frame = startFrameOf.get(stroke)
       if (frame !== undefined && pendingDrys.length > 0) {
         const list = drysByFrame.get(frame) ?? []
         list.push(...pendingDrys)
@@ -280,10 +293,13 @@ export function createAquarelleBake(
       }
     }
     if (pendingDrys.length > 0) {
-      const frame = Math.max(0, frameSpan - 1)
-      const list = drysByFrame.get(frame) ?? []
-      list.push(...pendingDrys)
-      drysByFrame.set(frame, list)
+      if (timed) trailingDrys.push(...pendingDrys)
+      else {
+        const frame = Math.max(0, frameSpan - 1)
+        const list = drysByFrame.get(frame) ?? []
+        list.push(...pendingDrys)
+        drysByFrame.set(frame, list)
+      }
     }
 
     // Fallback schedule budget: diffusion spread across the span so the wash
@@ -311,48 +327,75 @@ export function createAquarelleBake(
     const fedCounts = new Map<StudioStroke<AquarelleStrokePayload>, number>()
 
     for (let frameIndex = 0; frameIndex < frameSpan; frameIndex += 1) {
-      for (const dry of drysByFrame.get(frameIndex) ?? []) {
-        void scheduleAdapter(() => {
-          adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
-        })
-      }
-
-      let frameStrokes: { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[]
-      let tickBudget: number
+      const isFinalFrame = frameIndex === frameSpan - 1
+      const windowStart = previousWindowEnd
+      let frameStrokes: { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[] = []
+      let tickBudget = 0
+      let windowEnd = previousWindowEnd
       if (timed) {
-        const windowEnd = frameIndex === frameSpan - 1
+        windowEnd = isFinalFrame
           ? timelineEnd
           : Math.max(previousWindowEnd, Math.round(((frameIndex + 1) * timelineEnd) / frameSpan))
-        frameStrokes = []
-        let newSamples = 0
-        for (const entry of timed) {
-          if (entry.beginTick > windowEnd) break
-          const pointCount = Math.min(entry.stroke.pts.length, windowEnd - entry.beginTick + 1)
-          if (pointCount <= 0) continue
-          const fed = fedCounts.get(entry.stroke) ?? 0
-          if (pointCount > fed) newSamples += pointCount - fed
-          frameStrokes.push({ stroke: entry.stroke, pointCount })
-        }
-        // The adapter ticks once per fed sample; the rest of the window is
-        // pure fluid time (the idle gaps the live sheet actually lived).
-        tickBudget = Math.max(0, windowEnd - previousWindowEnd - newSamples)
-        for (const entry of frameStrokes) fedCounts.set(entry.stroke, entry.pointCount)
+        tickBudget = Math.max(0, windowEnd - previousWindowEnd)
         previousWindowEnd = windowEnd
       } else {
+        for (const dry of drysByFrame.get(frameIndex) ?? []) {
+          void scheduleAdapter(() => {
+            adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
+          })
+        }
         frameStrokes = getProgressiveFrameStrokes(schedule, frameIndex)
-        tickBudget = frameIndex === frameSpan - 1
+        tickBudget = isFinalFrame
           ? diffusionPerFrame + lastStrokeCatchUp
           : diffusionPerFrame
       }
 
       const framePromise = scheduleAdapter(() => {
-        adapter.renderPartialStrokes(frameStrokes)
-        for (let tick = 0; tick < tickBudget; tick += 1) {
-          adapter.stepTick(tick)
+        if (timed) {
+          // TRUE TICK ORDER: a window's samples must land at their recorded
+          // tick — idle fluid time BEFORE a stroke is stepped before its
+          // samples, never after. Feeding a whole window's samples at the
+          // window start (then idling) landed later strokes on a wetter sheet
+          // than the live paint lived, which bloomed Play shapes wider.
+          // Samples are only ever fed between strokes, so interleaving at
+          // stroke-chunk granularity is exact.
+          let cursor = windowStart
+          for (const entry of timed) {
+            if (entry.beginTick > windowEnd) break
+            const pointCount = Math.min(entry.stroke.pts.length, windowEnd - entry.beginTick + 1)
+            if (pointCount <= 0) continue
+            const fed = fedCounts.get(entry.stroke) ?? 0
+            if (pointCount <= fed) continue
+            const firstTick = entry.beginTick + fed
+            for (let tick = cursor; tick < firstTick; tick += 1) adapter.stepTick(tick)
+            if (fed === 0) {
+              for (const dry of drysBeforeStroke.get(entry.stroke) ?? []) {
+                adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
+              }
+            }
+            // The adapter ticks once per fed sample.
+            adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount }])
+            cursor = firstTick + (pointCount - fed)
+            fedCounts.set(entry.stroke, pointCount)
+          }
+          // A user Dry after the last stroke settles at the end of the span.
+          if (isFinalFrame && trailingDrys.length > 0) {
+            for (let tick = cursor; tick < windowEnd; tick += 1) adapter.stepTick(tick)
+            cursor = windowEnd
+            for (const dry of trailingDrys) {
+              adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
+            }
+          }
+          for (let tick = cursor; tick < windowEnd; tick += 1) adapter.stepTick(tick)
+        } else {
+          adapter.renderPartialStrokes(frameStrokes)
+          for (let tick = 0; tick < tickBudget; tick += 1) {
+            adapter.stepTick(tick)
+          }
         }
         // End-frame law: cook the last frame until the sheet sleeps — the
         // engine's own definition of the settled look the live cache captures.
-        if (frameIndex === frameSpan - 1 && typeof awakeProbe.isAwake === 'function') {
+        if (isFinalFrame && typeof awakeProbe.isAwake === 'function') {
           for (let guard = 0; guard < SETTLE_MAX_TICKS && awakeProbe.isAwake(); guard += 1) {
             adapter.stepTick(guard)
           }
