@@ -3229,10 +3229,22 @@ export const physicPaintStore = {
     const capacityTracks = _rotoPhysicalCapacity.get(layerId);
     capacityTracks?.delete(trackId);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
+    // The cache-metadata maps MUST mirror _frames: the key upsert path prunes
+    // frames absent from _rotoCacheMetadata (_pruneFramesOutside...). An
+    // install used to leave this index EMPTY, so the first cross-track paste /
+    // duplicate / +key upsert on a hydrated track pruned every installed
+    // frame — all keys rendered empty until a Studio reopen re-installed them.
+    _rotoCacheMetadata.get(layerId)?.delete(trackId);
+    _rotoGeneratedCacheMetadata.get(layerId)?.delete(trackId);
     if (payload.frames.size > 0) {
       const trackFrames = _getOrCreateTrack(layerId, trackId);
+      const trackMetadata = _getOrCreateTrackRotoMetadata(layerId, trackId);
       trackFrames.clear();
-      for (const [frame, value] of payload.frames) trackFrames.set(frame, value);
+      for (const [frame, value] of payload.frames) {
+        trackFrames.set(frame, value);
+        const backgroundOnly = (value as { backgroundOnly?: boolean }).backgroundOnly;
+        trackMetadata.set(frame, _normalizeRealRotoCacheFrame(value, frame, backgroundOnly || undefined));
+      }
     }
     if (payload.rotoPhysical) {
       _assertRotoPhysicalDocumentCarriers(payload.rotoPhysical);

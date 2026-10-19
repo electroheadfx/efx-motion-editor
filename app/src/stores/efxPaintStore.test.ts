@@ -205,6 +205,49 @@ describe('serializeRuntimeIntoDocument / hydrateRuntimeFromDocument', () => {
     expect(physicPaintStore.getRotoRealKeyRecords('layer-L', TEST_TRACK_ID).map((record) => record.keyId)).toEqual(['key-1']);
   });
 
+  it('keeps hydrated frames addressable after the first key upsert (cache-metadata index parity)', () => {
+    const document = makeTrackDocument('layer-L');
+    const track = document.tracks[0];
+    const records = [rotoRecord('key-0', 0), rotoRecord('key-3', 3)];
+    const withPayload = {
+      ...document,
+      tracks: [{
+        ...track,
+        frames: {
+          0: { cachePath: buildMachineCacheRelativePath('layer-L', TEST_TRACK_ID, 0), width: 100, height: 50 },
+          3: { cachePath: buildMachineCacheRelativePath('layer-L', TEST_TRACK_ID, 3), width: 100, height: 50 },
+        },
+        rotoPhysical: {
+          capacity: 10,
+          realKeyRecords: records,
+          interpolation: PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+          scriptMotion: PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
+          background: null,
+          selectedKeyId: null,
+          cursorAppFrame: 0,
+          revision: buildPhysicPaintRotoPhysicalRevision(
+            records,
+            PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED,
+            PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+            PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+            [],
+          ),
+          loopClips: PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
+          incomingInterpolationBreakKeyIds: PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+        },
+      }],
+    };
+    const frames = new Map<number, PhysicPaintRenderedFrame>([[0, makeFrame(0, 0)], [3, makeFrame(1, 3)]]);
+    hydrateRuntimeFromDocument(withPayload, new Map([[TEST_TRACK_ID, frames]]));
+
+    // First upsert on the hydrated track (cross-track paste, duplicate, +key):
+    // the prune step must not drop the installed frames.
+    physicPaintStore.upsertRealRotoKeyFrame('layer-L', TEST_TRACK_ID, 1, makeFrame(2, 1));
+
+    expect(physicPaintStore.getFrame('layer-L', TEST_TRACK_ID, 0)?.bytes).toEqual(makeFrame(0, 0).bytes);
+    expect(physicPaintStore.getFrame('layer-L', TEST_TRACK_ID, 3)?.bytes).toEqual(makeFrame(1, 3).bytes);
+  });
+
   it('round-trips runtime → document → runtime with reference-stable identity', () => {
     const document = makeTrackDocument('layer-L');
     registerDocument(document);
