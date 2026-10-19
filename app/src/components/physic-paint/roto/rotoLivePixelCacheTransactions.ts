@@ -1,4 +1,4 @@
-import { createFinalizationQueue } from '../pilot/finalizationQueue';
+import { createFinalizationQueue, type FinalizationTurnOutcome } from '../pilot/finalizationQueue';
 import { startMainThreadGapProbe, type MainThreadGapSummary } from '../performance/mainThreadGapProbe';
 
 /**
@@ -38,6 +38,8 @@ export interface RotoLivePixelCapture<T> {
   produce: () => Promise<T> | T;
   commit: (value: T, current: RotoLivePixelIdentity) => void | boolean | Promise<void | boolean>;
   recordPerformance?: (sample: { stage: string; category: 'sync-cpu' | 'scheduled-wait' | 'async-elapsed'; durationMs: number; timestamp: number; mutationId?: number; sourceFrame: number; outcome?: string }) => void;
+  /** Diagnostics: the queue's terminal outcome, including the stale gate. */
+  onSettle?: (outcome: FinalizationTurnOutcome) => void;
 }
 
 interface RotoLegacyLivePixelCapture<T> {
@@ -153,7 +155,7 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
         input.recordPerformance?.({ stage: 'cache-revision-check', category: 'sync-cpu', durationMs: 0, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: input.identity.appFrame, outcome });
         return false;
       };
-      const work = queue
+      const settlement = queue
         .submit({
           // Produce waits for the machine's drain AND the quiet window (Part 3):
           // a mid-burst pause (< CAPTURE_PRODUCE_QUIET_MS) re-polls instead of
@@ -188,8 +190,9 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
             input.recordPerformance?.({ stage: 'cache-accepted-commit', category: 'sync-cpu', durationMs: performance.now() - commitStartedAt, timestamp: performance.now(), mutationId: input.mutationId, sourceFrame: current.appFrame, outcome: 'accepted' });
             return true;
           },
-        })
-        .then((outcome) => outcome === 'committed');
+        });
+      void settlement.then((outcome) => input.onSettle?.(outcome));
+      const work = settlement.then((outcome) => outcome === 'committed');
       pending.set(key, work);
       const clearPending = () => {
         // A superseded capture must never touch the LIVE capture's entries:
@@ -221,7 +224,16 @@ export function createRotoLivePixelCacheTransactions(): RotoLivePixelCacheTransa
       const release = queue.beginFlush();
       try {
         if (identity) {
-          await pending.get(identityKey(identity));
+          // A failed capture may re-enqueue itself (the aquarelle cache retry)
+          // from its own settlement handler — follow the newest pending work so
+          // navigation/close waits for that retry too, bounded against churn.
+          const key = identityKey(identity);
+          for (let pass = 0; pass < 3; pass += 1) {
+            const work = pending.get(key);
+            if (!work) return;
+            await work;
+            if (pending.get(key) === undefined || pending.get(key) === work) return;
+          }
           return;
         }
         await queue.drain();

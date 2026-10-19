@@ -4109,6 +4109,11 @@ export function PhysicsPaintStudio() {
   // settle + frame-leave) stay idempotent and never double-apply the sheet
   // onto a cache that already includes it.
   const aquarelleMergeBaseRef = useRef<{ appFrame: number; base: RenderedFramePayload | null } | null>(null);
+  // aquarelle-cache-lost-on-return: the latest capture sequence per frame — a
+  // retry only runs when no newer capture (new session, Dry, second leave)
+  // has taken ownership of that frame's cache.
+  const aquarelleCaptureSeqRef = useRef(0);
+  const aquarelleLatestCaptureSeqByFrameRef = useRef<Map<number, number>>(new Map());
   const findCachedRotoDisplayFrameRef = useRef(findCachedRotoDisplayFrame);
   findCachedRotoDisplayFrameRef.current = findCachedRotoDisplayFrame;
   const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null) => {
@@ -4122,22 +4127,44 @@ export function PhysicsPaintStudio() {
         base: findCachedRotoDisplayFrameRef.current(playFrame),
       };
     }
+    const cachedBase = aquarelleMergeBaseRef.current?.base ?? null;
+    const operationId = launch.operationId;
+    const seq = ++aquarelleCaptureSeqRef.current;
+    aquarelleLatestCaptureSeqByFrameRef.current.set(playFrame, seq);
     capturePaintCacheEvent('aquarelle-capture-enqueue', {
       appFrame: playFrame,
-      base: aquarelleMergeBaseRef.current?.base ? 'cache' : 'none',
+      base: cachedBase ? 'cache' : 'none',
     });
-    void rotoPersistenceRef.current.captureLivePixels({
+    // The snapshot is an eager canvas copy, so a retry can reuse it after the
+    // live sheet was cleared by the frame change.
+    const enqueue = () => rotoPersistenceRef.current.captureLivePixels({
       layerId: launch.layerId,
       appFrame: playFrame,
       liveAlphaCanvas,
-      cachedBase: aquarelleMergeBaseRef.current?.base ?? null,
+      cachedBase,
       // A5: MODE.transparent is opaque transmittance. Multiply matches the
       // live CSS seam — white (no pigment) leaves the base untouched, pigment
       // tints it. Source-over would cover the base with the full sheet.
       mergeBlend: 'multiply',
       size: { width: canvasWidth, height: canvasHeight },
-    }).then((ok) => {
+    });
+    void enqueue().then((ok) => {
       capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok });
+      if (ok) return;
+      // aquarelle-cache-lost-on-return: the stroke's own recorded physical
+      // edit can advance the content revision between enqueue and commit, so
+      // the capture gate treats the sheet as stale. The snapshot still holds
+      // the frame's paint — retry once against the current revision, unless a
+      // newer capture for this frame already owns its cache.
+      if (aquarelleLatestCaptureSeqByFrameRef.current.get(playFrame) !== seq) return;
+      const currentLaunch = launchContextRef.current;
+      if (!currentLaunch || currentLaunch.operationId !== operationId) return;
+      void enqueue().then((retried) => {
+        capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: retried, retry: true });
+      }).catch((error) => {
+        capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: false, retry: true, failed: true });
+        console.error('[PhysicsPaintStudio] Aquarelle cache retry failed', error);
+      });
     }).catch((error) => {
       capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: false, failed: true });
       console.error('[PhysicsPaintStudio] Aquarelle cache write failed', error);

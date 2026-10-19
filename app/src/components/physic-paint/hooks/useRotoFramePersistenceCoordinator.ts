@@ -465,7 +465,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const launchId = expectedOperationId ?? launch?.operationId;
     const projectContextId = launch?.project?.contextId;
     const trackId = inputRef.current.getActiveTrackId(layerId ?? '');
-    if (!layerId || !launchId || !projectContextId) return false;
+    if (!layerId || !launchId || !projectContextId) {
+      capturePaintCacheEvent('cache-write-rejected', { appFrame: renderedFrame.appFrame, reason: 'context' });
+      return false;
+    }
     const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
     const contentRevision = expectedContentRevision ?? inputRef.current.store.getRotoPhysicalContentRevision(layerId, trackId);
     if (!document || !contentRevision || document.revision !== contentRevision) {
@@ -473,6 +476,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // the ACTIVE track (re-resolved now) doesn't own the transaction's
       // expected revision — the cross-track effect of an active-track switch
       // racing a pending flush.
+      capturePaintCacheEvent('cache-write-rejected', {
+        appFrame: renderedFrame.appFrame,
+        reason: !document ? 'no-document' : !contentRevision ? 'no-revision' : 'revision',
+      });
       return false;
     }
     const route = await routeRotoPhysicalPaintFrame({
@@ -567,7 +574,10 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   }) => {
     const launch = inputRef.current.launchContext;
     const launchId = capture.operationId ?? launch?.operationId;
-    if (!launchId) return Promise.resolve(false);
+    if (!launchId) {
+      capturePaintCacheEvent('live-capture-skip', { appFrame: capture.appFrame, reason: 'launch' });
+      return Promise.resolve(false);
+    }
     const trackId = inputRef.current.getActiveTrackId(capture.layerId);
     const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
@@ -605,17 +615,30 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         return identity;
       },
       recordPerformance: isPhysicsPaintProfilingEnabled() ? recordPhysicsPaintPerformance : undefined,
+      // Diagnostics: name the capture gate that rejected a non-committed turn
+      // (the stale checks are otherwise silent in the app-written log).
+      onSettle: (outcome) => {
+        if (outcome !== 'committed') capturePaintCacheEvent('live-capture-turn', { appFrame: capture.appFrame, outcome });
+      },
       produce: () => {
         // Resolve the snapshot only once the capture gate has settled and the
         // finalize loop has applied the pending rasters — never synchronously at
         // stroke-completion (see the liveAlphaCanvas factory note above).
-        const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
-          ? capture.liveAlphaCanvas()
-          : capture.liveAlphaCanvas;
-        if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
-        return capture.cachedBase || capture.baseCanvas
-          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
-          : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
+        try {
+          const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
+            ? capture.liveAlphaCanvas()
+            : capture.liveAlphaCanvas;
+          if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
+          return capture.cachedBase || capture.baseCanvas
+            ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
+            : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
+        } catch (error) {
+          capturePaintCacheEvent('live-capture-produce-failed', {
+            appFrame: capture.appFrame,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
       },
       commit: async (rendered, current) => {
         const result = await upsertCachedFrame(
