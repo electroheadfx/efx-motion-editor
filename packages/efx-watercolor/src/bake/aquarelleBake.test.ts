@@ -551,29 +551,24 @@ describe('261019 recorded-timeline progressive replay', () => {
     if (!result.ok) return
     expect(log.captures).toBe(10)
 
-    // Frame 0 already paints stroke A — playFrame 3 never delays the start.
-    // Only strokes that actually receive new samples in a window render.
-    expect(log.renders).toHaveLength(2)
-    const first = log.renders[0]!
-    expect(first.frame).toBe(0)
-    expect(first.strokes).toHaveLength(1)
-    expect(first.strokes[0]!.stroke).toBe(strokeA)
-    expect(first.strokes[0]!.pointCount).toBe(11)
+    // Frame 0 draws a PARTIAL stroke A — frames follow sample progress, not
+    // wall-clock time, so a short first stroke no longer completes at once.
+    const aRenders = log.renders.filter((entry) => entry.strokes.some((s) => s.stroke === strokeA))
+    expect(aRenders.map((entry) => entry.strokes.find((s) => s.stroke === strokeA)!.pointCount))
+      .toEqual([2, 4, 6, 8, 10, 11])
+    expect(aRenders[0]!.frame).toBe(0)
 
-    // The gap frames still advance the fluid with no new samples on the paper.
-    expect(log.stepsByFrame[1]).toBeGreaterThan(0)
-
-    // Stroke B starts only once its recorded tick arrives (frame 6 here), and
-    // the idle fluid time BEFORE it (125 - 114 = 11 ticks) is stepped first —
+    // Stroke B starts once its samples' turn arrives and the idle fluid time
+    // BEFORE its first sample (ticks 11..124 = 114 steps) is stepped first —
     // samples never land before the gap they actually followed.
     const bRender = log.renders.find((entry) => entry.strokes.some((s) => s.stroke === strokeB))!
-    expect(bRender.frame).toBe(6)
-    expect(bRender.stepsBefore).toBe(11)
-    expect(bRender.strokes.find((s) => s.stroke === strokeB)!.pointCount).toBe(6)
+    expect(bRender.frame).toBe(5)
+    expect(bRender.stepsBefore).toBe(114)
+    expect(bRender.strokes.find((s) => s.stroke === strokeB)!.pointCount).toBe(1)
 
-    // The final frame cooks until the awake gate closes (5 extra ticks).
-    const lastFrameSteps = log.stepsByFrame[9]!
-    expect(lastFrameSteps).toBe(19 + 5)
+    // The final frame simulates the remaining settle tail and cooks until the
+    // awake gate closes (5 extra ticks).
+    expect(log.stepsByFrame[9]).toBe(59 + 5)
   })
 
   it('the final frame is captured after the settle cook (end key = live sleep state)', async () => {
@@ -588,5 +583,49 @@ describe('261019 recorded-timeline progressive replay', () => {
     const result = await bake.bake([stroke])
     expect(result.ok).toBe(true)
     expect(log.stepsByFrame[3]).toBeGreaterThanOrEqual(120)
+  })
+
+  it('applies the Play Motion held pose to the stroke points before the fluid deposit', async () => {
+    const source = makeStroke({
+      points: Array.from({ length: 5 }, (_, index) => ({ x: 0.2 + index * 0.05, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 })),
+      timestamp: 1000,
+      diffusionFrames: 0,
+    })
+    const feedWith = async (position: number): Promise<StudioStroke<AquarelleStrokePayload>> => {
+      const { adapter, log } = makeTimelineAdapter(0)
+      const bake = createAquarelleBake(adapter, {
+        encodeWebp: pixelEncoder,
+        width: 1000,
+        height: 1000,
+        frameCount: 4,
+        motion: { deformation: 0, position, startFrame: 0 },
+      })
+      const result = await bake.bake([source])
+      expect(result.ok).toBe(true)
+      const fed = log.renders
+        .flatMap((entry) => entry.strokes)
+        .find((entry) => entry.stroke.pts.length === 5)
+      expect(fed).toBeDefined()
+      return fed!.stroke
+    }
+    const posed = await feedWith(100)
+    const repeat = await feedWith(100)
+    const unposed = await feedWith(0)
+    // Zero motion leaves the recorded stroke byte-identical (same instance).
+    expect(unposed).toBe(source)
+    // The pose is deterministic for the same script + settings.
+    expect(posed.pts.map((point) => [point.x, point.y])).toEqual(repeat.pts.map((point) => [point.x, point.y]))
+    // The position amplitude is 12 canvas px — in this 1000px document a uv
+    // offset can never exceed it.
+    const moved = posed.pts.reduce((sum, point, index) => (
+      sum
+      + Math.abs(point.x - source.pts[index]!.x)
+      + Math.abs(point.y - source.pts[index]!.y)
+    ), 0)
+    expect(moved).toBeGreaterThan(0)
+    for (const [index, point] of posed.pts.entries()) {
+      expect(Math.abs(point.x - source.pts[index]!.x)).toBeLessThanOrEqual(12 / 1000 + 1e-9)
+      expect(Math.abs(point.y - source.pts[index]!.y)).toBeLessThanOrEqual(12 / 1000 + 1e-9)
+    }
   })
 })

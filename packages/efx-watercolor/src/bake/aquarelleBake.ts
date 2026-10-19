@@ -33,6 +33,7 @@ import {
 import {
   buildProgressiveStrokeSchedule,
   getProgressiveFrameStrokes,
+  transformRecordedStrokeForHeldPose,
 } from '@efxlab/efx-paint-host/animation'
 import {
   DIFFUSION_CAP,
@@ -98,6 +99,19 @@ export interface AquarelleBakeOptions {
    * startFrame; diffusion stepTicks run every frame so the wash develops.
    */
   frameCount?: number
+  /**
+   * 261019b Motion wiggle (the Play dialog's deformation + position). The
+   * aquarelle sheet is cumulative — deposited pigment cannot be re-warped
+   * every frame — so each stroke takes the engine-1 held pose ONCE, at the
+   * output frame where it begins to draw. `startFrame` is the absolute Studio
+   * frame of the span's first output (the pose key), matching engine-1's
+   * destinationSourceFrame law.
+   */
+  motion?: {
+    readonly deformation: number
+    readonly position: number
+    readonly startFrame: number
+  }
 }
 
 export type AquarelleBakeResult =
@@ -244,23 +258,77 @@ export function createAquarelleBake(
     for (const event of events) {
       if (!isAquarelleDryEvent(event)) strokes.push(event as StudioStroke<AquarelleStrokePayload>)
     }
-    const timed = buildRecordedTimeline(strokes)
-    const schedule = timed ? [] : buildProgressiveStrokeSchedule(strokes, frameSpan)
+    const timedBase = buildRecordedTimeline(strokes)
+    const schedule = timedBase ? [] : buildProgressiveStrokeSchedule(strokes, frameSpan)
+
+    // 261019b: frames follow SAMPLE progress, not wall-clock time. The session
+    // clock includes the settle tail (often seconds) and the idle gaps, so a
+    // uniform-time split finished short strokes inside the first frame — the
+    // animation showed whole strokes appearing instead of drawing. Frames are
+    // now allocated by drawn samples; the gaps/settle are simulated inside the
+    // frame that reaches them, and the final frame keeps the settle cook.
+    const sampleTicks: number[] = []
+    if (timedBase) {
+      for (const entry of timedBase) {
+        for (let index = 0; index < entry.stroke.pts.length; index += 1) {
+          sampleTicks.push(entry.beginTick + index)
+        }
+      }
+    }
+    const drawFrameSpan = Math.max(1, frameSpan - 1)
 
     // Each Dry fires before the next stroke's first frame (recorded order).
     const startFrameOf = new Map<StudioStroke<AquarelleStrokePayload>, number>()
+    /** Motion copies keyed by the ORIGINAL stroke (Dry mapping identity). */
+    const strokeAlias = new Map<StudioStroke<AquarelleStrokePayload>, StudioStroke<AquarelleStrokePayload>>()
+    let timed = timedBase
     let timelineEnd = 0
-    if (timed) {
-      const lastEntry = timed[timed.length - 1]!
+    if (timedBase) {
+      const lastEntry = timedBase[timedBase.length - 1]!
       const settleEstimate = clampCuisson(
         lastEntry.stroke.cuisson || (lastEntry.stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
       )
-      timelineEnd = Math.max(1, lastEntry.endTick + settleEstimate)
+      // The last SAMPLE sits at endTick (ticks = pts - 1) — the timeline must
+      // cover one more tick so a zero-settle stroke can still feed it.
+      timelineEnd = Math.max(
+        1,
+        lastEntry.endTick + settleEstimate,
+        lastEntry.beginTick + lastEntry.stroke.pts.length,
+      )
       const frameForTick = (tick: number) => Math.max(0, Math.min(
         frameSpan - 1,
         Math.ceil((tick * frameSpan) / timelineEnd) - 1,
       ))
-      for (const entry of timed) startFrameOf.set(entry.stroke, frameForTick(entry.beginTick))
+      // 261019b Motion: aquarelle points are document uv (y up) while the
+      // shared held-pose law is in canvas pixels — scale in, transform, scale
+      // back. Each stroke takes its pose at the output frame where it begins;
+      // deposited pigment cannot be re-warped per frame in a cumulative sim.
+      const motion = options.motion
+      const width = options.width
+      const height = options.height
+      if (motion && width && height && (motion.deformation > 0 || motion.position > 0)) {
+        timed = timedBase.map((entry, index) => {
+          const stroke = entry.stroke
+          if (stroke.pts.length === 0) return entry
+          const pixelStroke: StudioStroke<AquarelleStrokePayload> = {
+            ...stroke,
+            pts: stroke.pts.map((point) => ({ ...point, x: point.x * width, y: point.y * height })),
+          }
+          const moved = transformRecordedStrokeForHeldPose(pixelStroke, {
+            destinationSourceFrame: motion.startFrame + frameForTick(entry.beginTick),
+            strokeIndex: index,
+            deformation: motion.deformation,
+            position: motion.position,
+          })
+          const uvStroke: StudioStroke<AquarelleStrokePayload> = {
+            ...stroke,
+            pts: moved.pts.map((point) => ({ ...point, x: point.x / width, y: point.y / height })),
+          }
+          strokeAlias.set(stroke, uvStroke)
+          return { ...entry, stroke: uvStroke }
+        })
+      }
+      for (const entry of timedBase) startFrameOf.set(entry.stroke, frameForTick(entry.beginTick))
     } else {
       for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
     }
@@ -279,7 +347,7 @@ export function createAquarelleBake(
       const stroke = event as StudioStroke<AquarelleStrokePayload>
       if (timed) {
         if (pendingDrys.length > 0) {
-          drysBeforeStroke.set(stroke, pendingDrys)
+          drysBeforeStroke.set(strokeAlias.get(stroke) ?? stroke, pendingDrys)
           pendingDrys = []
         }
         continue
@@ -333,9 +401,19 @@ export function createAquarelleBake(
       let tickBudget = 0
       let windowEnd = previousWindowEnd
       if (timed) {
-        windowEnd = isFinalFrame
-          ? timelineEnd
-          : Math.max(previousWindowEnd, Math.round(((frameIndex + 1) * timelineEnd) / frameSpan))
+        if (isFinalFrame || sampleTicks.length === 0) {
+          windowEnd = isFinalFrame
+            ? Math.max(previousWindowEnd, timelineEnd)
+            : Math.max(previousWindowEnd, Math.round(((frameIndex + 1) * timelineEnd) / frameSpan))
+        } else {
+          const target = Math.min(
+            sampleTicks.length,
+            Math.max(1, Math.ceil(((frameIndex + 1) / drawFrameSpan) * sampleTicks.length)),
+          )
+          // +1 because the window bound is exclusive: a sample at tick T is fed
+          // when windowEnd > T (each tick is simulated exactly once).
+          windowEnd = Math.min(timelineEnd, Math.max(previousWindowEnd, sampleTicks[target - 1]! + 1))
+        }
         tickBudget = Math.max(0, windowEnd - previousWindowEnd)
         previousWindowEnd = windowEnd
       } else {
@@ -362,7 +440,7 @@ export function createAquarelleBake(
           let cursor = windowStart
           for (const entry of timed) {
             if (entry.beginTick > windowEnd) break
-            const pointCount = Math.min(entry.stroke.pts.length, windowEnd - entry.beginTick + 1)
+            const pointCount = Math.min(entry.stroke.pts.length, windowEnd - entry.beginTick)
             if (pointCount <= 0) continue
             const fed = fedCounts.get(entry.stroke) ?? 0
             if (pointCount <= fed) continue

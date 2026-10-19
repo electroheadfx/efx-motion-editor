@@ -1230,6 +1230,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     start: number;
     size: { width: number; height: number };
     acceptedGeneration: number;
+    motion: { deformation: number; position: number };
   }): Promise<PhysicPaintRotoCacheFrame[]> {
     const { snapshot, count, start, size, acceptedGeneration } = input;
     // 261017-fz3: paper enters the bake AND its cache key. Single source:
@@ -1253,6 +1254,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // across the span (buildProgressiveStrokeSchedule) — not one frame per
       // stroke. This is what makes intermediate keys animate like brush mode.
       frameCount: count,
+      // 261019b: wire the Play Motion wiggle (D-09) into the fluid replay —
+      // engine-1's held-pose law, applied per stroke at its deposit frame.
+      motion: { ...input.motion, startFrame: start },
     });
     aquarelleBake = bake;
     try {
@@ -1476,7 +1480,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // with mode 'flush-survives-navigation' (AQUA-07 / D-21). The engine-1
       // path below is byte-stable — this is a branch, not a rewrite.
       const staged = snapshot.engineId === 'efx-watercolor'
-        ? await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration })
+        ? await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion })
         : await renderRotoPlayScriptFrames({
             script: snapshot, frameCount: count, canonicalStart: start, motion, mode: renderMode, overrideColor: renderOverrideColor, existingFrames, size: ports.getSize(), signal: abortController.signal,
             onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Rendering ${completed} / ${total}`; } },
