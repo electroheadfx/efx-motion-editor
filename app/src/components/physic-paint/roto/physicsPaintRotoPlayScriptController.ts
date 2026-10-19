@@ -1826,7 +1826,7 @@ export async function applyAquarelleEventsToKey(input: {
 async function createDefaultAquarelleAdapter(
   size: { width: number; height: number },
   paper?: AquarelleBakePaper,
-): Promise<EngineAdapter<AquarelleStrokePayload>> {
+): Promise<EngineAdapter<AquarelleStrokePayload> & { isAwake?: () => boolean }> {
   const { createAquarelleEngineAdapter } = await import('@efxlab/efx-watercolor');
   return createAquarelleEngineAdapter({
     width: size.width,

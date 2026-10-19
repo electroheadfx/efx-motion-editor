@@ -93,7 +93,11 @@ function asTool(raw: string): Tool {
 
 export function createAquarelleEngineAdapter(
   options: AquarelleAdapterOptions = {},
-): EngineAdapter<AquarelleStrokePayload> & { setPaper(paper: AquarelleBakePaper): void } {
+): EngineAdapter<AquarelleStrokePayload> & {
+  setPaper(paper: AquarelleBakePaper): void
+  /** Live awake gate — the bake's final cook-to-sleep probe. */
+  isAwake(): boolean
+} {
   const engineId: EngineId = 'efx-watercolor'
   const strokes: StudioStroke<AquarelleStrokePayload>[] = []
   const width = Math.max(1, Math.trunc(options.width ?? 0))
@@ -221,6 +225,11 @@ export function createAquarelleEngineAdapter(
     // EngineAdapter interface has no paper seam — optional extension).
     setPaper(paper: AquarelleBakePaper): void {
       applyPaper(paper)
+    },
+    // 261019: the bake's final frame steps until this gate closes — the same
+    // settled state the live sheet (and its cache capture) reaches.
+    isAwake(): boolean {
+      return engine?.isAwake ?? false
     },
     // The 56-06 codec covers the one payload union (strokes + Dry).
     // The host EngineAdapter type is stroke-shaped because the host

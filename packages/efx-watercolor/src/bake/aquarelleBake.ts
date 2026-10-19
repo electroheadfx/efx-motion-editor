@@ -123,6 +123,16 @@ function clampCuisson(raw: number | undefined): number {
   return Math.min(DIFFUSION_CAP, Math.trunc(raw))
 }
 
+/** Host tick grid (DATA-03) — the recorded timeline's unit. */
+const HOST_TICK_MS = 1000 / 60
+
+/**
+ * Safety bound for the final cook-to-sleep: 60 s of sim time. The engine's
+ * awake gate normally sleeps well before this; the bound only keeps a
+ * pathological wet state from stalling the bake.
+ */
+const SETTLE_MAX_TICKS = 3600
+
 function readSize(frame: CanvasImageSource): { width: number; height: number } {
   const carrier = frame as { width?: number; height?: number }
   return { width: carrier.width ?? 0, height: carrier.height ?? 0 }
@@ -169,11 +179,46 @@ export function createAquarelleBake(
   let sharedFlush: Promise<void> | null = null
 
   /**
+   * 261019 recorded-timeline replay: every stroke records its wall-clock END
+   * (`recordedOrder`) and its own duration (`ticks`), so the bake can rebuild
+   * the artist's REAL session cadence — including the idle gaps between
+   * strokes. The old point-weight schedule compressed those gaps, so later
+   * strokes landed on a still-soaked sheet and the Play bloomed wider and
+   * denser than the paint. Returns null when the timing fields are unusable;
+   * the shared schedule is then the fallback.
+   */
+  const buildRecordedTimeline = (
+    strokes: readonly StudioStroke<AquarelleStrokePayload>[],
+  ): { readonly stroke: StudioStroke<AquarelleStrokePayload>; readonly beginTick: number; readonly endTick: number }[] | null => {
+    if (strokes.length === 0) return null
+    const entries: { stroke: StudioStroke<AquarelleStrokePayload>; beginTick: number; endTick: number }[] = []
+    let originMs: number | null = null
+    let previousEnd = 0
+    for (const stroke of strokes) {
+      const endMs = stroke.recordedOrder
+      if (typeof endMs !== 'number' || !Number.isFinite(endMs) || endMs <= 0) return null
+      const durationTicks = Math.max(1, Math.trunc(stroke.ticks))
+      if (originMs === null) originMs = endMs - durationTicks * HOST_TICK_MS
+      const rawBegin = Math.round((endMs - durationTicks * HOST_TICK_MS - originMs) / HOST_TICK_MS)
+      if (!Number.isFinite(rawBegin)) return null
+      // Live strokes never overlap; a clock hiccup collapses the gap, never
+      // reorders the paint.
+      const beginTick = Math.max(previousEnd, Math.max(0, rawBegin))
+      entries.push({ stroke, beginTick, endTick: beginTick + durationTicks })
+      previousEnd = beginTick + durationTicks
+    }
+    return entries
+  }
+
+  /**
    * 261018 progressive Play: one captured frame per OUTPUT frame, with stroke
-   * length growing across the span via buildProgressiveStrokeSchedule — the
-   * same law engine-1 Play uses. Dry events fire at the next stroke's
-   * startFrame (D-15: between stroke turns). Diffusion stepTicks run every
-   * frame so the wash keeps blooming across the span.
+   * length growing across the span. When the recorded timing is available the
+   * span maps onto the artist's real session clock (start at frame 0, real
+   * gaps between strokes); otherwise the shared point-weight schedule runs.
+   * Dry events fire at the next stroke's first frame (D-15: between stroke
+   * turns). The FINAL frame cooks until the engine sleeps — the same settled
+   * state the live cache captures — so the end key matches the paint even
+   * when the script was saved before its measured settle landed.
    */
   const bakeProgressive = async (
     events: readonly AquarellePayloadEvent[],
@@ -182,6 +227,8 @@ export function createAquarelleBake(
     const frames: AquarelleBakeFrame[] = []
     const outcomes: Promise<BakeTurnOutcome>[] = []
     let commitBarrier: Promise<void> = Promise.resolve()
+    const frameSpan = Math.max(1, Math.trunc(frameCount))
+    const awakeProbe = adapter as EngineAdapter<AquarelleStrokePayload> & { isAwake?: () => boolean }
 
     if (options.paper) {
       const paper = options.paper
@@ -197,11 +244,26 @@ export function createAquarelleBake(
     for (const event of events) {
       if (!isAquarelleDryEvent(event)) strokes.push(event as StudioStroke<AquarelleStrokePayload>)
     }
-    const schedule = buildProgressiveStrokeSchedule(strokes, frameCount)
+    const timed = buildRecordedTimeline(strokes)
+    const schedule = timed ? [] : buildProgressiveStrokeSchedule(strokes, frameSpan)
 
     // Each Dry fires before the next stroke's first frame (recorded order).
     const startFrameOf = new Map<StudioStroke<AquarelleStrokePayload>, number>()
-    for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
+    let timelineEnd = 0
+    if (timed) {
+      const lastEntry = timed[timed.length - 1]!
+      const settleEstimate = clampCuisson(
+        lastEntry.stroke.cuisson || (lastEntry.stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
+      )
+      timelineEnd = Math.max(1, lastEntry.endTick + settleEstimate)
+      const frameForTick = (tick: number) => Math.max(0, Math.min(
+        frameSpan - 1,
+        Math.ceil((tick * frameSpan) / timelineEnd) - 1,
+      ))
+      for (const entry of timed) startFrameOf.set(entry.stroke, frameForTick(entry.beginTick))
+    } else {
+      for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
+    }
     const drysByFrame = new Map<number, AquarelleDryEvent[]>()
     let pendingDrys: AquarelleDryEvent[] = []
     for (const event of events) {
@@ -218,24 +280,21 @@ export function createAquarelleBake(
       }
     }
     if (pendingDrys.length > 0) {
-      const frame = Math.max(0, frameCount - 1)
+      const frame = Math.max(0, frameSpan - 1)
       const list = drysByFrame.get(frame) ?? []
       list.push(...pendingDrys)
       drysByFrame.set(frame, list)
     }
 
-    // Diffusion budget spread across the span so the wash develops in view.
+    // Fallback schedule budget: diffusion spread across the span so the wash
+    // develops in view (only used when the recorded timing is unavailable).
     let totalCuisson = 0
     for (const stroke of strokes) {
       totalCuisson += clampCuisson(
         stroke.cuisson || (stroke.engine as { diffusionFrames?: number } | undefined)?.diffusionFrames,
       )
     }
-    const diffusionPerFrame = Math.max(1, Math.ceil(totalCuisson / frameCount))
-    // Ink-2 end-frame law: the LAST stroke has the fewest frames left to cook,
-    // so spread ticks alone can leave it under-developed at the final frame
-    // (the frame the artist compares with the settled paint). Catch it up to
-    // its own cuisson window on the last frame — the direct bake's look.
+    const diffusionPerFrame = Math.max(1, Math.ceil(totalCuisson / frameSpan))
     const lastStroke = strokes[strokes.length - 1]
     const lastStrokeCuisson = lastStroke
       ? clampCuisson(
@@ -245,24 +304,58 @@ export function createAquarelleBake(
     const lastStrokeStart = lastStroke ? startFrameOf.get(lastStroke) ?? 0 : 0
     const lastStrokeCatchUp = Math.max(
       0,
-      lastStrokeCuisson - diffusionPerFrame * (frameCount - lastStrokeStart),
+      lastStrokeCuisson - diffusionPerFrame * (frameSpan - lastStrokeStart),
     )
 
-    for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+    let previousWindowEnd = 0
+    const fedCounts = new Map<StudioStroke<AquarelleStrokePayload>, number>()
+
+    for (let frameIndex = 0; frameIndex < frameSpan; frameIndex += 1) {
       for (const dry of drysByFrame.get(frameIndex) ?? []) {
         void scheduleAdapter(() => {
           adapter.applyStroke(dry as unknown as StudioStroke<AquarelleStrokePayload>)
         })
       }
 
-      const frameStrokes = getProgressiveFrameStrokes(schedule, frameIndex)
-      const tickBudget = frameIndex === frameCount - 1
-        ? diffusionPerFrame + lastStrokeCatchUp
-        : diffusionPerFrame
+      let frameStrokes: { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[]
+      let tickBudget: number
+      if (timed) {
+        const windowEnd = frameIndex === frameSpan - 1
+          ? timelineEnd
+          : Math.max(previousWindowEnd, Math.round(((frameIndex + 1) * timelineEnd) / frameSpan))
+        frameStrokes = []
+        let newSamples = 0
+        for (const entry of timed) {
+          if (entry.beginTick > windowEnd) break
+          const pointCount = Math.min(entry.stroke.pts.length, windowEnd - entry.beginTick + 1)
+          if (pointCount <= 0) continue
+          const fed = fedCounts.get(entry.stroke) ?? 0
+          if (pointCount > fed) newSamples += pointCount - fed
+          frameStrokes.push({ stroke: entry.stroke, pointCount })
+        }
+        // The adapter ticks once per fed sample; the rest of the window is
+        // pure fluid time (the idle gaps the live sheet actually lived).
+        tickBudget = Math.max(0, windowEnd - previousWindowEnd - newSamples)
+        for (const entry of frameStrokes) fedCounts.set(entry.stroke, entry.pointCount)
+        previousWindowEnd = windowEnd
+      } else {
+        frameStrokes = getProgressiveFrameStrokes(schedule, frameIndex)
+        tickBudget = frameIndex === frameSpan - 1
+          ? diffusionPerFrame + lastStrokeCatchUp
+          : diffusionPerFrame
+      }
+
       const framePromise = scheduleAdapter(() => {
         adapter.renderPartialStrokes(frameStrokes)
         for (let tick = 0; tick < tickBudget; tick += 1) {
           adapter.stepTick(tick)
+        }
+        // End-frame law: cook the last frame until the sheet sleeps — the
+        // engine's own definition of the settled look the live cache captures.
+        if (frameIndex === frameSpan - 1 && typeof awakeProbe.isAwake === 'function') {
+          for (let guard = 0; guard < SETTLE_MAX_TICKS && awakeProbe.isAwake(); guard += 1) {
+            adapter.stepTick(guard)
+          }
         }
         return adapter.captureFrame()
       })
@@ -284,7 +377,7 @@ export function createAquarelleBake(
           return {
             eventIndex: frameIndex,
             strokeIndex: frameIndex,
-            tick: diffusionPerFrame,
+            tick: tickBudget,
             bytes,
             width,
             height,

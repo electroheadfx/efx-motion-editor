@@ -466,3 +466,127 @@ describe('261017-fz3 paper-aware bake', () => {
     expect(alphaAt(pixels, 16, 15, 15)).toBe(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 261019 recorded-timeline progressive replay — the artist's real cadence.
+// The old point-weight schedule anchored strokes at their Studio playFrame
+// (leading empty frames) and compressed the real inter-stroke gaps, so later
+// strokes landed on a still-soaked sheet. The timing path rebuilds the
+// session clock from recordedOrder + ticks and cooks the last frame to sleep.
+// ---------------------------------------------------------------------------
+
+interface TimelineLog {
+  renders: { frame: number; strokes: readonly { stroke: StudioStroke<AquarelleStrokePayload>; pointCount: number }[] }[]
+  stepsByFrame: number[]
+  captures: number
+}
+
+function makeTimelineAdapter(awakeTicks: number): {
+  adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean }
+  log: TimelineLog
+} {
+  const { canvas } = makeMockCanvas(8, 8)
+  let frame = -1
+  let awake = awakeTicks
+  let steps = 0
+  const log: TimelineLog = { renders: [], stepsByFrame: [], captures: 0 }
+  const adapter: EngineAdapter<AquarelleStrokePayload> & { isAwake: () => boolean } = {
+    engineId: 'efx-watercolor',
+    payloadCodec: {
+      serialize: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+      parse: (s: unknown) => s as StudioStroke<AquarelleStrokePayload>,
+    },
+    setInputLocked: () => undefined,
+    setAnimationMode: () => undefined,
+    getStrokes: () => [],
+    renderPartialStrokes: (entries) => {
+      log.renders.push({ frame, strokes: [...entries] })
+    },
+    renderAllStrokes: () => undefined,
+    exportCompositeCanvas: () => canvas,
+    applyStroke: () => undefined,
+    stepTick: () => {
+      steps += 1
+    },
+    captureFrame: () => {
+      log.stepsByFrame.push(steps)
+      steps = 0
+      log.captures += 1
+      frame += 1
+      return canvas as unknown as CanvasImageSource
+    },
+    dispose: () => undefined,
+    // The settle probe: awake for `awakeTicks` checks on the FINAL frame.
+    isAwake: () => awake-- > 0,
+  }
+  return { adapter, log }
+}
+
+/** A stroke with `count` points; timestamp is the wall-clock END of the stroke. */
+function timedStroke(count: number, timestamp: number, playFrame: number | null, diffusionFrames = 0): StudioStroke<AquarelleStrokePayload> {
+  return makeStroke({
+    points: Array.from({ length: count }, (_, index) => ({ x: index, y: 0, p: 0.5, tx: 0, ty: 0, tw: 0 })),
+    timestamp,
+    playFrame,
+    diffusionFrames,
+  })
+}
+
+describe('261019 recorded-timeline progressive replay', () => {
+  it('starts the animation at frame 0 (no playFrame anchor) and simulates the real inter-stroke gap', async () => {
+    // HOST_TICK_MS = 16.667 ms. Stroke A: 11 pts (10 ticks), END at t=1000ms.
+    // Stroke B: 6 pts (5 ticks), END at t=3000ms → begins 125 ticks after A's
+    // begin — a 115-tick idle gap the live sheet actually lived.
+    const strokeA = timedStroke(11, 1000, 3)
+    const strokeB = timedStroke(6, 3000, 3, 60)
+    const { adapter, log } = makeTimelineAdapter(5)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 10,
+    })
+    const result = await bake.bake([strokeA, strokeB])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(log.captures).toBe(10)
+
+    // Frame 0 already paints stroke A — playFrame 3 never delays the start.
+    const first = log.renders[0]!.strokes
+    expect(first).toHaveLength(1)
+    expect(first[0]!.stroke).toBe(strokeA)
+    expect(first[0]!.pointCount).toBe(11)
+
+    // The gap frames still advance the fluid: frame 1 steps its whole window
+    // with no new samples on the paper.
+    expect(log.renders[1]!.strokes).toHaveLength(1)
+    expect(log.renders[1]!.strokes[0]!.pointCount).toBe(11)
+    expect(log.stepsByFrame[1]).toBeGreaterThan(0)
+
+    // Stroke B starts only once its recorded tick arrives (frame 6 here).
+    const bFrames = log.renders
+      .map((entry, index) => ({ index, strokes: entry.strokes }))
+      .filter((entry) => entry.strokes.some((s) => s.stroke === strokeB))
+    expect(bFrames.length).toBeGreaterThan(0)
+    expect(bFrames[0]!.index).toBe(6)
+    expect(bFrames[0]!.strokes.find((s) => s.stroke === strokeB)!.pointCount).toBe(6)
+
+    // The final frame cooks until the awake gate closes (5 extra ticks).
+    const lastFrameSteps = log.stepsByFrame[9]!
+    expect(lastFrameSteps).toBe(19 + 5)
+  })
+
+  it('the final frame is captured after the settle cook (end key = live sleep state)', async () => {
+    const stroke = timedStroke(5, 1000, 2, 0)
+    const { adapter, log } = makeTimelineAdapter(120)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 4,
+    })
+    const result = await bake.bake([stroke])
+    expect(result.ok).toBe(true)
+    expect(log.stepsByFrame[3]).toBeGreaterThanOrEqual(120)
+  })
+})
