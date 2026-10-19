@@ -5343,16 +5343,16 @@ button.destructive {
   background: #3f4145;
 }
 
-/* Active-track marking (UAT 2026-10-19 selection law): the tool-select blue
-   bed (#365ed6, same as .physics-paint-segmented-button.active) with the
-   accent-orange trait (#f5a623, the timeline selection accent). */
+/* Active-track marking (UAT 2026-10-19 selection law): a darker tool-blue bed
+   (#2b4bb5 — the tool-select blue reads too bright on a full-width row) with
+   the accent-orange trait (#f5a623, the timeline selection accent). */
 .physics-paint-track-row-header-active {
   border-left: 3px solid #f5a623;
-  background: #365ed6;
+  background: #2b4bb5;
 }
 
 .physics-paint-track-row-header-active:hover {
-  background: #3d66e0;
+  background: #3357c6;
 }
 
 .physics-paint-track-row-header-active .physics-paint-track-row-label {
@@ -5619,6 +5619,36 @@ button.destructive {
   flex: 0 0 auto;
   width: 12px;
   height: 12px;
+}
+
+/* UAT 2026-10-19: on the blue active row the standing controls read as bare
+   glyphs — no dark chips cutting holes in the selection bed. Armed solo/blend
+   keep their orange semantics. */
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button,
+.physics-paint-track-row-header-active .physics-paint-track-row-solo {
+  background: transparent;
+  border-color: transparent;
+  color: #eaf0ff;
+}
+
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button:hover,
+.physics-paint-track-row-header-active .physics-paint-track-row-solo:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled,
+.physics-paint-track-row-header-active .physics-paint-track-row-solo.physics-paint-track-row-solo-armed {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled:hover,
+.physics-paint-track-row-header-active .physics-paint-track-row-solo.physics-paint-track-row-solo-armed:hover {
+  border-color: #fbbf24;
+  background: rgba(245, 158, 11, 0.3);
 }
 
 /* Edit-in-place rename input (Enter commits, Escape cancels). */

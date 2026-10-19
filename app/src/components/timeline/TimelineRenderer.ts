@@ -25,9 +25,10 @@ export const RULER_HEIGHT = 24;
 export const FX_TRACK_HEIGHT = 28;
 export const AUDIO_TRACK_HEIGHT = 44;
 
-/** UAT 2026-10-19 selection law (Studio parity): the selected FX row uses the
- *  tool-select blue bed (#365ed6) with the accent-orange trait (#f5a623). */
-const FX_SELECTED_BG = '#365ED6';
+/** UAT 2026-10-19 selection law (Studio parity): the selected FX NAME cell
+ *  uses the darker tool blue (#2b4bb5) with the accent-orange trait (#f5a623).
+ *  The timeline lane itself stays neutral — the blue never floods the row. */
+const FX_SELECTED_BG = '#2B4BB5';
 const FX_SELECTION_TRAIT = '#F5A623';
 /** FX visibility eye: a 16px glyph inside a 24px click zone (the old 3px dot
  *  was not discoverable). Shared with TimelineInteraction for hit testing. */
@@ -829,8 +830,8 @@ export class TimelineRenderer {
     const colors = getThemeColors();
     const resolvedColor = this.resolveTrackColor(fxTrack);
 
-    // Track background — Studio selection law: tool-blue bed + orange trait.
-    ctx.fillStyle = isSelected ? FX_SELECTED_BG : colors.fxTrackBg;
+    // Track lane stays neutral: selection blue lives ONLY on the name cell.
+    ctx.fillStyle = colors.fxTrackBg;
     ctx.fillRect(0, y, canvasWidth, FX_TRACK_HEIGHT);
 
     // Selection indicator: accent-orange left trait
@@ -839,7 +840,7 @@ export class TimelineRenderer {
       ctx.fillRect(0, y, 3, FX_TRACK_HEIGHT);
     }
 
-    // Track header
+    // Track header (name cell) — the only blue surface when selected
     const isVisible = fxTrack.visible;
     ctx.fillStyle = isSelected ? FX_SELECTED_BG : colors.fxHeaderBg;
     ctx.fillRect(isSelected ? 3 : 0, y, TRACK_HEADER_WIDTH - (isSelected ? 3 : 0), FX_TRACK_HEIGHT);

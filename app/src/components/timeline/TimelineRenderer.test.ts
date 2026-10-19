@@ -516,12 +516,15 @@ describe('FX track selection + visibility law (UAT 2026-10-19)', () => {
     return code.slice(code.indexOf('private drawFxTrack'), code.indexOf('private drawCoverageGapTail'));
   };
 
-  it('beds the selected FX row in tool-select blue with the accent-orange trait', () => {
+  it('beds only the selected FX name cell in darker tool blue with the accent-orange trait', () => {
     const code = source();
-    expect(code).toContain("const FX_SELECTED_BG = '#365ED6'");
+    expect(code).toContain("const FX_SELECTED_BG = '#2B4BB5'");
     expect(code).toContain("const FX_SELECTION_TRAIT = '#F5A623'");
 
     const fx = fxTrackSource();
+    // The lane never takes the selection blue — only the header cell does.
+    expect(fx).toContain('ctx.fillStyle = colors.fxTrackBg;');
+    expect(fx).not.toContain('isSelected ? FX_SELECTED_BG : colors.fxTrackBg');
     expect(fx).toContain('isSelected ? FX_SELECTED_BG');
     expect(fx).toContain('FX_SELECTION_TRAIT');
     expect(fx).not.toContain('#1A1520');
