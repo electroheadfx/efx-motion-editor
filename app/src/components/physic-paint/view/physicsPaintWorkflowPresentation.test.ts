@@ -659,6 +659,7 @@ describe('collectRotoGroupDragGapPreviewAppFrames — Group-drag gap preview (43
       generatedCells: [],
       selectedKeyId: null,
       selectedAppFrame: null,
+      cursorAppFrame: 0,
       changes: [],
       removedKeyId: null,
       removedKeyIds: [],

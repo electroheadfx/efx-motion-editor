@@ -124,6 +124,7 @@ function harness(
       getRecords: () => current.records,
       getInterpolation: () => current.interpolation,
       getCapacity: () => current.capacity,
+      raiseCapacity: () => {},
       getLoopClips: () => current.loopClips,
       getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
       replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true as const }),

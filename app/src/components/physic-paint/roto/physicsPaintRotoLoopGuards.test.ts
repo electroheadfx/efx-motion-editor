@@ -915,6 +915,7 @@ function historyHarness(initial: RotoPhysicalEditSnapshot<null>) {
       getRecords: () => current.records,
       getInterpolation: () => current.interpolation,
       getCapacity: () => current.capacity,
+      raiseCapacity: () => {},
       getLoopClips: () => current.loopClips,
       getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
       replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true as const }),

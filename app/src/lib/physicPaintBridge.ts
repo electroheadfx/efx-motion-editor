@@ -1655,12 +1655,16 @@ async function applyPhysicPaintRotoPhysicalMap(
       if (!containingSequence || containingSequence.kind !== 'fx') {
         return reject('Roto physical capacity extension is limited to FX sequences.');
       }
-      const requiredOutFrame = containingSequence.inFrame + payload.targetCapacity;
-      if (containingSequence.outFrame < requiredOutFrame) {
+      // inFrame is optional on the runtime Sequence type; FX sequences are
+      // created at 0 when absent. An ABSENT outFrame means "follows N" (D-04),
+      // so there is no explicit end to extend — capacity still mirrors below.
+      const sequenceInFrame = containingSequence.inFrame ?? 0;
+      const requiredOutFrame = sequenceInFrame + payload.targetCapacity;
+      if (containingSequence.outFrame !== undefined && containingSequence.outFrame < requiredOutFrame) {
         sequenceStore.updateFxSequenceRange(
           containingSequence.id,
-          containingSequence.inFrame,
-          Math.max(containingSequence.outFrame, requiredOutFrame),
+          sequenceInFrame,
+          requiredOutFrame,
         );
       }
       physicPaintStore.setRotoPhysicalCapacity(payload.layerId, payload.trackId, payload.targetCapacity);

@@ -1933,6 +1933,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
           generatedCells: [],
           selectedKeyId: 'A',
           selectedAppFrame: destinationPlacementStart,
+          cursorAppFrame: destinationPlacementStart,
           changes: [],
           removedKeyId: null,
           removedKeyIds: [],

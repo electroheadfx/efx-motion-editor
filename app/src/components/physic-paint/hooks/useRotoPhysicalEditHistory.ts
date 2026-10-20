@@ -531,6 +531,9 @@ export function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): 
     generatedCells: [],
     selectedKeyId: target.selectedKeyId,
     selectedAppFrame: target.selectedAppFrame,
+    // Quick 261019-mj2: the replay proposal carries the snapshot's cursor
+    // authority — replaying `before`/`after` restores the frame it recorded.
+    cursorAppFrame: target.currentAppFrame,
     changes: [],
     removedKeyId: null,
     removedKeyIds: Object.freeze([]) as readonly string[],

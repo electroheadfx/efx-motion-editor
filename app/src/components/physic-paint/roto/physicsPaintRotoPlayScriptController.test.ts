@@ -960,6 +960,7 @@ describe('createRotoPlayScriptController HOLD-03 atomic commit', () => {
         getRecords: () => current.records,
         getInterpolation: () => current.interpolation,
         getCapacity: () => current.capacity,
+        raiseCapacity: () => {},
         getLoopClips: () => current.loopClips,
         getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
         replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
@@ -1232,6 +1233,7 @@ describe('createRotoPlayScriptController D-06 loop-shorten preflight', () => {
         getRecords: () => current.records,
         getInterpolation: () => current.interpolation,
         getCapacity: () => current.capacity,
+        raiseCapacity: () => {},
         getLoopClips: () => current.loopClips,
         getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
         replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
@@ -1429,6 +1431,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
         getRecords: () => current.records,
         getInterpolation: () => current.interpolation,
         getCapacity: () => current.capacity,
+        raiseCapacity: () => {},
         getLoopClips: () => current.loopClips,
         getIncomingInterpolationBreakKeyIds: () => current.incomingInterpolationBreakKeyIds,
         replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
@@ -2127,7 +2130,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
           getCurrentAppFrame: () => 10,
           getLaunchContext: () => ({ operationId: 'launch', layerId: 'layer-1' }) as PhysicPaintLaunchContext,
           getIncomingInterpolationBreakKeyIds: () => [],
-          buildBlankRotoFrame: async (appFrame) => ({
+          buildBlankRotoFrame: async (appFrame: number) => ({
             frameIndex: 0,
             appFrame,
             bytes: pngDataUrl(`blank-${appFrame}`),

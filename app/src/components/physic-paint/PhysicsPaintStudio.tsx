@@ -3280,6 +3280,11 @@ export function PhysicsPaintStudio() {
       getRecords: (layerId) => physicPaintStore.getRotoRealKeyRecords(layerId, studioActiveTrackId()),
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()),
+      raiseCapacity: (layerId, capacity) => physicPaintStore.setRotoPhysicalCapacity(
+        layerId,
+        studioActiveTrackId(),
+        capacity,
+      ),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
       getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
