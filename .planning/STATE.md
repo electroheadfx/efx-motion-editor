@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 4 of 10
 Status: Ready to execute
-Last activity: 2026-10-20 — Quick 261019-mj2: roto paint workflow auto-key + pure-gap Insert + atomic cache re-anchor — automated-ready, awaiting live UAT
+Last activity: 2026-10-20 — Quick 261019-mj2 UAT remediation (9aae6073): diagnosable auto-key failure, fallback-only Create key, +Key rail join, + Rail → Key — retest pending
 
 Progress: [████████░░] 75%
 

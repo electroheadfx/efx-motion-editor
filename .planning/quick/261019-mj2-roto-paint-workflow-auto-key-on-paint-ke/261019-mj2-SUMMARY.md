@@ -216,6 +216,19 @@ Status: **automated-ready** — the executor cannot run the desktop app (project
 | (f) | Direct paint Water color empty | Immediate first stroke, fast second stroke, one Undo removes stroke + key, runtime cache survives leaving/returning | unverified | pending |
 | (g) | Tool/mode coverage | engine-1 paint promotes in Normal and Physics; selected move, Cmd-move, Alt-erase create no key; Water brush/water/pen promote, lift does not; Create key button available regardless of tool | unverified | pending |
 
+## UAT remediation — live report 2026-10-20
+
+Live UAT failed: the direct-paint promotion reported the generic "stroke was discarded" error and created no key (both painting and the button); +Key opened a new rail instead of continuing the previous key's rail; the Create key overlay sat over a paintable canvas.
+
+Landed in `9aae6073`:
+
+- **Diagnosable failures** — the promotion LOG now names the failing branch plus the coordinator failure reason and last status message; the capsule keeps the friendly copy. The created key is resolved from `accepted.after.records` at the destination frame instead of a post-acceptance selection/store read that can lag publication.
+- **Fallback-only button** — Create key renders only after a direct-paint promotion failed on that frame (`autoKeyFallbackFrame === currentFrame`); a healthy canvas has no overlay.
+- **+Key rail join** — the paste-key intent gains `joinsPreviousRail`; the resolver suppresses both boundary breaks for that key, so +Key continues the nearest previous real key's rail. + Rail now offers **Key** before Motion, which forces a new isolated segment (`forceNewSegment`).
+- **Tests** — resolver rail-join/no-previous-key pins, timeline-action join/force pins, intent validator round-trip, rail-menu order/routing, fallback gating source pin.
+
+Status: **automated-ready — root cause now observable; UAT rows (a)-(g) remain unverified pending live retest.** Suite 5364 passed; typecheck 16→16 with no new files; max JS chunk 1,602,162 B; store pixel calls 0.
+
 ## Self-Check: PASSED
 
 - Checked key files exist: `physicPaintStore.ts`, `physicPaintStore.test.ts`, `useRotoPhysicalEditCoordinator.test.ts`, `physicPaintBridge.ts`, `physicPaintBridge.test.ts`, `PhysicsPaintWorkflowStrip.test.ts`, `useRotoPhysicalEditHistory.test.ts`.
