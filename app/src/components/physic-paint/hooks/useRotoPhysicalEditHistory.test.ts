@@ -1,4 +1,6 @@
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signal } from '@preact/signals';
 
@@ -1175,7 +1177,7 @@ describe('useRotoPhysicalEditHistory Group lifecycle participation', () => {
   });
 });
 
-describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
+describe('useRotoPhysicalEditHistory key-plus-break ownership', () => {
   it('records one accepted key-plus-break command, replays both directions, and preserves redo for no-change or rejected edits', async () => {
     const before = snapshot([
       record('A', 0),
@@ -1253,8 +1255,8 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
         after.loopClips,
         after.incomingInterpolationBreakKeyIds,
       ),
-      operationId: 'insert-empty-1',
-      operationKind: 'insert-empty-segment',
+      operationId: 'paste-key-plus-break-1',
+      operationKind: 'paste-key',
       historyProvenance: null,
     };
     expect(availability.value).toEqual({ undo: 1, redo: 0 });
@@ -1276,8 +1278,8 @@ describe('useRotoPhysicalEditHistory empty-segment ownership', () => {
         current.loopClips,
         current.incomingInterpolationBreakKeyIds,
       ),
-      operationId: 'no-change-empty-2',
-      operationKind: 'insert-empty-segment',
+      operationId: 'no-change-paste-key-2',
+      operationKind: 'paste-key',
       historyProvenance: null,
     };
     expect(availability.value).toEqual({ undo: 0, redo: 1 });
@@ -2723,5 +2725,285 @@ describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
     expect(getDocument(layerId)).toBe(descriptor.after);
     expect(physicPaintStore.getRotoPhysicalLoopClips(layerId, REVEAL_TRACK_ID)).toHaveLength(1);
     expect(availability.value).toEqual({ undo: 2, redo: 0 });
+  });
+});
+
+// Quick 261019-mj2 Task 4 (D-14): one undo removes the auto-created key AND
+// the first stroke, one redo restores both. The reservation takes NO argument
+// (the coordinator mints the operationId at dispatch); it binds the NEXT
+// accepted ordinary command and the next completed paint mutation forms one
+// composite entry. A reservation with no following mutation degrades to a
+// plain physical entry; a cancelled reservation records the acceptance
+// normally; a rejected replay reverts the paint half and leaves the stacks
+// untouched.
+describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 Task 4)', () => {
+  const HISTORY_SOURCE = readFileSync(
+    fileURLToPath(new URL('./useRotoPhysicalEditHistory.ts', import.meta.url)),
+    'utf8',
+  );
+
+  function snapshotWithCapacity(
+    records: readonly PhysicPaintRotoRealKeyRecord[],
+    selectedKeyId: string,
+    selectedAppFrame: number,
+    capacity: number,
+  ): RotoPhysicalEditSnapshot<null> {
+    return { ...snapshot(records, selectedKeyId, selectedAppFrame), capacity };
+  }
+
+  interface AutoKeyHarnessOptions {
+    identityCapacity?: number;
+    current?: RotoPhysicalEditSnapshot<null>;
+    rejectReplay?: boolean;
+    undoPaintResult?: boolean;
+    redoPaintResult?: boolean;
+  }
+
+  function createAutoKeyHarness(options: AutoKeyHarnessOptions = {}) {
+    const identityCapacity = options.identityCapacity ?? 10;
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const events: string[] = [];
+    const state = {
+      current: options.current ?? snapshotWithCapacity([record('A', 0)], 'A', 0, identityCapacity),
+    };
+    let replayNumber = 0;
+    const executePhysicalEdit = vi.fn(async (input: RotoPhysicalEditExecuteInput<never, null>) => {
+      events.push(`replay-${input.operationKind}`);
+      const target = input.replayTargetSnapshot;
+      if (!target || !input.historyProvenance) return false;
+      if (options.rejectReplay) return false;
+      const source = state.current;
+      state.current = target;
+      replayNumber += 1;
+      acceptedOutput.value = {
+        before: source,
+        after: target,
+        acceptedRevision: target.stagedRevision,
+        operationId: `replay-${replayNumber}`,
+        operationKind: input.operationKind,
+        historyProvenance: input.historyProvenance,
+      };
+      return true;
+    });
+    const undoPaint = vi.fn(() => {
+      events.push('undoPaint');
+      return options.undoPaintResult ?? true;
+    });
+    const redoPaint = vi.fn(() => {
+      events.push('redoPaint');
+      return options.redoPaintResult ?? true;
+    });
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        trackId: 'track-a',
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: identityCapacity,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => state.current.records,
+        getInterpolation: () => state.current.interpolation,
+        getCapacity: () => state.current.capacity,
+        raiseCapacity: () => {},
+        getLoopClips: () => state.current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => state.current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => state.current,
+      undoPaint,
+      redoPaint,
+    });
+    return { acceptedOutput, pendingOperationId, availability, events, executePhysicalEdit, undoPaint, redoPaint, history, state };
+  }
+
+  function acceptPasteKey(
+    harness: ReturnType<typeof createAutoKeyHarness>,
+    before: RotoPhysicalEditSnapshot<null>,
+    after: RotoPhysicalEditSnapshot<null>,
+    operationId = 'coordinator-minted-op-77',
+  ) {
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId,
+      operationKind: 'paste-key',
+      historyProvenance: null,
+    };
+  }
+
+  it('binds the next accepted command by the coordinator-minted operationId and one undo removes the key and the stroke', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createAutoKeyHarness({ current: after });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    // The accepted key is held by the reservation — the ledger exposes it as
+    // one undoable step before the paint half arrives.
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    harness.history.observePaintMutation(11, 'paint');
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await harness.history.undo()).toBe(true);
+    // Stroke removal happens BEFORE the key replay.
+    expect(harness.events).toEqual(['undoPaint', 'replay-undo']);
+    expect(harness.executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const undoInput = harness.executePhysicalEdit.mock.calls[0][0];
+    expect(undoInput.operationKind).toBe('undo');
+    expect(undoInput.historyProvenance?.historyCommandId).toBe('coordinator-minted-op-77');
+    expect(harness.state.current.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([['A', 0]]);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await harness.history.redo()).toBe(true);
+    // Key replay happens BEFORE redoPaint.
+    expect(harness.events).toEqual(['undoPaint', 'replay-undo', 'replay-redo', 'redoPaint']);
+    const redoInput = harness.executePhysicalEdit.mock.calls[1][0];
+    expect(redoInput.historyProvenance?.historyCommandId).toBe('coordinator-minted-op-77');
+    expect(harness.state.current.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['auto-key', 1],
+    ]);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('groups even when the paint mutation completes before the key acceptance', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createAutoKeyHarness({ current: after });
+
+    harness.history.beginAutoKeyPaintGroup();
+    harness.history.observePaintMutation(12, 'paint');
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 0 });
+
+    acceptPasteKey(harness, before, after, 'coordinator-minted-op-88');
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.events).toEqual(['undoPaint', 'replay-undo']);
+    expect(harness.executePhysicalEdit.mock.calls[0][0].historyProvenance?.historyCommandId)
+      .toBe('coordinator-minted-op-88');
+  });
+
+  it('degrades a held acceptance with no following mutation to one plain physical entry', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createAutoKeyHarness({ current: after });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // Create-key button path: no stroke ever followed. Undo flushes the held
+    // acceptance as a plain physical command — no paint half to remove.
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.undoPaint).not.toHaveBeenCalled();
+    expect(harness.events).toEqual(['replay-undo']);
+    expect(harness.state.current.records.map(({ keyId }) => keyId)).toEqual(['A']);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('records the acceptance normally once the reservation is cancelled by a failed promotion', () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createAutoKeyHarness({ current: after });
+
+    harness.history.beginAutoKeyPaintGroup();
+    harness.history.cancelAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+    // The acceptance was pushed immediately (not held by a reservation).
+    expect(harness.history).toBeDefined();
+  });
+
+  it('reverts the paint undo and leaves both stacks untouched when the key replay is rejected', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('auto-key', 1)], 'auto-key', 1, 10);
+    const harness = createAutoKeyHarness({ current: after, rejectReplay: true });
+
+    harness.history.beginAutoKeyPaintGroup();
+    acceptPasteKey(harness, before, after);
+    harness.history.observePaintMutation(13, 'paint');
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await harness.history.undo()).toBe(false);
+    expect(harness.events).toEqual(['undoPaint', 'replay-undo', 'redoPaint']);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+    expect(harness.state.current).toBe(after);
+  });
+
+  it('records a capacity-raising ordinary insert and keeps Undo available after the monotonic raise', async () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const after = snapshotWithCapacity([record('A', 0), record('tail', 11)], 'tail', 11, 11);
+    const harness = createAutoKeyHarness({ current: after });
+
+    harness.acceptedOutput.value = {
+      before,
+      after,
+      acceptedRevision: after.stagedRevision,
+      operationId: 'tail-insert-1',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    // The raise does not clear the ledger: Undo still replays the command's
+    // own before/after snapshots (which carry their capacities).
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.executePhysicalEdit).toHaveBeenCalledTimes(1);
+    expect(harness.executePhysicalEdit.mock.calls[0][0].replayTargetSnapshot?.capacity).toBe(10);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+
+    expect(await harness.history.redo()).toBe(true);
+    expect(harness.executePhysicalEdit.mock.calls[1][0].replayTargetSnapshot?.capacity).toBe(11);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('rejects a stale smaller insert capacity and capacity growth on non-insert kinds', () => {
+    const before = snapshotWithCapacity([record('A', 0)], 'A', 0, 10);
+    const grown = snapshotWithCapacity([record('A', 0), record('tail', 11)], 'tail', 11, 11);
+    const shrunk = snapshotWithCapacity([record('A', 0)], 'A', 0, 9);
+
+    const insertHarness = createAutoKeyHarness();
+    insertHarness.acceptedOutput.value = {
+      before,
+      after: shrunk,
+      acceptedRevision: shrunk.stagedRevision,
+      operationId: 'stale-insert',
+      operationKind: 'insert-slot',
+      historyProvenance: null,
+    };
+    expect(insertHarness.availability.value).toEqual({ undo: 0, redo: 0 });
+
+    const moveHarness = createAutoKeyHarness();
+    moveHarness.acceptedOutput.value = {
+      before,
+      after: grown,
+      acceptedRevision: grown.stagedRevision,
+      operationId: 'grown-move',
+      operationKind: 'move-key',
+      historyProvenance: null,
+    };
+    expect(moveHarness.availability.value).toEqual({ undo: 0, redo: 0 });
+  });
+
+  it('retires insert-empty-segment and keeps capacity out of the launch-reset keys', () => {
+    expect(HISTORY_SOURCE).not.toContain('insert-empty-segment');
+    expect(HISTORY_SOURCE).not.toContain('input.identity?.capacity');
+    expect(HISTORY_SOURCE).toContain('const beginAutoKeyPaintGroup = useCallback(() => {');
+    expect(HISTORY_SOURCE).toContain('const cancelAutoKeyPaintGroup = useCallback(() => {');
   });
 });

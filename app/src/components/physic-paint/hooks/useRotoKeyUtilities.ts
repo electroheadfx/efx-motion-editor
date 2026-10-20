@@ -302,9 +302,13 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
     });
   }, [blocked, input, session]);
 
-  // + Key: promote the current empty/generated frame to a real, paintable key
-  // carrying empty paint. Routes through the physical paste-to-empty machinery
-  // with a blank payload, mirroring the script-target promotion path.
+  // + Key (D-04): promote the current non-real frame to a real, paintable key
+  // cloning the NEAREST PREVIOUS REAL KEY's paint — never the displayed
+  // interpolated pixels. Cached real-key bytes win; durable record bytes are
+  // the fallback; a blank payload is used only when no previous real key
+  // exists. A previous key whose bytes are unavailable fails closed instead of
+  // silently creating a blank key. Routes through the physical paste-to-empty
+  // machinery so rail/segment derivation and the paste-key kind are preserved.
   const addKey = useCallback(async () => {
     if (blocked) return;
     const actionState = session.actionAvailability.value;
@@ -312,12 +316,18 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
       input.setApplyMessage('The current frame already has a real Roto key.');
       return;
     }
-    const blank = await input.buildBlankRotoFrame(input.currentFrame);
+    const resolution = resolvePreviousRealKeyPayload(input, input.currentFrame);
+    if (resolution.kind === 'unavailable') {
+      input.setApplyStatus('error');
+      input.setApplyMessage(`Could not add a Roto key — ${PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR}.`);
+      input.setLastError(PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR);
+      return;
+    }
+    const payload = resolution.kind === 'clone'
+      ? resolution.payload
+      : toEmptyKeyPayload(await input.buildBlankRotoFrame(input.currentFrame), input.currentFrame);
     setKeyActionInFlight(true);
-    void input.physicalKeyUtilities.addEmptyKey(
-      input.currentFrame,
-      toEmptyKeyPayload(blank, input.currentFrame),
-    ).catch((error) => {
+    void input.physicalKeyUtilities.addEmptyKey(input.currentFrame, payload).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       input.setApplyStatus('error');
       input.setApplyMessage('Could not add an empty Roto key.');
@@ -361,4 +371,54 @@ export function toEmptyKeyPayload(blank: PhysicPaintRotoCacheFrame, destinationA
     ...(blank.width !== undefined ? { width: blank.width } : {}),
     ...(blank.height !== undefined ? { height: blank.height } : {}),
   }) as PhysicPaintRotoRealKeyPayload;
+}
+
+const PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR = 'previous key bytes unavailable';
+
+type PreviousRealKeyPayloadResolution =
+  | { kind: 'clone'; payload: PhysicPaintRotoRealKeyPayload }
+  | { kind: 'blank' }
+  | { kind: 'unavailable' };
+
+function hasUsableBytes(bytes: Uint8Array | undefined): bytes is Uint8Array {
+  return bytes instanceof Uint8Array && bytes.byteLength > 0;
+}
+
+/**
+ * D-04: resolve the + Key payload from the nearest previous REAL key (strictly
+ * earlier than the destination). Cached real-key bytes are preferred over the
+ * durable record payload; a previous key with no bytes on either carrier fails
+ * closed. Only a frame with NO previous real key receives a blank payload.
+ */
+function resolvePreviousRealKeyPayload(
+  input: RotoKeyUtilitiesInput,
+  destinationAppFrame: number,
+): PreviousRealKeyPayloadResolution {
+  const records = input.getRotoKeyRecords();
+  let previousFrame: number | null = null;
+  for (const record of records) {
+    if (!Number.isInteger(record.appFrame) || record.appFrame >= destinationAppFrame) continue;
+    if (previousFrame === null || record.appFrame > previousFrame) previousFrame = record.appFrame;
+  }
+  if (previousFrame === null) return { kind: 'blank' };
+  const cached = (input.cachedRotoFrames ?? []).find(
+    (frame) => frame.appFrame === previousFrame && frame.source === 'real-key' && hasUsableBytes(frame.bytes),
+  );
+  if (cached) return { kind: 'clone', payload: toEmptyKeyPayload(cached, destinationAppFrame) };
+  const durable = records.find(
+    (record) => record.appFrame === previousFrame && hasUsableBytes(record.payload.bytes),
+  );
+  if (durable && durable.payload.bytes) {
+    return {
+      kind: 'clone',
+      payload: Object.freeze({
+        frameIndex: durable.payload.frameIndex,
+        appFrame: destinationAppFrame,
+        bytes: durable.payload.bytes,
+        ...(durable.payload.width !== undefined ? { width: durable.payload.width } : {}),
+        ...(durable.payload.height !== undefined ? { height: durable.payload.height } : {}),
+      }) as PhysicPaintRotoRealKeyPayload,
+    };
+  }
+  return { kind: 'unavailable' };
 }

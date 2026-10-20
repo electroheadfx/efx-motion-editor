@@ -43,7 +43,7 @@ function realKeyFrame(appFrame: number): PhysicPaintRotoCacheFrame {
   } as PhysicPaintRotoCacheFrame;
 }
 
-function realKeyRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyRecord {
+function realKeyRecord(keyId: string, appFrame: number, seed = BLANK_PNG_DATA_URL): PhysicPaintRotoRealKeyRecord {
   return Object.freeze({
     kind: 'real-key',
     keyId,
@@ -51,7 +51,22 @@ function realKeyRecord(keyId: string, appFrame: number): PhysicPaintRotoRealKeyR
     payload: Object.freeze({
       frameIndex: 0,
       appFrame,
-      bytes: testWebpBytes(BLANK_PNG_DATA_URL),
+      bytes: testWebpBytes(seed),
+      width: 100,
+      height: 80,
+    }) as PhysicPaintRotoRealKeyPayload,
+  }) as PhysicPaintRotoRealKeyRecord;
+}
+
+function realKeyRecordWithoutBytes(keyId: string, appFrame: number, empty = false): PhysicPaintRotoRealKeyRecord {
+  return Object.freeze({
+    kind: 'real-key',
+    keyId,
+    appFrame,
+    payload: Object.freeze({
+      frameIndex: 0,
+      appFrame,
+      ...(empty ? { bytes: new Uint8Array(0) } : {}),
       width: 100,
       height: 80,
     }) as PhysicPaintRotoRealKeyPayload,
@@ -63,6 +78,8 @@ interface HarnessOptions {
   currentKeyId?: string | null;
   realKeyFrames?: PhysicPaintRotoCacheFrame[];
   records?: PhysicPaintRotoRealKeyRecord[];
+  cachedRotoFrames?: PhysicPaintRotoCacheFrame[];
+  buildBlankRotoFrame?: (frame: number) => Promise<PhysicPaintRotoCacheFrame>;
   selectedKeyIds?: readonly string[];
   applyStatus?: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight?: boolean;
@@ -73,6 +90,8 @@ function createHarness(options: HarnessOptions = {}) {
   const setApplyMessage = vi.fn();
   const setApplyStatus = vi.fn();
   const setLastError = vi.fn();
+  const addEmptyKey = vi.fn(async (_appFrame: number, _payload: PhysicPaintRotoRealKeyPayload) => true);
+  const buildBlankRotoFrame = vi.fn(options.buildBlankRotoFrame ?? (async (frame: number) => realKeyFrame(frame)));
   const input: RotoKeyUtilitiesInput = {
     currentFrame: options.currentFrame ?? 3,
     currentKeyId: options.currentKeyId ?? 'key-a',
@@ -80,16 +99,17 @@ function createHarness(options: HarnessOptions = {}) {
       duplicateKey: vi.fn(async () => true),
       pasteKey: vi.fn(async () => true),
       pasteKeyGroup: vi.fn(async () => true),
-      addEmptyKey: vi.fn(async () => true),
+      addEmptyKey,
     } as never,
     getSelectedKeyIds: () => options.selectedKeyIds ?? [],
     getRotoKeyRecords: () => options.records ?? [],
     realKeyFrames: options.realKeyFrames ?? [realKeyFrame(3)],
+    cachedRotoFrames: options.cachedRotoFrames,
     dirtyFrames: new Set<number>(),
     canvasSize: { width: 100, height: 80 },
     applyStatus: options.applyStatus ?? 'idle',
     flushInFlight: options.flushInFlight ?? false,
-    buildBlankRotoFrame: async (frame) => realKeyFrame(frame),
+    buildBlankRotoFrame,
     setDirtyFrames: vi.fn(),
     syncPendingRotoFrames: vi.fn(),
     restoreFrame: vi.fn(),
@@ -105,7 +125,7 @@ function createHarness(options: HarnessOptions = {}) {
   };
   const utils = useRotoKeyUtilities(input);
   const copiedKeyRef = createdRefs[refIndex] as { current: unknown };
-  return { utils, input, copiedKeyRef, setApplyMessage, setApplyStatus, setLastError };
+  return { utils, input, copiedKeyRef, addEmptyKey, buildBlankRotoFrame, setApplyMessage, setApplyStatus, setLastError };
 }
 
 async function flushAsync(): Promise<void> {
@@ -345,5 +365,112 @@ describe('useRotoKeyUtilities rail-set clipboard (quick 260820-bjw)', () => {
     expect(harness.input.physicalKeyUtilities.pasteKey).not.toHaveBeenCalled();
     expect(harness.input.physicalKeyUtilities.pasteKeyGroup).not.toHaveBeenCalled();
     expect(harness.setApplyMessage).toHaveBeenCalled();
+  });
+});
+
+// Quick 261019-mj2 Task 4 (D-04): +Key on a non-real cell clones the NEAREST
+// PREVIOUS REAL key's paint — never the displayed interpolated frame. Cached
+// real-key bytes win; durable record bytes are the fallback; blank only when
+// no previous real key exists; a previous key whose bytes are unavailable
+// fails closed (never a silent blank key).
+describe('useRotoKeyUtilities addKey nearest previous real key (261019-mj2 Task 4)', () => {
+  it('clones the nearest previous real record and keeps the destination at the cursor', async () => {
+    const durableNearest = testWebpBytes('durable-nearest');
+    const harness = createHarness({
+      currentFrame: 8,
+      realKeyFrames: [realKeyFrame(2), realKeyFrame(5)],
+      records: [
+        realKeyRecord('key-2', 2, 'durable-earlier'),
+        realKeyRecord('key-5', 5, 'durable-nearest'),
+        realKeyRecord('key-later', 9, 'durable-later'),
+      ],
+      cachedRotoFrames: [],
+    });
+
+    harness.utils.addKey();
+    await flushAsync();
+
+    expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    const [destinationAppFrame, payload] = harness.addEmptyKey.mock.calls[0];
+    expect(destinationAppFrame).toBe(8);
+    expect(payload.appFrame).toBe(8);
+    expect(payload.bytes).toEqual(durableNearest);
+    expect(payload.width).toBe(100);
+    expect(payload.height).toBe(80);
+    // The later key never moves: only the destination paste runs.
+    expect(harness.buildBlankRotoFrame).not.toHaveBeenCalled();
+  });
+
+  it('prefers the cached real-key bytes at the previous frame over durable record bytes', async () => {
+    const cachedBytes = testWebpBytes('cached-previous');
+    const harness = createHarness({
+      currentFrame: 8,
+      realKeyFrames: [realKeyFrame(5)],
+      records: [realKeyRecord('key-5', 5, 'durable-previous')],
+      cachedRotoFrames: [
+        { ...realKeyFrame(5), bytes: testWebpBytes('other-frame'), appFrame: 2 },
+        { ...realKeyFrame(5), bytes: cachedBytes, width: 120, height: 90 },
+      ],
+    });
+
+    harness.utils.addKey();
+    await flushAsync();
+
+    expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    const [destinationAppFrame, payload] = harness.addEmptyKey.mock.calls[0];
+    expect(destinationAppFrame).toBe(8);
+    expect(payload.appFrame).toBe(8);
+    expect(payload.bytes).toEqual(cachedBytes);
+    expect(payload.width).toBe(120);
+    expect(payload.height).toBe(90);
+  });
+
+  it('uses a blank payload only when no previous real key exists', async () => {
+    const blankBytes = testWebpBytes('blank-payload');
+    const buildBlankRotoFrame = vi.fn(async (_frame: number) => ({
+      ...realKeyFrame(0),
+      bytes: blankBytes,
+      width: 64,
+      height: 64,
+    }));
+    const harness = createHarness({
+      currentFrame: 0,
+      realKeyFrames: [realKeyFrame(3)],
+      records: [realKeyRecord('key-later', 3)],
+      cachedRotoFrames: [],
+      buildBlankRotoFrame,
+    });
+
+    harness.utils.addKey();
+    await flushAsync();
+
+    expect(buildBlankRotoFrame).toHaveBeenCalledWith(0);
+    expect(harness.addEmptyKey).toHaveBeenCalledTimes(1);
+    const [destinationAppFrame, payload] = harness.addEmptyKey.mock.calls[0];
+    expect(destinationAppFrame).toBe(0);
+    expect(payload.bytes).toEqual(blankBytes);
+  });
+
+  it.each([
+    ['missing', realKeyRecordWithoutBytes('key-prev', 5)],
+    ['empty', realKeyRecordWithoutBytes('key-prev', 5, true)],
+  ])('fails closed when the previous key bytes are %s — no blank key is created', async (_label, previousRecord) => {
+    const buildBlankRotoFrame = vi.fn(async (frame: number) => realKeyFrame(frame));
+    const harness = createHarness({
+      currentFrame: 8,
+      realKeyFrames: [realKeyFrame(5)],
+      records: [previousRecord],
+      cachedRotoFrames: [],
+      buildBlankRotoFrame,
+    });
+
+    harness.utils.addKey();
+    await flushAsync();
+
+    expect(buildBlankRotoFrame).not.toHaveBeenCalled();
+    expect(harness.addEmptyKey).not.toHaveBeenCalled();
+    expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
+    expect(String(harness.setLastError.mock.calls[0]?.[0])).toContain('previous key bytes unavailable');
+    expect(String(harness.setApplyMessage.mock.calls[0]?.[0])).toContain('previous key bytes unavailable');
   });
 });

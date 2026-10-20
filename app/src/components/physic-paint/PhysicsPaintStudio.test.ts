@@ -2669,3 +2669,32 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(fallbackBlock).not.toContain('markCurrentFrameDirty(');
   });
 });
+
+// Quick 261019-mj2 Task 4 (D-14): the composite undo ledger reserves the NEXT
+// accepted command from a NO-ARGUMENT beginAutoKeyPaintGroup() call placed
+// immediately before the promotion starts. The coordinator mints the
+// operationId at dispatch, so any pre-minted id argument would be stale.
+describe('261019-mj2 Task 4 composite auto-key undo reservation', () => {
+  function section(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('arms the no-argument reservation immediately before both promotion starts', () => {
+    const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
+    expect(beginBlock).toMatch(/rotoMoveHistory\.beginAutoKeyPaintGroup\(\);\s*void startRotoPaintPromotion\(\{/);
+    const fallbackBlock = section(studio, 'const handleCreateKeyFallback = useCallback(', 'const beginRotoFrameEdit = useCallback(');
+    expect(fallbackBlock).toMatch(/rotoMoveHistory\.beginAutoKeyPaintGroup\(\);\s*void startRotoPaintPromotion\(\{/);
+    // NO pre-minted operation id ever reaches the reservation.
+    expect(studio).not.toContain('beginAutoKeyPaintGroup(pendingOperationId');
+    expect(studio).not.toMatch(/beginAutoKeyPaintGroup\([^)]/);
+  });
+
+  it('cancels the reservation when the promotion fails so no held acceptance survives', () => {
+    const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const handleCreateKeyFallback = useCallback(');
+    expect(failureBlock).toContain('rotoMoveHistory.cancelAutoKeyPaintGroup();');
+  });
+});

@@ -14,7 +14,7 @@
  * - `operationKind`: the original ordinary kind (`insert-slot`,
  *   `delete-key`, `delete-key-group`, `move-key`, `move-key-group`,
  *   `force-spacing`, `duplicate-key`, `paste-key`, `paste-key-group`,
- *   `insert-empty-segment`, `play-script`, or one of the six Group lifecycle
+ *   `play-script`, or one of the six Group lifecycle
  *   operations); replay kinds (`undo`, `redo`) are never recorded as new commands;
  * - `before`/`after`: immutable complete `RotoPhysicalEditSnapshot`
  *   captured by the coordinator at acceptance, including records,
@@ -198,6 +198,31 @@ interface PaintBarrier {
   readonly mutationId: number;
 }
 
+/**
+ * Quick 261019-mj2 Task 4 (D-14): one composite ledger entry produced by a
+ * no-argument auto-key reservation. The accepted key command (bound by the
+ * coordinator-minted `operationId`) and the next completed paint mutation form
+ * ONE undo step: undo removes the stroke, then replays the key's `before`;
+ * redo replays the key's `after`, then restores the stroke.
+ */
+interface AutoKeyPaintHistoryEntry<EngineState> {
+  readonly kind: 'auto-key-paint';
+  readonly command: RotoPhysicalEditCommand<EngineState>;
+  readonly mutationId: number;
+}
+
+/**
+ * The reservation binds the NEXT accepted ordinary command and the NEXT
+ * completed paint mutation. Either half may arrive first; the composite entry
+ * is pushed as soon as both are present. A command with no following mutation
+ * degrades to a plain physical entry (flushed on the next acceptance or on
+ * undo). The reservation NEVER carries a pre-minted operation id.
+ */
+interface AutoKeyPaintGroupReservation<EngineState> {
+  command: RotoPhysicalEditCommand<EngineState> | null;
+  mutationId: number | null;
+}
+
 /** 49-06 UAT: a committed Background document edit (delete) recorded in the
  *  unified ledger — undo restores `before`, redo re-applies `after` (BKG-08,
  *  D-08). The descriptor carries the exact document objects by reference. */
@@ -208,6 +233,7 @@ interface BackgroundEditCommand {
 
 type RotoPhysicalEditHistoryEntry<EngineState> =
   | RotoPhysicalEditCommand<EngineState>
+  | AutoKeyPaintHistoryEntry<EngineState>
   | ReferencedActionHistoryCommand
   | PaintBarrier
   | BackgroundEditCommand;
@@ -264,7 +290,6 @@ function isOrdinaryOperationKind(
     || kind === 'duplicate-key'
     || kind === 'paste-key'
     || kind === 'paste-key-group'
-    || kind === 'insert-empty-segment'
     || kind === 'delete-key-rail'
     || kind === 'scissor-key-rail'
     || kind === 'move-key-rail'
@@ -558,14 +583,20 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
   const redoRef = useRef<RotoPhysicalEditHistoryEntry<EngineState>[]>([]);
   const paintAvailabilityRef = useRef<PaintHistoryAvailability>({ undo: 0, redo: 0 });
   const pendingReplayRef = useRef<PendingReplay<EngineState> | null>(null);
+  const autoKeyPaintGroupRef = useRef<AutoKeyPaintGroupReservation<EngineState> | null>(null);
   const lastAcceptedOperationIdRef = useRef<string | null>(null);
   const lastAcceptedReferencedActionRef = useRef<string | null>(null);
   const inputRef = useRef(input);
   inputRef.current = input;
 
   const publishAvailability = useCallback(() => {
+    // A command held by the auto-key reservation is already one undoable
+    // outcome: expose it so the Undo control stays enabled while the first
+    // stroke is still in flight (or when the Create key button path produced
+    // a key with no stroke at all).
+    const heldAutoKeyCommand = autoKeyPaintGroupRef.current?.command ? 1 : 0;
     inputRef.current.availability.value = {
-      undo: appliedRef.current.length,
+      undo: appliedRef.current.length + heldAutoKeyCommand,
       redo: redoRef.current.length,
     };
   }, []);
@@ -600,11 +631,42 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     redoRef.current = [];
     paintAvailabilityRef.current = { undo: 0, redo: 0 };
     pendingReplayRef.current = null;
+    autoKeyPaintGroupRef.current = null;
     lastAcceptedOperationIdRef.current = null;
     lastAcceptedReferencedActionRef.current = null;
     publishAvailability();
     releaseReferencedEntries(owned, 'session-history-clear');
   }, [publishAvailability, releaseReferencedEntries]);
+
+  /** Arm the composite undo reservation. NO argument: the coordinator mints
+   *  the operation id at dispatch and `recordAcceptedEdit` binds it when the
+   *  acceptance arrives. */
+  const beginAutoKeyPaintGroup = useCallback(() => {
+    autoKeyPaintGroupRef.current = { command: null, mutationId: null };
+    publishAvailability();
+  }, [publishAvailability]);
+
+  /** Drop the reservation when the promotion fails or is rejected, so no
+   *  held acceptance can survive a discarded key. */
+  const cancelAutoKeyPaintGroup = useCallback(() => {
+    if (autoKeyPaintGroupRef.current === null) return;
+    autoKeyPaintGroupRef.current = null;
+    publishAvailability();
+  }, [publishAvailability]);
+
+  /** A held acceptance whose paint mutation never arrived degrades to one
+   *  plain physical entry (Create key button path). */
+  const flushPendingAutoKeyGroup = useCallback(() => {
+    const reservation = autoKeyPaintGroupRef.current;
+    if (!reservation) return;
+    autoKeyPaintGroupRef.current = null;
+    if (reservation.command) {
+      appliedRef.current.push(reservation.command);
+      trimAppliedHistory();
+      discardRedoHistory();
+    }
+    publishAvailability();
+  }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
 
   const reconcilePaintBarriers = useCallback((availability: PaintHistoryAvailability) => {
     paintAvailabilityRef.current = availability;
@@ -624,7 +686,30 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
 
   const observePaintMutation = useCallback((mutationId: number, kind: CompletedPaintMutation['kind']) => {
     if (!Number.isInteger(mutationId) || mutationId < 0 || kind === 'undo' || kind === 'redo' || kind === 'clear') return;
-    if (appliedRef.current.some((entry) => entry.kind === 'paint' && entry.mutationId === mutationId)) return;
+    if (appliedRef.current.some((entry) => (
+      (entry.kind === 'paint' || entry.kind === 'auto-key-paint') && entry.mutationId === mutationId
+    ))) return;
+    const reservation = autoKeyPaintGroupRef.current;
+    if (reservation) {
+      if (reservation.command) {
+        // Both halves are present: one composite undo step.
+        autoKeyPaintGroupRef.current = null;
+        appliedRef.current.push({ kind: 'auto-key-paint', command: reservation.command, mutationId });
+        trimAppliedHistory();
+        discardRedoHistory();
+        publishAvailability();
+        return;
+      }
+      if (reservation.mutationId === null) {
+        // The stroke completed before the key acceptance: hold its id until
+        // the coordinator-minted acceptance arrives.
+        reservation.mutationId = mutationId;
+        publishAvailability();
+        return;
+      }
+      // An earlier mutation is already bound and no key was ever accepted;
+      // this is an ordinary paint barrier.
+    }
     appliedRef.current.push({ kind: 'paint', mutationId });
     let paintCount = appliedRef.current.filter((entry) => entry.kind === 'paint').length;
     const maximum = Math.min(10, paintAvailabilityRef.current.undo);
@@ -645,8 +730,18 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (!identity) return;
     if (accepted.after.launchOperationId !== identity.launchOperationId
       || accepted.after.layerId !== identity.layerId
-      || accepted.after.projectContextId !== identity.projectContextId
-      || accepted.after.capacity !== identity.capacity) return;
+      || accepted.after.projectContextId !== identity.projectContextId) return;
+    const ordinaryKind = isOrdinaryOperationKind(accepted.operationKind);
+    // Capacity is monotonic within a launch (D-16): an ordinary gap insert
+    // may RAISE it and stays recordable (a capacity raise never resets the
+    // ledger — `capacity` is no longer a launch-reset key). Every other
+    // ordinary kind requires the exact capacity. Replay acceptances carry the
+    // command's own before/after capacities; their authority is the replay
+    // provenance, not the live launch capacity.
+    if (ordinaryKind && accepted.operationKind !== 'insert-slot'
+      && accepted.after.capacity !== identity.capacity) return;
+    if (ordinaryKind && accepted.operationKind === 'insert-slot'
+      && accepted.after.capacity < identity.capacity) return;
     // 46-03 (D-01): dedupe on operationId + trackId — one cross-track
     // operation emits one acceptance PER track under the same operationId,
     // so the track tag is part of the dedupe identity (never collide).
@@ -654,7 +749,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     if (lastAcceptedOperationIdRef.current === dedupeKey) return;
     lastAcceptedOperationIdRef.current = dedupeKey;
 
-    if (!isOrdinaryOperationKind(accepted.operationKind)) {
+    if (!ordinaryKind) {
       // Replay acceptance — move the pending replay command between stacks
       // instead of appending a new command. The complete accepted source and
       // target authority plus command ID, direction, and both revisions must
@@ -665,17 +760,28 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       if (!replayAcceptanceMatchesPending(accepted, pending)) return;
       if (pending.direction === 'undo') {
         const top = appliedRef.current[appliedRef.current.length - 1];
-        if (top !== pending.command || top.kind !== 'physical') return;
-        appliedRef.current.pop();
-        redoRef.current.push(top);
-        publishAvailability();
+        if (!top) return;
+        if (top.kind === 'physical' && top === pending.command) {
+          appliedRef.current.pop();
+          redoRef.current.push(top);
+          publishAvailability();
+          return;
+        }
+        if (top.kind === 'auto-key-paint' && top.command === pending.command) {
+          appliedRef.current.pop();
+          redoRef.current.push(top);
+          publishAvailability();
+        }
         return;
       }
       const top = redoRef.current[redoRef.current.length - 1];
-      if (top !== pending.command || top.kind !== 'physical') return;
-      redoRef.current.pop();
-      appliedRef.current.push(top);
-      publishAvailability();
+      if (!top) return;
+      if ((top.kind === 'physical' && top === pending.command)
+        || (top.kind === 'auto-key-paint' && top.command === pending.command)) {
+        redoRef.current.pop();
+        appliedRef.current.push(top);
+        publishAvailability();
+      }
       return;
     }
 
@@ -701,6 +807,24 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       selectedKeyId: accepted.after.selectedKeyId,
       selectedAppFrame: accepted.after.selectedAppFrame,
     };
+    const reservation = autoKeyPaintGroupRef.current;
+    if (reservation) {
+      autoKeyPaintGroupRef.current = null;
+      // A held acceptance that never received its stroke degrades to one
+      // plain physical entry before this acceptance takes the reservation.
+      if (reservation.command) appliedRef.current.push(reservation.command);
+      if (reservation.mutationId !== null) {
+        appliedRef.current.push({ kind: 'auto-key-paint', command, mutationId: reservation.mutationId });
+      } else {
+        // The acceptance arrived before the first stroke completed: hold it
+        // until `observePaintMutation` supplies the mutation id.
+        autoKeyPaintGroupRef.current = { command, mutationId: null };
+      }
+      trimAppliedHistory();
+      discardRedoHistory();
+      publishAvailability();
+      return;
+    }
     appliedRef.current.push(command);
     trimAppliedHistory();
     discardRedoHistory();
@@ -761,7 +885,8 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     input.identity?.launchOperationId,
     input.identity?.layerId,
     input.identity?.projectContextId,
-    input.identity?.capacity,
+    // Capacity is intentionally NOT a reset key (D-16): a tail insert raises
+    // it monotonically and must never clear the undo/redo ledger on re-render.
     clear,
   ]);
   useEffect(() => () => clear(), [clear]);
@@ -769,6 +894,9 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
   const undo = useCallback(async (): Promise<boolean> => {
     const coordinator = inputRef.current.coordinator;
     if (coordinator.pendingOperationId.value !== null) return false;
+    // A Create-key acceptance with no stroke degrades to one plain command so
+    // Undo can remove the key the user just created.
+    flushPendingAutoKeyGroup();
     const entry = appliedRef.current[appliedRef.current.length - 1];
     if (!entry) return false;
     if (entry.kind === 'paint') {
@@ -822,6 +950,41 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     const identity = inputRef.current.identity;
     if (!identity) return false;
+    if (entry.kind === 'auto-key-paint') {
+      // D-14: one undo removes the created key AND the first stroke. The
+      // stroke removal runs FIRST; a rejected key replay reverts it and leaves
+      // both stacks untouched.
+      const command = entry.command;
+      const autoKeyLiveSnapshot = inputRef.current.getLiveSourceSnapshot;
+      if (typeof autoKeyLiveSnapshot !== 'function'
+        || !snapshotReplayAuthorityEqual(autoKeyLiveSnapshot(), command.after)) return false;
+      if (!inputRef.current.undoPaint()) return false;
+      if (getActiveTrackId(identity.layerId) !== command.trackId) setActiveTrackId(identity.layerId, command.trackId);
+      pendingReplayRef.current = { direction: 'undo', command };
+      const autoKeyProposal = buildReplayProposal(command.before);
+      const autoKeyBeforeRevision = snapshotRevision(command.before);
+      const autoKeyAccepted = await coordinator.executePhysicalEdit({
+        proposal: autoKeyProposal,
+        expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },
+        operationKind: 'undo',
+        selectedKeyId: command.before.selectedKeyId,
+        selectedAppFrame: command.before.selectedAppFrame,
+        replayTargetSnapshot: command.before,
+        historyProvenance: {
+          historyCommandId: command.operationId,
+          historyDirection: 'undo',
+          sourceRevision: command.acceptedRevision,
+          targetRevision: autoKeyBeforeRevision,
+        },
+      });
+      if (!autoKeyAccepted) {
+        pendingReplayRef.current = null;
+        inputRef.current.redoPaint();
+        publishAvailability();
+        return false;
+      }
+      return true;
+    }
     // Selection and cursor are intentionally absent from the canonical
     // revision. Read them only at replay invocation so ordinary movement
     // retains the stack while stale live state fails closed before the
@@ -868,11 +1031,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       debugUndoLog(`undo replay accepted by coordinator for ${entry.operationId}`);
     }
     return true;
-  }, [publishAvailability]);
+  }, [flushPendingAutoKeyGroup, publishAvailability]);
 
   const redo = useCallback(async (): Promise<boolean> => {
     const coordinator = inputRef.current.coordinator;
     if (coordinator.pendingOperationId.value !== null) return false;
+    flushPendingAutoKeyGroup();
     const entry = redoRef.current[redoRef.current.length - 1];
     if (!entry) return false;
     if (entry.kind === 'paint') {
@@ -918,6 +1082,39 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     }
     const identity = inputRef.current.identity;
     if (!identity) return false;
+    if (entry.kind === 'auto-key-paint') {
+      // D-14: redo replays the key FIRST, then restores the stroke. A rejected
+      // key replay leaves both stacks untouched.
+      const command = entry.command;
+      const autoKeyLiveSnapshot = inputRef.current.getLiveSourceSnapshot;
+      if (typeof autoKeyLiveSnapshot !== 'function'
+        || !snapshotReplayAuthorityEqual(autoKeyLiveSnapshot(), command.before)) return false;
+      if (getActiveTrackId(identity.layerId) !== command.trackId) setActiveTrackId(identity.layerId, command.trackId);
+      pendingReplayRef.current = { direction: 'redo', command };
+      const autoKeyProposal = buildReplayProposal(command.after);
+      const autoKeyAfterRevision = snapshotRevision(command.after);
+      const autoKeyAccepted = await coordinator.executePhysicalEdit({
+        proposal: autoKeyProposal,
+        expectedLaunch: { operationId: identity.launchOperationId, layerId: identity.layerId },
+        operationKind: 'redo',
+        selectedKeyId: command.after.selectedKeyId,
+        selectedAppFrame: command.after.selectedAppFrame,
+        replayTargetSnapshot: command.after,
+        historyProvenance: {
+          historyCommandId: command.operationId,
+          historyDirection: 'redo',
+          sourceRevision: snapshotRevision(command.before),
+          targetRevision: autoKeyAfterRevision,
+        },
+      });
+      if (!autoKeyAccepted) {
+        pendingReplayRef.current = null;
+        return false;
+      }
+      inputRef.current.redoPaint();
+      publishAvailability();
+      return true;
+    }
     const beforeRevision = snapshotRevision(entry.before);
     const getLiveSourceSnapshot = inputRef.current.getLiveSourceSnapshot;
     if (typeof getLiveSourceSnapshot !== 'function'
@@ -947,10 +1144,12 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
       return false;
     }
     return true;
-  }, [publishAvailability]);
+  }, [flushPendingAutoKeyGroup, publishAvailability]);
 
   return {
     clear,
+    beginAutoKeyPaintGroup,
+    cancelAutoKeyPaintGroup,
     observePaintMutation,
     recordAcceptedEdit,
     recordBackgroundEdit,

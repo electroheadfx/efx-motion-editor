@@ -2106,6 +2106,9 @@ export function PhysicsPaintStudio() {
   ) => {
     if (pendingFirstPaintTargetRef.current === pending) pendingFirstPaintTargetRef.current = null;
     autoKeyPromotionPaintExempt.value = false;
+    // D-14: a rejected/failed promotion must never leave a held acceptance in
+    // the composite ledger — the key is being discarded (replayed below).
+    rotoMoveHistory.cancelAutoKeyPaintGroup();
     if (pending.completedMutationObserved) {
       engineRef.current?.undo();
       if (engineRef.current?.getStrokeCount() === 0) engineRef.current?.clear();
@@ -2908,6 +2911,9 @@ export function PhysicsPaintStudio() {
     rotoSession.markLiveOverlayDirty(currentFrame);
     syncPendingRotoFrames();
     if (currentFrameSelectionKind === 'generated-interpolation') clearGeneratedRotoDisplayForPaint();
+    // D-14: reserve the NEXT accepted command (no pre-minted operationId) for
+    // the composite auto-key undo step, immediately before dispatch.
+    rotoMoveHistory.beginAutoKeyPaintGroup();
     void startRotoPaintPromotion({
       source: 'auto-key-paint',
       appFrame: currentFrame,
@@ -2943,6 +2949,9 @@ export function PhysicsPaintStudio() {
       if (next < 100) requestAnimationFrame(warmTick);
     };
     requestAnimationFrame(warmTick);
+    // D-14: the fallback creates a key through the same composite ledger — a
+    // stroke painted right after clicking groups with the key creation.
+    rotoMoveHistory.beginAutoKeyPaintGroup();
     void startRotoPaintPromotion({
       source: 'create-key-button',
       appFrame,
