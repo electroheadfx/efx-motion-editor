@@ -3386,3 +3386,329 @@ describe('52.2-06: reference-only roto records across the hydrate seam (D-06/D-0
     }
   });
 });
+
+// Quick 261019-mj2 Task 5: runtime caches must follow the durable identity set
+// across a physical-document publication. The store is the single re-anchor
+// door (both replaceRotoPhysicalDocument and mirrorRotoPhysicalDocument), and
+// the move is atomic: snapshot by keyId BEFORE any write, then prune, derive,
+// and enforce `_frames` ⊆ `_rotoCacheMetadata`.
+describe('261019-mj2 Task 5: atomic runtime cache re-anchor on physical publication', () => {
+  const LAYER = 'reanchor-layer';
+  const TRACK = 'reanchor-track';
+  const INTERPOLATION_OFF = { enabled: false, mode: 'duplicate' as const };
+  const INTERPOLATION_ON = { enabled: true, mode: 'duplicate' as const };
+
+  type ReanchorKeySpec = {
+    keyId: string;
+    appFrame: number;
+    bytes?: Uint8Array;
+    referenceOnly?: boolean;
+  };
+
+  function physicalDocument(
+    specs: readonly ReanchorKeySpec[],
+    options: {
+      capacity?: number;
+      interpolation?: { enabled: boolean; mode: 'duplicate' | 'blend' };
+      background?: { background: 'canvas1' | 'canvas2'; grainStrength: number } | null;
+    } = {},
+  ) {
+    const capacity = options.capacity ?? 64;
+    const interpolation = options.interpolation ?? INTERPOLATION_OFF;
+    const realKeyRecords = specs.map((spec) => ({
+      keyId: spec.keyId,
+      appFrame: spec.appFrame,
+      kind: 'real-key' as const,
+      payload: spec.referenceOnly
+        ? {
+            frameIndex: 0,
+            appFrame: spec.appFrame,
+            media: {
+              relativePath: buildFrameMediaRelativePath(LAYER, spec.keyId),
+              digest: spec.keyId.charCodeAt(0).toString(16).padStart(2, '0').repeat(32).slice(0, 64),
+              width: 2,
+              height: 2,
+            },
+            width: 2,
+            height: 2,
+          }
+        : {
+            frameIndex: 0,
+            appFrame: spec.appFrame,
+            bytes: spec.bytes ?? testWebpBytes(`reanchor-${spec.keyId}-${spec.appFrame}`),
+            width: 2,
+            height: 2,
+          },
+    }));
+    return parsePhysicPaintRotoPhysicalDocument({
+      capacity,
+      realKeyRecords,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: options.background ?? null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+  }
+
+  function publish(
+    specs: readonly ReanchorKeySpec[],
+    options: {
+      capacity?: number;
+      interpolation?: { enabled: boolean; mode: 'duplicate' | 'blend' };
+      background?: { background: 'canvas1' | 'canvas2'; grainStrength: number } | null;
+    } = {},
+  ) {
+    const result = physicPaintStore.replaceRotoPhysicalDocument(LAYER, TRACK, physicalDocument(specs, options));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    return result.document;
+  }
+
+  function seedRuntimeFrame(frame: number, bytes: Uint8Array): void {
+    physicPaintStore.upsertRealRotoKeyFrame(LAYER, TRACK, frame, {
+      frameIndex: 0,
+      appFrame: frame,
+      bytes,
+      width: 2,
+      height: 2,
+    });
+  }
+
+  function frameBytesByAppFrame(): Map<number, Uint8Array> {
+    return new Map(
+      [...physicPaintStore.getFrames(LAYER, TRACK).entries()].map(([frame, rendered]) => [frame, rendered.bytes]),
+    );
+  }
+
+  function realKeyMetadataFrames(): number[] {
+    return physicPaintStore.getRotoCacheFrames(LAYER, TRACK)
+      .filter((frame) => frame.source === 'real-key')
+      .map((frame) => frame.displayFrame ?? frame.appFrame)
+      .sort((a, b) => a - b);
+  }
+
+  function expectFramesSubsetOfMetadata(): void {
+    const metadataFrames = new Set(
+      physicPaintStore.getRotoCacheFrames(LAYER, TRACK).map((frame) => frame.displayFrame ?? frame.appFrame),
+    );
+    for (const frame of physicPaintStore.getFrames(LAYER, TRACK).keys()) {
+      expect(metadataFrames.has(frame)).toBe(true);
+    }
+  }
+
+  beforeEach(() => {
+    _setPhysicPaintMarkDirtyCallback(() => {});
+    physicPaintStore.reset();
+  });
+
+  it('moves a contiguous F/F+1/F+2 chain atomically so each keyId keeps its own pixels', () => {
+    const pixelsA = testWebpBytes('chain-pixels-A');
+    const pixelsB = testWebpBytes('chain-pixels-B');
+    const pixelsC = testWebpBytes('chain-pixels-C');
+    seedRuntimeFrame(0, pixelsA);
+    seedRuntimeFrame(1, pixelsB);
+    seedRuntimeFrame(2, pixelsC);
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 1, bytes: pixelsB },
+      { keyId: 'C', appFrame: 2, bytes: pixelsC },
+    ]);
+
+    // Insert at frame 0 ripples every key right by one: A->1, B->2, C->3.
+    publish([
+      { keyId: 'A', appFrame: 1, bytes: pixelsA },
+      { keyId: 'B', appFrame: 2, bytes: pixelsB },
+      { keyId: 'C', appFrame: 3, bytes: pixelsC },
+    ]);
+
+    const frames = frameBytesByAppFrame();
+    expect(frames.get(1)).toEqual(pixelsA);
+    expect(frames.get(2)).toEqual(pixelsB);
+    expect(frames.get(3)).toEqual(pixelsC);
+    expect(frames.has(0)).toBe(false);
+    expect(realKeyMetadataFrames()).toEqual([1, 2, 3]);
+    expectFramesSubsetOfMetadata();
+  });
+
+  it('moves a single key A -> A+1 and leaves the vacated frame clean', () => {
+    const pixelsA = testWebpBytes('single-pixels-A');
+    const pixelsB = testWebpBytes('single-pixels-B');
+    seedRuntimeFrame(2, pixelsA);
+    seedRuntimeFrame(5, pixelsB);
+    publish([
+      { keyId: 'A', appFrame: 2, bytes: pixelsA },
+      { keyId: 'B', appFrame: 5, bytes: pixelsB },
+    ]);
+
+    publish([
+      { keyId: 'A', appFrame: 3, bytes: pixelsA },
+      { keyId: 'B', appFrame: 5, bytes: pixelsB },
+    ]);
+
+    const frames = frameBytesByAppFrame();
+    expect(frames.get(3)).toEqual(pixelsA);
+    expect(frames.get(5)).toEqual(pixelsB);
+    expect(frames.has(2)).toBe(false);
+    expect(realKeyMetadataFrames()).toEqual([3, 5]);
+    expectFramesSubsetOfMetadata();
+  });
+
+  it('drops generated caches and regenerates them once from the moved identity set', () => {
+    const pixelsA = testWebpBytes('generated-pixels-A');
+    const pixelsB = testWebpBytes('generated-pixels-B');
+    seedRuntimeFrame(0, pixelsA);
+    seedRuntimeFrame(4, pixelsB);
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 4, bytes: pixelsB },
+    ], { interpolation: INTERPOLATION_ON });
+    physicPaintStore.setRotoInterpolationSettings(LAYER, TRACK, { enabled: true, inBetweenCount: 3, mode: 'duplicate' });
+    expect(physicPaintStore.getRotoCacheFrames(LAYER, TRACK)
+      .filter((frame) => frame.source === 'generated-interpolation')
+      .map((frame) => frame.appFrame)).toEqual([1, 2, 3]);
+
+    publish([
+      { keyId: 'A', appFrame: 1, bytes: pixelsA },
+      { keyId: 'B', appFrame: 5, bytes: pixelsB },
+    ], { interpolation: INTERPOLATION_ON });
+
+    const generatedFrames = physicPaintStore.getRotoCacheFrames(LAYER, TRACK)
+      .filter((frame) => frame.source === 'generated-interpolation')
+      .map((frame) => frame.appFrame)
+      .sort((a, b) => a - b);
+    expect(generatedFrames).toEqual([2, 3, 4]);
+    expect(realKeyMetadataFrames()).toEqual([1, 5]);
+    expectFramesSubsetOfMetadata();
+  });
+
+  it('recomputes background-only support around new real-key positions and never on a real-key frame', () => {
+    const pixelsA = testWebpBytes('support-pixels-A');
+    const pixelsB = testWebpBytes('support-pixels-B');
+    const background = { background: 'canvas1' as const, grainStrength: 0.45 };
+    seedRuntimeFrame(0, pixelsA);
+    seedRuntimeFrame(4, pixelsB);
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 4, bytes: pixelsB },
+    ], { background });
+    const support = physicPaintStore.recomputeBackgroundOnlyRotoSupport(LAYER, TRACK, [2]);
+    expect(support.map((frame) => frame.appFrame)).toEqual([2]);
+
+    // B moves onto the former support frame: the real key wins and the support
+    // frame must not survive over it.
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 2, bytes: pixelsB },
+    ], { background });
+
+    const frames = physicPaintStore.getRotoCacheFrames(LAYER, TRACK);
+    expect(frames).toContainEqual(expect.objectContaining({ appFrame: 2, source: 'real-key' }));
+    expect(frames).not.toContainEqual(expect.objectContaining({ appFrame: 2, source: 'background-only-support' }));
+    expect(physicPaintStore.getBackgroundOnlyRotoSupportFrames(LAYER, TRACK)).toEqual([]);
+    expectFramesSubsetOfMetadata();
+  });
+
+  it('re-anchors from the record payload when the runtime source frame is absent', () => {
+    const pixelsA = testWebpBytes('payload-pixels-A');
+    const pixelsB = testWebpBytes('payload-pixels-B');
+    // B has a runtime frame; A does not. The track is not frameless, so the
+    // move must use A's next-record payload bytes instead of skipping it.
+    seedRuntimeFrame(5, pixelsB);
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 5, bytes: pixelsB },
+    ]);
+
+    publish([
+      { keyId: 'A', appFrame: 1, bytes: pixelsA },
+      { keyId: 'B', appFrame: 5, bytes: pixelsB },
+    ]);
+
+    const frames = frameBytesByAppFrame();
+    expect(frames.get(1)).toEqual(pixelsA);
+    expect(frames.get(5)).toEqual(pixelsB);
+    expect(frames.has(0)).toBe(false);
+    expect(realKeyMetadataFrames()).toEqual([1, 5]);
+    expectFramesSubsetOfMetadata();
+  });
+
+  it('never fabricates pixels for a reference-only record with no runtime frame', () => {
+    publish([
+      { keyId: 'A', appFrame: 0, referenceOnly: true },
+      { keyId: 'B', appFrame: 5, referenceOnly: true },
+    ]);
+
+    publish([
+      { keyId: 'A', appFrame: 1, referenceOnly: true },
+      { keyId: 'B', appFrame: 5, referenceOnly: true },
+    ]);
+
+    expect(physicPaintStore.getFrames(LAYER, TRACK).size).toBe(0);
+    expect(physicPaintStore.getRotoCacheFrames(LAYER, TRACK)).toEqual([]);
+  });
+
+  it('is a no-op for a frameless passive mirror document', () => {
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: testWebpBytes('mirror-pixels-A') },
+      { keyId: 'B', appFrame: 4, bytes: testWebpBytes('mirror-pixels-B') },
+    ]);
+
+    expect(() => publish([
+      { keyId: 'A', appFrame: 1, bytes: testWebpBytes('mirror-pixels-A') },
+      { keyId: 'B', appFrame: 5, bytes: testWebpBytes('mirror-pixels-B') },
+    ])).not.toThrow();
+
+    expect(physicPaintStore.getFrames(LAYER, TRACK).size).toBe(0);
+    expect(physicPaintStore.getRotoCacheFrames(LAYER, TRACK)).toEqual([]);
+    expect(physicPaintStore.getRotoRealKeyRecords(LAYER, TRACK).map((record) => record.appFrame)).toEqual([1, 5]);
+  });
+
+  it('leaves runtime frames untouched when the record set is unchanged', () => {
+    const pixelsA = testWebpBytes('stable-pixels-A');
+    const pixelsB = testWebpBytes('stable-pixels-B');
+    seedRuntimeFrame(0, pixelsA);
+    seedRuntimeFrame(5, pixelsB);
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 5, bytes: pixelsB },
+    ]);
+
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 5, bytes: pixelsB },
+    ]);
+
+    const frames = frameBytesByAppFrame();
+    expect(frames.get(0)).toEqual(pixelsA);
+    expect(frames.get(5)).toEqual(pixelsB);
+    expect(realKeyMetadataFrames()).toEqual([0, 5]);
+    expectFramesSubsetOfMetadata();
+  });
+
+  it('re-anchors through mirrorRotoPhysicalDocument exactly like the replace door', () => {
+    const pixelsA = testWebpBytes('mirror-door-pixels-A');
+    const pixelsB = testWebpBytes('mirror-door-pixels-B');
+    seedRuntimeFrame(0, pixelsA);
+    seedRuntimeFrame(4, pixelsB);
+    publish([
+      { keyId: 'A', appFrame: 0, bytes: pixelsA },
+      { keyId: 'B', appFrame: 4, bytes: pixelsB },
+    ]);
+
+    const mirrored = physicPaintStore.mirrorRotoPhysicalDocument(LAYER, TRACK, physicalDocument([
+      { keyId: 'A', appFrame: 1, bytes: pixelsA },
+      { keyId: 'B', appFrame: 4, bytes: pixelsB },
+    ]));
+    expect(mirrored.ok).toBe(true);
+
+    const frames = frameBytesByAppFrame();
+    expect(frames.get(1)).toEqual(pixelsA);
+    expect(frames.get(4)).toEqual(pixelsB);
+    expect(frames.has(0)).toBe(false);
+    expectFramesSubsetOfMetadata();
+  });
+});

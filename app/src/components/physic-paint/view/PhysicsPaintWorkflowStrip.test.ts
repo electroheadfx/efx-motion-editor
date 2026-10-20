@@ -475,8 +475,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(countOccurrences(row, '<span class="physics-paint-roto-key-icon-label">Insert</span>')).toBe(1);
     expect(code).toContain("physicalActions?.insertTooltipDescription.value ?? 'Insert key before'");
     expect(code).toContain('buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)');
-    expect(actions).toContain("? 'Insert an empty key connected to the previous segment.'");
-    expect(actions).toContain(": 'Insert key before'");
+    expect(actions).toContain("? 'Insert a gap before this key'");
+    expect(actions).toContain(": 'Insert a gap at the cursor'");
   });
 });
 

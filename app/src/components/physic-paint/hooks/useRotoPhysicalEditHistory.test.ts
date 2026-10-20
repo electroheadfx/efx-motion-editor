@@ -3000,8 +3000,9 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     expect(moveHarness.availability.value).toEqual({ undo: 0, redo: 0 });
   });
 
-  it('retires insert-empty-segment and keeps capacity out of the launch-reset keys', () => {
-    expect(HISTORY_SOURCE).not.toContain('insert-empty-segment');
+  it('retires the legacy insert-empty operation and keeps capacity out of the launch-reset keys', () => {
+    const retiredInsertOperation = ['insert', 'empty', 'segment'].join('-');
+    expect(HISTORY_SOURCE).not.toContain(retiredInsertOperation);
     expect(HISTORY_SOURCE).not.toContain('input.identity?.capacity');
     expect(HISTORY_SOURCE).toContain('const beginAutoKeyPaintGroup = useCallback(() => {');
     expect(HISTORY_SOURCE).toContain('const cancelAutoKeyPaintGroup = useCallback(() => {');

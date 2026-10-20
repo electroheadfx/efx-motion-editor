@@ -2396,6 +2396,104 @@ function _regenerateGeneratedRotoCache(layerId: string, trackId: string, setting
 }
 
 /**
+ * Quick 261019-mj2 Task 5 (T-261019-mj2-04): atomically re-anchor runtime
+ * caches when a physical-document publication moves real keys. Both
+ * publication doors (replaceRotoPhysicalDocument and mirrorRotoPhysicalDocument)
+ * call this AFTER installing the new record maps, with the records read BEFORE
+ * replacement. A frameless realm (the passive parent mirror) and an unchanged
+ * record set are no-ops.
+ *
+ * Four phases with no interleaving: contiguous chains (F->F+1, F+1->F+2, ...)
+ * would otherwise read a source map after the first write clobbered the next
+ * key's still-unmoved pixels. Destinations are written from phase-1 snapshots
+ * only; entries are matched through the previous record's keyId.
+ */
+function reanchorRotoRuntimeFrames(
+  layerId: string,
+  trackId: string,
+  previousRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  nextRecords: readonly PhysicPaintRotoRealKeyRecord[],
+): boolean {
+  const existingFrames = _frames.get(layerId)?.get(trackId);
+  const existingMetadata = _rotoCacheMetadata.get(layerId)?.get(trackId);
+  // No runtime frames in this realm (passive parent mirror): nothing to move.
+  if ((!existingFrames || existingFrames.size === 0) && (!existingMetadata || existingMetadata.size === 0)) return false;
+
+  const previousFrameByKeyId = new Map<string, number>();
+  for (const record of previousRecords) previousFrameByKeyId.set(record.keyId, record.appFrame);
+  const moves: Array<{ from: number; to: number; record: PhysicPaintRotoRealKeyRecord }> = [];
+  for (const record of nextRecords) {
+    const previousFrame = previousFrameByKeyId.get(record.keyId);
+    if (previousFrame === undefined || previousFrame === record.appFrame) continue;
+    moves.push({ from: previousFrame, to: record.appFrame, record });
+  }
+  // An unchanged record set does not disturb the runtime cache.
+  if (moves.length === 0) return false;
+
+  const frames = _getOrCreateTrack(layerId, trackId);
+  const metadata = _getOrCreateTrackRotoMetadata(layerId, trackId);
+  const previousRealKeyFrames = previousRecords.map((record) => record.appFrame);
+  const nextRealKeyFrames = new Set(nextRecords.map((record) => record.appFrame));
+  const previousSupportFrames = Array.from(metadata.values())
+    .filter((frame) => frame.source === 'background-only-support')
+    .map((frame) => frame.appFrame);
+
+  // Phase 1 — SNAPSHOT (no writes): read each moved key's own runtime entries
+  // at its PREVIOUS frame. A missing runtime source falls back to the next
+  // record's inline payload bytes; a reference-only payload snapshots nothing
+  // (a missing pixel buffer is never fabricated).
+  const snapshots = moves.map((move) => {
+    const renderedAtSource = frames.get(move.from) ?? null;
+    let rendered = renderedAtSource;
+    if (!rendered) {
+      const payloadBytes = move.record.payload.bytes;
+      if (payloadBytes instanceof Uint8Array && payloadBytes.byteLength > 0) {
+        rendered = {
+          frameIndex: 0,
+          appFrame: move.to,
+          bytes: payloadBytes,
+          ...(move.record.payload.width !== undefined ? { width: move.record.payload.width } : {}),
+          ...(move.record.payload.height !== undefined ? { height: move.record.payload.height } : {}),
+        };
+      }
+    }
+    return { to: move.to, rendered };
+  });
+
+  // Phase 2 — WRITE destinations from the snapshots only. Destinations are
+  // unique by resolver invariant, so no write can clobber an unmoved key.
+  for (const snapshot of snapshots) {
+    if (!snapshot.rendered) continue;
+    const destinationFrame: PhysicPaintRenderedFrame = {
+      ...snapshot.rendered,
+      frameIndex: 0,
+      appFrame: snapshot.to,
+      source: 'real-key',
+    };
+    frames.set(snapshot.to, destinationFrame);
+    metadata.set(snapshot.to, _normalizeRealRotoCacheFrame(destinationFrame, snapshot.to));
+  }
+
+  // Phase 3 — PRUNE vacated frames (previous real-key frames absent from the
+  // next identity set) and the old background-only support frames.
+  for (const frame of previousRealKeyFrames) {
+    if (nextRealKeyFrames.has(frame)) continue;
+    frames.delete(frame);
+    metadata.delete(frame);
+  }
+  _removeBackgroundOnlyRotoSupport(layerId, trackId, previousSupportFrames);
+
+  // Phase 4 — DERIVE once from the new identity set. The metadata prune runs
+  // LAST so `_frames` can never outlive its `_rotoCacheMetadata` twin.
+  _removeGeneratedRotoCache(layerId, trackId);
+  _recomputeBackgroundOnlyRotoSupport(layerId, trackId, previousSupportFrames);
+  const settings = physicPaintStore.getRotoInterpolationSettings(layerId, trackId);
+  if (settings.enabled) _tryRegenerateGeneratedRotoCache(layerId, trackId, settings);
+  _pruneFramesOutsideRotoCacheMetadata(layerId, trackId);
+  return true;
+}
+
+/**
  * 52.1 lever 1: resolve a generated (blend/duplicate) frame through the
  * read-path cache keyed by cacheRevision. The cacheRevision embeds
  * contentRevision, so a real-key edit (which rotates contentRevision) can
@@ -3859,6 +3957,9 @@ export const physicPaintStore = {
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
     const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
+    // Quick 261019-mj2 Task 5: the re-anchor needs the records from BEFORE the
+    // replacement; the runtime cache move is part of this same publication.
+    const previousRealKeyRecords = Array.from(_rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []);
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(
       trackId,
       new Map(document.realKeyRecords.map((record) => [record.keyId, record])),
@@ -3876,6 +3977,7 @@ export const physicPaintStore = {
     _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, document.capacity);
     if (document.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...document.background });
     else _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
+    reanchorRotoRuntimeFrames(layerId, trackId, previousRealKeyRecords, document.realKeyRecords);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     rotoPhysicalRevision.value = rotoPhysicalRevision.value + 1;
@@ -3918,6 +4020,9 @@ export const physicPaintStore = {
     if (!projection.ok) return { ok: false, error: projection.failure.text };
 
     const previousPayloadTokens = _getTrackBytesTokens(layerId, trackId);
+    // Quick 261019-mj2 Task 5: same atomic re-anchor as the replace door; a
+    // passive mirror without runtime frames stays a no-op.
+    const previousRealKeyRecords = Array.from(_rotoRealKeyRecords.get(layerId)?.get(trackId)?.values() ?? []);
     _getOrCreateLayerTrackMap(_rotoRealKeyRecords, layerId).set(
       trackId,
       new Map(document.realKeyRecords.map((record) => [record.keyId, record])),
@@ -3935,6 +4040,7 @@ export const physicPaintStore = {
     _getOrCreateLayerTrackMap(_rotoPhysicalCapacity, layerId).set(trackId, document.capacity);
     if (document.background) _getOrCreateLayerTrackMap(_rotoBackgroundMetadata, layerId).set(trackId, { ...document.background });
     else _rotoBackgroundMetadata.get(layerId)?.delete(trackId);
+    reanchorRotoRuntimeFrames(layerId, trackId, previousRealKeyRecords, document.realKeyRecords);
     _rotoPhysicalStructuralCache.delete(_rotoPhysicalStructuralCacheKey(layerId, trackId));
     _pruneUnreferencedRotoAlphaCanvases(previousPayloadTokens);
     return { ok: true, document };

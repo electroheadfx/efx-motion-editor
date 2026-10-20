@@ -1361,6 +1361,23 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.coordinator.acceptedOutput.value?.after.capacity).toBe(31);
   });
 
+  it('publishes one accepted insert through the single replaceDocument door so the cache re-anchor runs once', async () => {
+    const test = harness({ capacity: 30, parentEndExclusive: 40 });
+
+    expect(await test.executeInsertGap(30)).toBe(true);
+    // Staging and dispatch never publish: the document leaves the child only
+    // after the parent accepts it.
+    expect(test.replaceDocument).not.toHaveBeenCalled();
+    test.resetStructuralPublicationCount();
+    expect(test.accept()).toBe('accepted');
+
+    // One accepted insert = one complete-document publication, and that
+    // publication is the store's replaceRotoPhysicalDocument door — the single
+    // place where runtime caches re-anchor (no second re-anchor call exists).
+    expect(test.replaceDocument).toHaveBeenCalledTimes(1);
+    expect(test.getStructuralPublicationCount()).toBe(1);
+  });
+
   it('restores the prior child capacity when staging fails after the raise', async () => {
     const test = harness({ capacity: 30, parentEndExclusive: 40 });
     const intent = { kind: 'insert-slot', destinationAppFrame: 30 } as const;

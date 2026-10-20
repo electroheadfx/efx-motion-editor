@@ -1639,6 +1639,10 @@ async function applyPhysicPaintRotoPhysicalMap(
   // the carried value before any revision/canonical read, extend the
   // containing FX sequence exactly once, then mirror the capacity and read
   // the raised state. One computation (the resolver), two realm-local writes.
+  // Capacity is not content: it only grows within a launch, keys are never
+  // dropped to shrink a span, and Studio Undo restores records without
+  // shrinking the parent span. The accepted ledger therefore stores this
+  // POST-extension value below so undo/redo snapshots match the child.
   let capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId, payload.trackId);
   if (payload.targetCapacity !== undefined) {
     if (payload.operationKind !== 'insert-slot'

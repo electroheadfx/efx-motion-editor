@@ -3178,6 +3178,154 @@ describe('physicPaintBridge', async () => {
     updateRange.mockRestore();
   });
 
+  it('stores the post-extension capacity in the accepted ledger and rejects targetCapacity on replay', async () => {
+    const layer = physicLayer();
+    mockLayers([layer], 20);
+    const capacity = 20;
+    const interpolation = { enabled: false, mode: 'duplicate' as const };
+    const records = [makePhysicalRecord('A', 0), makePhysicalRecord('Z', 19)];
+    const seeded = physicPaintStore.replaceRotoPhysicalDocument(layer.id, TEST_TRACK_ID, {
+      capacity,
+      realKeyRecords: records,
+      interpolation,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 0,
+      revision: buildPhysicPaintRotoPhysicalRevision(
+        records,
+        interpolation,
+        [],
+        PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+      ),
+      incomingInterpolationBreakKeyIds: PHYSIC_PAINT_ROTO_INCOMING_INTERPOLATION_BREAK_KEY_IDS_EMPTY,
+    });
+    if (!seeded.ok) throw new Error(seeded.error);
+    vi.spyOn(window, 'open').mockReturnValue({ focus: vi.fn() } as unknown as Window);
+    const launch = await openPhysicPaintCanvas({ layer, frame: 5 });
+    if (!launch.ok) throw new Error('Expected the physical launch to open.');
+    const intent = { kind: 'insert-slot' as const, destinationAppFrame: 5 };
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      parentEndExclusive: capacity,
+      capacity,
+      interpolationEnabled: false,
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    const proposal = resolution.proposal;
+    if (proposal.nextCapacity === undefined) throw new Error('Insert must report the computed next capacity.');
+    const canonicalRecords = proposal.orderedKeyIds.map((keyId) => {
+      const current = records.find((record) => record.keyId === keyId);
+      const appFrame = proposal.mapping.get(keyId);
+      if (!current || appFrame === undefined) throw new Error(`Missing canonical insert record ${keyId}`);
+      const { kind: _kind, ...moved } = movePhysicalRecord(current, appFrame);
+      return moved;
+    });
+    const commandLease = acquirePhysicalLease(layer.id);
+    const accepted = await applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'tail-insert-capacity-ledger',
+      operationKind: 'insert-slot',
+      leaseToken: commandLease,
+      intent,
+      layerId: layer.id,
+      startFrame: 5,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: carriedRotoPhysical(launch.data).revision,
+      records: canonicalRecords,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+      cursorAppFrame: proposal.cursorAppFrame,
+      targetCapacity: proposal.nextCapacity,
+    });
+    expect(accepted).toMatchObject({ ok: true, operationId: 'tail-insert-capacity-ledger' });
+    if (!accepted.ok || !('acceptedRevision' in accepted)) throw new Error('Expected the tail insert to be accepted.');
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(commandLease)).toBe(true);
+
+    // The ledger must carry the POST-extension capacity (21), because the live
+    // source snapshot at replay time also reads 21 — capacity is monotonic.
+    const replayLease = acquirePhysicalLease(layer.id);
+    const undo = await applyPhysicPaintPayload({
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'tail-insert-capacity-undo',
+      operationKind: 'undo',
+      leaseToken: replayLease,
+      layerId: layer.id,
+      startFrame: 0,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: accepted.acceptedRevision,
+      records: records.map(({ kind: _kind, ...record }) => record),
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      // The launch moved the parent cursor to the opened frame (5), and the
+      // accepted command's `before` snapshot captured that same cursor.
+      cursorAppFrame: 5,
+      historyProvenance: {
+        historyCommandId: 'tail-insert-capacity-ledger',
+        historyDirection: 'undo',
+        sourceRevision: accepted.acceptedRevision,
+        targetRevision: carriedRotoPhysical(launch.data).revision,
+      },
+    });
+
+    expect(undo).toMatchObject({ ok: true, operationId: 'tail-insert-capacity-undo' });
+    // Studio Undo restores content, not capacity: the parent span and the
+    // capacity mirror stay raised so the redo target can return.
+    expect(physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID)).toBe(21);
+    expect(sequenceStore.sequences.peek()[0].outFrame).toBe(21);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(replayLease)).toBe(true);
+
+    // A capacity request on a replay would let Undo grow the parent span; the
+    // closed payload contract rejects it before any state is read.
+    const redoLease = acquirePhysicalLease(layer.id);
+    const redoPayload = {
+      kind: 'replace-roto-physical-map',
+      trackId: TEST_TRACK_ID,
+      operationId: 'tail-insert-capacity-redo-with-target',
+      operationKind: 'redo',
+      leaseToken: redoLease,
+      layerId: layer.id,
+      startFrame: 5,
+      launchOperationId: launch.data.operationId,
+      expectedRevision: accepted.acceptedRevision,
+      records: canonicalRecords,
+      interpolationEnabled: false,
+      interpolationMode: 'duplicate',
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+      selectedKeyId: proposal.selectedKeyId,
+      selectedAppFrame: proposal.selectedAppFrame,
+      cursorAppFrame: proposal.cursorAppFrame,
+      targetCapacity: 21,
+      historyProvenance: {
+        historyCommandId: 'tail-insert-capacity-ledger',
+        historyDirection: 'redo',
+        sourceRevision: carriedRotoPhysical(launch.data).revision,
+        targetRevision: accepted.acceptedRevision,
+      },
+    };
+    const rejected = await applyPhysicPaintPayload(redoPayload);
+
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload(redoPayload)).toBe(false);
+    expect(rejected.ok).toBe(false);
+    expect(rejected.ok ? null : rejected.error).toContain('Invalid physics paint apply payload');
+    expect(physicPaintStore.getRotoPhysicalCapacity(layer.id, TEST_TRACK_ID)).toBe(21);
+    expect(sequenceStore.sequences.peek()[0].outFrame).toBe(21);
+    expect(physicPaintStore.releaseRotoPhysicalOperationLease(redoLease)).toBe(true);
+  });
+
   it('accepts Play Script and Loop Edit authority against a non-first content Sequence local end', async () => {
     const layer = physicLayer();
     mockLayers([layer], null);
