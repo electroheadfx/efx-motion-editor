@@ -263,6 +263,8 @@ function harness(options: {
   flushLivePixels?: (appFrame?: number) => Promise<void>;
   launchRotoPhysical?: { selectedKeyId: string | null; cursorAppFrame: number };
   referenceOnlyKeyIds?: readonly string[];
+  capacity?: number;
+  parentEndExclusive?: number;
 } = {}) {
   const initial = fixture({ referenceOnlyKeyIds: options.referenceOnlyKeyIds });
   let records: readonly PhysicPaintRotoRealKeyRecord[] = initial.records;
@@ -270,6 +272,8 @@ function harness(options: {
   let loopClips: readonly PhysicPaintRotoLoopClip[] = initial.loopClips;
   let incomingInterpolationBreakKeyIds: readonly string[] = ['C'];
   let interpolation = INTERPOLATION;
+  let capacity = options.capacity ?? 30;
+  const parentEndExclusive = options.parentEndExclusive ?? capacity;
   let currentFrame = 0;
   let selectedKeyId: string | null = null;
   let canonicalCursorAppFrame = 0;
@@ -367,7 +371,7 @@ function harness(options: {
   const registerPendingSettlement = vi.fn();
   const clearPendingSettlement = vi.fn();
   const getCanonicalDocument = () => parsePhysicPaintRotoPhysicalDocument({
-    capacity: 30,
+    capacity,
     realKeyRecords: records,
     groupOverrideRecords,
     interpolation,
@@ -400,8 +404,13 @@ function harness(options: {
     incomingInterpolationBreakKeyIds = document.incomingInterpolationBreakKeyIds;
     canonicalSelectedKeyId = document.selectedKeyId;
     canonicalCursorAppFrame = document.cursorAppFrame;
+    capacity = document.capacity;
     structuralPublicationCount += 1;
     return { ok: true as const, document };
+  });
+  const raiseCapacity = vi.fn((_layerId: string, nextCapacity: number) => {
+    leaseOrder.push('raise-capacity');
+    capacity = nextCapacity;
   });
   const ports: RotoPhysicalEditCoordinatorPorts<null> = {
     engine: null,
@@ -410,10 +419,14 @@ function harness(options: {
         leaseOrder.push('records');
         return records;
       },
-      getDocument: getCanonicalDocument,
+      getDocument: () => {
+        leaseOrder.push('document');
+        return getCanonicalDocument();
+      },
       replaceDocument,
       getInterpolation: () => interpolation,
-      getCapacity: () => 30,
+      getCapacity: () => capacity,
+      raiseCapacity,
       getLoopClips: () => loopClips,
       getIncomingInterpolationBreakKeyIds: () => incomingInterpolationBreakKeyIds,
       replaceIncomingInterpolationBreakKeyIds: (_layerId: string, keyIds: readonly string[]) => {
@@ -517,28 +530,15 @@ function harness(options: {
     selectedKeyId: null,
     selectedAppFrame: null,
   });
-  const executeEmptySegment = () => {
-    const destinationAppFrame = 14;
-    const insertedKeyId = 'blank-14';
-    const intent = {
-      kind: 'insert-empty-segment',
-      destinationAppFrame,
-      insertedKeyId,
-      blankPayload: {
-        frameIndex: 0,
-        appFrame: destinationAppFrame,
-        bytes: testWebpBytes('AAAA'),
-        width: 2,
-        height: 2,
-      },
-    } as const;
+  const executeInsertGap = (destinationAppFrame = 14) => {
+    const intent = { kind: 'insert-slot', destinationAppFrame } as const;
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
       intent,
       loopClips,
-      parentEndExclusive: 30,
-      capacity: 30,
+      parentEndExclusive,
+      capacity,
       interpolationEnabled: interpolation.enabled,
       incomingInterpolationBreakKeyIds,
     });
@@ -546,10 +546,14 @@ function harness(options: {
     return coordinator.executePhysicalEdit({
       proposal: resolution.proposal,
       expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
-      operationKind: 'insert-empty-segment',
+      operationKind: 'insert-slot',
       intent,
-      selectedKeyId: insertedKeyId,
-      selectedAppFrame: destinationAppFrame,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+      requestedCursorAppFrame: destinationAppFrame,
+      ...(resolution.proposal.nextCapacity !== undefined
+        ? { targetCapacity: resolution.proposal.nextCapacity }
+        : {}),
     });
   };
   const executePasteKey = (destinationAppFrame: number) => {
@@ -833,7 +837,7 @@ function harness(options: {
   return {
     coordinator,
     execute,
-    executeEmptySegment,
+    executeInsertGap,
     executePasteKey,
     executeGroupPaint,
     executeDeleteGroupFrame,
@@ -859,6 +863,8 @@ function harness(options: {
     replaceRecords,
     replaceLoopClips,
     replaceDocument,
+    raiseCapacity,
+    getCapacity: () => capacity,
     sendPhysicalEditPayload,
     reconcileCurrentFrame,
     setCachedReference,
@@ -1214,12 +1220,12 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     test.coordinator.cancelPhysicalEdit('disposal');
   });
 
-  it('publishes an accepted empty segment only at settlement and reconciles its retained frame', async () => {
+  it('publishes an accepted gap insert only at settlement and reconciles its cursor frame', async () => {
     const test = harness();
     const beforeRecords = test.getRecords();
     const beforeBreaks = test.getIncomingInterpolationBreakKeyIds();
 
-    expect(await test.executeEmptySegment()).toBe(true);
+    expect(await test.executeInsertGap()).toBe(true);
     expect(test.getRecords()).toEqual(beforeRecords);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(beforeBreaks);
     expect(test.getSelectedKeyId()).toBeNull();
@@ -1228,9 +1234,10 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.coordinator.acceptedOutput.value).toBeNull();
 
     expect(test.accept()).toBe('accepted');
-    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
+    // D-11: a gap insert creates no key; the cursor lands on the opened slot.
+    expect(test.getRecords()).toEqual(beforeRecords);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
-    expect(test.getSelectedKeyId()).toBe('blank-14');
+    expect(test.getSelectedKeyId()).toBeNull();
     expect(test.getCurrentFrame()).toBe(14);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledTimes(1);
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(14);
@@ -1273,10 +1280,10 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.getCanonicalSelection().cursorAppFrame).toBe(6);
   });
 
-  it('sends and accepts one empty key with its complete cloned incoming-break collection', async () => {
+  it('sends one destination-frame gap insert with the complete cloned incoming-break collection', async () => {
     const test = harness();
 
-    expect(await test.executeEmptySegment()).toBe(true);
+    expect(await test.executeInsertGap()).toBe(true);
     expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
       ['A', 0],
       ['B', 1],
@@ -1285,26 +1292,34 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
       ['Y', 7],
     ]);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
-    expect(test.getPayload()?.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
+    expect(test.getPayload()?.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['X', 6],
+      ['Y', 7],
+    ]);
     expect(test.getPayload()?.intent).toEqual({
-      kind: 'insert-empty-segment',
+      kind: 'insert-slot',
       destinationAppFrame: 14,
-      insertedKeyId: 'blank-14',
-      blankPayload: {
-        frameIndex: 0,
-        appFrame: 14,
-        bytes: testWebpBytes('AAAA'),
-        width: 2,
-        height: 2,
-      },
     });
+    // The resolver's ONE capacity computation always rides the payload on an
+    // insert (equal to the current capacity when no extension is needed).
+    expect(test.getPayload()?.targetCapacity).toBe(30);
+    expect(test.getPayload()?.cursorAppFrame).toBe(14);
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).toEqual(['C']);
     expect(test.getPayload()?.incomingInterpolationBreakKeyIds).not.toBe(
       test.getIncomingInterpolationBreakKeyIds(),
     );
 
     expect(test.accept()).toBe('accepted');
-    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toContainEqual(['blank-14', 14]);
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['X', 6],
+      ['Y', 7],
+    ]);
     expect(test.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value?.before.incomingInterpolationBreakKeyIds).toEqual(['C']);
     expect(test.coordinator.acceptedOutput.value?.after.incomingInterpolationBreakKeyIds).toEqual(['C']);
@@ -1313,12 +1328,98 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     );
   });
 
+  // Quick 261019-mj2 capacity chain (child leg): the resolver computed one
+  // nextCapacity (31) for a tail insert at frame 30 on a capacity-30 track.
+  // The coordinator raises only the child mirror to stage it, forwards the
+  // value, and the pre-edit snapshot still belongs to the same acceptance.
+  it('raises the child capacity before staging a tail gap insert and forwards the single computed value', async () => {
+    const test = harness({ capacity: 30, parentEndExclusive: 40 });
+
+    expect(await test.executeInsertGap(30)).toBe(true);
+    expect(test.raiseCapacity.mock.calls).toEqual([['layer-1', 31]]);
+    expect(test.getCapacity()).toBe(31);
+    // The raise precedes the staging reads.
+    expect(test.leaseOrder.indexOf('raise-capacity')).toBeGreaterThanOrEqual(0);
+    expect(test.leaseOrder.indexOf('raise-capacity')).toBeLessThan(test.leaseOrder.indexOf('records'));
+    expect(test.getPayload()?.intent).toEqual({ kind: 'insert-slot', destinationAppFrame: 30 });
+    expect(test.getPayload()?.targetCapacity).toBe(31);
+    expect(test.getPayload()?.cursorAppFrame).toBe(30);
+    // Staged against the raised capacity: the frame-30 gap maps no record out.
+    expect(test.getPayload()?.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['X', 6],
+      ['Y', 7],
+    ]);
+
+    expect(test.accept()).toBe('accepted');
+    // Acceptance publishes the staged document, which carries the raised
+    // capacity, so the child mirror and parent mirror agree.
+    expect(test.raiseCapacity.mock.calls).toEqual([['layer-1', 31]]);
+    expect(test.getCapacity()).toBe(31);
+    expect(test.coordinator.acceptedOutput.value?.after.capacity).toBe(31);
+  });
+
+  it('restores the prior child capacity when staging fails after the raise', async () => {
+    const test = harness({ capacity: 30, parentEndExclusive: 40 });
+    const intent = { kind: 'insert-slot', destinationAppFrame: 30 } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: test.getRecords().map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records: test.getRecords(),
+      intent,
+      parentEndExclusive: 40,
+      capacity: 30,
+      interpolationEnabled: false,
+      loopClips: test.getLoopClips(),
+      incomingInterpolationBreakKeyIds: test.getIncomingInterpolationBreakKeyIds(),
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    // A malformed proposal (two identities for one frame) that still carries
+    // the resolver's nextCapacity reaches staging, then fails.
+    const malformedProposal = {
+      ...resolution.proposal,
+      mapping: new Map([['A', 30], ['B', 30]]),
+    };
+
+    expect(await test.coordinator.executePhysicalEdit({
+      proposal: malformedProposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'insert-slot',
+      intent,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+      requestedCursorAppFrame: 30,
+      targetCapacity: 31,
+    })).toBe(false);
+
+    expect(test.raiseCapacity.mock.calls).toEqual([['layer-1', 31], ['layer-1', 30]]);
+    expect(test.getCapacity()).toBe(30);
+    expect(test.sendPhysicalEditPayload).not.toHaveBeenCalled();
+    expect(test.getRecords()).toEqual(test.initial.records);
+    expect(test.releaseLease).toHaveBeenCalled();
+  });
+
+  it('restores the prior child capacity when the parent rejects the tail gap insert', async () => {
+    const test = harness({ capacity: 30, parentEndExclusive: 40 });
+
+    expect(await test.executeInsertGap(30)).toBe(true);
+    // The raise is kept while the settlement is pending: dispatch succeeded.
+    expect(test.getCapacity()).toBe(31);
+    expect(test.reject()).toBe('accepted');
+    // Positive evidence the parent did not commit: the realm-local raise is
+    // rolled back with the rest of the failed edit.
+    expect(test.raiseCapacity.mock.calls).toEqual([['layer-1', 31], ['layer-1', 30]]);
+    expect(test.getCapacity()).toBe(30);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+  });
+
   it('preserves every prior surface on parent rejection and leaves mismatches pending without success', async () => {
     const rejected = harness();
     const priorRecords = rejected.getRecords();
     const priorBreaks = rejected.getIncomingInterpolationBreakKeyIds();
 
-    expect(await rejected.executeEmptySegment()).toBe(true);
+    expect(await rejected.executeInsertGap()).toBe(true);
     expect(rejected.reject()).toBe('accepted');
     expect(rejected.getRecords()).toEqual(priorRecords);
     expect(rejected.getIncomingInterpolationBreakKeyIds()).toEqual(priorBreaks);
@@ -1328,7 +1429,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(rejected.coordinator.failureOutput.value?.reason).toBe('parent-rejection');
 
     const mismatched = harness();
-    expect(await mismatched.executeEmptySegment()).toBe(true);
+    expect(await mismatched.executeInsertGap()).toBe(true);
     expect(mismatched.mismatch()).toBe('mismatch');
     expect(mismatched.getRecords()).toEqual(mismatched.initial.records);
     expect(mismatched.getIncomingInterpolationBreakKeyIds()).toEqual(['C']);
@@ -1354,7 +1455,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
         mode: 'static',
       },
     ]);
-    expect(await test.executeEmptySegment()).toBe(true);
+    expect(await test.executeInsertGap()).toBe(true);
     // The staged revision (wire shape) and the parent's recompute (store shape)
     // must be ONE identity.
     expect(test.parentRevisionOverStoreClips()).toBe(
@@ -1383,7 +1484,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
   // other failure — while still answering 'mismatch' to the caller.
   it('releases a mismatched settlement so the next edit can start', async () => {
     const test = harness();
-    expect(await test.executeEmptySegment()).toBe(true);
+    expect(await test.executeInsertGap()).toBe(true);
     expect(test.mismatch()).toBe('mismatch');
 
     // The mismatch is terminal: the failure surface reports it and the pending
@@ -1394,7 +1495,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
 
     test.setConciseMessage.mockClear();
     test.sendPhysicalEditPayload.mockClear();
-    expect(await test.executeEmptySegment()).toBe(true);
+    expect(await test.executeInsertGap()).toBe(true);
     expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
     expect(test.setConciseMessage).not.toHaveBeenCalledWith('A Roto physical edit is already in flight.');
   });
@@ -1402,7 +1503,7 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
   // 260921-c7x leg 3: a result that is not OUR result never settles the pending.
   it('ignores a result carrying another operation identity and keeps the pending edit', async () => {
     const test = harness();
-    expect(await test.executeEmptySegment()).toBe(true);
+    expect(await test.executeInsertGap()).toBe(true);
     test.coordinator.consumePhysicalEditResult(test.makeResult({ operationId: 'someone-elses-operation' }));
     expect(test.coordinator.acceptedOutput.value).toBeNull();
     expect(test.coordinator.failureOutput.value).toBeNull();
@@ -1581,10 +1682,10 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(8);
   });
 
-  it('rolls back the empty key and matching break together when transport rejects', async () => {
+  it('rolls back the gap insert and matching break together when transport rejects', async () => {
     const test = harness({ transportRejects: true });
 
-    expect(await test.executeEmptySegment()).toBe(false);
+    expect(await test.executeInsertGap()).toBe(false);
     expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
       ['A', 0],
       ['B', 1],

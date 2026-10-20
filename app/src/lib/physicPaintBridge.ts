@@ -63,7 +63,6 @@ import {
   registerBackgroundSourceImage,
   type PhysicPaintRotoPhysicalOperationLeaseToken,
 } from '../stores/physicPaintStore';
-import { encodeCanvasAsWebp } from './webpFrameCodec';
 import { sequenceStore } from '../stores/sequenceStore';
 import { timelineStore } from '../stores/timelineStore';
 import { projectStore } from '../stores/projectStore';
@@ -1113,85 +1112,6 @@ function validateCanonicalOrdinaryPhysicalEdit(input: {
   return null;
 }
 
-async function isCanonicalBlankRotoPayload(
-  payload: import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyPayload,
-  destinationAppFrame: number,
-): Promise<boolean> {
-  // 52.2-02 (D-07): a blank-delta check compares pixels, so a reference-only
-  // payload (which carries none) cannot be the canonical blank frame.
-  const payloadBytes = payload.bytes;
-  if (payloadBytes === undefined
-    || payload.frameIndex !== 0
-    || payload.appFrame !== destinationAppFrame
-    || !Number.isInteger(payload.width)
-    || !Number.isInteger(payload.height)
-    || (payload.width ?? 0) <= 0
-    || (payload.height ?? 0) <= 0
-    || typeof document === 'undefined') return false;
-  try {
-    const canvas = document.createElement('canvas');
-    canvas.width = payload.width as number;
-    canvas.height = payload.height as number;
-    const blankBytes = await encodeCanvasAsWebp(canvas);
-    return buildFrameBytesToken(payloadBytes) === buildFrameBytesToken(blankBytes);
-  } catch {
-    return false;
-  }
-}
-
-async function validateInsertEmptySegmentPhysicalDelta(input: {
-  readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
-  readonly currentRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
-  readonly proposedRecords: readonly import('../components/physic-paint/roto/physicsPaintRotoPhysicalModel').PhysicPaintRotoRealKeyRecord[];
-  readonly currentLoopClips: readonly PhysicPaintRotoLoopClip[];
-  readonly proposedLoopClips: readonly PhysicPaintRotoLoopClip[];
-  readonly currentIncomingInterpolationBreakKeyIds: readonly string[];
-  readonly proposedIncomingInterpolationBreakKeyIds: readonly string[];
-  readonly capacity: number;
-}): Promise<string | null> {
-  const {
-    payload,
-    currentRecords,
-    proposedRecords,
-    currentLoopClips,
-    proposedLoopClips,
-    currentIncomingInterpolationBreakKeyIds,
-    proposedIncomingInterpolationBreakKeyIds,
-    capacity,
-  } = input;
-  const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
-    operationKind: 'insert-empty-segment',
-    currentRecords,
-    nextRecords: proposedRecords,
-    semanticDelta: payload.semanticDelta,
-    capacity,
-    selectedKeyId: payload.selectedKeyId,
-    selectedAppFrame: payload.selectedAppFrame,
-  });
-  if (!semanticValidation.ok) return semanticValidation.error;
-  const delta = payload.semanticDelta as Extract<NonNullable<typeof payload.semanticDelta>, { kind: 'insert-empty-segment' }>;
-  const inserted = proposedRecords.find((record) => record.keyId === delta.insertedKeyId);
-  if (!inserted || !(await isCanonicalBlankRotoPayload(inserted.payload, delta.destinationAppFrame))) {
-    return 'Empty-segment insert must carry the canonical blank Paint payload.';
-  }
-  if (!sameCanonicalLoopClips(proposedLoopClips, currentLoopClips)) {
-    return 'Empty-segment insert must preserve Loop Clips exactly.';
-  }
-  // Quick 260816-tv7: Insert connects — the inserted key adds no incoming break
-  // and any existing break on the right segment survives, so the collection
-  // must be preserved exactly.
-  if (proposedIncomingInterpolationBreakKeyIds.length !== currentIncomingInterpolationBreakKeyIds.length
-    || proposedIncomingInterpolationBreakKeyIds.some((keyId, index) => keyId !== currentIncomingInterpolationBreakKeyIds[index])) {
-    return 'Empty-segment insert must preserve incoming interpolation breaks exactly.';
-  }
-  const projectedTarget = physicPaintStore.getRotoCacheFrames(payload.layerId, payload.trackId)
-    .find((frame) => frame.appFrame === delta.destinationAppFrame);
-  if (projectedTarget && projectedTarget.source !== 'real-key') {
-    return 'Empty-segment destination became generated or linked before commit.';
-  }
-  return null;
-}
-
 function validatePlayScriptPhysicalDelta(input: {
   readonly payload: Extract<PhysicPaintApplyPayload, { kind: 'replace-roto-physical-map' }>;
   readonly layer: Layer;
@@ -1712,6 +1632,41 @@ async function applyPhysicPaintRotoPhysicalMap(
   if (!leaseValidation.ok) {
     return reject(`Roto physical operation lease rejected: ${leaseValidation.reason}.`);
   }
+  // Quick 261019-mj2 capacity chain: the child staged a gap insert whose
+  // resolver-opened tail slot lies at/after the previous capacity. The CHILD
+  // coordinator raised its own mirror to stage; the PARENT (this realm) is
+  // the authority for the FX span extension and the parent mirror. Validate
+  // the carried value before any revision/canonical read, extend the
+  // containing FX sequence exactly once, then mirror the capacity and read
+  // the raised state. One computation (the resolver), two realm-local writes.
+  let capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId, payload.trackId);
+  if (payload.targetCapacity !== undefined) {
+    if (payload.operationKind !== 'insert-slot'
+      || payload.intent === undefined
+      || payload.intent.kind !== 'insert-slot'
+      || !Number.isSafeInteger(payload.targetCapacity)
+      || payload.targetCapacity < capacity
+      || payload.targetCapacity > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
+      return reject('Roto physical edit requested an unauthorized capacity extension.');
+    }
+    if (payload.targetCapacity > capacity) {
+      const containingSequence = sequenceStore.sequences.peek().find((candidate) =>
+        candidate.layers.some((candidateLayer) => candidateLayer.id === layer.id));
+      if (!containingSequence || containingSequence.kind !== 'fx') {
+        return reject('Roto physical capacity extension is limited to FX sequences.');
+      }
+      const requiredOutFrame = containingSequence.inFrame + payload.targetCapacity;
+      if (containingSequence.outFrame < requiredOutFrame) {
+        sequenceStore.updateFxSequenceRange(
+          containingSequence.id,
+          containingSequence.inFrame,
+          Math.max(containingSequence.outFrame, requiredOutFrame),
+        );
+      }
+      physicPaintStore.setRotoPhysicalCapacity(payload.layerId, payload.trackId, payload.targetCapacity);
+      capacity = payload.targetCapacity;
+    }
+  }
   const currentRecords = physicPaintStore.getRotoRealKeyRecords(payload.layerId, payload.trackId);
   const currentGroupOverrideRecords = physicPaintStore.getRotoGroupOverrideRecords(payload.layerId, payload.trackId);
   const currentInterpolation = physicPaintStore.getRotoPhysicalInterpolationState(payload.layerId, payload.trackId);
@@ -1725,7 +1680,6 @@ async function applyPhysicPaintRotoPhysicalMap(
     currentIncomingInterpolationBreakKeyIds,
     currentGroupOverrideRecords,
   );
-  const capacity = physicPaintStore.getRotoPhysicalCapacity(payload.layerId, payload.trackId);
   // studio-blend-off-corruption: log the PARENT's revision components for every
   // physical-map apply, so a "revision became stale" reject can be attributed to
   // the exact diverging field (records vs interpolation vs loopClips vs breaks
@@ -1907,19 +1861,6 @@ async function applyPhysicPaintRotoPhysicalMap(
       stagedRevision,
     });
     if (canonicalValidationError) return reject(canonicalValidationError, stagedRevision);
-  }
-  if (payload.operationKind === 'insert-empty-segment') {
-    const validationError = await validateInsertEmptySegmentPhysicalDelta({
-      payload,
-      currentRecords,
-      proposedRecords,
-      currentLoopClips,
-      proposedLoopClips,
-      currentIncomingInterpolationBreakKeyIds,
-      proposedIncomingInterpolationBreakKeyIds,
-      capacity,
-    });
-    if (validationError) return reject(validationError, stagedRevision);
   }
   if (payload.operationKind === 'duplicate-key' || payload.operationKind === 'paste-key' || payload.operationKind === 'paste-key-group') {
     const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({

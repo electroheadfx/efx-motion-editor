@@ -1652,6 +1652,14 @@ export function PhysicsPaintStudio() {
       replaceDocument: replacePhysicalDocumentWithOwnership,
       getInterpolation: (layerId) => physicPaintStore.getRotoPhysicalInterpolationState(layerId, studioActiveTrackId()),
       getCapacity: (layerId) => physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()),
+      // Quick 261019-mj2: child-realm only. The coordinator raises this mirror
+      // just far enough to stage a gap insert that opens a tail slot; the
+      // parent bridge owns the FX span extension and the parent mirror.
+      raiseCapacity: (layerId, capacity) => physicPaintStore.setRotoPhysicalCapacity(
+        layerId,
+        studioActiveTrackId(),
+        capacity,
+      ),
       getLoopClips: (layerId) => physicPaintStore.getRotoPhysicalLoopClips(layerId, studioActiveTrackId()),
       getIncomingInterpolationBreakKeyIds: (layerId) => physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(layerId, studioActiveTrackId()),
       replaceIncomingInterpolationBreakKeyIds: (layerId, keyIds) => (
@@ -1941,10 +1949,6 @@ export function PhysicsPaintStudio() {
     getIncomingInterpolationBreakKeyIds: () => launchContext
       ? physicPaintStore.getRotoPhysicalIncomingInterpolationBreakKeyIds(launchContext.layerId, studioActiveTrackId())
       : [],
-    buildBlankRotoFrame: async (frame) => ({
-      ...(await buildBlankRotoFrame(canvasWidth, canvasHeight, frame)),
-      source: 'real-key',
-    }),
     executePhysicalEdit: (executeInput) => physicalEditCoordinator.executePhysicalEdit(executeInput as RotoPhysicalEditCoordinatorExecuteInput<EfxPaintDocument>),
     pendingOperationId: physicalEditCoordinator.pendingOperationId,
     executeGroupLifecycleDelete: (target) => groupLifecycleDeleteExecuteRef.current(target),

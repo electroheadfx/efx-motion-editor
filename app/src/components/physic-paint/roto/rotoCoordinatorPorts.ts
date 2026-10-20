@@ -226,6 +226,13 @@ export interface RotoPhysicalEditRecordsPort {
   getInterpolation: (layerId: string) => PhysicPaintRotoInterpolationState;
   getCapacity: (layerId: string) => number;
   /**
+   * Quick 261019-mj2: raise the CHILD-realm capacity mirror before staging a
+   * gap insert that opens a slot at/after the previous capacity. This is a
+   * realm-local store write only — the parent bridge owns the FX span
+   * extension and the parent mirror.
+   */
+  raiseCapacity: (layerId: string, capacity: number) => void;
+  /**
    * Durable Loop Clip reads plus complete replacement (Phase 43). Snapshot
    * capture reads the current collection; snapshot restore republishes the
    * captured collection so replay restores keys and loops together.
@@ -419,6 +426,10 @@ type RotoOrdinaryPhysicalEditExecuteInput<Proposal, EngineState> = {
   [Kind in import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditIntent['kind']]: RotoPhysicalEditExecuteInputBase<Proposal, EngineState> & {
     readonly operationKind: Kind;
     readonly intent: Extract<import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditIntent, { readonly kind: Kind }>;
+    /** Post-edit cursor authority; Insert keeps it on the opened slot. */
+    readonly requestedCursorAppFrame?: number;
+    /** Resolver-computed capacity; only `insert-slot` may carry it. */
+    readonly targetCapacity?: number;
   };
 }[import('../../../types/physicPaint').PhysicPaintRotoPhysicalEditIntent['kind']];
 

@@ -400,8 +400,6 @@ function createAuthorizedPhysicalEditPayload(
   switch (operationKind) {
     case 'insert-slot':
       return intent?.kind === 'insert-slot' ? { ...base, operationKind, intent } : null;
-    case 'insert-empty-segment':
-      return intent?.kind === 'insert-empty-segment' ? { ...base, operationKind, intent } : null;
     case 'delete-key':
       return intent?.kind === 'delete-key' ? { ...base, operationKind, intent } : null;
     case 'delete-key-group':
@@ -475,10 +473,6 @@ function semanticDeltaEquals(
   if (left.kind !== right.kind) return false;
   if (left.kind === 'duplicate-key' && right.kind === 'duplicate-key') {
     return left.sourceKeyId === right.sourceKeyId && left.newKeyId === right.newKeyId;
-  }
-  if (left.kind === 'insert-empty-segment' && right.kind === 'insert-empty-segment') {
-    return left.insertedKeyId === right.insertedKeyId
-      && left.destinationAppFrame === right.destinationAppFrame;
   }
   if (left.kind === 'play-script' && right.kind === 'play-script') {
     return left.affectedStartAppFrame === right.affectedStartAppFrame
@@ -1101,6 +1095,12 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
   } | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const cancelledRef = useRef<boolean>(false);
+  /**
+   * Quick 261019-mj2: child-realm capacity raised by the in-flight staging,
+   * recorded as the prior value so a pre-dispatch failure restores it.
+   * Cleared when the pending settlement registers (the parent may commit).
+   */
+  const raisedCapacityRef = useRef<{ layerId: string; priorCapacity: number } | null>(null);
 
   const presentationSignal = useSignal<RotoPhysicalEditPresentation>({ status: 'idle', conciseMessage: null });
   const acceptedSignal = useSignal<RotoPhysicalEditAcceptedOutput<EngineState> | null>(null);
@@ -1120,6 +1120,17 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
   }, []);
 
   const clearPendingOnce = useCallback(() => {
+    // Quick 261019-mj2: every pre-dispatch failure (staging, staging parse,
+    // lease revalidation, exception) funnels through here. If this invocation
+    // raised the child-realm capacity mirror to stage an opened tail slot,
+    // restore the prior capacity through the same records port. Once the
+    // settlement is registered the raise is intentionally kept: the parent
+    // may have committed the span extension.
+    const raisedCapacity = raisedCapacityRef.current;
+    if (raisedCapacity) {
+      raisedCapacityRef.current = null;
+      portsRef.current.records.raiseCapacity(raisedCapacity.layerId, raisedCapacity.priorCapacity);
+    }
     const leaseToken = leaseRef.current;
     leaseRef.current = null;
     if (leaseToken) portsRef.current.lease.release(leaseToken);
@@ -1277,6 +1288,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       detail: PhysicPaintRotoPhysicalEditApplyResult,
       before: RotoPhysicalEditSnapshot<EngineState>,
     ) => {
+      // The parent committed: the published document already carries the raised
+      // capacity, so the raise is no longer a rollback candidate.
+      raisedCapacityRef.current = null;
       const affectedFrames = phaseAffectedFrames(pending.semanticDelta);
       if (affectedFrames.length > 0) {
         portsRef.current.buffer.evictAcceptedFrames(affectedFrames);
@@ -1305,7 +1319,11 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         || pending.operationKind === 'redo'
         || pending.operationKind === 'play-script'
         || pending.operationKind === 'regenerate-group'
-        || pending.operationKind === 'insert-empty-segment'
+        // Quick 261019-mj2: an accepted gap insert changes the paint at the
+        // cursor frame (the key under it shifts right), so the cached
+        // reference must reconcile exactly like the retired empty-segment
+        // insert did.
+        || pending.operationKind === 'insert-slot'
         || pending.operationKind === 'paste-key'
         || pending.operationKind === 'paint-group-frame'
         || pending.operationKind === 'delete-group-frame'
@@ -1362,6 +1380,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       // the return leg. Rolling the child back over a committed parent is what
       // poisons every later edit against a parent that is already ahead.
       const parentDidNotCommit = reason === 'transport' || reason === 'parent-rejection';
+      // Quick 261019-mj2: the child capacity raise is a rollback candidate too.
+      // Restore it only on positive evidence the parent did not commit; a
+      // timeout or settlement mismatch may have committed the span extension,
+      // so the raise is kept (capacity grows monotonically within the launch).
+      const raisedCapacity = raisedCapacityRef.current;
+      raisedCapacityRef.current = null;
+      if (raisedCapacity && parentDidNotCommit) {
+        portsRef.current.records.raiseCapacity(raisedCapacity.layerId, raisedCapacity.priorCapacity);
+      }
       const shouldRestore = options.restoreDeferred === true && parentDidNotCommit;
       const restored = shouldRestore ? restoreSnapshot(before, true) : true;
       if (!restored) {
@@ -1576,6 +1603,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         : null;
       const requestedSelectedKeyId = 'selectedKeyId' in input ? input.selectedKeyId : null;
       const requestedSelectedAppFrame = 'selectedAppFrame' in input ? input.selectedAppFrame : null;
+      const requestedCursorAppFrame = 'requestedCursorAppFrame' in input
+        ? input.requestedCursorAppFrame
+        : undefined;
+      const requestedTargetCapacity = 'targetCapacity' in input ? input.targetCapacity : undefined;
       const proposal = 'proposal' in input ? input.proposal : null;
       const intent = 'intent' in input ? input.intent : undefined;
       const historyProvenance = 'historyProvenance' in input ? input.historyProvenance : undefined;
@@ -1583,8 +1614,7 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
       const isReplay = input.operationKind === 'undo' || input.operationKind === 'redo';
       const isSemanticOrdinary = input.operationKind === 'duplicate-key'
         || input.operationKind === 'paste-key'
-        || input.operationKind === 'paste-key-group'
-        || input.operationKind === 'insert-empty-segment';
+        || input.operationKind === 'paste-key-group';
       const isOrdinary = !isReplay
         && !isInterpolationChange
         && !isGeneratedPublication
@@ -1598,6 +1628,24 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           return false;
         }
       } else if (intent !== undefined) {
+        portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+        return false;
+      }
+      // Quick 261019-mj2: the resolver computes capacity once; the coordinator
+      // only carries that single value. A caller may not invent a capacity,
+      // and only a gap insert can open a slot beyond the current capacity.
+      if (requestedTargetCapacity !== undefined
+        && (!isOrdinary
+          || input.operationKind !== 'insert-slot'
+          || !Number.isSafeInteger(requestedTargetCapacity)
+          || requestedTargetCapacity < 1
+          || !proposal
+          || proposal.nextCapacity !== requestedTargetCapacity)) {
+        portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
+        return false;
+      }
+      if (requestedCursorAppFrame !== undefined
+        && (!Number.isSafeInteger(requestedCursorAppFrame) || requestedCursorAppFrame < 0)) {
         portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
         return false;
       }
@@ -1752,6 +1800,20 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           clearPendingOnce();
           return false;
         }
+        // Quick 261019-mj2 capacity chain: the resolver computed the one
+        // authoritative `nextCapacity`; a gap insert may open a tail slot at
+        // (or beyond) the previous capacity. Raise only the CHILD-realm store
+        // mirror needed to stage it, before the document/records/capacity
+        // reads below. The parent bridge owns the FX span extension and the
+        // parent-realm mirror; no other module raises capacity.
+        const priorCapacity = portsRef.current.records.getCapacity(revalidatedLaunch.layerId);
+        const targetCapacity = isOrdinary && input.operationKind === 'insert-slot'
+          ? proposal?.nextCapacity
+          : undefined;
+        if (targetCapacity !== undefined && targetCapacity > priorCapacity) {
+          portsRef.current.records.raiseCapacity(revalidatedLaunch.layerId, targetCapacity);
+          raisedCapacityRef.current = { layerId: revalidatedLaunch.layerId, priorCapacity };
+        }
         const currentDocument = portsRef.current.records.getDocument(revalidatedLaunch.layerId);
         if (!currentDocument) {
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
@@ -1773,7 +1835,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         let targetSelectedAppFrame = isGroupFramePaint || isGroupLifecycleDelete || isRailSetDelete || isRailSetPaste
           ? (currentSelectedKeyIdForEdit === null ? null : currentAppFrameForEdit)
           : requestedSelectedAppFrame;
-        let targetCursorAppFrame = requestedSelectedAppFrame ?? currentAppFrameForEdit;
+        // Quick 261019-mj2 cursor rule: an explicit destination cursor wins
+        // (gap insert), then the gap proposal's cursor, then the requested
+        // selection frame, then the live frame. Only `insert-slot` exposes a
+        // proposal cursor that is authoritative for the slot; every other
+        // operation keeps its pre-existing selection-driven cursor (the
+        // resolver's `selectedAppFrame ?? 0` fallback would otherwise pull a
+        // group/rail edit with no key selection to frame 0). Replay and the
+        // group/rail paths override this below from their own authorities.
+        let targetCursorAppFrame = requestedCursorAppFrame
+          ?? (input.operationKind === 'insert-slot' ? proposal?.cursorAppFrame : undefined)
+          ?? requestedSelectedAppFrame
+          ?? currentAppFrameForEdit;
         const currentGroupOverrideRecords = currentDocument.groupOverrideRecords ?? [];
         const expectedRevision = buildPhysicPaintRotoPhysicalRevision(
           currentRecords,
@@ -2173,6 +2246,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         try {
           deferredDocument = parsePhysicPaintRotoPhysicalDocument({
             ...currentDocument,
+            // Quick 261019-mj2: stage the deferred document against the same
+            // capacity authority used for staging (the raised tail slot).
+            capacity: targetCapacity ?? currentDocument.capacity,
             realKeyRecords: validatedStagedRecords,
             groupOverrideRecords: stagedGroupOverrideRecords,
             interpolation: stagedInterpolation,
@@ -2213,6 +2289,9 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           groupOverrideRecords: recordsToApplyPayloadRecords(stagedGroupOverrideRecords),
           interpolationEnabled: stagedInterpolation.enabled,
           interpolationMode: stagedInterpolation.mode,
+          // Quick 261019-mj2: carry the resolver-computed capacity unchanged
+          // to the parent authority, which owns the FX span extension.
+          ...(targetCapacity !== undefined ? { targetCapacity } : {}),
           ...(playScriptInput ? { rotoBackground: { ...playScriptInput.rotoBackground } } : {}),
           loopClips: cloneLoopClips(stagedLoopClips),
           incomingInterpolationBreakKeyIds: cloneIncomingInterpolationBreakKeyIds(
@@ -2252,6 +2331,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         pendingOperationIdSignal.value = operationId;
         pendingOperationKindSignal.value = input.operationKind;
         portsRef.current.settlement.registerPendingSettlement(pending);
+        // Settlement wins from here: the raised child mirror stays until the
+        // outcome is known. Acceptance keeps it (the published document carries
+        // it); transport/parent-rejection restores it in finalizeFailed; any
+        // other teardown restores it through clearPendingOnce.
 
         presentationSignal.value = { status: 'pending', conciseMessage: PHYSICAL_EDIT_PENDING_MESSAGE };
         portsRef.current.status.setApplyStatus('applying');
@@ -2375,13 +2458,9 @@ function buildStagedRecords(
     const pasteGroupEntry = semanticDelta?.kind === 'paste-key-group'
       ? semanticDelta.entries.find((entry) => entry.newKeyId === keyId) ?? null
       : null;
-    const insertedEmptyRecord = semanticDelta?.kind === 'insert-empty-segment'
-      && keyId === semanticDelta.insertedKeyId
-      ? proposal.nextRecords?.find((record) => record.keyId === keyId) ?? null
-      : null;
     const sourcePayload = semanticDelta?.kind === 'paste-key' && keyId === pasteDestinationKeyId
       ? semanticDelta.clipboardPayload
-      : insertedEmptyRecord?.payload ?? pasteGroupEntry?.payload ?? duplicateSource?.payload ?? existing?.payload;
+      : pasteGroupEntry?.payload ?? duplicateSource?.payload ?? existing?.payload;
     if (!sourcePayload) return null;
     if (!Number.isInteger(appFrame) || appFrame < 0 || appFrame >= capacity) return null;
     staged.push({

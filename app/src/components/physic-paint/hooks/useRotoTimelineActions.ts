@@ -17,7 +17,6 @@ import {
   PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
   PHYSIC_PAINT_ROTO_SCRIPT_MOTION_ZERO,
   buildPhysicPaintRotoPhysicalRevision,
-  createPhysicPaintRotoKeyId,
   parsePhysicPaintRotoPhysicalDocument,
 } from '../roto/physicsPaintRotoPhysicalModel';
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
@@ -43,7 +42,6 @@ import {
 } from '../roto/physicsPaintRotoPhysicalResolver';
 import type { RotoSessionCopiedGroupEntry } from '../roto/physicsPaintRotoSession';
 import { classifyPhysicPaintRotoGroupFrameTarget } from '../roto/physicsPaintRotoGroupLifecycle';
-import { toEmptyKeyPayload } from './useRotoKeyUtilities';
 import {
   getPhysicsPaintRotoSourceCycleId,
   type PhysicsPaintRotoSpacingSelection,
@@ -92,7 +90,7 @@ export type RotoInsertTarget =
   | { readonly kind: 'generated'; readonly appFrame: number }
   | { readonly kind: 'resolved-linked'; readonly appFrame: number }
   | { readonly kind: 'unresolved-linked'; readonly appFrame: number }
-  | { readonly kind: 'occupied-empty-intent'; readonly appFrame: number }
+  | { readonly kind: 'empty-track' }
   | { readonly kind: 'invalid-destination' }
   | { readonly kind: 'out-of-capacity'; readonly appFrame: number }
   | { readonly kind: 'edit-in-flight' };
@@ -108,6 +106,14 @@ export interface RotoInsertTargetClassificationInput {
   readonly frameResolution: PhysicPaintRotoFrameResolution | null;
 }
 
+/**
+ * D-11: Insert is a GAP that opens at the cursor. Classification is strictly
+ * cursor-based — the selected identity is bookkeeping only, never the intent
+ * pivot. A real key at the cursor, a genuinely empty slot, a generated
+ * interpolation cell, and the tail slot at `cursor === capacity` are all
+ * insertable. Linked frames stay fail-closed, and a track with zero real
+ * records reports `empty-track` (a gap cannot be opened against no content).
+ */
 export function classifyRotoInsertTarget(
   input: RotoInsertTargetClassificationInput,
 ): RotoInsertTarget {
@@ -115,16 +121,12 @@ export function classifyRotoInsertTarget(
   if (!input.launchReady || input.currentAppFrame === null || !Number.isInteger(input.currentAppFrame) || input.currentAppFrame < 0) {
     return { kind: 'invalid-destination' };
   }
-  if (input.capacity === null || !Number.isInteger(input.capacity) || input.currentAppFrame >= input.capacity) {
+  if (input.capacity === null || !Number.isInteger(input.capacity) || input.currentAppFrame > input.capacity) {
     return { kind: 'out-of-capacity', appFrame: input.currentAppFrame };
   }
-  if (isBoundedKeyId(input.selectedKeyId)) {
-    const selectedMatches = input.records.filter((record) => record.keyId === input.selectedKeyId);
-    if (selectedMatches.length === 1) return { kind: 'occupied-real', keyId: input.selectedKeyId };
-  }
-  if (input.records.some((record) => record.appFrame === input.currentAppFrame)) {
-    return { kind: 'occupied-empty-intent', appFrame: input.currentAppFrame };
-  }
+  if (input.records.length === 0) return { kind: 'empty-track' };
+  const occupied = input.records.find((record) => record.appFrame === input.currentAppFrame);
+  if (occupied !== undefined) return { kind: 'occupied-real', keyId: occupied.keyId };
   if (input.frameResolution?.kind === 'linked-unresolved') {
     return { kind: 'unresolved-linked', appFrame: input.currentAppFrame };
   }
@@ -145,15 +147,14 @@ export function mapRotoInsertProductReason(target: RotoInsertTarget): string | n
   switch (target.kind) {
     case 'occupied-real':
     case 'genuinely-empty':
-      return null;
     case 'generated':
-      return 'Insert is unavailable on a generated render-only frame.';
+      return null;
     case 'resolved-linked':
       return 'Insert is unavailable on a resolved linked frame.';
     case 'unresolved-linked':
       return 'Insert is unavailable on an unresolved linked frame.';
-    case 'occupied-empty-intent':
-      return 'This frame already contains a real key.';
+    case 'empty-track':
+      return 'Insert needs at least one real key on this track.';
     case 'invalid-destination':
       return 'Choose a valid timeline frame before inserting.';
     case 'out-of-capacity':
@@ -1425,8 +1426,6 @@ export interface RotoTimelineActionsInput {
   getParentEndExclusive: () => number;
   /** Complete stable-key-owned incoming interpolation break collection. */
   getIncomingInterpolationBreakKeyIds?: () => readonly string[];
-  /** Existing transparent blank-frame builder shared with + Key. */
-  buildBlankRotoFrame?: (appFrame: number) => Promise<PhysicPaintRotoCacheFrame>;
   /** Generic acknowledged coordinator execute seam (Plan 36.14-04). */
   executePhysicalEdit?: (input: RotoPhysicalEditExecuteInput<PhysicPaintRotoPhysicalEditProposal>) => Promise<boolean>;
   /** Coordinator pending operation id Signal (Plan 36.14-04). */
@@ -1474,7 +1473,7 @@ export interface RotoTimelineActionsInput {
 
 type PhysicalActionRunnerKind = Extract<
   PhysicPaintRotoPhysicalEditIntent['kind'],
-  'insert-slot' | 'insert-empty-segment' | 'delete-key' | 'delete-key-group' | 'delete-key-rail' | 'scissor-key-rail' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
+  'insert-slot' | 'delete-key' | 'delete-key-group' | 'delete-key-rail' | 'scissor-key-rail' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
 >;
 
 type PhysicalActionRunnerInput = {
@@ -1483,6 +1482,8 @@ type PhysicalActionRunnerInput = {
     readonly operationKind: Kind;
     readonly requiredKeyId: string | null;
     readonly successMessage: string;
+    /** D-11: cursor authority after an accepted Insert (the opened slot). */
+    readonly requestedCursorAppFrame?: number;
     /**
      * Optional failure-code → concise capsule copy mapping (UI-SPEC locked
      * lines). Absent: the resolver failure text publishes unchanged, preserving
@@ -1495,8 +1496,6 @@ type PhysicalActionRunnerInput = {
 function physicalActionAuthorization(input: PhysicalActionRunnerInput) {
   switch (input.operationKind) {
     case 'insert-slot':
-      return { operationKind: input.operationKind, intent: input.intent };
-    case 'insert-empty-segment':
       return { operationKind: input.operationKind, intent: input.intent };
     case 'delete-key':
       return { operationKind: input.operationKind, intent: input.intent };
@@ -1515,7 +1514,7 @@ function physicalActionAuthorization(input: PhysicalActionRunnerInput) {
   }
 }
 
-const INSERT_SUCCESS_MESSAGE = 'Inserted an empty Roto frame before the selected key.';
+const INSERT_SUCCESS_MESSAGE = 'Inserted a gap in the Roto timeline.';
 const DELETE_SUCCESS_MESSAGE = 'Deleted the selected Roto key.';
 const GROUP_DELETE_SUCCESS_MESSAGE = 'Keys deleted';
 const DUPLICATE_SUCCESS_MESSAGE = 'Duplicated the selected Roto key.';
@@ -1818,9 +1817,9 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const insertTarget = computed(() => classifyRotoInsertTarget(readRotoInsertTargetInput(input)));
   const canInsertFrame = computed(() => mapRotoInsertProductReason(insertTarget.value) === null);
   const insertDisabledReason = computed(() => mapRotoInsertProductReason(insertTarget.value));
-  const insertTooltipDescription = computed(() => insertTarget.value.kind === 'genuinely-empty'
-    ? 'Insert an empty key connected to the previous segment.'
-    : 'Insert key before');
+  const insertTooltipDescription = computed(() => insertTarget.value.kind === 'occupied-real'
+    ? 'Insert a gap before this key'
+    : 'Insert a gap at the cursor');
   const deleteTarget = computed(() => classifyRotoDeleteTarget(readRotoDeleteTargetInput(input)));
   const canDeleteFrame = computed(() => mapRotoDeleteProductReason(deleteTarget.value) === null);
   const deleteDisabledReason = computed(() => mapRotoDeleteProductReason(deleteTarget.value));
@@ -1897,7 +1896,6 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       if (
         runnerInput.operationKind === 'delete-key-group'
         || runnerInput.operationKind === 'paste-key-group'
-        || runnerInput.operationKind === 'insert-empty-segment'
       ) {
         input.publishDiagnostic?.(runnerInput.operationKind + ' rejected: ' + resolution.failure.code + ' — ' + resolution.failure.text);
       }
@@ -1910,6 +1908,14 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ...physicalActionAuthorization(runnerInput),
       selectedKeyId: proposal.selectedKeyId,
       selectedAppFrame: proposal.selectedAppFrame,
+      ...(runnerInput.operationKind === 'insert-slot'
+        ? {
+            // D-11: the accepted cursor is the opened gap. The resolver's
+            // nextCapacity is forwarded unchanged (when it extends the tail).
+            requestedCursorAppFrame: runnerInput.requestedCursorAppFrame ?? proposal.cursorAppFrame,
+            ...(proposal.nextCapacity !== undefined ? { targetCapacity: proposal.nextCapacity } : {}),
+          }
+        : {}),
     });
     if (accepted) {
       input.publishStatus?.(runnerInput.successMessage);
@@ -1917,36 +1923,39 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
     return accepted;
   }, [input]);
 
-  const insertRotoFrame = useCallback(async (): Promise<boolean> => {
+  const insertRotoFrame = useCallback((): Promise<boolean> => {
     const target = classifyRotoInsertTarget(readRotoInsertTargetInput(input));
     const rejection = mapRotoInsertProductReason(target);
     if (rejection !== null) {
       input.publishStatus?.(rejection);
       return Promise.resolve(false);
     }
+    // D-11: Insert opens a physical gap at the cursor frame. It creates no
+    // key, builds no blank payload, and performs no capacity arithmetic — the
+    // resolver's proposal.nextCapacity is the only capacity authority.
+    let destinationAppFrame: number;
+    let requiredKeyId: string | null;
     if (target.kind === 'occupied-real') {
-      return runPhysicalAction({
-        intent: { kind: 'insert-slot', selectedKeyId: target.keyId },
-        operationKind: 'insert-slot',
-        requiredKeyId: target.keyId,
-        successMessage: INSERT_SUCCESS_MESSAGE,
-      });
-    }
-    if (target.kind !== 'genuinely-empty' || !input.buildBlankRotoFrame) {
+      const cursor = input.getCurrentAppFrame?.();
+      if (cursor === undefined) {
+        input.publishStatus?.('Choose a valid timeline frame before inserting.');
+        return Promise.resolve(false);
+      }
+      destinationAppFrame = cursor;
+      requiredKeyId = target.keyId;
+    } else if (target.kind === 'genuinely-empty' || target.kind === 'generated') {
+      destinationAppFrame = target.appFrame;
+      requiredKeyId = null;
+    } else {
       input.publishStatus?.('Choose a valid timeline frame before inserting.');
       return Promise.resolve(false);
     }
-    const insertedKeyId = createPhysicPaintRotoKeyId();
     return runPhysicalAction({
-      intent: {
-        kind: 'insert-empty-segment',
-        destinationAppFrame: target.appFrame,
-        insertedKeyId,
-        blankPayload: toEmptyKeyPayload(await input.buildBlankRotoFrame(target.appFrame), target.appFrame),
-      },
-      operationKind: 'insert-empty-segment',
-      requiredKeyId: null,
-      successMessage: `Inserted empty key at frame ${target.appFrame}. Connected to the previous segment.`,
+      intent: { kind: 'insert-slot', destinationAppFrame },
+      operationKind: 'insert-slot',
+      requiredKeyId,
+      requestedCursorAppFrame: destinationAppFrame,
+      successMessage: INSERT_SUCCESS_MESSAGE,
       rejectedCopy: (failure) => mapRotoInsertProductReason(mapRotoInsertFailureTarget(failure, input))
         ?? 'Choose a valid timeline frame before inserting.',
     });
@@ -3700,10 +3709,9 @@ function mapRotoInsertFailureTarget(
   input: RotoTimelineActionsInput,
 ): RotoInsertTarget {
   const currentAppFrame = input.getCurrentAppFrame?.() ?? -1;
-  if (failure.code === 'duplicate-destination-frame') {
-    return { kind: 'occupied-empty-intent', appFrame: currentAppFrame };
-  }
-  if (failure.code === 'out-of-range-frame' || failure.code === 'over-capacity') {
+  if (failure.code === 'capacity-exhausted'
+    || failure.code === 'out-of-range-frame'
+    || failure.code === 'over-capacity') {
     return { kind: 'out-of-capacity', appFrame: currentAppFrame };
   }
   return classifyRotoInsertTarget(readRotoInsertTargetInput(input));
