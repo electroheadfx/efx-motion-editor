@@ -460,6 +460,8 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly clipboardPayload: PhysicPaintRotoRealKeyPayload;
       /** Quick 260816-tv7: when true, the pasted key owns a persistent incoming interpolation break (Paint-on-empty / + Key broken-key contract). Absent for ordinary Copy/Paste. */
       readonly startsNewSegment?: boolean;
+      /** Quick 261019-mj2 UAT: + Key clones the nearest previous real key's paint and must JOIN that key's rail, not open a new segment. Takes precedence over startsNewSegment/boundary breaks. */
+      readonly joinsPreviousRail?: boolean;
     }
   | {
       readonly kind: 'paste-key-group';
@@ -627,11 +629,12 @@ export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is Ph
       && value.sourceKeyId !== value.newKeyId;
   }
   if (value.kind === 'paste-key') {
-    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'startsNewSegment'])) return false;
+    if (!hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'destinationKeyId', 'newKeyId', 'clipboardPayload', 'startsNewSegment', 'joinsPreviousRail'])) return false;
     if (!isNonNegativeInteger(value.destinationAppFrame) || !isPhysicPaintRotoRealKeyPayload(value.clipboardPayload)) return false;
     if (value.destinationKeyId !== null && !isBoundedPhysicalKeyId(value.destinationKeyId)) return false;
     if (value.newKeyId !== null && !isBoundedPhysicalKeyId(value.newKeyId)) return false;
     if (value.startsNewSegment !== undefined && typeof value.startsNewSegment !== 'boolean') return false;
+    if (value.joinsPreviousRail !== undefined && typeof value.joinsPreviousRail !== 'boolean') return false;
     return (value.destinationKeyId === null) !== (value.newKeyId === null);
   }
   if (value.kind === 'paste-key-group') {
@@ -912,6 +915,7 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
         clipboardPayload: canonicalPhysicalEditPayload(intent.clipboardPayload),
       };
       if (intent.startsNewSegment === true) canonical.startsNewSegment = true;
+      if (intent.joinsPreviousRail === true) canonical.joinsPreviousRail = true;
       return JSON.stringify(canonical);
     }
     case 'paste-key-group':

@@ -304,6 +304,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
   onAddRotoKey?: () => void;
+  /** + Rail → Key: create a blank key that deliberately starts a NEW rail. */
+  onCreateRotoKeyRail?: () => void;
   onDuplicateRotoKey?: () => void;
   onInsertRotoFrame?: () => void;
   onDeleteRotoFrame?: () => void;
@@ -5188,6 +5190,15 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                       {buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)}
                     </PhysicsPaintStyledTooltip>
                     <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          railCreateMenuOpen.value = false;
+                          props.onCreateRotoKeyRail?.();
+                        }}
+                      >
+                        Key
+                      </button>
                       <button
                         type="button"
                         onClick={() => {

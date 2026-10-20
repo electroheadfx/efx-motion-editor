@@ -327,7 +327,11 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
       ? resolution.payload
       : toEmptyKeyPayload(await input.buildBlankRotoFrame(input.currentFrame), input.currentFrame);
     setKeyActionInFlight(true);
-    void input.physicalKeyUtilities.addEmptyKey(input.currentFrame, payload).catch((error) => {
+    // Quick 261019-mj2 UAT (D-07): a cloned key continues the previous real
+    // key's rail; only the no-previous-key blank case opens a new segment.
+    void input.physicalKeyUtilities.addEmptyKey(input.currentFrame, payload, {
+      joinPreviousRail: resolution.kind === 'clone',
+    }).catch((error) => {
       const detail = error instanceof Error ? error.message : String(error);
       input.setApplyStatus('error');
       input.setApplyMessage('Could not add an empty Roto key.');

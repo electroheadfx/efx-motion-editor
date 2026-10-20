@@ -79,6 +79,12 @@ export interface RotoPhysicalKeyUtilityPort {
   addEmptyKey: (
     destinationAppFrame: number,
     emptyPayload: PhysicPaintRotoRealKeyPayload,
+    options?: {
+      /** + Key: clone the previous real key's rail instead of opening a segment. */
+      readonly joinPreviousRail?: boolean;
+      /** Create rail → Key: force an isolated new rail even inside a span. */
+      readonly forceNewSegment?: boolean;
+    },
   ) => Promise<boolean>;
 }
 

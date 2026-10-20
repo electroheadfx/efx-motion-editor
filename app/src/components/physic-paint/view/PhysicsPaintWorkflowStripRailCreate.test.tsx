@@ -137,7 +137,7 @@ function createPhysicalActions(options: {
 }
 
 function renderStrip(
-  spies: { paint: ReturnType<typeof vi.fn>; reveal: ReturnType<typeof vi.fn> },
+  spies: { paint: ReturnType<typeof vi.fn>; reveal: ReturnType<typeof vi.fn>; keyRail?: ReturnType<typeof vi.fn> },
   options: {
     rotoPhysicalActions?: RotoPhysicalTimelineActionBundle;
     currentFrame?: number;
@@ -170,6 +170,7 @@ function renderStrip(
     onGoToNextFrame: () => {},
     onGoToLastFrame: () => {},
     onOnionChange: () => {},
+    onCreateRotoKeyRail: spies.keyRail,
     onCreatePlayScriptRail: spies.paint,
     onCreateRevealRail: spies.reveal,
     rotoPhysicalActions,
@@ -219,10 +220,11 @@ function findOne(node: unknown, predicate: (vnode: AnyVNode) => boolean): AnyVNo
 }
 
 describe("the strip's + Rail create-rail menu (AM-3 live report)", () => {
-  it('opens the Motion/Static/Reveal menu on click and routes each kind to its handler', () => {
+  it('opens the Key/Motion/Static/Reveal menu on click and routes each kind to its handler', () => {
     const paint = vi.fn();
     const reveal = vi.fn();
-    const tree = renderStrip({ paint, reveal });
+    const keyRail = vi.fn();
+    const tree = renderStrip({ paint, reveal, keyRail });
     const button = findOne(tree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
     expect(button.props['aria-expanded']).toBe('false');
     expect(findAll(tree, (vnode) => vnode.props['aria-label'] === 'Rail kind')).toHaveLength(0);
@@ -230,36 +232,47 @@ describe("the strip's + Rail create-rail menu (AM-3 live report)", () => {
     (button.props.onClick as () => void)();
 
     hooks.rewind();
-    const openTree = renderStrip({ paint, reveal });
+    const openTree = renderStrip({ paint, reveal, keyRail });
     const openButton = findOne(openTree, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail');
     expect(openButton.props['aria-expanded']).toBe('true');
     const menu = findOne(openTree, (vnode) => vnode.props['aria-label'] === 'Rail kind');
     const kinds = findAll(menu, (vnode) => vnode.type === 'button');
-    expect(kinds.map((kind) => textOf(kind))).toEqual(['Motion', 'Static', 'Reveal']);
+    // 261019-mj2 UAT: the explicit "Key" action comes first — it creates a key
+    // on a NEW rail, the opposite of + Key joining the previous key's rail.
+    expect(kinds.map((kind) => textOf(kind))).toEqual(['Key', 'Motion', 'Static', 'Reveal']);
 
     (kinds[0].props.onClick as () => void)();
-    expect(paint).toHaveBeenCalledTimes(1);
-    expect(paint).toHaveBeenLastCalledWith('progressive');
+    expect(keyRail).toHaveBeenCalledTimes(1);
+    expect(paint).not.toHaveBeenCalled();
 
     // The menu closed on the pick; re-open for the remaining kinds.
     hooks.rewind();
-    expect(findAll(renderStrip({ paint, reveal }), (vnode) => vnode.props['aria-label'] === 'Rail kind')).toHaveLength(0);
+    expect(findAll(renderStrip({ paint, reveal, keyRail }), (vnode) => vnode.props['aria-label'] === 'Rail kind')).toHaveLength(0);
 
     (openButton.props.onClick as () => void)();
     hooks.rewind();
-    const reopened = renderStrip({ paint, reveal });
+    const reopened = renderStrip({ paint, reveal, keyRail });
     const reopenedMenu = findOne(reopened, (vnode) => vnode.props['aria-label'] === 'Rail kind');
     const reopenedKinds = findAll(reopenedMenu, (vnode) => vnode.type === 'button');
     (reopenedKinds[1].props.onClick as () => void)();
-    expect(paint).toHaveBeenCalledTimes(2);
-    expect(paint).toHaveBeenLastCalledWith('static');
+    expect(paint).toHaveBeenCalledTimes(1);
+    expect(paint).toHaveBeenLastCalledWith('progressive');
 
     (findOne(reopened, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail').props.onClick as () => void)();
     hooks.rewind();
-    const third = renderStrip({ paint, reveal });
+    const third = renderStrip({ paint, reveal, keyRail });
     const thirdMenu = findOne(third, (vnode) => vnode.props['aria-label'] === 'Rail kind');
     const thirdKinds = findAll(thirdMenu, (vnode) => vnode.type === 'button');
     (thirdKinds[2].props.onClick as () => void)();
+    expect(paint).toHaveBeenCalledTimes(2);
+    expect(paint).toHaveBeenLastCalledWith('static');
+
+    (findOne(third, (vnode) => vnode.type === 'button' && vnode.props['aria-label'] === 'Create rail').props.onClick as () => void)();
+    hooks.rewind();
+    const fourth = renderStrip({ paint, reveal, keyRail });
+    const fourthMenu = findOne(fourth, (vnode) => vnode.props['aria-label'] === 'Rail kind');
+    const fourthKinds = findAll(fourthMenu, (vnode) => vnode.type === 'button');
+    (fourthKinds[3].props.onClick as () => void)();
     expect(reveal).toHaveBeenCalledTimes(1);
     expect(paint).toHaveBeenCalledTimes(2);
   });

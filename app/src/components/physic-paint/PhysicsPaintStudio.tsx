@@ -192,6 +192,8 @@ interface RotoPaintPromotionSuccess {
 interface RotoPaintPromotionFailure {
   readonly ok: false;
   readonly error: string;
+  /** Underlying reason for the LOG (the capsule keeps the friendly copy). */
+  readonly diagnostic?: string;
   /** The accepted command's prior snapshot — replayed when the parent created
    *  a key the child could no longer validate (no silent blank key). */
   readonly acceptedBefore?: RotoPhysicalEditSnapshot<EfxPaintDocument>;
@@ -1052,6 +1054,13 @@ export function PhysicsPaintStudio() {
   // canvas warm-up. It exempts ONLY `rotoInputDisabled` from `mutationLocked`
   // so the fast second stroke keeps flowing while the physical edit settles.
   const autoKeyPromotionPaintExempt = useSignal(false);
+  // Quick 261019-mj2 UAT: the promotion's generic failure copy hid WHY the key
+  // could not be created. Record the last status message published by the
+  // timeline/coordinator seam and surface it as the LOG diagnostic.
+  const lastRotoStatusMessageRef = useRef<string | null>(null);
+  // The Create key button is a FALLBACK: it appears only after a direct-paint
+  // promotion failed on this frame, never next to a working paint gesture.
+  const autoKeyFallbackFrame = useSignal<number | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
   const aquarelleMergeBaseRef = useRef<{ appFrame: number; base: RenderedFramePayload | null } | null>(null);
   const syncPendingRotoFrames = useCallback(() => {
@@ -2004,7 +2013,10 @@ export function PhysicsPaintStudio() {
     setRailSetClipboard: (payload) => railSetClipboardWriteRef.current(payload),
     executeRailSetPaste: (input) => railSetPasteExecuteRef.current(input),
     requestSoleOccurrenceDeleteWarning: handleRequestSoleOccurrenceDeleteWarning,
-    publishStatus: (message) => { setApplyMessage(message); },
+    publishStatus: (message) => {
+      lastRotoStatusMessageRef.current = message;
+      setApplyMessage(message);
+    },
     setApplyStatus,
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
   });
@@ -2016,18 +2028,36 @@ export function PhysicsPaintStudio() {
   // break), and only reports success for a live record created on this frame.
   promoteRotoPaintTargetRef.current = async (source) => {
     const launch = launchContextRef.current;
+    // Quick 261019-mj2 UAT: never fail silently behind one generic sentence.
+    // The LOG diagnostic names the failing branch plus the coordinator/status
+    // reason that caused it.
+    const fail = (
+      branch: string,
+      extra?: Omit<RotoPaintPromotionFailure, 'ok' | 'error' | 'diagnostic'>,
+    ): RotoPaintPromotionFailure => {
+      const failure = physicalEditCoordinator.failureOutput.peek();
+      const presentation = physicalEditCoordinator.presentation.peek();
+      const diagnostic = [
+        branch,
+        failure ? `reason=${failure.reason}` : null,
+        presentation?.conciseMessage ?? null,
+        lastRotoStatusMessageRef.current,
+      ].filter((part): part is string => typeof part === 'string' && part.length > 0).join(' · ');
+      console.error('[PhysicsPaintStudio] auto-key promotion failed:', diagnostic);
+      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR, diagnostic, ...extra };
+    };
     if (!launch || source.appFrame !== launch.startFrame) {
-      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+      return fail('launch-mismatch');
     }
     if (source.selectionKind === 'real-key') {
-      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+      return fail('real-key-source');
     }
 
     let blankFrame: RenderedFramePayload;
     try {
       blankFrame = await buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
-    } catch {
-      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    } catch (error) {
+      return fail(`blank-frame-failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     const pendingEntry = pendingFirstPaintTargetRef.current;
     if (
@@ -2060,39 +2090,34 @@ export function PhysicsPaintStudio() {
           },
         ),
       );
-    } catch {
-      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    } catch (error) {
+      return fail(`dispatch-threw: ${error instanceof Error ? error.message : String(error)}`);
     }
     const currentLaunch = launchContextRef.current;
     if (!currentLaunch || currentLaunch.operationId !== launch.operationId) {
-      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+      return fail('launch-changed');
     }
-    if (!accepted) return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
-    if (
-      accepted.operationKind !== 'paste-key'
-      || accepted.after.layerId !== launch.layerId
-      || accepted.after.selectedAppFrame !== source.appFrame
-      || !accepted.after.selectedKeyId
-    ) {
-      return {
-        ok: false,
-        error: ROTO_AUTO_KEY_PROMOTION_ERROR,
+    if (!accepted) return fail('no-acceptance');
+    if (accepted.operationKind !== 'paste-key' || accepted.after.layerId !== launch.layerId) {
+      return fail(`acceptance-shape: ${accepted.operationKind}`, {
         acceptedBefore: accepted.before,
         acceptedOperationId: accepted.operationId,
         acceptedSourceRevision: accepted.acceptedRevision,
-      };
+      });
     }
-    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);
-    if (record?.appFrame !== source.appFrame) {
-      return {
-        ok: false,
-        error: ROTO_AUTO_KEY_PROMOTION_ERROR,
+    // The accepted document is the authority for "did a key land here" — the
+    // live selection port can lag the acceptance, so never require
+    // selectedAppFrame/selectedKeyId to agree before recognizing the key.
+    const created = accepted.after.records.find((record) => record.appFrame === source.appFrame);
+    const existedBefore = accepted.before.records.some((record) => record.appFrame === source.appFrame);
+    if (!created || existedBefore) {
+      return fail('created-key-missing', {
         acceptedBefore: accepted.before,
         acceptedOperationId: accepted.operationId,
         acceptedSourceRevision: accepted.acceptedRevision,
-      };
+      });
     }
-    return { ok: true, keyId: record.keyId, appFrame: record.appFrame, blankFrame };
+    return { ok: true, keyId: created.keyId, appFrame: created.appFrame, blankFrame };
   };
 
   // Quick 261019-mj2 Task 3 (D-16): a promotion that yields no usable key must
@@ -2119,7 +2144,10 @@ export function PhysicsPaintStudio() {
     }
     setApplyStatus('error');
     setApplyMessage(result.error);
-    setLastError(result.error);
+    setLastError(result.diagnostic ?? result.error);
+    // The explicit Create key button is a FALLBACK: it appears only after a
+    // direct-paint promotion failed on this frame, never alongside it.
+    autoKeyFallbackFrame.value = pending.appFrame;
     const acceptedBefore = result.acceptedBefore;
     const acceptedOperationId = result.acceptedOperationId;
     const acceptedSourceRevision = result.acceptedSourceRevision;
@@ -2184,6 +2212,7 @@ export function PhysicsPaintStudio() {
         handleRotoPaintPromotionFailure(result, pending);
         return;
       }
+      if (autoKeyFallbackFrame.value !== null) autoKeyFallbackFrame.value = null;
       // SUCCESS: the capture paths already captured this entry by closure (they
       // await the same promise), so releasing the ref here is safe — and it is
       // REQUIRED for the Create key button, whose promotion has no stroke to
@@ -2970,6 +2999,39 @@ export function PhysicsPaintStudio() {
       window.setTimeout(() => { if (warmProgress.peek() === 100) warmProgress.value = 0; }, 300);
     })();
   }, [clearGeneratedRotoDisplayForPaint, isPlaying, setApplyMessage, syncPendingRotoFrames]);
+  // Quick 261019-mj2 UAT: the + Rail menu's "Key" item deliberately opens a
+  // NEW isolated rail. + Key clones the previous key's paint and joins its
+  // rail; this action is the explicit opposite.
+  const handleCreateRotoKeyRail = useCallback(() => {
+    const launch = launchContextRef.current;
+    if (!launch || workflowMode !== 'roto' || isPlaying) return;
+    if (currentFrameSelectionKind === 'real-key') return;
+    const appFrame = launch.startFrame;
+    void (async () => {
+      try {
+        const blank = await buildBlankRotoFrame(canvasWidth, canvasHeight, appFrame);
+        const ok = await rotoTimelineActions.physicalKeyUtilities.addEmptyKey(
+          appFrame,
+          {
+            frameIndex: blank.frameIndex,
+            appFrame,
+            bytes: blank.bytes,
+            ...(blank.width !== undefined ? { width: blank.width } : {}),
+            ...(blank.height !== undefined ? { height: blank.height } : {}),
+          },
+          { forceNewSegment: true },
+        );
+        if (!ok) {
+          setApplyStatus('error');
+          setApplyMessage('Could not create a new Roto rail key.');
+        }
+      } catch (error) {
+        setApplyStatus('error');
+        setApplyMessage('Could not create a new Roto rail key.');
+        setLastError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  }, [canvasHeight, canvasWidth, currentFrameSelectionKind, isPlaying, rotoTimelineActions, setApplyMessage, setApplyStatus, setLastError, workflowMode]);
   const beginRotoFrameEdit = useCallback((event?: PointerEvent) => {
     beginRotoFrameEditImplRef.current(event);
   }, []);
@@ -4705,11 +4767,10 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  // Quick 261019-mj2 Task 3 (D-08): the centered "Create key" fallback shows
-  // only on a NON-REAL, EMPTY paint target — a roto launch that is idle and not
-  // mutation-locked, with no self-promotion already in flight. Generated cells
-  // are excluded: pointerdown promotes them directly, and an overlay there
-  // would sit on their visible preview before the user touches the canvas.
+  // Quick 261019-mj2 UAT: "Create key" is the FALLBACK, not a permanent
+  // affordance next to direct paint. It appears only after a direct-paint
+  // promotion FAILED on this frame; on a healthy frame painting is the gesture
+  // and no overlay ever covers the canvas.
   const fallbackDocument = launchContext
     ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())
     : null;
@@ -4717,6 +4778,7 @@ export function PhysicsPaintStudio() {
     ? resolveRotoCompletedGroupPaintTarget(fallbackDocument, currentFrame, currentCellKeyId)
     : null;
   const createKeyFallback = workflowMode === 'roto'
+    && autoKeyFallbackFrame.value === currentFrame
     && !isPlaying
     && !mutationLocked
     && !autoKeyPromotionPaintExempt.value
@@ -5898,7 +5960,7 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onCreateRotoKeyRail: handleCreateRotoKeyRail, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
           documentSyncDirty.value = true;
           await flushDocumentSyncRef.current();
         }, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers

@@ -405,6 +405,22 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...broken, startsNewSegment: 1 })).toBe(false);
   });
 
+  it('round-trips paste-key joinsPreviousRail and rejects a non-boolean flag', () => {
+    const payload = { frameIndex: 0, appFrame: 8, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
+    const joined = { kind: 'paste-key', destinationAppFrame: 8, destinationKeyId: null, newKeyId: 'key-clone', clipboardPayload: payload, joinsPreviousRail: true } as const;
+
+    expect(isPhysicPaintRotoPhysicalEditIntent(joined)).toBe(true);
+    const serialized = serializePhysicPaintRotoPhysicalEditIntent(joined);
+    expect(serialized).toContain('"joinsPreviousRail":true');
+    const parsed: unknown = JSON.parse(serialized);
+    expect(isPhysicPaintRotoPhysicalEditIntent(parsed)).toBe(true);
+    if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) throw new Error('Canonical rail-join paste must parse');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
+
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...joined, joinsPreviousRail: 'yes' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...joined, joinsPreviousRail: 1 })).toBe(false);
+  });
+
   it('rejects malformed, duplicate, reordered, and ambiguous ordinary intent authorization', () => {
     const payload = { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
     const oversizedId = 'x'.repeat(257);

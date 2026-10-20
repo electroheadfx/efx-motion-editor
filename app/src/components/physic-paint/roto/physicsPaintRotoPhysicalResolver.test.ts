@@ -869,6 +869,61 @@ describe('incoming interpolation break lifecycle', () => {
     expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'pasted-X')).toBe(true);
   });
 
+  it('joinsPreviousRail keeps + Key on the previous real key rail with no boundary break', () => {
+    const records = buildBaselineRecords();
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 12,
+        destinationKeyId: null,
+        newKeyId: 'cloned-X',
+        clipboardPayload: records[3].payload,
+        joinsPreviousRail: true,
+      },
+      parentEndExclusive: 16,
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: ['A'],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Rail-joining + Key must resolve');
+    // No new break on the cloned key and none on a following rail: the key
+    // continues the rail that ends at D@10 across the empty frames.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(resolution.proposal.generatedCells.some(
+      (cell) => cell.kind === 'generated' && cell.leftKeyId === 'D' && cell.rightKeyId === 'cloned-X',
+    )).toBe(true);
+  });
+
+  it('joinsPreviousRail with no previous key adds no rail break', () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [],
+      records,
+      intent: {
+        kind: 'paste-key',
+        destinationAppFrame: 2,
+        destinationKeyId: null,
+        newKeyId: 'cloned-X',
+        clipboardPayload: { frameIndex: 0, appFrame: 2, bytes: testWebpBytes('AAAA'), width: 2, height: 2 },
+        joinsPreviousRail: true,
+      },
+      parentEndExclusive: 16,
+      capacity: 16,
+      interpolationEnabled: true,
+      incomingInterpolationBreakKeyIds: [],
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('First-key + Key must resolve');
+    // No left key to join and no content to break from: the clone is the first
+    // key of the track, so no incoming break is invented.
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+  });
+
   it('Copy/Paste into a trailing gap after a rail owns an incoming break (v0.9 boundary law)', () => {
     const records: PhysicPaintRotoRealKeyRecord[] = [
       { kind: 'real-key', keyId: 'A', appFrame: 0, payload: { frameIndex: 0, appFrame: 0, bytes: testWebpBytes('AAAA'), width: 2, height: 2 } },

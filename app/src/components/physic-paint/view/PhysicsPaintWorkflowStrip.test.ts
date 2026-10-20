@@ -2166,6 +2166,19 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
     expect(row).toContain("buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)");
   });
 
+  it('offers + Rail → Key before Motion for a deliberate new rail (261019-mj2 UAT)', () => {
+    const row = getActionRowBlock(source());
+    const menuStart = row.indexOf('<PhysicsPaintRailCreateMenu');
+    expect(menuStart).toBeGreaterThan(-1);
+    const menu = row.slice(menuStart, row.indexOf('</PhysicsPaintRailCreateMenu>', menuStart));
+    const keyIndex = menu.indexOf('onCreateRotoKeyRail?.()');
+    const motionIndex = menu.indexOf("onCreatePlayScriptRail?.('progressive')");
+    expect(keyIndex).toBeGreaterThan(-1);
+    expect(motionIndex).toBeGreaterThan(-1);
+    expect(keyIndex).toBeLessThan(motionIndex);
+    expect(menu).toContain('>\n                        Key\n                      </button>');
+  });
+
   it('derives canCreateRail from the + Key base law plus generated/repeat exclusions (260905-d1w)', () => {
     const code = source();
     const derivationStart = code.indexOf('const currentFrameResolution = ');

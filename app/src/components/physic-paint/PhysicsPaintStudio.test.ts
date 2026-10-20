@@ -152,7 +152,10 @@ describe('Physics Paint Play Script integration contract', () => {
     expect(studio).toContain('const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;');
     expect(studio).toContain('const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());');
     expect(studio).toContain('const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), source.keyId);');
-    expect(studio).toContain('const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);');
+    // 261019-mj2 UAT: the created key is resolved from the accepted document
+    // (realm authority) instead of a post-acceptance store read that could lag
+    // the publication.
+    expect(studio).toContain('const created = accepted.after.records.find((record) => record.appFrame === source.appFrame);');
     // Navigation selection writes must land on the active track, never the launch track.
     expect(studio).toContain('if (launch) physicPaintStore.setRotoPhysicalSelection(launch.layerId, studioActiveTrackId(), selectedKeyId.value, frame);');
     expect(studio).toContain('const selectedRecord = physicPaintStore.getRotoRealKeyRecordByAppFrame(launchContext.layerId, studioActiveTrackId(), frame);');
@@ -2529,8 +2532,13 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const fallbackBlock = section(studio, 'const handleCreateKeyFallback = useCallback(', 'const beginRotoFrameEdit = useCallback(');
     expect(fallbackBlock).toContain('startRotoPaintPromotion({');
     expect(studio).toContain('void promoteRotoPaintTargetRef.current(input)');
-    // No forked Water color promotion path.
-    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(1);
+    // No forked Water color promotion path: the promotion seam is the only
+    // promotion call; the + Rail → Key action is an EXPLICIT key creation, not
+    // a second promotion path (it starts no pending entry and no exemption).
+    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(2);
+    const createRailBlock = section(studio, 'const handleCreateRotoKeyRail = useCallback(', 'const beginRotoFrameEdit = useCallback(');
+    expect(createRailBlock).toContain('{ forceNewSegment: true }');
+    expect(createRailBlock).not.toContain('startRotoPaintPromotion');
   });
 
   it('never intercepts the pointer gesture (no preventDefault / stopPropagation / setPointerCapture)', () => {
@@ -2649,8 +2657,11 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(css).toContain('.physics-paint-create-key-fallback > button {');
     expect(css).toContain('pointer-events: auto;');
     // Studio gating: roto, launch, empty paint target, not real-key, not
-    // playing, not mutation-locked, no promotion in flight.
+    // playing, not mutation-locked, no promotion in flight, AND (261019-mj2
+    // UAT) only after a direct-paint promotion failed on this frame — the
+    // button is a fallback, never a permanent overlay next to direct paint.
     const fallbackGate = section(studio, 'const createKeyFallback = ', 'const canvasStack =');
+    expect(fallbackGate).toContain('autoKeyFallbackFrame.value === currentFrame');
     expect(fallbackGate).toContain("workflowMode === 'roto'");
     expect(fallbackGate).toContain("paintTarget.kind === 'empty'");
     expect(fallbackGate).toContain("currentFrameSelectionKind !== 'real-key'");

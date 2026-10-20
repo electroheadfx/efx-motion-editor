@@ -536,6 +536,7 @@ export function createPhysicPaintRotoPasteKeyIntent(
   clipboardPayload: PhysicPaintRotoRealKeyPayload,
   destinationKeyId: string | null,
   startsNewSegment = false,
+  joinsPreviousRail = false,
 ): Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'paste-key' }> {
   if (!isNonNegativeInteger(destinationAppFrame)) throw new Error('Paste requires a nonnegative destination frame.');
   if (destinationKeyId !== null && !isBoundedKeyId(destinationKeyId)) throw new Error('Paste destination identity is malformed.');
@@ -548,6 +549,7 @@ export function createPhysicPaintRotoPasteKeyIntent(
     newKeyId,
     clipboardPayload: clonePayloadAtFrame(clipboardPayload, clipboardPayload.appFrame),
     ...(startsNewSegment ? { startsNewSegment: true } : {}),
+    ...(joinsPreviousRail ? { joinsPreviousRail: true } : {}),
   });
 }
 
@@ -1363,18 +1365,25 @@ function buildPasteCandidate(
       if (rightAbove === undefined || record.appFrame < rightAbove.appFrame) rightAbove = record;
     }
   }
+  // Quick 261019-mj2 UAT: + Key clones the nearest previous real key's paint
+  // and must continue that key's rail instead of opening a new segment. The
+  // join wins over the broken-key contract and the boundary law; with no left
+  // key there is no rail to join and the ordinary behavior applies.
+  const joinsPreviousRail = intent.destinationKeyId === null
+    && intent.joinsPreviousRail === true
+    && leftBelow !== undefined;
   const insideConnectedSpan = leftBelow !== undefined && rightAbove !== undefined
     && !incomingInterpolationBreakKeyIds.includes(rightAbove.keyId);
-  const boundaryBreak = leftBelow !== undefined && !insideConnectedSpan;
+  const boundaryBreak = leftBelow !== undefined && !insideConnectedSpan && !joinsPreviousRail;
   // Mirror of the boundary law: content lying to the RIGHT of a new isolated
   // key must not bridge into it either. A break owned by the new key only
   // severs its left edge; the following rail's first key (rightAbove) must own
   // an incoming break to sever the new→right edge, otherwise the segmenter
   // merges the isolated key with the following rail across the empty frames.
-  const rightBreak = rightAbove !== undefined && !insideConnectedSpan;
+  const rightBreak = rightAbove !== undefined && !insideConnectedSpan && !joinsPreviousRail;
   const nextBreaks = new Set(incomingInterpolationBreakKeyIds);
   let addedBreak = false;
-  if (intent.destinationKeyId === null && (intent.startsNewSegment === true || boundaryBreak)) {
+  if (intent.destinationKeyId === null && !joinsPreviousRail && (intent.startsNewSegment === true || boundaryBreak)) {
     nextBreaks.add(intent.newKeyId as string);
     addedBreak = true;
   }

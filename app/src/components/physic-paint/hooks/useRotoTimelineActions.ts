@@ -2302,6 +2302,12 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
   const addEmptyKey = useCallback((
     destinationAppFrame: number,
     emptyPayload: PhysicPaintRotoRealKeyPayload,
+    options?: {
+      /** + Key: clone the previous real key's rail instead of opening a segment. */
+      readonly joinPreviousRail?: boolean;
+      /** Create rail → Key: force an isolated new rail even inside a span. */
+      readonly forceNewSegment?: boolean;
+    },
   ): Promise<boolean> => {
     if (!Number.isInteger(destinationAppFrame) || destinationAppFrame < 0) {
       input.publishStatus?.('Select a valid Roto frame before adding a key.');
@@ -2328,11 +2334,24 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         incomingInterpolationBreakKeyIds: new Set(input.getIncomingInterpolationBreakKeyIds?.() ?? []),
         groupOwnedKeyIds,
       });
-      const startsNewSegment = !segments.some(
-        (segment) => segment.firstKeyFrame < destinationAppFrame && destinationAppFrame < segment.lastKeyFrame,
-      );
+      // Quick 261019-mj2 UAT: + Key joins the previous real key's rail when one
+      // exists; the Create rail → Key action forces a new isolated segment.
+      const records = input.getRotoKeyRecords?.() ?? [];
+      const joinsPreviousRail = options?.joinPreviousRail === true
+        && records.some((record) => record.appFrame < destinationAppFrame);
+      const startsNewSegment = options?.forceNewSegment === true
+        ? true
+        : !joinsPreviousRail && !segments.some(
+          (segment) => segment.firstKeyFrame < destinationAppFrame && destinationAppFrame < segment.lastKeyFrame,
+        );
       return runPhysicalAction({
-        intent: createPhysicPaintRotoPasteKeyIntent(destinationAppFrame, emptyPayload, null, startsNewSegment),
+        intent: createPhysicPaintRotoPasteKeyIntent(
+          destinationAppFrame,
+          emptyPayload,
+          null,
+          startsNewSegment,
+          joinsPreviousRail,
+        ),
         operationKind: 'paste-key',
         requiredKeyId: null,
         successMessage: ADD_KEY_SUCCESS_MESSAGE,

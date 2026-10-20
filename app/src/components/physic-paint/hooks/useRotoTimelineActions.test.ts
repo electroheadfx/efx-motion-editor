@@ -1097,6 +1097,47 @@ describe('useRotoTimelineActions + Key (addEmptyKey) port', () => {
     expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
   });
 
+  it('+ Key with joinPreviousRail continues the previous key rail at a tail destination', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4), realKeyRecord('k8', 8)],
+      capacity: 20,
+      getRotoInterpolationState: () => ({ enabled: true, mode: 'duplicate' }),
+    });
+    const accepted = await actions.physicalKeyUtilities.addEmptyKey(10, blankPayload(10), { joinPreviousRail: true });
+    expect(accepted).toBe(true);
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
+        generatedCells: readonly { kind: string; leftKeyId?: string; rightKeyId?: string }[];
+      };
+    };
+    const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 10)?.[0];
+    expect(newKeyId).toBeDefined();
+    // 261019-mj2 UAT: + Key joins the previous real key's rail instead of
+    // opening a new one — no break and generated in-betweens from k8.
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(dispatched.proposal.generatedCells.some(
+      (cell) => cell.kind === 'generated' && cell.leftKeyId === 'k8' && cell.rightKeyId === newKeyId,
+    )).toBe(true);
+  });
+
+  it('forceNewSegment opens a new rail even when the destination is inside a span', async () => {
+    const { actions, executePhysicalEdit } = createHarness({
+      records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4), realKeyRecord('k8', 8)],
+    });
+    await actions.physicalKeyUtilities.addEmptyKey(6, blankPayload(6), { forceNewSegment: true });
+    const dispatched = executePhysicalEdit.mock.calls[0][0] as unknown as {
+      proposal: {
+        mapping: ReadonlyMap<string, number>;
+        nextIncomingInterpolationBreakKeyIds: readonly string[] | null;
+      };
+    };
+    const newKeyId = [...dispatched.proposal.mapping.entries()].find(([, frame]) => frame === 6)?.[0];
+    expect(newKeyId).toBeDefined();
+    expect(dispatched.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([newKeyId]);
+  });
+
   it('keeps a gap destination on its own one-key rail when no segment strictly spans it (guard)', async () => {
     const { actions, executePhysicalEdit } = createHarness({
       records: [realKeyRecord('k0', 0), realKeyRecord('k4', 4), realKeyRecord('k8', 8)],
