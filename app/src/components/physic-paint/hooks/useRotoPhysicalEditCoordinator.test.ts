@@ -265,11 +265,13 @@ function harness(options: {
   referenceOnlyKeyIds?: readonly string[];
   capacity?: number;
   parentEndExclusive?: number;
+  /** Mj2-UAT: stage insert/delete-slot shifts without Group-owned ripple guards. */
+  dropLoopClips?: boolean;
 } = {}) {
   const initial = fixture({ referenceOnlyKeyIds: options.referenceOnlyKeyIds });
   let records: readonly PhysicPaintRotoRealKeyRecord[] = initial.records;
   let groupOverrideRecords: readonly PhysicPaintRotoRealKeyRecord[] = [];
-  let loopClips: readonly PhysicPaintRotoLoopClip[] = initial.loopClips;
+  let loopClips: readonly PhysicPaintRotoLoopClip[] = options.dropLoopClips ? [] : initial.loopClips;
   let incomingInterpolationBreakKeyIds: readonly string[] = ['C'];
   let interpolation = INTERPOLATION;
   let capacity = options.capacity ?? 30;
@@ -556,6 +558,29 @@ function harness(options: {
         : {}),
     });
   };
+  const executeDeleteSlot = (destinationAppFrame: number) => {
+    const intent = { kind: 'delete-slot', destinationAppFrame } as const;
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
+      records,
+      intent,
+      loopClips,
+      parentEndExclusive,
+      capacity,
+      interpolationEnabled: interpolation.enabled,
+      incomingInterpolationBreakKeyIds,
+    });
+    if (!resolution.ok) throw new Error(resolution.failure.text);
+    return coordinator.executePhysicalEdit({
+      proposal: resolution.proposal,
+      expectedLaunch: { operationId: 'launch-1', layerId: 'layer-1' },
+      operationKind: 'delete-slot',
+      intent,
+      selectedKeyId: resolution.proposal.selectedKeyId,
+      selectedAppFrame: resolution.proposal.selectedAppFrame,
+      requestedCursorAppFrame: destinationAppFrame,
+    });
+  };
   const executePasteKey = (destinationAppFrame: number) => {
     const intent = {
       kind: 'paste-key',
@@ -838,6 +863,7 @@ function harness(options: {
     coordinator,
     execute,
     executeInsertGap,
+    executeDeleteSlot,
     executePasteKey,
     executeGroupPaint,
     executeDeleteGroupFrame,
@@ -1429,6 +1455,63 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.raiseCapacity.mock.calls).toEqual([['layer-1', 31], ['layer-1', 30]]);
     expect(test.getCapacity()).toBe(30);
     expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+  });
+
+  // Mj2-UAT live report: Insert on an occupied key selected the shifted key
+  // (frame F+1) while the cursor stayed on the opened gap (F), so the deferred
+  // document failed its selected-identity/cursor invariant and every live
+  // insert surfaced the generic barrier. The selection now clears.
+  it('dispatches an insert on an occupied key without the cursor/selection barrier', async () => {
+    const test = harness({ dropLoopClips: true });
+
+    expect(await test.executeInsertGap(1)).toBe(true);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+    expect(test.getPayload()?.intent).toEqual({ kind: 'insert-slot', destinationAppFrame: 1 });
+    expect(test.getPayload()?.selectedKeyId).toBeNull();
+    expect(test.getPayload()?.selectedAppFrame).toBeNull();
+    expect(test.getPayload()?.cursorAppFrame).toBe(1);
+    expect(test.getPayload()?.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 2],
+      ['C', 3],
+      ['X', 7],
+      ['Y', 8],
+    ]);
+    expect(test.logDiagnostic).not.toHaveBeenCalledWith(
+      expect.stringContaining('target document validation failed'),
+    );
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getCanonicalSelection()).toEqual({ selectedKeyId: null, cursorAppFrame: 1 });
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(1);
+  });
+
+  it('dispatches an inverse delete-slot on an empty frame and stages the left ripple', async () => {
+    const test = harness({ dropLoopClips: true });
+
+    expect(await test.executeDeleteSlot(4)).toBe(true);
+    expect(test.sendPhysicalEditPayload).toHaveBeenCalledTimes(1);
+    expect(test.getPayload()?.intent).toEqual({ kind: 'delete-slot', destinationAppFrame: 4 });
+    expect(test.getPayload()?.selectedKeyId).toBeNull();
+    expect(test.getPayload()?.cursorAppFrame).toBe(4);
+    expect(test.getPayload()?.records.map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['X', 5],
+      ['Y', 6],
+    ]);
+    expect('targetCapacity' in (test.getPayload() ?? {})).toBe(false);
+
+    expect(test.accept()).toBe('accepted');
+    expect(test.getRecords().map(({ keyId, appFrame }) => [keyId, appFrame])).toEqual([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['X', 5],
+      ['Y', 6],
+    ]);
+    expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(4);
   });
 
   it('preserves every prior surface on parent rejection and leaves mismatches pending without success', async () => {

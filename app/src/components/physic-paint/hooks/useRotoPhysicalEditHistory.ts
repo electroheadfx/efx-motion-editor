@@ -281,6 +281,7 @@ function isOrdinaryOperationKind(
   // batch generation and group paste — are ordinary history-bearing commands
   // so a generation plus its derived loop shrink stays one undoable outcome.
   return kind === 'insert-slot'
+    || kind === 'delete-slot'
     || kind === 'delete-key'
     || kind === 'delete-key-group'
     || kind === 'move-key'

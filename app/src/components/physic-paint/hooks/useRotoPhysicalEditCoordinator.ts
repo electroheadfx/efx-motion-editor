@@ -400,6 +400,8 @@ function createAuthorizedPhysicalEditPayload(
   switch (operationKind) {
     case 'insert-slot':
       return intent?.kind === 'insert-slot' ? { ...base, operationKind, intent } : null;
+    case 'delete-slot':
+      return intent?.kind === 'delete-slot' ? { ...base, operationKind, intent } : null;
     case 'delete-key':
       return intent?.kind === 'delete-key' ? { ...base, operationKind, intent } : null;
     case 'delete-key-group':
@@ -1322,8 +1324,10 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         // Quick 261019-mj2: an accepted gap insert changes the paint at the
         // cursor frame (the key under it shifts right), so the cached
         // reference must reconcile exactly like the retired empty-segment
-        // insert did.
+        // insert did. Its inverse, delete-slot, changes the paint the same
+        // way (the key after the closed slot shifts left onto the cursor).
         || pending.operationKind === 'insert-slot'
+        || pending.operationKind === 'delete-slot'
         || pending.operationKind === 'paste-key'
         || pending.operationKind === 'paint-group-frame'
         || pending.operationKind === 'delete-group-frame'

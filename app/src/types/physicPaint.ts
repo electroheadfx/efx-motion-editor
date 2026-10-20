@@ -415,6 +415,16 @@ export type PhysicPaintRotoPhysicalEditIntent =
       readonly kind: 'insert-slot';
       readonly destinationAppFrame: number;
     }
+  | {
+      /**
+       * Inverse of `insert-slot`: Delete on an empty or generated cursor frame
+       * removes that physical slot. Every real key strictly after
+       * `destinationAppFrame` shifts one slot left; no key is created or
+       * removed, and the cursor stays on the closed slot.
+       */
+      readonly kind: 'delete-slot';
+      readonly destinationAppFrame: number;
+    }
   | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
   | { readonly kind: 'delete-key-group'; readonly keyIds: readonly string[] }
   | { readonly kind: 'delete-key-rail'; readonly keyIds: readonly string[] }
@@ -577,7 +587,7 @@ function isPhysicPaintRotoPasteKeyGroupEntries(value: unknown): value is Extract
 /** Strict standalone parser for every ordinary physical-edit authorization request. */
 export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is PhysicPaintRotoPhysicalEditIntent {
   if (!isRecord(value)) return false;
-  if (value.kind === 'insert-slot') {
+  if (value.kind === 'insert-slot' || value.kind === 'delete-slot') {
     return hasOnlyKeys(value, ['kind', 'destinationAppFrame'])
       && isNonNegativeInteger(value.destinationAppFrame)
       && value.destinationAppFrame <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
@@ -874,6 +884,7 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
   }
   switch (intent.kind) {
     case 'insert-slot':
+    case 'delete-slot':
       return JSON.stringify({ kind: intent.kind, destinationAppFrame: intent.destinationAppFrame });
     case 'delete-key':
       return JSON.stringify({ kind: intent.kind, selectedKeyId: intent.selectedKeyId });
@@ -998,6 +1009,7 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
+  | 'delete-slot'
   | 'delete-key'
   | 'delete-key-group'
   | 'delete-key-rail'
@@ -1339,6 +1351,7 @@ function isBoundedPhysicalKeyId(value: unknown): value is string {
 
 function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
+    || value === 'delete-slot'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'delete-key-rail'
@@ -1373,6 +1386,7 @@ function isPhysicPaintRotoOrdinaryOperationKind(
   value: PhysicPaintRotoPhysicalEditOperationKind,
 ): value is PhysicPaintRotoPhysicalEditIntent['kind'] {
   return value === 'insert-slot'
+    || value === 'delete-slot'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'delete-key-rail'

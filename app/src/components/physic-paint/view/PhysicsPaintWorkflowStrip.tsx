@@ -5289,6 +5289,33 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy(insertRotoKeyDescription, insertRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteKeyTooltip.onPointerEnter} onPointerLeave={deleteKeyTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button destructive"
+                    aria-label={deleteRotoScopeLabel}
+                    aria-disabled={!canDeleteRotoKey ? 'true' : undefined}
+                    aria-describedby={!canDeleteRotoKey && deleteRotoKeyDisabledReason ? 'roto-key-action-reason-delete' : undefined}
+                    onFocus={deleteKeyTooltip.onFocus}
+                    onBlur={deleteKeyTooltip.onBlur}
+                    onClick={() => {
+                      deleteKeyTooltip.hide();
+                      if (!canDeleteRotoKey) return;
+                      props.onDeleteRotoFrame?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
+                    }}
+                  >
+                    <Trash2 size={18} aria-hidden="true" />
+                  </button>
+                  {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
+                    <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -5455,33 +5482,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={selectAllTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Select all keys', selectAllDisabledReason)}
-                  </PhysicsPaintStyledTooltip>
-                </span>
-                <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteKeyTooltip.onPointerEnter} onPointerLeave={deleteKeyTooltip.onPointerLeave}>
-                  <button
-                    type="button"
-                    class="physics-paint-roto-key-icon-button destructive"
-                    aria-label={deleteRotoScopeLabel}
-                    aria-disabled={!canDeleteRotoKey ? 'true' : undefined}
-                    aria-describedby={!canDeleteRotoKey && deleteRotoKeyDisabledReason ? 'roto-key-action-reason-delete' : undefined}
-                    onFocus={deleteKeyTooltip.onFocus}
-                    onBlur={deleteKeyTooltip.onBlur}
-                    onClick={() => {
-                      deleteKeyTooltip.hide();
-                      if (!canDeleteRotoKey) return;
-                      props.onDeleteRotoFrame?.();
-                    }}
-                    onKeyDown={(event) => {
-                      if ((event.key === 'Enter' || event.key === ' ') && !canDeleteRotoKey) event.preventDefault();
-                    }}
-                  >
-                    <Trash2 size={18} aria-hidden="true" />
-                  </button>
-                  {!canDeleteRotoKey && deleteRotoKeyDisabledReason ? (
-                    <span id="roto-key-action-reason-delete" class="physics-paint-sr-only">{deleteRotoKeyDisabledReason}</span>
-                  ) : null}
-                  <PhysicsPaintStyledTooltip visible={deleteKeyTooltip.visible} region="bottom">
-                    {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
               </div>

@@ -170,6 +170,7 @@ export function buildCanonicalMoveGroupOverrideRecords(input: {
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
+  | 'delete-slot'
   | 'delete-key'
   | 'delete-key-group'
   | 'delete-key-rail'
@@ -807,6 +808,7 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
 
 function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
+    || value === 'delete-slot'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'delete-key-rail'
@@ -874,6 +876,11 @@ function loopSourceKeyInsertRejectedText(movedGroupKeyCount: number): string {
 /** Locked 43.2 duplicate guard copy; N counts the Group-referenced keys the right ripple would move. */
 function loopSourceKeyDuplicateRejectedText(movedGroupKeyCount: number): string {
   return `Duplicate is unavailable because the right ripple would move ${movedGroupKeyCount} Group-referenced source key(s). Unlink the loop(s) first.`;
+}
+
+/** Mj2-UAT delete-slot guard copy; N counts the Group-referenced keys the left ripple would move. */
+function loopSourceKeyDeleteSlotRejectedText(movedGroupKeyCount: number): string {
+  return `Delete is unavailable because the left ripple would move ${movedGroupKeyCount} Group-referenced source key(s). Unlink the loop(s) first.`;
 }
 
 /**
@@ -1092,10 +1099,11 @@ interface PushRail {
 /**
  * D-05 Insert: open one empty physical slot at the destination frame by
  * shifting every identity at or after it right by exactly one slot; earlier
- * keys retain their frames; no key ID or payload is created. The identity that
- * occupied the destination (now destination + 1) becomes the selection when it
- * exists. The cursor stays on the inserted empty slot. Rejects the whole
- * proposal when any final frame is outside capacity (caught by the finalizer).
+ * keys retain their frames; no key ID or payload is created. The cursor stays
+ * on the inserted empty slot, so the selection clears: a physical document
+ * requires a selected key to sit exactly on the cursor, and the gap holds no
+ * key. Rejects the whole proposal when any final frame is outside capacity
+ * (caught by the finalizer).
  */
 function buildInsertCandidate(
   identities: ValidatedIdentities,
@@ -1103,7 +1111,6 @@ function buildInsertCandidate(
 ): Candidate {
   const mapping = new Map<string, number>();
   const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
-  let selectedKeyId: string | null = null;
 
   for (const identity of identities.ordered) {
     if (identity.appFrame >= destinationFrame) {
@@ -1112,7 +1119,49 @@ function buildInsertCandidate(
         identity.keyId,
         identity.appFrame === destinationFrame ? 'moved' : 'ripple-right',
       );
-      if (identity.appFrame === destinationFrame) selectedKeyId = identity.keyId;
+    } else {
+      mapping.set(identity.keyId, identity.appFrame);
+    }
+  }
+
+  return {
+    mapping,
+    expectedKeyIds: identities.keyIds,
+    removedKeyId: null,
+    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
+    selectedKeyId: null,
+    operationKind: 'insert-slot',
+    changed: true,
+    roleByKeyId,
+    drag: null,
+    cursorAppFrame: destinationFrame,
+  };
+}
+
+/**
+ * Mj2-UAT Delete-slot: the exact inverse of Insert. Close the empty physical
+ * slot at the destination frame by shifting every identity strictly after it
+ * left by one slot; earlier keys retain their frames; no key ID or payload is
+ * created or removed. The identity that occupied destination + 1 lands on the
+ * cursor and becomes the selection when it exists (the cursor/selection
+ * invariant allows only a key sitting on the cursor); otherwise the selection
+ * clears. Capacity never shrinks.
+ */
+function buildDeleteSlotCandidate(
+  identities: ValidatedIdentities,
+  destinationFrame: number,
+): Candidate {
+  const mapping = new Map<string, number>();
+  const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  let selectedKeyId: string | null = null;
+  let changed = false;
+
+  for (const identity of identities.ordered) {
+    if (identity.appFrame > destinationFrame) {
+      mapping.set(identity.keyId, identity.appFrame - 1);
+      roleByKeyId.set(identity.keyId, 'ripple-left');
+      changed = true;
+      if (identity.appFrame === destinationFrame + 1) selectedKeyId = identity.keyId;
     } else {
       mapping.set(identity.keyId, identity.appFrame);
     }
@@ -1124,8 +1173,8 @@ function buildInsertCandidate(
     removedKeyId: null,
     removedKeyIds: EMPTY_REMOVED_KEY_IDS,
     selectedKeyId,
-    operationKind: 'insert-slot',
-    changed: true,
+    operationKind: 'delete-slot',
+    changed,
     roleByKeyId,
     drag: null,
     cursorAppFrame: destinationFrame,
@@ -3720,6 +3769,10 @@ function buildStatusText(
     if (!changed) return 'No change';
     return `Inserted gap at frame ${cursorAppFrame}`;
   }
+  if (operationKind === 'delete-slot') {
+    if (!changed) return 'No change';
+    return `Deleted gap at frame ${cursorAppFrame}`;
+  }
   if (operationKind === 'delete-key') {
     if (removedKeyIds.length === 0) return 'No change';
     return 'Deleted key';
@@ -4053,6 +4106,47 @@ export function resolvePhysicPaintRotoPhysicalEdit(
     }
     const finalized = finalizeProposal(
       { ...candidate, nextCapacity },
+      identities,
+      input.capacity,
+      input.interpolationEnabled,
+      incomingInterpolationBreakKeyIds,
+    );
+    if (!finalized.ok) return finalized.resolution;
+    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
+  }
+
+  if (intent.kind === 'delete-slot') {
+    // Mj2-UAT: Delete on an empty/generated cursor frame closes that slot —
+    // the exact inverse of the pure Insert gap. The destination must be a
+    // real empty physical slot inside capacity; an occupied frame is the
+    // delete-key family's job and fails closed here.
+    if (
+      !isNonNegativeInteger(intent.destinationAppFrame)
+      || intent.destinationAppFrame >= input.capacity
+      || intent.destinationAppFrame >= PHYSIC_PAINT_MAX_APPLY_FRAMES
+    ) {
+      return fail('out-of-range-frame', operationKind, 'Delete destination is outside the physical frame range.');
+    }
+    if (identities.ordered.length === 0) {
+      return fail('empty-key-set', operationKind, 'Delete requires at least one real key.');
+    }
+    if (identities.ordered.some((identity) => identity.appFrame === intent.destinationAppFrame)) {
+      return fail('malformed-target', operationKind, 'Delete slot requires an empty destination frame.');
+    }
+    // 43.2 ordinary-edit ownership guard: the left ripple moves every key
+    // strictly after the destination. When ANY of them is Group-referenced,
+    // the shift would move Group-owned source keys against their unchanged
+    // lifecycle records — fail closed.
+    const loopReferencedKeyIds = new Set(loopClips.flatMap((clip) => clip.sourceKeyIds));
+    const rippledGroupKeys = identities.ordered.filter(
+      (identity) => identity.appFrame > intent.destinationAppFrame && loopReferencedKeyIds.has(identity.keyId),
+    );
+    if (rippledGroupKeys.length > 0) {
+      return fail('loop-source-key-delete-rejected', operationKind, loopSourceKeyDeleteSlotRejectedText(rippledGroupKeys.length));
+    }
+    const candidate = buildDeleteSlotCandidate(identities, intent.destinationAppFrame);
+    const finalized = finalizeProposal(
+      candidate,
       identities,
       input.capacity,
       input.interpolationEnabled,

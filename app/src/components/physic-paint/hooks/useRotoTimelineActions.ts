@@ -674,6 +674,7 @@ export type RotoDeleteTarget =
   | Readonly<{ kind: 'unresolved-group'; groupId: string; appFrame: number }>
   | Readonly<{ kind: 'ambiguous-group'; appFrame: number }>
   | Readonly<{ kind: 'generated'; appFrame: number }>
+  | Readonly<{ kind: 'empty-frame'; appFrame: number }>
   | Readonly<{ kind: 'no-target' }>
   | Readonly<{ kind: 'edit-in-flight' }>
   | Readonly<{ kind: 'unavailable' }>;
@@ -694,6 +695,7 @@ export interface RotoDeleteTargetClassificationInput {
   readonly interpolation: PhysicPaintRotoInterpolationState;
   readonly incomingInterpolationBreakKeyIds?: readonly string[];
   readonly physicalCells: readonly RotoPhysicalTimelineCell[];
+  readonly frameResolution?: PhysicPaintRotoFrameResolution | null;
 }
 
 /**
@@ -852,10 +854,27 @@ export function classifyRotoDeleteTarget(
     && input.records.filter((record) => record.keyId === input.selectedKeyId).length === 1) {
     return Object.freeze({ kind: 'ordinary-key', keyId: input.selectedKeyId });
   }
+  // Mj2-UAT: Delete on a keyless cursor frame is the inverse of Insert — the
+  // frame itself is removed and later keys shift left. A real key on the
+  // cursor without a selection fails closed here (the selection branch above
+  // owns real keys), and a zero-key track has no frame to close.
+  if (input.records.length === 0
+    || input.records.some((record) => record.appFrame === input.currentAppFrame)) {
+    return Object.freeze({ kind: 'no-target' });
+  }
+  // Linked Loop frames are owned by their loop, never by the physical frame
+  // slot. Lifecycle Groups were already classified above; this keeps legacy
+  // clips (no lifecycle fields) fail-closed exactly like the pre-Mj2 Delete.
+  if (input.frameResolution?.kind === 'linked'
+    || input.frameResolution?.kind === 'linked-generated'
+    || input.frameResolution?.kind === 'linked-gap'
+    || input.frameResolution?.kind === 'linked-unresolved') {
+    return Object.freeze({ kind: 'no-target' });
+  }
   if (input.physicalCells[input.currentAppFrame]?.kind === 'generated') {
     return Object.freeze({ kind: 'generated', appFrame: input.currentAppFrame });
   }
-  return Object.freeze({ kind: 'no-target' });
+  return Object.freeze({ kind: 'empty-frame', appFrame: input.currentAppFrame });
 }
 
 /**
@@ -956,6 +975,8 @@ export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | n
     case 'rail-set':
     case 'group-frame':
     case 'group':
+    case 'generated':
+    case 'empty-frame':
       return null;
     case 'group-gap':
       return 'Delete is unavailable on an intentional Group gap.';
@@ -963,8 +984,6 @@ export function mapRotoDeleteProductReason(target: RotoDeleteTarget): string | n
       return 'Delete is unavailable because this Group frame cannot be resolved.';
     case 'ambiguous-group':
       return 'Delete is unavailable because more than one Group owns this frame.';
-    case 'generated':
-      return 'Delete is unavailable on a generated render-only frame.';
     case 'stale-key-rail':
       return 'The selected Key Rail is no longer available.';
     case 'no-target':
@@ -1473,7 +1492,7 @@ export interface RotoTimelineActionsInput {
 
 type PhysicalActionRunnerKind = Extract<
   PhysicPaintRotoPhysicalEditIntent['kind'],
-  'insert-slot' | 'delete-key' | 'delete-key-group' | 'delete-key-rail' | 'scissor-key-rail' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
+  'insert-slot' | 'delete-slot' | 'delete-key' | 'delete-key-group' | 'delete-key-rail' | 'scissor-key-rail' | 'duplicate-key' | 'paste-key' | 'paste-key-group'
 >;
 
 type PhysicalActionRunnerInput = {
@@ -1497,6 +1516,8 @@ function physicalActionAuthorization(input: PhysicalActionRunnerInput) {
   switch (input.operationKind) {
     case 'insert-slot':
       return { operationKind: input.operationKind, intent: input.intent };
+    case 'delete-slot':
+      return { operationKind: input.operationKind, intent: input.intent };
     case 'delete-key':
       return { operationKind: input.operationKind, intent: input.intent };
     case 'delete-key-group':
@@ -1516,6 +1537,7 @@ function physicalActionAuthorization(input: PhysicalActionRunnerInput) {
 
 const INSERT_SUCCESS_MESSAGE = 'Inserted a gap in the Roto timeline.';
 const DELETE_SUCCESS_MESSAGE = 'Deleted the selected Roto key.';
+const DELETE_SLOT_SUCCESS_MESSAGE = 'Deleted the frame and shifted later keys left.';
 const GROUP_DELETE_SUCCESS_MESSAGE = 'Keys deleted';
 const DUPLICATE_SUCCESS_MESSAGE = 'Duplicated the selected Roto key.';
 const PASTE_SUCCESS_MESSAGE = 'Pasted the copied paint into the Roto timeline.';
@@ -1908,12 +1930,16 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
       ...physicalActionAuthorization(runnerInput),
       selectedKeyId: proposal.selectedKeyId,
       selectedAppFrame: proposal.selectedAppFrame,
-      ...(runnerInput.operationKind === 'insert-slot'
+      ...(runnerInput.operationKind === 'insert-slot' || runnerInput.operationKind === 'delete-slot'
         ? {
-            // D-11: the accepted cursor is the opened gap. The resolver's
-            // nextCapacity is forwarded unchanged (when it extends the tail).
+            // D-11: the accepted cursor is the opened gap. Its inverse,
+            // delete-slot, keeps the cursor on the closed slot the same way.
+            // The insert's resolver-computed nextCapacity is forwarded
+            // unchanged; delete-slot never raises capacity.
             requestedCursorAppFrame: runnerInput.requestedCursorAppFrame ?? proposal.cursorAppFrame,
-            ...(proposal.nextCapacity !== undefined ? { targetCapacity: proposal.nextCapacity } : {}),
+            ...(runnerInput.operationKind === 'insert-slot' && proposal.nextCapacity !== undefined
+              ? { targetCapacity: proposal.nextCapacity }
+              : {}),
           }
         : {}),
     });
@@ -2047,6 +2073,18 @@ export function useRotoTimelineActions(input: RotoTimelineActionsInput) {
         operationKind: 'delete-key',
         requiredKeyId: target.keyId,
         successMessage: DELETE_SUCCESS_MESSAGE,
+      });
+    }
+    if (target.kind === 'generated' || target.kind === 'empty-frame') {
+      // Mj2-UAT: Delete on an empty/generated frame is the inverse of the pure
+      // Insert gap. No key is removed; every later key shifts one slot left
+      // and the cursor stays on the closed slot.
+      return runPhysicalAction({
+        intent: { kind: 'delete-slot', destinationAppFrame: target.appFrame },
+        operationKind: 'delete-slot',
+        requiredKeyId: null,
+        requestedCursorAppFrame: target.appFrame,
+        successMessage: DELETE_SLOT_SUCCESS_MESSAGE,
       });
     }
     return Promise.resolve(false);
@@ -3694,32 +3732,40 @@ interface ActionAvailability {
   readonly reason: string | null;
 }
 
+/**
+ * The Studio supplies no `getFrameResolution` port, so the live resolution is
+ * derived from the accepted records + Loop Clips exactly like the standalone
+ * loop resolver. An explicit port, when present, wins.
+ */
+function readLoopFrameResolution(
+  input: RotoTimelineActionsInput,
+  currentAppFrame: number,
+): PhysicPaintRotoFrameResolution | null {
+  const explicit = input.getFrameResolution?.(currentAppFrame) ?? null;
+  if (explicit !== null) return explicit;
+  const capacity = input.getCapacity?.() ?? null;
+  const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
+  if (capacity === null || loopClips.length === 0) return null;
+  const records = input.getRotoKeyRecords?.() ?? [];
+  return resolvePhysicPaintRotoLoopFrame(derivePhysicPaintRotoLoopRanges({
+    identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
+    loopClips,
+    capacity,
+    interpolationEnabled: input.getRotoInterpolationState?.().enabled ?? false,
+  }), currentAppFrame);
+}
+
 function readRotoInsertTargetInput(input: RotoTimelineActionsInput): RotoInsertTargetClassificationInput {
   const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
-  const capacity = input.getCapacity?.() ?? null;
-  const records = input.getRotoKeyRecords?.() ?? [];
-  const loopClips = input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY;
-  let frameResolution: PhysicPaintRotoFrameResolution | null = null;
-  if (currentAppFrame !== null) {
-    frameResolution = input.getFrameResolution?.(currentAppFrame) ?? null;
-    if (frameResolution === null && capacity !== null && loopClips.length > 0) {
-      frameResolution = resolvePhysicPaintRotoLoopFrame(derivePhysicPaintRotoLoopRanges({
-        identities: records.map((record) => ({ keyId: record.keyId, appFrame: record.appFrame })),
-        loopClips,
-        capacity,
-        interpolationEnabled: input.getRotoInterpolationState?.().enabled ?? false,
-      }), currentAppFrame);
-    }
-  }
   return {
     launchReady: (input.getLaunchContext?.() ?? null) !== null,
     pendingOperationId: input.pendingOperationId?.value ?? null,
     selectedKeyId: input.getSelectedKeyId?.() ?? null,
     currentAppFrame,
-    capacity,
-    records,
+    capacity: input.getCapacity?.() ?? null,
+    records: input.getRotoKeyRecords?.() ?? [],
     physicalCells: input.getPhysicalCells?.() ?? [],
-    frameResolution,
+    frameResolution: currentAppFrame === null ? null : readLoopFrameResolution(input, currentAppFrame),
   };
 }
 
@@ -3737,6 +3783,7 @@ function mapRotoInsertFailureTarget(
 }
 
 function readRotoDeleteTargetInput(input: RotoTimelineActionsInput): RotoDeleteTargetClassificationInput {
+  const currentAppFrame = input.getCurrentAppFrame?.() ?? null;
   return {
     launchReady: (input.getLaunchContext?.() ?? null) !== null,
     pendingOperationId: input.pendingOperationId?.value ?? null,
@@ -3745,13 +3792,14 @@ function readRotoDeleteTargetInput(input: RotoTimelineActionsInput): RotoDeleteT
     selectedKeyRail: input.getSelectedKeyRail?.() ?? null,
     selectedLoopClipIds: input.getSelectedLoopClipIds?.() ?? [],
     railSetMembers: input.getRailSetMembers?.() ?? [],
-    currentAppFrame: input.getCurrentAppFrame?.() ?? null,
+    currentAppFrame,
     capacity: input.getCapacity?.() ?? null,
     records: input.getRotoKeyRecords?.() ?? [],
     loopClips: input.getRotoLoopClips?.() ?? PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY,
     interpolation: input.getRotoInterpolationState?.() ?? { enabled: false, mode: 'duplicate' },
     incomingInterpolationBreakKeyIds: input.getIncomingInterpolationBreakKeyIds?.() ?? [],
     physicalCells: input.getPhysicalCells?.() ?? [],
+    frameResolution: currentAppFrame === null ? null : readLoopFrameResolution(input, currentAppFrame),
   };
 }
 

@@ -266,6 +266,12 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, destinationAppFrame: 1.5 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, destinationAppFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'insert-slot', selectedKeyId: 'key-A' })).toBe(false);
+    // Mj2-UAT inverse intent: same closed destination-only shape.
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'delete-slot', destinationAppFrame: 3 })).toBe(true);
+    expect(serializePhysicPaintRotoPhysicalEditIntent({ kind: 'delete-slot', destinationAppFrame: 3 } as const))
+      .toBe('{"kind":"delete-slot","destinationAppFrame":3}');
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'delete-slot', destinationAppFrame: 3, selectedKeyId: 'key-A' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'delete-slot', destinationAppFrame: -1 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({
       kind: RETIRED_INSERT_KIND,
       destinationAppFrame: 3,
@@ -292,6 +298,7 @@ describe('physic paint payload contracts', () => {
         { payload, sourceAppFrame: 3, sourceKeyId: 'key-A', newKeyId: 'paste-A' },
         { payload: { ...payload, appFrame: 7 }, sourceAppFrame: 7, sourceKeyId: 'key-C', newKeyId: 'paste-C' },
       ] },
+      { kind: 'delete-slot', destinationAppFrame: 4 },
     ] as const;
 
     for (const intent of intents) {

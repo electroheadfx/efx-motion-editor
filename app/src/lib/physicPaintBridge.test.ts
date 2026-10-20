@@ -1687,9 +1687,10 @@ describe('physicPaintBridge', async () => {
       interpolationMode: 'duplicate' as const,
       loopClips: [],
       incomingInterpolationBreakKeyIds: [],
-      selectedKeyId: 'B',
-      selectedAppFrame: 4,
-      cursorAppFrame: 4,
+      // Mj2-UAT: Insert clears the selection (the cursor stays on the gap).
+      selectedKeyId: null,
+      selectedAppFrame: null,
+      cursorAppFrame: 3,
     };
     const first = await applyPhysicPaintPayload(payload);
     expect(first.ok).toBe(true);

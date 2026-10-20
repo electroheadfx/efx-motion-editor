@@ -394,12 +394,87 @@ describe('useRotoTimelineActions selection-scoped Delete activation', () => {
       [{ kind: 'group-gap', groupId: 'group-1', appFrame: 12 }, 'Delete is unavailable on an intentional Group gap.'],
       [{ kind: 'unresolved-group', groupId: 'group-1', appFrame: 12 }, 'Delete is unavailable because this Group frame cannot be resolved.'],
       [{ kind: 'ambiguous-group', appFrame: 12 }, 'Delete is unavailable because more than one Group owns this frame.'],
-      [{ kind: 'generated', appFrame: 12 }, 'Delete is unavailable on a generated render-only frame.'],
       [{ kind: 'no-target' }, 'Select a real Roto key or Group frame to delete.'],
       [{ kind: 'edit-in-flight' }, 'A Roto physical edit is already in flight.'],
       [{ kind: 'unavailable' }, 'Select a Physics Paint Roto timeline before deleting.'],
     ];
     for (const [target, reason] of cases) expect(mapRotoDeleteProductReason(target)).toBe(reason);
+    // Mj2-UAT: a keyless generated or empty cursor frame is deletable — the
+    // frame itself is removed and later keys shift left.
+    expect(mapRotoDeleteProductReason({ kind: 'generated', appFrame: 12 })).toBeNull();
+    expect(mapRotoDeleteProductReason({ kind: 'empty-frame', appFrame: 12 })).toBeNull();
+  });
+
+  it('classifies a keyless cursor frame as deletable and dispatches the inverse delete-slot intent', async () => {
+    const harness = createHarness({
+      records,
+      capacity: 30,
+      currentAppFrame: 21,
+      physicalCells: [
+        { kind: 'real', appFrame: 0, keyId: 'A' },
+        { kind: 'real', appFrame: 3, keyId: 'B' },
+        { kind: 'generated', appFrame: 21, leftKeyId: 'B', rightKeyId: 'ordinary' },
+      ] as readonly PhysicPaintRotoPhysicalCell[],
+    });
+
+    expect((harness.actions.physicalActions.canDeleteFrame as { value: boolean }).value).toBe(true);
+    expect(await harness.actions.physicalActions.deleteRotoFrame()).toBe(true);
+    expect(harness.executePhysicalEdit).toHaveBeenCalledTimes(1);
+    const dispatched = harness.executePhysicalEdit.mock.calls[0][0] as {
+      intent?: { kind: string; destinationAppFrame?: number };
+      operationKind?: string;
+      requestedCursorAppFrame?: number;
+      selectedKeyId?: string | null;
+    };
+    expect(dispatched.operationKind).toBe('delete-slot');
+    expect(dispatched.intent).toEqual({ kind: 'delete-slot', destinationAppFrame: 21 });
+    expect(dispatched.requestedCursorAppFrame).toBe(21);
+    expect(dispatched.selectedKeyId).toBeNull();
+  });
+
+  it('classifies a genuinely empty cursor frame as an empty-frame delete-slot target', () => {
+    const target = classifyRotoDeleteTarget({
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [],
+      selectedLoopClipIds: [],
+      currentAppFrame: 21,
+      capacity: 30,
+      records,
+      loopClips: [],
+      interpolation: { enabled: false, mode: 'duplicate' },
+      physicalCells: [],
+    });
+
+    expect(target).toEqual({ kind: 'empty-frame', appFrame: 21 });
+  });
+
+  it('keeps linked Loop frames undeletable even when the physical cell is empty', () => {
+    const target = classifyRotoDeleteTarget({
+      launchReady: true,
+      pendingOperationId: null,
+      selectedKeyId: null,
+      selectedKeyIds: [],
+      selectedLoopClipIds: [],
+      currentAppFrame: 21,
+      capacity: 30,
+      records,
+      loopClips: [],
+      interpolation: { enabled: false, mode: 'duplicate' },
+      physicalCells: [],
+      frameResolution: {
+        kind: 'linked',
+        loopId: 'loop-1',
+        appFrame: 21,
+        sourceKeyId: 'B',
+        sourceIndex: 0,
+        cycleOffset: 0,
+        repeatInstance: 1,
+      },
+    });
+
+    expect(target).toEqual({ kind: 'no-target' });
   });
 
   it('dispatches Delete Frame directly for an individual Group-owned physical frame without opening a choice modal', async () => {
@@ -890,6 +965,10 @@ describe('useRotoTimelineActions contextual Insert', () => {
     expect(Object.fromEntries(dispatched.proposal.mapping)).toEqual({ 'key-a': 4 });
     expect(dispatched.proposal.nextRecords).toBeNull();
     expect(dispatched.proposal.nextCapacity).toBe(5);
+    // Mj2-UAT: the cursor stays on the keyless opened gap, so the selection
+    // clears — a document cannot select a key that is not on the cursor.
+    expect(dispatched.proposal.selectedKeyId).toBeNull();
+    expect(dispatched.proposal.selectedAppFrame).toBeNull();
     // The resolver's ONE capacity computation rides the execute seam unchanged.
     expect(dispatched.targetCapacity).toBe(5);
     expect(dispatched.requestedCursorAppFrame).toBe(3);

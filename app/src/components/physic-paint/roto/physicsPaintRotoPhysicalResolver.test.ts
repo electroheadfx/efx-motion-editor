@@ -200,8 +200,10 @@ describe('transport-safe physical edit intent tracer', () => {
     expect(reproduced.ok).toBe(true);
     if (!reproduced.ok) throw new Error('Parsed Insert Slot intent must resolve');
     expect(Object.fromEntries(reproduced.proposal.mapping)).toEqual({ A: 1, B: 4, C: 6, D: 11 });
-    expect(reproduced.proposal.selectedKeyId).toBe('B');
-    expect(reproduced.proposal.selectedAppFrame).toBe(4);
+    // The cursor stays on the opened gap, which holds no key: a physical
+    // document requires selection and cursor to agree, so Insert clears it.
+    expect(reproduced.proposal.selectedKeyId).toBeNull();
+    expect(reproduced.proposal.selectedAppFrame).toBeNull();
     expect(reproduced.proposal.cursorAppFrame).toBe(3);
     expect(reproduced.proposal.nextCapacity).toBe(PHYSIC_PAINT_MAX_APPLY_FRAMES);
   });
@@ -224,6 +226,7 @@ describe('transport-safe physical edit intent tracer', () => {
       readonly expectedMapping: Readonly<Record<string, number>>;
     }[] = [
       { intent: { kind: 'insert-slot', destinationAppFrame: 0 }, resolve: resolveBaseline, expectedMapping: { A: 2, B: 4, C: 6, D: 11 } },
+      { intent: { kind: 'delete-slot', destinationAppFrame: 0 }, resolve: resolveBaseline, expectedMapping: { A: 0, B: 2, C: 4, D: 9 } },
       { intent: { kind: 'delete-key', selectedKeyId: 'B' }, resolve: resolveBaseline, expectedMapping: { A: 1, C: 4, D: 9 } },
       { intent: { kind: 'delete-key-group', keyIds: ['B', 'C'] }, resolve: resolveBaseline, expectedMapping: { A: 1, D: 8 } },
       { intent: { kind: 'move-key', movedKeyId: 'B', target: { kind: 'after-key', targetKeyId: 'C' } }, resolve: resolveBaseline, expectedMapping: { A: 1, C: 5, B: 6, D: 11 } },
@@ -498,8 +501,11 @@ describe('intentional incoming interpolation breaks', () => {
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Occupied insert must resolve');
     expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, B: 4, C: 6, D: 11 });
-    expect(resolution.proposal.selectedKeyId).toBe('B');
-    expect(resolution.proposal.selectedAppFrame).toBe(4);
+    // Mj2-UAT: the cursor sits on the opened gap (frame 3), which holds no
+    // key, so the selection clears. Selecting the shifted key at frame 4
+    // violated the document law that a selected key must sit on the cursor.
+    expect(resolution.proposal.selectedKeyId).toBeNull();
+    expect(resolution.proposal.selectedAppFrame).toBeNull();
     expect(resolution.proposal.cursorAppFrame).toBe(3);
     expect(resolution.proposal.changes).toEqual([
       { keyId: 'B', beforeAppFrame: 3, afterAppFrame: 4, role: 'moved' },
@@ -606,7 +612,7 @@ describe('intentional incoming interpolation breaks', () => {
     if (!atLastSlot.ok || !atCapacity.ok) throw new Error('Boundary inserts must resolve');
     expect(Object.fromEntries(atLastSlot.proposal.mapping)).toEqual({ A: 4 });
     expect(atLastSlot.proposal.nextCapacity).toBe(5);
-    expect(atLastSlot.proposal.selectedKeyId).toBe('A');
+    expect(atLastSlot.proposal.selectedKeyId).toBeNull();
     expect(atLastSlot.proposal.cursorAppFrame).toBe(3);
     expect(Object.fromEntries(atCapacity.proposal.mapping)).toEqual({ A: 2 });
     expect(atCapacity.proposal.nextCapacity).toBe(5);
@@ -657,6 +663,92 @@ describe('intentional incoming interpolation breaks', () => {
     if (beyondCapacity.ok || emptyTrack.ok) throw new Error('Invalid inserts must fail closed');
     expect(beyondCapacity.failure.code).toBe('out-of-range-frame');
     expect(emptyTrack.failure.code).toBe('empty-key-set');
+  });
+
+  it('delete-slot closes an empty frame, shifts later keys left, and selects the key landing on the cursor', () => {
+    const resolution = resolveBaseline({ kind: 'delete-slot', destinationAppFrame: 0 });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Delete slot must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 0, B: 2, C: 4, D: 9 });
+    expect(resolution.proposal.selectedKeyId).toBe('A');
+    expect(resolution.proposal.selectedAppFrame).toBe(0);
+    expect(resolution.proposal.cursorAppFrame).toBe(0);
+    expect(resolution.proposal.removedKeyId).toBeNull();
+    expect(resolution.proposal.removedKeyIds).toEqual([]);
+    expect(resolution.proposal.changes).toEqual([
+      { keyId: 'A', beforeAppFrame: 1, afterAppFrame: 0, role: 'ripple-left' },
+      { keyId: 'B', beforeAppFrame: 3, afterAppFrame: 2, role: 'ripple-left' },
+      { keyId: 'C', beforeAppFrame: 5, afterAppFrame: 4, role: 'ripple-left' },
+      { keyId: 'D', beforeAppFrame: 10, afterAppFrame: 9, role: 'ripple-left' },
+    ]);
+    expect('nextCapacity' in resolution.proposal).toBe(false);
+    expect(resolution.proposal.status.text).toBe('Deleted gap at frame 0');
+  });
+
+  it('delete-slot closes a generated in-between slot without removing any key', () => {
+    const identities = [
+      { keyId: 'A', appFrame: 0 },
+      { keyId: 'B', appFrame: 2 },
+      { keyId: 'C', appFrame: 6 },
+    ];
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'delete-slot', destinationAppFrame: 3 },
+      parentEndExclusive: 16,
+      capacity: 16,
+      interpolationEnabled: true,
+    });
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Generated delete slot must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 0, B: 2, C: 5 });
+    expect(resolution.proposal.selectedKeyId).toBeNull();
+    expect(resolution.proposal.selectedAppFrame).toBeNull();
+    expect(resolution.proposal.cursorAppFrame).toBe(3);
+    expect(resolution.proposal.cells[3]).toEqual({
+      kind: 'generated',
+      appFrame: 3,
+      leftKeyId: 'B',
+      rightKeyId: 'C',
+    });
+  });
+
+  it('delete-slot leaves the track unchanged when no key follows the destination', () => {
+    const resolution = resolveIdentities(
+      [
+        { keyId: 'A', appFrame: 0 },
+        { keyId: 'B', appFrame: 2 },
+      ],
+      { kind: 'delete-slot', destinationAppFrame: 6 },
+      8,
+    );
+
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Tail delete slot must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 0, B: 2 });
+    expect(resolution.proposal.selectedKeyId).toBeNull();
+    expect(resolution.proposal.cursorAppFrame).toBe(6);
+    expect(resolution.proposal.status.code).toBe('ok-no-change');
+    expect(resolution.proposal.status.text).toBe('No change');
+  });
+
+  it('delete-slot fails closed on an occupied destination, a zero-key track, and an out-of-range destination', () => {
+    const occupied = resolveBaseline({ kind: 'delete-slot', destinationAppFrame: 3 });
+    const emptyTrack = resolveIdentities([], { kind: 'delete-slot', destinationAppFrame: 0 }, 4);
+    const beyondCapacity = resolveIdentities(
+      [{ keyId: 'A', appFrame: 0 }],
+      { kind: 'delete-slot', destinationAppFrame: 8 },
+      8,
+    );
+
+    expect(occupied.ok).toBe(false);
+    expect(emptyTrack.ok).toBe(false);
+    expect(beyondCapacity.ok).toBe(false);
+    if (occupied.ok || emptyTrack.ok || beyondCapacity.ok) throw new Error('Invalid delete slots must fail closed');
+    expect(occupied.failure.code).toBe('malformed-target');
+    expect(emptyTrack.failure.code).toBe('empty-key-set');
+    expect(beyondCapacity.failure.code).toBe('out-of-range-frame');
   });
 
   it('reports nextCapacity only on insert proposals and keeps cursorAppFrame on every proposal', () => {
@@ -4059,6 +4151,29 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
     if (resolution.ok) throw new Error('Insert before a Group must fail closed');
     expect(resolution.failure.code).toBe('loop-source-key-insert-rejected');
     expect(resolution.failure.operationKind).toBe('insert-slot');
+  });
+
+  it('rejects delete-slot when the left ripple would move a Group-referenced key', () => {
+    const resolution = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [
+        { keyId: 'G1A', appFrame: 0 },
+        { keyId: 'G1B', appFrame: 1 },
+        { keyId: 'X', appFrame: 5 },
+        { keyId: 'G2A', appFrame: 8 },
+        { keyId: 'G2B', appFrame: 9 },
+      ],
+      intent: { kind: 'delete-slot', destinationAppFrame: 4 },
+      parentEndExclusive: 32,
+      capacity: 32,
+      interpolationEnabled: false,
+      loopClips: [group1, group2],
+    });
+
+    expect(resolution.ok).toBe(false);
+    if (resolution.ok) throw new Error('Delete before a Group must fail closed');
+    expect(resolution.failure.code).toBe('loop-source-key-delete-rejected');
+    expect(resolution.failure.operationKind).toBe('delete-slot');
+    expect(resolution.failure.text).toContain('left ripple');
   });
 
   it('keeps the legacy right ripple when no key at or after the selected frame is Group-owned', () => {

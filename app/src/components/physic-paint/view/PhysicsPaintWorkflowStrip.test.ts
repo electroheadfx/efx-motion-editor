@@ -113,12 +113,12 @@ describe('Delete scope copy', () => {
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
   { label: 'Add key', guard: 'canAddRotoKey', handler: 'props.onAddRotoKey?.()' },
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
+  { label: 'Delete Frame', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
   { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
   { label: 'Copy key', guard: 'canCopyRotoKey', handler: 'props.onCopyRotoFrame?.()' },
   { label: 'Paste key', guard: 'canPasteRotoKey', handler: 'props.onPasteRotoFrame?.()' },
   { label: 'Cut key', guard: 'canCutRotoKey', handler: 'props.onCutRotoFrame?.()' },
   { label: 'Split Key Rail', guard: 'canScissorRotoKey', handler: 'props.onScissorKeyRail?.()' },
-  { label: 'Delete Frame', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
 ];
 
 describe('PhysicsPaintWorkflowStrip source contract', () => {
@@ -253,7 +253,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(getHeaderBlock(source())).not.toContain('physics-paint-mode-label');
   });
 
-  it('renders the seven guarded icon actions in locked order (D-10)', () => {
+  it('renders the eight guarded icon actions in locked order, Trash after Insert (D-10 + Mj2-UAT)', () => {
     const row = getActionRowBlock(source());
     const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(getActionAriaLabelToken(label)));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
@@ -481,18 +481,22 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
 });
 
 describe('PhysicsPaintWorkflowStrip Cut key contract (quick 260731-9l0)', () => {
-  it('renders the clipboard row in locked Copy, Paste, Cut, Scissor, Delete order', () => {
+  it('keeps Trash immediately after Insert and the clipboard row in Copy, Paste, Cut, Scissor order', () => {
     const row = getActionRowBlock(source());
+    const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
+    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
+    const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
     const cutIndex = row.indexOf('aria-label="Cut key"');
     const scissorIndex = row.indexOf('aria-label="Split Key Rail"');
-    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
-    expect(copyIndex).toBeGreaterThanOrEqual(0);
+    expect(insertIndex).toBeGreaterThanOrEqual(0);
+    expect(deleteIndex).toBeGreaterThan(insertIndex);
+    expect(duplicateIndex).toBeGreaterThan(deleteIndex);
+    expect(copyIndex).toBeGreaterThan(duplicateIndex);
     expect(pasteIndex).toBeGreaterThan(copyIndex);
     expect(cutIndex).toBeGreaterThan(pasteIndex);
     expect(scissorIndex).toBeGreaterThan(cutIndex);
-    expect(deleteIndex).toBeGreaterThan(scissorIndex);
   });
 
   it('enables Cut only when BOTH copy and delete availability hold, chaining the verbatim controller reasons', () => {
@@ -1098,26 +1102,26 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(code).not.toContain('value="blend"');
   });
 
-  it('orders the bottom action row as layer, Key chip, Add key, Insert, Duplicate, Copy, Paste, Delete (Key Spacing relocated to the popover)', () => {
+  it('orders the bottom action row as layer, Key chip, Add key, Insert, Delete, Duplicate, Copy, Paste (Key Spacing relocated to the popover)', () => {
     const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
     const addIndex = row.indexOf('aria-label="Add key"');
     const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
+    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
-    const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
-    for (const index of [layerIndex, chipIndex, addIndex, insertIndex, duplicateIndex, copyIndex, pasteIndex, deleteIndex]) {
+    for (const index of [layerIndex, chipIndex, addIndex, insertIndex, deleteIndex, duplicateIndex, copyIndex, pasteIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(chipIndex).toBeGreaterThan(layerIndex);
     expect(addIndex).toBeGreaterThan(chipIndex);
     expect(insertIndex).toBeGreaterThan(addIndex);
-    expect(duplicateIndex).toBeGreaterThan(insertIndex);
+    expect(deleteIndex).toBeGreaterThan(insertIndex);
+    expect(duplicateIndex).toBeGreaterThan(deleteIndex);
     expect(copyIndex).toBeGreaterThan(duplicateIndex);
     expect(pasteIndex).toBeGreaterThan(copyIndex);
-    expect(deleteIndex).toBeGreaterThan(pasteIndex);
     // 43.5-02 Task 2: the Set Key Space form moved into the toolbox popover,
     // so it no longer terminates the bottom action row.
     expect(row).not.toContain('physics-paint-pill--apply-spacing');
@@ -1960,13 +1964,14 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
     expect(code).not.toContain('aria-label="Push Right"');
   });
 
-  it('A8: Delete renders AFTER the All button in the action row', () => {
+  it('A8: Delete renders immediately after Insert, before the All button (Mj2-UAT trash relocation)', () => {
     const code = source();
-    const allIndex = code.indexOf('aria-label="Select all keys"');
+    const insertIndex = code.indexOf('aria-label={insertRotoKeyDescription}');
     const deleteIndex = code.indexOf('aria-label={deleteRotoScopeLabel}');
-    expect(allIndex).toBeGreaterThan(-1);
-    expect(deleteIndex).toBeGreaterThan(-1);
-    expect(deleteIndex).toBeGreaterThan(allIndex);
+    const allIndex = code.indexOf('aria-label="Select all keys"');
+    expect(insertIndex).toBeGreaterThan(-1);
+    expect(deleteIndex).toBeGreaterThan(insertIndex);
+    expect(allIndex).toBeGreaterThan(deleteIndex);
   });
 
   it('A9: a blocked drag direction shows not-allowed + guarded tooltip for that direction only — the other direction stays available', () => {
@@ -2120,19 +2125,19 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 });
 
 describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
-  it('orders the action row as Key, Create rail, Push, Insert, Duplicate, Copy, Paste, Cut, Scissor, All, Trash (260905-d1w)', () => {
+  it('orders the action row as Key, Create rail, Push, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor (260905-d1w + Mj2-UAT trash relocation)', () => {
     const row = getActionRowBlock(source());
     const tokens = [
       'aria-label="Add key"',
       'aria-label="Create rail"',
       'aria-label="Push"',
       getActionAriaLabelToken('Insert key before'),
+      getActionAriaLabelToken('Delete Frame'),
       'aria-label="Duplicate key"',
       'aria-label="Copy key"',
       'aria-label="Paste key"',
       'aria-label="Cut key"',
       getActionAriaLabelToken('Split Key Rail'),
-      getActionAriaLabelToken('Delete Frame'),
     ];
     const indices = tokens.map((token) => row.indexOf(token));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
