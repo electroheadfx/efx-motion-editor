@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 4 of 10
 Status: Ready to execute
-Last activity: 2026-10-20 — Quick 261019-mj2 UAT remediation 2: trash after Insert, delete-slot inverse on empty/generated frames, Insert-at-key cursor/selection barrier fixed — retest pending
+Last activity: 2026-10-20 — Quick 261019-mj2 CLOSED — all UAT approved (trash after Insert, delete-slot inverse on empty/generated frames, Insert-at-key fix)
 
 Progress: [████████░░] 75%
 

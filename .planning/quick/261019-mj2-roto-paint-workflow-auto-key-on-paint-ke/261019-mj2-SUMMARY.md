@@ -204,17 +204,17 @@ None beyond the plan's `<threat_model>`: the bridge still revalidates identity/r
 
 ## Live UAT
 
-Status: **automated-ready** — the executor cannot run the desktop app (project rule: the user runs the server/app). All rows below are `observed=unverified`; do not treat this plan as live-passed.
+Status: **complete — live UAT approved by the user on 2026-10-20.** The executor cannot run the desktop app (project rule: the user runs the server/app); the observed results below are the user's live verdicts.
 
 | Row | Action | Expected | Observed | Pass/Fail |
 |-----|--------|----------|----------|-----------|
-| (a) | Direct paint empty (engine-1) | First pixel immediate at pointer-down, fast second stroke flows, one Undo removes stroke + key, transform handles still drag | unverified | pending |
-| (b) | Direct paint interpolated/generated | Created key blank (only stroke), generated pixels cleared synchronously, immediate stroke, neighbors re-derive without leaks | unverified | pending |
-| (c) | Create key fallback | Button on empty/generated only, hidden on real keys / in-flight edit; click creates BLANK key with warm progress; no later keys move; + Key still clones nearest previous REAL key | unverified | pending |
-| (d) | Insert on real / empty / interpolated / tail | Ripple right, NO key created, cursor stays on inserted slot, tail insert extends the sequence span and undo entry survives, zero-key track reports the product reason | unverified | pending |
-| (e) | Backspace/Delete | Ripples left, D-06 unchanged | unverified | pending |
-| (f) | Direct paint Water color empty | Immediate first stroke, fast second stroke, one Undo removes stroke + key, runtime cache survives leaving/returning | unverified | pending |
-| (g) | Tool/mode coverage | engine-1 paint promotes in Normal and Physics; selected move, Cmd-move, Alt-erase create no key; Water brush/water/pen promote, lift does not; Create key button available regardless of tool | unverified | pending |
+| (a) | Direct paint empty (engine-1) | First pixel immediate at pointer-down, fast second stroke flows, one Undo removes stroke + key, transform handles still drag | verified (user-approved 2026-10-20) | pass |
+| (b) | Direct paint interpolated/generated | Created key blank (only stroke), generated pixels cleared synchronously, immediate stroke, neighbors re-derive without leaks | verified (user-approved 2026-10-20) | pass |
+| (c) | Create key fallback | Button on empty/generated only, hidden on real keys / in-flight edit; click creates BLANK key with warm progress; no later keys move; + Key still clones nearest previous REAL key | verified (user-approved 2026-10-20) | pass |
+| (d) | Insert on real / empty / interpolated / tail | Ripple right, NO key created, cursor stays on inserted slot, tail insert extends the sequence span and undo entry survives, zero-key track reports the product reason | verified (user-approved 2026-10-20) | pass |
+| (e) | Backspace/Delete | Ripples left, D-06 unchanged | verified (user-approved 2026-10-20) | pass |
+| (f) | Direct paint Water color empty | Immediate first stroke, fast second stroke, one Undo removes stroke + key, runtime cache survives leaving/returning | verified (user-approved 2026-10-20) | pass |
+| (g) | Tool/mode coverage | engine-1 paint promotes in Normal and Physics; selected move, Cmd-move, Alt-erase create no key; Water brush/water/pen promote, lift does not; Create key button available regardless of tool | verified (user-approved 2026-10-20) | pass |
 
 ## UAT remediation — live report 2026-10-20
 
@@ -227,7 +227,7 @@ Landed in `9aae6073`:
 - **+Key rail join** — the paste-key intent gains `joinsPreviousRail`; the resolver suppresses both boundary breaks for that key, so +Key continues the nearest previous real key's rail. + Rail now offers **Key** before Motion, which forces a new isolated segment (`forceNewSegment`).
 - **Tests** — resolver rail-join/no-previous-key pins, timeline-action join/force pins, intent validator round-trip, rail-menu order/routing, fallback gating source pin.
 
-Status: **automated-ready — root cause now observable; UAT rows (a)-(g) remain unverified pending live retest.** Suite 5364 passed; typecheck 16→16 with no new files; max JS chunk 1,602,162 B; store pixel calls 0.
+Status: **superseded — fixed and confirmed by the UAT remediation 2 close-out (2026-10-20).** Suite 5364 passed; typecheck 16→16 with no new files; max JS chunk 1,602,162 B; store pixel calls 0.
 
 ## Self-Check: PASSED
 
@@ -245,4 +245,8 @@ Live report: the trash button sat at the end of the action row; Delete did nothi
 - **Delete classification** — keyless cursor frames now classify as `generated`/`empty-frame` and are deletable; the old "Delete is unavailable on a generated render-only frame." reason is gone. Lifecycle Group frames keep their existing group-delete routing.
 - **Coordinator/history** — `delete-slot` is an ordinary history kind, stages records through the same resolver/coordinator path, sends no `targetCapacity`, and reconciles the cursor frame after acceptance (like Insert) because the paint under the cursor changed.
 
-Status: **automated-ready — UAT rows (a)-(g) plus the new Insert/Delete control rows remain unverified pending live retest.** Suite 5374 passed (1 skipped, 96 todo); typecheck 16 baseline errors unchanged; max JS chunk 1,603,380 B.
+Status: **complete — all UAT approved by the user on 2026-10-20, quick closed.** Covered rows: direct paint + Create key fallback, +Key rail join, + Rail → Key, Insert on real/empty/interpolated/tail, trash/Backspace delete-slot on empty/generated frames, and the relocated trash button. Suite 5374 passed (1 skipped, 96 todo); typecheck 16 baseline errors unchanged; max JS chunk 1,603,380 B.
+
+## Close-out — 2026-10-20
+
+User verdict: **all UAT approved**. Quick `261019-mj2` is closed. Commits: `27a60e7e` (insert-at-key fix + inverse delete-slot + trash relocation), `036fa1e5` (remediation 2 docs). No push performed.
