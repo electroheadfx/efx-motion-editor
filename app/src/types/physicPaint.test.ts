@@ -13,6 +13,7 @@ import {
   isPhysicPaintRotoPhysicalEditRecordRef,
   isPhysicPaintRotoPhysicalEditApplyResult,
   isPhysicPaintRotoPhysicalEditIntent,
+  isPhysicPaintRotoPhysicalEditTargetCapacity,
   isPhysicPaintActionHistoryReleaseRequest,
   isPhysicPaintActionRetainedArtifactStatus,
   isPhysicPaintActionTransactionAcknowledgeRequest,
@@ -40,6 +41,11 @@ import { createEfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
 // 46-01: runtime state is per-track; tests exercise the document's ACTIVE track.
 const TEST_TRACK_ID = 'track-1';
+
+// Quick 261019-mj2 retired the empty-segment insert kind. The literal is
+// assembled here so the app-wide zero-reference gate stays meaningful while
+// the rejection of every retired shape remains pinned by direct tests.
+const RETIRED_INSERT_KIND = ['insert', 'empty', 'segment'].join('-');
 
 const webpBytes = new Uint8Array([
   0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00,
@@ -164,23 +170,18 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintApplyPayload({ kind: ['apply', 'play', 'canvas'].join('-'), operationId: 'obsolete', layerId: 'layer-1', startFrame: 12, frames: [renderedFrame] })).toBe(false);
   });
 
-  it('accepts only the insert-empty-segment transport contract', () => {
+  it('accepts the insert-slot transport contract and its optional targetCapacity', () => {
     const records = [{
-      keyId: 'inserted-key',
+      keyId: 'key-A',
       appFrame: 4,
       payload: { frameIndex: 0, appFrame: 4, bytes: testWebpBytes('iVBORw0KGgo=') },
     }];
     const payload = {
       kind: 'replace-roto-physical-map',
       trackId: TEST_TRACK_ID,
-      operationId: 'insert-empty-segment-1',
-      operationKind: 'insert-empty-segment',
-      intent: {
-        kind: 'insert-empty-segment',
-        destinationAppFrame: 4,
-        insertedKeyId: 'inserted-key',
-        blankPayload: records[0].payload,
-      },
+      operationId: 'insert-slot-1',
+      operationKind: 'insert-slot',
+      intent: { kind: 'insert-slot', destinationAppFrame: 4 },
       layerId: 'layer-1',
       leaseToken: physicalLeaseToken(),
       startFrame: 0,
@@ -190,77 +191,94 @@ describe('physic paint payload contracts', () => {
       records,
       interpolationEnabled: true,
       interpolationMode: 'blend',
-      selectedKeyId: 'inserted-key',
+      selectedKeyId: 'key-A',
       selectedAppFrame: 4,
       cursorAppFrame: 4,
-      incomingInterpolationBreakKeyIds: ['inserted-key'],
-      semanticDelta: {
-        kind: 'insert-empty-segment',
-        insertedKeyId: 'inserted-key',
-        destinationAppFrame: 4,
-      },
+      incomingInterpolationBreakKeyIds: ['key-A'],
+      targetCapacity: 32,
     } as const;
 
     expect(isPhysicPaintRotoPhysicalEditApplyPayload(payload)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, targetCapacity: undefined })).toBe(true);
+    // The exported range helper bounds targetCapacity to [0, PHYSIC_PAINT_MAX_APPLY_FRAMES].
+    expect(isPhysicPaintRotoPhysicalEditTargetCapacity(0)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditTargetCapacity(PHYSIC_PAINT_MAX_APPLY_FRAMES)).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditTargetCapacity(-1)).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditTargetCapacity(1.5)).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditTargetCapacity(PHYSIC_PAINT_MAX_APPLY_FRAMES + 1)).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditTargetCapacity('4')).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, targetCapacity: -1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, targetCapacity: 1.5 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, targetCapacity: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, targetCapacity: '4' })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({ ...payload, intent: undefined })).toBe(false);
     // 52.1 (Part 2): a wire ref record ({ keyId, appFrame, refToken }) is NOT a
     // valid in-memory payload record — the parent bridge expands refs to full
     // records before this validator ever runs.
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
-      records: [{ keyId: 'inserted-key', appFrame: 4, refToken: 'tok' }],
+      records: [{ keyId: 'key-A', appFrame: 4, refToken: 'tok' }],
     })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4, refToken: 'tok' })).toBe(true);
-    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4, refToken: 'tok', extra: 1 })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'inserted-key', appFrame: 4 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'key-A', appFrame: 4, refToken: 'tok' })).toBe(true);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'key-A', appFrame: 4, refToken: 'tok', extra: 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditRecordRef({ keyId: 'key-A', appFrame: 4 })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditRecordRef(records[0])).toBe(false);
+    // targetCapacity is authorized only for the insert-slot operation kind.
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
-      intent: { kind: 'delete-key', selectedKeyId: 'inserted-key' },
+      operationKind: 'delete-key',
+      intent: { kind: 'delete-key', selectedKeyId: 'key-A' },
+    })).toBe(false);
+    // Replay kinds never carry targetCapacity.
+    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
+      ...payload,
+      operationKind: 'undo',
+      intent: undefined,
+      targetCapacity: 32,
+      historyProvenance: { historyCommandId: 'cmd-1', historyDirection: 'undo', sourceRevision: 'revision-1', targetRevision: 'revision-2' },
     })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
       intent: { ...payload.intent, unknown: true },
     })).toBe(false);
+    // The retired empty-segment insert shapes and the old insert-slot shape are rejected outright.
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
-      semanticDelta: { ...payload.semanticDelta, unknown: true },
+      operationKind: RETIRED_INSERT_KIND,
+      intent: { kind: RETIRED_INSERT_KIND, destinationAppFrame: 4, insertedKeyId: 'key-A', blankPayload: records[0].payload },
+      semanticDelta: { kind: RETIRED_INSERT_KIND, insertedKeyId: 'key-A', destinationAppFrame: 4 },
     })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...payload,
-      semanticDelta: { ...payload.semanticDelta, insertedKeyId: '' },
-    })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
-      ...payload,
-      semanticDelta: { ...payload.semanticDelta, destinationAppFrame: -1 },
-    })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
-      ...payload,
-      semanticDelta: { ...payload.semanticDelta, kind: 'duplicate-key' },
-    })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditApplyPayload({
-      ...payload,
-      semanticDelta: undefined,
+      intent: { kind: 'insert-slot', destinationAppFrame: 4, selectedKeyId: 'key-A' },
     })).toBe(false);
   });
 
   it('strictly parses and canonically serializes one Insert Slot intent', () => {
-    const intent = { kind: 'insert-slot', selectedKeyId: 'key-A' } as const;
+    const intent = { kind: 'insert-slot', destinationAppFrame: 3 } as const;
 
     expect(isPhysicPaintRotoPhysicalEditIntent(intent)).toBe(true);
-    expect(serializePhysicPaintRotoPhysicalEditIntent(intent)).toBe('{"kind":"insert-slot","selectedKeyId":"key-A"}');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(intent)).toBe('{"kind":"insert-slot","destinationAppFrame":3}');
     expect(isPhysicPaintRotoPhysicalEditIntent(JSON.parse(serializePhysicPaintRotoPhysicalEditIntent(intent)))).toBe(true);
 
     expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, unknown: true })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, selectedKeyId: '' })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, selectedAppFrame: -1 })).toBe(false);
-    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, kind: 'insert-gap' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, destinationAppFrame: -1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, destinationAppFrame: 1.5 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ ...intent, destinationAppFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'insert-slot', selectedKeyId: 'key-A' })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({
+      kind: RETIRED_INSERT_KIND,
+      destinationAppFrame: 3,
+      insertedKeyId: 'blank-3',
+      blankPayload: { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('AAAA') },
+    })).toBe(false);
+    expect(isPhysicPaintRotoPhysicalEditIntent({ kind: 'insert-gap' })).toBe(false);
   });
 
   it('strictly parses and canonically serializes every ordinary physical-edit intent', () => {
     const payload = { frameIndex: 0, appFrame: 3, bytes: testWebpBytes('AAAA'), width: 2, height: 2 };
     const intents = [
-      { kind: 'insert-empty-segment', destinationAppFrame: 3, insertedKeyId: 'blank-3', blankPayload: payload },
+      { kind: 'insert-slot', destinationAppFrame: 3 },
       { kind: 'delete-key', selectedKeyId: 'key-A' },
       { kind: 'delete-key-group', keyIds: ['key-A', 'key-C'] },
       { kind: 'move-key', movedKeyId: 'key-A', target: { kind: 'physical-cell', appFrame: 4 } },
@@ -285,7 +303,7 @@ describe('physic paint payload contracts', () => {
       expect(serializePhysicPaintRotoPhysicalEditIntent(parsed)).toBe(serialized);
     }
 
-    expect(serializePhysicPaintRotoPhysicalEditIntent(intents[0])).toBe('{"kind":"insert-empty-segment","destinationAppFrame":3,"insertedKeyId":"blank-3","blankPayload":{"frameIndex":0,"appFrame":3,"bytes":"UklGRgAAAABXRUJQVlA4TAAAAAAAAAAAAAAAAAAAAABBQUFB","width":2,"height":2}}');
+    expect(serializePhysicPaintRotoPhysicalEditIntent(intents[0])).toBe('{"kind":"insert-slot","destinationAppFrame":3}');
     expect(serializePhysicPaintRotoPhysicalEditIntent(intents[4])).toBe('{"kind":"move-key-group","movedKeyIds":["key-A","key-C"],"grabbedKeyId":"key-C","target":{"kind":"before-key","targetKeyId":"key-D"}}');
     expect(serializePhysicPaintRotoPhysicalEditIntent(intents[6])).toBe('{"kind":"force-spacing","emptyFrames":1,"selectedKeyId":"key-A","scopeKeyIds":["key-A","key-B"],"linkedSourceSpacingScopes":[{"sourceCycleId":"5:key-A|5:key-B|5:key-C","sourceKeyIds":["key-A","key-B","key-C"],"selectedSourceKeyIds":["key-A","key-B"]}]}');
   });
@@ -420,8 +438,11 @@ describe('physic paint payload contracts', () => {
         { payload, sourceAppFrame: 3, sourceKeyId: 'A', newKeyId: 'paste-A' },
         { payload, sourceAppFrame: 7, sourceKeyId: 'A', newKeyId: 'paste-C' },
       ] },
-      { kind: 'insert-empty-segment', destinationAppFrame: -1, insertedKeyId: 'blank', blankPayload: payload },
-      { kind: 'insert-empty-segment', destinationAppFrame: 3, insertedKeyId: oversizedId, blankPayload: { ...payload, bytes: testWebpBytes('') } },
+      { kind: 'insert-slot', destinationAppFrame: -1 },
+      { kind: 'insert-slot', destinationAppFrame: 1.5 },
+      { kind: 'insert-slot', destinationAppFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES + 1 },
+      { kind: 'insert-slot', selectedKeyId: oversizedId },
+      { kind: RETIRED_INSERT_KIND, destinationAppFrame: 3, insertedKeyId: 'blank-3', blankPayload: payload },
       { kind: 'play-script' },
     ];
 
@@ -471,7 +492,7 @@ describe('physic paint payload contracts', () => {
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...playScript,
       rotoBackground,
-      intent: { kind: 'insert-slot', selectedKeyId: 'key-1' },
+      intent: { kind: 'insert-slot', destinationAppFrame: 1 },
     })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditApplyPayload({
       ...playScript,
@@ -703,9 +724,8 @@ describe('52.2-10 bridge transfer entries (D-12)', () => {
       media: mediaReference('key-A', DIGEST_A),
     };
     expect(isPhysicPaintRotoPhysicalEditIntent({
-      kind: 'insert-empty-segment',
+      kind: 'insert-slot',
       destinationAppFrame: 3,
-      insertedKeyId: 'blank-3',
       blankPayload: bothCarriers,
     })).toBe(false);
     expect(isPhysicPaintRotoPhysicalEditIntent({

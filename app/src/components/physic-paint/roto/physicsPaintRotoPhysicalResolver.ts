@@ -57,7 +57,7 @@
  *   are presentation metadata beside the complete mapping only.
  * - No payload mutation, store access, bridge call, history mutation,
  *   acknowledgement handling, or UI state. Identity/payload creation is limited
- *   to the explicit Duplicate, Paste, and blank `insert-empty-segment` intents.
+ *   to the explicit Duplicate and Paste intents; Insert never creates a key.
  * - Group movement uses one rigid physical delta anchored by the grabbed key;
  *   selected offsets stay fixed, unselected identities never move, and any
  *   collision rejects atomically. Group delete and scoped Force Spacing remain
@@ -170,7 +170,6 @@ export function buildCanonicalMoveGroupOverrideRecords(input: {
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
-  | 'insert-empty-segment'
   | 'delete-key'
   | 'delete-key-group'
   | 'delete-key-rail'
@@ -304,6 +303,19 @@ export interface PhysicPaintRotoPhysicalEditProposal {
   readonly selectedKeyId: string | null;
   /** Final physical frame of the selected identity, or null. */
   readonly selectedAppFrame: number | null;
+  /**
+   * Quick 261019-mj2: cursor/playhead authority after the edit. Insert keeps
+   * the cursor on the opened slot (which is NOT the shifted selection); every
+   * other kind falls back to the existing selection frame (0 when nothing is
+   * selected).
+   */
+  readonly cursorAppFrame: number;
+  /**
+   * Quick 261019-mj2: the single resolver-computed capacity for a gap insert.
+   * Present on every `insert-slot` proposal (equal to the input capacity when
+   * no extension is needed) and absent on every other operation kind.
+   */
+  readonly nextCapacity?: number;
   /** Presentation-only deltas for every moved or ripple-shifted identity. */
   readonly changes: readonly PhysicPaintRotoPhysicalIdentityChange[];
   /** Removed identity for Delete, null for every other operation. */
@@ -350,6 +362,7 @@ export type PhysicPaintRotoPhysicalEditFailureCode =
   | 'incomplete-mapping'
   | 'duplicate-destination-frame'
   | 'over-capacity'
+  | 'capacity-exhausted'
   | 'moved-as-target'
   | 'malformed-records'
   | 'malformed-payload'
@@ -575,7 +588,7 @@ export function createPhysicPaintRotoPasteKeyGroupIntent(
 }
 
 export interface PhysicPaintRotoPhysicalEditSemanticDeltaValidationInput {
-  readonly operationKind: 'insert-empty-segment' | 'duplicate-key' | 'paste-key' | 'paste-key-group';
+  readonly operationKind: 'duplicate-key' | 'paste-key' | 'paste-key-group';
   readonly currentRecords: unknown;
   readonly nextRecords: unknown;
   readonly semanticDelta: unknown;
@@ -613,35 +626,6 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
   }
   const currentById = new Map(current.map((record) => [record.keyId, record]));
   const nextById = new Map(next.map((record) => [record.keyId, record]));
-
-  if (input.operationKind === 'insert-empty-segment') {
-    const delta = input.semanticDelta;
-    if (!hasExactKeys(delta, ['kind', 'insertedKeyId', 'destinationAppFrame'])
-      || !isBoundedKeyId(delta.insertedKeyId)
-      || !isNonNegativeInteger(delta.destinationAppFrame)
-      || delta.destinationAppFrame >= input.capacity) {
-      return { ok: false, error: 'Empty-segment semantic declaration is malformed.' };
-    }
-    if (currentById.has(delta.insertedKeyId)) return { ok: false, error: 'Empty-segment identity is not fresh.' };
-    if (current.some((record) => record.appFrame === delta.destinationAppFrame)) {
-      return { ok: false, error: 'Empty-segment destination is occupied.' };
-    }
-    if (next.length !== current.length + 1) return { ok: false, error: 'Empty-segment insert must add exactly one record.' };
-    if (input.selectedKeyId !== delta.insertedKeyId || input.selectedAppFrame !== delta.destinationAppFrame) {
-      return { ok: false, error: 'Empty-segment insert must select the fresh identity.' };
-    }
-    for (const record of current) {
-      const proposed = nextById.get(record.keyId);
-      if (!proposed || !recordsEqual(proposed, record)) {
-        return { ok: false, error: `Empty-segment insert changed existing identity "${record.keyId}".` };
-      }
-    }
-    const inserted = nextById.get(delta.insertedKeyId);
-    if (!inserted || inserted.appFrame !== delta.destinationAppFrame) {
-      return { ok: false, error: 'Empty-segment record does not match the declared destination.' };
-    }
-    return { ok: true };
-  }
 
   if (input.operationKind === 'duplicate-key') {
     const delta = input.semanticDelta;
@@ -821,7 +805,6 @@ export function validatePhysicPaintRotoPhysicalEditSemanticDelta(
 
 function isResolverOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
-    || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'delete-key-rail'
@@ -1076,6 +1059,10 @@ interface Candidate {
   readonly nextLoopClips?: readonly PhysicPaintRotoLoopClip[] | null;
   /** Complete next incoming-break collection when ownership changes; absent otherwise. */
   readonly nextIncomingInterpolationBreakKeyIds?: readonly string[];
+  /** Quick 261019-mj2: cursor authority override (Insert keeps the opened slot). */
+  readonly cursorAppFrame?: number;
+  /** Quick 261019-mj2: resolver-computed capacity raise for a gap insert. */
+  readonly nextCapacity?: number;
 }
 
 /**
@@ -1101,29 +1088,29 @@ interface PushRail {
 }
 
 /**
- * D-05 Insert: shift the selected identity and every later real key right by
- * exactly one physical slot; earlier keys retain their frames; no key ID or
- * payload is created. Rejects the whole proposal when any final frame is
- * outside capacity (caught by the finalizer). Selection remains the selected
- * identity at its final frame.
+ * D-05 Insert: open one empty physical slot at the destination frame by
+ * shifting every identity at or after it right by exactly one slot; earlier
+ * keys retain their frames; no key ID or payload is created. The identity that
+ * occupied the destination (now destination + 1) becomes the selection when it
+ * exists. The cursor stays on the inserted empty slot. Rejects the whole
+ * proposal when any final frame is outside capacity (caught by the finalizer).
  */
 function buildInsertCandidate(
   identities: ValidatedIdentities,
-  selectedKeyId: string,
+  destinationFrame: number,
 ): Candidate {
-  const selectedFrame = identities.framesByKeyId.get(selectedKeyId);
-  // Caller has already validated that selectedKeyId exists.
   const mapping = new Map<string, number>();
   const roleByKeyId = new Map<string, 'moved' | 'ripple-right' | 'ripple-left' | 'reanchored'>();
+  let selectedKeyId: string | null = null;
 
   for (const identity of identities.ordered) {
-    if (identity.appFrame >= (selectedFrame as number)) {
-      const next = identity.appFrame + 1;
-      mapping.set(identity.keyId, next);
+    if (identity.appFrame >= destinationFrame) {
+      mapping.set(identity.keyId, identity.appFrame + 1);
       roleByKeyId.set(
         identity.keyId,
-        identity.keyId === selectedKeyId ? 'moved' : 'ripple-right',
+        identity.appFrame === destinationFrame ? 'moved' : 'ripple-right',
       );
+      if (identity.appFrame === destinationFrame) selectedKeyId = identity.keyId;
     } else {
       mapping.set(identity.keyId, identity.appFrame);
     }
@@ -1139,6 +1126,7 @@ function buildInsertCandidate(
     changed: true,
     roleByKeyId,
     drag: null,
+    cursorAppFrame: destinationFrame,
   };
 }
 
@@ -1149,45 +1137,6 @@ function buildInsertCandidate(
  * null. A deleted identity never appears in the complete map, ordered output,
  * cells, changes, or selection.
  */
-function buildInsertEmptySegmentCandidate(
-  identities: ValidatedIdentities,
-  records: readonly PhysicPaintRotoRealKeyRecord[],
-  intent: Extract<PhysicPaintRotoPhysicalEditIntent, { kind: 'insert-empty-segment' }>,
-  incomingInterpolationBreakKeyIds: readonly string[],
-): Candidate {
-  const inserted = Object.freeze({
-    kind: 'real-key' as const,
-    keyId: intent.insertedKeyId,
-    appFrame: intent.destinationAppFrame,
-    payload: clonePayloadAtFrame(intent.blankPayload, intent.destinationAppFrame),
-  }) as PhysicPaintRotoRealKeyRecord;
-  const nextRecords = [...records, inserted].sort((left, right) => left.appFrame - right.appFrame);
-  const expectedKeyIds = new Set(identities.keyIds);
-  expectedKeyIds.add(intent.insertedKeyId);
-  return {
-    mapping: new Map(nextRecords.map((record) => [record.keyId, record.appFrame])),
-    expectedKeyIds,
-    removedKeyId: null,
-    removedKeyIds: EMPTY_REMOVED_KEY_IDS,
-    selectedKeyId: intent.insertedKeyId,
-    operationKind: 'insert-empty-segment',
-    changed: true,
-    roleByKeyId: new Map(),
-    drag: null,
-    nextRecords: Object.freeze(nextRecords),
-    // Quick 260816-tv7: Insert always connects — the inserted key joins the
-    // nearest left segment and adds no incoming break, so the collection is
-    // passed through unchanged and any existing break on the right segment
-    // survives.
-    nextIncomingInterpolationBreakKeyIds: Object.freeze([...incomingInterpolationBreakKeyIds]),
-    semanticDelta: Object.freeze({
-      kind: 'insert-empty-segment',
-      insertedKeyId: intent.insertedKeyId,
-      destinationAppFrame: intent.destinationAppFrame,
-    }),
-  };
-}
-
 function buildDeleteCandidate(
   identities: ValidatedIdentities,
   selectedKeyId: string,
@@ -3575,6 +3524,10 @@ function finalizeProposal(
   incomingInterpolationBreakKeyIds: readonly string[],
 ): FinalizedProposal | FinalizedFailure {
   const { mapping, expectedKeyIds, operationKind } = candidate;
+  // Quick 261019-mj2: a gap insert computes its own capacity (extending for a
+  // tail slot), so every range/projection check below validates against the
+  // resolver's next capacity rather than the pre-insert input capacity.
+  const effectiveCapacity = candidate.nextCapacity ?? capacity;
 
   // 1. Prove exact identity-set coverage.
   if (mapping.size !== expectedKeyIds.size) {
@@ -3603,10 +3556,10 @@ function finalizeProposal(
   // 2. Prove unique in-range final frames.
   const seenFrames = new Set<number>();
   for (const frame of mapping.values()) {
-    if (!isNonNegativeInteger(frame) || frame >= capacity) {
+    if (!isNonNegativeInteger(frame) || frame >= effectiveCapacity) {
       return {
         ok: false,
-        resolution: fail('over-capacity', operationKind, `Final frame ${frame} is outside capacity ${capacity}.`),
+        resolution: fail('over-capacity', operationKind, `Final frame ${frame} is outside capacity ${effectiveCapacity}.`),
       };
     }
     if (seenFrames.has(frame)) {
@@ -3655,7 +3608,7 @@ function finalizeProposal(
   // 3. Derive the shared physical projection (ordering, interiors, cells).
   const projection = buildProjectionFromMapping(
     mapping,
-    capacity,
+    effectiveCapacity,
     interpolationEnabled,
     breakValidation.value,
   );
@@ -3691,10 +3644,6 @@ function finalizeProposal(
       affectedList.push(removedKeyId);
     }
   }
-  if (candidate.semanticDelta?.kind === 'insert-empty-segment'
-    && !affectedList.includes(candidate.semanticDelta.insertedKeyId)) {
-    affectedList.push(candidate.semanticDelta.insertedKeyId);
-  }
   if (candidate.semanticDelta?.kind === 'duplicate-key' && !affectedList.includes(candidate.semanticDelta.newKeyId)) {
     affectedList.push(candidate.semanticDelta.newKeyId);
   }
@@ -3705,8 +3654,15 @@ function finalizeProposal(
   const affectedKeyIds = Object.freeze(affectedList) as readonly string[];
 
   // 7. Build concise status.
+  const cursorAppFrame = candidate.cursorAppFrame ?? selectedAppFrame ?? 0;
   const code: 'ok' | 'ok-no-change' = candidate.changed ? 'ok' : 'ok-no-change';
-  const text = buildStatusText(operationKind, candidate.changed, selectedAppFrame, candidate.removedKeyIds);
+  const text = buildStatusText(
+    operationKind,
+    candidate.changed,
+    selectedAppFrame,
+    cursorAppFrame,
+    candidate.removedKeyIds,
+  );
 
   const status = Object.freeze({
     operationKind,
@@ -3725,6 +3681,7 @@ function finalizeProposal(
     generatedCells: generatedCellsFrozen,
     selectedKeyId,
     selectedAppFrame,
+    cursorAppFrame,
     changes: changesFrozen,
     removedKeyId: candidate.removedKeyId,
     removedKeyIds: candidate.removedKeyIds,
@@ -3734,6 +3691,9 @@ function finalizeProposal(
     nextIncomingInterpolationBreakKeyIds:
       candidate.nextIncomingInterpolationBreakKeyIds ?? null,
     semanticDelta: candidate.semanticDelta ?? null,
+    // Present on every insert proposal, absent everywhere else so callers can
+    // distinguish "no capacity decision" from "capacity unchanged".
+    ...(candidate.nextCapacity !== undefined ? { nextCapacity: candidate.nextCapacity } : {}),
     status,
   }) as PhysicPaintRotoPhysicalEditProposal;
 
@@ -3744,18 +3704,12 @@ function buildStatusText(
   operationKind: PhysicPaintRotoPhysicalEditOperationKind,
   changed: boolean,
   selectedAppFrame: number | null,
+  cursorAppFrame: number,
   removedKeyIds: readonly string[],
 ): string {
   if (operationKind === 'insert-slot') {
     if (!changed) return 'No change';
-    return selectedAppFrame === null
-      ? 'Inserted slot'
-      : `Inserted slot at frame ${selectedAppFrame}`;
-  }
-  if (operationKind === 'insert-empty-segment') {
-    return selectedAppFrame === null
-      ? 'Inserted empty key'
-      : `Inserted empty key at frame ${selectedAppFrame}`;
+    return `Inserted gap at frame ${cursorAppFrame}`;
   }
   if (operationKind === 'delete-key') {
     if (removedKeyIds.length === 0) return 'No change';
@@ -3900,7 +3854,7 @@ function validateSemanticInputRecords(
   input: unknown,
   identities: ValidatedIdentities,
   capacity: number,
-  operationKind: 'insert-empty-segment' | 'duplicate-key' | 'paste-key' | 'paste-key-group',
+  operationKind: 'duplicate-key' | 'paste-key' | 'paste-key-group',
 ): { ok: true; records: readonly PhysicPaintRotoRealKeyRecord[] } | { ok: false; resolution: PhysicPaintRotoPhysicalEditResolution } {
   let records: readonly PhysicPaintRotoRealKeyRecord[];
   try {
@@ -4048,99 +4002,54 @@ export function resolvePhysicPaintRotoPhysicalEdit(
 
   const intent = input.intent;
   if (intent.kind === 'insert-slot') {
-    if (!isBoundedKeyId(intent.selectedKeyId)) {
-      return fail('malformed-identity', operationKind, 'Insert requires a bounded selectedKeyId.');
-    }
-    if (!identities.keyIds.has(intent.selectedKeyId)) {
-      return fail('unknown-operation-identity', operationKind, `Insert targets unknown identity "${intent.selectedKeyId}".`);
+    // D-11: a gap insert opens a slot at the current frame; the cursor may sit
+    // on any real/generated/empty cell up to capacity, and capacity itself is a
+    // valid tail slot that extends the track by one.
+    if (
+      !isNonNegativeInteger(intent.destinationAppFrame)
+      || intent.destinationAppFrame > PHYSIC_PAINT_MAX_APPLY_FRAMES
+      || intent.destinationAppFrame > input.capacity
+    ) {
+      return fail('out-of-range-frame', operationKind, 'Insert destination is outside the openable frame range.');
     }
     if (identities.ordered.length === 0) {
       return fail('empty-key-set', operationKind, 'Insert requires at least one real key.');
     }
     // 43.2 ordinary-edit ownership guard (CR-01): the right ripple moves every
-    // key at appFrame >= selectedFrame. When ANY of them is Group-referenced,
-    // the insert would shift Group-owned source keys against their unchanged
-    // lifecycle records — fail closed. No suppression is possible for a right
-    // ripple (the pinned key cannot share the opened slot), so the only safe
-    // path is an empty-frame insert-empty-segment.
+    // key at appFrame >= destinationAppFrame. When ANY of them is Group-
+    // referenced, the insert would shift Group-owned source keys against their
+    // unchanged lifecycle records — fail closed.
     const loopReferencedKeyIds = new Set(loopClips.flatMap((clip) => clip.sourceKeyIds));
-    const selectedFrame = identities.framesByKeyId.get(intent.selectedKeyId) as number;
     const rippledGroupKeys = identities.ordered.filter(
-      (identity) => identity.appFrame >= selectedFrame && loopReferencedKeyIds.has(identity.keyId),
+      (identity) => identity.appFrame >= intent.destinationAppFrame && loopReferencedKeyIds.has(identity.keyId),
     );
     if (rippledGroupKeys.length > 0) {
       return fail('loop-source-key-insert-rejected', operationKind, loopSourceKeyInsertRejectedText(rippledGroupKeys.length));
     }
-    const candidate = buildInsertCandidate(identities, intent.selectedKeyId);
-    const finalized = finalizeProposal(candidate, identities, input.capacity, input.interpolationEnabled, incomingInterpolationBreakKeyIds);
-    if (!finalized.ok) return finalized.resolution;
-    return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
-  }
-
-  if (intent.kind === 'insert-empty-segment') {
-    if (!isNonNegativeInteger(intent.destinationAppFrame) || intent.destinationAppFrame >= input.capacity) {
-      return fail('out-of-range-frame', operationKind, 'Empty-segment destination is outside capacity.');
+    const candidate = buildInsertCandidate(identities, intent.destinationAppFrame);
+    // The ONE capacity computation: the shifted right tail may need one extra
+    // slot, and a tail insert at capacity opens a brand-new slot. Downstream
+    // modules carry this value unchanged and must never recompute it.
+    let highestFinalKeyFrame = 0;
+    for (const frame of candidate.mapping.values()) {
+      if (frame > highestFinalKeyFrame) highestFinalKeyFrame = frame;
     }
-    if (!isBoundedKeyId(intent.insertedKeyId) || identities.keyIds.has(intent.insertedKeyId)) {
-      return fail('duplicate-id', operationKind, 'Empty-segment insert requires one fresh bounded identity.');
-    }
-    if (!isPhysicPaintRotoRealKeyPayload(intent.blankPayload)) {
-      return fail('malformed-payload', operationKind, 'Empty-segment blank payload is malformed.');
-    }
-    const recordsResult = validateSemanticInputRecords(
-      input.records,
-      identities,
+    const nextCapacity = Math.max(
       input.capacity,
-      'insert-empty-segment',
+      highestFinalKeyFrame + 1,
+      intent.destinationAppFrame + 1,
     );
-    if (!recordsResult.ok) return recordsResult.resolution;
-    if (recordsResult.records.some((record) => record.appFrame === intent.destinationAppFrame)) {
-      return fail('duplicate-destination-frame', operationKind, 'Empty-segment destination is occupied.');
+    if (nextCapacity > PHYSIC_PAINT_MAX_APPLY_FRAMES) {
+      return fail('capacity-exhausted', operationKind, 'Insert would exceed the maximum physical frame capacity.');
     }
-    const currentProjection = buildProjectionFromMapping(
-      new Map(identities.ordered.map((identity) => [identity.keyId, identity.appFrame])),
-      input.capacity,
-      input.interpolationEnabled,
-      incomingInterpolationBreakKeyIds,
-    );
-    if (currentProjection.cells[intent.destinationAppFrame]?.kind !== 'empty') {
-      return fail('malformed-target', operationKind, 'Empty-segment destination is generated or render-only.');
-    }
-    if (loopClips.length > 0) {
-      const loopContext = derivePhysicPaintRotoLoopRanges({
-        identities: identities.ordered,
-        loopClips,
-        capacity: input.capacity,
-        interpolationEnabled: input.interpolationEnabled,
-      });
-      if (resolvePhysicPaintRotoLoopFrame(loopContext, intent.destinationAppFrame).kind !== 'empty') {
-        return fail('malformed-target', operationKind, 'Empty-segment destination is linked.');
-      }
-    }
-    const candidate = buildInsertEmptySegmentCandidate(
-      identities,
-      recordsResult.records,
-      intent,
-      incomingInterpolationBreakKeyIds,
-    );
     const finalized = finalizeProposal(
-      candidate,
+      { ...candidate, nextCapacity },
       identities,
       input.capacity,
       input.interpolationEnabled,
       incomingInterpolationBreakKeyIds,
     );
     if (!finalized.ok) return finalized.resolution;
-    const semanticValidation = validatePhysicPaintRotoPhysicalEditSemanticDelta({
-      operationKind: 'insert-empty-segment',
-      currentRecords: recordsResult.records,
-      nextRecords: finalized.proposal.nextRecords,
-      semanticDelta: finalized.proposal.semanticDelta,
-      capacity: input.capacity,
-      selectedKeyId: finalized.proposal.selectedKeyId,
-      selectedAppFrame: finalized.proposal.selectedAppFrame,
-    });
-    if (!semanticValidation.ok) return fail('invalid-semantic-delta', operationKind, semanticValidation.error);
     return Object.freeze({ ok: true as const, proposal: finalized.proposal }) as PhysicPaintRotoPhysicalEditResolution;
   }
 

@@ -156,8 +156,6 @@ function normalizeParsedPayload(payload: PhysicPaintRotoRealKeyPayload): PhysicP
 
 function normalizeParsedIntent(intent: PhysicPaintRotoPhysicalEditIntent): PhysicPaintRotoPhysicalEditIntent {
   switch (intent.kind) {
-    case 'insert-empty-segment':
-      return { ...intent, blankPayload: normalizeParsedPayload(intent.blankPayload) };
     case 'paste-key':
       return { ...intent, clipboardPayload: normalizeParsedPayload(intent.clipboardPayload) };
     case 'paste-key-group':
@@ -188,7 +186,7 @@ function roundTripPhysicalDocument(document: PhysicPaintRotoPhysicalDocument): P
 
 describe('transport-safe physical edit intent tracer', () => {
   it('reproduces the direct Insert Slot proposal after canonical serialization and strict parsing', () => {
-    const directIntent = { kind: 'insert-slot', selectedKeyId: 'B' } as const;
+    const directIntent = { kind: 'insert-slot', destinationAppFrame: 3 } as const;
     const serialized = serializePhysicPaintRotoPhysicalEditIntent(directIntent);
     const parsed: unknown = JSON.parse(serialized);
     if (!isPhysicPaintRotoPhysicalEditIntent(parsed)) {
@@ -202,6 +200,10 @@ describe('transport-safe physical edit intent tracer', () => {
     expect(reproduced.ok).toBe(true);
     if (!reproduced.ok) throw new Error('Parsed Insert Slot intent must resolve');
     expect(Object.fromEntries(reproduced.proposal.mapping)).toEqual({ A: 1, B: 4, C: 6, D: 11 });
+    expect(reproduced.proposal.selectedKeyId).toBe('B');
+    expect(reproduced.proposal.selectedAppFrame).toBe(4);
+    expect(reproduced.proposal.cursorAppFrame).toBe(3);
+    expect(reproduced.proposal.nextCapacity).toBe(PHYSIC_PAINT_MAX_APPLY_FRAMES);
   });
 
   it('reproduces every ordinary direct resolver proposal from one parsed canonical intent', () => {
@@ -221,7 +223,7 @@ describe('transport-safe physical edit intent tracer', () => {
       readonly resolve: (intent: PhysicPaintRotoPhysicalEditIntent) => PhysicPaintRotoPhysicalEditResolution;
       readonly expectedMapping: Readonly<Record<string, number>>;
     }[] = [
-      { intent: { kind: 'insert-empty-segment', destinationAppFrame: 0, insertedKeyId: 'blank-0', blankPayload: payloadAt(0) }, resolve: resolveBaselineWithRecords, expectedMapping: { 'blank-0': 0, A: 1, B: 3, C: 5, D: 10 } },
+      { intent: { kind: 'insert-slot', destinationAppFrame: 0 }, resolve: resolveBaseline, expectedMapping: { A: 2, B: 4, C: 6, D: 11 } },
       { intent: { kind: 'delete-key', selectedKeyId: 'B' }, resolve: resolveBaseline, expectedMapping: { A: 1, C: 4, D: 9 } },
       { intent: { kind: 'delete-key-group', keyIds: ['B', 'C'] }, resolve: resolveBaseline, expectedMapping: { A: 1, D: 8 } },
       { intent: { kind: 'move-key', movedKeyId: 'B', target: { kind: 'after-key', targetKeyId: 'C' } }, resolve: resolveBaseline, expectedMapping: { A: 1, C: 5, B: 6, D: 11 } },
@@ -463,109 +465,211 @@ describe('intentional incoming interpolation breaks', () => {
     });
   });
 
-  it('proposes one empty real key and one incoming break atomically', () => {
+  it('inserts a pure gap at an empty frame without creating a key', () => {
     const records = [
       buildBaselineRecords()[0],
       { ...buildBaselineRecords()[1], keyId: 'B', appFrame: 6, payload: { ...buildBaselineRecords()[1].payload, appFrame: 6 } },
     ];
-    const loopClips = Object.freeze([]);
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
-      intent: {
-        kind: 'insert-empty-segment',
-        destinationAppFrame: 3,
-        insertedKeyId: 'blank-3',
-        blankPayload: {
-          frameIndex: 0,
-          appFrame: 3,
-          bytes: testWebpBytes('AAAA'),
-          width: 2,
-          height: 2,
-        },
-      },
+      intent: { kind: 'insert-slot', destinationAppFrame: 3 },
       parentEndExclusive: 8,
       capacity: 8,
       interpolationEnabled: false,
-      loopClips,
+      loopClips: Object.freeze([]),
       incomingInterpolationBreakKeyIds: [],
     });
 
     expect(resolution.ok).toBe(true);
-    if (!resolution.ok) throw new Error('Empty segment insert must resolve');
-    expect(resolution.proposal.nextRecords).toEqual([
-      records[0],
-      {
-        kind: 'real-key',
-        keyId: 'blank-3',
-        appFrame: 3,
-        payload: {
-          frameIndex: 0,
-          appFrame: 3,
-          bytes: testWebpBytes('AAAA'),
-          width: 2,
-          height: 2,
-        },
-      },
-      records[1],
-    ]);
-    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual([]);
-    expect(resolution.proposal.nextLoopClips).toBeNull();
-    expect(resolution.proposal.semanticDelta).toEqual({
-      kind: 'insert-empty-segment',
-      insertedKeyId: 'blank-3',
-      destinationAppFrame: 3,
-    });
-    expect(resolution.proposal.selectedKeyId).toBe('blank-3');
-    expect(resolution.proposal.selectedAppFrame).toBe(3);
+    if (!resolution.ok) throw new Error('Insert gap must resolve');
+    expect(resolution.proposal.nextRecords).toBeNull();
+    expect(resolution.proposal.semanticDelta).toBeNull();
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, B: 7 });
+    expect(resolution.proposal.selectedKeyId).toBeNull();
+    expect(resolution.proposal.selectedAppFrame).toBeNull();
+    expect(resolution.proposal.cursorAppFrame).toBe(3);
+    expect(resolution.proposal.nextCapacity).toBe(8);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
   });
 
-  it('rejects every non-empty-segment target without a proposal', () => {
-    const records = [
-      { ...buildBaselineRecords()[0], keyId: 'A', appFrame: 0, payload: { ...buildBaselineRecords()[0].payload, appFrame: 0 } },
-      { ...buildBaselineRecords()[1], keyId: 'B', appFrame: 6, payload: { ...buildBaselineRecords()[1].payload, appFrame: 6 } },
+  it('insert at an occupied frame ripples every key at or after it and keeps the cursor at the opened slot', () => {
+    const resolution = resolveBaseline({ kind: 'insert-slot', destinationAppFrame: 3 });
+    expect(resolution.ok).toBe(true);
+    if (!resolution.ok) throw new Error('Occupied insert must resolve');
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, B: 4, C: 6, D: 11 });
+    expect(resolution.proposal.selectedKeyId).toBe('B');
+    expect(resolution.proposal.selectedAppFrame).toBe(4);
+    expect(resolution.proposal.cursorAppFrame).toBe(3);
+    expect(resolution.proposal.changes).toEqual([
+      { keyId: 'B', beforeAppFrame: 3, afterAppFrame: 4, role: 'moved' },
+      { keyId: 'C', beforeAppFrame: 5, afterAppFrame: 6, role: 'ripple-right' },
+      { keyId: 'D', beforeAppFrame: 10, afterAppFrame: 11, role: 'ripple-right' },
+    ]);
+    expect(resolution.proposal.nextCapacity).toBe(PHYSIC_PAINT_MAX_APPLY_FRAMES);
+  });
+
+  it('insert at an empty or generated frame ripples later keys with no selection', () => {
+    const identities = [
+      { keyId: 'A', appFrame: 0 },
+      { keyId: 'B', appFrame: 2 },
+      { keyId: 'C', appFrame: 6 },
     ];
-    const base = {
-      identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
-      records,
+    const empty = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'insert-slot', destinationAppFrame: 4 },
       parentEndExclusive: 16,
       capacity: 16,
-      interpolationEnabled: false,
-      incomingInterpolationBreakKeyIds: [],
-    } as const;
-    const intent = (destinationAppFrame: number, blankPayload: PhysicPaintRotoRealKeyPayload = {
-      frameIndex: 0,
-      appFrame: destinationAppFrame,
-      bytes: testWebpBytes('AAAA'),
-    }) => ({
-      kind: 'insert-empty-segment' as const,
-      destinationAppFrame,
-      insertedKeyId: `blank-${destinationAppFrame}`,
-      blankPayload,
+      interpolationEnabled: true,
     });
-    const resolutions = [
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(0) }),
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, interpolationEnabled: true, intent: intent(3) }),
-      resolvePhysicPaintRotoPhysicalEdit({
-        ...base,
-        loopClips: [{ loopId: 'loop-linked', placementStart: 10, sourceKeyIds: ['A', 'B'], repeat: 2, mode: 'static' }],
-        intent: intent(10),
-      }),
-      resolvePhysicPaintRotoPhysicalEdit({
-        ...base,
-        loopClips: [{ loopId: 'loop-unresolved', placementStart: 10, sourceKeyIds: ['ghost-A', 'ghost-B'], repeat: 2, mode: 'static' }],
-        intent: intent(10),
-      }),
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(-1) }),
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(16) }),
-      resolvePhysicPaintRotoPhysicalEdit({ ...base, intent: intent(3, { appFrame: 3, bytes: testWebpBytes('') } as never) }),
-    ];
+    const generated = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'insert-slot', destinationAppFrame: 3 },
+      parentEndExclusive: 16,
+      capacity: 16,
+      interpolationEnabled: true,
+    });
 
-    expect(resolutions).toHaveLength(7);
-    for (const resolution of resolutions) {
-      expect(resolution.ok).toBe(false);
-      expect('proposal' in resolution).toBe(false);
-    }
+    expect(empty.ok).toBe(true);
+    expect(generated.ok).toBe(true);
+    if (!empty.ok || !generated.ok) throw new Error('Empty/generated inserts must resolve');
+    expect(Object.fromEntries(empty.proposal.mapping)).toEqual({ A: 0, B: 2, C: 7 });
+    expect(Object.fromEntries(generated.proposal.mapping)).toEqual({ A: 0, B: 2, C: 7 });
+    expect(empty.proposal.selectedKeyId).toBeNull();
+    expect(generated.proposal.selectedKeyId).toBeNull();
+    expect(empty.proposal.cursorAppFrame).toBe(4);
+    expect(generated.proposal.cursorAppFrame).toBe(3);
+    expect(empty.proposal.cells[4]).toEqual({
+      kind: 'generated',
+      appFrame: 4,
+      leftKeyId: 'B',
+      rightKeyId: 'C',
+    });
+    expect(generated.proposal.cells[3]).toEqual({
+      kind: 'generated',
+      appFrame: 3,
+      leftKeyId: 'B',
+      rightKeyId: 'C',
+    });
+  });
+
+  it('insert at the tail moves nothing and extends capacity only when the slot is new', () => {
+    const identities = [
+      { keyId: 'A', appFrame: 0 },
+      { keyId: 'B', appFrame: 2 },
+    ];
+    const inside = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'insert-slot', destinationAppFrame: 6 },
+      parentEndExclusive: 8,
+      capacity: 8,
+      interpolationEnabled: false,
+    });
+    const tail = resolvePhysicPaintRotoPhysicalEdit({
+      identities,
+      intent: { kind: 'insert-slot', destinationAppFrame: 8 },
+      parentEndExclusive: 9,
+      capacity: 8,
+      interpolationEnabled: false,
+    });
+
+    expect(inside.ok).toBe(true);
+    expect(tail.ok).toBe(true);
+    if (!inside.ok || !tail.ok) throw new Error('Tail inserts must resolve');
+    expect(Object.fromEntries(inside.proposal.mapping)).toEqual({ A: 0, B: 2 });
+    expect(inside.proposal.nextCapacity).toBe(8);
+    expect(inside.proposal.cursorAppFrame).toBe(6);
+    expect(Object.fromEntries(tail.proposal.mapping)).toEqual({ A: 0, B: 2 });
+    expect(tail.proposal.nextCapacity).toBe(9);
+    expect(tail.proposal.cursorAppFrame).toBe(8);
+    expect(tail.proposal.selectedKeyId).toBeNull();
+  });
+
+  it('insert at the last capacity slot or at capacity extends capacity by one', () => {
+    const atLastSlot = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [{ keyId: 'A', appFrame: 3 }],
+      intent: { kind: 'insert-slot', destinationAppFrame: 3 },
+      parentEndExclusive: 4,
+      capacity: 4,
+      interpolationEnabled: false,
+    });
+    const atCapacity = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [{ keyId: 'A', appFrame: 2 }],
+      intent: { kind: 'insert-slot', destinationAppFrame: 4 },
+      parentEndExclusive: 4,
+      capacity: 4,
+      interpolationEnabled: false,
+    });
+
+    expect(atLastSlot.ok).toBe(true);
+    expect(atCapacity.ok).toBe(true);
+    if (!atLastSlot.ok || !atCapacity.ok) throw new Error('Boundary inserts must resolve');
+    expect(Object.fromEntries(atLastSlot.proposal.mapping)).toEqual({ A: 4 });
+    expect(atLastSlot.proposal.nextCapacity).toBe(5);
+    expect(atLastSlot.proposal.selectedKeyId).toBe('A');
+    expect(atLastSlot.proposal.cursorAppFrame).toBe(3);
+    expect(Object.fromEntries(atCapacity.proposal.mapping)).toEqual({ A: 2 });
+    expect(atCapacity.proposal.nextCapacity).toBe(5);
+    expect(atCapacity.proposal.cursorAppFrame).toBe(4);
+  });
+
+  it('fails closed with capacity-exhausted instead of clamping or dropping a key', () => {
+    const shiftOverflow = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [{ keyId: 'A', appFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES - 1 }],
+      intent: { kind: 'insert-slot', destinationAppFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES - 1 },
+      parentEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+      capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+      interpolationEnabled: false,
+    });
+    const tailOverflow = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [{ keyId: 'A', appFrame: 0 }],
+      intent: { kind: 'insert-slot', destinationAppFrame: PHYSIC_PAINT_MAX_APPLY_FRAMES },
+      parentEndExclusive: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+      capacity: PHYSIC_PAINT_MAX_APPLY_FRAMES,
+      interpolationEnabled: false,
+    });
+
+    expect(shiftOverflow.ok).toBe(false);
+    expect(tailOverflow.ok).toBe(false);
+    if (shiftOverflow.ok || tailOverflow.ok) throw new Error('Overflowing inserts must fail closed');
+    expect(shiftOverflow.failure.code).toBe('capacity-exhausted');
+    expect(tailOverflow.failure.code).toBe('capacity-exhausted');
+  });
+
+  it('rejects insert frames beyond capacity and keeps the empty-key-set guard', () => {
+    const beyondCapacity = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [{ keyId: 'A', appFrame: 0 }],
+      intent: { kind: 'insert-slot', destinationAppFrame: 5 },
+      parentEndExclusive: 4,
+      capacity: 4,
+      interpolationEnabled: false,
+    });
+    const emptyTrack = resolvePhysicPaintRotoPhysicalEdit({
+      identities: [],
+      intent: { kind: 'insert-slot', destinationAppFrame: 0 },
+      parentEndExclusive: 4,
+      capacity: 4,
+      interpolationEnabled: false,
+    });
+
+    expect(beyondCapacity.ok).toBe(false);
+    expect(emptyTrack.ok).toBe(false);
+    if (beyondCapacity.ok || emptyTrack.ok) throw new Error('Invalid inserts must fail closed');
+    expect(beyondCapacity.failure.code).toBe('out-of-range-frame');
+    expect(emptyTrack.failure.code).toBe('empty-key-set');
+  });
+
+  it('reports nextCapacity only on insert proposals and keeps cursorAppFrame on every proposal', () => {
+    const insert = resolveBaseline({ kind: 'insert-slot', destinationAppFrame: 3 });
+    const deletion = resolveBaseline({ kind: 'delete-key', selectedKeyId: 'B' });
+
+    expect(insert.ok).toBe(true);
+    expect(deletion.ok).toBe(true);
+    if (!insert.ok || !deletion.ok) throw new Error('Proposals must resolve');
+    expect('nextCapacity' in insert.proposal).toBe(true);
+    expect('nextCapacity' in deletion.proposal).toBe(false);
+    expect(insert.proposal.cursorAppFrame).toBe(3);
+    expect(deletion.proposal.cursorAppFrame).toBe(deletion.proposal.selectedAppFrame);
   });
 
   it('keeps break ownership dormant while interpolation is off or the owner is first', () => {
@@ -944,23 +1048,12 @@ describe('incoming interpolation break lifecycle', () => {
     expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['A']);
   });
 
-  it('insert-empty-segment inside a intentional gap connects left and preserves the right break', () => {
+  it('insert inside an intentional gap creates no key and preserves the right break', () => {
     const records = buildBaselineRecords();
     const resolution = resolvePhysicPaintRotoPhysicalEdit({
       identities: records.map(({ keyId, appFrame }) => ({ keyId, appFrame })),
       records,
-      intent: {
-        kind: 'insert-empty-segment',
-        destinationAppFrame: 7,
-        insertedKeyId: 'blank-7',
-        blankPayload: {
-          frameIndex: 0,
-          appFrame: 7,
-          bytes: testWebpBytes('AAAA'),
-          width: 2,
-          height: 2,
-        },
-      },
+      intent: { kind: 'insert-slot', destinationAppFrame: 7 },
       parentEndExclusive: 16,
       capacity: 16,
       interpolationEnabled: true,
@@ -969,9 +1062,12 @@ describe('incoming interpolation break lifecycle', () => {
 
     expect(resolution.ok).toBe(true);
     if (!resolution.ok) throw new Error('Gap insert must resolve');
-    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toEqual(['D']);
-    expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'blank-7')).toBe(true);
+    expect(resolution.proposal.nextIncomingInterpolationBreakKeyIds).toBeNull();
+    expect(resolution.proposal.nextRecords).toBeNull();
+    expect(Object.fromEntries(resolution.proposal.mapping)).toEqual({ A: 1, B: 3, C: 5, D: 11 });
     expect(resolution.proposal.generatedCells.some((cell) => cell.kind === 'generated' && cell.rightKeyId === 'D')).toBe(false);
+    // D owns an incoming break: the C..D interior stays empty even after the ripple.
+    expect(resolution.proposal.cells[7]).toEqual({ kind: 'empty', appFrame: 7 });
   });
 
   // --- Task 3 (plan 02): stable-key-owned break derivation for move-group (D-09..D-13) ---
@@ -3875,7 +3971,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'G1B', appFrame: 1 },
         { keyId: 'X', appFrame: 5 },
       ],
-      intent: { kind: 'insert-slot', selectedKeyId: 'G1A' },
+      intent: { kind: 'insert-slot', destinationAppFrame: 0 },
       parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
@@ -3897,7 +3993,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'G2A', appFrame: 8 },
         { keyId: 'G2B', appFrame: 9 },
       ],
-      intent: { kind: 'insert-slot', selectedKeyId: 'X' },
+      intent: { kind: 'insert-slot', destinationAppFrame: 5 },
       parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,
@@ -3918,7 +4014,7 @@ describe('Phase 43.2 ordinary insert/duplicate beside Groups', () => {
         { keyId: 'X', appFrame: 5 },
         { keyId: 'Y', appFrame: 6 },
       ],
-      intent: { kind: 'insert-slot', selectedKeyId: 'X' },
+      intent: { kind: 'insert-slot', destinationAppFrame: 5 },
       parentEndExclusive: 32,
       capacity: 32,
       interpolationEnabled: false,

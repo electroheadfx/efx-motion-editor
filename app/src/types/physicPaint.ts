@@ -372,6 +372,19 @@ export function isPhysicPaintActionTransactionResult(value: unknown): value is P
 export const PHYSIC_PAINT_MAX_APPLY_FRAMES = 600;
 export const PHYSIC_PAINT_DEFAULT_APPLY_FRAMES = 4;
 
+/**
+ * Quick 261019-mj2: range guard for the optional gap-insert capacity raise.
+ * The resolver's `proposal.nextCapacity` is the only producer; transport
+ * validators use this helper before the parent bridge checks that the value
+ * never shrinks the current capacity.
+ */
+export function isPhysicPaintRotoPhysicalEditTargetCapacity(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= 0
+    && value <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
+}
+
 export const PHYSIC_PAINT_MIN_APPLY_FRAMES = 1;
 
 /** Transport-safe target for one ordinary physical key move. */
@@ -393,12 +406,14 @@ export interface PhysicPaintRotoLinkedSourceSpacingScope {
  * until the producer/consumer activation cutover.
  */
 export type PhysicPaintRotoPhysicalEditIntent =
-  | { readonly kind: 'insert-slot'; readonly selectedKeyId: string }
   | {
-      readonly kind: 'insert-empty-segment';
+      /**
+       * Quick 261019-mj2: Insert is a pure gap. Every real key at or after
+       * `destinationAppFrame` shifts one slot right and no key is created; the
+       * cursor stays on the opened slot.
+       */
+      readonly kind: 'insert-slot';
       readonly destinationAppFrame: number;
-      readonly insertedKeyId: string;
-      readonly blankPayload: PhysicPaintRotoRealKeyPayload;
     }
   | { readonly kind: 'delete-key'; readonly selectedKeyId: string }
   | { readonly kind: 'delete-key-group'; readonly keyIds: readonly string[] }
@@ -560,14 +575,13 @@ function isPhysicPaintRotoPasteKeyGroupEntries(value: unknown): value is Extract
 /** Strict standalone parser for every ordinary physical-edit authorization request. */
 export function isPhysicPaintRotoPhysicalEditIntent(value: unknown): value is PhysicPaintRotoPhysicalEditIntent {
   if (!isRecord(value)) return false;
-  if (value.kind === 'insert-slot' || value.kind === 'delete-key') {
-    return hasOnlyKeys(value, ['kind', 'selectedKeyId']) && isBoundedPhysicalKeyId(value.selectedKeyId);
-  }
-  if (value.kind === 'insert-empty-segment') {
-    return hasOnlyKeys(value, ['kind', 'destinationAppFrame', 'insertedKeyId', 'blankPayload'])
+  if (value.kind === 'insert-slot') {
+    return hasOnlyKeys(value, ['kind', 'destinationAppFrame'])
       && isNonNegativeInteger(value.destinationAppFrame)
-      && isBoundedPhysicalKeyId(value.insertedKeyId)
-      && isPhysicPaintRotoRealKeyPayload(value.blankPayload);
+      && value.destinationAppFrame <= PHYSIC_PAINT_MAX_APPLY_FRAMES;
+  }
+  if (value.kind === 'delete-key') {
+    return hasOnlyKeys(value, ['kind', 'selectedKeyId']) && isBoundedPhysicalKeyId(value.selectedKeyId);
   }
   if (value.kind === 'delete-key-group' || value.kind === 'delete-key-rail') {
     return hasOnlyKeys(value, ['kind', 'keyIds']) && hasUniqueBoundedPhysicalKeyIds(value.keyIds);
@@ -857,10 +871,9 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
   }
   switch (intent.kind) {
     case 'insert-slot':
+      return JSON.stringify({ kind: intent.kind, destinationAppFrame: intent.destinationAppFrame });
     case 'delete-key':
       return JSON.stringify({ kind: intent.kind, selectedKeyId: intent.selectedKeyId });
-    case 'insert-empty-segment':
-      return JSON.stringify({ kind: intent.kind, destinationAppFrame: intent.destinationAppFrame, insertedKeyId: intent.insertedKeyId, blankPayload: canonicalPhysicalEditPayload(intent.blankPayload) });
     case 'delete-key-group':
     case 'delete-key-rail':
       return JSON.stringify({ kind: intent.kind, keyIds: [...intent.keyIds] });
@@ -981,7 +994,6 @@ export function serializePhysicPaintRotoPhysicalEditIntent(intent: PhysicPaintRo
  */
 export type PhysicPaintRotoPhysicalEditOperationKind =
   | 'insert-slot'
-  | 'insert-empty-segment'
   | 'delete-key'
   | 'delete-key-group'
   | 'delete-key-rail'
@@ -1027,11 +1039,6 @@ export type RailSetDeleteMember =
  * records and the submitted complete next records before mutation.
  */
 export type PhysicPaintRotoPhysicalEditSemanticDelta =
-  | {
-      readonly kind: 'insert-empty-segment';
-      readonly insertedKeyId: string;
-      readonly destinationAppFrame: number;
-    }
   | {
       readonly kind: 'duplicate-key';
       readonly sourceKeyId: string;
@@ -1212,6 +1219,13 @@ interface PhysicPaintRotoPhysicalEditApplyPayloadBase {
   readonly selectedAppFrame: number | null;
   /** Complete physical cursor authority, independent from selection and operation target. */
   readonly cursorAppFrame: number;
+  /**
+   * Quick 261019-mj2: capacity raise authorized only for a gap insert. The
+   * resolver's `proposal.nextCapacity` is the single computation; the child
+   * coordinator stages against it and the parent bridge owns the FX span
+   * extension. Never present on replay/undo/redo or any other operation kind.
+   */
+  readonly targetCapacity?: number;
   readonly semanticDelta?: PhysicPaintRotoPhysicalEditSemanticDelta;
   readonly historyProvenance?: PhysicPaintRotoPhysicalEditReplayProvenance;
   /**
@@ -1321,7 +1335,6 @@ function isBoundedPhysicalKeyId(value: unknown): value is string {
 
 function isPhysicPaintRotoPhysicalEditOperationKind(value: unknown): value is PhysicPaintRotoPhysicalEditOperationKind {
   return value === 'insert-slot'
-    || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'delete-key-rail'
@@ -1356,7 +1369,6 @@ function isPhysicPaintRotoOrdinaryOperationKind(
   value: PhysicPaintRotoPhysicalEditOperationKind,
 ): value is PhysicPaintRotoPhysicalEditIntent['kind'] {
   return value === 'insert-slot'
-    || value === 'insert-empty-segment'
     || value === 'delete-key'
     || value === 'delete-key-group'
     || value === 'delete-key-rail'
@@ -1509,11 +1521,6 @@ function isRotoRailSetPasteSemanticDelta(value: Record<string, unknown>): boolea
 
 export function isPhysicPaintRotoPhysicalEditSemanticDelta(value: unknown): value is PhysicPaintRotoPhysicalEditSemanticDelta {
   if (!isRecord(value)) return false;
-  if (value.kind === 'insert-empty-segment') {
-    return hasOnlyKeys(value, ['kind', 'insertedKeyId', 'destinationAppFrame'])
-      && isBoundedPhysicalKeyId(value.insertedKeyId)
-      && isNonNegativeInteger(value.destinationAppFrame);
-  }
   if (value.kind === 'duplicate-key') {
     return hasOnlyKeys(value, ['kind', 'sourceKeyId', 'newKeyId'])
       && isBoundedPhysicalKeyId(value.sourceKeyId)
@@ -1645,8 +1652,7 @@ function operationSemanticDeltaIsValid(
   semanticDelta: unknown,
   allowMissingOnFailure = false,
 ): boolean {
-  if (operationKind === 'insert-empty-segment'
-    || operationKind === 'duplicate-key'
+  if (operationKind === 'duplicate-key'
     || operationKind === 'paste-key'
     || operationKind === 'paste-key-group'
     || operationKind === 'play-script'
@@ -1707,7 +1713,7 @@ function failApplyPayload(clause: string): false {
 
 export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value is PhysicPaintRotoPhysicalEditApplyPayload {
   if (!isRecord(value)) return failApplyPayload('not-record');
-  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return failApplyPayload('unknown-keys');
+  if (!hasOnlyKeys(value, ['kind', 'operationId', 'operationKind', 'intent', 'layerId', 'trackId', 'leaseToken', 'startFrame', 'launchOperationId', 'projectContextId', 'expectedRevision', 'records', 'groupOverrideRecords', 'interpolationEnabled', 'interpolationMode', 'rotoBackground', 'selectedKeyId', 'selectedAppFrame', 'cursorAppFrame', 'targetCapacity', 'semanticDelta', 'historyProvenance', 'loopClips', 'incomingInterpolationBreakKeyIds'])) return failApplyPayload('unknown-keys');
   if (value.kind !== 'replace-roto-physical-map') return failApplyPayload('wrong-kind');
   if (!isNonEmptyString(value.operationId)) return failApplyPayload('bad-operationId');
   if (!isNonEmptyString(value.trackId)) return failApplyPayload('bad-trackId');
@@ -1741,6 +1747,13 @@ export function isPhysicPaintRotoPhysicalEditApplyPayload(value: unknown): value
   if (value.selectedAppFrame !== null && !isNonNegativeInteger(value.selectedAppFrame)) return failApplyPayload('bad-selectedAppFrame');
   if ((value.selectedKeyId === null) !== (value.selectedAppFrame === null)) return failApplyPayload('selected-mismatch');
   if (!isNonNegativeInteger(value.cursorAppFrame)) return failApplyPayload('bad-cursorAppFrame');
+  if (value.targetCapacity !== undefined) {
+    // Quick 261019-mj2: only a gap insert may raise capacity. Replay kinds and
+    // every other operation carry no targetCapacity.
+    if (value.operationKind !== 'insert-slot') return failApplyPayload('unexpected-targetCapacity');
+    if (!isOrdinary || intent === undefined || intent.kind !== 'insert-slot') return failApplyPayload('targetCapacity-intent-mismatch');
+    if (!isPhysicPaintRotoPhysicalEditTargetCapacity(value.targetCapacity)) return failApplyPayload('bad-targetCapacity');
+  }
   if (!operationSemanticDeltaIsValid(value.operationKind, value.semanticDelta)) return failApplyPayload('bad-semanticDelta');
   const isReplay = value.operationKind === 'undo' || value.operationKind === 'redo';
   if (isReplay) {
