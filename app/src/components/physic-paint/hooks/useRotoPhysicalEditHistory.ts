@@ -364,7 +364,7 @@ function snapshotRecordsEqual(
   return true;
 }
 
-function snapshotRevision(snapshot: RotoPhysicalEditReplaySourceSnapshot): string {
+export function snapshotRevision(snapshot: RotoPhysicalEditReplaySourceSnapshot): string {
   return buildPhysicPaintRotoPhysicalRevision(
     snapshot.records,
     snapshot.interpolation,
@@ -514,7 +514,7 @@ function replayAcceptanceMatchesPending<EngineState>(
     && snapshotReplayAuthorityEqual(accepted.after, target);
 }
 
-function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): PhysicPaintRotoPhysicalEditProposal {
+export function buildReplayProposal(target: RotoPhysicalEditSnapshot<unknown>): PhysicPaintRotoPhysicalEditProposal {
   const mapping = new Map<string, number>();
   const orderedKeyIds: string[] = [];
   const assignments: { keyId: string; appFrame: number }[] = [];

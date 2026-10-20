@@ -233,6 +233,13 @@ export function AquarelleCanvasLayer(props: {
    * when the new session's sheet is merged over it.
    */
   onSheetSessionEnd?: () => void;
+  /**
+   * Quick 261019-mj2 Task 3: registers a same-frame sheet reset. The Studio's
+   * generated-cell self-promotion calls it synchronously before dispatching
+   * the blank key, so the old generated display never leaks into the stroke.
+   * Mirrors the frame-change branch minus the lastPlayFrame update.
+   */
+  onResetSheetReady?: (resetSheet: () => void) => void;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -247,6 +254,7 @@ export function AquarelleCanvasLayer(props: {
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
   const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
+  const onResetSheetReadyRef = useRef(props.onResetSheetReady);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
   widthRef.current = props.width;
@@ -258,6 +266,7 @@ export function AquarelleCanvasLayer(props: {
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
   onSheetSessionEndRef.current = props.onSheetSessionEnd;
+  onResetSheetReadyRef.current = props.onResetSheetReady;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
   // leak the previous frame's paint (the user saw the same paint on every
@@ -428,6 +437,19 @@ export function AquarelleCanvasLayer(props: {
     // preview never leaks the previous edit frame's paint.
     let raf = 0;
     let wasAwake = engine.isAwake;
+    // Quick 261019-mj2 Task 3: same-frame reset registration for the Studio's
+    // generated-cell self-promotion. Same work as the frame-change branch
+    // below EXCEPT the lastPlayFrame update (this is the same frame).
+    const resetSheet = () => {
+      stampPendingSettle();
+      onSheetSessionEndRef.current?.();
+      engine.clear();
+      painting = false;
+      lastWetAt = 0;
+      settleCapArmed = false;
+      wasAwake = false;
+    };
+    onResetSheetReadyRef.current?.(resetSheet);
     const tick = () => {
       const playFrame = getPlayFrameRef.current();
       if (lastPlayFrameRef.current !== playFrame) {

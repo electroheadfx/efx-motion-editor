@@ -2486,3 +2486,186 @@ describe('261017-w4x I-05 top-bar opacity call-time router', () => {
     expect(topBarBlock).toContain('onBrushSizeChange: handleBrushSizeChange');
   });
 });
+
+// Quick 261019-mj2 Task 3: direct-paint auto-key self-promotion. Painting an
+// empty OR generated/interpolated cell starts the stroke immediately on the
+// warm canvas while a blank real key is promoted in parallel. The pointerdown
+// handler must never intercept the gesture (no preventDefault/stopPropagation/
+// setPointerCapture, no buffering) — the engine receives it untouched.
+describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
+  function section(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('shares ONE promotion helper between script targets, pointerdown, and the Create key button', () => {
+    expect(studio).toContain('promoteRotoPaintTargetRef.current = async (');
+    const promotionHelper = section(
+      studio,
+      'promoteRotoPaintTargetRef.current = async (',
+      'prepareRotoScriptTargetRef.current = async (',
+    );
+    // Empty AND generated cells promote; only a real-key branch stays outside.
+    expect(promotionHelper).not.toContain("selectionKind === 'generated-interpolation'");
+    expect(promotionHelper).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame)');
+    expect(promotionHelper).toContain('physicalKeyUtilities.addEmptyKey(');
+    expect(promotionHelper).toContain('acceptedBefore');
+    // prepareRotoScriptTarget routes both non-real kinds through the helper.
+    const prepareBlock = section(
+      studio,
+      'prepareRotoScriptTargetRef.current = async (',
+      '// 43.6-06 (D-19)',
+    );
+    expect(prepareBlock).toContain('promoteRotoPaintTargetRef.current(');
+    expect(prepareBlock).toContain("source: 'auto-key-paint'");
+    // Pointerdown and the fallback button use the same seam: the orchestration
+    // wrapper (which owns the pending entry + exemption) delegates to the ONE
+    // helper above.
+    const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
+    expect(beginBlock).toContain('startRotoPaintPromotion({');
+    const fallbackBlock = section(studio, 'const handleCreateKeyFallback = useCallback(', 'const beginRotoFrameEdit = useCallback(');
+    expect(fallbackBlock).toContain('startRotoPaintPromotion({');
+    expect(studio).toContain('void promoteRotoPaintTargetRef.current(input)');
+    // No forked Water color promotion path.
+    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(1);
+  });
+
+  it('never intercepts the pointer gesture (no preventDefault / stopPropagation / setPointerCapture)', () => {
+    const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
+    expect(beginBlock).not.toContain('preventDefault');
+    expect(beginBlock).not.toContain('stopPropagation');
+    expect(beginBlock).not.toContain('setPointerCapture');
+    // Names are assembled at runtime so the dead-artifact grep gate over the
+    // source tree (which includes this file) stays at zero hits.
+    for (const deadArtifact of [
+      'rotoFirst' + 'StrokeBuffer',
+      'replayBuffered' + 'Stroke',
+      'replayBuffered' + 'Samples',
+      'replay' + 'StrokeRef',
+    ]) {
+      expect(studio).not.toContain(deadArtifact);
+    }
+  });
+
+  it('passes the pointer event from the capture listener into the Studio intent', () => {
+    expect(studioView).toContain('onInputIntent?: (event: PointerEvent) => void;');
+    expect(studioView).toContain('onPointerDownCapture={(event) => props.onInputIntent?.(event)}');
+    expect(studio).toContain('beginRotoFrameEditImplRef.current(event);');
+  });
+
+  it('gates promotion on the effective paint-producing tool and a non-transform target', () => {
+    const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
+    expect(beginBlock).toContain("resolveEffectiveTool(settings.tool) === 'paint'");
+    expect(beginBlock).toContain("aquarelleActiveTool.value === 'brush'");
+    expect(beginBlock).toContain("aquarelleActiveTool.value === 'water'");
+    expect(beginBlock).toContain("aquarelleActiveTool.value === 'pen'");
+    expect(beginBlock).toContain('physics-paint-reference-transform');
+    expect(beginBlock).toContain('physics-paint-background-transform');
+    expect(beginBlock).toContain('event.button !== 0');
+    expect(beginBlock).toContain('isPlaying');
+    // One promotion per launch/frame while it is in flight.
+    expect(beginBlock).toContain('pendingFirstPaintTargetRef.current');
+    expect(beginBlock).toContain('rotoEditBuffer.markDirty(currentFrame)');
+    expect(beginBlock).toContain('rotoSession.markLiveOverlayDirty(currentFrame)');
+    expect(beginBlock).toContain('syncPendingRotoFrames()');
+    expect(beginBlock).not.toContain('markCurrentFrameDirty(');
+  });
+
+  it('clears a generated display synchronously before dispatch and registers a same-frame sheet reset', () => {
+    const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
+    const clearBlock = section(studio, 'const clearGeneratedRotoDisplayForPaint = useCallback(', 'beginRotoFrameEditImplRef.current = (');
+    expect(clearBlock).toContain('clearPreviewBaseImage()');
+    expect(clearBlock).toContain('resetBackground()');
+    expect(clearBlock).toContain('.clear()');
+    expect(clearBlock).toContain('aquarelleResetSheetRef.current?.()');
+    expect(clearBlock.indexOf('clearPreviewBaseImage()')).toBeLessThan(clearBlock.indexOf('.clear()'));
+    expect(beginBlock).toContain('clearGeneratedRotoDisplayForPaint()');
+    // Reset registration flows AquarelleCanvasLayer → CanvasMount → Studio.
+    const aquarelleLayer = readFileSync(fileURLToPath(new URL('./engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
+    expect(aquarelleLayer).toContain('onResetSheetReady?: (resetSheet: () => void) => void;');
+    expect(aquarelleLayer).toContain('const onResetSheetReadyRef = useRef(props.onResetSheetReady);');
+    expect(aquarelleLayer).toContain('onResetSheetReadyRef.current?.(resetSheet);');
+    expect(canvasMount).toContain('onAquarelleResetSheetReady?: (resetSheet: () => void) => void;');
+    expect(canvasMount).toContain('onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}');
+    expect(studio).toContain('const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {');
+  });
+
+  it('awaits the created key before both capture paths write pixels', () => {
+    const completedBlock = section(studio, 'canvasCompletedMutationImplRef.current = (', 'const handleCanvasCompletedMutation = useCallback(');
+    const awaitIndex = completedBlock.indexOf('await pendingFirstPaintTarget.promise');
+    expect(awaitIndex).toBeGreaterThan(-1);
+    expect(awaitIndex).toBeLessThan(completedBlock.indexOf('rotoPersistence.captureLivePixels('));
+    expect(completedBlock).toContain('firstPaintTarget.ok');
+    expect(completedBlock).toContain('keyId = firstPaintTarget.keyId');
+    expect(completedBlock).toContain('pendingSelfPromotionForCompletedFrame');
+    const captureBlock = section(studio, 'const handleAquarelleCaptureFrame = useCallback(', '// CACHE MERGE BASE');
+    const aquarelleAwaitIndex = captureBlock.indexOf('await pendingFirstPaintTarget.promise');
+    expect(aquarelleAwaitIndex).toBeGreaterThan(-1);
+    expect(aquarelleAwaitIndex).toBeLessThan(captureBlock.indexOf('captureLivePixels('));
+    expect(captureBlock).toContain('promotion.blankFrame');
+  });
+
+  it('suppresses the accepted-key cache reload for a self-promotion and pins the blank base', () => {
+    const acceptanceBlock = section(studio, 'const acceptedSelectedKeyId = accepted?.after.selectedKeyId ?? null;', 'return transition;');
+    expect(acceptanceBlock).toContain('acceptedSelfPromotion');
+    const guardIndex = acceptanceBlock.indexOf('if (!acceptedSelfPromotion)');
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(guardIndex).toBeLessThan(acceptanceBlock.indexOf('loadCachedRotoReferenceFrame('));
+    expect(acceptanceBlock).toContain('setCachedRotoRepaintBaseFrame(pendingSelfPromotion.blankFrame)');
+    expect(acceptanceBlock).toContain('cachedRotoRepaintBaseFrameRef.current = pendingSelfPromotion.blankFrame');
+    expect(acceptanceBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: acceptedSelectedAppFrame, base: pendingSelfPromotion.blankFrame }');
+    expect(acceptanceBlock).toContain('acknowledgePhysicalEditSettlement');
+  });
+
+  it('exempts only the canvas input lock while a self-promotion is in flight', () => {
+    expect(studio).toContain('const rotoInputDisabled = mutationLocked && !autoKeyPromotionPaintExempt.value;');
+    expect(studio).toContain('const autoKeyPromotionPaintExempt = useSignal(false);');
+    expect(studio).not.toContain("Créez une key");
+    expect(studio).not.toContain('Generated frame ${currentFrame} is render-only.');
+    expect(studio).not.toContain('lockInputForWarm(FRESH_FRAME_WARM_MS)');
+  });
+
+  it('discards the stroke and replays an accepted-but-unvalidated key on failure', () => {
+    const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const handleCreateKeyFallback = useCallback(');
+    expect(failureBlock).toContain('engineRef.current?.undo()');
+    expect(failureBlock).toContain('aquarelleResetSheetRef.current?.()');
+    expect(failureBlock).toContain('acceptedBefore');
+    expect(failureBlock).toContain("operationKind: 'undo'");
+    expect(failureBlock).toContain('historyProvenance');
+    expect(failureBlock).toContain('setLastError');
+    expect(studio).toContain('source: \'auto-key-paint\'');
+    expect(studio).toContain('source: \'create-key-button\'');
+  });
+
+  it('renders a centered Create key fallback only for non-real editable cells', () => {
+    expect(studioView).toContain('createKeyFallback?: { onCreate: () => void } | null;');
+    expect(studioView).toContain('class="physics-paint-create-key-fallback"');
+    expect(studioView).toContain('<button type="button" onClick={props.createKeyFallback.onCreate}>Create key</button>');
+    expect(css).toContain('.physics-paint-create-key-fallback {');
+    expect(css).toContain('pointer-events: none;');
+    expect(css).toContain('.physics-paint-create-key-fallback > button {');
+    expect(css).toContain('pointer-events: auto;');
+    // Studio gating: roto, launch, empty paint target, not real-key, not
+    // playing, not mutation-locked, no promotion in flight.
+    const fallbackGate = section(studio, 'const createKeyFallback = ', 'const canvasStack =');
+    expect(fallbackGate).toContain("workflowMode === 'roto'");
+    expect(fallbackGate).toContain("paintTarget.kind === 'empty'");
+    expect(fallbackGate).toContain("currentFrameSelectionKind !== 'real-key'");
+    expect(fallbackGate).toContain('!isPlaying');
+    expect(fallbackGate).toContain('!mutationLocked');
+    expect(fallbackGate).toContain('!autoKeyPromotionPaintExempt.value');
+    expect(studio).toContain('createKeyFallback: createKeyFallback ? { onCreate: handleCreateKeyFallback } : null');
+  });
+
+  it('warms the canvas and shows progress from the Create key button without touching later keys', () => {
+    const fallbackBlock = section(studio, 'const handleCreateKeyFallback = useCallback(', 'const beginRotoFrameEdit = useCallback(');
+    expect(fallbackBlock).toContain('Préparation du canevas…');
+    expect(fallbackBlock).toContain('warmCanvasSurfaces?.()');
+    expect(fallbackBlock).toContain('lockInputForWarm?.(FRESH_FRAME_WARM_MS)');
+    expect(fallbackBlock).toContain('warmProgress');
+    expect(fallbackBlock).not.toContain('markCurrentFrameDirty(');
+  });
+});

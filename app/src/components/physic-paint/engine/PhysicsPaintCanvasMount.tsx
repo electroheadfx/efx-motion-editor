@@ -28,7 +28,7 @@ const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, CSSProperties['mixBlendMode']> =
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; color?: string; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void; onAquarelleFlushCaptureReady?: (flushCapture: () => void) => void; onAquarelleSheetSessionEnd?: () => void }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; color?: string; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void; onAquarelleFlushCaptureReady?: (flushCapture: () => void) => void; onAquarelleSheetSessionEnd?: () => void; onAquarelleResetSheetReady?: (resetSheet: () => void) => void; }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
@@ -47,6 +47,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const onAquarelleCaptureFrameRef = useRef(props.onAquarelleCaptureFrame);
   const onAquarelleFlushCaptureReadyRef = useRef(props.onAquarelleFlushCaptureReady);
   const onAquarelleSheetSessionEndRef = useRef(props.onAquarelleSheetSessionEnd);
+  const onAquarelleResetSheetReadyRef = useRef(props.onAquarelleResetSheetReady);
   const getAquarellePlayFrameRef = useRef(props.getAquarellePlayFrame);
   const getAquarellePaperIdRef = useRef(props.getAquarellePaperId);
   const colorRef = useRef(props.color ?? '#103c65');
@@ -63,6 +64,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   onAquarelleCaptureFrameRef.current = props.onAquarelleCaptureFrame;
   onAquarelleFlushCaptureReadyRef.current = props.onAquarelleFlushCaptureReady;
   onAquarelleSheetSessionEndRef.current = props.onAquarelleSheetSessionEnd;
+  onAquarelleResetSheetReadyRef.current = props.onAquarelleResetSheetReady;
   getAquarellePlayFrameRef.current = props.getAquarellePlayFrame;
   getAquarellePaperIdRef.current = props.getAquarellePaperId;
   colorRef.current = props.color ?? '#103c65';
@@ -198,6 +200,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
           onCaptureFrame={(playFrame, snapshot) => onAquarelleCaptureFrameRef.current?.(playFrame, snapshot)}
           onFlushCaptureReady={(flushCapture) => onAquarelleFlushCaptureReadyRef.current?.(flushCapture)}
           onSheetSessionEnd={() => onAquarelleSheetSessionEndRef.current?.()}
+          onResetSheetReady={(resetSheet) => onAquarelleResetSheetReadyRef.current?.(resetSheet)}
         />
       ) : null}
       {mountError ? <p class="demo-error">{mountError}</p> : null}

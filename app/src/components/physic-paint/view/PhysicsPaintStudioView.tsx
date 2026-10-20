@@ -41,7 +41,15 @@ interface PhysicsPaintCanvasStackViewProps {
   inputDisabled?: boolean;
   inputDisabledMessage?: string;
   onionOverlay: ComponentChildren;
-  onInputIntent?: () => void;
+  /**
+   * Quick 261019-mj2 Task 3: the pointerdown intent receives the event so the
+   * Studio can gate auto-key promotion (button/tool/transform target) WITHOUT
+   * intercepting the gesture — the engine still receives the same event.
+   */
+  onInputIntent?: (event: PointerEvent) => void;
+  /** Quick 261019-mj2 Task 3 (D-08): the centered create-key fallback on
+   *  non-real cells. Absent on real keys and while a promotion is in flight. */
+  createKeyFallback?: { onCreate: () => void } | null;
   /**
    * Phase 48-05 (D-05): the program monitor config. Present when the Studio
    * has a launch layer. The monitor is mounted BELOW the engine canvas (the
@@ -185,7 +193,7 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   const playbackReady = Boolean(props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && canvasBounds);
 
   return (
-    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={props.onInputIntent}>
+    <div class={`physics-paint-canvas-stack${props.cachedRotoPlaybackActive ? ' cached-roto-playback-active' : ''}${playbackReady ? ' cached-roto-playback-ready' : ''}${props.engineSurfaceHidden ? ' active-track-hidden' : ''}`} ref={stackRef} style={{ pointerEvents: props.inputDisabled ? 'none' : undefined }} title={props.inputDisabled ? props.inputDisabledMessage : undefined} onPointerDownCapture={(event) => props.onInputIntent?.(event)}>
       {/* 48-06 (UAT-C): the paper fond lives on its OWN layer beneath the
           isolated tracks group — the monitor reads the fond-less composite, so
           the active track's CSS blend (the engine shell inside the group) never
@@ -275,6 +283,18 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           <PhysicsPaintReferenceTransformHandles {...props.backgroundTransformHandles} />
+        </div>
+      ) : null}
+      {/* Quick 261019-mj2 Task 3 (D-08): the centered create-key fallback on a
+          non-real (empty/generated) cell. The container is pointer-events none;
+          only the button receives clicks, so painting gestures still reach the
+          engine everywhere else. */}
+      {canvasBounds && props.createKeyFallback ? (
+        <div
+          class="physics-paint-create-key-fallback"
+          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
+        >
+          <button type="button" onClick={props.createKeyFallback.onCreate}>Create key</button>
         </div>
       ) : null}
     </div>

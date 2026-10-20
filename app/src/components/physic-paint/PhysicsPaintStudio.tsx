@@ -78,11 +78,14 @@ import type { TrackRowRailSelection } from './view/PhysicsPaintTrackRow';
 import { findAdjacentRealKeyFrame, isPhysicsPaintShortcutTarget } from './view/physicsPaintStudioKeyboard';
 import {
   mountPhysicsPaintTemporaryErase,
+  resolveEffectiveTool,
   syncTemporaryErase,
   temporaryErase,
   temporaryMove,
   type TemporaryEraseDeps,
 } from './view/physicsPaintTemporaryErase';
+import { aquarelleActiveTool } from './view/aquarelleRecordState';
+import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
 import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
 import { deriveSoloContentStart, deriveSoloPlaybackWindow, type SoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
@@ -137,7 +140,7 @@ import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettin
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
-import { useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
+import { buildReplayProposal, snapshotRevision, useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
 import { createRotoNavigationGeneration, createRotoUiFlushScheduler } from './hooks/rotoUiFlushScheduler';
 import { armRotoCompletionPaintGuard } from './hooks/rotoCompletionPaintGuard';
@@ -174,6 +177,44 @@ type SoleOccurrenceDeleteTarget = Readonly<GroupLifecycleDeleteTarget & {
   operationKind: 'delete-group-frame';
 }>;
 type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUrl: string) => void; resetBackground: (skipRedraw?: boolean) => void; setPreviewBaseImageUrl: (dataUrl: string) => void; clearPreviewBaseImage: (skipRedraw?: boolean) => void };
+
+// Quick 261019-mj2 Task 3: the ONE direct-paint promotion seam. A non-real
+// cell (empty or generated/interpolated) paints immediately while the blank
+// real key is created in parallel; the stroke's capture awaits this result and
+// attaches to the created key. Never a buffer/replay path.
+type RotoPaintPromotionSource = 'auto-key-paint' | 'create-key-button';
+interface RotoPaintPromotionSuccess {
+  readonly ok: true;
+  readonly keyId: string;
+  readonly appFrame: number;
+  readonly blankFrame: RenderedFramePayload;
+}
+interface RotoPaintPromotionFailure {
+  readonly ok: false;
+  readonly error: string;
+  /** The accepted command's prior snapshot — replayed when the parent created
+   *  a key the child could no longer validate (no silent blank key). */
+  readonly acceptedBefore?: RotoPhysicalEditSnapshot<EfxPaintDocument>;
+  /** The accepted command identity + its after revision, needed for the replay
+   *  provenance (undo = after → before). */
+  readonly acceptedOperationId?: string;
+  readonly acceptedSourceRevision?: string;
+}
+type RotoPaintPromotionResult = RotoPaintPromotionSuccess | RotoPaintPromotionFailure;
+interface PendingRotoFirstPaintTarget {
+  readonly launchOperationId: string;
+  readonly layerId: string;
+  readonly appFrame: number;
+  readonly source: RotoPaintPromotionSource;
+  /** Resolved by the helper BEFORE dispatch — the accepted-key reload
+   *  suppression pins this as the frame's repaint base. */
+  blankFrame: RenderedFramePayload | null;
+  readonly promise: Promise<RotoPaintPromotionResult>;
+  /** Set by the completed-mutation seam so the failure policy knows whether a
+   *  stroke already landed on the live canvas. */
+  completedMutationObserved: boolean;
+}
+const ROTO_AUTO_KEY_PROMOTION_ERROR = 'Could not create a Roto key on this frame — the stroke was discarded.';
 
 /**
  * 49-03 (D-11 consumption half): bridge the store's resolved fond instruction
@@ -1001,12 +1042,18 @@ export function PhysicsPaintStudio() {
   const resetRotoNavigationForLaunchRef = useRef<(settings: PhysicPaintRotoPlaybackSettings) => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
-  const pendingFirstPaintTargetRef = useRef<{
-    launchOperationId: string;
-    layerId: string;
+  const promoteRotoPaintTargetRef = useRef<(source: {
     appFrame: number;
-    promise: Promise<RotoScriptPhysicalTarget | null>;
-  } | null>(null);
+    selectionKind: 'real-key' | 'generated-interpolation' | 'empty';
+    source: RotoPaintPromotionSource;
+  }) => Promise<RotoPaintPromotionResult>>(async () => ({ ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR }));
+  const pendingFirstPaintTargetRef = useRef<PendingRotoFirstPaintTarget | null>(null);
+  // Quick 261019-mj2 Task 3: TRUE while a pointer/button self-promotion owns the
+  // canvas warm-up. It exempts ONLY `rotoInputDisabled` from `mutationLocked`
+  // so the fast second stroke keeps flowing while the physical edit settles.
+  const autoKeyPromotionPaintExempt = useSignal(false);
+  const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
+  const aquarelleMergeBaseRef = useRef<{ appFrame: number; base: RenderedFramePayload | null } | null>(null);
   const syncPendingRotoFrames = useCallback(() => {
     resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
@@ -1153,7 +1200,6 @@ export function PhysicsPaintStudio() {
       ? 'generated-interpolation' as const
       : 'empty' as const;
   const currentCellKeyId = currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null;
-  const currentFrameIsGeneratedRoto = workflowMode === 'roto' && currentFrameSelectionKind === 'generated-interpolation';
   const [rotoScriptNavigationLocked, setRotoScriptNavigationLocked] = useState(false);
   const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, findAcceptedRotoReferenceFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
   const cachedRotoReferenceUrlRef = useRef(cachedRotoReferenceUrl);
@@ -1447,10 +1493,11 @@ export function PhysicsPaintStudio() {
     rotoScript.discardScript();
     setLastError(null);
   }, [rotoScript, setLastError]);
-  // 52.1 (user directive): empty (key-less) frames reject painting — the artist
-  // must first create a key (+ ). This both teaches the workflow and avoids the
-  // cold fresh-frame first-paint path that broke a fast-chained 2nd stroke.
-  const rotoInputDisabled = currentFrameIsGeneratedRoto || mutationLocked || currentFrameSelectionKind === 'empty';
+  // Quick 261019-mj2 (D-01): non-real cells no longer disable canvas input —
+  // the pointerdown self-promotes a blank key while the stroke paints on the
+  // warm canvas. The only remaining canvas lock is the physical mutation lease;
+  // a live self-promotion is exempt from it so the fast second stroke flows.
+  const rotoInputDisabled = mutationLocked && !autoKeyPromotionPaintExempt.value;
   const {
     selectTool,
     setBrushColor,
@@ -1962,13 +2009,194 @@ export function PhysicsPaintStudio() {
     publishDiagnostic: (message) => { console.error('[PhysicsPaintStudio] physical edit:', message); },
   });
   const rotoPhysicalActions = rotoTimelineActions.physicalActions;
+  // Quick 261019-mj2 Task 3 (D-01): the ONE promotion seam used by script
+  // targets, the pointerdown self-promotion, and the Create key button. It
+  // builds the blank payload, assigns it to the pending entry BEFORE dispatch,
+  // creates the key through addEmptyKey (persistent incoming interpolation
+  // break), and only reports success for a live record created on this frame.
+  promoteRotoPaintTargetRef.current = async (source) => {
+    const launch = launchContextRef.current;
+    if (!launch || source.appFrame !== launch.startFrame) {
+      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    }
+    if (source.selectionKind === 'real-key') {
+      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    }
+
+    let blankFrame: RenderedFramePayload;
+    try {
+      blankFrame = await buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
+    } catch {
+      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    }
+    const pendingEntry = pendingFirstPaintTargetRef.current;
+    if (
+      pendingEntry
+      && pendingEntry.launchOperationId === launch.operationId
+      && pendingEntry.layerId === launch.layerId
+      && pendingEntry.appFrame === source.appFrame
+    ) {
+      // The reload suppression and the capture both read this as the frame's
+      // repaint base — pin it before the parent can accept the key.
+      pendingEntry.blankFrame = blankFrame;
+    }
+
+    let accepted: RotoPhysicalEditAcceptedOutput<EfxPaintDocument> | null;
+    try {
+      accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
+        physicalEditCoordinator.pendingOperationId,
+        physicalEditCoordinator.acceptedOutput,
+        // Quick 260816-tv7: paint-on-empty promotion routes through addEmptyKey
+        // so the new key owns a persistent incoming interpolation break
+        // (broken-key contract) instead of a connected key.
+        () => rotoTimelineActions.physicalKeyUtilities.addEmptyKey(
+          source.appFrame,
+          {
+            frameIndex: blankFrame.frameIndex,
+            appFrame: source.appFrame,
+            bytes: blankFrame.bytes,
+            ...(blankFrame.width !== undefined ? { width: blankFrame.width } : {}),
+            ...(blankFrame.height !== undefined ? { height: blankFrame.height } : {}),
+          },
+        ),
+      );
+    } catch {
+      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    }
+    const currentLaunch = launchContextRef.current;
+    if (!currentLaunch || currentLaunch.operationId !== launch.operationId) {
+      return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    }
+    if (!accepted) return { ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR };
+    if (
+      accepted.operationKind !== 'paste-key'
+      || accepted.after.layerId !== launch.layerId
+      || accepted.after.selectedAppFrame !== source.appFrame
+      || !accepted.after.selectedKeyId
+    ) {
+      return {
+        ok: false,
+        error: ROTO_AUTO_KEY_PROMOTION_ERROR,
+        acceptedBefore: accepted.before,
+        acceptedOperationId: accepted.operationId,
+        acceptedSourceRevision: accepted.acceptedRevision,
+      };
+    }
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);
+    if (record?.appFrame !== source.appFrame) {
+      return {
+        ok: false,
+        error: ROTO_AUTO_KEY_PROMOTION_ERROR,
+        acceptedBefore: accepted.before,
+        acceptedOperationId: accepted.operationId,
+        acceptedSourceRevision: accepted.acceptedRevision,
+      };
+    }
+    return { ok: true, keyId: record.keyId, appFrame: record.appFrame, blankFrame };
+  };
+
+  // Quick 261019-mj2 Task 3 (D-16): a promotion that yields no usable key must
+  // never leave orphan paint or a silent blank key. Discard the completed
+  // stroke once, reset a Water color sheet, replay the accepted command's
+  // `before` snapshot when the child could not validate it, and surface the
+  // error on the status capsule.
+  const handleRotoPaintPromotionFailure = useCallback((
+    result: RotoPaintPromotionFailure,
+    pending: PendingRotoFirstPaintTarget,
+  ) => {
+    if (pendingFirstPaintTargetRef.current === pending) pendingFirstPaintTargetRef.current = null;
+    autoKeyPromotionPaintExempt.value = false;
+    if (pending.completedMutationObserved) {
+      engineRef.current?.undo();
+      if (engineRef.current?.getStrokeCount() === 0) engineRef.current?.clear();
+    }
+    if (activeModule.value === 'watercolor') {
+      aquarelleResetSheetRef.current?.();
+      aquarelleMergeBaseRef.current = null;
+    }
+    setApplyStatus('error');
+    setApplyMessage(result.error);
+    setLastError(result.error);
+    const acceptedBefore = result.acceptedBefore;
+    const acceptedOperationId = result.acceptedOperationId;
+    const acceptedSourceRevision = result.acceptedSourceRevision;
+    const launch = launchContextRef.current;
+    if (
+      acceptedBefore
+      && acceptedOperationId
+      && acceptedSourceRevision
+      && launch
+      && launch.operationId === acceptedBefore.launchOperationId
+      && launch.layerId === acceptedBefore.layerId
+    ) {
+      // Undo replay of the just-accepted key: the parent ledger still owns the
+      // command, so the replay is authorized and restores the exact before set.
+      void physicalEditCoordinator.executePhysicalEdit({
+        proposal: buildReplayProposal(acceptedBefore as unknown as RotoPhysicalEditSnapshot<unknown>),
+        expectedLaunch: { operationId: launch.operationId, layerId: launch.layerId },
+        operationKind: 'undo',
+        selectedKeyId: acceptedBefore.selectedKeyId,
+        selectedAppFrame: acceptedBefore.selectedAppFrame,
+        replayTargetSnapshot: acceptedBefore,
+        historyProvenance: {
+          historyCommandId: acceptedOperationId,
+          historyDirection: 'undo',
+          sourceRevision: acceptedSourceRevision,
+          targetRevision: snapshotRevision(acceptedBefore),
+        },
+      }).catch((error) => {
+        console.error('[PhysicsPaintStudio] Auto-key promotion replay failed', error);
+      });
+    }
+  }, [physicalEditCoordinator, setApplyMessage, setApplyStatus, setLastError]);
+
+  // Starts the promotion and owns the pending entry consumed by both capture
+  // paths. The promise resolves exactly once; the exemption clears on settle.
+  const startRotoPaintPromotion = (input: {
+    source: RotoPaintPromotionSource;
+    appFrame: number;
+    selectionKind: 'empty' | 'generated-interpolation';
+  }): Promise<RotoPaintPromotionResult> => {
+    const launch = launchContextRef.current;
+    if (!launch) return Promise.resolve({ ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR });
+    let resolvePending!: (result: RotoPaintPromotionResult) => void;
+    const promise = new Promise<RotoPaintPromotionResult>((resolve) => { resolvePending = resolve; });
+    const pending: PendingRotoFirstPaintTarget = {
+      launchOperationId: launch.operationId,
+      layerId: launch.layerId,
+      appFrame: input.appFrame,
+      source: input.source,
+      blankFrame: null,
+      promise,
+      completedMutationObserved: false,
+    };
+    pendingFirstPaintTargetRef.current = pending;
+    autoKeyPromotionPaintExempt.value = true;
+    void promoteRotoPaintTargetRef.current(input)
+      .then(resolvePending)
+      .catch(() => resolvePending({ ok: false, error: ROTO_AUTO_KEY_PROMOTION_ERROR }));
+    void promise.then((result) => {
+      autoKeyPromotionPaintExempt.value = false;
+      if (!result.ok) {
+        handleRotoPaintPromotionFailure(result, pending);
+        return;
+      }
+      // SUCCESS: the capture paths already captured this entry by closure (they
+      // await the same promise), so releasing the ref here is safe — and it is
+      // REQUIRED for the Create key button, whose promotion has no stroke to
+      // trigger a capture-side cleanup. A later stroke on the now-real key must
+      // never await this settled promotion and merge onto its blank base.
+      if (pendingFirstPaintTargetRef.current === pending) pendingFirstPaintTargetRef.current = null;
+    });
+    return promise;
+  };
+
   prepareRotoScriptTargetRef.current = async (source) => {
     const launch = launchContextRef.current;
     if (
       !launch
       || source.layerId !== launch.layerId
       || source.appFrame !== launch.startFrame
-      || source.selectionKind === 'generated-interpolation'
     ) return null;
 
     if (source.selectionKind === 'real-key') {
@@ -1980,33 +2208,15 @@ export function PhysicsPaintStudio() {
     }
     if (source.keyId !== null) return null;
 
-    const blank = await buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
-    const accepted = await dispatchAndWaitForAcceptedRotoPhysicalEdit(
-      physicalEditCoordinator.pendingOperationId,
-      physicalEditCoordinator.acceptedOutput,
-      // Quick 260816-tv7: paint-on-empty promotion routes through addEmptyKey
-      // so the new key owns a persistent incoming interpolation break
-      // (broken-key contract) instead of a connected key.
-      () => rotoTimelineActions.physicalKeyUtilities.addEmptyKey(
-        source.appFrame,
-        {
-          frameIndex: blank.frameIndex,
-          appFrame: source.appFrame,
-          bytes: blank.bytes,
-          ...(blank.width !== undefined ? { width: blank.width } : {}),
-          ...(blank.height !== undefined ? { height: blank.height } : {}),
-        },
-      ),
-    );
-    if (
-      accepted?.operationKind !== 'paste-key'
-      || accepted.after.layerId !== launch.layerId
-      || accepted.after.selectedAppFrame !== source.appFrame
-      || !accepted.after.selectedKeyId
-    ) return null;
-    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), accepted.after.selectedKeyId);
-    return record?.appFrame === source.appFrame
-      ? { keyId: record.keyId, appFrame: record.appFrame }
+    // Empty AND generated/interpolated cells promote through the same seam.
+    // The displayed interpolated pixels are never accepted as key content.
+    const promotion = await promoteRotoPaintTargetRef.current({
+      appFrame: source.appFrame,
+      selectionKind: source.selectionKind,
+      source: 'auto-key-paint',
+    });
+    return promotion.ok
+      ? { keyId: promotion.keyId, appFrame: promotion.appFrame }
       : null;
   };
 
@@ -2630,34 +2840,129 @@ export function PhysicsPaintStudio() {
     status: { setApplyStatus, setApplyMessage },
     isMutationLocked: isPhysicalMutationLocked,
   });
-  const beginRotoFrameEditImplRef = useRef<() => void>(() => {});
+  const beginRotoFrameEditImplRef = useRef<(event?: PointerEvent) => void>(() => {});
   // NAV FLUSH (paint-cache-empty-frame-on-key): the aquarelle layer registers a
   // synchronous flush-capture here; navigateToSyncedPhysicalFrame calls it BEFORE
   // flushLivePixels so the frame-leave capture is queued in time (the rAF poll's
   // capture runs one rAF after the flush has already drained).
   const aquarelleFlushCaptureRef = useRef<(() => void) | null>(null);
-  beginRotoFrameEditImplRef.current = () => {
+  // Quick 261019-mj2 Task 3: the aquarelle layer registers a same-frame sheet
+  // reset (frame-change branch minus the lastPlayFrame update). Generated-cell
+  // self-promotion calls it synchronously before dispatch.
+  const clearGeneratedRotoDisplayForPaint = useCallback(() => {
+    const previewEngine = engineRef.current as PreviewBackgroundEngine | null;
+    previewEngine?.clearPreviewBaseImage();
+    previewEngine?.resetBackground();
+    previewEngine?.clear();
+    aquarelleResetSheetRef.current?.();
+    aquarelleMergeBaseRef.current = null;
+  }, []);
+  beginRotoFrameEditImplRef.current = (event?: PointerEvent) => {
     const launch = launchContextRef.current;
     const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId()) : null;
     const paintTarget = document
       ? resolveRotoCompletedGroupPaintTarget(document, currentFrame, currentCellKeyId)
       : null;
-    if (currentFrameSelectionKind !== 'empty' || !launch || paintTarget?.kind === 'group-frame') {
+    const isNonRealCell = currentFrameSelectionKind === 'empty'
+      || currentFrameSelectionKind === 'generated-interpolation';
+    if (!launch || !isNonRealCell || paintTarget?.kind === 'group-frame') {
       pendingFirstPaintTargetRef.current = null;
       rotoFrameEditing.beginFrameEdit();
       return;
     }
-    // 52.1 (user directive): painting directly on an EMPTY frame is disabled.
-    // Silently auto-promoting to a new key ran the promotion inside the first
-    // stroke's path and its cold fresh surfaces broke a fast-chained 2nd stroke
-    // (WKWebView commit stall). Requiring the explicit "+key" action teaches the
-    // workflow and lets the key's surfaces settle at creation time — the
-    // artist knows a key must exist before the first paint stroke.
-    pendingFirstPaintTargetRef.current = null;
-    setLastError('Créez une key (+) avant de peindre sur ce frame.');
+    if (paintTarget?.kind !== 'empty') return;
+    if (workflowMode !== 'roto' || isPlaying) return;
+    if (event) {
+      // Never intercept: the engine's own pointerdown starts the stroke on the
+      // warm canvas untouched.
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (typeof Element !== 'undefined'
+        && target instanceof Element
+        && target.closest('.physics-paint-reference-transform, .physics-paint-background-transform')) return;
+      if (activeModule.value === 'watercolor') {
+        // lift is erase-like and Dry is a separate action — neither may create
+        // a key on a non-real cell.
+        if (!(
+          aquarelleActiveTool.value === 'brush'
+          || aquarelleActiveTool.value === 'water'
+          || aquarelleActiveTool.value === 'pen'
+        )) return;
+      } else {
+        // Cmd-move / Alt-erase resolve away from paint; a selected move tool
+        // never promotes either.
+        const effectiveToolIsPaint = resolveEffectiveTool(settings.tool) === 'paint';
+        if (!effectiveToolIsPaint) return;
+      }
+    }
+    const pending = pendingFirstPaintTargetRef.current;
+    if (
+      pending
+      && pending.launchOperationId === launch.operationId
+      && pending.layerId === launch.layerId
+      && pending.appFrame === currentFrame
+    ) return;
+    // Mark the frame dirty WITHOUT markCurrentFrameDirty (it refuses generated
+    // frames and would reset the background we are about to clear ourselves).
+    rotoEditBuffer.markDirty(currentFrame);
+    rotoSession.markLiveOverlayDirty(currentFrame);
+    syncPendingRotoFrames();
+    if (currentFrameSelectionKind === 'generated-interpolation') clearGeneratedRotoDisplayForPaint();
+    void startRotoPaintPromotion({
+      source: 'auto-key-paint',
+      appFrame: currentFrame,
+      selectionKind: currentFrameSelectionKind === 'generated-interpolation' ? 'generated-interpolation' : 'empty',
+    });
   };
-  const beginRotoFrameEdit = useCallback(() => {
-    beginRotoFrameEditImplRef.current();
+  // Quick 261019-mj2 Task 3 (D-08): the centered fallback on non-real cells.
+  // Same promotion seam; it warms the fresh key surfaces with visible progress
+  // and never moves a later key.
+  const handleCreateKeyFallback = useCallback(() => {
+    const launch = launchContextRef.current;
+    if (!launch || workflowMode !== 'roto' || isPlaying) return;
+    const appFrame = launch.startFrame;
+    const pending = pendingFirstPaintTargetRef.current;
+    if (
+      pending
+      && pending.launchOperationId === launch.operationId
+      && pending.layerId === launch.layerId
+      && pending.appFrame === appFrame
+    ) return;
+    if (currentFrameSelectionKind === 'real-key') return;
+    rotoEditBuffer.markDirty(appFrame);
+    rotoSession.markLiveOverlayDirty(appFrame);
+    syncPendingRotoFrames();
+    if (currentFrameSelectionKind === 'generated-interpolation') clearGeneratedRotoDisplayForPaint();
+    setApplyMessage('Préparation du canevas…');
+    warmProgress.value = 0;
+    const warmStartedAt = performance.now();
+    const warmTick = () => {
+      const elapsed = performance.now() - warmStartedAt;
+      const next = Math.min(100, Math.round((elapsed / FRESH_FRAME_WARM_MS) * 100));
+      warmProgress.value = next;
+      if (next < 100) requestAnimationFrame(warmTick);
+    };
+    requestAnimationFrame(warmTick);
+    void startRotoPaintPromotion({
+      source: 'create-key-button',
+      appFrame,
+      selectionKind: currentFrameSelectionKind === 'generated-interpolation' ? 'generated-interpolation' : 'empty',
+    });
+    void (async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const warmEngine = engineRef.current as unknown as {
+        warmCanvasSurfaces?: () => void;
+        lockInputForWarm?: (ms: number) => Promise<void>;
+      } | null;
+      warmEngine?.warmCanvasSurfaces?.();
+      await warmEngine?.lockInputForWarm?.(FRESH_FRAME_WARM_MS);
+      warmProgress.value = 100;
+      setApplyMessage((current) => current === 'Préparation du canevas…' ? null : current);
+      window.setTimeout(() => { if (warmProgress.peek() === 100) warmProgress.value = 0; }, 300);
+    })();
+  }, [clearGeneratedRotoDisplayForPaint, isPlaying, setApplyMessage, syncPendingRotoFrames]);
+  const beginRotoFrameEdit = useCallback((event?: PointerEvent) => {
+    beginRotoFrameEditImplRef.current(event);
   }, []);
   acceptRotoScriptBrushRef.current = rotoFrameEditing.acceptScriptBrush;
   // 38-11: rotoFrameEditing's wrapper object is rebuilt per render (its inner
@@ -3206,6 +3511,25 @@ export function PhysicsPaintStudio() {
       const currentEngine = engineRef.current;
       const acceptedSelectedKeyId = accepted?.after.selectedKeyId ?? null;
       const acceptedSelectedAppFrame = accepted?.after.selectedAppFrame ?? null;
+      // 261019-mj2 Task 3: a direct-paint auto-key (or the Create key button)
+      // promotes a blank key WHILE the stroke paints on the live canvas. When
+      // that promotion is accepted, the accepted key carries NO pixels yet —
+      // reloading its baked reference here would race the in-flight stroke and
+      // double it on the merge base. Detect the self-promotion so the reload is
+      // suppressed and the blank frame is pinned as the repaint/merge base.
+      const pendingSelfPromotion = (() => {
+        const pending = pendingFirstPaintTargetRef.current;
+        if (pending === null) return null;
+        if (pending.source !== 'auto-key-paint' && pending.source !== 'create-key-button') return null;
+        if (accepted === null || accepted === undefined) return null;
+        if (accepted.operationKind !== 'paste-key') return null;
+        if (accepted.operationId !== detail?.operationId) return null;
+        if (acceptedSelectedAppFrame === null) return null;
+        if (pending.launchOperationId !== accepted.after.launchOperationId) return null;
+        if (pending.appFrame !== acceptedSelectedAppFrame) return null;
+        return pending;
+      })();
+      const acceptedSelfPromotion = transition === 'accepted' && pendingSelfPromotion !== null;
       const createdSelectedDestination = (accepted?.operationKind === 'paste-key' || accepted?.operationKind === 'paste-key-group')
         && acceptedSelectedKeyId !== null
         && acceptedSelectedAppFrame !== null
@@ -3220,10 +3544,16 @@ export function PhysicsPaintStudio() {
         && currentLaunch.startFrame === acceptedSelectedAppFrame
         && currentEngine
       ) {
-        // Synchronous (52.1): this reload is also what refreshes the cached
-        // repaint base the next stroke's capture merges onto — deferring it
-        // stranded the base and forced a full-frame re-encode per stroke.
-        loadCachedRotoReferenceFrame(acceptedSelectedAppFrame, currentEngine as PreviewBackgroundEngine);
+        if (!acceptedSelfPromotion) {
+          // Synchronous (52.1): this reload is also what refreshes the cached
+          // repaint base the next stroke's capture merges onto — deferring it
+          // stranded the base and forced a full-frame re-encode per stroke.
+          loadCachedRotoReferenceFrame(acceptedSelectedAppFrame, currentEngine as PreviewBackgroundEngine);
+        } else if (pendingSelfPromotion.blankFrame !== null && acceptedSelectedAppFrame !== null) {
+          setCachedRotoRepaintBaseFrame(pendingSelfPromotion.blankFrame);
+          cachedRotoRepaintBaseFrameRef.current = pendingSelfPromotion.blankFrame;
+          aquarelleMergeBaseRef.current = { appFrame: acceptedSelectedAppFrame, base: pendingSelfPromotion.blankFrame };
+        }
       }
       if (transition === 'accepted' && accepted && accepted.operationId === detail?.operationId) {
         physicalEditCoordinator.acknowledgePhysicalEditSettlement(accepted.operationId, 'release');
@@ -3939,9 +4269,24 @@ export function PhysicsPaintStudio() {
     const acceptedTarget = rotoScript.getAcceptedTarget(mutationEngine, mutationId);
     const publicationIdentity = acceptedTarget?.publicationIdentity;
     const canPublishCapturedApply = Boolean(publicationIdentity);
+    const appFrame = acceptedTarget?.appFrame ?? currentFrame;
+    const pendingFirstPaintTarget = pendingFirstPaintTargetRef.current;
+    // Quick 261019-mj2 Task 3: a generated cell is paintable while its
+    // self-promotion is in flight — the capture below attaches to the key that
+    // promotion creates. Real-key/empty paths are unchanged.
+    const pendingSelfPromotionForCompletedFrame = Boolean(
+      pendingFirstPaintTarget
+      && launchContext
+      && pendingFirstPaintTarget.launchOperationId === launchContext.operationId
+      && pendingFirstPaintTarget.layerId === launchContext.layerId
+      && pendingFirstPaintTarget.appFrame === appFrame,
+    );
+    if (pendingSelfPromotionForCompletedFrame && pendingFirstPaintTarget !== null && kind !== 'clear') {
+      pendingFirstPaintTarget.completedMutationObserved = true;
+    }
     const canPublishCurrentEngine = mutationEngine === engineRef.current
       && workflowMode === 'roto'
-      && currentFrameSelectionKind !== 'generated-interpolation'
+      && (currentFrameSelectionKind !== 'generated-interpolation' || pendingSelfPromotionForCompletedFrame)
       && Boolean(launchContext);
     if (kind === 'clear' || (!canPublishCapturedApply && !canPublishCurrentEngine) || !launchContext) return;
     if (acceptedTarget && !acceptedTarget.publishPixels) return;
@@ -3950,7 +4295,6 @@ export function PhysicsPaintStudio() {
     // script path above, but its hidden surface must never overwrite the
     // aquarelle WebP.
     if (activeModule.value === 'watercolor') return;
-    const appFrame = acceptedTarget?.appFrame ?? currentFrame;
     const document = physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId());
     const completedTarget = acceptedTarget?.keyId
       ? { kind: 'ordinary-key' as const, keyId: acceptedTarget.keyId, appFrame }
@@ -3963,7 +4307,6 @@ export function PhysicsPaintStudio() {
       : completedTarget.kind === 'group-frame'
         ? completedTarget.expectedKeyId
         : null;
-    const pendingFirstPaintTarget = pendingFirstPaintTargetRef.current;
     // 52.1 (2nd-stroke freeze): do NOT snapshot the engine canvas here — the
     // eager copyLiveAlphaCanvas() synchronously flushes every pending stroke
     // finalization (~500-1900ms full-raster drain) at the very moment the user
@@ -3981,7 +4324,7 @@ export function PhysicsPaintStudio() {
           || pendingFirstPaintTarget.appFrame !== appFrame
         ) return;
         const firstPaintTarget = await pendingFirstPaintTarget.promise;
-        if (!firstPaintTarget || firstPaintTarget.appFrame !== appFrame) return;
+        if (!firstPaintTarget.ok || firstPaintTarget.appFrame !== appFrame) return;
         keyId = firstPaintTarget.keyId;
       }
 
@@ -3991,11 +4334,14 @@ export function PhysicsPaintStudio() {
         || currentLaunch.operationId !== launchContext.operationId
         || currentLaunch.layerId !== launchContext.layerId
       ) return;
-      const cachedBaseAppFrame = cachedRotoRepaintBaseFrame?.appFrame ?? null;
+      // Read the merge base through the ref AFTER the await: the state value
+      // captured in this closure can predate the promotion's blank-frame pin.
+      const cachedRepaintBase = cachedRotoRepaintBaseFrameRef.current;
+      const cachedBaseAppFrame = cachedRepaintBase?.appFrame ?? null;
       if (isEmpty) {
-        if (cachedRotoRepaintBaseFrame && cachedBaseAppFrame === appFrame) {
+        if (cachedRepaintBase && cachedBaseAppFrame === appFrame) {
           rotoPersistence.invalidateLivePixels(appFrame);
-          rotoPersistence.upsertCachedFrame(cachedRotoRepaintBaseFrame, false);
+          rotoPersistence.upsertCachedFrame(cachedRepaintBase, false);
         } else {
           // 261003-erase-uat (C): engine-empty ≠ key-empty. `kind === 'clear'`
           // already early-returns above, so an isEmpty here is an undo/erase
@@ -4010,7 +4356,7 @@ export function PhysicsPaintStudio() {
       const capturedBaseAppFrame = capturedBase?.appFrame ?? null;
       const cachedBase = publicationIdentity
         ? capturedBaseAppFrame === appFrame ? capturedBase : null
-        : cachedBaseAppFrame === appFrame ? cachedRotoRepaintBaseFrame : null;
+        : cachedBaseAppFrame === appFrame ? cachedRepaintBase : null;
       const snapshotStartedAt = profilePerformance ? performance.now() : 0;
       const capture = rotoPersistence.captureLivePixels({
         layerId: publicationIdentity?.layerId ?? currentLaunch.layerId,
@@ -4077,13 +4423,9 @@ export function PhysicsPaintStudio() {
     onionOverlayUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     onionOverlayUrlsRef.current = [];
   }, []);
-  const rotoInputDisabledMessage = currentFrameIsGeneratedRoto
-    ? `Generated frame ${currentFrame} is render-only.`
-    : currentFrameSelectionKind === 'empty'
-      ? 'Créez une key (+) avant de peindre sur ce frame.'
-      : mutationLocked
-        ? 'Finish the current Roto script operation.'
-        : undefined;
+  const rotoInputDisabledMessage = mutationLocked
+    ? 'Finish the current Roto script operation.'
+    : undefined;
   // 56-11: stroke-end record seam for Water color. The live aquarelle
   // surface owns rendering; this callback persists the full AquarelleStroke
   // (points + params) and enqueues a PaintStroke so the Roto script path
@@ -4131,7 +4473,8 @@ export function PhysicsPaintStudio() {
   // paint. The base is snapshotted once per sheet — repeat captures (dry
   // settle + frame-leave) stay idempotent and never double-apply the sheet
   // onto a cache that already includes it.
-  const aquarelleMergeBaseRef = useRef<{ appFrame: number; base: RenderedFramePayload | null } | null>(null);
+  // (declared with the other promotion refs: the failure policy and the
+  // accepted-key suppression both pin the merge base synchronously.)
   // aquarelle-cache-lost-on-return: the latest capture sequence per frame — a
   // retry only runs when no newer capture (new session, Dry, second leave)
   // has taken ownership of that frame's cache.
@@ -4142,55 +4485,88 @@ export function PhysicsPaintStudio() {
   const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null) => {
     const launch = launchContextRef.current;
     if (!launch) return;
+    // The snapshot must stay EAGER: the live layer clears the sheet on frame
+    // leave, so a deferred read would commit empty. Awaiting the promotion
+    // below therefore happens AFTER the copy.
     const liveAlphaCanvas = snapshot();
     if (!liveAlphaCanvas) return;
-    if (aquarelleMergeBaseRef.current?.appFrame !== playFrame) {
-      aquarelleMergeBaseRef.current = {
-        appFrame: playFrame,
-        base: findCachedRotoDisplayFrameRef.current(playFrame),
-      };
-    }
-    const cachedBase = aquarelleMergeBaseRef.current?.base ?? null;
     const operationId = launch.operationId;
     const seq = ++aquarelleCaptureSeqRef.current;
     aquarelleLatestCaptureSeqByFrameRef.current.set(playFrame, seq);
-    capturePaintCacheEvent('aquarelle-capture-enqueue', {
-      appFrame: playFrame,
-      base: cachedBase ? 'cache' : 'none',
-    });
-    // The snapshot is an eager canvas copy, so a retry can reuse it after the
-    // live sheet was cleared by the frame change.
-    const enqueue = () => rotoPersistenceRef.current.captureLivePixels({
-      layerId: launch.layerId,
-      appFrame: playFrame,
-      liveAlphaCanvas,
-      cachedBase,
-      // A5: MODE.transparent is opaque transmittance. Multiply matches the
-      // live CSS seam — white (no pigment) leaves the base untouched, pigment
-      // tints it. Source-over would cover the base with the full sheet.
-      mergeBlend: 'multiply',
-      size: { width: canvasWidth, height: canvasHeight },
-    });
-    void enqueue().then((ok) => {
-      capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok });
-      if (ok) return;
-      // aquarelle-cache-lost-on-return: the stroke's own recorded physical
-      // edit can advance the content revision between enqueue and commit, so
-      // the capture gate treats the sheet as stale. The snapshot still holds
-      // the frame's paint — retry once against the current revision, unless a
-      // newer capture for this frame already owns its cache.
-      if (aquarelleLatestCaptureSeqByFrameRef.current.get(playFrame) !== seq) return;
+    // 261019-mj2 Task 3: when this sheet's first stroke self-promoted a blank
+    // key, the accepted key does not exist at stroke-end time. Writing pixels
+    // now loses the capture gate; await the promotion, then persist onto the
+    // created key with the BLANK frame as the multiply base (the generated
+    // cell's pre-promotion cache must not bleed into the new key).
+    const pendingFirstPaintTarget = (() => {
+      const pending = pendingFirstPaintTargetRef.current;
+      if (pending === null) return null;
+      if (pending.source !== 'auto-key-paint' && pending.source !== 'create-key-button') return null;
+      if (pending.launchOperationId !== operationId) return null;
+      if (pending.appFrame !== playFrame) return null;
+      return pending;
+    })();
+    const runCapture = async () => {
+      let cachedBase: RenderedFramePayload | null;
+      if (pendingFirstPaintTarget !== null) {
+        const promotion = await pendingFirstPaintTarget.promise;
+        // Failure policy: the stroke was discarded — never persist it.
+        if (!promotion.ok) return;
+        cachedBase = promotion.blankFrame;
+        aquarelleMergeBaseRef.current = { appFrame: playFrame, base: cachedBase };
+      } else {
+        if (aquarelleMergeBaseRef.current?.appFrame !== playFrame) {
+          aquarelleMergeBaseRef.current = {
+            appFrame: playFrame,
+            base: findCachedRotoDisplayFrameRef.current(playFrame),
+          };
+        }
+        cachedBase = aquarelleMergeBaseRef.current?.base ?? null;
+      }
       const currentLaunch = launchContextRef.current;
       if (!currentLaunch || currentLaunch.operationId !== operationId) return;
-      void enqueue().then((retried) => {
-        capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: retried, retry: true });
-      }).catch((error) => {
-        capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: false, retry: true, failed: true });
-        console.error('[PhysicsPaintStudio] Aquarelle cache retry failed', error);
+      capturePaintCacheEvent('aquarelle-capture-enqueue', {
+        appFrame: playFrame,
+        base: cachedBase ? 'cache' : 'none',
       });
-    }).catch((error) => {
+      // The snapshot is an eager canvas copy, so a retry can reuse it after the
+      // live sheet was cleared by the frame change.
+      const enqueue = () => rotoPersistenceRef.current.captureLivePixels({
+        layerId: launch.layerId,
+        appFrame: playFrame,
+        liveAlphaCanvas,
+        cachedBase,
+        // A5: MODE.transparent is opaque transmittance. Multiply matches the
+        // live CSS seam — white (no pigment) leaves the base untouched, pigment
+        // tints it. Source-over would cover the base with the full sheet.
+        mergeBlend: 'multiply',
+        size: { width: canvasWidth, height: canvasHeight },
+      });
+      await enqueue().then((ok) => {
+        capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok });
+        if (ok) return;
+        // aquarelle-cache-lost-on-return: the stroke's own recorded physical
+        // edit can advance the content revision between enqueue and commit, so
+        // the capture gate treats the sheet as stale. The snapshot still holds
+        // the frame's paint — retry once against the current revision, unless a
+        // newer capture for this frame already owns its cache.
+        if (aquarelleLatestCaptureSeqByFrameRef.current.get(playFrame) !== seq) return;
+        const retryLaunch = launchContextRef.current;
+        if (!retryLaunch || retryLaunch.operationId !== operationId) return;
+        void enqueue().then((retried) => {
+          capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: retried, retry: true });
+        }).catch((error) => {
+          capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: false, retry: true, failed: true });
+          console.error('[PhysicsPaintStudio] Aquarelle cache retry failed', error);
+        });
+      }).catch((error) => {
+        capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: false, failed: true });
+        console.error('[PhysicsPaintStudio] Aquarelle cache write failed', error);
+      });
+    };
+    void runCapture().catch((error) => {
       capturePaintCacheEvent('aquarelle-capture-outcome', { appFrame: playFrame, ok: false, failed: true });
-      console.error('[PhysicsPaintStudio] Aquarelle cache write failed', error);
+      console.error('[PhysicsPaintStudio] Aquarelle cache capture failed', error);
     });
   }, [canvasWidth, canvasHeight]);
 
@@ -4212,6 +4588,13 @@ export function PhysicsPaintStudio() {
     aquarelleMergeBaseRef.current = null;
   }, []);
 
+  // Quick 261019-mj2 Task 3: same-frame sheet reset registration for the
+  // generated-cell self-promotion (the Studio calls it synchronously).
+  const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {
+    aquarelleResetSheetRef.current = resetSheet;
+    aquarelleMergeBaseRef.current = null;
+  }, []);
+
   // FRAME SCOPE: identity-stable getter so the canvas-mount memo never
   // invalidates on frame navigation (the persistent Efx child contract).
   const getAquarellePlayFrame = useCallback(
@@ -4228,7 +4611,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, getAquarellePlayFrame, getAquarellePaperId], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, getAquarellePlayFrame, getAquarellePaperId], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -4262,6 +4645,7 @@ export function PhysicsPaintStudio() {
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,
       onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
+      onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the
@@ -4307,7 +4691,25 @@ export function PhysicsPaintStudio() {
       setApplyMessage(null);
     }
   }, [setApplyStatus, setApplyMessage]);
-  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, engine, engine?.getAppliedPreviewBaseContentToken(), launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value], () => {
+  // Quick 261019-mj2 Task 3 (D-08): the centered "Create key" fallback shows
+  // only on a NON-REAL, EMPTY paint target — a roto launch that is idle and not
+  // mutation-locked, with no self-promotion already in flight. Generated cells
+  // are excluded: pointerdown promotes them directly, and an overlay there
+  // would sit on their visible preview before the user touches the canvas.
+  const fallbackDocument = launchContext
+    ? physicPaintStore.getRotoPhysicalDocument(launchContext.layerId, studioActiveTrackId())
+    : null;
+  const paintTarget = fallbackDocument
+    ? resolveRotoCompletedGroupPaintTarget(fallbackDocument, currentFrame, currentCellKeyId)
+    : null;
+  const createKeyFallback = workflowMode === 'roto'
+    && !isPlaying
+    && !mutationLocked
+    && !autoKeyPromotionPaintExempt.value
+    && currentFrameSelectionKind !== 'real-key'
+    && paintTarget !== null
+    && paintTarget.kind === 'empty';
+  const canvasStack = canvasStackPropsMemo.resolve([cachedRotoReferenceUrl, rotoCachedPlayback.playbackTick, rotoCachedPlayback.isActive, cachedRotoPlaybackComposition, rotoInputDisabled, rotoInputDisabledMessage, beginRotoFrameEdit, onionOverlay, canvasKey, canvasMount, engine, engine?.getAppliedPreviewBaseContentToken(), launchContext?.layerId, currentFrame, settings.background, settings.grainScale, isPlaying, efxPaintVersion.value, physicPaintVersion.value, canvasWidth, canvasHeight, paperTextureScale, activeModule.value, createKeyFallback, handleCreateKeyFallback], () => {
     // 48-05 (D-05): the program monitor config — concrete values only. The
     // monitor subscribes to the store version clocks in its OWN effect; this
     // memo re-resolves on document changes (efxPaintVersion.value) so a
@@ -4365,6 +4767,7 @@ export function PhysicsPaintStudio() {
       inputDisabled: rotoInputDisabled,
       inputDisabledMessage: rotoInputDisabledMessage,
       onInputIntent: beginRotoFrameEdit,
+      createKeyFallback: createKeyFallback ? { onCreate: handleCreateKeyFallback } : null,
       onionOverlay,
       canvasKey,
       mount: canvasMount,

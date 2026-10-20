@@ -7347,3 +7347,39 @@ button.destructive {
   border-color: #565b61;
   background: #3b3d3f;
 }
+
+/* Quick 261019-mj2 Task 3 (D-08): the centered Create key fallback on a
+   non-real (empty/generated) cell. The container never eats painting gestures;
+   only the button is interactive. */
+.physics-paint-create-key-fallback {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.physics-paint-create-key-fallback > button {
+  pointer-events: auto;
+  padding: 9px 16px;
+  border: 1px solid #6f90ff;
+  border-radius: 9px;
+  background: #365ed6;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.physics-paint-create-key-fallback > button:hover {
+  background: #3d6ae8;
+}
+
+.physics-paint-create-key-fallback > button:focus-visible {
+  outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: 2px;
+}
