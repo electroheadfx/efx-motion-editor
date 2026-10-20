@@ -234,3 +234,15 @@ Status: **automated-ready — root cause now observable; UAT rows (a)-(g) remain
 - Checked key files exist: `physicPaintStore.ts`, `physicPaintStore.test.ts`, `useRotoPhysicalEditCoordinator.test.ts`, `physicPaintBridge.ts`, `physicPaintBridge.test.ts`, `PhysicsPaintWorkflowStrip.test.ts`, `useRotoPhysicalEditHistory.test.ts`.
 - Checked all six task commits are ancestors of HEAD: `ca10ab93`, `1bdd8f19`, `3c4383be`, `79fea1e5`, `e6c8c0e2`, `c5314d3a`.
 - Measured `commits=6` from `plan_head_before=4d680b96` to `plan_head_after=c5314d3a`; working tree clean before this docs artifact.
+
+## UAT remediation 2 — live report 2026-10-20 (Insert/Delete controls)
+
+Live report: the trash button sat at the end of the action row; Delete did nothing on empty and interpolated frames; Insert pressed on a real key logged "Roto physical edit barriers failed. No state was changed." and moved nothing.
+
+- **Trash relocated** — the delete icon-action now renders immediately after Insert (before Duplicate/Copy/Paste/Cut/Scissor/All) in `PhysicsPaintWorkflowStrip.tsx`; source-order pins updated.
+- **Root cause of the insert barrier** — `buildInsertCandidate` selected the key that occupied the destination (now F+1) while the cursor stayed on the opened gap (F). `parsePhysicPaintRotoPhysicalDocument` requires a selected key to sit exactly on `cursorAppFrame`, so the deferred document threw and every Insert on a real key surfaced the generic barrier. Insert now clears the selection (the gap holds no key); receiver-side parsing, payload dispatch, and acceptance all succeed.
+- **Delete-slot = inverse of Insert** — new ordinary intent/operation kind `delete-slot` (destination frame only). On an empty or generated cursor frame it shifts every real key strictly after the frame left by one, removes nothing, leaves capacity monotonic, and keeps the cursor on the closed slot; the key landing on the cursor becomes the selection (when present) so the document's selection/cursor invariant holds. Trash and Backspace/Delete converge on it through `deleteRotoFrame`. Fail-closed guards: occupied destination, zero-key track, out-of-range slot, any Group-referenced key in the left ripple, and linked Loop frames (derived loop resolution, matching Insert).
+- **Delete classification** — keyless cursor frames now classify as `generated`/`empty-frame` and are deletable; the old "Delete is unavailable on a generated render-only frame." reason is gone. Lifecycle Group frames keep their existing group-delete routing.
+- **Coordinator/history** — `delete-slot` is an ordinary history kind, stages records through the same resolver/coordinator path, sends no `targetCapacity`, and reconciles the cursor frame after acceptance (like Insert) because the paint under the cursor changed.
+
+Status: **automated-ready — UAT rows (a)-(g) plus the new Insert/Delete control rows remain unverified pending live retest.** Suite 5374 passed (1 skipped, 96 todo); typecheck 16 baseline errors unchanged; max JS chunk 1,603,380 B.
