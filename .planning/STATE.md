@@ -6,10 +6,10 @@ current_phase: 56
 current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
 status: executing
 stopped_at: Completed 261018-odm watercolor script playback (extend)
-last_updated: "2026-10-18T16:20:31.747Z"
+last_updated: "2026-10-20T15:38:23.536Z"
 last_activity: 2026-10-18
 last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
-state_head: d1e57be70f88b7a818d5284257bdbe4f5fb4f06a
+state_head: c5314d3ac8c1c3b3d80f7fa430783f2077d1cdab
 progress:
   total_phases: 4
   completed_phases: 3
@@ -32,7 +32,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
 Plan: 4 of 10
 Status: Ready to execute
-Last activity: 2026-10-18 — Quick 261018-odm: watercolor script playback (dual-engine schema + aquarelle bake route) — awaiting live UAT
+Last activity: 2026-10-20 — Quick 261019-mj2: roto paint workflow auto-key + pure-gap Insert + atomic cache re-anchor — automated-ready, awaiting live UAT
 
 Progress: [████████░░] 75%
 
@@ -559,6 +559,7 @@ None yet.
 | 261018-l05 | Brush tab DOM cleanup: remove invisible toggle line + simplify brush card markup to stylesheet classes | 2026-10-18 | 0f059c19 | [261018-l05-brush-tab-dom-cleanup-1-remove-leftover-](./quick/261018-l05-brush-tab-dom-cleanup-1-remove-leftover-/) |
 | 261018-lqv | Fix save-script validator: isRotoBackground accepts paper/* + grainScale (parity with types validator) | 2026-10-18 | 77e64dcb | [261018-lqv-fix-captured-roto-script-is-not-persista](./quick/261018-lqv-fix-captured-roto-script-is-not-persista/) |
 | 261018-odm | Watercolor script playback: dual-engine schema + aquarelle save/play route + Rust validator | 2026-10-18 | d1e57be7 | [261018-odm-build-watercolor-script-playback-extend-](./quick/261018-odm-build-watercolor-script-playback-extend-/) |
+| 261019-mj2 | Roto paint workflow: direct-paint auto-key + Create key fallback, Insert as a pure gap, +Key from nearest previous real key, composite undo, atomic cache re-anchor | 2026-10-20 | c5314d3a | [261019-mj2-roto-paint-workflow-auto-key-on-paint-ke](./quick/261019-mj2-roto-paint-workflow-auto-key-on-paint-ke/) |
 
 ### Roadmap Evolution
 
