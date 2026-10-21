@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { mixSpectral } from './mix'
+import * as publicApi from './index'
 
 describe('mixSpectral', () => {
   it('yellow + blue returns a green-dominant colour (g > r and g > b)', () => {
@@ -22,5 +23,13 @@ describe('mixSpectral', () => {
     expect(first[0]).toBe(second[0])
     expect(first[1]).toBe(second[1])
     expect(first[2]).toBe(second[2])
+  })
+})
+
+// SPEC-05: the runtime API is frozen for engine-1 adoption. New exports are a
+// deliberate contract change, not an incidental one.
+describe('public API surface (SPEC-05)', () => {
+  it('exports only the frozen runtime surface', () => {
+    expect(Object.keys(publicApi).sort()).toEqual(['SPECTRAL_BANDS', 'mixSpectral'])
   })
 })
