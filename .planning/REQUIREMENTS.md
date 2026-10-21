@@ -28,45 +28,47 @@ Requirements for the multi-module paint workstation release. Each maps to a road
 
 ### Watercolor Engine (Phase 56 — efx-watercolor)
 
-- [ ] **AQUA-01**: paint-aquarelle renders wet-in-wet blooms, hard wet-on-dry edges, and dark tide lines that survive into baked frames
-- [ ] **AQUA-02**: Four tools only: `brush | water | pen | lift`
-- [ ] **AQUA-03**: 14 brush tips + custom PNG/JPG tip import, with the per-brush property surface (tip/aspect/rotation/size-curve/scatter/capacity/grain/wetRound)
-- [ ] **AQUA-04**: 8 global params (`size, water, load, flow, bleed, dry, edge, granulation`) + per-brush multipliers drain into the panels
-- [ ] **AQUA-05**: Studio script law for aquarelle: record → play physics (no forced Dry) → WebP bake (`diffusionFrames` ≤ 600) → cache
-- [ ] **AQUA-06**: Deterministic replay: same script ⇒ same pixels, seeded per stroke (FNV-1a traceSeed), no `Math.random()` in deposit/sim path
-- [ ] **AQUA-07**: Bake survives leaving the frame (long cuisson > one diffusion window)
-- [ ] **AQUA-08**: Transparent where unpainted; acceptance rows A1–A5 pass
+- [x] **AQUA-01**: paint-aquarelle renders wet-in-wet blooms, hard wet-on-dry edges, and dark tide lines that survive into baked frames
+- [x] **AQUA-02**: Four tools only: `brush | water | pen | lift`
+- [x] **AQUA-03**: 14 brush tips + custom PNG/JPG tip import, with the per-brush property surface (tip/aspect/rotation/size-curve/scatter/capacity/grain/wetRound)
+- [x] **AQUA-04**: 8 global params (`size, water, load, flow, bleed, dry, edge, granulation`) + per-brush multipliers drain into the panels
+- [x] **AQUA-05**: Studio script law for aquarelle: record → play physics (no forced Dry) → WebP bake (`diffusionFrames` ≤ 600) → cache
+- [x] **AQUA-06**: Deterministic replay: same script ⇒ same pixels, seeded per stroke (FNV-1a traceSeed), no `Math.random()` in deposit/sim path
+- [x] **AQUA-07**: Bake survives leaving the frame (long cuisson > one diffusion window)
+- [x] **AQUA-08**: Transparent where unpainted; acceptance rows A1–A5 pass
 
 ### Paper Pack (Phase 56)
 
-- [ ] **PAPER-01**: 10 named procedural papers (cold press, hot press, rough, khadi, washi, laid, canvas, toned sand, kraft, student)
-- [ ] **PAPER-02**: Usable by ALL paints through the same `paperPass` — composite-only, no rebake on paper change
-- [ ] **PAPER-03**: Paper display state (id, strength, scale) lives on the document/fond in undo + save, with display-class change-token rotation (learn from PKG-06/BKG-09)
+- [x] **PAPER-01**: 10 named procedural papers (cold press, hot press, rough, khadi, washi, laid, canvas, toned sand, kraft, student)
+- [x] **PAPER-02**: Usable by ALL paints through the same `paperPass` — composite-only, no rebake on paper change
+- [x] **PAPER-03**: Paper display state (id, strength, scale) lives on the document/fond in undo + save, with display-class change-token rotation (learn from PKG-06/BKG-09)
 - [x] **PAPER-04**: The 3 real paper backgrounds already in the repo (`app/public/img/paper_1.jpg` / `paper_2.jpg` / `paper_3.jpg` — today wired as canvas1/2/3 inside physic-paint) are recovered into the Studio paper library and usable by ALL paints through the same `paperPass`, alongside the 10 procedural papers. Not watercolour-only.
 
 ### Module Switcher & Shared Studio (Phase 56)
 
-- [ ] **MOD-01**: Top-bar MODULE SWITCHER icon with three slots "Brush | Water color | Krita"; Krita visible but inert ("coming in v2.1.0")
-- [ ] **MOD-02**: Switching drains the selected module's OWN options/features into the panels
-- [ ] **MOD-03**: ONE shared Studio engine (script, cache management, timeline) — never forked per module
-- [ ] **MOD-04**: Brush-pack snapshot travels in `.mce` (deliberate exception to the 52.2 refs-only law)
-- [ ] **MOD-05**: Fail-closed cross-engine Apply — unreadable/cross-engine scripts refuse with a named visible error (53.1 law)
-- [ ] **MOD-06**: v2.0.0 ships Brush + Water color only; Krita is the v2.1.0 slot (no krita implementation)
+- [x] **MOD-01**: Top-bar MODULE SWITCHER icon with three slots "Brush | Water color | Krita"; Krita visible but inert ("coming in v2.1.0")
+- [x] **MOD-02**: Switching drains the selected module's OWN options/features into the panels
+- [x] **MOD-03**: ONE shared Studio engine (script, cache management, timeline) — never forked per module
+- [x] **MOD-04**: Brush-pack snapshot travels in `.mce` (deliberate exception to the 52.2 refs-only law)
+- [x] **MOD-05**: Fail-closed cross-engine Apply — unreadable/cross-engine scripts refuse with a named visible error (53.1 law)
+- [x] **MOD-06**: v2.0.0 ships Brush + Water color only; Krita is the v2.1.0 slot (no krita implementation)
 
-### Spectral Mixing (Phase 57 — efx-spectral)
+### Spectral Mixing (delivered inside Phase 56; Phase 57 retired 2026-10-21)
 
-- [ ] **SPEC-01**: `packages/efx-spectral` ships vendored MIT reflectance data + own ESM surface + `NOTICE`
-- [ ] **SPEC-02**: Subtractive pigment mixing (yellow + blue = green) visible in wet AND dry marks
-- [ ] **SPEC-03**: Display rebuild matches the bake (16-band quadrature + `exp(−A)` → sRGB)
-- [ ] **SPEC-04**: Shared package consumed by engine 2 — never duplicated inside the watercolor engine
-- [ ] **SPEC-05**: API frozen for engine-1 adoption in v2.1.0 (the adoption itself is out of scope)
+- [x] **SPEC-01**: `packages/efx-spectral` ships vendored MIT reflectance data + own ESM surface + `NOTICE`
+- [x] **SPEC-02**: Subtractive pigment mixing (yellow + blue = green) visible in wet AND dry marks
+- [x] **SPEC-03**: Display rebuild matches the bake (shipped as 38-band spectral reconstruction + `exp(−A)` → sRGB; display/bake parity is pinned by the A1/A2 bake rows and engine determinism tests)
+- [x] **SPEC-04**: Shared package consumed by engine 2 — never duplicated inside the watercolor engine
+- [x] **SPEC-05**: API frozen for engine-1 adoption in v2.1.0 (the adoption itself is out of scope)
+
+> Delivered through the Phase 56 spectral dependency hook. `packages/efx-spectral` stays as the engine-2 mixing package; there is no standalone Phase 57. The runtime API is pinned by `packages/efx-spectral/src/mix.test.ts` (SPEC-05 pin).
 
 ### Data Honesty & Format
 
 - [x] **DATA-01**: Clean break accepted — no migration code, no dual-format readers, no backward-compat shims/branches
 - [x] **DATA-02**: Any unreadable script/asset refuses with a named visible error — never drop data silently
 - [x] **DATA-03**: Time = fixed tick grid (~1/60 s), integer ticks, never raw ms
-- [ ] **DATA-04**: Every new `.mce` field declared in BOTH TS and Rust (`mceFieldContract` law)
+- [x] **DATA-04**: Every new `.mce` field declared in BOTH TS and Rust (`mceFieldContract` law)
 
 ## Quick Tasks (inside this milestone — never standalone)
 
@@ -126,7 +128,7 @@ Resolved during planning, not tracked as REQ-IDs:
 
 ## Traceability
 
-Which phases cover which requirements. Updated 2026-10-14 after roadmap creation — mapping validated 38/38 + QUICK-01.
+Which phases cover which requirements. Updated 2026-10-21 after phase 56 close — mapping complete 38/38 + QUICK-01 (SPEC-01..05 delivered inside 56; Phase 57 retired).
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -141,33 +143,33 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | HOST-03 | Phase 55 | Complete |
 | HOST-04 | Phase 55 | Complete |
 | HOST-05 | Phase 55 | Complete |
-| AQUA-01 | Phase 56 | Pending |
-| AQUA-02 | Phase 56 | Pending |
-| AQUA-03 | Phase 56 | Pending |
-| AQUA-04 | Phase 56 | Pending |
-| AQUA-05 | Phase 56 | Pending |
-| AQUA-06 | Phase 56 | Pending |
-| AQUA-07 | Phase 56 | Pending |
-| AQUA-08 | Phase 56 | Pending |
-| PAPER-01 | Phase 56 | Pending |
-| PAPER-02 | Phase 56 | Pending |
-| PAPER-03 | Phase 56 | Pending |
+| AQUA-01 | Phase 56 | Complete |
+| AQUA-02 | Phase 56 | Complete |
+| AQUA-03 | Phase 56 | Complete |
+| AQUA-04 | Phase 56 | Complete |
+| AQUA-05 | Phase 56 | Complete |
+| AQUA-06 | Phase 56 | Complete |
+| AQUA-07 | Phase 56 | Complete |
+| AQUA-08 | Phase 56 | Complete |
+| PAPER-01 | Phase 56 | Complete |
+| PAPER-02 | Phase 56 | Complete |
+| PAPER-03 | Phase 56 | Complete |
 | PAPER-04 | Phase 56 | Complete |
-| MOD-01 | Phase 56 | Pending |
-| MOD-02 | Phase 56 | Pending |
-| MOD-03 | Phase 56 | Pending |
-| MOD-04 | Phase 56 | Pending |
-| MOD-05 | Phase 56 | Pending |
-| MOD-06 | Phase 56 | Pending |
-| SPEC-01 | Phase 57 | Pending |
-| SPEC-02 | Phase 57 | Pending |
-| SPEC-03 | Phase 57 | Pending |
-| SPEC-04 | Phase 57 | Pending |
-| SPEC-05 | Phase 57 | Pending |
+| MOD-01 | Phase 56 | Complete |
+| MOD-02 | Phase 56 | Complete |
+| MOD-03 | Phase 56 | Complete |
+| MOD-04 | Phase 56 | Complete |
+| MOD-05 | Phase 56 | Complete |
+| MOD-06 | Phase 56 | Complete |
+| SPEC-01 | Phase 56 (early spectral) | Complete |
+| SPEC-02 | Phase 56 (early spectral) | Complete |
+| SPEC-03 | Phase 56 (early spectral) | Complete |
+| SPEC-04 | Phase 56 (early spectral) | Complete |
+| SPEC-05 | Phase 56 (early spectral) | Complete |
 | DATA-01 | Phase 55 | Complete |
 | DATA-02 | Phase 55 | Complete |
 | DATA-03 | Phase 55 | Complete |
-| DATA-04 | Phase 56 | Pending |
+| DATA-04 | Phase 56 | Complete |
 | QUICK-01 | Quick (in-milestone) | Pending |
 
 **Coverage:**
@@ -184,9 +186,9 @@ Which phases cover which requirements. Updated 2026-10-14 after roadmap creation
 | 54 Preact 11 update | RUN-01..RUN-06 | 6 |
 | 55 efx-paint-host | HOST-01..HOST-05, DATA-01..DATA-03 | 8 |
 | 56 efx-watercolor | AQUA-01..AQUA-08, PAPER-01..PAPER-04, MOD-01..MOD-06, DATA-04 | 19 |
-| 57 efx-spectral | SPEC-01..SPEC-05 | 5 |
+| 56 (early spectral hook) | SPEC-01..SPEC-05 | 5 |
 | Quick (in-milestone) | QUICK-01 | 1 |
 
 ---
 *Requirements defined: 2026-10-14*
-*Last updated: 2026-10-14 after roadmap creation (phases 54–57 locked; coverage 38/38 + QUICK-01)*
+*Last updated: 2026-10-21 after phase 56 close (Phase 57 retired; SPEC-01..05 marked delivered inside 56; coverage 38/38 + QUICK-01)*

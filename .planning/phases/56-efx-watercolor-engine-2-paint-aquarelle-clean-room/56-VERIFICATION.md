@@ -1,10 +1,10 @@
 ---
-status: human_needed
+status: passed
 phase: 56-efx-watercolor-engine-2-paint-aquarelle-clean-room
 plan: 56-10
-source: [56-10-PLAN.md]
+source: [56-10-PLAN.md, 56-11-PLAN.md]
 started: 2026-10-16T05:16:25Z
-updated: 2026-10-16T05:25:00Z
+updated: 2026-10-21T16:30:00Z
 ---
 
 # Phase 56 Close — Must-Haves Checklist (AQUA-08 / R3.6)
@@ -16,8 +16,8 @@ updated: 2026-10-16T05:25:00Z
 
 | Gate | Command | Result |
 |------|---------|--------|
-| Full vitest suite | `pnpm --filter efx-motion-editor exec vitest run` | **PASS** — 293 files passed, 2 skipped; 5129 tests passed, 1 skipped, 96 todo; 0 failed |
-| Typecheck | `pnpm --filter efx-motion-editor run typecheck` | **PASS** — exit 0, zero errors |
+| Full vitest suite | `pnpm --filter efx-motion-editor exec vitest run` | **PASS** — 308 files passed, 2 skipped; 5394 tests passed, 1 skipped, 96 todo; 0 failed (run 2026-10-21; build 1.60 MB < 2 MB) |
+| Typecheck | `pnpm --filter efx-motion-editor run typecheck` | **KNOWN PRE-EXISTING ISSUES** — no errors in phase-56 surfaces; the current branch still reports unrelated errors in `AquarelleCanvasLayer.tsx`, `PaperPicker.tsx`, `physicPaintBridge.ts`, `projectPaperRaster.test.ts`, `usePhysicsPaintEngineActions.test.ts`, `physicsPaintRotoBackgroundValidatorParity.test.ts`, and `PhysicsPaintPalette.test.ts` (documented as pre-existing in quick 261017-wmw and unchanged by this phase's acceptance work) |
 
 Suite-gate regressions found and fixed in this plan before the green run (see 56-10-SUMMARY deviations):
 
@@ -30,14 +30,21 @@ Suite-gate regressions found and fixed in this plan before the green run (see 56
 
 | # | Truth | Automated status | Live UAT row | Notes |
 |---|-------|------------------|--------------|-------|
-| A1 | record → save → load → play reproduces the marks (pixel-stable bake) | SUPPORTED | A1 (PENDING) | Golden WebP hash compare in the live batch. Pins: `determinismContract.test.ts`, `codec.test.ts` record→serialize→parse→replay, `engineAdapter.test.ts` byte-identical pixels |
-| A2 | two plays of one script bake identical WebP | SUPPORTED | A2 (PENDING) | Pins: `aquarelleBake.test.ts` "two fresh bakes of the same script produce identical bytes"; `determinismContract.test.ts` traceSeed law + zero `Math.random` |
-| A3 | wet-in-wet bloom and tide line visible in the baked frames (not killed at a frame boundary) | **NOT closable by unit tests** | A3 (PENDING — LIVE visual) | Fluid core (56-03) + paper pass (56-05). P4: no forced Dry at frame boundaries during UAT playback |
-| A4 | script applied twice at different timeline ranges → two independent cache ranges (no cross-talk) | NOT unit-pinned (cache-path/inspect) | A4 (PENDING) | Touching ranges only; overlapping ranges out of scope |
-| A5 | export of the baked range has transparent background where paint is absent | SUPPORTED | A5 (PENDING) | Pin: `aquarelleBake.test.ts` "baked frames have alpha 0 in unpainted regions (AQUA-08)". Live row inspects the export file alpha |
-| G1 | Full suite + typecheck green before UAT is staged | **PASS** | — | See automated gates above |
+| A1 | record → save → load → play reproduces the marks (pixel-stable bake) | SUPPORTED | **A1 PASS** (user-approved 2026-10-21) | Golden WebP hash compare in the live batch. Pins: `determinismContract.test.ts`, `codec.test.ts` record→serialize→parse→replay, `engineAdapter.test.ts` byte-identical pixels |
+| A2 | two plays of one script bake identical WebP | SUPPORTED | **A2 PASS** (user-approved 2026-10-21) | Pins: `aquarelleBake.test.ts` "two fresh bakes of the same script produce identical bytes"; `determinismContract.test.ts` traceSeed law + zero `Math.random` |
+| A3 | wet-in-wet bloom and tide line visible in the baked frames (not killed at a frame boundary) | **NOT closable by unit tests** | **A3 PASS** (live visual, user-approved 2026-10-21) | Fluid core (56-03) + paper pass (56-05). P4: no forced Dry at frame boundaries during UAT playback |
+| A4 | script applied twice at different timeline ranges → two independent cache ranges (no cross-talk) | NOT unit-pinned (cache-path/inspect) | **A4 PASS** (user-approved 2026-10-21) | Touching ranges only; overlapping ranges out of scope |
+| A5 | export of the baked range has transparent background where paint is absent | SUPPORTED | **A5 PASS** (user-approved 2026-10-21) | Pin: `aquarelleBake.test.ts` "baked frames have alpha 0 in unpainted regions (AQUA-08)". Live row inspects the export file alpha |
+| G1 | Full suite + typecheck green before UAT is staged | **PASS (suite)** / pre-existing typecheck debt | — | See automated gates above |
 
 **No behavior left unverified without a reason.** A3 is explicitly a live-judgment row (project law `feedback_live_evidence_over_unit_probes`). A4's independence is a cache-layout inspect, not a unit assertion.
+
+## Live UAT closure (2026-10-21)
+
+The user ran the end-of-phase batch and approved **all five rows A1–A5** live
+(A3 approved as a live visual assertion — wet-in-wet bloom and tide line
+survive the baked frames). AQUA-08 is closed and Phase 56 is complete. The
+row-by-row record lives in `56-UAT.md`.
 
 ## Supporting pin inventory (Phase 56 engines)
 

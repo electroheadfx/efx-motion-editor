@@ -3,19 +3,18 @@ gsd_state_version: "1.0"
 milestone: v2.0.0
 milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
-current_phase_name: efx-watercolor (engine 2, paint-aquarelle, clean-room
-status: executing
-stopped_at: Completed 261018-odm watercolor script playback (extend)
-last_updated: "2026-10-20T15:38:23.536Z"
-last_activity: 2026-10-18
-last_activity_desc: "Completed quick task 261017-nnu: deleted the duplicate paper subsystem; paper now rendered by the vendored WatercolorEngine.paperSheet() (~12 ms @ 1920x1080)"
-state_head: c5314d3ac8c1c3b3d80f7fa430783f2077d1cdab
+status: completed
+stopped_at: Phase 56 complete — all phases complete
+last_updated: "2026-10-21T16:29:43.660Z"
+last_activity: 2026-10-21
+last_activity_desc: Phase 56 complete
+state_head: f7a985a1f74d8a96c5fe9ab4e9a4d789adb97935
 progress:
-  total_phases: 4
+  total_phases: 3
   completed_phases: 3
   total_plans: 26
   completed_plans: 26
-  percent: 75
+  percent: 100
 ---
 
 # Project State
@@ -29,16 +28,17 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 
 ## Current Position
 
-Phase: 56 (efx-watercolor (engine 2, paint-aquarelle, clean-room)) — EXECUTING
-Plan: 4 of 10
-Status: Ready to execute
-Last activity: 2026-10-20 — Quick 261019-mj2 CLOSED — all UAT approved (trash after Insert, delete-slot inverse on empty/generated frames, Insert-at-key fix)
+Phase: 56 — COMPLETE
+Plan: 11/11 complete
+Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
+Last activity: 2026-10-21 — Phase 56 complete; A1–A5 live UAT approved; Phase 57 retired (spectral delivered inside 56)
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
-**v2.0.0 phase map (locked 2026-10-14):**
+**v2.0.0 phase map (locked 2026-10-14; revised 2026-10-21):**
 
-- 54 Preact 11 (RUN-01..06) → 55 efx-paint-host (HOST-01..05 + DATA-01..04) → 56 efx-watercolor (AQUA-01..08 + PAPER-01..04 + MOD-01..06) → 57 efx-spectral (SPEC-01..05)
+- 54 Preact 11 (RUN-01..06) → 55 efx-paint-host (HOST-01..05 + DATA-01..04) → 56 efx-watercolor (AQUA-01..08 + PAPER-01..04 + MOD-01..06)
+- `packages/efx-spectral` (SPEC-01..05) was delivered early inside Phase 56 through the dependency hook; **Phase 57 is retired** (no standalone spectral phase). Engine-1 adoption remains a future milestone concern.
 - Hard gate: 54 live UAT closes before 55 opens
 - QUICK-01 audio-trim-to-view is an in-milestone quick, never a phase
 
@@ -46,7 +46,7 @@ Progress: [████████░░] 75%
 
 **Velocity:**
 
-- Total plans completed: 75 for v0.9.0 (12 phases, shipped 2026-08-21)
+- Total plans completed: 86 for v0.9.0 (12 phases, shipped 2026-08-21)
 - Average duration: N/A
 - Total execution time: N/A
 
@@ -72,6 +72,7 @@ Progress: [████████░░] 75%
 | 53 | 5 | - | - |
 | 54 | 5 | - | - |
 | 55 | 10 | - | - |
+| 56 | 11 | - | - |
 
 **Recent Trend:**
 
@@ -613,11 +614,14 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-18T16:18:58.641Z
-Stopped at: Completed 261018-odm watercolor script playback (extend)
+Last session: 2026-10-21T16:35:00Z
+Stopped at: Phase 56 complete — branch merged to dev for user verification
 Resume file: None
 
 ## Operator Next Steps
 
-- Plan Phase 54 with /gsd-plan-phase 54 (hard probe gate first: RUN-01 @preact/signals ↔ Preact 11, STOP if red)
-- Do not open Phase 55 until Phase 54 live UAT (RUN-06 / A1–A5) is user-asserted CLOSED
+- Verify the merged dev branch live (Studio paint, script/bake, modules, papers, UI)
+- Run small quicks for cosmetic fixes found on dev; open a GSD debug only for a big bug
+- QUICK-01 audio-trim-to-view remains the in-milestone quick
+- Run `/gsd-audit-milestone` before `/gsd-complete-milestone`; do not tag/publish before the audit and the signed release checklist
+- Phase 57 is retired: `packages/efx-spectral` stays as the engine-2 mixing package; engine-1 adoption is not part of v2.0.0

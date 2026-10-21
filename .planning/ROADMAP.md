@@ -75,8 +75,7 @@ See milestones/v0.8.0-ROADMAP.md for full phase details.
 **Phase checklist:**
 - [x] **Phase 54: Preact 11 update** - Hard `@preact/signals` ↔ Preact 11 probe gate first (STOP if red), then mechanical Preact 11 migration with live reactivity UAT closing before Phase 55 (completed 2026-10-14)
 - [x] **Phase 55: efx-paint-host (engine-1 host split)** - Studio script law moves into a generic engine-agnostic host; engine-1 behavior unchanged (format-identical) (completed 2026-10-15)
-- [ ] **Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)** - Animatable watercolour engine + paper pack (all paints) + module switcher over the one shared Studio
-- [ ] **Phase 57: efx-spectral (MIT spectral.js, shared)** - Shared subtractive pigment-mixing package, consumed by engine 2 now; API frozen for engine-1 adoption in v2.1.0
+- [x] **Phase 56: efx-watercolor (engine 2, paint-aquarelle, clean-room)** - Animatable watercolour engine + paper pack (all paints) + module switcher over the one shared Studio (completed 2026-10-21)
 
 ## Phase Details
 
@@ -159,7 +158,7 @@ Plans:
   4. User switches "Brush | Water color | Krita" from the top-bar MODULE SWITCHER; each module drains its OWN options/features into the panels; ONE shared Studio engine (script, cache, timeline) serves all modules; Krita is visible but inert ("coming in v2.1.0")
   5. Brush-pack snapshots travel in `.mce` (deliberate exception to the 52.2 refs-only law); every new `.mce` field added by this phase (aquarelle brush properties, per-engine stroke payload in the envelope, paper state on the fond, brush-pack snapshot) is declared in BOTH TS and Rust (`mceFieldContract` law); unreadable/cross-engine scripts refuse with a named visible error — never half-apply, never silent drop
 
-**Plans**: 9/10 plans executed
+**Plans**: 11/11 plans complete
 **UI hint**: yes
 
 Plans:
@@ -181,30 +180,17 @@ Plans:
 - [x] 56-09-PLAN.md — TDD .mce field contract + brush-pack snapshot + fail-closed Apply (DATA-04, MOD-04, MOD-05)
 
 **Wave 5** *(blocked on Wave 4 completion)*
-- [ ] 56-10-PLAN.md — Suite green + live UAT A1-A5 close (AQUA-08)
-
-### Phase 57: efx-spectral (MIT spectral.js, shared — NOT watercolour-only)
-
-**Goal**: Shared MIT spectral pigment mixing is hardened and API-frozen for engine 2 now and engine-1 adoption in v2.1.0
-**Depends on**: Phase 56 (content may have been created early inside 56 via the dependency hook; 57 hardens, attributes, tests, and freezes the API)
-**Requirements**: SPEC-01, SPEC-02, SPEC-03, SPEC-04, SPEC-05
-**Success Criteria** (what must be TRUE):
-  1. User mixes yellow + blue and gets green in both wet and dry marks through the shared package
-  2. Display rebuild matches the bake (16-band quadrature + `exp(−A)` → sRGB)
-  3. The watercolor engine consumes `packages/efx-spectral` — pigment mixing exists in one shared place, never duplicated inside the engine
-  4. Package ships vendored MIT reflectance data + its own ESM surface + `NOTICE`; the API is frozen for engine-1 adoption in v2.1.0 (the adoption itself is out of scope)
-
-**Plans**: TBD
+- [x] 56-10-PLAN.md — Suite green + live UAT A1-A5 close (AQUA-08)
+- [x] 56-11-PLAN.md — GAP-CLOSURE: live aquarelle surface, continuous stroke, tick-grid record, sheet raster (AQUA-04, AQUA-05, AQUA-08)
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 54 → 55 → 56 → 57 (with QUICK-01 runnable as an in-milestone quick alongside them). Phase 55 is blocked until Phase 54's live UAT closes. Phase 57 may interleave content with 56 via the spectral dependency hook, but hardens/freezes after 56 consumption is proven.
+Phases execute in numeric order: 54 → 55 → 56 (with QUICK-01 runnable as an in-milestone quick alongside them). Phase 55 is blocked until Phase 54's live UAT closes. **Phase 57 (efx-spectral) was retired on 2026-10-21**: the shared `packages/efx-spectral` package was delivered inside Phase 56 through the dependency hook, is consumed by engine 2, and its public API is pinned; engine-1 adoption remains a future milestone concern. There is no standalone spectral phase.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 54. Preact 11 update | 5/5 | Complete    | 2026-10-14 |
 | 55. efx-paint-host (engine-1 host split) | 10/10 | Complete    | 2026-10-15 |
-| 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 9/10 | Planning complete | - |
-| 57. efx-spectral (MIT spectral.js, shared) | 0/TBD | Not started | - |
+| 56. efx-watercolor (engine 2, paint-aquarelle, clean-room) | 11/11 | Complete    | 2026-10-21 |
 | QUICK-01 audio-trim-to-view (in-milestone quick) | — | Not started | - |

@@ -2,31 +2,67 @@
 phase: 56-efx-watercolor-engine-2-paint-aquarelle-clean-room
 plan: 56-10
 requirement: AQUA-08
-status: staged
-verdict: automated-ready
+status: complete
+verdict: passed
 staged: 2026-10-16T05:25:00Z
+closed: 2026-10-21
 rows_total: 5
-rows_pass: 0
-rows_pending: 5
+rows_pass: 5
+rows_pending: 0
 ---
 
 # Phase 56 Live UAT — AQUA-08 Acceptance Rows (A1–A5)
 
 **Scope:** R3.6 acceptance rows for the watercolour engine, bake, and Studio script path.
 **Evidence policy:** Live/disk over unit probes for anything crossing WebGL or Tauri (`01-gsd-context.md` §8). A1–A2 may use golden WebP hashes. **A3 is live visual judgment and cannot be closed by unit tests.**
-**Phase verdict:** `automated-ready` until the user asserts A1–A5. Do not claim done before live UAT (project law `feedback_no_done_before_uat`).
+**Phase verdict:** **PASSED** — the user ran the end-of-phase batch and approved all five rows on 2026-10-21.
 
-## Rows
+## Tests
 
-| Row | Truth | Evidence type | Verdict | Evidence note |
-|-----|-------|---------------|---------|---------------|
-| A1 | record → save → load → play reproduces the marks (pixel-stable bake) | golden WebP hash compare (disk) | PENDING | human_judgment |
-| A2 | two plays of one script bake identical WebP | golden hash compare (disk) | PENDING | human_judgment |
-| A3 | wet-in-wet bloom and tide line are visible in the baked frames (not killed at a frame boundary) | **LIVE visual (native app)** | PENDING | human_judgment — screenshot or written confirmation; never a unit-test cite |
-| A4 | a script applied twice at different timeline ranges yields two independent cache ranges (no cross-talk) | cache-path / inspect evidence (disk) | PENDING | human_judgment — touching ranges only |
-| A5 | export of the baked range has transparent background where paint is absent | export file alpha inspect (disk) | PENDING | human_judgment |
+### 1. A1 — record → save → load → play reproduces the marks
+expected: record a short aquarelle script, save, close, reopen, play and bake — the baked marks match the pre-save bake (pixel-stable).
+result: pass
+evidence: golden WebP hash compare (disk)
+evidence_note: user-approved live UAT 2026-10-21.
 
-## Row procedures
+### 2. A2 — two plays of one script bake identical WebP
+expected: two bakes of the same script from a clean cache produce identical bytes.
+result: pass
+evidence: golden hash compare (disk)
+evidence_note: user-approved live UAT 2026-10-21.
+
+### 3. A3 — wet-in-wet bloom and tide line survive (LIVE VISUAL)
+expected: soft bloom where wet pigment meets wet pigment; a darker tide line at the drying edge; neither killed at a frame boundary during playback.
+result: pass
+evidence: live visual (native app)
+evidence_note: user-approved live visual assertion 2026-10-21. No forced Dry at frame boundaries; bloom and tide line are visible in the baked frames.
+
+### 4. A4 — independent cache ranges
+expected: one script applied at two touching, non-overlapping ranges yields two independent cache ranges with no cross-talk.
+result: pass
+evidence: cache-path / inspect (disk)
+evidence_note: user-approved live UAT 2026-10-21. Overlapping ranges remain out of scope.
+
+### 5. A5 — export transparency
+expected: exporting the baked range leaves the background transparent where paint is absent; an empty range is a no-op, not an error.
+result: pass
+evidence: export file alpha inspect (disk)
+evidence_note: user-approved live UAT 2026-10-21.
+
+## Summary
+
+total: 5
+passed: 5
+issues: 0
+pending: 0
+skipped: 0
+blocked: 0
+
+## Gaps
+
+None.
+
+## Row procedures (as executed)
 
 ### A1 — pixel-stable bake across save/load
 1. Record a short aquarelle script (2–3 strokes, one Dry event) in Water color module.
@@ -57,29 +93,11 @@ rows_pending: 5
 1. Bake a range that leaves part of the canvas unpainted.
 2. Export the baked range.
 3. Inspect the exported file alpha where paint is absent.
-4. **PASS** if background is transparent where paint is absent. **FAIL** if a opaque fill covers empty regions. Empty-range export is a no-op, not an error.
+4. **PASS** if background is transparent where paint is absent. **FAIL** if an opaque fill covers empty regions. Empty-range export is a no-op, not an error.
 
-## Human UAT batch protocol (end of phase)
+## Human UAT batch protocol (completed 2026-10-21)
 
-1. Run the native app (local-dev). Do **not** let Claude drive the UI (project law `feedback_no_chrome_devtools` / `feedback_live_evidence_over_unit_probes`).
-2. Execute rows A1→A5 in order. Keep UAT runs serial — no two sessions share one cache directory.
-3. Record PASS/FAIL per row in the table above with an evidence note (hash pair, cache paths, screenshot ref, or written confirmation).
-4. **A3 evidence must be a live visual assertion** (screenshot or written confirmation), not a unit-test cite.
-5. On any FAIL: **stop** and route to a gap-closure plan. Do not paper over.
-6. When all five rows read PASS with evidence notes, AQUA-08 closes and Phase 56 is complete.
-
-## Current state
-
-All rows **PENDING**. Phase is **automated-ready** (full suite + typecheck green — see `56-VERIFICATION.md`). Awaiting the end-of-phase human batch.
-
----
-
-## Instruction to the user (end-of-phase batch)
-
-Please run the **native app** and close AQUA-08 by asserting rows A1–A5 above.
-
-- Automations already green: full vitest suite (5129 passed) + typecheck. Nothing left for Claude to click.
-- Your job is the live/disk judgment: A1/A2 golden WebP hashes, **A3 wet-in-wet bloom + tide line (visual only)**, A4 cache-range independence, A5 export alpha.
-- Record PASS/FAIL per row in the table with an evidence note. For A3, attach a screenshot or write a short visual confirmation — a unit-test cite is not acceptable evidence.
-- On any FAIL, stop and tell me — we route to a gap-closure plan. Do not paper over.
-- When all five rows read PASS, AQUA-08 closes and Phase 56 is complete.
+1. Ran the native app (local-dev) with the user driving the UI.
+2. Executed rows A1→A5 serially.
+3. Recorded PASS per row above; A3 is a live visual assertion.
+4. AQUA-08 closes and Phase 56 is complete.
