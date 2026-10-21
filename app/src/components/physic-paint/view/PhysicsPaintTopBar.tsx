@@ -23,6 +23,12 @@ import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
  * after the Engine ready status pill (left = status pill + ModuleSwitcher;
  * center = sliders only; right = balanced spacer). Seating + CSS only — the
  * write-through handlers and the live aquarelle size read are unchanged.
+ *
+ * I-11 follow-up: the slider cluster now centers in the space AFTER the left
+ * cluster (not the whole window), which stops the cluster colliding with the
+ * ModuleSwitcher. Pigment joins Water / Edges / Grain, and the last optional
+ * watercolor knobs hide as the settings area narrows (container queries in
+ * physicsPaintStudio.css).
  */
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
@@ -47,10 +53,12 @@ function TopBarSlider(props: {
   max: number;
   onChange: (value: number) => void;
   disabled?: boolean;
+  class?: string;
 }) {
   const updateValue = (value: unknown) => props.onChange(clampTopBarValue(value, props.min, props.max));
+  const cls = `physics-paint-topbar-control physics-paint-topbar-slider${props.class ? ` ${props.class}` : ''}`;
   return (
-    <div class="physics-paint-topbar-control physics-paint-topbar-slider">
+    <div class={cls}>
       <SliderStepper
         id={props.id}
         label={props.label}
@@ -96,7 +104,9 @@ export function PhysicsPaintTopBar({
         <ModuleSwitcher />
       </div>
 
-      {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain). */}
+      {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain/Pigment).
+          I-11 follow-up: this cluster centers inside the remaining width after
+          the left cluster; the last optional knobs hide via container queries. */}
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
         <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={liveOpacity} onChange={onOpacityChange} disabled={disabled} />
@@ -110,6 +120,7 @@ export function PhysicsPaintTopBar({
               value={aquarelleParams.value.water}
               onChange={(value) => setAquarelleParam('water', value)}
               disabled={disabled}
+              class="physics-paint-topbar-optional-water"
             />
             <TopBarSlider
               id="physics-aquarelle-edges"
@@ -119,6 +130,7 @@ export function PhysicsPaintTopBar({
               value={aquarelleParams.value.edge}
               onChange={(value) => setAquarelleParam('edge', value)}
               disabled={disabled}
+              class="physics-paint-topbar-optional-edges"
             />
             <TopBarSlider
               id="physics-aquarelle-grain"
@@ -128,13 +140,21 @@ export function PhysicsPaintTopBar({
               value={aquarelleParams.value.granulation}
               onChange={(value) => setAquarelleParam('granulation', value)}
               disabled={disabled}
+              class="physics-paint-topbar-optional-grain"
+            />
+            <TopBarSlider
+              id="physics-aquarelle-pigment"
+              label="Pigment"
+              min={0}
+              max={100}
+              value={aquarelleParams.value.load}
+              onChange={(value) => setAquarelleParam('load', value)}
+              disabled={disabled}
+              class="physics-paint-topbar-optional-pigment"
             />
           </>
         ) : null}
       </div>
-
-      {/* Balanced right side so the primary cluster sits in the true middle. */}
-      <div class="physics-paint-topbar-right" aria-hidden="true" />
 
     </header>
   );

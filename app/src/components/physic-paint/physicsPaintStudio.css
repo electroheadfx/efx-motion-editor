@@ -453,15 +453,18 @@ button.destructive {
 }
 
 /* UI checklist row 4: one row. 261018-k1o: left = Engine ready + ModuleSwitcher,
-   center = Brush size + Opacity (+ Water/Edges/Grain) as ONE group.
-   261018-cy1: balanced flex sides keep the cluster optically centered. */
+   center = Brush size + Opacity (+ Water/Edges/Grain/Pigment) as ONE group.
+   I-11 follow-up: the cluster centers in the space AFTER the left cluster, not
+   the whole window (the old balanced right spacer is gone). */
 .physics-paint-topbar-left {
   display: flex;
   align-items: center;
   /* 261018-k1o: gap 0 — the 15px module-switcher margin is the single
      pill-to-switcher separator (never stack both). */
   gap: 0;
-  flex: 1 1 0;
+  /* I-11 follow-up: the left cluster keeps its content width; the slider
+     cluster centers in the space that remains after it. */
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -469,14 +472,12 @@ button.destructive {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  flex: 0 0 auto;
+  justify-content: center;
+  flex: 1 1 auto;
   gap: 8px 10px;
   min-width: 0;
-}
-
-.physics-paint-topbar-right {
-  flex: 1 1 0;
-  min-width: 0;
+  /* I-11 follow-up: container for the optional-knob hiding rules below. */
+  container-type: inline-size;
 }
 
 .physics-paint-topbar-control {
@@ -514,6 +515,36 @@ button.destructive {
    (UAT list; was 112px from 261018-gqo move 5). */
 .physics-paint-topbar-slider {
   min-width: 140px;
+}
+
+/* I-11 follow-up: hide the last optional watercolor knobs as the settings
+   area narrows. Order: Pigment (new, last) → Grain → Edges; Water stays.
+   Thresholds follow the control widths (140px + 10px gap at wide viewports,
+   115px + 8px below 1180px): 6/5/4 visible = 890/740/590 and 730/607/484.
+   These rules MUST follow .physics-paint-topbar-control's display:flex — the
+   descendant selector keeps them winning at equal source order. */
+@media (min-width: 1181px) {
+  @container (max-width: 889px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-pigment { display: none; }
+  }
+  @container (max-width: 739px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
+  }
+  @container (max-width: 589px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
+  }
+}
+
+@media (max-width: 1180px) {
+  @container (max-width: 729px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-pigment { display: none; }
+  }
+  @container (max-width: 606px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
+  }
+  @container (max-width: 483px) {
+    .physics-paint-topbar-primary .physics-paint-topbar-optional-edges { display: none; }
+  }
 }
 
 .physics-paint-segmented-row {
@@ -1155,6 +1186,11 @@ button.destructive {
    keep 0 14px 14px. Placed after -flat so it wins. */
 .physics-paint-options-tab-panel-brush {
   padding: 14px 14px 14px;
+}
+
+/* I-11 follow-up: Settings tab gets a 10px top inset above the response rows. */
+.physics-paint-options-tab-panel-settings {
+  padding-top: 10px;
 }
 
 /* 261018-l05 watercolor brush cards */

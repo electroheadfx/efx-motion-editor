@@ -6,8 +6,9 @@
 //  WatercolorRail) must sit behind `activeModule.value === 'watercolor'`.
 //  The Paper tab stays shared document-fond vocabulary (I-07) — no
 //  activeModule gate between the paper arm and the paper mount.
-//  261018-cy1: the top-pane tab row is mode-derived (brush mode Color +
-//  Paper; watercolor Color + Brush + Paper) with no Actions entry.
+//  261018-cy1 + I-11 / D: the top-pane tab row is mode-derived (brush mode
+//  Color + Paper; watercolor Color + Brush + Settings + Paper) with no
+//  Actions entry.
 //
 //  Source-scan pin (same idiom as
 //  physicsPaintRightPanelPaperSingleHome.test.ts): readFileSync the
@@ -28,6 +29,10 @@ const panelSource = readFileSync(
 );
 const brushTabSource = readFileSync(
   resolve(root, 'src/components/physic-paint/view/RightPanelBrushTab.tsx'),
+  'utf8',
+);
+const settingsTabSource = readFileSync(
+  resolve(root, 'src/components/physic-paint/view/RightPanelSettingsTab.tsx'),
   'utf8',
 );
 const paperTabSource = readFileSync(
@@ -94,11 +99,21 @@ describe('I-08 Brush-mode context gating', () => {
     expect(gateAt, 'Brush tab keeps its watercolor gate').toBeGreaterThan(-1);
 
     expectMountsBehindWatercolorGate(body, 'WatercolorBrushLibrary');
-    expectMountsBehindWatercolorGate(body, 'BrushResponsePanel');
+    // I-11 / D: the brush response moved to the Settings tab.
+    expect(body, 'BrushResponsePanel leaves the Brush tab').not.toMatch(
+      /<BrushResponsePanel\b/,
+    );
 
     expect(body, 'BrushModuleSection is not mounted in the Brush tab').not.toMatch(
       /<BrushModuleSection\b/,
     );
+  });
+
+  it('Settings tab mounts BrushResponsePanel behind the watercolor gate (I-11 / D)', () => {
+    const body = stripComments(settingsTabSource);
+    const gateAt = body.indexOf("activeModule.value === 'watercolor'");
+    expect(gateAt, 'Settings tab keeps its watercolor gate').toBeGreaterThan(-1);
+    expectMountsBehindWatercolorGate(body, 'BrushResponsePanel');
   });
 
   it('watercolor-only mounts in the Paint tab sit behind the watercolor branch', () => {
@@ -176,23 +191,33 @@ describe('I-08 Brush-mode context gating', () => {
   });
 
   it('top-pane tab row is mode-derived with no Actions entry', () => {
-    // 261018-cy1: brush mode = Color + Paper; watercolor mode = Color + Brush +
-    // Paper. The retired top-pane Actions entry is gone from the list.
+    // 261018-cy1 + I-11 / D: brush mode = Color + Paper; watercolor mode =
+    // Color + Brush + Settings + Paper. The retired top-pane Actions entry is
+    // gone from the list.
     expect(panelSource, 'brush-mode tab list').toContain("['color', 'paper']");
-    expect(panelSource, 'watercolor tab list').toContain("['color', 'brush', 'paper']");
+    expect(panelSource, 'watercolor tab list').toContain(
+      "['color', 'brush', 'settings', 'paper']",
+    );
     expect(panelSource, 'no actions id in the tab list').not.toMatch(
       /\[\s*'color',\s*'actions'/,
     );
     expect(panelSource, 'topPaneTab union drops actions').toContain(
-      "useState<'color' | 'brush' | 'paper'>",
+      "useState<'color' | 'brush' | 'settings' | 'paper'>",
     );
     expect(panelSource, 'brush body is watercolor-gated').toContain(
       "topPaneTab === 'brush' && isWatercolorModule",
     );
+    expect(panelSource, 'settings body is watercolor-gated').toContain(
+      "topPaneTab === 'settings' && isWatercolorModule",
+    );
+    expect(panelSource, 'stale settings tab falls back in brush mode').toContain(
+      "topPaneTab === 'settings'",
+    );
     // Labels stay the human names (no Watercolor tab).
-    expect(panelSource, 'Color label stays').toContain("'Color'");
-    expect(panelSource, 'Brush label stays').toContain("'Brush'");
-    expect(panelSource, 'Paper label stays').toContain("'Paper'");
+    expect(panelSource, 'Color label stays').toContain("color: 'Color'");
+    expect(panelSource, 'Brush label stays').toContain("brush: 'Brush'");
+    expect(panelSource, 'Settings label stays').toContain("settings: 'Settings'");
+    expect(panelSource, 'Paper label stays').toContain("paper: 'Paper'");
     // Top-pane Actions routing is gone (the bottom-pane scripts tab keeps its label).
     expect(panelSource, 'no RightPanelActionsTab mount').not.toMatch(/<RightPanelActionsTab\b/);
   });

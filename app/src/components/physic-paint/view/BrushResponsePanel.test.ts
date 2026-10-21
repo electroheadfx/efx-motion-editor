@@ -12,11 +12,13 @@
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  * Render tests materialize the vnode tree (no DOM environment).
  */
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NEUTRAL_TOOL_OVERRIDES } from '@efxlab/efx-watercolor/brushes';
 import {
   MULTIPLIER_DEFAULT,
   MULTIPLIER_MAX,
   MULTIPLIER_MIN,
+  aquarelleBrushResponseMemory,
   aquarelleSelectedTipId,
   effectiveMultiplierValue,
   selectAquarelleTip,
@@ -135,6 +137,12 @@ const MULTIPLIER_LABELS = [
   'Grain',
   'Wet round',
 ] as const;
+
+beforeEach(() => {
+  aquarelleSelectedTipId.value = null;
+  aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
+  aquarelleBrushResponseMemory.value = {};
+});
 
 describe('BrushResponsePanel placeholder and always-on sliders (I-02 / 261018-l05)', () => {
   it('shows the Select-a-brush placeholder when no tip is selected', () => {

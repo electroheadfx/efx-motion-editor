@@ -75,10 +75,22 @@ export const aquarelleParams = signal<AquarelleGlobalParams>({
   ...DEFAULT_AQUARELLE_PARAMS,
 });
 export const aquarelleActiveTool = signal<AquarelleTool>('brush');
-export const aquarelleSelectedTipId = signal<string | null>(null);
+// I-11 follow-up: Studio opens on ROUND so the Settings tab has a usable
+// response out of the box (the preset's own shape lives in BRUSH_PRESETS;
+// the multiplier bag starts neutral).
+export const aquarelleSelectedTipId = signal<string | null>('round');
 export const aquarelleToolOverrides = signal<AquarelleToolOverrides>({
   ...NEUTRAL_TOOL_OVERRIDES,
 });
+
+/**
+ * Per-brush response memory (I-11 / D). The active bag above is the one
+ * consumer contract; this store keeps each brush's edits keyed by brush id
+ * so switching brushes no longer resets them to neutral.
+ */
+export const aquarelleBrushResponseMemory = signal<
+  Readonly<Record<string, AquarelleToolOverrides>>
+>({});
 
 /** Compare-then-write (efx-preact-reactivity rule 3). */
 export function setAquarelleParam(key: AquarelleGlobalKey, value: number): void {
@@ -114,11 +126,45 @@ export function selectAquarelleTip(tipId: string | null): void {
   // A successful pick is a brush-tool variant pick — flip the tool first
   // so a re-pick of the already-selected id still returns to Brush.
   if (nextId !== null) setAquarelleTool('brush');
-  if (aquarelleSelectedTipId.value === nextId) return;
+  const currentId = aquarelleSelectedTipId.value;
+  if (currentId === nextId) return;
+
+  // I-11: remember the outgoing brush's edits before loading the next one.
+  if (currentId !== null) {
+    const memory = aquarelleBrushResponseMemory.value;
+    const existing = memory[currentId];
+    const active = aquarelleToolOverrides.value;
+    if (!existing || !overridesEqual(existing, active)) {
+      aquarelleBrushResponseMemory.value = {
+        ...memory,
+        [currentId]: { ...active },
+      };
+    }
+  }
+
   aquarelleSelectedTipId.value = nextId;
-  aquarelleToolOverrides.value = tip
-    ? toolOverridesFromTip(tip)
-    : { ...NEUTRAL_TOOL_OVERRIDES };
+  const remembered = nextId ? aquarelleBrushResponseMemory.value[nextId] : undefined;
+  aquarelleToolOverrides.value = remembered
+    ? { ...remembered }
+    : tip
+      ? toolOverridesFromTip(tip)
+      : { ...NEUTRAL_TOOL_OVERRIDES };
+}
+
+function overridesEqual(
+  a: AquarelleToolOverrides,
+  b: AquarelleToolOverrides,
+): boolean {
+  return (
+    a.tip === b.tip &&
+    a.aspect === b.aspect &&
+    a.rotation === b.rotation &&
+    a.sizeCurve === b.sizeCurve &&
+    a.scatter === b.scatter &&
+    a.capacity === b.capacity &&
+    a.grain === b.grain &&
+    a.wetRound === b.wetRound
+  );
 }
 
 export function setAquarelleMultiplier(

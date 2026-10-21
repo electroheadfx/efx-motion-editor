@@ -16,6 +16,7 @@ import { WatercolorModuleSection } from './WatercolorModuleSection';
 import { BrushModuleSection } from './BrushModuleSection';
 import { RightPanelColorTab } from './RightPanelColorTab';
 import { RightPanelBrushTab } from './RightPanelBrushTab';
+import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
 import { RightPanelTrackTab } from './RightPanelTrackTab';
 import { RightPanelOnionTab, RightPanelMotionTab } from './RightPanelOnionMotionTabs';
@@ -117,6 +118,15 @@ const DEFAULT_SHARE_SUM = 361.25 + 213 + 272;
 const DEFAULT_BRUSH_SPLIT = (361.25 / DEFAULT_SHARE_SUM) * 100;
 const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100;
 
+const TOP_PANE_TAB_LABELS: Readonly<
+  Record<'color' | 'brush' | 'settings' | 'paper', string>
+> = Object.freeze({
+  color: 'Color',
+  brush: 'Brush',
+  settings: 'Settings',
+  paper: 'Paper',
+});
+
 export function createPhysicsPaintPaneResizeDrag(options: {
   target: HTMLElement;
   pointerId: number;
@@ -207,17 +217,23 @@ export function PhysicsPaintRightPanel({
   // 38-11 signal-bypasses-memo pattern) so a rail click flips the section.
   const selectedBackgroundClipId = backgroundClipSection?.selectedBackgroundClipId.value ?? null;
   // 261018-cy1: the top-pane tab list is mode-derived. Brush mode offers
-  // Color + Paper; watercolor mode adds Brush. The retired top-pane Actions
-  // entry is gone in every mode (the bottom-pane scripts tab keeps its label).
+  // Color + Paper; watercolor mode adds Brush + Settings (I-11 / D). The
+  // retired top-pane Actions entry is gone in every mode (the bottom-pane
+  // scripts tab keeps its label).
   const isWatercolorModule = activeModule.value === 'watercolor';
   const topPaneTabs = (
-    isWatercolorModule ? ['color', 'brush', 'paper'] : ['color', 'paper']
-  ) as ReadonlyArray<'color' | 'brush' | 'paper'>;
-  // A stale 'brush' selection falls back to the Color body when the module
-  // leaves watercolor — derived in render, never via an effect.
-  const [topPaneTab, setTopPaneTab] = useState<'color' | 'brush' | 'paper'>('color');
-  const effectiveTopPaneTab: 'color' | 'brush' | 'paper' =
-    topPaneTab === 'brush' && !isWatercolorModule ? 'color' : topPaneTab;
+    isWatercolorModule
+      ? ['color', 'brush', 'settings', 'paper']
+      : ['color', 'paper']
+  ) as ReadonlyArray<'color' | 'brush' | 'settings' | 'paper'>;
+  // A stale 'brush'/'settings' selection falls back to the Color body when the
+  // module leaves watercolor — derived in render, never via an effect.
+  const [topPaneTab, setTopPaneTab] =
+    useState<'color' | 'brush' | 'settings' | 'paper'>('color');
+  const effectiveTopPaneTab: 'color' | 'brush' | 'settings' | 'paper' =
+    (topPaneTab === 'brush' || topPaneTab === 'settings') && !isWatercolorModule
+      ? 'color'
+      : topPaneTab;
   // Scripts is the FIRST tab of its group and default-open (36.15-11, UAT
   // Gap G-4).
   const [optionsTab, setOptionsTab] = useState<'scripts' | 'onion' | 'motion'>('scripts');
@@ -314,7 +330,7 @@ export function PhysicsPaintRightPanel({
                 aria-selected={effectiveTopPaneTab === tab}
                 onClick={() => setTopPaneTab(tab)}
               >
-                {tab === 'color' ? 'Color' : tab === 'brush' ? 'Brush' : 'Paper'}
+                {TOP_PANE_TAB_LABELS[tab]}
               </button>
             ))}
           </div>
@@ -324,6 +340,10 @@ export function PhysicsPaintRightPanel({
           {topPaneTab === 'brush' && isWatercolorModule ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-brush" role="tabpanel" aria-label="Brush">
               <RightPanelBrushTab />
+            </div>
+          ) : topPaneTab === 'settings' && isWatercolorModule ? (
+            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat physics-paint-options-tab-panel-settings" role="tabpanel" aria-label="Settings">
+              <RightPanelSettingsTab />
             </div>
           ) : topPaneTab === 'paper' ? (
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Paper">

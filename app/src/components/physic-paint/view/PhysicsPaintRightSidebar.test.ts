@@ -27,13 +27,13 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
-  it('renders the top pane with mode-derived Color/Brush/Paper tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group', () => {
-    // 261018-cy1: the top-pane tab list is mode-derived (Brush mode = Color +
-    // Paper; watercolor adds Brush) and the retired top-pane Actions entry is
-    // gone. Middle and bottom panes are unchanged.
+  it('renders the top pane with mode-derived Color/Brush/Settings/Paper tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group', () => {
+    // 261018-cy1 + I-11 / D: the top-pane tab list is mode-derived (Brush mode
+    // = Color + Paper; watercolor adds Brush + Settings) and the retired
+    // top-pane Actions entry is gone. Middle and bottom panes are unchanged.
     expect(rightPanel).toContain('aria-label="Top pane panels"');
     expect(rightPanel).toContain('physics-paint-tab-top-');
-    expect(rightPanel).toContain("'color' | 'brush' | 'paper'");
+    expect(rightPanel).toContain("'color' | 'brush' | 'settings' | 'paper'");
     expect(rightPanel).not.toContain("'color' | 'actions' | 'brush' | 'paper'");
 
     // The tool pane's own tablist: Paint FIRST and default-open, Track second,

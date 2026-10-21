@@ -16,6 +16,7 @@ import { BRUSH_PRESETS, buildBrush, buildBrushForStroke } from '@efxlab/efx-wate
 import { NEUTRAL_TOOL_OVERRIDES, findTip } from '@efxlab/efx-watercolor/brushes';
 import {
   aquarelleActiveTool,
+  aquarelleBrushResponseMemory,
   aquarelleSelectedTipId,
   aquarelleToolOverrides,
   buildAquarelleStrokePayload,
@@ -31,7 +32,15 @@ function resetSelection(): void {
   aquarelleSelectedTipId.value = null;
   aquarelleActiveTool.value = 'brush';
   aquarelleToolOverrides.value = { ...NEUTRAL_TOOL_OVERRIDES };
+  aquarelleBrushResponseMemory.value = {};
 }
+
+describe('I-11 default brush selection', () => {
+  it('opens with ROUND selected so the Settings tab is not empty', () => {
+    expect(aquarelleSelectedTipId.value).toBe('round');
+    expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
+  });
+});
 
 describe('I-03 playground preset ids on the tip seam', () => {
   beforeEach(() => {
@@ -136,5 +145,68 @@ describe('I-03 playground preset ids on the tip seam', () => {
     expect(aquarelleSelectedTipId.value).toBeNull();
     expect(snapshotAquarelleRecord().brushId).toBe('');
     expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
+  });
+});
+
+describe('I-11 per-brush response memory', () => {
+  beforeEach(() => {
+    resetSelection();
+  });
+
+  it('keeps each brush response across switches', () => {
+    selectAquarelleTip('flat');
+    setAquarelleMultiplier('tip', 1.5);
+
+    selectAquarelleTip('round');
+    expect(aquarelleToolOverrides.value, 'a fresh brush starts neutral').toEqual({
+      ...NEUTRAL_TOOL_OVERRIDES,
+    });
+
+    selectAquarelleTip('flat');
+    expect(aquarelleToolOverrides.value.tip, 'flat remembers its edit').toBe(1.5);
+  });
+
+  it('keeps independent bags for different brushes', () => {
+    selectAquarelleTip('flat');
+    setAquarelleMultiplier('tip', 1.5);
+    selectAquarelleTip('round');
+    setAquarelleMultiplier('capacity', 0.7);
+
+    selectAquarelleTip('flat');
+    expect(aquarelleToolOverrides.value.tip).toBe(1.5);
+    expect(aquarelleToolOverrides.value.capacity).toBe(1);
+
+    selectAquarelleTip('round');
+    expect(aquarelleToolOverrides.value.capacity).toBe(0.7);
+    expect(aquarelleToolOverrides.value.tip).toBe(1);
+  });
+
+  it('restores the remembered bag after a null clear', () => {
+    selectAquarelleTip('mop');
+    setAquarelleMultiplier('wetRound', 1.8);
+    selectAquarelleTip(null);
+    expect(aquarelleToolOverrides.value).toEqual({ ...NEUTRAL_TOOL_OVERRIDES });
+
+    selectAquarelleTip('mop');
+    expect(aquarelleToolOverrides.value.wetRound).toBe(1.8);
+  });
+
+  it('legacy tip defaults seed the memory until edited', () => {
+    const tip = findTip('wc/round-small');
+    expect(tip).toBeTruthy();
+    selectAquarelleTip('wc/round-small');
+    expect(aquarelleToolOverrides.value.tip).toBe(tip!.tip);
+
+    selectAquarelleTip('detail');
+    selectAquarelleTip('wc/round-small');
+    expect(aquarelleToolOverrides.value.tip).toBe(tip!.tip);
+  });
+
+  it('a recorded stroke snapshots the remembered bag', () => {
+    selectAquarelleTip('flat');
+    setAquarelleMultiplier('capacity', 1.6);
+    selectAquarelleTip('round');
+    selectAquarelleTip('flat');
+    expect(snapshotAquarelleRecord().toolOverrides.capacity).toBe(1.6);
   });
 });

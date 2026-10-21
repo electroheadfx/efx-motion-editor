@@ -218,7 +218,7 @@ describe('panel split shell — module-only block', () => {
     expect(body, 'Dry emit helper must leave').not.toContain('emitAquarelleDry');
     expect(body, 'record clock must leave with the Dry button').not.toContain('aquarelleRecordClock');
     // Globals panel remains; the parent section title left with 261018-f15.
-    // Picker and response live in the Brush tab.
+    // Picker lives in the Brush tab; response lives in the Settings tab (I-11).
     expect(source, 'section mounts AquarelleGlobalsPanel (I-02)').toMatch(/<AquarelleGlobalsPanel\b/);
     expect(source, 'old wrapper must be gone (I-02)').not.toMatch(/<AquarelleParamsPanel\b/);
     expect(source, 'picker leaves the Paint-tab section (I-01)').not.toMatch(/<BrushesDocker\b/);
@@ -238,6 +238,17 @@ describe('panel split shell — right-panel chrome (261018-f15)', () => {
     expect(start, 'right-panel rule must exist').toBeGreaterThan(-1);
     const block = css.slice(start, css.indexOf('}', start));
     expect(block).toMatch(/padding:\s*10px 10px/);
+  });
+
+  it('Settings tab gets a 10px top inset (I-11 follow-up)', () => {
+    const css = readFileSync(
+      resolve(__dirname, '../physicsPaintStudio.css'),
+      'utf8',
+    );
+    const start = css.indexOf('.physics-paint-options-tab-panel-settings {');
+    expect(start, 'settings panel rule must exist').toBeGreaterThan(-1);
+    const block = css.slice(start, css.indexOf('}', start));
+    expect(block).toContain('padding-top: 10px');
   });
 });
 
@@ -306,31 +317,65 @@ describe('panel split shell — shared block', () => {
 });
 
 describe('panel split shell — Brush-tab watercolor arm', () => {
-  it('mounts BrushResponsePanel before WatercolorBrushLibrary (261018-f15)', () => {
+  it('Brush tab is the catalog only; Settings tab hosts the response (I-11 / D)', () => {
     // 261018-0ox I-10: the Brush-tab body lives in RightPanelBrushTab.
-    // 261018-f15: Brush response moves ABOVE the brush cards.
+    // I-11 / D: the response block moves out of the Brush tab into the new
+    // Settings tab; the Brush tab keeps the 14-card catalog only.
     const brushTabSource = readFileSync(
       resolve(__dirname, 'RightPanelBrushTab.tsx'),
       'utf8',
     );
-    const libraryAt = brushTabSource.indexOf('<WatercolorBrushLibrary');
-    const responseAt = brushTabSource.indexOf('<BrushResponsePanel');
-    expect(libraryAt, 'brush tab mounts WatercolorBrushLibrary').toBeGreaterThan(-1);
-    expect(responseAt, 'brush tab mounts BrushResponsePanel').toBeGreaterThan(-1);
-    expect(responseAt, 'response comes first').toBeLessThan(libraryAt);
+    expect(brushTabSource, 'brush tab mounts WatercolorBrushLibrary').toMatch(
+      /<WatercolorBrushLibrary\b/,
+    );
+    expect(brushTabSource, 'response leaves the Brush tab').not.toMatch(
+      /<BrushResponsePanel\b/,
+    );
     expect(brushTabSource, 'old tip-catalog picker is not mounted').not.toMatch(/<BrushesDocker\b/);
     // The component file stays on disk (I-01 home; not deleted by I-10).
     expect(() => readFileSync(resolve(__dirname, 'BrushesDocker.tsx'), 'utf8')).not.toThrow();
-    // The panel mounts the adopted tab component in the Brush branch.
+
+    const settingsTabSource = readFileSync(
+      resolve(__dirname, 'RightPanelSettingsTab.tsx'),
+      'utf8',
+    );
+    expect(settingsTabSource, 'Settings tab mounts BrushResponsePanel').toMatch(
+      /<BrushResponsePanel\b/,
+    );
+
+    // The panel mounts the adopted tab components in order:
+    // brush → settings → paper.
     const panelSource = readFileSync(
       resolve(__dirname, 'PhysicsPaintRightPanel.tsx'),
       'utf8',
     );
-    const brushTabStart = panelSource.indexOf("topPaneTab === 'brush'");
+    const brushTabStart = panelSource.indexOf(
+      "topPaneTab === 'brush' && isWatercolorModule",
+    );
     expect(brushTabStart, 'brush-tab branch must exist').toBeGreaterThan(-1);
-    const brushTabEnd = panelSource.indexOf("topPaneTab === 'paper'", brushTabStart);
-    expect(brushTabEnd, 'brush-tab branch must end at the paper arm').toBeGreaterThan(brushTabStart);
-    const brushTab = panelSource.slice(brushTabStart, brushTabEnd);
-    expect(brushTab, 'panel mounts RightPanelBrushTab once in the brush branch').toMatch(/<RightPanelBrushTab\b/);
+    const settingsTabStart = panelSource.indexOf(
+      "topPaneTab === 'settings' && isWatercolorModule",
+      brushTabStart,
+    );
+    expect(settingsTabStart, 'settings-tab branch must follow brush').toBeGreaterThan(
+      brushTabStart,
+    );
+    const paperTabStart = panelSource.indexOf("topPaneTab === 'paper'", settingsTabStart);
+    expect(paperTabStart, 'paper-tab branch must follow settings').toBeGreaterThan(
+      settingsTabStart,
+    );
+    expect(
+      panelSource.slice(brushTabStart, settingsTabStart),
+      'panel mounts RightPanelBrushTab in the brush branch',
+    ).toMatch(/<RightPanelBrushTab\b/);
+    const settingsBranch = panelSource.slice(settingsTabStart, paperTabStart);
+    expect(
+      settingsBranch,
+      'panel mounts RightPanelSettingsTab in the settings branch',
+    ).toMatch(/<RightPanelSettingsTab\b/);
+    expect(
+      settingsBranch,
+      'settings branch carries the padded panel class',
+    ).toContain('physics-paint-options-tab-panel-settings');
   });
 });
