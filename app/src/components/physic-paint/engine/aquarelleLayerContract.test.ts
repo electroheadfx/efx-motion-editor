@@ -107,6 +107,9 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(preCaptureIdx).toBeGreaterThan(-1);
     expect(flushIdx).toBeGreaterThan(-1);
     expect(preCaptureIdx).toBeLessThan(flushIdx);
+    // The seam unregisters on unmount: the save/close flush must never call a
+    // closure holding a destroyed engine.
+    expect(layer).toContain('onFlushCaptureReadyRef.current?.(null)');
   });
 
   it('no double composite: the live aquarelle layer replaces the active track in the monitor', () => {

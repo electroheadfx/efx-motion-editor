@@ -24,7 +24,6 @@ import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
-import { capturePaperFond } from '../lib/paperFondCapture';
 import { isFullyOpaqueRaster, isOpaqueRaster } from '../lib/rasterAlpha';
 import { applyPaperPass, getPaperPassTile } from '../lib/paperPass';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
@@ -3042,12 +3041,6 @@ export const physicPaintStore = {
     const efxDocument = getEfxPaintDocument(layerId);
     if (!efxDocument) return null;
     const instruction = _resolveDocumentFondInstruction(layerId, efxDocument);
-    capturePaperFond('fond-resolve', {
-      layerId,
-      paperTexture: instruction?.paperTexture ?? null,
-      color: instruction?.color ?? null,
-      fallback: efxDocument.background.fallback,
-    });
     return instruction;
   },
 

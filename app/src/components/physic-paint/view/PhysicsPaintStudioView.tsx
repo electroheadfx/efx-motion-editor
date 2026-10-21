@@ -23,7 +23,6 @@ import { PhysicsPaintWorkflowStrip } from '../view/PhysicsPaintWorkflowStrip';
 import type { PhysicsPaintWorkflowRotoScriptState } from '../view/PhysicsPaintWorkflowStrip';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
-import { captureLayerStack } from '../../../lib/paperFondCapture';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 
@@ -47,9 +46,6 @@ interface PhysicsPaintCanvasStackViewProps {
    * intercepting the gesture — the engine still receives the same event.
    */
   onInputIntent?: (event: PointerEvent) => void;
-  /** Quick 261019-mj2 Task 3 (D-08): the centered create-key fallback on
-   *  non-real cells. Absent on real keys and while a promotion is in flight. */
-  createKeyFallback?: { onCreate: () => void } | null;
   /**
    * Phase 48-05 (D-05): the program monitor config. Present when the Studio
    * has a launch layer. The monitor is mounted BELOW the engine canvas (the
@@ -128,9 +124,6 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
     if (!canvas) return;
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) return;
-    const frame = requestAnimationFrame(() => {
-      captureLayerStack(canvas.closest('.physics-paint-canvas-stack') ?? canvas.parentElement);
-    });
     const unsubscribe = subscribeRotoPlaybackBackground({
       context,
       width: props.width,
@@ -138,7 +131,6 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
       background: props.background,
     });
     return () => {
-      cancelAnimationFrame(frame);
       unsubscribe();
     };
   }, [props.background.background, props.background.color, props.background.grainStrength, props.background.grainScale, props.height, props.width]);
@@ -149,6 +141,9 @@ function PhysicsPaintRotoPlaybackBackground(props: { width: number; height: numb
 function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
   recordPhysicsPaintPerformanceCounter('render.canvasStack');
   const stackRef = useRef<HTMLDivElement>(null);
+  // Brush one-law: the ring is UI, not pigment — it must not sit inside the
+  // tracks group's paper-multiply group. See .physics-paint-brush-cursor-overlay.
+  const brushCursorOverlayRef = useRef<HTMLCanvasElement>(null);
   const [canvasBounds, setCanvasBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
@@ -222,20 +217,42 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
         <div class="physics-paint-transparency-checkerboard" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }} aria-hidden="true" />
       ) : null}
       <div class={`physics-paint-tracks-group${props.programMonitor?.liveOverlay ? ' dry-live-overlay' : ''}${props.mount.aquarelleActive ? ' aquarelle-compositing' : ''}`}>
-        <MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />
+        <MemoizedPhysicsPaintCanvasMount
+          key={props.canvasKey}
+          {...props.mount}
+          cursorOverlayCanvasRef={brushCursorOverlayRef}
+          aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}
+        />
         {canvasBounds && props.programMonitor ? (
           <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
             <PhysicsPaintProgramMonitor {...props.programMonitor} />
           </div>
         ) : null}
       </div>
+      {/* Brush one-law: the tracks group is the paper pass, so the dual ring
+          must render OUTSIDE it or the paper multiplies the white hairline
+          away. Kept mounted in both modules (the engine swaps its cursor
+          target); hidden in Water color, which owns its DOM ring. */}
+      <canvas
+        ref={brushCursorOverlayRef}
+        class="physics-paint-brush-cursor-overlay"
+        width={props.mount.width}
+        height={props.mount.height}
+        aria-hidden="true"
+        style={{
+          left: canvasBounds?.left ?? 0,
+          top: canvasBounds?.top ?? 0,
+          width: canvasBounds?.width ?? '100%',
+          height: canvasBounds?.height ?? '100%',
+          opacity: props.mount.aquarelleActive ? 0 : 1,
+        }}
+      />
       {canvasBounds ? (
         <div
           class="physics-paint-onion-overlay canvas-region"
           aria-hidden="true"
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
-          {!props.cachedRotoPlaybackActive && props.cachedRotoReferenceUrl ? <img class="physics-paint-cached-roto-reference" src={props.cachedRotoReferenceUrl} alt="" /> : null}
           {props.cachedRotoPlaybackActive && props.cachedRotoPlaybackComposition && !props.programMonitor ? (
             <PhysicsPaintRotoPlaybackBackground
               width={props.cachedRotoPlaybackComposition.width}
@@ -283,18 +300,6 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
           style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
         >
           <PhysicsPaintReferenceTransformHandles {...props.backgroundTransformHandles} />
-        </div>
-      ) : null}
-      {/* Quick 261019-mj2 Task 3 (D-08): the centered create-key fallback on a
-          non-real (empty/generated) cell. The container is pointer-events none;
-          only the button receives clicks, so painting gestures still reach the
-          engine everywhere else. */}
-      {canvasBounds && props.createKeyFallback ? (
-        <div
-          class="physics-paint-create-key-fallback"
-          style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}
-        >
-          <button type="button" onClick={props.createKeyFallback.onCreate}>Create key</button>
         </div>
       ) : null}
     </div>

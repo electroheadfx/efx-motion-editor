@@ -181,13 +181,41 @@ describe('Roto reference controller', () => {
     // Clean → normal load.
     dirtyFrames.clear();
     expect(loader.load(4, engine)).toBe(true);
-    expect(setReferenceUrl).toHaveBeenLastCalledWith(null);
+    // Water color's cached base rides the DOM reference slot (engine-1's
+    // preview base is invisible in aquarelle mode).
+    expect(setReferenceUrl).toHaveBeenLastCalledWith(getFrameBlobUrl(cached.bytes));
     expect(setRepaintBaseFrame).toHaveBeenLastCalledWith(cached);
     expect(engine.setBgMode).toHaveBeenCalledWith('white');
     expect(engine.clear).toHaveBeenCalledTimes(2);
     expect(engine.setPreviewBaseImageUrl).toHaveBeenLastCalledWith(getFrameBlobUrl(cached.bytes), undefined, 4);
     expect(syncPending).toHaveBeenCalledTimes(1);
     expect(setApplyMessage).toHaveBeenCalledWith('Cache loaded at frame 4. Add paint to update this key.');
+  });
+
+  it('keeps the visible base when a dirty frame refuses for lack of bytes — same frame only', () => {
+    const dirtyFrames = new Set([4]);
+    const setReferenceUrl = vi.fn();
+    const loader = createRotoReferenceLoader({
+      getWorkflowMode: () => 'roto',
+      getSettingsBackground: () => 'white',
+      dirtyFrames,
+      liveOverlayActionCounts: new Map([[4, 1]]),
+      getReferenceFrame: () => null,
+      setReferenceUrl,
+      setRepaintBaseFrame: vi.fn(),
+      syncPending: vi.fn(),
+      setApplyMessage: vi.fn(),
+    });
+
+    // The engine still shows frame 4's applied base: a new stroke just made the
+    // frame dirty, so the refusal must NOT wipe the old paint off the screen.
+    expect(loader.load(4, createSettledCompletionEngine(4, 'data:frame4'))).toBe(false);
+    expect(setReferenceUrl).toHaveBeenLastCalledWith('data:frame4');
+
+    // Different frame on the engine: preserving it would leak another frame's
+    // paint through the watercolor base slot.
+    expect(loader.load(4, createSettledCompletionEngine(3, 'data:frame3'))).toBe(false);
+    expect(setReferenceUrl).toHaveBeenLastCalledWith(null);
   });
 
   it('replaces rejected dirty pixels with one explicitly accepted physical base', () => {
@@ -321,7 +349,9 @@ describe('Roto reference controller', () => {
     expect(engine.setBgMode, 'the settled full render must stay on the canvas (no bgMode swap)').not.toHaveBeenCalled();
     // The reference base is preserved so any later legit load still resolves it.
     expect(setRepaintBaseFrame).toHaveBeenLastCalledWith(expect.any(Function));
-    expect(setReferenceUrl).toHaveBeenLastCalledWith(null);
+    // The visible watercolor base follows the AUTHORITATIVE settled render, not
+    // the refused stale partial.
+    expect(setReferenceUrl).toHaveBeenLastCalledWith('data:full');
   });
 
   it('no-ops the pixel-cache fallback retry (replaceDirtyFrame=true) when a completion render already settled for the same frame (regression-refresh-multi-paint 4th rejection)', () => {

@@ -15,7 +15,6 @@ import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoord
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
 import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';
-import { capturePaintCacheEvent } from '../../../lib/paintCacheFrameEnterCapture';
 
 /** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
  * (superseded by a mid-sequence revision advance, or the frame vanished), the
@@ -465,10 +464,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const launchId = expectedOperationId ?? launch?.operationId;
     const projectContextId = launch?.project?.contextId;
     const trackId = inputRef.current.getActiveTrackId(layerId ?? '');
-    if (!layerId || !launchId || !projectContextId) {
-      capturePaintCacheEvent('cache-write-rejected', { appFrame: renderedFrame.appFrame, reason: 'context' });
-      return false;
-    }
+    if (!layerId || !launchId || !projectContextId) return false;
     const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
     const contentRevision = expectedContentRevision ?? inputRef.current.store.getRotoPhysicalContentRevision(layerId, trackId);
     if (!document || !contentRevision || document.revision !== contentRevision) {
@@ -476,10 +472,6 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // the ACTIVE track (re-resolved now) doesn't own the transaction's
       // expected revision — the cross-track effect of an active-track switch
       // racing a pending flush.
-      capturePaintCacheEvent('cache-write-rejected', {
-        appFrame: renderedFrame.appFrame,
-        reason: !document ? 'no-document' : !contentRevision ? 'no-revision' : 'revision',
-      });
       return false;
     }
     const route = await routeRotoPhysicalPaintFrame({
@@ -502,10 +494,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       updateOrdinaryKey: (updateLayerId, keyId, expectedContentRevision, payload, diagnostics) => inputRef.current.store.updateRotoPhysicalRealKeyPayload(updateLayerId, trackId, keyId, expectedContentRevision, payload, diagnostics),
       executePhysicalEdit: inputRef.current.executePhysicalEdit,
     });
-    if (!route.ok) {
-      capturePaintCacheEvent('cache-write-rejected', { appFrame: renderedFrame.appFrame, reason: route.reason });
-      return false;
-    }
+    if (!route.ok) return false;
     if (route.kind === 'group-frame') {
       // Group COW publication, cache settlement, canvas reconciliation, and
       // history are all deferred to the matching physical acknowledgement.
@@ -519,14 +508,6 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // so a paper change is a cache miss (stale WebP frames are not served).
       cacheRevision: `${route.contentRevision}:real:${route.keyId}${paperCacheTerm(inputRef.current.getBackgroundMetadata())}`,
     };
-    // paint-cache-empty-frame-on-key instrument: record cache-write completion
-    // so the next occurrence can compare write time vs frame-enter read time.
-    capturePaintCacheEvent('cache-write-commit', {
-      appFrame: renderedFrame.appFrame,
-      keyId: route.keyId,
-      contentRevision: route.contentRevision,
-      bytesLen: renderedFrame.bytes instanceof Uint8Array ? renderedFrame.bytes.length : 0,
-    });
     confirmedFramesRef.current.set(renderedFrame.appFrame, accepted);
     editBuffer.acceptPixelCache(renderedFrame.appFrame);
     publishCurrentDocument(layerId, launchId);
@@ -574,22 +555,13 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   }) => {
     const launch = inputRef.current.launchContext;
     const launchId = capture.operationId ?? launch?.operationId;
-    if (!launchId) {
-      capturePaintCacheEvent('live-capture-skip', { appFrame: capture.appFrame, reason: 'launch' });
-      return Promise.resolve(false);
-    }
+    if (!launchId) return Promise.resolve(false);
     const trackId = inputRef.current.getActiveTrackId(capture.layerId);
     const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
-    if (!document || !contentRevision || document.revision !== contentRevision) {
-      capturePaintCacheEvent('live-capture-skip', { appFrame: capture.appFrame, reason: 'revision' });
-      return Promise.resolve(false);
-    }
+    if (!document || !contentRevision || document.revision !== contentRevision) return Promise.resolve(false);
     const identityKey = resolveRotoLivePixelIdentityKey(document, capture.appFrame);
-    if (identityKey === null) {
-      capturePaintCacheEvent('live-capture-skip', { appFrame: capture.appFrame, reason: 'identity' });
-      return Promise.resolve(false);
-    }
+    if (identityKey === null) return Promise.resolve(false);
     const identity: RotoLivePixelIdentity = {
       launchId,
       layerId: capture.layerId,
@@ -603,42 +575,23 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       resolveCurrent: () => {
         const currentDocument = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
         const currentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
-        if (!currentDocument || currentRevision !== contentRevision) {
-          capturePaintCacheEvent('live-capture-stale', { appFrame: capture.appFrame, reason: 'revision' });
-          return null;
-        }
+        if (!currentDocument || currentRevision !== contentRevision) return null;
         const currentIdentityKey = resolveRotoLivePixelIdentityKey(currentDocument, capture.appFrame);
-        if (currentIdentityKey !== identityKey) {
-          capturePaintCacheEvent('live-capture-stale', { appFrame: capture.appFrame, reason: 'identity' });
-          return null;
-        }
+        if (currentIdentityKey !== identityKey) return null;
         return identity;
       },
       recordPerformance: isPhysicsPaintProfilingEnabled() ? recordPhysicsPaintPerformance : undefined,
-      // Diagnostics: name the capture gate that rejected a non-committed turn
-      // (the stale checks are otherwise silent in the app-written log).
-      onSettle: (outcome) => {
-        if (outcome !== 'committed') capturePaintCacheEvent('live-capture-turn', { appFrame: capture.appFrame, outcome });
-      },
       produce: () => {
         // Resolve the snapshot only once the capture gate has settled and the
         // finalize loop has applied the pending rasters — never synchronously at
         // stroke-completion (see the liveAlphaCanvas factory note above).
-        try {
-          const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
-            ? capture.liveAlphaCanvas()
-            : capture.liveAlphaCanvas;
-          if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
-          return capture.cachedBase || capture.baseCanvas
-            ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
-            : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
-        } catch (error) {
-          capturePaintCacheEvent('live-capture-produce-failed', {
-            appFrame: capture.appFrame,
-            message: error instanceof Error ? error.message : String(error),
-          });
-          throw error;
-        }
+        const liveAlphaCanvas = typeof capture.liveAlphaCanvas === 'function'
+          ? capture.liveAlphaCanvas()
+          : capture.liveAlphaCanvas;
+        if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
+        return capture.cachedBase || capture.baseCanvas
+          ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
+          : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
       },
       commit: async (rendered, current) => {
         const result = await upsertCachedFrame(

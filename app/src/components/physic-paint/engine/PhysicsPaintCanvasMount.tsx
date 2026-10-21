@@ -28,7 +28,7 @@ const TRACK_BLEND_TO_CSS_MIX: Record<BlendMode, CSSProperties['mixBlendMode']> =
 
 export type NativePenInputHandler = (input: { pressure: number; tiltX?: number; tiltY?: number }) => void;
 
-export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; color?: string; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void; onAquarelleFlushCaptureReady?: (flushCapture: () => void) => void; onAquarelleSheetSessionEnd?: () => void; onAquarelleResetSheetReady?: (resetSheet: () => void) => void; }) {
+export function PhysicsPaintCanvasMount(props: { width: number; height: number; paperTextureScale: number; onEngineReady: (engine: EfxPaintEngine) => void; onCanvasMounted: (mounted: boolean) => void; onNativePenInputReady: (handler: NativePenInputHandler) => void; onCompletedMutation?: (mutation: CompletedPaintMutation, engine: EfxPaintEngine) => void; onPerformanceSample?: (sample: PaintPerformanceSample) => void; onInputActivity?: (kind: InputActivityKind, pointerId: number) => void; beforeEngineDestroy?: (engine: EfxPaintEngine) => void | Promise<void>; getStrokeMetadata?: () => { playFrame?: number } | null | undefined; trackOpacity?: number; trackBlendMode?: BlendMode; aquarelleActive?: boolean; aquarelleCachedBaseUrl?: string | null; color?: string; cursorOverlayCanvasRef?: { current: HTMLCanvasElement | null }; getAquarellePlayFrame?: () => number; getAquarellePaperId?: () => string; onAquarelleStrokeEnd?: (stroke: AquarelleStroke) => void; onAquarelleStrokeSettled?: (stroke: AquarelleStroke, ticks: number) => void; onAquarelleCaptureFrame?: (playFrame: number, snapshot: () => HTMLCanvasElement | null) => void; onAquarelleFlushCaptureReady?: (flushCapture: (() => void) | null) => void; onAquarelleSheetSessionEnd?: () => void; onAquarelleResetSheetReady?: (resetSheet: () => void) => void; }) {
   recordPhysicsPaintPerformanceCounter('render.canvasMount');
   const shellRef = useRef<HTMLDivElement>(null);
   const [mountError, setMountError] = useState<string | null>(null);
@@ -72,6 +72,13 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
   const aquarelleActive = props.aquarelleActive ?? false;
   useEffect(() => {
     engineRef.current?.setInputLocked(aquarelleActive);
+  }, [aquarelleActive]);
+
+  // Brush shows under the tracks group's paper multiply. The ring must stay
+  // outside that group or the paper eats its white hairline — draw it on the
+  // host-owned canvas (Water color already has its own DOM ring).
+  useEffect(() => {
+    engineRef.current?.setCursorOverlayCanvas(aquarelleActive ? null : props.cursorOverlayCanvasRef?.current ?? null);
   }, [aquarelleActive]);
 
   useEffect(() => {
@@ -135,6 +142,7 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
     // transparent so the composite stacked beneath shows through.
     engine.setVisibleBackgroundSuppressed(true);
     engine.setInputLocked(aquarelleActive);
+    engine.setCursorOverlayCanvas(aquarelleActive ? null : props.cursorOverlayCanvasRef?.current ?? null);
     setMountError(null);
     onCanvasMountedRef.current(true);
     recordPhysicsPaintPerformanceCounter('lifecycle.canvasMount.engineReady');
@@ -187,6 +195,13 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
           onEngineReady={handleEngineReady}
         />
       </div>
+      {/* Water color cached base: the engine-1 preview base is invisible in
+          aquarelle mode, so the committed sheet must render here, multiply over
+          the fond and UNDER the live canvas — the same transmittance law as the
+          live layer. Without it a cached key shows bare paper after return. */}
+      {aquarelleActive && props.aquarelleCachedBaseUrl ? (
+        <img class="aquarelle-cached-base" src={props.aquarelleCachedBaseUrl} alt="" aria-hidden="true" />
+      ) : null}
       {aquarelleActive ? (
         <AquarelleCanvasLayer
           width={props.width}

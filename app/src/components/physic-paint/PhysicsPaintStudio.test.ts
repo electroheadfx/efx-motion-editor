@@ -1107,8 +1107,13 @@ describe('Canvas navigation render localization', () => {
     expect(canvasMount).toContain('export function PhysicsPaintCanvasMount(');
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMountRenderCounted);');
+    // Water color's cached base is rendered under the live canvas — engine-1's
+    // preview base is invisible while the aquarelle layer is up.
+    expect(canvasMount).toContain('aquarelleActive && props.aquarelleCachedBaseUrl');
+    expect(canvasMount).toContain('class="aquarelle-cached-base"');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
-    expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount');
+    expect(studioView).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');
     expect(studioView).not.toContain('<PhysicsPaintCanvasMount key={canvas.canvasKey} {...canvas.mount} />');
   });
 });
@@ -1466,7 +1471,8 @@ describe('Physics Paint scoped background asset picker (49-04, S2)', () => {
     expect(canvasStackIndex).toBeGreaterThanOrEqual(0);
     expect(pickerOverlayIndex).toBeGreaterThan(canvasStackIndex);
     // The canvas mount is unconditional — never gated on the picker being closed.
-    expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount');
+    expect(studioView).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');
     expect(studioView).not.toContain('!backgroundPicker?.open ? <MemoizedPhysicsPaintCanvasStack');
   });
 
@@ -2117,7 +2123,7 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
   })();
   const closeFlush = (() => {
     const start = studio.indexOf('usePhysicsPaintCloseFlush(');
-    return start === -1 ? '' : studio.slice(start, start + 1600);
+    return start === -1 ? '' : studio.slice(start, start + 3600);
   })();
 
   it('creates exactly one pipeline instance and routes both flush paths through it', () => {
@@ -2133,27 +2139,71 @@ describe('52.2-15 one flushed drain for both Studio flush paths (D-16)', () => {
     expect(studio).toContain('await flushPipeline.flush({ steps });');
   });
 
-  it('keeps the close sequence: engine settle, capture flush, playback settings, documentSync push', () => {
+  it('keeps the close sequence: engine settle, aquarelle capture + live-pixel flush, playback settings, documentSync push', () => {
     const order = [
       'engineRef.current?.flushPendingStrokeFinalizations()',
-      'rotoPersistence.flushLivePixels(currentFrame)',
+      'flushAquarellePixels(currentFrame)',
       'rotoPlaybackSettingsController.flush()',
       'flushDocumentSyncRef.current()',
     ];
     const positions = order.map((step) => closeFlush.indexOf(step));
     expect(positions).not.toContain(-1);
     expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+    // The aquarelle sheet is invisible to the engine-1 stroke counter/queue
+    // until captured; the close gate therefore always flushes in Roto.
+    expect(closeFlush).toContain("() => workflowMode === 'roto'");
+    // Brush: copyLiveAlphaCanvas composites the cosmetic wet display on top of
+    // the dry canvas. Closing right after a stroke captured that fluorescent
+    // wet look; settle the wet layer before the capture.
+    expect(closeFlush).toContain("if (activeModule.value === 'watercolor') engineRef.current?.flushPendingStrokeFinalizations();");
+    expect(closeFlush).toContain('else engineRef.current?.forceDry();');
   });
 
-  it('keeps the requested-flush sequence: idle-gated engine settle, capture flush, documentSync push', () => {
+  it('keeps the requested-flush sequence: idle-gated engine settle, aquarelle capture + live-pixel flush, documentSync push', () => {
     const order = [
       'readInteractionIdle()',
-      'rotoPersistence.flushLivePixels()',
+      'flushAquarellePixels()',
       'pushLiveProjection(layerId, mode)',
     ];
     const positions = order.map((step) => listenerFlush.indexOf(step));
     expect(positions).not.toContain(-1);
     expect([...positions].sort((left, right) => left - right)).toEqual(positions);
+    // Same settle-before-capture law on the save path.
+    expect(listenerFlush).toContain('else engineRef.current?.forceDry();');
+  });
+
+  it('forces the aquarelle capture before the save/close drain and waits for promotion-deferred captures', () => {
+    const helperStart = studio.indexOf('const flushAquarellePixels = useCallback(');
+    const helperBlock = helperStart === -1
+      ? ''
+      : studio.slice(helperStart, studio.indexOf('// CACHE MERGE BASE', helperStart));
+    const captureIndex = helperBlock.indexOf('aquarelleFlushCaptureRef.current?.()');
+    const awaitIndex = helperBlock.indexOf('await Promise.allSettled(inFlight)');
+    const drainIndex = helperBlock.indexOf('flushLivePixels(appFrame)');
+    expect(captureIndex).toBeGreaterThan(-1);
+    expect(awaitIndex).toBeGreaterThan(captureIndex);
+    expect(drainIndex).toBeGreaterThan(awaitIndex);
+    // A capture suspended on the auto-key promotion enqueues only after the
+    // promise resolves; the flush must wait or it drains an empty queue.
+    expect(studio).toContain('aquarelleCapturesInFlightRef.current.add(run)');
+  });
+
+  it('rejects a blank aquarelle sheet before it can overwrite painted cache pixels', () => {
+    const captureStart = studio.indexOf('const handleAquarelleCaptureFrame = useCallback(');
+    const captureBlock = captureStart === -1
+      ? ''
+      : studio.slice(captureStart, studio.indexOf('const flushAquarellePixels = useCallback(', captureStart));
+    const snapshotIndex = captureBlock.indexOf('const liveAlphaCanvas = snapshot()');
+    const inkIndex = captureBlock.indexOf('measureAquarelleCanvasInk(liveAlphaCanvas)');
+    const guardIndex = captureBlock.indexOf('if (ink < AQUARELLE_MIN_CAPTURE_INK) return');
+    const seqIndex = captureBlock.indexOf('const seq = ++aquarelleCaptureSeqRef.current');
+    expect(snapshotIndex).toBeGreaterThan(-1);
+    expect(inkIndex).toBeGreaterThan(snapshotIndex);
+    expect(guardIndex).toBeGreaterThan(inkIndex);
+    expect(seqIndex).toBeGreaterThan(guardIndex);
+    // Calibrated on saved payloads: painted sheets score 4.6-11.3, blank
+    // textured sheets 0.05-0.12 on this per-mille scale.
+    expect(studio).toContain('const AQUARELLE_MIN_CAPTURE_INK = 1;');
   });
 
   it('keeps a non-flushed outcome visible to the facade and the unmount teardown intact', () => {
@@ -2504,7 +2554,7 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     return source.slice(start, end);
   }
 
-  it('shares ONE promotion helper between script targets, pointerdown, and the Create key button', () => {
+  it('shares ONE promotion helper between script targets and pointerdown', () => {
     expect(studio).toContain('promoteRotoPaintTargetRef.current = async (');
     const promotionHelper = section(
       studio,
@@ -2524,13 +2574,10 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     );
     expect(prepareBlock).toContain('promoteRotoPaintTargetRef.current(');
     expect(prepareBlock).toContain("source: 'auto-key-paint'");
-    // Pointerdown and the fallback button use the same seam: the orchestration
-    // wrapper (which owns the pending entry + exemption) delegates to the ONE
-    // helper above.
+    // The pointerdown orchestration wrapper (which owns the pending entry +
+    // exemption) delegates to the ONE helper above.
     const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
     expect(beginBlock).toContain('startRotoPaintPromotion({');
-    const fallbackBlock = section(studio, 'const handleCreateKeyFallback = useCallback(', 'const beginRotoFrameEdit = useCallback(');
-    expect(fallbackBlock).toContain('startRotoPaintPromotion({');
     expect(studio).toContain('void promoteRotoPaintTargetRef.current(input)');
     // No forked Water color promotion path: the promotion seam is the only
     // promotion call; the + Rail → Key action is an EXPLICIT key creation, not
@@ -2613,7 +2660,74 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const aquarelleAwaitIndex = captureBlock.indexOf('await pendingFirstPaintTarget.promise');
     expect(aquarelleAwaitIndex).toBeGreaterThan(-1);
     expect(aquarelleAwaitIndex).toBeLessThan(captureBlock.indexOf('captureLivePixels('));
-    expect(captureBlock).toContain('promotion.blankFrame');
+    expect(captureBlock).toContain('cachedBase = null');
+    expect(captureBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: playFrame, base: null }');
+  });
+
+  it('keeps the watercolor cached base visible while painting on an already painted key', () => {
+    // Engine-1 is hidden in Water color, so the DOM multiply base IS the
+    // visible cached paint. Clearing the reference on the first dirty stroke
+    // made the existing paint vanish while the new stroke was painted; the
+    // composite only came back on the next clean frame-enter.
+    const referenceBlock = section(studio, 'const rotoFrameEditing = useRotoFrameEditingController({', 'const beginRotoFrameEditImplRef');
+    expect(referenceBlock).toContain('clearReference: () => {');
+    expect(referenceBlock).toContain("if (activeModule.value === 'watercolor') return;");
+    expect(referenceBlock).toContain('clearCachedRotoReferenceUrl();');
+  });
+
+  it('keeps the aquarelle merge base at sheet start so re-captures cannot compound density', () => {
+    // The same live sheet is re-captured on settle, frame-leave and close.
+    // Advancing the base to the payload just committed made each pass multiply
+    // the sheet over itself: pigment density compounded and the reopened cache
+    // displayed darker than the paint (darker-on-reopen).
+    const captureBlock = section(studio, 'const handleAquarelleCaptureFrame = useCallback(', '// CACHE MERGE BASE');
+    expect(captureBlock).not.toContain('base: committed');
+    // The base is read once per sheet session ...
+    expect(captureBlock).toContain('if (aquarelleMergeBaseRef.current?.appFrame !== playFrame)');
+    expect(captureBlock).toContain('The sheet ACCUMULATES strokes until the session ends');
+    // ... and cleared only where the sheet itself is reset or ends.
+    expect(studio).toContain('const handleAquarelleSheetSessionEnd = useCallback(() => {');
+    expect(studio).toContain('aquarelleMergeBaseRef.current = null');
+  });
+
+  it('forces a promotion-deferred capture through the flush gate the navigation flush already passed', () => {
+    // The frame-leave flush runs while the capture is still awaiting the
+    // promotion, so the capture is enqueued AFTER that flush returned. Without
+    // a second forced flush it sits out CAPTURE_PRODUCE_QUIET_MS (6000ms) and
+    // leaving/closing inside that window strands the pixels — the empty cache
+    // on return / after key change.
+    const completedBlock = section(studio, 'canvasCompletedMutationImplRef.current = (', 'const handleCanvasCompletedMutation = useCallback(');
+    expect(completedBlock).toContain('deferredPromotionCapture = true');
+    const engineCaptureIndex = completedBlock.indexOf('rotoPersistence.captureLivePixels(');
+    const engineFlushIndex = completedBlock.indexOf('rotoPersistence.flushLivePixels(appFrame)');
+    expect(engineCaptureIndex).toBeGreaterThan(-1);
+    expect(engineFlushIndex).toBeGreaterThan(engineCaptureIndex);
+    expect(completedBlock).toContain('if (deferredPromotionCapture)');
+
+    const captureBlock = section(studio, 'const handleAquarelleCaptureFrame = useCallback(', '// CACHE MERGE BASE');
+    const enqueueIndex = captureBlock.indexOf('const work = enqueue()');
+    const aquarelleFlushIndex = captureBlock.indexOf('rotoPersistenceRef.current.flushLivePixels(playFrame)');
+    expect(enqueueIndex).toBeGreaterThan(-1);
+    expect(aquarelleFlushIndex).toBeGreaterThan(enqueueIndex);
+    // Guarded by the pending-promotion branch and applied to the retry turn.
+    expect(captureBlock).toContain('if (pendingFirstPaintTarget === null) return;');
+    expect((captureBlock.match(/flushDeferredPromotionCapture\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('releases the accepted settlement lease even when the post-acceptance aftermath throws', () => {
+    // An accepted edit that never acks keeps its exclusive store lease: the
+    // canvas stack stays pointer-events:none for the rest of the session
+    // (Brush: pointer cursor, no ring). The aquarelle layer sets its own
+    // pointer-events, which is why Water color still paints under that lock.
+    const routeBlock = section(studio, 'physicalEditCoordinatorRouteRef.current = {', '// 47-03 Task 2');
+    const tryIndex = routeBlock.indexOf('try {');
+    const finallyIndex = routeBlock.indexOf('} finally {');
+    const ackIndex = routeBlock.indexOf('acknowledgePhysicalEditSettlement');
+    expect(tryIndex).toBeGreaterThan(-1);
+    expect(finallyIndex).toBeGreaterThan(tryIndex);
+    expect(ackIndex).toBeGreaterThan(finallyIndex);
+    expect(routeBlock).toContain('catch (error)');
+    expect(routeBlock).toContain("console.error('[PhysicsPaintStudio] physical settlement aftermath failed:'");
   });
 
   it('suppresses the accepted-key cache reload for a self-promotion and pins the blank base', () => {
@@ -2624,8 +2738,25 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(guardIndex).toBeLessThan(acceptanceBlock.indexOf('loadCachedRotoReferenceFrame('));
     expect(acceptanceBlock).toContain('setCachedRotoRepaintBaseFrame(pendingSelfPromotion.blankFrame)');
     expect(acceptanceBlock).toContain('cachedRotoRepaintBaseFrameRef.current = pendingSelfPromotion.blankFrame');
-    expect(acceptanceBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: acceptedSelectedAppFrame, base: pendingSelfPromotion.blankFrame }');
+    expect(acceptanceBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: acceptedSelectedAppFrame, base: null }');
     expect(acceptanceBlock).toContain('acknowledgePhysicalEditSettlement');
+  });
+
+  it('skips the blank-key reconcile so the first auto-key stroke is never wiped', () => {
+    // paste-key settlement ALWAYS reconciles. For a self-promotion the accepted
+    // key is blank, so the reconcile's engine.clear(true) + atomic dry clear
+    // erased the live first stroke the instant the key appeared. The port must
+    // detect the pending promotion and keep the live engine untouched.
+    const reconcileBlock = section(studio, 'reconcileCurrentFrame: (appFrame) => {', 'engineState: {');
+    expect(reconcileBlock).toContain("pendingPromotion?.source === 'auto-key-paint'");
+    expect(reconcileBlock).toContain('pendingPromotion.launchOperationId === launchForPromotion.operationId');
+    expect(reconcileBlock).toContain('pendingPromotion.layerId === launchForPromotion.layerId');
+    expect(reconcileBlock).toContain('pendingPromotion.appFrame === appFrame');
+    expect(reconcileBlock).toContain('cachedRotoRepaintBaseFrameRef.current = pendingPromotion.blankFrame');
+    expect(reconcileBlock).toContain('setCachedRotoRepaintBaseFrame(pendingPromotion.blankFrame)');
+    const guardIndex = reconcileBlock.indexOf("pendingPromotion?.source === 'auto-key-paint'");
+    expect(guardIndex).toBeGreaterThan(-1);
+    expect(guardIndex).toBeLessThan(reconcileBlock.indexOf('loadCachedRotoReferenceFrame('));
   });
 
   it('exempts only the canvas input lock while a self-promotion is in flight', () => {
@@ -2637,7 +2768,7 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
   });
 
   it('discards the stroke and replays an accepted-but-unvalidated key on failure', () => {
-    const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const handleCreateKeyFallback = useCallback(');
+    const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const startRotoPaintPromotion = ');
     expect(failureBlock).toContain('engineRef.current?.undo()');
     expect(failureBlock).toContain('aquarelleResetSheetRef.current?.()');
     expect(failureBlock).toContain('acceptedBefore');
@@ -2645,39 +2776,16 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(failureBlock).toContain('historyProvenance');
     expect(failureBlock).toContain('setLastError');
     expect(studio).toContain('source: \'auto-key-paint\'');
-    expect(studio).toContain('source: \'create-key-button\'');
   });
 
-  it('renders a centered Create key fallback only for non-real editable cells', () => {
-    expect(studioView).toContain('createKeyFallback?: { onCreate: () => void } | null;');
-    expect(studioView).toContain('class="physics-paint-create-key-fallback"');
-    expect(studioView).toContain('<button type="button" onClick={props.createKeyFallback.onCreate}>Create key</button>');
-    expect(css).toContain('.physics-paint-create-key-fallback {');
-    expect(css).toContain('pointer-events: none;');
-    expect(css).toContain('.physics-paint-create-key-fallback > button {');
-    expect(css).toContain('pointer-events: auto;');
-    // Studio gating: roto, launch, empty paint target, not real-key, not
-    // playing, not mutation-locked, no promotion in flight, AND (261019-mj2
-    // UAT) only after a direct-paint promotion failed on this frame — the
-    // button is a fallback, never a permanent overlay next to direct paint.
-    const fallbackGate = section(studio, 'const createKeyFallback = ', 'const canvasStack =');
-    expect(fallbackGate).toContain('autoKeyFallbackFrame.value === currentFrame');
-    expect(fallbackGate).toContain("workflowMode === 'roto'");
-    expect(fallbackGate).toContain("paintTarget.kind === 'empty'");
-    expect(fallbackGate).toContain("currentFrameSelectionKind !== 'real-key'");
-    expect(fallbackGate).toContain('!isPlaying');
-    expect(fallbackGate).toContain('!mutationLocked');
-    expect(fallbackGate).toContain('!autoKeyPromotionPaintExempt.value');
-    expect(studio).toContain('createKeyFallback: createKeyFallback ? { onCreate: handleCreateKeyFallback } : null');
-  });
-
-  it('warms the canvas and shows progress from the Create key button without touching later keys', () => {
-    const fallbackBlock = section(studio, 'const handleCreateKeyFallback = useCallback(', 'const beginRotoFrameEdit = useCallback(');
-    expect(fallbackBlock).toContain('Préparation du canevas…');
-    expect(fallbackBlock).toContain('warmCanvasSurfaces?.()');
-    expect(fallbackBlock).toContain('lockInputForWarm?.(FRESH_FRAME_WARM_MS)');
-    expect(fallbackBlock).toContain('warmProgress');
-    expect(fallbackBlock).not.toContain('markCurrentFrameDirty(');
+  it('never renders the removed Create key fallback in auto-paint', () => {
+    expect(studioView).not.toContain('createKeyFallback');
+    expect(studioView).not.toContain('physics-paint-create-key-fallback');
+    expect(studioView).not.toContain('Create key');
+    expect(css).not.toContain('.physics-paint-create-key-fallback');
+    expect(studio).not.toContain('autoKeyFallbackFrame');
+    expect(studio).not.toContain('handleCreateKeyFallback');
+    expect(studio).not.toContain("source: 'create-key-button'");
   });
 });
 
@@ -2694,18 +2802,16 @@ describe('261019-mj2 Task 4 composite auto-key undo reservation', () => {
     return source.slice(start, end);
   }
 
-  it('arms the no-argument reservation immediately before both promotion starts', () => {
+  it('arms the no-argument reservation immediately before the promotion start', () => {
     const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
     expect(beginBlock).toMatch(/rotoMoveHistory\.beginAutoKeyPaintGroup\(\);\s*void startRotoPaintPromotion\(\{/);
-    const fallbackBlock = section(studio, 'const handleCreateKeyFallback = useCallback(', 'const beginRotoFrameEdit = useCallback(');
-    expect(fallbackBlock).toMatch(/rotoMoveHistory\.beginAutoKeyPaintGroup\(\);\s*void startRotoPaintPromotion\(\{/);
     // NO pre-minted operation id ever reaches the reservation.
     expect(studio).not.toContain('beginAutoKeyPaintGroup(pendingOperationId');
     expect(studio).not.toMatch(/beginAutoKeyPaintGroup\([^)]/);
   });
 
   it('cancels the reservation when the promotion fails so no held acceptance survives', () => {
-    const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const handleCreateKeyFallback = useCallback(');
+    const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const startRotoPaintPromotion = ');
     expect(failureBlock).toContain('rotoMoveHistory.cancelAutoKeyPaintGroup();');
   });
 });

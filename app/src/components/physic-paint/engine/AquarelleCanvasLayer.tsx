@@ -224,7 +224,7 @@ export function AquarelleCanvasLayer(props: {
    * in CAPTURE_PRODUCE_QUIET_MS and the return-to-key read shows the pre-capture
    * cache (the intermittent empty frame). Mirrors onNativePenInputReady.
    */
-  onFlushCaptureReady?: (flushCapture: () => void) => void;
+  onFlushCaptureReady?: (flushCapture: (() => void) | null) => void;
   /**
    * CACHE MERGE BASE (aquarelle-cache-lost-on-return): a new sheet session
    * begins when the edit frame changes and the engine is cleared. The next
@@ -506,6 +506,9 @@ export function AquarelleCanvasLayer(props: {
     raf = requestAnimationFrame(tick);
 
     cleanupRef.current = () => {
+      // Unregister the flush seam: the engine is about to die, and a stale
+      // closure accessing it would fail the save/close flush.
+      onFlushCaptureReadyRef.current?.(null);
       window.removeEventListener('pointerdown', reopenSettleOnPaint, true);
       offDry();
       offDryCapture();

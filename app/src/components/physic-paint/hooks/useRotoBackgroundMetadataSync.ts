@@ -3,7 +3,6 @@ import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
 import type { PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { buildRotoBackgroundMetadata } from '../engine/physicsPaintStudioSettings';
-import { capturePaperFond } from '../../../lib/paperFondCapture';
 
 export function persistRotoBackgroundMetadata(
   launchContext: PhysicPaintLaunchContext | null,
@@ -16,13 +15,6 @@ export function persistRotoBackgroundMetadata(
   // in-place track switch must target the track being edited).
   const trackId = getActiveTrackId(launchContext.layerId);
   const metadata = buildRotoBackgroundMetadata(settings);
-  capturePaperFond('mirror-write', {
-    layerId: launchContext.layerId,
-    trackId,
-    settingsBackground: settings.background,
-    metadata,
-    launchFallback: launchContext.document?.background?.fallback ?? null,
-  });
   physicPaintStore.setRotoBackgroundMetadata(launchContext.layerId, trackId, metadata);
 }
 

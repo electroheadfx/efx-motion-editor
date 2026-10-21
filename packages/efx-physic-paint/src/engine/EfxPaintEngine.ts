@@ -511,6 +511,12 @@ export class EfxPaintEngine {
   private displayCompositeDirty = true
   private lastDisplayCompositeTime = 0
   private lastCursorRect: { x0: number; y0: number; x1: number; y1: number } | null = null
+  /**
+   * Optional host-owned canvas for the brush cursor. Hosts that display paint
+   * through a paper-multiply blend group keep the ring OUTSIDE that group so
+   * its white hairline is not multiplied away by the paper.
+   */
+  private cursorOverlay: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null
   private lastPreviewBbox: { x0: number; y0: number; x1: number; y1: number } | null = null
   private drawnQueuedOutlineCount = 0
 
@@ -851,6 +857,31 @@ export class EfxPaintEngine {
   /** Set brush size (1-80) */
   setBrushSize(size: number): void {
     this.state.brushOpts.size = clamp(size, 1, 80)
+    this.requestRender()
+  }
+
+  /**
+   * Draw the brush cursor on a host-owned canvas instead of the display
+   * canvas. The host places it outside any CSS blend group so the dual ring
+   * keeps its contrast. Pass null to return the cursor to the display canvas.
+   */
+  setCursorOverlayCanvas(canvas: HTMLCanvasElement | null): void {
+    if (this.cursorOverlay?.canvas === canvas) return
+    if (this.cursorOverlay) {
+      this.cursorOverlay.ctx.clearRect(0, 0, this.cursorOverlay.canvas.width, this.cursorOverlay.canvas.height)
+    } else if (this.lastCursorRect) {
+      this.restoreDisplayRect(this.lastCursorRect)
+    }
+    this.lastCursorRect = null
+    if (!canvas) {
+      this.cursorOverlay = null
+      this.requestRender()
+      return
+    }
+    canvas.width = this.width
+    canvas.height = this.height
+    const ctx = canvas.getContext('2d')
+    this.cursorOverlay = ctx ? { canvas, ctx } : null
     this.requestRender()
   }
 
@@ -1714,6 +1745,10 @@ export class EfxPaintEngine {
   /** Clean up all resources: intervals, rAF, event listeners */
   destroy(): void {
     this.flushPendingStrokeFinalizations()
+    if (this.cursorOverlay) {
+      this.cursorOverlay.ctx.clearRect(0, 0, this.cursorOverlay.canvas.width, this.cursorOverlay.canvas.height)
+      this.cursorOverlay = null
+    }
     this.destroyed = true
     this.previewBaseImageCache?.clear()
     this.previewBaseSettledListeners?.clear()
@@ -2038,7 +2073,7 @@ export class EfxPaintEngine {
         if (!this.lastPreviewBbox || bbox.x0 !== this.lastPreviewBbox.x0 || bbox.y0 !== this.lastPreviewBbox.y0 || bbox.x1 !== this.lastPreviewBbox.x1 || bbox.y1 !== this.lastPreviewBbox.y1) {
           if (this.lastPreviewBbox) {
             this.restoreDisplayRect(this.lastPreviewBbox)
-            this.lastCursorRect = null // the restore erased the cursor at the pen tip — redraw below
+            if (!this.cursorOverlay) this.lastCursorRect = null // the restore erased the cursor at the pen tip — redraw below
           }
           drawStrokePreview(displayCtx, preview)
           this.lastPreviewBbox = bbox
@@ -2047,23 +2082,28 @@ export class EfxPaintEngine {
         // Pen-up: the live ribbon disappears — the queued outline takes over.
         this.restoreDisplayRect(this.lastPreviewBbox)
         this.lastPreviewBbox = null
-        this.lastCursorRect = null // the restore erased the cursor at the pen tip — redraw below
+        if (!this.cursorOverlay) this.lastCursorRect = null // the restore erased the cursor at the pen tip — redraw below
       }
 
-      // 3. Brush cursor: erase the previous rect (restoring the composite and
-      // the overlays under it), then draw at the new position.
-      const cursorRect = this.overlayBoundsForCursor()
-      if (cursorRect) {
-        if (!this.lastCursorRect || cursorRect.x0 !== this.lastCursorRect.x0 || cursorRect.y0 !== this.lastCursorRect.y0 || cursorRect.x1 !== this.lastCursorRect.x1 || cursorRect.y1 !== this.lastCursorRect.y1) {
-          if (this.lastCursorRect) this.restoreDisplayRect(this.lastCursorRect)
-          drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
-          this.lastCursorRect = cursorRect
+      // 3. Brush cursor on the display canvas. A host-owned cursor canvas is
+      // layered outside the paint (and any paper-multiply group), so it never
+      // shares the display's rect restores and is redrawn after this block.
+      if (!this.cursorOverlay) {
+        const cursorRect = this.overlayBoundsForCursor()
+        if (cursorRect) {
+          if (!this.lastCursorRect || cursorRect.x0 !== this.lastCursorRect.x0 || cursorRect.y0 !== this.lastCursorRect.y0 || cursorRect.x1 !== this.lastCursorRect.x1 || cursorRect.y1 !== this.lastCursorRect.y1) {
+            if (this.lastCursorRect) this.restoreDisplayRect(this.lastCursorRect)
+            drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
+            this.lastCursorRect = cursorRect
+          }
+        } else if (this.lastCursorRect) {
+          this.restoreDisplayRect(this.lastCursorRect)
+          this.lastCursorRect = null
         }
-      } else if (this.lastCursorRect) {
-        this.restoreDisplayRect(this.lastCursorRect)
-        this.lastCursorRect = null
       }
     }
+
+    if (this.cursorOverlay) this.renderCursorOverlay()
 
     // 261002 look-delta m2 — every queued outline is drawn by the overlay pass
     // above; this is the "outline on screen" frame.
@@ -2123,11 +2163,12 @@ export class EfxPaintEngine {
     compositeWetLayer(displayCtx, this.wet, this.width, this.height, sampleHFn, scratch ?? undefined)
     this.displayCompositeDirty = false
     this.lastDisplayCompositeTime = performance.now()
-    // The composite cleared the display — every overlay must be redrawn from
-    // scratch by the next overlay pass.
+    // The composite cleared the display — every display overlay must be
+    // redrawn from scratch by the next overlay pass. A host-owned cursor
+    // canvas is untouched by the clear.
     this.drawnQueuedOutlineCount = 0
     this.lastPreviewBbox = null
-    this.lastCursorRect = null
+    if (!this.cursorOverlay) this.lastCursorRect = null
     // 261002 look-delta m3 — the settled wet composite just landed, BEFORE the
     // overlay pass redraws the cursor on top of the pinned pixel.
     this.lookDelta?.onCompositeLanded()
@@ -2139,8 +2180,32 @@ export class EfxPaintEngine {
     this.drawnQueuedOutlineCount = this.getQueuedStrokePreviews().length
     drawStrokePreview(displayCtx, this.previewStroke)
     this.lastPreviewBbox = this.previewStroke ? this.overlayBoundsForPreview(this.previewStroke) : null
+    if (this.cursorOverlay) return
     drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
     this.lastCursorRect = this.overlayBoundsForCursor()
+  }
+
+  /** Redraw the host-owned cursor canvas: erase the old ring rect, draw the new one. */
+  private renderCursorOverlay(): void {
+    const overlay = this.cursorOverlay
+    if (!overlay) return
+    const next = this.overlayBoundsForCursor()
+    if (
+      next && this.lastCursorRect &&
+      next.x0 === this.lastCursorRect.x0 && next.y0 === this.lastCursorRect.y0 &&
+      next.x1 === this.lastCursorRect.x1 && next.y1 === this.lastCursorRect.y1
+    ) return
+    if (this.lastCursorRect) {
+      const x0 = Math.max(0, Math.floor(this.lastCursorRect.x0))
+      const y0 = Math.max(0, Math.floor(this.lastCursorRect.y0))
+      const x1 = Math.min(this.width, Math.ceil(this.lastCursorRect.x1))
+      const y1 = Math.min(this.height, Math.ceil(this.lastCursorRect.y1))
+      if (x1 > x0 && y1 > y0) overlay.ctx.clearRect(x0, y0, x1 - x0, y1 - y0)
+    }
+    this.lastCursorRect = next
+    if (next) {
+      drawBrushCursor(overlay.ctx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
+    }
   }
 
   /**

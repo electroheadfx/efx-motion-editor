@@ -1335,7 +1335,18 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         || pending.operationKind === 'delete-rails'
         || pending.operationKind === 'paste'
       ) {
-        portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
+        // The reconcile is a VISUAL refresh (cached reference readback + engine
+        // upload). It must never gate the settlement: a throw here used to skip
+        // acceptedSignal and the lease handoff, leaving the exclusive store
+        // lease active (canvas input locked) while the parent had already
+        // committed the key.
+        try {
+          portsRef.current.reference.reconcileCurrentFrame(after.currentAppFrame);
+        } catch (error) {
+          portsRef.current.status.logDiagnostic(
+            `Roto physical edit reconcile failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }
       acceptedSignal.value = {
         before,

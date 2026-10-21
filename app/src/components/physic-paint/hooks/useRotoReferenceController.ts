@@ -5,7 +5,6 @@ import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { PhysicPaintRotoPhysicalRenderableSource, PhysicPaintRotoPhysicalRenderSource } from '../roto/physicsPaintRotoPhysicalModel';
 import { buildFrameBytesToken, isPngBytes, isWebpBytes } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
-import { capturePaintCacheEvent, peekPaintVersionForCapture } from '../../../lib/paintCacheFrameEnterCapture';
 
 /**
  * 52.1 (D-06): memoized bytes → Blob URL for the preview-base paint. The
@@ -171,25 +170,20 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     const isDirtyRefusal = input.dirtyFrames.has(appFrame) && !input.replaceDirtyFrame;
     const cachedFrame = input.getReferenceFrame(appFrame);
     const paintBytes = input.explicitBytes ?? cachedFrame?.bytes ?? null;
-    // paint-cache-empty-frame-on-key instrument: record which arm runs at frame-enter.
-    const captureArm = (arm: string, extra?: Record<string, unknown>) => {
-      capturePaintCacheEvent('frame-enter', {
-        arm,
-        appFrame,
-        bytesLen: paintBytes instanceof Uint8Array ? paintBytes.length : 0,
-        contentRevision: cachedFrame?.contentRevision ?? null,
-        dirty: isDirtyRefusal,
-        paintVersion: peekPaintVersionForCapture(),
-        ...extra,
-      });
-    };
     // 261003-erase-uat (C): a dirty key with NO cached bytes still refuses (nothing
     // to show). A dirty key WITH cached bytes falls through and paints them —
     // navigation already engine.clear()'d, so the cache is the best surviving
     // representation and refusing would leave bare paper (the wipe).
     if (isDirtyRefusal && !paintBytes) {
-      captureArm('dirty-refusal-empty');
-      input.setReferenceUrl(null);
+      // Refusing means "leave what is on screen", which includes the visible
+      // watercolor base. Clearing it here made a cached key's old paint vanish
+      // the moment a new stroke marked the frame dirty (it reappeared on the
+      // next clean frame-enter). Preserve it ONLY when the engine's applied
+      // base belongs to THIS frame — otherwise a frame change would leak the
+      // previous frame's paint.
+      const appliedFrame = engine?.getAppliedPreviewBaseAppFrame?.() ?? null;
+      const appliedUrl = engine?.getAppliedPreviewBaseDataUrl?.() ?? null;
+      input.setReferenceUrl(appliedFrame === appFrame && appliedUrl !== null ? appliedUrl : null);
       input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
       return false;
     }
@@ -220,8 +214,9 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
       && appliedDataUrl !== null
       && paintBytes !== null
     ) {
-      captureArm('skip-plain-refresh');
-      input.setReferenceUrl(null);
+      // Keep the visible watercolor base on the AUTHORITATIVE applied render
+      // (the settled completion), never the stale refresh that was refused.
+      input.setReferenceUrl(appliedDataUrl);
       input.setRepaintBaseFrame((current) => current?.appFrame === appFrame ? current : null);
       return false;
     }
@@ -234,7 +229,12 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
     const paintContentToken = input.generation !== undefined
       ? input.generation
       : input.resolveContentToken?.(cachedFrame?.contentRevision);
-    input.setReferenceUrl(null);
+    // The engine preview base is invisible in Water color (engine-1's surface
+    // is opacity:0 while the aquarelle layer is up), so the cached payload must
+    // ALSO ride the DOM reference slot. The Studio renders it as a multiply
+    // base under the live aquarelle canvas. Brush keeps painting the preview
+    // base only (the URL is not rendered in that mode).
+    input.setReferenceUrl(paintBytes && paintBytes.length > 0 ? getFrameBlobUrl(paintBytes) : null);
     input.setRepaintBaseFrame(cachedFrame);
     const settingsBg = input.getSettingsBackground();
     engine.setBgMode(
@@ -243,7 +243,6 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
         : 'transparent',
     );
     if (paintBytes) {
-      captureArm('cache-read', { contentToken: paintContentToken });
       // Acceptance reloads (an explicit generation — the completion reconcile /
       // guard repair) paint bytes that ALREADY contain the dry strokes. Wiping
       // dry before the async decode lands made the last stroke disappear for
@@ -262,7 +261,6 @@ export function createRotoReferenceLoader<Frame extends RotoReferenceFrame>(inpu
         input.setApplyMessage(`Cache loaded at frame ${appFrame}. Add paint to update this key.`);
       }
     } else {
-      captureArm('empty');
       engine.clear();
       engine.clearPreviewBaseImage();
       engine.resetBackground();

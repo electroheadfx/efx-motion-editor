@@ -6559,6 +6559,30 @@ button.destructive {
   isolation: auto;
 }
 
+/* Brush one-law: the group is the paper pass. The program-monitor composite
+   (settled/cached paint) and the engine stack (wet + dry raw pigment) are
+   composited as ONE group, then multiplied by the document fond exactly once.
+   That is what makes a wet stroke match its settled colour and stops the raw
+   engine surface from ever showing unmultiplied. Water color keeps its own
+   per-layer multiply (live sheet + cached base) instead. */
+.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) {
+  mix-blend-mode: multiply;
+}
+
+/* Inside the Brush paper pass the monitor must not multiply a second time. */
+.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) .physics-paint-program-monitor {
+  mix-blend-mode: normal;
+}
+
+/* The brush ring is UI, never pigment: it renders on its own canvas as a
+   sibling of the tracks group, so the paper pass cannot eat its white
+   hairline. The engine draws into it via setCursorOverlayCanvas. */
+.physics-paint-brush-cursor-overlay {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+}
+
 /* 48-06 (UAT-C): the paper fond layer — drawn BENEATH the isolated tracks
    group (the monitor reads the fond-less composite). */
 .physics-paint-fond-layer {
@@ -6638,6 +6662,22 @@ button.destructive {
   mix-blend-mode: multiply;
   /* UI checklist row 1: the HTML pointer is replaced by the brush-size ring. */
   cursor: none;
+}
+
+/* In aquarelle mode engine-1's surface is opacity:0, so the cached frame it
+   paints is invisible. The committed sheet renders here instead — below the
+   live canvas (4) and multiply over the fond, the same transmittance law. */
+.demo-canvas-shell .aquarelle-cached-base {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  /* fill (not contain): the live aquarelle canvas stretches 100%×100% of the
+     shell, so the cached base must stretch identically or the paint misaligns. */
+  object-fit: fill;
+  z-index: 3;
+  mix-blend-mode: multiply;
+  pointer-events: none;
 }
 
 /* 48-06 (N2/N3): the engine shell can carry the active track's opacity/blend
@@ -7346,40 +7386,4 @@ button.destructive {
 .physics-paint-script-picker-list .physics-paint-script-row:disabled:hover {
   border-color: #565b61;
   background: #3b3d3f;
-}
-
-/* Quick 261019-mj2 Task 3 (D-08): the centered Create key fallback on a
-   non-real (empty/generated) cell. The container never eats painting gestures;
-   only the button is interactive. */
-.physics-paint-create-key-fallback {
-  position: absolute;
-  z-index: 7;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.physics-paint-create-key-fallback > button {
-  pointer-events: auto;
-  padding: 9px 16px;
-  border: 1px solid #6f90ff;
-  border-radius: 9px;
-  background: #365ed6;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-transform: none;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
-  cursor: pointer;
-}
-
-.physics-paint-create-key-fallback > button:hover {
-  background: #3d6ae8;
-}
-
-.physics-paint-create-key-fallback > button:focus-visible {
-  outline: 2px solid var(--color-accent, #2d5be3);
-  outline-offset: 2px;
 }

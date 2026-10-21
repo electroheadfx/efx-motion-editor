@@ -1269,6 +1269,41 @@ describe('useRotoPhysicalEditCoordinator Loop Clip staging', () => {
     expect(test.reconcileCurrentFrame).toHaveBeenCalledWith(14);
   });
 
+  it('settles an accepted paste-key and releases its lease even when the reference reconcile throws', async () => {
+    const test = harness();
+    const records = [record('A', 0), record('B', 4), record('C', 8)];
+    const interpolationOn = { enabled: true as const, mode: 'duplicate' as const };
+    const doc = parsePhysicPaintRotoPhysicalDocument({
+      capacity: 30,
+      realKeyRecords: records,
+      groupOverrideRecords: [],
+      interpolation: interpolationOn,
+      scriptMotion: { deformation: 0, position: 0 },
+      background: null,
+      selectedKeyId: null,
+      cursorAppFrame: 6,
+      revision: buildPhysicPaintRotoPhysicalRevision(records, interpolationOn, [], [], []),
+      loopClips: [],
+      incomingInterpolationBreakKeyIds: [],
+    });
+    test.seedGroupDocument(doc);
+    // The reconcile is a VISUAL refresh (cache readback + engine upload). A
+    // throw there must never skip the acceptance settlement: acceptedSignal
+    // stays null, pendingRef/leaseRef stay set, and the exclusive store lease
+    // keeps the canvas input locked for the rest of the session.
+    test.reconcileCurrentFrame.mockImplementation(() => {
+      throw new Error('reconcile failed');
+    });
+
+    expect(await test.executePasteKey(6)).toBe(true);
+    expect(test.accept()).toBe('accepted');
+    const accepted = test.coordinator.acceptedOutput.peek();
+    expect(accepted?.operationId).toBe(test.getPayload()!.operationId);
+    expect(test.coordinator.acknowledgePhysicalEditSettlement(accepted!.operationId, 'release')).toBe(true);
+    expect(test.releaseLease).toHaveBeenCalledWith(test.leaseToken);
+    expect(test.coordinator.failureOutput.peek()).toBeNull();
+  });
+
   it('reconciles the accepted EMPTY real key when paste-key lands inside an interpolated span', async () => {
     const test = harness();
     const records = [record('A', 0), record('B', 4), record('C', 8)];

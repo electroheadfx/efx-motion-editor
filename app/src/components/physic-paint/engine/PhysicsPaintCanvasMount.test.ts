@@ -7,10 +7,12 @@ const mountPath = fileURLToPath(new URL('./PhysicsPaintCanvasMount.tsx', import.
 const wrapperPath = fileURLToPath(new URL('./MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
 const studioPath = fileURLToPath(new URL('../PhysicsPaintStudio.tsx', import.meta.url));
 const viewPath = fileURLToPath(new URL('../view/PhysicsPaintStudioView.tsx', import.meta.url));
+const enginePath = fileURLToPath(new URL('../../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url));
 const mount = readFileSync(mountPath, 'utf8');
 const wrapper = existsSync(wrapperPath) ? readFileSync(wrapperPath, 'utf8') : '';
 const studio = readFileSync(studioPath, 'utf8');
 const view = readFileSync(viewPath, 'utf8');
+const engine = readFileSync(enginePath, 'utf8');
 
 function resolveBlock(source: string, declaration: string, nextDeclaration: string): string {
   const start = source.indexOf(declaration);
@@ -46,7 +48,8 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     const stackStart = view.indexOf('function PhysicsPaintCanvasStackImpl(');
     const stackEnd = view.indexOf('const MemoizedPhysicsPaintCanvasStack', stackStart);
     const stackBlock = view.slice(stackStart, stackEnd);
-    expect(stackBlock).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    expect(stackBlock).toContain('<MemoizedPhysicsPaintCanvasMount');
+    expect(stackBlock).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');
     expect(view).toContain('<MemoizedPhysicsPaintCanvasStack {...canvas} />');
   });
 
@@ -227,7 +230,8 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
 
   it('keeps dimension observer and keyed lifecycle ownership unchanged', () => {
     expect(mount).toContain('}, [props.height, props.width]);');
-    expect(view).toContain('<MemoizedPhysicsPaintCanvasMount key={props.canvasKey} {...props.mount} />');
+    expect(view).toContain('<MemoizedPhysicsPaintCanvasMount');
+    expect(view).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');
     for (const counter of [
       'render.efxChildRequest',
       'observer.canvasMount.resize.install',
@@ -235,5 +239,34 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
       'lifecycle.canvasMount.engineReady',
       'lifecycle.canvasMount.beforeDestroy',
     ]) expect(mount.split(`recordPhysicsPaintPerformanceCounter('${counter}')`).length - 1).toBe(1);
+  });
+
+  it('applies the paper pass once to the whole Brush group and keeps the ring outside it (brush one-law)', () => {
+    const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
+    // The tracks group is the single paper pass in Brush: monitor composite +
+    // engine wet/dry stack are multiplied together, exactly once.
+    expect(css).toContain('.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) {\n  mix-blend-mode: multiply;');
+    // Inside that pass the monitor must not multiply a second time.
+    expect(css).toContain('.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) .physics-paint-program-monitor {\n  mix-blend-mode: normal;');
+    // Water color keeps its per-layer multiply, so the guards must exclude it.
+    expect(css).toContain('.physics-paint-tracks-group.aquarelle-compositing,');
+    // The ring renders on its own canvas above the group, never inside it.
+    expect(css).toContain('.physics-paint-brush-cursor-overlay {\n  position: absolute;\n  z-index: 3;\n  pointer-events: none;');
+    expect(view).toContain('class="physics-paint-brush-cursor-overlay"');
+    expect(view).toContain('cursorOverlayCanvasRef={brushCursorOverlayRef}');
+    const monitorIndex = view.indexOf('<PhysicsPaintProgramMonitor');
+    const groupClose = view.indexOf(') : null}\n      </div>', monitorIndex);
+    const overlayIndex = view.indexOf('class="physics-paint-brush-cursor-overlay"');
+    expect(monitorIndex).toBeGreaterThanOrEqual(0);
+    expect(groupClose).toBeGreaterThan(monitorIndex);
+    expect(overlayIndex).toBeGreaterThan(groupClose);
+    // The engine paints the ring into the host canvas and keeps it out of the
+    // display composite; Water color hands the cursor back to the display.
+    expect(engine).toContain('setCursorOverlayCanvas(canvas: HTMLCanvasElement | null): void {');
+    expect(engine).toContain('if (this.cursorOverlay) this.renderCursorOverlay()');
+    expect(engine).toContain('if (!this.cursorOverlay) this.lastCursorRect = null');
+    expect(mount).toContain('engine.setCursorOverlayCanvas(aquarelleActive ? null : props.cursorOverlayCanvasRef?.current ?? null);');
+    const swap = "engineRef.current?.setCursorOverlayCanvas(aquarelleActive ? null : props.cursorOverlayCanvasRef?.current ?? null);";
+    expect(mount.split(swap).length - 1).toBe(1);
   });
 });
