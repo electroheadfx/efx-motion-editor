@@ -2,7 +2,7 @@
 phase: quick-261022-iff
 plan: 261022-iff
 subsystem: physic-paint / session solo
-tags: [solo, compositor, playback, preact-signals]
+tags: [solo, compositor, playback, preact-signals, uat-approved]
 status: complete
 requires:
   - efxPaintHideSolo participatingPaintTracks truth table
@@ -141,10 +141,21 @@ None.
 
 None. The persistence boundary is unchanged: the parser's exact key set still accepts `solo`, and the session target never reaches export or the main preview (documented in the plan threat register, T-iff-01/T-iff-03).
 
+## Live UAT Rows — PASSED (user-approved 2026-10-22)
+
+The user ran all three live gate rows and approved them on 2026-10-22.
+
+| # | Action | Expected | Observed | Status |
+|---|--------|----------|----------|--------|
+| 1 | Two tracks, no solo armed | Both tracks' paint visible | User-approved | PASSED |
+| 2 | Solo on A, then select B, then disarm | Only A; only B while still armed; both return on disarm | User-approved | PASSED |
+| 3 | Hide the soloed track / a non-selected track | Hidden track never appears | User-approved | PASSED |
+
 ## Self-Check
 
 - Created/changed artifacts exist on disk; deleted artifacts are absent.
 - Commits `2fdd2713`, `a76ded93`, `c2ca4a01` are ancestors of HEAD.
+- Live UAT: all three gate rows user-approved on 2026-10-22.
 - Working tree clean at SUMMARY time.
 
 ## Self-Check: PASSED
