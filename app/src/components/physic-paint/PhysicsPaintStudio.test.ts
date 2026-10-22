@@ -2967,10 +2967,14 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(deleteHandler).toContain('const editId = beginAquarelleDeleteEdit(mutationId);');
     expect(deleteHandler).not.toContain('deleteAquarelleStrokeForEdit');
 
-    const applySite = deleteHandler.indexOf('const ok = await rotoScript.applyCurrentScript();');
+    // 261022-pim: the re-bake reads the RECORDED timeline, never the live
+    // engine capture — a completed Apply refreshes the display and drops the
+    // guide strokes, so applyCurrentScript refused silently on the 2nd delete.
+    const applySite = deleteHandler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
     const successSite = deleteHandler.indexOf('if (ok) {');
     const recordSite = deleteHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
     expect(applySite).toBeGreaterThan(-1);
+    expect(deleteHandler).not.toContain('applyCurrentScript');
     expect(successSite).toBeGreaterThan(applySite);
     expect(recordSite).toBeGreaterThan(successSite);
 
@@ -2987,11 +2991,24 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(replayPort).toContain('const revert = restoreAquarelleEditSnapshot(editId, direction);');
     expect(replayPort).toContain('if (revert === null) return false;');
     expect(replayPort).toContain('aquarelleResetSheetRef.current?.();');
-    expect(replayPort).toContain('const ok = await rotoScript.applyCurrentScript();');
+    expect(replayPort).toContain('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
+    expect(replayPort).not.toContain('applyCurrentScript');
     expect(replayPort).toContain('restoreAquarelleSnapshotRaw(revert);');
     expect(replayPort).toContain('return false;');
     expect(replayPort).toContain('rotoScript.notifySourceRevision();');
     expect(replayPort).not.toContain('physicalEditCoordinator');
+  });
+
+  it('wires the Delete/Backspace action and the Cmd tap toggle (watercolor only)', () => {
+    // The keyboard action consumes the key only in select mode with a
+    // selection; the peek reads keep the Studio render body unsubscribed.
+    expect(studio).toContain('deleteSelectedAquarelleStroke: () => {');
+    expect(studio).toContain('if (!aquarelleSelectMode.peek()) return false;');
+    expect(studio).toContain('const mutationId = aquarelleSelectedStrokeMutationId.peek();');
+    expect(studio).toContain('handleAquarelleDeleteStroke(mutationId);');
+    // A Cmd tap toggles the persistent select mode in watercolor mode only.
+    expect(studio).toContain('onMetaTap: () => {');
+    expect(studio).toContain("if (activeModule.peek() === 'watercolor') toggleAquarelleSelectMode();");
   });
 
   it('declares the aquarelle ledger entry and replay port in the history hook', () => {

@@ -67,6 +67,12 @@ export interface TemporaryEraseDeps {
   getEngine: () => TemporaryEraseEngine | null;
   isMutationLocked: () => boolean;
   isShortcutTarget: (target: EventTarget | null) => boolean;
+  /**
+   * 261022-pim: Cmd TAP (press + release with no other key in between) toggles
+   * the persistent Move/Select mode. The held-Cmd arm above stays byte-for-
+   * byte: a tap is a toggle, a hold-with-chord (Cmd+Z, Cmd+C, …) is not.
+   */
+  onMetaTap?: () => void;
 }
 
 export type TemporaryEraseBoundary = 'down' | 'up' | 'cancel';
@@ -116,6 +122,13 @@ export function readEffectiveTool(selected: ToolType): ToolType {
 let inFlight = false;
 /** The (engine, tool) pair this feature last applied — engine identity is part of the key. */
 let lastApplied: { engine: TemporaryEraseEngine; tool: ToolType } | null = null;
+/**
+ * 261022-pim Cmd-tap detection. `metaArmed` = the keydown actually armed the
+ * move tool (not gated out), `metaChordUsed` = another key was pressed while
+ * Cmd was down — a chord (Cmd+Z) must never toggle the persistent mode.
+ */
+let metaArmed = false;
+let metaChordUsed = false;
 
 interface SyncOptions {
   /**
@@ -184,10 +197,14 @@ export function handleTemporaryEraseKeyUp(event: KeyboardEvent, deps: TemporaryE
  */
 export function handleTemporaryMoveKeyDown(event: KeyboardEvent, deps: TemporaryEraseDeps): void {
   if (event.key !== 'Meta' || event.repeat) return;
+  // A fresh Cmd press starts a fresh tap window: no chord yet, not armed yet.
+  metaArmed = false;
+  metaChordUsed = false;
   if (!deps.isShortcutTarget(event.target)) return;
   if (deps.getSelectedTool() !== 'paint') return;
   if (deps.getEngine() === null) return;
   if (deps.isMutationLocked()) return;
+  metaArmed = true;
   temporaryMove.value = true;
   syncTemporaryErase(deps);
 }
@@ -197,17 +214,26 @@ export function handleTemporaryMoveKeyDown(event: KeyboardEvent, deps: Temporary
  * release (a keyup inside an input, after a tool switch, or while locked still
  * clears), so a stuck arm can never survive a lost key combination. The event
  * is never consumed: every existing Cmd chord keeps working.
+ *
+ * 261022-pim Cmd TAP: if the armed press never saw another key (no chord), the
+ * release toggles the persistent Move/Select mode through `onMetaTap`. A hold
+ * with a chord (Cmd+Z, Cmd+C, …) stays exactly the old momentary arm.
  */
 export function handleTemporaryMoveKeyUp(event: KeyboardEvent, deps: TemporaryEraseDeps): void {
   if (event.key !== 'Meta') return;
   temporaryMove.value = false;
   syncTemporaryErase(deps);
+  if (metaArmed && !metaChordUsed) deps.onMetaTap?.();
+  metaArmed = false;
+  metaChordUsed = false;
 }
 
 /** Window blur disarms BOTH arms unconditionally (Alt+Tab to the main window, closed popover…). */
 export function handleTemporaryEraseBlur(deps: TemporaryEraseDeps): void {
   temporaryErase.value = false;
   temporaryMove.value = false;
+  metaArmed = false;
+  metaChordUsed = false;
   syncTemporaryErase(deps);
 }
 
@@ -216,6 +242,8 @@ export function handleTemporaryEraseVisibilityChange(deps: TemporaryEraseDeps, v
   if (visibilityState !== 'hidden') return;
   temporaryErase.value = false;
   temporaryMove.value = false;
+  metaArmed = false;
+  metaChordUsed = false;
   syncTemporaryErase(deps);
 }
 
@@ -252,6 +280,8 @@ export function mountPhysicsPaintTemporaryErase(
   // neither consumes the event, so the dispatcher still sees every chord.
   const onKeyDown = (event: Event) => {
     const keyboardEvent = event as KeyboardEvent;
+    // Any other key while Cmd is down makes this a chord, never a tap.
+    if (keyboardEvent.key !== 'Meta' && keyboardEvent.metaKey) metaChordUsed = true;
     handleTemporaryEraseKeyDown(keyboardEvent, getDeps());
     handleTemporaryMoveKeyDown(keyboardEvent, getDeps());
   };
@@ -299,4 +329,6 @@ export function resetTemporaryEraseForTests(): void {
   temporaryMove.value = false;
   inFlight = false;
   lastApplied = null;
+  metaArmed = false;
+  metaChordUsed = false;
 }

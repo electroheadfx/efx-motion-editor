@@ -12,9 +12,12 @@ import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/pay
 import {
   aquarelleStrokesRevision,
   deleteAquarelleStrokeFromScript,
+  emitAquarelleDry,
+  getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   isAquarelleStrokeDeleted,
+  markAquarelleStrokeDeleted,
   recordAquarelleStroke,
 } from './aquarelleRecordState';
 import {
@@ -73,6 +76,39 @@ describe('261022-pim aquarelle record-state delete', () => {
   it('an unknown id is a no-op returning false', () => {
     expect(deleteAquarelleStrokeFromScript(999999)).toBe(false);
     expect(isAquarelleStrokeDeleted(999999)).toBe(false);
+  });
+});
+
+// 261022-pim second-delete fix: the delete re-bake reads the recorded
+// timeline for the edit frame, not the engine guide strokes (an Apply refresh
+// drops them). Dry is a sheet action with no frame anchor, so it rides every
+// frame's replay list.
+describe('261022-pim aquarelle frame replay list', () => {
+  it('keeps only the frame strokes plus every Dry event', () => {
+    recordAquarelleStroke(7401, stroke(7401, 401));
+    recordAquarelleStroke(7402, stroke(7402, 401));
+    recordAquarelleStroke(7403, stroke(7403, 402));
+    emitAquarelleDry(4242);
+
+    const frame401 = getAquarelleEventsForFrame(401);
+    const ids = frame401.flatMap((event) =>
+      'kind' in event ? [] : [(event.engine as { mutationId?: number }).mutationId],
+    );
+    expect(ids).toEqual(expect.arrayContaining([7401, 7402]));
+    expect(ids).not.toContain(7403);
+    expect(frame401.some((event) => 'kind' in event && event.kind === 'dry')).toBe(true);
+  });
+
+  it('honors the deleted marker even if a stale read left the entry', () => {
+    recordAquarelleStroke(7411, stroke(7411, 403));
+    recordAquarelleStroke(7412, stroke(7412, 403));
+    markAquarelleStrokeDeleted(7411);
+
+    const ids = getAquarelleEventsForFrame(403).flatMap((event) =>
+      'kind' in event ? [] : [(event.engine as { mutationId?: number }).mutationId],
+    );
+    expect(ids).not.toContain(7411);
+    expect(ids).toContain(7412);
   });
 });
 

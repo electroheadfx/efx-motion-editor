@@ -1454,3 +1454,70 @@ describe('261022-pim applyCurrentScript', () => {
     expect(test.controller.clipboard.value).toBeNull();
   });
 });
+
+// 261022-pim second-delete fix: the delete re-bake dispatches the RECORDED
+// timeline directly. No engine capture, no clipboard — a completed Apply may
+// have refreshed the display and dropped the guide strokes, and a second
+// delete must still work.
+describe('261022-pim applyAquarelleTimeline', () => {
+  it('dispatches the given events without capturing the engine or clipboard', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    const events: AquarellePayloadEvent[] = [
+      aquarelleStrokeEvent(51, 500),
+      createDryEvent(2, 501),
+      aquarelleStrokeEvent(52, 600),
+    ];
+
+    const applying = test.controller.applyAquarelleTimeline(events);
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    expect(port.calls[0]!.events).toHaveLength(3);
+    expect(test.controller.clipboard.value).toBeNull();
+    // The live guide strokes were never consulted (and never re-enqueued).
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBe('Applied');
+    // The live recorded events must stay mutable: the dispatch freezes its own
+    // clone, and a later measured-cuisson patch writes the live object.
+    expect(Object.isFrozen(events[0])).toBe(false);
+    expect(Object.isFrozen(events[2])).toBe(false);
+  });
+
+  it('an empty timeline stays on the aquarelle path and bakes a blank sheet', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
+
+    const applying = test.controller.applyAquarelleTimeline([]);
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    expect(port.calls[0]!.events).toHaveLength(0);
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBe('Applied');
+  });
+
+  it('drives the shared progress pill from the timeline stroke count', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
+
+    const applying = test.controller.applyAquarelleTimeline([
+      aquarelleStrokeEvent(61, 700),
+      aquarelleStrokeEvent(62, 800),
+    ]);
+    await flushMicrotasks(20);
+
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(test.controller.status.value).toBe('Applying 0/2');
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.applyProgress.value).toBeNull();
+  });
+});

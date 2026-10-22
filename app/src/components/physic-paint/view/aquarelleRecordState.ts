@@ -458,6 +458,29 @@ export function getRecordedAquarellePayloadTimeline(): readonly AquarellePayload
 }
 
 /**
+ * The replay list for ONE edit frame (261022-pim): the frame's recorded
+ * strokes in recording order plus every Dry event. Dry is a sheet action
+ * with no frame anchor (D-15), so it stays global — the same shape the
+ * engine-capture path produced. Deleted strokes are already spliced out of
+ * the timeline; the marker is honored too so a stale read can never
+ * resurrect one.
+ *
+ * This is the delete/replay source of truth: the live engine's guide
+ * strokes may be gone after an Apply refresh, but the recorded timeline is
+ * the script.
+ */
+export function getAquarelleEventsForFrame(
+  playFrame: number,
+): readonly AquarellePayloadEvent[] {
+  return payloadTimeline.filter((event) => {
+    if (isAquarelleDryEvent(event)) return true;
+    if (event.playFrame !== playFrame) return false;
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    return mutationId === undefined || !deletedAquarelleStrokeIds.has(mutationId);
+  });
+}
+
+/**
  * Fire a recorded Dry event (D-15) onto the record path.
  * `tick` is the host-grid tick from the Studio record clock;
  * recordedOrder is the shared ordering key (Date.now() until the

@@ -901,3 +901,58 @@ describe('Physics Paint sound clip delete shortcut (261008-ryq)', () => {
     expect(handlers.removeSelectedSound).not.toHaveBeenCalled();
   });
 });
+
+// 261022-pim: in watercolor select mode a selected stroke owns Delete/
+// Backspace. The action returns true only when it consumed the key; outside
+// select mode / with no selection the key/clip branches keep their bindings.
+describe('261022-pim aquarelle stroke delete shortcut', () => {
+  const baseState: PhysicsPaintStudioKeyboardState = {
+    currentFrame: 4,
+    isPlaying: false,
+    mutationLocked: false,
+    hasSelectedRotoKey: false,
+  };
+  const frames = [{ frame: 1 }, { frame: 3 }, { frame: 7 }];
+
+  it.each(['Backspace', 'Delete'])('%s deletes the selected stroke and suppresses the key delete', (key) => {
+    const handlers = { ...actions(), deleteSelectedAquarelleStroke: vi.fn(() => true) };
+    const { event, preventDefault } = eventFor(key, new TestHTMLElement('canvas') as unknown as EventTarget);
+
+    dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+    expect(handlers.deleteSelectedAquarelleStroke).toHaveBeenCalledOnce();
+    expect(handlers.deleteRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Cmd+Backspace reaches the stroke action (Cmd is itself a select arm)', () => {
+    const handlers = { ...actions(), deleteSelectedAquarelleStroke: vi.fn(() => true) };
+    const { event, preventDefault } = eventFor('Backspace', new TestHTMLElement('canvas') as unknown as EventTarget, { metaKey: true });
+
+    dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+    expect(handlers.deleteSelectedAquarelleStroke).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('falls through to the key delete when no stroke is selected', () => {
+    const handlers = { ...actions(), deleteSelectedAquarelleStroke: vi.fn(() => false) };
+    const { event } = eventFor('Backspace', new TestHTMLElement('canvas') as unknown as EventTarget);
+
+    dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+    expect(handlers.deleteSelectedAquarelleStroke).toHaveBeenCalledOnce();
+    expect(handlers.deleteRotoKey).toHaveBeenCalledOnce();
+  });
+
+  it('never fires while a real modal is open', () => {
+    const handlers = { ...actions(), deleteSelectedAquarelleStroke: vi.fn(() => true) };
+    const target = new TestHTMLElement('canvas', { modalOpen: true }) as unknown as EventTarget;
+    const { event, preventDefault } = eventFor('Backspace', target);
+
+    dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+    expect(handlers.deleteSelectedAquarelleStroke).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+});

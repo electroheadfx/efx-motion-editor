@@ -166,6 +166,10 @@ export interface RotoScriptClipboardController {
   applyScript: () => Promise<boolean>;
   /** 261022-pim: re-bake the LIVE captured script (delete) without the clipboard. */
   applyCurrentScript: () => Promise<boolean>;
+  /** 261022-pim: re-bake a recorded aquarelle timeline for the current source.
+   *  The timeline is the script — no engine capture, so repeated deletes keep
+   *  working after an Apply refresh clears the guide strokes. */
+  applyAquarelleTimeline: (events: readonly AquarellePayloadEvent[]) => Promise<boolean>;
   discardScript: () => void;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
   updateEngine: (engine: RotoScriptEnginePort | null) => void;
@@ -803,6 +807,79 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   /**
+   * 261022-pim: re-bake a recorded aquarelle timeline for the current source.
+   *
+   * Delete must not depend on the live engine's guide strokes: a completed
+   * Apply refreshes the display and the engine no longer holds them, so a
+   * second delete captured nothing and refused silently. The recorded payload
+   * timeline IS the script — build the dispatch from it directly and reuse
+   * the same `dispatchApply` bake/publish/progress path.
+   *
+   * Only the source gates apply here; there is no brush capture and no
+   * clipboard write. An empty list is legal (every stroke deleted) and bakes
+   * a blank sheet through the aquarelle branch.
+   */
+  async function applyAquarelleTimeline(
+    events: readonly AquarellePayloadEvent[],
+  ): Promise<boolean> {
+    if (disposed || disposalRequested) return false;
+    const engine = engineState.peek();
+    if (!engine) return false;
+    const source = sourceState.peek();
+    if (source.selectionKind === 'generated-interpolation') return false;
+    if (busy.peek() || !ports.applyAquarelleEvents) return false;
+    const acceptedEngineGeneration = engineGeneration;
+    const acceptedLaunchGeneration = launchGeneration;
+    error.value = null;
+    beginOperation(engine);
+    let dispatched = false;
+    try {
+      await ports.flushSourcePublication?.(source.appFrame);
+      if (
+        disposed
+        || disposalRequested
+        || engineState.peek() !== engine
+        || engineGeneration !== acceptedEngineGeneration
+        || launchGeneration !== acceptedLaunchGeneration
+      ) {
+        return false;
+      }
+      // deepFreezeScript freezes every event it receives — clone first so the
+      // live payload timeline (and its in-place cuisson patches) stays mutable.
+      const eventsForScript = events.map((event) => isAquarelleDryEvent(event)
+        ? { ...event }
+        : {
+            ...event,
+            pts: event.pts.map((point) => ({ ...point })),
+            engine: { ...event.engine },
+          });
+      const script = deepFreezeScript({
+        provenance: provenanceFor(source),
+        sourceFrame: source.appFrame,
+        sourceDisplayFrame: source.appFrame,
+        sourceRevision: sourceRevision + 1,
+        brushes: [],
+        aquarelleEvents: eventsForScript,
+      });
+      dispatched = true;
+      return await dispatchApply(script, source, engine, { forceAquarelle: true });
+    } catch (cause) {
+      if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
+        status.value = 'Failed';
+        error.value = operationError(
+          'apply',
+          'apply-partial-failure',
+          'Apply Aquarelle Timeline could not replay the recorded strokes.',
+          cause,
+        );
+      }
+      return false;
+    } finally {
+      if (!dispatched) endOperation(engine);
+    }
+  }
+
+  /**
    * 261022-pim: the ONE shared Apply dispatch. Apply Script (clipboard) and
    * Apply Current Script (live capture after a delete) both land here, so the
    * bake, the progress pill, publication and display reconcile cannot drift.
@@ -1118,6 +1195,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     cancelPreparedScriptLoadAndApply,
     applyScript,
     applyCurrentScript,
+    applyAquarelleTimeline,
     discardScript,
     observeCompletedMutation,
     updateEngine,

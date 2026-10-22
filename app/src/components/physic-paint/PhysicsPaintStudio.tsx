@@ -164,7 +164,7 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
+import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import {
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationId,
@@ -173,6 +173,7 @@ import {
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
+  toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import './physicsPaintStudio.css';
@@ -1431,6 +1432,12 @@ export function PhysicsPaintStudio() {
     getEngine: () => engineRef.current,
     isMutationLocked: isPhysicalMutationLocked,
     isShortcutTarget: isPhysicsPaintShortcutTarget,
+    // 261022-pim: a Cmd TAP (no chord) toggles the persistent Move/Select
+    // mode, so select-then-Backspace works without holding the key. Water
+    // color only for now; the Brush-mode equivalent is a later switch.
+    onMetaTap: () => {
+      if (activeModule.peek() === 'watercolor') toggleAquarelleSelectMode();
+    },
   };
   // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
   // getter reads the ref at event time (ref-read deps). Window-level because
@@ -3507,8 +3514,9 @@ export function PhysicsPaintStudio() {
       replay: async (editId, direction) => {
         const revert = restoreAquarelleEditSnapshot(editId, direction);
         if (revert === null) return false;
+        const playFrame = launchContextRef.current?.startFrame ?? 0;
         aquarelleResetSheetRef.current?.();
-        const ok = await rotoScript.applyCurrentScript();
+        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
         if (!ok) {
           restoreAquarelleSnapshotRaw(revert);
           return false;
@@ -4720,8 +4728,11 @@ export function PhysicsPaintStudio() {
     setAquarelleDeleteInFlight(true);
     void (async () => {
       try {
+        // The recorded timeline IS the script: replay it directly so a delete
+        // keeps working after an Apply refresh clears the engine guide strokes.
+        const playFrame = launchContextRef.current?.startFrame ?? 0;
         aquarelleResetSheetRef.current?.();
-        const ok = await rotoScript.applyCurrentScript();
+        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
         if (ok) {
           rotoMoveHistory.recordAquarelleScriptEdit(editId);
           setLastError(null);
@@ -4732,10 +4743,10 @@ export function PhysicsPaintStudio() {
         // Apply cannot bake a script the sheet never showed.
         restoreAquarelleEditSnapshot(editId, 'undo');
         const error = rotoScript.error.peek();
-        // applyCurrentScript has silent refusal paths (busy, no source
-        // strokes, stale launch) that leave `error` null. Surface a message
-        // anyway — a delete that vanishes without a word is the one outcome
-        // this flow must never produce.
+        // The apply controller has silent refusal paths (busy, stale launch)
+        // that leave `error` null. Surface a message anyway — a delete that
+        // vanishes without a word is the one outcome this flow must never
+        // produce.
         const message = buildRotoScriptApplyRefusalMessage(error)
           ?? error?.message
           ?? 'Could not re-apply the watercolor script — the stroke was restored.';

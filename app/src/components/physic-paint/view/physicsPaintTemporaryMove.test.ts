@@ -717,3 +717,46 @@ describe('source pins — rail + Studio wiring (SOURCE PINS)', () => {
     expect(studioSource).not.toContain('const [strokeScriptInMemory');
   });
 });
+
+// 261022-pim: a Cmd TAP (press + release with no other key in between) is a
+// persistent Move/Select toggle, while every Cmd chord keeps its old meaning.
+// The held-Cmd arm itself is unchanged.
+describe('261022-pim Cmd tap toggles the persistent select mode (TAP TOGGLE)', () => {
+  it('calls onMetaTap exactly once on a clean tap', () => {
+    const h = harness();
+    const onMetaTap = vi.fn();
+    const deps = { ...h.deps, onMetaTap };
+
+    handleTemporaryMoveKeyDown(keyEvent('Meta').event, deps);
+    handleTemporaryMoveKeyUp(keyEvent('Meta').event, deps);
+
+    expect(onMetaTap).toHaveBeenCalledTimes(1);
+  });
+
+  it('a gated keydown (locked / wrong tool) never toggles on release', () => {
+    const h = harness();
+    h.box.locked = true;
+    const onMetaTap = vi.fn();
+    const deps = { ...h.deps, onMetaTap };
+
+    handleTemporaryMoveKeyDown(keyEvent('Meta').event, deps);
+    handleTemporaryMoveKeyUp(keyEvent('Meta').event, deps);
+
+    expect(onMetaTap).not.toHaveBeenCalled();
+  });
+
+  it('Cmd+Z is a chord, not a tap: the mounted listeners do not toggle', () => {
+    const h = harness();
+    const onMetaTap = vi.fn();
+    const targets = mountTargets();
+    const teardown = wireMount(targets, { ...h.deps, onMetaTap });
+
+    targets.window.dispatch('keydown', keyEvent('Meta').event);
+    targets.window.dispatch('keydown', keyEvent('z', { metaKey: true }).event);
+    targets.window.dispatch('keyup', keyEvent('Meta').event);
+
+    expect(onMetaTap).not.toHaveBeenCalled();
+    expect(temporaryMove.peek()).toBe(false);
+    teardown();
+  });
+});
