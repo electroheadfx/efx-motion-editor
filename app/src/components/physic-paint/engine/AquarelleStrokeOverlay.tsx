@@ -202,6 +202,11 @@ export function AquarelleStrokeOverlay(props: {
           const points = entry.pointsPx
             .map((p) => `${p.x + offsetX},${p.y + offsetY}`)
             .join(' ');
+          const label = `#${entry.serial} · ${entry.stackPosition}/${entry.stackTotal}`;
+          const badgeX = Math.max(4, entry.bounds.x + offsetX);
+          const badgeY = Math.max(14, entry.bounds.y + offsetY - 7);
+          // Monospace advance ≈ 0.6em — accurate enough to size the chip.
+          const badgeWidth = label.length * 7.8 + 8;
           return (
             <g
               key={entry.mutationId}
@@ -236,37 +241,54 @@ export function AquarelleStrokeOverlay(props: {
                   />
                 </>
               )}
+              {/* Selected: a solid box in the stroke's own colour. Unselected:
+                  the quiet dashed reference frame. */}
               <rect
                 x={entry.bounds.x + offsetX}
                 y={entry.bounds.y + offsetY}
                 width={entry.bounds.width}
                 height={entry.bounds.height}
                 fill="none"
-                stroke={isSelected ? SELECTED_STROKE_COLOR : OUTLINE_DARK}
-                strokeWidth={1}
-                strokeDasharray="4 3"
-                opacity={isSelected ? 0.9 : 0.45}
+                stroke={isSelected ? entry.color : OUTLINE_DARK}
+                strokeWidth={isSelected ? 2.5 : 1}
+                strokeDasharray={isSelected ? undefined : '4 3'}
+                opacity={isSelected ? 1 : 0.45}
                 vectorEffect="non-scaling-stroke"
               />
               {/* 261022-ujp: creation-order id · position from the top of the
-                  stack. Overlay only — never part of the baked pixels. */}
+                  stack. Overlay only — never part of the baked pixels. The chip
+                  keeps the text readable over any wash. */}
+              <rect
+                x={badgeX - 4}
+                y={badgeY - 13}
+                width={badgeWidth}
+                height={18}
+                rx={3}
+                fill="#ffffff"
+                fillOpacity={0.82}
+                stroke={isSelected ? entry.color : '#111827'}
+                strokeOpacity={isSelected ? 1 : 0.22}
+                strokeWidth={isSelected ? 1.25 : 1}
+                opacity={isSelected ? 1 : 0.75}
+                vectorEffect="non-scaling-stroke"
+              />
               <text
-                x={Math.max(4, entry.bounds.x + offsetX)}
-                y={Math.max(12, entry.bounds.y + offsetY - 6)}
+                x={badgeX}
+                y={badgeY}
                 data-testid="aquarelle-stroke-badge"
                 data-stroke-serial={entry.serial}
                 data-stroke-stack={entry.stackPosition}
-                fontSize={11}
-                fontWeight={600}
+                fontSize={13}
+                fontWeight={isSelected ? 700 : 600}
                 fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-                fill={isSelected ? '#0b2a3a' : '#111827'}
+                fill={isSelected ? entry.color : '#111827'}
                 stroke="#ffffff"
-                strokeWidth={3}
+                strokeWidth={4}
                 strokeLinejoin="round"
-                opacity={isSelected ? 1 : 0.6}
+                opacity={isSelected ? 1 : 0.8}
                 style={{ paintOrder: 'stroke', userSelect: 'none' }}
               >
-                {`#${entry.serial} · ${entry.stackPosition}/${entry.stackTotal}`}
+                {label}
               </text>
             </g>
           );

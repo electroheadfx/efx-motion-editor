@@ -440,7 +440,7 @@ function createDisplayCtx(): CanvasRenderingContext2D {
     // 261022-ujp: Move-tool stack badges draw text on the display overlay.
     font: '', textAlign: 'left', textBaseline: 'alphabetic', lineJoin: 'miter',
     measureText(text: string) { return { width: text.length * 6 } },
-    strokeText() {}, fillText() {},
+    strokeText() {}, fillText() {}, fillRect() {}, strokeRect() {},
   } as unknown as CanvasRenderingContext2D
 }
 

@@ -70,6 +70,8 @@ export interface SelectableAquarelleStroke {
   stackPosition: number;
   /** 261022-ujp: number of strokes in this frame's stack. */
   stackTotal: number;
+  /** 261022-ujp: the stroke's own colour — the selected box and badge wear it. */
+  color: string;
 }
 
 /** Rail Move/Select toggle. Compare-then-write. */
@@ -314,6 +316,7 @@ export function listSelectableAquarelleStrokes(
       serial,
       stackPosition: stackIndex < 0 ? stackTotal : stackTotal - stackIndex,
       stackTotal,
+      color: typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : '#111827',
     });
   }
   return out;

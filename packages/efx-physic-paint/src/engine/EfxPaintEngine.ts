@@ -339,7 +339,7 @@ const DISPLAY_COMPOSITE_MIN_INTERVAL_MS = 30
 /** The display loop pauses after this much pointer inactivity, even with the cursor over the canvas or strokes queued. */
 const RENDER_IDLE_MS = 4000
 /** 261022-ujp: Move-tool stack badge font — monospace keeps positions stable as they change. */
-const STROKE_LABEL_FONT = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace'
+const STROKE_LABEL_FONT = '700 12px ui-monospace, SFMono-Regular, Menlo, monospace'
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
@@ -2345,16 +2345,24 @@ export class EfxPaintEngine {
       const anchor = this.strokeLabelAnchor(action)
       const label = `#${serials.get(mutationId) ?? 0} · ${total - index}/${total}`
       const width = ctx.measureText(label).width
-      const rect = { x0: anchor.x - 2, y0: anchor.y - 14, x1: anchor.x + width + 2, y1: anchor.y + 3 }
+      const rect = { x0: anchor.x - 3, y0: anchor.y - 16, x1: anchor.x + width + 3, y1: anchor.y + 3 }
       if (!clip) this.lastLabelRects.set(mutationId, rect)
       else if (rect.x1 < clip.x0 || rect.x0 > clip.x1 || rect.y1 < clip.y0 || rect.y0 > clip.y1) continue
-      // The hovered stroke's badge is the readable one; the rest stay quiet so
-      // the preview ribbon (the target's own shape) stays the loudest cue.
-      ctx.globalAlpha = hoverId == null ? 0.6 : mutationId === hoverId ? 1 : 0.4
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)'
-      ctx.lineWidth = 3
+      // The hovered stroke's badge is the readable one — and it wears the
+      // stroke's own colour, so the label and the ribbon read as one object.
+      const hovered = hoverId != null && mutationId === hoverId
+      ctx.globalAlpha = hoverId == null ? 0.75 : hovered ? 1 : 0.5
+      // A light chip keeps the text readable over a dark wash (the white halo
+      // alone disappears on a light stroke's own colour).
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.82)'
+      ctx.fillRect(anchor.x - 3, anchor.y - 15, width + 6, 18)
+      ctx.strokeStyle = hovered ? action.color ?? '#111827' : 'rgba(17, 24, 39, 0.22)'
+      ctx.lineWidth = hovered ? 1.25 : 1
+      ctx.strokeRect(anchor.x - 3, anchor.y - 15, width + 6, 18)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)'
+      ctx.lineWidth = 4
       ctx.strokeText(label, anchor.x, anchor.y)
-      ctx.fillStyle = '#111827'
+      ctx.fillStyle = hovered ? action.color ?? '#111827' : '#111827'
       ctx.fillText(label, anchor.x, anchor.y)
     }
     ctx.restore()

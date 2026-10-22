@@ -351,6 +351,7 @@ function labelCtx(): { ctx: CanvasRenderingContext2D; texts: string[] } {
   const texts: string[] = []
   const ctx = {
     save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    fillRect() {}, strokeRect() {},
     measureText(text: string) { return { width: text.length * 6 } },
     strokeText() {},
     fillText(text: string) { texts.push(text) },
