@@ -2,7 +2,7 @@
 phase: quick-261022-ljt
 plan: 261022-ljt
 subsystem: physic-paint-roto
-tags: [preact-signals, aquarelle, bake, progress, play-script, efx-watercolor]
+tags: [preact-signals, aquarelle, bake, progress, play-script, efx-watercolor, uat-approved]
 requires:
   - phase: 56-08
     provides: aquarelle Play Script consume branch and AquarelleBakeOptions.onCommit seam
@@ -145,12 +145,21 @@ Out of scope (Rule 1 scope boundary — untouched, pre-existing):
 
 None.
 
+## Live UAT Rows — PASSED (user-approved 2026-10-22)
+
+The user ran the live gate in the Physic Paint Studio and approved it on 2026-10-22.
+
+| # | Action | Expected | Observed | Status |
+|---|--------|----------|----------|--------|
+| 1 | Watercolor mode, multi-frame Play Script | Footer bar fills 0/N → N/N; status reads `Rendering k / N` during the bake | User-approved | PASSED |
+| 2 | Brush mode Play Script | Progress behavior unchanged | User-approved | PASSED |
+| 3 | Cancel a watercolor bake mid-render | Dialog cancels; bar does not jump or advance afterwards | User-approved | PASSED |
+
 ## Next Phase Readiness
 
-Automated-ready. Live UAT rows (user, in the Physic Paint Studio) still pending and are the verdict:
-
-1. Watercolor mode, multi-frame Play Script: footer bar fills 0/N → N/N and status reads `Rendering k / N` while the bake runs.
-2. Brush (paint) mode Play Script: progress behavior unchanged.
-3. Cancel a watercolor bake mid-render: the dialog cancels and the bar does not jump or advance afterwards.
+Closed: live UAT approved 2026-10-22 (Physic Paint Studio):
+1. Watercolor multi-frame Play Script: bar advances 0/N → N/N with `Rendering k / N`.
+2. Brush Play Script progress unchanged.
+3. Cancel mid-bake: no bar jump or advance afterwards.
 
 ## Self-Check: PASSED

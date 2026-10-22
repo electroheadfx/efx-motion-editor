@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Completed quick task 261022-ljt: watercolor Play Script reports per-frame bake progress (automated-ready; live UAT pending)
+Last activity: 2026-10-22 — Quick task 261022-ljt UAT approved: watercolor Play Script reports per-frame bake progress on the dialog's shared progress bar
 
 Progress: [██████████] 100%
 
