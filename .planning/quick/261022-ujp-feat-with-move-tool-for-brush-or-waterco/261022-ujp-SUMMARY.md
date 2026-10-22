@@ -106,6 +106,12 @@ painted and never renumbers (restack and delete leave gaps), the position is
 Known limit: serials are session-scoped. A saved document stores paint order,
 not creation order, so after a reload the numbers follow the loaded order.
 
+Live polish (`8aa64c8a`): badges moved to 12–13px bold monospace on a light
+chip so they read over any wash (a halo alone vanished on light pigment). The
+selected stroke's box drops its dash, thickens to 2.5px, and wears the stroke's
+own colour; the selected badge text does the same. The selected polyline stays
+the selection blue — it is the precise contour cue.
+
 ### Orchestrator follow-up — stroke loss on restack (`e973ef33`)
 
 Reported live: sending a watercolor stroke back made it vanish (2-stroke repro:
