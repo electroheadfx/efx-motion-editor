@@ -33,7 +33,6 @@ import type {
   PhysicPaintRotoPhysicalDocument,
   PhysicPaintRotoRealKeyRecord,
 } from '../roto/physicsPaintRotoPhysicalModel';
-import type { PhysicPaintRotoFrameResolution } from '../roto/physicsPaintRotoPhysicalResolver';
 import {
   classifyPhysicPaintRotoGroupFrameTarget,
   type PhysicPaintRotoGroupFrameTarget,
@@ -304,8 +303,6 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
   onAddRotoKey?: () => void;
-  /** + Rail → Key: create a blank key that deliberately starts a NEW rail. */
-  onCreateRotoKeyRail?: () => void;
   onDuplicateRotoKey?: () => void;
   onInsertRotoFrame?: () => void;
   onDeleteRotoFrame?: () => void;
@@ -528,17 +525,6 @@ export interface PhysicsPaintWorkflowStripProps {
   /** Reveal request {frame, nonce} from a modal list-row click — the strip
    *  positions the viewport ONCE per nonce (qad law; never snaps back). */
   revealRequest?: { frame: number; nonce: number } | null;
-  /* ---- 52-05 (G-52-3): the track rail-creation flow — reveal as the 4th rail kind ---- */
-  /** Choosing a PlayScript rail kind (motion/static) opens the Create Rail
-   *  dialog on the Paint tab — the same flow that creates a motion/static
-   *  PlayScript rail today. */
-  onCreatePlayScriptRail?: (mode: 'progressive' | 'static') => void;
-  /** Choosing the reveal rail kind opens the SAME Create Rail dialog on the
-   *  Reveal Photo Rail tab (one model, two entry points, the SAME
-   *  create-reveal-rail mutation). The D-12 reference guard lives inside the
-   *  dialog — it opens the Photo Reference modal proactively, never a disabled
-   *  menu item. */
-  onCreateRevealRail?: () => void;
 }
 
 const RULER_STEP = 3;
@@ -714,20 +700,6 @@ function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefine
  */
 function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null): string {
   return disabledReason ? `unavailable: ${disabledReason}` : description;
-}
-
-/**
- * 260905-d1w amendment: a linked Rail repeat is any virtual linked occurrence
- * past the source cycle — 'linked-unresolved' (always a repeat) or a
- * linked/linked-generated/linked-gap cell with repeatInstance > 0. Mirrors the
- * in-map `isLinkedRepeat` predicate (cell classification stays untouched).
- */
-function isLinkedRepeatFrameResolution(resolution: PhysicPaintRotoFrameResolution | null | undefined): boolean {
-  return resolution?.kind === 'linked-unresolved'
-    || ((resolution?.kind === 'linked'
-      || resolution?.kind === 'linked-generated'
-      || resolution?.kind === 'linked-gap')
-      && resolution.repeatInstance > 0);
 }
 
 type RotoDragCandidateKind = 'empty' | 'real-key' | 'generated' | 'outside' | 'locked';
@@ -1088,61 +1060,6 @@ function PhysicsPaintToolboxPopover(props: {
       role="dialog"
       aria-modal="false"
       aria-label={props.ariaLabel}
-      style={{ visibility: 'hidden' }}
-    >
-      {props.children}
-    </div>
-  );
-  if (typeof document !== 'undefined') return createPortal(panel, document.body);
-  return panel;
-}
-
-/**
- * 52 UAT (AM-3): the rail-kind menu — a Studio-local, non-modal menu portaled
- * to document.body so the workflow strip's overflow-y: hidden can never clip it
- * (the strip's bottom edge is the window's bottom area, so an in-strip menu
- * opening below the button rendered entirely inside the clipped band and was
- * never painted). Renders entirely ABOVE the anchor button with its bottom edge
- * 4px above the anchor's top, left-aligned to the anchor's left edge and clamped
- * 8px inside the strip's horizontal bounds. The owning chrome passes its own
- * panel ref so dismissal classification can prove interior hits through the
- * portal (toolbox popover pattern, 43.5-02 smoke fix 1). No focus trap, no
- * backdrop; dismissal is handled by the owning chrome (outside pointerdown /
- * Escape window capture listeners). Must stay transform/filter-free so
- * position:fixed keeps the viewport as its containing block.
- */
-function PhysicsPaintRailCreateMenu(props: {
-  anchorRef: RefObject<HTMLSpanElement | null>;
-  panelRef: RefObject<HTMLDivElement | null>;
-  open: boolean;
-  children: ComponentChildren;
-}) {
-  useLayoutEffect(() => {
-    const panel = props.panelRef.current;
-    const anchor = props.anchorRef.current;
-    if (!props.open || !panel || !anchor) return;
-    const panelSize = { width: panel.offsetWidth, height: panel.offsetHeight };
-    const anchorRect = anchor.getBoundingClientRect();
-    const strip = anchor.closest('.physics-paint-workflow-strip');
-    const stripRect = strip ? strip.getBoundingClientRect() : anchorRect;
-    const margin = 8;
-    const gap = 4;
-    const minLeft = Math.max(margin, stripRect.left + margin);
-    const maxLeft = Math.max(minLeft, stripRect.right - margin - panelSize.width);
-    const left = Math.max(minLeft, Math.min(anchorRect.left, maxLeft));
-    const top = Math.max(margin, anchorRect.top - gap - panelSize.height);
-    panel.style.left = `${left}px`;
-    panel.style.top = `${top}px`;
-    panel.style.visibility = 'visible';
-  });
-
-  if (!props.open) return null;
-  const panel = (
-    <div
-      ref={props.panelRef}
-      class="physics-paint-rail-create-menu"
-      role="group"
-      aria-label="Rail kind"
       style={{ visibility: 'hidden' }}
     >
       {props.children}
@@ -1890,39 +1807,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const lastFocusedRailRef = useRef<{ element: HTMLElement; container: HTMLElement | null } | null>(null);
   const currentFrameSignal = useSignal(props.currentFrame);
   if (currentFrameSignal.peek() !== props.currentFrame) currentFrameSignal.value = props.currentFrame;
-  // 52-04 (D-19): the track rail-creation menu open state — the "Create rail"
-  // button in the action row offers the rail kinds (motion/static/reveal).
-  const railCreateMenuOpen = useSignal(false);
-  // 52 UAT (AM-3): the rail-kind menu is portaled to document.body (the strip's
-  // overflow-y: hidden clips an in-strip menu that opens below the button at the
-  // strip's bottom edge). The owning chrome keeps the anchor + panel refs so the
-  // outside-pointerdown classifier can prove interior hits through the portal
-  // (toolbox popover pattern, 43.5-02 smoke fix 1).
-  const railCreateAnchorRef = useRef<HTMLSpanElement | null>(null);
-  const railCreateMenuPanelRef = useRef<HTMLDivElement>(null);
-  const closeRailCreateMenu = useCallback(() => {
-    railCreateMenuOpen.value = false;
-  }, []);
-  useEffect(() => {
-    if (!railCreateMenuOpen.value) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (shouldDismissToolboxPopover(
-        event.target,
-        [railCreateAnchorRef.current, railCreateMenuPanelRef.current],
-      )) closeRailCreateMenu();
-    };
-    const onEscapeKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopImmediatePropagation();
-      closeRailCreateMenu();
-    };
-    window.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('keydown', onEscapeKeyDown, true);
-    return () => {
-      window.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('keydown', onEscapeKeyDown, true);
-    };
-  }, [railCreateMenuOpen.value]);
   // 47-01 header column: the active lane's header cell shows the active
   // track's name (UI-SPEC header column layout — every row gets a label).
   // 47-01 mockup redesign: edit-in-place rename state. The header column is
@@ -2350,22 +2234,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : keyUtilitiesDisabledByBusyState || props.ready === false
       ? 'Finish the current key action before using key tools.'
       : physicalActions?.addEmptyKeyDisabledReason.value ?? 'Adding a Roto key is unavailable.';
-  // 260905-d1w amendment: + Rail extends the + Key base law with two
-  // current-frame exclusions — a generated in-between and a linked Rail
-  // repeat. Reason priority: the base addEmptyKeyDisabledReason first
-  // (busy/ready/real-key), then repeat, then generated.
-  const currentFrameResolution = visibleFrameResolutions?.get(props.currentFrame) ?? null;
-  const isCurrentFrameGenerated = physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated';
-  const isCurrentFrameLinkedRepeat = isLinkedRepeatFrameResolution(currentFrameResolution);
-  const canCreateRail = canAddRotoKey && !isCurrentFrameGenerated && !isCurrentFrameLinkedRepeat;
-  const railCreateDisabledReason = canCreateRail
-    ? null
-    : addRotoKeyDisabledReason
-      ?? (isCurrentFrameLinkedRepeat
-        ? 'The current frame is a linked Rail repeat — move to an empty frame to create a Rail.'
-        : isCurrentFrameGenerated
-          ? 'The current frame is a generated in-between — move to an empty frame to create a Rail.'
-          : 'Creating a Rail is unavailable.');
   const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
   const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
@@ -2461,8 +2329,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
       ? 'Select a Rail to solo.'
       : ROTO_KEY_BUSY_STATUS_TEMPLATE
     : null;
-  // 52-04 (D-19): the "Create rail" button tooltip.
-  const railCreateTooltip = useStyledTooltip();
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
     for (const record of rotoKeyRecords) map.set(record.appFrame, record.keyId);
@@ -5151,84 +5017,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
-                {/* 52-05 (G-52-3): the track rail-creation flow — a "Create rail"
-                    button offering the rail kinds. Motion/Static open the Create
-                    Rail dialog on the Paint tab; Reveal opens the SAME dialog on
-                    the Reveal Photo Rail tab (the SAME create-reveal-rail
-                    mutation — one model, two entry points). 260905-d1w: + Rail
-                    now sits immediately after + Key and is gated by the SAME
-                    availability law (canAddRotoKey + ready + busy-state guard).
-                    260905-d1w amendment: + Rail additionally greys on a generated
-                    in-between or a linked Rail repeat (canCreateRail). */}
-                <div class="physics-paint-rail-create-group" role="group" aria-label="Create rail">
-                  <span ref={railCreateAnchorRef} class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
-                    <button
-                      type="button"
-                      class="physics-paint-roto-key-icon-button"
-                      aria-label="Create rail"
-                      aria-disabled={!canCreateRail ? 'true' : undefined}
-                      aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}
-                      aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}
-                      onFocus={railCreateTooltip.onFocus}
-                      onBlur={railCreateTooltip.onBlur}
-                      onClick={() => {
-                        railCreateTooltip.hide();
-                        if (!canCreateRail) return;
-                        railCreateMenuOpen.value = !railCreateMenuOpen.value;
-                      }}
-                      onKeyDown={(event) => {
-                        if ((event.key === 'Enter' || event.key === ' ') && !canCreateRail) event.preventDefault();
-                      }}
-                    >
-                      <Plus size={18} aria-hidden="true" />
-                      <span class="physics-paint-roto-key-icon-label">Rail</span>
-                    </button>
-                    {!canCreateRail && railCreateDisabledReason ? (
-                      <span id="roto-key-action-reason-rail-create" class="physics-paint-sr-only">{railCreateDisabledReason}</span>
-                    ) : null}
-                    <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
-                      {buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)}
-                    </PhysicsPaintStyledTooltip>
-                    <PhysicsPaintRailCreateMenu anchorRef={railCreateAnchorRef} panelRef={railCreateMenuPanelRef} open={railCreateMenuOpen.value}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          railCreateMenuOpen.value = false;
-                          props.onCreateRotoKeyRail?.();
-                        }}
-                      >
-                        Key
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          railCreateMenuOpen.value = false;
-                          props.onCreatePlayScriptRail?.('progressive');
-                        }}
-                      >
-                        Motion
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          railCreateMenuOpen.value = false;
-                          props.onCreatePlayScriptRail?.('static');
-                        }}
-                      >
-                        Static
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          railCreateMenuOpen.value = false;
-                          props.onCreateRevealRail?.();
-                        }}
-                      >
-                        Reveal
-                      </button>
-                    </PhysicsPaintRailCreateMenu>
-                  </span>
-                </div>
                 <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
                   <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
                     <button

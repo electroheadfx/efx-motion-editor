@@ -555,13 +555,6 @@ export function PhysicsPaintStudio() {
   // dialog stays open behind the full-area reference picker so an Import/
   // Replace confirm updates it in place.
   const referenceDialogOpen = useSignal(false);
-  // AM-3 (52 UAT, revised): the Create Rail script picker — the strip's
-  // "+ Rail" flow ALWAYS opens this picker (one uniform, always-visible flow),
-  // listing the library Actions with the current selection highlighted. Picking
-  // sets the library selection and opens the Create Rail dialog on the
-  // menu-chosen tab/kind; cancelling closes only the picker. When the
-  // PlayScript controller is blocked the picker shows the reason live.
-  const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -744,7 +737,6 @@ export function PhysicsPaintStudio() {
   const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
   const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;
   const referenceDialogPropsMemo = useRef(createIdentityMemo()).current;
-  const scriptPickerDialogPropsMemo = useRef(createIdentityMemo()).current;
   const canvasStackPropsMemo = useRef(createIdentityMemo()).current;
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
@@ -3065,39 +3057,6 @@ export function PhysicsPaintStudio() {
       selectionKind: currentFrameSelectionKind === 'generated-interpolation' ? 'generated-interpolation' : 'empty',
     });
   };
-  // Quick 261019-mj2 UAT: the + Rail menu's "Key" item deliberately opens a
-  // NEW isolated rail. + Key clones the previous key's paint and joins its
-  // rail; this action is the explicit opposite.
-  const handleCreateRotoKeyRail = useCallback(() => {
-    const launch = launchContextRef.current;
-    if (!launch || workflowMode !== 'roto' || isPlaying) return;
-    if (currentFrameSelectionKind === 'real-key') return;
-    const appFrame = launch.startFrame;
-    void (async () => {
-      try {
-        const blank = await buildBlankRotoFrame(canvasWidth, canvasHeight, appFrame);
-        const ok = await rotoTimelineActions.physicalKeyUtilities.addEmptyKey(
-          appFrame,
-          {
-            frameIndex: blank.frameIndex,
-            appFrame,
-            bytes: blank.bytes,
-            ...(blank.width !== undefined ? { width: blank.width } : {}),
-            ...(blank.height !== undefined ? { height: blank.height } : {}),
-          },
-          { forceNewSegment: true },
-        );
-        if (!ok) {
-          setApplyStatus('error');
-          setApplyMessage('Could not create a new Roto rail key.');
-        }
-      } catch (error) {
-        setApplyStatus('error');
-        setApplyMessage('Could not create a new Roto rail key.');
-        setLastError(error instanceof Error ? error.message : String(error));
-      }
-    })();
-  }, [canvasHeight, canvasWidth, currentFrameSelectionKind, isPlaying, rotoTimelineActions, setApplyMessage, setApplyStatus, setLastError, workflowMode]);
   const beginRotoFrameEdit = useCallback((event?: PointerEvent) => {
     beginRotoFrameEditImplRef.current(event);
   }, []);
@@ -5955,42 +5914,6 @@ export function PhysicsPaintStudio() {
       onImportSource: () => referencePicker.openPicker(),
     }),
   );
-  // AM-3 (revised): the Create Rail script picker props — rows and the current
-  // selection ride the library controller's live signals. A pick sets the
-  // library selection and opens the Create Rail dialog on the menu-chosen
-  // tab/kind (Reveal → Reveal Photo Rail tab); cancel closes ONLY the picker.
-  // When the PlayScript controller is blocked (generated frame, unsaved
-  // project, busy), the picker stays open and shows the reason live — no click
-  // path in the flow can silently no-op.
-  const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(
-    [scriptPickerIntent.value, rotoScriptLibrary.rows.value, rotoScriptLibrary.selectedId.value, rotoPlayScript.disabledReason.value],
-    () => ({
-      open: scriptPickerIntent.value !== null,
-      intent: scriptPickerIntent.value,
-      rows: rotoScriptLibrary.rows.value,
-      selectedId: rotoScriptLibrary.selectedId.value,
-      blockedReason: (() => {
-        const reason = rotoPlayScript.disabledReason.value;
-        // The no-selection reason is not a block: the pick SETS the selection.
-        return reason === 'Select a project script first.' ? null : reason;
-      })(),
-      onPick: (id: string) => {
-        const intent = scriptPickerIntent.peek();
-        rotoScriptLibrary.select(id);
-        // Blocked (generated frame, unsaved project, busy): keep the picker
-        // open — the blockedReason notice updates live from disabledReason.
-        if (rotoPlayScript.disabledReason.peek()) return;
-        scriptPickerIntent.value = null;
-        if (intent?.kind === 'paint') {
-          rotoPlayScript.mode.value = intent.mode;
-          void rotoPlayScript.openConfirmation();
-        } else if (intent?.kind === 'reveal') {
-          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
-        }
-      },
-      onClose: () => { scriptPickerIntent.value = null; },
-    }),
-  );
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -5999,7 +5922,6 @@ export function PhysicsPaintStudio() {
     rightPanel,
     playScriptDialog,
     referenceDialog,
-    scriptPickerDialog,
     workflow: {
         layerId: multiTrackRowBundle.layerId,
         tracks: multiTrackRowBundle.tracks,
@@ -6041,19 +5963,6 @@ export function PhysicsPaintStudio() {
         },
         onDocumentSoundSettle: handleDocumentSoundGestureSettle,
         revealRequest: revealRequest.value,
-        // 52-05 (G-52-3): the track rail-creation flow — Motion/Static open the
-        // Create Rail dialog on the Paint tab; Reveal opens the SAME dialog on
-        // the Reveal Photo Rail tab (one model, two entry points, the SAME
-        // create-reveal-rail mutation). The reference guard lives INSIDE the
-        // dialog (proactive Photo Reference modal open — never a disabled menu).
-        onCreatePlayScriptRail: (mode) => {
-          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
-          // always-visible flow regardless of the library selection.
-          scriptPickerIntent.value = { kind: 'paint', mode };
-        },
-        onCreateRevealRail: () => {
-          scriptPickerIntent.value = { kind: 'reveal' };
-        },
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
@@ -6096,7 +6005,7 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onCreateRotoKeyRail: handleCreateRotoKeyRail, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
           documentSyncDirty.value = true;
           await flushDocumentSyncRef.current();
         }, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers

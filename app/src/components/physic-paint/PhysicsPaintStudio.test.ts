@@ -1330,9 +1330,9 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(studioView, 'memo(')).toBe(1);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
-    // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
-    // (AM-3 Create Rail script picker).
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(9);
+    // canvasMount, referenceDialog (50-UAT modal redesign). 261022-cfn removed
+    // the AM-3 Create Rail script picker memo.
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(8);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
@@ -2000,56 +2000,26 @@ describe('Physics Paint photo reference end-to-end integration contract (50-06, 
   });
 });
 
-describe('Physics Paint Create Rail script picker (AM-3)', () => {
-  it('the "+ Rail" flow ALWAYS opens the picker — one uniform, always-visible flow regardless of the library selection', () => {
-    // The intent signal owns the picker's open state (null = closed).
-    expect(studio).toContain("const scriptPickerIntent = useSignal<{ kind: 'paint'; mode: 'progressive' | 'static' } | { kind: 'reveal' } | null>(null);");
-    // Both menu handlers set the intent UNCONDITIONALLY — no selection gate, so
-    // no click path can silently no-op.
-    expect(studio).toContain(`onCreatePlayScriptRail: (mode) => {
-          // AM-3 (revised): the script picker ALWAYS opens — one uniform,
-          // always-visible flow regardless of the library selection.
-          scriptPickerIntent.value = { kind: 'paint', mode };
-        },`);
-    expect(studio).toContain(`onCreateRevealRail: () => {
-          scriptPickerIntent.value = { kind: 'reveal' };
-        },`);
+describe('Physics Paint photo reference dialog structural lock (WR-03)', () => {
+  it('removes the Create Rail script picker entirely (261022-cfn)', () => {
+    // The timeline + Rail dropdown was the picker's only entry point; the
+    // sidebar Scripts tab's Create Rail flow owns rail creation now. Names are
+    // assembled at runtime so the app-wide dead-artifact grep gate (which
+    // includes this file) stays at zero hits.
+    const deadIntent = 'scriptPicker' + 'Intent';
+    const deadDialog = 'PhysicsPaintScriptPicker' + 'Dialog';
+    expect(studio).not.toContain(deadIntent);
+    expect(studio).not.toContain('scriptPickerDialog');
+    expect(studio).not.toContain(deadDialog);
+    expect(studioView).not.toContain('scriptPickerDialog');
+    expect(studioView).not.toContain(deadDialog);
   });
 
-  it('a pick sets the library selection and opens the Create Rail dialog on the menu-chosen tab/kind — unless the controller is blocked, which keeps the picker open with a live reason', () => {
-    expect(studio).toContain(`onPick: (id: string) => {
-        const intent = scriptPickerIntent.peek();
-        rotoScriptLibrary.select(id);
-        // Blocked (generated frame, unsaved project, busy): keep the picker
-        // open — the blockedReason notice updates live from disabledReason.
-        if (rotoPlayScript.disabledReason.peek()) return;
-        scriptPickerIntent.value = null;
-        if (intent?.kind === 'paint') {
-          rotoPlayScript.mode.value = intent.mode;
-          void rotoPlayScript.openConfirmation();
-        } else if (intent?.kind === 'reveal') {
-          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
-        }
-      },`);
-    expect(studio).toContain('onClose: () => { scriptPickerIntent.value = null; },');
-    // Rows, the selection highlight, and the live blocked reason ride the
-    // controllers' signals; the no-selection reason is NOT a block (the pick
-    // SETS the selection).
-    expect(studio).toContain('rows: rotoScriptLibrary.rows.value,');
-    expect(studio).toContain('selectedId: rotoScriptLibrary.selectedId.value,');
-    expect(studio).toContain("return reason === 'Select a project script first.' ? null : reason;");
-  });
-
-  it('mounts the picker dialog in the Studio view next to the Photo Reference dialog', () => {
-    expect(studio).toContain('const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(');
-    expect(studioView).toContain('<PhysicsPaintScriptPickerDialog {...scriptPickerDialog} />');
-  });
-
-  // WR-03 structural lock (260920-kov): the reveal-creation entry can reach the
-  // Create Rail dialog (via the picker's one-shot intent) and NOTHING else. The
-  // photo reference dialog stays a pure reference control surface — its props
-  // carry no reveal member, so it cannot receive reveal state without this test
-  // failing. Pairs with the behavioural legs in
+  // WR-03 structural lock (260920-kov): the reveal-creation entry reaches the
+  // Create Rail dialog through the Scripts tab's Create Rail flow and NOTHING
+  // else. The photo reference dialog stays a pure reference control surface —
+  // its props carry no reveal member, so it cannot receive reveal state without
+  // this test failing. Pairs with the behavioural legs in
   // physicsPaintRotoPlayScriptController.test.ts.
   it('feeds the photo reference dialog from a memo whose input list carries no reveal term', () => {
     expect(studio).toContain(`const referenceDialog = referenceDialogPropsMemo.resolve(
@@ -2091,22 +2061,6 @@ describe('Physics Paint Create Rail script picker (AM-3)', () => {
     // escape the memo-input lock. 260923-fhn: the render line additionally
     // requires !pickerOpen (parents step aside while a gallery picker is open).
     expect(studioView).toContain('{referenceDialog && !pickerOpen ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}');
-  });
-
-  it('routes the reveal creation entry through the picker one-shot only, cleared on both exits', () => {
-    // The ONLY reveal-tab open in the Studio lives inside the picker's onPick.
-    expect(studio.match(/railTab: 'reveal'/g)).toHaveLength(1);
-    expect(studio).toContain(`        } else if (intent?.kind === 'reveal') {
-          void rotoPlayScript.openConfirmation({ railTab: 'reveal' });
-        }`);
-    // Both exits clear the one-shot: a pick (above) and a close.
-    expect(studio).toContain(`onClose: () => { scriptPickerIntent.value = null; },`);
-    // The reveal menu entry sets the intent; it cannot open the Create Rail
-    // dialog directly (a direct open would bypass the picker and could leave
-    // the surface the review described reachable without a script pick).
-    expect(studio).toContain(`onCreateRevealRail: () => {
-          scriptPickerIntent.value = { kind: 'reveal' };
-        },`);
   });
 });
 
@@ -2612,13 +2566,10 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
     expect(beginBlock).toContain('startRotoPaintPromotion({');
     expect(studio).toContain('void promoteRotoPaintTargetRef.current(input)');
-    // No forked Water color promotion path: the promotion seam is the only
-    // promotion call; the + Rail → Key action is an EXPLICIT key creation, not
-    // a second promotion path (it starts no pending entry and no exemption).
-    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(2);
-    const createRailBlock = section(studio, 'const handleCreateRotoKeyRail = useCallback(', 'const beginRotoFrameEdit = useCallback(');
-    expect(createRailBlock).toContain('{ forceNewSegment: true }');
-    expect(createRailBlock).not.toContain('startRotoPaintPromotion');
+    // 261022-cfn: the + Rail → Key action is deleted, so the promotion seam is
+    // the ONLY addEmptyKey call site in the Studio.
+    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(1);
+    expect(studio).not.toContain('handleCreateRotoKeyRail');
   });
 
   it('never intercepts the pointer gesture (no preventDefault / stopPropagation / setPointerCapture)', () => {

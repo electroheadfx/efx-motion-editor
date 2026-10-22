@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { PhysicsPaintStudioView, type PhysicsPaintStudioViewProps } from './PhysicsPaintStudioView';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
-import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
 
 /**
@@ -11,7 +10,7 @@ import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
  * The gallery pickers (background / reference) render as an absolute z-20
  * overlay INSIDE the canvas region while the parent modals are fixed z-70/72 —
  * stacked they fight for space. Contract pinned here: while EITHER picker is
- * open, NO parent modal (PlayScript, photo reference, script picker) is in the
+ * open, NO parent modal (PlayScript, photo reference) is in the
  * returned vnode tree; when the picker closes, every parent that was open is
  * back (their opener booleans are never cleared at this seam).
  *
@@ -29,8 +28,6 @@ interface TestVNode {
 interface ViewFixture {
   /** Parent photo-reference dialog prop object present (Studio had it open). */
   referenceDialog?: boolean;
-  /** Script-picker (Create Rail) dialog open. */
-  scriptPickerOpen?: boolean;
   /** PlayScript dialog prop present (confirmation surface). */
   playScriptPresent?: boolean;
   /** Background gallery picker open. */
@@ -88,17 +85,6 @@ function renderView(fixture: ViewFixture): unknown {
           onImportSource: () => {},
         }
       : null,
-    scriptPickerDialog: fixture.scriptPickerOpen
-      ? {
-          open: true,
-          intent: null,
-          rows: [],
-          selectedId: null,
-          blockedReason: null,
-          onPick: () => {},
-          onClose: () => {},
-        }
-      : null,
     backgroundPicker: fixture.backgroundPickerOpen
       ? {
           open: true,
@@ -117,13 +103,11 @@ function renderView(fixture: ViewFixture): unknown {
 
 function expectNoParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintPhotoReferenceDialog)).toBe(0);
-  expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(0);
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(0);
 }
 
 function expectAllParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintPhotoReferenceDialog)).toBe(1);
-  expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(1);
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(1);
 }
 
@@ -131,7 +115,6 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
   it('hides every parent modal while the background gallery picker is open', () => {
     const tree = renderView({
       referenceDialog: true,
-      scriptPickerOpen: true,
       playScriptPresent: true,
       backgroundPickerOpen: true,
     });
@@ -143,7 +126,6 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
   it('hides every parent modal while the reference gallery picker is open (Reveal nesting path)', () => {
     const tree = renderView({
       referenceDialog: true,
-      scriptPickerOpen: true,
       playScriptPresent: true,
       referencePickerOpen: true,
     });
@@ -154,7 +136,6 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
   it('restores every parent modal when no picker is open', () => {
     const tree = renderView({
       referenceDialog: true,
-      scriptPickerOpen: true,
       playScriptPresent: true,
       backgroundPickerOpen: false,
       referencePickerOpen: false,
@@ -166,7 +147,6 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
   it('hides every parent modal when BOTH gallery pickers are open at once', () => {
     const tree = renderView({
       referenceDialog: true,
-      scriptPickerOpen: true,
       playScriptPresent: true,
       backgroundPickerOpen: true,
       referencePickerOpen: true,

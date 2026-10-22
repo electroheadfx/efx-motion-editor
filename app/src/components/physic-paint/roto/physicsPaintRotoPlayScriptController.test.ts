@@ -3377,11 +3377,10 @@ describe('createRotoPlayScriptController Reveal Photo Rail tab (52-05, G-52-3)',
   // `revealCreationRequested` flag whose consumer was the reveal-creation
   // surface inside the photo reference dialog. That surface is GONE — the
   // flag does not exist anywhere in app/src (grep: zero matches) and reveal
-  // creation moved into the Create Rail dialog in 1b11e1c0. The replacement
-  // one-shot (`scriptPickerIntent` in the Studio, cleared on both exits) and
-  // the open-entry `railTab` argument (re-assigned on every open) are what
-  // these legs lock. They are a REGRESSION LOCK, expected GREEN at the plan
-  // base; a RED leg means the hijack is live again.
+  // creation moved into the Create Rail dialog in 1b11e1c0. The open-entry
+  // `railTab` argument (re-assigned on every open) is what these legs lock.
+  // They are a REGRESSION LOCK, expected GREEN at the plan base; a RED leg
+  // means the hijack is live again.
 
   it('WR-03: a reveal entry closed by Cancel leaves the next plain open on the Paint tab', async () => {
     const test = harness({ hasPhotoReference: () => true, getScriptNaturalDuration: () => 5 });

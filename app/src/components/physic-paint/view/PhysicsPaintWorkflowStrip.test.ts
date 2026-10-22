@@ -2124,12 +2124,11 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
   });
 });
 
-describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contracts', () => {
-  it('orders the action row as Key, Create rail, Push, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor (260905-d1w + Mj2-UAT trash relocation)', () => {
+describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
+  it('orders the action row as Key, Push, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor (260905-d1w + Mj2-UAT trash relocation)', () => {
     const row = getActionRowBlock(source());
     const tokens = [
       'aria-label="Add key"',
-      'aria-label="Create rail"',
       'aria-label="Push"',
       getActionAriaLabelToken('Insert key before'),
       getActionAriaLabelToken('Delete Frame'),
@@ -2148,67 +2147,22 @@ describe('260905-d1w action-row layout + rail gating + Solo-in-pill source contr
     expect(row).not.toContain('physics-paint-solo-tool-group');
   });
 
-  it('gates + Rail with the extended canCreateRail law (260905-d1w)', () => {
+  it('removes the + Rail button, rail-kind menu, and rail-create group from the action row (261022-cfn)', () => {
     const row = getActionRowBlock(source());
-    // The group div AND the button both carry aria-label="Create rail"; the
-    // button's is the LAST occurrence, so lastIndexOf targets the button block.
-    const labelIndex = row.lastIndexOf('aria-label="Create rail"');
-    expect(labelIndex).toBeGreaterThan(-1);
-    const start = row.lastIndexOf('<button', labelIndex);
-    const end = row.indexOf('</button>', labelIndex) + '</button>'.length;
-    const block = row.slice(start, end);
-    expect(block).toContain("aria-disabled={!canCreateRail ? 'true' : undefined}");
-    expect(block).toContain("aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}");
-    expect(block).toContain("aria-expanded={railCreateMenuOpen.value ? 'true' : 'false'}");
-    const guardIndex = block.indexOf('if (!canCreateRail) return;');
-    const toggleIndex = block.indexOf('railCreateMenuOpen.value = !railCreateMenuOpen.value;');
-    expect(guardIndex).toBeGreaterThanOrEqual(0);
-    expect(toggleIndex).toBeGreaterThan(guardIndex);
-    expect(block).toContain("(event.key === 'Enter' || event.key === ' ') && !canCreateRail");
-    expect(block).toContain('roto-key-action-reason-rail-create');
-    // The guarded tooltip copy lives in the wrapper span (a sibling of the
-    // button), so it is asserted on the row.
-    expect(row).toContain("buildGuardedActionTooltipCopy('Create rail', railCreateDisabledReason)");
-  });
-
-  it('offers + Rail → Key before Motion for a deliberate new rail (261019-mj2 UAT)', () => {
-    const row = getActionRowBlock(source());
-    const menuStart = row.indexOf('<PhysicsPaintRailCreateMenu');
-    expect(menuStart).toBeGreaterThan(-1);
-    const menu = row.slice(menuStart, row.indexOf('</PhysicsPaintRailCreateMenu>', menuStart));
-    const keyIndex = menu.indexOf('onCreateRotoKeyRail?.()');
-    const motionIndex = menu.indexOf("onCreatePlayScriptRail?.('progressive')");
-    expect(keyIndex).toBeGreaterThan(-1);
-    expect(motionIndex).toBeGreaterThan(-1);
-    expect(keyIndex).toBeLessThan(motionIndex);
-    expect(menu).toContain('>\n                        Key\n                      </button>');
-  });
-
-  it('derives canCreateRail from the + Key base law plus generated/repeat exclusions (260905-d1w)', () => {
+    expect(row).toContain('aria-label="Add key"');
+    expect(row).not.toContain('Create rail');
+    expect(row).not.toContain('Rail kind');
+    expect(row).not.toContain('physics-paint-rail-create-group');
+    expect(row).not.toContain('PhysicsPaintRailCreateMenu');
     const code = source();
-    const derivationStart = code.indexOf('const currentFrameResolution = ');
-    expect(derivationStart).toBeGreaterThan(-1);
-    const derivationEnd = code.indexOf('const copyRotoKeyDisabledReason', derivationStart);
-    const derivation = code.slice(derivationStart, derivationEnd);
-    // Base law: canAddRotoKey must still gate (busy/ready/real-key).
-    expect(derivation).toContain('canAddRotoKey &&');
-    // Generated in-between exclusion reads the current frame's semantic cell.
-    expect(derivation).toContain("physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated'");
-    // Linked repeat exclusion reads the current frame's loop resolution.
-    expect(derivation).toContain('isLinkedRepeatFrameResolution(currentFrameResolution)');
-    expect(derivation).toContain('visibleFrameResolutions?.get(props.currentFrame) ?? null');
-    // Reason priority: base addEmptyKeyDisabledReason first, then repeat, then generated.
-    expect(derivation).toContain('addRotoKeyDisabledReason');
-    expect(derivation).toContain('isCurrentFrameLinkedRepeat');
-    expect(derivation).toContain('isCurrentFrameGenerated');
-    expect(derivation).toContain('The current frame is a linked Rail repeat — move to an empty frame to create a Rail.');
-    expect(derivation).toContain('The current frame is a generated in-between — move to an empty frame to create a Rail.');
-    // The helper treats linked-unresolved and repeatInstance > 0 as repeats.
-    const helperStart = code.indexOf('function isLinkedRepeatFrameResolution');
-    expect(helperStart).toBeGreaterThan(-1);
-    const helper = code.slice(helperStart, code.indexOf('\n}\n', helperStart) + 3);
-    expect(helper).toContain("resolution?.kind === 'linked-unresolved'");
-    expect(helper).toContain('resolution.repeatInstance > 0');
+    expect(code).not.toContain('canCreateRail');
+    expect(code).not.toContain('railCreateMenuOpen');
+    expect(code).not.toContain('isLinkedRepeatFrameResolution');
+    // Names are assembled at runtime so the app-wide dead-artifact grep gate
+    // (which includes this file) stays at zero hits.
+    for (const deadProp of ['onCreate' + 'RotoKeyRail', 'onCreate' + 'PlayScriptRail', 'onCreate' + 'RevealRail']) {
+      expect(code).not.toContain(deadProp);
+    }
   });
 
   it('relocates Solo into the playback pill as an icon-only nav-button (260905-d1w)', () => {
