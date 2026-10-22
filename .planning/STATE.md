@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-22T11:34:03.742Z"
+last_updated: "2026-10-22T12:44:00.763Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 56 complete
-state_head: c2ca4a017fabaa2f04c5ea6fee2fc6604f8f51a3
+state_head: dad851ffe8f69a8e590111f8504c8efda6edd27a
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-iff UAT approved: one global Solo on the Focus pill targets the active track, follows selection, Escape/re-click exits; per-track S chip and rail-solo window retired; hide wins over solo
+Last activity: 2026-10-22 — Quick task 261022-jq0 automated-ready (live UAT pending): a selected Studio rail scopes Play to its contiguous range, Loop wraps to the selection start, and no selection keeps full-timeline playback
 
 Progress: [██████████] 100%
 
@@ -563,6 +563,7 @@ None yet.
 | 261019-mj2 | Roto paint workflow: direct-paint auto-key + Create key fallback, Insert as a pure gap, +Key from nearest previous real key, composite undo, atomic cache re-anchor | 2026-10-20 | c5314d3a | [261019-mj2-roto-paint-workflow-auto-key-on-paint-ke](./quick/261019-mj2-roto-paint-workflow-auto-key-on-paint-ke/) |
 | 261022-cfn | Auto-paint key creation clones the previous paint and joins its rail; replace the timeline + Rail dropdown with a single-purpose new-rail button; rename Action to Script in visible UI | 2026-10-22 | 713bc1b0 | [261022-cfn-key-creation-new-behaviour-1-auto-paint-](./quick/261022-cfn-key-creation-new-behaviour-1-auto-paint-/) |
 | 261022-iff | One global Solo button (Focus pill solos the active track, follows selection, Escape/re-click exits; per-track S chip and rail-solo window retired; hide wins over solo) | 2026-10-22 | c2ca4a01 | [261022-iff-one-global-solo-button-1-replace-the-sol](./quick/261022-iff-one-global-solo-button-1-replace-the-sol/) |
+| 261022-jq0 | Selected rail plays its full range (Studio transport): a selected Key Rail / Loop Clip / rail set scopes Play to its contiguous span, Loop wraps to the selection start, and no selection keeps full-timeline play-from-cursor | 2026-10-22 | dad851ff | [261022-jq0-selected-rail-plays-its-full-range-1-sel](./quick/261022-jq0-selected-rail-plays-its-full-range-1-sel/) |
 
 ### Roadmap Evolution
 
