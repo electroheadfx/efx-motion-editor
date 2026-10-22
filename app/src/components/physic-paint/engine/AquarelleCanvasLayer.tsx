@@ -40,6 +40,9 @@ import {
   onAquarelleDry,
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
+import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
+import { temporaryMove } from '../view/physicsPaintTemporaryErase';
+import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
 
 /** Host tick grid (toStudioStroke law: pts[].tick = sample index). */
 const HOST_TICK_HZ = 60;
@@ -61,7 +64,10 @@ const cursorX = signal(-1);
 const cursorY = signal(-1);
 const cursorVisible = signal(false);
 
-function AquarelleBrushCursor(): JSX.Element {
+function AquarelleBrushCursor(): JSX.Element | null {
+  // 261022-pim: select mode (rail toggle) or a held Cmd hides the paint-size
+  // ring — the stroke overlay owns the pointer in both. Narrow leaf read.
+  if (aquarelleSelectMode.value || temporaryMove.value) return null;
   const x = cursorX.value;
   const y = cursorY.value;
   const visible = cursorVisible.value;
@@ -240,6 +246,11 @@ export function AquarelleCanvasLayer(props: {
    * Mirrors the frame-change branch minus the lastPlayFrame update.
    */
   onResetSheetReady?: (resetSheet: () => void) => void;
+  /**
+   * 261022-pim: Alt+click on an outlined stroke. The Studio deletes it from
+   * the recorded script and re-bakes through the shared Apply path.
+   */
+  onDeleteStroke?: (mutationId: number) => void;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -255,6 +266,7 @@ export function AquarelleCanvasLayer(props: {
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
   const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
   const onResetSheetReadyRef = useRef(props.onResetSheetReady);
+  const onDeleteStrokeRef = useRef(props.onDeleteStroke);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
   widthRef.current = props.width;
@@ -267,6 +279,7 @@ export function AquarelleCanvasLayer(props: {
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
   onSheetSessionEndRef.current = props.onSheetSessionEnd;
   onResetSheetReadyRef.current = props.onResetSheetReady;
+  onDeleteStrokeRef.current = props.onDeleteStroke;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
   // leak the previous frame's paint (the user saw the same paint on every
@@ -551,6 +564,14 @@ export function AquarelleCanvasLayer(props: {
         height={props.height}
         style={style}
         aria-label="Water color canvas"
+      />
+      {/* 261022-pim: select surface ABOVE the vendor canvas (it owns the
+          pointer while active, so nothing paints) and BELOW the cursor. */}
+      <AquarelleStrokeOverlay
+        width={props.width}
+        height={props.height}
+        getPlayFrame={() => getPlayFrameRef.current()}
+        onDeleteStroke={(mutationId) => onDeleteStrokeRef.current?.(mutationId)}
       />
       <AquarelleBrushCursor />
     </div>

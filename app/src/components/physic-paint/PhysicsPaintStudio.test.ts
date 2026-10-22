@@ -28,6 +28,9 @@ const memoizedPlayScriptDialog = existsSync(memoizedPlayScriptDialogPath) ? read
 const rightPanelRegionPath = fileURLToPath(new URL('./view/PhysicsPaintRightPanelRegion.tsx', import.meta.url));
 const rightPanelRegion = existsSync(rightPanelRegionPath) ? readFileSync(rightPanelRegionPath, 'utf8') : '';
 const canvasMount = readFileSync(fileURLToPath(new URL('./engine/PhysicsPaintCanvasMount.tsx', import.meta.url)), 'utf8');
+// 261022-pim: the Water color stroke select surface — overlay leaf + layer mount.
+const aquarelleCanvasLayer = readFileSync(fileURLToPath(new URL('./engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
+const aquarelleStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/AquarelleStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const memoizedCanvasMountPath = fileURLToPath(new URL('./engine/MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
 const memoizedCanvasMount = existsSync(memoizedCanvasMountPath) ? readFileSync(memoizedCanvasMountPath, 'utf8') : '';
 const engineLifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
@@ -2888,5 +2891,60 @@ describe('261019-mj2 Task 4 composite auto-key undo reservation', () => {
   it('cancels the reservation when the promotion fails so no held acceptance survives', () => {
     const failureBlock = section(studio, 'const handleRotoPaintPromotionFailure = useCallback(', 'const startRotoPaintPromotion = ');
     expect(failureBlock).toContain('rotoMoveHistory.cancelAutoKeyPaintGroup();');
+  });
+});
+
+// 261022-pim: Water color stroke select + Alt+click delete surface.
+describe('261022-pim watercolor stroke select surface', () => {
+  it('mounts the stroke overlay inside the layer above the canvas and below the brush cursor', () => {
+    const overlayIndex = aquarelleCanvasLayer.indexOf('<AquarelleStrokeOverlay');
+    expect(overlayIndex).toBeGreaterThan(-1);
+    expect(overlayIndex).toBeGreaterThan(aquarelleCanvasLayer.indexOf('ref={attachEngine}'));
+    expect(overlayIndex).toBeLessThan(aquarelleCanvasLayer.indexOf('<AquarelleBrushCursor />'));
+    expect(aquarelleStrokeOverlay).toContain('data-testid="aquarelle-stroke-overlay"');
+    expect(aquarelleStrokeOverlay).toContain("pointerEvents: 'auto'");
+    expect(aquarelleStrokeOverlay).toContain('if (!selectMode && !moveArmed) return null;');
+  });
+
+  it('applies selection in the pointer handler and reads Alt for delete', () => {
+    expect(aquarelleStrokeOverlay).toContain('onPointerDown={handlePointerDown}');
+    expect(aquarelleStrokeOverlay).toContain('selectAquarelleStrokeAt(');
+    expect(aquarelleStrokeOverlay).toContain('event.altKey');
+    expect(aquarelleStrokeOverlay).not.toContain('useEffect');
+    expect(aquarelleStrokeOverlay).not.toContain('useSignal');
+  });
+
+  it('renders the select/Move toggle in the watercolor rail bound to the select signal', () => {
+    const watercolorRail = toolRail.slice(
+      toolRail.indexOf('function WatercolorRail'),
+      toolRail.indexOf('export interface PhysicsPaintToolRailProps'),
+    );
+    expect(watercolorRail).toContain('data-testid="aquarelle-select-toggle"');
+    expect(watercolorRail).toContain('onClick={() => toggleAquarelleSelectMode()}');
+    expect(watercolorRail).toContain('aria-pressed={aquarelleSelectMode.value}');
+    expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
+  });
+
+  it('keeps the new signals out of the Studio and layer render bodies', () => {
+    expect(studio).not.toContain('aquarelleSelectMode.value');
+    expect(studio).not.toContain('aquarelleLiveStrokeCount.value');
+    expect(studio).not.toContain('aquarelleSelectedStrokeMutationId.value');
+    expect(studio).not.toContain('temporaryMove.value');
+    // The held-Cmd / select reads live in the brush-cursor leaf, never the layer body.
+    expect(aquarelleCanvasLayer.indexOf('temporaryMove.value')).toBeGreaterThan(
+      aquarelleCanvasLayer.indexOf('function AquarelleBrushCursor'),
+    );
+    expect(aquarelleCanvasLayer.indexOf('aquarelleSelectMode.value')).toBeGreaterThan(
+      aquarelleCanvasLayer.indexOf('function AquarelleBrushCursor'),
+    );
+  });
+
+  it('wires the delete callback through the canvas mount props and memo deps', () => {
+    expect(canvasMount).toContain('onAquarelleDeleteStroke?: (mutationId: number) => void;');
+    expect(canvasMount).toContain(
+      'onDeleteStroke={(mutationId) => onAquarelleDeleteStrokeRef.current?.(mutationId)}',
+    );
+    expect(studio).toContain('onAquarelleDeleteStroke: handleAquarelleDeleteStroke,');
+    expect(studio).toContain('getAquarellePaperId, handleAquarelleDeleteStroke]');
   });
 });

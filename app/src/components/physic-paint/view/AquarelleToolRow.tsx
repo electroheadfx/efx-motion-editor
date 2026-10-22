@@ -12,6 +12,7 @@ import {
   aquarelleActiveTool,
   setAquarelleTool,
 } from './aquarelleRecordState';
+import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 const TOOLS: ReadonlyArray<{
@@ -50,7 +51,11 @@ export function AquarelleToolRow() {
             class={`physics-paint-segmented-button${isActive ? ' active' : ''}`}
             aria-pressed={isActive}
             title={label}
-            onClick={() => setAquarelleTool(id)}
+            onClick={() => {
+              // 261022-pim: picking a paint tool returns the sheet to painting.
+              setAquarelleSelectMode(false);
+              setAquarelleTool(id);
+            }}
             style={{
               width: '32px',
               height: '32px',

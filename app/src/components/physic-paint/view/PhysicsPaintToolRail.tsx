@@ -14,6 +14,12 @@ import { activeModule } from '../../shared/activeModule';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { readEffectiveTool } from './physicsPaintTemporaryErase';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
+import {
+  aquarelleLiveStrokeCount,
+  aquarelleSelectMode,
+  setAquarelleSelectMode,
+  toggleAquarelleSelectMode,
+} from './aquarelleStrokeSelection';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 export type PhysicsPaintRailAction =
@@ -82,12 +88,29 @@ function WatercolorRail({
             title={label}
             aria-label={label}
             aria-pressed={isActive}
-            onClick={() => setAquarelleTool(id)}
+            onClick={() => {
+              setAquarelleSelectMode(false);
+              setAquarelleTool(id);
+            }}
           >
             <Icon size={18} />
           </button>
         );
       })}
+      {/* 261022-pim: Move/Select toggle. While on, an overlay above the sheet
+          outlines every recorded stroke of the frame and blocks painting. */}
+      <button
+        type="button"
+        class={`physics-paint-icon-button${aquarelleSelectMode.value ? ' active' : ''}`}
+        data-testid="aquarelle-select-toggle"
+        disabled={disabled || aquarelleLiveStrokeCount.value === 0}
+        title="Select"
+        aria-label="Select"
+        aria-pressed={aquarelleSelectMode.value}
+        onClick={() => toggleAquarelleSelectMode()}
+      >
+        <img src={moveToolIcon} alt="" aria-hidden="true" />
+      </button>
       <button
         type="button"
         class="physics-paint-icon-button"

@@ -1416,7 +1416,9 @@ export function PhysicsPaintStudio() {
     isShortcutTarget: () => false,
   });
   temporaryEraseDepsRef.current = {
-    getSelectedTool: () => settings.tool,
+    // 261022-pim: in Water color mode a held Cmd arms the select overlay
+    // (temporaryMove is the held-Meta arm signal), never the engine-1 Move.
+    getSelectedTool: () => (activeModule.peek() === 'watercolor' ? 'paint' : settings.tool),
     getEngine: () => engineRef.current,
     isMutationLocked: isPhysicalMutationLocked,
     isShortcutTarget: isPhysicsPaintShortcutTarget,
@@ -4665,6 +4667,12 @@ export function PhysicsPaintStudio() {
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);
   }, []);
 
+  // 261022-pim: Alt+click delete seam from the stroke overlay. Task 1 wires the
+  // callback (selection only); Task 2 fills in the script mutation + re-bake.
+  const handleAquarelleDeleteStroke = useCallback((mutationId: number) => {
+    void mutationId;
+  }, []);
+
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
   // has settled, and on frame-leave.
@@ -4858,7 +4866,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, getAquarellePlayFrame, getAquarellePaperId], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -4893,6 +4901,7 @@ export function PhysicsPaintStudio() {
       onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
       onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
+      onAquarelleDeleteStroke: handleAquarelleDeleteStroke,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the

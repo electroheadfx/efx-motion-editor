@@ -263,6 +263,46 @@ const recordedStrokes = new Map<number, AquarelleStroke>();
 /** The projected timeline entry per stroke, so a measured cuisson can patch it. */
 const recordedStrokeEntries = new Map<number, ReturnType<typeof toStudioStroke>>();
 
+/**
+ * 261022-pim: the recorded-stroke revision. Bumps whenever the stroke SET
+ * changes (record, delete, restore) — the narrow select overlay leaf reads it
+ * so it re-lists outlines without the Studio body subscribing to the map.
+ */
+export const aquarelleStrokesRevision = signal(0);
+
+/** Compare-free internal bump — every caller already changed the stroke set. */
+export function bumpAquarelleStrokesRevision(): void {
+  aquarelleStrokesRevision.value += 1;
+}
+
+/**
+ * 261022-pim: mutationIds removed from the SCRIPT. The engine-1 guide stroke
+ * stays in the engine's ledger (capture order and paint barriers remain
+ * stable); the markers are what the select surface, the capture projection,
+ * and the script-playback fallback honor.
+ */
+const deletedAquarelleStrokeIds = new Set<number>();
+
+export function markAquarelleStrokeDeleted(mutationId: number): void {
+  deletedAquarelleStrokeIds.add(mutationId);
+}
+
+export function isAquarelleStrokeDeleted(mutationId: number): boolean {
+  return deletedAquarelleStrokeIds.has(mutationId);
+}
+
+export function clearAquarelleStrokeDeletion(mutationId: number): void {
+  deletedAquarelleStrokeIds.delete(mutationId);
+}
+
+/**
+ * Read-only view of the recorded stroke registry, in recording order.
+ * Select/hit-test/outline all walk this — never a second registry.
+ */
+export function getRecordedAquarelleStrokeEntries(): ReadonlyMap<number, AquarelleStroke> {
+  return recordedStrokes;
+}
+
 export function recordAquarelleStroke(
   mutationId: number,
   stroke: AquarelleStroke,
@@ -274,6 +314,7 @@ export function recordAquarelleStroke(
   const entry = toStudioStroke(stroke);
   recordedStrokeEntries.set(mutationId, entry);
   payloadTimeline.push(entry);
+  bumpAquarelleStrokesRevision();
 }
 
 /**
