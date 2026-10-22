@@ -35,7 +35,6 @@ import {
   clearPhotoReference,
   setTrackBlend,
   setTrackOpacity,
-  setTrackSolo,
   setTrackVisible,
   deleteBackgroundClip,
   type TrackMutationResult,
@@ -4923,10 +4922,11 @@ export function PhysicsPaintStudio() {
     const stackDocument = programMonitorLayerId
       ? getEfxPaintDocument(programMonitorLayerId)
       : undefined;
-    // 48-06 (UAT-B): a hidden (or non-soloed-under-solo) active track blanks
-    // the engine canvas by law, but the cleared engine surface can still carry
-    // the engine's own background paint and would occlude the program monitor
-    // beneath — the monitor owns the remaining visible tracks + the document
+    // 48-06 (UAT-B): a hidden active track blanks the engine canvas by law
+    // (261022-iff: Solo never hides its own target, so hide is the only
+    // trigger), but the cleared engine surface can still carry the engine's own
+    // background paint and would occlude the program monitor beneath — the
+    // monitor owns the remaining visible tracks + the document
     // fond. The flag mirrors the cached-roto-playback treatment: the engine
     // canvases step aside (visibility: hidden) so the monitor owns the surface.
     const engineSurfaceHidden = programMonitorLayerId !== null
@@ -5095,16 +5095,9 @@ export function PhysicsPaintStudio() {
     const result = commitDeleteTrack(layerId, trackId, true);
     if (!result.ok) setApplyMessage(result.error);
   }, [launchContext?.layerId, currentFrame]);
-  // 47-02 Task 2: 'S' solo toggle and header-drag reorder routing — both write
-  // the child document through the 47-01 store ops (setTrackSolo writes the
-  // solo display property; reorderTrack writes ONLY the order field, never the
-  // stable UUID — Pitfall 1).
-  const handleToggleSolo = useCallback((trackId: string, solo: boolean) => {
-    const layerId = launchContext?.layerId;
-    if (!layerId) return;
-    const result = setTrackSolo(layerId, trackId, solo);
-    if (!result.ok) setApplyMessage(result.error);
-  }, [launchContext?.layerId]);
+  // 47-02 Task 2: header-drag reorder routing — writes ONLY the order field,
+  // never the stable UUID (Pitfall 1). 261022-iff: the per-track solo route is
+  // retired; the ONE solo is the session focus in the playback pill.
   // 47 UAT + quick-260913-52r (D): the per-row frame-blending toggle flips the
   // track's canonical interpolation state THROUGH THE PHYSICAL COORDINATOR —
   // the only path that reaches the parent runtime (the apply/save authority)
@@ -5148,7 +5141,7 @@ export function PhysicsPaintStudio() {
     if (!layerId) return {
       layerId: undefined, tracks: undefined, activeTrackId: undefined, background: undefined, photoReference: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
-      onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
+      onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
       onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onSelectBackgroundFrame: undefined,
       selectedBackgroundClipId: null, backgroundPlacementFrame: null,
@@ -5157,7 +5150,7 @@ export function PhysicsPaintStudio() {
     if (!document) return {
       layerId, tracks: undefined, activeTrackId: undefined, background: undefined, photoReference: undefined,
       onSelectTrack: undefined, onAddTrack: undefined, onToggleTrackVisible: undefined,
-      onToggleSolo: undefined, onToggleBlend: undefined, onRenameTrack: undefined,
+      onToggleBlend: undefined, onRenameTrack: undefined,
       onDuplicateTrack: undefined, onDeleteTrack: undefined, onReorderTrack: undefined,
       onSelectTrackFrame: undefined, onSelectTrackRail: undefined, onSelectBackgroundClip: undefined, onSelectBackgroundFrame: undefined,
       selectedBackgroundClipId: null, backgroundPlacementFrame: null,
@@ -5198,7 +5191,6 @@ export function PhysicsPaintStudio() {
       backgroundPlacementFrame: backgroundPlacementFrame.value,
       onAddTrack: handleAddTrack,
       onToggleTrackVisible: handleToggleTrackVisible,
-      onToggleSolo: handleToggleSolo,
       onToggleBlend: handleToggleBlend,
       onRenameTrack: handleRenameTrack,
       onDuplicateTrack: handleDuplicateTrack,
@@ -6001,7 +5993,6 @@ export function PhysicsPaintStudio() {
         onSelectTrack: multiTrackRowBundle.onSelectTrack,
         onAddTrack: multiTrackRowBundle.onAddTrack,
         onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,
-        onToggleSolo: multiTrackRowBundle.onToggleSolo,
         onToggleBlend: multiTrackRowBundle.onToggleBlend,
         onRenameTrack: multiTrackRowBundle.onRenameTrack,
         onDuplicateTrack: multiTrackRowBundle.onDuplicateTrack,

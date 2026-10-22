@@ -56,8 +56,9 @@ interface PhysicsPaintCanvasStackViewProps {
    */
   programMonitor?: PhysicsPaintProgramMonitorProps | null;
   /**
-   * 48-06 (UAT-B): the active track is hidden (or non-soloed under solo) — the
-   * engine canvas is blank by law, so its surface must step aside
+   * 48-06 (UAT-B): the active track is hidden — the engine canvas is blank by
+   * law (261022-iff: Solo can never hide the active track it targets, so hide
+   * is the only trigger), so its surface must step aside
    * (visibility: hidden, the cached-roto-playback treatment) and let the
    * program monitor own the visible composite of the remaining tracks.
    */

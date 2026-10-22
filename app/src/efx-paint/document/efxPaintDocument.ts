@@ -108,6 +108,8 @@ export interface InternalPaintTrack {
   readonly name: string;
   readonly order: number;
   readonly visible: boolean;
+  /** Retained for wire compatibility only — inert (the global Solo is a
+   *  session-only track focus; nothing reads this flag for participation). */
   readonly solo: boolean;
   readonly opacity: number;
   readonly blendMode: BlendMode;

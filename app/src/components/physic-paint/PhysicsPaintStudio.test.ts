@@ -813,6 +813,18 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
   });
 });
 
+describe('261022-iff one global Solo: no per-track document solo route', () => {
+  it('retires the document solo setter and the row-bundle solo intent', () => {
+    // The one global Solo is a session-only track focus (physicsPaintSoloArm);
+    // the persisted document `solo` field stays parseable but inert.
+    expect(studio).not.toContain(['setTrack', 'Solo'].join(''));
+    expect(studio).not.toContain(['onToggle', 'Solo'].join(''));
+    // The multi-track row bundle still carries the surviving per-track intents.
+    expect(studio).toContain('onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,');
+    expect(studio).toContain('onToggleBlend: multiTrackRowBundle.onToggleBlend,');
+  });
+});
+
 describe('Physics Paint selection-scoped Group deletion (43.2-17)', () => {
   it('wires direct Group lifecycle deletion and removes the routine scope-choice modal', () => {
     expect(studio).toContain('executeGroupLifecycleDelete:');

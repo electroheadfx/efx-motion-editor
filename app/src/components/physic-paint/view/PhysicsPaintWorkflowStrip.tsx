@@ -98,7 +98,6 @@ import type {
 } from '../hooks/useRotoTimelineActions';
 import {
   buildRailSetCopy,
-  buildRailSetSoloCopy,
   mapRotoPushProductReason,
   mapRotoRailSetMoveProductReason,
   type RailSetCopyMember,
@@ -466,8 +465,6 @@ export interface PhysicsPaintWorkflowStripProps {
   onAddTrack?: () => void;
   /** Eye toggle intent (controller routes through setTrackVisible). */
   onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
-  /** 47-02 Task 2: 'S' solo toggle intent (controller routes through setTrackSolo). */
-  onToggleSolo?: (trackId: string, solo: boolean) => void;
   /** 47 UAT: per-row frame-blending toggle intent — the controller toggles
    *  the track's canonical interpolation state (physicPaintStore). */
   onToggleBlend?: (trackId: string) => void;
@@ -1173,11 +1170,14 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
               pill as an icon-only nav-button beside the Loop toggle. The
               onClick disarms an armed Push tool FIRST, unconditionally (D-20
               preserved explicitly — the action-row capture guard no longer
-              covers this button). */}
+              covers this button). 261022-iff IFF-01: the button is the GLOBAL
+              track Solo — the armed session focus on the selected track. It
+              never opens a playback window and never filters the playback
+              frame enumeration. */}
           <button
             type="button"
             class={`physics-paint-nav-button physics-paint-roto-solo-toggle${props.soloArmedClass}`}
-            aria-label="Solo selected Rails"
+            aria-label="Solo selected track"
             aria-pressed={props.soloArmed ? 'true' : 'false'}
             aria-disabled={props.soloToolDisabled ? 'true' : undefined}
             aria-describedby={props.soloToolDisabled ? 'roto-key-action-reason-solo' : undefined}
@@ -1202,8 +1202,8 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           ) : null}
           <PhysicsPaintStyledTooltip visible={soloTooltip.visible} region="bottom">
             {props.soloArmed
-              ? 'Exit solo playback.'
-              : buildGuardedActionTooltipCopy('Solo the selected Rails - play only their content within their frame range. Click again or press Escape to exit.', props.soloToolDisabledReason)}
+              ? 'Exit solo.'
+              : buildGuardedActionTooltipCopy('Solo the selected track - show only its content. Click again or press Escape to exit.', props.soloToolDisabledReason)}
           </PhysicsPaintStyledTooltip>
         </span>
         {props.onAudioPreviewToggle ? (
@@ -1898,14 +1898,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const handleCancelRename = useCallback(() => {
     setRenamingTrackId(null);
   }, []);
-  // 47-02 Task 2: 'S' solo toggle intent — the row's armed state reflects the
-  // track's DOCUMENT solo flag (260911-sli/s1j); the click routes the desired
-  // visibility to the controller (setTrackSolo). The session playback arm
-  // (physicsPaintSoloArm) stays exclusive to the playback pill.
-  const handleToggleSolo = useCallback((trackId: string) => {
-    const track = props.tracks?.find((candidate) => candidate.id === trackId);
-    props.onToggleSolo?.(trackId, !track?.solo);
-  }, [props.tracks, props.onToggleSolo]);
   // 47-02 Task 2: acknowledge-and-delete dialog state. The trash intent opens
   // the dialog with the pure `requestDeleteTrack` preview (D-17/ASVS V4); the
   // dialog's Confirm is the ONLY delete commit entry (Phase 46 D-14).
@@ -2342,10 +2334,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const deleteKeyTooltip = useStyledTooltip();
   const selectAllTooltip = useStyledTooltip();
   const pushTooltip = useStyledTooltip();
-  // 43.6-06 Solo arm (D-14/D-15/D-20): a mode toggle enabled whenever ANY rail
-  // selection exists (a single selected Rail is a set of one) and editing
-  // isn't mutation-locked. Armed state lives in the sibling session-only
-  // module; the .value read subscribes this render to arm/disarm changes.
+  // 261022-iff IFF-01: the global Solo is a SESSION track focus, not a rail
+  // playback filter — a mode toggle enabled whenever the document HAS an
+  // active track (and editing isn't mutation-locked). The target is followed
+  // from activeTrackId at composite time, so selecting another track while
+  // armed moves the focus with no click. Armed state lives in the sibling
+  // session-only module; the .value read subscribes this render to arm/disarm.
   const soloArmed = isSoloArmed();
   // 260905-d1w: Solo is now a playback-pill nav-button, so the armed visual is
   // the pill .active treatment (the physics-paint-push-tool-armed class is a
@@ -2353,15 +2347,11 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // which a nav-button does not carry) — one armed visual, no new color
   // literals.
   const soloArmedClass = soloArmed ? ' active' : '';
-  const hasAnyRailSelection = (props.railSetMemberLoopIds?.length ?? 0)
-    + (props.railSetMemberKeyRailIds?.length ?? 0)
-    + (props.selectedRotoLoopClipIds?.length ?? 0)
-    + (props.selectedRotoKeyRail ? 1 : 0) > 0;
-  const soloToolDisabled = keyUtilitiesDisabledByBusyState || !physicalActions || !hasAnyRailSelection;
+  const soloToolDisabled = keyUtilitiesDisabledByBusyState || !props.activeTrackId;
   const soloToolDisabledReason = soloToolDisabled
-    ? !hasAnyRailSelection
-      ? 'Select a Rail to solo.'
-      : ROTO_KEY_BUSY_STATUS_TEMPLATE
+    ? keyUtilitiesDisabledByBusyState
+      ? ROTO_KEY_BUSY_STATUS_TEMPLATE
+      : 'Select a Track to solo.'
     : null;
   const keyIdByAppFrame = useMemo(() => {
     const map = new Map<number, string>();
@@ -3525,64 +3515,17 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     }
     return buildRailSetCopy(members);
   }, [keyRailSegments, loopResolutionContext, props.railSetMemberKeyRailIds, props.railSetMemberLoopIds, props.rotoLoopClips]);
-  // 43.6-06 D-20: the armed-solo capsule line projects render-time from the
-  // arm signal + the Plan 01 solo mapper — never a status event stream
-  // (Pitfall 7). Members are the active set, or the single-rail selection as a
-  // set of one (D-15); disarmed contributes nothing (capsule resting state).
+  // 261022-iff IFF-01/IFF-03: the armed capsule line projects render-time
+  // from the arm signal + the ACTIVE track — never a status event stream
+  // (Pitfall 7). The target is selection-followed, so selecting another track
+  // while armed updates this line with no click. Disarmed (or no resolvable
+  // active track) contributes nothing (capsule resting state).
   const soloCapsuleLine = useMemo(() => {
     if (!soloArmed) return null;
-    const members: RailSetCopyMember[] = [];
-    const setLoopIds = props.railSetMemberLoopIds ?? [];
-    const setKeyRailIds = props.railSetMemberKeyRailIds ?? [];
-    if (setLoopIds.length === 0 && setKeyRailIds.length === 0) {
-      const segment = props.selectedRotoKeyRail
-        ? keyRailSegments.find((candidate) => candidate.firstKeyId === props.selectedRotoKeyRail!.firstKeyId)
-        : null;
-      if (segment) {
-        members.push({
-          kind: 'key-rail',
-          firstFrame: segment.firstKeyFrame,
-          effectiveEndExclusive: segment.lastKeyFrame + 1,
-        });
-      }
-      for (const loopId of props.selectedRotoLoopClipIds ?? []) {
-        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === loopId);
-        const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);
-        if (range && clip) {
-          members.push({
-            kind: 'loop',
-            firstFrame: range.placementStart,
-            effectiveEndExclusive: range.effectiveEnd,
-            mode: clip.mode,
-          });
-        }
-      }
-    } else {
-      for (const firstKeyId of setKeyRailIds) {
-        const segment = keyRailSegments.find((candidate) => candidate.firstKeyId === firstKeyId);
-        if (segment) {
-          members.push({
-            kind: 'key-rail',
-            firstFrame: segment.firstKeyFrame,
-            effectiveEndExclusive: segment.lastKeyFrame + 1,
-          });
-        }
-      }
-      for (const loopId of setLoopIds) {
-        const range = loopResolutionContext?.ranges.find((candidate) => candidate.loopId === loopId);
-        const clip = props.rotoLoopClips?.find((candidate) => candidate.loopId === loopId);
-        if (range && clip) {
-          members.push({
-            kind: 'loop',
-            firstFrame: range.placementStart,
-            effectiveEndExclusive: range.effectiveEnd,
-            mode: clip.mode,
-          });
-        }
-      }
-    }
-    return buildRailSetSoloCopy(members);
-  }, [soloArmed, keyRailSegments, loopResolutionContext, props.railSetMemberKeyRailIds, props.railSetMemberLoopIds, props.rotoLoopClips, props.selectedRotoKeyRail, props.selectedRotoLoopClipIds]);
+    const track = props.tracks?.find((candidate) => candidate.id === props.activeTrackId);
+    if (!track) return null;
+    return `Solo - ${track.name}.`;
+  }, [soloArmed, props.tracks, props.activeTrackId]);
   const railSetSize = (props.railSetMemberLoopIds?.length ?? 0) + (props.railSetMemberKeyRailIds?.length ?? 0);
   const capsuleText = getRotoStatusCapsuleViewModel({
     pendingOperation: pushDragFeedback ?? railSetDragFeedback ?? rotoDragFeedback ?? (keyUtilitiesDisabledByBusyState ? getRotoKeyBusyStatus(props.currentFrame) : null),
@@ -4822,7 +4765,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
               const track = props.tracks?.find((candidate) => candidate.id === trackId);
               props.onToggleTrackVisible?.(trackId, !track?.visible);
             },
-            onToggleSolo: handleToggleSolo,
             layerId: props.layerId,
             onToggleBlend: props.onToggleBlend ?? (() => {}),
             onAddTrack: props.onAddTrack ?? (() => {}),

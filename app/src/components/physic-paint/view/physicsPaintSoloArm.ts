@@ -1,20 +1,25 @@
 import { signal } from '@preact/signals';
 
 /**
- * Session-only Solo playback arm (D-14, D-16, D-20). The armed flag lives in a
- * focused sibling module so armed state never enters PhysicsPaintStudio.tsx
- * logic and is NEVER persisted, serialized, or part of any document/history
- * snapshot — save/reopen always starts disarmed. The strip consumes the
- * signal for paint only (armed tint, aria-pressed, capsule line).
+ * Session-only global Solo (261022-iff, D-14/D-16/D-20 carry-over). The armed
+ * flag lives in a focused sibling module so armed state never enters
+ * PhysicsPaintStudio.tsx logic and is NEVER persisted, serialized, or part of
+ * any document/history snapshot — save/reopen always starts disarmed. The
+ * strip consumes the signal for paint only (armed tint, aria-pressed, capsule
+ * line).
  *
- * Solo is an arm, not a transport command: toggling arms the playback filter
- * and range; the user presses Play (or playback continues); solo persists
- * across stop/start while the selection is unchanged (D-16). Arming never
- * starts or stops transport.
+ * ONE Solo concept: the playback-pill button solos the SELECTED (active)
+ * track — the monitor and the flattened delivery show only that track's
+ * content, and the armed state follows the selection live. It is monitor-only:
+ * it never mutates the document, never gates edits, and never opens a playback
+ * window (the former rail-solo window is gone, 261022-iff Task 3).
+ *
+ * Solo is an arm, not a transport command: toggling arms the filter; the user
+ * presses Play (or playback continues). Arming never starts or stops
+ * transport. Escape or a re-click disarms.
  *
  * Unlike the Push tool there is no commit-in-flight guard: solo is not a
- * mutation tool and never gates mutations (D-14) — it only filters the
- * cached-playback frame enumeration.
+ * mutation tool and never gates mutations (D-14).
  */
 const armed = signal(false);
 

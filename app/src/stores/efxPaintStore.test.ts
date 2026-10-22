@@ -53,7 +53,6 @@ import {
   setBackgroundFallback,
   setTrackBlend,
   setTrackOpacity,
-  setTrackSolo,
   setTrackVisible,
 } from './efxPaintStore';
 import type { BackgroundEditDescriptor } from './efxPaintStore';
@@ -861,7 +860,10 @@ describe('track CRUD store ops (47-01 Task 2)', () => {
   });
 });
 
-describe('hide/solo/opacity/blend track setters (47-01 Task 3)', () => {
+// 261022-iff: `setTrackSolo` is retired — the one global Solo is a session-only
+// track focus (physicsPaintSoloArm), never a document mutation. The document
+// `solo` field stays parseable but inert.
+describe('hide/opacity/blend track setters (47-01 Task 3)', () => {
   beforeEach(() => {
     physicPaintStore.reset();
     reset();
@@ -887,22 +889,6 @@ describe('hide/solo/opacity/blend track setters (47-01 Task 3)', () => {
     expect(noOp.ok).toBe(true);
     expect(getTrackPaintVersion('layer-set', TEST_TRACK_ID).value).toBe(paintRev + 1);
     expect(physicPaintVersion.value).toBe(clock + 1);
-  });
-
-  it('setTrackSolo arms and disarms solo, bumping the per-track revision each change', () => {
-    const document = makeTrackDocument('layer-set');
-    registerDocument(document);
-    const base = physicPaintVersion.value;
-
-    const armed = setTrackSolo('layer-set', TEST_TRACK_ID, true);
-    expect(armed.ok).toBe(true);
-    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.solo).toBe(true);
-    expect(physicPaintVersion.value).toBe(base + 1);
-
-    const disarmed = setTrackSolo('layer-set', TEST_TRACK_ID, false);
-    expect(disarmed.ok).toBe(true);
-    expect(getDocument('layer-set')!.tracks.find((track) => track.id === TEST_TRACK_ID)?.solo).toBe(false);
-    expect(physicPaintVersion.value).toBe(base + 2);
   });
 
   it('setTrackOpacity stores 0..1 floats exactly and clamps out-of-range values into 0..1', () => {
@@ -962,7 +948,6 @@ describe('hide/solo/opacity/blend track setters (47-01 Task 3)', () => {
     const document = makeTrackDocument('layer-set');
     registerDocument(document);
     expect(setTrackVisible('layer-missing', TEST_TRACK_ID, false).ok).toBe(false);
-    expect(setTrackSolo('layer-set', 'unknown-track', true).ok).toBe(false);
     expect(setTrackOpacity('layer-set', 'unknown-track', 0.5).ok).toBe(false);
     expect(setTrackBlend('layer-set', 'unknown-track', 'normal').ok).toBe(false);
     expect(getDocument('layer-set')).toBe(document);

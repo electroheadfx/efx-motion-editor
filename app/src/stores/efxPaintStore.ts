@@ -371,15 +371,6 @@ export function setTrackVisible(layerId: string, trackId: string, visible: boole
   );
 }
 
-/** Arm/disarm solo on one Paint track (47-01 Task 3, TML-04). */
-export function setTrackSolo(layerId: string, trackId: string, solo: boolean): TrackMutationResult {
-  return _setTrackDisplayProperty(
-    layerId, trackId,
-    (track) => ({ ...track, solo }),
-    (track) => track.solo !== solo,
-  );
-}
-
 /**
  * Set one Paint track's opacity (47-01 Task 3, TML-04). Accepts 0..1 floats
  * and stores them exactly; out-of-range finite values are clamped into 0..1;

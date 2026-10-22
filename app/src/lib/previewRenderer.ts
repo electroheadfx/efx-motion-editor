@@ -93,28 +93,23 @@ export function mapPreviewEndStateFrame(playhead: number, N: number): number {
 }
 
 /**
- * 47-01 hide/solo preview filter (TML-04/Pitfall M8). The truth table:
- * - no solo armed → every track whose `visible !== false` resolves visible;
- * - any solo armed → only tracks that are `visible !== false` AND soloed show;
- * - hide always wins over solo (`visible: false` is hidden even when soloed);
- * - solo arming considers only tracks whose `visible !== false` — a hidden
- *   track's solo flag never arms solo mode (CMP-02 adjacency, matching
- *   `participatingPaintTracks` in efxPaintHideSolo.ts);
- * - unknown track id or absent document fails closed to hidden.
- * 48-03: this filter is consumed by the Studio active-track editing surface
- * (PhysicsPaintStudio.tsx) until 48-05; the flattened delivery itself applies
- * the same truth table store-side via participatingPaintTracks (efxPaintHideSolo).
+ * 47-01 preview filter (TML-04/Pitfall M8), 261022-iff: HIDE-ONLY. This is the
+ * Studio active-track editing-surface predicate:
+ * - true exactly when the track exists and `visible !== false`;
+ * - unknown track id or absent document fails closed to hidden;
+ * - a lingering document `solo: true` is INERT — it neither hides nor shows
+ *   anything. The one global Solo is a session-only target (the active
+ *   track), so it can never hide the active track this predicate governs.
+ * 48-03: the flattened delivery applies its own participation law store-side
+ * via `participatingPaintTracks` (efxPaintHideSolo), which now takes the
+ * session solo target as an argument.
  */
 export function resolvePhysicPaintTrackVisibility(layerId: string, trackId: string): boolean {
   const document = getEfxPaintDocument(layerId);
   if (!document) return false;
   const track = document.tracks.find((candidate) => candidate.id === trackId);
-  if (!track || track.visible === false) return false;
-  // A hidden track's solo never arms solo mode (hide wins over solo), so solo
-  // arming considers only visible tracks.
-  const soloArmed = document.tracks.some((candidate) => candidate.visible !== false && candidate.solo === true);
-  if (!soloArmed) return true;
-  return track.solo === true;
+  if (!track) return false;
+  return track.visible !== false;
 }
 
 export interface PreviewPhysicPaintFrameSource {

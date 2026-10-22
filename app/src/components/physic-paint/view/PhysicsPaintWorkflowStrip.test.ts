@@ -2099,13 +2099,13 @@ describe('Directional Push tool source contract (43.5-05: ONE mode-toggle Push t
   });
 });
 
-describe('Solo armed tint source contract (260905-d1w: relocated into the playback pill as a nav-button)', () => {
+describe('Solo armed tint source contract (260905-d1w: relocated into the playback pill as a nav-button; 261022-iff: one global track Solo)', () => {
   it('the relocated Solo button block carries the pill nav-button classes and the .active armed class, and soloArmedClass uses the pill .active convention', () => {
     const code = source();
     const header = getHeaderBlock(code);
     // Slice the relocated Solo button block from the header (the block
-    // containing 'Solo selected Rails').
-    const labelIndex = header.indexOf('aria-label="Solo selected Rails"');
+    // containing 'Solo selected track').
+    const labelIndex = header.indexOf('aria-label="Solo selected track"');
     expect(labelIndex).toBeGreaterThan(-1);
     const buttonStart = header.lastIndexOf('<button', labelIndex);
     const buttonEnd = header.indexOf('</button>', labelIndex) + '</button>'.length;
@@ -2125,6 +2125,20 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
     // physics-paint-push-tool-button base class, which a nav-button does not
     // carry) — one armed visual, no new color literals.
     expect(code).toContain("const soloArmedClass = soloArmed ? ' active' : '';");
+  });
+
+  it('the one global Solo targets the ACTIVE track (261022-iff): enabled only with one, selection-followed, capsule shows the live target', () => {
+    const code = source();
+    // Enabled exactly when the document HAS an active track (and editing is not
+    // mutation-locked) — no rail-set or document-solo input.
+    expect(code).toContain('const soloToolDisabled = keyUtilitiesDisabledByBusyState || !props.activeTrackId;');
+    expect(code).toContain("'Select a Track to solo.'");
+    expect(code).toContain('const soloCapsuleLine = useMemo(() => {');
+    expect(code).toContain('const track = props.tracks?.find((candidate) => candidate.id === props.activeTrackId);');
+    expect(code).toContain('return `Solo - ${track.name}.`;');
+    // The strip never routes a per-track document solo toggle (the row S chip
+    // is retired — one Solo concept only).
+    expect(code).not.toContain(['onToggle', 'Solo'].join(''));
   });
 });
 
@@ -2176,7 +2190,7 @@ describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
     const code = source();
     const header = getHeaderBlock(code);
     const loopIndex = header.indexOf('physics-paint-roto-loop-toggle');
-    const soloIndex = header.indexOf('aria-label="Solo selected Rails"');
+    const soloIndex = header.indexOf('aria-label="Solo selected track"');
     const audioIndex = header.indexOf('physics-paint-audio-preview-toggle-anchor');
     expect(loopIndex).toBeGreaterThanOrEqual(0);
     expect(soloIndex).toBeGreaterThan(loopIndex);
@@ -2242,7 +2256,10 @@ describe('PhysicsPaintWorkflowStrip track CRUD wiring (47-02 Task 2)', () => {
     expect(headerColumnSource()).toContain('onGripPointerDown');
     const studio = studioSource();
     expect(studio).toContain('reorderTrack(layerId, trackId, newOrder)');
-    expect(studio).toContain('setTrackSolo(layerId, trackId, solo)');
+    // 261022-iff: the document solo setter is retired — the one global Solo is
+    // session-only (physicsPaintSoloArm), never a document mutation. Split the
+    // literal so this absence assertion cannot read as a live reference.
+    expect(studio).not.toContain(['setTrack', 'Solo('].join(''));
   });
 
   it('keeps every new CRUD surface copy English (D-14)', () => {

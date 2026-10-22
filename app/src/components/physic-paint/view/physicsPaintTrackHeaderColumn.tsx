@@ -15,9 +15,11 @@
  *
  * Every control binds to the 47-01 store-op surface through the prop bundle
  * — the column never mutates a row it does not target: row click selects via
- * onSelectTrack, the standing inline eye / S / blend / trash controls route
- * visibility/solo/blending/delete intents (260911-s1j: the ⋯ tools panel and
- * its duplicate button are retired), and the '+' adds a track. The reorder
+ * onSelectTrack, the standing inline grip / eye / blend / name / trash
+ * controls route reorder/visibility/blending/rename/delete intents (260911-s1j:
+ * the ⋯ tools panel and its duplicate button are retired; 261022-iff: the
+ * per-track S chip is retired — solo lives only on the playback pill), and the
+ * '+' adds a track. The reorder
  * grab area is deliberately NOT
  * wired to any pointer drag here (the header-drag reorder gesture is 47-02
  * Task 2; content cross-track drag is 47-05 — D-18 keeps the two distinct).
@@ -55,8 +57,6 @@ export interface PhysicsPaintTrackHeaderColumnProps {
   readonly onSelectTrack: (trackId: string) => void;
   /** Eye-toggle intent (toggle); the strip wires it through setTrackVisible. */
   readonly onToggleVisible: (trackId: string) => void;
-  /** 'S' solo-toggle intent; the strip wires it through setTrackSolo. */
-  readonly onToggleSolo: (trackId: string) => void;
   /** Parent EFX Paint layer for the rows' per-track store reads. */
   readonly layerId?: string;
   /** Per-row frame-blending toggle intent (47 UAT). */
@@ -135,7 +135,6 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
     background,
     onSelectTrack,
     onToggleVisible,
-    onToggleSolo,
     layerId,
     onToggleBlend,
     onAddTrack,
@@ -186,7 +185,6 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               activeTrackId={effectiveActiveTrackId}
               onSelectTrack={onSelectTrack}
               visible={track.visible}
-              solo={track.solo}
               reorderable
               deletable={deletable}
               editing={renamingTrackId === track.id}
@@ -196,7 +194,6 @@ export function physicsPaintTrackHeaderColumn(props: PhysicsPaintTrackHeaderColu
               onCommitRename={onCommitRename}
               onCancelRename={onCancelRename}
               onToggleVisible={(trackId) => onToggleVisible(trackId)}
-              onToggleSolo={onToggleSolo}
               layerId={layerId}
               onToggleBlend={onToggleBlend}
               onDeleteTrack={onRequestDeleteTrack}

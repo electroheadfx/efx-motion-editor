@@ -182,7 +182,7 @@ export function deriveSoloPlaybackWindow(
  *  - the session rail-set pill (`physicsPaintSoloArm.ts` arm + the derived
  *    `SoloPlaybackWindow`): its `start` IS the content start by construction
  *    (first selected placement start, D-21 first system);
- *  - the persisted row-S document track solo (`setTrackSolo` flags): the
+ *  - the persisted row-S document track solo flags (retired 261022-iff): the
  *    content start is the first painted key across the soloed tracks, falling
  *    back to project frame 0 when they carry none (D-21 second system).
  *

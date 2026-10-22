@@ -5488,55 +5488,12 @@ button.destructive {
   white-space: nowrap;
 }
 
-/* 47-02 Task 1 (260911-s1j): the standing inline solo (S) chip — the row-level
-   solo indicator, always visible. Its pressed state reflects the track's
-   document `solo` flag (the one the click toggles and the compositor filters
-   on); armed paints the unmistakable orange family. */
-.physics-paint-track-row-solo {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid #58616b;
-  border-radius: 5px;
-  background: #3a424c;
-  color: #b9c2cc;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
-}
-
-.physics-paint-track-row-solo:hover {
-  background: #45505c;
-  color: #e5edf8;
-}
-
-.physics-paint-track-row-solo-armed {
-  border-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.2);
-  color: #fbbf24;
-}
-
-.physics-paint-track-row-solo-armed:hover {
-  border-color: #fbbf24;
-  background: rgba(245, 158, 11, 0.28);
-}
-
-.physics-paint-track-row-solo:focus-visible {
-  outline: 2px solid #6f90ff;
-  outline-offset: 1px;
-}
-
 /* 47 UAT (260911-s1j): the per-row frame-blending toggle's armed state — the
-   same unmistakable orange family as the armed solo chip. The compound
-   selectors beat the base `.physics-paint-track-row-tool-button` rule, which
-   sits LATER in this file at equal specificity and would otherwise win the
-   cascade and paint the neutral gray. */
+   unmistakable orange family (261022-iff: the per-row S chip is retired; the
+   one global Solo lives on the playback pill). The compound selectors beat the
+   base `.physics-paint-track-row-tool-button` rule, which sits LATER in this
+   file at equal specificity and would otherwise win the cascade and paint the
+   neutral gray. */
 .physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled {
   border-color: #f59e0b;
   background: rgba(245, 158, 11, 0.2);
@@ -5604,31 +5561,27 @@ button.destructive {
 }
 
 /* UAT 2026-10-19: on the blue active row the standing controls read as bare
-   glyphs — no dark chips cutting holes in the selection bed. Armed solo/blend
-   keep their orange semantics. */
-.physics-paint-track-row-header-active .physics-paint-track-row-tool-button,
-.physics-paint-track-row-header-active .physics-paint-track-row-solo {
+   glyphs — no dark chips cutting holes in the selection bed. Armed blend keeps
+   its orange semantics. */
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button {
   background: transparent;
   border-color: transparent;
   color: #eaf0ff;
 }
 
-.physics-paint-track-row-header-active .physics-paint-track-row-tool-button:hover,
-.physics-paint-track-row-header-active .physics-paint-track-row-solo:hover {
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button:hover {
   background: rgba(255, 255, 255, 0.16);
   border-color: transparent;
   color: #ffffff;
 }
 
-.physics-paint-track-row-header-active .physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled,
-.physics-paint-track-row-header-active .physics-paint-track-row-solo.physics-paint-track-row-solo-armed {
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled {
   background: rgba(245, 158, 11, 0.22);
   border-color: #f59e0b;
   color: #fbbf24;
 }
 
-.physics-paint-track-row-header-active .physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled:hover,
-.physics-paint-track-row-header-active .physics-paint-track-row-solo.physics-paint-track-row-solo-armed:hover {
+.physics-paint-track-row-header-active .physics-paint-track-row-tool-button.physics-paint-track-row-blend-enabled:hover {
   border-color: #fbbf24;
   background: rgba(245, 158, 11, 0.3);
 }
@@ -6608,9 +6561,10 @@ button.destructive {
   visibility: hidden;
 }
 
-/* 48-06 (UAT-B): a hidden (or non-soloed-under-solo) active track blanks the
-   engine canvas by law, but the cleared engine surface can still carry the
-   engine's own background paint and would occlude the program monitor beneath
+/* 48-06 (UAT-B): a hidden active track blanks the engine canvas by law
+   (261022-iff: Solo never hides its own target, so hide is the only trigger),
+   but the cleared engine surface can still carry the engine's own background
+   paint and would occlude the program monitor beneath
    (the monitor owns the remaining visible tracks + the document fond). Mirror
    the cached-roto-playback treatment: the engine canvases step aside so the
    monitor owns the surface until the track is visible again. */

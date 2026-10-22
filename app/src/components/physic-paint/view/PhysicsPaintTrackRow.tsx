@@ -770,8 +770,6 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onSelectTrack?: (trackId: string) => void;
   /** Current track visibility (drives the eye icon + aria-pressed). */
   readonly visible?: boolean;
-  /** Current document solo flag (260911-sli/s1j): drives the inline S chip's armed (orange) state — the S itself is the row-level solo indicator. */
-  readonly solo?: boolean;
   /** Paint rows get the reorder grab; the Background row is locked (D-06). */
   readonly reorderable?: boolean;
   /** False hides/disables the delete affordance for the last surviving Paint track (D-17). */
@@ -790,8 +788,6 @@ export interface PhysicsPaintTrackRowHeaderProps {
   readonly onCancelRename?: (trackId: string) => void;
   /** Eye toggle intent — routes through setTrackVisible. */
   readonly onToggleVisible?: (trackId: string, visible: boolean) => void;
-  /** 'S' solo toggle intent (47-02 Task 1) — routes through setTrackSolo. */
-  readonly onToggleSolo?: (trackId: string) => void;
   /** Parent EFX Paint layer for the row's per-track store reads (frame
    *  blending state). Absent in minimal fixtures — the blend toggle only
    *  renders when a layer is known. */
@@ -832,7 +828,6 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     activeTrackId,
     onSelectTrack,
     visible = true,
-    solo = false,
     reorderable = true,
     deletable = true,
     editing = false,
@@ -842,7 +837,6 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
     onCommitRename,
     onCancelRename,
     onToggleVisible,
-    onToggleSolo,
     layerId,
     onToggleBlend,
     onDeleteTrack,
@@ -981,24 +975,10 @@ export function PhysicsPaintTrackRowHeader(props: PhysicsPaintTrackRowHeaderProp
           >
             {visible ? <Eye size={12} aria-hidden="true" /> : <EyeOff size={12} aria-hidden="true" />}
           </button>
-          {/* 260911-s1j: the inline S chip IS the row-level solo indicator —
-              always visible, orange when armed (the 260911-sli badge is folded
-              into it). It toggles the document solo flag `setTrackSolo` writes,
-              the same flag `participatingPaintTracks` filters the composite on. */}
-          <button
-            type="button"
-            class={`physics-paint-track-row-solo${solo ? ' physics-paint-track-row-solo-armed' : ''}`}
-            aria-label={`Solo ${label}`}
-            aria-pressed={solo ? 'true' : 'false'}
-            title={solo ? `Un-solo ${label}` : `Solo ${label}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleSolo?.(trackId);
-            }}
-          >
-            S
-          </button>
-          {/* 47 UAT: per-row frame-blending toggle right after the S. Its
+          {/* 261022-iff IFF-04: the per-track S chip is retired — the ONE solo
+              is the session track focus on the playback pill. Rows carry the
+              standing grip, eye, blend, name and trash controls only. */}
+          {/* 47 UAT: per-row frame-blending toggle. Its
               pressed state reflects THIS track's canonical interpolation
               enabled flag; the click routes through onToggleBlend(trackId)
               and the strip toggles the track's interpolation state. */}

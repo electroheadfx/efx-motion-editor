@@ -5,11 +5,10 @@
  * The header column is hook-free (presentational — the strip owns rename state
  * and flows it down), so the tests invoke it as a plain function and walk the
  * returned vnode tree, expanding the hook-free `PhysicsPaintTrackRowHeader`
- * vnodes the same way the strip viewport test does. Since 260911-s1j every row
- * control is standing inline (grip / eye / S / blend, right-pushed name, trash
- * pinned far right): the solo chip itself is the row-level indicator (orange
- * when armed — the 260911-sli badge is folded into it), and the session-only
- * `physicsPaintSoloArm` signal never drives the row.
+ * vnodes the same way the strip viewport test does. Since 261022-iff every row
+ * control is standing inline (grip / eye / blend, right-pushed name, trash
+ * pinned far right): the per-track S chip is RETIRED — the one global Solo
+ * lives on the playback pill and never renders a row control.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -23,7 +22,6 @@ import type { RotoPhysicalTimelineActionBundle } from '../hooks/useRotoTimelineA
 import type { RotoPhysicalTimelineCell } from '../roto/rotoPhysicalTimelinePorts';
 import { createEfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { PhysicsPaintTrackColumnStrip, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
-import { disarmSolo, toggleSolo } from './physicsPaintSoloArm';
 import { physicsPaintTrackHeaderColumn } from './physicsPaintTrackHeaderColumn';
 
 const runtimeHolder = vi.hoisted(() => ({ current: null as PreactHookRuntime | null }));
@@ -163,7 +161,6 @@ interface ColumnRenderOptions {
   readonly backgroundSelected?: boolean;
   readonly onSelectTrack?: (trackId: string) => void;
   readonly onToggleVisible?: (trackId: string) => void;
-  readonly onToggleSolo?: (trackId: string) => void;
   readonly onToggleBlend?: (trackId: string) => void;
   readonly onAddTrack?: () => void;
   readonly onDuplicateTrack?: (trackId: string) => void;
@@ -179,7 +176,6 @@ function renderColumn(options: ColumnRenderOptions): TestVNode {
     background: options.background,
     onSelectTrack: options.onSelectTrack ?? vi.fn(),
     onToggleVisible: options.onToggleVisible ?? vi.fn(),
-    onToggleSolo: options.onToggleSolo ?? vi.fn(),
     onToggleBlend: options.onToggleBlend ?? vi.fn(),
     onAddTrack: options.onAddTrack ?? vi.fn(),
     onDuplicateTrack: options.onDuplicateTrack ?? vi.fn(),
@@ -384,7 +380,6 @@ interface StripHarnessOptions {
   readonly activeTrackId?: string;
   readonly rows?: RowsRegionFixture;
   readonly onToggleTrackVisible?: (trackId: string, visible: boolean) => void;
-  readonly onToggleSolo?: (trackId: string, solo: boolean) => void;
   readonly onRenameTrack?: (trackId: string, name: string) => void;
   readonly onDuplicateTrack?: (trackId: string) => void;
   readonly onReorderTrack?: (trackId: string, newOrder: number) => void;
@@ -462,7 +457,6 @@ function createStripHarness(options: StripHarnessOptions) {
   const callbacks = {
     onSelectTrack: vi.fn(),
     onToggleTrackVisible: options.onToggleTrackVisible ?? vi.fn(),
-    onToggleSolo: options.onToggleSolo ?? vi.fn(),
     onRenameTrack: options.onRenameTrack ?? vi.fn(),
     onDuplicateTrack: options.onDuplicateTrack ?? vi.fn(),
     onReorderTrack: options.onReorderTrack ?? vi.fn(),
@@ -497,7 +491,6 @@ function createStripHarness(options: StripHarnessOptions) {
       background: fixture.background,
       onSelectTrack: callbacks.onSelectTrack,
       onToggleTrackVisible: callbacks.onToggleTrackVisible,
-      onToggleSolo: callbacks.onToggleSolo,
       onRenameTrack: callbacks.onRenameTrack,
       onDuplicateTrack: callbacks.onDuplicateTrack,
       onReorderTrack: callbacks.onReorderTrack,
@@ -631,77 +624,52 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     expect(hasClass(headerCell(rootB, fixture.trackB.id), 'physics-paint-track-row-header-active')).toBe(true);
   });
 
-  it('renders the row controls inline in mockup order — grip, eye, S, blend, name, trash — and reflects the track document solo flag (TML-04 surface, 260911-s1j)', () => {
+  it('renders the row controls inline in mockup order — grip, eye, blend, name, trash — with no per-track solo chip (TML-04 surface, 261022-iff)', () => {
     const fixture = makeTwoTrackFixture();
     const onToggleVisible = vi.fn();
-    const onToggleSolo = vi.fn();
     const onRequestDeleteTrack = vi.fn();
-    const root = renderFixture(fixture, { onToggleVisible, onToggleSolo, onRequestDeleteTrack });
+    const root = renderFixture(fixture, { onToggleVisible, onRequestDeleteTrack });
     const headerA = headerCell(root, fixture.trackA.id);
 
-    // 260911-s1j: every control is standing inline — the ⋯ expander, its tools
-    // panel, the duplicate button, and the 260911-sli badge no longer exist.
+    // Every control is standing inline — the ⋯ expander, its tools panel, the
+    // duplicate button, and every solo affordance no longer exist (261022-iff:
+    // the one global Solo lives on the playback pill).
     expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
     expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
-    expect(findAll(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo-badge'))).toHaveLength(0);
+    expect(findAll(headerA, (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Solo'))).toHaveLength(0);
 
-    // The mockup order: grip < eye < S < blend < name < trash.
+    // The mockup order: grip < eye < blend < name < trash.
     const sequence = [...walk(headerA)]
       .map((vnode): string | null => {
         if (hasClass(vnode, 'physics-paint-track-row-grip')) return 'grip';
         if (vnode.props['aria-label'] === 'Hide Track 1') return 'eye';
-        if (vnode.props['aria-label'] === 'Solo Track 1') return 'solo';
         if (vnode.props['aria-label'] === 'Blend Track 1') return 'blend';
         if (hasClass(vnode, 'physics-paint-track-row-label')) return 'name';
         if (vnode.props['aria-label'] === 'Delete Track 1') return 'trash';
         return null;
       })
       .filter((entry): entry is string => entry !== null);
-    expect(sequence).toEqual(['grip', 'eye', 'solo', 'blend', 'name', 'trash']);
+    expect(sequence).toEqual(['grip', 'eye', 'blend', 'name', 'trash']);
 
     // The eye toggle routes the hide intent.
     const eye = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Hide Track 1');
     (eye.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onToggleVisible).toHaveBeenCalledWith(fixture.trackA.id);
 
-    // A solo-false track: the chip is unpressed.
-    const solo = findOne(headerA, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
-    expect(hasClass(solo, 'physics-paint-track-row-solo-armed')).toBe(false);
-    expect(String(solo.props['aria-pressed'])).toBe('false');
-
-    // Clicking still routes the toggle intent.
-    (solo.props.onClick as (event: unknown) => void)(clickEvent());
-    expect(onToggleSolo).toHaveBeenCalledWith(fixture.trackA.id);
-
     // The trash is standing inline and routes the delete request.
     const trash = findOne(headerA, (vnode) => vnode.props['aria-label'] === 'Delete Track 1');
     (trash.props.onClick as (event: unknown) => void)(clickEvent());
     expect(onRequestDeleteTrack).toHaveBeenCalledWith(fixture.trackA.id);
 
-    // An armed document solo arms the inline S — the S itself is the row-level
-    // indicator (no badge, no aria-label suffix).
+    // A stale document solo flag is inert: it renders no control and never
+    // changes the row's selected/active semantics.
     const soloTrackA: InternalPaintTrack = { ...fixture.trackA, solo: true };
-    const armedFixture: ColumnFixture = { ...fixture, tracks: [soloTrackA, fixture.trackB], trackA: soloTrackA };
-    const armedRoot = renderFixture(armedFixture);
-    const armedHeader = headerCell(armedRoot, soloTrackA.id);
-    const armedSolo = findOne(armedHeader, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
-    expect(hasClass(armedSolo, 'physics-paint-track-row-solo-armed')).toBe(true);
-    expect(String(armedSolo.props['aria-pressed'])).toBe('true');
-    expect(String(armedHeader.props['aria-label'])).toBe(`Select track ${soloTrackA.name}`);
-    // The unarmed sibling row stays clean.
-    const siblingSolo = findOne(headerCell(armedRoot, fixture.trackB.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
-    expect(hasClass(siblingSolo, 'physics-paint-track-row-solo-armed')).toBe(false);
-
-    // 260911-sli: the session-only playback arm (physicsPaintSoloArm) never
-    // drives the row — arming it leaves the chip untouched.
-    expect(toggleSolo()).toBe(true);
-    try {
-      const sessionArmedRoot = renderFixture(fixture);
-      const sessionArmedSolo = findOne(headerCell(sessionArmedRoot, fixture.trackA.id), (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'));
-      expect(hasClass(sessionArmedSolo, 'physics-paint-track-row-solo-armed')).toBe(false);
-    } finally {
-      disarmSolo();
-    }
+    const staleFixture: ColumnFixture = { ...fixture, tracks: [soloTrackA, fixture.trackB], trackA: soloTrackA };
+    const staleRoot = renderFixture(staleFixture);
+    const staleHeader = headerCell(staleRoot, soloTrackA.id);
+    expect(findAll(staleHeader, (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Solo'))).toHaveLength(0);
+    expect(String(staleHeader.props['aria-label'])).toBe(`Select track ${soloTrackA.name}`);
+    expect(hasClass(staleHeader, 'physics-paint-track-row-header-active')).toBe(true);
   });
 
   it('renders a per-track frame-blending toggle after the eye and routes the click to onToggleBlend, arming with the row\'s own canonical interpolation state (47 UAT)', () => {
@@ -773,12 +741,12 @@ describe('physicsPaintTrackHeaderColumn (47-02 Task 1)', () => {
     // Lock indicator present.
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-lock'))).toHaveLength(1);
     // No hover capability: not a role=button, no click, no reorder grab and
-    // none of the standing Paint controls (grip / eye / S / blend / trash are
+    // none of the standing Paint controls (grip / eye / blend / trash are
     // Paint-row-only).
     expect(bg.props.role).toBeUndefined();
     expect(bg.props.onClick).toBeUndefined();
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-grip'))).toHaveLength(0);
-    expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(0);
+    expect(findAll(bg, (vnode) => String(vnode.props['aria-label'] ?? '').startsWith('Solo'))).toHaveLength(0);
     expect(findAll(bg, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(0);
   });
 

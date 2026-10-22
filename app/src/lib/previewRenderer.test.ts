@@ -541,36 +541,40 @@ describe('PreviewRenderer flattened physic-paint seam contract (48-03)', () => {
   });
 });
 
-describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
+describe('47-01 hide-only preview filter (TML-04/M8, 261022-iff)', () => {
   it('no solo armed: every visible track resolves visible; a hidden track resolves hidden', () => {
     const document = createEfxPaintDocument('roto-layer');
     const track = document.tracks[0];
     registerDocument(document);
     expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(true);
-    // Hide wins over solo: hiding the same track flips the answer.
+    // Hiding the same track flips the answer.
     registerDocument({ ...document, tracks: [{ ...track, visible: false }] });
     expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(false);
   });
 
-  it('solo armed → only visible+soloed tracks show; the active non-soloed track resolves null', () => {
+  it('a lingering document solo flag is inert: it neither hides nor shows anything', () => {
     const document = createEfxPaintDocument('roto-layer');
     const trackA = document.tracks[0];
     const trackB: InternalPaintTrack = { ...trackA, id: 'track-b', name: 'Paint 2', order: 1 };
+    // Legacy wire data: both tracks carry a stale solo flag — both stay visible.
+    registerDocument({ ...document, tracks: [{ ...trackA, solo: true }, { ...trackB, solo: true }] });
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', trackA.id)).toBe(true);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', trackB.id)).toBe(true);
+    // A solo flag on a single track does not hide the other one either.
     registerDocument({ ...document, tracks: [{ ...trackA, solo: true }, trackB] });
     expect(resolvePhysicPaintTrackVisibility('roto-layer', trackA.id)).toBe(true);
-    expect(resolvePhysicPaintTrackVisibility('roto-layer', trackB.id)).toBe(false);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', trackB.id)).toBe(true);
   });
 
-  it('soloed-and-hidden track is hidden (hide beats solo)', () => {
+  it('a hidden track stays hidden regardless of its solo flag', () => {
     const document = createEfxPaintDocument('roto-layer');
     const track = document.tracks[0];
     registerDocument({ ...document, tracks: [{ ...track, solo: true, visible: false }] });
     expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(false);
   });
 
-  it('a hidden-only solo does not arm solo filtering', () => {
-    // The only solo flag sits on a hidden track: solo mode never arms, so the
-    // visible non-soloed track still renders (matches participatingPaintTracks).
+  it('a hidden track with a solo flag never leaks back in', () => {
+    // The only solo flag sits on a hidden track: hide alone decides.
     const document = createEfxPaintDocument('roto-layer');
     const base = document.tracks[0];
     const trackA: InternalPaintTrack = { ...base, id: 'track-a', name: 'Paint A', order: 0 };
@@ -580,7 +584,7 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-b')).toBe(false);
   });
 
-  it('a visible solo plus a hidden solo: only the visible solo participates, the hidden track stays out', () => {
+  it('stale solo flags on visible tracks do not narrow the visible set', () => {
     const document = createEfxPaintDocument('roto-layer');
     const base = document.tracks[0];
     const trackA: InternalPaintTrack = { ...base, id: 'track-a', name: 'Paint A', order: 0, solo: true };
@@ -588,7 +592,7 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     const trackC: InternalPaintTrack = { ...base, id: 'track-c', name: 'Paint C', order: 2, visible: false, solo: true };
     registerDocument({ ...document, tracks: [trackA, trackB, trackC] });
     expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-a')).toBe(true);
-    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-b')).toBe(false);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-b')).toBe(true);
     expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-c')).toBe(false);
   });
 
@@ -617,7 +621,7 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
     expect(ctx.operations).not.toContainEqual(expect.objectContaining({ type: 'drawImage', source: bitmapLabelFor('cmVhbC0x') }));
   });
 
-  it('draws the flattened raster when no solo is armed and the active track is visible', async () => {
+  it('draws the flattened raster when the active track is visible', async () => {
     seedPhysicalRoto([
       { keyId: 'key-1', appFrame: 1, bytes: testWebpBytes('cmVhbC0x') },
     ], { background: { background: 'canvas1', grainStrength: 0 } });
@@ -636,10 +640,12 @@ describe('47-01 hide/solo preview filter (TML-04/M8)', () => {
   });
 });
 
-describe('hide/solo cross-authority parity (TML-04/CMP-02)', () => {
+describe('hide-only cross-authority parity (TML-04/CMP-02, 261022-iff)', () => {
   // Rule-3 contract: the Studio-path predicate (previewRenderer) and the
   // flattened-composite/export predicate (efxPaintHideSolo) must agree track by
-  // track on every document — compare id sets, never order.
+  // track on every document — compare id sets, never order. With no session
+  // solo target both are hide-only, so stale document solo flags are inert on
+  // both sides.
   function expectTrackByTrackParity(parityDocument: EfxPaintDocument): void {
     for (const track of parityDocument.tracks) {
       expect(resolvePhysicPaintTrackVisibility('roto-layer', track.id)).toBe(
@@ -648,7 +654,7 @@ describe('hide/solo cross-authority parity (TML-04/CMP-02)', () => {
     }
   }
 
-  it('hidden-only solo: neither authority arms solo mode; the visible track stays in, the hidden soloed track stays out', () => {
+  it('a hidden track with a stale solo flag stays out of both authorities', () => {
     const document = createEfxPaintDocument('roto-layer');
     const base = document.tracks[0];
     const trackA: InternalPaintTrack = { ...base, id: 'track-a', name: 'Paint A', order: 0 };
@@ -663,7 +669,7 @@ describe('hide/solo cross-authority parity (TML-04/CMP-02)', () => {
     expectTrackByTrackParity(parityDocument);
   });
 
-  it('visible-solo armed: both authorities render only the visible soloed track; the hidden solo stays out', () => {
+  it('stale solo flags never narrow either authority: every visible track participates', () => {
     const document = createEfxPaintDocument('roto-layer');
     const base = document.tracks[0];
     const trackA: InternalPaintTrack = { ...base, id: 'track-a', name: 'Paint A', order: 0, solo: true };
@@ -673,9 +679,9 @@ describe('hide/solo cross-authority parity (TML-04/CMP-02)', () => {
     registerDocument(parityDocument);
 
     expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-a')).toBe(true);
-    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-b')).toBe(false);
+    expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-b')).toBe(true);
     expect(resolvePhysicPaintTrackVisibility('roto-layer', 'track-c')).toBe(false);
-    expect(participatingPaintTracks(parityDocument).map((track) => track.id).sort()).toEqual(['track-a']);
+    expect(participatingPaintTracks(parityDocument).map((track) => track.id).sort()).toEqual(['track-a', 'track-b']);
 
     expectTrackByTrackParity(parityDocument);
   });
