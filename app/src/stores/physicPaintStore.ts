@@ -2730,6 +2730,12 @@ export function _referenceSourceRevision(document: EfxPaintDocument): string {
  * report (D-09) — never placeholder pixels. The exclusion threads through the
  * compositor ports (never by rewriting the document) so the editing base's
  * participating set is filtered identically in the pure pipeline.
+ *
+ * 261022-iff IFF-02/03: `soloTrackId` is the SESSION solo target supplied by
+ * the caller (the program monitor passes the active track while armed). It is
+ * threaded into the participating computation, the flattened key (`solo:`
+ * term) and the compositor ports — never written to the document, never saved,
+ * never part of undo/revision. Null = disarmed.
  */
 function _resolveFlattenedFrame(
   layerId: string,
@@ -2737,6 +2743,7 @@ function _resolveFlattenedFrame(
   excludeTrackIds: ReadonlySet<string>,
   includeFond = true,
   liveOverlay?: HTMLCanvasElement | null,
+  soloTrackId: string | null = null,
 ): EfxPaintFlattenedFrameRecord | null {
   if (!Number.isInteger(frame) || frame < 0) return null;
   const efxDocument = getEfxPaintDocument(layerId);
@@ -2748,7 +2755,7 @@ function _resolveFlattenedFrame(
   _rotateFlattenedMemoOnFondChange(layerId, efxDocument);
   const size = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
 
-  const participating = participatingPaintTracks(efxDocument)
+  const participating = participatingPaintTracks(efxDocument, soloTrackId)
     .filter((track) => !excludeTrackIds.has(track.id));
   const trackContentRevisions = new Map<string, string>();
   for (const track of participating) {
@@ -2773,6 +2780,7 @@ function _resolveFlattenedFrame(
     frame,
     excludeTrackIds: excludeTrackIds.size > 0 ? [...excludeTrackIds].sort() : undefined,
     includeFond,
+    soloTrackId,
   });
 
   const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
@@ -2828,6 +2836,7 @@ function _resolveFlattenedFrame(
     trackContentRevisions,
     backgroundClipRevisions,
     excludeTrackIds,
+    soloTrackId,
     // studio-multi-track-only-active: the active track's live engine raster
     // replaces its excluded store copy INSIDE the ordered track loop, so the
     // selection never overrides the layer stack. The overlay is scaled and
@@ -2987,10 +2996,17 @@ export const physicPaintStore = {
    * {@link _resolveFlattenedFrame}). `includeFond` (default true) controls
    * whether the record carries the document paper fond; the Studio monitor
    * passes false (the fond lives on its own layer beneath the isolated tracks
-   * group, 48-06 UAT-C).
+   * group, 48-06 UAT-C). `soloTrackId` (261022-iff) is the SESSION solo focus
+   * — the caller's active track — threaded through the truth table and the
+   * key; null = disarmed. It is never a document write.
    */
-  getFlattenedFrame(layerId: string, frame: number, includeFond = true): EfxPaintFlattenedFrameRecord | null {
-    return _resolveFlattenedFrame(layerId, frame, EMPTY_EXCLUDED_TRACKS, includeFond);
+  getFlattenedFrame(
+    layerId: string,
+    frame: number,
+    includeFond = true,
+    soloTrackId: string | null = null,
+  ): EfxPaintFlattenedFrameRecord | null {
+    return _resolveFlattenedFrame(layerId, frame, EMPTY_EXCLUDED_TRACKS, includeFond, undefined, soloTrackId);
   },
 
   /**
@@ -2999,7 +3015,9 @@ export const physicPaintStore = {
    * the live engine canvas stacked above supplies their pixels). Same seam as
    * {@link getFlattenedFrame}; the exclude set threads through the compositor
    * ports and the flattened cache key (its own `excl:` term), so an including
-   * and an excluding call for the same frame never share a cache entry.
+   * and an excluding call for the same frame never share a cache entry. The
+   * optional `soloTrackId` (261022-iff) is the session focus, threaded on both
+   * paths; null = disarmed.
    */
   getFlattenedFrameExcluding(
     layerId: string,
@@ -3007,8 +3025,9 @@ export const physicPaintStore = {
     excludeTrackIds: ReadonlySet<string>,
     includeFond = true,
     liveOverlay?: HTMLCanvasElement | null,
+    soloTrackId: string | null = null,
   ): EfxPaintFlattenedFrameRecord | null {
-    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond, liveOverlay);
+    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond, liveOverlay, soloTrackId);
   },
 
   /**

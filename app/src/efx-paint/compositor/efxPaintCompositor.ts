@@ -181,6 +181,14 @@ export interface EfxPaintCompositorPorts {
    */
   excludeTrackIds?: ReadonlySet<string>;
   /**
+   * 261022-iff IFF-02/03: the SESSION solo target — the focused track's id,
+   * supplied by the program monitor while the global Solo is armed. Non-null
+   * narrows the participating set to that track (hide still wins, IFF-05) and
+   * joins the flattened key as its own `solo:` term. Never a document write;
+   * null/absent = disarmed (export, main preview and every other consumer).
+   */
+  soloTrackId?: string | null;
+  /**
    * studio-multi-track-only-active: the active track's live engine raster.
    * Drawn AT THE TRACK'S STACK POSITION in the participating loop — never
    * appended after every track — so selecting a track never overrides the
@@ -244,6 +252,7 @@ export function compositeFrame(
           excludeTrackIds: ports.excludeTrackIds && ports.excludeTrackIds.size > 0
             ? [...ports.excludeTrackIds].sort()
             : undefined,
+          soloTrackId: ports.soloTrackId ?? null,
         })
       : null;
   if (flattenedKey !== null) {
@@ -273,7 +282,7 @@ export function compositeFrame(
   // transparent stage with source-over — a non-normal blend over transparency
   // would erase it (multiply over transparent = transparent); every track above
   // keeps its own blend mode, applied between tracks only.
-  const participating = participatingPaintTracks(document);
+  const participating = participatingPaintTracks(document, ports.soloTrackId ?? null);
   // studio-multi-track-only-active: the engine-supplied track keeps its REAL
   // stack slot — the overlay replaces its store raster in the ordered loop
   // instead of being appended after every other track. Selection must never

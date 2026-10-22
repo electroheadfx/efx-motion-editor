@@ -19,8 +19,14 @@
  *      the active track (getFlattenedFrameExcluding), because the live engine
  *      canvas stacked above supplies the active track's in-progress pixels and
  *      including it would double-apply semi-transparent strokes (T-48-16,
- *      D-05). A hidden or non-soloed-under-solo track never appears in either
- *      mode (the 48-01 truth table filters it before this component exists).
+ *      D-05). A hidden track — or, while the global Solo is armed, any track
+ *      other than the focused active track — never appears in either mode
+ *      (the 48-01 truth table filters it before this component's store calls).
+ *
+ * 261022-iff IFF-02/03: the global Solo is the SESSION track focus, applied by
+ * the store, never by this component. While armed this leaf supplies the
+ * caller's active track id as the solo target on both paths; the store owns
+ * the filtering, the cache-key term and the draw (hide still wins, IFF-05).
  *
  * The draw is idempotent: drawing the same flattened cacheKey at the same size
  * twice is a no-op (compare-then-draw guard on the derived drawn key). A
@@ -51,6 +57,7 @@ import { efxPaintVersion } from '../../../stores/efxPaintStore';
 import { physicPaintStore, physicPaintVersion } from '../../../stores/physicPaintStore';
 import type { RotoCachedPlaybackTick } from '../hooks/useRotoCachedPlayback';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
+import { isSoloArmed } from './physicsPaintSoloArm';
 
 /**
  * One missing-source publication summary (the Task 2 D-09 capsule seam). The
@@ -135,6 +142,12 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
   // Studio), falling back to currentFrame when idle or no tick has fired yet.
   const playbackAppFrame = props.playbackTick?.value?.appFrame ?? null;
   const resolvedFrame = props.isPlaying && playbackAppFrame !== null ? playbackAppFrame : props.currentFrame;
+  // 261022-iff IFF-02/03: the global Solo is the SESSION track focus. While
+  // armed, the target is the ACTIVE track (read from the prop, never stored) —
+  // selecting another track moves the focus with no click. A narrow signal
+  // read in this leaf's render body subscribes only this canvas; the store
+  // applies the target to the truth table, the flattened key and the draw.
+  const soloTrackId = isSoloArmed() ? (props.activeTrackId ?? null) : null;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -152,7 +165,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     // When excludeActive is true, the active track is either in the liveOverlay
     // or intentionally hidden — the store's copy is excluded either way.
     const record = props.isPlaying
-      ? physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false)
+      ? physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false, soloTrackId)
       : props.excludeActive
         ? physicPaintStore.getFlattenedFrameExcluding(
             layerId,
@@ -160,8 +173,9 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
             props.activeTrackId ? new Set([props.activeTrackId]) : EMPTY_EXCLUDED_TRACKS,
             false,
             props.liveOverlay ?? null,
+            soloTrackId,
           )
-        : physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false);
+        : physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false, soloTrackId);
     // Pending decode: the store returns null this tick. Keep the last drawn
     // frame — no flicker-to-blank; the next version-clock bump re-runs the
     // effect and draws the completed raster.
@@ -212,7 +226,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     // version clocks are read inside the effect's dep array (narrow leaf
     // subscription, never the Studio root); resolvedFrame is the exact
     // playback/editing frame this effect draws.
-  }, [props.layerId, resolvedFrame, props.isPlaying, props.activeTrackId, props.liveOverlay, props.width, props.height, physicPaintVersion.value, efxPaintVersion.value]);
+  }, [props.layerId, resolvedFrame, props.isPlaying, props.activeTrackId, props.liveOverlay, props.width, props.height, soloTrackId, physicPaintVersion.value, efxPaintVersion.value]);
 
   // Task 2 (D-09): the missing-source capsule publication — a narrow effect
   // (this leaf, never the Studio root render body) that reads the current
@@ -230,7 +244,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     if (props.isPlaying || !props.onMissingSourcesChange) return;
     const { layerId } = props;
     if (!layerId) return;
-    const record = physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false);
+    const record = physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false, soloTrackId);
     if (!record) return; // pending decode — keep the capsule as-is
     const missing = record.missing;
     // 48-06 (UAT-E): only GENUINE dangling sources raise the capsule — an entry
@@ -260,7 +274,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     // clocks are read inside the effect's dep array (narrow leaf subscription,
     // never the Studio root); resolvedFrame is the exact editing frame whose
     // missing report this effect publishes.
-  }, [props.layerId, resolvedFrame, props.isPlaying, props.onMissingSourcesChange, physicPaintVersion.value, efxPaintVersion.value]);
+  }, [props.layerId, resolvedFrame, props.isPlaying, props.onMissingSourcesChange, soloTrackId, physicPaintVersion.value, efxPaintVersion.value]);
 
   return (
     <canvas

@@ -1,20 +1,26 @@
 /**
- * Hide/solo truth table for internal Paint tracks (Phase 48-01 Task 1).
+ * Hide/solo truth table for internal Paint tracks (Phase 48-01 Task 1;
+ * quick 261022-iff replaced the persisted per-track flag with ONE session
+ * focus).
  *
  * Pure — takes the validated document, never the store (CMP-02, D-04). This
  * predicate is the single source of truth for which Paint tracks join the
- * flattened composite; the Phase 47 active-track-only predecessor
- * (`resolvePhysicPaintTrackVisibility` in `app/src/lib/previewRenderer.ts`)
- * stays for its remaining consumers until 48-03.
+ * flattened composite (the compositor, the flattened cache key and the store
+ * all consume it — no view-side filtering, no second truth table).
  *
- * Truth table (locked, Pitfall M8):
- * - no solo armed → every track whose `visible !== false` participates;
- * - any solo armed → only tracks that are `visible !== false` AND soloed;
- * - hide always wins over solo: a hidden track never participates AND its
- *   solo flag never arms solo mode (edge CMP-02 adjacency — a hidden+soloed
- *   track leaves other visible tracks visible);
- * - unknown track or absent document fails closed to not-participating
- *   (an absent track cannot appear in the typed document at all).
+ * Truth table (locked):
+ * - no solo target → every track whose `visible !== false` participates;
+ * - a solo target (`soloTrackId`, the session anchor) → only the track whose
+ *   id equals the target participates, AND only when it is visible;
+ * - hide always wins over solo: a hidden track never participates, so a
+ *   hidden solo target leaves NO Paint track in the composite (D-04, IFF-05);
+ * - an unknown target fails closed to not-participating.
+ *
+ * The arm is SESSION-ONLY and selection-followed: the caller supplies the
+ * target (the document's active track id) — it is never stored, never written
+ * to the document, and never persisted. The persisted `track.solo` field stays
+ * in the wire schema (the exact-key parser accepts previously saved documents)
+ * but is deliberately never read here — a lingering flag is inert (T-iff-02).
  *
  * Ordering: tracks sort by `order` ascending for compositing; equal orders
  * break deterministically by `track.id` localeCompare. Identity is always
@@ -25,20 +31,23 @@ import type { EfxPaintDocument, InternalPaintTrack } from '../document/efxPaintD
 
 /**
  * The participating Paint tracks for one frame, bottom-to-top in stable
- * compositing order (order ascending, ties broken by track.id).
+ * compositing order (order ascending, ties broken by track.id). `soloTrackId`
+ * is the optional session focus (the active track); null/omitted = disarmed.
  */
-export function participatingPaintTracks(document: EfxPaintDocument): InternalPaintTrack[] {
+export function participatingPaintTracks(
+  document: EfxPaintDocument,
+  soloTrackId: string | null = null,
+): InternalPaintTrack[] {
   const ordered = [...document.tracks].sort((a, b) => {
     if (a.order !== b.order) return a.order - b.order;
     return a.id.localeCompare(b.id);
   });
-  // A hidden track's solo never arms solo mode (hide wins over solo), so solo
-  // arming considers only visible tracks.
-  const soloArmed = ordered.some((track) => track.visible !== false && track.solo === true);
   return ordered.filter((track) => {
+    // Hide wins over solo: a hidden track never participates, and a hidden
+    // solo target therefore leaves no Paint track at all (IFF-05).
     if (track.visible === false) return false;
-    if (!soloArmed) return true;
-    return track.solo === true;
+    if (soloTrackId === null) return true;
+    return track.id === soloTrackId;
   });
 }
 

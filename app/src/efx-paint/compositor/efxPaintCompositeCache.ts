@@ -17,6 +17,11 @@
  *             are already covered by the config term);
  *   bg      — `document.background.revision`;
  *   clips   — per-clip `${clip.id}:${clip.revision}` revision terms, sorted;
+ *   solo    — the SESSION solo target (the active track), emitted ONLY when
+ *             armed. The session arm is deliberately not part of the document,
+ *             so the config hash cannot see it — without this term an
+ *             arm/disarm or an armed selection switch would serve a stale
+ *             composite;
  *   frame   — the requested frame.
  *
  * Key building uses the canonical-encoder helpers ONLY — never ad-hoc
@@ -93,6 +98,13 @@ export interface EfxPaintFlattenedCacheKeyInput {
    * byte-identical.
    */
   readonly backgroundSourceRevision?: string;
+  /**
+   * 261022-iff IFF-02/03: the SESSION solo target (the active track) — never
+   * part of the document. Non-null narrows the participating set to that
+   * track and emits its own `solo:` key term; null/absent keeps the disarmed
+   * derivation byte-identical (the 48-01/48-04 contract).
+   */
+  readonly soloTrackId?: string | null;
 }
 
 /**
@@ -108,14 +120,22 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
   // background-revision, clip, and frame terms follow it.
   const configTerm = encodeCanonicalString(buildEfxPaintCompositeRevision(document));
 
+  // The session solo target (261022-iff): a caller-supplied focus, never a
+  // document field. `solo:` is emitted ONLY when armed so disarmed keys stay
+  // byte-identical to the pre-change derivation (the `excl:`/`fond:0` precedent).
+  const soloTrackId = input.soloTrackId ?? null;
+
   // Per-track content terms sorted by track.id (localeCompare) so the key is
   // independent of the caller's Map insertion order — LIMITED to the currently
   // participating tracks (CMP-04 participating-only semantics, pinned by the
-  // 48-04 invalidation matrix): a hidden or non-soloed track's content cannot
+  // 48-04 invalidation matrix): a hidden or non-focused track's content cannot
   // affect the composite, so its term is absent and a content edit to it never
-  // churns the flattened cache. The config term already covers visibility/solo,
-  // so re-showing a track rotates the key and forces the re-composite.
-  const participatingIds = new Set(participatingPaintTracks(document).map((track) => track.id));
+  // churns the flattened cache. The config term already covers visibility, and
+  // the `solo:` term covers a session focus switch, so re-showing or
+  // re-focusing a track rotates the key and forces the re-composite.
+  const participatingIds = new Set(
+    participatingPaintTracks(document, soloTrackId).map((track) => track.id),
+  );
   const participatingEntries = [...trackContentRevisions.entries()]
     .filter(([trackId]) => participatingIds.has(trackId))
     .sort(([a], [b]) => a.localeCompare(b));
@@ -161,6 +181,9 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     // 49-06 (UAT round 6): emitted ONLY when the document has background clips
     // with runtime source bytes — clip-less documents keep byte-identical keys.
     ...(input.backgroundSourceRevision ? [`bgsrc:${encodeCanonicalString(input.backgroundSourceRevision)}`] : []),
+    // 261022-iff: the SESSION solo target — emitted ONLY when armed so the
+    // disarmed derivation stays byte-identical.
+    ...(soloTrackId !== null ? [`solo:${encodeCanonicalString(soloTrackId)}`] : []),
     `frame:${encodeCanonicalNumber(frame)}`,
   ].join('');
 

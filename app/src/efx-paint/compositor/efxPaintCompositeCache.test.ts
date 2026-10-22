@@ -223,6 +223,58 @@ describe('deriveEfxPaintFlattenedCacheKey — CMP-04 dependency coverage (D-08)'
     expect(keyFrame1).not.toBe(keyFrame0);
   });
 
+  it('IFF-02/03: the session solo target is a key term and narrows the content terms', () => {
+    const doc = makeDocument([makeTrack('track-a'), makeTrack('track-b')]);
+    const revisions = contentRevisions([
+      ['track-a', 'rev-a'],
+      ['track-b', 'rev-b'],
+    ]);
+    const base = { document: doc, trackContentRevisions: revisions, backgroundClipRevisions: [] as string[], frame: 0 };
+
+    const disarmedKey = deriveEfxPaintFlattenedCacheKey(base);
+    const targetedKey = deriveEfxPaintFlattenedCacheKey({ ...base, soloTrackId: 'track-a' });
+    expect(targetedKey).not.toBe(disarmedKey);
+
+    // A content edit on the NON-participating track b does not rotate the key.
+    expect(
+      deriveEfxPaintFlattenedCacheKey({
+        ...base,
+        soloTrackId: 'track-a',
+        trackContentRevisions: contentRevisions([
+          ['track-a', 'rev-a'],
+          ['track-b', 'rev-b2'],
+        ]),
+      }),
+    ).toBe(targetedKey);
+
+    // A content edit on the participating target track a DOES rotate it.
+    expect(
+      deriveEfxPaintFlattenedCacheKey({
+        ...base,
+        soloTrackId: 'track-a',
+        trackContentRevisions: contentRevisions([
+          ['track-a', 'rev-a2'],
+          ['track-b', 'rev-b'],
+        ]),
+      }),
+    ).not.toBe(targetedKey);
+  });
+
+  it('IFF-02: omitted and explicit-null solo targets produce byte-identical disarmed keys', () => {
+    const doc = makeDocument([makeTrack('track-a'), makeTrack('track-b')]);
+    const revisions = contentRevisions([
+      ['track-a', 'rev-a'],
+      ['track-b', 'rev-b'],
+    ]);
+    const base = { document: doc, trackContentRevisions: revisions, backgroundClipRevisions: [] as string[], frame: 0 };
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, soloTrackId: null })).toBe(
+      deriveEfxPaintFlattenedCacheKey(base),
+    );
+    expect(deriveEfxPaintFlattenedCacheKey({ ...base, soloTrackId: undefined })).toBe(
+      deriveEfxPaintFlattenedCacheKey(base),
+    );
+  });
+
   it('createKeyedMemo get/set/has/delete/clearByPrefix/clear/size; equal-key overwrite; stored values frozen', () => {
     const memo = createKeyedMemo<string, { value: number }>();
 

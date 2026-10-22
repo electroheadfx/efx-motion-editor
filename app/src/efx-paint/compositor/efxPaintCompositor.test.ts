@@ -256,6 +256,46 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
     ]);
   });
 
+  it('IFF-02: the optional solo target requests and draws ONLY that track (hide wins, fail closed)', () => {
+    const requested: string[] = [];
+    const { ops, ports } = makeHarness({
+      content: {
+        'track-a': { kind: 'content', raster: raster('track-a') },
+        'track-b': { kind: 'content', raster: raster('track-b') },
+      },
+    });
+    const soloPorts = {
+      ...ports,
+      soloTrackId: 'track-b',
+      resolveTrackContent: (trackId: string, frame: number) => {
+        requested.push(trackId);
+        return ports.resolveTrackContent(trackId, frame);
+      },
+    } as EfxPaintCompositorPorts;
+    const doc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1 }),
+    ]);
+
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, soloPorts);
+
+    expect(requested).toEqual(['track-b']);
+    expect(result.participates.trackIds).toEqual(['track-b']);
+    const draws = ops.filter((op) => op.type === 'drawImage');
+    expect(draws).toEqual([
+      { type: 'drawImage', source: 'track-b', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+    ]);
+
+    // Hidden solo target → nothing participates (hide wins, IFF-05).
+    const hiddenPorts = { ...ports, soloTrackId: 'track-b' } as EfxPaintCompositorPorts;
+    const hiddenDoc = makeDocument([
+      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-b', { order: 1, visible: false }),
+    ]);
+    const hiddenResult = compositeFrame(hiddenDoc, 0, { width: 4, height: 3 }, hiddenPorts);
+    expect(hiddenResult.participates.trackIds).toEqual([]);
+  });
+
   it('studio-multi-track-only-active: the engine overlay draws AT the excluded track slot, never last (selection must not reorder the stack)', () => {
     const { ops, ports } = makeHarness({
       content: {
@@ -496,7 +536,7 @@ describe('compositeFrame — per-frame flattened memo (D-08, CMP-04)', () => {
     expect(calls.get('track-b')).toBe(2);
   });
 
-  it('toggling a track config (solo) flips the flattened key → full re-run with the new participating set', () => {
+  it('arming the session solo target flips the flattened key → full re-run with the new participating set', () => {
     const { ops, ports, calls } = makeCachedHarness({
       content: {
         'track-a': { kind: 'content', raster: raster('track-a') },
@@ -516,12 +556,11 @@ describe('compositeFrame — per-frame flattened memo (D-08, CMP-04)', () => {
     const first = compositeFrame(doc, 0, size, ports);
     expect(first.participates.trackIds).toEqual(['track-a', 'track-b']);
 
-    const soloDoc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, solo: true }),
-    ]);
+    // 261022-iff: the session target is a cache-key term of its own — the
+    // document is unchanged, yet the key rotates and the pass re-runs.
+    const soloPorts = { ...ports, soloTrackId: 'track-b' } as EfxPaintCompositorPorts;
     const opsBefore = ops.length;
-    const second = compositeFrame(soloDoc, 0, size, ports);
+    const second = compositeFrame(doc, 0, size, soloPorts);
     expect(second.participates.trackIds).toEqual(['track-b']);
     // Re-run happened: a new draw pass produced ops.
     expect(ops.length).toBeGreaterThan(opsBefore);
@@ -688,7 +727,7 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     ]);
   });
 
-  it('a soloed Paint track never suppresses the Background — the Background draw stays beneath the soloed track (D-04)', () => {
+  it('a focused Paint track never suppresses the Background — the Background draw stays beneath the focused track (D-04)', () => {
     const { ops, ports } = makeHarness({
       content: {
         'track-a': { kind: 'content', raster: raster('track-a') },
@@ -699,10 +738,12 @@ describe('compositeFrame — Background contribution beneath all Paint tracks (4
     });
     const doc = makeDocument([
       makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, solo: true }),
+      makeTrack('track-b', { order: 1 }),
     ]);
+    // 261022-iff: the focus is the SESSION solo target, never track.solo.
+    const soloPorts = { ...ports, soloTrackId: 'track-b' } as EfxPaintCompositorPorts;
 
-    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, soloPorts);
 
     expect(result.participates.trackIds).toEqual(['track-b']);
     expect(result.participates.background).toBe(true);

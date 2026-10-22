@@ -1877,9 +1877,14 @@ describe('physicPaintStore', () => {
     // tracks the flatten returns null as soon as the FIRST unresolved track's
     // decode is pending, so each re-query resolves one more track — loop until
     // the record materializes (bounded to avoid an infinite loop on a real bug).
-    async function flattenAfterDecode(layerId: string, frame: number, includeFond = true) {
+    async function flattenAfterDecode(
+      layerId: string,
+      frame: number,
+      includeFond = true,
+      soloTrackId: string | null = null,
+    ) {
       for (let attempt = 0; attempt < 20; attempt += 1) {
-        const record = physicPaintStore.getFlattenedFrame(layerId, frame, includeFond);
+        const record = physicPaintStore.getFlattenedFrame(layerId, frame, includeFond, soloTrackId);
         if (record !== null) return record;
         await flushDecode();
       }
@@ -2559,6 +2564,40 @@ describe('physicPaintStore', () => {
 
       expect(excludingEmpty.cacheKey).toBe(including.cacheKey);
       expect((await excludingEmpty.encodeBytes())).toEqual((await including.encodeBytes()));
+    });
+
+    // 261022-iff IFF-02/03/04: the session solo target threads through BOTH
+    // flattened APIs. It is a cache-key term (its own `solo:` term) and it
+    // narrows the participating set — never a document write.
+    it('IFF-02/03: the session solo target narrows the composite and rotates the key; excluding the target yields an empty-track composite', async () => {
+      const frameA = makeFrame(0, 5).bytes;
+      const frameB = makeFrame(1, 5).bytes;
+      registerDocument(flatDocument([
+        flatTrack('track-a', { order: 0 }),
+        flatTrack('track-b', { order: 1 }),
+      ], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
+      seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
+
+      const including = (await flattenAfterDecode(FLAT_LAYER, 5))!;
+      expect(decodeFlatLog(await including.encodeBytes()).match(/draw\(/g)?.length).toBe(2);
+
+      // Focused on track-b: one draw, and its own key.
+      const targeted = (await flattenAfterDecode(FLAT_LAYER, 5, true, 'track-b'))!;
+      expect(targeted.cacheKey).not.toBe(including.cacheKey);
+      expect(decodeFlatLog(await targeted.encodeBytes()).match(/draw\(/g)?.length).toBe(1);
+
+      // Excluding the soloed target leaves no Paint track at all.
+      const none = physicPaintStore.getFlattenedFrameExcluding(
+        FLAT_LAYER,
+        5,
+        new Set(['track-b']),
+        true,
+        null,
+        'track-b',
+      )!;
+      expect(none).not.toBeNull();
+      expect(decodeFlatLog(await none.encodeBytes()).match(/draw\(/g) ?? []).toHaveLength(0);
     });
 
     describe('background source-byte hydration (49-02 Task 3, BKG-09)', () => {

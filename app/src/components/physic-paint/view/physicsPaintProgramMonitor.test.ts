@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreactHookRuntime } from '../../../test/preactHookRuntime';
 import { PhysicsPaintProgramMonitor, type PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
+import { disarmSolo, toggleSolo } from './physicsPaintSoloArm';
 import {
   physicPaintStore,
   physicPaintVersion,
@@ -324,6 +325,8 @@ const baseProps = (overrides: Partial<PhysicsPaintProgramMonitorProps> = {}): Ph
 
 beforeEach(() => {
   resetEfxPaintStore();
+  // The session arm is module-global — every case starts disarmed (IFF-02).
+  disarmSolo();
   DeferredFlatTestImage.instances = [];
   clearProjectPaperRasterCache();
   _setPhysicPaintCompositorSizeProvider(() => ({ width: 4, height: 3 }));
@@ -369,6 +372,7 @@ beforeEach(() => {
 
 afterEach(() => {
   runtime.reset();
+  disarmSolo();
   // Full store reset: the flattened memo and the alpha-canvas registry are
   // module-level and would otherwise leak across tests (a registry hit changes
   // the composite draw path — G-52-8 FIX 3).
@@ -403,7 +407,7 @@ describe('PhysicsPaintProgramMonitor', () => {
     // The full flattened path (INCLUDING the active track) is the only source,
     // read FOND-LESS (48-06 UAT-C: the paper lives on its own layer beneath the
     // isolated tracks group).
-    expect(getFlattenedFrame).toHaveBeenCalledWith(FLAT_LAYER, 5, false);
+    expect(getFlattenedFrame).toHaveBeenCalledWith(FLAT_LAYER, 5, false, null);
     expect(getFlattenedFrameExcluding).not.toHaveBeenCalled();
     const record = getFlattenedFrame.mock.results[0]?.value as EfxPaintFlattenedFrameRecord;
     expect(record).not.toBeNull();
@@ -547,6 +551,53 @@ describe('PhysicsPaintProgramMonitor', () => {
     expect(drawCount(canvas)).toBe(1);
     // The drawn source IS the record's raster — no encode→decode round-trip.
     expect(canvas.context.sources[0]).toBe(record.raster);
+  });
+
+  it('(h) IFF-02: disarmed passes an explicit null session target on both paths', () => {
+    registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
+    const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
+    const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
+
+    renderMonitor(baseProps({ isPlaying: true }));
+    expect(getFlattenedFrame).toHaveBeenCalledWith(FLAT_LAYER, 5, false, null);
+
+    runtime = new PreactHookRuntime();
+    renderMonitor(baseProps({ isPlaying: false }));
+    expect(getFlattenedFrameExcluding).toHaveBeenCalledWith(
+      FLAT_LAYER,
+      5,
+      new Set(['track-a']),
+      false,
+      null,
+      null,
+    );
+  });
+
+  it('(i) IFF-02/03: armed passes the ACTIVE track as the session target on both paths', () => {
+    registerDocument(flatDocument([
+      flatTrack('track-a', { order: 0 }),
+      flatTrack('track-b', { order: 1 }),
+    ], { visible: false }));
+    seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
+    seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: makeFrame(1, 5).bytes }]);
+    const getFlattenedFrame = vi.spyOn(physicPaintStore, 'getFlattenedFrame');
+    const getFlattenedFrameExcluding = vi.spyOn(physicPaintStore, 'getFlattenedFrameExcluding');
+
+    toggleSolo();
+    renderMonitor(baseProps({ isPlaying: true, activeTrackId: 'track-b' }));
+    expect(getFlattenedFrame).toHaveBeenCalledWith(FLAT_LAYER, 5, false, 'track-b');
+
+    runtime = new PreactHookRuntime();
+    renderMonitor(baseProps({ isPlaying: false, activeTrackId: 'track-b' }));
+    expect(getFlattenedFrameExcluding).toHaveBeenCalledWith(
+      FLAT_LAYER,
+      5,
+      new Set(['track-b']),
+      false,
+      null,
+      'track-b',
+    );
   });
 
   it('(g) G-52-8 (FIX 2): playback availability is structural — the Studio memo never flattens to answer it', () => {
