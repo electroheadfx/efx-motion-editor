@@ -6823,11 +6823,13 @@ button.destructive {
   background: #3f4851;
 }
 
-/* 260905-dso: the Actions section lays its two buffer buttons (Apply / Clear)
-   side by side on one line, mirroring the Key Spacing control row. */
+/* 260905-dso: the Actions section lays its buffer buttons side by side on one
+   line. 261022-o2a: it now holds the three Living Script actions (Copy / Apply
+   / Clear) and wraps like the Scripts row when the popover narrows. */
 .physics-paint-toolbox-actions-row {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;

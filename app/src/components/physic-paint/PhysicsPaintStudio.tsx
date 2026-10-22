@@ -2717,15 +2717,13 @@ export function PhysicsPaintStudio() {
     // failure looks like a dead control.
     log: (message, isError) => { setApplyMessage(message); setApplyStatus(isError ? 'error' : 'idle'); if (isError) setLastError(message); },
   }, bridgeMode);
-  // 261022-ne3: the cloned Tools-popover Scripts handlers — identity-stable
-  // useCallbacks wired into the workflow memo. Bodies mirror the right-panel
-  // Scripts-toolbar callbacks so both surfaces behave identically.
+  // 261022-ne3/261022-o2a: the cloned Tools-popover Scripts / Living Script
+  // handlers — identity-stable useCallbacks wired into the workflow memo.
+  // Bodies mirror the right-panel Scripts-toolbar callbacks so both surfaces
+  // behave identically; Load + Apply and Create Rail route through the picker.
   const handleSaveScript = useCallback(() => {
     void rotoScriptLibrary.saveActiveFrame();
   }, [rotoScriptLibrary]);
-  const handleLoadAndApplyScript = useCallback(() => {
-    void handleSelectedScriptLoadAndApply();
-  }, [handleSelectedScriptLoadAndApply]);
   // 261022-o2a: the Tools picker intent. Opening stores the intent; picking a
   // row selects that Script in the library FIRST, then runs the intent that
   // opened the picker. The `.peek()` read after `select()` is deliberate:
@@ -2754,14 +2752,6 @@ export function PhysicsPaintStudio() {
     }
     if (intent === 'load-apply') void handleSelectedScriptLoadAndApply();
   }, [rotoScriptLibrary, rotoPlayScript, handleSelectedScriptLoadAndApply, setLastError]);
-  const handleDeleteScript = useCallback(() => {
-    // The clone only opens the existing request-delete flow — the confirmation
-    // renders in the right-panel Scripts tab (no second dialog).
-    rotoScriptLibrary.requestDelete();
-  }, [rotoScriptLibrary]);
-  const handleRefreshScripts = useCallback(() => {
-    void rotoScriptLibrary.refresh();
-  }, [rotoScriptLibrary]);
   const handleCopyScript = useCallback(() => {
     void rotoScript.copyScript().then((success) => {
       if (success) setLastError(null);
@@ -6134,20 +6124,16 @@ export function PhysicsPaintStudio() {
         onApplyScript: handleApplyScript,
         onDiscardScript: handleDiscardScript,
         rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,
-        // 261022-ne3: the cloned Tools-popover Scripts ports — stable callbacks
-        // plus signal references read in the strip's render body.
+        // 261022-ne3/261022-o2a: the cloned Tools-popover Scripts + Living
+        // Script ports — stable callbacks plus signal references read in the
+        // strip's render body. Delete/Refresh are not cloned here anymore.
         onSaveScript: handleSaveScript,
-        onLoadAndApplyScript: handleLoadAndApplyScript,
         // 261022-o2a: Tools Load + Apply / Create Rail open the floating Script
         // picker; the picker rows are the UNFILTERED project Script library.
         onOpenScriptPicker: openScriptPicker,
         rotoScriptLibraryRows: rotoScriptLibrary.rows,
-        onDeleteScript: handleDeleteScript,
-        onRefreshScripts: handleRefreshScripts,
         onCopyScript: handleCopyScript,
         rotoScriptLibraryAvailability: rotoScriptLibrary.availability,
-        rotoScriptLibrarySelected: rotoScriptLibrary.selected,
-        rotoScriptPlayDisabledReason: rotoPlayScript.disabledReason,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), warmProgress, onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
         // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed

@@ -2472,31 +2472,94 @@ describe('PhysicsPaintWorkflowStrip toolbox Actions section (260905-dso)', () =>
   });
 });
 
-describe('Tools popover cloned Scripts toolbar (261022-ne3)', () => {
-  it('clones Save above the untouched Apply/Clear row with a visible label and the guarded idiom', () => {
+describe('Tools popover Scripts / Living Script regroup (261022-o2a, supersedes 261022-ne3)', () => {
+  it('keeps the Scripts section to three actions ending before the Living Script heading', () => {
     const header = getHeaderBlock(source());
     const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Scripts</div>');
     expect(headingIndex).toBeGreaterThanOrEqual(0);
     const scriptsRowIndex = header.indexOf('class="physics-paint-toolbox-scripts-row"', headingIndex);
     expect(scriptsRowIndex).toBeGreaterThan(headingIndex);
-    const saveIndex = header.indexOf('aria-label="Save Script"', scriptsRowIndex);
-    expect(saveIndex).toBeGreaterThan(scriptsRowIndex);
-    const actionsIndex = header.indexOf('class="physics-paint-toolbox-actions-row"', headingIndex);
-    // The cloned row sits ABOVE the preserved Apply/Clear row.
-    expect(actionsIndex).toBeGreaterThan(saveIndex);
-    expect(header).toContain('physics-paint-roto-key-icon-label">Save<');
-    const saveBlock = getButtonBlock(header, 'Save Script');
-    expect(saveBlock).toContain('physics-paint-roto-key-icon-button');
-    expect(saveBlock).toContain('aria-disabled={!props.canSaveScript');
-    expect(saveBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-    expect(saveBlock).toContain("if (!props.canSaveScript) return;");
-    expect(saveBlock.indexOf('props.onSaveScript?.()')).toBeGreaterThan(saveBlock.indexOf("if (!props.canSaveScript) return;"));
-    expect(saveBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !props.canSaveScript");
-    expect(header).toContain('id="roto-key-action-reason-save-script"');
-    expect(header).toContain("buildGuardedActionTooltipCopy('Save Script', props.saveScriptDisabledReason)");
+    const livingHeadingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Living Script</div>', scriptsRowIndex);
+    expect(livingHeadingIndex).toBeGreaterThan(scriptsRowIndex);
+    // The divider separates the saved-Script actions from the buffer row.
+    const dividerIndex = header.indexOf('class="physics-paint-toolbox-divider"', scriptsRowIndex);
+    expect(dividerIndex).toBeGreaterThan(scriptsRowIndex);
+    expect(livingHeadingIndex).toBeGreaterThan(dividerIndex);
+    const actionsIndex = header.indexOf('class="physics-paint-toolbox-actions-row"', livingHeadingIndex);
+    expect(actionsIndex).toBeGreaterThan(livingHeadingIndex);
+
+    const row = header.slice(scriptsRowIndex, livingHeadingIndex);
+    const order = ['aria-label="Save Script"', 'aria-label="Load + Apply to Frame"', 'aria-label="Create Rail"'];
+    const indices = order.map((token) => row.indexOf(token));
+    indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
+    for (let i = 1; i < indices.length; i += 1) {
+      expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    }
+    const guards: ReadonlyArray<readonly [string, string]> = [
+      ['Save Script', 'canSaveScript'],
+      ['Load + Apply to Frame', 'canLoadAndApplyScript'],
+      ['Create Rail', 'canCreateRailFromScript'],
+    ];
+    for (const [label, guard] of guards) {
+      const block = getButtonBlock(row, label);
+      expect(block).toContain('physics-paint-roto-key-icon-button');
+      expect(block).toContain(`if (!props.${guard}) return;`);
+      expect(block).toContain(`aria-disabled={!props.${guard}`);
+      expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+      expect(block).toContain("(event.key === 'Enter' || event.key === ' ')");
+    }
+    // Visible labels — the row wraps rather than hiding the names.
+    expect(row).toContain('physics-paint-roto-key-icon-label">Save<');
+    expect(row).toContain('physics-paint-roto-key-icon-label">Load + Apply<');
+    expect(row).toContain('physics-paint-roto-key-icon-label">Create Rail<');
+    expect(row).toContain("buildGuardedActionTooltipCopy('Save Script', props.saveScriptDisabledReason)");
+    expect(row).toContain("buildGuardedActionTooltipCopy('Load + Apply to Frame', props.loadAndApplyScriptDisabledReason)");
+    expect(row).toContain("buildGuardedActionTooltipCopy('Create Rail from Script', props.createRailFromScriptDisabledReason)");
+    expect(row).toContain('id="roto-key-action-reason-save-script"');
+    expect(row).toContain('id="roto-key-action-reason-load-apply"');
+    // Both selection-dependent actions route through the picker.
+    expect(row).toContain("props.onOpenScriptPicker?.('load-apply')");
+    expect(row).toContain("props.onOpenScriptPicker?.('create-rail')");
+    // Delete / Refresh clones are gone with their reason ids.
+    expect(header).not.toContain('aria-label="Delete Script"');
+    expect(header).not.toContain('aria-label="Refresh Scripts"');
+    expect(header).not.toContain('roto-key-action-reason-delete-script');
+    expect(header).not.toContain('roto-key-action-reason-refresh-scripts');
+  });
+
+  it('puts Copy / Apply / Clear in the Living Script row in that order', () => {
+    const header = getHeaderBlock(source());
+    const livingHeadingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Living Script</div>');
+    expect(livingHeadingIndex).toBeGreaterThanOrEqual(0);
+    const actionsIndex = header.indexOf('class="physics-paint-toolbox-actions-row"', livingHeadingIndex);
+    expect(actionsIndex).toBeGreaterThan(livingHeadingIndex);
+    const rowEnd = getMatchingDivEnd(header, actionsIndex);
+    const row = header.slice(actionsIndex, rowEnd);
+    const order = [
+      'aria-label="Copy Script"',
+      'aria-label="Apply Script to Frame"',
+      'aria-label="Clear Script Buffer"',
+    ];
+    const indices = order.map((token) => row.indexOf(token));
+    indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
+    for (let i = 1; i < indices.length; i += 1) {
+      expect(indices[i]).toBeGreaterThan(indices[i - 1]);
+    }
+    expect(row).toContain('physics-paint-roto-key-icon-label">Copy<');
+    expect(row).toContain('physics-paint-roto-key-icon-label">Apply<');
+    expect(row).toContain('physics-paint-roto-key-icon-label">Clear<');
+    const copyBlock = getButtonBlock(row, 'Copy Script');
+    expect(copyBlock).toContain('if (!props.canCopyScriptAction) return;');
+    expect(copyBlock).toContain('aria-disabled={!props.canCopyScriptAction');
+    expect(copyBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(copyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !props.canCopyScriptAction");
+    expect(row).toContain('id="roto-key-action-reason-copy-script"');
+    expect(row).toContain("buildGuardedActionTooltipCopy('Copy Script', props.copyScriptActionDisabledReason)");
     // The preserved buffer actions keep their exact guarded shape.
-    expect(header).toContain('aria-label="Apply Script to Frame"');
-    expect(header).toContain('aria-label="Clear Script Buffer"');
+    expect(row).toContain('aria-label="Apply Script to Frame"');
+    expect(row).toContain('aria-label="Clear Script Buffer"');
+    expect(row).toContain("buildGuardedActionTooltipCopy('Apply Script to Frame', props.applyScriptActionDisabledReason)");
+    expect(row).toContain("buildGuardedActionTooltipCopy('Clear Script from buffer', props.clearScriptBufferDisabledReason)");
   });
 
   it('declares the clone ports, derives availability in render, wraps the row, and wires the Studio callback', () => {
@@ -2521,107 +2584,87 @@ describe('Tools popover cloned Scripts toolbar (261022-ne3)', () => {
     expect(studio).toContain('rotoScriptLibraryAvailability: rotoScriptLibrary.availability,');
   });
 
-  it('clones the five remaining Scripts actions in sidebar order with per-button guards', () => {
-    const header = getHeaderBlock(source());
-    const scriptsRowIndex = header.indexOf('class="physics-paint-toolbox-scripts-row"');
-    const actionsIndex = header.indexOf('class="physics-paint-toolbox-actions-row"', scriptsRowIndex);
-    expect(scriptsRowIndex).toBeGreaterThanOrEqual(0);
-    expect(actionsIndex).toBeGreaterThan(scriptsRowIndex);
-    const row = header.slice(scriptsRowIndex, actionsIndex);
-    const order = [
-      'aria-label="Save Script"',
-      'aria-label="Load + Apply to Frame"',
-      'aria-label="Create Rail"',
-      'aria-label="Delete Script"',
-      'aria-label="Refresh Scripts"',
-      'aria-label="Copy Script"',
-    ];
-    const indices = order.map((token) => row.indexOf(token));
-    indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
-    for (let i = 1; i < indices.length; i += 1) {
-      expect(indices[i]).toBeGreaterThan(indices[i - 1]);
-    }
-    const guards: ReadonlyArray<readonly [string, string]> = [
-      ['Load + Apply to Frame', 'canLoadAndApplyScript'],
-      ['Create Rail', 'canCreateRailFromScript'],
-      ['Delete Script', 'canDeleteScript'],
-      ['Refresh Scripts', 'canRefreshScripts'],
-      ['Copy Script', 'canCopyScriptAction'],
-    ];
-    for (const [label, guard] of guards) {
-      const block = getButtonBlock(row, label);
-      expect(block).toContain(`if (!props.${guard}) return;`);
-      expect(block).toContain(`aria-disabled={!props.${guard}`);
-      expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
-      expect(block).toContain("(event.key === 'Enter' || event.key === ' ')");
-    }
-    // Visible labels — the row wraps rather than hiding the names.
-    expect(row).toContain('physics-paint-roto-key-icon-label">Load + Apply<');
-    expect(row).toContain('physics-paint-roto-key-icon-label">Create Rail<');
-    expect(row).toContain('physics-paint-roto-key-icon-label">Delete<');
-    expect(row).toContain('physics-paint-roto-key-icon-label">Refresh<');
-    expect(row).toContain('physics-paint-roto-key-icon-label">Copy<');
-    expect(row).toContain("buildGuardedActionTooltipCopy('Load + Apply to Frame', props.loadAndApplyScriptDisabledReason)");
-    expect(row).toContain("buildGuardedActionTooltipCopy('Create Rail from Script', props.createRailFromScriptDisabledReason)");
-    expect(row).toContain("buildGuardedActionTooltipCopy('Delete Script', props.deleteScriptDisabledReason)");
-    expect(row).toContain("buildGuardedActionTooltipCopy('Refresh Scripts', props.refreshScriptsDisabledReason)");
-    expect(row).toContain("buildGuardedActionTooltipCopy('Copy Script', props.copyScriptActionDisabledReason)");
-    expect(row).toContain('id="roto-key-action-reason-load-apply"');
-    expect(row).toContain('id="roto-key-action-reason-copy-script"');
-    // Delete routes through the existing library flow — no second dialog markup.
-    expect(row).not.toContain('role="dialog"');
-    expect(row).not.toContain('confirmDelete');
-  });
-
-  it('mirrors the ScriptsPanel derivations and wires all five siblings from the Studio', () => {
+  it('derives Load + Apply without the sidebar-selection fallback and wraps both rows', () => {
     const code = source();
-    expect(code).toContain("'Select a project Script first.'");
-    expect(code).toContain('const scriptLibraryHasSelection = props.rotoScriptLibrarySelected?.value != null;');
-    // 261022-o2a: Create Rail no longer routes through the play-script reason —
-    // it opens the picker, so the strip's local no longer reads that port.
+    // The sidebar-selection fallback and its copy are gone.
+    expect(code).not.toContain('scriptLibraryHasSelection');
+    expect(code).not.toContain("'Select a project Script first.'");
     expect(code).not.toContain('const scriptPlayDisabledReason = props.rotoScriptPlayDisabledReason?.value ?? null;');
     expect(code).toContain('const hasProjectScripts = (props.rotoScriptLibraryRows?.value.length ?? 0) > 0;');
-    expect(code).toContain("props.onOpenScriptPicker?.('create-rail')");
+    expect(code).toContain("'No project Scripts yet. Save the current frame as a Script first.'");
     expect(code).toContain('scriptAvailability?.replacementApplyDisabledReason');
     expect(code).toContain('scriptAvailability?.canCopy');
     expect(code).toContain('scriptAvailability?.copyDisabledReason');
-    expect(code).toContain('const canDeleteScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canDelete ?? false);');
+    expect(code).toContain("props.onOpenScriptPicker?.('load-apply')");
+    expect(code).toContain("props.onOpenScriptPicker?.('create-rail')");
+    // Both rows wrap; the popover stays height-neutral.
+    expect(getCssRuleBlock(css(), '.physics-paint-toolbox-scripts-row {')).toContain('flex-wrap: wrap');
+    expect(getCssRuleBlock(css(), '.physics-paint-toolbox-actions-row {')).toContain('flex-wrap: wrap');
+    expect(getCssRuleBlock(css(), '.physics-paint-toolbox-popover {')).toContain('max-height: 360px');
+  });
+
+  it('removes the retired ports and the Studio wiring they fed', () => {
+    const code = source();
     const propsInterface = getWorkflowStripPropsInterface(code);
-    expect(propsInterface).toContain('onLoadAndApplyScript?: () => void;');
+    for (const port of [
+      'onLoadAndApplyScript',
+      'onDeleteScript',
+      'onRefreshScripts',
+      'rotoScriptLibrarySelected',
+      'rotoScriptPlayDisabledReason',
+    ]) {
+      expect(propsInterface).not.toContain(port);
+    }
+    const staticChrome = getStaticChromePropsInterface(code);
+    for (const port of [
+      'onLoadAndApplyScript',
+      'onDeleteScript',
+      'canDeleteScript',
+      'deleteScriptDisabledReason',
+      'onRefreshScripts',
+      'canRefreshScripts',
+      'refreshScriptsDisabledReason',
+    ]) {
+      expect(staticChrome).not.toContain(port);
+    }
+    // The surviving ports stay declared.
+    expect(propsInterface).toContain('onSaveScript?: () => void;');
     expect(propsInterface).toContain("onOpenScriptPicker?: (intent: 'load-apply' | 'create-rail') => void;");
     expect(propsInterface).toContain('rotoScriptLibraryRows?: ReadonlySignal<readonly RotoScriptLibraryRow[]>;');
-    expect(propsInterface).toContain('onDeleteScript?: () => void;');
-    expect(propsInterface).toContain('onRefreshScripts?: () => void;');
     expect(propsInterface).toContain('onCopyScript?: () => void;');
-    expect(propsInterface).toContain('rotoScriptLibrarySelected?: ReadonlySignal<RotoScriptLibraryRow | null>;');
-    expect(propsInterface).toContain('rotoScriptPlayDisabledReason?: ReadonlySignal<string | null>;');
-    const staticChrome = getStaticChromePropsInterface(code);
+    expect(propsInterface).toContain('rotoScriptLibraryAvailability?: ReadonlySignal<RotoScriptLibraryAvailability>;');
     expect(staticChrome).toContain('canLoadAndApplyScript: boolean;');
     expect(staticChrome).toContain('loadAndApplyScriptDisabledReason: string | null;');
     expect(staticChrome).toContain('canCreateRailFromScript: boolean;');
-    expect(staticChrome).toContain('canDeleteScript: boolean;');
-    expect(staticChrome).toContain('canRefreshScripts: boolean;');
-    expect(staticChrome).toContain('canCopyScriptAction: boolean;');
-    expect(staticChrome).toContain('copyScriptActionDisabledReason: string | null;');
     const studio = studioSource();
-    expect(studio).toContain('const handleLoadAndApplyScript = useCallback(');
-    expect(studio).toContain('const openScriptPicker = useCallback(');
-    expect(studio).toContain('const handleDeleteScript = useCallback(');
-    expect(studio).toContain('const handleRefreshScripts = useCallback(');
+    for (const retired of [
+      'const handleLoadAndApplyScript = useCallback(',
+      'const handleDeleteScript = useCallback(',
+      'const handleRefreshScripts = useCallback(',
+      'onLoadAndApplyScript: handleLoadAndApplyScript,',
+      'onDeleteScript: handleDeleteScript,',
+      'onRefreshScripts: handleRefreshScripts,',
+      'rotoScriptLibrarySelected: rotoScriptLibrary.selected,',
+      'rotoScriptPlayDisabledReason: rotoPlayScript.disabledReason,',
+    ]) {
+      expect(studio).not.toContain(retired);
+    }
+    // Neither retired controller call is wired to the workflow strip anymore
+    // (the right-panel Scripts tab keeps its own onRefresh/onRequestDelete).
+    expect(studio).not.toContain('onRefreshScripts:');
+    expect(studio).not.toContain('onDeleteScript:');
+    // The surviving Studio wiring.
+    expect(studio).toContain('const handleSaveScript = useCallback(');
     expect(studio).toContain('const handleCopyScript = useCallback(');
+    expect(studio).toContain('const openScriptPicker = useCallback(');
     expect(studio).toContain('void handleSelectedScriptLoadAndApply();');
     expect(studio).toContain('void rotoPlayScript.openConfirmation();');
-    expect(studio).toContain('rotoScriptLibrary.requestDelete();');
-    expect(studio).toContain('void rotoScriptLibrary.refresh();');
     expect(studio).toContain('void rotoScript.copyScript().then((success) => {');
-    expect(studio).toContain('onLoadAndApplyScript: handleLoadAndApplyScript,');
+    expect(studio).toContain('onSaveScript: handleSaveScript,');
     expect(studio).toContain('onOpenScriptPicker: openScriptPicker,');
     expect(studio).toContain('rotoScriptLibraryRows: rotoScriptLibrary.rows,');
-    expect(studio).toContain('onDeleteScript: handleDeleteScript,');
-    expect(studio).toContain('onRefreshScripts: handleRefreshScripts,');
     expect(studio).toContain('onCopyScript: handleCopyScript,');
-    expect(studio).toContain('rotoScriptLibrarySelected: rotoScriptLibrary.selected,');
-    expect(studio).toContain('rotoScriptPlayDisabledReason: rotoPlayScript.disabledReason,');
+    expect(studio).toContain('rotoScriptLibraryAvailability: rotoScriptLibrary.availability,');
   });
 });
 
