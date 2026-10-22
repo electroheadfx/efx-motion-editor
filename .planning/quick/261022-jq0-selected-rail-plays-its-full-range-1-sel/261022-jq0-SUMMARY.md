@@ -160,7 +160,7 @@ The user ran the live gate in the Physic Paint Studio and approved it on 2026-10
 
 ## Next Phase Readiness
 
-Automated-ready, NOT done. The three live UAT rows remain for the user (Studio transport):
+Closed: live UAT approved 2026-10-22 (Studio transport):
 1. Select a Key Rail (A), Play -> plays A's start-to-end.
 2. Loop on -> loops to the selection start; Loop off -> stops at the selection end.
 3. Nothing selected, Play -> full timeline.
