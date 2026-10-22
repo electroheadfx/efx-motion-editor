@@ -34,6 +34,8 @@ export type PhysicsPaintRailAction =
 export interface PhysicsPaintToolRailItem {
   id: PhysicsPaintRailAction;
   label: string;
+  /** Optional hover text; the label stays the short accessible name. */
+  tooltip?: string;
   icon: string;
   kind: 'tool' | 'action' | 'press-action';
 }
@@ -42,7 +44,7 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
   { id: 'paint', label: 'Paint', icon: paintModeNormalIcon, kind: 'tool' },
   { id: 'paint-physics', label: 'Paint with physics', icon: paintModePhysicsIcon, kind: 'tool' },
   { id: 'erase', label: 'Erase', icon: eraserIcon, kind: 'tool' },
-  { id: 'move', label: 'Move', icon: moveToolIcon, kind: 'tool' },
+  { id: 'move', label: 'Move', tooltip: 'Move — Cmd toggles Move on/off · Backspace deletes the selected key', icon: moveToolIcon, kind: 'tool' },
   { id: 'undo', label: 'Undo', icon: undoIcon, kind: 'action' },
   { id: 'redo', label: 'Redo', icon: undoIcon, kind: 'action' },
   { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },
@@ -108,7 +110,7 @@ function WatercolorRail({
         class={`physics-paint-icon-button${selectActive ? ' active' : ''}`}
         data-testid="aquarelle-select-toggle"
         disabled={disabled || aquarelleLiveStrokeCount.value === 0}
-        title="Select"
+        title="Select — Cmd toggles Select on/off · Backspace deletes the selected stroke"
         aria-label="Select"
         aria-pressed={selectActive}
         onClick={() => toggleAquarelleSelectMode()}
@@ -283,7 +285,7 @@ function PhysicsPaintToolRailImpl({
             type="button"
             class={className}
             disabled={disabled || (item.id === 'move' && moveDisabled)}
-            title={item.label}
+            title={item.tooltip ?? item.label}
             aria-label={item.label}
             aria-pressed={item.kind === 'tool' ? active : undefined}
             onClick={() => runAction(item)}

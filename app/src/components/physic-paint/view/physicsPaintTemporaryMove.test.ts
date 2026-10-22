@@ -772,6 +772,18 @@ describe('261022-pim Cmd tap toggles the persistent select mode (TAP TOGGLE)', (
     expect(onMetaTap).toHaveBeenCalledTimes(1);
   });
 
+  it('an unavailable Move (no live script) never arms and never toggles', () => {
+    const h = harness('move');
+    const onMetaTap = vi.fn();
+    const deps = { ...h.deps, onMetaTap, isMoveAvailable: () => false };
+
+    handleTemporaryMoveKeyDown(keyEvent('Meta').event, deps);
+    expect(temporaryMove.peek()).toBe(false);
+    handleTemporaryMoveKeyUp(keyEvent('Meta').event, deps);
+
+    expect(onMetaTap).not.toHaveBeenCalled();
+  });
+
   it('Cmd+Z is a chord, not a tap: the mounted listeners do not toggle', () => {
     const h = harness();
     const onMetaTap = vi.fn();

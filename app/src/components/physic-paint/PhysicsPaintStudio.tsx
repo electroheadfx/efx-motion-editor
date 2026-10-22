@@ -166,6 +166,7 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import { activeModule } from '../shared/activeModule';
 import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import {
+  aquarelleLiveStrokeCount,
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationId,
   beginAquarelleDeleteEdit,
@@ -1454,6 +1455,11 @@ export function PhysicsPaintStudio() {
         selectTool('move', settings.physicsMode);
       }
     },
+    // 261022-pim: no live script (cooked/baked sheet, or a fresh session) →
+    // Move is greyed in the rail and Cmd is inert in both modes.
+    isMoveAvailable: () => (activeModule.peek() === 'watercolor'
+      ? aquarelleLiveStrokeCount.peek() > 0
+      : strokeScriptInMemory.peek()),
   };
   // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
   // getter reads the ref at event time (ref-read deps). Window-level because

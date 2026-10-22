@@ -73,6 +73,12 @@ export interface TemporaryEraseDeps {
    * byte: a tap is a toggle, a hold-with-chord (Cmd+Z, Cmd+C, …) is not.
    */
   onMetaTap?: () => void;
+  /**
+   * 261022-pim: Move/Select exists only while there is a live script to act
+   * on. False greys the rail button AND makes Cmd inert (no arm, no tap) —
+   * a cooked/baked sheet with no script has nothing to select.
+   */
+  isMoveAvailable?: () => boolean;
 }
 
 export type TemporaryEraseBoundary = 'down' | 'up' | 'cancel';
@@ -205,6 +211,8 @@ export function handleTemporaryMoveKeyDown(event: KeyboardEvent, deps: Temporary
   if (!deps.isShortcutTarget(event.target)) return;
   if (deps.getEngine() === null) return;
   if (deps.isMutationLocked()) return;
+  // No live script → Move is greyed and Cmd is inert (neither arm nor tap).
+  if (deps.isMoveAvailable && !deps.isMoveAvailable()) return;
   // Eligible even when the selected tool is not Paint: tapping Cmd again while
   // Move is the selected tool must toggle back (261022-pim).
   metaTapEligible = true;

@@ -2929,6 +2929,19 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Select/Move owns the active state: the paint tool is deselected.
     expect(watercolorRail).toContain('const isActive = !selectActive && active === id;');
     expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
+    // Better hover text: the shortcut and the Backspace delete live on it.
+    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Backspace deletes the selected stroke');
+    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Backspace deletes the selected key'");
+    expect(toolRail).toContain('title={item.tooltip ?? item.label}');
+  });
+
+  it('greys Move and makes Cmd inert when there is no live script (both modes)', () => {
+    expect(studio).toContain("isMoveAvailable: () => (activeModule.peek() === 'watercolor'");
+    expect(studio).toContain('? aquarelleLiveStrokeCount.peek() > 0');
+    expect(studio).toContain(': strokeScriptInMemory.peek()),');
+    // Deleting the last selectable stroke leaves select mode.
+    const selectionSource = readFileSync(fileURLToPath(new URL('./view/aquarelleStrokeSelection.ts', import.meta.url)), 'utf8');
+    expect(selectionSource).toContain('if (aquarelleLiveStrokeCount.value === 0) setAquarelleSelectMode(false);');
   });
 
   it('keeps the new signals out of the Studio and layer render bodies', () => {

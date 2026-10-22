@@ -348,6 +348,10 @@ export function beginAquarelleDeleteEdit(mutationId: number): number | null {
     if (oldest !== undefined) aquarelleEdits.delete(oldest);
   }
   if (aquarelleSelectedStrokeMutationId.value === mutationId) selectAquarelleStroke(null);
+  // The last stroke is gone: there is nothing left to select, and leaving
+  // select mode on would keep the overlay (painting blocked) behind a now
+  // disabled Select button.
+  if (aquarelleLiveStrokeCount.value === 0) setAquarelleSelectMode(false);
   return editId;
 }
 
