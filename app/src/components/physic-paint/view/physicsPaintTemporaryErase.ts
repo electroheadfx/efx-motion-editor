@@ -123,11 +123,13 @@ let inFlight = false;
 /** The (engine, tool) pair this feature last applied — engine identity is part of the key. */
 let lastApplied: { engine: TemporaryEraseEngine; tool: ToolType } | null = null;
 /**
- * 261022-pim Cmd-tap detection. `metaArmed` = the keydown actually armed the
- * move tool (not gated out), `metaChordUsed` = another key was pressed while
- * Cmd was down — a chord (Cmd+Z) must never toggle the persistent mode.
+ * 261022-pim Cmd-tap detection. `metaTapEligible` = the keydown passed the
+ * environment gates (shortcut target, engine, not locked) regardless of the
+ * selected tool — the Studio callback decides what the tap means (watercolor
+ * select, Brush Move). `metaChordUsed` = another key was pressed while Cmd
+ * was down — a chord (Cmd+Z) must never toggle the persistent mode.
  */
-let metaArmed = false;
+let metaTapEligible = false;
 let metaChordUsed = false;
 
 interface SyncOptions {
@@ -197,14 +199,16 @@ export function handleTemporaryEraseKeyUp(event: KeyboardEvent, deps: TemporaryE
  */
 export function handleTemporaryMoveKeyDown(event: KeyboardEvent, deps: TemporaryEraseDeps): void {
   if (event.key !== 'Meta' || event.repeat) return;
-  // A fresh Cmd press starts a fresh tap window: no chord yet, not armed yet.
-  metaArmed = false;
+  // A fresh Cmd press starts a fresh tap window: no chord yet, not eligible.
+  metaTapEligible = false;
   metaChordUsed = false;
   if (!deps.isShortcutTarget(event.target)) return;
-  if (deps.getSelectedTool() !== 'paint') return;
   if (deps.getEngine() === null) return;
   if (deps.isMutationLocked()) return;
-  metaArmed = true;
+  // Eligible even when the selected tool is not Paint: tapping Cmd again while
+  // Move is the selected tool must toggle back (261022-pim).
+  metaTapEligible = true;
+  if (deps.getSelectedTool() !== 'paint') return;
   temporaryMove.value = true;
   syncTemporaryErase(deps);
 }
@@ -223,8 +227,8 @@ export function handleTemporaryMoveKeyUp(event: KeyboardEvent, deps: TemporaryEr
   if (event.key !== 'Meta') return;
   temporaryMove.value = false;
   syncTemporaryErase(deps);
-  if (metaArmed && !metaChordUsed) deps.onMetaTap?.();
-  metaArmed = false;
+  if (metaTapEligible && !metaChordUsed) deps.onMetaTap?.();
+  metaTapEligible = false;
   metaChordUsed = false;
 }
 
@@ -232,7 +236,7 @@ export function handleTemporaryMoveKeyUp(event: KeyboardEvent, deps: TemporaryEr
 export function handleTemporaryEraseBlur(deps: TemporaryEraseDeps): void {
   temporaryErase.value = false;
   temporaryMove.value = false;
-  metaArmed = false;
+  metaTapEligible = false;
   metaChordUsed = false;
   syncTemporaryErase(deps);
 }
@@ -242,7 +246,7 @@ export function handleTemporaryEraseVisibilityChange(deps: TemporaryEraseDeps, v
   if (visibilityState !== 'hidden') return;
   temporaryErase.value = false;
   temporaryMove.value = false;
-  metaArmed = false;
+  metaTapEligible = false;
   metaChordUsed = false;
   syncTemporaryErase(deps);
 }
@@ -329,6 +333,6 @@ export function resetTemporaryEraseForTests(): void {
   temporaryMove.value = false;
   inFlight = false;
   lastApplied = null;
-  metaArmed = false;
+  metaTapEligible = false;
   metaChordUsed = false;
 }

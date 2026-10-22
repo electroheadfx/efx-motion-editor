@@ -1425,6 +1425,10 @@ export function PhysicsPaintStudio() {
     isMutationLocked: () => true,
     isShortcutTarget: () => false,
   });
+  // 261022-pim: the Brush-mode Cmd toggle returns to the last non-Move tool
+  // (Paint or Erase). Render-body ref write, same family as settingsRef.
+  const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');
+  if (settings.tool !== 'move') lastNonMoveToolRef.current = settings.tool;
   temporaryEraseDepsRef.current = {
     // 261022-pim: in Water color mode a held Cmd arms the select overlay
     // (temporaryMove is the held-Meta arm signal), never the engine-1 Move.
@@ -1432,11 +1436,23 @@ export function PhysicsPaintStudio() {
     getEngine: () => engineRef.current,
     isMutationLocked: isPhysicalMutationLocked,
     isShortcutTarget: isPhysicsPaintShortcutTarget,
-    // 261022-pim: a Cmd TAP (no chord) toggles the persistent Move/Select
-    // mode, so select-then-Backspace works without holding the key. Water
-    // color only for now; the Brush-mode equivalent is a later switch.
+    // 261022-pim: a Cmd TAP (no chord) toggles the persistent tool. Water
+    // color: select overlay. Brush: the Move tool becomes the SELECTED tool
+    // (the previous tool is deselected in the rail); a second tap or picking
+    // any tool leaves Move. Enter only from Paint — the dual-arm rule never
+    // flips Erase — and only when the rail's Move gate is open.
     onMetaTap: () => {
-      if (activeModule.peek() === 'watercolor') toggleAquarelleSelectMode();
+      if (activeModule.peek() === 'watercolor') {
+        toggleAquarelleSelectMode();
+        return;
+      }
+      if (settings.tool === 'move') {
+        selectTool(lastNonMoveToolRef.current, settings.physicsMode);
+        return;
+      }
+      if (settings.tool === 'paint' && strokeScriptInMemory.peek()) {
+        selectTool('move', settings.physicsMode);
+      }
     },
   };
   // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps

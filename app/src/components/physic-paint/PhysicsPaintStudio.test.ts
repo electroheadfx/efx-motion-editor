@@ -3006,9 +3006,17 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(studio).toContain('if (!aquarelleSelectMode.peek()) return false;');
     expect(studio).toContain('const mutationId = aquarelleSelectedStrokeMutationId.peek();');
     expect(studio).toContain('handleAquarelleDeleteStroke(mutationId);');
-    // A Cmd tap toggles the persistent select mode in watercolor mode only.
+    // A Cmd tap toggles the persistent select mode in watercolor mode.
     expect(studio).toContain('onMetaTap: () => {');
-    expect(studio).toContain("if (activeModule.peek() === 'watercolor') toggleAquarelleSelectMode();");
+    expect(studio).toContain("if (activeModule.peek() === 'watercolor') {");
+    expect(studio).toContain('toggleAquarelleSelectMode();');
+    // Brush mode: Cmd selects Move itself (previous tool deselected); a second
+    // tap returns to the last non-Move tool, and the Move gate matches the rail.
+    expect(studio).toContain("const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');");
+    expect(studio).toContain("if (settings.tool !== 'move') lastNonMoveToolRef.current = settings.tool;");
+    expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
+    expect(studio).toContain("if (settings.tool === 'paint' && strokeScriptInMemory.peek()) {");
+    expect(studio).toContain("selectTool('move', settings.physicsMode);");
   });
 
   it('declares the aquarelle ledger entry and replay port in the history hook', () => {

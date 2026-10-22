@@ -733,7 +733,7 @@ describe('261022-pim Cmd tap toggles the persistent select mode (TAP TOGGLE)', (
     expect(onMetaTap).toHaveBeenCalledTimes(1);
   });
 
-  it('a gated keydown (locked / wrong tool) never toggles on release', () => {
+  it('a gated keydown (locked / no shortcut target / no engine) never toggles on release', () => {
     const h = harness();
     h.box.locked = true;
     const onMetaTap = vi.fn();
@@ -743,6 +743,33 @@ describe('261022-pim Cmd tap toggles the persistent select mode (TAP TOGGLE)', (
     handleTemporaryMoveKeyUp(keyEvent('Meta').event, deps);
 
     expect(onMetaTap).not.toHaveBeenCalled();
+  });
+
+  it('a tap while Move is the selected tool still toggles (no arm, but eligible)', () => {
+    // Brush mode: Cmd tap entered Move (settings.tool === 'move'); the next tap
+    // must reach the Studio callback so it can return to the previous tool.
+    const h = harness('move');
+    const onMetaTap = vi.fn();
+    const deps = { ...h.deps, onMetaTap };
+
+    handleTemporaryMoveKeyDown(keyEvent('Meta').event, deps);
+    expect(temporaryMove.peek()).toBe(false);
+    handleTemporaryMoveKeyUp(keyEvent('Meta').event, deps);
+
+    expect(onMetaTap).toHaveBeenCalledTimes(1);
+  });
+
+  it('a tap with Erase selected reaches the Studio callback without arming Move', () => {
+    // The arm rule still refuses to flip Erase; the callback owns the policy.
+    const h = harness('erase');
+    const onMetaTap = vi.fn();
+    const deps = { ...h.deps, onMetaTap };
+
+    handleTemporaryMoveKeyDown(keyEvent('Meta').event, deps);
+    expect(temporaryMove.peek()).toBe(false);
+    handleTemporaryMoveKeyUp(keyEvent('Meta').event, deps);
+
+    expect(onMetaTap).toHaveBeenCalledTimes(1);
   });
 
   it('Cmd+Z is a chord, not a tap: the mounted listeners do not toggle', () => {
