@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-22T15:38:14.514Z"
+last_updated: "2026-10-22T17:54:08.523Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 56 complete
-state_head: 47e7ee26c2d4446b8de75733f2b8d94614727fc9
+state_head: e6914b288bd2ecdcbed3ffd53b9f3c2f12cc612c
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-o2a UAT APPROVED: Tools Scripts/Living Script split + shared picker; sidebar Apply/Create Rail labels + per-row hover delete; Tools Save gated on in-memory strokes
+Last activity: 2026-10-22 — Quick task 261022-pim automated-ready (live UAT pending): Watercolor stroke select + Alt+click delete with shared Apply re-bake and one-step undo/redo
 
 Progress: [██████████] 100%
 
@@ -569,6 +569,7 @@ None yet.
 | 261022-mvs | Feat: Add progression to apply script (watercolor) not sure if brush mode has it | 2026-10-22 | 2bd6af0f | [261022-mvs-feat-add-progression-to-apply-script-wat](./quick/261022-mvs-feat-add-progression-to-apply-script-wat/) |
 | 261022-ne3 | Bottom timeline buttons arrangement - Tools modal: Push mode after Trash; six Scripts-tab actions cloned into the Tools popover with labels | 2026-10-22 | bcaf1013 | [261022-ne3-bottom-timeline-buttons-arrangement-tool](./quick/261022-ne3-bottom-timeline-buttons-arrangement-tool/) |
 | 261022-o2a | Tools Scripts/Living Script sections, shared script picker, sidebar four labeled actions + per-row hover delete | 2026-10-22 | 47e7ee26 | [261022-o2a-tools-modal-and-scripts-sidebar-regroup-](./quick/261022-o2a-tools-modal-and-scripts-sidebar-regroup-/) |
+| 261022-pim | Watercolor stroke select + delete in Studio (Move/Cmd select mode, outline overlay, Alt+click delete re-bakes through shared Apply, one-step undo/redo) | 2026-10-22 | e6914b28 | [261022-pim-watercolor-stroke-select-delete-in-studi](./quick/261022-pim-watercolor-stroke-select-delete-in-studi/) |
 
 ### Roadmap Evolution
 
