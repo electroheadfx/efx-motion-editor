@@ -2,7 +2,7 @@
 phase: quick-261022-mne
 plan: 261022-mne
 subsystem: physic-paint / session solo
-tags: [solo, session-arm, frame-navigation, preact-signals, source-pins]
+tags: [solo, session-arm, frame-navigation, preact-signals, source-pins, uat-approved]
 status: complete
 requires:
   - physicsPaintSoloArm session-only arm signal (261022-iff)
@@ -79,21 +79,21 @@ None.
 
 None. No persisted document state, revision term, cache-key term, compositor or export path changed; the arm remains session-only and monitor-only. The launch replacement still starts a new session disarmed (T-mne-01).
 
-## Live UAT Rows — PENDING
+## Live UAT Rows — PASSED (user-approved 2026-10-22)
 
-Automated-ready, not done until the user runs these.
+The user ran the live gate in the Physic Paint Studio and approved it on 2026-10-22.
 
 | # | Action | Expected | Observed | Status |
 |---|--------|----------|----------|--------|
-| 1 | Two Paint tracks with content; arm Solo on A; navigate by row cells on A and B, transport previous/next, arrow keys, ruler scrub | Pill stays armed (tinted, aria-pressed true) with no on/off flicker; only the active track's content shows on every frame | — | PENDING |
-| 2 | With Solo armed: click a Key Rail, Loop Rail, rail set, spacing proxy, Select All, and the track B header | Arm stays on; focus follows the active track; capsule reads `Solo - {track name}.` | — | PENDING |
-| 3 | Escape once with a rail selected; re-arm and click the pill; close and reopen the Studio | One Escape, one layer: Solo disarms first, selection untouched; re-click disarms; reopen starts disarmed | — | PENDING |
-| 4 | While armed, hide the focused track, then show it; hide a non-focused track | Focused content disappears and returns; a hidden non-focused track never appears | — | PENDING |
+| 1 | Two Paint tracks with content; arm Solo on A; navigate by row cells on A and B, transport previous/next, arrow keys, ruler scrub | Pill stays armed (tinted, aria-pressed true) with no on/off flicker; only the active track's content shows on every frame | User-approved | PASSED |
+| 2 | With Solo armed: click a Key Rail, Loop Rail, rail set, spacing proxy, Select All, and the track B header | Arm stays on; focus follows the active track; capsule reads `Solo - {track name}.` | User-approved | PASSED |
+| 3 | Escape once with a rail selected; re-arm and click the pill; close and reopen the Studio | One Escape, one layer: Solo disarms first, selection untouched; re-click disarms; reopen starts disarmed | User-approved | PASSED |
+| 4 | While armed, hide the focused track, then show it; hide a non-focused track | Focused content disappears and returns; a hidden non-focused track never appears | User-approved | PASSED |
 
 ## Self-Check
 
 - Changed artifacts exist on disk: `PhysicsPaintStudio.tsx`, `PhysicsPaintStudio.test.ts`, `physicsPaintSoloArm.ts`.
 - Commit `23229e73` is an ancestor of HEAD; working tree clean apart from the uncommitted `.planning/quick/261022-mne-*` docs.
-- Automated gates passed; live UAT rows pending.
+- Automated gates passed; live UAT approved 2026-10-22.
 
 ## Self-Check: PASSED
