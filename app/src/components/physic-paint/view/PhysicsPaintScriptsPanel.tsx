@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Clipboard, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
+import { ChevronLeft, ChevronRight, Paintbrush, Pencil, Play, RefreshCw, Save, Trash2, X } from 'lucide-preact';
 import type { ComponentChildren, Ref, RefObject } from 'preact';
 import { useEffect, useId, useRef } from 'preact/hooks';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
@@ -27,7 +27,6 @@ export interface PhysicsPaintScriptsPanelProps {
   onSave: () => void;
   onActivateRow: (id: string) => void;
   onLoadAndApply: () => void;
-  onCopyScript: () => void;
   onRefresh: () => void;
 }
 
@@ -43,7 +42,6 @@ export function PhysicsPaintScriptsPanel({
   onSave,
   onActivateRow,
   onLoadAndApply,
-  onCopyScript,
   onRefresh,
 }: PhysicsPaintScriptsPanelProps) {
   const rows = library.rows.value;
@@ -74,22 +72,20 @@ export function PhysicsPaintScriptsPanel({
   const referenceImpact = confirmation?.referenceImpact ?? null;
   const toolbarRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
+  // 261022-o2a: the row trash that opened the confirmation. The delete button
+  // lives inside the row, so the cancel/confirm round-trip restores focus to
+  // THAT trash (not a toolbar button) while the row still exists.
+  const deleteTriggerId = useRef<string | null>(null);
   const previousConfirmation = useRef<typeof confirmation>(null);
   const saveReasonId = useId();
   const loadAndApplyReasonId = useId();
   const playReasonId = useId();
-  const copyScriptReasonId = useId();
   const previousRailReasonId = useId();
   const nextRailReasonId = useId();
-  const deleteReasonId = useId();
   const refreshReasonId = useId();
   const scopeSelectId = useId();
-  const copyScriptTooltip = useStyledTooltip();
-  const canCopyRotoScript = actionMutationDisabledReason === null && rotoScript.availability.value.canCopy;
-  const copyRotoScriptDisabledReason = actionMutationDisabledReason ?? (canCopyRotoScript ? null : rotoScript.availability.value.copyDisabledReason);
   useEffect(() => {
     const previous = previousConfirmation.current;
     previousConfirmation.current = confirmation;
@@ -98,10 +94,19 @@ export function PhysicsPaintScriptsPanel({
       focusFrame = requestAnimationFrame(() => cancelDeleteRef.current?.focus());
     } else if (!confirmation && previous) {
       focusFrame = requestAnimationFrame(() => {
-        if (rows.some((row) => row.id === previous.id)) {
-          deleteButtonRef.current?.focus();
-          return;
+        const triggerId = deleteTriggerId.current;
+        deleteTriggerId.current = null;
+        if (triggerId !== null && rows.some((row) => row.id === triggerId)) {
+          const trigger = listRef.current?.querySelector<HTMLElement>(
+            `[data-action-id="${CSS.escape(triggerId)}"] [data-script-delete]`,
+          );
+          if (trigger) {
+            trigger.focus();
+            return;
+          }
         }
+        // The triggering row is gone: fall back to the nearest surviving row,
+        // then to the first enabled toolbar control.
         const selectedRow = selectedActionId
           ? listRef.current?.querySelector<HTMLElement>(`[data-action-id="${CSS.escape(selectedActionId)}"]`)
           : null;
@@ -114,6 +119,12 @@ export function PhysicsPaintScriptsPanel({
       if (focusFrame !== null) cancelAnimationFrame(focusFrame);
     };
   }, [confirmation, rows, selectedActionId]);
+  const requestRowDelete = (id: string) => {
+    if (confirmationBusy) return;
+    deleteTriggerId.current = id;
+    library.select(id);
+    library.requestDelete();
+  };
   const stopRowPointerActivation = (event: { stopPropagation: () => void }) => event.stopPropagation();
   const stopRowKeyboardActivation = (event: { key: string; stopPropagation: () => void }) => {
     if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
@@ -164,39 +175,10 @@ export function PhysicsPaintScriptsPanel({
   return (
     <div class="physics-paint-scripts-panel" role="tabpanel" aria-label="Project Scripts">
       <div ref={toolbarRef} class="physics-paint-scripts-toolbar" role="toolbar" aria-label="Scripts">
-        <IconButton label="Save Script" title={`Save Script — ${saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /></IconButton>
-        <IconButton label="Load + Apply to Frame" title={`Load + Apply to Frame — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /></IconButton>
-        <IconButton buttonRef={playButtonRef} label="Create Rail…" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Script')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /></IconButton>
-        <IconButton buttonRef={deleteButtonRef} label="Delete Script" title={`Delete Script — ${actionMutationDisabledReason ?? 'Remove the selected project Script'}`} disabled={actionMutationDisabledReason !== null || !availability.canDelete} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={deleteReasonId} onClick={library.requestDelete}><Trash2 size={16} /></IconButton>
-        <IconButton label="Refresh Scripts" title={`Refresh Scripts — ${actionMutationDisabledReason ?? 'Scan the project Scripts folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={refreshReasonId} onClick={onRefresh}><RefreshCw size={16} /></IconButton>
-        <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
-          <button
-            type="button"
-            class="physics-paint-script-icon-button"
-            aria-label="Copy Script"
-            aria-disabled={!canCopyRotoScript ? 'true' : undefined}
-            aria-describedby={!canCopyRotoScript && copyRotoScriptDisabledReason ? copyScriptReasonId : undefined}
-            onFocus={copyScriptTooltip.onFocus}
-            onBlur={copyScriptTooltip.onBlur}
-            onClick={() => {
-              copyScriptTooltip.hide();
-              if (!canCopyRotoScript) return;
-              onCopyScript();
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === 'Enter' || event.key === ' ') && !canCopyRotoScript) event.preventDefault();
-            }}
-          >
-            <Clipboard size={16} aria-hidden="true" />
-            <span class="physics-paint-roto-key-icon-label">Copy</span>
-          </button>
-          {!canCopyRotoScript && copyRotoScriptDisabledReason ? (
-            <span id={copyScriptReasonId} class="physics-paint-sr-only">{copyRotoScriptDisabledReason}</span>
-          ) : null}
-          <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible} region="right-edge" avoidRowOverlap>
-            {!canCopyRotoScript && copyRotoScriptDisabledReason ? `unavailable: ${copyRotoScriptDisabledReason}` : 'Copy Script'}
-          </PhysicsPaintStyledTooltip>
-        </span>
+        <IconButton label="Save Script" title={`Save Script — ${saveDisabledReason ?? 'Save the active real Roto frame'}`} disabled={saveDisabledReason !== null || !availability.canSave} disabledReason={saveDisabledReason ?? undefined} descriptionId={saveReasonId} onClick={onSave}><Save size={16} /><span class="physics-paint-roto-key-icon-label">Save</span></IconButton>
+        <IconButton label="Load + Apply to Frame" title={`Load + Apply to Frame — ${loadAndApplyDisabledReason ?? 'Reload the selected preset and apply it to this Roto frame'}`} disabled={loadAndApplyDisabledReason !== null} disabledReason={loadAndApplyDisabledReason ?? undefined} descriptionId={loadAndApplyReasonId} onClick={onLoadAndApply}><Paintbrush size={16} /><span class="physics-paint-roto-key-icon-label">Load + Apply</span></IconButton>
+        <IconButton buttonRef={playButtonRef} label="Create Rail…" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Script')}`} disabled={playScriptDisabledReason !== null} disabledReason={playScriptDisabledReason ?? undefined} descriptionId={playReasonId} onClick={() => { void playScript.openConfirmation(); }}><Play size={16} /><span class="physics-paint-roto-key-icon-label">Create Rail</span></IconButton>
+        <IconButton label="Refresh Scripts" title={`Refresh Scripts — ${actionMutationDisabledReason ?? 'Scan the project Scripts folder'}`} disabled={actionMutationDisabledReason !== null} disabledReason={actionMutationDisabledReason ?? undefined} descriptionId={refreshReasonId} onClick={onRefresh}><RefreshCw size={16} /><span class="physics-paint-roto-key-icon-label">Refresh</span></IconButton>
       </div>
       {scopeEntries.length > 1 || linkedGroupNavigation ? (
         // quick-260922-jss amendment: ONE meta row carries both the scope
@@ -306,6 +288,34 @@ export function PhysicsPaintScriptsPanel({
               </span>
               <span class="physics-paint-script-count">{row.brushCount} {row.brushCount === 1 ? 'brush' : 'brushes'}</span>
             </span>
+            {/* 261022-o2a: per-row trash. Gated ONLY by the library mutation
+                lock — `availability.canDelete` requires an EXISTING selection
+                and would disable every unselected row. The trash never commits
+                a delete: it selects the row and opens the shared confirmation,
+                which stays the only commit surface. */}
+            <button
+              type="button"
+              class="physics-paint-script-row-delete"
+              data-script-delete
+              aria-label={`Delete ${row.name}`}
+              disabled={actionMutationDisabledReason !== null}
+              title={actionMutationDisabledReason ?? `Delete ${row.name}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                requestRowDelete(row.id);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                // The row's own keydown would activate the row first; the
+                // trash owns this press (default is suppressed so the native
+                // click does not double-fire the request).
+                event.stopPropagation();
+                event.preventDefault();
+                requestRowDelete(row.id);
+              }}
+            >
+              <Trash2 size={14} aria-hidden="true" />
+            </button>
           </div>
           );
         })}

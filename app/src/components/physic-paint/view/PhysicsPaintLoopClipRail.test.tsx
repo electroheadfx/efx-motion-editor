@@ -247,7 +247,6 @@ function renderScriptsPanel(
     onSave: () => {},
     onActivateRow: () => {},
     onLoadAndApply: () => {},
-    onCopyScript: () => {},
     onRefresh: () => {},
   });
   return materializeNamedComponents(tree, new Set(['IconButton']));

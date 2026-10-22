@@ -1258,14 +1258,15 @@ button.destructive {
 
 .physics-paint-scripts-toolbar {
   display: grid;
-  /* Content-sized columns: the second-row Copy / Apply / Clear labels render
-     in full instead of ellipsizing inside fixed-fraction cells (36.15-11,
-     UAT Gap G-1). */
-  grid-template-columns: repeat(6, auto);
+  /* 261022-o2a: ONE row of four labeled actions (Save / Load + Apply /
+     Create Rail / Refresh). Delete and Copy moved out — Delete is a per-row
+     trash, Copy lives in the Tools Living Script row. Content-sized columns
+     keep every label in full instead of ellipsizing (36.15-11, UAT Gap G-1). */
+  grid-template-columns: repeat(4, auto);
   justify-content: start;
   column-gap: 4px;
-  /* Visible vertical separation between the two icon rows (36.15-11, UAT
-     Gap G-5). */
+  /* The row-gap outlives the second row: it is the toolbar-to-meta/list
+     breathing room and keeps the pinned toolbar from hugging the list. */
   row-gap: 8px;
   min-width: 0;
 }
@@ -1363,16 +1364,17 @@ button.destructive {
   font-style: italic;
 }
 
-/* Guarded toolbar actions (Save / Load + Apply / Create Rail / Delete /
-   Refresh / Copy) all use the guarded styled-tooltip idiom (260905-dso). */
+/* Guarded toolbar actions (Save / Load + Apply / Create Rail / Refresh) all
+   use the guarded styled-tooltip idiom (260905-dso; 261022-o2a drops the
+   Delete/Copy clones). */
 .physics-paint-scripts-toolbar .physics-paint-roto-key-icon-action {
   display: flex;
   min-width: 0;
 }
 
-/* Short visible labels on the guarded second-row clipboard actions (Copy /
-   Apply / Clear) sit next to their icons like the bottom action row
-   (36.15-09, UAT Gap E-1). */
+/* 261022-o2a: every toolbar action now carries a short visible label next to
+   its icon (Save / Load + Apply / Create Rail / Refresh), like the bottom
+   action row (36.15-09, UAT Gap E-1). */
 .physics-paint-scripts-toolbar .physics-paint-script-icon-button {
   gap: 4px;
   padding: 0 6px;
@@ -1434,7 +1436,8 @@ button.destructive {
 
 .physics-paint-script-row {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  /* 261022-o2a: thumbnail | copy | per-row trash. */
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -1451,6 +1454,51 @@ button.destructive {
 .physics-paint-script-row:hover { border-color: #747b83; background: #414447; }
 .physics-paint-script-row:focus-visible { outline: 2px solid var(--color-accent, #2d5be3); outline-offset: 2px; }
 .physics-paint-script-row.selected { border-color: #7e9cff; background: #454b5a; }
+/* 261022-o2a: per-row trash. Hidden until the row is hovered or anything
+   inside it is focused, so the list stays calm while the action remains
+   keyboard reachable. Never `display: none` — the button must stay focusable
+   so `:focus-within` can reveal it after a delete round-trip. */
+.physics-paint-script-row-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #5a6067;
+  border-radius: 4px;
+  background: transparent;
+  color: #9aa3ad;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s, border-color 0.12s, color 0.12s, background-color 0.12s;
+}
+.physics-paint-script-row:hover .physics-paint-script-row-delete,
+.physics-paint-script-row:focus-within .physics-paint-script-row-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+.physics-paint-script-row-delete:hover {
+  border-color: #b4544f;
+  background: rgba(190, 72, 66, 0.18);
+  color: #ff9b94;
+}
+.physics-paint-script-row-delete:focus-visible {
+  outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: 2px;
+  opacity: 1;
+  pointer-events: auto;
+}
+.physics-paint-script-row-delete:disabled,
+.physics-paint-script-row:hover .physics-paint-script-row-delete:disabled,
+.physics-paint-script-row:focus-within .physics-paint-script-row-delete:disabled {
+  border-color: #3f4851;
+  background: #2a3036;
+  color: #6b7280;
+  cursor: default;
+  opacity: 0.5;
+}
 .physics-paint-script-thumbnail { width: 48px; height: 48px; object-fit: contain; border-radius: 4px; background: #fff; pointer-events: none; }
 .physics-paint-script-row-copy, .physics-paint-script-rename-wrap { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .physics-paint-script-name, .physics-paint-script-provenance, .physics-paint-script-count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

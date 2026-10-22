@@ -4399,7 +4399,6 @@ export function PhysicsPaintStudio() {
       onSave: () => { void rotoScriptLibrary.saveActiveFrame(); },
       onActivateRow: (id: string) => { void handleScriptRowActivate(id); },
       onLoadAndApply: () => { void handleSelectedScriptLoadAndApply(); },
-      onCopyScript: () => { void rotoScript.copyScript().then((success) => { if (success) setLastError(null); else { const message = rotoScript.error.peek()?.message; if (message) setLastError(message); } }); },
       onRefresh: () => { void rotoScriptLibrary.refresh(); },
     },
     };
