@@ -6,7 +6,6 @@ import { efxPaintAudioMonitor } from '../audio/efxPaintAudioMonitor';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { efxPaintDocumentAudioStore } from '../audio/efxPaintDocumentAudioStore';
 import { efxPaintAudioOwnership } from '../audio/efxPaintAudioOwnership';
-import { resolvePlaybackStartIndex } from '../roto/physicsPaintRotoSoloWindow';
 
 const MIN_ROTO_PLAYBACK_FPS = 1;
 const MAX_ROTO_PLAYBACK_FPS = 60;
@@ -40,16 +39,6 @@ export interface UseRotoCachedPlaybackInput<Frame> {
    * range start.
    */
   getCurrentAppFrame?: () => number;
-  /**
-   * D-20/D-21/D-22 (52.2-04): the solo content start supplied by the caller —
-   * null (or the getter absent) when no solo is active, which keeps the D-01
-   * cursor re-anchor above. The caller derives it (the armed session pill's
-   * window start, else the first painted key of the persisted row-S soloed
-   * tracks, else 0); this hook never reads the solo signal, the document, or
-   * persistence itself. Non-null flips `resolvePlaybackStartIndex` to the
-   * first cached frame at or after this appFrame.
-   */
-  getSoloContentStart?: () => number | null;
   onStart: (frameCount: number) => void;
   onFrame: (frameIndex: number, appFrame: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
@@ -194,20 +183,13 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     // the initial scrub position: loop wrap returns here, never the range
     // start (the showNextFrame wrap branch below).
     const cursorAppFrame = currentInput.getCurrentAppFrame?.() ?? 0;
-    // D-20/D-21/D-22 (52.2-04): while a solo is active the caller supplies the
-    // solo content start (the armed pill window's first frame, or the first
-    // painted key of the persisted row-S soloed tracks). Play starts there
-    // instead of at the cursor, and BOTH refs take that ONE index — the wrap
-    // branch below reads loopStartIndexRef, so a single assignment is what
-    // makes every loop iteration return to the solo content start (D-22). No
-    // solo (null) leaves the Phase 51 play-from-cursor law byte-for-byte.
-    const soloContentStart = currentInput.getSoloContentStart?.() ?? null;
-    const startIndex = resolvePlaybackStartIndex({
-      soloActive: soloContentStart !== null,
-      contentStart: soloContentStart ?? 0,
-      cursorAppFrame,
-      cachedFrames,
-    });
+    // D-01/Phase 51 play-from-cursor law (261022-iff: the retired solo content
+    // start no longer overrides it): the start index is the cursor's index in
+    // the cached frame list, falling back to the range start. BOTH refs take
+    // that ONE index — the wrap branch below reads loopStartIndexRef, so every
+    // loop iteration returns to the cursor start.
+    const cursorIndex = cachedFrames.findIndex((entry) => entry.appFrame === cursorAppFrame);
+    const startIndex = cursorIndex >= 0 ? cursorIndex : 0;
     frameIndexRef.current = startIndex;
     loopStartIndexRef.current = startIndex;
     clearTimer();

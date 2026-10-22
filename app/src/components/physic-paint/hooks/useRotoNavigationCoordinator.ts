@@ -5,7 +5,6 @@ import { createRotoFrameDisplayPort } from '../roto/rotoCoordinatorPorts';
 import { createRotoNavigationActions, getRotoNavigationTargets } from '../roto/rotoNavigationActions';
 import { useRotoCachedPlayback, type RotoCachedPlaybackFrame } from './useRotoCachedPlayback';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
-import type { SoloPlaybackWindow } from '../roto/physicsPaintRotoSoloWindow';
 import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 
 interface RotoNavigationRuntimePort {
@@ -34,26 +33,6 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
      * falls back to the range start.
      */
     getCurrentAppFrame?: () => number;
-    /**
-     * Optional solo playback window (43.6-06, D-17/D-19). Absent or null
-     * returns the byte-identical pre-solo enumeration (disarmed = zero
-     * behavior change). When present, the getFrames enumeration restricts to
-     * [start, endExclusive) intersected with the playback end and yields
-     * `{ appFrame, frame: null }` for in-range frames failing attribution —
-     * the existing missing-frame treatment hides unselected content with zero
-     * rendering changes. This is the ONLY place the solo filter lives; the
-     * stopped-canvas display lookup (findCachedRotoDisplayFrame) stays
-     * untouched (D-18, Pitfall 3).
-     */
-    getSoloWindow?: () => SoloPlaybackWindow | null;
-    /**
-     * D-20/D-21/D-22 (52.2-04): the solo content start at Play press time —
-     * null (or absent) when no solo is active. The Studio derives it from the
-     * armed session pill window or the persisted row-S soloed tracks; the
-     * coordinator only forwards it to the cached-playback hook, which anchors
-     * the start AND loop-wrap refs there.
-     */
-    getSoloContentStart?: () => number | null;
     onStart: (frameCount: number) => void;
     onFrame: (frameIndex: number, appFrame: number) => void;
     setIsPlaying: (isPlaying: boolean) => void;
@@ -80,22 +59,12 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
   const playback = useRotoCachedPlayback({
     initialSettings: input.playback.initialSettings,
     workflowMode: input.workflowMode,
+    // 261022-iff: one entry per appFrame over the full composite range. The
+    // global Solo is a composite-path track focus; it never alters playback
+    // enumeration (the retired rail-solo window is gone).
     getFrames: () => {
       const playbackEndFrame = input.playback.getEndFrame();
       if (playbackEndFrame === null || playbackEndFrame <= 0) return [];
-      const soloWindow = input.playback.getSoloWindow?.() ?? null;
-      if (soloWindow !== null) {
-        const start = Math.max(0, soloWindow.start);
-        const end = Math.min(soloWindow.endExclusive, playbackEndFrame);
-        if (start >= end) return [];
-        return Array.from({ length: end - start }, (_, index): RotoCachedPlaybackFrame<TPreview> => {
-          const appFrame = start + index;
-          return {
-            appFrame,
-            frame: soloWindow.includesFrame(appFrame) ? input.playback.getFrame(appFrame) : null,
-          };
-        });
-      }
       return Array.from({ length: playbackEndFrame }, (_, appFrame): RotoCachedPlaybackFrame<TPreview> => ({
         appFrame,
         frame: input.playback.getFrame(appFrame),
@@ -113,7 +82,6 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
     },
     setIsPlaying: input.playback.setIsPlaying,
     getCurrentAppFrame: input.playback.getCurrentAppFrame,
-    getSoloContentStart: input.playback.getSoloContentStart,
   });
 
   const requestNavigation = useCallback(async (targetFrame: number) => {

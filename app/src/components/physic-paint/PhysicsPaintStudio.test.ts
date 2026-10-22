@@ -752,45 +752,15 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(collapse).toContain('if (selectedKeyIds.value.length <= 1) return;');
   });
 
-  it('gates the solo playback window on the armed signal so a plain rail selection never filters playback (43.6-09)', () => {
-    // 52.2-04 (D-21): the window derivation moved into resolveSessionSoloWindow
-    // so one derivation serves both getSoloWindow and getSoloContentStart; the
-    // port delegates. The disarmed guard must still lead the derivation.
-    expect(studio).toContain('getSoloWindow: () => resolveSessionSoloWindow(),');
-    const portStart = studio.indexOf('const resolveSessionSoloWindow = (): SoloPlaybackWindow | null => {');
-    const portEnd = studio.indexOf('getSoloWindow:', portStart);
-    const port = studio.slice(portStart, portEnd);
-    expect(portStart).toBeGreaterThanOrEqual(0);
-    // 43.6-09: a disarmed solo must return null BEFORE member derivation so
-    // the playback enumeration stays byte-identical (43.6-06 D-17) even when
-    // a rail is selected — otherwise selecting a rail after disarm plays only
-    // that rail, as if solo were still active.
-    expect(port).toContain('if (!isSoloArmed()) return null;');
-    expect(port.indexOf('if (!isSoloArmed()) return null;')).toBeLessThan(port.indexOf('const members: RailSetIdentity[]'));
-  });
-
-  it('disarms an armed Solo when a plain Loop Rail click changes the selection (43.6-11)', () => {
-    // REVIEW-WR-01 regression: the plain-click success branch of
-    // handleSelectRotoLoopClip is the only rail-selection change path that used
-    // to skip disarmSolo() — an armed Solo would silently retarget to the newly
-    // plain-clicked Loop rail via the getSoloWindow single-rail fallback.
-    const handlerStart = studio.indexOf('const handleSelectRotoLoopClip = useCallback((');
-    const handlerEnd = studio.indexOf('const handleOpenRotoLoopEdit', handlerStart);
-    const handler = studio.slice(handlerStart, handlerEnd);
-    expect(handlerStart).toBeGreaterThanOrEqual(0);
-    // The plain-click branch runs from the collapse comment (unique inside the
-    // Loop handler slice — the Key Rail handler's identical comment sits
-    // outside it) to the end of the handler.
-    const branchStart = handler.indexOf('// Plain click collapses the set into the single-rail path (D-04).');
-    expect(branchStart).toBeGreaterThanOrEqual(0);
-    const branch = handler.slice(branchStart);
-    // 43.6-06 (D-14): a plain Loop Rail click is a rail-selection change, so an
-    // armed Solo must disarm BEFORE the new selection is written — the armed
-    // getSoloWindow gate (L1153) then returns null for the new selection.
-    expect(branch).toContain('disarmSolo();');
-    expect(branch.indexOf('disarmSolo();')).toBeLessThan(
-      branch.indexOf('selectedLoopClipIds.value = next.selectedLoopClipIds;'),
-    );
+  it('supplies no solo playback window or content-start port (261022-iff)', () => {
+    // The one global Solo is a composite-path track focus: it never filters or
+    // re-anchors playback. The rail-solo window derivation is deleted
+    // end-to-end, so the Studio's playback port carries neither getter.
+    expect(studio).not.toContain(['getSolo', 'Window'].join(''));
+    expect(studio).not.toContain(['getSolo', 'ContentStart'].join(''));
+    expect(studio).not.toContain(['resolveSession', 'SoloWindow'].join(''));
+    // Play still re-anchors at the cursor over the full composite range.
+    expect(studio).toContain('getCurrentAppFrame: () => currentFrame,');
   });
 
   it('clears the set on Select All and spacing selection (D-04 key selection)', () => {
@@ -2569,7 +2539,7 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const prepareBlock = section(
       studio,
       'prepareRotoScriptTargetRef.current = async (',
-      '// 43.6-06 (D-19)',
+      '// RARE BLANK-AFTER-PLAY guard',
     );
     expect(prepareBlock).toContain('promoteRotoPaintTargetRef.current(');
     expect(prepareBlock).toContain("source: 'auto-key-paint'");

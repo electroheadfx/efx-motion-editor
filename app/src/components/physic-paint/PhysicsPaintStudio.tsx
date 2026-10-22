@@ -85,8 +85,7 @@ import {
 import { aquarelleActiveTool } from './view/aquarelleRecordState';
 import type { RotoPhysicalEditAcceptedOutput, RotoPhysicalEditSnapshot } from './roto/rotoCoordinatorPorts';
 import { disarmPushTool, isPushCommitInFlight } from './view/physicsPaintPushArmedTool';
-import { disarmSolo, isSoloArmed } from './view/physicsPaintSoloArm';
-import { deriveSoloContentStart, deriveSoloPlaybackWindow, type SoloPlaybackWindow } from './roto/physicsPaintRotoSoloWindow';
+import { disarmSolo } from './view/physicsPaintSoloArm';
 import { usePhysicsPaintStudioKeyboard } from './hooks/usePhysicsPaintStudioKeyboard';
 import { createIdentityMemo, usePhysicsPaintStudioViewModel } from './hooks/usePhysicsPaintStudioViewModel';
 import { useRotoTimelineActions, type RotoGroupLifecycleDeleteTarget, type RotoKeyRailSelection } from './hooks/useRotoTimelineActions';
@@ -2343,34 +2342,6 @@ export function PhysicsPaintStudio() {
       : null;
   };
 
-  // 43.6-06 (D-19) / 52.2-04 (D-20/D-21): the session pill's solo window. One
-  // derivation serves both the playback enumeration filter (getSoloWindow) and
-  // the D-21 solo content start (getSoloContentStart) — the pill's window start
-  // IS the isolated content start by construction. Disarmed returns null before
-  // any member derivation so the enumeration stays byte-identical to pre-solo
-  // playback even when a rail is selected. Wiring only: no derivation logic
-  // lives in the Studio body.
-  const resolveSessionSoloWindow = (): SoloPlaybackWindow | null => {
-    if (!isSoloArmed()) return null;
-    const members: RailSetIdentity[] = [];
-    for (const member of effectiveRailSetSelection?.members ?? []) members.push(member);
-    if (members.length === 0) {
-      if (effectiveSelectedRotoKeyRail) {
-        members.push({ kind: 'key-rail', firstKeyId: effectiveSelectedRotoKeyRail.firstKeyId });
-      }
-      for (const loopId of effectiveSelectedLoopClipIds) members.push({ kind: 'loop', loopId });
-    }
-    if (members.length === 0) return null;
-    const cells = rotoTimelineModel.physicalCells.value;
-    return deriveSoloPlaybackWindow({
-      members,
-      keyRailSegments,
-      loopRanges: loopResolutionContext?.ranges ?? [],
-      cells,
-      capacity: cells.length,
-    });
-  };
-
   // RARE BLANK-AFTER-PLAY guard (user report 2026-10-19): one playback session
   // ended with every key surface blank until a full Studio close/reopen.
   // Playback itself only reads; the stop transition is the single place the
@@ -2435,38 +2406,9 @@ export function PhysicsPaintStudio() {
       // application-frame cursor — an idle seek to frame N resumes there, never
       // the range start.
       getCurrentAppFrame: () => currentFrame,
-      // 43.6-06 (D-19) / 43.6-09 (D-14/D-17): the solo filter seam — see
-      // resolveSessionSoloWindow above.
-      getSoloWindow: () => resolveSessionSoloWindow(),
-      // 52.2-04 (D-20/D-21): the solo content start at Play press time,
-      // evaluated lazily like every other playback getter. Null = no solo
-      // active (neither the session pill nor a persisted row-S solo) → the
-      // hook keeps the Phase 51 play-from-cursor law. Non-null = the index the
-      // hook anchors BOTH the frame and loop refs at, so every loop wrap
-      // returns to the isolated content start (D-22). Precedence: the session
-      // window's own start, else the first painted key across the persisted
-      // row-S soloed tracks, else project frame 0 (D-21).
-      getSoloContentStart: () => {
-        const layerId = launchContext?.layerId;
-        if (!layerId) return null;
-        const sessionWindow = resolveSessionSoloWindow();
-        const documentSoloTrackIds = (getEfxPaintDocument(layerId)?.tracks ?? [])
-          .filter((track) => track.solo)
-          .map((track) => track.id);
-        if (sessionWindow === null && documentSoloTrackIds.length === 0) return null;
-        const paintedKeyFrames: number[] = [];
-        for (const trackId of documentSoloTrackIds) {
-          for (const record of physicPaintStore.getRotoRealKeyRecords(layerId, trackId)) {
-            paintedKeyFrames.push(record.appFrame);
-          }
-        }
-        return deriveSoloContentStart({
-          sessionWindow,
-          documentSoloTrackIds,
-          paintedKeyFrames,
-          capacity: physicPaintStore.getRotoPhysicalCompositeEndFrame(layerId) ?? 0,
-        });
-      },
+      // 261022-iff: the global Solo is a composite-path track focus — it never
+      // supplies a playback window or start offset. Play keeps the play-from-
+      // cursor law over the full composite range.
       onStart: (frameCount) => { rotoPlaybackFrameCount.value = frameCount; },
       onFrame: (frameIndex) => {
         rotoPlaybackFrameIndex.value = frameIndex;
