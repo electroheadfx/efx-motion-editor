@@ -400,14 +400,12 @@ describe('Physics Paint Scripts panel per-row trash contract (261022-o2a)', () =
   });
 });
 
-describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT Gap E-1; 261022-o2a four-label toolbar)', () => {
-  it('renders a short visible label after the guarded icon on all four toolbar buttons', () => {
+describe('Physics Paint Scripts panel label contract (36.15-09, UAT Gap E-1; 261022-o2a toolbar)', () => {
+  it('labels only Apply and Create Rail; Save and Refresh stay icon-only', () => {
     const toolbar = getScriptsToolbarBlock(panel);
     const expectations = [
-      ['Save Script', '<Save size={16}', 'Save'],
-      ['Load + Apply to Frame', '<Paintbrush size={16}', 'Load + Apply'],
+      ['Load + Apply to Frame', '<Paintbrush size={16}', 'Apply'],
       ['Create Rail…', '<Play size={16}', 'Create Rail'],
-      ['Refresh Scripts', '<RefreshCw size={16}', 'Refresh'],
     ] as const;
     for (const [label, icon, visible] of expectations) {
       const block = getIconButtonBlock(toolbar, label);
@@ -416,6 +414,9 @@ describe('Physics Paint Scripts panel second-row label contract (36.15-09, UAT G
       expect(iconIndex, `${label} icon`).toBeGreaterThanOrEqual(0);
       const labelIndex = block.indexOf(`<span class="physics-paint-roto-key-icon-label">${visible}</span>`);
       expect(labelIndex, `${label} visible label`).toBeGreaterThan(iconIndex);
+    }
+    for (const iconOnly of ['Save Script', 'Refresh Scripts']) {
+      expect(getIconButtonBlock(toolbar, iconOnly)).not.toContain('physics-paint-roto-key-icon-label');
     }
   });
 
@@ -440,12 +441,14 @@ describe('Physics Paint Scripts panel Gap F toolbar label contract (36.15-10, UA
     const ruleEnd = css.indexOf('}', ruleStart);
     const rule = css.slice(ruleStart, ruleEnd === -1 ? css.length : ruleEnd + 1);
     expect(rule).toContain('text-transform: none');
-    // Four source labels, each a short human-readable phrase.
+    // 261022-o2a UAT: two labels; Save and Refresh are icon-only.
     const toolbar = getScriptsToolbarBlock(panel);
-    for (const visible of ['Save', 'Load + Apply', 'Create Rail', 'Refresh']) {
+    for (const visible of ['Apply', 'Create Rail']) {
       expect(toolbar).toContain(`<span class="physics-paint-roto-key-icon-label">${visible}</span>`);
     }
-    expect(toolbar).not.toContain('physics-paint-roto-key-icon-label">Copy</span>');
+    for (const gone of ['Save', 'Load + Apply', 'Refresh', 'Copy']) {
+      expect(toolbar).not.toContain(`<span class="physics-paint-roto-key-icon-label">${gone}</span>`);
+    }
   });
 
   it('keeps every toolbar icon at size 16 by preventing flex shrink in the grid cells', () => {
@@ -487,10 +490,12 @@ describe('Physics Paint Scripts panel Gap G toolbar contract (36.15-11, UAT Gap 
     // Buttons no longer stretch to fill fixed-fraction cells.
     expect(css).not.toContain('.physics-paint-script-icon-button { width: 100% }');
     const toolbar = getScriptsToolbarBlock(panel);
-    for (const visible of ['Save', 'Load + Apply', 'Create Rail', 'Refresh']) {
+    for (const visible of ['Apply', 'Create Rail']) {
       expect(toolbar).toContain(`<span class="physics-paint-roto-key-icon-label">${visible}</span>`);
     }
-    expect(toolbar).not.toContain('physics-paint-roto-key-icon-label">Copy</span>');
+    for (const gone of ['Save', 'Load + Apply', 'Refresh', 'Copy']) {
+      expect(toolbar).not.toContain(`<span class="physics-paint-roto-key-icon-label">${gone}</span>`);
+    }
   });
 
   it('keeps the toolbar on one row with the row gap serving as breathing room (UAT Gap G-5)', () => {

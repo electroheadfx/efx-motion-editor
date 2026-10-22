@@ -1414,11 +1414,10 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Scripts</div>
             {/* 261022-o2a: Scripts act on SAVED project Scripts; the Living
-                Script row below acts on the in-memory buffer. The Scripts row
-                keeps three labeled actions — Save, Load + Apply and Create
-                Rail all route through the shared floating picker where a
-                selection is needed. Guards use aria-disabled only, never the
-                native attribute. */}
+                Script row below acts on the in-memory buffer. Save stays
+                icon-only; Apply and Create Rail keep labels and all three fit
+                one line. Guards use aria-disabled only, never the native
+                attribute. */}
             <div class="physics-paint-toolbox-scripts-row" role="group" aria-label="Script actions">
               <span class="physics-paint-roto-key-icon-action" onPointerEnter={saveScriptTooltip.onPointerEnter} onPointerLeave={saveScriptTooltip.onPointerLeave}>
                 <button
@@ -1439,7 +1438,6 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                   }}
                 >
                   <Save size={15} aria-hidden="true" />
-                  <span class="physics-paint-roto-key-icon-label">Save</span>
                 </button>
                 {!props.canSaveScript && props.saveScriptDisabledReason ? (
                   <span id="roto-key-action-reason-save-script" class="physics-paint-sr-only">{props.saveScriptDisabledReason}</span>
@@ -1467,7 +1465,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                   }}
                 >
                   <Paintbrush size={15} aria-hidden="true" />
-                  <span class="physics-paint-roto-key-icon-label">Load + Apply</span>
+                  <span class="physics-paint-roto-key-icon-label">Apply</span>
                 </button>
                 {!props.canLoadAndApplyScript && props.loadAndApplyScriptDisabledReason ? (
                   <span id="roto-key-action-reason-load-apply" class="physics-paint-sr-only">{props.loadAndApplyScriptDisabledReason}</span>
@@ -2405,8 +2403,16 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   // same controller signals the ScriptsPanel reads, in render only. No state,
   // no effects, no writes.
   const scriptLibraryAvailability = props.rotoScriptLibraryAvailability?.value ?? null;
-  const canSaveScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canSave ?? false);
-  const saveScriptDisabledReason = scriptActionMutationDisabledReason ?? (canSaveScript ? null : (scriptLibraryAvailability?.saveDisabledReason ?? null));
+  // 261022-o2a UAT: Save mirrors the Living Script Copy gate — it greys out
+  // until the current real key holds a script in memory (canCopy), and
+  // activates as soon as painting leaves strokes there.
+  const canSaveScript = scriptActionMutationDisabledReason === null
+    && (scriptLibraryAvailability?.canSave ?? false)
+    && (scriptAvailability?.canCopy ?? false);
+  const saveScriptDisabledReason = scriptActionMutationDisabledReason
+    ?? (canSaveScript
+      ? null
+      : (scriptLibraryAvailability?.saveDisabledReason ?? scriptAvailability?.copyDisabledReason ?? null));
   // The remaining clones mirror PhysicsPaintScriptsPanel's toolbar
   // derivation verbatim (same signals, same fallback copy). 261022-o2a: Create
   // Rail opens the whole-library picker, so it is gated by project-Script

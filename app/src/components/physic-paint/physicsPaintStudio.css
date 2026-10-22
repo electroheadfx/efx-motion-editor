@@ -1258,13 +1258,14 @@ button.destructive {
 
 .physics-paint-scripts-toolbar {
   display: grid;
-  /* 261022-o2a: ONE row of four labeled actions (Save / Load + Apply /
-     Create Rail / Refresh). Delete and Copy moved out — Delete is a per-row
-     trash, Copy lives in the Tools Living Script row. Content-sized columns
-     keep every label in full instead of ellipsizing (36.15-11, UAT Gap G-1). */
+  /* 261022-o2a: ONE row of four actions (Save / Apply / Create Rail /
+     Refresh). Save and Refresh stay icon-only; Delete and Copy moved out
+     (per-row trash, Tools Living Script). Content-sized columns keep the two
+     labels in full; the wider column gap keeps the buttons from crowding
+     (UAT review). */
   grid-template-columns: repeat(4, auto);
   justify-content: start;
-  column-gap: 4px;
+  column-gap: 8px;
   /* The row-gap outlives the second row: it is the toolbar-to-meta/list
      breathing room and keeps the pinned toolbar from hugging the list. */
   row-gap: 8px;
@@ -1372,9 +1373,9 @@ button.destructive {
   min-width: 0;
 }
 
-/* 261022-o2a: every toolbar action now carries a short visible label next to
-   its icon (Save / Load + Apply / Create Rail / Refresh), like the bottom
-   action row (36.15-09, UAT Gap E-1). */
+/* 261022-o2a UAT: only Apply and Create Rail carry visible labels; Save and
+   Refresh stay icon-only so the four toolbar actions breathe. The rules still
+   serve the labeled pair (36.15-09, UAT Gap E-1). */
 .physics-paint-scripts-toolbar .physics-paint-script-icon-button {
   gap: 4px;
   padding: 0 6px;
@@ -6883,11 +6884,11 @@ button.destructive {
   min-width: 0;
 }
 
-/* 261022-ne3: the cloned Scripts-toolbar actions wrap across several lines —
-   six labeled buttons never fit one popover line. */
+/* 261022-o2a UAT: the Scripts row keeps Save (icon-only), Apply and Create
+   Rail together on ONE line — the row never wraps. */
 .physics-paint-toolbox-scripts-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   min-width: 0;

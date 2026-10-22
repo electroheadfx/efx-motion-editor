@@ -2508,9 +2508,12 @@ describe('Tools popover Scripts / Living Script regroup (261022-o2a, supersedes 
       expect(block.replace(/aria-disabled/g, '')).not.toContain('disabled=');
       expect(block).toContain("(event.key === 'Enter' || event.key === ' ')");
     }
-    // Visible labels — the row wraps rather than hiding the names.
-    expect(row).toContain('physics-paint-roto-key-icon-label">Save<');
-    expect(row).toContain('physics-paint-roto-key-icon-label">Load + Apply<');
+    // 261022-o2a UAT: Save is icon-only; Apply and Create Rail keep labels and
+    // the three actions stay on one line.
+    const saveBlock = getButtonBlock(row, 'Save Script');
+    expect(saveBlock).not.toContain('physics-paint-roto-key-icon-label');
+    expect(row).toContain('physics-paint-roto-key-icon-label">Apply<');
+    expect(row).not.toContain('physics-paint-roto-key-icon-label">Load + Apply<');
     expect(row).toContain('physics-paint-roto-key-icon-label">Create Rail<');
     expect(row).toContain("buildGuardedActionTooltipCopy('Save Script', props.saveScriptDisabledReason)");
     expect(row).toContain("buildGuardedActionTooltipCopy('Load + Apply to Frame', props.loadAndApplyScriptDisabledReason)");
@@ -2573,10 +2576,13 @@ describe('Tools popover Scripts / Living Script regroup (261022-o2a, supersedes 
     expect(staticChrome).toContain('saveScriptDisabledReason: string | null;');
     // Render-time reads of the signal references — no state, no effect.
     expect(code).toContain('const scriptLibraryAvailability = props.rotoScriptLibraryAvailability?.value ?? null;');
-    expect(code).toContain('const canSaveScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canSave ?? false);');
+    // 261022-o2a UAT: Save also mirrors the Living Script Copy gate — no
+    // script in memory greys it out, and painting activates it.
+    expect(code).toContain('&& (scriptAvailability?.canCopy ?? false);');
+    expect(code).toContain('scriptLibraryAvailability?.saveDisabledReason ?? scriptAvailability?.copyDisabledReason');
     expect(code).toContain('onSaveScript={props.onSaveScript}');
     const rule = getCssRuleBlock(css(), '.physics-paint-toolbox-scripts-row {');
-    expect(rule).toContain('flex-wrap: wrap');
+    expect(rule).toContain('flex-wrap: nowrap');
     const studio = studioSource();
     expect(studio).toContain('const handleSaveScript = useCallback(');
     expect(studio).toContain('void rotoScriptLibrary.saveActiveFrame();');
@@ -2597,8 +2603,8 @@ describe('Tools popover Scripts / Living Script regroup (261022-o2a, supersedes 
     expect(code).toContain('scriptAvailability?.copyDisabledReason');
     expect(code).toContain("props.onOpenScriptPicker?.('load-apply')");
     expect(code).toContain("props.onOpenScriptPicker?.('create-rail')");
-    // Both rows wrap; the popover stays height-neutral.
-    expect(getCssRuleBlock(css(), '.physics-paint-toolbox-scripts-row {')).toContain('flex-wrap: wrap');
+    // Scripts stays on one line; the Living Script row wraps.
+    expect(getCssRuleBlock(css(), '.physics-paint-toolbox-scripts-row {')).toContain('flex-wrap: nowrap');
     expect(getCssRuleBlock(css(), '.physics-paint-toolbox-actions-row {')).toContain('flex-wrap: wrap');
     expect(getCssRuleBlock(css(), '.physics-paint-toolbox-popover {')).toContain('max-height: 360px');
   });
