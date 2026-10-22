@@ -2710,6 +2710,12 @@ export function PhysicsPaintStudio() {
     // failure looks like a dead control.
     log: (message, isError) => { setApplyMessage(message); setApplyStatus(isError ? 'error' : 'idle'); if (isError) setLastError(message); },
   }, bridgeMode);
+  // 261022-ne3: the cloned Tools-popover Scripts handlers — identity-stable
+  // useCallbacks wired into the workflow memo. Bodies mirror the right-panel
+  // Scripts-toolbar callbacks so both surfaces behave identically.
+  const handleSaveScript = useCallback(() => {
+    void rotoScriptLibrary.saveActiveFrame();
+  }, [rotoScriptLibrary]);
   const clearRotoLoopSelection = useCallback(() => {
     // 261022-mne: rail-selection clears never end the session Solo — it follows
     // the active track instead. This clear is also reached by every frame-cell
@@ -6058,6 +6064,10 @@ export function PhysicsPaintStudio() {
         onApplyScript: handleApplyScript,
         onDiscardScript: handleDiscardScript,
         rotoScriptActionMutationDisabledReason: rotoScriptLibrary.actionMutationDisabledReason,
+        // 261022-ne3: the cloned Tools-popover Scripts ports — stable callbacks
+        // plus signal references read in the strip's render body.
+        onSaveScript: handleSaveScript,
+        rotoScriptLibraryAvailability: rotoScriptLibrary.availability,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), warmProgress, onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
         // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed

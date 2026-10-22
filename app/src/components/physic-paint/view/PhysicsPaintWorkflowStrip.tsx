@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Save, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -27,6 +27,7 @@ import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
+import type { RotoScriptLibraryAvailability } from '../roto/physicsPaintRotoScriptLibrary';
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
@@ -425,6 +426,12 @@ export interface PhysicsPaintWorkflowStripProps {
    *  signal reference so the workflow memo stays cacheable (the strip reads
    *  `.value` in render like the sibling physicalActions signal reads). */
   rotoScriptActionMutationDisabledReason?: ReadonlySignal<string | null>;
+  /** 261022-ne3: cloned Tools-popover Scripts actions — the same controller
+   *  actions the right-panel Scripts tab runs. Availability is passed as
+   *  signal references so the workflow memo stays cacheable (the strip reads
+   *  `.value` in render, like the sibling script signal reads). */
+  onSaveScript?: () => void;
+  rotoScriptLibraryAvailability?: ReadonlySignal<RotoScriptLibraryAvailability>;
   /** Header Close affordance — Studio routes through the guarded close-flush path. */
   onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;
@@ -949,6 +956,12 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   applyScriptActionDisabledReason: string | null;
   canClearScriptBuffer: boolean;
   clearScriptBufferDisabledReason: string | null;
+  /** 261022-ne3: cloned Scripts-toolbar actions — the popover mirrors the
+   *  right-panel Scripts tab's handlers and guarded availability (plain values
+   *  derived in the strip body keep the memo cacheable). */
+  onSaveScript?: () => void;
+  canSaveScript: boolean;
+  saveScriptDisabledReason: string | null;
 }
 
 /**
@@ -1097,6 +1110,9 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   // here, beside the other popover-internal tooltips.
   const applyScriptTooltip = useStyledTooltip();
   const clearScriptBufferTooltip = useStyledTooltip();
+  // 261022-ne3: one tooltip per cloned Scripts-toolbar action, beside the
+  // existing shifted buffer-action tooltips.
+  const saveScriptTooltip = useStyledTooltip();
   // 43.5-02 (D-01/D-02): toolbox popover toggle + self-contained dismissal.
   // Outside pointerdown and Escape dismiss it via window capture-phase listeners
   // registered ONLY while open; no focus trap, no backdrop, no automatic focus
@@ -1346,6 +1362,40 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           <div class="physics-paint-toolbox-divider" />
           <div class="physics-paint-toolbox-section">
             <div class="physics-paint-toolbox-section-heading">Scripts</div>
+            {/* 261022-ne3: the six Scripts-tab toolbar actions cloned into the
+                popover with visible labels; the row wraps across lines. Each
+                clone mirrors its right-panel twin's handler and guarded
+                availability (aria-disabled only, never the native attribute). */}
+            <div class="physics-paint-toolbox-scripts-row" role="group" aria-label="Script actions">
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={saveScriptTooltip.onPointerEnter} onPointerLeave={saveScriptTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Save Script"
+                  aria-disabled={!props.canSaveScript ? 'true' : undefined}
+                  aria-describedby={!props.canSaveScript && props.saveScriptDisabledReason ? 'roto-key-action-reason-save-script' : undefined}
+                  onFocus={saveScriptTooltip.onFocus}
+                  onBlur={saveScriptTooltip.onBlur}
+                  onClick={() => {
+                    saveScriptTooltip.hide();
+                    if (!props.canSaveScript) return;
+                    props.onSaveScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canSaveScript) event.preventDefault();
+                  }}
+                >
+                  <Save size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Save</span>
+                </button>
+                {!props.canSaveScript && props.saveScriptDisabledReason ? (
+                  <span id="roto-key-action-reason-save-script" class="physics-paint-sr-only">{props.saveScriptDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={saveScriptTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Save Script', props.saveScriptDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+            </div>
             <div class="physics-paint-toolbox-actions-row">
               <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
                 <button
@@ -2209,6 +2259,12 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const applyScriptActionDisabledReason = scriptActionMutationDisabledReason ?? (canApplyScriptAction ? null : (scriptAvailability?.applyDisabledReason ?? null));
   const canClearScriptBuffer = scriptActionMutationDisabledReason === null && (scriptAvailability?.canDiscard ?? false);
   const clearScriptBufferDisabledReason = scriptActionMutationDisabledReason ?? (canClearScriptBuffer ? null : (scriptAvailability?.discardDisabledReason ?? null));
+  // 261022-ne3: the cloned Tools-popover Scripts availability — derived from the
+  // same controller signals the ScriptsPanel reads, in render only. No state,
+  // no effects, no writes.
+  const scriptLibraryAvailability = props.rotoScriptLibraryAvailability?.value ?? null;
+  const canSaveScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canSave ?? false);
+  const saveScriptDisabledReason = scriptActionMutationDisabledReason ?? (canSaveScript ? null : (scriptLibraryAvailability?.saveDisabledReason ?? null));
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
@@ -4741,6 +4797,9 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         applyScriptActionDisabledReason={applyScriptActionDisabledReason}
         canClearScriptBuffer={canClearScriptBuffer}
         clearScriptBufferDisabledReason={clearScriptBufferDisabledReason}
+        onSaveScript={props.onSaveScript}
+        canSaveScript={canSaveScript}
+        saveScriptDisabledReason={saveScriptDisabledReason}
       />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">

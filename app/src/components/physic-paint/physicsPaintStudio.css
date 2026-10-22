@@ -6772,7 +6772,7 @@ button.destructive {
   z-index: 60;
   min-width: 232px;
   max-width: 280px;
-  max-height: 240px;
+  max-height: 360px;
   overflow-y: auto;
   box-sizing: border-box;
   padding: 16px;
@@ -6830,6 +6830,16 @@ button.destructive {
   flex-direction: row;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+/* 261022-ne3: the cloned Scripts-toolbar actions wrap across several lines —
+   six labeled buttons never fit one popover line. */
+.physics-paint-toolbox-scripts-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 

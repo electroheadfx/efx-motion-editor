@@ -2462,6 +2462,56 @@ describe('PhysicsPaintWorkflowStrip toolbox Actions section (260905-dso)', () =>
   });
 });
 
+describe('Tools popover cloned Scripts toolbar (261022-ne3)', () => {
+  it('clones Save above the untouched Apply/Clear row with a visible label and the guarded idiom', () => {
+    const header = getHeaderBlock(source());
+    const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Scripts</div>');
+    expect(headingIndex).toBeGreaterThanOrEqual(0);
+    const scriptsRowIndex = header.indexOf('class="physics-paint-toolbox-scripts-row"', headingIndex);
+    expect(scriptsRowIndex).toBeGreaterThan(headingIndex);
+    const saveIndex = header.indexOf('aria-label="Save Script"', scriptsRowIndex);
+    expect(saveIndex).toBeGreaterThan(scriptsRowIndex);
+    const actionsIndex = header.indexOf('class="physics-paint-toolbox-actions-row"', headingIndex);
+    // The cloned row sits ABOVE the preserved Apply/Clear row.
+    expect(actionsIndex).toBeGreaterThan(saveIndex);
+    expect(header).toContain('physics-paint-roto-key-icon-label">Save<');
+    const saveBlock = getButtonBlock(header, 'Save Script');
+    expect(saveBlock).toContain('physics-paint-roto-key-icon-button');
+    expect(saveBlock).toContain('aria-disabled={!props.canSaveScript');
+    expect(saveBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
+    expect(saveBlock).toContain("if (!props.canSaveScript) return;");
+    expect(saveBlock.indexOf('props.onSaveScript?.()')).toBeGreaterThan(saveBlock.indexOf("if (!props.canSaveScript) return;"));
+    expect(saveBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !props.canSaveScript");
+    expect(header).toContain('id="roto-key-action-reason-save-script"');
+    expect(header).toContain("buildGuardedActionTooltipCopy('Save Script', props.saveScriptDisabledReason)");
+    // The preserved buffer actions keep their exact guarded shape.
+    expect(header).toContain('aria-label="Apply Script to Frame"');
+    expect(header).toContain('aria-label="Clear Script Buffer"');
+  });
+
+  it('declares the clone ports, derives availability in render, wraps the row, and wires the Studio callback', () => {
+    const code = source();
+    const propsInterface = getWorkflowStripPropsInterface(code);
+    expect(propsInterface).toContain('onSaveScript?: () => void;');
+    expect(propsInterface).toContain('rotoScriptLibraryAvailability?: ReadonlySignal<RotoScriptLibraryAvailability>;');
+    const staticChrome = getStaticChromePropsInterface(code);
+    expect(staticChrome).toContain('onSaveScript?: () => void;');
+    expect(staticChrome).toContain('canSaveScript: boolean;');
+    expect(staticChrome).toContain('saveScriptDisabledReason: string | null;');
+    // Render-time reads of the signal references — no state, no effect.
+    expect(code).toContain('const scriptLibraryAvailability = props.rotoScriptLibraryAvailability?.value ?? null;');
+    expect(code).toContain('const canSaveScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canSave ?? false);');
+    expect(code).toContain('onSaveScript={props.onSaveScript}');
+    const rule = getCssRuleBlock(css(), '.physics-paint-toolbox-scripts-row {');
+    expect(rule).toContain('flex-wrap: wrap');
+    const studio = studioSource();
+    expect(studio).toContain('const handleSaveScript = useCallback(');
+    expect(studio).toContain('void rotoScriptLibrary.saveActiveFrame();');
+    expect(studio).toContain('onSaveScript: handleSaveScript,');
+    expect(studio).toContain('rotoScriptLibraryAvailability: rotoScriptLibrary.availability,');
+  });
+});
+
 describe('PhysicsPaintWorkflowStrip scrub playhead feed contract (G-52-9 drag-gate)', () => {
   it('declares the optional rotoScrubFrame signal prop on the strip interface', () => {
     const code = source();
