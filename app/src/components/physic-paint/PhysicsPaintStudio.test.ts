@@ -763,6 +763,29 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     expect(studio).toContain('getCurrentAppFrame: () => currentFrame,');
   });
 
+  it('supplies the rail-selection playback RANGE at Play press (261022-jq0)', () => {
+    // JQ0: the Studio maps the three existing selection authorities to ONE
+    // contiguous range-only window. The derivation never consults the session
+    // solo arm (a composite-path track focus), never hides per-frame content,
+    // and keeps the play-from-cursor port for the no-selection path.
+    expect(studio).toContain('getPlaybackWindow: () => resolveRotoSelectionPlaybackWindow(),');
+    const start = studio.indexOf('const resolveRotoSelectionPlaybackWindow');
+    const end = studio.indexOf('const handleRotoPlaybackPlaying', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const resolver = studio.slice(start, end);
+    expect(resolver).toContain('deriveRotoSelectionPlaybackWindow({');
+    expect(resolver).toContain('effectiveRailSetSelection');
+    expect(resolver).toContain('effectiveSelectedRotoKeyRail');
+    expect(resolver).toContain('effectiveSelectedLoopClipIds');
+    expect(resolver).toContain('keyRailSegments');
+    expect(resolver).toContain('loopRanges: loopResolutionContext?.ranges ?? [],');
+    expect(resolver).toContain('getRotoPhysicalCompositeEndFrame');
+    expect(resolver).not.toContain(['physicsPaint', 'SoloArm'].join(''));
+    expect(resolver).not.toContain(['disarm', 'Solo'].join(''));
+    expect(studio).toContain('getCurrentAppFrame: () => currentFrame,');
+  });
+
   it('clears the set on Select All and spacing selection (D-04 key selection)', () => {
     const selectAllStart = studio.indexOf('const selectAllRotoKeys = useCallback(() => {');
     const selectAllEnd = studio.indexOf('const [, setLastError]', selectAllStart);

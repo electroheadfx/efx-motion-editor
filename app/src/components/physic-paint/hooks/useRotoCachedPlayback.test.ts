@@ -974,6 +974,70 @@ describe('selected-rail playback window (JQ0)', () => {
     expect(audioMocks.playAtCursor).toHaveBeenCalledWith(3, 7);
     vi.useRealTimers();
   });
+
+  it('keeps the window start as the loop anchor across a mid-playback seek', () => {
+    const { harness, onFrame } = createWindowHarness({
+      loop: true,
+      window: () => ({ start: 3, endExclusive: 7 }),
+      getCurrentAppFrame: () => 5,
+    });
+
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+    expect(onFrame).toHaveBeenLastCalledWith(0, 3);
+
+    playback.seek(5);
+    expect(playback.frame).toEqual({ id: 'f5' });
+    expect(harness.anchors().loopStart.current).toBe(0);
+    expect(audioMocks.playAtCursor).toHaveBeenLastCalledWith(5, 7);
+
+    // The next tick shows the frame after the seek target, then wrap returns
+    // to the WINDOW start — the seek never moves the loop anchor.
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(3, 6);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(0, 3);
+    expect(harness.anchors().loopStart.current).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('reads the window port once per start — a later change never re-filters the session', () => {
+    let window: { start: number; endExclusive: number } | null = { start: 3, endExclusive: 7 };
+    const getPlaybackWindow = vi.fn(() => window);
+    const { harness, onFrame } = createWindowHarness({ window: getPlaybackWindow });
+
+    let playback = harness.render();
+    playback.start();
+    expect(getPlaybackWindow).toHaveBeenCalledTimes(1);
+
+    window = { start: 0, endExclusive: 10 };
+    playback = harness.render();
+    vi.advanceTimersByTime(500 * 3);
+    expect(getPlaybackWindow).toHaveBeenCalledTimes(1);
+    expect(onFrame.mock.calls.every(([, appFrame]) => appFrame >= 3 && appFrame <= 6)).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it('notifies the audio monitor of the wrap bounds on every loop wrap', () => {
+    const { harness, onFrame } = createWindowHarness({
+      loop: true,
+      window: () => ({ start: 3, endExclusive: 7 }),
+    });
+
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    vi.advanceTimersByTime(500 * 4);
+    expect(onFrame).toHaveBeenLastCalledWith(0, 3);
+    expect(audioMocks.notifyLoopWrap).toHaveBeenCalledWith(3, 7);
+    vi.useRealTimers();
+  });
 });
 
 /**

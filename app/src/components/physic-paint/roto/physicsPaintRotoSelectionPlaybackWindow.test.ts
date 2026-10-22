@@ -163,4 +163,22 @@ describe('deriveRotoSelectionPlaybackWindow (JQ0 range derivation)', () => {
     expect(window).not.toBeNull();
     expect(Object.isFrozen(window)).toBe(true);
   });
+
+  it('clamps a loop end to the composite capacity', () => {
+    expect(deriveRotoSelectionPlaybackWindow({
+      members: [loop('loop-1')],
+      keyRailSegments: [],
+      loopRanges: [loopRange('loop-1', 30, 150)],
+      capacity: 100,
+    })).toEqual({ start: 30, endExclusive: 100 });
+  });
+
+  it('fails closed when an out-of-capacity loop cannot bound a window', () => {
+    expect(deriveRotoSelectionPlaybackWindow({
+      members: [loop('loop-1')],
+      keyRailSegments: [],
+      loopRanges: [loopRange('loop-1', 120, 150)],
+      capacity: 100,
+    })).toBeNull();
+  });
 });

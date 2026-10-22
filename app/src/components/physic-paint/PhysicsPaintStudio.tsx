@@ -67,6 +67,7 @@ import {
   type RailSetSelectionState,
 } from './roto/physicsPaintRotoRailSetSelection';
 import type { PhysicPaintRailSetMoveMember } from './roto/physicsPaintRotoPhysicalResolver';
+import { deriveRotoSelectionPlaybackWindow, type RotoSelectionPlaybackWindow } from './roto/physicsPaintRotoSelectionPlaybackWindow';
 import { paintStore } from '../../stores/paintStore';
 import { clampOnionCount, type PhysicsPaintOnionState } from './view/physicsPaintWorkflowPresentation';
 import { applyAquarelleEventsToKey, mapRevealRailRejectionReason } from './roto/physicsPaintRotoPlayScriptController';
@@ -2342,6 +2343,44 @@ export function PhysicsPaintStudio() {
       : null;
   };
 
+  // JQ0 (261022-jq0): map the three existing rail-selection authorities to the
+  // ONE contiguous playback RANGE consumed at Play press. The active rail set
+  // wins; otherwise the single Key Rail plus EVERY selected loop id (the shared
+  // dynamic-scope classifier is NOT used here — it drops multi-loop
+  // selections). Range only: no per-frame hiding, no attribution, and the
+  // global Solo arm (a composite-path track focus) is never read.
+  const resolveRotoSelectionPlaybackWindow = useCallback((): RotoSelectionPlaybackWindow | null => {
+    const members: RailSetIdentity[] = [];
+    if (effectiveRailSetSelection !== null) {
+      members.push(...effectiveRailSetSelection.members);
+    } else {
+      if (effectiveSelectedRotoKeyRail !== null) {
+        members.push({ kind: 'key-rail', firstKeyId: effectiveSelectedRotoKeyRail.firstKeyId });
+      }
+      for (const loopId of effectiveSelectedLoopClipIds) {
+        members.push({ kind: 'loop', loopId });
+      }
+    }
+    if (members.length === 0) return null;
+    const layerId = launchContext?.layerId;
+    if (layerId === undefined) return null;
+    const capacity = physicPaintStore.getRotoPhysicalCompositeEndFrame(layerId);
+    if (capacity === null || !Number.isInteger(capacity) || capacity <= 0) return null;
+    return deriveRotoSelectionPlaybackWindow({
+      members,
+      keyRailSegments,
+      loopRanges: loopResolutionContext?.ranges ?? [],
+      capacity,
+    });
+  }, [
+    effectiveRailSetSelection,
+    effectiveSelectedLoopClipIds,
+    effectiveSelectedRotoKeyRail,
+    keyRailSegments,
+    launchContext?.layerId,
+    loopResolutionContext,
+  ]);
+
   // RARE BLANK-AFTER-PLAY guard (user report 2026-10-19): one playback session
   // ended with every key surface blank until a full Studio close/reopen.
   // Playback itself only reads; the stop transition is the single place the
@@ -2406,9 +2445,12 @@ export function PhysicsPaintStudio() {
       // application-frame cursor — an idle seek to frame N resumes there, never
       // the range start.
       getCurrentAppFrame: () => currentFrame,
-      // 261022-iff: the global Solo is a composite-path track focus — it never
-      // supplies a playback window or start offset. Play keeps the play-from-
-      // cursor law over the full composite range.
+      // JQ0 (261022-jq0): the rail-selection RANGE only — resolved lazily at
+      // Play press. The global Solo stays a composite-path track focus and is
+      // never read here; with no rail selection (or a failed-closed
+      // derivation) this returns null and Play keeps the play-from-cursor law
+      // over the full composite range.
+      getPlaybackWindow: () => resolveRotoSelectionPlaybackWindow(),
       onStart: (frameCount) => { rotoPlaybackFrameCount.value = frameCount; },
       onFrame: (frameIndex) => {
         rotoPlaybackFrameIndex.value = frameIndex;
