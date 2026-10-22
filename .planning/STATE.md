@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-pim automated-ready (live UAT pending): Watercolor stroke select + Alt+click delete with shared Apply re-bake and one-step undo/redo
+Last activity: 2026-10-22 — Quick task 261022-pim UAT APPROVED: Watercolor stroke select + Backspace/Alt-click delete with timeline re-bake and one-step undo/redo; Cmd tap toggles Move/Select in both modes
 
 Progress: [██████████] 100%
 

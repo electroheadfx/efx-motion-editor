@@ -206,19 +206,26 @@ None. No placeholder data sources, TODO/FIXME markers, or un-wired surfaces were
 
 No new network endpoints, auth paths, file access patterns, or schema changes. Pointer→identity mapping (T-01), delete-during-apply and double-delete (T-02), capture-fallback trip (T-03), and stale undo/redo restore (T-04) are mitigated exactly as planned and covered by unit tests.
 
-## Live UAT — PENDING (user-run)
+## Live UAT — APPROVED (user-run, 2026-10-22)
 
-The live gate is the only completion signal. All rows are **PENDING**; none was simulated.
+The live gate is the only completion signal. The user confirmed the feature
+end-to-end in the running Studio on 2026-10-22.
 
-1. **Select outline** — Water color mode → activate the rail Select/Move toggle or hold Cmd → every recorded stroke on the current frame shows its polyline + bbox; clicking one selects and highlights it; dragging on the canvas paints nothing.
-2. **Alt+click delete** — Alt+click an outlined stroke → the Apply pill advances 0/N → N/N → the stroke disappears and the remaining strokes re-bleed into the settled wash.
-3. **Undo/Redo** — Cmd+Z / rail Undo → the stroke is back and re-baked; Cmd+Shift+Z / rail Redo → it is gone again. Exactly one press per direction.
+1. **Select outline** — Water color mode → Cmd tap or the rail Select toggle → every recorded stroke on the current frame shows its polyline + bbox; clicking one selects and highlights it; painting is blocked while active. **PASSED.**
+2. **Delete** — select a stroke, then Backspace/Delete (Alt+click also works) → Apply pill advances 0/N → N/N → the stroke disappears and the remaining strokes re-bleed. Repeated deletes keep working (the re-bake replays the recorded timeline, not the engine capture). **PASSED.**
+3. **Undo/Redo** — Cmd+Z / rail Undo restores the stroke and re-bakes; Cmd+Shift+Z / rail Redo removes it again. One press per direction. **PASSED.**
 
-Until the user confirms all three rows in the running Studio, this work is **automated-ready only**.
+Follow-up UAT also approved in the same session:
+
+- **Cmd tap toggle** — one Cmd tap selects the Move/Select tool persistently; a second tap or picking any tool leaves it. Brush mode selects Move itself (previous tool deselected); Water color selects the stroke overlay (paint tool deselected).
+- **No-script state** — with no live script (cooked/reopened), Move/Select is greyed and Cmd is inert in both modes; deleting the last stroke leaves select mode.
+- **Tooltips** — Move/Select names the Cmd toggle and the Backspace delete.
+
+Follow-up commits: `ab9594a3`, `6df49ed2`, `ad9633dc`, `59f86867`, `c7ee1aee`.
 
 ## Next Phase Readiness
 
-- Automated surface is green; hand the three live rows to the user for the Studio UAT.
+- Live UAT approved; the quick task is closed.
 - Deferred (out of scope, pre-existing): the 7 failing suites listed above.
 
 ## Self-Check: PASSED
