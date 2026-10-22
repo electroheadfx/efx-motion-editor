@@ -2,7 +2,7 @@
 phase: quick-261022-cfn
 plan: 261022-cfn
 subsystem: ui
-tags: [preact, signals, roto, physics-paint, auto-paint, previous-key-resolver, rail-join, uat-pending]
+tags: [preact, signals, roto, physics-paint, auto-paint, previous-key-resolver, rail-join, uat-approved]
 
 requires:
   - phase: 52.1/56
@@ -233,19 +233,19 @@ Pinned at the Studio seam in `PhysicsPaintStudio.test.ts`:
 - The global verification line lists `Create rail` and `Rail kind` as app-wide zero gates, but the plan also explicitly preserves the Create Rail dialog's own `aria-label="Rail kind"` tablist and requires negative pins containing both literals. The scoped Task 2 gates were used: `Create rail` in the strip = 0, rail-create CSS = 0, and picker/rail-create symbols across `app/src` = 0. The two `Create rail → Key` comments in `rotoCoordinatorPorts.ts` / `useRotoTimelineActions.ts` describe retained `forceNewSegment` semantics and were left untouched.
 - Two test descriptions containing gate literals (`Clear Action Buffer relocation contract`, `Save Action regression`) were renamed to Script to keep the curated zero-grep gate at zero; function names and test ids were not changed.
 
-## Live UAT Rows — PENDING (automated-ready, NOT live-passed)
+## Live UAT Rows — PASSED (user-approved 2026-10-22)
 
-Unit tests cannot prove WKWebView paint capture, cache merge, or rail derivation. All rows below are **PENDING** until the user runs them.
+Unit tests cannot prove WKWebView paint capture, cache merge, or rail derivation. The user ran every row live and approved all of them on 2026-10-22.
 
 | # | Action | Expected | Observed | Status |
 |---|--------|----------|----------|--------|
-| 1 | Real keys at frames 1 and 5; auto-paint on empty frame 7 | New key joins the previous rail, contains only the new stroke (blank base), and frame 6 becomes interpolated | Not run | PENDING |
-| 2 | + Key on empty frame 7 | Joins the rail and clones key 5's paint (unchanged behavior) | Not run | PENDING |
-| 3 | + Key on interpolated frame 3 | Joins the rail and clones key 1's paint (unchanged behavior) | Not run | PENDING |
-| 4 | Auto-paint on interpolated frame 3 | Joins the rail; the created key equals key 1's paint plus the new stroke | Not run | PENDING |
-| 5 | Inspect the timeline action row | + Key and + Rail buttons present; no rail-kind dropdown; + Key still creates/joins keys | Not run | PENDING |
-| 6 | Sidebar bottom tab and Scripts UI | Tab reads Scripts; visible Action references read Script/Scripts; Motion/Static/Reveal reachable through Create Rail dialog tabs | Not run | PENDING |
-| 7 | + Rail on an empty frame after existing keys | Creates a BLANK key that starts a NEW rail (does not clone or join); + Rail is greyed on a generated in-between and on a linked repeat | Not run | PENDING |
+| 1 | Real keys at frames 1 and 5; auto-paint on empty frame 7 | New key joins the previous rail, contains only the new stroke (blank base), and frame 6 becomes interpolated | User-approved | PASSED |
+| 2 | + Key on empty frame 7 | Joins the rail and clones key 5's paint (unchanged behavior) | User-approved | PASSED |
+| 3 | + Key on interpolated frame 3 | Joins the rail and clones key 1's paint (unchanged behavior) | User-approved | PASSED |
+| 4 | Auto-paint on interpolated frame 3 | Joins the rail; the created key equals key 1's paint plus the new stroke | User-approved | PASSED |
+| 5 | Inspect the timeline action row | + Key and + Rail buttons present; no rail-kind dropdown; + Key still creates/joins keys | User-approved | PASSED |
+| 6 | Sidebar bottom tab and Scripts UI | Tab reads Scripts; visible Action references read Script/Scripts; Motion/Static/Reveal reachable through Create Rail dialog tabs | User-approved | PASSED |
+| 7 | + Rail on an empty frame after existing keys | Creates a BLANK key that starts a NEW rail (does not clone or join); + Rail is greyed on a generated in-between and on a linked repeat | User-approved | PASSED |
 
 ## Files Created/Modified
 
@@ -279,5 +279,6 @@ Unit tests cannot prove WKWebView paint capture, cache merge, or rail derivation
 
 - Created resolver and test files verified present.
 - Task commits verified in history: `0928506d`, `ea53a114`, `42e4e76d`, `91553b9f`, `fbb452a0`, `713bc1b0`.
+- Live UAT: all seven rows user-approved on 2026-10-22.
 - Deleted picker/launcher/rail-create files verified absent.
 - Full suite and comparative typecheck verified green after the final commit.
