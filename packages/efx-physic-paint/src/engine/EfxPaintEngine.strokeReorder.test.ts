@@ -450,6 +450,24 @@ describe('261022-ujp Brush paint-order projection', () => {
     expect(moves.every((event) => event.mutationId === c)).toBe(true)
   })
 
+  it('hit-testing targets the visually topmost stroke after a step', () => {
+    const engine = createHarness()
+    const a = paintStroke(engine, hLine(30), 100)
+    const b = paintStroke(engine, hLine(30), 300)
+
+    engine.setTool('move')
+    hover(engine, 50, 30, 500)
+    expect(engine.getMoveTargetMutationId()).toBe(b)
+
+    expect(engine.sendStrokeBackward(b)).toBe(true)
+    expect(order(engine)).toEqual([b, a])
+
+    // A is painted on top now, so the hover must retarget it — the hit test
+    // cannot keep resolving against the acceptance ledger.
+    hover(engine, 50, 30, 600)
+    expect(engine.getMoveTargetMutationId()).toBe(a)
+  })
+
   it('continuations travel with their primary', () => {
     const engine = createHarness()
     const primary1: PaintStroke = { tool: 'paint', points: [{ x: 10, y: 10, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { ...defaultOpts }, timestamp: 1, mutationId: 1 }

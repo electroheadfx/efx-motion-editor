@@ -3231,8 +3231,13 @@ export class EfxPaintEngine {
   private resolveEraseTargetIds(gesturePoints: PenPoint[], gestureOpts: BrushOpts, firstOnly: boolean = false): number[] {
     const eraseR = brushRenderRadius(gestureOpts)
     const targets: number[] = []
-    for (let i = this.allActions.length - 1; i >= 0; i--) {
-      const a = this.allActions[i]
+    // 261022-ujp: newest-first means TOPMOST-AS-PAINTED, so the walk follows the
+    // paint-order projection, not the acceptance ledger. After a stack step the
+    // two differ, and a hit test on ledger order would preview/delete a stroke
+    // that is visually underneath another.
+    const paintOrder = this.liveActionsInPaintOrder()
+    for (let i = paintOrder.length - 1; i >= 0; i--) {
+      const a = paintOrder[i]
       if (a.tool !== 'paint' || a.points.length === 0) continue
       const strokeR = brushRenderRadius(a.params)
       // True ribbon overlap (brush-disk vs brush-disk). The old +5 slop was
