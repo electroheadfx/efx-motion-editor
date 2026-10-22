@@ -428,7 +428,7 @@ function PhysicsPaintApplyProgressPill({ rotoScript }: { rotoScript: PhysicsPain
       aria-valuemin={0}
       aria-valuemax={applyProgress.total}
       aria-valuenow={applyProgress.completed}
-      aria-label={`Applying Action — ${applyProgress.completed} of ${applyProgress.total} brushes`}
+      aria-label={`Applying Script — ${applyProgress.completed} of ${applyProgress.total} brushes`}
     >
       <span class="physics-paint-apply-progress-track" aria-hidden="true">
         <span

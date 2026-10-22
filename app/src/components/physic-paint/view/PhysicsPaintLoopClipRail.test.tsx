@@ -482,7 +482,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     const target = findOne(tree, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-target'));
     expect(target.props['aria-pressed']).toBe(true);
     expect(target.props['aria-label']).toBe(
-      'Walk Rail. Motion Rail. Cycle 6f × 1 = 6f. Effective 6 frames. Modified locally — Regenerate to restore from Action.',
+      'Walk Rail. Motion Rail. Cycle 6f × 1 = 6f. Effective 6 frames. Modified locally — Regenerate to restore from Script.',
     );
     expect(hasClass(target, 'selected')).toBe(true);
     expect(hasClass(target, 'boundary-start')).toBe(true);
@@ -789,7 +789,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(target.props['aria-pressed']).toBe(false);
     expect(target.props['aria-selected']).toBeUndefined();
     expect(String(target.props['aria-label'])).toBe(
-      `Pose Rail. ${mode === 'static' ? 'Static' : 'Motion'} Rail. Cycle 6f × 1 = 6f. Effective 6 frames. Synchronized with Action. Linked to selected Action Pose.`,
+      `Pose Rail. ${mode === 'static' ? 'Static' : 'Motion'} Rail. Cycle 6f × 1 = 6f. Effective 6 frames. Synchronized with Script. Linked to selected Script Pose.`,
     );
     expect(String(target.props['aria-label'])).not.toContain('Fragment');
     expect(findAll(target, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-rail-segment'))).toHaveLength(1);
@@ -1312,7 +1312,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(typeof target.props.onfocusin).toBe('function');
     (target.props.onfocusin as () => void)();
     const railCopy = `${String(target.props['aria-label'])} ${textOf(railTree)}`;
-    for (const fact of ['Walk Rail', 'Type: Motion', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Status: Synchronized with Action.']) {
+    for (const fact of ['Walk Rail', 'Type: Motion', 'Cycle 5f × 5 = 25f', 'Effective 25f', 'Status: Synchronized with Script.']) {
       expect(railCopy).toContain(fact);
     }
     expect(railCopy).not.toContain(rawLoopId);
@@ -1454,7 +1454,7 @@ describe('PhysicsPaintLoopClipRail ownership tracer', () => {
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-summary'))).toHaveLength(0);
     expect(findAll(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-scripts-list'))).toHaveLength(0);
     const inspector = findOne(selectedPanel, (vnode) => hasClass(vnode, 'physics-paint-loop-clip-inspector'));
-    expect(textOf(inspector)).toBe('NameWalk RailSource ActionWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fRail TypeMotionStatusSynchronized with Action.');
+    expect(textOf(inspector)).toBe('NameWalk RailSource ScriptWalkPlacementF10CycleCycle 5f × 5 = 25fEffectiveEffective 25fRail TypeMotionStatusSynchronized with Script.');
     expect(textOf(inspector)).not.toContain(rawLoopId);
     (editButton.props.onClick as () => void)();
     expect(onOpenLoopEdit).toHaveBeenCalledTimes(3);

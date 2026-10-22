@@ -51,8 +51,8 @@ describe('native-approved Physics Paint right sidebar', () => {
     const lowerStart = rightPanel.indexOf('aria-label="Physics Paint option panels"');
     const lowerEnd = rightPanel.indexOf('</div>', lowerStart);
     const lower = rightPanel.slice(lowerStart, lowerEnd);
-    // Actions is FIRST in its group and default-open (36.15-11, UAT Gap G-4).
-    expectInOrder(lower, ['Actions', 'Onion', 'Motion']);
+    // Scripts is FIRST in its group and default-open (36.15-11, UAT Gap G-4).
+    expectInOrder(lower, ['Scripts', 'Onion', 'Motion']);
     expect(lower).not.toContain('Track');
 
     // The LOG tab is gone (36.15-11, UAT Gap G-6).
@@ -64,7 +64,7 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rightPanel.match(/role="tablist"/g)).toHaveLength(3);
     expect(rightPanel.match(/role="tab"/g)).toHaveLength(8);
 
-    for (const label of ['Actions', 'Onion', 'Motion']) {
+    for (const label of ['Scripts', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));
       expect(rightPanel).not.toMatch(new RegExp(`>\\s*${label.toUpperCase()}\\s*<`));
     }
@@ -155,12 +155,12 @@ describe('native-approved Physics Paint right sidebar', () => {
   });
 
   it('keeps full-row load-only activation and contextual Actions behavior', () => {
-    expectInOrder(scriptsPanel, ['label="Save Action"', 'label="Load + Apply to Frame"', 'label="Create Rail…"', 'label="Delete Action"', 'label="Refresh Actions"']);
+    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load + Apply to Frame"', 'label="Create Rail…"', 'label="Delete Script"', 'label="Refresh Scripts"']);
     expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
     expect(scriptsPanel).toContain('label={`Edit Rail — ${selectedLoopClip.displayName}`}');
-    expect(scriptsPanel).toContain("label=\"Create Rail…\" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Action')}`}");
+    expect(scriptsPanel).toContain("label=\"Create Rail…\" title={`Create Rail… — ${actionMutationDisabledReason ?? (playScript.disabledReason.value ?? 'Create a Motion or Static Rail from the selected Script')}`}");
     expect(scriptsPanel).toMatch(/label="Create Rail…"[^>]*onClick=/);
     expect(scriptsPanel).not.toContain('label="Rename Action"');
     expect(scriptsPanel).toContain('role="option"');
@@ -177,7 +177,7 @@ describe('native-approved Physics Paint right sidebar', () => {
   it('keeps approved durable-load destination guards in the narrow Actions subscriber', () => {
     expect(scriptsPanel).toContain('const actionMutationDisabledReason = library.actionMutationDisabledReason.value;');
     expect(scriptsPanel).toContain('const loadAndApplyDisabledReason = actionMutationDisabledReason');
-    expect(scriptsPanel).toContain("? 'Select a project Action first.'");
+    expect(scriptsPanel).toContain("? 'Select a project Script first.'");
     expect(scriptsPanel).toContain('rotoScript.availability.value.replacementApplyDisabledReason');
     expect(studio).not.toContain('const scriptLoadAndApplyDisabledReason =');
   });

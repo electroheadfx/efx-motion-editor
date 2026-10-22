@@ -1243,7 +1243,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           <span class="physics-paint-roto-key-icon-label">Tools</span>
         </button>
         <PhysicsPaintStyledTooltip visible={toolboxTooltip.visible} region="bottom">
-          {buildGuardedActionTooltipCopy('Open timeline tools — Playback fps, Key Spacing and Actions.', null)}
+          {buildGuardedActionTooltipCopy('Open timeline tools — Playback fps, Key Spacing and Scripts.', null)}
         </PhysicsPaintStyledTooltip>
       </span>
       {(props.onApplyScript || props.onDiscardScript) ? (
@@ -1330,13 +1330,13 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
           </div>
           <div class="physics-paint-toolbox-divider" />
           <div class="physics-paint-toolbox-section">
-            <div class="physics-paint-toolbox-section-heading">Actions</div>
+            <div class="physics-paint-toolbox-section-heading">Scripts</div>
             <div class="physics-paint-toolbox-actions-row">
               <span class="physics-paint-roto-key-icon-action" onPointerEnter={applyScriptTooltip.onPointerEnter} onPointerLeave={applyScriptTooltip.onPointerLeave}>
                 <button
                   type="button"
                   class="physics-paint-roto-key-icon-button"
-                  aria-label="Apply Action to Frame"
+                  aria-label="Apply Script to Frame"
                   aria-disabled={!props.canApplyScriptAction ? 'true' : undefined}
                   aria-describedby={!props.canApplyScriptAction && props.applyScriptActionDisabledReason ? 'roto-key-action-reason-apply' : undefined}
                   onFocus={applyScriptTooltip.onFocus}
@@ -1357,14 +1357,14 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                   <span id="roto-key-action-reason-apply" class="physics-paint-sr-only">{props.applyScriptActionDisabledReason}</span>
                 ) : null}
                 <PhysicsPaintStyledTooltip visible={applyScriptTooltip.visible} region="bottom">
-                  {buildGuardedActionTooltipCopy('Apply Action to Frame', props.applyScriptActionDisabledReason)}
+                  {buildGuardedActionTooltipCopy('Apply Script to Frame', props.applyScriptActionDisabledReason)}
                 </PhysicsPaintStyledTooltip>
               </span>
               <span class="physics-paint-roto-key-icon-action" onPointerEnter={clearScriptBufferTooltip.onPointerEnter} onPointerLeave={clearScriptBufferTooltip.onPointerLeave}>
                 <button
                   type="button"
                   class="physics-paint-roto-key-icon-button"
-                  aria-label="Clear Action Buffer"
+                  aria-label="Clear Script Buffer"
                   aria-disabled={!props.canClearScriptBuffer ? 'true' : undefined}
                   aria-describedby={!props.canClearScriptBuffer && props.clearScriptBufferDisabledReason ? 'roto-key-action-reason-clear' : undefined}
                   onFocus={clearScriptBufferTooltip.onFocus}
@@ -1385,7 +1385,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                   <span id="roto-key-action-reason-clear" class="physics-paint-sr-only">{props.clearScriptBufferDisabledReason}</span>
                 ) : null}
                 <PhysicsPaintStyledTooltip visible={clearScriptBufferTooltip.visible} region="bottom">
-                  {buildGuardedActionTooltipCopy('Clear Action from buffer', props.clearScriptBufferDisabledReason)}
+                  {buildGuardedActionTooltipCopy('Clear Script from buffer', props.clearScriptBufferDisabledReason)}
                 </PhysicsPaintStyledTooltip>
               </span>
             </div>

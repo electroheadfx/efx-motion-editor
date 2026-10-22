@@ -806,10 +806,10 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
   function groupRegenerateReason(group: PhysicPaintRotoLoopClip, document: PhysicPaintRotoPhysicalDocument | null): string | null {
     if (ports.library.busy.peek() || ports.getOperationLocked() || isBusyPhase(phase.peek())) return 'Finish the current Rail operation.';
     if (!isRegenerableLifecycleShape(group)) return 'Regenerate unavailable — Rail source is unresolved.';
-    if (group.syncState === 'synchronized') return 'Already synchronized with Action.';
-    if (group.provenanceState !== 'attached' || !group.scriptId) return 'Regenerate unavailable — Action detached.';
+    if (group.syncState === 'synchronized') return 'Already synchronized with Script.';
+    if (group.provenanceState !== 'attached' || !group.scriptId) return 'Regenerate unavailable — Script detached.';
     const action = ports.library.rows.peek().find((row) => row.id === group.scriptId);
-    if (!action) return 'Regenerate unavailable — Source Action unavailable.';
+    if (!action) return 'Regenerate unavailable — Source Script unavailable.';
     if (!document || document.revision.length === 0) return 'Regenerate unavailable — Rail source is unresolved.';
     const records = new Set(document.realKeyRecords.map((record) => record.keyId));
     if (group.sourceKeyIds.length === 0 || group.sourceKeyIds.some((keyId) => !records.has(keyId))) {
@@ -840,21 +840,21 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     regenerateImpact.value = null;
     if (reason || !document || !group.scriptId || !group.motion) return rejectLoopOp(reason ?? 'Regenerate unavailable — Rail source is unresolved.');
     const action = ports.library.rows.peek().find((row) => row.id === group.scriptId);
-    if (!action) return rejectLoopOp('Regenerate unavailable — Source Action unavailable.');
+    if (!action) return rejectLoopOp('Regenerate unavailable — Source Script unavailable.');
     ports.stopPlayback();
     phase.value = 'preparing';
     status.value = 'Preparing Rail Regenerate…';
     error.value = null;
     try {
       const snapshot = await ports.library.loadSnapshot(group.scriptId);
-      if (!snapshot) return rejectLoopOp('Regenerate unavailable — Source Action unavailable.');
+      if (!snapshot) return rejectLoopOp('Regenerate unavailable — Source Script unavailable.');
       const currentDocument = ports.getPhysicalDocument?.() ?? null;
       if (!currentDocument || currentDocument.revision !== document.revision) {
         return rejectLoopOp('Regenerate rejected — physical Rail document changed.');
       }
       const currentAction = ports.library.rows.peek().find((row) => row.id === group.scriptId);
       if (!currentAction || currentAction.revision !== action.revision) {
-        return rejectLoopOp('Regenerate rejected — saved Action changed.');
+        return rejectLoopOp('Regenerate rejected — saved Script changed.');
       }
       const sourceStart = document.realKeyRecords.find((record) => record.keyId === group.sourceKeyIds[0])?.appFrame;
       if (sourceStart === undefined) return rejectLoopOp('Regenerate unavailable — Rail source is unresolved.');
@@ -887,8 +887,8 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         gapRanges: compactFrameRanges(deletedRanges),
         affectedGroups,
         sourceCacheEffects: affectedGroups.length > 1
-          ? 'Rebuilds the saved Action source cycle and refreshes every affected Rail cache.'
-          : 'Rebuilds the saved Action source cycle and refreshes the Rail cache.',
+          ? 'Rebuilds the saved Script source cycle and refreshes every affected Rail cache.'
+          : 'Rebuilds the saved Script source cycle and refreshes the Rail cache.',
         storedSettings: Object.freeze({
           mode: group.mode,
           motion: Object.freeze({ ...group.motion }),
@@ -1377,7 +1377,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       if (preparedRegenerate) {
         const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
         if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
-          fail(new Error('Regenerate rejected — saved Action changed.'));
+          fail(new Error('Regenerate rejected — saved Script changed.'));
           return false;
         }
         const currentDocument = ports.getPhysicalDocument?.() ?? null;
@@ -1471,7 +1471,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
         if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision
           || actionSnapshotHash(snapshot) !== preparedRegenerate.actionHash) {
-          throw new Error('Regenerate rejected — saved Action changed.');
+          throw new Error('Regenerate rejected — saved Script changed.');
         }
       }
       const existingFrames = new Map(authority.frames.map((frame) => [frame.appFrame, frame]));
@@ -1500,7 +1500,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
           throw new Error('Regenerate rejected — physical Rail document changed.');
         }
         if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
-          throw new Error('Regenerate rejected — saved Action changed.');
+          throw new Error('Regenerate rejected — saved Script changed.');
         }
       }
       // D-06: refresh the preflight substrate from the revalidated authority so
@@ -1690,11 +1690,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         }
         const currentAction = ports.library.rows.peek().find((row) => row.id === preparedRegenerate.actionId);
         if (!currentAction || currentAction.revision !== preparedRegenerate.actionRevision) {
-          return 'Regenerate rejected — saved Action changed.';
+          return 'Regenerate rejected — saved Script changed.';
         }
         const currentSnapshot = await ports.library.loadSnapshot(preparedRegenerate.actionId);
         if (!currentSnapshot || actionSnapshotHash(currentSnapshot) !== preparedRegenerate.actionHash) {
-          return 'Regenerate rejected — saved Action changed.';
+          return 'Regenerate rejected — saved Script changed.';
         }
         return null;
       } : undefined;

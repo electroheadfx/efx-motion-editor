@@ -549,9 +549,7 @@ export function PhysicsPaintRightPanel({
             role="tab"
             aria-selected={optionsTab === 'scripts'}
             onClick={() => { setOptionsTab('scripts'); void scripts.library.enterScripts(); }}
-          >
-            Actions
-          </button>
+          >Scripts</button>
           <button
             type="button"
             class={`physics-paint-options-tab physics-paint-tab-onion ${optionsTab === 'onion' ? 'active' : ''}`}

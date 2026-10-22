@@ -6138,7 +6138,7 @@ export function PhysicsPaintStudio() {
           >
             <header class="physics-paint-group-delete-header">
               <h2 id="physics-paint-group-delete-title">Delete the only frame in “{soleOccurrenceDeleteDialog.groupName}”?</h2>
-              <p>This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Action is kept.</p>
+              <p>This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Script is kept.</p>
             </header>
             {soleOccurrenceDeleteError ? <p class="physics-paint-group-delete-error" role="alert">{soleOccurrenceDeleteError}</p> : null}
             <footer class="physics-paint-group-delete-footer">

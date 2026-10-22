@@ -64,9 +64,9 @@ describe('canonical Group presentation copy', () => {
       modeLabel: 'Motion',
       groupTypeLabel: 'Motion Rail',
       lifecycle: 'synchronized',
-      statusLabel: 'Synchronized with Action.',
+      statusLabel: 'Synchronized with Script.',
       synchronizationDot: 'synchronized',
-      regenerateDisabledReason: 'Already synchronized with Action.',
+      regenerateDisabledReason: 'Already synchronized with Script.',
       fragmentLabel: null,
       linkedDescription: null,
     });
@@ -75,10 +75,10 @@ describe('canonical Group presentation copy', () => {
       'Type: Motion',
       'Cycle 4f × 3 = 12f',
       'Effective 12f',
-      'Status: Synchronized with Action.',
+      'Status: Synchronized with Script.',
     ]);
     expect(presentation.accessibleName).toBe(
-      'Walk Cycle Rail. Motion Rail. Cycle 4f × 3 = 12f. Effective 12 frames. Synchronized with Action.',
+      'Walk Cycle Rail. Motion Rail. Cycle 4f × 3 = 12f. Effective 12 frames. Synchronized with Script.',
     );
   });
 
@@ -95,7 +95,7 @@ describe('canonical Group presentation copy', () => {
       null,
     )).toMatchObject({
       displayName: 'Static Rail at F12',
-      sourceLabel: 'Source Action unavailable',
+      sourceLabel: 'Source Script unavailable',
       modeLabel: 'Static',
       groupTypeLabel: 'Static Rail',
     });
@@ -112,7 +112,7 @@ describe('canonical Group presentation copy', () => {
       clip: clip({ syncState: 'modified' }),
       sourceName: 'Walk Cycle',
       lifecycle: 'modified',
-      status: 'Modified locally — Regenerate to restore from Action.',
+      status: 'Modified locally — Regenerate to restore from Script.',
       dot: 'modified',
       regenerate: null,
     },
@@ -121,18 +121,18 @@ describe('canonical Group presentation copy', () => {
       clip: clip({ provenanceState: 'detached' }),
       sourceName: 'Walk Cycle',
       lifecycle: 'detached',
-      status: 'Action detached.',
+      status: 'Script detached.',
       dot: 'detached',
-      regenerate: 'Regenerate unavailable — Action detached.',
+      regenerate: 'Regenerate unavailable — Script detached.',
     },
     {
       name: 'no source action',
       clip: clip({ scriptId: undefined }),
       sourceName: null,
       lifecycle: 'unavailable',
-      status: 'Source Action unavailable.',
+      status: 'Source Script unavailable.',
       dot: 'unavailable',
-      regenerate: 'Regenerate unavailable — Source Action unavailable.',
+      regenerate: 'Regenerate unavailable — Source Script unavailable.',
     },
     {
       // 47 close-out: the lifecycle reads the clip's own scriptId, never the
@@ -143,9 +143,9 @@ describe('canonical Group presentation copy', () => {
       clip: clip(),
       sourceName: null,
       lifecycle: 'synchronized',
-      status: 'Synchronized with Action.',
+      status: 'Synchronized with Script.',
       dot: 'synchronized',
-      regenerate: 'Already synchronized with Action.',
+      regenerate: 'Already synchronized with Script.',
     },
   ])('maps $name without exposing authority data', ({ clip: value, sourceName, lifecycle, status, dot, regenerate }) => {
     const presentation = projectPhysicsPaintLoopClipPresentation(range(), value, sourceName);
@@ -163,7 +163,7 @@ describe('canonical Group presentation copy', () => {
       presentation.regenerateDisabledReason ?? '',
     ].join(' ');
     expect(productCopy).not.toMatch(/internal-(?:loop|action|key|cycle)-id/);
-    expect(productCopy).not.toMatch(/Loop Clip|Progressive|Static\/Hold|\bScript\b|transport|cache path/i);
+    expect(productCopy).not.toMatch(/Loop Clip|Progressive|Static\/Hold|transport|cache path/i);
   });
 
   it('gives unresolved source state precedence and omits the lifecycle dot', () => {
@@ -201,10 +201,10 @@ describe('canonical Group presentation copy', () => {
     );
 
     expect(presentation.fragmentLabel).toBe('Range F18–F21 · Fragment 2 of 3');
-    expect(presentation.linkedDescription).toBe('Linked to selected Action Walk Cycle.');
+    expect(presentation.linkedDescription).toBe('Linked to selected Script Walk Cycle.');
     expect(presentation.tooltipLines[presentation.tooltipLines.length - 1]).toBe('Range F18–F21 · Fragment 2 of 3');
     expect(presentation.accessibleName).toBe(
-      'Walk Cycle Rail. Fragment 2 of 3, frames 18 through 21. Motion Rail. Synchronized with Action. Linked to selected Action Walk Cycle.',
+      'Walk Cycle Rail. Fragment 2 of 3, frames 18 through 21. Motion Rail. Synchronized with Script. Linked to selected Script Walk Cycle.',
     );
     expect(presentation.loopId).toBe('internal-loop-id');
   });
@@ -232,7 +232,7 @@ describe('capsule presentation — shortened state and partial-cycle facts (TML-
       'Type: Motion',
       'Cycle 4f × 3 = 12f',
       'Effective 10f',
-      'Status: Synchronized with Action.',
+      'Status: Synchronized with Script.',
       'Loop shortened by next clip',
       'next clip — interrupts the loop',
     ]);
@@ -309,10 +309,10 @@ describe('canonical accepted Group feedback copy', () => {
     })).toBe('Deleted Walk Cycle Group.');
     expect(projectPhysicsPaintGroupAcceptedFeedback({
       operation: 'regenerate-group', groupName: 'Walk Cycle Group',
-    })).toBe('Regenerated Walk Cycle Group. Synchronized with Action.');
+    })).toBe('Regenerated Walk Cycle Group. Synchronized with Script.');
     expect(projectPhysicsPaintGroupAcceptedFeedback({
       operation: 'regenerate-shared', count: 3,
-    })).toBe('Regenerated 3 Groups. Synchronized with Action.');
+    })).toBe('Regenerated 3 Groups. Synchronized with Script.');
     expect(projectPhysicsPaintGroupAcceptedFeedback({
       operation: 'keep-groups', actionName: 'Walk Cycle', count: 2,
     })).toBe('Deleted Walk Cycle. Kept 2 detached Groups.');
@@ -366,7 +366,7 @@ describe('reveal rail presentation (52-03 D-22/D-23/D-24)', () => {
   it('appends the freshness line after the Status line (D-23)', () => {
     const fresh = projectPhysicsPaintLoopClipPresentation(range(), revealClip(), 'Reveal Script');
     expect(fresh.freshnessLine).toBe('baked from current script & reference');
-    expect(fresh.tooltipLines[4]).toBe('Status: Synchronized with Action.');
+    expect(fresh.tooltipLines[4]).toBe('Status: Synchronized with Script.');
     expect(fresh.tooltipLines[5]).toBe('baked from current script & reference');
     expect(fresh.accessibleName).toContain('baked from current script & reference');
 

@@ -705,7 +705,7 @@ describe('PhysicsPaintWorkflowStrip header pill contract (36.15-04)', () => {
     expect(code).not.toContain('Frame duplicate');
     // The popover keeps its remaining sections.
     expect(code).toContain('physics-paint-toolbox-section-heading">Key Spacing');
-    expect(code).toContain('physics-paint-toolbox-section-heading">Actions');
+    expect(code).toContain('physics-paint-toolbox-section-heading">Scripts');
     expect(code).not.toContain('physics-paint-roto-interpolation-toggle');
     expect(code).not.toContain('generated in-betweens');
     expect(code).not.toContain('Interpolation count');
@@ -1555,7 +1555,7 @@ describe('PhysicsPaintWorkflowStrip corrected Loop Clip ownership (43-11)', () =
     expect(presentation.mode).toBe('static');
     expect(presentation.modeLabel).toBe('Static');
     expect(presentation.groupTypeLabel).toBe('Static Rail');
-    expect(presentation.statusLabel).toBe('Synchronized with Action.');
+    expect(presentation.statusLabel).toBe('Synchronized with Script.');
     expect([
       presentation.displayName,
       presentation.sourceLabel,
@@ -2374,23 +2374,23 @@ describe('PhysicsPaintWorkflowStrip Bg rail click-to-select pass-through (49-06 
 describe('PhysicsPaintWorkflowStrip toolbox Actions section (260905-dso)', () => {
   it('renders the Actions section with guarded Apply and Clear buffer buttons in the toolbox popover', () => {
     const header = getHeaderBlock(source());
-    const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Actions</div>');
+    const headingIndex = header.indexOf('<div class="physics-paint-toolbox-section-heading">Scripts</div>');
     expect(headingIndex).toBeGreaterThanOrEqual(0);
     // The two buffer buttons sit side by side on one line (260905-dso).
     expect(header).toContain('physics-paint-toolbox-actions-row');
-    const applyIndex = header.indexOf('aria-label="Apply Action to Frame"', headingIndex);
-    const clearIndex = header.indexOf('aria-label="Clear Action Buffer"', headingIndex);
+    const applyIndex = header.indexOf('aria-label="Apply Script to Frame"', headingIndex);
+    const clearIndex = header.indexOf('aria-label="Clear Script Buffer"', headingIndex);
     expect(applyIndex).toBeGreaterThan(headingIndex);
     expect(clearIndex).toBeGreaterThan(applyIndex);
-    const applyBlock = getButtonBlock(header, 'Apply Action to Frame');
+    const applyBlock = getButtonBlock(header, 'Apply Script to Frame');
     expect(applyBlock).toContain('aria-disabled');
     expect(applyBlock.replace(/aria-disabled/g, '')).not.toContain('disabled=');
     expect(applyBlock).toContain('aria-describedby');
     expect(applyBlock).not.toContain('title=');
     expect(applyBlock).toContain("(event.key === 'Enter' || event.key === ' ') && !props.canApplyScriptAction");
     // Both buttons use the guarded styled-tooltip idiom with region bottom.
-    expect(header).toContain("buildGuardedActionTooltipCopy('Apply Action to Frame'");
-    expect(header).toContain("buildGuardedActionTooltipCopy('Clear Action from buffer'");
+    expect(header).toContain("buildGuardedActionTooltipCopy('Apply Script to Frame'");
+    expect(header).toContain("buildGuardedActionTooltipCopy('Clear Script from buffer'");
     expect(header).toContain('region="bottom"');
   });
 

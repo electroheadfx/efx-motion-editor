@@ -157,7 +157,7 @@ export function projectPhysicsPaintLoopClipPresentation(
     : null;
   const linkedActionName = options.linkedActionName?.trim();
   const linkedDescription = linkedActionName
-    ? `Linked to selected Action ${linkedActionName}.`
+    ? `Linked to selected Script ${linkedActionName}.`
     : null;
   // Shortened facts come straight from the resolver (D-32): truncated is
   // already true exactly when the effective end falls short of the natural
@@ -196,7 +196,7 @@ export function projectPhysicsPaintLoopClipPresentation(
   return {
     loopId: range.loopId,
     displayName,
-    sourceLabel: sourceActionName ?? 'Source Action unavailable',
+    sourceLabel: sourceActionName ?? 'Source Script unavailable',
     placementLabel: `F${range.phaseOrigin}`,
     cycleLabel,
     effectiveLabel: `Effective ${effectiveDuration}f`,
@@ -233,7 +233,7 @@ export function projectPhysicsPaintLoopClipFragmentPresentation(
     : null;
   const normalizedLinkedActionName = linkedActionName?.trim();
   const linkedDescription = normalizedLinkedActionName
-    ? `Linked to selected Action ${normalizedLinkedActionName}.`
+    ? `Linked to selected Script ${normalizedLinkedActionName}.`
     : null;
   const tooltipLines = [
     ...presentation.tooltipLines.slice(0, 5),
@@ -274,9 +274,9 @@ export function projectPhysicsPaintGroupAcceptedFeedback(
     case 'delete-group':
       return `Deleted ${request.groupName}.`;
     case 'regenerate-group':
-      return `Regenerated ${request.groupName}. Synchronized with Action.`;
+      return `Regenerated ${request.groupName}. Synchronized with Script.`;
     case 'regenerate-shared':
-      return `Regenerated ${request.count} Groups. Synchronized with Action.`;
+      return `Regenerated ${request.count} Groups. Synchronized with Script.`;
     case 'keep-groups':
       return `Deleted ${request.actionName}. Kept ${request.count} detached Groups.`;
     case 'delete-action-and-groups':
@@ -300,10 +300,10 @@ function resolveGroupLifecycle(
 
 function statusLabelFor(lifecycle: PhysicsPaintGroupLifecycle): string {
   switch (lifecycle) {
-    case 'synchronized': return 'Synchronized with Action.';
-    case 'modified': return 'Modified locally — Regenerate to restore from Action.';
-    case 'detached': return 'Action detached.';
-    case 'unavailable': return 'Source Action unavailable.';
+    case 'synchronized': return 'Synchronized with Script.';
+    case 'modified': return 'Modified locally — Regenerate to restore from Script.';
+    case 'detached': return 'Script detached.';
+    case 'unavailable': return 'Source Script unavailable.';
     case 'unresolved': return 'Source missing';
   }
 }
@@ -311,9 +311,9 @@ function statusLabelFor(lifecycle: PhysicsPaintGroupLifecycle): string {
 function regenerateDisabledReasonFor(lifecycle: PhysicsPaintGroupLifecycle): string | null {
   switch (lifecycle) {
     case 'modified': return null;
-    case 'synchronized': return 'Already synchronized with Action.';
-    case 'detached': return 'Regenerate unavailable — Action detached.';
-    case 'unavailable': return 'Regenerate unavailable — Source Action unavailable.';
+    case 'synchronized': return 'Already synchronized with Script.';
+    case 'detached': return 'Regenerate unavailable — Script detached.';
+    case 'unavailable': return 'Regenerate unavailable — Source Script unavailable.';
     case 'unresolved': return 'Source missing';
   }
 }
@@ -363,7 +363,7 @@ export function projectPhysicsPaintLoopClipGeometry(
 /**
  * 49-05 (S4): the Background clip rail presentation. Bg clips have no
  * scriptId, so `projectPhysicsPaintLoopClipPresentation` would report the
- * wrong 'Source Action unavailable' lifecycle — this projection reads ONLY the
+ * wrong 'Source Script unavailable' lifecycle — this projection reads ONLY the
  * resolver facts (`range.truncated`/`partialCycle`/`effectiveEnd`/`repeat`/
  * `cycleLength`) and never computes loop math (capsule-never-math, Pitfall
  * 10/m2). The badge always shows the REQUESTED duration; the shortened state

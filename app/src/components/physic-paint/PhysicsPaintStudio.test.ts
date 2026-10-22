@@ -78,7 +78,7 @@ describe('Physics Paint Play Script integration contract', () => {
   });
 
   it('keeps Save, Load/Paintbrush, Create Rail, and cached Roto playback distinct', () => {
-    const save = scriptsPanel.indexOf('label="Save Action"');
+    const save = scriptsPanel.indexOf('label="Save Script"');
     const paintbrush = scriptsPanel.indexOf('label="Load + Apply to Frame"');
     const playScript = scriptsPanel.indexOf('label="Create Rail…"');
     expect(save).toBeGreaterThan(-1);
@@ -826,7 +826,7 @@ describe('Physics Paint selection-scoped Group deletion (43.2-17)', () => {
 
   it('renders only the focused sole-occurrence Delete Frame warning', () => {
     expect(studio).toContain('Delete the only frame in “{soleOccurrenceDeleteDialog.groupName}”?');
-    expect(studio).toContain('This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Action is kept.');
+    expect(studio).toContain('This is the Rail’s only frame. Delete Frame will remove the whole Rail and its uniquely owned data. The Script is kept.');
     expect(studio).toContain('>Delete Frame</button>');
     expect(studio).toContain('>Cancel</button>');
     expect(studio).not.toContain('This frame belongs to a {groupDeleteDialog.groupType} Group.');

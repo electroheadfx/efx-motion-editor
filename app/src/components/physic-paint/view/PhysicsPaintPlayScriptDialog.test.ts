@@ -1076,7 +1076,7 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     fragmentCount: 3,
     gapRanges: 'F13, F16–F17',
     affectedGroups: [{ groupId: 'G1', name: 'Rail at F10', range: 'F10–F19' }],
-    sourceCacheEffects: 'Rebuilds the saved Action source cycle and refreshes the Rail cache.',
+    sourceCacheEffects: 'Rebuilds the saved Script source cycle and refreshes the Rail cache.',
     storedSettings: { mode: 'static' as const, motion: { deformation: 0, position: 0 }, overrideColor: null, sourceKeyIds: ['S1', 'S2', 'S3'] },
   };
   const sourceEditSeed = {
@@ -1094,7 +1094,7 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     const { controller } = createFakeController(sourceEditSeed);
     const tree = renderDialog(controller);
     expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe(`Regenerate “${impact.groupName}”?`);
-    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-lead')))).toBe('Regenerate discards accepted local Rail changes and restores the result from the saved Action and stored Rail settings.');
+    expect(textOf(findOne(tree, byClass('physics-paint-play-script-regenerate-lead')))).toBe('Regenerate discards accepted local Rail changes and restores the result from the saved Script and stored Rail settings.');
     const facts = findAll(tree, byClass('physics-paint-play-script-regenerate-fact'));
     expect(facts.map((fact) => textOf(findOne(fact, (vnode) => vnode.type === 'dt')))).toEqual([
       'Rail', 'Rail Type', 'Restored range', 'Locally painted frames', 'Deleted frames', 'Fragments', 'Gaps cleared', 'Result', 'Source/cache effects',
@@ -1107,7 +1107,7 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
       '3 · F13, F16–F17',
       '3 → 1',
       'F13, F16–F17',
-      'Synchronized with Action.',
+      'Synchronized with Script.',
       impact.sourceCacheEffects,
     ]);
     expect(findAll(tree, (vnode) => vnode.type === 'img' || hasClass(vnode, 'thumbnail'))).toHaveLength(0);
@@ -1147,10 +1147,10 @@ describe('PhysicsPaintPlayScriptDialog Rail Regenerate confirmation (43.2-09 G3a
     tree = renderDialog(busy.controller);
     expect(findOne(tree, (vnode) => vnode.type === 'button' && textOf(vnode) === 'Regenerate Rail').props.disabled).toBe(true);
 
-    const stale = createFakeController({ ...sourceEditSeed, error: 'Regenerate rejected — saved Action changed.' });
+    const stale = createFakeController({ ...sourceEditSeed, error: 'Regenerate rejected — saved Script changed.' });
     tree = renderDialog(stale.controller);
     const alert = findOne(tree, (vnode) => vnode.props?.role === 'alert');
-    expect(textOf(alert)).toBe('Regenerate rejected — saved Action changed.');
+    expect(textOf(alert)).toBe('Regenerate rejected — saved Script changed.');
     expect(textOf(findOne(tree, byId('physics-play-script-title')))).toBe(`Regenerate “${impact.groupName}”?`);
   });
 

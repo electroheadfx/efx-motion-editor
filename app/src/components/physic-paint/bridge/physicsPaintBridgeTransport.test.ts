@@ -388,7 +388,7 @@ describe('image-import bridge pair (quick-260921-bjm)', () => {
   });
 });
 
-describe('thumbnail native encoder raw-bytes transport (52.1 Save Action regression)', () => {
+describe('thumbnail native encoder raw-bytes transport (52.1 Save Script regression)', () => {
   it('sends the rgba as the raw invoke body with dimensions in headers, and normalizes the number-array response', async () => {
     invoke.mockResolvedValueOnce([82, 73, 70, 70, 87, 69, 66, 80]);
     const rgba = new Uint8Array(2 * 2 * 4).fill(7);
@@ -400,7 +400,7 @@ describe('thumbnail native encoder raw-bytes transport (52.1 Save Action regress
     expect(command).toBe('script_library_encode_thumbnail_webp');
     // The raw Uint8Array IS the invoke body. Crossing the event bridge (or a
     // JSON arg) index-objects the bytes and orphans the request — the silent
-    // Save Action stall this regression came from.
+    // Save Script stall this regression came from.
     expect(body).toBe(rgba);
     expect(options.headers).toMatchObject({ width: '2', height: '2', quality: '0.8' });
     expect(options.headers.operationid).toMatch(/^physics-paint-thumbnail-/);

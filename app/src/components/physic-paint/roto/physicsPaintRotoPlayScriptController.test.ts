@@ -3049,14 +3049,14 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
 
     it('gates Regenerate with exact lifecycle reasons and prepares one immutable disclosed impact', async () => {
       const synchronized = regenerateHarness([lifecycleGroup('G1', 10, { syncState: 'synchronized' })]);
-      expect((await synchronized.controller.openSourceEdit('G1')).reason).toBe('Already synchronized with Action.');
+      expect((await synchronized.controller.openSourceEdit('G1')).reason).toBe('Already synchronized with Script.');
 
       const detached = regenerateHarness([lifecycleGroup('G1', 10, { provenanceState: 'detached' })]);
-      expect((await detached.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Action detached.');
+      expect((await detached.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Script detached.');
 
       const unavailable = regenerateHarness([lifecycleGroup('G1', 10)]);
       unavailable.rows.value = [] as never;
-      expect((await unavailable.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Source Action unavailable.');
+      expect((await unavailable.controller.openSourceEdit('G1')).reason).toBe('Regenerate unavailable — Source Script unavailable.');
 
       const groups = [lifecycleGroup('G1', 10), lifecycleGroup('G2', 30, { frameOverrides: [] })];
       const prepared = regenerateHarness(groups);
@@ -3110,7 +3110,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       stale.rows.value = [actionRow('action-revision-2')] as never;
       expect(await stale.controller.confirm()).toBe(false);
       expect(stale.commit).not.toHaveBeenCalled();
-      expect(stale.controller.error.value).toBe('Regenerate rejected — saved Action changed.');
+      expect(stale.controller.error.value).toBe('Regenerate rejected — saved Script changed.');
       expect(stale.controller.confirmationOpen.value).toBe(true);
     });
 
@@ -3129,7 +3129,7 @@ describe('createRotoPlayScriptController loop modes and loop ops (43-06)', () =>
       expect(typeof revalidateUnderLease).toBe('function');
       expect(await revalidateUnderLease?.()).toBeNull();
       test.rows.value = [actionRow('action-revision-2')] as never;
-      expect(await revalidateUnderLease?.()).toBe('Regenerate rejected — saved Action changed.');
+      expect(await revalidateUnderLease?.()).toBe('Regenerate rejected — saved Script changed.');
       const publication = test.commit.mock.calls[0][0];
       expect(publication.selectedKeyId).toBeNull();
       expect(publication.selectedAppFrame).toBeNull();

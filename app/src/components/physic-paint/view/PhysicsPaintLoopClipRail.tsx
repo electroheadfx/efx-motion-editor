@@ -438,7 +438,7 @@ export function PhysicsPaintLoopClipRail(props: PhysicsPaintLoopClipRailProps) {
     const actionLinked = props.linkedLoopClipIds?.includes(range.loopId) ?? false;
     const linkedActionName = actionLinked ? props.linkedActionName?.trim() : null;
     const linkedDescription = linkedActionName
-      ? `Linked to selected Action ${linkedActionName}.`
+      ? `Linked to selected Script ${linkedActionName}.`
       : null;
     const targetPresentation = presentation
       ? {

@@ -324,7 +324,7 @@ export function PhysicsPaintPlayScriptDialog({
         <div class="physics-paint-play-script-content">
           {regenerateImpact ? (
             <div class="physics-paint-play-script-regenerate">
-              <p class="physics-paint-play-script-regenerate-lead">Regenerate discards accepted local Rail changes and restores the result from the saved Action and stored Rail settings.</p>
+              <p class="physics-paint-play-script-regenerate-lead">Regenerate discards accepted local Rail changes and restores the result from the saved Script and stored Rail settings.</p>
               <dl class="physics-paint-play-script-regenerate-facts">
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Rail</dt><dd>{regenerateImpact.groupName}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Rail Type</dt><dd>{regenerateImpact.groupType}</dd></div>
@@ -333,7 +333,7 @@ export function PhysicsPaintPlayScriptDialog({
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Deleted frames</dt><dd>{regenerateImpact.deletedFrameCount > 0 ? `${regenerateImpact.deletedFrameCount} · ${regenerateImpact.deletedFrameRanges}` : 'None'}</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Fragments</dt><dd>{regenerateImpact.fragmentCount} → 1</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Gaps cleared</dt><dd>{regenerateImpact.gapRanges}</dd></div>
-                <div class="physics-paint-play-script-regenerate-fact"><dt>Result</dt><dd>Synchronized with Action.</dd></div>
+                <div class="physics-paint-play-script-regenerate-fact"><dt>Result</dt><dd>Synchronized with Script.</dd></div>
                 <div class="physics-paint-play-script-regenerate-fact"><dt>Source/cache effects</dt><dd>{regenerateImpact.sourceCacheEffects}</dd></div>
               </dl>
               {regenerateImpact.affectedGroups.length > 1 ? (

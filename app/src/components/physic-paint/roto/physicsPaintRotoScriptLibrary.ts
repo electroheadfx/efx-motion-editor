@@ -154,7 +154,7 @@ export async function prepareReferencedActionDeletion(
   const hasReference = initialDocument.loopClips.some((group) =>
     group.scriptId === input.row.id && group.provenanceState === 'attached');
   if (!hasReference) {
-    return { ok: false, code: 'unavailable', error: 'Action has no attached Groups.' };
+    return { ok: false, code: 'unavailable', error: 'Script has no attached Groups.' };
   }
   const leaseToken = ports.acquireLease(project.contextId, input.context.layerId);
   if (!leaseToken) return { ok: false, code: 'lease-unavailable', error: 'Physical operation lease is unavailable.' };
@@ -167,7 +167,7 @@ export async function prepareReferencedActionDeletion(
   if (!currentDocument
     || currentDocument.revision !== initialDocument.revision
     || currentActionRevision !== input.row.revision) {
-    return fail('stale-authority', 'Action or physical authority changed during preflight.');
+    return fail('stale-authority', 'Script or physical authority changed during preflight.');
   }
   const proposed = proposePhysicPaintRotoActionGroupLifecycle({
     document: currentDocument,
@@ -176,7 +176,7 @@ export async function prepareReferencedActionDeletion(
     currentActionRevision,
     mode: input.mode === 'keep-groups' ? 'detach' : 'delete',
   });
-  if (!proposed.ok) return fail('invalid-candidate', `Referenced Action candidate was rejected: ${proposed.reason}`);
+  if (!proposed.ok) return fail('invalid-candidate', `Referenced Script candidate was rejected: ${proposed.reason}`);
 
   const commandId = ports.nextUuid();
   const token = ports.nextUuid();
@@ -242,10 +242,10 @@ function mapReferencedActionDeleteError(
 ): string {
   if (code === 'lease-unavailable') return 'Another Group operation is in progress. Nothing changed. Try again when it finishes.';
   if (code === 'stale-authority' || code === 'invalid-candidate') {
-    return 'Action or Rail references changed. Nothing changed. Review the affected Rails and try again.';
+    return 'Script or Rail references changed. Nothing changed. Review the affected Rails and try again.';
   }
-  if (code === 'commit-failed') return 'Recovery is required before another Action change. Accepted Actions and Groups remain unchanged.';
-  return 'Couldn’t delete this Action. Nothing changed. Review the affected Groups and try again.';
+  if (code === 'commit-failed') return 'Recovery is required before another Script change. Accepted Scripts and Groups remain unchanged.';
+  return 'Couldn’t delete this Script. Nothing changed. Review the affected Groups and try again.';
 }
 
 export function buildRotoScriptDeleteReferenceImpact(
@@ -309,10 +309,10 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
   const selected = computed(() => rows.value.find((row) => row.id === selectedId.value) ?? null);
   const actionMutationDisabledReason = computed<string | null>(() => {
     if (!recoveryReady.value || transactionPhase.value === 'recovery-required') {
-      return 'Recover the pending Action change before starting another operation.';
+      return 'Recover the pending Script change before starting another operation.';
     }
     if (busy.value || transactionPhase.value === 'preparing' || transactionPhase.value === 'committed') {
-      return 'Finish the current Action operation.';
+      return 'Finish the current Script operation.';
     }
     return null;
   });
@@ -431,7 +431,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const recovered = await recover(context);
     if (disposed || key !== contextKey) return false;
     if (!recovered.ok) {
-      status.value = recovered.error ?? 'Action transaction recovery failed.';
+      status.value = recovered.error ?? 'Script transaction recovery failed.';
       ports.log(status.value, true);
       return false;
     }
@@ -486,7 +486,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     // a dead button.
     const fail = (message: string): false => { status.value = message; ports.log(message, true); return false; };
     if (!context?.project?.saved) return fail('Save the project first.');
-    if (busy.peek()) return fail('Finish the current Action operation.');
+    if (busy.peek()) return fail('Finish the current Script operation.');
     const acceptedContextGeneration = contextGeneration;
     try {
       // Inside the try: a rejection here (or from thumbnail capture) must reach
@@ -606,12 +606,12 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
     const currentImpact = buildRotoScriptDeleteReferenceImpact(document, row);
     const referenced = row.referenceImpact !== null;
     if (referenced && (!currentImpact || currentImpact.physicalRevision !== row.referenceImpact?.physicalRevision)) {
-      deleteError.value = 'Action or Rail references changed. Nothing changed. Review the affected Rails and try again.';
+      deleteError.value = 'Script or Rail references changed. Nothing changed. Review the affected Rails and try again.';
       ports.log(deleteError.value, true);
       return false;
     }
     if (!referenced && currentImpact) {
-      deleteError.value = 'Action references changed. Nothing changed. Review the affected Groups before deleting.';
+      deleteError.value = 'Script references changed. Nothing changed. Review the affected Groups before deleting.';
       ports.log(deleteError.value, true);
       deleteConfirmation.value = Object.freeze({ ...row, referenceImpact: currentImpact });
       return false;
@@ -639,12 +639,12 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       }
       referencedDeleteImpact.value = prepared.impact;
       transactionPhase.value = 'committed';
-      const settled = transactionPorts.settle?.(prepared) ?? { ok: false, error: 'Committed Action settlement port is unavailable.' };
+      const settled = transactionPorts.settle?.(prepared) ?? { ok: false, error: 'Committed Script settlement port is unavailable.' };
       if (!settled.ok) {
         transactionPorts.transferLeaseToRecovery?.(prepared.request.leaseToken);
         transactionPhase.value = 'recovery-required';
-        deleteError.value = 'Recovery is required before another Action change. Accepted Actions and Groups remain unchanged.';
-        status.value = settled.error ?? 'Committed Action settlement requires recovery.';
+        deleteError.value = 'Recovery is required before another Script change. Accepted Scripts and Groups remain unchanged.';
+        status.value = settled.error ?? 'Committed Script settlement requires recovery.';
         ports.log(status.value, true);
         return false;
       }
@@ -660,7 +660,7 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       if (acknowledged && acknowledged.state !== 'acknowledged') {
         transactionPorts.transferLeaseToRecovery?.(prepared.request.leaseToken);
         transactionPhase.value = 'recovery-required';
-        deleteError.value = 'Recovery is required before another Action change. Accepted Actions and Groups remain unchanged.';
+        deleteError.value = 'Recovery is required before another Script change. Accepted Scripts and Groups remain unchanged.';
         return false;
       }
       transactionPorts.releaseLease(prepared.request.leaseToken);

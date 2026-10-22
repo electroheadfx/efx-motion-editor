@@ -386,7 +386,7 @@ function createNativeReferencedActionDeletionPorts(
         before: prepared.before,
         leaseToken: lease,
       });
-      if (!result.ok) return { ok: false, error: `Committed Action settlement failed: ${result.reason}` };
+      if (!result.ok) return { ok: false, error: `Committed Script settlement failed: ${result.reason}` };
       const authority = prepared.request.authority;
       const scriptLibraryAuthority = deletionPorts.getAuthority?.() ?? null;
       if (!scriptLibraryAuthority) return { ok: false, error: 'Script library history authority is unavailable.' };
@@ -450,10 +450,10 @@ function createNativeReferencedActionDeletionPorts(
           physicPaintStore.releaseRotoPhysicalOperationLease(recoveryLease);
           await releaseManager.retryDeferred();
         }
-        return restored ? { ok: true } : { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Prepared Action recovery failed.' };
+        return restored ? { ok: true } : { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Prepared Script recovery failed.' };
       }
       if (recovered.state !== 'recovery-required') {
-        return { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Committed Action recovery failed.' };
+        return { ok: false, error: recovered.state === 'failed' ? recovered.error : 'Committed Script recovery failed.' };
       }
       const current = physicPaintStore.getRotoPhysicalDocument(discovered.authority.layerId, getPorts().getLaunchContext()?.document?.activeTrackId ?? '');
       if (!current) {
@@ -546,7 +546,7 @@ function createNativeReferencedActionDeletionPorts(
       const result = applyCommittedReferencedActionDeletion({ committed, history, leaseToken: lease });
       return result.ok
         ? { ok: true }
-        : { ok: false, error: `Committed Action history settlement failed: ${result.reason}` };
+        : { ok: false, error: `Committed Script history settlement failed: ${result.reason}` };
     },
     acknowledge: scriptLibraryAcknowledgeActionTransaction,
   });
