@@ -2145,14 +2145,14 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 });
 
 describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
-  it('orders the action row as Key, Rail, Push, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor (260905-d1w + Mj2-UAT trash relocation)', () => {
+  it('orders the action row as Key, Rail, Insert, Trash, Push, Duplicate, Copy, Paste, Cut, Scissor (261022-ne3 push relocation)', () => {
     const row = getActionRowBlock(source());
     const tokens = [
       'aria-label="Add key"',
       'aria-label="Create rail"',
-      'aria-label="Push"',
       getActionAriaLabelToken('Insert key before'),
       getActionAriaLabelToken('Delete Frame'),
+      'aria-label="Push"',
       'aria-label="Duplicate key"',
       'aria-label="Copy key"',
       'aria-label="Paste key"',
@@ -2164,6 +2164,14 @@ describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
     for (let i = 1; i < indices.length; i += 1) {
       expect(indices[i]).toBeGreaterThan(indices[i - 1]);
     }
+    // 261022-ne3: the whole Push group sits immediately after the delete-key
+    // button and before Duplicate — the block itself is untouched.
+    const pushGroupIndex = row.indexOf('physics-paint-push-tool-group');
+    expect(pushGroupIndex).toBeGreaterThan(row.indexOf('aria-label={deleteRotoScopeLabel}'));
+    expect(pushGroupIndex).toBeLessThan(row.indexOf('aria-label="Duplicate key"'));
+    const pushButton = getButtonBlock(row, 'Push');
+    expect(pushButton).toContain('togglePushTool()');
+    expect(pushButton).toContain('aria-pressed');
     // The Solo group is gone from the action row (relocated to the pill).
     expect(row).not.toContain('physics-paint-solo-tool-group');
   });

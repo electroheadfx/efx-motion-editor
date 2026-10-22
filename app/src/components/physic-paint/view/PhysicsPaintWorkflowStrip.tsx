@@ -5286,38 +5286,6 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy('Create rail — start a new rail with a blank key on this frame', railCreateDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
-                <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
-                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
-                    <button
-                      type="button"
-                      class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
-                      aria-label="Push"
-                      aria-pressed={pushArmed ? 'true' : 'false'}
-                      aria-disabled={pushToolDisabled ? 'true' : undefined}
-                      aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
-                      onFocus={pushTooltip.onFocus}
-                      onBlur={pushTooltip.onBlur}
-                      onClick={() => {
-                        pushTooltip.hide();
-                        if (pushToolDisabled) return;
-                        // Mode toggle: the anchor is resolved from the rail under
-                        // the pointer on drag — no selection is required to arm.
-                        togglePushTool();
-                      }}
-                      onKeyDown={(event) => {
-                        if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
-                      }}
-                    >
-                      <MoveHorizontal size={18} aria-hidden="true" />
-                    </button>
-                    {pushToolDisabled ? (
-                      <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
-                    ) : null}
-                    <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
-                      {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
-                    </PhysicsPaintStyledTooltip>
-                  </span>
-                </div>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={insertKeyTooltip.onPointerEnter} onPointerLeave={insertKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
@@ -5373,6 +5341,38 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                     {buildGuardedActionTooltipCopy(deleteRotoScopeLabel, deleteRotoKeyDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
+                <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
+                  <span class="physics-paint-roto-key-icon-action" onPointerEnter={pushTooltip.onPointerEnter} onPointerLeave={pushTooltip.onPointerLeave}>
+                    <button
+                      type="button"
+                      class={`physics-paint-roto-key-icon-button physics-paint-push-tool-button${pushArmedClass}`}
+                      aria-label="Push"
+                      aria-pressed={pushArmed ? 'true' : 'false'}
+                      aria-disabled={pushToolDisabled ? 'true' : undefined}
+                      aria-describedby={pushToolDisabled ? 'roto-key-action-reason-push' : undefined}
+                      onFocus={pushTooltip.onFocus}
+                      onBlur={pushTooltip.onBlur}
+                      onClick={() => {
+                        pushTooltip.hide();
+                        if (pushToolDisabled) return;
+                        // Mode toggle: the anchor is resolved from the rail under
+                        // the pointer on drag — no selection is required to arm.
+                        togglePushTool();
+                      }}
+                      onKeyDown={(event) => {
+                        if ((event.key === 'Enter' || event.key === ' ') && pushToolDisabled) event.preventDefault();
+                      }}
+                    >
+                      <MoveHorizontal size={18} aria-hidden="true" />
+                    </button>
+                    {pushToolDisabled ? (
+                      <span id="roto-key-action-reason-push" class="physics-paint-sr-only">{pushToolDisabledReason}</span>
+                    ) : null}
+                    <PhysicsPaintStyledTooltip visible={pushTooltip.visible} region="bottom">
+                      {buildGuardedActionTooltipCopy('Push mode: drag any Rail to select it and move it (and everything after it) right or left. Escape or another tool leaves push mode.', pushToolDisabledReason)}
+                    </PhysicsPaintStyledTooltip>
+                  </span>
+                </div>
                 <span class="physics-paint-roto-key-icon-action" onPointerEnter={duplicateKeyTooltip.onPointerEnter} onPointerLeave={duplicateKeyTooltip.onPointerLeave}>
                   <button
                     type="button"
