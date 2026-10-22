@@ -180,6 +180,14 @@ export interface EfxPaintCompositorPorts {
    * semi-transparent strokes (T-48-16). Empty/absent = full participating set.
    */
   excludeTrackIds?: ReadonlySet<string>;
+  /**
+   * studio-multi-track-only-active: the active track's live engine raster.
+   * Drawn AT THE TRACK'S STACK POSITION in the participating loop — never
+   * appended after every track — so selecting a track never overrides the
+   * layer order. The track must also be in `excludeTrackIds`: its store copy
+   * stays excluded (T-48-16 anti double-apply) and this raster supplies it.
+   */
+  engineOverlay?: { readonly trackId: string; readonly raster: CanvasImageSource } | null;
 }
 
 /** One missing-source report entry (CMP-05, D-09). */
@@ -227,7 +235,7 @@ export function compositeFrame(
   // zero draw ops (Pitfall P-48-6). The key terms come from the caller; the
   // unwired compositeRevision counter is never read (Task 2 gate).
   const flattenedKey =
-    ports.memo !== undefined
+    ports.memo !== undefined && ports.engineOverlay == null
       ? deriveEfxPaintFlattenedCacheKey({
           document,
           trackContentRevisions: ports.trackContentRevisions ?? EMPTY_TRACK_CONTENT_REVISIONS,
@@ -253,19 +261,43 @@ export function compositeFrame(
   // result is placed over the background/fond, never blended against it.
   ctx.clearRect(0, 0, size.width, size.height);
 
-  // 4-8. Participating Paint tracks in stable bottom-to-top order. Opacity is
+  // 4-8. Participating Paint tracks. The document's `order` is the TRACK-LIST
+  // row order: 0 is the TOP row / TOPMOST layer (addTrack inserts at order 0;
+  // the Background row sits beneath every Paint row). The compositor must draw
+  // bottom-to-top, so it walks the document order in REVERSE. Opacity is
   // applied BEFORE blend mode (D-01, After Effects convention); the draw state
   // is save/restore-wrapped per track. 48-05: the exclude set (engine-supplied
   // tracks) filters the participating set here — the pure compositor enforces
   // the D-05 editing-base exclusion regardless of how the caller built its
-  // content terms. 48-06 (UAT-C): the FIRST participating track establishes
-  // the transparent stage with source-over — a non-normal blend over
-  // transparency would erase it (multiply over transparent = transparent);
-  // every track above keeps its own blend mode, applied between tracks only.
-  const participating = participatingPaintTracks(document)
-    .filter((track) => !ports.excludeTrackIds?.has(track.id));
+  // content terms. 48-06 (UAT-C): the FIRST drawn track establishes the
+  // transparent stage with source-over — a non-normal blend over transparency
+  // would erase it (multiply over transparent = transparent); every track above
+  // keeps its own blend mode, applied between tracks only.
+  const participating = participatingPaintTracks(document);
+  // studio-multi-track-only-active: the engine-supplied track keeps its REAL
+  // stack slot — the overlay replaces its store raster in the ordered loop
+  // instead of being appended after every other track. Selection must never
+  // reorder the composite.
+  const overlayTrackId =
+    ports.engineOverlay != null && ports.excludeTrackIds?.has(ports.engineOverlay.trackId)
+      ? ports.engineOverlay.trackId
+      : null;
+  const considered = participating.filter(
+    (track) => !ports.excludeTrackIds?.has(track.id) || track.id === overlayTrackId,
+  );
+  // Document order is the UI top-to-bottom order; drawing runs bottom-to-top.
+  const drawOrder = [...considered].reverse();
   let firstTrack = true;
-  for (const track of participating) {
+  for (const track of drawOrder) {
+    if (track.id === overlayTrackId) {
+      ctx.save();
+      ctx.globalAlpha = track.opacity;
+      ctx.globalCompositeOperation = firstTrack ? 'source-over' : ports.compositeOp(track.blendMode);
+      ctx.drawImage(ports.engineOverlay!.raster, 0, 0, size.width, size.height);
+      ctx.restore();
+      firstTrack = false;
+      continue;
+    }
     // D-07: per-track raster memo — a track's resolved raster survives when
     // only a SIBLING track changed. The per-track key is derived from the
     // caller-supplied content revision; the actual dataUrl→image decode lives
@@ -427,7 +459,7 @@ export function compositeFrame(
     raster: handle.canvas,
     missing: Object.freeze(missing),
     participates: Object.freeze({
-      trackIds: Object.freeze(participating.map((track) => track.id)),
+      trackIds: Object.freeze(considered.map((track) => track.id)),
       background: backgroundActive,
     }),
   });

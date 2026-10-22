@@ -2036,8 +2036,9 @@ describe('physicPaintStore', () => {
       const frameA = makeFrame(0, 5).bytes;
       const frameB = makeFrame(0, 5).bytes;
       registerDocument(flatDocument([
-        flatTrack('track-b', { order: 1, opacity: 0.5, blendMode: 'multiply' }),
-        flatTrack('track-a', { order: 0 }),
+        // order 0 = top row; track-b is the UPPER track, track-a the lower.
+        flatTrack('track-b', { order: 0, opacity: 0.5, blendMode: 'multiply' }),
+        flatTrack('track-a', { order: 1 }),
       ], { visible: false }));
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameA }]);
       seedRoto('track-b', [{ keyId: 'kb', appFrame: 5, bytes: frameB }]);
@@ -2196,7 +2197,7 @@ describe('physicPaintStore', () => {
       expect(compositeCanvas.log()).toBe('clear|save|draw(bitmap:test-frame,1,source-over)|restore');
       // The paper fond is drawn ONCE beneath the flattened raster (the
       // deterministic color-fill + grain fallback, texture-less by contract).
-      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,multiply)'));
     });
 
     it('RED 8b two papered tracks: no masking — both frames composite and the fond draws exactly once beneath', async () => {
@@ -2225,7 +2226,7 @@ describe('physicPaintStore', () => {
       // Exactly ONE fond fill beneath the composite, resolved from the
       // document fallback.
       expect(decodeFlatLog((await record.encodeBytes())).match(/fill\(#f4efe3/g)?.length).toBe(1);
-      expect(decodeFlatLog((await record.encodeBytes()))).toContain('draw(canvas,1,source-over)');
+      expect(decodeFlatLog((await record.encodeBytes()))).toContain('draw(canvas,1,multiply)');
     });
 
     it('RED 8c fond-less variant (48-06 UAT-C): includeFond=false skips the paper fond and uses its own cache key', async () => {
@@ -2243,7 +2244,7 @@ describe('physicPaintStore', () => {
       const noFond = (await flattenAfterDecode(FLAT_LAYER, 5, false))!;
 
       // The with-fond record carries the paper beneath the composite…
-      expect((await withFond.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await withFond.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,multiply)'));
       // …the fond-less record is the bare composite (the Studio monitor reads
       // this; the paper lives on its own layer beneath the isolated tracks
       // group, so the active track's CSS blend never meets it).
@@ -2273,7 +2274,7 @@ describe('physicPaintStore', () => {
       // The track carries its own paper (canvas1): it governs, so the solid
       // white fallback never reaches the fond. The fallback-only path is pinned
       // by the rewritten 49-03 T4 below.
-      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,multiply)'));
     });
 
     it('49-03 T2: paper canvas2 fallback draws the canvas2 paper; transparent fallback produces no fond', async () => {
@@ -2287,7 +2288,7 @@ describe('physicPaintStore', () => {
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       // canvas2 paper draw beneath the composite (parity with the paper path
       // produced today via metadata).
-      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#ebe3d2,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#ebe3d2,1,source-over)|draw(canvas,1,multiply)'));
 
       // Transparent fallback → no fond instruction → the bare composite.
       registerDocument(flatDocument([flatTrack('track-a')], {
@@ -2313,7 +2314,7 @@ describe('physicPaintStore', () => {
       });
 
       const withMetadata = (await flattenAfterDecode(FLAT_LAYER, 5))!;
-      expect((await withMetadata.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await withMetadata.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,multiply)'));
 
       // …and once the entry is deleted (re-seed with background: null and force
       // a recompute with a fresh content revision) the document fallback fills
@@ -2321,7 +2322,7 @@ describe('physicPaintStore', () => {
       const frameDataUrl2 = makeFrame(1, 5).bytes;
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: frameDataUrl2 }], { background: null });
       const afterDelete = (await flattenAfterDecode(FLAT_LAYER, 5))!;
-      expect((await afterDelete.encodeBytes())).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await afterDelete.encodeBytes())).toEqual(testWebpBytes('fill(#ffffff,1,source-over)|draw(canvas,1,multiply)'));
     });
 
     // -----------------------------------------------------------------------
@@ -2350,7 +2351,7 @@ describe('physicPaintStore', () => {
       expect(log).toContain('fill(#f4efe3,1,source-over)');
       expect(log).not.toContain('fill(#000000,'); // 260925-iy6: drawDeterministicPaperGrain deleted — no procedural grain
       expect(log).not.toContain('#ebe3d2');
-      expect(log).toContain('draw(canvas,1,source-over)');
+      expect(log).toContain('draw(canvas,1,multiply)');
     });
 
     it('k34-B (control, green): a track with no paper of its own still draws the document fond', async () => {
@@ -2361,7 +2362,7 @@ describe('physicPaintStore', () => {
       seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }], { background: null });
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
-      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,multiply)'));
     });
 
     // 260923-bcm Task 2 (RED): the export-authority seam — the fond draw must
@@ -2427,9 +2428,9 @@ describe('physicPaintStore', () => {
       }, 'flat-layer-b');
 
       const first = (await flattenAfterDecode(FLAT_LAYER, 5))!;
-      expect((await first.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await first.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,multiply)'));
       const second = (await flattenAfterDecode('flat-layer-b', 5))!;
-      expect((await second.encodeBytes())).toEqual(testWebpBytes('fill(#ebe3d2,1,source-over)|draw(canvas,1,source-over)'));
+      expect((await second.encodeBytes())).toEqual(testWebpBytes('fill(#ebe3d2,1,source-over)|draw(canvas,1,multiply)'));
     });
 
     it('k34-E (control, green): the two-solo behavior never reaches the fond resolution', async () => {

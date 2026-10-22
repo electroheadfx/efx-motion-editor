@@ -1,6 +1,7 @@
 import type { BgMode, EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import { buildFrameBytesToken, isWebpBytes, type PhysicPaintRenderedFrame, type PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../lib/rotoAlphaCanvasRegistry';
+import { stripOpaqueWhiteMatteFromCanvas } from '../../../lib/opaqueWhiteMatte';
 import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import {
   parsePhysicPaintRotoPhysicalDocument,
@@ -35,6 +36,9 @@ export async function registerRotoAlphaCanvasFrameFromBytes(
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('Canonical Roto WebP canvas is unavailable.');
     context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
+    // studio-multi-track-only-active: the hydrated canvas feeds the compositor
+    // directly, so a legacy white matte must be stripped here as well.
+    stripOpaqueWhiteMatteFromCanvas(canvas);
     registerRotoAlphaCanvasFrame(bytes, canvas);
   } finally {
     decoded.release();

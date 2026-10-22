@@ -1,4 +1,5 @@
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
+import { stripOpaqueWhiteMatte } from '../../../lib/opaqueWhiteMatte';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
 
 export interface RotoAlphaMergeSize {
@@ -58,11 +59,35 @@ export async function mergeRotoAlphaCanvases(
   return output;
 }
 
-function loadCachedRotoBaseImage(bytes: Uint8Array): Promise<ImageBitmap> {
+async function loadCachedRotoBaseImage(bytes: Uint8Array): Promise<CanvasImageSource> {
   // 261001-cache3: pin premultiply AT bitmap creation, same as the 52.1 fix in
   // physicPaintStore._decodeWebpToBitmap. drawImage only ever consumes
   // premultiplied data; a 'default'/'none'-flagged bitmap is drawn AS IF
   // premultiplied and every semi-transparent grain pixel washes toward white
   // at the same alpha. Harmless where the UA already premultiplies.
-  return createImageBitmap(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/webp' }), { premultiplyAlpha: 'premultiply' });
+  const bitmap = await createImageBitmap(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/webp' }), { premultiplyAlpha: 'premultiply' });
+  // studio-multi-track-only-active: a legacy cached base can carry the engine's
+  // white background. Merging it would re-bake the matte into every new cache,
+  // so repair the base before it becomes the next merge source.
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    // Capability gate: a platform without pixel readback (or a test double)
+    // passes the base through untouched — the repair can never alter pixels it
+    // cannot read.
+    if (!context || typeof context.getImageData !== 'function' || typeof context.putImageData !== 'function') {
+      return bitmap;
+    }
+    context.drawImage(bitmap, 0, 0);
+    const data = context.getImageData(0, 0, canvas.width, canvas.height);
+    if (stripOpaqueWhiteMatte(data.data, canvas.width, canvas.height)) {
+      context.putImageData(data, 0, 0);
+    }
+    bitmap.close();
+    return canvas;
+  } catch {
+    return bitmap;
+  }
 }

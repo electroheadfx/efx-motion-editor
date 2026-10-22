@@ -5,6 +5,7 @@ import { rotoAlphaCanvasRegistry, canvasToPngBytes } from '../lib/rotoAlphaCanva
 import { sha256HexBytes } from '../lib/webpBytes';
 import { decodeWebpFrame, encodeCanvasAsWebp } from '../lib/webpFrameCodec';
 import { frameLru } from '../lib/frameLru';
+import { stripOpaqueWhiteMatte } from '../lib/opaqueWhiteMatte';
 // 52.2-09 Task 3 (D-13): the READ leg of the package media pair. The resolver
 // takes the LRU, the injected decode and the package root as parameters, so the
 // store keeps ownership of the LRU budget and the two-format sniff.
@@ -24,7 +25,7 @@ import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
-import { isFullyOpaqueRaster, isOpaqueRaster } from '../lib/rasterAlpha';
+import { isFullyOpaqueRaster } from '../lib/rasterAlpha';
 import { applyPaperPass, getPaperPassTile } from '../lib/paperPass';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
@@ -1452,6 +1453,11 @@ async function _decodeWebpToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch
     width,
     height,
   );
+  // studio-multi-track-only-active: legacy Roto frames can carry the engine's
+  // white background baked in (fully opaque, pure-white corners). A paint track
+  // must be transparent between tracks — the document fond is the only opaque
+  // background — so strip that matte before the bitmap enters the compositor.
+  stripOpaqueWhiteMatte(imageData.data, width, height);
   const convertEndedAt = performance.now();
   // 52.1 (washed-out regression): premultiply AT bitmap creation. drawImage
   // only ever consumes premultiplied data, and WKWebView draws a
@@ -2822,40 +2828,17 @@ function _resolveFlattenedFrame(
     trackContentRevisions,
     backgroundClipRevisions,
     excludeTrackIds,
+    // studio-multi-track-only-active: the active track's live engine raster
+    // replaces its excluded store copy INSIDE the ordered track loop, so the
+    // selection never overrides the layer stack. The overlay is scaled and
+    // styled by the compositor exactly like a store raster (D-01 opacity/blend,
+    // first-track source-over rule).
+    engineOverlay: liveOverlay && excludeTrackIds.size === 1
+      ? { trackId: [...excludeTrackIds][0], raster: liveOverlay }
+      : null,
   };
 
   const result = compositeFrame(efxDocument, frame, size, ports);
-  // 260925-iy6 UAT follow-up: the active track's live dry canvas — composited
-  // BEFORE the paper pass so the tooth lands ONCE on the mixed paint (one-sheet
-  // law). Only the Studio monitor passes this; export/preview read the store
-  // path (no live overlay) and stay structurally identical.
-  if (liveOverlay) {
-    const overlayCtx = (result.raster as HTMLCanvasElement).getContext('2d');
-    if (overlayCtx) {
-      // The overlay holds the active track's baked pixels at the engine's
-      // WORKING resolution, so it must scale to the composite size exactly like
-      // compositeFrame's track draw — a 3-arg natural-size drawImage covered
-      // only the top-left working-size block and left a hard seam at its edge.
-      //
-      // It also has to carry the active track's opacity/blend (D-01). Those used
-      // to ride the engine shell as CSS group opacity + mix-blend-mode; under
-      // .dry-live-overlay the baked canvases are opacity: 0 and these pixels come
-      // through here instead, so an unstyled drawImage silently dropped both.
-      // source-over when nothing was drawn below mirrors compositeFrame's
-      // firstTrack rule (a non-normal blend over transparency erases the stroke).
-      const overlayTrack = participatingPaintTracks(efxDocument)
-        .find((track) => excludeTrackIds.has(track.id)) ?? null;
-      const drewBelow = participating.some(
-        (track) => !result.missing.some((entry) => entry.trackId === track.id),
-      );
-      overlayCtx.save();
-      overlayCtx.globalAlpha = overlayTrack?.opacity ?? 1;
-      overlayCtx.globalCompositeOperation =
-        drewBelow && overlayTrack ? blendModeToCompositeOp(overlayTrack.blendMode) : 'source-over';
-      overlayCtx.drawImage(liveOverlay, 0, 0, size.width, size.height);
-      overlayCtx.restore();
-    }
-  }
   // 260925-iy6: the dynamic post-bake paper pass — ONE seam for preview,
   // program monitor, AND export (all three consume this record, so the paths
   // cannot drift into a second implementation). It modulates the FLATTENED
@@ -2918,11 +2901,11 @@ function _resolveFlattenedFrame(
     const fondCtx = fondCanvas.getContext('2d');
     if (!fondCtx) throw new Error('_resolveFlattenedFrame: 2d rendering context unavailable');
     drawMissingRotoBackground(fondCtx, fondInstruction, size.width, size.height, null, fondPaperCanvas);
-    // studio-reopen-paper-washout: the aquarelle cache is MODE.transparent
-    // transmittance (opaque) and must MULTIPLY over the fond; engine-1 paint is
-    // real-alpha and stays source-over. Branch on raster opacity (probe lives
-    // outside this file — the frame/export guard pins it pixel-API-free).
-    fondCtx.globalCompositeOperation = isOpaqueRaster(result.raster as HTMLCanvasElement) ? 'multiply' : 'source-over';
+    // Track pigment is transmittance over the document paper — the Studio's
+    // tracks group multiplies over its fond layer ONCE (brush one-law). The
+    // same multiply applies to real-alpha engine-1 paint: source-over made the
+    // editor brighter than the Studio once the legacy matte carried real alpha.
+    fondCtx.globalCompositeOperation = 'multiply';
     fondCtx.drawImage(result.raster, 0, 0);
     fondCtx.globalCompositeOperation = 'source-over';
     raster = fondCanvas;

@@ -235,8 +235,9 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, opacity: 0.5, blendMode: 'multiply' }),
+      // order 0 = top row / top layer; track-a is the LOWER layer here.
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, opacity: 0.5, blendMode: 'multiply' }),
     ]);
 
     const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
@@ -253,6 +254,37 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
       { type: 'drawImage', source: 'track-b', args: [0, 0, 4, 3], globalAlpha: 0.5, globalCompositeOperation: 'multiply' },
       { type: 'restore' },
     ]);
+  });
+
+  it('studio-multi-track-only-active: the engine overlay draws AT the excluded track slot, never last (selection must not reorder the stack)', () => {
+    const { ops, ports } = makeHarness({
+      content: {
+        'track-bottom': { kind: 'content', raster: raster('track-bottom') },
+        'track-top': { kind: 'content', raster: raster('track-top') },
+      },
+    });
+    const doc = makeDocument([
+      // The list's top row (order 0) is the topmost layer; the bottom row
+      // (order 2) is drawn first.
+      makeTrack('track-top', { order: 0 }),
+      makeTrack('track-middle', { order: 1, opacity: 0.5, blendMode: 'multiply' }),
+      makeTrack('track-bottom', { order: 2 }),
+    ]);
+    const withOverlay = {
+      ...ports,
+      excludeTrackIds: new Set(['track-middle']),
+      engineOverlay: { trackId: 'track-middle', raster: raster('live-overlay') },
+    };
+
+    const result = compositeFrame(doc, 0, { width: 4, height: 3 }, withOverlay);
+
+    const draws = ops.filter((op) => op.type === 'drawImage');
+    expect(draws).toEqual([
+      { type: 'drawImage', source: 'track-bottom', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+      { type: 'drawImage', source: 'live-overlay', args: [0, 0, 4, 3], globalAlpha: 0.5, globalCompositeOperation: 'multiply' },
+      { type: 'drawImage', source: 'track-top', args: [0, 0, 4, 3], globalAlpha: 1, globalCompositeOperation: 'source-over' },
+    ]);
+    expect(result.participates.trackIds).toEqual(['track-top', 'track-middle', 'track-bottom']);
   });
 
   it('a missing source contributes transparent pixels AND a missing[] entry — zero draw ops, never a placeholder fill (D-09)', () => {
@@ -334,11 +366,11 @@ describe('compositeFrame — pipeline contract (CMP-01/CMP-03/CMP-05)', () => {
     const doc = makeDocument([
       // Bottom track with a NON-normal blend: over an empty backdrop it would
       // erase itself (multiply over transparent = transparent), so the stage
-      // law promotes it to the source-over base…
-      makeTrack('track-a', { order: 0, blendMode: 'multiply' }),
+      // law promotes it to the source-over base… (order 1 = lower row)
+      makeTrack('track-a', { order: 1, blendMode: 'multiply' }),
       // …and every track above blends onto the accumulated stage with its own
-      // declared mode (opacity applied first, D-01).
-      makeTrack('track-b', { order: 1, opacity: 0.5, blendMode: 'screen' }),
+      // declared mode (opacity applied first, D-01). (order 0 = top row)
+      makeTrack('track-b', { order: 0, opacity: 0.5, blendMode: 'screen' }),
     ]);
     const result = compositeFrame(doc, 0, { width: 4, height: 3 }, ports);
 

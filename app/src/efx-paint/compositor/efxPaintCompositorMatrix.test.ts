@@ -348,8 +348,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1 }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0 }),
     ]);
 
     const result = compositeFrame(doc, 0, SIZE, ports);
@@ -375,8 +375,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1 }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0 }),
     ]);
 
     compositeFrame(doc, 0, SIZE, ports);
@@ -396,8 +396,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, opacity: 0.5 }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, opacity: 0.5 }),
     ]);
 
     compositeFrame(doc, 0, SIZE, ports);
@@ -417,8 +417,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, blendMode: 'multiply' }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, blendMode: 'multiply' }),
     ]);
 
     compositeFrame(doc, 0, SIZE, ports);
@@ -435,8 +435,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, blendMode: 'screen' }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, blendMode: 'screen' }),
     ]);
 
     compositeFrame(doc, 0, SIZE, ports);
@@ -453,8 +453,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, blendMode: 'overlay' }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, blendMode: 'overlay' }),
     ]);
 
     compositeFrame(doc, 0, SIZE, ports);
@@ -471,8 +471,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, blendMode: 'add' }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, blendMode: 'add' }),
     ]);
 
     compositeFrame(doc, 0, SIZE, ports);
@@ -489,8 +489,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, visible: false }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, visible: false }),
     ]);
 
     const result = compositeFrame(doc, 0, SIZE, ports);
@@ -509,9 +509,9 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
+      makeTrack('track-a', { order: 2 }),
       makeTrack('track-b', { order: 1, solo: true }),
-      makeTrack('track-c', { order: 2 }),
+      makeTrack('track-c', { order: 0 }),
     ]);
 
     const result = compositeFrame(doc, 0, SIZE, ports);
@@ -530,16 +530,18 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0, solo: true }),
+      makeTrack('track-a', { order: 2, solo: true }),
       makeTrack('track-b', { order: 1 }),
-      makeTrack('track-c', { order: 2, solo: true }),
+      makeTrack('track-c', { order: 0, solo: true }),
     ]);
 
     const result = compositeFrame(doc, 0, SIZE, ports);
 
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws.map((draw) => draw.source)).toEqual(['track-a', 'track-c']);
-    expect(result.participates.trackIds).toEqual(['track-a', 'track-c']);
+    // trackIds is document (top-to-bottom) order; the draw order above is the
+    // reversed bottom-to-top order.
+    expect(result.participates.trackIds).toEqual(['track-c', 'track-a']);
   });
 
   it('matrix row 10 — hidden-and-soloed precedence: hide wins (no draw) AND the hidden solo never arms solo mode', () => {
@@ -550,8 +552,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1, visible: false, solo: true }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0, visible: false, solo: true }),
     ]);
 
     const result = compositeFrame(doc, 0, SIZE, ports);
@@ -574,8 +576,8 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
       },
     });
     const doc = makeDocument([
-      makeTrack('track-a', { order: 0 }),
-      makeTrack('track-b', { order: 1 }),
+      makeTrack('track-a', { order: 1 }),
+      makeTrack('track-b', { order: 0 }),
     ]);
 
     const result = compositeFrame(doc, 0, SIZE, ports);

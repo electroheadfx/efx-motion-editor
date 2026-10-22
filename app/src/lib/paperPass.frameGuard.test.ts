@@ -11,6 +11,10 @@ import { describe, expect, it } from 'vitest';
 // conditioner export + the raw texture getter) are pinned as exports.
 
 const storeSource = readFileSync(new URL('../stores/physicPaintStore.ts', import.meta.url), 'utf8');
+const compositorSource = readFileSync(
+  new URL('../efx-paint/compositor/efxPaintCompositor.ts', import.meta.url),
+  'utf8',
+);
 const exportRendererSource = readFileSync(new URL('./exportRenderer.ts', import.meta.url), 'utf8');
 const previewRendererSource = readFileSync(new URL('./previewRenderer.ts', import.meta.url), 'utf8');
 const packageIndexSource = readFileSync(
@@ -117,12 +121,18 @@ describe('260925-iy6 UAT follow-up — live-dry overlay + paperGrain removal', (
     expect(storeSource).not.toMatch(/metadata\.paperGrain &&/);
   });
 
-  it('U2 _resolveFlattenedFrame takes a liveOverlay and composites it BEFORE applyPaperPass', () => {
+  it('U2 _resolveFlattenedFrame threads the liveOverlay into the compositor AT the track slot, before applyPaperPass', () => {
+    // studio-multi-track-only-active: the overlay is no longer appended after
+    // the composite (which made the selected track always topmost). It rides
+    // the compositor's ordered track loop, which still runs BEFORE the pass.
     expect(storeSource).toMatch(/function _resolveFlattenedFrame\([\s\S]*?liveOverlay/);
-    const overlayDraw = storeSource.indexOf('drawImage(liveOverlay');
+    expect(storeSource).toMatch(/engineOverlay:\s*liveOverlay[\s\S]{0,160}?trackId/);
+    const composite = storeSource.indexOf('const result = compositeFrame(');
     const pass = storeSource.indexOf('applyPaperPass(');
-    expect(overlayDraw).toBeGreaterThanOrEqual(0);
-    expect(pass).toBeGreaterThan(overlayDraw);
+    expect(composite).toBeGreaterThanOrEqual(0);
+    expect(pass).toBeGreaterThan(composite);
+    expect(compositorSource).toMatch(/engineOverlay/);
+    expect(compositorSource).toMatch(/drawImage\(ports\.engineOverlay!\.raster/);
   });
 
   it('U3 the live-overlay path bypasses the flattened memo (result depends on live pixels)', () => {

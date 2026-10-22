@@ -561,7 +561,7 @@ export class EfxPaintEngine {
    * the composite stacked beneath shows through.
    */
   private visibleBackgroundSuppressed: boolean = false
-  private previewBaseImage: HTMLImageElement | null = null
+  private previewBaseImage: CanvasImageSource | null = null
   // 261003-erase-uat (B): the cached raster's editable PAINT layer. Materialized
   // on the first pixel erase over a preview base (drawImage of previewBaseImage);
   // redrawPreviewBase prefers it so an erase survives the next base repaint.
@@ -573,6 +573,12 @@ export class EfxPaintEngine {
   // decode-ahead); cleared on destroy.
   private static readonly PREVIEW_BASE_IMAGE_CACHE_CAP = 32
   private previewBaseImageCache: Map<string, HTMLImageElement> = new Map()
+  // studio-multi-track-only-active: legacy cached frames can carry the engine's
+  // white background baked in (fully opaque, pure-white corners). The monitor
+  // composites this base LAST as the active track's live overlay, so an opaque
+  // matte would hide every non-active track. Repair once per dataUrl; null =
+  // the frame is clean (real alpha), so the original image is used.
+  private previewBaseMatteCache: Map<string, CanvasImageSource | null> = new Map()
   // regression-refresh-multi-paint: the applied-state tracking and settle
   // notification backing the caller-side completion-paint guard. A dropped
   // decode (superseded/flag-guarded onload) is still CACHED — the pixels are
@@ -1276,7 +1282,7 @@ export class EfxPaintEngine {
     // "come back on the key and it looks faded" hole. A stale ctx must draw
     // the base even mid-train; only the stroke replay stays skippable.
     const baseCtxWasCurrent = this.previewBaseEnabled && this.previewBaseImage !== null
-    this.previewBaseImage = image
+    this.previewBaseImage = this.repairPreviewBaseMatte(image, dataUrl) ?? image
     this.previewBaseEnabled = true
     this.previewBackgroundSeparated = true
     this.appliedPreviewBaseDataUrl = dataUrl ?? null
@@ -1751,6 +1757,7 @@ export class EfxPaintEngine {
     }
     this.destroyed = true
     this.previewBaseImageCache?.clear()
+    this.previewBaseMatteCache.clear()
     this.previewBaseSettledListeners?.clear()
     this.appliedPreviewBaseDataUrl = null
     this.appliedPreviewBaseAppFrame = null
@@ -1885,7 +1892,13 @@ export class EfxPaintEngine {
       this.flushPendingStrokeFinalizations()
     }
     const mutationId = this.activeMutationId ?? this.lastCompletedMutationId ?? undefined
-    const branch = this.previewBackgroundSeparated ? 'separated' : 'background-subtraction'
+    // The separated fast path is valid ONLY when the visible background is
+    // suppressed (a host composite owns it, so dry is paint-only). A host that
+    // shows the engine background draws it into dry — even on an applied
+    // preview base — and MUST subtract it, or every capture bakes an opaque
+    // matte into the cache (studio-multi-track-only-active).
+    const backgroundBakedIntoDry = !this.visibleBackgroundSuppressed
+    const branch = backgroundBakedIntoDry ? 'background-subtraction' : 'separated'
 
     const wetRenderStartedAt = this.performanceListener ? performance.now() : 0
     this.renderVisibleWetLayer()
@@ -1899,7 +1912,7 @@ export class EfxPaintEngine {
     ctx.clearRect(0, 0, this.width, this.height)
     this.recordPerformance('live-alpha-allocate', 'sync-cpu', allocationStartedAt, { mutationId, branch })
 
-    if (this.previewBackgroundSeparated) {
+    if (!backgroundBakedIntoDry) {
       const drawDryStartedAt = this.performanceListener ? performance.now() : 0
       ctx.drawImage(this.dualCanvas.dryCanvas, 0, 0)
       this.recordPerformance('live-alpha-draw-dry', 'sync-cpu', drawDryStartedAt, { mutationId, branch })
@@ -2975,6 +2988,80 @@ export class EfxPaintEngine {
   /** Set by clear(preserveDry) — dry holds strokes already baked into the
    * pending preview base and must outlive the base's async decode. */
   private baseSwapDryClearPending = false
+
+  /**
+   * studio-multi-track-only-active: strip a legacy white background baked into
+   * a cached preview base. Corruption signature: the whole raster is opaque,
+   * all four corners are pure white, and some pixel is not white. The repaired
+   * canvas is memoized per dataUrl; null means the frame is already real-alpha
+   * (or cannot be inspected) and the original image is used.
+   */
+  private repairPreviewBaseMatte(image: HTMLImageElement, dataUrl: string | undefined): CanvasImageSource | null {
+    if (!dataUrl) return null
+    if (this.previewBaseMatteCache.has(dataUrl)) return this.previewBaseMatteCache.get(dataUrl) ?? null
+    const repaired = this.detectAndStripPreviewBaseMatte(image)
+    if (this.previewBaseMatteCache.size >= EfxPaintEngine.PREVIEW_BASE_IMAGE_CACHE_CAP) {
+      const oldest = this.previewBaseMatteCache.keys().next().value
+      if (oldest !== undefined) this.previewBaseMatteCache.delete(oldest)
+    }
+    this.previewBaseMatteCache.set(dataUrl, repaired)
+    return repaired
+  }
+
+  private detectAndStripPreviewBaseMatte(image: HTMLImageElement): HTMLCanvasElement | null {
+    try {
+      const probe = document.createElement('canvas')
+      probe.width = 16
+      probe.height = 16
+      const probeCtx = probe.getContext('2d', { willReadFrequently: true })
+      if (!probeCtx) return null
+      probeCtx.drawImage(image, 0, 0, 16, 16)
+      const probeData = probeCtx.getImageData(0, 0, 16, 16).data
+      // Same cutoff as app/src/lib/opaqueWhiteMatte.ts: exact-white removal
+      // leaves the near-white wash fringe opaque, which reads as a white veil
+      // on source-over surfaces.
+      const nearWhiteCutoff = 240
+      const isMatte = (data: Uint8ClampedArray, index: number): boolean =>
+        data[index] >= nearWhiteCutoff
+        && data[index + 1] >= nearWhiteCutoff
+        && data[index + 2] >= nearWhiteCutoff
+        && data[index + 3] === 255
+      let hasPaint = false
+      for (let index = 0; index < probeData.length; index += 4) {
+        if (probeData[index + 3] !== 255) return null
+        if (!isMatte(probeData, index)) hasPaint = true
+      }
+      const probeCorners = [0, 15 * 4, 15 * 16 * 4, (16 * 16 - 1) * 4]
+      if (!hasPaint || !probeCorners.every((index) => isMatte(probeData, index))) return null
+
+      const width = image.naturalWidth || this.width
+      const height = image.naturalHeight || this.height
+      if (width <= 0 || height <= 0) return null
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      if (!ctx) return null
+      ctx.drawImage(image, 0, 0, width, height)
+      const data = ctx.getImageData(0, 0, width, height)
+      let removed = 0
+      for (let index = 0; index < data.data.length; index += 4) {
+        if (data.data[index + 3] !== 255) return null
+        if (isMatte(data.data, index)) {
+          data.data[index] = 0
+          data.data[index + 1] = 0
+          data.data[index + 2] = 0
+          data.data[index + 3] = 0
+          removed += 1
+        }
+      }
+      if (removed === 0) return null
+      ctx.putImageData(data, 0, 0)
+      return canvas
+    } catch {
+      return null
+    }
+  }
 
   private redrawPreviewBase(): void {
     this.dualCanvas.previewBaseCtx.clearRect(0, 0, this.width, this.height)
