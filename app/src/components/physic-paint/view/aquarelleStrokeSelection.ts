@@ -31,6 +31,7 @@ import {
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
+  markAquarelleStrokeDeleted,
 } from './aquarelleRecordState';
 
 /** Long polylines are decimated for rendering only (bounds use every point). */
@@ -250,11 +251,11 @@ export function listSelectableAquarelleStrokes(
 //  Delete edits (261022-pim). A delete is one in-memory script
 //  mutation; the caller owns the async re-bake and must clear
 //  the in-flight flag when it settles. Task 3 attaches
-//  revision-authoritative before/after snapshots.
+//  revision-authoritative before/after snapshots so the delete
+//  + re-bake is exactly ONE undoable ledger command.
 // ============================================================
 
 let aquarelleDeleteInFlight = false;
-let nextAquarelleEditId = 1;
 
 /** True while a delete + its re-bake is running (a second Alt+click is refused). */
 export function isAquarelleDeleteInFlight(): boolean {
@@ -265,43 +266,116 @@ export function setAquarelleDeleteInFlight(inFlight: boolean): void {
   aquarelleDeleteInFlight = inFlight;
 }
 
-const pendingDeletes = new Map<
-  number,
-  { mutationId: number; timeline: readonly AquarellePayloadEvent[] }
->();
+/**
+ * A script snapshot. The timeline holds the SAME event object references
+ * (a shallow copy only) so a measured cuisson patch survives the swap.
+ * `revision` is the live `aquarelleStrokesRevision` this side was captured
+ * at; a restore refreshes the applied side with the new revision so the
+ * opposite direction can validate against it.
+ */
+export interface AquarelleScriptSnapshot {
+  readonly timeline: readonly AquarellePayloadEvent[];
+  readonly deleted: readonly number[];
+  revision: number;
+}
+
+interface AquarelleEditRecord {
+  readonly before: AquarelleScriptSnapshot;
+  readonly after: AquarelleScriptSnapshot;
+}
+
+/** 10-entry edit ledger cap (mirrors the physical history ledger). */
+const MAX_AQUARELLE_EDITS = 10;
+const aquarelleEdits = new Map<number, AquarelleEditRecord>();
+let nextAquarelleEditId = 1;
+
+function captureAquarelleSnapshot(): AquarelleScriptSnapshot {
+  const deleted: number[] = [];
+  for (const mutationId of getRecordedAquarelleStrokeEntries().keys()) {
+    if (isAquarelleStrokeDeleted(mutationId)) deleted.push(mutationId);
+  }
+  return {
+    timeline: [...getRecordedAquarellePayloadTimeline()],
+    deleted,
+    revision: aquarelleStrokesRevision.value,
+  };
+}
+
+/** Replace the deleted-set membership with exactly the snapshot's ids. */
+function replaceDeletedMembership(deleted: readonly number[]): void {
+  const wanted = new Set(deleted);
+  for (const mutationId of getRecordedAquarelleStrokeEntries().keys()) {
+    if (wanted.has(mutationId)) markAquarelleStrokeDeleted(mutationId);
+    else clearAquarelleStrokeDeletion(mutationId);
+  }
+}
+
+function clearSelectionIfGone(): void {
+  const selected = aquarelleSelectedStrokeMutationId.value;
+  if (selected === null) return;
+  if (
+    !getRecordedAquarelleStrokeEntries().has(selected)
+    || isAquarelleStrokeDeleted(selected)
+  ) {
+    selectAquarelleStroke(null);
+  }
+}
+
+/** Install a snapshot's script content in place and return the fresh revision. */
+function applySnapshotContent(snapshot: AquarelleScriptSnapshot): number {
+  const live = getRecordedAquarellePayloadTimeline() as AquarellePayloadEvent[];
+  live.splice(0, live.length, ...snapshot.timeline);
+  replaceDeletedMembership(snapshot.deleted);
+  bumpAquarelleStrokesRevision();
+  clearSelectionIfGone();
+  return aquarelleStrokesRevision.value;
+}
 
 /**
- * Delete one recorded stroke as a single edit. Returns a monotonic edit id
- * (the caller reverts or commits it) or null when refused.
+ * Delete one recorded stroke as a single edit and store its before/after
+ * snapshots. Returns a monotonic edit id or null when refused.
  */
-export function deleteAquarelleStrokeForEdit(mutationId: number): number | null {
+export function beginAquarelleDeleteEdit(mutationId: number): number | null {
   if (aquarelleDeleteInFlight) return null;
-  const timeline = [...getRecordedAquarellePayloadTimeline()];
+  const before = captureAquarelleSnapshot();
   if (!deleteAquarelleStrokeFromScript(mutationId)) return null;
+  const after = captureAquarelleSnapshot();
   const editId = nextAquarelleEditId;
   nextAquarelleEditId += 1;
-  pendingDeletes.set(editId, { mutationId, timeline });
+  aquarelleEdits.set(editId, { before, after });
+  if (aquarelleEdits.size > MAX_AQUARELLE_EDITS) {
+    const oldest = aquarelleEdits.keys().next().value;
+    if (oldest !== undefined) aquarelleEdits.delete(oldest);
+  }
   if (aquarelleSelectedStrokeMutationId.value === mutationId) selectAquarelleStroke(null);
   return editId;
 }
 
-function restoreTimeline(timeline: readonly AquarellePayloadEvent[]): void {
-  const live = getRecordedAquarellePayloadTimeline() as AquarellePayloadEvent[];
-  live.splice(0, live.length, ...timeline);
+/**
+ * Revision-authoritative undo/redo swap. `undo` restores `before` when the
+ * live script is still the edit's `after` side (and vice versa for redo);
+ * any newer recorded mutation fails closed with null and both stacks stay
+ * untouched. Returns the snapshot that was live before the swap (the raw
+ * rollback material for a failed re-bake).
+ */
+export function restoreAquarelleEditSnapshot(
+  editId: number,
+  direction: 'undo' | 'redo',
+): AquarelleScriptSnapshot | null {
+  const edit = aquarelleEdits.get(editId);
+  if (!edit) return null;
+  const target = direction === 'undo' ? edit.before : edit.after;
+  const liveSide = direction === 'undo' ? edit.after : edit.before;
+  if (aquarelleStrokesRevision.value !== liveSide.revision) return null;
+  const revert = captureAquarelleSnapshot();
+  target.revision = applySnapshotContent(target);
+  return revert;
 }
 
-/** Failed re-bake: put the pre-delete script back exactly (rollback path). */
-export function revertAquarelleStrokeEdit(editId: number): boolean {
-  const pending = pendingDeletes.get(editId);
-  if (!pending) return false;
-  pendingDeletes.delete(editId);
-  clearAquarelleStrokeDeletion(pending.mutationId);
-  restoreTimeline(pending.timeline);
-  bumpAquarelleStrokesRevision();
-  return true;
-}
-
-/** The re-bake succeeded — drop the rollback copy. */
-export function commitAquarelleStrokeEdit(editId: number): void {
-  pendingDeletes.delete(editId);
+/**
+ * Rollback path: install a snapshot without the authority check (a failed
+ * re-bake must restore the pre-attempt script it just left).
+ */
+export function restoreAquarelleSnapshotRaw(snapshot: AquarelleScriptSnapshot): void {
+  applySnapshotContent(snapshot);
 }

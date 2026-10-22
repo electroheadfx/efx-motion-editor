@@ -2951,3 +2951,54 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(studio).toContain('getAquarellePaperId, handleAquarelleDeleteStroke]');
   });
 });
+
+// 261022-pim Task 3: delete + re-bake is ONE aquarelle-script ledger command.
+// The delete handler records the edit only after the re-bake succeeds; the
+// replay port swaps the snapshot, resets the live sheet, awaits the SAME
+// shared apply, and rolls the raw snapshot back on failure. Neither path
+// consults the coordinator.
+describe('261022-pim aquarelle delete undo wiring', () => {
+  const deleteHandlerStart = studio.indexOf('const handleAquarelleDeleteStroke = useCallback(');
+  const deleteHandlerEnd = studio.indexOf('const canvasMountPropsMemo', deleteHandlerStart);
+  const deleteHandler = studio.slice(deleteHandlerStart, deleteHandlerEnd);
+
+  it('records the edit as one aquarelle-script command only after the re-bake succeeds', () => {
+    expect(deleteHandlerStart).toBeGreaterThan(-1);
+    expect(deleteHandler).toContain('const editId = beginAquarelleDeleteEdit(mutationId);');
+    expect(deleteHandler).not.toContain('deleteAquarelleStrokeForEdit');
+
+    const applySite = deleteHandler.indexOf('const ok = await rotoScript.applyCurrentScript();');
+    const successSite = deleteHandler.indexOf('if (ok) {');
+    const recordSite = deleteHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    expect(applySite).toBeGreaterThan(-1);
+    expect(successSite).toBeGreaterThan(applySite);
+    expect(recordSite).toBeGreaterThan(successSite);
+
+    // Failure restores the pre-attempt script.
+    const rollbackSite = deleteHandler.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
+    expect(rollbackSite).toBeGreaterThan(recordSite);
+  });
+
+  it('the replay port restores the snapshot, resets the sheet, and awaits the shared apply', () => {
+    const replayStart = studio.indexOf('aquarelleScriptHistory: {');
+    expect(replayStart).toBeGreaterThan(-1);
+    const replayPort = studio.slice(replayStart, studio.indexOf('undoPaint:', replayStart));
+
+    expect(replayPort).toContain('const revert = restoreAquarelleEditSnapshot(editId, direction);');
+    expect(replayPort).toContain('if (revert === null) return false;');
+    expect(replayPort).toContain('aquarelleResetSheetRef.current?.();');
+    expect(replayPort).toContain('const ok = await rotoScript.applyCurrentScript();');
+    expect(replayPort).toContain('restoreAquarelleSnapshotRaw(revert);');
+    expect(replayPort).toContain('return false;');
+    expect(replayPort).toContain('rotoScript.notifySourceRevision();');
+    expect(replayPort).not.toContain('physicalEditCoordinator');
+  });
+
+  it('declares the aquarelle ledger entry and replay port in the history hook', () => {
+    expect(historyHook).toContain("readonly kind: 'aquarelle-script';");
+    expect(historyHook).toContain('readonly editId: number;');
+    expect(historyHook).toContain('const recordAquarelleScriptEdit = useCallback((editId: number) => {');
+    expect(historyHook).toContain("await route.replay(entry.editId, 'undo')");
+    expect(historyHook).toContain("await route.replay(entry.editId, 'redo')");
+  });
+});

@@ -231,12 +231,23 @@ interface BackgroundEditCommand {
   readonly descriptor: BackgroundEditDescriptor;
 }
 
+/**
+ * 261022-pim: one watercolor stroke delete + its re-bake. The `editId` keys
+ * the revision-authoritative script snapshots and the shared Apply replay in
+ * the Studio's `aquarelleScriptHistory` port — never a coordinator command.
+ */
+interface AquarelleScriptEditCommand {
+  readonly kind: 'aquarelle-script';
+  readonly editId: number;
+}
+
 type RotoPhysicalEditHistoryEntry<EngineState> =
   | RotoPhysicalEditCommand<EngineState>
   | AutoKeyPaintHistoryEntry<EngineState>
   | ReferencedActionHistoryCommand
   | PaintBarrier
-  | BackgroundEditCommand;
+  | BackgroundEditCommand
+  | AquarelleScriptEditCommand;
 
 interface RotoPhysicalEditCoordinatorRoute<EngineState> {
   executePhysicalEdit: (
@@ -258,6 +269,10 @@ export interface ReferencedActionHistoryRoute {
   ) => Promise<boolean>;
 }
 
+export interface AquarelleScriptHistoryRoute {
+  replay: (editId: number, direction: 'undo' | 'redo') => Promise<boolean>;
+}
+
 export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   identity: RotoPhysicalEditHistoryIdentity | null;
   availability: Signal<PaintHistoryAvailability>;
@@ -265,6 +280,8 @@ export interface UseRotoPhysicalEditHistoryInput<EngineState> {
   recordsPort: RotoPhysicalEditRecordsPort;
   getLiveSourceSnapshot: () => RotoPhysicalEditReplaySourceSnapshot;
   referencedActionHistory?: ReferencedActionHistoryRoute;
+  /** 261022-pim: revision-authoritative watercolor script replay. */
+  aquarelleScriptHistory?: AquarelleScriptHistoryRoute;
   undoPaint: () => boolean;
   redoPaint: () => boolean;
 }
@@ -844,6 +861,15 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     publishAvailability();
   }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
 
+  /** 261022-pim: record one watercolor delete + re-bake as one command,
+   *  mirroring `recordBackgroundEdit` exactly (push, trim, clear redo). */
+  const recordAquarelleScriptEdit = useCallback((editId: number) => {
+    appliedRef.current.push({ kind: 'aquarelle-script', editId });
+    trimAppliedHistory();
+    discardRedoHistory();
+    publishAvailability();
+  }, [discardRedoHistory, publishAvailability, trimAppliedHistory]);
+
   // Signal effects subscribe only to external acceptance streams. Ordinary
   // coordinator acceptance and committed referenced-Action acceptance remain
   // distinct so referenced commands can never fall through snapshot replay.
@@ -900,6 +926,21 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = appliedRef.current[appliedRef.current.length - 1];
     if (!entry) return false;
+    if (entry.kind === 'aquarelle-script') {
+      // 261022-pim: the replay port swaps the script snapshot, resets the live
+      // sheet and awaits the shared Apply. Stacks move ONLY on true — a stale
+      // snapshot or a failed re-bake leaves both stacks untouched.
+      const route = inputRef.current.aquarelleScriptHistory;
+      if (!route) return false;
+      const replayed = await route.replay(entry.editId, 'undo');
+      if (!replayed) return false;
+      const top = appliedRef.current[appliedRef.current.length - 1];
+      if (top !== entry) return false;
+      appliedRef.current.pop();
+      redoRef.current.push(entry);
+      publishAvailability();
+      return true;
+    }
     if (entry.kind === 'paint') {
       appliedRef.current.pop();
       redoRef.current.push(entry);
@@ -1040,6 +1081,20 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     flushPendingAutoKeyGroup();
     const entry = redoRef.current[redoRef.current.length - 1];
     if (!entry) return false;
+    if (entry.kind === 'aquarelle-script') {
+      // 261022-pim: symmetric with undo — replay 'redo' and move the stacks
+      // only when the script swap + re-bake report success.
+      const route = inputRef.current.aquarelleScriptHistory;
+      if (!route) return false;
+      const replayed = await route.replay(entry.editId, 'redo');
+      if (!replayed) return false;
+      const top = redoRef.current[redoRef.current.length - 1];
+      if (top !== entry) return false;
+      redoRef.current.pop();
+      appliedRef.current.push(entry);
+      publishAvailability();
+      return true;
+    }
     if (entry.kind === 'paint') {
       redoRef.current.pop();
       appliedRef.current.push(entry);
@@ -1154,6 +1209,7 @@ export function useRotoPhysicalEditHistory<EngineState>(input: UseRotoPhysicalEd
     observePaintMutation,
     recordAcceptedEdit,
     recordBackgroundEdit,
+    recordAquarelleScriptEdit,
     reconcilePaintBarriers,
     undo,
     redo,

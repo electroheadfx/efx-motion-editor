@@ -3008,3 +3008,114 @@ describe('useRotoPhysicalEditHistory composite auto-key paint group (261019-mj2 
     expect(HISTORY_SOURCE).toContain('const cancelAutoKeyPaintGroup = useCallback(() => {');
   });
 });
+
+// 261022-pim Task 3: an Alt+click watercolor delete + re-bake is ONE ledger
+// command. The replay port owns the snapshot swap and the re-bake; the hook
+// moves the stacks only when the port reports TRUE, and never calls the
+// coordinator.
+describe('useRotoPhysicalEditHistory aquarelle script commands (261022-pim Task 3)', () => {
+  function createAquarelleHarness() {
+    const acceptedOutput = signal<RotoPhysicalEditAcceptedOutput<null> | null>(null);
+    const pendingOperationId = signal<string | null>(null);
+    const availability = signal({ undo: 0, redo: 0 });
+    const replay = vi.fn<(editId: number, direction: 'undo' | 'redo') => Promise<boolean>>(async () => true);
+    const undoPaint = vi.fn(() => true);
+    const redoPaint = vi.fn(() => true);
+    const state = { current: snapshot([record('A', 0)], 'A', 0) };
+    const executePhysicalEdit = vi.fn(async () => false);
+    const history = useRotoPhysicalEditHistory({
+      identity: {
+        trackId: 'track-a',
+        launchOperationId: 'launch-1',
+        layerId: 'layer-1',
+        projectContextId: 'project-1',
+        capacity: 10,
+      },
+      availability,
+      coordinator: {
+        executePhysicalEdit: executePhysicalEdit as never,
+        pendingOperationId,
+        acceptedOutput,
+      },
+      recordsPort: {
+        getRecords: () => state.current.records,
+        getInterpolation: () => state.current.interpolation,
+        getCapacity: () => state.current.capacity,
+        raiseCapacity: () => {},
+        getLoopClips: () => state.current.loopClips,
+        getIncomingInterpolationBreakKeyIds: () => state.current.incomingInterpolationBreakKeyIds,
+        replaceIncomingInterpolationBreakKeyIds: () => ({ ok: true }),
+        replaceLoopClips: () => ({ ok: true }),
+        replaceRecords: () => ({ ok: true }),
+      },
+      getLiveSourceSnapshot: () => state.current,
+      aquarelleScriptHistory: { replay },
+      undoPaint,
+      redoPaint,
+    });
+    return { availability, replay, undoPaint, redoPaint, executePhysicalEdit, history };
+  }
+
+  it('recordAquarelleScriptEdit pushes exactly one entry and clears redo', async () => {
+    const harness = createAquarelleHarness();
+    harness.history.recordAquarelleScriptEdit(41);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+
+    // A new command clears the redo branch exactly once.
+    harness.history.recordAquarelleScriptEdit(42);
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('calls the replay port with undo and moves the stacks only on true', async () => {
+    const harness = createAquarelleHarness();
+    harness.replay.mockResolvedValueOnce(false);
+    harness.history.recordAquarelleScriptEdit(43);
+
+    expect(await harness.history.undo()).toBe(false);
+    expect(harness.replay).toHaveBeenLastCalledWith(43, 'undo');
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+    // Never the coordinator, never a paint replay.
+    expect(harness.executePhysicalEdit).not.toHaveBeenCalled();
+    expect(harness.undoPaint).not.toHaveBeenCalled();
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.replay).toHaveBeenLastCalledWith(43, 'undo');
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+  });
+
+  it('redo is symmetric', async () => {
+    const harness = createAquarelleHarness();
+    harness.history.recordAquarelleScriptEdit(44);
+    expect(await harness.history.undo()).toBe(true);
+
+    harness.replay.mockResolvedValueOnce(false);
+    expect(await harness.history.redo()).toBe(false);
+    expect(harness.replay).toHaveBeenLastCalledWith(44, 'redo');
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 1 });
+    expect(harness.redoPaint).not.toHaveBeenCalled();
+
+    expect(await harness.history.redo()).toBe(true);
+    expect(harness.replay).toHaveBeenLastCalledWith(44, 'redo');
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 0 });
+  });
+
+  it('a paint barrier above an aquarelle command is consumed first', async () => {
+    const harness = createAquarelleHarness();
+    harness.history.reconcilePaintBarriers({ undo: 1, redo: 0 });
+    harness.history.recordAquarelleScriptEdit(45);
+    harness.history.observePaintMutation(77, 'paint');
+    expect(harness.availability.value).toEqual({ undo: 2, redo: 0 });
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.undoPaint).toHaveBeenCalledTimes(1);
+    expect(harness.replay).not.toHaveBeenCalled();
+    expect(harness.availability.value).toEqual({ undo: 1, redo: 1 });
+
+    expect(await harness.history.undo()).toBe(true);
+    expect(harness.replay).toHaveBeenLastCalledWith(45, 'undo');
+    expect(harness.availability.value).toEqual({ undo: 0, redo: 2 });
+  });
+});

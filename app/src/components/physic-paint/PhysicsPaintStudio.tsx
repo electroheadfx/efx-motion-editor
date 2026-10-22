@@ -166,10 +166,10 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import { activeModule } from '../shared/activeModule';
 import { recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import {
-  commitAquarelleStrokeEdit,
-  deleteAquarelleStrokeForEdit,
+  beginAquarelleDeleteEdit,
   isAquarelleDeleteInFlight,
-  revertAquarelleStrokeEdit,
+  restoreAquarelleEditSnapshot,
+  restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
 } from './view/aquarelleStrokeSelection';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
@@ -3498,6 +3498,23 @@ export function PhysicsPaintStudio() {
       };
     },
     referencedActionHistory: rotoScriptLibrary.referencedActionHistory,
+    // 261022-pim: one watercolor delete + re-bake is one ledger command. The
+    // snapshot swap is revision-authoritative (a newer script mutation fails
+    // closed), and the re-bake runs through the SAME shared Apply path.
+    aquarelleScriptHistory: {
+      replay: async (editId, direction) => {
+        const revert = restoreAquarelleEditSnapshot(editId, direction);
+        if (revert === null) return false;
+        aquarelleResetSheetRef.current?.();
+        const ok = await rotoScript.applyCurrentScript();
+        if (!ok) {
+          restoreAquarelleSnapshotRaw(revert);
+          return false;
+        }
+        rotoScript.notifySourceRevision();
+        return true;
+      },
+    },
     undoPaint: rotoFrameEditing.undo,
     redoPaint: rotoFrameEditing.redo,
   });
@@ -4683,7 +4700,9 @@ export function PhysicsPaintStudio() {
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
     if (isAquarelleDeleteInFlight()) return;
-    const editId = deleteAquarelleStrokeForEdit(mutationId);
+    // One delete = one edit with before/after script snapshots. The ledger
+    // records it only after the re-bake succeeds (Task 3).
+    const editId = beginAquarelleDeleteEdit(mutationId);
     if (editId === null) return;
     setAquarelleDeleteInFlight(true);
     void (async () => {
@@ -4691,16 +4710,14 @@ export function PhysicsPaintStudio() {
         aquarelleResetSheetRef.current?.();
         const ok = await rotoScript.applyCurrentScript();
         if (ok) {
-          commitAquarelleStrokeEdit(editId);
+          rotoMoveHistory.recordAquarelleScriptEdit(editId);
           setLastError(null);
           clearOwnedScriptApplyRefusal();
-          // Task 3 records the edit as ONE aquarelle-script undo command.
-          void editId;
           return;
         }
-        // Failed re-bake: put the stroke back in the in-memory script so the
-        // next Apply cannot bake a script the sheet never showed.
-        revertAquarelleStrokeEdit(editId);
+        // Failed re-bake: put the pre-delete script back exactly so the next
+        // Apply cannot bake a script the sheet never showed.
+        restoreAquarelleEditSnapshot(editId, 'undo');
         const error = rotoScript.error.peek();
         const message = buildRotoScriptApplyRefusalMessage(error) ?? error?.message ?? null;
         if (message) {
@@ -4717,6 +4734,9 @@ export function PhysicsPaintStudio() {
     isPhysicalMutationLocked,
     rotoScript,
     rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
     setLastError,
     setApplyMessage,
     setApplyStatus,

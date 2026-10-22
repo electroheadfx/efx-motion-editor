@@ -17,6 +17,10 @@ import {
   isAquarelleStrokeDeleted,
   recordAquarelleStroke,
 } from './aquarelleRecordState';
+import {
+  beginAquarelleDeleteEdit,
+  restoreAquarelleEditSnapshot,
+} from './aquarelleStrokeSelection';
 
 function point(x: number, y: number): AquarellePoint {
   return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
@@ -69,5 +73,55 @@ describe('261022-pim aquarelle record-state delete', () => {
   it('an unknown id is a no-op returning false', () => {
     expect(deleteAquarelleStrokeFromScript(999999)).toBe(false);
     expect(isAquarelleStrokeDeleted(999999)).toBe(false);
+  });
+});
+
+// 261022-pim Task 3: one delete is one edit with a before/after snapshot.
+// Undo restores the exact timeline (same object refs, same order) and the
+// revision-authority check fails closed on a newer script mutation.
+describe('261022-pim aquarelle delete edit snapshots', () => {
+  it('undo snapshot restores the entry at its original index, unmarks, and bumps the revision', () => {
+    recordAquarelleStroke(7201, stroke(7201));
+    recordAquarelleStroke(7202, stroke(7202));
+    recordAquarelleStroke(7203, stroke(7203));
+    const timelineBefore = [...getRecordedAquarellePayloadTimeline()];
+    const tail = timelineBefore.slice(-3);
+
+    const editId = beginAquarelleDeleteEdit(7202);
+    expect(editId).not.toBeNull();
+    expect(isAquarelleStrokeDeleted(7202)).toBe(true);
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(timelineBefore.length - 1);
+    const revisionAfterDelete = aquarelleStrokesRevision.value;
+
+    const revert = restoreAquarelleEditSnapshot(editId!, 'undo');
+    expect(revert).not.toBeNull();
+    expect(aquarelleStrokesRevision.value).toBe(revisionAfterDelete + 1);
+    expect(isAquarelleStrokeDeleted(7202)).toBe(false);
+
+    const restored = [...getRecordedAquarellePayloadTimeline()];
+    expect(restored).toHaveLength(timelineBefore.length);
+    // The exact middle entries are back, in recording order, by reference.
+    expect(restored.slice(-3)).toEqual(tail);
+    expect(restored[restored.length - 3]).toBe(tail[0]);
+    expect(restored[restored.length - 2]).toBe(tail[1]);
+    expect(restored[restored.length - 1]).toBe(tail[2]);
+  });
+
+  it('a stale snapshot is refused', () => {
+    recordAquarelleStroke(7301, stroke(7301));
+    recordAquarelleStroke(7302, stroke(7302));
+    const editId = beginAquarelleDeleteEdit(7301);
+    expect(editId).not.toBeNull();
+
+    // A newer recorded stroke moves the script revision past the edit's after
+    // side — the stale undo must fail closed and change nothing.
+    recordAquarelleStroke(7303, stroke(7303));
+    const revisionAfterNewStroke = aquarelleStrokesRevision.value;
+    const timelineAfterNewStroke = [...getRecordedAquarellePayloadTimeline()];
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).toBeNull();
+    expect(aquarelleStrokesRevision.value).toBe(revisionAfterNewStroke);
+    expect(getRecordedAquarellePayloadTimeline()).toEqual(timelineAfterNewStroke);
+    expect(isAquarelleStrokeDeleted(7301)).toBe(true);
   });
 });
