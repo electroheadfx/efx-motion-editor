@@ -171,6 +171,7 @@ import {
   aquarelleSelectedStrokeMutationId,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
+  beginAquarelleReorderEdit,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
   restoreAquarelleEditSnapshot,
@@ -3917,6 +3918,22 @@ export function PhysicsPaintStudio() {
         handleAquarelleDeleteStroke(mutationId);
         return true;
       },
+      // 261022-ujp: Space steps the targeted stroke one paint position back.
+      // Water color requires select mode + a selected stroke; once those hold
+      // the key is consumed even when the handler refuses (lock, bottom of the
+      // stack), so Space never starts playback mid-stack-edit. Peek-only reads
+      // keep the Studio render body unsubscribed.
+      stepSelectedStrokeBackward: () => {
+        if (activeModule.peek() === 'watercolor') {
+          if (!aquarelleSelectMode.peek()) return false;
+          const mutationId = aquarelleSelectedStrokeMutationId.peek();
+          if (mutationId === null) return false;
+          handleAquarelleSendBackward(mutationId);
+          return true;
+        }
+        // 261022-ujp Task 2 owns the Brush arm.
+        return false;
+      },
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
       // 261008-ryq: one-shot keyboard removal of the selected sound clip —
@@ -4856,6 +4873,59 @@ export function PhysicsPaintStudio() {
     clearOwnedScriptApplyRefusal,
     canvasWidth,
     canvasHeight,
+  ]);
+
+  // 261022-ujp: Space stack step. The reorder swaps the recorded stroke one
+  // payload position back, resets the sheet, and re-applies the current
+  // frame's script through the SAME shared Apply pipeline as delete/move.
+  // Reorder + re-bake = ONE `aquarelle-script` ledger entry. Guards are
+  // peek-only and mirror the move handler's order: the handler must not
+  // subscribe the Studio body.
+  const handleAquarelleSendBackward = useCallback((mutationId: number) => {
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
+    if (isAquarelleScriptEditInFlight()) return;
+    const editId = beginAquarelleReorderEdit(mutationId);
+    if (editId === null) return;
+    setAquarelleScriptEditInFlight(true);
+    void (async () => {
+      try {
+        // The recorded timeline IS the script (same replay source as delete).
+        const playFrame = launchContextRef.current?.startFrame ?? 0;
+        aquarelleResetSheetRef.current?.();
+        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+        if (ok) {
+          rotoMoveHistory.recordAquarelleScriptEdit(editId);
+          setLastError(null);
+          clearOwnedScriptApplyRefusal();
+          return;
+        }
+        // Failed re-bake: put the pre-step order back exactly.
+        restoreAquarelleEditSnapshot(editId, 'undo');
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? 'Could not re-apply the watercolor script — the stroke order was restored.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      } finally {
+        setAquarelleScriptEditInFlight(false);
+      }
+    })();
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
   ]);
 
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability

@@ -956,3 +956,62 @@ describe('261022-pim aquarelle stroke delete shortcut', () => {
     expect(preventDefault).not.toHaveBeenCalled();
   });
 });
+
+// 261022-ujp: Space steps a stroke's stack position when the action consumes
+// it. The branch precedes the playback toggle and only owns the key once the
+// action returns true; everywhere else playback keeps Space verbatim.
+describe('261022-ujp stroke stack step shortcut', () => {
+  const baseState: PhysicsPaintStudioKeyboardState = {
+    currentFrame: 4,
+    isPlaying: false,
+    mutationLocked: false,
+    hasSelectedRotoKey: false,
+  };
+  const frames = [{ frame: 1 }, { frame: 3 }, { frame: 7 }];
+
+  it('Space steps the stack when the action consumes it', () => {
+    const handlers = { ...actions(), stepSelectedStrokeBackward: vi.fn(() => true) };
+    const { event, preventDefault } = eventFor(' ', new TestHTMLElement('canvas') as unknown as EventTarget);
+
+    dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+    expect(handlers.stepSelectedStrokeBackward).toHaveBeenCalledOnce();
+    expect(handlers.toggleRotoPlayback).not.toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Space falls through to playback when the action returns false', () => {
+    const handlers = { ...actions(), stepSelectedStrokeBackward: vi.fn(() => false) };
+    const { event, preventDefault } = eventFor(' ', new TestHTMLElement('canvas') as unknown as EventTarget);
+
+    dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+    expect(handlers.stepSelectedStrokeBackward).toHaveBeenCalledOnce();
+    expect(handlers.toggleRotoPlayback).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('Space never steps on repeat, a modifier, or while playing', () => {
+    for (const overrides of [
+      { repeat: true },
+      { metaKey: true },
+      { ctrlKey: true },
+      { altKey: true },
+      { shiftKey: true },
+    ]) {
+      const handlers = { ...actions(), stepSelectedStrokeBackward: vi.fn(() => true) };
+      const { event } = eventFor(' ', new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
+
+      dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
+
+      expect(handlers.stepSelectedStrokeBackward).not.toHaveBeenCalled();
+      expect(handlers.toggleRotoPlayback).toHaveBeenCalledOnce();
+    }
+
+    const handlers = { ...actions(), stepSelectedStrokeBackward: vi.fn(() => true) };
+    const { event } = eventFor(' ', new TestHTMLElement('canvas') as unknown as EventTarget);
+    dispatchPhysicsPaintStudioKeyDown(event, { ...baseState, isPlaying: true }, handlers, frames);
+    expect(handlers.stepSelectedStrokeBackward).not.toHaveBeenCalled();
+    expect(handlers.toggleRotoPlayback).toHaveBeenCalledOnce();
+  });
+});

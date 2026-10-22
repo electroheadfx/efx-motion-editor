@@ -1280,7 +1280,7 @@ function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
  * AquarelleStroke (mixed key) so the engine-1 serialize path stays.
  */
 function buildAquarelleEventsFromCapture(brushes: readonly Readonly<RecordedStrokeGroup>[]): AquarellePayloadEvent[] | undefined {
-  const projected: AquarellePayloadEvent[] = [];
+  const captured = new Set<number>();
   for (const brush of brushes) {
     const chain = [brush.primary, ...(brush.continuations ?? [])];
     for (const stroke of chain) {
@@ -1289,34 +1289,31 @@ function buildAquarelleEventsFromCapture(brushes: readonly Readonly<RecordedStro
       // Presence gate law: a missing record means a MIXED engine-1 key — the
       // serialize path must stay engine-1. A deleted stroke is different: its
       // record is present (presence stays true) but it is removed from the
-      // script by the marker, so skip it WITHOUT tripping the fallback.
+      // script by the marker, so it is skipped in the projection below WITHOUT
+      // tripping the fallback.
       if (!recorded) return undefined;
-      if (mutationId !== undefined && isAquarelleStrokeDeleted(mutationId)) continue;
-      projected.push(aquarelleToStudioStroke(recorded));
+      if (mutationId !== undefined) captured.add(mutationId);
     }
   }
-  const drys = getRecordedAquarellePayloadTimeline().filter(isAquarelleDryEvent);
-  if (drys.length === 0) return projected;
-  // Stroke wins a tie — same law as aquarelleEventsFromScript.
-  const merged: AquarellePayloadEvent[] = [];
-  let strokeIndex = 0;
-  let dryIndex = 0;
-  while (strokeIndex < projected.length && dryIndex < drys.length) {
-    if (drys[dryIndex]!.recordedOrder < projected[strokeIndex]!.recordedOrder) {
-      merged.push(drys[dryIndex]!);
-      dryIndex += 1;
-    } else {
-      merged.push(projected[strokeIndex]!);
-      strokeIndex += 1;
+
+  // 261022-ujp: project in LIVE PAYLOAD-TIMELINE order, not engine capture
+  // order. A stroke stack step reorders the timeline; inheriting the engine's
+  // acceptance order here would silently undo the user's stacking on Apply
+  // Script and Save. Dry events ride at their exact timeline position (they
+  // are sheet actions, not captured strokes). The captured brush set only
+  // decides WHICH strokes are projected.
+  const projected: AquarellePayloadEvent[] = [];
+  for (const event of getRecordedAquarellePayloadTimeline()) {
+    if (isAquarelleDryEvent(event)) {
+      projected.push(event);
+      continue;
     }
+    const mutationId = (event.engine as { mutationId?: number }).mutationId;
+    if (mutationId === undefined || !captured.has(mutationId)) continue;
+    if (isAquarelleStrokeDeleted(mutationId)) continue;
+    const recorded = getRecordedAquarelleStroke(mutationId);
+    if (!recorded) continue;
+    projected.push(aquarelleToStudioStroke(recorded));
   }
-  while (strokeIndex < projected.length) {
-    merged.push(projected[strokeIndex]!);
-    strokeIndex += 1;
-  }
-  while (dryIndex < drys.length) {
-    merged.push(drys[dryIndex]!);
-    dryIndex += 1;
-  }
-  return merged;
+  return projected;
 }

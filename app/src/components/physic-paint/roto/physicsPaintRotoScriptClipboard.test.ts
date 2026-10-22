@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoPaintScript, type RotoScriptActionAvailability, type RotoScriptClipboardControllerPorts, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import { createDryEvent, isAquarelleDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
-import { deleteAquarelleStrokeFromScript, recordAquarelleStroke } from '../view/aquarelleRecordState';
+import { deleteAquarelleStrokeFromScript, emitAquarelleDry, recordAquarelleStroke, sendAquarelleStrokeBackwardInScript } from '../view/aquarelleRecordState';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import { createPersistedRotoScript } from './physicsPaintRotoScriptSchema';
@@ -1519,5 +1519,77 @@ describe('261022-pim applyAquarelleTimeline', () => {
     port.resolve(true);
     await expect(applying).resolves.toBe(true);
     expect(test.controller.applyProgress.value).toBeNull();
+  });
+});
+
+// 261022-ujp: the capture projection follows the LIVE payload timeline, so a
+// stroke stack step survives Apply Script (and Save). The captured brush set
+// only decides WHICH strokes are projected; their order comes from the
+// timeline, Dry included at its exact position.
+describe('261022-ujp aquarelle capture order', () => {
+  function recordLiveReorderStroke(mutationId: number, playFrame = 4): void {
+    const live: AquarelleStroke = {
+      tool: 'brush',
+      color: '#123456',
+      params: { size: 8, water: 50, load: 50, flow: 50, bleed: 50, dry: 50, edge: 50, granulation: 50 },
+      brushId: 'wc/round-medium',
+      points: [
+        { x: 0.1, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        { x: 0.14, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      ],
+      mutationId,
+      timestamp: mutationId,
+      playFrame,
+    };
+    recordAquarelleStroke(mutationId, live);
+  }
+
+  it('a reordered timeline survives the capture projection', async () => {
+    const port = gatedAquarellePort();
+    // Engine-1 groups stay in the ORIGINAL acceptance order — the projection
+    // must not inherit it.
+    const test = harness([stroke(61), stroke(62)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    recordLiveReorderStroke(61);
+    recordLiveReorderStroke(62);
+    expect(sendAquarelleStrokeBackwardInScript(62)).toBe(true);
+
+    const applying = test.controller.applyCurrentScript();
+    test.controller.observeCompletedMutation(test.engine, completion(61));
+    test.controller.observeCompletedMutation(test.engine, completion(62));
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    const strokeIds = port.calls[0]!.events.flatMap((event) =>
+      'kind' in event ? [] : [(event.engine as { mutationId?: number }).mutationId],
+    );
+    expect(strokeIds).toEqual([62, 61]);
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+  });
+
+  it('Dry keeps its timeline position in the projection', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(71), stroke(72)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    recordLiveReorderStroke(71);
+    emitAquarelleDry(500);
+    recordLiveReorderStroke(72);
+    expect(sendAquarelleStrokeBackwardInScript(72)).toBe(true);
+
+    const applying = test.controller.applyCurrentScript();
+    test.controller.observeCompletedMutation(test.engine, completion(71));
+    test.controller.observeCompletedMutation(test.engine, completion(72));
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    const projected = port.calls[0]!.events.map((event) =>
+      isAquarelleDryEvent(event)
+        ? 'dry'
+        : (event.engine as { mutationId?: number }).mutationId,
+    );
+    expect(projected).toEqual([72, 'dry', 71]);
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
   });
 });

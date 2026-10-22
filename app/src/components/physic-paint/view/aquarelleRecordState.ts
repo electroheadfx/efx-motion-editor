@@ -402,6 +402,45 @@ export function translateAquarelleStrokeInScript(
 }
 
 /**
+ * 261022-ujp: step one recorded stroke back in the payload timeline — swap it
+ * with the nearest OLDER non-deleted stroke of the same edit frame.
+ *
+ * The payload timeline IS the watercolor paint order, so this is a pure index
+ * swap: the two entries trade places and every per-stroke field (points,
+ * ticks, recordedOrder, playFrame, cuisson) is untouched. Dry events are sheet
+ * actions with no frame anchor (D-15), so they keep their absolute timeline
+ * index and are simply walked past. The registry Map insertion order is never
+ * reordered — hit-testing walks it newest-last.
+ *
+ * Refuses unknown, deleted, out-of-timeline, and already-first-of-frame ids
+ * without touching the revision.
+ */
+export function sendAquarelleStrokeBackwardInScript(mutationId: number): boolean {
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (!entry || deletedAquarelleStrokeIds.has(mutationId)) return false;
+  const index = payloadTimeline.indexOf(entry);
+  if (index < 0) return false;
+
+  let partnerIndex = -1;
+  for (let candidate = index - 1; candidate >= 0; candidate -= 1) {
+    const event = payloadTimeline[candidate]!;
+    // Dry is a sheet action with no frame anchor (D-15): never a swap partner.
+    if (isAquarelleDryEvent(event)) continue;
+    if (event.playFrame !== entry.playFrame) continue;
+    const candidateId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (candidateId === undefined || deletedAquarelleStrokeIds.has(candidateId)) continue;
+    partnerIndex = candidate;
+    break;
+  }
+  if (partnerIndex < 0) return false;
+
+  payloadTimeline[index] = payloadTimeline[partnerIndex]!;
+  payloadTimeline[partnerIndex] = entry;
+  bumpAquarelleStrokesRevision();
+  return true;
+}
+
+/**
  * Remove a recorded stroke from the SCRIPT (261022-pim). The engine-1 guide
  * stroke stays in the engine's ledger (capture order + paint barriers remain
  * stable); the marker plus the timeline splice are the script mutation the

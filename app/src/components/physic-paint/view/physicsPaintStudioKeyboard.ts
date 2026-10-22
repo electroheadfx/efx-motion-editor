@@ -48,6 +48,11 @@ export interface PhysicsPaintStudioKeyboardActions {
    *  consumed the key (select mode + a selection); otherwise the existing
    *  key/clip branches keep owning Delete/Backspace. */
   deleteSelectedAquarelleStroke?: () => boolean;
+  /** 261022-ujp: Space with a concrete stroke target (watercolor select mode +
+   *  selection, or Brush Move tool + hover target) sends that stroke one step
+   *  back in the paint stack. Returns true only when it consumed the key;
+   *  otherwise the playback branch keeps owning Space. */
+  stepSelectedStrokeBackward?: () => boolean;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
   /** Dismiss the toolbox popover; handled on Escape before collapseRotoSelection
@@ -303,6 +308,27 @@ export function dispatchPhysicsPaintStudioKeyDown(
     return;
   }
 
+    // 261022-ujp: a stroke stack step owns Space only in move/select mode with
+    // a concrete target — the action is mode+target gated and returns true
+    // only when it consumed the key. This branch precedes the playback toggle
+    // and never preventDefaults before the action returns true, so playback
+    // keeps Space verbatim everywhere else (no target, repeat, modifier,
+    // playing). Each step ends in a full re-bake/redraw, so auto-repeat is
+    // refused.
+    if (
+      event.key === ' '
+      && !event.repeat
+      && !event.metaKey
+      && !event.ctrlKey
+      && !event.altKey
+      && !event.shiftKey
+      && !state.isPlaying
+      && actions.stepSelectedStrokeBackward
+      && actions.stepSelectedStrokeBackward()
+    ) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === ' ') {
       event.preventDefault();
       actions.toggleRotoPlayback();

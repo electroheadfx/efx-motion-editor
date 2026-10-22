@@ -2413,8 +2413,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // 261022-tv1: a fifth site — the stroke-move re-bake failure in
     // handleAquarelleMoveStroke — reuses the same mapper. No second import,
     // no new status surface.
+    // 261022-ujp: a sixth site — the stroke stack step re-bake failure in
+    // handleAquarelleSendBackward — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(6); // one import + five call sites
+    expect(mentions).toBe(7); // one import + six call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 

@@ -34,6 +34,7 @@ import {
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
   restoreAquarelleStrokeRegistry,
+  sendAquarelleStrokeBackwardInScript,
   translateAquarelleStrokeInScript,
   type AquarelleStrokeRegistrySnapshot,
 } from './aquarelleRecordState';
@@ -451,6 +452,22 @@ export function beginAquarelleMoveEdit(
   if (aquarelleScriptEditInFlight) return null;
   const before = captureAquarelleSnapshot();
   if (!translateAquarelleStrokeInScript(mutationId, dxUv, dyUv)) return null;
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * 261022-ujp: step one recorded stroke back in the paint stack as a single
+ * edit (reorder + its re-bake = ONE `aquarelle-script` ledger command). The
+ * selection is kept — the stroke still exists. Returns a monotonic edit id or
+ * null when refused.
+ */
+export function beginAquarelleReorderEdit(mutationId: number): number | null {
+  // A stack step must never leave a drag ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const before = captureAquarelleSnapshot();
+  if (!sendAquarelleStrokeBackwardInScript(mutationId)) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }
