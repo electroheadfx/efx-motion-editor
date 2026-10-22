@@ -51,6 +51,9 @@ const exportRenderer = readFileSync(fileURLToPath(new URL('../../lib/exportRende
 const referenceTransformHandles = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransformHandles.tsx', import.meta.url)), 'utf8');
 const referenceTransform = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintReferenceTransform.ts', import.meta.url)), 'utf8');
 const studioKeyboard = readFileSync(fileURLToPath(new URL('./view/physicsPaintStudioKeyboard.ts', import.meta.url)), 'utf8');
+// 261022-ujp: the watercolor payload reorder + the engine paint-order projection.
+const aquarelleRecordStateSource = readFileSync(fileURLToPath(new URL('./view/aquarelleRecordState.ts', import.meta.url)), 'utf8');
+const paintEngineSource = readFileSync(fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url)), 'utf8');
 // 260922-rd4: the background transform wiring pins (STEP F).
 const backgroundClipSection = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
 
@@ -2934,9 +2937,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Select/Move owns the active state: the paint tool is deselected.
     expect(watercolorRail).toContain('const isActive = !selectActive && active === id;');
     expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
-    // Better hover text: the shortcut, the drag, and the Backspace delete live on it.
-    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke');
-    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Backspace deletes the selected key'");
+    // Better hover text: the shortcut, the drag, the Backspace delete and the
+    // 261022-ujp Space step live on it.
+    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke · Space sends the selected stroke one step back');
+    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Backspace deletes the selected key · Space sends the hovered stroke one step back'");
     expect(toolRail).toContain('title={item.tooltip ?? item.label}');
   });
 
@@ -3128,5 +3132,142 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(studio).toContain('const handleAquarelleDeleteStroke = useCallback(');
     expect(studio).toContain('onAquarelleDeleteStroke: handleAquarelleDeleteStroke,');
     expect(aquarelleStrokeOverlay).toContain('selectAquarelleStrokeAt(');
+  });
+});
+
+// 261022-ujp: Space steps a selected/hovered stroke one paint position back
+// in BOTH modules. The key branch precedes playback and consumes Space only
+// with a concrete target; the watercolor path is one revision-authoritative
+// edit, the brush path is a paint-order projection over an untouched ledger.
+describe('261022-ujp stroke stack step', () => {
+  it('routes Space through the stack action BEFORE the playback toggle', () => {
+    expect(studioKeyboard).toContain('stepSelectedStrokeBackward?: () => boolean;');
+    const stackSite = studioKeyboard.indexOf('actions.stepSelectedStrokeBackward');
+    const playbackSite = studioKeyboard.indexOf('actions.toggleRotoPlayback();');
+    expect(stackSite).toBeGreaterThan(-1);
+    expect(playbackSite).toBeGreaterThan(stackSite);
+    const branch = studioKeyboard.slice(
+      studioKeyboard.lastIndexOf('if (', stackSite),
+      playbackSite,
+    );
+    expect(branch).toContain("event.key === ' '");
+    expect(branch).toContain('!event.repeat');
+    expect(branch).toContain('!event.metaKey');
+    expect(branch).toContain('!event.ctrlKey');
+    expect(branch).toContain('!event.altKey');
+    expect(branch).toContain('!event.shiftKey');
+    expect(branch).toContain('!state.isPlaying');
+    expect(branch).toContain('&& actions.stepSelectedStrokeBackward');
+    expect(branch).toContain('&& actions.stepSelectedStrokeBackward()');
+    // Never preventDefault BEFORE the action reports consumption.
+    expect(branch.indexOf('event.preventDefault();')).toBeGreaterThan(
+      branch.indexOf('&& actions.stepSelectedStrokeBackward()'),
+    );
+    expect(studioKeyboard).toContain('actions.toggleRotoPlayback();');
+  });
+
+  it('wires the Studio action with a mode+target gate and peek-only reads', () => {
+    const actionStart = studio.indexOf('stepSelectedStrokeBackward: () => {');
+    const actionEnd = studio.indexOf('deleteBackgroundClip:', actionStart);
+    expect(actionStart).toBeGreaterThan(-1);
+    const action = studio.slice(actionStart, actionEnd);
+    // Water color: persistent select mode + a selected stroke owns the key.
+    expect(action).toContain("if (activeModule.peek() === 'watercolor') {");
+    expect(action).toContain('if (!aquarelleSelectMode.peek()) return false;');
+    expect(action).toContain('const mutationId = aquarelleSelectedStrokeMutationId.peek();');
+    expect(action).toContain('handleAquarelleSendBackward(mutationId);');
+    // Brush: the Move-tool hover target IS the selection; null falls through.
+    expect(action).toContain('const engine = engineRef.current;');
+    expect(action).toContain('const mutationId = engine.getMoveTargetMutationId();');
+    expect(action).toContain('if (mutationId === null) return false;');
+    expect(action).toContain('if (!isPhysicalMutationLocked()) engine.sendStrokeBackward(mutationId);');
+    // Peek-only: the Studio render body never subscribes these signals.
+    expect(studio).not.toContain('aquarelleSelectMode.value');
+    expect(studio).not.toContain('aquarelleSelectedStrokeMutationId.value');
+  });
+
+  it('orders the watercolor handler: begin -> reset -> await apply -> record on success -> rollback', () => {
+    const handlerStart = studio.indexOf('const handleAquarelleSendBackward = useCallback(');
+    const handlerEnd = studio.indexOf('// 56-12 CACHE WRITE', handlerStart);
+    expect(handlerStart).toBeGreaterThan(-1);
+    const handler = studio.slice(handlerStart, handlerEnd);
+    const beginSite = handler.indexOf('const editId = beginAquarelleReorderEdit(mutationId);');
+    const resetSite = handler.indexOf('aquarelleResetSheetRef.current?.();');
+    const applySite = handler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
+    const successSite = handler.indexOf('if (ok) {');
+    const recordSite = handler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    const rollbackSite = handler.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
+    expect(beginSite).toBeGreaterThan(-1);
+    expect(resetSite).toBeGreaterThan(beginSite);
+    expect(applySite).toBeGreaterThan(resetSite);
+    expect(successSite).toBeGreaterThan(applySite);
+    expect(recordSite).toBeGreaterThan(successSite);
+    expect(rollbackSite).toBeGreaterThan(recordSite);
+    // Shared gates, same order as delete/move; flag cleared even on throw.
+    expect(handler).toContain('if (isPhysicalMutationLocked()) return;');
+    expect(handler).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;');
+    expect(handler).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;");
+    expect(handler).toContain('if (isAquarelleScriptEditInFlight()) return;');
+    expect(handler).toContain('} finally {');
+    expect(handler).toContain('setAquarelleScriptEditInFlight(false);');
+    expect(handler).not.toContain('engineRef');
+    expect(handler).not.toContain('clipboard');
+    expect(handler).not.toContain('applyCurrentScript');
+  });
+
+  it('swaps payload entries by index and never touches Dry, ticks, or the registry order', () => {
+    const reorderStart = aquarelleRecordStateSource.indexOf('export function sendAquarelleStrokeBackwardInScript(');
+    expect(reorderStart).toBeGreaterThan(-1);
+    const reorder = aquarelleRecordStateSource.slice(
+      reorderStart,
+      aquarelleRecordStateSource.indexOf('export function deleteAquarelleStrokeFromScript', reorderStart),
+    );
+    // Index assignment, not a splice: every per-stroke field and the Map
+    // insertion order (newest-last hit-testing) stay untouched.
+    expect(reorder).toContain('payloadTimeline[index] = payloadTimeline[partnerIndex]!;');
+    expect(reorder).toContain('payloadTimeline[partnerIndex] = entry;');
+    expect(reorder).toContain('isAquarelleDryEvent(event)');
+    expect(reorder).not.toContain('.splice(');
+    expect(reorder).not.toContain('setAquarelleStrokeDiffusionFrames');
+    expect(reorder).not.toContain('deleteAquarelleStrokeFromScript');
+  });
+
+  it('projects paint order in the engine without reordering the acceptance ledger', () => {
+    expect(paintEngineSource).toContain('private strokeStack: PaintStroke[] = []');
+    const pushStart = paintEngineSource.indexOf('private pushAcceptedActions(');
+    expect(pushStart).toBeGreaterThan(-1);
+    const push = paintEngineSource.slice(pushStart, paintEngineSource.indexOf('private redrawAll()', pushStart));
+    expect(push).toContain('this.allActions.push(...actions)');
+    expect(push).toContain('stack.push(...actions)');
+    // Both accepted-action sites funnel through the one helper.
+    expect(paintEngineSource).toContain('this.pushAcceptedActions(actions)');
+    expect(paintEngineSource).toContain('this.pushAcceptedActions([{');
+    // Render, read, and serialize follow the projection.
+    const redrawStart = paintEngineSource.indexOf('private redrawAll()');
+    const redraw = paintEngineSource.slice(redrawStart, paintEngineSource.indexOf('private replayDiffusion(', redrawStart));
+    expect(redraw).toContain('const ordered = this.liveActionsInPaintOrder()');
+    expect(paintEngineSource).toContain('return this.liveActionsInPaintOrder().map(s => ({');
+    expect(paintEngineSource).toContain('strokes: this.liveActionsInPaintOrder().map(s => ({');
+    // clear resets it; load reseeds it from the loaded ledger.
+    expect(paintEngineSource).toContain('this.strokeStack = []');
+    expect(paintEngineSource).toContain('this.strokeStack = [...this.allActions]');
+    // The step keeps the move-commit contract and never reorders allActions.
+    expect(paintEngineSource).toContain('public getMoveTargetMutationId(): number | null');
+    expect(paintEngineSource).toContain("return this.state.tool === 'move' ? this.moveHoverTargetId : null");
+    const stepStart = paintEngineSource.indexOf('public sendStrokeBackward(');
+    expect(stepStart).toBeGreaterThan(-1);
+    const step = paintEngineSource.slice(stepStart, paintEngineSource.indexOf('private cursorGlyphMode(', stepStart));
+    expect(step).toContain('this.flushPendingStrokeFinalizations()');
+    expect(step.indexOf('this.redoStack = []')).toBeGreaterThan(-1);
+    expect(step.indexOf('this.redoStack = []')).toBeLessThan(
+      step.indexOf("this.notifyCompletedMutation('move', mutationId)"),
+    );
+    expect(step).not.toContain('this.allActions.push');
+  });
+
+  it('keeps the 261022-pim delete and 261022-tv1 move pins intact', () => {
+    expect(studio).toContain('deleteSelectedAquarelleStroke: () => {');
+    expect(studio).toContain('const handleAquarelleMoveStroke = useCallback(');
+    expect(studioKeyboard).toContain('deleteSelectedAquarelleStroke?: () => boolean;');
   });
 });
