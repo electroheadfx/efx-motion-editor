@@ -43,6 +43,11 @@ export interface PhysicsPaintStudioKeyboardActions {
   /** 261008-ryq: one-shot removal of the SELECTED sound clip (keyboard path —
    *  the modal-open path handles its own key inside the dialog). */
   removeSelectedSound?: () => void;
+  /** 261022-pim: Delete/Backspace with a watercolor stroke selected in select
+   *  mode deletes that stroke from the script. Returns true only when it
+   *  consumed the key (select mode + a selection); otherwise the existing
+   *  key/clip branches keep owning Delete/Backspace. */
+  deleteSelectedAquarelleStroke?: () => boolean;
   selectAllRotoKeys?: () => void;
   collapseRotoSelection?: () => void;
   /** Dismiss the toolbox popover; handled on Escape before collapseRotoSelection
@@ -171,6 +176,24 @@ export function dispatchPhysicsPaintStudioKeyDown(
   if (event.key === '?' || (event.shiftKey && event.key === '/')) {
     event.preventDefault();
     actions.toggleShortcuts();
+    return;
+  }
+  // 261022-pim: a watercolor stroke selected in select mode owns Delete/
+  // Backspace. Meta is allowed because holding Cmd is itself a select-mode
+  // arm; the action returns false outside select mode or with no selection,
+  // so the existing key/clip branches below keep owning the key everywhere
+  // else. Never while a real modal is open (same document-wide guard).
+  if (
+    (event.key === 'Backspace' || event.key === 'Delete')
+    && !event.repeat
+    && !event.ctrlKey
+    && !event.altKey
+    && !event.shiftKey
+    && actions.deleteSelectedAquarelleStroke
+    && !(event.target instanceof Element && event.target.ownerDocument.querySelector('[aria-modal="true"]'))
+    && actions.deleteSelectedAquarelleStroke()
+  ) {
+    event.preventDefault();
     return;
   }
   if (

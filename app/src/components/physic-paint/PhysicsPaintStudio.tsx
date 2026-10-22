@@ -166,6 +166,8 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import { activeModule } from '../shared/activeModule';
 import { recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import {
+  aquarelleSelectMode,
+  aquarelleSelectedStrokeMutationId,
   beginAquarelleDeleteEdit,
   isAquarelleDeleteInFlight,
   restoreAquarelleEditSnapshot,
@@ -3871,6 +3873,17 @@ export function PhysicsPaintStudio() {
         setBrushColor(paintStore.foregroundColor.peek(), settings.opacity);
       },
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
+      // 261022-pim: in select mode Delete/Backspace deletes the SELECTED
+      // watercolor stroke instead of the key. Peek-only (the keyboard path
+      // must not subscribe the Studio render body); false everywhere else so
+      // the key/clip branches keep their bindings.
+      deleteSelectedAquarelleStroke: () => {
+        if (!aquarelleSelectMode.peek()) return false;
+        const mutationId = aquarelleSelectedStrokeMutationId.peek();
+        if (mutationId === null) return false;
+        handleAquarelleDeleteStroke(mutationId);
+        return true;
+      },
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
       // 261008-ryq: one-shot keyboard removal of the selected sound clip —
@@ -4719,13 +4732,17 @@ export function PhysicsPaintStudio() {
         // Apply cannot bake a script the sheet never showed.
         restoreAquarelleEditSnapshot(editId, 'undo');
         const error = rotoScript.error.peek();
-        const message = buildRotoScriptApplyRefusalMessage(error) ?? error?.message ?? null;
-        if (message) {
-          setLastError(message);
-          setApplyMessage(message);
-          setApplyStatus('error');
-          scriptApplyRefusalOwnedRef.current = true;
-        }
+        // applyCurrentScript has silent refusal paths (busy, no source
+        // strokes, stale launch) that leave `error` null. Surface a message
+        // anyway — a delete that vanishes without a word is the one outcome
+        // this flow must never produce.
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? 'Could not re-apply the watercolor script — the stroke was restored.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
       } finally {
         setAquarelleDeleteInFlight(false);
       }
