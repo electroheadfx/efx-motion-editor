@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-22T07:51:38.889Z"
-last_activity: 2026-10-21
+last_updated: "2026-10-22T11:34:03.742Z"
+last_activity: 2026-10-22
 last_activity_desc: Phase 56 complete
-state_head: fbb452a04bc986240f687060e14fb0473c366b7f
+state_head: c2ca4a017fabaa2f04c5ea6fee2fc6604f8f51a3
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-cfn UAT approved: auto-paint joins the previous rail, Action renamed to Script, rail-kind dropdown removed with a single-purpose + Rail restored
+Last activity: 2026-10-22 — Quick task 261022-iff automated-ready (live UAT pending): one global Solo on the Focus pill targets the active track, follows selection, Escape/re-click exits; per-track S chip and rail-solo window retired; hide wins over solo
 
 Progress: [██████████] 100%
 
@@ -562,6 +562,7 @@ None yet.
 | 261018-odm | Watercolor script playback: dual-engine schema + aquarelle save/play route + Rust validator | 2026-10-18 | d1e57be7 | [261018-odm-build-watercolor-script-playback-extend-](./quick/261018-odm-build-watercolor-script-playback-extend-/) |
 | 261019-mj2 | Roto paint workflow: direct-paint auto-key + Create key fallback, Insert as a pure gap, +Key from nearest previous real key, composite undo, atomic cache re-anchor | 2026-10-20 | c5314d3a | [261019-mj2-roto-paint-workflow-auto-key-on-paint-ke](./quick/261019-mj2-roto-paint-workflow-auto-key-on-paint-ke/) |
 | 261022-cfn | Auto-paint key creation clones the previous paint and joins its rail; replace the timeline + Rail dropdown with a single-purpose new-rail button; rename Action to Script in visible UI | 2026-10-22 | 713bc1b0 | [261022-cfn-key-creation-new-behaviour-1-auto-paint-](./quick/261022-cfn-key-creation-new-behaviour-1-auto-paint-/) |
+| 261022-iff | One global Solo button (Focus pill solos the active track, follows selection, Escape/re-click exits; per-track S chip and rail-solo window retired; hide wins over solo) | 2026-10-22 | c2ca4a01 | [261022-iff-one-global-solo-button-1-replace-the-sol](./quick/261022-iff-one-global-solo-button-1-replace-the-sol/) |
 
 ### Roadmap Evolution
 
