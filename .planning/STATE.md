@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-22T17:54:08.523Z"
+last_updated: "2026-10-22T19:44:04.204Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 56 complete
-state_head: e6914b288bd2ecdcbed3ffd53b9f3c2f12cc612c
+state_head: 649a924b86b5897316ab14c27e38913fe80d7270
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-pim UAT APPROVED: Watercolor stroke select + Backspace/Alt-click delete with timeline re-bake and one-step undo/redo; Cmd tap toggles Move/Select in both modes
+Last activity: 2026-10-22 — Quick task 261022-tv1 automated-ready: Cmd+drag moves a selected watercolor stroke as a ghost, release translates the script and re-bakes, one undo step; 3 live UAT rows pending
 
 Progress: [██████████] 100%
 
@@ -570,6 +570,7 @@ None yet.
 | 261022-ne3 | Bottom timeline buttons arrangement - Tools modal: Push mode after Trash; six Scripts-tab actions cloned into the Tools popover with labels | 2026-10-22 | bcaf1013 | [261022-ne3-bottom-timeline-buttons-arrangement-tool](./quick/261022-ne3-bottom-timeline-buttons-arrangement-tool/) |
 | 261022-o2a | Tools Scripts/Living Script sections, shared script picker, sidebar four labeled actions + per-row hover delete | 2026-10-22 | 47e7ee26 | [261022-o2a-tools-modal-and-scripts-sidebar-regroup-](./quick/261022-o2a-tools-modal-and-scripts-sidebar-regroup-/) |
 | 261022-pim | Watercolor stroke select + delete in Studio (Move/Cmd select mode, outline overlay, Alt+click delete re-bakes through shared Apply, one-step undo/redo) | 2026-10-22 | e6914b28 | [261022-pim-watercolor-stroke-select-delete-in-studi](./quick/261022-pim-watercolor-stroke-select-delete-in-studi/) |
+| 261022-tv1 | Cmd+drag moves a selected watercolor stroke as a ghost, release translates the script and re-bakes, one undo step | 2026-10-22 | 649a924b | [261022-tv1-watercolor-stroke-move](./quick/261022-tv1-watercolor-stroke-move/) |
 
 ### Roadmap Evolution
 
