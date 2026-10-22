@@ -561,7 +561,7 @@ None yet.
 | 261018-lqv | Fix save-script validator: isRotoBackground accepts paper/* + grainScale (parity with types validator) | 2026-10-18 | 77e64dcb | [261018-lqv-fix-captured-roto-script-is-not-persista](./quick/261018-lqv-fix-captured-roto-script-is-not-persista/) |
 | 261018-odm | Watercolor script playback: dual-engine schema + aquarelle save/play route + Rust validator | 2026-10-18 | d1e57be7 | [261018-odm-build-watercolor-script-playback-extend-](./quick/261018-odm-build-watercolor-script-playback-extend-/) |
 | 261019-mj2 | Roto paint workflow: direct-paint auto-key + Create key fallback, Insert as a pure gap, +Key from nearest previous real key, composite undo, atomic cache re-anchor | 2026-10-20 | c5314d3a | [261019-mj2-roto-paint-workflow-auto-key-on-paint-ke](./quick/261019-mj2-roto-paint-workflow-auto-key-on-paint-ke/) |
-| 261022-cfn | Auto-paint key creation clones the previous paint and joins its rail; remove the timeline + Rail dropdown; rename Action to Script in visible UI | 2026-10-22 | fbb452a0 | [261022-cfn-key-creation-new-behaviour-1-auto-paint-](./quick/261022-cfn-key-creation-new-behaviour-1-auto-paint-/) |
+| 261022-cfn | Auto-paint key creation clones the previous paint and joins its rail; replace the timeline + Rail dropdown with a single-purpose new-rail button; rename Action to Script in visible UI | 2026-10-22 | 713bc1b0 | [261022-cfn-key-creation-new-behaviour-1-auto-paint-](./quick/261022-cfn-key-creation-new-behaviour-1-auto-paint-/) |
 
 ### Roadmap Evolution
 
