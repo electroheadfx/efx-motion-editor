@@ -2924,7 +2924,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     );
     expect(watercolorRail).toContain('data-testid="aquarelle-select-toggle"');
     expect(watercolorRail).toContain('onClick={() => toggleAquarelleSelectMode()}');
-    expect(watercolorRail).toContain('aria-pressed={aquarelleSelectMode.value}');
+    expect(watercolorRail).toContain('aria-pressed={selectActive}');
+    expect(watercolorRail).toContain('const selectActive = aquarelleSelectMode.value || temporaryMove.value;');
+    // Select/Move owns the active state: the paint tool is deselected.
+    expect(watercolorRail).toContain('const isActive = !selectActive && active === id;');
     expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
   });
 

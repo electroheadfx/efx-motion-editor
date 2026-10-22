@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { aquarelleActiveTool, onAquarelleDry, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
+import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
 import { AquarelleToolRow } from './AquarelleToolRow';
 import { WatercolorModuleSection } from './WatercolorModuleSection';
 
@@ -187,6 +188,27 @@ describe('AquarelleToolRow (AQUA-02 / D-13)', () => {
     );
     expect(activeAfter.length).toBe(1);
     expect(textContent(activeAfter[0]!).trim()).toContain('Pen');
+  });
+
+  it('deselects the paint tool while select mode is on (261022-pim)', () => {
+    setAquarelleTool('brush');
+    setAquarelleSelectMode(true);
+    try {
+      const selectedTree = renderToolRow();
+      const activeInSelect = findButtons(selectedTree).filter((b) =>
+        String(b.props?.class ?? '').includes('active'),
+      );
+      // Select/Move owns the active state — no paint tool is highlighted.
+      expect(activeInSelect).toHaveLength(0);
+    } finally {
+      setAquarelleSelectMode(false);
+    }
+    const paintTree = renderToolRow();
+    const activeInPaint = findButtons(paintTree).filter((b) =>
+      String(b.props?.class ?? '').includes('active'),
+    );
+    expect(activeInPaint).toHaveLength(1);
+    expect(textContent(activeInPaint[0]!).trim()).toContain('Brush');
   });
 });
 

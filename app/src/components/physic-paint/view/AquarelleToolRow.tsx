@@ -12,7 +12,8 @@ import {
   aquarelleActiveTool,
   setAquarelleTool,
 } from './aquarelleRecordState';
-import { setAquarelleSelectMode } from './aquarelleStrokeSelection';
+import { aquarelleSelectMode, setAquarelleSelectMode } from './aquarelleStrokeSelection';
+import { temporaryMove } from './physicsPaintTemporaryErase';
 import type { AquarelleTool } from '@efxlab/efx-watercolor/payload';
 
 const TOOLS: ReadonlyArray<{
@@ -28,6 +29,9 @@ const TOOLS: ReadonlyArray<{
 
 export function AquarelleToolRow() {
   const active = aquarelleActiveTool.value;
+  // 261022-pim: Select/Move owns the active state while select mode is on
+  // (persistent Cmd toggle or held Cmd) — the paint tool shows deselected.
+  const selectActive = aquarelleSelectMode.value || temporaryMove.value;
 
   return (
     <div
@@ -42,7 +46,7 @@ export function AquarelleToolRow() {
       }}
     >
       {TOOLS.map(({ id, label, Icon }) => {
-        const isActive = active === id;
+        const isActive = !selectActive && active === id;
         return (
           <button
             key={id}

@@ -12,7 +12,7 @@ import clearCanvasIcon from '../../../assets/physics-paint-ui/icons/clear-canvas
 import { ForegroundBackgroundSwatch } from '../../sidebar/ForegroundBackgroundSwatch';
 import { activeModule } from '../../shared/activeModule';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
-import { readEffectiveTool } from './physicsPaintTemporaryErase';
+import { readEffectiveTool, temporaryMove } from './physicsPaintTemporaryErase';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
 import {
   aquarelleLiveStrokeCount,
@@ -72,13 +72,17 @@ function WatercolorRail({
   onActiveColorChanged?: (color: string) => void;
 }) {
   const active = aquarelleActiveTool.value;
+  // 261022-pim: Select/Move is the ONLY active tool while select mode is on
+  // (persistent Cmd toggle or held Cmd). The previous paint tool is shown
+  // deselected, exactly like Brush mode's Move selection.
+  const selectActive = aquarelleSelectMode.value || temporaryMove.value;
   const undoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'undo')!;
   const redoItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'redo')!;
   const clearItem = PHYSICS_PAINT_TOOL_RAIL_ITEMS.find((item) => item.id === 'clear-frame')!;
   return (
     <nav class="physics-paint-tool-rail" aria-label="Water color tools">
       {WATERCOLOR_RAIL_TOOLS.map(({ id, label, Icon }) => {
-        const isActive = active === id;
+        const isActive = !selectActive && active === id;
         return (
           <button
             key={id}
@@ -101,12 +105,12 @@ function WatercolorRail({
           outlines every recorded stroke of the frame and blocks painting. */}
       <button
         type="button"
-        class={`physics-paint-icon-button${aquarelleSelectMode.value ? ' active' : ''}`}
+        class={`physics-paint-icon-button${selectActive ? ' active' : ''}`}
         data-testid="aquarelle-select-toggle"
         disabled={disabled || aquarelleLiveStrokeCount.value === 0}
         title="Select"
         aria-label="Select"
-        aria-pressed={aquarelleSelectMode.value}
+        aria-pressed={selectActive}
         onClick={() => toggleAquarelleSelectMode()}
       >
         <img src={moveToolIcon} alt="" aria-hidden="true" />
