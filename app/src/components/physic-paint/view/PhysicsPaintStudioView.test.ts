@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PhysicsPaintStudioView, type PhysicsPaintStudioViewProps } from './PhysicsPaintStudioView';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
+import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { BackgroundAssetPickerView } from './BackgroundAssetPickerView';
 
 /**
@@ -30,6 +31,8 @@ interface ViewFixture {
   referenceDialog?: boolean;
   /** PlayScript dialog prop present (confirmation surface). */
   playScriptPresent?: boolean;
+  /** 261022-o2a: Tools script picker prop present (Studio had it open). */
+  scriptPickerPresent?: boolean;
   /** Background gallery picker open. */
   backgroundPickerOpen?: boolean;
   /** Reference gallery picker open. */
@@ -77,6 +80,15 @@ function renderView(fixture: ViewFixture): unknown {
     status: { shortcutsVisible: false },
     // Parents are only "open" when their prop object/flag is present.
     playScriptDialog: fixture.playScriptPresent ? {} : undefined,
+    scriptPickerDialog: fixture.scriptPickerPresent
+      ? {
+          open: true,
+          intent: 'create-rail',
+          library: {},
+          onPick: () => {},
+          onClose: () => {},
+        }
+      : null,
     referenceDialog: fixture.referenceDialog
       ? {
           open: true,
@@ -104,11 +116,13 @@ function renderView(fixture: ViewFixture): unknown {
 function expectNoParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintPhotoReferenceDialog)).toBe(0);
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(0);
+  expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(0);
 }
 
 function expectAllParentModals(tree: unknown): void {
   expect(countOfType(tree, PhysicsPaintPhotoReferenceDialog)).toBe(1);
   expect(countOfType(tree, MemoizedPhysicsPaintPlayScriptDialog)).toBe(1);
+  expect(countOfType(tree, PhysicsPaintScriptPickerDialog)).toBe(1);
 }
 
 describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () => {
@@ -116,6 +130,7 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
     const tree = renderView({
       referenceDialog: true,
       playScriptPresent: true,
+      scriptPickerPresent: true,
       backgroundPickerOpen: true,
     });
     expectNoParentModals(tree);
@@ -127,6 +142,7 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
     const tree = renderView({
       referenceDialog: true,
       playScriptPresent: true,
+      scriptPickerPresent: true,
       referencePickerOpen: true,
     });
     expectNoParentModals(tree);
@@ -137,6 +153,7 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
     const tree = renderView({
       referenceDialog: true,
       playScriptPresent: true,
+      scriptPickerPresent: true,
       backgroundPickerOpen: false,
       referencePickerOpen: false,
     });
@@ -148,6 +165,7 @@ describe('PhysicsPaintStudioView picker-open visibility gate (260923-fhn)', () =
     const tree = renderView({
       referenceDialog: true,
       playScriptPresent: true,
+      scriptPickerPresent: true,
       backgroundPickerOpen: true,
       referencePickerOpen: true,
     });

@@ -7145,14 +7145,15 @@ button.destructive {
   outline-offset: 2px;
 }
 
-/* AM-3 (52 UAT): the Create Rail script picker — a floating MOVABLE dialog in
-   the Photo Reference family (no backdrop: the root is pointer-events none and
-   only the surface is interactive, so the Studio palette stays usable). The
-   rows reuse the Scripts panel row visual (physics-paint-script-row). */
+/* 261022-o2a: the Tools Script picker — a floating dialog in the Photo
+   Reference family (no backdrop: the root is pointer-events none and only the
+   surface is interactive, so the Studio palette stays usable). It layers ABOVE
+   the Tools popover (z 72 vs 60) and the photo reference (70) so the popover it
+   was opened from stays mounted behind it. Needs no drag: a pick closes it. */
 .physics-paint-script-picker-dialog {
   position: fixed;
   inset: 0;
-  z-index: 70;
+  z-index: 72;
   display: grid;
   place-items: center;
   pointer-events: none;
@@ -7166,9 +7167,9 @@ button.destructive {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  width: 300px;
+  width: 360px;
   max-width: 92%;
-  max-height: 90%;
+  max-height: 80%;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 10px;
@@ -7196,12 +7197,7 @@ button.destructive {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  cursor: grab;
   user-select: none;
-}
-
-.physics-paint-script-picker-dialog.physics-paint-script-picker-dragging .physics-paint-script-picker-header {
-  cursor: grabbing;
 }
 
 .physics-paint-script-picker-header-icon {
@@ -7271,6 +7267,28 @@ button.destructive {
   overflow-y: auto;
 }
 
+/* The picker rows reuse the Scripts-panel row visual language but are plain
+   option rows (no rename/selection affordances) — the pick IS the action. */
+.physics-paint-script-picker-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid #565b61;
+  border-radius: 6px;
+  background: transparent;
+  color: #eef1f4;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background-color 0.12s;
+}
+
+.physics-paint-script-picker-row:hover { border-color: #747b83; background: #414447; }
+.physics-paint-script-picker-row:focus-visible { outline: 2px solid var(--color-accent, #2d5be3); outline-offset: 2px; }
+
 .physics-paint-script-picker-empty {
   display: flex;
   flex-direction: column;
@@ -7324,12 +7342,3 @@ button.destructive {
   line-height: 14px;
 }
 
-.physics-paint-script-picker-list .physics-paint-script-row:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.physics-paint-script-picker-list .physics-paint-script-row:disabled:hover {
-  border-color: #565b61;
-  background: #3b3d3f;
-}

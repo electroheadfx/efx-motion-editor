@@ -10,6 +10,7 @@ import { getFrameBlobUrl } from '../hooks/useRotoReferenceController';
 import type { RenderedFramePayload } from '../roto/rotoCanvasFrames';
 import { MemoizedPhysicsPaintPlayScriptDialog } from './MemoizedPhysicsPaintPlayScriptDialog';
 import { PhysicsPaintPhotoReferenceDialog } from './PhysicsPaintPhotoReferenceDialog';
+import { PhysicsPaintScriptPickerDialog } from './PhysicsPaintScriptPickerDialog';
 import { MemoizedPhysicsPaintRightPanel } from './MemoizedPhysicsPaintRightPanel';
 import { MemoizedPhysicsPaintTopBar } from './MemoizedPhysicsPaintTopBar';
 import { PhysicsPaintRightPanelRegion } from './PhysicsPaintRightPanelRegion';
@@ -322,6 +323,9 @@ export interface PhysicsPaintStudioViewProps {
   /** 50-UAT (modal redesign): the floating Photo Reference dialog — a movable
    *  dialog opened from the strip camera icon (Play Script dialog pattern). */
   referenceDialog?: ComponentProps<typeof PhysicsPaintPhotoReferenceDialog> | null;
+  /** 261022-o2a: the floating Script picker opened by the Tools Scripts
+   *  actions — a movable, non-modal dialog in the Photo Reference family. */
+  scriptPickerDialog?: ComponentProps<typeof PhysicsPaintScriptPickerDialog> | null;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
     shortcutsVisible: boolean;
@@ -342,7 +346,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
   // 260923-fhn (Quick 4): while either gallery picker is open, every parent
   // modal steps aside — the picker overlay is absolute z-20 inside the canvas
   // region, the parents are fixed z-70/72, and stacked they fight for space.
@@ -389,6 +393,10 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         {!pickerOpen ? <MemoizedPhysicsPaintPlayScriptDialog {...playScriptDialog} /> : null}
 
         {referenceDialog && !pickerOpen ? <PhysicsPaintPhotoReferenceDialog {...referenceDialog} /> : null}
+
+        {/* 261022-o2a: the floating Script picker rides the same step-aside as
+            every other parent dialog while a full-area gallery picker is open. */}
+        {scriptPickerDialog && !pickerOpen ? <PhysicsPaintScriptPickerDialog {...scriptPickerDialog} /> : null}
 
         {/* 52.5-01b (D-05): the Document sound modal rides the SAME pickerOpen
             step-aside as every other parent dialog — while the shared gallery

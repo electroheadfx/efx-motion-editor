@@ -433,7 +433,11 @@ export interface PhysicsPaintWorkflowStripProps {
    *  `.value` in render, like the sibling script signal reads). */
   onSaveScript?: () => void;
   onLoadAndApplyScript?: () => void;
-  onCreateRailFromScript?: () => void;
+  /** 261022-o2a: Tools Load + Apply / Create Rail open the floating Script
+   *  picker with this intent; the pick then selects the Script and runs it. */
+  onOpenScriptPicker?: (intent: 'load-apply' | 'create-rail') => void;
+  /** The UNFILTERED project Script library (the picker is not scope-filtered). */
+  rotoScriptLibraryRows?: ReadonlySignal<readonly RotoScriptLibraryRow[]>;
   onDeleteScript?: () => void;
   onRefreshScripts?: () => void;
   onCopyScript?: () => void;
@@ -970,10 +974,12 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   onSaveScript?: () => void;
   canSaveScript: boolean;
   saveScriptDisabledReason: string | null;
+  /** 261022-o2a: Load + Apply and Create Rail open the shared Script picker
+   *  instead of acting on the current sidebar selection. */
+  onOpenScriptPicker?: (intent: 'load-apply' | 'create-rail') => void;
   onLoadAndApplyScript?: () => void;
   canLoadAndApplyScript: boolean;
   loadAndApplyScriptDisabledReason: string | null;
-  onCreateRailFromScript?: () => void;
   canCreateRailFromScript: boolean;
   createRailFromScriptDisabledReason: string | null;
   onDeleteScript?: () => void;
@@ -1010,12 +1016,32 @@ export function defaultIsDetachedTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * 261022-o2a: a surface portaled OUT of the popover that stays mounted beside
+ * it (the floating Script picker) marks its root with this attribute. The
+ * popover must neither dismiss on a pointerdown inside it (the trigger button
+ * stays mounted so the picker can restore focus) nor swallow its Escape.
+ */
+export const TOOLBOX_DISMISS_EXEMPT_SELECTOR = '[data-toolbox-dismiss-exempt]';
+
+/**
+ * True when `target` sits inside an open exempt surface. Structural DOM probe
+ * guarded for the node test harness: without a DOM (or for plain stand-in
+ * objects) nothing is exempt, so the classifier's existing behavior holds.
+ */
+export function isToolboxDismissExemptTarget(target: EventTarget | null): boolean {
+  if (typeof Element === 'undefined') return false;
+  if (!(target instanceof Element)) return false;
+  return target.closest?.(TOOLBOX_DISMISS_EXEMPT_SELECTOR) != null;
+}
+
+/**
  * Classifies an outside-pointerdown dismissal (43.5-02 smoke fix 1). The popover
  * is portaled to document.body, so `anchor.contains` alone cannot prove an
  * interior hit — the panel and every surface portaled out of it (e.g. the native
  * select's detached popup) must be listed as surfaces too. Dismisses only when
- * the target is provably outside every registered surface; a detached target
- * never dismisses (its containment cannot be proved).
+ * the target is provably outside every registered surface AND outside any open
+ * exempt surface (261022-o2a); a detached target never dismisses (its
+ * containment cannot be proved).
  */
 export function shouldDismissToolboxPopover(
   target: EventTarget | null,
@@ -1024,6 +1050,7 @@ export function shouldDismissToolboxPopover(
 ): boolean {
   if (target === null) return true;
   if (isDetached(target)) return false;
+  if (isToolboxDismissExemptTarget(target)) return false;
   return !surfaces.some((surface) => surface !== null && surface.contains(target));
 }
 
@@ -1175,6 +1202,12 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
     };
     const onEscapeKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      // 261022-o2a: an open exempt surface (the floating Script picker) owns
+      // this Escape — step aside without stopping it, so the picker closes and
+      // the NEXT Escape closes the popover. The popover stays mounted behind
+      // the picker, which is what keeps the trigger button alive for focus
+      // restoration.
+      if (typeof document !== 'undefined' && document.querySelector(TOOLBOX_DISMISS_EXEMPT_SELECTOR)) return;
       event.stopImmediatePropagation();
       closeToolboxPopover();
     };
@@ -1463,7 +1496,7 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                   onClick={() => {
                     createRailScriptTooltip.hide();
                     if (!props.canCreateRailFromScript) return;
-                    props.onCreateRailFromScript?.();
+                    props.onOpenScriptPicker?.('create-rail');
                   }}
                   onKeyDown={(event) => {
                     if ((event.key === 'Enter' || event.key === ' ') && !props.canCreateRailFromScript) event.preventDefault();
@@ -2433,16 +2466,20 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const scriptLibraryAvailability = props.rotoScriptLibraryAvailability?.value ?? null;
   const canSaveScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canSave ?? false);
   const saveScriptDisabledReason = scriptActionMutationDisabledReason ?? (canSaveScript ? null : (scriptLibraryAvailability?.saveDisabledReason ?? null));
-  // The remaining five clones mirror PhysicsPaintScriptsPanel's toolbar
-  // derivation verbatim (same signals, same fallback copy).
+  // The remaining clones mirror PhysicsPaintScriptsPanel's toolbar
+  // derivation verbatim (same signals, same fallback copy). 261022-o2a: Create
+  // Rail opens the whole-library picker, so it is gated by project-Script
+  // availability — never by the sidebar selection or the play controller (the
+  // pick itself surfaces the controller's refusal on the error channel).
+  const hasProjectScripts = (props.rotoScriptLibraryRows?.value.length ?? 0) > 0;
   const scriptLibraryHasSelection = props.rotoScriptLibrarySelected?.value != null;
-  const scriptPlayDisabledReason = props.rotoScriptPlayDisabledReason?.value ?? null;
   const loadAndApplyScriptDisabledReason = scriptActionMutationDisabledReason
     ?? (!scriptLibraryHasSelection
       ? 'Select a project Script first.'
       : (scriptAvailability?.replacementApplyDisabledReason ?? null));
   const canLoadAndApplyScript = loadAndApplyScriptDisabledReason === null;
-  const createRailFromScriptDisabledReason = scriptActionMutationDisabledReason ?? scriptPlayDisabledReason;
+  const createRailFromScriptDisabledReason = scriptActionMutationDisabledReason
+    ?? (hasProjectScripts ? null : 'No project Scripts yet. Save the current frame as a Script first.');
   const canCreateRailFromScript = createRailFromScriptDisabledReason === null;
   const canDeleteScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canDelete ?? false);
   const deleteScriptDisabledReason = canDeleteScript ? null : scriptActionMutationDisabledReason;
@@ -4987,10 +5024,10 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         onSaveScript={props.onSaveScript}
         canSaveScript={canSaveScript}
         saveScriptDisabledReason={saveScriptDisabledReason}
+        onOpenScriptPicker={props.onOpenScriptPicker}
         onLoadAndApplyScript={props.onLoadAndApplyScript}
         canLoadAndApplyScript={canLoadAndApplyScript}
         loadAndApplyScriptDisabledReason={loadAndApplyScriptDisabledReason}
-        onCreateRailFromScript={props.onCreateRailFromScript}
         canCreateRailFromScript={canCreateRailFromScript}
         createRailFromScriptDisabledReason={createRailFromScriptDisabledReason}
         onDeleteScript={props.onDeleteScript}

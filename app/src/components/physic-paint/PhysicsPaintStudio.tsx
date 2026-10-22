@@ -554,6 +554,10 @@ export function PhysicsPaintStudio() {
   // dialog stays open behind the full-area reference picker so an Import/
   // Replace confirm updates it in place.
   const referenceDialogOpen = useSignal(false);
+  // 261022-o2a: the Tools Scripts actions (Load + Apply / Create Rail) open the
+  // floating Script picker instead of acting on the sidebar selection. The
+  // signal carries the intent so one dialog serves both actions; null = closed.
+  const scriptPickerIntent = useSignal<'load-apply' | 'create-rail' | null>(null);
   const [launchContext, setLaunchContextState] = useState<PhysicPaintLaunchContext | null>(() => parsePhysicsPaintLaunchContext(window.location));
   const launchContextRef = useRef<PhysicPaintLaunchContext | null>(launchContext);
   launchContextRef.current = launchContext;
@@ -736,6 +740,9 @@ export function PhysicsPaintStudio() {
   const rightPanelPropsMemo = useRef(createIdentityMemo()).current;
   const playScriptDialogPropsMemo = useRef(createIdentityMemo()).current;
   const referenceDialogPropsMemo = useRef(createIdentityMemo()).current;
+  // 261022-o2a: the picker bundle memo sits beside the reference dialog memo —
+  // the dialog re-resolves only when its visibility/intent changes.
+  const scriptPickerDialogPropsMemo = useRef(createIdentityMemo()).current;
   const canvasStackPropsMemo = useRef(createIdentityMemo()).current;
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
@@ -2719,9 +2726,34 @@ export function PhysicsPaintStudio() {
   const handleLoadAndApplyScript = useCallback(() => {
     void handleSelectedScriptLoadAndApply();
   }, [handleSelectedScriptLoadAndApply]);
-  const handleCreateRailFromScript = useCallback(() => {
-    void rotoPlayScript.openConfirmation();
-  }, [rotoPlayScript]);
+  // 261022-o2a: the Tools picker intent. Opening stores the intent; picking a
+  // row selects that Script in the library FIRST, then runs the intent that
+  // opened the picker. The `.peek()` read after `select()` is deliberate:
+  // `select` writes `selectedId`, and the play controller's `disabledReason` /
+  // the library's `selected` are computeds that recompute synchronously on the
+  // next read. A refusal is routed to the existing error channel — the picker
+  // never forces the action past a controller guard.
+  const openScriptPicker = useCallback((intent: 'load-apply' | 'create-rail') => {
+    scriptPickerIntent.value = intent;
+  }, []);
+  const closeScriptPicker = useCallback(() => {
+    scriptPickerIntent.value = null;
+  }, []);
+  const handleScriptPickerPick = useCallback((id: string) => {
+    const intent = scriptPickerIntent.peek();
+    scriptPickerIntent.value = null;
+    rotoScriptLibrary.select(id);
+    if (intent === 'create-rail') {
+      const refusal = rotoPlayScript.disabledReason.peek();
+      if (refusal) {
+        setLastError(refusal);
+        return;
+      }
+      void rotoPlayScript.openConfirmation();
+      return;
+    }
+    if (intent === 'load-apply') void handleSelectedScriptLoadAndApply();
+  }, [rotoScriptLibrary, rotoPlayScript, handleSelectedScriptLoadAndApply, setLastError]);
   const handleDeleteScript = useCallback(() => {
     // The clone only opens the existing request-delete flow — the confirmation
     // renders in the right-panel Scripts tab (no second dialog).
@@ -5952,6 +5984,20 @@ export function PhysicsPaintStudio() {
       onImportSource: () => referencePicker.openPicker(),
     }),
   );
+  // 261022-o2a: the floating Script picker bundle. `open` is derived from the
+  // intent signal; the intent itself travels as a plain value (a null intent
+  // resolves the harmless default while the dialog stays closed). The picker
+  // reads the library live, so only visibility/intent re-resolve the memo.
+  const scriptPickerDialog = scriptPickerDialogPropsMemo.resolve(
+    [scriptPickerIntent.value, rotoScriptLibrary],
+    () => ({
+      open: scriptPickerIntent.value !== null,
+      intent: scriptPickerIntent.peek() ?? 'load-apply',
+      library: rotoScriptLibrary,
+      onPick: handleScriptPickerPick,
+      onClose: closeScriptPicker,
+    }),
+  );
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -5960,6 +6006,7 @@ export function PhysicsPaintStudio() {
     rightPanel,
     playScriptDialog,
     referenceDialog,
+    scriptPickerDialog,
     workflow: {
         layerId: multiTrackRowBundle.layerId,
         tracks: multiTrackRowBundle.tracks,
@@ -6091,7 +6138,10 @@ export function PhysicsPaintStudio() {
         // plus signal references read in the strip's render body.
         onSaveScript: handleSaveScript,
         onLoadAndApplyScript: handleLoadAndApplyScript,
-        onCreateRailFromScript: handleCreateRailFromScript,
+        // 261022-o2a: Tools Load + Apply / Create Rail open the floating Script
+        // picker; the picker rows are the UNFILTERED project Script library.
+        onOpenScriptPicker: openScriptPicker,
+        rotoScriptLibraryRows: rotoScriptLibrary.rows,
         onDeleteScript: handleDeleteScript,
         onRefreshScripts: handleRefreshScripts,
         onCopyScript: handleCopyScript,

@@ -1401,9 +1401,10 @@ describe('localized render instrumentation', () => {
     expect(countOccurrences(studioView, 'memo(')).toBe(1);
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
-    // canvasMount, referenceDialog (50-UAT modal redesign). 261022-cfn removed
-    // the AM-3 Create Rail script picker memo.
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(8);
+    // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
+    // (261022-o2a: the Tools Create Rail / Load + Apply picker is owned by the
+    // Studio and rendered by the view).
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(9);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
@@ -2072,18 +2073,27 @@ describe('Physics Paint photo reference end-to-end integration contract (50-06, 
 });
 
 describe('Physics Paint photo reference dialog structural lock (WR-03)', () => {
-  it('removes the Create Rail script picker entirely (261022-cfn)', () => {
-    // The timeline + Rail dropdown was the picker's only entry point; the
-    // sidebar Scripts tab's Create Rail flow owns rail creation now. Names are
-    // assembled at runtime so the app-wide dead-artifact grep gate (which
-    // includes this file) stays at zero hits.
-    const deadIntent = 'scriptPicker' + 'Intent';
-    const deadDialog = 'PhysicsPaintScriptPicker' + 'Dialog';
-    expect(studio).not.toContain(deadIntent);
-    expect(studio).not.toContain('scriptPickerDialog');
-    expect(studio).not.toContain(deadDialog);
-    expect(studioView).not.toContain('scriptPickerDialog');
-    expect(studioView).not.toContain(deadDialog);
+  it('keeps the retired timeline + Rail dropdown entry point retired while the Tools picker returns (261022-cfn superseded by 261022-o2a)', () => {
+    // 261022-cfn removed the AM-3 picker whose only entry point was the
+    // timeline + Rail dropdown. 261022-o2a reintroduces the picker through a
+    // NEW entry point (the Tools popover's Create Rail / Load + Apply
+    // buttons); the retired entry point must stay retired. The picker is
+    // owned by the Studio (intent signal + identity memo) and rendered by the
+    // view — the strip's action row only opens it, it never renders it.
+    expect(studio).toContain('scriptPickerIntent');
+    expect(studio).toContain('scriptPickerDialogPropsMemo.resolve(');
+    expect(studio).toContain('openScriptPicker');
+    expect(workflowStrip).toContain('onOpenScriptPicker');
+    expect(studioView).toContain('scriptPickerDialog');
+    expect(studioView).toContain('PhysicsPaintScriptPickerDialog');
+    // The retired timeline + Rail dropdown path stays retired: the strip's
+    // action row carries no picker markup or row data of its own.
+    const actionRowStart = workflowStrip.indexOf('physics-paint-toolbox-scripts-row');
+    const actionRowEnd = workflowStrip.indexOf('physics-paint-toolbox-actions-row', actionRowStart);
+    expect(actionRowStart).toBeGreaterThan(-1);
+    const actionRow = workflowStrip.slice(actionRowStart, actionRowEnd === -1 ? undefined : actionRowEnd);
+    expect(actionRow).not.toContain('PhysicsPaintScriptPickerDialog');
+    expect(actionRow).not.toContain('script-picker');
   });
 
   // WR-03 structural lock (260920-kov): the reveal-creation entry reaches the

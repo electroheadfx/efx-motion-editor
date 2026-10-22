@@ -4,12 +4,16 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   computeToolboxPopoverPlacement,
+  isToolboxDismissExemptTarget,
   shouldDismissToolboxPopover,
+  TOOLBOX_DISMISS_EXEMPT_SELECTOR,
   type ToolboxPopoverDismissSurface,
 } from './PhysicsPaintWorkflowStrip';
 
 const cssPath = resolve(dirname(fileURLToPath(import.meta.url)), '../physicsPaintStudio.css');
 const css = () => readFileSync(cssPath, 'utf8');
+const stripPath = resolve(dirname(fileURLToPath(import.meta.url)), './PhysicsPaintWorkflowStrip.tsx');
+const strip = () => readFileSync(stripPath, 'utf8');
 
 describe('shouldDismissToolboxPopover (43.5-02 smoke fix 1 — BLOCKER)', () => {
   const surfaceContaining = (token: unknown): ToolboxPopoverDismissSurface => ({
@@ -51,6 +55,26 @@ describe('shouldDismissToolboxPopover (43.5-02 smoke fix 1 — BLOCKER)', () => 
 
   it('dismisses on a null target (cannot prove containment)', () => {
     expect(shouldDismissToolboxPopover(null, [])).toBe(true);
+  });
+
+  it('keeps the plain-object classification unchanged (261022-o2a exempt helper is DOM-only)', () => {
+    // The node harness passes plain objects; the exempt helper must stay inert
+    // without an Element global oracle, so every pre-existing behaviour holds.
+    expect(isToolboxDismissExemptTarget({} as EventTarget)).toBe(false);
+    expect(isToolboxDismissExemptTarget(null)).toBe(false);
+    const outside = {};
+    const panel = surfaceContaining(null);
+    expect(shouldDismissToolboxPopover(outside as EventTarget, [panel], () => false)).toBe(true);
+  });
+
+  it('registers the dismiss-exempt selector and steps the Escape layer aside for it (261022-o2a)', () => {
+    expect(TOOLBOX_DISMISS_EXEMPT_SELECTOR).toBe('[data-toolbox-dismiss-exempt]');
+    const code = strip();
+    expect(code).toContain("export const TOOLBOX_DISMISS_EXEMPT_SELECTOR = '[data-toolbox-dismiss-exempt]';");
+    expect(code).toContain('isToolboxDismissExemptTarget(target)');
+    // The popover must not stopImmediatePropagation/close while an exempt
+    // surface (the script picker) is open — that surface owns its Escape.
+    expect(code).toContain('document.querySelector(TOOLBOX_DISMISS_EXEMPT_SELECTOR)');
   });
 });
 

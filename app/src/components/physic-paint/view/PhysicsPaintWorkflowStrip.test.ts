@@ -2577,14 +2577,19 @@ describe('Tools popover cloned Scripts toolbar (261022-ne3)', () => {
     const code = source();
     expect(code).toContain("'Select a project Script first.'");
     expect(code).toContain('const scriptLibraryHasSelection = props.rotoScriptLibrarySelected?.value != null;');
-    expect(code).toContain('const scriptPlayDisabledReason = props.rotoScriptPlayDisabledReason?.value ?? null;');
+    // 261022-o2a: Create Rail no longer routes through the play-script reason —
+    // it opens the picker, so the strip's local no longer reads that port.
+    expect(code).not.toContain('const scriptPlayDisabledReason = props.rotoScriptPlayDisabledReason?.value ?? null;');
+    expect(code).toContain('const hasProjectScripts = (props.rotoScriptLibraryRows?.value.length ?? 0) > 0;');
+    expect(code).toContain("props.onOpenScriptPicker?.('create-rail')");
     expect(code).toContain('scriptAvailability?.replacementApplyDisabledReason');
     expect(code).toContain('scriptAvailability?.canCopy');
     expect(code).toContain('scriptAvailability?.copyDisabledReason');
     expect(code).toContain('const canDeleteScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canDelete ?? false);');
     const propsInterface = getWorkflowStripPropsInterface(code);
     expect(propsInterface).toContain('onLoadAndApplyScript?: () => void;');
-    expect(propsInterface).toContain('onCreateRailFromScript?: () => void;');
+    expect(propsInterface).toContain("onOpenScriptPicker?: (intent: 'load-apply' | 'create-rail') => void;");
+    expect(propsInterface).toContain('rotoScriptLibraryRows?: ReadonlySignal<readonly RotoScriptLibraryRow[]>;');
     expect(propsInterface).toContain('onDeleteScript?: () => void;');
     expect(propsInterface).toContain('onRefreshScripts?: () => void;');
     expect(propsInterface).toContain('onCopyScript?: () => void;');
@@ -2600,7 +2605,7 @@ describe('Tools popover cloned Scripts toolbar (261022-ne3)', () => {
     expect(staticChrome).toContain('copyScriptActionDisabledReason: string | null;');
     const studio = studioSource();
     expect(studio).toContain('const handleLoadAndApplyScript = useCallback(');
-    expect(studio).toContain('const handleCreateRailFromScript = useCallback(');
+    expect(studio).toContain('const openScriptPicker = useCallback(');
     expect(studio).toContain('const handleDeleteScript = useCallback(');
     expect(studio).toContain('const handleRefreshScripts = useCallback(');
     expect(studio).toContain('const handleCopyScript = useCallback(');
@@ -2610,7 +2615,8 @@ describe('Tools popover cloned Scripts toolbar (261022-ne3)', () => {
     expect(studio).toContain('void rotoScriptLibrary.refresh();');
     expect(studio).toContain('void rotoScript.copyScript().then((success) => {');
     expect(studio).toContain('onLoadAndApplyScript: handleLoadAndApplyScript,');
-    expect(studio).toContain('onCreateRailFromScript: handleCreateRailFromScript,');
+    expect(studio).toContain('onOpenScriptPicker: openScriptPicker,');
+    expect(studio).toContain('rotoScriptLibraryRows: rotoScriptLibrary.rows,');
     expect(studio).toContain('onDeleteScript: handleDeleteScript,');
     expect(studio).toContain('onRefreshScripts: handleRefreshScripts,');
     expect(studio).toContain('onCopyScript: handleCopyScript,');
