@@ -2,7 +2,7 @@
 phase: quick-261022-jq0
 plan: 261022-jq0
 subsystem: physic-paint/roto-playback
-tags: [preact, signals, playback, rail-selection, range, studio-transport]
+tags: [preact, signals, playback, rail-selection, range, studio-transport, uat-approved]
 
 # Dependency graph
 requires:
@@ -148,6 +148,16 @@ None - plan executed exactly as written.
 
 None - no external service configuration required.
 
+## Live UAT Rows — PASSED (user-approved 2026-10-22)
+
+The user ran the live gate in the Physic Paint Studio and approved it on 2026-10-22.
+
+| # | Action | Expected | Observed | Status |
+|---|--------|----------|----------|--------|
+| 1 | Select a rail A, press Play | Plays A's rail start-to-end | User-approved | PASSED |
+| 2 | Loop ON, then Loop OFF | Loop ON wraps to the selection start; Loop OFF stops at the end | User-approved | PASSED |
+| 3 | Nothing selected, press Play | Full timeline playback | User-approved | PASSED |
+
 ## Next Phase Readiness
 
 Automated-ready, NOT done. The three live UAT rows remain for the user (Studio transport):
@@ -167,3 +177,4 @@ Regression rows folded in: a selected Loop Clip plays its span; a multi-rail sel
 - Task commits are ancestors of HEAD: `04c6488e`, `dad851ff`.
 - Typecheck has no new `error TS` lines (16 before, 16 after).
 - Full suite: no new failures (5 pre-existing failures verified at baseline `f308d1e4`).
+- Live UAT: all three gate rows user-approved on 2026-10-22.

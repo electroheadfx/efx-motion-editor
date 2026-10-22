@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-jq0 automated-ready (live UAT pending): a selected Studio rail scopes Play to its contiguous range, Loop wraps to the selection start, and no selection keeps full-timeline playback
+Last activity: 2026-10-22 — Quick task 261022-jq0 UAT approved: a selected Studio rail scopes Play to its contiguous range, Loop wraps to the selection start, and no selection keeps full-timeline playback
 
 Progress: [██████████] 100%
 
