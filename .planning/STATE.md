@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-21T16:29:43.660Z"
+last_updated: "2026-10-22T07:51:38.889Z"
 last_activity: 2026-10-21
 last_activity_desc: Phase 56 complete
-state_head: f7a985a1f74d8a96c5fe9ab4e9a4d789adb97935
+state_head: fbb452a04bc986240f687060e14fb0473c366b7f
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-21 — Phase 56 complete; A1–A5 live UAT approved; Phase 57 retired (spectral delivered inside 56)
+Last activity: 2026-10-22 — Completed quick task 261022-cfn: auto-paint joins the previous rail, timeline + Rail dropdown removed, Action renamed to Script
 
 Progress: [██████████] 100%
 
@@ -561,6 +561,7 @@ None yet.
 | 261018-lqv | Fix save-script validator: isRotoBackground accepts paper/* + grainScale (parity with types validator) | 2026-10-18 | 77e64dcb | [261018-lqv-fix-captured-roto-script-is-not-persista](./quick/261018-lqv-fix-captured-roto-script-is-not-persista/) |
 | 261018-odm | Watercolor script playback: dual-engine schema + aquarelle save/play route + Rust validator | 2026-10-18 | d1e57be7 | [261018-odm-build-watercolor-script-playback-extend-](./quick/261018-odm-build-watercolor-script-playback-extend-/) |
 | 261019-mj2 | Roto paint workflow: direct-paint auto-key + Create key fallback, Insert as a pure gap, +Key from nearest previous real key, composite undo, atomic cache re-anchor | 2026-10-20 | c5314d3a | [261019-mj2-roto-paint-workflow-auto-key-on-paint-ke](./quick/261019-mj2-roto-paint-workflow-auto-key-on-paint-ke/) |
+| 261022-cfn | Auto-paint key creation clones the previous paint and joins its rail; remove the timeline + Rail dropdown; rename Action to Script in visible UI | 2026-10-22 | fbb452a0 | [261022-cfn-key-creation-new-behaviour-1-auto-paint-](./quick/261022-cfn-key-creation-new-behaviour-1-auto-paint-/) |
 
 ### Roadmap Evolution
 

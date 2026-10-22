@@ -293,26 +293,26 @@ Read before editing:
        - `Clear Action from buffer` -> `Clear Script from buffer`.
 
     C. `PhysicsPaintScriptsPanel.tsx`:
-       - `Select a project Action first.` -> `Select a project script first.`;
+       - `Select a project Action first.` -> `Select a project Script first.`;
        - `Source Action` -> `Source Script`;
        - `Project Actions` -> `Project Scripts`;
        - toolbar aria-label `Actions` -> `Scripts`;
        - `Save Action` -> `Save Script` (label and title prefix);
        - `Create a Motion or Static Rail from the selected Action` -> `Create a Motion or Static Rail from the selected Script`;
-       - `Delete Action` -> `Delete Script`; `Remove the selected project Action` -> `Remove the selected project script`;
-       - `Refresh Actions` -> `Refresh Scripts`; `Scan the project Actions folder` -> `Scan the project scripts folder`;
+       - `Delete Action` -> `Delete Script`; `Remove the selected project Action` -> `Remove the selected project Script`;
+       - `Refresh Actions` -> `Refresh Scripts`; `Scan the project Actions folder` -> `Scan the project Scripts folder`;
        - `Copy Action` -> `Copy Script` (aria-label and visible text);
        - `Saved Roto Actions` -> `Saved Roto Scripts`;
-       - `No project Actions yet.` -> `No project scripts yet.`;
+       - `No project Actions yet.` -> `No project Scripts yet.`;
        - `Save the current real Roto frame as an Action to create a Rail.` -> `Save the current real Roto frame as a Script to create a Rail.`;
        - `No Actions from this layer.` -> `No Scripts from this layer.`;
-       - `Every project Action is still available under All.` -> `Every project script is still available under All.`;
+       - `Every project Action is still available under All.` -> `Every project Script is still available under All.`;
        - `Show all Actions` -> `Show all Scripts`;
        - `This Action is referenced by ...` -> `This Script is referenced by ...`;
        - `Delete the Action but keep ...` -> `Delete the Script but keep ...`;
        - `Delete Action and Rails` -> `Delete Script and Rails` (aria-label and strong label);
        - `Delete the Action and all ...` -> `Delete the Script and all ...`;
-       - `This removes the project Action file ...` -> `This removes the project script file ...`;
+       - `This removes the project Action file ...` -> `This removes the project Script file ...`;
        - `Delete Action` (confirmation button) -> `Delete Script`.
 
     D. `physicsPaintLoopClipPresentation.ts`: `Source Action` -> `Source Script` (both occurrences, including `Source Action unavailable`), `Synchronized with Action.` -> `Synchronized with Script.`, `Modified locally — Regenerate to restore from Action.` -> `Modified locally — Regenerate to restore from Script.`, `Action detached.` -> `Script detached.`, `Regenerate unavailable — Action detached.` -> `Regenerate unavailable — Script detached.`, `Regenerate unavailable — Source Action unavailable.` -> `Regenerate unavailable — Source Script unavailable.`, `Already synchronized with Action.` -> `Already synchronized with Script.`, `Linked to selected Action ...` -> `Linked to selected Script ...` (both helpers).
