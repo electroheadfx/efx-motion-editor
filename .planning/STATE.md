@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 - Completed quick task 261022-ujp: Space in move/select mode sends a selected or hovered stroke one step back in the paint stack (watercolor + brush), automated-ready pending live UAT
+Last activity: 2026-10-22 - Quick task 261022-ujp: '<' / '>' step a selected or hovered stroke back / forward in the paint stack (watercolor + brush); Space is playback-only again. Reported intermittent stroke loss pending repro
 
 Progress: [██████████] 100%
 

@@ -86,7 +86,15 @@ All gates run per plan; package-related suites run against the built `dist` afte
 | App typecheck | 15 errors, equal to the pre-existing baseline |
 | Package build + `tsc --noEmit` | clean |
 
-### Orchestrator follow-up (`eac877a3`)
+### Orchestrator follow-up — shortcuts (`f8d6b0cf`)
+
+Live feedback replaced Space with explicit stack keys: `<` steps the target one
+position back, `>` one position forward (new `sendStrokeForward` /
+`sendAquarelleStrokeForwardInScript`), and Space is playback-only again. Shift is
+deliberately unguarded in the gate because `<` / `>` are Shift-produced
+characters on a US layout. Both rail tooltips name the new pair.
+
+### Orchestrator follow-up — hit test (`eac877a3`)
 
 `resolveEraseTargetIds` walked the acceptance ledger newest-first. That law is
 only equivalent to "visually topmost" while paint order equals acceptance
