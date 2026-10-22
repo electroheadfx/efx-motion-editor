@@ -183,17 +183,17 @@ Each task was committed atomically:
 - Full app suite (one run): 307 files passed, 2 skipped, 5 failed — only the recorded pre-existing allowlist: `PhysicsPaintRightSidebar.test.ts`, `PhysicsPaintWorkflowStrip.viewport.test.ts`, `efxPaintCompositorMatrix.test.ts`, `exportEngine.test.ts`, `paperPass.frameGuard.test.ts`. 5456 tests passed, 7 failed (all allowlisted), 1 skipped, 96 todo.
 - Typecheck: 15 errors after Task 1 and after Task 2, equal to the recorded baseline (15).
 
-## Live UAT — PENDING (user-run)
+## Live UAT — APPROVED (user-run, 2026-10-22)
 
-The live Studio gate is the only completion signal; these three rows were NOT executed by the executor:
+The user confirmed all three rows end-to-end in the running Studio:
 
 | # | Row | Status |
 |---|-----|--------|
-| 1 | Cmd+drag a recorded stroke: ghost follows the pointer, the sheet/script stay unchanged during the gesture | PENDING |
-| 2 | Release: progress pill advances 0/N -> N/N, then the stroke appears at the released position | PENDING |
-| 3 | Undo (Cmd+Z): one press returns the stroke to the origin and re-bakes it; Cmd+Shift+Z re-applies the move | PENDING |
+| 1 | Cmd+drag a recorded stroke: ghost follows the pointer, the sheet/script stay unchanged during the gesture | PASSED |
+| 2 | Release: progress pill advances 0/N -> N/N, then the stroke appears at the released position | PASSED |
+| 3 | Undo (Cmd+Z): one press returns the stroke to the origin and re-bakes it; Cmd+Shift+Z re-applies the move | PASSED |
 
-Do not treat the feature as UAT-passed until the user confirms all three in the running Studio.
+The quick task is UAT-closed; delete, Cmd tap toggle, and the no-script grey-out remain unchanged.
 
 ## Known Stubs
 

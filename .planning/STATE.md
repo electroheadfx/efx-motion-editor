@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-tv1 automated-ready: Cmd+drag moves a selected watercolor stroke as a ghost, release translates the script and re-bakes, one undo step; 3 live UAT rows pending
+Last activity: 2026-10-22 — Quick task 261022-tv1 UAT APPROVED: Cmd+drag moves a selected watercolor stroke as a ghost, release translates the script and re-bakes, one undo step restores the origin
 
 Progress: [██████████] 100%
 
