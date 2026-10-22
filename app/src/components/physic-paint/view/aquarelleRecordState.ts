@@ -303,6 +303,44 @@ export function getRecordedAquarelleStrokeEntries(): ReadonlyMap<number, Aquarel
   return recordedStrokes;
 }
 
+/**
+ * Remove a recorded stroke from the SCRIPT (261022-pim). The engine-1 guide
+ * stroke stays in the engine's ledger (capture order + paint barriers remain
+ * stable); the marker plus the timeline splice are the script mutation the
+ * capture and every replay path honor. Returns false for an unknown or
+ * already-deleted id (a second Alt+click is a no-op).
+ */
+export function deleteAquarelleStrokeFromScript(mutationId: number): boolean {
+  const stroke = recordedStrokes.get(mutationId);
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) return false;
+  markAquarelleStrokeDeleted(mutationId);
+  const index = payloadTimeline.indexOf(entry);
+  if (index >= 0) payloadTimeline.splice(index, 1);
+  bumpAquarelleStrokesRevision();
+  return true;
+}
+
+/**
+ * Undo half of a delete (261022-pim): unmark the stroke and reinsert its
+ * timeline entry at the recorded index. Bumps the revision.
+ */
+export function restoreAquarelleStrokeInScript(
+  mutationId: number,
+  atIndex: number,
+): boolean {
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (!entry || !deletedAquarelleStrokeIds.has(mutationId)) return false;
+  clearAquarelleStrokeDeletion(mutationId);
+  const clamped = Math.max(
+    0,
+    Math.min(payloadTimeline.length, Math.trunc(atIndex)),
+  );
+  if (!payloadTimeline.includes(entry)) payloadTimeline.splice(clamped, 0, entry);
+  bumpAquarelleStrokesRevision();
+  return true;
+}
+
 export function recordAquarelleStroke(
   mutationId: number,
   stroke: AquarelleStroke,

@@ -18,13 +18,17 @@
 // ============================================================
 
 import { computed, signal } from '@preact/signals';
-import type { AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import type { AquarellePayloadEvent, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleUvToEnginePixel,
   type EnginePixelSize,
 } from '../engine/aquarelleStrokeBridge';
 import {
   aquarelleStrokesRevision,
+  bumpAquarelleStrokesRevision,
+  clearAquarelleStrokeDeletion,
+  deleteAquarelleStrokeFromScript,
+  getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
 } from './aquarelleRecordState';
@@ -240,4 +244,64 @@ export function listSelectableAquarelleStrokes(
     });
   }
   return out;
+}
+
+// ============================================================
+//  Delete edits (261022-pim). A delete is one in-memory script
+//  mutation; the caller owns the async re-bake and must clear
+//  the in-flight flag when it settles. Task 3 attaches
+//  revision-authoritative before/after snapshots.
+// ============================================================
+
+let aquarelleDeleteInFlight = false;
+let nextAquarelleEditId = 1;
+
+/** True while a delete + its re-bake is running (a second Alt+click is refused). */
+export function isAquarelleDeleteInFlight(): boolean {
+  return aquarelleDeleteInFlight;
+}
+
+export function setAquarelleDeleteInFlight(inFlight: boolean): void {
+  aquarelleDeleteInFlight = inFlight;
+}
+
+const pendingDeletes = new Map<
+  number,
+  { mutationId: number; timeline: readonly AquarellePayloadEvent[] }
+>();
+
+/**
+ * Delete one recorded stroke as a single edit. Returns a monotonic edit id
+ * (the caller reverts or commits it) or null when refused.
+ */
+export function deleteAquarelleStrokeForEdit(mutationId: number): number | null {
+  if (aquarelleDeleteInFlight) return null;
+  const timeline = [...getRecordedAquarellePayloadTimeline()];
+  if (!deleteAquarelleStrokeFromScript(mutationId)) return null;
+  const editId = nextAquarelleEditId;
+  nextAquarelleEditId += 1;
+  pendingDeletes.set(editId, { mutationId, timeline });
+  if (aquarelleSelectedStrokeMutationId.value === mutationId) selectAquarelleStroke(null);
+  return editId;
+}
+
+function restoreTimeline(timeline: readonly AquarellePayloadEvent[]): void {
+  const live = getRecordedAquarellePayloadTimeline() as AquarellePayloadEvent[];
+  live.splice(0, live.length, ...timeline);
+}
+
+/** Failed re-bake: put the pre-delete script back exactly (rollback path). */
+export function revertAquarelleStrokeEdit(editId: number): boolean {
+  const pending = pendingDeletes.get(editId);
+  if (!pending) return false;
+  pendingDeletes.delete(editId);
+  clearAquarelleStrokeDeletion(pending.mutationId);
+  restoreTimeline(pending.timeline);
+  bumpAquarelleStrokesRevision();
+  return true;
+}
+
+/** The re-bake succeeded — drop the rollback copy. */
+export function commitAquarelleStrokeEdit(editId: number): void {
+  pendingDeletes.delete(editId);
 }

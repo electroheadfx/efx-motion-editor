@@ -31,7 +31,7 @@ import { encodeWebpFrame } from '../../../lib/webpFrameCodec';
 import type { EngineAdapter, StudioStroke } from '@efxlab/efx-paint-host';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import { toStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
-import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
+import { getRecordedAquarelleDryEvents, getRecordedAquarellePayload, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
 import {
   createAquarelleBake as defaultCreateAquarelleBake,
   type AquarelleBake,
@@ -1929,10 +1929,15 @@ function aquarelleEventsFromScript(script: RotoPaintScript): AquarellePayloadEve
     };
     return toStudioStroke(raw);
   };
+  // 261022-pim: a stroke deleted from the script (marker set) is absent from
+  // every replay channel — including this in-memory fallback that has no
+  // persisted `aquarelleEvents`.
+  const isDeleted = (stroke: RotoPaintScript['brushes'][number]['primary']): boolean =>
+    stroke.mutationId !== undefined && isAquarelleStrokeDeleted(stroke.mutationId);
   for (const brush of script.brushes) {
-    events.push(project(brush.primary));
+    if (!isDeleted(brush.primary)) events.push(project(brush.primary));
     for (const continuation of brush.continuations ?? []) {
-      events.push(project(continuation));
+      if (!isDeleted(continuation)) events.push(project(continuation));
     }
   }
   // D-15/D-16: Dry fires in recorded order between stroke turns. Both

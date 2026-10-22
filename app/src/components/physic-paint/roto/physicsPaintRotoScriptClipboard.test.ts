@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoPaintScript, type RotoScriptActionAvailability, type RotoScriptClipboardControllerPorts, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
-import { createDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import { createDryEvent, isAquarelleDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import { deleteAquarelleStrokeFromScript, recordAquarelleStroke } from '../view/aquarelleRecordState';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import { createPersistedRotoScript } from './physicsPaintRotoScriptSchema';
@@ -1357,3 +1358,99 @@ function scopeLibraryHarnessContext(): PhysicPaintLaunchContext {
     },
   };
 }
+
+// 261022-pim Task 2: Alt+click delete re-bakes through the SAME Apply path.
+// applyCurrentScript captures the live recorded strokes (no clipboard) and
+// dispatches through the shared aquarelle branch, so bake, progress, publish
+// and status are byte-identical to Apply Script.
+describe('261022-pim applyCurrentScript', () => {
+  function recordLiveAquarelle(mutationId: number, playFrame = 4): void {
+    const live: AquarelleStroke = {
+      tool: 'brush',
+      color: '#123456',
+      params: { size: 8, water: 50, load: 50, flow: 50, bleed: 50, dry: 50, edge: 50, granulation: 50 },
+      brushId: 'wc/round-medium',
+      points: [
+        { x: 0.1, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        { x: 0.14, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      ],
+      mutationId,
+      timestamp: mutationId,
+      playFrame,
+    };
+    recordAquarelleStroke(mutationId, live);
+  }
+
+  it('applies the live capture without touching the clipboard', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(11), stroke(12)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    recordLiveAquarelle(11);
+    recordLiveAquarelle(12);
+
+    const applying = test.controller.applyCurrentScript();
+    test.controller.observeCompletedMutation(test.engine, completion(11));
+    test.controller.observeCompletedMutation(test.engine, completion(12));
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    const strokeEvents = port.calls[0]!.events.filter((event) => !isAquarelleDryEvent(event));
+    expect(strokeEvents).toHaveLength(2);
+    expect(test.controller.clipboard.value).toBeNull();
+    expect(test.controller.hasCopiedScript.value).toBe(false);
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBe('Applied');
+  });
+
+  it('the capture skips a deleted stroke without falling back to engine-1', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(21), stroke(22)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    recordLiveAquarelle(21);
+    recordLiveAquarelle(22);
+    expect(deleteAquarelleStrokeFromScript(21)).toBe(true);
+
+    const applying = test.controller.applyCurrentScript();
+    test.controller.observeCompletedMutation(test.engine, completion(21));
+    test.controller.observeCompletedMutation(test.engine, completion(22));
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    const strokeEvents = port.calls[0]!.events.filter((event) => !isAquarelleDryEvent(event));
+    expect(strokeEvents).toHaveLength(1);
+    expect((strokeEvents[0] as unknown as { engine: { mutationId?: number } }).engine.mutationId).toBe(22);
+    // The engine-1 brush burst never runs — the deleted guide is not repainted.
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+  });
+
+  it('progress is the shared pill seeded 0/N and cleared after the bake', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(31)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    recordLiveAquarelle(31);
+
+    const applying = test.controller.applyCurrentScript();
+    test.controller.observeCompletedMutation(test.engine, completion(31));
+    await flushMicrotasks(20);
+
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 1 });
+    expect(test.controller.status.value).toBe('Applying 0/1');
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.applyProgress.value).toBeNull();
+  });
+
+  it('refuses without an aquarelle apply port and leaves the pill untouched', async () => {
+    const test = harness([stroke(41)], {});
+    recordLiveAquarelle(41);
+    const applying = test.controller.applyCurrentScript();
+    test.controller.observeCompletedMutation(test.engine, completion(41));
+    await flushMicrotasks(20);
+    expect(await applying).toBe(false);
+    expect(test.controller.applyProgress.value).toBeNull();
+    expect(test.controller.clipboard.value).toBeNull();
+  });
+});

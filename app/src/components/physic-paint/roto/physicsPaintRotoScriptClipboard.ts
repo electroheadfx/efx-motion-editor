@@ -7,7 +7,7 @@ import {
   type AquarellePayloadEvent,
 } from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
-import { getRecordedAquarellePayloadTimeline, getRecordedAquarelleStroke } from '../view/aquarelleRecordState';
+import { getRecordedAquarellePayloadTimeline, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
 
 export interface RotoScriptSourceSnapshot {
@@ -164,6 +164,8 @@ export interface RotoScriptClipboardController {
   applyPreparedScript: (preparation: PreparedRotoScriptLoadAndApply) => Promise<boolean>;
   cancelPreparedScriptLoadAndApply: (preparation: PreparedRotoScriptLoadAndApply) => void;
   applyScript: () => Promise<boolean>;
+  /** 261022-pim: re-bake the LIVE captured script (delete) without the clipboard. */
+  applyCurrentScript: () => Promise<boolean>;
   discardScript: () => void;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
   updateEngine: (engine: RotoScriptEnginePort | null) => void;
@@ -724,11 +726,98 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     const script = clipboard.value;
     const source = sourceState.value;
     if (!engine || !script || source.selectionKind === 'generated-interpolation') return false;
+    error.value = null;
+    beginOperation(engine);
+    return dispatchApply(script, source, engine);
+  }
+
+  /**
+   * 261022-pim: Apply the LIVE captured script (the Alt+click delete re-bake).
+   * Same gates as copy — a real-key source with recorded strokes, not busy,
+   * not disposed — but no clipboard requirement: the script is captured from
+   * the current engine exactly like captureScriptForPersistence and dispatched
+   * through the shared pipeline. The reusable clipboard is never written.
+   */
+  async function applyCurrentScript(): Promise<boolean> {
+    if (disposed || disposalRequested) return false;
+    const engine = engineState.peek();
+    if (!engine) return false;
+    const source = sourceState.peek();
+    if (source.selectionKind === 'generated-interpolation') return false;
+    refreshSourceHasBrushes(engine);
+    if (!sourceHasBrushes.value || busy.peek()) return false;
     const acceptedEngineGeneration = engineGeneration;
     const acceptedLaunchGeneration = launchGeneration;
     error.value = null;
     beginOperation(engine);
+    let dispatched = false;
+    try {
+      await drainAcceptedMutations(engine);
+      await ports.flushSourcePublication?.(source.appFrame);
+      if (
+        disposed
+        || disposalRequested
+        || engineState.peek() !== engine
+        || engineGeneration !== acceptedEngineGeneration
+        || launchGeneration !== acceptedLaunchGeneration
+      ) {
+        return false;
+      }
+      const brushes = normalizeLogicalBrushes(engine.getStrokes());
+      if (brushes.length === 0) return false;
+      const aquarelleEvents = buildAquarelleEventsFromCapture(brushes);
+      if (!aquarelleEvents || !ports.applyAquarelleEvents) {
+        status.value = 'Failed';
+        error.value = operationError(
+          'apply',
+          'apply-partial-failure',
+          'Apply Current Script requires a fully recorded watercolor script.',
+        );
+        return false;
+      }
+      const script = deepFreezeScript({
+        provenance: provenanceFor(source),
+        sourceFrame: source.appFrame,
+        sourceDisplayFrame: source.appFrame,
+        sourceRevision: sourceRevision + 1,
+        brushes,
+        aquarelleEvents,
+      });
+      // Dispatch owns its own endOperation — skip the failure-path release.
+      dispatched = true;
+      return await dispatchApply(script, source, engine, { forceAquarelle: true });
+    } catch (cause) {
+      if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
+        status.value = 'Failed';
+        error.value = operationError(
+          'apply',
+          'apply-partial-failure',
+          'Apply Current Script could not capture the recorded strokes.',
+          cause,
+        );
+      }
+      return false;
+    } finally {
+      if (!dispatched) endOperation(engine);
+    }
+  }
 
+  /**
+   * 261022-pim: the ONE shared Apply dispatch. Apply Script (clipboard) and
+   * Apply Current Script (live capture after a delete) both land here, so the
+   * bake, the progress pill, publication and display reconcile cannot drift.
+   * `options.forceAquarelle` keeps a fully-deleted watercolor script on the
+   * aquarelle path (an empty event list must bake a blank sheet, never fall
+   * back to the engine-1 brush burst and repaint deleted guides).
+   */
+  async function dispatchApply(
+    script: RotoPaintScript,
+    source: RotoScriptSourceSnapshot,
+    engine: RotoScriptEnginePort,
+    options?: { forceAquarelle?: boolean },
+  ): Promise<boolean> {
+    const acceptedEngineGeneration = engineGeneration;
+    const acceptedLaunchGeneration = launchGeneration;
     let target: RotoScriptPhysicalTarget | null = null;
     try {
       target = await ports.prepareTarget(source);
@@ -764,11 +853,18 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
     // 261018: aquarelle scripts replay through the aquarelle engine (wash,
     // bleed, granulation), not engine-1 (which draws only the guide line).
-    if (script.aquarelleEvents && script.aquarelleEvents.length > 0 && ports.applyAquarelleEvents) {
+    // 261022-pim: a DEFINED event list stays aquarelle even when empty (all
+    // strokes deleted) — forceAquarelle is set by the live-capture channel.
+    const aquarelleEvents = script.aquarelleEvents;
+    if (
+      aquarelleEvents
+      && ports.applyAquarelleEvents
+      && (aquarelleEvents.length > 0 || options?.forceAquarelle)
+    ) {
       // 261022: the aquarelle Apply bake runs ONE output frame, so the pill
       // must advance per FULLY FED STROKE — the same 0/N → N/N report brush
       // mode drives. Dry events are timeline actions, never progress (D-15).
-      const aquarelleStrokeTotal = countAquarelleStrokeEvents(script.aquarelleEvents);
+      const aquarelleStrokeTotal = countAquarelleStrokeEvents(aquarelleEvents);
       let progressSettled = false;
       const publishAquarelleProgress = (completed: number, total: number): void => {
         // AQUA-07: the bake survives navigation, so a progress callback can
@@ -790,7 +886,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       }
       try {
         const ok = await ports.applyAquarelleEvents({
-          events: script.aquarelleEvents,
+          events: aquarelleEvents,
           target,
           onProgress: publishAquarelleProgress,
         });
@@ -1021,6 +1117,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     applyPreparedScript,
     cancelPreparedScriptLoadAndApply,
     applyScript,
+    applyCurrentScript,
     discardScript,
     observeCompletedMutation,
     updateEngine,
@@ -1111,7 +1208,12 @@ function buildAquarelleEventsFromCapture(brushes: readonly Readonly<RecordedStro
     for (const stroke of chain) {
       const mutationId = stroke.mutationId;
       const recorded = mutationId !== undefined ? getRecordedAquarelleStroke(mutationId) : undefined;
+      // Presence gate law: a missing record means a MIXED engine-1 key — the
+      // serialize path must stay engine-1. A deleted stroke is different: its
+      // record is present (presence stays true) but it is removed from the
+      // script by the marker, so skip it WITHOUT tripping the fallback.
       if (!recorded) return undefined;
+      if (mutationId !== undefined && isAquarelleStrokeDeleted(mutationId)) continue;
       projected.push(aquarelleToStudioStroke(recorded));
     }
   }

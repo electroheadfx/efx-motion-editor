@@ -165,6 +165,13 @@ import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
 import { recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
+import {
+  commitAquarelleStrokeEdit,
+  deleteAquarelleStrokeForEdit,
+  isAquarelleDeleteInFlight,
+  revertAquarelleStrokeEdit,
+  setAquarelleDeleteInFlight,
+} from './view/aquarelleStrokeSelection';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
@@ -4667,11 +4674,54 @@ export function PhysicsPaintStudio() {
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);
   }, []);
 
-  // 261022-pim: Alt+click delete seam from the stroke overlay. Task 1 wires the
-  // callback (selection only); Task 2 fills in the script mutation + re-bake.
+  // 261022-pim: Alt+click delete. The stroke leaves the recorded script, the
+  // live sheet resets, and the whole current-frame script re-applies through
+  // the shared Apply pipeline (same bake, pill, publish, display reconcile).
+  // Guards are peek-only: the handler must not subscribe the Studio body.
   const handleAquarelleDeleteStroke = useCallback((mutationId: number) => {
-    void mutationId;
-  }, []);
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
+    if (isAquarelleDeleteInFlight()) return;
+    const editId = deleteAquarelleStrokeForEdit(mutationId);
+    if (editId === null) return;
+    setAquarelleDeleteInFlight(true);
+    void (async () => {
+      try {
+        aquarelleResetSheetRef.current?.();
+        const ok = await rotoScript.applyCurrentScript();
+        if (ok) {
+          commitAquarelleStrokeEdit(editId);
+          setLastError(null);
+          clearOwnedScriptApplyRefusal();
+          // Task 3 records the edit as ONE aquarelle-script undo command.
+          void editId;
+          return;
+        }
+        // Failed re-bake: put the stroke back in the in-memory script so the
+        // next Apply cannot bake a script the sheet never showed.
+        revertAquarelleStrokeEdit(editId);
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error) ?? error?.message ?? null;
+        if (message) {
+          setLastError(message);
+          setApplyMessage(message);
+          setApplyStatus('error');
+          scriptApplyRefusalOwnedRef.current = true;
+        }
+      } finally {
+        setAquarelleDeleteInFlight(false);
+      }
+    })();
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
 
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry

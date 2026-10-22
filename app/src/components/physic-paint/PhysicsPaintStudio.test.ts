@@ -2407,9 +2407,12 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
   it('adds no second refusal route: the mapper is imported once and called only at the apply/refusal sites', () => {
     // 55-06 (D-09): one import + three call sites — two in
     // handleSelectedScriptLoadAndApply (refused-row branch + apply-failure
-    // branch) and one in handleApplyScript. No fourth route, no second import.
+    // branch) and one in handleApplyScript.
+    // 261022-pim: a fourth site — the Alt+click delete re-bake failure in
+    // handleAquarelleDeleteStroke — reuses the SAME mapper and capsule. No
+    // second import, no new status surface.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(4); // one import + three call sites
+    expect(mentions).toBe(5); // one import + four call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
