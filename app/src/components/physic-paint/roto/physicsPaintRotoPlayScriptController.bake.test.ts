@@ -341,6 +341,131 @@ describe('aquarelle bake consume branch (56-08)', () => {
     expect(test.controller.progress.value).toEqual({ completed: 3, total: 3 });
   });
 
+  it('a late aquarelle commit after cancel does not move progress', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [0, 1, 2].map((index) => ({
+      eventIndex: index,
+      strokeIndex: index,
+      tick: 0,
+      bytes: webpStub(String(index)),
+      width: 10,
+      height: 10,
+    }));
+    let capturedOptions: AquarelleBakeOptions | undefined;
+    const createAquarelleBake = vi.fn((_adapter: EngineAdapter<AquarelleStrokePayload>, options?: AquarelleBakeOptions) => {
+      capturedOptions = options;
+      return bake;
+    });
+    const createAquarelleAdapter = vi.fn(() => makeAdapter());
+
+    const test = harness({ createAquarelleBake, createAquarelleAdapter });
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor' });
+
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    const confirmPromise = test.controller.confirm();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    capturedOptions!.onCommit!(fake.framesToReturn[0]!);
+    capturedOptions!.onCommit!(fake.framesToReturn[1]!);
+    expect(test.controller.progress.value).toEqual({ completed: 2, total: 3 });
+
+    test.controller.cancel();
+    // The bake keeps committing after Cancel (flush-survives-navigation);
+    // those commits must not reopen the dismissed dialog's progress.
+    capturedOptions!.onCommit!(fake.framesToReturn[2]!);
+    expect(test.controller.progress.value).toEqual({ completed: 2, total: 3 });
+
+    fake.bakeGate.resolve();
+    await confirmPromise;
+
+    expect(test.controller.phase.value).toBe('cancelled');
+  });
+
+  it('a late aquarelle commit after dispose does not move progress', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [0, 1, 2].map((index) => ({
+      eventIndex: index,
+      strokeIndex: index,
+      tick: 0,
+      bytes: webpStub(String(index)),
+      width: 10,
+      height: 10,
+    }));
+    let capturedOptions: AquarelleBakeOptions | undefined;
+    const createAquarelleBake = vi.fn((_adapter: EngineAdapter<AquarelleStrokePayload>, options?: AquarelleBakeOptions) => {
+      capturedOptions = options;
+      return bake;
+    });
+    const createAquarelleAdapter = vi.fn(() => makeAdapter());
+
+    const test = harness({ createAquarelleBake, createAquarelleAdapter });
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor' });
+
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    const confirmPromise = test.controller.confirm();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    capturedOptions!.onCommit!(fake.framesToReturn[0]!);
+    expect(test.controller.progress.value).toEqual({ completed: 1, total: 3 });
+
+    test.controller.dispose();
+    // Invoke the late commit BEFORE yielding to microtasks: the guard must be
+    // synchronous, not dependent on the flush continuation.
+    capturedOptions!.onCommit!(fake.framesToReturn[1]!);
+    expect(test.controller.progress.value).toEqual({ completed: 1, total: 3 });
+
+    await confirmPromise;
+
+    expect(fake.flushCalls).toBeGreaterThan(0);
+    expect(fake.disposeCalls).toBe(0);
+  });
+
+  it('committed frames clamp at the requested count', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [0, 1].map((index) => ({
+      eventIndex: index,
+      strokeIndex: index,
+      tick: 0,
+      bytes: webpStub(String(index)),
+      width: 10,
+      height: 10,
+    }));
+    let capturedOptions: AquarelleBakeOptions | undefined;
+    const createAquarelleBake = vi.fn((_adapter: EngineAdapter<AquarelleStrokePayload>, options?: AquarelleBakeOptions) => {
+      capturedOptions = options;
+      return bake;
+    });
+    const createAquarelleAdapter = vi.fn(() => makeAdapter());
+
+    const test = harness({ createAquarelleBake, createAquarelleAdapter });
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor' });
+
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '2';
+    const confirmPromise = test.controller.confirm();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    for (let commit = 0; commit < 4; commit += 1) capturedOptions!.onCommit!(fake.framesToReturn[0]!);
+    expect(test.controller.progress.value?.completed).toBe(2);
+    expect(test.controller.progress.value?.total).toBe(2);
+
+    fake.bakeGate.resolve();
+    const ok = await confirmPromise;
+
+    expect(ok).toBe(true);
+  });
+
   it('the engine-1 path is unchanged (renderRotoPlayScriptFrames, no createAquarelleBake)', async () => {
     const createAquarelleBake = vi.fn();
     const createAquarelleAdapter = vi.fn(() => makeAdapter());
