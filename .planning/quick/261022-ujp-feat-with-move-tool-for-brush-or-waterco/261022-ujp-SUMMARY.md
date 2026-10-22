@@ -86,6 +86,26 @@ All gates run per plan; package-related suites run against the built `dist` afte
 | App typecheck | 15 errors, equal to the pre-existing baseline |
 | Package build + `tsc --noEmit` | clean |
 
+### Orchestrator follow-up — stack badges (`c79daa7f`)
+
+Live request: identify strokes while restacking. Every stroke now carries a
+badge `#<creation id> · <position>/<total>` — the id is the order the stroke was
+painted and never renumbers (restack and delete leave gaps), the position is
+1-based from the TOP of the current frame's stack.
+
+- Brush: drawn on the display overlay whenever the Move tool is armed. The
+  hovered badge is full-strength and the rest dimmed; a hover change restores
+  only the two affected label boxes, so the incremental render path never pays a
+  full composite. Entering/leaving Move forces one composite (the badges appear
+  or disappear).
+- Watercolor: drawn in the select overlay SVG, selected full-strength, the rest
+  dimmed. Serial assignment is per edit frame and survives undo.
+- Overlay-only by construction: the display layer is never part of a capture,
+  cache, or export.
+
+Known limit: serials are session-scoped. A saved document stores paint order,
+not creation order, so after a reload the numbers follow the loaded order.
+
 ### Orchestrator follow-up — stroke loss on restack (`e973ef33`)
 
 Reported live: sending a watercolor stroke back made it vanish (2-stroke repro:
