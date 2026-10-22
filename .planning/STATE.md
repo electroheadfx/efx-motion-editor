@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-22T14:26:00.233Z"
+last_updated: "2026-10-22T14:40:20.416Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 56 complete
-state_head: 23229e73e3696c631b97f3a3aca0e06f0f832181
+state_head: 2bd6af0fe59994212b4dd2dfd51d0eb91efefb22
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-mne UAT approved: Solo persists for the whole Studio session across frame navigation
+Last activity: 2026-10-22 — Completed quick task 261022-mvs: Feat: Add progression to apply script (watercolor) not sure if brush mode has it
 
 Progress: [██████████] 100%
 
@@ -566,6 +566,7 @@ None yet.
 | 261022-jq0 | Selected rail plays its full range (Studio transport): a selected Key Rail / Loop Clip / rail set scopes Play to its contiguous span, Loop wraps to the selection start, and no selection keeps full-timeline play-from-cursor | 2026-10-22 | dad851ff | [261022-jq0-selected-rail-plays-its-full-range-1-sel](./quick/261022-jq0-selected-rail-plays-its-full-range-1-sel/) |
 | 261022-ljt | Fix: Add progression to play script in watercolor mode (brush mode has it but watercolor play has no progress) | 2026-10-22 | c0163344 | [261022-ljt-fix-add-progression-to-play-script-in-wa](./quick/261022-ljt-fix-add-progression-to-play-script-in-wa/) |
 | 261022-mne | Solo persists for the whole Studio session: frame navigation, playback, selection changes and mutation locks no longer disarm it | 2026-10-22 | 23229e73 | [261022-mne-solo-track-is-not-persistent-when-i-chec](./quick/261022-mne-solo-track-is-not-persistent-when-i-chec/) |
+| 261022-mvs | Feat: Add progression to apply script (watercolor) not sure if brush mode has it | 2026-10-22 | 2bd6af0f | [261022-mvs-feat-add-progression-to-apply-script-wat](./quick/261022-mvs-feat-add-progression-to-apply-script-wat/) |
 
 ### Roadmap Evolution
 
