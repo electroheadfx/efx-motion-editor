@@ -780,6 +780,203 @@ describe('start honors the current application-frame cursor (D-01)', () => {
 });
 
 /**
+ * JQ0 (261022-jq0): a selected rail owns a session playback RANGE. The hook
+ * reads `getPlaybackWindow` ONCE at Play press, filters the existing frame
+ * enumeration to [start, endExclusive), always anchors at the window start
+ * (never the cursor), and keeps the window start as the loop-wrap anchor.
+ * No window keeps the Phase 51 play-from-cursor law byte-identical.
+ */
+describe('selected-rail playback window (JQ0)', () => {
+  function audioSection(): EfxPaintAudioPreviewContext {
+    return {
+      revision: 1,
+      fps: 24,
+      tracks: [
+        {
+          id: 'track-1',
+          assetUrl: 'efxasset://localhost/tmp/jq0-fixture.wav',
+          offsetFrame: 0,
+          inFrame: 0,
+          outFrame: 48,
+          slipOffset: 0,
+          fadeInFrames: 0,
+          fadeOutFrames: 0,
+          volume: 1,
+          muted: false,
+          fadeInCurve: 'linear',
+          fadeOutCurve: 'linear',
+        },
+      ],
+    };
+  }
+
+  function installWindowTimers() {
+    vi.stubGlobal('window', {
+      clearInterval,
+      setInterval,
+    });
+  }
+
+  async function flushMicrotasks() {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    audioMocks.prepare.mockReset().mockResolvedValue(undefined);
+    audioMocks.playAtCursor.mockReset();
+    audioMocks.stop.mockReset();
+    audioMocks.positionedAt.mockReset();
+    audioMocks.noteFpsMismatchOnce.mockReset().mockReturnValue(null);
+    audioMocks.notifyLoopWrap.mockReset();
+    audioMocks.checkDrift.mockReset();
+    audioMocks.claimAudio.mockReset();
+    audioMocks.ownershipConfigure.mockReset();
+    audioMocks.getSection.mockReset().mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  const windowFrames = Array.from({ length: 10 }, (_, appFrame) => ({
+    appFrame,
+    frame: { id: `f${appFrame}` } as Frame,
+  }));
+
+  function createWindowHarness(options: {
+    loop?: boolean;
+    window?: () => { start: number; endExclusive: number } | null;
+    getCurrentAppFrame?: () => number;
+  }) {
+    const onStart = vi.fn();
+    const onFrame = vi.fn();
+    const setIsPlaying = vi.fn();
+    const harness = createHarness({
+      initialSettings: { loop: options.loop ?? false, fps: 2 },
+      workflowMode: 'roto',
+      getFrames: () => windowFrames,
+      ...(options.getCurrentAppFrame ? { getCurrentAppFrame: options.getCurrentAppFrame } : {}),
+      ...(options.window ? { getPlaybackWindow: options.window } : {}),
+      onStart,
+      onFrame,
+      setIsPlaying,
+    });
+    return { harness, onStart, onFrame, setIsPlaying };
+  }
+
+  it('plays only [start, endExclusive), anchored at the window start, and stops at its end', () => {
+    const { harness, onStart, onFrame, setIsPlaying } = createWindowHarness({
+      loop: false,
+      window: () => ({ start: 3, endExclusive: 7 }),
+      getCurrentAppFrame: () => 5,
+    });
+
+    let playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    expect(playback.isActive).toBe(true);
+    expect(playback.frame).toEqual({ id: 'f3' });
+    expect(onStart).toHaveBeenCalledWith(4);
+    expect(onFrame).toHaveBeenLastCalledWith(0, 3);
+
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 4);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 5);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(3, 6);
+    // Loop off: the tick after the last window frame stops the session.
+    vi.advanceTimersByTime(500);
+    playback = harness.render();
+
+    expect(playback.isActive).toBe(false);
+    expect(setIsPlaying).toHaveBeenLastCalledWith(false);
+    expect(onFrame.mock.calls.every(([, appFrame]) => appFrame >= 3 && appFrame <= 6)).toBe(true);
+    expect(onFrame.mock.calls.some(([, appFrame]) => appFrame < 3 || appFrame > 6)).toBe(false);
+  });
+
+  it('loops back to the window start, never the cursor, and keeps the loop anchor at index 0', () => {
+    const { harness, onFrame } = createWindowHarness({
+      loop: true,
+      window: () => ({ start: 3, endExclusive: 7 }),
+      getCurrentAppFrame: () => 5,
+    });
+
+    let playback = harness.render();
+    playback.setLoop(true);
+    playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    expect(onFrame).toHaveBeenLastCalledWith(0, 3);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(1, 4);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(2, 5);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(3, 6);
+    vi.advanceTimersByTime(500);
+    expect(onFrame).toHaveBeenLastCalledWith(0, 3);
+    expect(harness.anchors().loopStart.current).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it('keeps play-from-cursor when the window port returns null', () => {
+    const { harness, onStart, onFrame } = createWindowHarness({
+      window: () => null,
+      getCurrentAppFrame: () => 5,
+    });
+
+    let playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    expect(playback.isActive).toBe(true);
+    expect(playback.frame).toEqual({ id: 'f5' });
+    expect(onStart).toHaveBeenCalledWith(10);
+    expect(onFrame).toHaveBeenLastCalledWith(5, 5);
+    vi.useRealTimers();
+  });
+
+  it('keeps play-from-cursor when the window port is absent', () => {
+    const { harness, onStart, onFrame } = createWindowHarness({
+      getCurrentAppFrame: () => 5,
+    });
+
+    let playback = harness.render();
+    playback.start();
+    playback = harness.render();
+
+    expect(playback.isActive).toBe(true);
+    expect(playback.frame).toEqual({ id: 'f5' });
+    expect(onStart).toHaveBeenCalledWith(10);
+    expect(onFrame).toHaveBeenLastCalledWith(5, 5);
+    vi.useRealTimers();
+  });
+
+  it('ends the audio range at the window end', async () => {
+    audioMocks.getSection.mockReturnValue(audioSection());
+    const { harness } = createWindowHarness({
+      window: () => ({ start: 3, endExclusive: 7 }),
+      getCurrentAppFrame: () => 5,
+    });
+
+    const playback = harness.render();
+    playback.start();
+    await flushMicrotasks();
+
+    expect(audioMocks.playAtCursor).toHaveBeenCalledWith(3, 7);
+    vi.useRealTimers();
+  });
+});
+
+/**
  * 261022-iff: the coordinator's getFrames enumeration is the full composite
  * range — one entry per appFrame. The global Solo is a composite-path track
  * focus; it never filters or re-anchors playback (the rail-solo window and the
@@ -792,6 +989,7 @@ describe('playback enumeration seam (useRotoNavigationCoordinator getFrames)', (
     getEndFrame: () => number | null;
     getFrame: (appFrame: number) => Preview | null;
     getCurrentAppFrame?: () => number;
+    getPlaybackWindow?: () => { start: number; endExclusive: number } | null;
   }
 
   function createCoordinatorHarness(playback: CoordinatorPlaybackInput) {
@@ -831,6 +1029,9 @@ describe('playback enumeration seam (useRotoNavigationCoordinator getFrames)', (
           getFrame: (appFrame) => current.getFrame(appFrame),
           ...(current.getCurrentAppFrame !== undefined
             ? { getCurrentAppFrame: () => current.getCurrentAppFrame!() }
+            : {}),
+          ...(current.getPlaybackWindow !== undefined
+            ? { getPlaybackWindow: () => current.getPlaybackWindow!() }
             : {}),
           onStart,
           onFrame,
@@ -884,6 +1085,26 @@ describe('playback enumeration seam (useRotoNavigationCoordinator getFrames)', (
       vi.advanceTimersByTime(500);
       expect(harness.onFrame).toHaveBeenLastCalledWith(tick, tick);
     }
+    vi.useRealTimers();
+  });
+
+  it('forwards a supplied selection window to the hook enumeration', () => {
+    vi.useFakeTimers();
+    installWindowTimers();
+    const harness = createCoordinatorHarness({
+      getEndFrame: () => 10,
+      getFrame: (appFrame) => ({ appFrame, id: `f${appFrame}` }),
+      getPlaybackWindow: () => ({ start: 4, endExclusive: 7 }),
+    });
+
+    const coordinator = harness.render();
+    coordinator.playback.start();
+    const next = harness.render();
+
+    expect(next.playback.isActive).toBe(true);
+    expect(harness.onStart).toHaveBeenCalledWith(3);
+    expect(next.playback.frame).toEqual({ appFrame: 4, id: 'f4' });
+    expect(harness.onFrame).toHaveBeenLastCalledWith(0, 4);
     vi.useRealTimers();
   });
 });

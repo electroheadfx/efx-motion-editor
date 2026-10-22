@@ -4,6 +4,7 @@ import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPrese
 import { createRotoFrameDisplayPort } from '../roto/rotoCoordinatorPorts';
 import { createRotoNavigationActions, getRotoNavigationTargets } from '../roto/rotoNavigationActions';
 import { useRotoCachedPlayback, type RotoCachedPlaybackFrame } from './useRotoCachedPlayback';
+import type { RotoSelectionPlaybackWindow } from '../roto/physicsPaintRotoSelectionPlaybackWindow';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
 import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 
@@ -33,6 +34,14 @@ export interface UseRotoNavigationCoordinatorInput<TPreview extends { appFrame: 
      * falls back to the range start.
      */
     getCurrentAppFrame?: () => number;
+    /**
+     * JQ0 (261022-jq0): the rail-selection playback RANGE, resolved lazily at
+     * Play press. It scopes the session enumeration to [start, endExclusive)
+     * and anchors the session at the window start; it never hides per-frame
+     * content and never re-attributes the composite. Absent / null keeps the
+     * full-range enumeration and the play-from-cursor law unchanged.
+     */
+    getPlaybackWindow?: () => RotoSelectionPlaybackWindow | null;
     onStart: (frameCount: number) => void;
     onFrame: (frameIndex: number, appFrame: number) => void;
     setIsPlaying: (isPlaying: boolean) => void;
@@ -61,7 +70,10 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
     workflowMode: input.workflowMode,
     // 261022-iff: one entry per appFrame over the full composite range. The
     // global Solo is a composite-path track focus; it never alters playback
-    // enumeration (the retired rail-solo window is gone).
+    // enumeration (the retired rail-solo window is gone). JQ0 (261022-jq0):
+    // a rail-SELECTION range is supplied separately through getPlaybackWindow
+    // below — the hook filters this full enumeration once at Play press, so the
+    // no-selection path stays byte-identical.
     getFrames: () => {
       const playbackEndFrame = input.playback.getEndFrame();
       if (playbackEndFrame === null || playbackEndFrame <= 0) return [];
@@ -82,6 +94,9 @@ export function useRotoNavigationCoordinator<TPreview extends { appFrame: number
     },
     setIsPlaying: input.playback.setIsPlaying,
     getCurrentAppFrame: input.playback.getCurrentAppFrame,
+    // JQ0 (261022-jq0): the rail-selection RANGE only — resolved lazily at
+    // Play press, never a per-frame content filter.
+    getPlaybackWindow: input.playback.getPlaybackWindow,
   });
 
   const requestNavigation = useCallback(async (targetFrame: number) => {

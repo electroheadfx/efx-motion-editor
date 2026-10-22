@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { batch, signal, type Signal } from '@preact/signals';
 import type { PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
 import type { PhysicsPaintWorkflowMode } from '../view/physicsPaintWorkflowPresentation';
+import type { RotoSelectionPlaybackWindow } from '../roto/physicsPaintRotoSelectionPlaybackWindow';
 import { efxPaintAudioMonitor } from '../audio/efxPaintAudioMonitor';
 import { efxPaintAudioPreviewStore } from '../audio/efxPaintAudioPreviewStore';
 import { efxPaintDocumentAudioStore } from '../audio/efxPaintDocumentAudioStore';
@@ -39,6 +40,16 @@ export interface UseRotoCachedPlaybackInput<Frame> {
    * range start.
    */
   getCurrentAppFrame?: () => number;
+  /**
+   * JQ0 (261022-jq0): the rail-selection playback RANGE, resolved ONCE per
+   * start (Play press). When it returns a window, the session plays only the
+   * frames whose appFrame falls in [start, endExclusive), always anchored at
+   * the window start — never the cursor — and loop wrap returns to the window
+   * start. A mid-playback selection change never re-filters the running
+   * session. Absent / null keeps the full composite enumeration and the
+   * play-from-cursor law byte-identical.
+   */
+  getPlaybackWindow?: () => RotoSelectionPlaybackWindow | null;
   onStart: (frameCount: number) => void;
   onFrame: (frameIndex: number, appFrame: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
@@ -115,6 +126,14 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   // second stop without an intervening start flushes nothing.
   const queuedStatusEventsRef = useRef<string[]>([]);
   const statusGateActiveRef = useRef(false);
+  // JQ0 (261022-jq0): the selection-window session list, captured ONCE at Play
+  // press. Non-null while the running session was scoped to a rail-selection
+  // range; null means the full composite enumeration (no selection, or a
+  // failed-closed derivation). seek() reads this list and leaves the loop-wrap
+  // anchor at the window start. Plain mutable ref — never drives rendering.
+  // Declared AFTER every existing ref so the white-box ref indices used by the
+  // test harness (frameIndex = 6, loopStart = 7) stay stable.
+  const activeWindowFramesRef = useRef<RotoCachedPlaybackFrame<Frame>[] | null>(null);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -129,6 +148,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       clearTimer();
       audioSessionRef.current += 1;
       statusGateActiveRef.current = false;
+      activeWindowFramesRef.current = null;
       playbackTick.value = null;
       setIsActive(false);
       const queued = queuedStatusEventsRef.current;
@@ -162,7 +182,18 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   const start = useCallback((requestedFps = settingsRef.current.fps) => {
     const currentInput = inputRef.current;
     const cachedFrames = currentInput.getFrames();
-    if (cachedFrames.length === 0) {
+    // JQ0 (261022-jq0): resolve the rail-selection RANGE once per start (Play
+    // press). A selection change mid-playback never re-filters the running
+    // session. Without a window, the full composite enumeration is used
+    // unchanged (the no-selection law stays byte-identical).
+    const selectionWindow = currentInput.getPlaybackWindow?.() ?? null;
+    const sessionFrames = selectionWindow === null
+      ? cachedFrames
+      : cachedFrames.filter((entry) => (
+        entry.appFrame >= selectionWindow.start && entry.appFrame < selectionWindow.endExclusive
+      ));
+    if (sessionFrames.length === 0) {
+      activeWindowFramesRef.current = null;
       // A re-entrant start() (e.g. updateFps after frames were cleared
       // mid-playback) must stop the previously running playback BEFORE
       // publishing the empty status — otherwise the stale interval keeps
@@ -175,31 +206,30 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       return;
     }
     const playbackFps = clampRotoPlaybackFps(requestedFps);
-    const missingCount = cachedFrames.filter((entry) => !entry.frame).length;
-    // D-01 (260902-cfa amendment): Play re-anchors at the current
-    // application-frame cursor — an idle seek to frame N resumes visually AND
-    // audibly at N, never the range start. An out-of-range cursor (or no
-    // matching frame) falls back to the range start. The loop-start index is
-    // the initial scrub position: loop wrap returns here, never the range
-    // start (the showNextFrame wrap branch below).
-    const cursorAppFrame = currentInput.getCurrentAppFrame?.() ?? 0;
-    // D-01/Phase 51 play-from-cursor law (261022-iff: the retired solo content
-    // start no longer overrides it): the start index is the cursor's index in
-    // the cached frame list, falling back to the range start. BOTH refs take
+    const missingCount = sessionFrames.filter((entry) => !entry.frame).length;
+    // JQ0: with a selection window the session ALWAYS starts at the window
+    // start — the cursor never overrides it. Without a window, the Phase 51
+    // play-from-cursor law is unchanged: the start index is the cursor's index
+    // in the cached frame list, falling back to the range start. BOTH refs take
     // that ONE index — the wrap branch below reads loopStartIndexRef, so every
-    // loop iteration returns to the cursor start.
-    const cursorIndex = cachedFrames.findIndex((entry) => entry.appFrame === cursorAppFrame);
-    const startIndex = cursorIndex >= 0 ? cursorIndex : 0;
+    // loop iteration returns there (window start, or the cursor start).
+    let startIndex = 0;
+    if (selectionWindow === null) {
+      const cursorAppFrame = currentInput.getCurrentAppFrame?.() ?? 0;
+      const cursorIndex = cachedFrames.findIndex((entry) => entry.appFrame === cursorAppFrame);
+      startIndex = cursorIndex >= 0 ? cursorIndex : 0;
+    }
     frameIndexRef.current = startIndex;
     loopStartIndexRef.current = startIndex;
+    activeWindowFramesRef.current = selectionWindow === null ? null : sessionFrames;
     clearTimer();
     audioSessionRef.current += 1;
     setIsActive(true);
     currentInput.setIsPlaying(true);
-    currentInput.onStart(cachedFrames.length);
+    currentInput.onStart(sessionFrames.length);
     const startStatus = missingCount > 0
       ? `Playing cached Roto frames at ${playbackFps} fps. ${missingCount} missing frame(s). Missing frames play transparent/background.`
-      : `Playing ${cachedFrames.length} cached Roto frame(s) at ${playbackFps} fps. Missing frames play transparent/background.`;
+      : `Playing ${sessionFrames.length} cached Roto frame(s) at ${playbackFps} fps. Missing frames play transparent/background.`;
     setStatus(startStatus);
     // D-02: the start line doubles as the deferred playback event — visible
     // from the start transition render, re-published once inside the stop
@@ -215,8 +245,8 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
     // must still prepare and play its document clip — widen the gate with the
     // clip-presence disjunct (the store is the child's single clip source).
     if ((audioPreview && audioPreview.tracks.length > 0) || efxPaintDocumentAudioStore.getSection() !== null) {
-      const audioCursorAppFrame = cachedFrames[startIndex].appFrame;
-      const audioPlaybackRangeEnd = cachedFrames[cachedFrames.length - 1].appFrame + 1;
+      const audioCursorAppFrame = sessionFrames[startIndex].appFrame;
+      const audioPlaybackRangeEnd = sessionFrames[sessionFrames.length - 1].appFrame + 1;
       // 41-CR-01: capture this start's session generation before the async
       // prepare; the deferred play dispatches ONLY when playback is still
       // active AND no newer session (or stop) has superseded this one —
@@ -236,24 +266,25 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       if (fpsNote) publishStatus(fpsNote);
     }
     const showNextFrame = () => {
-      if (frameIndexRef.current >= cachedFrames.length) {
+      if (frameIndexRef.current >= sessionFrames.length) {
         if (!settingsRef.current.loop) {
           finishPlayback();
           return;
         }
-        // D-01 amendment: loop wrap returns to the initial scrub position
-        // (loopStartIndexRef), never the range start. Clamped defensively in
-        // case the frame list shrank mid-playback.
-        const loopStartIndex = Math.min(loopStartIndexRef.current, cachedFrames.length - 1);
+        // D-01 amendment / JQ0: loop wrap returns to the session start index
+        // (loopStartIndexRef) — the window start for a selection session, the
+        // initial scrub position otherwise. Clamped defensively in case the
+        // frame list shrank mid-playback.
+        const loopStartIndex = Math.min(loopStartIndexRef.current, sessionFrames.length - 1);
         frameIndexRef.current = loopStartIndex;
         // 41-03 (D-11): every loop wrap re-seeks audio to the mapped loop
         // start via stopAll + restart; source metadata untouched.
         efxPaintAudioMonitor.notifyLoopWrap(
-          cachedFrames[loopStartIndex].appFrame,
-          cachedFrames[cachedFrames.length - 1].appFrame + 1,
+          sessionFrames[loopStartIndex].appFrame,
+          sessionFrames[sessionFrames.length - 1].appFrame + 1,
         );
       }
-      const cachedFrame = cachedFrames[frameIndexRef.current];
+      const cachedFrame = sessionFrames[frameIndexRef.current];
       playbackTick.value = { frameIndex: frameIndexRef.current, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
       inputRef.current.onFrame(frameIndexRef.current, cachedFrame.appFrame);
       frameIndexRef.current += 1;
@@ -262,7 +293,7 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       // D-01 single-write discipline; no per-frame audio re-sync.
       efxPaintAudioMonitor.checkDrift(
         cachedFrame.appFrame,
-        cachedFrames[cachedFrames.length - 1].appFrame + 1,
+        sessionFrames[sessionFrames.length - 1].appFrame + 1,
       );
     };
     showNextFrame();
@@ -287,7 +318,11 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
   // navigation handler, never from render (efx-preact-reactivity rule 6).
   const seek = useCallback((targetAppFrame: number) => {
     const currentInput = inputRef.current;
-    const cachedFrames = currentInput.getFrames();
+    // JQ0: inside a selection session the seek resolves against the captured
+    // window list (the running session keeps its bounds); outside one it uses
+    // the fresh full enumeration byte-identically.
+    const windowFrames = activeWindowFramesRef.current;
+    const cachedFrames = windowFrames ?? currentInput.getFrames();
     const targetIndex = cachedFrames.findIndex((entry) => entry.appFrame === targetAppFrame);
     if (isActive && targetIndex >= 0) {
       // Re-anchor the frame index past the target so the next timer tick shows
@@ -296,8 +331,9 @@ export function useRotoCachedPlayback<Frame>(input: UseRotoCachedPlaybackInput<F
       frameIndexRef.current = targetIndex + 1;
       // D-01 amendment: a mid-playback seek-restart moves the loop start to
       // the seek target — the loop now wraps there, not the initial Play
-      // position.
-      loopStartIndexRef.current = targetIndex;
+      // position. JQ0: a selection session keeps the window start as the
+      // loop-wrap anchor; the seek moves only the playhead.
+      if (windowFrames === null) loopStartIndexRef.current = targetIndex;
       const cachedFrame = cachedFrames[targetIndex];
       playbackTick.value = { frameIndex: targetIndex, appFrame: cachedFrame.appFrame, frame: cachedFrame.frame ?? null };
       currentInput.onFrame(targetIndex, cachedFrame.appFrame);
