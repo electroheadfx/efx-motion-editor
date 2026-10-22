@@ -2,7 +2,7 @@
 phase: quick-261022-mvs
 plan: 261022-mvs
 subsystem: physic-paint
-tags: [aquarelle, watercolor, bake, apply-progress, preact-signals, progress-pill]
+tags: [aquarelle, watercolor, bake, apply-progress, preact-signals, progress-pill, uat-approved]
 
 # Dependency graph
 requires:
@@ -160,10 +160,26 @@ See [deferred-items.md](./deferred-items.md).
 
 None — no external service configuration required.
 
+## Live UAT Rows — PASSED (user-approved 2026-10-22)
+
+The user ran the live gate in the Physic Paint Studio and approved it on 2026-10-22.
+
+| # | Action | Expected | Observed | Status |
+|---|--------|----------|----------|--------|
+| 1 | Watercolor mode, copy a multi-stroke paint script, Apply it to another key | Pill appears at 0/N, advances k/N while the wash bakes, clears, then `Applied`; applied wash looks unchanged | User-approved | PASSED |
+| 2 | Brush (engine-1) Apply | Progress behavior and result unchanged | User-approved | PASSED |
+| 3 | Watercolor Play Script and brush Play Script | Progress and pixels unchanged | User-approved | PASSED |
+| 4 | Navigate or close the Studio during a watercolor Apply | After returning, no Apply pill or `Applying` status from the old run | User-approved | PASSED |
+
 ## Next Phase Readiness
 
-- Automated work is ready; **live UAT rows 1-4 from the plan must pass before this is called done** (watercolor Apply pill progression, brush Apply unchanged, Play Script unchanged, navigate/close during Apply leaves no stale pill or `Applying` status).
-- `frameCount: 1`, the visible settle cap, paper setup, Dry ordering, the non-progressive bake path, Play, and brush Apply were not modified.
+Closed: live UAT approved 2026-10-22 (Physic Paint Studio):
+1. Watercolor Apply: pill advances 0/N → N/N, then `Applied`; wash unchanged.
+2. Brush Apply progress and result unchanged.
+3. Watercolor and brush Play Script unchanged.
+4. Navigate/close mid-Apply: no stale pill or status on return.
+
+`frameCount: 1`, the visible settle cap, paper setup, Dry ordering, the non-progressive bake path, Play, and brush Apply were not modified.
 
 ---
 *Phase: quick-261022-mvs*
