@@ -86,6 +86,24 @@ All gates run per plan; package-related suites run against the built `dist` afte
 | App typecheck | 15 errors, equal to the pre-existing baseline |
 | Package build + `tsc --noEmit` | clean |
 
+### Orchestrator follow-up — stroke loss on restack (`e973ef33`)
+
+Reported live: sending a watercolor stroke back made it vanish (2-stroke repro:
+blue behind pink → blue gone; the opposite key brought it back, so the script
+data was intact). Root cause is in the re-bake, not the data: `buildRecordedTimeline`
+(`packages/efx-watercolor/src/bake/aquarelleBake.ts`) derives each start tick
+from the stroke's wall-clock `recordedOrder` and clamps it to the previous
+stroke's end. The step moved positions but left the clock, so the moved stroke's
+start collapsed onto its new neighbour — the underpainting was replayed into a
+still-wet sheet and the water absorbed it.
+
+The step now swaps `recordedOrder` / `timestamp` with the positions, replacing
+entries rather than mutating them (snapshots hold references, so undo still
+restores the captured `before` side). Pinned at both layers: the timeline keeps
+a monotonic clock in paint order (`aquarelleRecordState.reorder.test.ts`) and
+the bake simulates the original ~114-tick idle gap instead of zero
+(`aquarelleBake.test.ts`, both directions of the repro).
+
 ### Orchestrator follow-up — shortcuts (`f8d6b0cf`)
 
 Live feedback replaced Space with explicit stack keys: `<` steps the target one
