@@ -209,7 +209,7 @@ function correlatedResult(
 ): PhysicPaintActionTransactionResult {
   return matches
     ? result
-    : actionTransactionFailure('correlation-mismatch', 'Action transaction response identity does not match the request');
+    : actionTransactionFailure('correlation-mismatch', 'Script transaction response identity does not match the request');
 }
 
 export async function scriptLibraryPrepareActionTransaction(

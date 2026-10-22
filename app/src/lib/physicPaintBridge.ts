@@ -1333,7 +1333,7 @@ function recomputeCanonicalGroupRegenerate(input: {
     return 'Group Regenerate initiating Group is unavailable.';
   }
   if (initiatingGroup.provenanceState !== 'attached' || !initiatingGroup.scriptId) {
-    return 'Group Regenerate initiating Group is detached from its Action.';
+    return 'Group Regenerate initiating Group is detached from its Script.';
   }
   const sourceKeyIds = initiatingGroup.sourceKeyIds;
   const sourceKeyIdSet = new Set(sourceKeyIds);
