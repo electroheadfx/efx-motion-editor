@@ -17,9 +17,9 @@ affects: [physic-paint, roto, script-library, timeline]
 actuals:
   tokens: 53144
   tasks: 3
-  commits: 5
+  commits: 6
 plan_head_before: 2628d28b7158e1ae3a905a33437468ea6351840b
-plan_head_after: fbb452a04bc986240f687060e14fb0473c366b7f
+plan_head_after: 713bc1b019fb948e21d0118c6c56bd13164e86af
 
 tech-stack:
   added: []
@@ -67,7 +67,7 @@ key-decisions:
   - "Empty frame + previous real key: blank base (stroke only) but joinPreviousRail stays true so the previous motion continues."
   - "No previous real key: blank payload + a new rail."
   - "baseKind is the single aquarelle discriminator: clone multiplies over the previous paint, blank encodes the sheet alone."
-  - "The timeline + Rail surface is removed entirely; Motion/Static/Reveal remain reachable only through the sidebar Scripts tab Create Rail dialog."
+  - "The timeline rail-kind dropdown stays removed; a single-purpose + Rail button is restored for explicit new-rail key creation. Motion/Static/Reveal remain reachable only through the sidebar Scripts tab Create Rail dialog."
 
 requirements-completed: [CFN-01, CFN-02, CFN-03]
 
@@ -135,6 +135,7 @@ status: complete
 - `PendingRotoFirstPaintTarget.baseKind` is pinned before dispatch and read by both the accepted-settlement repaint base and the aquarelle capture, so a cloned base multiplies over the previous paint and a blank base encodes the stroke alone.
 - The timeline + Rail button, rail-kind menu, three strip props, Studio handler, picker intent/memo/dialog, CSS rules, and their tests are deleted. Motion/Static/Reveal remain reachable through the Scripts tab's `Create Rail…` dialog tabs.
 - Every user-visible Action/Actions string in the Roto script UI is renamed to Script/Scripts; identifiers, classes, data attributes, and test ids are unchanged.
+- Follow-up: restored a single-purpose + Rail button (no dropdown) that creates a blank key with `forceNewSegment: true` on an empty current frame, explicitly starting a NEW rail. It is greyed on generated in-betweens and linked repeats; + Key and auto-paint behavior are unchanged.
 
 ## Task Commits
 
@@ -143,6 +144,7 @@ status: complete
 3. **Task 3: Rename visible Action/Actions copy to Script/Scripts** - `42e4e76d` (refactor)
 4. **Task 2 cleanup: remove the orphaned + Rail test launcher** - `91553b9f` (fix)
 5. **Post-verification copy fix: remaining Action strings in bridge + IPC** - `fbb452a0` (fix)
+6. **Follow-up: restore a single-purpose + Rail button (no dropdown)** - `713bc1b0` (feat)
 
 ## Automated Gate Results
 
@@ -152,6 +154,7 @@ status: complete
 - **Full app suite:** 307 files passed, 2 skipped; 5384 tests passed, 1 skipped, 96 todo (5481 total).
 - **Typecheck:** baseline 16 `error TS`; final 16 `error TS`, with an identical error set (no new error file).
 - **Post-verification copy fix:** bridge/IPC suites 5 files, 188 passed, 1 skipped; typecheck still 16/16.
+- **Follow-up + Rail:** focused strip/Studio/View suites 328 passed; full suite 5384 passed, 1 skipped, 96 todo; typecheck 16/16.
 - **Zero-grep gates:**
   - `scriptPickerIntent | PhysicsPaintScriptPickerDialog | onCreateRotoKeyRail | onCreatePlayScriptRail | onCreateRevealRail` across `app/src` = 0.
   - `Create rail` in `PhysicsPaintWorkflowStrip.tsx` = 0; `physics-paint-rail-create` in `physicsPaintStudio.css` = 0.
@@ -240,8 +243,9 @@ Unit tests cannot prove WKWebView paint capture, cache merge, or rail derivation
 | 2 | + Key on empty frame 7 | Joins the rail and clones key 5's paint (unchanged behavior) | Not run | PENDING |
 | 3 | + Key on interpolated frame 3 | Joins the rail and clones key 1's paint (unchanged behavior) | Not run | PENDING |
 | 4 | Auto-paint on interpolated frame 3 | Joins the rail; the created key equals key 1's paint plus the new stroke | Not run | PENDING |
-| 5 | Inspect the timeline action row | No + Rail button, no dropdown; + Key still creates/joins keys | Not run | PENDING |
+| 5 | Inspect the timeline action row | + Key and + Rail buttons present; no rail-kind dropdown; + Key still creates/joins keys | Not run | PENDING |
 | 6 | Sidebar bottom tab and Scripts UI | Tab reads Scripts; visible Action references read Script/Scripts; Motion/Static/Reveal reachable through Create Rail dialog tabs | Not run | PENDING |
+| 7 | + Rail on an empty frame after existing keys | Creates a BLANK key that starts a NEW rail (does not clone or join); + Rail is greyed on a generated in-between and on a linked repeat | Not run | PENDING |
 
 ## Files Created/Modified
 
@@ -274,6 +278,6 @@ Unit tests cannot prove WKWebView paint capture, cache merge, or rail derivation
 ## Self-Check: PASSED
 
 - Created resolver and test files verified present.
-- Task commits verified in history: `0928506d`, `ea53a114`, `42e4e76d`, `91553b9f`, `fbb452a0`.
+- Task commits verified in history: `0928506d`, `ea53a114`, `42e4e76d`, `91553b9f`, `fbb452a0`, `713bc1b0`.
 - Deleted picker/launcher/rail-create files verified absent.
 - Full suite and comparative typecheck verified green after the final commit.
