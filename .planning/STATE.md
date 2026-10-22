@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261022-ujp: '<' / '>' restack keys, restack stroke-loss fixed (recording slot now follows the position), and stack badges (#id · position/total) in Move/Select mode; pending live UAT
+Last activity: 2026-10-23 - Quick task 261022-ujp UAT APPROVED: '<' / '>' restack keys in Move/Select mode, restack stroke-loss fixed (recording slot follows the position), and stack badges (#id · position/total) with a solid stroke-coloured box on the selection
 
 Progress: [██████████] 100%
 

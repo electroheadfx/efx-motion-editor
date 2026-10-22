@@ -197,15 +197,15 @@ None. The feature is wired end-to-end in both modules; no placeholder data or TO
 
 None. No new network endpoints, auth paths, file access, or schema changes at trust boundaries. Reorder is gated by the existing physical mutation lock and script in-flight guard; no new serialization surface (the projection reuses the existing stroke schema and capture format).
 
-## Live UAT
+## Live UAT — APPROVED (2026-10-23)
 
-PENDING — user-run, the only completion signal:
+User-run, the only completion signal. All rows passed live after the follow-ups:
 
-1. **Water color:** select a recorded stroke, press Space → the app shows the `0/N → N/N` re-apply pill and the stroke renders behind the next older stroke; Cmd+Z restores the previous order (and re-bakes it), Cmd+Shift+Z re-applies.
-2. **Brush:** with the Move tool over a stroke, press Space → the canvas redraws with the stroke one paint step back; repeated Space presses keep stepping the same hovered stroke; Backspace and drag still work afterwards.
-3. **Space unchanged elsewhere:** Space still toggles playback outside move/select mode, with no target, while playing, on key repeat, and with a modifier held.
-
-Automated-ready until all three rows pass.
+1. **Water color:** select a recorded stroke, press `<` → the sheet resets and re-applies through the shared pipeline; the stroke renders behind the next older stroke and `>` brings it forward; Cmd+Z restores the previous order (and re-bakes it).
+2. **Brush:** with the Move tool over a stroke, `<` / `>` step it one paint position; repeated presses keep stepping the same hovered stroke; Backspace and drag still work afterwards.
+3. **Space unchanged elsewhere:** Space toggles playback outside move/select mode, with no target, while playing, on key repeat, and with a modifier held.
+4. **No stroke loss on restack:** the 2-stroke repro (send the blue underpainting behind the pink) keeps the underpainting visible.
+5. **Stack badges:** `#<creation id> · <position>/<total>` on every stroke in both modules; ids never renumber on restack or delete; selected stroke shows a solid, bolder box and bold text in the stroke's own colour.
 
 ## Self-Check: PASSED
 
