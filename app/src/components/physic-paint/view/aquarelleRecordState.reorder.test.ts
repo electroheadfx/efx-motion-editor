@@ -27,6 +27,7 @@ import {
   getRecordedAquarelleStroke,
   recordAquarelleStroke,
   sendAquarelleStrokeBackwardInScript,
+  sendAquarelleStrokeForwardInScript,
 } from './aquarelleRecordState';
 import {
   aquarelleSelectedStrokeMutationId,
@@ -127,6 +128,39 @@ describe('261022-ujp aquarelle stroke stack step', () => {
     expect(sendAquarelleStrokeBackwardInScript(9204)).toBe(false);
     expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
     expect(getRecordedAquarellePayloadTimeline()).toEqual(timelineBefore);
+  });
+
+  it('each forward call is one step, and the top refuses', () => {
+    // Own frame so the walk cannot reach a previous test's strokes.
+    recordAquarelleStroke(9401, stroke(9401, 611));
+    recordAquarelleStroke(9402, stroke(9402, 611));
+    recordAquarelleStroke(9403, stroke(9403, 611));
+
+    expect(sendAquarelleStrokeForwardInScript(9401)).toBe(true);
+    expect(timelineIds().slice(-3)).toEqual([9402, 9401, 9403]);
+    expect(sendAquarelleStrokeForwardInScript(9401)).toBe(true);
+    expect(timelineIds().slice(-3)).toEqual([9402, 9403, 9401]);
+
+    const revisionBefore = aquarelleStrokesRevision.value;
+    const timelineBefore = [...getRecordedAquarellePayloadTimeline()];
+    expect(sendAquarelleStrokeForwardInScript(9401)).toBe(false);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+    expect(getRecordedAquarellePayloadTimeline()).toEqual(timelineBefore);
+  });
+
+  it('a forward edit restores the previous order on undo and the new order on redo', () => {
+    recordAquarelleStroke(9501, stroke(9501, 612));
+    recordAquarelleStroke(9502, stroke(9502, 612));
+
+    const editId = beginAquarelleReorderEdit(9501, 'forward');
+    expect(editId).not.toBeNull();
+    expect(frameIds(612).slice(-2)).toEqual([9502, 9501]);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(frameIds(612).slice(-2)).toEqual([9501, 9502]);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'redo')).not.toBeNull();
+    expect(frameIds(612).slice(-2)).toEqual([9502, 9501]);
   });
 
   it('refuses unknown, deleted, and single-of-frame strokes', () => {

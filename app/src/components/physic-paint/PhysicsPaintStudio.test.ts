@@ -2417,7 +2417,7 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarelleMoveStroke — reuses the same mapper. No second import,
     // no new status surface.
     // 261022-ujp: a sixth site — the stroke stack step re-bake failure in
-    // handleAquarelleSendBackward — same mapper, same capsule.
+    // handleAquarelleStepStroke — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
     expect(mentions).toBe(7); // one import + six call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
@@ -2939,8 +2939,8 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
     // Better hover text: the shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke · Space sends the selected stroke one step back');
-    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Backspace deletes the selected key · Space sends the hovered stroke one step back'");
+    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Backspace deletes the selected key · < sends the hovered stroke one step back · > one step forward'");
     expect(toolRail).toContain('title={item.tooltip ?? item.label}');
   });
 
@@ -3135,14 +3135,14 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
   });
 });
 
-// 261022-ujp: Space steps a selected/hovered stroke one paint position back
-// in BOTH modules. The key branch precedes playback and consumes Space only
+// 261022-ujp: '<' / '>' step a selected/hovered stroke one paint position in
+// BOTH modules. The key branch precedes playback and consumes the key only
 // with a concrete target; the watercolor path is one revision-authoritative
 // edit, the brush path is a paint-order projection over an untouched ledger.
 describe('261022-ujp stroke stack step', () => {
-  it('routes Space through the stack action BEFORE the playback toggle', () => {
-    expect(studioKeyboard).toContain('stepSelectedStrokeBackward?: () => boolean;');
-    const stackSite = studioKeyboard.indexOf('actions.stepSelectedStrokeBackward');
+  it('routes < and > through the stack action BEFORE the playback toggle', () => {
+    expect(studioKeyboard).toContain("stepSelectedStroke?: (direction: 'back' | 'forward') => boolean;");
+    const stackSite = studioKeyboard.indexOf('actions.stepSelectedStroke');
     const playbackSite = studioKeyboard.indexOf('actions.toggleRotoPlayback();');
     expect(stackSite).toBeGreaterThan(-1);
     expect(playbackSite).toBeGreaterThan(stackSite);
@@ -3150,24 +3150,28 @@ describe('261022-ujp stroke stack step', () => {
       studioKeyboard.lastIndexOf('if (', stackSite),
       playbackSite,
     );
-    expect(branch).toContain("event.key === ' '");
+    expect(branch).toContain("(event.key === '<' || event.key === '>')");
     expect(branch).toContain('!event.repeat');
     expect(branch).toContain('!event.metaKey');
     expect(branch).toContain('!event.ctrlKey');
     expect(branch).toContain('!event.altKey');
-    expect(branch).toContain('!event.shiftKey');
+    // '<' and '>' are Shift-produced on a US layout — guarding Shift would
+    // disable the shortcut outright.
+    expect(branch).not.toContain('!event.shiftKey');
     expect(branch).toContain('!state.isPlaying');
-    expect(branch).toContain('&& actions.stepSelectedStrokeBackward');
-    expect(branch).toContain('&& actions.stepSelectedStrokeBackward()');
+    expect(branch).toContain('&& actions.stepSelectedStroke');
+    expect(branch).toContain("event.key === '<' ? 'back' : 'forward'");
     // Never preventDefault BEFORE the action reports consumption.
     expect(branch.indexOf('event.preventDefault();')).toBeGreaterThan(
-      branch.indexOf('&& actions.stepSelectedStrokeBackward()'),
+      branch.indexOf('actions.stepSelectedStroke('),
     );
+    // Space keeps its playback binding and is no longer a stack key.
+    expect(studioKeyboard).not.toContain('stepSelectedStrokeBackward');
     expect(studioKeyboard).toContain('actions.toggleRotoPlayback();');
   });
 
   it('wires the Studio action with a mode+target gate and peek-only reads', () => {
-    const actionStart = studio.indexOf('stepSelectedStrokeBackward: () => {');
+    const actionStart = studio.indexOf('stepSelectedStroke: (direction) => {');
     const actionEnd = studio.indexOf('deleteBackgroundClip:', actionStart);
     expect(actionStart).toBeGreaterThan(-1);
     const action = studio.slice(actionStart, actionEnd);
@@ -3175,23 +3179,24 @@ describe('261022-ujp stroke stack step', () => {
     expect(action).toContain("if (activeModule.peek() === 'watercolor') {");
     expect(action).toContain('if (!aquarelleSelectMode.peek()) return false;');
     expect(action).toContain('const mutationId = aquarelleSelectedStrokeMutationId.peek();');
-    expect(action).toContain('handleAquarelleSendBackward(mutationId);');
+    expect(action).toContain('handleAquarelleStepStroke(mutationId, direction);');
     // Brush: the Move-tool hover target IS the selection; null falls through.
     expect(action).toContain('const engine = engineRef.current;');
     expect(action).toContain('const mutationId = engine.getMoveTargetMutationId();');
     expect(action).toContain('if (mutationId === null) return false;');
-    expect(action).toContain('if (!isPhysicalMutationLocked()) engine.sendStrokeBackward(mutationId);');
+    expect(action).toContain("if (direction === 'forward') engine.sendStrokeForward(mutationId);");
+    expect(action).toContain('else engine.sendStrokeBackward(mutationId);');
     // Peek-only: the Studio render body never subscribes these signals.
     expect(studio).not.toContain('aquarelleSelectMode.value');
     expect(studio).not.toContain('aquarelleSelectedStrokeMutationId.value');
   });
 
   it('orders the watercolor handler: begin -> reset -> await apply -> record on success -> rollback', () => {
-    const handlerStart = studio.indexOf('const handleAquarelleSendBackward = useCallback(');
+    const handlerStart = studio.indexOf('const handleAquarelleStepStroke = useCallback(');
     const handlerEnd = studio.indexOf('// 56-12 CACHE WRITE', handlerStart);
     expect(handlerStart).toBeGreaterThan(-1);
     const handler = studio.slice(handlerStart, handlerEnd);
-    const beginSite = handler.indexOf('const editId = beginAquarelleReorderEdit(mutationId);');
+    const beginSite = handler.indexOf('const editId = beginAquarelleReorderEdit(mutationId, direction);');
     const resetSite = handler.indexOf('aquarelleResetSheetRef.current?.();');
     const applySite = handler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
     const successSite = handler.indexOf('if (ok) {');
@@ -3216,7 +3221,7 @@ describe('261022-ujp stroke stack step', () => {
   });
 
   it('swaps payload entries by index and never touches Dry, ticks, or the registry order', () => {
-    const reorderStart = aquarelleRecordStateSource.indexOf('export function sendAquarelleStrokeBackwardInScript(');
+    const reorderStart = aquarelleRecordStateSource.indexOf('export function stepAquarelleStrokeInScript(');
     expect(reorderStart).toBeGreaterThan(-1);
     const reorder = aquarelleRecordStateSource.slice(
       reorderStart,
@@ -3254,7 +3259,8 @@ describe('261022-ujp stroke stack step', () => {
     // The step keeps the move-commit contract and never reorders allActions.
     expect(paintEngineSource).toContain('public getMoveTargetMutationId(): number | null');
     expect(paintEngineSource).toContain("return this.state.tool === 'move' ? this.moveHoverTargetId : null");
-    const stepStart = paintEngineSource.indexOf('public sendStrokeBackward(');
+    expect(paintEngineSource).toContain('public sendStrokeForward(mutationId: number): boolean');
+    const stepStart = paintEngineSource.indexOf('private stepStrokeInStack(');
     expect(stepStart).toBeGreaterThan(-1);
     const step = paintEngineSource.slice(stepStart, paintEngineSource.indexOf('private cursorGlyphMode(', stepStart));
     expect(step).toContain('this.flushPendingStrokeFinalizations()');

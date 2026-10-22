@@ -3918,28 +3918,31 @@ export function PhysicsPaintStudio() {
         handleAquarelleDeleteStroke(mutationId);
         return true;
       },
-      // 261022-ujp: Space steps the targeted stroke one paint position back.
+      // 261022-ujp: '<' / '>' step the targeted stroke one paint position.
       // Water color requires select mode + a selected stroke; once those hold
-      // the key is consumed even when the handler refuses (lock, bottom of the
-      // stack), so Space never starts playback mid-stack-edit. Peek-only reads
-      // keep the Studio render body unsubscribed.
-      stepSelectedStrokeBackward: () => {
+      // the key is consumed even when the handler refuses (lock, end of the
+      // stack), so playback keys stay untouched mid-stack-edit. Peek-only
+      // reads keep the Studio render body unsubscribed.
+      stepSelectedStroke: (direction) => {
         if (activeModule.peek() === 'watercolor') {
           if (!aquarelleSelectMode.peek()) return false;
           const mutationId = aquarelleSelectedStrokeMutationId.peek();
           if (mutationId === null) return false;
-          handleAquarelleSendBackward(mutationId);
+          handleAquarelleStepStroke(mutationId, direction);
           return true;
         }
         // Brush: the Move tool's hover target IS the selected stroke. Null on
-        // any other tool or with no stroke hovered, so playback keeps Space
-        // verbatim everywhere else. Once a target holds, the key is consumed
-        // even when the step is refused (physical lock, already at the front).
+        // any other tool or with no stroke hovered, so the shortcut stays inert
+        // everywhere else. Once a target holds, the key is consumed even when
+        // the step is refused (physical lock, already at that end).
         const engine = engineRef.current;
         if (!engine) return false;
         const mutationId = engine.getMoveTargetMutationId();
         if (mutationId === null) return false;
-        if (!isPhysicalMutationLocked()) engine.sendStrokeBackward(mutationId);
+        if (!isPhysicalMutationLocked()) {
+          if (direction === 'forward') engine.sendStrokeForward(mutationId);
+          else engine.sendStrokeBackward(mutationId);
+        }
         return true;
       },
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
@@ -4883,18 +4886,18 @@ export function PhysicsPaintStudio() {
     canvasHeight,
   ]);
 
-  // 261022-ujp: Space stack step. The reorder swaps the recorded stroke one
-  // payload position back, resets the sheet, and re-applies the current
-  // frame's script through the SAME shared Apply pipeline as delete/move.
-  // Reorder + re-bake = ONE `aquarelle-script` ledger entry. Guards are
-  // peek-only and mirror the move handler's order: the handler must not
-  // subscribe the Studio body.
-  const handleAquarelleSendBackward = useCallback((mutationId: number) => {
+  // 261022-ujp: '<' / '>' stack step. The reorder swaps the recorded stroke
+  // one payload position, resets the sheet, and re-applies the current frame's
+  // script through the SAME shared Apply pipeline as delete/move. Reorder +
+  // re-bake = ONE `aquarelle-script` ledger entry. Guards are peek-only and
+  // mirror the move handler's order: the handler must not subscribe the Studio
+  // body.
+  const handleAquarelleStepStroke = useCallback((mutationId: number, direction: 'back' | 'forward') => {
     if (isPhysicalMutationLocked()) return;
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
     if (isAquarelleScriptEditInFlight()) return;
-    const editId = beginAquarelleReorderEdit(mutationId);
+    const editId = beginAquarelleReorderEdit(mutationId, direction);
     if (editId === null) return;
     setAquarelleScriptEditInFlight(true);
     void (async () => {

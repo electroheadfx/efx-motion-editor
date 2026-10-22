@@ -3453,16 +3453,16 @@ export class EfxPaintEngine {
   }
 
   /**
-   * 261022-ujp: send one stroke one paint step back. The ledger order is
+   * 261022-ujp: step one stroke through the paint stack. The ledger order is
    * NEVER touched (undo() splices its suffix); only the paint-order projection
    * moves. A stroke's group is the primary plus its immediately following
-   * zero-point continuations, and it swaps with the group immediately before
-   * it. Inherits the move-commit contract: flush queued finalizations first,
-   * no new undo checkpoint, the redo stack dies (a stale redo would repaint
+   * zero-point continuations, and it swaps with the neighbouring group.
+   * Inherits the move-commit contract: flush queued finalizations first, no
+   * new undo checkpoint, the redo stack dies (a stale redo would repaint
    * pre-reorder pixels), one 'move' completed mutation, hover target kept so a
    * repeated press steps the same stroke.
    */
-  public sendStrokeBackward(mutationId: number): boolean {
+  private stepStrokeInStack(mutationId: number, direction: 'back' | 'forward'): boolean {
     if (this.state.tool !== 'move') return false
     // Drain FIRST: redrawAll's queued-tail math and the group walk both
     // require settled entries (same law as commitMoveGesture).
@@ -3479,21 +3479,40 @@ export class EfxPaintEngine {
     let movingEnd = primaryIndex + 1
     while (movingEnd < live.length && live[movingEnd].points.length === 0) movingEnd += 1
 
-    // Previous group: walk back over its zero-point continuations, then its
-    // primary. A negative index means the moving group is already first.
-    let previousStart = primaryIndex - 1
-    while (previousStart >= 0 && live[previousStart].points.length === 0) previousStart -= 1
-    if (previousStart < 0) return false
+    let neighbourStart: number
+    let neighbourEnd: number
+    if (direction === 'back') {
+      // Previous group: walk back over its zero-point continuations, then its
+      // primary. A negative index means the moving group is already first.
+      neighbourStart = primaryIndex - 1
+      while (neighbourStart >= 0 && live[neighbourStart].points.length === 0) neighbourStart -= 1
+      if (neighbourStart < 0) return false
+      neighbourEnd = primaryIndex
+    } else {
+      // Next group: movingEnd already points past the moving continuations, so
+      // it is the next primary (or the end of the stack when already on top).
+      if (movingEnd >= live.length) return false
+      neighbourStart = movingEnd
+      neighbourEnd = movingEnd + 1
+      while (neighbourEnd < live.length && live[neighbourEnd].points.length === 0) neighbourEnd += 1
+    }
 
     // Materialize the live order with the two groups swapped. Dead refs are
     // dropped here safely: a reorder clears the redo stack, so no ledger entry
     // can ever bring one back.
-    this.strokeStack = [
-      ...live.slice(0, previousStart),
-      ...live.slice(primaryIndex, movingEnd),
-      ...live.slice(previousStart, primaryIndex),
-      ...live.slice(movingEnd),
-    ]
+    this.strokeStack = direction === 'back'
+      ? [
+          ...live.slice(0, neighbourStart),
+          ...live.slice(primaryIndex, movingEnd),
+          ...live.slice(neighbourStart, neighbourEnd),
+          ...live.slice(movingEnd),
+        ]
+      : [
+          ...live.slice(0, primaryIndex),
+          ...live.slice(neighbourStart, neighbourEnd),
+          ...live.slice(primaryIndex, movingEnd),
+          ...live.slice(neighbourEnd),
+        ]
 
     // A stale redo would repaint pre-reorder pixels — the move-commit law.
     this.redoStack = []
@@ -3505,6 +3524,16 @@ export class EfxPaintEngine {
     // moveHoverTargetId is deliberately kept: a repeated press steps the same
     // stroke (re-hovering could retarget an overlapping neighbour).
     return true
+  }
+
+  /** 261022-ujp: one step behind (toward the bottom of the paint stack). */
+  public sendStrokeBackward(mutationId: number): boolean {
+    return this.stepStrokeInStack(mutationId, 'back')
+  }
+
+  /** 261022-ujp: one step in front (toward the top of the paint stack). */
+  public sendStrokeForward(mutationId: number): boolean {
+    return this.stepStrokeInStack(mutationId, 'forward')
   }
 
   /** 261003-ud9: cursor glyph — pointing hand while a fresh stroke is hovered under the erase OR move cursor, ring/crosshair otherwise. */

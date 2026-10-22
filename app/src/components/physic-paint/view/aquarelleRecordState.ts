@@ -401,9 +401,13 @@ export function translateAquarelleStrokeInScript(
   return true;
 }
 
+/** Stack-step direction: `back` = one step behind, `forward` = one step in front. */
+export type AquarelleStackStepDirection = 'back' | 'forward';
+
 /**
- * 261022-ujp: step one recorded stroke back in the payload timeline — swap it
- * with the nearest OLDER non-deleted stroke of the same edit frame.
+ * 261022-ujp: step one recorded stroke through the payload timeline — swap it
+ * with the nearest non-deleted stroke of the same edit frame in the requested
+ * direction.
  *
  * The payload timeline IS the watercolor paint order, so this is a pure index
  * swap: the two entries trade places and every per-stroke field (points,
@@ -412,17 +416,21 @@ export function translateAquarelleStrokeInScript(
  * index and are simply walked past. The registry Map insertion order is never
  * reordered — hit-testing walks it newest-last.
  *
- * Refuses unknown, deleted, out-of-timeline, and already-first-of-frame ids
+ * Refuses unknown, deleted, out-of-timeline, and already-at-that-end ids
  * without touching the revision.
  */
-export function sendAquarelleStrokeBackwardInScript(mutationId: number): boolean {
+export function stepAquarelleStrokeInScript(
+  mutationId: number,
+  direction: AquarelleStackStepDirection,
+): boolean {
   const entry = recordedStrokeEntries.get(mutationId);
   if (!entry || deletedAquarelleStrokeIds.has(mutationId)) return false;
   const index = payloadTimeline.indexOf(entry);
   if (index < 0) return false;
 
+  const step = direction === 'back' ? -1 : 1;
   let partnerIndex = -1;
-  for (let candidate = index - 1; candidate >= 0; candidate -= 1) {
+  for (let candidate = index + step; candidate >= 0 && candidate < payloadTimeline.length; candidate += step) {
     const event = payloadTimeline[candidate]!;
     // Dry is a sheet action with no frame anchor (D-15): never a swap partner.
     if (isAquarelleDryEvent(event)) continue;
@@ -438,6 +446,16 @@ export function sendAquarelleStrokeBackwardInScript(mutationId: number): boolean
   payloadTimeline[partnerIndex] = entry;
   bumpAquarelleStrokesRevision();
   return true;
+}
+
+/** 261022-ujp: one step behind (toward the bottom of the paint stack). */
+export function sendAquarelleStrokeBackwardInScript(mutationId: number): boolean {
+  return stepAquarelleStrokeInScript(mutationId, 'back');
+}
+
+/** 261022-ujp: one step in front (toward the top of the paint stack). */
+export function sendAquarelleStrokeForwardInScript(mutationId: number): boolean {
+  return stepAquarelleStrokeInScript(mutationId, 'forward');
 }
 
 /**

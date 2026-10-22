@@ -406,6 +406,44 @@ describe('261022-ujp Brush paint-order projection', () => {
     expect(events.filter((event) => event.kind === 'move')).toHaveLength(2)
   })
 
+  it('sendStrokeForward moves a stroke one step in front and the top refuses', () => {
+    const engine = createHarness()
+    const a = paintStroke(engine, hLine(20), 100)
+    const b = paintStroke(engine, hLine(40), 300)
+    const c = paintStroke(engine, hLine(60), 500)
+    const events = captureMutations(engine)
+
+    engine.setTool('move')
+    expect(engine.sendStrokeForward(a)).toBe(true)
+    expect(order(engine)).toEqual([b, a, c])
+    expect(engine.sendStrokeForward(a)).toBe(true)
+    expect(order(engine)).toEqual([b, c, a])
+
+    // Already on top: the step refuses with no mutation.
+    expect(engine.sendStrokeForward(a)).toBe(false)
+    expect(order(engine)).toEqual([b, c, a])
+    expect(events.filter((event) => event.kind === 'move')).toHaveLength(2)
+  })
+
+  it('forward keeps a primary and its continuations together', () => {
+    const engine = createHarness()
+    const primary1: PaintStroke = { tool: 'paint', points: [{ x: 10, y: 10, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { ...defaultOpts }, timestamp: 1, mutationId: 1 }
+    const continuation: PaintStroke = { tool: 'paint', points: [], color: '#000000', params: { ...defaultOpts }, timestamp: 1, mutationId: 1, diffusionFrames: 4 }
+    const primary2: PaintStroke = { tool: 'paint', points: [{ x: 20, y: 20, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { ...defaultOpts }, timestamp: 2, mutationId: 2 }
+    engine.allActions = [primary1, continuation, primary2]
+    engine.strokeStack = [primary1, continuation, primary2]
+    engine.setTool('move')
+
+    expect(engine.sendStrokeForward(1)).toBe(true)
+
+    // Group 1 (primary + continuation) lands in front of primary-2 and stays
+    // internally contiguous.
+    expect(engine.strokeStack[0]).toBe(primary2)
+    expect(engine.strokeStack[1]).toBe(primary1)
+    expect(engine.strokeStack[2]).toBe(continuation)
+    expect(engine.allActions.map((action: PaintStroke) => action.mutationId)).toEqual([1, 1, 2])
+  })
+
   it('refuses outside the move tool and for unknown ids', () => {
     const engine = createHarness()
     const a = paintStroke(engine, hLine(20), 100)
