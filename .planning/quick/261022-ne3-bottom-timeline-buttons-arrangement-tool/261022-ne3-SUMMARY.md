@@ -125,7 +125,9 @@ Each task was committed atomically:
 - A broader run of `src/components/physic-paint/view` (1288 tests) shows one unrelated, pre-existing failure: `PhysicsPaintWorkflowStrip.viewport.test.ts:834` still expects a `physics-paint-track-row-solo` chip that no longer exists in any source file (retired by quick 261022-iff). It is untouched by this quick and fails at HEAD; left alone per the scope boundary.
 - The plan's `files_modified` did not list `PhysicsPaintScriptsPanel.test.ts`, but Task 2's verify command requires that suite green; the test-only deviation above resolves the contradiction.
 
-## Live UAT (user-run) — PENDING
+## Live UAT — SUPERSEDED BY 261022-o2a
+
+> This intermediate layout was replaced by quick **261022-o2a** (UAT approved 2026-10-22). The current contract is the Tools Scripts/Living Script split, the shared Script picker, the four-action sidebar toolbar and per-row hover delete recorded in that quick's summary. The rows below are kept as a historical record of the 261022-ne3 round.
 
 | # | Row | Status |
 |---|-----|--------|

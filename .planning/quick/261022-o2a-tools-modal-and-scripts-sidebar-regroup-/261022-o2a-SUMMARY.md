@@ -161,32 +161,32 @@ Live review asked for tighter label treatment and a content-aware Save:
 - Tools Scripts row: Save is icon-only, Load + Apply reads **Apply**, and the three actions stay on ONE line (`flex-wrap: nowrap`).
 - Tools Save now mirrors the Living Script **Copy** gate: it greys out until the current real Roto key holds strokes in memory, and activates during/after painting. Disabled copy falls back to the Copy reason ("Paint at least one brush on a real Roto key.").
 
-## Live UAT (PENDING — user-run)
+## Live UAT (APPROVED 2026-10-22 — user-run)
 
-Status stays automated-ready; these rows are not validated until the user runs them live.
+All eleven rows passed in the live Studio review; the user approved UAT on 2026-10-22.
 
 | # | Row | Status |
 |---|-----|--------|
-| 1 | Tools -> Scripts shows Save (icon-only), Apply, Create Rail on ONE line; a divider and "Living Script" heading follow with Copy, Apply, Clear; Delete and Refresh clones gone. | PENDING |
-| 2 | Tools -> Apply (Load + Apply) with NO sidebar selection opens the picker listing every project Script; picking one applies it to the current frame. | PENDING |
-| 3 | Tools -> Create Rail with no sidebar selection opens the same picker; picking a Script closes it and opens the existing Create Rail / Play Script dialog for that Script. | PENDING |
-| 4 | Picker Cancel, Escape and outside click close it without acting; focus returns to the Tools button; Escape closes the picker before the Tools popover. | PENDING |
-| 5 | Zero project Scripts: Tools Load + Apply and Create Rail are greyed with the "No project Scripts yet." reason; the picker shows its empty state if opened another way. | PENDING |
-| 6 | Sidebar Scripts toolbar shows Save (icon-only), Apply, Create Rail (label), Refresh (icon-only), uncrowded; top Delete and Copy are gone. | PENDING |
-| 7 | Hover or focus a script row: icon-only trash appears; clicking opens the delete confirmation for THAT Script; cancel restores focus to its trash; confirm removes it and focus lands on the nearest surviving row. | PENDING |
-| 8 | Right-panel Load + Apply and Create Rail still act on the currently selected Script (no picker from the sidebar). | PENDING |
-| 9 | The Tools popover still dismisses on outside click and its tooltip copy reads accurately. | PENDING |
-| 10 | The bottom action row (Key, Rail, Insert, Trash, Push, Duplicate, Copy, Paste, Cut, Scissor) is unchanged from 261022-ne3. | PENDING |
-| 11 | Tools Save is greyed with no strokes on the current real key; painting a stroke activates it and it stays active after painting, matching the Living Script Copy gate. | PENDING |
+| 1 | Tools -> Scripts shows Save (icon-only), Apply, Create Rail on ONE line; a divider and "Living Script" heading follow with Copy, Apply, Clear; Delete and Refresh clones gone. | PASSED |
+| 2 | Tools -> Apply (Load + Apply) with NO sidebar selection opens the picker listing every project Script; picking one applies it to the current frame. | PASSED |
+| 3 | Tools -> Create Rail with no sidebar selection opens the same picker; picking a Script closes it and opens the existing Create Rail / Play Script dialog for that Script. | PASSED |
+| 4 | Picker Cancel, Escape and outside click close it without acting; focus returns to the Tools button; Escape closes the picker before the Tools popover. | PASSED |
+| 5 | Zero project Scripts: Tools Load + Apply and Create Rail are greyed with the "No project Scripts yet." reason; the picker shows its empty state if opened another way. | PASSED |
+| 6 | Sidebar Scripts toolbar shows Save (icon-only), Apply, Create Rail (label), Refresh (icon-only), uncrowded; top Delete and Copy are gone. | PASSED |
+| 7 | Hover or focus a script row: icon-only trash appears; clicking opens the delete confirmation for THAT Script; cancel restores focus to its trash; confirm removes it and focus lands on the nearest surviving row. | PASSED |
+| 8 | Right-panel Load + Apply and Create Rail still act on the currently selected Script (no picker from the sidebar). | PASSED |
+| 9 | The Tools popover still dismisses on outside click and its tooltip copy reads accurately. | PASSED |
+| 10 | The bottom action row (Key, Rail, Insert, Trash, Push, Duplicate, Copy, Paste, Cut, Scissor) is unchanged from 261022-ne3. | PASSED |
+| 11 | Tools Save is greyed with no strokes on the current real key; painting a stroke activates it and it stays active after painting, matching the Living Script Copy gate. | PASSED |
 
 ## Next Phase Readiness
 
-- Code and source-contract tests are complete; the quick is **automated-ready**, not done.
-- Next step is the user's live UAT of the ten rows above; any failure reopens Tasks 1-3 by surface.
+- Code, source-contract tests and live UAT are complete; the quick is **approved and closed** (2026-10-22).
+- The verified contract is the final label/layout treatment recorded in the UAT follow-up above.
 
 ---
 *Phase: quick-261022-o2a*
-*Completed: 2026-10-22 (automated-ready; UAT pending)*
+*Completed: 2026-10-22 (live UAT approved)*
 
 ## Self-Check: PASSED
 
