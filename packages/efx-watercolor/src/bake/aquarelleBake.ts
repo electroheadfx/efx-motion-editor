@@ -112,6 +112,16 @@ export interface AquarelleBakeOptions {
     readonly position: number
     readonly startFrame: number
   }
+  /**
+   * 261022 Apply parity: fires only during progressive replay (a bake with
+   * `frameCount` set), once per FULLY FED stroke event, cumulative from 1 to
+   * the stroke-event count. Dry events are not counted. It runs inside the
+   * bake turn, so a throw would fail the bake — the consumer must only
+   * perform guarded writes and never throw. When `frameCount` is 1 the bake
+   * yields to the host between strokes so the UI can paint; the committed
+   * image and the stepped tick sequence are identical to a run without it.
+   */
+  onStrokeFed?: (completed: number, total: number) => void
 }
 
 export type AquarelleBakeResult =
@@ -169,6 +179,30 @@ const SETTLE_MAX_TICKS = 3600
 function readSize(frame: CanvasImageSource): { width: number; height: number } {
   const carrier = frame as { width?: number; height?: number }
   return { width: carrier.width ?? 0, height: carrier.height ?? 0 }
+}
+
+/**
+ * 261022: yield to the host task queue so a progress write can paint between
+ * strokes. `MessageChannel` posts a MACROtask in every webview we run in
+ * (WebKit included). `requestAnimationFrame` must NEVER be used here — it
+ * stops for a hidden window, and an Apply may outlive the Studio's
+ * visibility. `setTimeout(0)` is the fallback where MessageChannel is absent.
+ */
+function yieldToHost(): Promise<void> {
+  if (typeof MessageChannel === 'function') {
+    return new Promise<void>((resolve) => {
+      const channel = new MessageChannel()
+      channel.port1.onmessage = () => {
+        channel.port1.close()
+        channel.port2.close()
+        resolve()
+      }
+      channel.port2.postMessage(0)
+    })
+  }
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
+  })
 }
 
 /** DOM fallback encoder — the app injects the Rust-backed one (R4.2). */
@@ -279,6 +313,24 @@ export function createAquarelleBake(
     }
     const timedBase = buildRecordedTimeline(strokes)
     const schedule = timedBase ? [] : buildProgressiveStrokeSchedule(strokes, frameSpan)
+
+    // 261022 Apply parity: one cumulative progress step per fully fed stroke.
+    // Keyed by stroke identity because a stroke can be re-fed in larger
+    // chunks on later windows — only its first completion counts.
+    const onStrokeFed = options.onStrokeFed
+    const fedStrokes = new Set<StudioStroke<AquarelleStrokePayload>>()
+    let fedStrokeCount = 0
+    const strokeTotal = strokes.length
+    const reportFed = async (stroke: StudioStroke<AquarelleStrokePayload>): Promise<void> => {
+      if (!onStrokeFed || fedStrokes.has(stroke)) return
+      fedStrokes.add(stroke)
+      fedStrokeCount += 1
+      onStrokeFed(fedStrokeCount, strokeTotal)
+      // Apply (one output frame) yields so the progress write paints. Play's
+      // multi-frame bakes already yield per captured frame — never add a
+      // macrotask per stroke there.
+      if (frameSpan === 1 && fedStrokeCount < strokeTotal) await yieldToHost()
+    }
 
     // 261019b: frames follow SAMPLE progress, not wall-clock time. The session
     // clock includes the settle tail (often seconds) and the idle gaps, so a
@@ -457,7 +509,7 @@ export function createAquarelleBake(
           : diffusionPerFrame
       }
 
-      const framePromise = scheduleAdapter(() => {
+      const framePromise = scheduleAdapter(async () => {
         if (timed) {
           // TRUE TICK ORDER: a window's samples must land at their recorded
           // tick — idle fluid time BEFORE a stroke is stepped before its
@@ -470,7 +522,12 @@ export function createAquarelleBake(
           for (const entry of timed) {
             if (entry.beginTick > windowEnd) break
             const pointCount = Math.min(entry.stroke.pts.length, windowEnd - entry.beginTick)
-            if (pointCount <= 0) continue
+            if (pointCount <= 0) {
+              // A zero-point stroke is fully fed by definition. A window that
+              // has NOT opened yet (beginTick === windowEnd) is not progress.
+              if (entry.stroke.pts.length === 0) await reportFed(entry.stroke)
+              continue
+            }
             const fed = fedCounts.get(entry.stroke) ?? 0
             if (pointCount <= fed) continue
             const firstTick = entry.beginTick + fed
@@ -484,6 +541,7 @@ export function createAquarelleBake(
             adapter.renderPartialStrokes([{ stroke: entry.stroke, pointCount }])
             cursor = firstTick + (pointCount - fed)
             fedCounts.set(entry.stroke, pointCount)
+            if (pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke)
           }
           // A user Dry after the last stroke settles at the end of the span.
           if (isFinalFrame && trailingDrys.length > 0) {
@@ -496,6 +554,9 @@ export function createAquarelleBake(
           for (let tick = cursor; tick < windowEnd; tick += 1) adapter.stepTick(tick)
         } else {
           adapter.renderPartialStrokes(frameStrokes)
+          for (const entry of frameStrokes) {
+            if (entry.pointCount >= entry.stroke.pts.length) await reportFed(entry.stroke)
+          }
           for (let tick = 0; tick < tickBudget; tick += 1) {
             adapter.stepTick(tick)
           }

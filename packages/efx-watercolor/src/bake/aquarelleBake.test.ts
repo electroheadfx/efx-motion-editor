@@ -563,6 +563,118 @@ describe('261019c visible settle cap', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// 261022 per-stroke progress (Apply parity) — the aquarelle Apply bake runs
+// ONE output frame, so onCommit cannot carry progress. `onStrokeFed` reports
+// each fully fed stroke; the single-frame yield lets the pill paint.
+// ---------------------------------------------------------------------------
+
+describe('261022 per-stroke progress (Apply parity)', () => {
+  type FedReport = [number, number]
+
+  function collectReports(): { reports: FedReport[]; onStrokeFed: (completed: number, total: number) => void } {
+    const reports: FedReport[] = []
+    return { reports, onStrokeFed: (completed, total) => { reports.push([completed, total]) } }
+  }
+
+  it('reports one cumulative step per fully fed stroke and excludes Dry', async () => {
+    const { reports, onStrokeFed } = collectReports()
+    const { adapter } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFed,
+    })
+    const strokeA = timedStroke(3, 1000, null)
+    const dry = createDryEvent(3, 1100)
+    const strokeB = timedStroke(3, 1200, null)
+
+    const result = await bake.bake([strokeA, dry, strokeB])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    expect(reports).toEqual([[1, 2], [2, 2]])
+  })
+
+  it('reports on the point-weight fallback when recorded timing is unusable', async () => {
+    const { reports, onStrokeFed } = collectReports()
+    const { adapter } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFed,
+    })
+
+    // timestamp 0 makes buildRecordedTimeline return null — the shared
+    // point-weight schedule is the only remaining path.
+    const result = await bake.bake([timedStroke(2, 0, null)])
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.frames).toHaveLength(1)
+    expect(reports).toEqual([[1, 1]])
+  })
+
+  it('does not report without frameCount', async () => {
+    const { reports, onStrokeFed } = collectReports()
+    const { adapter } = makeFakeAdapter()
+    const bake = createAquarelleBake(adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      onStrokeFed,
+    })
+
+    const result = await bake.bake([makeStroke()])
+
+    expect(result.ok).toBe(true)
+    // The non-progressive per-stroke path stays silent.
+    expect(reports).toEqual([])
+  })
+
+  it('yielding between strokes leaves the image and the tick sequence unchanged', async () => {
+    const script = (): AquarellePayloadEvent[] => [
+      timedStroke(3, 1000, null),
+      createDryEvent(3, 1100),
+      timedStroke(3, 1200, null),
+    ]
+
+    const plain = makeTimelineAdapter(0)
+    const plainBake = createAquarelleBake(plain.adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+    })
+    const plainResult = await plainBake.bake(script())
+
+    const { reports, onStrokeFed } = collectReports()
+    const listened = makeTimelineAdapter(0)
+    const listenedBake = createAquarelleBake(listened.adapter, {
+      encodeWebp: pixelEncoder,
+      width: 8,
+      height: 8,
+      frameCount: 1,
+      onStrokeFed,
+    })
+    const listenedResult = await listenedBake.bake(script())
+
+    expect(plainResult.ok).toBe(true)
+    expect(listenedResult.ok).toBe(true)
+    if (!plainResult.ok || !listenedResult.ok) return
+    expect(reports).toEqual([[1, 2], [2, 2]])
+    expect(plainResult.frames).toHaveLength(1)
+    expect(listenedResult.frames).toHaveLength(1)
+    expect(Array.from(listenedResult.frames[0]!.bytes)).toEqual(Array.from(plainResult.frames[0]!.bytes))
+    expect(listened.log.stepsByFrame).toEqual(plain.log.stepsByFrame)
+  })
+})
+
 describe('261019 recorded-timeline progressive replay', () => {
   it('starts the animation at frame 0 (no playFrame anchor) and simulates the real inter-stroke gap', async () => {
     // HOST_TICK_MS = 16.667 ms. Stroke A: 11 pts (10 ticks), END at t=1000ms.
