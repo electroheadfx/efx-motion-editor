@@ -3931,8 +3931,16 @@ export function PhysicsPaintStudio() {
           handleAquarelleSendBackward(mutationId);
           return true;
         }
-        // 261022-ujp Task 2 owns the Brush arm.
-        return false;
+        // Brush: the Move tool's hover target IS the selected stroke. Null on
+        // any other tool or with no stroke hovered, so playback keeps Space
+        // verbatim everywhere else. Once a target holds, the key is consumed
+        // even when the step is refused (physical lock, already at the front).
+        const engine = engineRef.current;
+        if (!engine) return false;
+        const mutationId = engine.getMoveTargetMutationId();
+        if (mutationId === null) return false;
+        if (!isPhysicalMutationLocked()) engine.sendStrokeBackward(mutationId);
+        return true;
       },
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,

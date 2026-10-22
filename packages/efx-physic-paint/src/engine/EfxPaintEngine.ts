@@ -640,6 +640,14 @@ export class EfxPaintEngine {
 
   // --- Stroke Recording ---
   private allActions: PaintStroke[] = []
+  /**
+   * 261022-ujp: paint/z-order projection of ledger object refs. `allActions`
+   * keeps acceptance order because undo() splices its suffix; rendering and
+   * serialization follow this projection instead. Dead refs stay so an
+   * undo -> redo re-push restores a stroke's paint position (a stack step
+   * materializes the live order, which is safe because it clears the redo).
+   */
+  private strokeStack: PaintStroke[] = []
   private undoStack: PaintHistoryEntry[] = []
   private redoStack: PaintHistoryEntry[] = []
   private historyEntries: PaintHistoryEntry[] = []
@@ -1506,7 +1514,7 @@ export class EfxPaintEngine {
     // Record physics run as action for deterministic replay
     const completedTickCount = this.physicsTickCount
     if (completedTickCount > 0) {
-      this.allActions.push({
+      this.pushAcceptedActions([{
         tool: 'paint', // placeholder, actual physics strokes filtered during save
         points: [],
         color: null,
@@ -1514,7 +1522,7 @@ export class EfxPaintEngine {
         timestamp: Date.now(),
         diffusionFrames: completedTickCount,
         physicsMode: completedMode,
-      })
+      }])
     }
 
     // Restore previous physics mode only after completed-session finalization.
@@ -1684,6 +1692,7 @@ export class EfxPaintEngine {
     this.activeStrokeFinalization = null
     this.activeMutationId = null
     this.allActions = []
+    this.strokeStack = []
     this.undoStack = []
     this.redoStack = []
     this.historyEntries = []
@@ -1963,7 +1972,9 @@ export class EfxPaintEngine {
 
   /** Get a deep copy of all recorded strokes (for AnimationPlayer, per D-07) */
   getStrokes(): PaintStroke[] {
-    return this.allActions.map(s => ({
+    // 261022-ujp: paint order, not the acceptance ledger (getStrokeCount keeps
+    // counting allActions — every live entry).
+    return this.liveActionsInPaintOrder().map(s => ({
       ...s,
       points: s.points.map(p => ({ ...p })),
       params: { ...s.params },
@@ -2331,7 +2342,7 @@ export class EfxPaintEngine {
       return continuation
     })
     const actions = [primary, ...continuations]
-    this.allActions.push(...actions)
+    this.pushAcceptedActions(actions)
 
     const pending: DeferredStrokeFinalization = {
       tool: primary.tool,
@@ -3326,6 +3337,15 @@ export class EfxPaintEngine {
   }
 
   /**
+   * 261022-ujp: the brush "selected" stroke IS the Move-tool hover target —
+   * there is no second selection state. Null on every other tool or when no
+   * stroke is hovered, so Space keeps its playback binding there.
+   */
+  public getMoveTargetMutationId(): number | null {
+    return this.state.tool === 'move' ? this.moveHoverTargetId : null
+  }
+
+  /**
    * 261004-dn5: pointerdown with the move tool — begin a rigid translation of
    * the script-backed stroke under the press, or decline it as a pure no-op
    * (no drawing flag, no rawPts, no acceptStroke, no mutation).
@@ -3425,6 +3445,61 @@ export class EfxPaintEngine {
     this.redrawAll()
     this.notifyCompletedMutation('move', gesture.mutationId)
     this.updateMoveHover()
+  }
+
+  /**
+   * 261022-ujp: send one stroke one paint step back. The ledger order is
+   * NEVER touched (undo() splices its suffix); only the paint-order projection
+   * moves. A stroke's group is the primary plus its immediately following
+   * zero-point continuations, and it swaps with the group immediately before
+   * it. Inherits the move-commit contract: flush queued finalizations first,
+   * no new undo checkpoint, the redo stack dies (a stale redo would repaint
+   * pre-reorder pixels), one 'move' completed mutation, hover target kept so a
+   * repeated press steps the same stroke.
+   */
+  public sendStrokeBackward(mutationId: number): boolean {
+    if (this.state.tool !== 'move') return false
+    // Drain FIRST: redrawAll's queued-tail math and the group walk both
+    // require settled entries (same law as commitMoveGesture).
+    this.flushPendingStrokeFinalizations()
+
+    const live = this.liveActionsInPaintOrder()
+    const primaryIndex = live.findIndex(action =>
+      action.mutationId === mutationId && action.tool === 'paint' && action.points.length > 0,
+    )
+    if (primaryIndex < 0) return false
+
+    // Moving group: the primary plus every immediately following zero-point
+    // continuation (they travel together — the primary owns their paint).
+    let movingEnd = primaryIndex + 1
+    while (movingEnd < live.length && live[movingEnd].points.length === 0) movingEnd += 1
+
+    // Previous group: walk back over its zero-point continuations, then its
+    // primary. A negative index means the moving group is already first.
+    let previousStart = primaryIndex - 1
+    while (previousStart >= 0 && live[previousStart].points.length === 0) previousStart -= 1
+    if (previousStart < 0) return false
+
+    // Materialize the live order with the two groups swapped. Dead refs are
+    // dropped here safely: a reorder clears the redo stack, so no ledger entry
+    // can ever bring one back.
+    this.strokeStack = [
+      ...live.slice(0, previousStart),
+      ...live.slice(primaryIndex, movingEnd),
+      ...live.slice(previousStart, primaryIndex),
+      ...live.slice(movingEnd),
+    ]
+
+    // A stale redo would repaint pre-reorder pixels — the move-commit law.
+    this.redoStack = []
+    this.notifyHistoryAvailability()
+    this.displayCompositeDirty = true
+    this.redrawAll()
+    this.requestRender()
+    this.notifyCompletedMutation('move', mutationId)
+    // moveHoverTargetId is deliberately kept: a repeated press steps the same
+    // stroke (re-hovering could retarget an overlapping neighbour).
+    return true
   }
 
   /** 261003-ud9: cursor glyph — pointing hand while a fresh stroke is hovered under the erase OR move cursor, ring/crosshair otherwise. */
@@ -3891,6 +3966,36 @@ export class EfxPaintEngine {
   //  PRIVATE — Redraw / Replay
   // ================================================================
 
+  /**
+   * 261022-ujp: the live paint-order projection. Prototype-based unit
+   * harnesses construct instances without field initializers, so seed on
+   * demand; then append any ledger ref missing from the projection in ledger
+   * order (load path, redo ledger re-push) so a ref can never render twice.
+   */
+  private liveStrokeStack(): PaintStroke[] {
+    if (!Array.isArray(this.strokeStack)) this.strokeStack = [...this.allActions]
+    const seen = new Set(this.strokeStack)
+    for (const action of this.allActions) {
+      if (seen.has(action)) continue
+      this.strokeStack.push(action)
+      seen.add(action)
+    }
+    return this.strokeStack
+  }
+
+  /** Projection filtered to refs still in the acceptance ledger, in paint order. */
+  private liveActionsInPaintOrder(): PaintStroke[] {
+    const live = new Set(this.allActions)
+    return this.liveStrokeStack().filter((action) => live.has(action))
+  }
+
+  /** One push site for BOTH arrays so the ledger and the projection cannot drift. */
+  private pushAcceptedActions(actions: PaintStroke[]): void {
+    const stack = this.liveStrokeStack()
+    this.allActions.push(...actions)
+    stack.push(...actions)
+  }
+
   private redrawAll(): void {
     this.resetReplaySurface()
 
@@ -3906,10 +4011,15 @@ export class EfxPaintEngine {
     let queuedActions = 0
     for (const pending of this.pendingStrokeFinalizations) queuedActions += pending.actionCount
     if (this.activeStrokeFinalization) queuedActions -= this.activeStrokeFinalization.pending.actionCount
-    const replayCount = Math.max(0, this.allActions.length - Math.max(0, queuedActions))
+    // 261022-ujp: replay in PAINT order. The live projection has exactly one
+    // entry per ledger ref (same length as allActions), and queued accepts are
+    // the last entries in both arrays (a stack step flushes first), so the
+    // queued-tail COUNT math is unchanged.
+    const ordered = this.liveActionsInPaintOrder()
+    const replayCount = Math.max(0, ordered.length - Math.max(0, queuedActions))
 
     for (let i = 0; i < replayCount; i++) {
-      const a = this.allActions[i]
+      const a = ordered[i]
       this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId, replay: true })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
@@ -3964,7 +4074,8 @@ export class EfxPaintEngine {
         frames: {},
         rotoPhysical: null,
         loopClips: [],
-        strokes: this.allActions.map(s => ({
+        // 261022-ujp: persist the visible paint order.
+        strokes: this.liveActionsInPaintOrder().map(s => ({
           tool: s.tool,
           pts: s.points.map(p => [
             Math.round(p.x * 100) / 100,
@@ -4047,6 +4158,10 @@ export class EfxPaintEngine {
         ? { physicsMode: s.physicsMode }
         : { physicsMode: null }),
     }))
+
+    // 261022-ujp: the loaded document IS the paint order — reseed the
+    // projection from the freshly assigned ledger before the replay.
+    this.strokeStack = [...this.allActions]
 
     // Loaded state is a pixel/script baseline, never active-frame Undo/Redo history.
     this.undoStack = []
