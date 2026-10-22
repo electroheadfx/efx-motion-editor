@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
-import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoScriptActionAvailability, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
+import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoPaintScript, type RotoScriptActionAvailability, type RotoScriptClipboardControllerPorts, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
+import { createDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import { createPersistedRotoScript } from './physicsPaintRotoScriptSchema';
@@ -34,7 +35,7 @@ async function flushMicrotasks(turns = 3): Promise<void> {
   for (let index = 0; index < turns; index += 1) await Promise.resolve();
 }
 
-function harness(initial: PaintStroke[] = [stroke(1)]) {
+function harness(initial: PaintStroke[] = [stroke(1)], overrides: Partial<RotoScriptClipboardControllerPorts> = {}) {
   let strokes = initial;
   let source: RotoScriptSourceSnapshot = { selectionKind: 'real-key', layerId: null, keyId: 'key-4', appFrame: 4 };
   let nextMutationId = 100;
@@ -61,6 +62,7 @@ function harness(initial: PaintStroke[] = [stroke(1)]) {
     flushSourcePublication,
     onFirstAcceptedBrush,
     setNavigationLocked: (locked) => locks.push(locked),
+    ...overrides,
   });
   controller.updateEngine(engine);
   return {
@@ -81,6 +83,59 @@ async function copyCompletedSource(test: ReturnType<typeof harness>, mutationIds
   const promise = test.controller.copyScript();
   for (const mutationId of mutationIds) test.controller.observeCompletedMutation(test.engine, completion(mutationId));
   expect(await promise).toBe(true);
+}
+
+function aquarelleStrokeEvent(mutationId: number, timestamp: number): AquarellePayloadEvent {
+  return aquarelleToStudioStroke({
+    tool: 'brush',
+    color: '#123456',
+    params: { size: 8, water: 50, flow: 50 },
+    brushId: 'wc/round-medium',
+    points: [
+      { x: 10, y: 20, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      { x: 14, y: 20, p: 0.5, tx: 0, ty: 0, tw: 0 },
+    ],
+    mutationId,
+    timestamp,
+  });
+}
+
+/** Persisted watercolor script: two strokes with one Dry between them. */
+function aquarellePersistedScript(): RotoPaintScript {
+  return {
+    provenance: { sessionId: 'persisted-aquarelle', layerId: 'layer-a', sourceFrame: 3 },
+    sourceFrame: 3,
+    sourceDisplayFrame: 3,
+    sourceRevision: 1,
+    brushes: [{ primary: stroke(7, 44), continuations: [] }],
+    engineId: 'efx-watercolor',
+    aquarelleEvents: [
+      aquarelleStrokeEvent(7, 1000),
+      createDryEvent(3, 1001),
+      aquarelleStrokeEvent(8, 1200),
+    ],
+  };
+}
+
+type AquarelleApplyInput = Parameters<NonNullable<RotoScriptClipboardControllerPorts['applyAquarelleEvents']>>[0];
+
+/** Deferred aquarelle Apply port — the bake stays in flight until released. */
+function gatedAquarellePort(): {
+  calls: AquarelleApplyInput[];
+  applyAquarelleEvents: (input: AquarelleApplyInput) => Promise<boolean>;
+  resolve: (value: boolean) => void;
+} {
+  const calls: AquarelleApplyInput[] = [];
+  let release!: (value: boolean) => void;
+  const gated = new Promise<boolean>((next) => { release = next; });
+  return {
+    calls,
+    resolve: (value) => release(value),
+    applyAquarelleEvents: async (input) => {
+      calls.push(input);
+      return gated;
+    },
+  };
 }
 
 function settingsActions(test: ReturnType<typeof harness>) {
@@ -828,6 +883,96 @@ describe('Roto script clipboard controller', () => {
     await expect(applying).resolves.toBe(true);
     expect(test.controller.status.value).toBe('Applied 1');
     expect(test.controller.clipboard.value).toBe(copied);
+  });
+});
+
+// 261022: the aquarelle Apply branch reports the same pill and status string
+// brush-mode Apply already drives. The total counts STROKE events only (Dry
+// excluded) so the seeded 0/N and the bake's denominator agree.
+describe('261022 aquarelle Apply progress', () => {
+  it('advances the pill per stroke and clears it on Applied', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([], { applyAquarelleEvents: port.applyAquarelleEvents });
+    expect(test.controller.replaceClipboardFromPersisted(aquarellePersistedScript())).toBe(RotoScriptClipboardReplacementOutcome.Replaced);
+
+    const applying = test.controller.applyScript();
+    await flushMicrotasks();
+
+    expect(port.calls).toHaveLength(1);
+    const onProgress = port.calls[0]!.onProgress;
+    expect(typeof onProgress).toBe('function');
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+    expect(test.controller.status.value).toBe('Applying 0/2');
+
+    onProgress?.(1, 2);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 1, total: 2 });
+    expect(test.controller.status.value).toBe('Applying 1/2');
+
+    onProgress?.(2, 2);
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.applyProgress.value).toBeNull();
+    expect(test.controller.status.value).toBe('Applied');
+  });
+
+  it('clamps an over-count and ignores a non-finite count', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([], { applyAquarelleEvents: port.applyAquarelleEvents });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    const applying = test.controller.applyScript();
+    await flushMicrotasks();
+    const onProgress = port.calls[0]!.onProgress;
+
+    onProgress?.(5, 2);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 2, total: 2 });
+
+    onProgress?.(Number.NaN, 2);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 2, total: 2 });
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+  });
+
+  it('a late callback after launch replacement does not move progress', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([], { applyAquarelleEvents: port.applyAquarelleEvents });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    const applying = test.controller.applyScript();
+    await flushMicrotasks();
+    const onProgress = port.calls[0]!.onProgress;
+
+    await test.controller.prepareLaunchReplacement();
+    onProgress?.(1, 2);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+
+    test.controller.completeLaunchReplacement();
+    expect(test.controller.applyProgress.value).toBeNull();
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.applyProgress.value).toBeNull();
+  });
+
+  it('a late callback after dispose does not move progress or resurrect status', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([], { applyAquarelleEvents: port.applyAquarelleEvents });
+    test.controller.replaceClipboardFromPersisted(aquarellePersistedScript());
+
+    const applying = test.controller.applyScript();
+    await flushMicrotasks();
+    const onProgress = port.calls[0]!.onProgress;
+
+    const disposal = test.controller.dispose();
+    onProgress?.(1, 2);
+    expect(test.controller.applyProgress.value).toEqual({ completed: 0, total: 2 });
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    await disposal;
+    expect(test.controller.applyProgress.value).toBeNull();
+    expect(test.controller.status.value).toBeNull();
   });
 });
 

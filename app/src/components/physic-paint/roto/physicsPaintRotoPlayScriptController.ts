@@ -1814,6 +1814,8 @@ export async function applyAquarelleEventsToKey(input: {
   target: { keyId: string; appFrame: number };
   size: { width: number; height: number };
   paper: AquarelleBakePaper;
+  /** 261022 Apply parity: per-fully-fed-stroke progress (Dry excluded). */
+  onStrokeFed?: (completed: number, total: number) => void;
   publish: (frame: { keyId: string; appFrame: number; bytes: Uint8Array; width: number; height: number }) => Promise<boolean>;
 }): Promise<boolean> {
   const adapter = await createDefaultAquarelleAdapter(input.size, input.paper);
@@ -1828,6 +1830,7 @@ export async function applyAquarelleEventsToKey(input: {
     // reached — the old per-stroke branch stopped at the saved cuisson and
     // came out denser than the paint.
     frameCount: 1,
+    onStrokeFed: input.onStrokeFed,
   });
   try {
     const result = await bake.bake(input.events);

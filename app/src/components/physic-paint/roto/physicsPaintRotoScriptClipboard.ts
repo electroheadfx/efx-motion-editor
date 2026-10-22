@@ -120,6 +120,12 @@ export interface RotoScriptClipboardControllerPorts {
   applyAquarelleEvents?: (input: {
     events: readonly AquarellePayloadEvent[];
     target: RotoScriptPhysicalTarget;
+    /**
+     * 261022 Apply parity: per-fully-fed-stroke progress (cumulative
+     * completed, stroke-event total — Dry excluded). Same pill contract as
+     * brush-mode Apply.
+     */
+    onProgress?: (completed: number, total: number) => void;
   }) => Promise<boolean>;
   onFirstAcceptedBrush?: () => void;
   setNavigationLocked?: (locked: boolean) => void;
@@ -759,19 +765,54 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     // 261018: aquarelle scripts replay through the aquarelle engine (wash,
     // bleed, granulation), not engine-1 (which draws only the guide line).
     if (script.aquarelleEvents && script.aquarelleEvents.length > 0 && ports.applyAquarelleEvents) {
-      status.value = 'Applying';
+      // 261022: the aquarelle Apply bake runs ONE output frame, so the pill
+      // must advance per FULLY FED STROKE — the same 0/N → N/N report brush
+      // mode drives. Dry events are timeline actions, never progress (D-15).
+      const aquarelleStrokeTotal = countAquarelleStrokeEvents(script.aquarelleEvents);
+      let progressSettled = false;
+      const publishAquarelleProgress = (completed: number, total: number): void => {
+        // AQUA-07: the bake survives navigation, so a progress callback can
+        // land after the launch was replaced or the Studio disposed. Those
+        // must never write the pill or the status line.
+        if (progressSettled || disposed || disposalRequested || launchGeneration !== acceptedLaunchGeneration) return;
+        if (!Number.isFinite(completed)) return;
+        const reportedTotal = Number.isFinite(total) && total > 0 ? Math.trunc(total) : aquarelleStrokeTotal;
+        if (reportedTotal <= 0) return;
+        const clamped = Math.min(reportedTotal, Math.max(0, Math.trunc(completed)));
+        applyProgressState.value = { completed: clamped, total: reportedTotal };
+        status.value = `Applying ${clamped}/${reportedTotal}`;
+      };
+      if (aquarelleStrokeTotal > 0) {
+        applyProgressState.value = { completed: 0, total: aquarelleStrokeTotal };
+        status.value = `Applying 0/${aquarelleStrokeTotal}`;
+      } else {
+        status.value = 'Applying';
+      }
       try {
-        const ok = await ports.applyAquarelleEvents({ events: script.aquarelleEvents, target });
-        status.value = ok ? 'Applied' : 'Failed';
-        if (!ok) error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.');
-        else error.value = null;
+        const ok = await ports.applyAquarelleEvents({
+          events: script.aquarelleEvents,
+          target,
+          onProgress: publishAquarelleProgress,
+        });
+        if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
+          status.value = ok ? 'Applied' : 'Failed';
+          if (!ok) error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.');
+          else error.value = null;
+        }
         endOperation(engine);
         return ok;
       } catch (cause) {
-        status.value = 'Failed';
-        error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.', cause);
+        if (!disposalRequested && launchGeneration === acceptedLaunchGeneration) {
+          status.value = 'Failed';
+          error.value = operationError('apply', 'apply-partial-failure', 'Apply Script could not paint the aquarelle wash.', cause);
+        }
         endOperation(engine);
         return false;
+      } finally {
+        // Unconditional: a stale pill must never survive the operation
+        // (brush-mode finishApply clears the signal the same way).
+        progressSettled = true;
+        applyProgressState.value = null;
       }
     }
 
@@ -994,6 +1035,15 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     prepareEngineDisposal,
     dispose,
   };
+}
+
+/** 261022: Apply progress denominator — stroke events only, Dry excluded. */
+function countAquarelleStrokeEvents(events: readonly AquarellePayloadEvent[]): number {
+  let count = 0;
+  for (const event of events) {
+    if (!isAquarelleDryEvent(event)) count += 1;
+  }
+  return count;
 }
 
 export function normalizeLogicalBrushes(strokes: readonly PaintStroke[]): Readonly<RecordedStrokeGroup>[] {

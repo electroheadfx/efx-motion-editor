@@ -1265,11 +1265,12 @@ export function PhysicsPaintStudio() {
     flushSourcePublication: (appFrame) => rotoPersistence.flushLivePixels(appFrame),
     // 261018: aquarelle Apply — replay through the fluid engine and publish
     // the wash onto the target key (engine-1 draws only the guide line).
-    applyAquarelleEvents: async ({ events, target }) => {
+    applyAquarelleEvents: async ({ events, target, onProgress }) => {
       const bgMeta = buildRotoBackgroundMetadata(settings);
       return applyAquarelleEventsToKey({
         events,
         target,
+        onStrokeFed: onProgress,
         size: { width: canvasWidth, height: canvasHeight },
         paper: {
           paperId: bgMeta.background,
