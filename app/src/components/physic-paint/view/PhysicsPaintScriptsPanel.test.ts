@@ -288,7 +288,10 @@ describe('Physics Paint Scripts panel Copy toolbar contract (36.15-08, UAT Gap C
     expect(studio).not.toContain('onApplyRotoScript');
     expect(strip).not.toContain('onCopyRotoScript');
     expect(strip).not.toContain('onApplyRotoScript');
-    expect(strip).not.toContain('aria-label="Copy Script"');
+    // 261022-ne3: the Tools popover clones the Scripts toolbar (Copy included)
+    // through the same onCopyScript port — the old "Copy lives only in the
+    // panel" absence check is superseded by the labeled popover clone.
+    expect(strip).toContain('aria-label="Copy Script"');
     expect(strip).toContain('aria-label="Apply Script to Frame"');
     expect(strip).toContain('aria-label="Clear Script Buffer"');
   });

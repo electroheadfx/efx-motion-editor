@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Play, Plus, RotateCcw, Save, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Paintbrush, Play, Plus, RefreshCw, RotateCcw, Save, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -28,6 +28,7 @@ import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryAvailability } from '../roto/physicsPaintRotoScriptLibrary';
+import type { RotoScriptLibraryRow } from '../roto/physicsPaintRotoScriptSchema';
 import type {
   PhysicPaintRotoInterpolationState,
   PhysicPaintRotoLoopClip,
@@ -431,7 +432,14 @@ export interface PhysicsPaintWorkflowStripProps {
    *  signal references so the workflow memo stays cacheable (the strip reads
    *  `.value` in render, like the sibling script signal reads). */
   onSaveScript?: () => void;
+  onLoadAndApplyScript?: () => void;
+  onCreateRailFromScript?: () => void;
+  onDeleteScript?: () => void;
+  onRefreshScripts?: () => void;
+  onCopyScript?: () => void;
   rotoScriptLibraryAvailability?: ReadonlySignal<RotoScriptLibraryAvailability>;
+  rotoScriptLibrarySelected?: ReadonlySignal<RotoScriptLibraryRow | null>;
+  rotoScriptPlayDisabledReason?: ReadonlySignal<string | null>;
   /** Header Close affordance — Studio routes through the guarded close-flush path. */
   onClose?: () => void;
   onNavigateToSyncedFrame: (frame: number) => void;
@@ -962,6 +970,21 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   onSaveScript?: () => void;
   canSaveScript: boolean;
   saveScriptDisabledReason: string | null;
+  onLoadAndApplyScript?: () => void;
+  canLoadAndApplyScript: boolean;
+  loadAndApplyScriptDisabledReason: string | null;
+  onCreateRailFromScript?: () => void;
+  canCreateRailFromScript: boolean;
+  createRailFromScriptDisabledReason: string | null;
+  onDeleteScript?: () => void;
+  canDeleteScript: boolean;
+  deleteScriptDisabledReason: string | null;
+  onRefreshScripts?: () => void;
+  canRefreshScripts: boolean;
+  refreshScriptsDisabledReason: string | null;
+  onCopyScript?: () => void;
+  canCopyScriptAction: boolean;
+  copyScriptActionDisabledReason: string | null;
 }
 
 /**
@@ -1113,6 +1136,11 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
   // 261022-ne3: one tooltip per cloned Scripts-toolbar action, beside the
   // existing shifted buffer-action tooltips.
   const saveScriptTooltip = useStyledTooltip();
+  const loadAndApplyScriptTooltip = useStyledTooltip();
+  const createRailScriptTooltip = useStyledTooltip();
+  const deleteScriptTooltip = useStyledTooltip();
+  const refreshScriptsTooltip = useStyledTooltip();
+  const copyScriptTooltip = useStyledTooltip();
   // 43.5-02 (D-01/D-02): toolbox popover toggle + self-contained dismissal.
   // Outside pointerdown and Escape dismiss it via window capture-phase listeners
   // registered ONLY while open; no focus trap, no backdrop, no automatic focus
@@ -1393,6 +1421,146 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
                 ) : null}
                 <PhysicsPaintStyledTooltip visible={saveScriptTooltip.visible} region="bottom">
                   {buildGuardedActionTooltipCopy('Save Script', props.saveScriptDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={loadAndApplyScriptTooltip.onPointerEnter} onPointerLeave={loadAndApplyScriptTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Load + Apply to Frame"
+                  aria-disabled={!props.canLoadAndApplyScript ? 'true' : undefined}
+                  aria-describedby={!props.canLoadAndApplyScript && props.loadAndApplyScriptDisabledReason ? 'roto-key-action-reason-load-apply' : undefined}
+                  onFocus={loadAndApplyScriptTooltip.onFocus}
+                  onBlur={loadAndApplyScriptTooltip.onBlur}
+                  onClick={() => {
+                    loadAndApplyScriptTooltip.hide();
+                    if (!props.canLoadAndApplyScript) return;
+                    props.onLoadAndApplyScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canLoadAndApplyScript) event.preventDefault();
+                  }}
+                >
+                  <Paintbrush size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Load + Apply</span>
+                </button>
+                {!props.canLoadAndApplyScript && props.loadAndApplyScriptDisabledReason ? (
+                  <span id="roto-key-action-reason-load-apply" class="physics-paint-sr-only">{props.loadAndApplyScriptDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={loadAndApplyScriptTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Load + Apply to Frame', props.loadAndApplyScriptDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={createRailScriptTooltip.onPointerEnter} onPointerLeave={createRailScriptTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Create Rail"
+                  aria-disabled={!props.canCreateRailFromScript ? 'true' : undefined}
+                  aria-describedby={!props.canCreateRailFromScript && props.createRailFromScriptDisabledReason ? 'roto-key-action-reason-create-rail-script' : undefined}
+                  onFocus={createRailScriptTooltip.onFocus}
+                  onBlur={createRailScriptTooltip.onBlur}
+                  onClick={() => {
+                    createRailScriptTooltip.hide();
+                    if (!props.canCreateRailFromScript) return;
+                    props.onCreateRailFromScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canCreateRailFromScript) event.preventDefault();
+                  }}
+                >
+                  <Play size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Create Rail</span>
+                </button>
+                {!props.canCreateRailFromScript && props.createRailFromScriptDisabledReason ? (
+                  <span id="roto-key-action-reason-create-rail-script" class="physics-paint-sr-only">{props.createRailFromScriptDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={createRailScriptTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Create Rail from Script', props.createRailFromScriptDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={deleteScriptTooltip.onPointerEnter} onPointerLeave={deleteScriptTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button destructive"
+                  aria-label="Delete Script"
+                  aria-disabled={!props.canDeleteScript ? 'true' : undefined}
+                  aria-describedby={!props.canDeleteScript && props.deleteScriptDisabledReason ? 'roto-key-action-reason-delete-script' : undefined}
+                  onFocus={deleteScriptTooltip.onFocus}
+                  onBlur={deleteScriptTooltip.onBlur}
+                  onClick={() => {
+                    deleteScriptTooltip.hide();
+                    if (!props.canDeleteScript) return;
+                    props.onDeleteScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canDeleteScript) event.preventDefault();
+                  }}
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Delete</span>
+                </button>
+                {!props.canDeleteScript && props.deleteScriptDisabledReason ? (
+                  <span id="roto-key-action-reason-delete-script" class="physics-paint-sr-only">{props.deleteScriptDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={deleteScriptTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Delete Script', props.deleteScriptDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={refreshScriptsTooltip.onPointerEnter} onPointerLeave={refreshScriptsTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Refresh Scripts"
+                  aria-disabled={!props.canRefreshScripts ? 'true' : undefined}
+                  aria-describedby={!props.canRefreshScripts && props.refreshScriptsDisabledReason ? 'roto-key-action-reason-refresh-scripts' : undefined}
+                  onFocus={refreshScriptsTooltip.onFocus}
+                  onBlur={refreshScriptsTooltip.onBlur}
+                  onClick={() => {
+                    refreshScriptsTooltip.hide();
+                    if (!props.canRefreshScripts) return;
+                    props.onRefreshScripts?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canRefreshScripts) event.preventDefault();
+                  }}
+                >
+                  <RefreshCw size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Refresh</span>
+                </button>
+                {!props.canRefreshScripts && props.refreshScriptsDisabledReason ? (
+                  <span id="roto-key-action-reason-refresh-scripts" class="physics-paint-sr-only">{props.refreshScriptsDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={refreshScriptsTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Refresh Scripts', props.refreshScriptsDisabledReason)}
+                </PhysicsPaintStyledTooltip>
+              </span>
+              <span class="physics-paint-roto-key-icon-action" onPointerEnter={copyScriptTooltip.onPointerEnter} onPointerLeave={copyScriptTooltip.onPointerLeave}>
+                <button
+                  type="button"
+                  class="physics-paint-roto-key-icon-button"
+                  aria-label="Copy Script"
+                  aria-disabled={!props.canCopyScriptAction ? 'true' : undefined}
+                  aria-describedby={!props.canCopyScriptAction && props.copyScriptActionDisabledReason ? 'roto-key-action-reason-copy-script' : undefined}
+                  onFocus={copyScriptTooltip.onFocus}
+                  onBlur={copyScriptTooltip.onBlur}
+                  onClick={() => {
+                    copyScriptTooltip.hide();
+                    if (!props.canCopyScriptAction) return;
+                    props.onCopyScript?.();
+                  }}
+                  onKeyDown={(event) => {
+                    if ((event.key === 'Enter' || event.key === ' ') && !props.canCopyScriptAction) event.preventDefault();
+                  }}
+                >
+                  <ClipboardCopy size={15} aria-hidden="true" />
+                  <span class="physics-paint-roto-key-icon-label">Copy</span>
+                </button>
+                {!props.canCopyScriptAction && props.copyScriptActionDisabledReason ? (
+                  <span id="roto-key-action-reason-copy-script" class="physics-paint-sr-only">{props.copyScriptActionDisabledReason}</span>
+                ) : null}
+                <PhysicsPaintStyledTooltip visible={copyScriptTooltip.visible} region="bottom">
+                  {buildGuardedActionTooltipCopy('Copy Script', props.copyScriptActionDisabledReason)}
                 </PhysicsPaintStyledTooltip>
               </span>
             </div>
@@ -2265,6 +2433,25 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   const scriptLibraryAvailability = props.rotoScriptLibraryAvailability?.value ?? null;
   const canSaveScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canSave ?? false);
   const saveScriptDisabledReason = scriptActionMutationDisabledReason ?? (canSaveScript ? null : (scriptLibraryAvailability?.saveDisabledReason ?? null));
+  // The remaining five clones mirror PhysicsPaintScriptsPanel's toolbar
+  // derivation verbatim (same signals, same fallback copy).
+  const scriptLibraryHasSelection = props.rotoScriptLibrarySelected?.value != null;
+  const scriptPlayDisabledReason = props.rotoScriptPlayDisabledReason?.value ?? null;
+  const loadAndApplyScriptDisabledReason = scriptActionMutationDisabledReason
+    ?? (!scriptLibraryHasSelection
+      ? 'Select a project Script first.'
+      : (scriptAvailability?.replacementApplyDisabledReason ?? null));
+  const canLoadAndApplyScript = loadAndApplyScriptDisabledReason === null;
+  const createRailFromScriptDisabledReason = scriptActionMutationDisabledReason ?? scriptPlayDisabledReason;
+  const canCreateRailFromScript = createRailFromScriptDisabledReason === null;
+  const canDeleteScript = scriptActionMutationDisabledReason === null && (scriptLibraryAvailability?.canDelete ?? false);
+  const deleteScriptDisabledReason = canDeleteScript ? null : scriptActionMutationDisabledReason;
+  const canRefreshScripts = scriptActionMutationDisabledReason === null;
+  const refreshScriptsDisabledReason = scriptActionMutationDisabledReason;
+  const canCopyScriptAction = scriptActionMutationDisabledReason === null && (scriptAvailability?.canCopy ?? false);
+  const copyScriptActionDisabledReason = canCopyScriptAction
+    ? null
+    : (scriptActionMutationDisabledReason ?? (scriptAvailability?.copyDisabledReason ?? null));
   const keyUtilitiesDisabledByBusyState = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.keyActionInFlight) || Boolean(sessionKeyAvailability?.busy) || Boolean(rotoDragPreview?.pending);
   const interpolationControlsDisabled = props.ready === false || Boolean(props.mutationLocked) || Boolean(props.rotoInterpolationPending);
   const canUseSourceRotoKey = isCurrentRealRotoKey && !keyUtilitiesDisabledByBusyState;
@@ -4800,6 +4987,21 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         onSaveScript={props.onSaveScript}
         canSaveScript={canSaveScript}
         saveScriptDisabledReason={saveScriptDisabledReason}
+        onLoadAndApplyScript={props.onLoadAndApplyScript}
+        canLoadAndApplyScript={canLoadAndApplyScript}
+        loadAndApplyScriptDisabledReason={loadAndApplyScriptDisabledReason}
+        onCreateRailFromScript={props.onCreateRailFromScript}
+        canCreateRailFromScript={canCreateRailFromScript}
+        createRailFromScriptDisabledReason={createRailFromScriptDisabledReason}
+        onDeleteScript={props.onDeleteScript}
+        canDeleteScript={canDeleteScript}
+        deleteScriptDisabledReason={deleteScriptDisabledReason}
+        onRefreshScripts={props.onRefreshScripts}
+        canRefreshScripts={canRefreshScripts}
+        refreshScriptsDisabledReason={refreshScriptsDisabledReason}
+        onCopyScript={props.onCopyScript}
+        canCopyScriptAction={canCopyScriptAction}
+        copyScriptActionDisabledReason={copyScriptActionDisabledReason}
       />
 
       <div class="physics-paint-timeline" aria-label="Physics Paint timeline">

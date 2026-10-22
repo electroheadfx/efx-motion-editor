@@ -2716,6 +2716,29 @@ export function PhysicsPaintStudio() {
   const handleSaveScript = useCallback(() => {
     void rotoScriptLibrary.saveActiveFrame();
   }, [rotoScriptLibrary]);
+  const handleLoadAndApplyScript = useCallback(() => {
+    void handleSelectedScriptLoadAndApply();
+  }, [handleSelectedScriptLoadAndApply]);
+  const handleCreateRailFromScript = useCallback(() => {
+    void rotoPlayScript.openConfirmation();
+  }, [rotoPlayScript]);
+  const handleDeleteScript = useCallback(() => {
+    // The clone only opens the existing request-delete flow — the confirmation
+    // renders in the right-panel Scripts tab (no second dialog).
+    rotoScriptLibrary.requestDelete();
+  }, [rotoScriptLibrary]);
+  const handleRefreshScripts = useCallback(() => {
+    void rotoScriptLibrary.refresh();
+  }, [rotoScriptLibrary]);
+  const handleCopyScript = useCallback(() => {
+    void rotoScript.copyScript().then((success) => {
+      if (success) setLastError(null);
+      else {
+        const message = rotoScript.error.peek()?.message;
+        if (message) setLastError(message);
+      }
+    });
+  }, [rotoScript, setLastError]);
   const clearRotoLoopSelection = useCallback(() => {
     // 261022-mne: rail-selection clears never end the session Solo — it follows
     // the active track instead. This clear is also reached by every frame-cell
@@ -6067,7 +6090,14 @@ export function PhysicsPaintStudio() {
         // 261022-ne3: the cloned Tools-popover Scripts ports — stable callbacks
         // plus signal references read in the strip's render body.
         onSaveScript: handleSaveScript,
+        onLoadAndApplyScript: handleLoadAndApplyScript,
+        onCreateRailFromScript: handleCreateRailFromScript,
+        onDeleteScript: handleDeleteScript,
+        onRefreshScripts: handleRefreshScripts,
+        onCopyScript: handleCopyScript,
         rotoScriptLibraryAvailability: rotoScriptLibrary.availability,
+        rotoScriptLibrarySelected: rotoScriptLibrary.selected,
+        rotoScriptPlayDisabledReason: rotoPlayScript.disabledReason,
         statusMessage: isPlaying ? `Previewing ${rotoPlaybackFrameIndex.peek() + 1} / ${rotoPlaybackFrameCount.peek()}` : (applyStatus !== 'success' ? applyMessage : null), statusIsError: applyStatus === 'error', operationResult: operationResult.peek(), warmProgress, onion, onionPreviewFrames, showOnionHiddenDuringPreview: onion.enabled && isPlaying,
         onNavigateToSyncedFrame: handleNavigateToSyncedFrame, onGoToFirstFrame: handleGoToFirstFrame, onGoToPreviousFrame: handleGoToPreviousFrame, onGoToNextFrame: handleGoToNextFrame, onGoToLastFrame: handleGoToLastFrame, onOnionChange: setOnion, onClose: handleWorkflowClose,
         // D-02 amendment (audible scrub): the ruler scrub lifecycle — armed
