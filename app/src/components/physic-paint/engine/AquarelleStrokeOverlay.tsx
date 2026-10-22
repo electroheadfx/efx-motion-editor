@@ -1,42 +1,69 @@
 // ============================================================
 //  AquarelleStrokeOverlay — the Water color select surface
-//  (quick 261022-pim Task 1).
+//  (quick 261022-pim Task 1, drag added by 261022-tv1).
 //
 //  A narrow leaf: it is the ONLY mouse-facing layer above the
 //  vendor canvas while select mode is active, so painting is
 //  blocked without touching the engine's pointer handling. It
 //  outlines every recorded stroke of the current edit frame (a
 //  point polyline plus a brush-size-inflated bbox), selects the
-//  newest stroke under a left click, and hands Alt+click to the
-//  Studio's delete callback.
+//  newest stroke under a left click, hands Alt+click to the
+//  Studio's delete callback, and turns a press-and-drag on a hit
+//  stroke into a GHOST preview.
 //
-//  Selection is applied in the pointer handler — never an
-//  effect. The select/move signals are read here and nowhere in
-//  the Studio render body (efx-preact-reactivity).
+//  During the gesture the ONLY write is the drag signal — no
+//  script mutation and no apply runs before pointerup. The
+//  release clears the ghost and hands the pixel delta to the
+//  Studio callback.
+//
+//  Selection and drag are applied in the pointer handlers —
+//  never an effect. The select/drag signals are read here and
+//  nowhere in the Studio render body (efx-preact-reactivity).
 // ============================================================
 
 import type { JSX, TargetedPointerEvent } from 'preact';
+import { useRef } from 'preact/hooks';
 import { temporaryMove } from '../view/physicsPaintTemporaryErase';
 import {
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationId,
+  aquarelleStrokeDrag,
+  clearAquarelleStrokeDrag,
   listSelectableAquarelleStrokes,
   selectAquarelleStrokeAt,
+  setAquarelleStrokeDrag,
 } from '../view/aquarelleStrokeSelection';
 
 const SELECTED_STROKE_COLOR = '#38bdf8';
 const OUTLINE_DARK = '#111111';
 const OUTLINE_LIGHT = '#ffffff';
 
+/** Canvas pixels the pointer must travel before the press becomes a move. */
+const DRAG_THRESHOLD_PX = 3;
+
+interface AquarelleDragGesture {
+  readonly pointerId: number;
+  readonly mutationId: number;
+  readonly startX: number;
+  readonly startY: number;
+  started: boolean;
+}
+
 export function AquarelleStrokeOverlay(props: {
   width: number;
   height: number;
   getPlayFrame: () => number;
   onDeleteStroke: (mutationId: number) => void;
+  onMoveStroke: (mutationId: number, dxPx: number, dyPx: number) => void;
 }): JSX.Element | null {
+  // Gesture state lives in a ref — no useState, no effect.
+  const gestureRef = useRef<AquarelleDragGesture | null>(null);
   const selectMode = aquarelleSelectMode.value;
   const moveArmed = temporaryMove.value;
-  if (!selectMode && !moveArmed) return null;
+  // The drag read is narrow (this leaf only). It also keeps the surface
+  // mounted when a held Cmd is released in the middle of the gesture.
+  const drag = aquarelleStrokeDrag.value;
+  if (!selectMode && !moveArmed && drag === null) return null;
 
   // Narrow subscriptions: the revision (inside the listing) repaints the
   // outlines when the script changes; the selected id drives the highlight.
@@ -47,22 +74,67 @@ export function AquarelleStrokeOverlay(props: {
   });
   const selectedId = aquarelleSelectedStrokeMutationId.value;
 
+  const canvasPointOf = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const scaleX = rect.width > 0 ? props.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? props.height / rect.height : 1;
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY,
+    };
+  };
+
   const handlePointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     // The overlay owns the gesture: no pointer reaches the vendor canvas.
     event.preventDefault();
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const scaleX = rect.width > 0 ? props.width / rect.width : 1;
-    const scaleY = rect.height > 0 ? props.height / rect.height : 1;
+    const point = canvasPointOf(event);
     const hit = selectAquarelleStrokeAt(
-      {
-        x: (event.clientX - rect.left) * scaleX,
-        y: (event.clientY - rect.top) * scaleY,
-      },
+      point,
       playFrame,
       { width: props.width, height: props.height },
     );
-    if (hit !== null && event.altKey) props.onDeleteStroke(hit);
+    if (hit === null) return;
+    if (event.altKey) {
+      props.onDeleteStroke(hit);
+      return;
+    }
+    // Arm the gesture. No drag signal, no script mutation, no apply yet.
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      mutationId: hit,
+      startX: point.x,
+      startY: point.y,
+      started: false,
+    };
+  };
+
+  const handlePointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const point = canvasPointOf(event);
+    const dxPx = point.x - gesture.startX;
+    const dyPx = point.y - gesture.startY;
+    if (!gesture.started) {
+      if (Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
+      gesture.started = true;
+    }
+    setAquarelleStrokeDrag({ mutationId: gesture.mutationId, dxPx, dyPx });
+  };
+
+  const handlePointerUp = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    const point = canvasPointOf(event);
+    const dxPx = point.x - gesture.startX;
+    const dyPx = point.y - gesture.startY;
+    // A press that never crossed the threshold is a click: selection already
+    // happened on pointerdown, so it must not move anything.
+    const crossed = gesture.started || Math.hypot(dxPx, dyPx) >= DRAG_THRESHOLD_PX;
+    gestureRef.current = null;
+    clearAquarelleStrokeDrag();
+    if (!crossed) return;
+    props.onMoveStroke(gesture.mutationId, dxPx, dyPx);
   };
 
   return (
@@ -76,6 +148,8 @@ export function AquarelleStrokeOverlay(props: {
         cursor: 'default',
       }}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
     >
       <svg
         width="100%"
@@ -91,9 +165,21 @@ export function AquarelleStrokeOverlay(props: {
       >
         {strokes.map((entry) => {
           const isSelected = entry.mutationId === selectedId;
-          const points = entry.pointsPx.map((p) => `${p.x},${p.y}`).join(' ');
+          // The dragged stroke renders as the GHOST: its polyline and bbox
+          // translated by the live drag offset. No engine call, no apply.
+          const dragOffset =
+            drag !== null && drag.mutationId === entry.mutationId ? drag : null;
+          const offsetX = dragOffset?.dxPx ?? 0;
+          const offsetY = dragOffset?.dyPx ?? 0;
+          const points = entry.pointsPx
+            .map((p) => `${p.x + offsetX},${p.y + offsetY}`)
+            .join(' ');
           return (
-            <g key={entry.mutationId} data-stroke-id={entry.mutationId}>
+            <g
+              key={entry.mutationId}
+              data-stroke-id={entry.mutationId}
+              data-testid={dragOffset ? 'aquarelle-drag-ghost' : undefined}
+            >
               {isSelected ? (
                 <polyline
                   points={points}
@@ -123,8 +209,8 @@ export function AquarelleStrokeOverlay(props: {
                 </>
               )}
               <rect
-                x={entry.bounds.x}
-                y={entry.bounds.y}
+                x={entry.bounds.x + offsetX}
+                y={entry.bounds.y + offsetY}
                 width={entry.bounds.width}
                 height={entry.bounds.height}
                 fill="none"

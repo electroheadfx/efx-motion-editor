@@ -44,6 +44,30 @@ export function aquarelleUvToEnginePixel(
 }
 
 /**
+ * Canvas-pixel delta (engine-1, y down) → document-UV delta (aquarelle, y up).
+ * The exact inverse of {@link aquarelleUvToEnginePixel}: `x / width` and a
+ * NEGATED `y / height`. This is the ONE pixel→UV crossing — callers must not
+ * hand-roll the y flip. A degenerate (zero or non-finite) sheet or delta
+ * returns `{0, 0}` so no NaN/Infinity can reach the recorded script.
+ */
+export function aquarelleEnginePixelDeltaToUv(
+  delta: { x: number; y: number },
+  size: EnginePixelSize,
+): { x: number; y: number } {
+  if (
+    !Number.isFinite(delta.x)
+    || !Number.isFinite(delta.y)
+    || !Number.isFinite(size.width)
+    || !Number.isFinite(size.height)
+    || size.width === 0
+    || size.height === 0
+  ) {
+    return { x: 0, y: 0 };
+  }
+  return { x: delta.x / size.width, y: -delta.y / size.height };
+}
+
+/**
  * Project an aquarelle runtime stroke onto the engine-1 `PaintStroke` the
  * Roto script path records and replays. Points are converted through
  * {@link aquarelleUvToEnginePixel}; the canonical AQUA-04 globals map onto

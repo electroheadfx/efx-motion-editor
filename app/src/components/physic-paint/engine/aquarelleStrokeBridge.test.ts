@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import {
+  aquarelleEnginePixelDeltaToUv,
   aquarelleStrokeToPaintStroke,
   aquarelleUvToEnginePixel,
 } from './aquarelleStrokeBridge';
@@ -75,6 +76,40 @@ describe('aquarelleUvToEnginePixel', () => {
     const wide = { width: 1920, height: 1080 };
     expect(aquarelleUvToEnginePixel({ x: 0.5, y: 0.5 }, wide)).toEqual({ x: 960, y: 540 });
     expect(aquarelleUvToEnginePixel({ x: 1, y: 0 }, wide)).toEqual({ x: 1920, y: 1080 });
+  });
+});
+
+// 261022-tv1: the inverse crossing — a pointer drag is measured in canvas
+// pixels and must move the script's document-UV point the same way.
+describe('aquarelleEnginePixelDeltaToUv', () => {
+  it('maps a canvas pixel delta back to UV (y flip)', () => {
+    expect(
+      aquarelleEnginePixelDeltaToUv({ x: 40, y: -20 }, { width: 400, height: 200 }),
+    ).toEqual({ x: 0.1, y: 0.1 });
+
+    // Round-trip: moving the UV point by this delta and mapping it back lands
+    // exactly on the original canvas pixel plus the pixel delta.
+    const origin = { x: 0.3, y: 0.7 };
+    const originPx = aquarelleUvToEnginePixel(origin, { width: 400, height: 200 });
+    const uvDelta = aquarelleEnginePixelDeltaToUv(
+      { x: 40, y: -20 },
+      { width: 400, height: 200 },
+    );
+    const movedPx = aquarelleUvToEnginePixel(
+      { x: origin.x + uvDelta.x, y: origin.y + uvDelta.y },
+      { width: 400, height: 200 },
+    );
+    expect(movedPx.x).toBeCloseTo(originPx.x + 40, 10);
+    expect(movedPx.y).toBeCloseTo(originPx.y - 20, 10);
+  });
+
+  it('refuses a degenerate sheet', () => {
+    // No NaN/Infinity may propagate into the recorded script.
+    expect(aquarelleEnginePixelDeltaToUv({ x: 10, y: 10 }, { width: 0, height: 200 })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelDeltaToUv({ x: 10, y: 10 }, { width: 400, height: 0 })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelDeltaToUv({ x: 10, y: 10 }, { width: Number.NaN, height: 200 })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelDeltaToUv({ x: 10, y: 10 }, { width: 400, height: Infinity })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelDeltaToUv({ x: Number.POSITIVE_INFINITY, y: 0 }, { width: 400, height: 200 })).toEqual({ x: 0, y: 0 });
   });
 });
 

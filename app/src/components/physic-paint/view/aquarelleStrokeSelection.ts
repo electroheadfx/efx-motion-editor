@@ -26,12 +26,16 @@ import {
 import {
   aquarelleStrokesRevision,
   bumpAquarelleStrokesRevision,
+  captureAquarelleStrokeRegistry,
   clearAquarelleStrokeDeletion,
   deleteAquarelleStrokeFromScript,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
+  restoreAquarelleStrokeRegistry,
+  translateAquarelleStrokeInScript,
+  type AquarelleStrokeRegistrySnapshot,
 } from './aquarelleRecordState';
 
 /** Long polylines are decimated for rendering only (bounds use every point). */
@@ -78,6 +82,44 @@ export function setAquarelleSelectMode(on: boolean): void {
 
 export function toggleAquarelleSelectMode(): void {
   setAquarelleSelectMode(!aquarelleSelectMode.value);
+}
+
+/**
+ * 261022-tv1: the live drag preview. Written in the overlay's pointer
+ * handlers, read ONLY by that overlay leaf (the ghost). No Studio or layer
+ * render body subscribes to it, and nothing but the ghost render depends on
+ * it — no script mutation or apply happens while a drag is in progress.
+ */
+export interface AquarelleStrokeDrag {
+  readonly mutationId: number;
+  readonly dxPx: number;
+  readonly dyPx: number;
+}
+
+export const aquarelleStrokeDrag = signal<AquarelleStrokeDrag | null>(null);
+
+/** Compare-then-write on all three fields (efx-preact-reactivity rule 3). */
+export function setAquarelleStrokeDrag(next: AquarelleStrokeDrag | null): void {
+  const current = aquarelleStrokeDrag.value;
+  if (next === null) {
+    if (current === null) return;
+    aquarelleStrokeDrag.value = null;
+    return;
+  }
+  if (
+    current !== null
+    && current.mutationId === next.mutationId
+    && current.dxPx === next.dxPx
+    && current.dyPx === next.dyPx
+  ) {
+    return;
+  }
+  aquarelleStrokeDrag.value = { mutationId: next.mutationId, dxPx: next.dxPx, dyPx: next.dyPx };
+}
+
+/** Idempotent clear — a pointer-up/cancel with no drag armed is a no-op. */
+export function clearAquarelleStrokeDrag(): void {
+  setAquarelleStrokeDrag(null);
 }
 
 /**
@@ -255,20 +297,31 @@ export function listSelectableAquarelleStrokes(
 //  + re-bake is exactly ONE undoable ledger command.
 // ============================================================
 
-let aquarelleDeleteInFlight = false;
+let aquarelleScriptEditInFlight = false;
 
-/** True while a delete + its re-bake is running (a second Alt+click is refused). */
-export function isAquarelleDeleteInFlight(): boolean {
-  return aquarelleDeleteInFlight;
+/**
+ * True while a script edit (delete OR move) and its re-bake is running — a
+ * second Alt+click or drag release is refused. One shared guard: the two
+ * gesture paths can never interleave.
+ */
+export function isAquarelleScriptEditInFlight(): boolean {
+  return aquarelleScriptEditInFlight;
 }
 
-export function setAquarelleDeleteInFlight(inFlight: boolean): void {
-  aquarelleDeleteInFlight = inFlight;
+export function setAquarelleScriptEditInFlight(inFlight: boolean): void {
+  aquarelleScriptEditInFlight = inFlight;
 }
+
+// 261022-tv1: delete-named aliases kept so existing callers/tests compile
+// unchanged against the generalized shared flag.
+export const isAquarelleDeleteInFlight = isAquarelleScriptEditInFlight;
+export const setAquarelleDeleteInFlight = setAquarelleScriptEditInFlight;
 
 /**
  * A script snapshot. The timeline holds the SAME event object references
- * (a shallow copy only) so a measured cuisson patch survives the swap.
+ * (a shallow copy only) so a measured cuisson patch survives the swap. The
+ * registry is captured alongside it (also by reference) so a move can restore
+ * the stroke objects and the timeline entries in lockstep.
  * `revision` is the live `aquarelleStrokesRevision` this side was captured
  * at; a restore refreshes the applied side with the new revision so the
  * opposite direction can validate against it.
@@ -276,6 +329,7 @@ export function setAquarelleDeleteInFlight(inFlight: boolean): void {
 export interface AquarelleScriptSnapshot {
   readonly timeline: readonly AquarellePayloadEvent[];
   readonly deleted: readonly number[];
+  readonly registry: AquarelleStrokeRegistrySnapshot;
   revision: number;
 }
 
@@ -297,6 +351,7 @@ function captureAquarelleSnapshot(): AquarelleScriptSnapshot {
   return {
     timeline: [...getRecordedAquarellePayloadTimeline()],
     deleted,
+    registry: captureAquarelleStrokeRegistry(),
     revision: aquarelleStrokesRevision.value,
   };
 }
@@ -321,14 +376,39 @@ function clearSelectionIfGone(): void {
   }
 }
 
-/** Install a snapshot's script content in place and return the fresh revision. */
+/**
+ * Install a snapshot's script content in place and return the fresh revision.
+ *
+ * ORDER MATTERS: the registry is restored FIRST (the timeline splice then
+ * lands on the restored entry objects), then the deleted membership (it walks
+ * the registry's ids), then the timeline itself. A move that restored the
+ * timeline before the registry would leave `recordedStrokes` /
+ * `recordedStrokeEntries` pointing at the moved objects, and a later delete's
+ * `indexOf` splice would disagree with the live timeline.
+ */
 function applySnapshotContent(snapshot: AquarelleScriptSnapshot): number {
+  restoreAquarelleStrokeRegistry(snapshot.registry);
+  replaceDeletedMembership(snapshot.deleted);
   const live = getRecordedAquarellePayloadTimeline() as AquarellePayloadEvent[];
   live.splice(0, live.length, ...snapshot.timeline);
-  replaceDeletedMembership(snapshot.deleted);
   bumpAquarelleStrokesRevision();
   clearSelectionIfGone();
   return aquarelleStrokesRevision.value;
+}
+
+/**
+ * Store one before/after edit under the shared 10-entry cap. One id counter
+ * and one eviction policy for both the delete and the move paths.
+ */
+function storeAquarelleEdit(record: AquarelleEditRecord): number {
+  const editId = nextAquarelleEditId;
+  nextAquarelleEditId += 1;
+  aquarelleEdits.set(editId, record);
+  if (aquarelleEdits.size > MAX_AQUARELLE_EDITS) {
+    const oldest = aquarelleEdits.keys().next().value;
+    if (oldest !== undefined) aquarelleEdits.delete(oldest);
+  }
+  return editId;
 }
 
 /**
@@ -336,23 +416,35 @@ function applySnapshotContent(snapshot: AquarelleScriptSnapshot): number {
  * snapshots. Returns a monotonic edit id or null when refused.
  */
 export function beginAquarelleDeleteEdit(mutationId: number): number | null {
-  if (aquarelleDeleteInFlight) return null;
+  if (aquarelleScriptEditInFlight) return null;
   const before = captureAquarelleSnapshot();
   if (!deleteAquarelleStrokeFromScript(mutationId)) return null;
   const after = captureAquarelleSnapshot();
-  const editId = nextAquarelleEditId;
-  nextAquarelleEditId += 1;
-  aquarelleEdits.set(editId, { before, after });
-  if (aquarelleEdits.size > MAX_AQUARELLE_EDITS) {
-    const oldest = aquarelleEdits.keys().next().value;
-    if (oldest !== undefined) aquarelleEdits.delete(oldest);
-  }
+  const editId = storeAquarelleEdit({ before, after });
   if (aquarelleSelectedStrokeMutationId.value === mutationId) selectAquarelleStroke(null);
   // The last stroke is gone: there is nothing left to select, and leaving
   // select mode on would keep the overlay (painting blocked) behind a now
   // disabled Select button.
   if (aquarelleLiveStrokeCount.value === 0) setAquarelleSelectMode(false);
   return editId;
+}
+
+/**
+ * 261022-tv1: move one recorded stroke by a document-UV delta as a single
+ * edit (move + its re-bake = ONE `aquarelle-script` ledger command). The
+ * selection is kept — the stroke still exists, at its new place. Returns a
+ * monotonic edit id or null when refused.
+ */
+export function beginAquarelleMoveEdit(
+  mutationId: number,
+  dxUv: number,
+  dyUv: number,
+): number | null {
+  if (aquarelleScriptEditInFlight) return null;
+  const before = captureAquarelleSnapshot();
+  if (!translateAquarelleStrokeInScript(mutationId, dxUv, dyUv)) return null;
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
 }
 
 /**

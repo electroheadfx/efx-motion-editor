@@ -101,7 +101,7 @@ import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, t
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
-import { aquarelleStrokeToPaintStroke } from './engine/aquarelleStrokeBridge';
+import { aquarelleEnginePixelDeltaToUv, aquarelleStrokeToPaintStroke } from './engine/aquarelleStrokeBridge';
 import { useRotoBackgroundMetadataSync } from './hooks/useRotoBackgroundMetadataSync';
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/rotoOnionPreview';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
@@ -170,10 +170,13 @@ import {
   aquarelleSelectMode,
   aquarelleSelectedStrokeMutationId,
   beginAquarelleDeleteEdit,
+  beginAquarelleMoveEdit,
   isAquarelleDeleteInFlight,
+  isAquarelleScriptEditInFlight,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
+  setAquarelleScriptEditInFlight,
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
@@ -4793,6 +4796,68 @@ export function PhysicsPaintStudio() {
     clearOwnedScriptApplyRefusal,
   ]);
 
+  // 261022-tv1: Cmd+drag stroke move. The overlay wrote only the ghost drag
+  // signal during the gesture; this release path translates the recorded
+  // stroke + its payload-timeline entry, resets the sheet, and re-applies the
+  // current frame's script through the SAME shared Apply pipeline as delete.
+  // One move + its re-bake = ONE `aquarelle-script` ledger entry. Guards are
+  // peek-only: the handler must not subscribe the Studio body.
+  const handleAquarelleMoveStroke = useCallback((mutationId: number, dxPx: number, dyPx: number) => {
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
+    if (isAquarelleScriptEditInFlight()) return;
+    // The delta crosses from canvas pixels to document UV exactly once.
+    const delta = aquarelleEnginePixelDeltaToUv(
+      { x: dxPx, y: dyPx },
+      { width: canvasWidth, height: canvasHeight },
+    );
+    // One move = one edit with before/after script snapshots. The ledger
+    // records it only after the re-bake succeeds.
+    const editId = beginAquarelleMoveEdit(mutationId, delta.x, delta.y);
+    if (editId === null) return;
+    setAquarelleScriptEditInFlight(true);
+    void (async () => {
+      try {
+        // The recorded timeline IS the script (same replay source as delete).
+        const playFrame = launchContextRef.current?.startFrame ?? 0;
+        aquarelleResetSheetRef.current?.();
+        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+        if (ok) {
+          rotoMoveHistory.recordAquarelleScriptEdit(editId);
+          setLastError(null);
+          clearOwnedScriptApplyRefusal();
+          return;
+        }
+        // Failed re-bake: put the pre-move script back exactly.
+        restoreAquarelleEditSnapshot(editId, 'undo');
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? 'Could not re-apply the watercolor script — the stroke was restored.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      } finally {
+        setAquarelleScriptEditInFlight(false);
+      }
+    })();
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+    canvasWidth,
+    canvasHeight,
+  ]);
+
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
   // has settled, and on frame-leave.
@@ -4986,7 +5051,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStroke, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -5022,6 +5087,7 @@ export function PhysicsPaintStudio() {
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
       onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
       onAquarelleDeleteStroke: handleAquarelleDeleteStroke,
+      onAquarelleMoveStroke: handleAquarelleMoveStroke,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the

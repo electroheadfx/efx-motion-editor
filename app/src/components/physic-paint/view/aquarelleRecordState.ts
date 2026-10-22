@@ -304,6 +304,104 @@ export function getRecordedAquarelleStrokeEntries(): ReadonlyMap<number, Aquarel
 }
 
 /**
+ * 261022-tv1: one captured registry pair — the LIVE stroke object and the
+ * LIVE timeline-entry object. Snapshots hold these references on purpose: a
+ * move replaces objects (never mutates them), so restoring a snapshot puts
+ * the exact pre-move objects back.
+ */
+export type AquarelleStrokeRegistryPair = readonly [
+  mutationId: number,
+  stroke: AquarelleStroke,
+  entry: ReturnType<typeof toStudioStroke>,
+];
+
+export interface AquarelleStrokeRegistrySnapshot {
+  readonly pairs: readonly AquarelleStrokeRegistryPair[];
+}
+
+/**
+ * Capture the recorded-stroke registry in Map insertion order (the hit-test
+ * walks it newest-last). The timeline entry is the SAME object pushed onto
+ * `payloadTimeline`, so capturing it keeps the two stores in lockstep.
+ */
+export function captureAquarelleStrokeRegistry(): AquarelleStrokeRegistrySnapshot {
+  const pairs: AquarelleStrokeRegistryPair[] = [];
+  for (const [mutationId, stroke] of recordedStrokes) {
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!entry) continue;
+    pairs.push([mutationId, stroke, entry]);
+  }
+  return { pairs };
+}
+
+/**
+ * Restore the captured registry exactly: both maps are cleared and re-set in
+ * the captured order (`Map.set` on a fresh map keeps insertion order, so
+ * newest-first hit-testing stays stable).
+ */
+export function restoreAquarelleStrokeRegistry(
+  snapshot: AquarelleStrokeRegistrySnapshot,
+): void {
+  recordedStrokes.clear();
+  recordedStrokeEntries.clear();
+  for (const [mutationId, stroke, entry] of snapshot.pairs) {
+    recordedStrokes.set(mutationId, stroke);
+    recordedStrokeEntries.set(mutationId, entry);
+  }
+}
+
+/**
+ * 261022-tv1: translate one recorded stroke (and its payload-timeline entry)
+ * by a document-UV delta. Everything else — ticks, recordedOrder, cuisson,
+ * traceSeed, playFrame, params, the record clock — is untouched.
+ *
+ * Objects are REPLACED, never mutated in place: an aquarelle script snapshot
+ * keeps the live event references (that is what lets a measured cuisson patch
+ * survive a swap), so an in-place translate would also translate the captured
+ * `before` side and undo could never restore the origin. The new entry is
+ * spliced at the SAME index so replay order is preserved.
+ */
+export function translateAquarelleStrokeInScript(
+  mutationId: number,
+  dxUv: number,
+  dyUv: number,
+): boolean {
+  if (!Number.isFinite(dxUv) || !Number.isFinite(dyUv)) return false;
+  if (dxUv === 0 && dyUv === 0) return false;
+  const stroke = recordedStrokes.get(mutationId);
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) return false;
+  const index = payloadTimeline.indexOf(entry);
+  if (index < 0) return false;
+
+  const movedStroke: AquarelleStroke = {
+    ...stroke,
+    points: stroke.points.map((strokePoint) => ({
+      x: strokePoint.x + dxUv,
+      y: strokePoint.y + dyUv,
+      p: strokePoint.p,
+      tx: strokePoint.tx,
+      ty: strokePoint.ty,
+      tw: strokePoint.tw,
+    })),
+  };
+  const movedEntry: ReturnType<typeof toStudioStroke> = {
+    ...entry,
+    pts: entry.pts.map((strokePoint) => ({
+      ...strokePoint,
+      x: strokePoint.x + dxUv,
+      y: strokePoint.y + dyUv,
+    })),
+  };
+
+  recordedStrokes.set(mutationId, movedStroke);
+  recordedStrokeEntries.set(mutationId, movedEntry);
+  payloadTimeline[index] = movedEntry;
+  bumpAquarelleStrokesRevision();
+  return true;
+}
+
+/**
  * Remove a recorded stroke from the SCRIPT (261022-pim). The engine-1 guide
  * stroke stays in the engine's ledger (capture order + paint barriers remain
  * stable); the marker plus the timeline splice are the script mutation the
