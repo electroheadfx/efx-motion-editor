@@ -110,7 +110,7 @@ function WatercolorRail({
         class={`physics-paint-icon-button${selectActive ? ' active' : ''}`}
         data-testid="aquarelle-select-toggle"
         disabled={disabled || aquarelleLiveStrokeCount.value === 0}
-        title="Select — Cmd toggles Select on/off · Backspace deletes the selected stroke"
+        title="Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke"
         aria-label="Select"
         aria-pressed={selectActive}
         onClick={() => toggleAquarelleSelectMode()}

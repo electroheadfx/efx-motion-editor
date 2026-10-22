@@ -2409,10 +2409,12 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleSelectedScriptLoadAndApply (refused-row branch + apply-failure
     // branch) and one in handleApplyScript.
     // 261022-pim: a fourth site — the Alt+click delete re-bake failure in
-    // handleAquarelleDeleteStroke — reuses the SAME mapper and capsule. No
-    // second import, no new status surface.
+    // handleAquarelleDeleteStroke — reuses the SAME mapper and capsule.
+    // 261022-tv1: a fifth site — the stroke-move re-bake failure in
+    // handleAquarelleMoveStroke — reuses the same mapper. No second import,
+    // no new status surface.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(5); // one import + four call sites
+    expect(mentions).toBe(6); // one import + five call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -2906,7 +2908,8 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(overlayIndex).toBeLessThan(aquarelleCanvasLayer.indexOf('<AquarelleBrushCursor />'));
     expect(aquarelleStrokeOverlay).toContain('data-testid="aquarelle-stroke-overlay"');
     expect(aquarelleStrokeOverlay).toContain("pointerEvents: 'auto'");
-    expect(aquarelleStrokeOverlay).toContain('if (!selectMode && !moveArmed) return null;');
+    // 261022-tv1: a Cmd release mid-drag must not unmount the ghost surface.
+    expect(aquarelleStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
   });
 
   it('applies selection in the pointer handler and reads Alt for delete', () => {
@@ -2929,8 +2932,8 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Select/Move owns the active state: the paint tool is deselected.
     expect(watercolorRail).toContain('const isActive = !selectActive && active === id;');
     expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
-    // Better hover text: the shortcut and the Backspace delete live on it.
-    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Backspace deletes the selected stroke');
+    // Better hover text: the shortcut, the drag, and the Backspace delete live on it.
+    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke');
     expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Backspace deletes the selected key'");
     expect(toolRail).toContain('title={item.tooltip ?? item.label}');
   });
@@ -3041,5 +3044,87 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(historyHook).toContain('const recordAquarelleScriptEdit = useCallback((editId: number) => {');
     expect(historyHook).toContain("await route.replay(entry.editId, 'undo')");
     expect(historyHook).toContain("await route.replay(entry.editId, 'redo')");
+  });
+});
+
+// 261022-tv1: Cmd+drag stroke move. During the gesture the overlay writes
+// only the ghost signal; the release path is begin edit -> reset sheet ->
+// await the shared apply -> record on success -> raw rollback on failure.
+describe('261022-tv1 watercolor stroke move wiring', () => {
+  const moveHandlerStart = studio.indexOf('const handleAquarelleMoveStroke = useCallback(');
+  const moveHandlerEnd = studio.indexOf('// 56-12 CACHE WRITE', moveHandlerStart);
+  const moveHandler = studio.slice(moveHandlerStart, moveHandlerEnd);
+
+  it('exists and owns the release path in order (begin -> reset -> await apply -> record on success -> rollback)', () => {
+    expect(moveHandlerStart).toBeGreaterThan(-1);
+    const beginSite = moveHandler.indexOf('const editId = beginAquarelleMoveEdit(mutationId, delta.x, delta.y);');
+    const resetSite = moveHandler.indexOf('aquarelleResetSheetRef.current?.();');
+    const applySite = moveHandler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
+    const successSite = moveHandler.indexOf('if (ok) {');
+    const recordSite = moveHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId);');
+    const rollbackSite = moveHandler.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
+    expect(beginSite).toBeGreaterThan(-1);
+    expect(resetSite).toBeGreaterThan(beginSite);
+    expect(applySite).toBeGreaterThan(resetSite);
+    expect(successSite).toBeGreaterThan(applySite);
+    expect(recordSite).toBeGreaterThan(successSite);
+    expect(rollbackSite).toBeGreaterThan(recordSite);
+    // The re-bake reads the RECORDED timeline, never the live engine capture.
+    expect(moveHandler).not.toContain('applyCurrentScript');
+  });
+
+  it('converts the pointer delta through the one bridge and never captures the engine', () => {
+    expect(moveHandler).toContain('aquarelleEnginePixelDeltaToUv(');
+    expect(moveHandler).not.toContain('mutationEngine');
+    expect(moveHandler).not.toContain('engineRef');
+    expect(moveHandler).not.toContain('clipboard');
+  });
+
+  it('gates on the same tokens as the delete handler', () => {
+    expect(moveHandler).toContain('if (isPhysicalMutationLocked()) return;');
+    expect(moveHandler).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;');
+    expect(moveHandler).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;");
+    expect(moveHandler).toContain('if (isAquarelleScriptEditInFlight()) return;');
+  });
+
+  it('wires the move callback through the canvas mount props and memo deps', () => {
+    expect(canvasMount).toContain('onAquarelleMoveStroke?: (mutationId: number, dxPx: number, dyPx: number) => void;');
+    expect(canvasMount).toContain('onMoveStroke={(mutationId, dxPx, dyPx) => onAquarelleMoveStrokeRef.current?.(mutationId, dxPx, dyPx)}');
+    expect(studio).toContain('onAquarelleMoveStroke: handleAquarelleMoveStroke,');
+    expect(studio).toContain('handleAquarelleMoveStroke, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke]');
+    expect(aquarelleCanvasLayer).toContain('onMoveStroke?: (mutationId: number, dxPx: number, dyPx: number) => void;');
+    expect(aquarelleCanvasLayer).toContain('onMoveStroke={(mutationId, dxPx, dyPx) => onMoveStrokeRef.current?.(mutationId, dxPx, dyPx)}');
+    expect(aquarelleStrokeOverlay).toContain('onMoveStroke: (mutationId: number, dxPx: number, dyPx: number) => void;');
+  });
+
+  it('keeps the gesture surface in the overlay leaf and the ghost signal out of the Studio', () => {
+    expect(aquarelleStrokeOverlay).toContain('DRAG_THRESHOLD_PX');
+    expect(aquarelleStrokeOverlay).toContain('onPointerMove={handlePointerMove}');
+    expect(aquarelleStrokeOverlay).toContain('onPointerUp={handlePointerUp}');
+    expect(aquarelleStrokeOverlay).toContain('onPointerCancel={handlePointerCancel}');
+    expect(aquarelleStrokeOverlay).toContain("data-testid={dragOffset ? 'aquarelle-drag-ghost' : undefined}");
+    expect(aquarelleStrokeOverlay).toContain('setPointerCapture(');
+    expect(aquarelleStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
+    expect(aquarelleStrokeOverlay).not.toContain('useEffect');
+    expect(aquarelleStrokeOverlay).not.toContain('useState');
+    expect(studio).not.toContain('aquarelleStrokeDrag');
+  });
+
+  it('clears a stale ghost when select mode disarms or a script edit begins', () => {
+    const selectionSource = readFileSync(fileURLToPath(new URL('./view/aquarelleStrokeSelection.ts', import.meta.url)), 'utf8');
+    expect(selectionSource).toContain('clearAquarelleStrokeDrag();');
+    const beginMove = selectionSource.slice(selectionSource.indexOf('export function beginAquarelleMoveEdit('));
+    expect(beginMove.indexOf('clearAquarelleStrokeDrag();')).toBeGreaterThan(-1);
+    expect(beginMove.indexOf('clearAquarelleStrokeDrag();')).toBeLessThan(
+      beginMove.indexOf('if (aquarelleScriptEditInFlight) return null;'),
+    );
+    const disarm = selectionSource.slice(selectionSource.indexOf('export function setAquarelleSelectMode('));
+    expect(disarm.slice(0, disarm.indexOf('export function toggleAquarelleSelectMode'))).toContain('clearAquarelleStrokeDrag();');
+  });
+
+  it('keeps the 261022-pim delete pins intact', () => {
+    expect(studio).toContain('const handleAquarelleDeleteStroke = useCallback(');
+    expect(studio).toContain('onAquarelleDeleteStroke: handleAquarelleDeleteStroke,');
+    expect(aquarelleStrokeOverlay).toContain('selectAquarelleStrokeAt(');
   });
 });

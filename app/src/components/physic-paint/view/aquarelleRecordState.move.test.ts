@@ -31,8 +31,12 @@ import {
   aquarelleStrokeDrag,
   beginAquarelleMoveEdit,
   clearAquarelleStrokeDrag,
+  isAquarelleDeleteInFlight,
+  isAquarelleScriptEditInFlight,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
+  setAquarelleScriptEditInFlight,
+  setAquarelleSelectMode,
   setAquarelleStrokeDrag,
 } from './aquarelleStrokeSelection';
 
@@ -228,6 +232,27 @@ describe('261022-tv1 aquarelle move edit snapshots', () => {
     expect(getRecordedAquarelleStroke(id)).toBe(movedStroke);
     expect(timelineStrokeAt(index)).toBe(movedEntry);
   });
+
+  it('a second move on the same stroke is refused while one is in flight', () => {
+    const id = 8701;
+    recordAquarelleStroke(id, stroke(id, 508));
+    const originalStroke = getRecordedAquarelleStroke(id)!;
+    const revision = aquarelleStrokesRevision.value;
+
+    setAquarelleScriptEditInFlight(true);
+    try {
+      expect(isAquarelleScriptEditInFlight()).toBe(true);
+      // The delete-named alias shares the ONE guard.
+      expect(isAquarelleDeleteInFlight()).toBe(true);
+      expect(beginAquarelleMoveEdit(id, 0.01, 0.01)).toBeNull();
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+
+    expect(isAquarelleScriptEditInFlight()).toBe(false);
+    expect(getRecordedAquarelleStroke(id)).toBe(originalStroke);
+    expect(aquarelleStrokesRevision.value).toBe(revision);
+  });
 });
 
 describe('261022-tv1 aquarelle move/delete lockstep', () => {
@@ -276,5 +301,20 @@ describe('261022-tv1 aquarelle stroke drag signal', () => {
       dispose();
       clearAquarelleStrokeDrag();
     }
+  });
+
+  it('disarming select mode or starting a script edit clears the ghost', () => {
+    const id = 8801;
+    recordAquarelleStroke(id, stroke(id, 509));
+
+    setAquarelleSelectMode(true);
+    setAquarelleStrokeDrag({ mutationId: id, dxPx: 20, dyPx: 10 });
+    expect(aquarelleStrokeDrag.value).not.toBeNull();
+    setAquarelleSelectMode(false);
+    expect(aquarelleStrokeDrag.value).toBeNull();
+
+    setAquarelleStrokeDrag({ mutationId: id, dxPx: 20, dyPx: 10 });
+    expect(beginAquarelleMoveEdit(id, 0.01, 0.01)).not.toBeNull();
+    expect(aquarelleStrokeDrag.value).toBeNull();
   });
 });

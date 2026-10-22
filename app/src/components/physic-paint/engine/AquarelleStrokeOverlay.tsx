@@ -56,7 +56,7 @@ export function AquarelleStrokeOverlay(props: {
   onDeleteStroke: (mutationId: number) => void;
   onMoveStroke: (mutationId: number, dxPx: number, dyPx: number) => void;
 }): JSX.Element | null {
-  // Gesture state lives in a ref — no useState, no effect.
+  // Gesture state lives in a ref — no component state, no effect.
   const gestureRef = useRef<AquarelleDragGesture | null>(null);
   const selectMode = aquarelleSelectMode.value;
   const moveArmed = temporaryMove.value;
@@ -107,6 +107,13 @@ export function AquarelleStrokeOverlay(props: {
       startY: point.y,
       started: false,
     };
+    // Own the pointer for the whole gesture: a drag that leaves the overlay
+    // still streams its moves and ends here exactly once.
+    try {
+      (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    } catch {
+      // A detached overlay cannot capture; the element still owns pointerup.
+    }
   };
 
   const handlePointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
@@ -122,6 +129,17 @@ export function AquarelleStrokeOverlay(props: {
     setAquarelleStrokeDrag({ mutationId: gesture.mutationId, dxPx, dyPx });
   };
 
+  const releasePointerCapture = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const target = event.currentTarget as HTMLElement;
+    try {
+      if (target.hasPointerCapture?.(event.pointerId)) {
+        target.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // Already released / detached — nothing to clean up.
+    }
+  };
+
   const handlePointerUp = (event: TargetedPointerEvent<HTMLDivElement>) => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -133,8 +151,17 @@ export function AquarelleStrokeOverlay(props: {
     const crossed = gesture.started || Math.hypot(dxPx, dyPx) >= DRAG_THRESHOLD_PX;
     gestureRef.current = null;
     clearAquarelleStrokeDrag();
+    releasePointerCapture(event);
     if (!crossed) return;
     props.onMoveStroke(gesture.mutationId, dxPx, dyPx);
+  };
+
+  // A cancelled gesture leaves the script untouched: no move, no apply.
+  const handlePointerCancel = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    gestureRef.current = null;
+    clearAquarelleStrokeDrag();
   };
 
   return (
@@ -150,6 +177,7 @@ export function AquarelleStrokeOverlay(props: {
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
     >
       <svg
         width="100%"

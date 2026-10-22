@@ -76,8 +76,12 @@ export function selectAquarelleStroke(mutationId: number | null): void {
 export function setAquarelleSelectMode(on: boolean): void {
   if (aquarelleSelectMode.value === on) return;
   aquarelleSelectMode.value = on;
-  // Leaving select mode drops the highlight so a later re-arm starts clean.
-  if (!on) selectAquarelleStroke(null);
+  // Leaving select mode drops the highlight and any in-flight ghost so a
+  // later re-arm starts clean (compare-then-write clear).
+  if (!on) {
+    selectAquarelleStroke(null);
+    clearAquarelleStrokeDrag();
+  }
 }
 
 export function toggleAquarelleSelectMode(): void {
@@ -416,6 +420,8 @@ function storeAquarelleEdit(record: AquarelleEditRecord): number {
  * snapshots. Returns a monotonic edit id or null when refused.
  */
 export function beginAquarelleDeleteEdit(mutationId: number): number | null {
+  // A delete/apply must never leave a drag ghost behind.
+  clearAquarelleStrokeDrag();
   if (aquarelleScriptEditInFlight) return null;
   const before = captureAquarelleSnapshot();
   if (!deleteAquarelleStrokeFromScript(mutationId)) return null;
@@ -440,6 +446,8 @@ export function beginAquarelleMoveEdit(
   dxUv: number,
   dyUv: number,
 ): number | null {
+  // A move/apply must never leave the released ghost behind.
+  clearAquarelleStrokeDrag();
   if (aquarelleScriptEditInFlight) return null;
   const before = captureAquarelleSnapshot();
   if (!translateAquarelleStrokeInScript(mutationId, dxUv, dyUv)) return null;
