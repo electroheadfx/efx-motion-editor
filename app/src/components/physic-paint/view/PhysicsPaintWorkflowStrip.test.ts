@@ -112,6 +112,7 @@ describe('Delete scope copy', () => {
 
 const ROW_ICON_ACTIONS: ReadonlyArray<{ label: string; guard: string; handler: string }> = [
   { label: 'Add key', guard: 'canAddRotoKey', handler: 'props.onAddRotoKey?.()' },
+  { label: 'Create rail', guard: 'canCreateRail', handler: 'props.onCreateRotoKeyRail?.()' },
   { label: 'Insert key before', guard: 'canInsertRotoKey', handler: 'props.onInsertRotoFrame?.()' },
   { label: 'Delete Frame', guard: 'canDeleteRotoKey', handler: 'props.onDeleteRotoFrame?.()' },
   { label: 'Duplicate key', guard: 'canDuplicateRotoKey', handler: 'props.onDuplicateRotoKey?.()' },
@@ -253,7 +254,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(getHeaderBlock(source())).not.toContain('physics-paint-mode-label');
   });
 
-  it('renders the eight guarded icon actions in locked order, Trash after Insert (D-10 + Mj2-UAT)', () => {
+  it('renders the nine guarded icon actions in locked order, Trash after Insert (D-10 + Mj2-UAT)', () => {
     const row = getActionRowBlock(source());
     const indices = ROW_ICON_ACTIONS.map(({ label }) => row.indexOf(getActionAriaLabelToken(label)));
     indices.forEach((index) => expect(index).toBeGreaterThanOrEqual(0));
@@ -318,8 +319,8 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     expect(code).toContain('function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null)');
     expect(code).toContain('return disabledReason ? `unavailable: ${disabledReason}` : description;');
     const builderCalls = (row.match(/buildGuardedActionTooltipCopy\(/g) ?? []).length;
-    // Eight guarded icon actions plus the Set Key Space form.
-    expect(builderCalls).toBeGreaterThanOrEqual(9);
+    // Nine guarded icon actions plus the Set Key Space form.
+    expect(builderCalls).toBeGreaterThanOrEqual(10);
     // Script copy/apply availability reasons now surface in the Scripts
     // sidebar toolbar, not the strip (Gap C); 260905-dso: the buffer
     // Apply/Clear availability reads now live in the Tools popover Actions
@@ -332,6 +333,7 @@ describe('PhysicsPaintWorkflowStrip source contract', () => {
     const row = getActionRowBlock(source());
     const labeledActions: ReadonlyArray<{ action: string; icon: string; label: string }> = [
       { action: 'Add key', icon: 'Plus', label: 'Key' },
+      { action: 'Create rail', icon: 'Plus', label: 'Rail' },
       { action: 'Duplicate key', icon: 'CopyPlus', label: 'Duplicate' },
       { action: 'Insert key before', icon: 'BetweenVerticalStart', label: 'Insert' },
       { action: 'Copy key', icon: 'ClipboardCopy', label: 'Copy' },
@@ -1102,22 +1104,24 @@ describe('PhysicsPaintWorkflowStrip top bar regrouping contract (36.15-08, UAT G
     expect(code).not.toContain('value="blend"');
   });
 
-  it('orders the bottom action row as layer, Key chip, Add key, Insert, Delete, Duplicate, Copy, Paste (Key Spacing relocated to the popover)', () => {
+  it('orders the bottom action row as layer, Key chip, Add key, Create rail, Insert, Delete, Duplicate, Copy, Paste (Key Spacing relocated to the popover)', () => {
     const row = getActionRowBlock(source());
     const layerIndex = row.indexOf('physics-paint-roto-key-layer');
     const chipIndex = row.indexOf('physics-paint-roto-key-context');
     const addIndex = row.indexOf('aria-label="Add key"');
+    const railIndex = row.indexOf('aria-label="Create rail"');
     const insertIndex = row.indexOf(getActionAriaLabelToken('Insert key before'));
     const deleteIndex = row.indexOf(getActionAriaLabelToken('Delete Frame'));
     const duplicateIndex = row.indexOf('aria-label="Duplicate key"');
     const copyIndex = row.indexOf('aria-label="Copy key"');
     const pasteIndex = row.indexOf('aria-label="Paste key"');
-    for (const index of [layerIndex, chipIndex, addIndex, insertIndex, deleteIndex, duplicateIndex, copyIndex, pasteIndex]) {
+    for (const index of [layerIndex, chipIndex, addIndex, railIndex, insertIndex, deleteIndex, duplicateIndex, copyIndex, pasteIndex]) {
       expect(index).toBeGreaterThanOrEqual(0);
     }
     expect(chipIndex).toBeGreaterThan(layerIndex);
     expect(addIndex).toBeGreaterThan(chipIndex);
-    expect(insertIndex).toBeGreaterThan(addIndex);
+    expect(railIndex).toBeGreaterThan(addIndex);
+    expect(insertIndex).toBeGreaterThan(railIndex);
     expect(deleteIndex).toBeGreaterThan(insertIndex);
     expect(duplicateIndex).toBeGreaterThan(deleteIndex);
     expect(copyIndex).toBeGreaterThan(duplicateIndex);
@@ -2125,10 +2129,11 @@ describe('Solo armed tint source contract (260905-d1w: relocated into the playba
 });
 
 describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
-  it('orders the action row as Key, Push, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor (260905-d1w + Mj2-UAT trash relocation)', () => {
+  it('orders the action row as Key, Rail, Push, Insert, Trash, Duplicate, Copy, Paste, Cut, Scissor (260905-d1w + Mj2-UAT trash relocation)', () => {
     const row = getActionRowBlock(source());
     const tokens = [
       'aria-label="Add key"',
+      'aria-label="Create rail"',
       'aria-label="Push"',
       getActionAriaLabelToken('Insert key before'),
       getActionAriaLabelToken('Delete Frame'),
@@ -2147,22 +2152,24 @@ describe('260905-d1w action-row layout + Solo-in-pill source contracts', () => {
     expect(row).not.toContain('physics-paint-solo-tool-group');
   });
 
-  it('removes the + Rail button, rail-kind menu, and rail-create group from the action row (261022-cfn)', () => {
+  it('restores the single-purpose + Rail button without the rail-kind menu (261022-cfn follow-up)', () => {
     const row = getActionRowBlock(source());
     expect(row).toContain('aria-label="Add key"');
-    expect(row).not.toContain('Create rail');
+    expect(row).toContain('aria-label="Create rail"');
+    expect(row).toContain('props.onCreateRotoKeyRail?.()');
     expect(row).not.toContain('Rail kind');
     expect(row).not.toContain('physics-paint-rail-create-group');
     expect(row).not.toContain('PhysicsPaintRailCreateMenu');
     const code = source();
-    expect(code).not.toContain('canCreateRail');
+    expect(code).toContain('canCreateRail');
+    expect(code).toContain('isLinkedRepeatFrameResolution');
     expect(code).not.toContain('railCreateMenuOpen');
-    expect(code).not.toContain('isLinkedRepeatFrameResolution');
-    // Names are assembled at runtime so the app-wide dead-artifact grep gate
-    // (which includes this file) stays at zero hits.
-    for (const deadProp of ['onCreate' + 'RotoKeyRail', 'onCreate' + 'PlayScriptRail', 'onCreate' + 'RevealRail']) {
+    // Motion/Static/Reveal stay retired from the timeline; they live in the
+    // sidebar Scripts tab's Create Rail dialog. The + Rail prop is alive again.
+    for (const deadProp of ['onCreate' + 'PlayScriptRail', 'onCreate' + 'RevealRail']) {
       expect(code).not.toContain(deadProp);
     }
+    expect(code).toContain('onCreate' + 'RotoKeyRail');
   });
 
   it('relocates Solo into the playback pill as an icon-only nav-button (260905-d1w)', () => {

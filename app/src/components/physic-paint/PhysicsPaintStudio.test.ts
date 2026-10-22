@@ -2566,10 +2566,17 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const beginBlock = section(studio, 'beginRotoFrameEditImplRef.current = (', 'const beginRotoFrameEdit = useCallback(');
     expect(beginBlock).toContain('startRotoPaintPromotion({');
     expect(studio).toContain('void promoteRotoPaintTargetRef.current(input)');
-    // 261022-cfn: the + Rail → Key action is deleted, so the promotion seam is
-    // the ONLY addEmptyKey call site in the Studio.
-    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(1);
-    expect(studio).not.toContain('handleCreateRotoKeyRail');
+    // 261022-cfn + follow-up: two addEmptyKey call sites — the auto-paint
+    // promotion and the single-purpose + Rail new-rail action.
+    expect(studio.match(/physicalKeyUtilities\.addEmptyKey\(/g) ?? []).toHaveLength(2);
+    const newRailBlock = section(
+      studio,
+      'const handleCreateRotoKeyRail = useCallback(',
+      'const beginRotoFrameEdit = useCallback(',
+    );
+    expect(newRailBlock).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, appFrame)');
+    expect(newRailBlock).toContain('{ forceNewSegment: true }');
+    expect(newRailBlock).toContain("currentFrameSelectionKind === 'real-key'");
   });
 
   it('never intercepts the pointer gesture (no preventDefault / stopPropagation / setPointerCapture)', () => {

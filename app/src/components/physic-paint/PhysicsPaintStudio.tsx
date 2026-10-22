@@ -3057,6 +3057,41 @@ export function PhysicsPaintStudio() {
       selectionKind: currentFrameSelectionKind === 'generated-interpolation' ? 'generated-interpolation' : 'empty',
     });
   };
+  // 261022-cfn follow-up: the single-purpose + Rail action (no dropdown) —
+  // create a BLANK key that deliberately starts a NEW rail on the current
+  // frame. Motion/Static/Reveal rail kinds stay in the sidebar Scripts tab's
+  // Create Rail dialog. The strip greys the button on generated in-betweens and
+  // linked repeats; this guard repeats the real-key check defensively.
+  const handleCreateRotoKeyRail = useCallback(() => {
+    const launch = launchContextRef.current;
+    if (!launch || workflowMode !== 'roto' || isPlaying) return;
+    if (currentFrameSelectionKind === 'real-key') return;
+    const appFrame = launch.startFrame;
+    void (async () => {
+      try {
+        const blank = await buildBlankRotoFrame(canvasWidth, canvasHeight, appFrame);
+        const ok = await rotoTimelineActions.physicalKeyUtilities.addEmptyKey(
+          appFrame,
+          {
+            frameIndex: blank.frameIndex,
+            appFrame,
+            bytes: blank.bytes,
+            ...(blank.width !== undefined ? { width: blank.width } : {}),
+            ...(blank.height !== undefined ? { height: blank.height } : {}),
+          },
+          { forceNewSegment: true },
+        );
+        if (!ok) {
+          setApplyStatus('error');
+          setApplyMessage('Could not create a new Roto rail key.');
+        }
+      } catch (error) {
+        setApplyStatus('error');
+        setApplyMessage('Could not create a new Roto rail key.');
+        setLastError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  }, [canvasHeight, canvasWidth, currentFrameSelectionKind, isPlaying, rotoTimelineActions, setApplyMessage, setApplyStatus, setLastError, workflowMode]);
   const beginRotoFrameEdit = useCallback((event?: PointerEvent) => {
     beginRotoFrameEditImplRef.current(event);
   }, []);
@@ -6005,7 +6040,7 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
-        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
+        onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onCreateRotoKeyRail: handleCreateRotoKeyRail, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
           documentSyncDirty.value = true;
           await flushDocumentSyncRef.current();
         }, onCopyRotoFrame: copyRotoFrame, onCutRotoFrame: cutRotoFrame, onScissorKeyRail: rotoPhysicalActions.scissorKeyRail, onPasteRotoFrame: pasteRotoFrame, rotoKeyRecords, rotoLoopClips, rotoIncomingInterpolationBreakKeyIds, rotoPhysicalCells: rotoTimelineModel.physicalCells.value, rotoLoopResolutionContext: loopResolutionContext, rotoLoopPresentations: loopPresentations, selectedRotoLoopClipIds: effectiveSelectedLoopClipIds, railSetMemberLoopIds: effectiveRailSetMembers

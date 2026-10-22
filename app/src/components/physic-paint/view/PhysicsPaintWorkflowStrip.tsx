@@ -42,6 +42,7 @@ import {
   clampPhysicPaintRailSetMoveDelta,
   derivePhysicPaintPushSet,
   resolvePhysicPaintRotoGroupEffectiveEnd,
+  type PhysicPaintRotoFrameResolution,
   type PhysicPaintRotoGroupDragClampInput,
   type PhysicPaintRotoKeyRailDragClampInput,
   type PhysicPaintRotoLoopResolutionContext,
@@ -303,6 +304,8 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
   onAddRotoKey?: () => void;
+  /** + Rail header action: create a blank key that deliberately starts a NEW rail. */
+  onCreateRotoKeyRail?: () => void;
   onDuplicateRotoKey?: () => void;
   onInsertRotoFrame?: () => void;
   onDeleteRotoFrame?: () => void;
@@ -700,6 +703,18 @@ function isSavedFrame(markers: PhysicsPaintWorkflowStripFrameMarker[] | undefine
  */
 function buildGuardedActionTooltipCopy(description: string, disabledReason: string | null): string {
   return disabledReason ? `unavailable: ${disabledReason}` : description;
+}
+
+/** 261022-cfn follow-up: a linked Rail repeat is any virtual linked occurrence
+ *  past the source cycle — 'linked-unresolved' (always a repeat) or a
+ *  linked/linked-generated/linked-gap cell with repeatInstance > 0. The + Rail
+ *  button greys on these so it can never break a linked repeat silently. */
+function isLinkedRepeatFrameResolution(resolution: PhysicPaintRotoFrameResolution | null | undefined): boolean {
+  return resolution?.kind === 'linked-unresolved'
+    || ((resolution?.kind === 'linked'
+      || resolution?.kind === 'linked-generated'
+      || resolution?.kind === 'linked-gap')
+      && resolution.repeatInstance > 0);
 }
 
 type RotoDragCandidateKind = 'empty' | 'real-key' | 'generated' | 'outside' | 'locked';
@@ -2234,6 +2249,24 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
     : keyUtilitiesDisabledByBusyState || props.ready === false
       ? 'Finish the current key action before using key tools.'
       : physicalActions?.addEmptyKeyDisabledReason.value ?? 'Adding a Roto key is unavailable.';
+  // + Rail (261022-cfn follow-up): a single-purpose action — create a blank key
+  // that deliberately starts a NEW rail on this frame. It shares + Key's base
+  // availability and additionally requires an empty current frame (not a
+  // generated in-between, not a linked repeat) so it can never silently break
+  // an interpolation span. Motion/Static/Reveal still live in the sidebar
+  // Scripts tab's Create Rail dialog.
+  const currentFrameResolution = visibleFrameResolutions?.get(props.currentFrame) ?? null;
+  const isCurrentFrameGenerated = physicalCellByAppFrame.get(props.currentFrame)?.kind === 'generated';
+  const isCurrentFrameLinkedRepeat = isLinkedRepeatFrameResolution(currentFrameResolution);
+  const canCreateRail = canAddRotoKey && !isCurrentFrameGenerated && !isCurrentFrameLinkedRepeat;
+  const railCreateDisabledReason = canCreateRail
+    ? null
+    : addRotoKeyDisabledReason
+      ?? (isCurrentFrameLinkedRepeat
+        ? 'The current frame is a linked Rail repeat — move to an empty frame to create a Rail.'
+        : isCurrentFrameGenerated
+          ? 'The current frame is a generated in-between — move to an empty frame to create a Rail.'
+          : 'Creating a Rail is unavailable.');
   const copyRotoKeyDisabledReason = canCopyRotoKey ? null : getRotoKeyUtilityDisabledMessage('copy');
   const pasteRotoKeyDisabledReason = canPasteRotoKey ? null : getRotoKeyUtilityDisabledMessage('paste');
   const deleteRotoKeyDisabledReason = canDeleteRotoKey ? null : getRotoKeyUtilityDisabledMessage('delete');
@@ -2300,6 +2333,7 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
   }, [pushArmedNow, keyRailSegments]);
   const insertKeyTooltip = useStyledTooltip();
   const addKeyTooltip = useStyledTooltip();
+  const railCreateTooltip = useStyledTooltip();
   const duplicateKeyTooltip = useStyledTooltip();
   const copyKeyTooltip = useStyledTooltip();
   const cutKeyTooltip = useStyledTooltip();
@@ -5015,6 +5049,38 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                   ) : null}
                   <PhysicsPaintStyledTooltip visible={addKeyTooltip.visible} region="bottom">
                     {buildGuardedActionTooltipCopy('Add key', addRotoKeyDisabledReason)}
+                  </PhysicsPaintStyledTooltip>
+                </span>
+                {/* 261022-cfn follow-up: single-purpose + Rail — creates a blank
+                    key that deliberately starts a NEW rail. No dropdown: the
+                    Motion/Static/Reveal rail kinds live in the sidebar Scripts
+                    tab's Create Rail dialog. */}
+                <span class="physics-paint-roto-key-icon-action" onPointerEnter={railCreateTooltip.onPointerEnter} onPointerLeave={railCreateTooltip.onPointerLeave}>
+                  <button
+                    type="button"
+                    class="physics-paint-roto-key-icon-button"
+                    aria-label="Create rail"
+                    aria-disabled={!canCreateRail ? 'true' : undefined}
+                    aria-describedby={!canCreateRail && railCreateDisabledReason ? 'roto-key-action-reason-rail-create' : undefined}
+                    onFocus={railCreateTooltip.onFocus}
+                    onBlur={railCreateTooltip.onBlur}
+                    onClick={() => {
+                      railCreateTooltip.hide();
+                      if (!canCreateRail) return;
+                      props.onCreateRotoKeyRail?.();
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.key === 'Enter' || event.key === ' ') && !canCreateRail) event.preventDefault();
+                    }}
+                  >
+                    <Plus size={18} aria-hidden="true" />
+                    <span class="physics-paint-roto-key-icon-label">Rail</span>
+                  </button>
+                  {!canCreateRail && railCreateDisabledReason ? (
+                    <span id="roto-key-action-reason-rail-create" class="physics-paint-sr-only">{railCreateDisabledReason}</span>
+                  ) : null}
+                  <PhysicsPaintStyledTooltip visible={railCreateTooltip.visible} region="bottom">
+                    {buildGuardedActionTooltipCopy('Create rail — start a new rail with a blank key on this frame', railCreateDisabledReason)}
                   </PhysicsPaintStyledTooltip>
                 </span>
                 <div class="physics-paint-push-tool-group" role="group" aria-label="Push tool">
