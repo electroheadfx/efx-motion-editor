@@ -120,6 +120,7 @@ import { efxPaintAudioOwnership } from './audio/efxPaintAudioOwnership';
 import { efxPaintAudioMonitor } from './audio/efxPaintAudioMonitor';
 import { audioPreviewEnabled, setAudioPreviewEnabled } from './audio/efxPaintAudioPreviewStore';
 import { buildBlankRotoFrame, type RenderedFramePayload } from './roto/rotoCanvasFrames';
+import { resolvePreviousRealKeyBase } from './roto/physicsPaintRotoPreviousKeyBase';
 import { detectPhysicsPaintBridgeMode, usePhysicsPaintBridgeMode, usePhysicsPaintCloseFlush } from './bridge/usePhysicsPaintParentBridge';
 import { usePhysicsPaintLaunchIntegration } from './hooks/usePhysicsPaintLaunchIntegration';
 import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApplyResultController';
@@ -210,6 +211,10 @@ interface PendingRotoFirstPaintTarget {
   /** Resolved by the helper BEFORE dispatch — the accepted-key reload
    *  suppression pins this as the frame's repaint base. */
   blankFrame: RenderedFramePayload | null;
+  /** Quick 261022-cfn Task 1: which base `blankFrame` holds. A cloned base
+   *  multiplies an aquarelle sheet over the previous key's paint; a blank base
+   *  encodes the sheet alone. Assigned with `blankFrame`, before dispatch. */
+  baseKind: 'clone' | 'blank';
   readonly promise: Promise<RotoPaintPromotionResult>;
   /** Set by the completed-mutation seam so the failure policy knows whether a
    *  stroke already landed on the live canvas. */
@@ -2119,12 +2124,42 @@ export function PhysicsPaintStudio() {
       return fail('real-key-source');
     }
 
-    let blankFrame: RenderedFramePayload;
-    try {
-      blankFrame = await buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
-    } catch (error) {
-      return fail(`blank-frame-failed: ${error instanceof Error ? error.message : String(error)}`);
+    // Quick 261022-cfn Task 1: the ONE previous-real-key resolver shared with
+    // + Key. A generated/interpolated cell clones the nearest previous real
+    // key's paint and joins its rail; an empty cell starts blank but still
+    // joins; unusable previous-key bytes on a generated cell fail closed.
+    const resolution = resolvePreviousRealKeyBase({
+      records: physicPaintStore.getRotoRealKeyRecords(launch.layerId, studioActiveTrackId()),
+      cachedRotoFrames: latestRotoFramesRef.current,
+    }, source.appFrame);
+    if (source.selectionKind === 'generated-interpolation' && resolution.kind === 'unavailable') {
+      return fail('previous-key-bytes-unavailable');
     }
+
+    let baseFrame: RenderedFramePayload;
+    let baseKind: 'clone' | 'blank';
+    if (source.selectionKind === 'generated-interpolation' && resolution.kind === 'clone') {
+      // Relabel only appFrame; frameIndex/bytes/width/height come from the
+      // cloned previous real key, never from the displayed interpolated pixels.
+      baseFrame = {
+        frameIndex: resolution.payload.frameIndex,
+        appFrame: source.appFrame,
+        bytes: resolution.payload.bytes,
+        ...(resolution.payload.width !== undefined ? { width: resolution.payload.width } : {}),
+        ...(resolution.payload.height !== undefined ? { height: resolution.payload.height } : {}),
+      };
+      baseKind = 'clone';
+    } else {
+      try {
+        baseFrame = await buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame);
+      } catch (error) {
+        return fail(`blank-frame-failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      baseKind = 'blank';
+    }
+    // A previous real key (cloned or unavailable-on-empty) continues its rail;
+    // only the no-previous-key blank case opens a new segment.
+    const joinPreviousRail = resolution.kind !== 'blank';
     const pendingEntry = pendingFirstPaintTargetRef.current;
     if (
       pendingEntry
@@ -2133,8 +2168,9 @@ export function PhysicsPaintStudio() {
       && pendingEntry.appFrame === source.appFrame
     ) {
       // The reload suppression and the capture both read this as the frame's
-      // repaint base — pin it before the parent can accept the key.
-      pendingEntry.blankFrame = blankFrame;
+      // repaint base — pin the base and its kind before the parent can accept.
+      pendingEntry.blankFrame = baseFrame;
+      pendingEntry.baseKind = baseKind;
     }
 
     let accepted: RotoPhysicalEditAcceptedOutput<EfxPaintDocument> | null;
@@ -2148,12 +2184,13 @@ export function PhysicsPaintStudio() {
         () => rotoTimelineActions.physicalKeyUtilities.addEmptyKey(
           source.appFrame,
           {
-            frameIndex: blankFrame.frameIndex,
+            frameIndex: baseFrame.frameIndex,
             appFrame: source.appFrame,
-            bytes: blankFrame.bytes,
-            ...(blankFrame.width !== undefined ? { width: blankFrame.width } : {}),
-            ...(blankFrame.height !== undefined ? { height: blankFrame.height } : {}),
+            bytes: baseFrame.bytes,
+            ...(baseFrame.width !== undefined ? { width: baseFrame.width } : {}),
+            ...(baseFrame.height !== undefined ? { height: baseFrame.height } : {}),
           },
+          { joinPreviousRail },
         ),
       );
     } catch (error) {
@@ -2183,7 +2220,7 @@ export function PhysicsPaintStudio() {
         acceptedSourceRevision: accepted.acceptedRevision,
       });
     }
-    return { ok: true, keyId: created.keyId, appFrame: created.appFrame, blankFrame };
+    return { ok: true, keyId: created.keyId, appFrame: created.appFrame, blankFrame: baseFrame };
   };
 
   // Quick 261019-mj2 Task 3 (D-16): a promotion that yields no usable key must
@@ -2261,6 +2298,7 @@ export function PhysicsPaintStudio() {
       appFrame: input.appFrame,
       source: input.source,
       blankFrame: null,
+      baseKind: 'blank',
       promise,
       completedMutationObserved: false,
     };
@@ -3657,12 +3695,16 @@ export function PhysicsPaintStudio() {
           } else if (pendingSelfPromotion.blankFrame !== null && acceptedSelectedAppFrame !== null) {
             setCachedRotoRepaintBaseFrame(pendingSelfPromotion.blankFrame);
             cachedRotoRepaintBaseFrameRef.current = pendingSelfPromotion.blankFrame;
-            // The promoted key is blank. The aquarelle sheet is opaque
-            // transmittance; multiplying it over a transparent base blanks the
-            // capture. Encode the sheet alone for this whole sheet session —
-            // the sheet already accumulates every stroke, so the base must not
-            // advance to its own commits.
-            aquarelleMergeBaseRef.current = { appFrame: acceptedSelectedAppFrame, base: null };
+            // A cloned base multiplies the opaque transmittance sheet over the
+            // previous key's paint; a blank base would multiply over a
+            // transparent frame and blank the capture, so it encodes the sheet
+            // alone for this whole sheet session — the sheet already
+            // accumulates every stroke, so the base must not advance to its
+            // own commits.
+            aquarelleMergeBaseRef.current = {
+              appFrame: acceptedSelectedAppFrame,
+              base: pendingSelfPromotion.baseKind === 'clone' ? pendingSelfPromotion.blankFrame : null,
+            };
           }
         }
       } catch (error) {
@@ -4657,10 +4699,11 @@ export function PhysicsPaintStudio() {
         const promotion = await pendingFirstPaintTarget.promise;
         // Failure policy: the stroke was discarded — never persist it.
         if (!promotion.ok) return;
-        // The promoted key is blank: encoding the opaque transmittance sheet
-        // alone is correct; multiply over a transparent base would erase it.
-        cachedBase = null;
-        aquarelleMergeBaseRef.current = { appFrame: playFrame, base: null };
+        // A cloned base multiplies the opaque transmittance sheet over the
+        // previous key's paint. A blank base must encode the sheet alone:
+        // multiply over a transparent base would erase it.
+        cachedBase = pendingFirstPaintTarget.baseKind === 'clone' ? pendingFirstPaintTarget.blankFrame : null;
+        aquarelleMergeBaseRef.current = { appFrame: playFrame, base: cachedBase };
       } else {
         if (aquarelleMergeBaseRef.current?.appFrame !== playFrame) {
           aquarelleMergeBaseRef.current = {

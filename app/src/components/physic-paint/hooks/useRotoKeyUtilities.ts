@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { createRotoSession, isRotoSessionCopiedKeyGroup, isRotoSessionCopiedRailSet, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedGroupEntry, type RotoSessionCopiedKey, type RotoSessionCopiedKeyValue, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
+import { PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR, resolvePreviousRealKeyBase, toEmptyKeyPayload } from '../roto/physicsPaintRotoPreviousKeyBase';
 import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import type { RotoPhysicalKeyUtilityPort } from '../roto/rotoCoordinatorPorts';
 
@@ -316,7 +317,10 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
       input.setApplyMessage('The current frame already has a real Roto key.');
       return;
     }
-    const resolution = resolvePreviousRealKeyPayload(input, input.currentFrame);
+    const resolution = resolvePreviousRealKeyBase({
+      records: input.getRotoKeyRecords(),
+      cachedRotoFrames: input.cachedRotoFrames,
+    }, input.currentFrame);
     if (resolution.kind === 'unavailable') {
       input.setApplyStatus('error');
       input.setApplyMessage(`Could not add a Roto key — ${PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR}.`);
@@ -367,62 +371,3 @@ function toClipboardPayload(copiedKey: RotoSessionCopiedKey): PhysicPaintRotoRea
   }) as PhysicPaintRotoRealKeyPayload;
 }
 
-export function toEmptyKeyPayload(blank: PhysicPaintRotoCacheFrame, destinationAppFrame: number): PhysicPaintRotoRealKeyPayload {
-  return Object.freeze({
-    frameIndex: blank.frameIndex,
-    appFrame: destinationAppFrame,
-    bytes: blank.bytes,
-    ...(blank.width !== undefined ? { width: blank.width } : {}),
-    ...(blank.height !== undefined ? { height: blank.height } : {}),
-  }) as PhysicPaintRotoRealKeyPayload;
-}
-
-const PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR = 'previous key bytes unavailable';
-
-type PreviousRealKeyPayloadResolution =
-  | { kind: 'clone'; payload: PhysicPaintRotoRealKeyPayload }
-  | { kind: 'blank' }
-  | { kind: 'unavailable' };
-
-function hasUsableBytes(bytes: Uint8Array | undefined): bytes is Uint8Array {
-  return bytes instanceof Uint8Array && bytes.byteLength > 0;
-}
-
-/**
- * D-04: resolve the + Key payload from the nearest previous REAL key (strictly
- * earlier than the destination). Cached real-key bytes are preferred over the
- * durable record payload; a previous key with no bytes on either carrier fails
- * closed. Only a frame with NO previous real key receives a blank payload.
- */
-function resolvePreviousRealKeyPayload(
-  input: RotoKeyUtilitiesInput,
-  destinationAppFrame: number,
-): PreviousRealKeyPayloadResolution {
-  const records = input.getRotoKeyRecords();
-  let previousFrame: number | null = null;
-  for (const record of records) {
-    if (!Number.isInteger(record.appFrame) || record.appFrame >= destinationAppFrame) continue;
-    if (previousFrame === null || record.appFrame > previousFrame) previousFrame = record.appFrame;
-  }
-  if (previousFrame === null) return { kind: 'blank' };
-  const cached = (input.cachedRotoFrames ?? []).find(
-    (frame) => frame.appFrame === previousFrame && frame.source === 'real-key' && hasUsableBytes(frame.bytes),
-  );
-  if (cached) return { kind: 'clone', payload: toEmptyKeyPayload(cached, destinationAppFrame) };
-  const durable = records.find(
-    (record) => record.appFrame === previousFrame && hasUsableBytes(record.payload.bytes),
-  );
-  if (durable && durable.payload.bytes) {
-    return {
-      kind: 'clone',
-      payload: Object.freeze({
-        frameIndex: durable.payload.frameIndex,
-        appFrame: destinationAppFrame,
-        bytes: durable.payload.bytes,
-        ...(durable.payload.width !== undefined ? { width: durable.payload.width } : {}),
-        ...(durable.payload.height !== undefined ? { height: durable.payload.height } : {}),
-      }) as PhysicPaintRotoRealKeyPayload,
-    };
-  }
-  return { kind: 'unavailable' };
-}

@@ -2562,10 +2562,43 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
       'prepareRotoScriptTargetRef.current = async (',
     );
     // Empty AND generated cells promote; only a real-key branch stays outside.
-    expect(promotionHelper).not.toContain("selectionKind === 'generated-interpolation'");
-    expect(promotionHelper).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame)');
+    // Quick 261022-cfn Task 1: both non-real kinds use the ONE shared resolver;
+    // only the base selection and the rail join differ between them.
+    expect(promotionHelper).not.toContain('resolvePreviousRealKeyPayload');
+    expect(promotionHelper).toContain('resolvePreviousRealKeyBase({');
+    expect(promotionHelper).toContain('records: physicPaintStore.getRotoRealKeyRecords(launch.layerId, studioActiveTrackId())');
+    expect(promotionHelper).toContain('cachedRotoFrames: latestRotoFramesRef.current');
+    expect(promotionHelper).toContain('}, source.appFrame);');
+    const unavailableIndex = promotionHelper.indexOf("source.selectionKind === 'generated-interpolation' && resolution.kind === 'unavailable'");
+    expect(unavailableIndex).toBeGreaterThan(-1);
+    // Generated + unavailable fails closed BEFORE any dispatch (no blank key).
+    expect(unavailableIndex).toBeLessThan(promotionHelper.indexOf('physicalKeyUtilities.addEmptyKey('));
+    expect(promotionHelper).toContain("return fail('previous-key-bytes-unavailable');");
+    // Generated + clone relabels only appFrame; no blank frame is built.
+    const cloneBaseBlock = section(
+      promotionHelper,
+      "if (source.selectionKind === 'generated-interpolation' && resolution.kind === 'clone') {",
+      '} else {',
+    );
+    expect(cloneBaseBlock).toContain('frameIndex: resolution.payload.frameIndex');
+    expect(cloneBaseBlock).toContain('appFrame: source.appFrame');
+    expect(cloneBaseBlock).toContain('bytes: resolution.payload.bytes');
+    expect(cloneBaseBlock).not.toContain('buildBlankRotoFrame');
+    expect(cloneBaseBlock).toContain("baseKind = 'clone';");
+    // Empty + a previous record (clone or unavailable) and generated + blank
+    // use a blank base; only the no-previous-key case opens a new rail.
+    const blankBaseBlock = section(promotionHelper, '} else {', '// A previous real key');
+    expect(blankBaseBlock).toContain('buildBlankRotoFrame(canvasWidth, canvasHeight, source.appFrame)');
+    expect(blankBaseBlock).toContain("baseKind = 'blank';");
+    expect(promotionHelper).toContain("const joinPreviousRail = resolution.kind !== 'blank';");
+    expect(promotionHelper).toContain('{ joinPreviousRail },');
+    // The base AND its kind are pinned before dispatch.
+    expect(promotionHelper.indexOf('pendingEntry.blankFrame = baseFrame;')).toBeGreaterThan(-1);
+    expect(promotionHelper.indexOf('pendingEntry.baseKind = baseKind;')).toBeGreaterThan(-1);
+    expect(promotionHelper.indexOf('pendingEntry.baseKind = baseKind;')).toBeLessThan(promotionHelper.indexOf('physicalKeyUtilities.addEmptyKey('));
     expect(promotionHelper).toContain('physicalKeyUtilities.addEmptyKey(');
     expect(promotionHelper).toContain('acceptedBefore');
+    expect(promotionHelper).toContain('blankFrame: baseFrame');
     // prepareRotoScriptTarget routes both non-real kinds through the helper.
     const prepareBlock = section(
       studio,
@@ -2660,8 +2693,11 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     const aquarelleAwaitIndex = captureBlock.indexOf('await pendingFirstPaintTarget.promise');
     expect(aquarelleAwaitIndex).toBeGreaterThan(-1);
     expect(aquarelleAwaitIndex).toBeLessThan(captureBlock.indexOf('captureLivePixels('));
-    expect(captureBlock).toContain('cachedBase = null');
-    expect(captureBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: playFrame, base: null }');
+    // Quick 261022-cfn Task 1: the pending base kind chooses the aquarelle merge
+    // base — a cloned base multiplies over the previous key's paint; a blank
+    // base encodes the sheet alone.
+    expect(captureBlock).toContain("cachedBase = pendingFirstPaintTarget.baseKind === 'clone' ? pendingFirstPaintTarget.blankFrame : null;");
+    expect(captureBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: playFrame, base: cachedBase }');
   });
 
   it('keeps the watercolor cached base visible while painting on an already painted key', () => {
@@ -2738,7 +2774,7 @@ describe('261019-mj2 Task 3 direct-paint auto-key self-promotion', () => {
     expect(guardIndex).toBeLessThan(acceptanceBlock.indexOf('loadCachedRotoReferenceFrame('));
     expect(acceptanceBlock).toContain('setCachedRotoRepaintBaseFrame(pendingSelfPromotion.blankFrame)');
     expect(acceptanceBlock).toContain('cachedRotoRepaintBaseFrameRef.current = pendingSelfPromotion.blankFrame');
-    expect(acceptanceBlock).toContain('aquarelleMergeBaseRef.current = { appFrame: acceptedSelectedAppFrame, base: null }');
+    expect(acceptanceBlock).toContain("base: pendingSelfPromotion.baseKind === 'clone' ? pendingSelfPromotion.blankFrame : null");
     expect(acceptanceBlock).toContain('acknowledgePhysicalEditSettlement');
   });
 
