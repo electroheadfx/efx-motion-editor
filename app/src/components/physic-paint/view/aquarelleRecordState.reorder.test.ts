@@ -96,12 +96,26 @@ describe('261022-ujp aquarelle stroke stack step', () => {
     expect(tailAfter.map((event) => (asTimelineStroke(event).engine as { mutationId?: number }).mutationId))
       .toEqual([9101, 9103, 9102]);
     expect(frameIds(601).slice(-3)).toEqual([9101, 9103, 9102]);
-    // The moved entry is the SAME object, with every per-stroke field intact.
-    expect(tailAfter[1]).toBe(tailBefore[2]);
+    // 261022-ujp fix: the recording slot travels with the POSITION, so the
+    // moved stroke takes its new neighbour's slot and vice versa. Leaving the
+    // moved stroke on its old timestamp collapsed the bake's settle gap and
+    // the water absorbed the underpainting (2-stroke repro).
     const movedAfter = asTimelineStroke(tailAfter[1]);
     const movedBefore = asTimelineStroke(tailBefore[2]);
+    const partnerBefore = asTimelineStroke(tailBefore[1]);
+    expect(movedAfter.recordedOrder).toBe(partnerBefore.recordedOrder);
+    expect(asTimelineStroke(tailAfter[2]).recordedOrder).toBe(movedBefore.recordedOrder);
+    expect((movedAfter.engine as { timestamp?: number }).timestamp).toBe(partnerBefore.recordedOrder);
+    expect(getRecordedAquarelleStroke(9103)!.timestamp).toBe(partnerBefore.recordedOrder);
+    // Regression pin: the frame's recording clock stays monotonic in paint
+    // order, which is what keeps the settle gap the bake feeds between strokes.
+    const slots = frameIds(601)
+      .slice(-3)
+      .map((id) => getRecordedAquarelleStroke(id)!.timestamp);
+    expect(slots).toEqual([...slots].sort((a, b) => a - b));
+    // Everything else on the stroke is intact — same source points, same
+    // duration, same frame.
     expect(movedAfter.ticks).toBe(movedBefore.ticks);
-    expect(movedAfter.recordedOrder).toBe(movedBefore.recordedOrder);
     expect(movedAfter.playFrame).toBe(movedBefore.playFrame);
     expect(movedAfter.pts).toBe(movedBefore.pts);
     expect(getRecordedAquarelleStroke(9103)!.points[0]!.x).toBe(0.1);

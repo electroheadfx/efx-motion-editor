@@ -534,6 +534,52 @@ function timedStroke(count: number, timestamp: number, playFrame: number | null,
   })
 }
 
+/** The stack-step rewrite: the recording slot travels with the paint position. */
+function withRecordedSlot(
+  stroke: StudioStroke<AquarelleStrokePayload>,
+  recordedOrder: number,
+): StudioStroke<AquarelleStrokePayload> {
+  return { ...stroke, recordedOrder, engine: { ...stroke.engine, timestamp: recordedOrder } }
+}
+
+// 261022-ujp: a stack step swaps two strokes' positions. If the moved stroke
+// keeps its old wall-clock slot, `buildRecordedTimeline` clamps its start to
+// the previous stroke's end and the idle settle gap collapses — the moved
+// underpainting is replayed into a still-wet sheet and the water absorbs it
+// (reported as "the stroke disappears"). Swapping the slot with the position
+// keeps the gap the artist actually lived.
+describe('261022-ujp stack-step recording slots', () => {
+  it('collapses the settle gap when a moved stroke keeps its old slot', async () => {
+    // Recorded A (11 pts, ends 1000ms) then B (6 pts, ends 3000ms); B is now
+    // painted FIRST but still carries B's later slot.
+    const a = timedStroke(11, 1000, 3)
+    const b = timedStroke(6, 3000, 3)
+    const { adapter, log } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8, frameCount: 1 })
+
+    const result = await bake.bake([b, a])
+    expect(result.ok).toBe(true)
+
+    // A's slot is in the past relative to the new origin → clamped onto B's
+    // last tick: no idle fluid time before the second stroke.
+    expect(log.renders[1]!.stepsBefore).toBe(0)
+  })
+
+  it('keeps the settle gap when the slot travels with the position', async () => {
+    const a = timedStroke(11, 1000, 3)
+    const b = timedStroke(6, 3000, 3)
+    const { adapter, log } = makeTimelineAdapter(0)
+    const bake = createAquarelleBake(adapter, { encodeWebp: pixelEncoder, width: 8, height: 8, frameCount: 1 })
+
+    // B now sits first and carries A's original slot; A sits second with B's.
+    const result = await bake.bake([withRecordedSlot(b, 1000), withRecordedSlot(a, 3000)])
+    expect(result.ok).toBe(true)
+
+    // The original ~114-tick idle gap is still simulated before A.
+    expect(log.renders[1]!.stepsBefore).toBeGreaterThan(100)
+  })
+})
+
 describe('261019c visible settle cap', () => {
   it('maps Dry Speed to the visible settle window (dry 50 → 165 ticks)', () => {
     expect(aquarelleVisibleSettleTicks(50)).toBe(165)

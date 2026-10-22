@@ -3228,9 +3228,12 @@ describe('261022-ujp stroke stack step', () => {
       aquarelleRecordStateSource.indexOf('export function deleteAquarelleStrokeFromScript', reorderStart),
     );
     // Index assignment, not a splice: every per-stroke field and the Map
-    // insertion order (newest-last hit-testing) stay untouched.
-    expect(reorder).toContain('payloadTimeline[index] = payloadTimeline[partnerIndex]!;');
-    expect(reorder).toContain('payloadTimeline[partnerIndex] = entry;');
+    // insertion order (newest-last hit-testing) stay untouched. The entries are
+    // REPLACED with recording-slot-swapped copies (snapshots hold references).
+    expect(reorder).toContain('payloadTimeline[index] = partnerReplacement;');
+    expect(reorder).toContain('payloadTimeline[partnerIndex] = movedReplacement;');
+    expect(reorder).toContain('withRecordedSlot(entry, partnerSlot)');
+    expect(reorder).toContain('withRecordedSlot(partnerEntry, movedSlot)');
     expect(reorder).toContain('isAquarelleDryEvent(event)');
     expect(reorder).not.toContain('.splice(');
     expect(reorder).not.toContain('setAquarelleStrokeDiffusionFrames');

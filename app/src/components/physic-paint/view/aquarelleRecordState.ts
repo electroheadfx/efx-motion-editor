@@ -409,12 +409,23 @@ export type AquarelleStackStepDirection = 'back' | 'forward';
  * with the nearest non-deleted stroke of the same edit frame in the requested
  * direction.
  *
- * The payload timeline IS the watercolor paint order, so this is a pure index
- * swap: the two entries trade places and every per-stroke field (points,
- * ticks, recordedOrder, playFrame, cuisson) is untouched. Dry events are sheet
- * actions with no frame anchor (D-15), so they keep their absolute timeline
- * index and are simply walked past. The registry Map insertion order is never
- * reordered — hit-testing walks it newest-last.
+ * The payload timeline IS the watercolor paint order, so the two entries trade
+ * places. The RECORDING SLOT (`recordedOrder` / `timestamp`) trades places with
+ * them: the bake derives each stroke's start tick from that clock and clamps it
+ * so strokes never overlap, so a moved stroke left carrying a timestamp that
+ * disagrees with its new neighbour collapses the settle gap — it is then
+ * replayed into a still-wet puddle and the water absorbs it (2-stroke repro:
+ * send the blue underpainting behind the pink stroke and the blue vanishes).
+ * Everything else on the stroke (points, ticks, playFrame, cuisson) is
+ * untouched.
+ *
+ * Entries and strokes are REPLACED, never mutated in place: an aquarelle script
+ * snapshot holds the live object references, so a mutation would also rewrite
+ * the captured `before` side and undo could never restore it.
+ *
+ * Dry events are sheet actions with no frame anchor (D-15), so they keep their
+ * absolute timeline index and are simply walked past. The registry Map
+ * insertion order is never reordered — hit-testing walks it newest-last.
  *
  * Refuses unknown, deleted, out-of-timeline, and already-at-that-end ids
  * without touching the revision.
@@ -430,6 +441,7 @@ export function stepAquarelleStrokeInScript(
 
   const step = direction === 'back' ? -1 : 1;
   let partnerIndex = -1;
+  let partnerId: number | undefined;
   for (let candidate = index + step; candidate >= 0 && candidate < payloadTimeline.length; candidate += step) {
     const event = payloadTimeline[candidate]!;
     // Dry is a sheet action with no frame anchor (D-15): never a swap partner.
@@ -438,14 +450,43 @@ export function stepAquarelleStrokeInScript(
     const candidateId = (event.engine as AquarelleStrokePayload).mutationId;
     if (candidateId === undefined || deletedAquarelleStrokeIds.has(candidateId)) continue;
     partnerIndex = candidate;
+    partnerId = candidateId;
     break;
   }
-  if (partnerIndex < 0) return false;
+  if (partnerIndex < 0 || partnerId === undefined) return false;
 
-  payloadTimeline[index] = payloadTimeline[partnerIndex]!;
-  payloadTimeline[partnerIndex] = entry;
+  const partnerEntry = payloadTimeline[partnerIndex]!;
+  if (isAquarelleDryEvent(partnerEntry)) return false;
+  const movedSlot = entry.recordedOrder;
+  const partnerSlot = partnerEntry.recordedOrder;
+
+  const movedReplacement = withRecordedSlot(entry, partnerSlot);
+  const partnerReplacement = withRecordedSlot(partnerEntry, movedSlot);
+  payloadTimeline[index] = partnerReplacement;
+  payloadTimeline[partnerIndex] = movedReplacement;
+
+  const movedStroke = recordedStrokes.get(mutationId);
+  if (movedStroke) recordedStrokes.set(mutationId, { ...movedStroke, timestamp: partnerSlot });
+  const partnerStroke = recordedStrokes.get(partnerId);
+  if (partnerStroke) recordedStrokes.set(partnerId, { ...partnerStroke, timestamp: movedSlot });
+
+  recordedStrokeEntries.set(mutationId, movedReplacement);
+  recordedStrokeEntries.set(partnerId, partnerReplacement);
+
   bumpAquarelleStrokesRevision();
   return true;
+}
+
+/** One timeline entry re-stamped into another recording slot (new object). */
+function withRecordedSlot(
+  entry: ReturnType<typeof toStudioStroke>,
+  recordedOrder: number,
+): ReturnType<typeof toStudioStroke> {
+  return {
+    ...entry,
+    recordedOrder,
+    engine: { ...entry.engine, timestamp: recordedOrder },
+  };
 }
 
 /** 261022-ujp: one step behind (toward the bottom of the paint stack). */
