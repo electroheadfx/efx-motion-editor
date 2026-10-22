@@ -161,6 +161,11 @@ const { depositAlongPath, createMockCanvas } = vi.hoisted(() => {
         }
       },
       setPointerCapture() {}, releasePointerCapture() {},
+      // 261022-ujp: Move-tool stack badges draw text on the display overlay.
+      font: '', textAlign: 'left', textBaseline: 'alphabetic', lineJoin: 'miter', lineWidth: 1,
+      strokeStyle: '#000', clip() {},
+      measureText(text: string) { return { width: text.length * 6 } },
+      strokeText() {}, fillText() {},
       getBoundingClientRect: () => ({ left: 0, top: 0, width: state.w, height: state.h }),
     }
     return {
@@ -429,9 +434,13 @@ function cursorMode(): 'pointer' | 'brush' | 'none' {
 function createDisplayCtx(): CanvasRenderingContext2D {
   return {
     save() {}, restore() {}, setLineDash() {},
-    beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, arc() {},
+    beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, arc() {}, rect() {}, clip() {},
     stroke() {}, fill() {},
     fillStyle: '', strokeStyle: '', lineWidth: 1,
+    // 261022-ujp: Move-tool stack badges draw text on the display overlay.
+    font: '', textAlign: 'left', textBaseline: 'alphabetic', lineJoin: 'miter',
+    measureText(text: string) { return { width: text.length * 6 } },
+    strokeText() {}, fillText() {},
   } as unknown as CanvasRenderingContext2D
 }
 

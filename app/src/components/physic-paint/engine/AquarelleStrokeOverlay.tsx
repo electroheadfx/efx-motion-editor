@@ -248,6 +248,26 @@ export function AquarelleStrokeOverlay(props: {
                 opacity={isSelected ? 0.9 : 0.45}
                 vectorEffect="non-scaling-stroke"
               />
+              {/* 261022-ujp: creation-order id · position from the top of the
+                  stack. Overlay only — never part of the baked pixels. */}
+              <text
+                x={Math.max(4, entry.bounds.x + offsetX)}
+                y={Math.max(12, entry.bounds.y + offsetY - 6)}
+                data-testid="aquarelle-stroke-badge"
+                data-stroke-serial={entry.serial}
+                data-stroke-stack={entry.stackPosition}
+                fontSize={11}
+                fontWeight={600}
+                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                fill={isSelected ? '#0b2a3a' : '#111827'}
+                stroke="#ffffff"
+                strokeWidth={3}
+                strokeLinejoin="round"
+                opacity={isSelected ? 1 : 0.6}
+                style={{ paintOrder: 'stroke', userSelect: 'none' }}
+              >
+                {`#${entry.serial} · ${entry.stackPosition}/${entry.stackTotal}`}
+              </text>
             </g>
           );
         })}

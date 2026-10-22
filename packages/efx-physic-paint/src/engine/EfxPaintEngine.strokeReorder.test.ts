@@ -346,6 +346,20 @@ function order(engine: EngineInternals): Array<number | undefined> {
   return engine.getStrokes().map((stroke: PaintStroke) => stroke.mutationId)
 }
 
+/** Display context that records the badge text the overlay pass draws. */
+function labelCtx(): { ctx: CanvasRenderingContext2D; texts: string[] } {
+  const texts: string[] = []
+  const ctx = {
+    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    measureText(text: string) { return { width: text.length * 6 } },
+    strokeText() {},
+    fillText(text: string) { texts.push(text) },
+    font: '', textAlign: 'left', textBaseline: 'bottom', lineJoin: 'round',
+    globalAlpha: 1, strokeStyle: '', fillStyle: '', lineWidth: 1,
+  } as unknown as CanvasRenderingContext2D
+  return { ctx, texts }
+}
+
 beforeEach(() => {
   vi.stubGlobal('document', { createElement: () => createMockCanvas(1, 1) })
 })
@@ -442,6 +456,50 @@ describe('261022-ujp Brush paint-order projection', () => {
     expect(engine.strokeStack[1]).toBe(primary1)
     expect(engine.strokeStack[2]).toBe(continuation)
     expect(engine.allActions.map((action: PaintStroke) => action.mutationId)).toEqual([1, 1, 2])
+  })
+
+  it('Move-tool badges show the creation id and the position from the top', () => {
+    const engine = createHarness()
+    const a = paintStroke(engine, hLine(20), 100)
+    const b = paintStroke(engine, hLine(40), 300)
+    const serials = (engine as EngineInternals).strokeSerials as Map<number, number>
+    expect([serials.get(a), serials.get(b)]).toEqual([1, 2])
+
+    engine.setTool('move')
+    const first = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(first.ctx)
+    // Paint order is bottom → top, so the topmost stroke is position 1/2.
+    expect(first.texts).toEqual(['#1 · 2/2', '#2 · 1/2'])
+
+    expect(engine.sendStrokeBackward(b)).toBe(true)
+    const second = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(second.ctx)
+    expect(second.texts).toEqual(['#2 · 2/2', '#1 · 1/2'])
+    // Restacking never renumbers: the ids are creation order.
+    expect([serials.get(a), serials.get(b)]).toEqual([1, 2])
+
+    // Outside the Move tool the badges are not drawn at all.
+    engine.setTool('paint')
+    const third = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(third.ctx)
+    expect(third.texts).toEqual([])
+  })
+
+  it('a serial survives undo/redo and is never reused', () => {
+    const engine = createHarness()
+    const a = paintStroke(engine, hLine(20), 100)
+    const b = paintStroke(engine, hLine(40), 300)
+    const serials = (engine as EngineInternals).strokeSerials as Map<number, number>
+
+    engine.undo()
+    engine.redo()
+    expect(serials.get(a)).toBe(1)
+    expect(serials.get(b)).toBe(2)
+
+    // The next accepted stroke takes the next serial — the ledger's order
+    // never renumbers an existing id.
+    const c = paintStroke(engine, hLine(60), 500)
+    expect(serials.get(c)).toBe(3)
   })
 
   it('refuses outside the move tool and for unknown ids', () => {

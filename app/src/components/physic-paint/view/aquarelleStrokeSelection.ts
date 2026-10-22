@@ -18,17 +18,19 @@
 // ============================================================
 
 import { computed, signal } from '@preact/signals';
-import type { AquarellePayloadEvent, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleUvToEnginePixel,
   type EnginePixelSize,
 } from '../engine/aquarelleStrokeBridge';
 import {
+  aquarelleStrokeSerial,
   aquarelleStrokesRevision,
   bumpAquarelleStrokesRevision,
   captureAquarelleStrokeRegistry,
   clearAquarelleStrokeDeletion,
   deleteAquarelleStrokeFromScript,
+  getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
@@ -62,6 +64,12 @@ export interface SelectableAquarelleStroke {
   mutationId: number;
   pointsPx: CanvasPoint[];
   bounds: AquarelleStrokeBounds;
+  /** 261022-ujp: creation-order id, stable across restack/delete. */
+  serial: number;
+  /** 261022-ujp: 1-based position from the TOP of the paint stack. */
+  stackPosition: number;
+  /** 261022-ujp: number of strokes in this frame's stack. */
+  stackTotal: number;
 }
 
 /** Rail Move/Select toggle. Compare-then-write. */
@@ -280,16 +288,32 @@ export function listSelectableAquarelleStrokes(
   size: EnginePixelSize,
 ): SelectableAquarelleStroke[] {
   void aquarelleStrokesRevision.value;
+  // Paint order for this frame, bottom → top. The listing itself walks the
+  // registry (creation order), so the stack position is looked up here.
+  const stackOrder: number[] = [];
+  for (const event of getAquarelleEventsForFrame(playFrame)) {
+    if (isAquarelleDryEvent(event)) continue;
+    const mutationId = (event.engine as { mutationId?: number }).mutationId;
+    if (mutationId !== undefined) stackOrder.push(mutationId);
+  }
+  const stackTotal = stackOrder.length;
   const out: SelectableAquarelleStroke[] = [];
   for (const [mutationId, stroke] of getRecordedAquarelleStrokeEntries()) {
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
+    // Serial assignment happens here in registry order for a loaded script
+    // (recorded strokes already own theirs).
+    const serial = aquarelleStrokeSerial(mutationId, playFrame);
     const pointsPx = aquarelleStrokePointsPx(stroke, size);
+    const stackIndex = stackOrder.indexOf(mutationId);
     out.push({
       mutationId,
       pointsPx: decimatePoints(pointsPx),
       // Bounds use every point — decimation must never clip the box ends.
       bounds: aquarelleStrokeBoundsPx(pointsPx, Number(stroke.params['size'])),
+      serial,
+      stackPosition: stackIndex < 0 ? stackTotal : stackTotal - stackIndex,
+      stackTotal,
     });
   }
   return out;

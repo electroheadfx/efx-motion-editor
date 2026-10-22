@@ -14,6 +14,7 @@ import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/pay
 import {
   markAquarelleStrokeDeleted,
   recordAquarelleStroke,
+  sendAquarelleStrokeBackwardInScript,
 } from './aquarelleRecordState';
 import {
   aquarelleSelectMode,
@@ -133,6 +134,27 @@ describe('261022-pim aquarelle stroke select mode', () => {
     );
     expect(entry).toBeDefined();
     expect(entry!.pointsPx.length).toBe(96);
+  });
+
+  it('badges carry a stable creation id and the position from the top', () => {
+    recordAquarelleStroke(9301, stroke({ points: [point(0.1, 0.5)], playFrame: 301 }));
+    recordAquarelleStroke(9302, stroke({ points: [point(0.2, 0.5)], playFrame: 301 }));
+
+    expect(listSelectableAquarelleStrokes(301, SHEET).map((entry) => (
+      [entry.mutationId, entry.serial, entry.stackPosition, entry.stackTotal]
+    ))).toEqual([[9301, 1, 2, 2], [9302, 2, 1, 2]]);
+
+    // Restacking changes only the stack position — the id is creation order.
+    expect(sendAquarelleStrokeBackwardInScript(9302)).toBe(true);
+    expect(listSelectableAquarelleStrokes(301, SHEET).map((entry) => (
+      [entry.mutationId, entry.serial, entry.stackPosition, entry.stackTotal]
+    ))).toEqual([[9301, 1, 1, 2], [9302, 2, 2, 2]]);
+
+    // Deleting #1 leaves #2 on #2 — a number is a stable handle, never reused.
+    markAquarelleStrokeDeleted(9301);
+    expect(listSelectableAquarelleStrokes(301, SHEET).map((entry) => (
+      [entry.mutationId, entry.serial, entry.stackPosition, entry.stackTotal]
+    ))).toEqual([[9302, 2, 1, 1]]);
   });
 
   it('setAquarelleSelectMode is compare-then-write', () => {

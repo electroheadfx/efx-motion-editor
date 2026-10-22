@@ -338,6 +338,8 @@ const STROKE_FINALIZATION_MAX_TURN_MS = 48
 const DISPLAY_COMPOSITE_MIN_INTERVAL_MS = 30
 /** The display loop pauses after this much pointer inactivity, even with the cursor over the canvas or strokes queued. */
 const RENDER_IDLE_MS = 4000
+/** 261022-ujp: Move-tool stack badge font — monospace keeps positions stable as they change. */
+const STROKE_LABEL_FONT = '600 11px ui-monospace, SFMono-Regular, Menlo, monospace'
 
 function brushRenderRadius(opts: Pick<BrushOpts, 'size'>): number {
   return Math.max(0.5, (opts.size || 24) / 2)
@@ -648,6 +650,16 @@ export class EfxPaintEngine {
    * materializes the live order, which is safe because it clears the redo).
    */
   private strokeStack: PaintStroke[] = []
+  /**
+   * 261022-ujp: creation-order serials for the Move-tool stack badges. Assigned
+   * once per accepted primary stroke and NEVER reused — deleting #2 leaves the
+   * survivors on #1 and #3 so a number is a stable handle on a stroke.
+   */
+  private strokeSerials = new Map<number, number>()
+  private nextStrokeSerial = 1
+  /** Label boxes drawn in the last full overlay pass (incremental hover repaint). */
+  private lastLabelRects = new Map<number, { x0: number; y0: number; x1: number; y1: number }>()
+  private lastLabelHoverId: number | null = null
   private undoStack: PaintHistoryEntry[] = []
   private redoStack: PaintHistoryEntry[] = []
   private historyEntries: PaintHistoryEntry[] = []
@@ -864,7 +876,11 @@ export class EfxPaintEngine {
     // 261004-dn5: same law for the move tool — its hover target only exists
     // while the move tool is selected.
     if (tool !== 'move') this.clearMoveHover()
+    const wasMove = this.state.tool === 'move'
     this.state.tool = tool
+    // 261022-ujp: entering/leaving Move adds/removes every stack badge. The
+    // incremental overlay path only repaints rects, so force one composite.
+    if (wasMove !== (tool === 'move')) this.displayCompositeDirty = true
     this.requestRender()
   }
 
@@ -1693,6 +1709,11 @@ export class EfxPaintEngine {
     this.activeMutationId = null
     this.allActions = []
     this.strokeStack = []
+    // 261022-ujp: a cleared surface starts a fresh creation-order numbering.
+    this.strokeSerialMap().clear()
+    this.nextStrokeSerial = 1
+    this.lastLabelHoverId = null
+    if (this.lastLabelRects instanceof Map) this.lastLabelRects.clear()
     this.undoStack = []
     this.redoStack = []
     this.historyEntries = []
@@ -2079,6 +2100,17 @@ export class EfxPaintEngine {
       // the previous composite — the stale wet pixels flush on the next
       // composite (≤30ms later). The scratch still mirrors the last composite,
       // so the rect restores stay consistent.
+      // 0. 261022-ujp: the hovered stack badge is drawn full-strength, the rest
+      // dimmed. Repaint only the two affected label boxes — a hover must never
+      // force a full composite (the upload churn this loop exists to avoid).
+      if (this.state.tool === 'move' && this.lastLabelHoverId !== this.moveHoverTargetId) {
+        const previousLabel = this.lastLabelHoverId != null ? this.lastLabelRects.get(this.lastLabelHoverId) : null
+        const nextLabel = this.moveHoverTargetId != null ? this.lastLabelRects.get(this.moveHoverTargetId) : null
+        if (previousLabel) this.restoreDisplayRect(previousLabel)
+        if (nextLabel && nextLabel !== previousLabel) this.restoreDisplayRect(nextLabel)
+        this.lastLabelHoverId = this.moveHoverTargetId
+      }
+
       // 1. New queued stroke outlines. Append-only: the preview list only grows
       // between composites (a finalize re-runs the composite, which clears and
       // redraws every outline from scratch).
@@ -2204,6 +2236,7 @@ export class EfxPaintEngine {
     this.drawnQueuedOutlineCount = this.getQueuedStrokePreviews().length
     drawStrokePreview(displayCtx, this.previewStroke)
     this.lastPreviewBbox = this.previewStroke ? this.overlayBoundsForPreview(this.previewStroke) : null
+    this.redrawStrokeStackLabels(displayCtx, null)
     if (this.cursorOverlay) return
     drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
     this.lastCursorRect = this.overlayBoundsForCursor()
@@ -2269,7 +2302,77 @@ export class EfxPaintEngine {
     displayCtx.clip()
     for (const pending of this.getQueuedStrokePreviews()) this.drawQueuedStrokePreview(displayCtx, pending)
     if (this.previewStroke) drawStrokePreview(displayCtx, this.previewStroke)
+    this.redrawStrokeStackLabels(displayCtx, { x0, y0, x1, y1 })
     displayCtx.restore()
+  }
+
+  /**
+   * 261022-ujp: Move-tool stack badges — `#<creation id> · <position>/<total>`
+   * at each stroke's top-left. Overlay only (the display layer is never part of
+   * a capture, cache, or export). A clipped pass repaints only the labels a
+   * rect restore erased, so the incremental render path stays cheap.
+   */
+  private redrawStrokeStackLabels(
+    ctx: CanvasRenderingContext2D,
+    clip: { x0: number; y0: number; x1: number; y1: number } | null,
+  ): void {
+    if (!(this.lastLabelRects instanceof Map)) this.lastLabelRects = new Map()
+    const serials = this.strokeSerialMap()
+    if (!clip) {
+      this.lastLabelRects.clear()
+      this.lastLabelHoverId = this.moveHoverTargetId
+    }
+    if (this.state.tool !== 'move') return
+    const ordered = this.liveActionsInPaintOrder().filter(action =>
+      action.tool === 'paint' && action.points.length > 0 && action.mutationId != null,
+    )
+    const total = ordered.length
+    if (total === 0) return
+    const hoverId = this.moveHoverTargetId
+    ctx.save()
+    if (clip) {
+      ctx.beginPath()
+      ctx.rect(clip.x0, clip.y0, clip.x1 - clip.x0, clip.y1 - clip.y0)
+      ctx.clip()
+    }
+    ctx.font = STROKE_LABEL_FONT
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'bottom'
+    ctx.lineJoin = 'round'
+    for (let index = 0; index < total; index += 1) {
+      const action = ordered[index]!
+      const mutationId = action.mutationId!
+      const anchor = this.strokeLabelAnchor(action)
+      const label = `#${serials.get(mutationId) ?? 0} · ${total - index}/${total}`
+      const width = ctx.measureText(label).width
+      const rect = { x0: anchor.x - 2, y0: anchor.y - 14, x1: anchor.x + width + 2, y1: anchor.y + 3 }
+      if (!clip) this.lastLabelRects.set(mutationId, rect)
+      else if (rect.x1 < clip.x0 || rect.x0 > clip.x1 || rect.y1 < clip.y0 || rect.y0 > clip.y1) continue
+      // The hovered stroke's badge is the readable one; the rest stay quiet so
+      // the preview ribbon (the target's own shape) stays the loudest cue.
+      ctx.globalAlpha = hoverId == null ? 0.6 : mutationId === hoverId ? 1 : 0.4
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)'
+      ctx.lineWidth = 3
+      ctx.strokeText(label, anchor.x, anchor.y)
+      ctx.fillStyle = '#111827'
+      ctx.fillText(label, anchor.x, anchor.y)
+    }
+    ctx.restore()
+  }
+
+  /** Top-left anchor for a stroke badge, clamped inside the canvas. */
+  private strokeLabelAnchor(action: PaintStroke): { x: number; y: number } {
+    let x0 = Infinity
+    let y0 = Infinity
+    for (const point of action.points) {
+      if (point.x < x0) x0 = point.x
+      if (point.y < y0) y0 = point.y
+    }
+    const radius = Math.ceil(brushRenderRadius(action.params))
+    return {
+      x: Math.max(4, Math.min(this.width - 4, x0 - radius)),
+      y: Math.max(14, Math.min(this.height - 4, y0 - radius - 4)),
+    }
   }
 
   private overlayBoundsForCursor(): { x0: number; y0: number; x1: number; y1: number } | null {
@@ -4028,6 +4131,27 @@ export class EfxPaintEngine {
     const stack = this.liveStrokeStack()
     this.allActions.push(...actions)
     stack.push(...actions)
+    for (const action of actions) this.assignStrokeSerial(action)
+  }
+
+  /**
+   * 261022-ujp: the serial map, seeded on demand — prototype-based unit
+   * harnesses construct instances without field initializers.
+   */
+  private strokeSerialMap(): Map<number, number> {
+    if (!(this.strokeSerials instanceof Map)) this.strokeSerials = new Map()
+    if (!Number.isFinite(this.nextStrokeSerial) || this.nextStrokeSerial < 1) this.nextStrokeSerial = 1
+    return this.strokeSerials
+  }
+
+  /** 261022-ujp: one serial per primary paint stroke, never reused. */
+  private assignStrokeSerial(action: PaintStroke): void {
+    const mutationId = action.mutationId
+    if (mutationId == null || action.tool !== 'paint' || action.points.length === 0) return
+    const serials = this.strokeSerialMap()
+    if (serials.has(mutationId)) return
+    serials.set(mutationId, this.nextStrokeSerial)
+    this.nextStrokeSerial += 1
   }
 
   private redrawAll(): void {
@@ -4194,8 +4318,13 @@ export class EfxPaintEngine {
     }))
 
     // 261022-ujp: the loaded document IS the paint order — reseed the
-    // projection from the freshly assigned ledger before the replay.
+    // projection from the freshly assigned ledger before the replay. Serials
+    // follow the loaded order (the document stores creation order per stroke
+    // only up to the first restack).
     this.strokeStack = [...this.allActions]
+    this.strokeSerialMap().clear()
+    this.nextStrokeSerial = 1
+    for (const action of this.allActions) this.assignStrokeSerial(action)
 
     // Loaded state is a pixel/script baseline, never active-frame Undo/Redo history.
     this.undoStack = []

@@ -276,6 +276,26 @@ export function bumpAquarelleStrokesRevision(): void {
 }
 
 /**
+ * 261022-ujp: creation-order serials for the stack badges. Per edit frame and
+ * never reused — a deleted stroke keeps its number, so the survivors never
+ * renumber and the id is a stable handle on a stroke (restacking does not
+ * touch it). Assigned at record time; a loaded script assigns on first listing
+ * in registry order, which is the recorded order the load preserved.
+ */
+const aquarelleStrokeSerials = new Map<number, number>();
+const aquarelleFrameSerialCounters = new Map<number, number>();
+
+export function aquarelleStrokeSerial(mutationId: number, playFrame: number): number {
+  const existing = aquarelleStrokeSerials.get(mutationId);
+  if (existing !== undefined) return existing;
+  const frame = Number.isFinite(playFrame) ? playFrame : 0;
+  const next = (aquarelleFrameSerialCounters.get(frame) ?? 0) + 1;
+  aquarelleFrameSerialCounters.set(frame, next);
+  aquarelleStrokeSerials.set(mutationId, next);
+  return next;
+}
+
+/**
  * 261022-pim: mutationIds removed from the SCRIPT. The engine-1 guide stroke
  * stays in the engine's ledger (capture order and paint barriers remain
  * stable); the markers are what the select surface, the capture projection,
@@ -541,11 +561,17 @@ export function recordAquarelleStroke(
   mutationId: number,
   stroke: AquarelleStroke,
 ): void {
-  recordedStrokes.set(mutationId, stroke);
+  // The payload projection reads the id from the stroke itself, so the registry
+  // entry must carry it — a stroke recorded without an id would fall out of
+  // every `engine.mutationId` walk (stack position, capture, replay filters).
+  const recorded = stroke.mutationId === mutationId ? stroke : { ...stroke, mutationId };
+  recordedStrokes.set(mutationId, recorded);
+  // Creation-order serial FIRST so the badge number can never reshuffle.
+  aquarelleStrokeSerial(mutationId, recorded.playFrame ?? 0);
   // The record clock advances by the stroke's own tick span so the next
   // Dry lands after it on the host grid (toStudioStroke: ticks = max(1, pts-1)).
-  advanceRecordClock(Math.max(1, stroke.points.length - 1));
-  const entry = toStudioStroke(stroke);
+  advanceRecordClock(Math.max(1, recorded.points.length - 1));
+  const entry = toStudioStroke(recorded);
   recordedStrokeEntries.set(mutationId, entry);
   payloadTimeline.push(entry);
   bumpAquarelleStrokesRevision();
