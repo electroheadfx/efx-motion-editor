@@ -16,7 +16,16 @@ import { signal } from '@preact/signals';
  *
  * Solo is an arm, not a transport command: toggling arms the filter; the user
  * presses Play (or playback continues). Arming never starts or stops
- * transport. Escape or a re-click disarms.
+ * transport.
+ *
+ * Persistence (261022-mne): the arm is scoped to the Studio session and
+ * survives frame navigation, playback, selection changes of any kind
+ * (active-track changes, key/loop rails, rail sets, spacing proxies, Select
+ * All), and mutation locks — including the script navigation lock that every
+ * frame move flips. Selecting a different track moves the focus instead of
+ * ending the arm. Exactly four boundaries end it: a re-click of the pill, the
+ * keyboard Escape layer (one Escape, one layer), a launch replacement, and the
+ * Studio unmount.
  *
  * Unlike the Push tool there is no commit-in-flight guard: solo is not a
  * mutation tool and never gates mutations (D-14).
@@ -40,9 +49,9 @@ export function toggleSolo(): boolean {
 
 /**
  * Disarm an armed solo. Returns true ONLY when solo was actually armed — the
- * keyboard Escape layer and selection-change transitions consume the boolean
- * so one Escape/transition handles at most one layer (D-04: popover dismiss ->
- * push disarm -> solo disarm -> selection collapse).
+ * keyboard Escape layer consumes the boolean so one Escape handles at most one
+ * layer (D-04: popover dismiss -> push disarm -> solo disarm -> selection
+ * collapse). Selection changes never call this (261022-mne).
  */
 export function disarmSolo(): boolean {
   if (!armed.peek()) return false;

@@ -934,8 +934,6 @@ export function PhysicsPaintStudio() {
     rotoSpacingSelection.value = null;
     // 43.6 D-04: Select All is a key selection — it clears the rail set.
     railSetSelection.value = null;
-    // 43.6-06 (D-14): Select All is a rail-selection change — it disarms solo.
-    disarmSolo();
     selectedLoopClipIds.value = [];
     loopSelectionAnchorId.value = null;
     selectedLoopClipId.value = null;
@@ -1381,17 +1379,22 @@ export function PhysicsPaintStudio() {
   // survives a Studio reopen (D-19). A push tool mid-commit is exempt (smoke
   // 3): its own mutation must not disarm it, so the tool stays armed for the
   // next chained push.
-  // 43.6-06 (D-14): mutation-lock entry also disarms an armed Solo — solo
-  // never gates mutations, disarm-on-lock only. No commit-in-flight guard:
-  // solo is not a mutation tool.
+  // 261022-mne: a mutation lock never ends an armed Solo — frame navigation
+  // rides the same lock (prepareNavigation begins a script operation), so the
+  // lock effect keeps push-tool behavior only.
   useEffect(() => {
     if (mutationLocked && !isPushCommitInFlight()) disarmPushTool();
-    if (mutationLocked) disarmSolo();
     return () => {
       if (!isPushCommitInFlight()) disarmPushTool();
-      disarmSolo();
     };
   }, [mutationLocked]);
+  // 261022-mne: the session Solo arm survives the whole Studio session — frame
+  // navigation, playback, selection changes and mutation locks never end it.
+  // Only a re-click of the pill, the keyboard Escape layer, a launch
+  // replacement, or this unmount do.
+  useEffect(() => () => {
+    disarmSolo();
+  }, []);
   // quick-261003-vos: Alt = temporary erase — ONE module signal plus gated
   // window listeners (physicsPaintTemporaryErase). The deps live behind a
   // render-body ref (canvasEngineReadyImplRef precedent) so the
@@ -2707,9 +2710,9 @@ export function PhysicsPaintStudio() {
     log: (message, isError) => { setApplyMessage(message); setApplyStatus(isError ? 'error' : 'idle'); if (isError) setLastError(message); },
   }, bridgeMode);
   const clearRotoLoopSelection = useCallback(() => {
-    // 43.6-06 (D-14): every rail-selection setter routes through this clear —
-    // ANY rail-selection change/clear disarms an armed Solo.
-    disarmSolo();
+    // 261022-mne: rail-selection clears never end the session Solo — it follows
+    // the active track instead. This clear is also reached by every frame-cell
+    // click (handleSelectTrackFrame), which must not disarm.
     selectedLoopClipIds.value = [];
     loopSelectionAnchorId.value = null;
     selectedLoopClipId.value = null;
@@ -2833,11 +2836,6 @@ export function PhysicsPaintStudio() {
     }
     // Plain click collapses the set into the single-rail path (D-04).
     railSetSelection.value = null;
-    // 43.6-06 (D-14): a plain Loop Rail click is a rail-selection change — an
-    // armed Solo disarms before the new selection is applied. Direct call, NOT
-    // clearRotoLoopSelection(), because that helper would clobber the selection
-    // this branch is about to write.
-    disarmSolo();
     const currentIds = selectedLoopClipIds.peek();
     const currentAnchor = loopSelectionAnchorId.peek();
     const currentPrimary = selectedLoopClipId.peek();
@@ -3834,11 +3832,11 @@ export function PhysicsPaintStudio() {
         // 43.6 D-04: the rail-set is the top selection layer — one Escape
         // collapses the set without touching the key selection (Pitfall 2).
         // Chain order (43.5 one-Escape-one-layer): popover dismiss, push
-        // disarm, solo disarm, set collapse, key-selection collapse.
+        // disarm, solo disarm, set collapse, key-selection collapse. The Solo
+        // layer itself lives in the keyboard dispatcher (261022-mne): a
+        // pointer-driven collapse here must not end the session arm.
         if (railSetSelection.value !== null) {
           railSetSelection.value = null;
-          // 43.6-06 (D-14): collapsing the set is a rail-selection change.
-          disarmSolo();
           return;
         }
         // D-02: collapse only an active multi-selection; a single-key
@@ -4060,7 +4058,6 @@ export function PhysicsPaintStudio() {
     // the click just switched the track — the loopId comes from this row's own
     // loop line, so it is guaranteed present on the newly active track.
     railSetSelection.value = null;
-    disarmSolo();
     selectedRotoKeyRail.value = null;
     selectedKeyId.value = null;
     selectedKeyIds.value = [];
@@ -4072,7 +4069,7 @@ export function PhysicsPaintStudio() {
     selectedLoopClipIds.value = [rail.loopId];
     loopSelectionAnchorId.value = rail.loopId;
     selectedLoopClipId.value = rail.loopId;
-  }, [clearRotoLoopSelection, disarmSolo, handleSelectRotoKeyRail, launchContext?.layerId, loopSelectionAnchorId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedLoopClipId, selectedLoopClipIds, selectedRotoKeyRail, selectionAnchorKeyId]);
+  }, [clearRotoLoopSelection, handleSelectRotoKeyRail, launchContext?.layerId, loopSelectionAnchorId, railSetSelection, rotoSpacingSelection, selectedKeyIds, selectedKeyId, selectedLoopClipId, selectedLoopClipIds, selectedRotoKeyRail, selectionAnchorKeyId]);
   const navigateLinkedGroup = useCallback((targetIndex: number) => {
     if (targetIndex < 0 || targetIndex >= linkedRotoGroups.length) return;
     const target = linkedRotoGroups[targetIndex];

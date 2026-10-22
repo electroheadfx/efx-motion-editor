@@ -746,9 +746,10 @@ describe('Physics Paint multi-rail selection SET wiring (43.6-01)', () => {
     const collapseEnd = studio.indexOf('toggleShortcuts:', collapseStart);
     const collapse = studio.slice(collapseStart, collapseEnd);
     expect(collapseStart).toBeGreaterThanOrEqual(0);
-    // 43.6-06 (D-14): collapsing the set also disarms an armed Solo — the
-    // set collapse is a rail-selection change.
-    expect(collapse).toContain('if (railSetSelection.value !== null) {\n          railSetSelection.value = null;\n          // 43.6-06 (D-14): collapsing the set is a rail-selection change.\n          disarmSolo();\n          return;\n        }');
+    // 261022-mne: a pointer-driven set collapse never ends the session Solo —
+    // the keyboard Escape layer disarms before this handler runs.
+    expect(collapse).toContain('if (railSetSelection.value !== null) {\n          railSetSelection.value = null;\n          return;\n        }');
+    expect(collapse).not.toContain('disarmSolo()');
     expect(collapse).toContain('if (selectedKeyIds.value.length <= 1) return;');
   });
 
@@ -815,6 +816,71 @@ describe('261022-iff one global Solo: no per-track document solo route', () => {
     // The multi-track row bundle still carries the surviving per-track intents.
     expect(studio).toContain('onToggleTrackVisible: multiTrackRowBundle.onToggleTrackVisible,');
     expect(studio).toContain('onToggleBlend: multiTrackRowBundle.onToggleBlend,');
+  });
+});
+
+describe('261022-mne session Solo persists through frame navigation and selection changes', () => {
+  function sliceFromStudio(startMarker: string, endMarker: string): string {
+    const start = studio.indexOf(startMarker);
+    const end = studio.indexOf(endMarker, start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return studio.slice(start, end);
+  }
+
+  it('never disarms Solo from the mutation-lock effect', () => {
+    const lockEffect = sliceFromStudio(
+      'if (mutationLocked && !isPushCommitInFlight()) disarmPushTool();',
+      '}, [mutationLocked]);',
+    );
+    // Frame navigation rides the same lock (prepareNavigation begins a script
+    // operation), so the lock effect keeps push-disarm behavior only.
+    expect(lockEffect).toContain('if (mutationLocked && !isPushCommitInFlight()) disarmPushTool();');
+    expect(lockEffect).toContain('if (!isPushCommitInFlight()) disarmPushTool();');
+    expect(lockEffect).not.toContain('disarmSolo()');
+  });
+
+  it('never disarms Solo from clearRotoLoopSelection', () => {
+    const clearBody = sliceFromStudio(
+      'const clearRotoLoopSelection = useCallback(() => {',
+      '}, []);',
+    );
+    expect(clearBody).toContain('selectedLoopClipIds.value = [];\n    loopSelectionAnchorId.value = null;\n    selectedLoopClipId.value = null;');
+    expect(clearBody).not.toContain('disarmSolo()');
+  });
+
+  it('never disarms Solo from Select All or the rail and frame-cell handlers', () => {
+    const selectAllBody = sliceFromStudio(
+      'const selectAllRotoKeys = useCallback(() => {',
+      '}, [currentFrame, launchContext, rotoKeyRecords, publishOperationResult]);',
+    );
+    const loopHandler = sliceFromStudio(
+      'const handleSelectRotoLoopClip = useCallback((',
+      'const handleOpenRotoLoopEdit',
+    );
+    const frameCellHandler = sliceFromStudio(
+      'const handleSelectTrackFrame = useCallback(',
+      'const handleSelectTrackRail = useCallback(',
+    );
+    const trackRailHandler = sliceFromStudio(
+      'const handleSelectTrackRail = useCallback(',
+      'const navigateLinkedGroup = useCallback(',
+    );
+    for (const region of [selectAllBody, loopHandler, frameCellHandler, trackRailHandler]) {
+      expect(region).not.toContain('disarmSolo()');
+    }
+  });
+
+  it('keeps exactly the launch-replacement and unmount Solo disarm call sites', () => {
+    expect((studio.match(/disarmSolo\(\)/g) ?? []).length).toBe(2);
+    // A replaced launch never inherits a stale session focus.
+    const launchReplacement = sliceFromStudio(
+      'if (next?.operationId !== current?.operationId || next?.layerId !== current?.layerId) {',
+      '} else if (next && next.startFrame !== current?.startFrame) {',
+    );
+    expect(launchReplacement).toContain('disarmSolo()');
+    // The arm survives the whole Studio session; unmount is the session boundary.
+    expect(studio).toContain('useEffect(() => () => {\n    disarmSolo();\n  }, []);');
   });
 });
 
