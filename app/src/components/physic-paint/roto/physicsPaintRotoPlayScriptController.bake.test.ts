@@ -292,6 +292,55 @@ describe('aquarelle bake consume branch (56-08)', () => {
     expect(test.commit).toHaveBeenCalled();
   });
 
+  // 261022-ljt / LJT-01: the aquarelle bake already reports every committed
+  // frame through AquarelleBakeOptions.onCommit — the controller must consume
+  // that seam and drive the SAME progress/status signals engine-1 uses.
+  it('aquarelle bake reports per-frame progress on the shared progress signal', async () => {
+    const committed: AquarelleBakeFrame[] = [];
+    const { bake, harness: fake } = makeFakeBake(committed);
+    fake.framesToReturn = [0, 1, 2].map((index) => ({
+      eventIndex: index,
+      strokeIndex: index,
+      tick: 0,
+      bytes: webpStub(String(index)),
+      width: 10,
+      height: 10,
+    }));
+    let capturedOptions: AquarelleBakeOptions | undefined;
+    const createAquarelleBake = vi.fn((_adapter: EngineAdapter<AquarelleStrokePayload>, options?: AquarelleBakeOptions) => {
+      capturedOptions = options;
+      return bake;
+    });
+    const createAquarelleAdapter = vi.fn(() => makeAdapter());
+
+    const test = harness({ createAquarelleBake, createAquarelleAdapter });
+    test.setSnapshot({ ...baseScript(99), engineId: 'efx-watercolor' });
+
+    await test.controller.openConfirmation();
+    test.controller.countText.value = '3';
+    const confirmPromise = test.controller.confirm();
+    // Let confirm reach the in-flight bake gate.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(capturedOptions?.onCommit).toBeTypeOf('function');
+    capturedOptions!.onCommit!(fake.framesToReturn[0]!);
+    capturedOptions!.onCommit!(fake.framesToReturn[1]!);
+    // The gate is STILL unresolved — this is the mid-bake proof.
+    expect(test.controller.progress.value).toEqual({ completed: 2, total: 3 });
+    expect(test.controller.status.value).toBe('Rendering 2 / 3');
+
+    capturedOptions!.onCommit!(fake.framesToReturn[2]!);
+    expect(test.controller.progress.value).toEqual({ completed: 3, total: 3 });
+
+    fake.bakeGate.resolve();
+    const ok = await confirmPromise;
+
+    expect(ok).toBe(true);
+    expect(test.controller.progress.value).toEqual({ completed: 3, total: 3 });
+  });
+
   it('the engine-1 path is unchanged (renderRotoPlayScriptFrames, no createAquarelleBake)', async () => {
     const createAquarelleBake = vi.fn();
     const createAquarelleAdapter = vi.fn(() => makeAdapter());

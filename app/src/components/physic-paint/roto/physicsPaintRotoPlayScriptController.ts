@@ -1245,6 +1245,11 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       ? ports.createAquarelleAdapter(size, bakePaper)
       : await createDefaultAquarelleAdapter(size, bakePaper);
     const createBake = ports.createAquarelleBake ?? defaultCreateAquarelleBake;
+    // 261022-ljt / LJT-01: per-commit progress parity with engine-1's
+    // onProgress. A monotonic counter matches engine-1's `frameIndex + 1`
+    // semantics on the Play path (eventIndex is an event index on the
+    // non-progressive bake path) and is clamped to `count`.
+    let committedFrames = 0;
     const bake = createBake(adapter, {
       width: size.width,
       height: size.height,
@@ -1257,6 +1262,19 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // 261019b: wire the Play Motion wiggle (D-09) into the fluid replay —
       // engine-1's held-pose law, applied per stroke at its deposit frame.
       motion: { ...input.motion, startFrame: start },
+      // 261022-ljt / LJT-01: consume the bake's existing per-committed-frame
+      // seam so the Play dialog bar advances exactly like brush mode. AQUA-07
+      // flushes (not aborts) on dispose, so commits legitimately continue
+      // after Cancel/close — they must be ignored, never re-open the dialog's
+      // progress. This callback runs inside the bake commit turn: a throw
+      // settles that turn `rejected` and fails the whole bake, so it contains
+      // only guarded signal writes.
+      onCommit: () => {
+        if (disposed || generation !== acceptedGeneration) return;
+        committedFrames = Math.min(count, committedFrames + 1);
+        progress.value = { completed: committedFrames, total: count };
+        status.value = `Rendering ${committedFrames} / ${count}`;
+      },
     });
     aquarelleBake = bake;
     try {
