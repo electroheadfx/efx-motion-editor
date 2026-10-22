@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-22T12:44:00.763Z"
+last_updated: "2026-10-22T13:37:51.374Z"
 last_activity: 2026-10-22
 last_activity_desc: Phase 56 complete
-state_head: dad851ffe8f69a8e590111f8504c8efda6edd27a
+state_head: c0163344ca5a161ab0099607834628ff070e1ebe
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-22 — Quick task 261022-jq0 UAT approved: a selected Studio rail scopes Play to its contiguous range, Loop wraps to the selection start, and no selection keeps full-timeline playback
+Last activity: 2026-10-22 — Completed quick task 261022-ljt: watercolor Play Script reports per-frame bake progress (automated-ready; live UAT pending)
 
 Progress: [██████████] 100%
 
@@ -564,6 +564,7 @@ None yet.
 | 261022-cfn | Auto-paint key creation clones the previous paint and joins its rail; replace the timeline + Rail dropdown with a single-purpose new-rail button; rename Action to Script in visible UI | 2026-10-22 | 713bc1b0 | [261022-cfn-key-creation-new-behaviour-1-auto-paint-](./quick/261022-cfn-key-creation-new-behaviour-1-auto-paint-/) |
 | 261022-iff | One global Solo button (Focus pill solos the active track, follows selection, Escape/re-click exits; per-track S chip and rail-solo window retired; hide wins over solo) | 2026-10-22 | c2ca4a01 | [261022-iff-one-global-solo-button-1-replace-the-sol](./quick/261022-iff-one-global-solo-button-1-replace-the-sol/) |
 | 261022-jq0 | Selected rail plays its full range (Studio transport): a selected Key Rail / Loop Clip / rail set scopes Play to its contiguous span, Loop wraps to the selection start, and no selection keeps full-timeline play-from-cursor | 2026-10-22 | dad851ff | [261022-jq0-selected-rail-plays-its-full-range-1-sel](./quick/261022-jq0-selected-rail-plays-its-full-range-1-sel/) |
+| 261022-ljt | Fix: Add progression to play script in watercolor mode (brush mode has it but watercolor play has no progress) | 2026-10-22 | c0163344 | [261022-ljt-fix-add-progression-to-play-script-in-wa](./quick/261022-ljt-fix-add-progression-to-play-script-in-wa/) |
 
 ### Roadmap Evolution
 
