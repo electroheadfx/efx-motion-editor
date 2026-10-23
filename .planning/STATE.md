@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-22T20:28:13.253Z"
-last_activity: 2026-10-22
+last_updated: "2026-10-23T06:26:35.946Z"
+last_activity: 2026-10-23
 last_activity_desc: Phase 56 complete
-state_head: eac877a3efe802016d288c1c12d126d6172b8833
+state_head: d10a2ed43477d06423e2d9c0e0b1e8071a03596d
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261022-ujp UAT APPROVED: '<' / '>' restack keys in Move/Select mode, restack stroke-loss fixed (recording slot follows the position), and stack badges (#id · position/total) with a solid stroke-coloured box on the selection
+Last activity: 2026-10-23 - Completed quick task 261023-bji: Studio Solo now dims every non-target Paint row with the exact disabled-track fade (opacity 0.4 + grayscale 0.9), Bg row stays bright, disarm restores
 
 Progress: [██████████] 100%
 
@@ -572,6 +572,7 @@ None yet.
 | 261022-pim | Watercolor stroke select + delete in Studio (Move/Cmd select mode, outline overlay, Alt+click delete re-bakes through shared Apply, one-step undo/redo) | 2026-10-22 | e6914b28 | [261022-pim-watercolor-stroke-select-delete-in-studi](./quick/261022-pim-watercolor-stroke-select-delete-in-studi/) |
 | 261022-tv1 | Cmd+drag moves a selected watercolor stroke as a ghost, release translates the script and re-bakes, one undo step | 2026-10-22 | 649a924b | [261022-tv1-watercolor-stroke-move](./quick/261022-tv1-watercolor-stroke-move/) |
 | 261022-ujp | Feat: with move tool for brush or watercolor you move stroke to behind stroke stack. Each time I type 'space' key it goes one step behind from strokes stack list and re-render like for move and delete stroke. Space stack change action works only if I am in move mode and a stroke was selected. | 2026-10-22 | eac877a3 | [261022-ujp-feat-with-move-tool-for-brush-or-waterco](./quick/261022-ujp-feat-with-move-tool-for-brush-or-waterco/) |
+| 261023-bji | Feat: when the session Solo is armed in Studio, every non-target Paint row wears the exact disabled-track grey so only the soloed (active) track reads as audible; the Bg row stays bright and disarm restores everything | 2026-10-23 | d10a2ed4 | [261023-bji-feat-when-i-solo-track-in-studio-i-want-](./quick/261023-bji-feat-when-i-solo-track-in-studio-i-want-/) |
 
 ### Roadmap Evolution
 
