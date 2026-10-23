@@ -154,7 +154,7 @@ Plan metadata commit is produced by the orchestrator (docs artifacts are not com
 | 2 | DEV console `window.__EFX_SCRIPT_MEMORY__.snapshot()`: brush rows for every captured frame plus totals; frameCache still its own section. | PENDING |
 | 3 | Delete a key or insert/ripple a frame: stale brush frames are pruned; the probe shows no ghost counts. | PENDING |
 | 4 | Close the Studio and reopen: the brush store is empty (no cross-launch leak). | PENDING |
-| 5 | Brush Move mode: outlines/badges appear, click selects, drag moves, Backspace/Alt-click deletes, `<`/`>` restacks; Water color behaves exactly as before. | PENDING |
+| 5 | Brush Move mode: outlines/badges appear, click selects, drag moves, Backspace/Alt-click deletes, `<`/`>` restacks; Water color behaves exactly as before. | PASSED (2026-10-23, user-confirmed) |
 | 6 | Enter/leave Move: the engine brush cursor and duplicate badges are gone while the overlay is active and return on exit. | PENDING |
 
 ## Verification
@@ -194,7 +194,8 @@ Plan metadata commit is produced by the orchestrator (docs artifacts are not com
 Logged for the cross-phase register (`.planning/WINDOWS.md` population is best-effort in this environment):
 
 - 15 pre-existing typecheck errors in 6 untouched files (see Verification). They predate quick 261023-g4p and are outside its scope.
-- Live UAT rows 1–6 remain PENDING until the user runs the app.
+- Live UAT row 5 (Brush Move parity) PASSED on 2026-10-23 (user-confirmed). Rows 1–4 and 6 remain PENDING.
+- Backward editability (reloading a stored brush script into the engine on navigation) was deliberately NOT implemented — the spec lists it as a later feature. Previous brush keys remain non-editable until that follow-up load-back path exists.
 
 ## Issues Encountered
 
