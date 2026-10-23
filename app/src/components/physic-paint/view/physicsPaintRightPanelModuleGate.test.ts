@@ -193,16 +193,16 @@ describe('I-08 Brush-mode context gating', () => {
   it('top-pane tab row is mode-derived with no Actions entry', () => {
     // 261018-cy1 + I-11 / D: brush mode = Color + Paper; watercolor mode =
     // Color + Brush + Settings + Paper. The retired top-pane Actions entry is
-    // gone from the list.
-    expect(panelSource, 'brush-mode tab list').toContain("['color', 'paper']");
+    // gone from the list. quick-261023-ors: 'memory' is LAST in BOTH modes.
+    expect(panelSource, 'brush-mode tab list').toContain("['color', 'paper', 'memory']");
     expect(panelSource, 'watercolor tab list').toContain(
-      "['color', 'brush', 'settings', 'paper']",
+      "['color', 'brush', 'settings', 'paper', 'memory']",
     );
     expect(panelSource, 'no actions id in the tab list').not.toMatch(
       /\[\s*'color',\s*'actions'/,
     );
     expect(panelSource, 'topPaneTab union drops actions').toContain(
-      "useState<'color' | 'brush' | 'settings' | 'paper'>",
+      "useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>",
     );
     expect(panelSource, 'brush body is watercolor-gated').toContain(
       "topPaneTab === 'brush' && isWatercolorModule",
@@ -218,7 +218,24 @@ describe('I-08 Brush-mode context gating', () => {
     expect(panelSource, 'Brush label stays').toContain("brush: 'Brush'");
     expect(panelSource, 'Settings label stays').toContain("settings: 'Settings'");
     expect(panelSource, 'Paper label stays').toContain("paper: 'Paper'");
+    // quick-261023-ors: the Memory tab is the LAST top-pane tab.
+    expect(panelSource, 'Memory label').toContain("memory: 'Memory'");
     // Top-pane Actions routing is gone (the bottom-pane scripts tab keeps its label).
     expect(panelSource, 'no RightPanelActionsTab mount').not.toMatch(/<RightPanelActionsTab\b/);
+  });
+
+  it('quick-261023-ors: the Memory tab branch sits after Paper and before the Color fallback', () => {
+    const paperAt = panelSource.indexOf("topPaneTab === 'paper'");
+    const memoryAt = panelSource.indexOf("topPaneTab === 'memory'");
+    const colorFallbackAt = panelSource.indexOf('physics-paint-single-tab-panel', memoryAt);
+    expect(paperAt, 'paper arm exists').toBeGreaterThan(-1);
+    expect(memoryAt, 'memory arm exists').toBeGreaterThan(paperAt);
+    expect(colorFallbackAt, 'color fallback follows the memory arm').toBeGreaterThan(memoryAt);
+    // The memory arm is available in BOTH modes — never watercolor-gated.
+    const memoryArm = panelSource.slice(memoryAt, colorFallbackAt);
+    expect(memoryArm).toMatch(/<RightPanelMemoryTab\b/);
+    expect(memoryArm).not.toMatch(/activeModule/);
+    // An absent memorySection renders an empty body (no crash, no figures).
+    expect(memoryArm).toContain('memorySection ? (');
   });
 });

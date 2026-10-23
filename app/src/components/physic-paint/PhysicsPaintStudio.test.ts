@@ -64,6 +64,9 @@ const paintEngineSource = readFileSync(fileURLToPath(new URL('../../../../packag
 const backgroundClipSection = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
 // 261023-j5b: the paint-settings carrier seams (probe + store entry).
 const scriptMemoryProbeSource = readFileSync(fileURLToPath(new URL('./performance/scriptMemoryProbe.ts', import.meta.url)), 'utf8');
+// quick-261023-ors: the ONE assembler moved to the production gauge; the pin
+// follows the code home (the probe now delegates).
+const studioScriptMemoryGaugeSource = readFileSync(fileURLToPath(new URL('./performance/studioScriptMemoryGauge.ts', import.meta.url)), 'utf8');
 const brushScriptRecordStateSource = readFileSync(fileURLToPath(new URL('./view/brushScriptRecordState.ts', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
@@ -3626,10 +3629,14 @@ describe('261023-j5b paint-settings carrier seams', () => {
     expect(navigationBody).toContain('engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,');
   });
 
-  it('the DEV probe flush carries the engine paint settings', () => {
-    expect(scriptMemoryProbeSource).toContain(
-      'brushEngine.getFramePaintSettings() ?? brushEngine.getPaintRenderSettings()',
+  it('the shared gauge assembler flush carries the engine paint settings', () => {
+    // quick-261023-ors: the flush moved into readStudioScriptMemorySnapshot;
+    // the DEV probe delegates to it, so the carrier law lives in the gauge.
+    expect(studioScriptMemoryGaugeSource).toContain(
+      'engine.getFramePaintSettings() ?? engine.getPaintRenderSettings()',
     );
+    expect(scriptMemoryProbeSource).toContain('readStudioScriptMemorySnapshot({');
+    expect(scriptMemoryProbeSource).not.toContain('getFramePaintSettings');
   });
 
   it('the store entry carries the STICKY paintSettings snapshot', () => {

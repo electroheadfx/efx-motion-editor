@@ -127,6 +127,10 @@ import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPh
 import { installDh1CaptureHook } from './performance/depositSpeckleCapture';
 import { installLookDeltaCapture } from './performance/lookDeltaCapture';
 import { installScriptMemoryProbe } from './performance/scriptMemoryProbe';
+import {
+  readStudioScriptMemorySnapshot,
+  type StudioScriptMemorySectionPorts,
+} from './performance/studioScriptMemoryGauge';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -4983,7 +4987,40 @@ export function PhysicsPaintStudio() {
     },
     resolveFilename: (sourceRef: string) => imageStore.getById(sourceRef)?.original_path,
   });
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleOpacityChange, undo, redo, clearActiveSource], () => {
+  // quick-261023-ors: the Memory-tab frame + ports. The frame rides a signal so
+  // the tab marks the current row without adding `currentFrame` to the
+  // right-panel memo deps (38-11 law); the write happens in an effect, never in
+  // the render body.
+  const memoryFrame = useSignal(0);
+  useEffect(() => {
+    memoryFrame.value = currentFrame;
+  }, [currentFrame, memoryFrame]);
+  // Identity-stable ports (the audioSectionPortsRef precedent): `read` resolves
+  // the live engine and launch frame at call time, never captured here. The
+  // purge functions are hoisted declarations below — a false return means
+  // nothing was removed, never an error.
+  const memorySectionPortsRef = useRef<StudioScriptMemorySectionPorts>({
+    read: () => readStudioScriptMemorySnapshot({
+      engine: engineRef.current,
+      frame: launchContextRef.current?.startFrame ?? 0,
+    }),
+    purgeFrame: (frame: number) => purgeMemoryScriptFrame(frame),
+    clearRail: () => clearMemoryRailScripts(),
+  });
+  // Second stable ref: the panel prop object never changes identity, so the
+  // right-panel memo keeps returning the cached props (signal reads bypass it
+  // inside RightPanelMemoryTab).
+  const memorySectionRef = useRef({ ports: memorySectionPortsRef.current, frame: memoryFrame });
+  // quick-261023-ors Task 2 fills these in (per-key purge + active-rail clear,
+  // both persisting through the snapshot controller). Task 1 ships the gauge
+  // read-only: a false return reports "nothing removed".
+  function purgeMemoryScriptFrame(_frame: number): boolean {
+    return false;
+  }
+  function clearMemoryRailScripts(): boolean {
+    return false;
+  }
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleOpacityChange, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -5034,6 +5071,9 @@ export function PhysicsPaintStudio() {
     // child-render time, never here). efxPaintVersion is already a memo dep,
     // so a document edit re-runs the factory and the rows refresh.
     audioSectionPorts: launchContext?.layerId ? audioSectionPortsRef.current : undefined,
+    // quick-261023-ors: the Memory tab ports — identity-stable ref; the tab
+    // reads the live stores on its own debounce/cache interval.
+    memorySection: memorySectionRef.current,
     // 49-06 (UAT round 2): the Studio-owned tool tab signal — the right panel
     // reads it (38-11 signal-bypasses-memo) so a Paint track selection returns
     // to Track option and a Bg rail selection opens the Background option tab.

@@ -18,7 +18,9 @@ import { RightPanelColorTab } from './RightPanelColorTab';
 import { RightPanelBrushTab } from './RightPanelBrushTab';
 import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
+import { RightPanelMemoryTab } from './RightPanelMemoryTab';
 import { RightPanelTrackTab } from './RightPanelTrackTab';
+import type { StudioScriptMemorySectionPorts } from '../performance/studioScriptMemoryGauge';
 import { RightPanelOnionTab, RightPanelMotionTab } from './RightPanelOnionMotionTabs';
 import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 
@@ -104,6 +106,13 @@ export interface PhysicsPaintRightPanelProps {
   onBackgroundChange?: (mode: StudioBackgroundMode) => void;
   onGrainStrengthChange?: (value: number) => void;
   onGrainScaleChange?: (scale: number) => void;
+  /**
+   * quick-261023-ors: the LAST top-pane tab — the read-only script-memory gauge
+   * plus the confirmed purge actions. Identity-stable ref from the Studio (the
+   * backgroundClipSectionPortsRef precedent): the ports read live stores and
+   * the frame signal carries the current app frame for the row marker.
+   */
+  memorySection?: { ports: StudioScriptMemorySectionPorts; frame: Signal<number> };
 }
 
 /** Minimum sidebar section share (%) — every section keeps at least this much
@@ -119,12 +128,14 @@ const DEFAULT_BRUSH_SPLIT = (361.25 / DEFAULT_SHARE_SUM) * 100;
 const DEFAULT_TOOL_SPLIT = (213 / DEFAULT_SHARE_SUM) * 100;
 
 const TOP_PANE_TAB_LABELS: Readonly<
-  Record<'color' | 'brush' | 'settings' | 'paper', string>
+  Record<'color' | 'brush' | 'settings' | 'paper' | 'memory', string>
 > = Object.freeze({
   color: 'Color',
   brush: 'Brush',
   settings: 'Settings',
   paper: 'Paper',
+  // quick-261023-ors: the LAST tab — read-only script-memory gauge + purge.
+  memory: 'Memory',
 });
 
 export function createPhysicsPaintPaneResizeDrag(options: {
@@ -210,6 +221,7 @@ export function PhysicsPaintRightPanel({
   onBackgroundChange,
   onGrainStrengthChange,
   onGrainScaleChange,
+  memorySection,
 }: PhysicsPaintRightPanelProps) {
   recordPhysicsPaintPerformanceCounter('render.rightPanelImpl');
   // 49-06 (S5): the selected Bg clip id drives the Background-tab exclusivity.
@@ -221,16 +233,19 @@ export function PhysicsPaintRightPanel({
   // retired top-pane Actions entry is gone in every mode (the bottom-pane
   // scripts tab keeps its label).
   const isWatercolorModule = activeModule.value === 'watercolor';
+  // quick-261023-ors: 'memory' is LAST in both modes — after
+  // Color/Brush/Settings/Paper in watercolor and after Color/Paper in Brush
+  // mode. It is available in both modes (the gauge reads the active stores).
   const topPaneTabs = (
     isWatercolorModule
-      ? ['color', 'brush', 'settings', 'paper']
-      : ['color', 'paper']
-  ) as ReadonlyArray<'color' | 'brush' | 'settings' | 'paper'>;
+      ? ['color', 'brush', 'settings', 'paper', 'memory']
+      : ['color', 'paper', 'memory']
+  ) as ReadonlyArray<'color' | 'brush' | 'settings' | 'paper' | 'memory'>;
   // A stale 'brush'/'settings' selection falls back to the Color body when the
   // module leaves watercolor — derived in render, never via an effect.
   const [topPaneTab, setTopPaneTab] =
-    useState<'color' | 'brush' | 'settings' | 'paper'>('color');
-  const effectiveTopPaneTab: 'color' | 'brush' | 'settings' | 'paper' =
+    useState<'color' | 'brush' | 'settings' | 'paper' | 'memory'>('color');
+  const effectiveTopPaneTab: 'color' | 'brush' | 'settings' | 'paper' | 'memory' =
     (topPaneTab === 'brush' || topPaneTab === 'settings') && !isWatercolorModule
       ? 'color'
       : topPaneTab;
@@ -358,6 +373,15 @@ export function PhysicsPaintRightPanel({
                 onGrainScaleChange={onGrainScaleChange}
                 disabled={engineControlsDisabled}
               />
+            </div>
+          ) : topPaneTab === 'memory' ? (
+            // quick-261023-ors: the LAST top-pane tab — the read-only gauge and
+            // the confirmed purge actions. Works in BOTH modes; an absent
+            // memorySection renders an empty body (no crash, no figures).
+            <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Memory">
+              {memorySection ? (
+                <RightPanelMemoryTab ports={memorySection.ports} frame={memorySection.frame} />
+              ) : null}
             </div>
           ) : (
           <div class="physics-paint-options-tab-panel physics-paint-single-tab-panel">

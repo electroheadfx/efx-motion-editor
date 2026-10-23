@@ -33,7 +33,8 @@ describe('native-approved Physics Paint right sidebar', () => {
     // top-pane Actions entry is gone. Middle and bottom panes are unchanged.
     expect(rightPanel).toContain('aria-label="Top pane panels"');
     expect(rightPanel).toContain('physics-paint-tab-top-');
-    expect(rightPanel).toContain("'color' | 'brush' | 'settings' | 'paper'");
+    // quick-261023-ors: the Memory tab joins the union as the LAST entry.
+    expect(rightPanel).toContain("'color' | 'brush' | 'settings' | 'paper' | 'memory'");
     expect(rightPanel).not.toContain("'color' | 'actions' | 'brush' | 'paper'");
 
     // The tool pane's own tablist: Paint FIRST and default-open, Track second,
@@ -62,7 +63,13 @@ describe('native-approved Physics Paint right sidebar', () => {
     // Two tablists remain: the tool pane's tabs (Paint/Track/Audio + the
     // conditional Background option) + the lower group's three.
     expect(rightPanel.match(/role="tablist"/g)).toHaveLength(3);
+    // The top-pane tabs render from ONE literal inside the mode-derived map, so
+    // the Memory tab (quick-261023-ors) adds a rendered button but no source
+    // occurrence: 8 stays the literal count (top-map 1 + tool 3 + conditional
+    // Background 1 + lower 3).
     expect(rightPanel.match(/role="tab"/g)).toHaveLength(8);
+    expect(rightPanel).toContain("'color', 'paper', 'memory'");
+    expect(rightPanel).toContain("'color', 'brush', 'settings', 'paper', 'memory'");
 
     for (const label of ['Scripts', 'Onion', 'Motion']) {
       expect(rightPanel).toMatch(new RegExp(`>\\s*${label}\\s*<`));

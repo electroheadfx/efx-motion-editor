@@ -1193,6 +1193,103 @@ button.destructive {
   padding-top: 10px;
 }
 
+/* quick-261023-ors: Memory tab (read-only script-memory gauge + confirmed
+   purge rows). Additive only — reuses the shared tab-panel spacing/tokens;
+   these rules lay out its rows and the separate frame-cache section. */
+.physics-paint-memory-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.physics-paint-memory-scripts,
+.physics-paint-memory-caches {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.physics-paint-memory-total,
+.physics-paint-memory-cache-total {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.physics-paint-memory-line,
+.physics-paint-memory-frame,
+.physics-paint-memory-cache-row {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  font-size: 11px;
+  color: #c4cad0;
+}
+
+.physics-paint-memory-line-watercolor {
+  color: #8fd3ff;
+}
+
+.physics-paint-memory-line-brush {
+  color: #f0c27a;
+}
+
+.physics-paint-memory-frame {
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.physics-paint-memory-frame-current {
+  border-color: #696d72;
+  background: rgba(110, 168, 254, 0.12);
+}
+
+.physics-paint-memory-frame-label {
+  color: #fff;
+  font-weight: 600;
+}
+
+.physics-paint-memory-frame-watercolor,
+.physics-paint-memory-frame-brush {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.physics-paint-memory-caches {
+  padding-top: 10px;
+  border-top: 1px solid #3e3f41;
+}
+
+.physics-paint-memory-cache-row {
+  justify-content: space-between;
+}
+
+.physics-paint-memory-cache-name {
+  color: #fff;
+}
+
+.physics-paint-memory-warning {
+  margin: 0;
+  color: #f0c27a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.physics-paint-memory-unavailable {
+  color: #c4cad0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* 261018-l05 watercolor brush cards */
 /* Brush tab 14-card grid cells. Card/button/thumb/name styles moved out of
    WatercolorBrushLibrary inline style objects (261018-l05 move 2). Visual look

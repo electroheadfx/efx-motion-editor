@@ -1,11 +1,13 @@
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComponentChildren, VNode } from 'preact';
 import { signal } from '@preact/signals';
 import { createPhysicsPaintPaneResizeDrag, PhysicsPaintRightPanel, type PhysicsPaintRightPanelProps } from './PhysicsPaintRightPanel';
 import { SliderStepper } from '../../shared/SliderStepper';
 import type { PhysicsPaintAudioController } from './physicsPaintAudioController';
 import { physicPaintVersion } from '../../../stores/physicPaintStore';
+import { activeModule } from '../../shared/activeModule';
+import type { ScriptMemorySnapshot } from '../performance/scriptMemorySnapshot';
 
 type AnyVNode = VNode<Record<string, any>>;
 
@@ -782,5 +784,136 @@ describe('Physics Paint right panel Audio tab (261008-ryq)', () => {
     const rows = childrenOf(tree).filter((node) => hasClass(node, 'physics-paint-audio-clip-row'));
     expect(rows).toHaveLength(0);
     expect(childrenOf(tree).some((node) => hasClass(node, 'physics-paint-audio-clip-list'))).toBe(false);
+  });
+});
+
+// quick-261023-ors: the LAST top-pane tab — the read-only script-memory gauge.
+const SAMPLE_MEMORY_SNAPSHOT: ScriptMemorySnapshot = {
+  capturedAt: '2026-10-23T00:00:00.000Z',
+  approxMethod: 'json-utf8-byte-length',
+  watercolor: {
+    frames: [{ frame: 5, strokes: 2, points: 20, approxBytes: 2048 }],
+    deleted: { strokes: 0, points: 0, approxBytes: 0 },
+    orphanedStrokes: 0,
+    skippedStrokes: 0,
+    dryEvents: { count: 0, approxBytes: 0 },
+    totals: { frames: 1, strokes: 2, points: 20, approxBytes: 2048 },
+  },
+  brush: {
+    scope: 'per-frame-session-store',
+    frames: [
+      { frame: 9, strokes: 3, points: 30, approxBytes: 4096, complete: true, diffusionFrames: 0, hydratable: true },
+    ],
+    totals: { strokes: 3, points: 30, approxBytes: 4096, completeFrames: 1, partialFrames: 0 },
+    currentEngineFrame: { available: true, strokes: 3, points: 30, approxBytes: 4096 },
+    note: 'sample note',
+  },
+  frameCache: {
+    scope: 'this-webview',
+    totalBytes: 3072,
+    caches: [
+      { name: 'frameLru', kind: 'decoded-image', byteTotalBytes: 1024, entryCount: 2 },
+      { name: 'generatedRenderSource', kind: 'compressed-bytes', byteTotalBytes: 2048, entryCount: 1 },
+    ],
+  },
+};
+
+function memorySectionFixture(frame = 5) {
+  return {
+    ports: {
+      read: () => SAMPLE_MEMORY_SNAPSHOT,
+      purgeFrame: vi.fn(() => true),
+      clearRail: vi.fn(() => true),
+    },
+    frame: signal(frame),
+  };
+}
+
+function topPaneTabLabels(tree: AnyVNode): string[] {
+  return childrenOf(tree)
+    .filter((node) => {
+      const vnode = node as AnyVNode;
+      return typeof vnode.type !== 'function'
+        && String(vnode.props?.class ?? '').split(/\s+/).some((token) => token.startsWith('physics-paint-tab-top-'));
+    })
+    .map((node) => textContent(node));
+}
+
+describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
+  const previousModule = activeModule.value;
+
+  beforeEach(() => {
+    // The tab component owns a 2 s cache interval; fake timers keep the
+    // harness deterministic and stop it leaking between cases.
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    activeModule.value = previousModule;
+  });
+
+  it('is the LAST top-pane tab in Brush mode (after Color/Paper)', () => {
+    activeModule.value = 'brush';
+    const tree = renderPanel(baseProps());
+    expect(topPaneTabLabels(tree)).toEqual(['Color', 'Paper', 'Memory']);
+  });
+
+  it('is the LAST top-pane tab in watercolor mode (after Color/Brush/Settings/Paper)', () => {
+    activeModule.value = 'watercolor';
+    const tree = renderPanel(baseProps());
+    expect(topPaneTabLabels(tree)).toEqual(['Color', 'Brush', 'Settings', 'Paper', 'Memory']);
+  });
+
+  it('renders the gauge only on the Memory tab: scripts, per-frame rows, then frame caches', () => {
+    activeModule.value = 'brush';
+    const props = baseProps({ memorySection: memorySectionFixture() });
+    const before = renderPanel(props);
+    expect(textContent(before)).not.toContain('Frame caches');
+
+    clickToolTab(before, 'physics-paint-tab-top-memory');
+    const tree = renderPanel(props);
+    // The leaf's mount effect writes the snapshot signal AFTER its first
+    // render; the harness has no re-render cycle, so walk once to mount it and
+    // read the tree again (the real Preact runtime re-renders on the write).
+    textContent(tree);
+    const text = textContent(tree);
+
+    expect(text).toContain('Scripts total');
+    expect(text).toContain('Watercolor:');
+    expect(text).toContain('Brush:');
+    // One merged row per app frame; the current frame (5) is marked.
+    expect(text).toContain('Frame 5');
+    expect(text).toContain('Frame 9');
+    expect(findByClass(tree, 'physics-paint-memory-frame-current')).toBeDefined();
+    // Caches are a SEPARATE section with their own total and named rows.
+    expect(text).toContain('Frame caches');
+    expect(text).toContain('frameLru');
+    expect(text).toContain('generatedRenderSource');
+    expect(text).toContain('Purging keeps the painted pixels');
+  });
+
+  it('renders an empty Memory body (no throw, no figures) when the section is absent', () => {
+    activeModule.value = 'brush';
+    const first = renderPanel(baseProps());
+    clickToolTab(first, 'physics-paint-tab-top-memory');
+    let tree!: AnyVNode;
+    expect(() => { tree = renderPanel(baseProps()); }).not.toThrow();
+    expect(childrenOf(tree).some((node) => hasClass(node, 'physics-paint-memory-tab'))).toBe(false);
+    expect(textContent(tree)).not.toContain('Scripts total');
+  });
+
+  it('re-renders an unavailable line (no figures) when the read returns null', () => {
+    activeModule.value = 'brush';
+    const section = memorySectionFixture();
+    const props = baseProps({
+      memorySection: { ...section, ports: { ...section.ports, read: () => null } },
+    });
+    const first = renderPanel(props);
+    clickToolTab(first, 'physics-paint-tab-top-memory');
+    const tree = renderPanel(props);
+
+    expect(textContent(tree)).toContain('Script memory is unavailable in this session.');
+    expect(textContent(tree)).not.toContain('Scripts total');
   });
 });
