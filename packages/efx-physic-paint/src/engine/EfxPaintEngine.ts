@@ -2039,6 +2039,91 @@ export class EfxPaintEngine {
     return this.acceptStroke(primary, continuations, undefined, true)
   }
 
+  /**
+   * 261023-h9v: restore a COMPLETE retained brush script as a silent baseline.
+   *
+   * Mirrors loadProjectData: the stored groups become the live acceptance
+   * ledger in the stored paint order, every primary keeps its stored
+   * mutationId (the session store's identity law), continuations return as
+   * zero-point diffusion records, undo/redo/history are cleared (a baseline
+   * is never an undo step), and the surface replays synchronously. It NEVER
+   * emits a completed-mutation notification.
+   *
+   * Accepted limitation (shared with loadProjectData): serials follow the
+   * stored paint order, so creation-order Move badges are exact only up to
+   * the first restack.
+   *
+   * Fail closed: the WHOLE group list is validated before any state is
+   * touched — malformed input returns 0 and the engine keeps its current
+   * baseline. Returns the number of restored primary groups.
+   */
+  public restoreStrokesBaseline(groups: readonly Readonly<RecordedStrokeGroup>[]): number {
+    if (!Array.isArray(groups) || groups.length === 0) return 0
+    const seen = new Set<number>()
+    // Validation + clone pass: no engine field is touched until the whole
+    // list is known good (a refused restore must be a strict no-op).
+    const restored: PaintStroke[] = []
+    for (const group of groups) {
+      const primary = group?.primary
+      if (!primary || typeof primary !== 'object') return 0
+      const mutationId = primary.mutationId
+      if (!Number.isInteger(mutationId) || (mutationId as number) < 1 || seen.has(mutationId as number)) return 0
+      if (!Array.isArray(primary.points) || primary.points.length === 0) return 0
+      if (!primary.params || typeof primary.params !== 'object') return 0
+      const continuations = group.continuations ?? []
+      if (!Array.isArray(continuations)) return 0
+      const clonedContinuations: PaintStroke[] = []
+      for (const continuation of continuations) {
+        if (!continuation || typeof continuation !== 'object') return 0
+        if (!Array.isArray(continuation.points) || continuation.points.length !== 0) return 0
+        if (!continuation.params || typeof continuation.params !== 'object') return 0
+        const frames = continuation.diffusionFrames
+        if (!Number.isFinite(frames) || Math.trunc(frames as number) <= 0) return 0
+        const cloned = this.cloneRecordedStroke(continuation)
+        delete cloned.mutationId
+        cloned.points = []
+        clonedContinuations.push(cloned)
+      }
+      seen.add(mutationId as number)
+      const clonedPrimary = this.cloneRecordedStroke(primary)
+      clonedPrimary.mutationId = mutationId as number
+      // Same immutability as acceptStroke: the ledger's points are frozen.
+      clonedPrimary.points = Object.freeze(
+        clonedPrimary.points.map((point) => Object.freeze({ ...point })),
+      ) as unknown as PenPoint[]
+      restored.push(clonedPrimary, ...clonedContinuations)
+    }
+
+    // Settle any queued finalizations before replacing the ledger (load()
+    // precedent) so a drain can never append into the restored baseline.
+    this.flushPendingStrokeFinalizations()
+    this.allActions = restored
+    // The stored list IS the paint order — reseed the projection from the
+    // freshly parsed ledger before the replay (loadProjectData precedent).
+    this.strokeStack = [...restored]
+    this.strokeSerialMap().clear()
+    this.nextStrokeSerial = 1
+    for (const action of restored) this.assignStrokeSerial(action)
+    let maxMutationId = 0
+    for (const action of restored) {
+      if (action.mutationId != null && action.mutationId > maxMutationId) maxMutationId = action.mutationId
+    }
+    // Defensive id advance: a restored id must never be reused by a new edit.
+    this.nextMutationId = Math.max(this.nextMutationId, maxMutationId + 1)
+    // A restored baseline is a pixel/script baseline, never active-frame
+    // Undo/Redo history (loadProjectData precedent).
+    this.undoStack = []
+    this.redoStack = []
+    this.historyEntries = []
+    this.historyIndex = 0
+    this.notifyHistoryAvailability()
+    this.displayCompositeDirty = true
+    this.requestRender()
+    this.redrawAll()
+    // NO notifyCompletedMutation: a baseline is not a paint action.
+    return groups.length
+  }
+
   /** Lock/unlock pointer input (per D-11: painting disabled during animation) */
   setInputLocked(locked: boolean): void {
     this.inputLocked = locked

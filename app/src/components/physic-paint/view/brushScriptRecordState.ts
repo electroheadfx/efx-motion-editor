@@ -21,6 +21,14 @@
 //  captured frame at or after the first divergent app frame.
 //  Stale entries are never remapped — they are dropped.
 //
+//  COMPLETENESS LAW (261023-h9v): an entry is complete only when its
+//  groups are the WHOLE frame content. A frame that arrived over a
+//  cached pixel base is partial — its script holds only the strokes
+//  painted since arrival, so navigation must keep the cached-pixel
+//  path instead of restoring it. Completeness is sticky per entry;
+//  only an explicit user clear (clearBrushScriptFrame) forgets the
+//  arrival-base knowledge.
+//
 //  No Preact component, no effect, no Studio import. The revision
 //  signal is read only by narrow leaves (the probe / overlay).
 // ============================================================
@@ -42,10 +50,25 @@ export interface BrushScriptFrameTotals {
 export interface BrushScriptFrameEntry extends BrushScriptFrameTotals {
   readonly frame: number;
   readonly groups: readonly Readonly<RecordedStrokeGroup>[];
+  /**
+   * 261023-h9v: true when the stored groups are the WHOLE frame content —
+   * the frame arrived without a cached pixel base this session. A partial
+   * entry retains only the strokes painted since arrival; hydration must
+   * never replace the base pixels with such a script.
+   */
+  readonly complete: boolean;
+  /** Sum of every continuation diffusion count, each capped at 600 frames. */
+  readonly diffusionFrames: number;
+}
+
+export interface BrushScriptReportRow extends BrushScriptFrameTotals {
+  frame: number;
+  complete: boolean;
+  diffusionFrames: number;
 }
 
 export interface BrushScriptReport {
-  frames: Array<BrushScriptFrameTotals & { frame: number }>;
+  frames: BrushScriptReportRow[];
   totals: BrushScriptFrameTotals;
 }
 
@@ -59,6 +82,12 @@ const encoder = new TextEncoder();
 const brushScriptFrames = new Map<number, BrushScriptFrameEntry>();
 /** O(1) dirty marks — the only thing stroke completion writes. */
 const dirtyBrushScriptFrames = new Set<number>();
+/**
+ * 261023-h9v: frames whose arrival loaded a cached pixel base (or whose
+ * entry was hydrated from a partial one). Only `true` is recorded; an
+ * arrival with no base is a no-op, so a fresh frame stays complete.
+ */
+const arrivalBaseFrames = new Set<number>();
 
 function bumpRevision(): void {
   brushScriptRevision.value = brushScriptRevision.value + 1;
@@ -71,6 +100,17 @@ function countPoints(groups: readonly Readonly<RecordedStrokeGroup>[]): number {
     for (const continuation of group.continuations ?? []) points += continuation.points.length;
   }
   return points;
+}
+
+/** Mirrors the engine's replay cap: one continuation contributes at most 600 frames. */
+function countDiffusionFrames(groups: readonly Readonly<RecordedStrokeGroup>[]): number {
+  let frames = 0;
+  for (const group of groups) {
+    for (const continuation of group.continuations ?? []) {
+      frames += Math.max(0, Math.min(600, Math.trunc(continuation.diffusionFrames ?? 0)));
+    }
+  }
+  return frames;
 }
 
 function measureApproxBytes(groups: readonly Readonly<RecordedStrokeGroup>[]): number {
@@ -99,21 +139,46 @@ export function markBrushScriptFrameDirty(frame: number): void {
 }
 
 /**
+ * 261023-h9v arrival knowledge: `hadBase` true means the navigation into
+ * this frame loaded cached pixels that the session script does not contain,
+ * so every capture of the frame stays PARTIAL. A false note records nothing
+ * (a fresh frame is complete).
+ */
+export function noteBrushScriptArrivalBase(frame: number, hadBase: boolean): void {
+  if (hadBase) arrivalBaseFrames.add(frame);
+}
+
+/** True only for a captured frame whose stored groups are the whole content. */
+export function isBrushScriptFrameComplete(frame: number): boolean {
+  return brushScriptFrames.get(frame)?.complete === true;
+}
+
+/**
  * Capture normalized groups for one frame. Callers pass the output of
  * normalizeLogicalBrushes; the groups are deep-frozen here and the entry is
  * immutable. Replaces any previous entry for the frame.
+ *
+ * Completeness is STICKY: once a frame is captured partial, a later arrival
+ * note (or recapture) cannot promote it, and a frame captured complete stays
+ * complete even if a later arrival note lands.
  */
 export function captureBrushScriptForFrame(
   frame: number,
   groups: readonly Readonly<RecordedStrokeGroup>[],
+  complete?: boolean,
 ): BrushScriptFrameEntry {
   const frozen = freezeRecordedStrokeGroups(groups);
+  const previous = brushScriptFrames.get(frame);
   const entry: BrushScriptFrameEntry = Object.freeze({
     frame,
     groups: frozen,
     strokes: frozen.length,
     points: countPoints(frozen),
     approxBytes: measureApproxBytes(frozen),
+    // Explicit caller override wins; otherwise the existing entry's flag is
+    // sticky, and a first capture is complete unless its arrival had a base.
+    complete: complete ?? (previous ? previous.complete : !arrivalBaseFrames.has(frame)),
+    diffusionFrames: countDiffusionFrames(frozen),
   });
   brushScriptFrames.set(frame, entry);
   dirtyBrushScriptFrames.delete(frame);
@@ -174,13 +239,30 @@ export function getBrushScriptReport(): BrushScriptReport {
       strokes: entry.strokes,
       points: entry.points,
       approxBytes: entry.approxBytes,
+      complete: entry.complete,
+      diffusionFrames: entry.diffusionFrames,
     }));
   return { frames, totals: getBrushScriptTotals() };
 }
 
-/** Remove one frame. Returns true when an entry existed. */
+/**
+ * Remove one frame — an internal empty projection. The frame's arrival-base
+ * knowledge SURVIVES: a later capture of the same frame is still partial.
+ */
 export function deleteBrushScriptFrame(frame: number): boolean {
   dirtyBrushScriptFrames.delete(frame);
+  if (!brushScriptFrames.delete(frame)) return false;
+  bumpRevision();
+  return true;
+}
+
+/**
+ * 261023-h9v: drop one frame AND its arrival-base knowledge — an explicit
+ * user clear empties the frame, so a later capture starts from scratch.
+ */
+export function clearBrushScriptFrame(frame: number): boolean {
+  dirtyBrushScriptFrames.delete(frame);
+  arrivalBaseFrames.delete(frame);
   if (!brushScriptFrames.delete(frame)) return false;
   bumpRevision();
   return true;
@@ -189,6 +271,7 @@ export function deleteBrushScriptFrame(frame: number): boolean {
 /** Studio disposal / launch replacement reset. */
 export function resetBrushScriptStore(): void {
   dirtyBrushScriptFrames.clear();
+  arrivalBaseFrames.clear();
   if (brushScriptFrames.size === 0) return;
   brushScriptFrames.clear();
   bumpRevision();
@@ -205,6 +288,9 @@ export function pruneBrushScriptsFromFrame(frame: number): number {
     brushScriptFrames.delete(key);
     dirtyBrushScriptFrames.delete(key);
     removed += 1;
+  }
+  for (const key of [...arrivalBaseFrames]) {
+    if (key >= frame) arrivalBaseFrames.delete(key);
   }
   if (removed > 0) bumpRevision();
   return removed;

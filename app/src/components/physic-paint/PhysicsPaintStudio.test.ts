@@ -3422,3 +3422,87 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(studio).not.toContain('brushScriptRevision.value');
   });
 });
+
+// 261023-h9v Task 1: navigation rehydration — the completeness law, the
+// silent baseline restore, and the completion-listener fix. Navigation is
+// the ONE place a retained script may re-enter the engine.
+describe('261023-h9v brush script rehydration surface', () => {
+  const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {');
+  const navigationBody = studio.slice(
+    navigationStart,
+    studio.indexOf('const lastReferenceDisplayStateRef', navigationStart),
+  );
+  const listenerStart = studio.indexOf('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {');
+  const listenerBody = studio.slice(
+    listenerStart,
+    studio.indexOf('rotoMoveHistory.observePaintMutation', listenerStart),
+  );
+  const clearSourceStart = studio.indexOf('const clearActiveSource = useCallback(');
+  const clearSourceBody = studio.slice(
+    clearSourceStart,
+    studio.indexOf('const navigateToSyncedPhysicalFrame', clearSourceStart),
+  );
+
+  it('decides hydrate-or-cached-pixels once per navigation, after the engine clear', () => {
+    expect(navigationStart).toBeGreaterThan(-1);
+    expect(navigationBody).toContain('engine.clear();');
+    expect(navigationBody).toContain('if (!hydrateBrushScriptFrame(engine, {');
+    expect(navigationBody).toContain('frame,');
+    expect(navigationBody).toContain('destinationKind,');
+    expect(navigationBody).toContain("brushModuleActive: activeModule.peek() !== 'watercolor',");
+    expect(navigationBody).toContain('wasPlaying: wasPlaying || rotoCachedPlayback.isActive,');
+    expect(navigationBody).toContain('scrubActive: scrubActiveRef.current,');
+    // Refusal = the observed cached-pixel path (which records the arrival base).
+    expect(navigationBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
+    expect(navigationBody.indexOf('engine.clear();')).toBeLessThan(
+      navigationBody.indexOf('hydrateBrushScriptFrame(engine, {'),
+    );
+    expect(navigationBody.indexOf('hydrateBrushScriptFrame(engine, {')).toBeLessThan(
+      navigationBody.indexOf('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);'),
+    );
+    // The post-flush generated repaint stays a cached-pixel path.
+    expect(navigationBody).toContain("?.cells[frame]?.kind === 'generated'");
+  });
+
+  it('wraps the hydration attempt and the observed loader as stable callbacks', () => {
+    const observedStart = studio.indexOf('const loadReferenceObserved = useCallback(');
+    expect(observedStart).toBeGreaterThan(-1);
+    const observedBody = studio.slice(observedStart, studio.indexOf('const hydrateBrushScriptFrame', observedStart));
+    expect(observedBody).toContain('const loaded = loadCachedRotoReferenceFrame(frame, targetEngine);');
+    expect(observedBody).toContain('noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);');
+    expect(observedBody).toContain('[findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame],');
+
+    const hydrateStart = studio.indexOf('const hydrateBrushScriptFrame = useCallback(');
+    const hydrateBody = studio.slice(hydrateStart, studio.indexOf('const clearActiveSource', hydrateStart));
+    expect(hydrateBody).toContain('attemptBrushScriptHydration(targetEngine, request),');
+    expect(hydrateBody).toContain('useCallback(');
+  });
+
+  it('routes every completion through the ONE completion law and never drops on clear', () => {
+    const brushCompletion = listenerBody.slice(listenerBody.indexOf("if (activeModule.peek() !== 'watercolor') {"));
+    expect(brushCompletion).toContain('applyCompletedBrushMutation(kind, scriptFrame, mutationEngine);');
+    // engine.clear() notifies 'clear' on every navigation — the listener must
+    // never delete the entry the navigation flush just recorded.
+    expect(brushCompletion).not.toContain('deleteBrushScriptFrame');
+    expect(brushCompletion).not.toContain('markBrushScriptFrameDirty');
+    expect(brushCompletion).not.toContain("kind === 'clear'");
+  });
+
+  it('drops the retained script on an explicit user clear only', () => {
+    expect(clearSourceStart).toBeGreaterThan(-1);
+    expect(clearSourceBody).toContain('if (rotoFrameEditingRef.current.clearCurrentFrame()) {');
+    expect(clearSourceBody).toContain("if (activeModule.peek() === 'brush') clearBrushScriptFrame(currentFrame);");
+    expect(clearSourceBody.indexOf('clearCurrentFrame()')).toBeLessThan(
+      clearSourceBody.indexOf('clearBrushScriptFrame('),
+    );
+  });
+
+  it('imports the rehydration seam and retires the raw completion writes', () => {
+    expect(studio).toContain("} from './view/brushScriptHydration';");
+    expect(studio).toContain('applyCompletedBrushMutation,');
+    expect(studio).toContain('attemptBrushScriptHydration,');
+    expect(studio).toContain('clearBrushScriptFrame,');
+    expect(studio).toContain('noteBrushScriptArrivalBase,');
+    expect(studio).not.toContain('deleteBrushScriptFrame');
+  });
+});

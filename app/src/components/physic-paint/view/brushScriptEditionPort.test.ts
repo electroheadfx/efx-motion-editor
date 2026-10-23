@@ -20,6 +20,7 @@ import {
   captureBrushScriptForFrame,
   getBrushScriptFrameEntry,
   markBrushScriptFrameDirty,
+  noteBrushScriptArrivalBase,
   resetBrushScriptStore,
 } from './brushScriptRecordState';
 import { normalizeLogicalBrushes } from './recordedStrokeGroups';
@@ -130,15 +131,17 @@ describe('listing: store groups become selectable rows', () => {
     expect(rows[0].bounds.width).toBeGreaterThan(60);
   });
 
-  it('falls back to the mutationId when the engine has no serial and decimates long polylines while bounds keep every point', () => {
+  it('decimates long polylines while bounds keep every point', () => {
     const longPoints = Array.from({ length: 200 }, (_, index) => ({ x: index, y: 40 }));
     capture(3, [stroke(42, longPoints)]);
-    const engine = createFakeEngine();
+    const engine = createFakeEngine({
+      getStrokeSerials: vi.fn(() => new Map([[42, 1]])),
+    });
     configure(engine);
 
     const [row] = listBrushScriptStrokes(3, SIZE);
 
-    expect(row!.serial).toBe(42);
+    expect(row!.serial).toBe(1);
     expect(row!.pointsPx).toHaveLength(96);
     // Bounds span the FULL polyline (0..199), padded by max(6, size/2).
     expect(row!.bounds.x).toBe(0 - 6);
@@ -152,6 +155,30 @@ describe('listing: store groups become selectable rows', () => {
     configureBrushScriptEdition(null);
     expect(listBrushScriptStrokes(3, SIZE)).toEqual([]);
   });
+
+  // 261023-h9v: a store entry that survived navigation without hydration (a
+  // stale/other-track entry) must never render dead Move outlines.
+  it('returns [] when the engine does not hold every stored primary mutationId', () => {
+    capture(3, [stroke(7, [{ x: 20, y: 30 }]), stroke(9, [{ x: 20, y: 60 }])]);
+    configure(createFakeEngine({
+      getStrokeSerials: vi.fn(() => new Map([[7, 1]])),
+    }));
+    expect(listBrushScriptStrokes(3, SIZE)).toEqual([]);
+
+    configure(createFakeEngine({ getStrokeSerials: vi.fn(() => new Map()) }));
+    expect(listBrushScriptStrokes(3, SIZE)).toEqual([]);
+  });
+
+  it('still lists a PARTIAL entry whose strokes are live in the current engine', () => {
+    noteBrushScriptArrivalBase(3, true);
+    capture(3, [stroke(7, [{ x: 20, y: 30 }])]);
+    configure(createFakeEngine({
+      getStrokeSerials: vi.fn(() => new Map([[7, 1]])),
+    }));
+
+    expect(getBrushScriptFrameEntry(3)?.complete).toBe(false);
+    expect(listBrushScriptStrokes(3, SIZE).map((row) => row.mutationId)).toEqual([7]);
+  });
 });
 
 describe('hit test: topmost painted stroke wins', () => {
@@ -160,12 +187,20 @@ describe('hit test: topmost painted stroke wins', () => {
       stroke(5, [{ x: 20, y: 30 }, { x: 80, y: 30 }]),
       stroke(6, [{ x: 20, y: 30 }, { x: 80, y: 30 }]),
     ]);
-    configure(createFakeEngine());
+    configure(createFakeEngine({
+      getStrokeSerials: vi.fn(() => new Map([[5, 1], [6, 2]])),
+    }));
 
     // Both ribbons overlap at (50,30) — the later painted stroke is on top.
     expect(hitTestBrushScriptStroke({ x: 50, y: 30 }, 3, SIZE)).toBe(6);
     expect(hitTestBrushScriptStroke({ x: 50, y: 100 }, 3, SIZE)).toBeNull();
     expect(hitTestBrushScriptStroke({ x: 50, y: 30 }, 99, SIZE)).toBeNull();
+  });
+
+  it('returns null when the engine does not hold the stored strokes', () => {
+    capture(3, [stroke(5, [{ x: 20, y: 30 }, { x: 80, y: 30 }])]);
+    configure(createFakeEngine({ getStrokeSerials: vi.fn(() => new Map()) }));
+    expect(hitTestBrushScriptStroke({ x: 50, y: 30 }, 3, SIZE)).toBeNull();
   });
 });
 
@@ -266,7 +301,9 @@ describe('port: delegates through the registration', () => {
     capture(3, [stroke(5, [{ x: 20, y: 30 }, { x: 80, y: 30 }])]);
     expect(brushScriptEditionPort.isActive()).toBe(false);
 
-    configure(createFakeEngine(), { active: true });
+    configure(createFakeEngine({
+      getStrokeSerials: vi.fn(() => new Map([[5, 1]])),
+    }), { active: true });
     expect(brushScriptEditionPort.isActive()).toBe(true);
     expect(brushScriptEditionPort.listStrokes(3, SIZE).map((row) => row.mutationId)).toEqual([5]);
     expect(brushScriptEditionPort.hitTestStroke({ x: 50, y: 30 }, 3, SIZE)).toBe(5);

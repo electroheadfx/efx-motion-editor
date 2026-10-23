@@ -24,6 +24,7 @@ import {
   flushBrushScriptFrame,
   getBrushScriptForFrame,
 } from './brushScriptRecordState';
+import { engineHoldsBrushScriptFrame } from './brushScriptHydration';
 import {
   decimateScriptPoints,
   hitsScriptStroke,
@@ -105,9 +106,14 @@ export function listBrushScriptStrokes(
   // Narrow-leaf subscription: the overlay (and only the overlay) repaints when
   // the store changes. Never read in the Studio render body.
   void brushScriptRevision.value;
+  const engine = brushScriptEditionContext?.getEngine() ?? null;
+  // 261023-h9v: only LIVE handles may render. An entry whose strokes were
+  // dropped by engine.clear() (navigation without hydration) would draw dead
+  // Move outlines the engine cannot edit.
+  if (!engineHoldsBrushScriptFrame(engine, playFrame)) return [];
   const groups = getBrushScriptForFrame(playFrame);
   if (groups.length === 0) return [];
-  const serials = engineSerials(brushScriptEditionContext?.getEngine() ?? null);
+  const serials = engineSerials(engine);
   const stackTotal = groups.length;
   return groups.map((group, index) => {
     const primary = group.primary;
@@ -132,6 +138,10 @@ export function hitTestBrushScriptStroke(
   playFrame: number,
   _size: ScriptStrokeSize,
 ): number | null {
+  // Same liveness gate as the listing — a stale entry never hit-tests.
+  if (!engineHoldsBrushScriptFrame(brushScriptEditionContext?.getEngine() ?? null, playFrame)) {
+    return null;
+  }
   const groups = getBrushScriptForFrame(playFrame);
   for (let index = groups.length - 1; index >= 0; index -= 1) {
     const primary = groups[index]!.primary;

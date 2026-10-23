@@ -18,6 +18,7 @@ import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint'
 import {
   brushScriptRevision,
   captureBrushScriptForFrame,
+  clearBrushScriptFrame,
   computeBrushScriptPruneFrame,
   deleteBrushScriptFrame,
   flushBrushScriptFrame,
@@ -25,7 +26,9 @@ import {
   getBrushScriptFrameEntry,
   getBrushScriptReport,
   getBrushScriptTotals,
+  isBrushScriptFrameComplete,
   markBrushScriptFrameDirty,
+  noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
   resetBrushScriptStore,
 } from './brushScriptRecordState';
@@ -270,6 +273,110 @@ describe('prune law (fail closed)', () => {
     flushBrushScriptFrame(7, [stroke(1)]);
     // Never captured before → the flush captures regardless of dirty.
     expect(getBrushScriptFrameEntry(7)).toBeDefined();
+  });
+});
+
+// ============================================================
+//  261023-h9v — explicit per-frame completeness.
+//
+//  complete means the stored groups are the WHOLE frame content: the
+//  frame arrived with no cached pixel base this session (or was itself
+//  hydrated from a complete entry). partial means a pre-existing cached
+//  base sits under the session's strokes — hydration must never replace
+//  those base pixels with a strokes-only script (paint loss).
+// ============================================================
+describe('completeness law (261023-h9v)', () => {
+  it('captures a frame with no arrival-base record as complete', () => {
+    const entry = captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+    expect(entry.complete).toBe(true);
+    expect(isBrushScriptFrameComplete(4)).toBe(true);
+    expect(getBrushScriptReport().frames[0]).toMatchObject({ frame: 4, complete: true });
+  });
+
+  it('captures a frame that arrived with a cached base as partial', () => {
+    noteBrushScriptArrivalBase(4, true);
+    const entry = captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+    expect(entry.complete).toBe(false);
+    expect(isBrushScriptFrameComplete(4)).toBe(false);
+    // A false arrival note records nothing — a fresh frame stays complete.
+    noteBrushScriptArrivalBase(6, false);
+    expect(captureBrushScriptForFrame(6, [{ primary: stroke(2), continuations: [] }]).complete).toBe(true);
+  });
+
+  it('keeps completeness sticky across recapture and ignores later arrival records', () => {
+    captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+    const first = getBrushScriptFrameEntry(4);
+    noteBrushScriptArrivalBase(4, true);
+    markBrushScriptFrameDirty(4);
+    expect(flushBrushScriptFrame(4, [stroke(5)])).toBe(true);
+    expect(getBrushScriptFrameEntry(4)).not.toBe(first);
+    expect(getBrushScriptFrameEntry(4)?.complete).toBe(true);
+
+    noteBrushScriptArrivalBase(8, true);
+    captureBrushScriptForFrame(8, [{ primary: stroke(2), continuations: [] }]);
+    captureBrushScriptForFrame(8, [{ primary: stroke(3), continuations: [] }]);
+    expect(getBrushScriptFrameEntry(8)?.complete).toBe(false);
+  });
+
+  it('clearBrushScriptFrame drops the entry and its arrival-base record', () => {
+    noteBrushScriptArrivalBase(4, true);
+    captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+    expect(getBrushScriptFrameEntry(4)?.complete).toBe(false);
+
+    expect(clearBrushScriptFrame(4)).toBe(true);
+    expect(clearBrushScriptFrame(4)).toBe(false);
+    expect(getBrushScriptFrameEntry(4)).toBeUndefined();
+    // The base knowledge is gone: a reused frame captures as complete.
+    expect(captureBrushScriptForFrame(4, [{ primary: stroke(2), continuations: [] }]).complete).toBe(true);
+  });
+
+  it('deleteBrushScriptFrame keeps arrival-base knowledge (internal empty projection)', () => {
+    noteBrushScriptArrivalBase(4, true);
+    captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+    expect(deleteBrushScriptFrame(4)).toBe(true);
+    expect(captureBrushScriptForFrame(4, [{ primary: stroke(2), continuations: [] }]).complete).toBe(false);
+  });
+
+  it('prune drops arrival-base records at or after the pruned frame only', () => {
+    noteBrushScriptArrivalBase(2, true);
+    noteBrushScriptArrivalBase(5, true);
+    captureBrushScriptForFrame(2, [{ primary: stroke(1), continuations: [] }]);
+    captureBrushScriptForFrame(5, [{ primary: stroke(2), continuations: [] }]);
+
+    expect(pruneBrushScriptsFromFrame(5)).toBe(1);
+    expect(captureBrushScriptForFrame(5, [{ primary: stroke(3), continuations: [] }]).complete).toBe(true);
+    // The earlier frame's knowledge survives the prune.
+    markBrushScriptFrameDirty(2);
+    flushBrushScriptFrame(2, [stroke(4)]);
+    expect(getBrushScriptFrameEntry(2)?.complete).toBe(false);
+  });
+
+  it('reset clears arrival-base records with the frames', () => {
+    noteBrushScriptArrivalBase(3, true);
+    captureBrushScriptForFrame(3, [{ primary: stroke(1), continuations: [] }]);
+    resetBrushScriptStore();
+    expect(captureBrushScriptForFrame(3, [{ primary: stroke(2), continuations: [] }]).complete).toBe(true);
+  });
+
+  it('report rows expose complete and diffusion totals; totals stay byte/point sums', () => {
+    noteBrushScriptArrivalBase(2, true);
+    flushBrushScriptFrame(2, [stroke(1), continuation(1, 8)]);
+    flushBrushScriptFrame(6, [stroke(2), continuation(2, 4)]);
+
+    const report = getBrushScriptReport();
+    expect(report.frames.map((row) => row.frame)).toEqual([2, 6]);
+    expect(report.frames[0]).toMatchObject({ frame: 2, complete: false, diffusionFrames: 8 });
+    expect(report.frames[1]).toMatchObject({ frame: 6, complete: true, diffusionFrames: 4 });
+    expect(report.totals).toEqual({
+      strokes: 2,
+      points: 4,
+      approxBytes: report.frames[0]!.approxBytes + report.frames[1]!.approxBytes,
+    });
+  });
+
+  it('caps each continuation diffusion contribution at 600 frames', () => {
+    flushBrushScriptFrame(7, [stroke(1), continuation(1, 5000), continuation(1, 4)]);
+    expect(getBrushScriptReport().frames[0]).toMatchObject({ diffusionFrames: 604 });
   });
 });
 

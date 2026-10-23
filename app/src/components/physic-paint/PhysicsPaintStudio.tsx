@@ -167,13 +167,18 @@ import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
 import {
+  clearBrushScriptFrame,
   computeBrushScriptPruneFrame,
-  deleteBrushScriptFrame,
   flushBrushScriptFrame,
-  markBrushScriptFrameDirty,
+  noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
   resetBrushScriptStore,
 } from './view/brushScriptRecordState';
+import {
+  applyCompletedBrushMutation,
+  attemptBrushScriptHydration,
+  type BrushHydrationRequest,
+} from './view/brushScriptHydration';
 import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import {
   aquarelleLiveStrokeCount,
@@ -3441,10 +3446,34 @@ export function PhysicsPaintStudio() {
   // propagation) and rotoFrameEditing is rebuilt per render — both route
   // through refs so this callback keeps a stable identity across
   // startFrame-only renders. The guards read the exact same live values.
+  // 261023-h9v: ONE observed arrival seam. Every cached-pixel load records
+  // whether a base actually arrived, so a later capture of this frame stays
+  // PARTIAL and navigation can never replace those pixels with a script.
+  const loadReferenceObserved = useCallback(
+    (frame: number, targetEngine: PreviewBackgroundEngine | null): boolean => {
+      const loaded = loadCachedRotoReferenceFrame(frame, targetEngine);
+      noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
+      return loaded;
+    },
+    [findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame],
+  );
+  // Stable hydration seam for the navigation callback (identity-stable deps).
+  const hydrateBrushScriptFrame = useCallback(
+    (targetEngine: EfxPaintEngine, request: BrushHydrationRequest): boolean =>
+      attemptBrushScriptHydration(targetEngine, request),
+    [],
+  );
   const clearActiveSource = useCallback(() => {
     if (isPhysicalMutationLocked() || !engine || !launchContextRef.current) return;
-    if (rotoFrameEditingRef.current.clearCurrentFrame()) rotoScript.notifySourceRevision();
-  }, [engine, rotoScript]);
+    if (rotoFrameEditingRef.current.clearCurrentFrame()) {
+      // 261023-h9v: a USER clear drops the retained script. The completion
+      // listener no longer reacts to 'clear' (engine.clear() notifies on every
+      // navigation), so this is the ONE explicit drop site outside prune /
+      // launch teardown. Water color owns its own record store.
+      if (activeModule.peek() === 'brush') clearBrushScriptFrame(currentFrame);
+      rotoScript.notifySourceRevision();
+    }
+  }, [currentFrame, engine, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -3505,7 +3534,19 @@ export function PhysicsPaintStudio() {
         (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
         (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
-        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+        // 261023-h9v: a COMPLETE retained script for the destination frame
+        // replaces the cached-pixel path (silent baseline restore, no double
+        // paint). Every refusal is fail-closed: record the arrival base and
+        // keep today's pixels — a PARTIAL script must never replace them.
+        if (!hydrateBrushScriptFrame(engine, {
+          frame,
+          destinationKind,
+          brushModuleActive: activeModule.peek() !== 'watercolor',
+          wasPlaying: wasPlaying || rotoCachedPlayback.isActive,
+          scrubActive: scrubActiveRef.current,
+        })) {
+          loadReferenceObserved(frame, engine as PreviewBackgroundEngine);
+        }
       }
       recordPhysicsPaintPerformance({ stage: 'nav.engineClearLoad', category: 'sync-cpu', durationMs: performance.now() - clearAndLoadStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
       recordPhysicsPaintPerformance({ stage: 'nav.preAwait', category: 'sync-cpu', durationMs: performance.now() - navigationSyncStartedAtMs, timestamp: performance.now(), sourceFrame: frame, branch: destinationKind });
@@ -3561,7 +3602,7 @@ export function PhysicsPaintStudio() {
       rotoCachedPlayback.seek(frame);
     }
     return true;
-  }, [bridgeMode, currentFrame, engine, launchContext, loadCachedRotoReferenceFrame, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
+  }, [bridgeMode, currentFrame, engine, findCachedRotoDisplayFrame, hydrateBrushScriptFrame, launchContext, loadCachedRotoReferenceFrame, loadReferenceObserved, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
   // active track can change with no runtime content mutation (row click,
   // addTrack, duplicateTrack) and its visibility can flip through
@@ -4770,12 +4811,13 @@ export function PhysicsPaintStudio() {
     physicPaintVersion.value++;
     rotoScript.observeCompletedMutation(mutationEngine, mutation);
     const { kind, isEmpty, mutationId } = mutation;
-    // 261023-g4p: stroke completion only MARKS the frame (O(1) — no
-    // projection here). A clear drops the frame's retained script.
+    // 261023-h9v: ONE completion law. paint/move/erase/physics only MARK the
+    // frame (O(1) — no projection); undo/redo flush from the completing
+    // engine; 'clear' never writes — engine.clear() fires it on every
+    // navigation, right after the navigation flush recorded the frame.
     if (activeModule.peek() !== 'watercolor') {
       const scriptFrame = launchContextRef.current?.startFrame ?? 0;
-      if (kind === 'clear') deleteBrushScriptFrame(scriptFrame);
-      else markBrushScriptFrameDirty(scriptFrame);
+      applyCompletedBrushMutation(kind, scriptFrame, mutationEngine);
     }
     rotoMoveHistory.observePaintMutation(mutationId, kind);
     const acceptedTarget = rotoScript.getAcceptedTarget(mutationEngine, mutationId);
