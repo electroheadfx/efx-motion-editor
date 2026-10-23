@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-j5b follow-up 3: applied/duplicated scripts are captured for Move at apply settle (Duplicate adopts its blank-born destination as complete); live UAT pending (parity + duplicate + revisit + duplicate-in-move)
+Last activity: 2026-10-23 - Quick task 261023-j5b CLOSED: all live UAT rows passed (instant navigation, faithful parity, Duplicate phantom, revisit-after-edit, Duplicate-in-Move)
 
 Progress: [██████████] 100%
 
@@ -578,7 +578,7 @@ None yet.
 | 261023-f9c | Read-only script-memory measurement: DEV window.__EFX_SCRIPT_MEMORY__.snapshot() (watercolor per-frame totals, current brush frame, frame caches reported separately) + JSON-vs-versioned packed-binary codec prototype with round-trip tests | 2026-10-23 | 7d3572f8 | [261023-f9c-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-f9c-v2-0-0-read-specs-quick-prompts-studio-s/) |
 | 261023-g4p | Brush per-frame script store + DEV probe totals; one shared script-edition seam gives Brush Move the Water color select/drag/delete/restack UI | 2026-10-23 | 2c2fb99f | [261023-g4p-read-specs-quick-prompts-studio-brush-sc](./quick/261023-g4p-read-specs-quick-prompts-studio-brush-sc/) |
 | 261023-h9v | In-session brush script rehydration on navigation: complete light brush frames restore silently into the engine (Move enabled on revisited keys); partial/heavy/diffusion frames fail closed to cached pixels. Fixes the clear-listener deleting the retained entry. | 2026-10-23 | 62bdaea4 | [261023-h9v-add-in-session-brush-script-rehydration-](./quick/261023-h9v-add-in-session-brush-script-rehydration-/) |
-| 261023-j5b | Lazy brush script attach over cached pixels (instant navigation) + faithful live-deposit rebake on edits (no stroke growth/halos); replaces the eager h9v replay and removes the tight navigation budget; diffusion/physics frames fail closed. | 2026-10-23 | eefb4493 | [261023-j5b-replace-eager-brush-script-replay-on-nav](./quick/261023-j5b-replace-eager-brush-script-replay-on-nav/) |
+| 261023-j5b | Lazy brush script attach over cached pixels (instant navigation) + faithful live-deposit rebake on edits; Duplicate phantom, revisit-cache duplicate and Duplicate-in-Move overlay fixes; diffusion/physics frames fail closed. UAT passed 2026-10-23. | 2026-10-23 | be5b3e90 | [261023-j5b-replace-eager-brush-script-replay-on-nav](./quick/261023-j5b-replace-eager-brush-script-replay-on-nav/) |
 
 ### Roadmap Evolution
 

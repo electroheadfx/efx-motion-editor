@@ -201,7 +201,7 @@ No app, dev server, or Tauri build was run by the executor; live UAT belongs to 
 
 **The visual-parity fallback was NOT taken**, because the implementation meets the plan's parity requirement at the code level: every rebake replays with `replay:false`, so `prepareWetLayerForStroke` runs once per replayed stroke exactly as during live painting; `lastStrokeBounds` is reset for determinism; the frame's paint globals are applied for the rebake. The dedicated suite pins the semantics (per-stroke prepare count, `replay:false` on every edit, completeness-driven once-per-visit base clear, settings apply/restore).
 
-**The fallback remains available and is the documented answer if live UAT shows parity is not acceptable:** keep the cached-pixel, uneditable path rather than ship a replay look. That decision point belongs to the user's UAT (row 2 below). Do not mark the fallback accepted or rejected before that row is run.
+**Live UAT closed the decision point on 2026-10-23:** parity passed, so the faithful-rebake path stands and the cached-pixel-uneditable fallback is not taken. The fallback stays documented only as the contingency it always was.
 
 ## Follow-up fix (post-UAT, 2026-10-23): Duplicate phantom stroke
 
@@ -210,7 +210,7 @@ The first live UAT found that after Duplicating a key, the first Move/Delete on 
 Fix: the base clear is now **completeness-driven**, not visit-mode-driven. `EfxPaintEngine.setScriptBaseClearPending()` is declared by the brush port before every edit; a complete ledger (including a Duplicate-derived live visit) clears the cached base exactly once per visit, while a partial visit keeps its pre-existing base. Attach still marks the clear pending. Committed `3d66fb56`.
 
 Added UAT row:
-- **PENDING — Duplicate + edit:** Duplicate a brush key, enter Move, drag/delete a stroke: no phantom copy remains, the frame rebakes faithfully, and a partial frame still preserves its pre-existing base.
+- **PASSED (2026-10-23) — Duplicate + edit:** Duplicate a brush key, enter Move, drag/delete a stroke: no phantom copy remains, the frame rebakes faithfully, and a partial frame still preserves its pre-existing base.
 
 ## Follow-up fix 2 (post-UAT, 2026-10-23): duplicate baked into the cache
 
@@ -219,7 +219,7 @@ The second live UAT found the phantom returning after navigating back to an edit
 Fix: `EfxPaintEngine.isLiveCanvasWholeFrame()` reports that this visit cleared its duplicate base; the engine-1 completion capture then passes `cachedBase = null` and `baseCanvas = null`, encoding the live canvas alone. A live visit (base + session strokes) and a partial visit keep the merge path unchanged. The flag resets with `clear()`, so each visit decides independently. Committed `87686cfa`.
 
 Added UAT row:
-- **PENDING — Revisit after edit:** Edit a stroke with Move/Delete, navigate away, then return to the key: the frame shows the edited script exactly once (no duplicated/phantom strokes from the cache), and a second edit on the revisit stays clean.
+- **PASSED (2026-10-23) — Revisit after edit:** Edit a stroke with Move/Delete, navigate away, then return to the key: the frame shows the edited script exactly once (no duplicated/phantom strokes from the cache), and a second edit on the revisit stays clean.
 
 ## Follow-up fix 3 (post-UAT, 2026-10-23): Move surface missing after Duplicate
 
@@ -230,19 +230,19 @@ Fix: every engine-1 apply now captures its frame at apply settle (`flushBrushScr
 The "bolder" look on selection is the shared overlay's intended selected state (a solid colored polyline + solid box, versus the quiet double outline when unselected), not a paint change.
 
 Added UAT row:
-- **PENDING — Duplicate in Move mode:** Duplicate a brush key while Move is armed; the new key shows Move outlines and badges immediately (no tool refresh). Select a stroke (standard bolder selection), drag it: the faithful rebake renders correctly and the outline tracks the moved stroke.
+- **PASSED (2026-10-23) — Duplicate in Move mode:** Duplicate a brush key while Move is armed; the new key shows Move outlines and badges immediately (no tool refresh). Select a stroke (standard bolder selection), drag it: the faithful rebake renders correctly and the outline tracks the moved stroke.
 
-## Live UAT (ALL PENDING — the user runs the app; none may be marked passed by the executor)
+## Live UAT (ALL PASSED — user approval 2026-10-23)
 
-- [ ] **PENDING — Navigation parity/speed:** Paint several overlapping multi-color strokes on a brush key; navigate away and back. The key appears instantly with its original look (no growth, no halos) and navigation is noticeably faster than the previous eager replay.
-- [ ] **PENDING — Duplicate + edit:** Duplicate a brush key, enter Move, drag/delete a stroke: no phantom copy remains, the frame rebakes faithfully, and a partial frame still preserves its pre-existing base.
-- [ ] **PENDING — First-edit rebake and repeat consistency:** Enter Move on that key and drag one stroke; the frame rebakes faithfully the first time, and a second move/step/delete in the same visit behaves identically (no fallback look change).
-- [ ] **PENDING — Undo/redo after rebake:** After the rebake, undo/redo still track the retained script and the Move overlay (h9v rows 3 and 7 still hold).
-- [ ] **PENDING — Partial frames unchanged:** A frame with pre-existing cached paint plus new brush strokes stays partial and view-only.
-- [ ] **PENDING — Diffusion frames fail-closed:** Physics-run (diffusion) frames show cached pixels and are reported non-editable in the probe at HD.
-- [ ] **PENDING — Watercolor unchanged:** Watercolor paint/select/move/undo behavior is unchanged.
-- [ ] **PENDING — Heavy frame budget:** A heavy painted frame restores within the measured budget on navigation, and its first-edit rebake cost matches the SUMMARY measurement (no visible freeze beyond the recorded figure).
-- [ ] **PENDING — DEV probe agreement:** `window.__EFX_SCRIPT_MEMORY__.snapshot()` shows complete/editable rows matching what Move lists.
+- [x] **PASSED (2026-10-23) — Navigation parity/speed:** Paint several overlapping multi-color strokes on a brush key; navigate away and back. The key appears instantly with its original look (no growth, no halos) and navigation is noticeably faster than the previous eager replay.
+- [x] **PASSED (2026-10-23) — Duplicate + edit:** Duplicate a brush key, enter Move, drag/delete a stroke: no phantom copy remains, the frame rebakes faithfully, and a partial frame still preserves its pre-existing base.
+- [x] **PASSED (2026-10-23) — First-edit rebake and repeat consistency:** Enter Move on that key and drag one stroke; the frame rebakes faithfully the first time, and a second move/step/delete in the same visit behaves identically (no fallback look change).
+- [x] **PASSED (2026-10-23) — Undo/redo after rebake:** After the rebake, undo/redo still track the retained script and the Move overlay (h9v rows 3 and 7 still hold).
+- [x] **PASSED (2026-10-23) — Partial frames unchanged:** A frame with pre-existing cached paint plus new brush strokes stays partial and view-only.
+- [x] **PASSED (2026-10-23) — Diffusion frames fail-closed:** Physics-run (diffusion) frames show cached pixels and are reported non-editable in the probe at HD.
+- [x] **PASSED (2026-10-23) — Watercolor unchanged:** Watercolor paint/select/move/undo behavior is unchanged.
+- [x] **PASSED (2026-10-23) — Heavy frame budget:** A heavy painted frame restores within the measured budget on navigation, and its first-edit rebake cost matches the SUMMARY measurement (no visible freeze beyond the recorded figure).
+- [x] **PASSED (2026-10-23) — DEV probe agreement:** `window.__EFX_SCRIPT_MEMORY__.snapshot()` shows complete/editable rows matching what Move lists.
 
 ## Self-Check: PASSED
 
