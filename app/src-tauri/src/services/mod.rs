@@ -5,5 +5,6 @@ pub mod image_pool;
 pub mod physic_paint_cache;
 pub mod project_io;
 pub mod script_library;
+pub mod studio_script_snapshot;
 #[cfg(target_os = "macos")]
 pub mod tablet;

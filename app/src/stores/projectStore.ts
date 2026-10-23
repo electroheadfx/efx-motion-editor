@@ -856,6 +856,9 @@ export const projectStore = {
   scriptLibraryAuthority,
   projectContextId,
   scriptScope,
+  // quick-261023-l35: the DURABLE package identity (unlike the rotating
+  // `projectContextId`) — the key the Studio script snapshot is stored under.
+  projectId,
 
   getActivePhysicPaintLayers,
   setScriptScope,

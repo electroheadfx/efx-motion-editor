@@ -23,6 +23,7 @@ use commands::image;
 use commands::physic_paint_cache as physic_paint_cache_commands;
 use commands::project;
 use commands::script_library;
+use commands::studio_script_snapshot as studio_script_snapshot_commands;
 use percent_encoding::percent_decode_str;
 use serde_json::Value;
 use std::sync::atomic::Ordering;
@@ -143,6 +144,11 @@ struct PhysicsPaintProjectContext {
     saved: bool,
     #[serde(rename = "contextId")]
     context_id: String,
+    // quick-261023-l35: the DURABLE package identity. Declared here or serde
+    // silently drops the member on the native launch path (the struct has no
+    // `deny_unknown_fields`) and the Studio's snapshot cache loses its key.
+    #[serde(rename = "projectId", default, skip_serializing_if = "Option::is_none")]
+    project_id: Option<String>,
 }
 
 struct PhysicsPaintLaunchState(Mutex<Option<PhysicsPaintLaunchContext>>);
@@ -963,6 +969,8 @@ pub fn run() {
             frame_codec_commands::decode_webp_frame,
             efx_paint_media_commands::efx_paint_write_frame_media,
             efx_paint_media_commands::efx_paint_read_frame_media,
+            studio_script_snapshot_commands::studio_script_snapshot_write,
+            studio_script_snapshot_commands::studio_script_snapshot_read,
             debug_capture::write_debug_capture,
             config::config_get_theme,
             config::config_set_theme,
@@ -1053,6 +1061,28 @@ mod tests {
         let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
         assert_eq!(deserialized.document.as_ref().unwrap()["id"], "layer-1");
         assert_eq!(deserialized.document.as_ref().unwrap()["activeTrackId"], "track-1");
+    }
+
+    #[test]
+    fn physics_paint_launch_context_round_trips_the_durable_project_id() {
+        // quick-261023-l35: the Studio's script snapshot cache is keyed on the
+        // DURABLE package identity (`projectId`), not the rotating `contextId`.
+        // Without the field declared on this struct serde drops it on the
+        // native launch path and every restore falls back to a different key.
+        let mut context = roto_launch_context();
+        context.project = Some(PhysicsPaintProjectContext {
+            name: "Project".into(),
+            saved: true,
+            context_id: "context-rotating".into(),
+            project_id: Some("project-durable".into()),
+        });
+        let json = serde_json::to_value(&context).unwrap();
+        assert_eq!(json["project"]["projectId"], "project-durable");
+        assert_eq!(json["project"]["contextId"], "context-rotating");
+        let deserialized: PhysicsPaintLaunchContext = serde_json::from_value(json).unwrap();
+        let project = deserialized.project.as_ref().unwrap();
+        assert_eq!(project.project_id.as_deref(), Some("project-durable"));
+        assert_eq!(project.context_id, "context-rotating");
     }
 
     #[test]

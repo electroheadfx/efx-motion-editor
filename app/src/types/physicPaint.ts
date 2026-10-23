@@ -1904,6 +1904,14 @@ export interface PhysicPaintProjectContext {
   name: string;
   saved: boolean;
   contextId: string;
+  /**
+   * quick-261023-l35: the DURABLE package identity (`projectStore.projectId`,
+   * the manifest's projectId), unlike `contextId` which rotates on every
+   * project open. The Studio script snapshot cache is keyed by it
+   * (`<app_data_dir>/studio-script-snapshots/<projectId>/...`), so a rotated
+   * context can never orphan or mix a snapshot.
+   */
+  projectId?: string;
   /** Opaque Rust capability forwarded only to the trusted Physics Paint webview. */
   scriptLibraryAuthority?: string;
   /** Live physic-paint layers; absent means the child renders All-only with snapshotted provenance. */
@@ -2827,6 +2835,10 @@ function optionalProjectContext(value: unknown): boolean {
     && isNonEmptyString(value.name)
     && typeof value.saved === 'boolean'
     && isNonEmptyString(value.contextId)
+    // quick-261023-l35: the durable package id rides the same context. It is
+    // bounded like every other context string and MUST be listed in the closed
+    // union below — an unlisted key is silently refused whole.
+    && optionalBoundedContextString(value.projectId)
     && optionalNonEmptyString(value.scriptLibraryAuthority)
     // quick-260922-al1: the widened project shape stays a LEGAL launch-context
     // project — both new keys are optional and bounded under the same
@@ -2834,7 +2846,7 @@ function optionalProjectContext(value: unknown): boolean {
     // the child now expects to accept is refused on every re-validation.
     && optionalProjectContextLayers(value.layers)
     && optionalPhysicPaintProjectContextScope(value.scriptScope)
-    && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId' || key === 'scriptLibraryAuthority' || key === 'layers' || key === 'scriptScope'));
+    && Object.keys(value).every((key) => key === 'name' || key === 'saved' || key === 'contextId' || key === 'projectId' || key === 'scriptLibraryAuthority' || key === 'layers' || key === 'scriptScope'));
 }
 
 /** quick-260922-al1: the project-context bounds — count-capped, length-capped. */
@@ -2851,6 +2863,11 @@ function optionalProjectContextLayers(value: unknown): boolean {
 }
 
 function optionalPhysicPaintProjectContextScope(value: unknown): boolean {
+  return value === undefined || (isNonEmptyString(value) && value.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH);
+}
+
+/** quick-261023-l35: optional non-empty context string capped at the scope bound. */
+function optionalBoundedContextString(value: unknown): boolean {
   return value === undefined || (isNonEmptyString(value) && value.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH);
 }
 

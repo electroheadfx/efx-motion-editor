@@ -578,6 +578,100 @@ export function recordAquarelleStroke(
 }
 
 /**
+ * quick-261023-l35: seed the whole record state from a decoded snapshot.
+ *
+ * This is a SESSION SEED, not a capture: the timeline is replaced wholesale
+ * (strokes, registry, deletion markers, serials), then every decoded event is
+ * rebuilt into the exact live shapes the record path produces — the raw
+ * `AquarelleStroke` from its engine payload plus `pts`, and its timeline entry
+ * from the SAME `toStudioStroke` projection. The projected entry object is the
+ * one pushed onto the timeline, so the `payloadTimeline.indexOf(entry)`
+ * invariant used by translate/stack-step survives a restore.
+ *
+ * The record clock is advanced exactly as the recording session did: by each
+ * stroke's tick span, and to every Dry event's absolute tick. Dry sinks are
+ * left attached (they are live listeners, not content).
+ *
+ * Returns the highest restored `mutationId` (0 when none) so the caller can
+ * reserve the engine's mutation clock past every restored identity.
+ */
+export function restoreAquarelleRecordTimeline(
+  events: readonly AquarellePayloadEvent[],
+): number {
+  recordedStrokes.clear();
+  recordedStrokeEntries.clear();
+  deletedAquarelleStrokeIds.clear();
+  aquarelleStrokeSerials.clear();
+  aquarelleFrameSerialCounters.clear();
+  payloadTimeline.length = 0;
+  recordClockTick = 0;
+
+  let maxMutationId = 0;
+  for (const event of events) {
+    if (isAquarelleDryEvent(event)) {
+      payloadTimeline.push(event);
+      recordClockTick = Math.max(recordClockTick, Math.max(0, Math.trunc(event.tick)));
+      continue;
+    }
+    const engine = event.engine as AquarelleStrokePayload;
+    const stroke: AquarelleStroke = {
+      tool: engine.tool,
+      color: engine.color,
+      params: { ...engine.params },
+      brushId: engine.brushId,
+      points: event.pts.map((point) => ({
+        x: point.x,
+        y: point.y,
+        p: point.p,
+        tx: point.tx,
+        ty: point.ty,
+        tw: point.tw,
+      })),
+      toolOverrides: engine.toolOverrides ? { ...engine.toolOverrides } : undefined,
+      mutationId: engine.mutationId,
+      diffusionFrames: engine.diffusionFrames,
+      timestamp: engine.timestamp,
+      playFrame: engine.playFrame,
+    };
+    const entry = toStudioStroke(stroke);
+    payloadTimeline.push(entry);
+    const mutationId = engine.mutationId;
+    if (mutationId !== undefined) {
+      recordedStrokes.set(mutationId, stroke.mutationId === mutationId ? stroke : { ...stroke, mutationId });
+      recordedStrokeEntries.set(mutationId, entry);
+      aquarelleStrokeSerial(mutationId, entry.playFrame ?? 0);
+      maxMutationId = Math.max(maxMutationId, mutationId);
+    }
+    advanceRecordClock(Math.max(1, entry.pts.length - 1));
+  }
+  bumpAquarelleStrokesRevision();
+  return maxMutationId;
+}
+
+/**
+ * quick-261023-l35: clear the record state to empty (track switch / Studio
+ * disposal). The record clock restarts at 0. The revision bumps once, and only
+ * when something was actually cleared — a reset on an already-empty store is a
+ * no-op (efx-preact-reactivity rule 3). Dry sinks stay attached.
+ */
+export function resetAquarelleRecordState(): void {
+  const hadContent =
+    payloadTimeline.length > 0 ||
+    recordedStrokes.size > 0 ||
+    recordedStrokeEntries.size > 0 ||
+    deletedAquarelleStrokeIds.size > 0 ||
+    recordClockTick !== 0;
+  recordedStrokes.clear();
+  recordedStrokeEntries.clear();
+  deletedAquarelleStrokeIds.clear();
+  aquarelleStrokeSerials.clear();
+  aquarelleFrameSerialCounters.clear();
+  payloadTimeline.length = 0;
+  recordClockTick = 0;
+  if (hadContent) bumpAquarelleStrokesRevision();
+}
+
+/**
  * Play-vs-paint fidelity: replace the launch cuisson heuristic with the
  * engine's MEASURED awake window (ticks the live sheet actually diffused
  * after the stroke ended). Replays then cook each stroke for as long as the

@@ -638,6 +638,76 @@ export async function ipcEfxPaintReadFrameMedia(
   }
 }
 
+// --- Studio script snapshot cache commands (quick-261023-l35) ---
+
+/**
+ * The snapshot store's failure taxonomy. `missing` is the silent no-op first
+ * session (never reported), `refused` is a rule violation (bad key, oversized
+ * or irregular file) and `io` covers every other failure. The Rust side
+ * serializes one fixed label string, exactly like `EfxPaintMediaError`.
+ */
+export type StudioScriptSnapshotFailure = { kind: 'missing' | 'refused' | 'io' };
+
+function studioScriptSnapshotFailureFrom(error: unknown): StudioScriptSnapshotFailure {
+  let label: unknown = error;
+  if (typeof error === 'object' && error !== null && 'label' in error) {
+    label = (error as { label?: unknown }).label;
+  }
+  if (typeof label !== 'string') return { kind: 'io' };
+  const normalized = label.trim().replace(/^"(.*)"$/, '$1');
+  if (normalized === 'missing') return { kind: 'missing' };
+  if (normalized === 'refused') return { kind: 'refused' };
+  return { kind: 'io' };
+}
+
+/**
+ * Write one key's Studio script snapshot below `<app_data_dir>/studio-script-
+ * snapshots/`. The bytes cross as the raw invoke body — never a JSON number
+ * array — and the renderer never names a filesystem path.
+ */
+export async function ipcStudioScriptSnapshotWrite(
+  projectId: string,
+  layerId: string,
+  trackId: string,
+  bytes: Uint8Array,
+): Promise<Result<{ byteLength: number; digest: string }, StudioScriptSnapshotFailure>> {
+  try {
+    const data = await invoke<{ byteLength: number; digest: string }>(
+      'studio_script_snapshot_write',
+      bytes,
+      { headers: { projectId, layerId, trackId } },
+    );
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: studioScriptSnapshotFailureFrom(error) };
+  }
+}
+
+/**
+ * Read one key's Studio script snapshot back. The Rust side answers base64 (a
+ * raw response body degrades to a JSON number array on macOS), decoded here to
+ * a `Uint8Array`.
+ */
+export async function ipcStudioScriptSnapshotRead(
+  projectId: string,
+  layerId: string,
+  trackId: string,
+): Promise<Result<{ bytes: Uint8Array; digest: string; byteLength: number }, StudioScriptSnapshotFailure>> {
+  try {
+    const data = await invoke<{ bytesBase64: string; byteLength: number; digest: string }>(
+      'studio_script_snapshot_read',
+      undefined,
+      { headers: { projectId, layerId, trackId } },
+    );
+    return {
+      ok: true,
+      data: { bytes: base64ToBytes(data.bytesBase64), digest: data.digest, byteLength: data.byteLength },
+    };
+  } catch (error) {
+    return { ok: false, error: studioScriptSnapshotFailureFrom(error) };
+  }
+}
+
 // --- Package layer file commands (quick-260913-05k) ---
 
 /**

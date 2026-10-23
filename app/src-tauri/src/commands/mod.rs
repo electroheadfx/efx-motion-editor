@@ -7,3 +7,4 @@ pub mod image;
 pub mod physic_paint_cache;
 pub mod project;
 pub mod script_library;
+pub mod studio_script_snapshot;

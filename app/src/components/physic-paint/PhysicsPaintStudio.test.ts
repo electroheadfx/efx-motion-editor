@@ -3662,3 +3662,46 @@ describe('261023-j5b paint-settings carrier seams', () => {
     expect(studio).toContain('rotoScript.source.peek().appFrame,');
   });
 });
+
+// quick-261023-l35: the Studio script snapshot — restore before the surface is
+// published, a bounded save on close, and the engine clock reservation.
+describe('261023-l35 studio script snapshot seams', () => {
+  it('restores the script BEFORE the launch context is applied', () => {
+    const restoreIndex = launchIntegration.indexOf('await input.restoreStudioScriptSnapshot?.(');
+    const applyIndex = launchIntegration.indexOf('applyPhysicsPaintLaunchContext(settledContext');
+    expect(restoreIndex).toBeGreaterThan(-1);
+    expect(applyIndex).toBeGreaterThan(restoreIndex);
+    // The restore receives the SETTLED context (the durable projectId lands at
+    // settle) and its carried document (the active-track authority).
+    expect(launchIntegration).toContain('restoreStudioScriptSnapshot?.(settledContext, settledContext.document)');
+  });
+
+  it('supplies a restoring callback keyed on the durable project identity', () => {
+    expect(studio).toContain('restoreStudioScriptSnapshot: async (context, document) => {');
+    expect(studio).toContain('const projectId = context.project?.projectId ?? \'\';');
+    expect(studio).toContain('const trackId = typeof carriedTrackId === \'string\' ? carriedTrackId : \'\';');
+    expect(studio).toContain('studioScriptSnapshot.bind(identity);');
+    expect(studio).toContain('engineRef.current?.reserveMutationClock(nextMutationId);');
+  });
+
+  it('re-applies the reserved mutation clock at the engine-ready seam', () => {
+    expect(studio).toContain('const reservedMutationId = studioScriptSnapshotReservedNextMutationIdRef.current;');
+    expect(studio).toContain('readyEngine.reserveMutationClock(reservedMutationId);');
+  });
+
+  it('bounds the close-path save and keeps a dirty script pending', () => {
+    expect(studio).toContain('() => workflowMode === \'roto\' || studioScriptSnapshot.isDirty(),');
+    expect(studio).toContain('const STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS = 2000;');
+    expect(studio).toContain('studioScriptSnapshot.saveNow(),');
+    expect(studio).toContain('window.setTimeout(resolve, STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS);');
+  });
+
+  it('drops the binding on Studio disposal', () => {
+    expect(studio).toContain('studioScriptSnapshot.reset();');
+  });
+
+  it('carries the durable projectId on the launch project context', () => {
+    expect(types).toContain('projectId?: string;');
+    expect(bridge).toContain('projectId: projectStore.projectId.peek()');
+  });
+});

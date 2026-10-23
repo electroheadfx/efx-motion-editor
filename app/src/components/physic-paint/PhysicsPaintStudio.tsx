@@ -149,12 +149,21 @@ import { useRotoPlayScriptController } from './hooks/useRotoPlayScriptController
 import { useBackgroundAssetPickerController } from './view/BackgroundAssetPickerView';
 import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsPaintAudioController } from './view/physicsPaintAudioController';
 import { getTimelineViewportFrames } from './view/PhysicsPaintWorkflowStrip';
+import {
+  createStudioScriptSnapshotController,
+  type StudioScriptSnapshotController,
+} from './snapshot/studioScriptSnapshotController';
+import type { StudioScriptSnapshotIdentity } from './performance/studioScriptSnapshotCodec';
 import type { AudioSectionPorts } from './view/PhysicsPaintAudioListSection';
 import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // 52.5-01b: the Document sound import flow reuses the EXISTING decode/peaks
 // machinery (D-04 — no new decode path): assetUrl fetch → audioEngine.decode →
 // audioPeaksCache (the task-3 stain reads peaks keyed by sourceId).
-import { assetUrl } from '../../lib/ipc';
+import {
+  assetUrl,
+  ipcStudioScriptSnapshotRead,
+  ipcStudioScriptSnapshotWrite,
+} from '../../lib/ipc';
 import { isSoundSourceMissing, collectMissingSoundSourcePaths } from '../../lib/documentSoundMissing';
 import { audioEngine } from '../../lib/audioEngine';
 import { computeWaveformPeaks } from '../../lib/audioWaveform';
@@ -182,7 +191,14 @@ import {
   planBrushScriptHydration,
   type BrushHydrationRequest,
 } from './view/brushScriptHydration';
-import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
+import {
+  aquarelleStrokesRevision,
+  getAquarelleEventsForFrame,
+  getRecordedAquarellePayloadTimeline,
+  recordAquarelleStroke,
+  setAquarelleParam,
+  setAquarelleStrokeDiffusionFrames,
+} from './view/aquarelleRecordState';
 import {
   aquarelleLiveStrokeCount,
   aquarelleScriptStrokeEditionPort,
@@ -212,6 +228,9 @@ import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
+// quick-261023-l35 (T-261023-l35-05): the close path waits at most this long
+// for the script snapshot write before closing anyway.
+const STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS = 2000;
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
 type GroupLifecycleDeleteTarget = Readonly<Omit<RotoGroupLifecycleDeleteTarget, 'mode'> & {
   operationKind: 'delete-group-frame' | 'delete-group';
@@ -1001,6 +1020,57 @@ export function PhysicsPaintStudio() {
   const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
+  // quick-261023-l35: the Studio script snapshot is an app-managed DISK CACHE
+  // (never part of the .mce package). The controller is a plain object in a
+  // render-body ref: Preact state setters are identity-stable, and every other
+  // port reads through refs, so it is created once (identity-stable deps — no
+  // new closure per render, no render-body signal read).
+  const studioScriptSnapshotIdentityRef = useRef<StudioScriptSnapshotIdentity | null>(null);
+  const studioScriptSnapshotControllerRef = useRef<StudioScriptSnapshotController | null>(null);
+  if (studioScriptSnapshotControllerRef.current === null) {
+    studioScriptSnapshotControllerRef.current = createStudioScriptSnapshotController({
+      getIdentity: () => studioScriptSnapshotIdentityRef.current,
+      getWatercolorEvents: () => getRecordedAquarellePayloadTimeline(),
+      // Task 2 wires the per-frame brush store here.
+      getBrushFrames: () => [],
+      // The aquarelle revision is the watercolor content fingerprint: it bumps
+      // on every record/restore/delete (and the brush revision joins it in
+      // Task 2), so a save can never miss a script mutation.
+      getContentSignature: () => String(aquarelleStrokesRevision.peek()),
+      // Live real-key app frames for the bound track. An empty set disables
+      // pruning in the controller (unknown ≠ empty), so a launch whose key
+      // records are not loaded yet can never wipe the restored script.
+      getLiveFrames: () => {
+        const identity = studioScriptSnapshotIdentityRef.current;
+        if (!identity) return null;
+        const records = physicPaintStore.getRotoRealKeyRecords(identity.layerId, identity.trackId);
+        return new Set(records.map((record) => record.appFrame));
+      },
+      // Status channel: the EXISTING capsule trio — a status without a moving
+      // applyStatus is filtered out by the capsule's success arbitration.
+      report: (message) => {
+        setApplyStatus('error');
+        setApplyMessage(message);
+        setLastError(message);
+      },
+      write: (identity, bytes) => ipcStudioScriptSnapshotWrite(
+        identity.projectId,
+        identity.layerId,
+        identity.trackId,
+        bytes,
+      ),
+      read: (identity) => ipcStudioScriptSnapshotRead(
+        identity.projectId,
+        identity.layerId,
+        identity.trackId,
+      ),
+    });
+  }
+  const studioScriptSnapshot = studioScriptSnapshotControllerRef.current;
+  // Highest restored watercolor mutationId + 1. Re-applied at the engine-ready
+  // seam so a recreated engine (crash-recovery reload) cannot reuse a restored
+  // id and silently overwrite the restored registry entry.
+  const studioScriptSnapshotReservedNextMutationIdRef = useRef(0);
   // 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen
   // (FRESH_FRAME_WARM_MS); the capsule renders a thin bar so the artist knows
   // when the canvas is released. 0 = idle, 100 = released.
@@ -1459,7 +1529,10 @@ export function PhysicsPaintStudio() {
   useEffect(() => () => {
     resetBrushScriptStore();
     configureBrushScriptEdition(null);
-  }, []);
+    // quick-261023-l35: drop the bound snapshot identity and the dirty
+    // baseline with the realm — a dead session must never be read as dirty.
+    studioScriptSnapshot.reset();
+  }, [studioScriptSnapshot]);
   // quick-261003-vos: Alt = temporary erase — ONE module signal plus gated
   // window listeners (physicsPaintTemporaryErase). The deps live behind a
   // render-body ref (canvasEngineReadyImplRef precedent) so the
@@ -2915,13 +2988,18 @@ export function PhysicsPaintStudio() {
     // engine-1 stroke counter and the live-pixel queue until it is captured; a
     // gate that misses it closes the window with the pixels never enqueued (the
     // blank key persisted). A no-op flush is cheap; a skipped one loses paint.
-    () => workflowMode === 'roto',
+    // quick-261023-l35: a dirty script snapshot must also keep the window open
+    // long enough to save — otherwise a close that has no pixel work destroys
+    // the realm with the script never written.
+    () => workflowMode === 'roto' || studioScriptSnapshot.isDirty(),
     async () => {
-      if (workflowMode !== 'roto') return;
-      // The four steps and their order are unchanged; the pipeline now owns the
-      // drain they run inside and the outcome-to-rejection translation.
+      // The steps and their order are unchanged; the pipeline owns the drain
+      // they run inside and the outcome-to-rejection translation. Per-step
+      // gates replace the old whole-chain `return`, so a dirty non-roto
+      // session still reaches the snapshot save.
       await runStudioFlush([
         () => {
+          if (workflowMode !== 'roto') return;
           // Brush: copyLiveAlphaCanvas composites the dry canvas PLUS the live
           // wet display. The settle capture reads after that cosmetic wet look
           // has evaporated; closing right after a stroke forced the capture
@@ -2931,12 +3009,25 @@ export function PhysicsPaintStudio() {
           if (activeModule.value === 'watercolor') engineRef.current?.flushPendingStrokeFinalizations();
           else engineRef.current?.forceDry();
         },
-        // The close path had no aquarelle capture at all: closing while the
-        // sheet was wet destroyed the engine with the paint never enqueued, so
-        // the durable key stayed the blank payload.
-        () => flushAquarellePixels(currentFrame),
+        () => {
+          if (workflowMode !== 'roto') return;
+          // The close path had no aquarelle capture at all: closing while the
+          // sheet was wet destroyed the engine with the paint never enqueued,
+          // so the durable key stayed the blank payload.
+          return flushAquarellePixels(currentFrame);
+        },
         () => rotoPlaybackSettingsController.flush(),
         () => flushDocumentSyncRef.current(),
+        // quick-261023-l35 (T-261023-l35-05): the script snapshot save runs
+        // LAST and is time-bounded — a hung disk write can never hold the
+        // window open. saveNow() itself never rejects; this race is the
+        // second belt.
+        () => Promise.race([
+          studioScriptSnapshot.saveNow(),
+          new Promise<void>((resolve) => {
+            window.setTimeout(resolve, STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS);
+          }),
+        ]),
       ]);
     },
     // 41-05 (D-08): audio engine release runs unconditionally on close,
@@ -4013,6 +4104,38 @@ export function PhysicsPaintStudio() {
     resetCachedReference: resetCachedRotoReference,
     loadCachedReferenceFrame: (frame, readyEngine) => { loadCachedRotoReferenceFrame(frame, readyEngine ?? null); },
     onSettledLaunchContext: (context) => { void rotoScriptLibrary.updateProjectContext(context); },
+    // quick-261023-l35: restore the Studio script from the disk cache BEFORE
+    // the launch context is published, so the first frame render already sees
+    // the restored timeline instead of flashing an empty script. Awaited by
+    // the launch integration; never rejects.
+    restoreStudioScriptSnapshot: async (context, document) => {
+      const carriedTrackId = (document as { activeTrackId?: unknown } | null | undefined)?.activeTrackId;
+      const projectId = context.project?.projectId ?? '';
+      const layerId = context.layerId ?? '';
+      const trackId = typeof carriedTrackId === 'string' ? carriedTrackId : '';
+      if (!projectId || !layerId || !trackId) {
+        // No durable project identity (legacy parse tolerance) or no active
+        // track: the launch cannot key a cache. Bind nothing rather than
+        // guess a key — a wrong key would mix projects or layers.
+        studioScriptSnapshotIdentityRef.current = null;
+        studioScriptSnapshot.bind(null);
+        return;
+      }
+      const identity: StudioScriptSnapshotIdentity = { projectId, layerId, trackId };
+      studioScriptSnapshotIdentityRef.current = identity;
+      studioScriptSnapshot.bind(identity);
+      const restored = await studioScriptSnapshot.restore();
+      if (restored.maxRestoredMutationId > 0) {
+        const nextMutationId = Math.max(
+          studioScriptSnapshotReservedNextMutationIdRef.current,
+          restored.maxRestoredMutationId + 1,
+        );
+        studioScriptSnapshotReservedNextMutationIdRef.current = nextMutationId;
+        // The engine usually does not exist yet at launch restore; the
+        // engine-ready seam re-applies this reservation.
+        engineRef.current?.reserveMutationClock(nextMutationId);
+      }
+    },
   });
   usePhysicsPaintWorkflowIntegration({
     session: {
@@ -4883,6 +5006,13 @@ export function PhysicsPaintStudio() {
     readyEngine.onPreviewBaseSettled(() => {
       physicPaintVersion.value++;
     });
+    // quick-261023-l35: a fresh engine restarts its mutation counter at 1, so
+    // the first new stroke would reuse a restored id and silently overwrite
+    // that registry entry. Re-apply the reservation at every engine-ready: the
+    // launch restore usually runs before this engine exists, and a
+    // crash-recovery reload creates a brand-new one.
+    const reservedMutationId = studioScriptSnapshotReservedNextMutationIdRef.current;
+    if (reservedMutationId > 0) readyEngine.reserveMutationClock(reservedMutationId);
     handleEngineReady(readyEngine);
     rotoScript.updateEngine(readyEngine);
     // 261023-h9v: the observed loader records base presence for this arrival.

@@ -100,6 +100,13 @@ export function usePhysicsPaintLaunchIntegration(input: {
   resetCachedReference: () => void;
   loadCachedReferenceFrame: (frame: number, engine?: PreviewBackgroundEngine) => void;
   onSettledLaunchContext?: (context: PhysicPaintLaunchContext) => void;
+  /**
+   * quick-261023-l35: seed the Studio script (watercolor timeline + brush
+   * frames) from the disk snapshot before the first frame hydrates, so the
+   * canvas opens on a restored script instead of flashing an empty one.
+   * Never rejects — the Studio controller owns the failure policy.
+   */
+  restoreStudioScriptSnapshot?: (context: PhysicPaintLaunchContext, document: unknown) => Promise<void>;
 }) {
   const getStrokeMetadata = useCallback(() => null, []);
 
@@ -187,6 +194,11 @@ export function usePhysicsPaintLaunchIntegration(input: {
     // The settle moves `.project` and nothing else, which is why every other
     // read below keeps reading `hydration.context` / `hydration.document`.
     const settledContext = settlementRef.current?.settle(hydration.context) ?? hydration.context;
+    // quick-261023-l35: restore the Studio script from disk BEFORE the launch
+    // context is applied. The restore reseeds the aquarelle timeline (and, for
+    // brush frames, the per-frame brush store), so the first frame render
+    // already sees the restored script. Never rejects by contract.
+    await input.restoreStudioScriptSnapshot?.(settledContext, settledContext.document);
     applyPhysicsPaintLaunchContext(settledContext, input.state, (launch) => {
       const fallback = launch.document?.background?.fallback;
       return fallback ? applyBackgroundFallbackToSettings(fallback) : null;

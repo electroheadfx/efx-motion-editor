@@ -2859,6 +2859,9 @@ export async function publishPhysicPaintProjectContext(): Promise<void> {
     name: projectStore.name.peek(),
     saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()),
     contextId: projectStore.projectContextId.peek(),
+    // quick-261023-l35: the durable package identity (contextId rotates on
+    // every project open; this is the manifest's projectId).
+    projectId: projectStore.projectId.peek(),
     ...(projectStore.scriptLibraryAuthority.peek() ? { scriptLibraryAuthority: projectStore.scriptLibraryAuthority.peek()! } : {}),
     layers,
     scriptScope,
@@ -3960,6 +3963,8 @@ export function createPhysicPaintLaunchContext(
       name: projectStore.name.peek(),
       saved: Boolean(projectStore.filePath.peek() && projectStore.scriptLibraryAuthority.peek()),
       contextId: projectStore.projectContextId.peek(),
+      // quick-261023-l35: the durable package identity (see the publisher above).
+      projectId: projectStore.projectId.peek(),
       ...(projectStore.scriptLibraryAuthority.peek() ? { scriptLibraryAuthority: projectStore.scriptLibraryAuthority.peek()! } : {}),
     },
     layerName: layer.name,

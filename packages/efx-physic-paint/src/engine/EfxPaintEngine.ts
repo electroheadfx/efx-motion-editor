@@ -2079,6 +2079,21 @@ export class EfxPaintEngine {
     return this.allActions.length
   }
 
+  /**
+   * quick-261023-l35: raise the mutation-id clock so ids restored from a
+   * script snapshot can never be reused by the next accepted stroke.
+   *
+   * Mirrors the defensive advance at the end of `installStrokeBaseline`
+   * (a restored id must never be handed out again). The Studio calls this
+   * with `highestRestoredId + 1` at launch restore and again when a fresh
+   * engine is installed. A non-integer or non-positive argument is ignored,
+   * so a malformed snapshot cannot move the clock backwards or to NaN.
+   */
+  reserveMutationClock(minNextMutationId: number): void {
+    if (!Number.isInteger(minNextMutationId) || minNextMutationId <= 0) return
+    this.nextMutationId = Math.max(this.nextMutationId, minNextMutationId)
+  }
+
   /** Accept one immutable recorded logical brush through the normal mutation pipeline. */
   enqueueRecordedStroke(group: Readonly<RecordedStrokeGroup>): number {
     this.requestRender()
