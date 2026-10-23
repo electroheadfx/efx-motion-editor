@@ -198,27 +198,21 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
         >
           {`Purge frame ${currentFrame} script`}
         </button>
-        {rail ? (
-          <div class="physics-paint-memory-rail-row">
-            <span class="physics-paint-memory-rail-context" data-memory-rail-context>
-              {rail.trackName}
-            </span>
-            <button
-              type="button"
-              class="physics-paint-memory-clear-rail"
-              disabled={!hasAnyScript}
-              onClick={() => {
-                confirmSignal.value = 'rail';
-              }}
-            >
-              Clear all scripts on this rail
-            </button>
-          </div>
-        ) : (
+        {rail && hasAnyScript ? (
+          <button
+            type="button"
+            class="physics-paint-memory-clear-rail"
+            onClick={() => {
+              confirmSignal.value = 'rail';
+            }}
+          >
+            {`Clear all scripts on ${rail.trackName}`}
+          </button>
+        ) : !rail ? (
           <div class="physics-paint-memory-rail-hint">
             Select a rail in the timeline to clear all of its scripts.
           </div>
-        )}
+        ) : null}
       </div>
       {confirm !== 'none' ? (
         <div

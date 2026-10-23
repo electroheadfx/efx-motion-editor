@@ -950,8 +950,8 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
 
     const onBlank = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(42) }));
     expect(findByClass(onBlank, 'physics-paint-memory-purge-frame').props.disabled).toBe(true);
-    // Clear-all still has script strokes on the rail.
-    expect(findByClass(onBlank, 'physics-paint-memory-clear-rail').props.disabled).toBe(false);
+    // Clear-all still has script strokes on the rail, so it is offered.
+    expect(findByClass(onBlank, 'physics-paint-memory-clear-rail')).toBeDefined();
 
     // In watercolor mode the same frame 5 is the scripted one.
     activeModule.value = 'watercolor';
@@ -963,9 +963,8 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     activeModule.value = 'brush';
     const section = memorySectionFixture(9);
     const withRail = renderMemoryTab(baseProps({ memorySection: section }));
-    expect(findByClass(withRail, 'physics-paint-memory-rail-context')).toBeDefined();
     expect(findByClass(withRail, 'physics-paint-memory-clear-rail')).toBeDefined();
-    expect(textContent(withRail)).toContain('Paint 1');
+    expect(textContent(withRail)).toMatch(/Clear all scripts on\s+Paint 1/);
 
     const withoutRail = renderMemoryTab(baseProps({
       memorySection: { ...section, railContext: signal(null) },
@@ -976,7 +975,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(textContent(withoutRail)).toContain('Select a rail in the timeline');
   });
 
-  it('disables clear-all when the rail holds no scripts at all', () => {
+  it('hides clear-all when the rail holds no scripts at all', () => {
     activeModule.value = 'brush';
     const empty: ScriptMemorySnapshot = {
       ...SAMPLE_MEMORY_SNAPSHOT,
@@ -996,7 +995,11 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
       memorySection: { ...section, ports: { ...section.ports, read: () => empty } },
     });
     const tree = renderMemoryTab(props);
-    expect(findByClass(tree, 'physics-paint-memory-clear-rail').props.disabled).toBe(true);
+    // A rail with no script gets no clear-all action at all (one scripted
+    // frame is the minimum), and the per-key purge is disabled too.
+    expect(
+      childrenOf(tree).some((node) => hasClass(node as AnyVNode, 'physics-paint-memory-clear-rail')),
+    ).toBe(false);
     expect(findByClass(tree, 'physics-paint-memory-purge-frame').props.disabled).toBe(true);
   });
 

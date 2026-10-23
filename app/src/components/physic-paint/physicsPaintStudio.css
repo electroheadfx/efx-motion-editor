@@ -1293,30 +1293,6 @@ button.destructive {
   min-width: 0;
 }
 
-.physics-paint-memory-rail-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* UAT 261023-ors: the selected rail's context — blue, because it is the
-   target selector; the destructive action below it stays red. */
-.physics-paint-memory-rail-context {
-  align-self: flex-start;
-  max-width: 100%;
-  padding: 2px 8px;
-  border: 1px solid #2d5be3;
-  border-radius: 999px;
-  overflow: hidden;
-  color: #bcd2ff;
-  background: rgba(45, 91, 227, 0.22);
-  font-size: 10px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .physics-paint-memory-rail-hint {
   color: #9aa1a8;
   font-size: 10px;
@@ -1343,11 +1319,13 @@ button.destructive {
   background: rgba(45, 91, 227, 0.22);
 }
 
-/* The rail-wide purge is destructive. */
+/* The rail-wide purge is destructive and names its target inline. */
 .physics-paint-memory-clear-rail {
+  max-width: 100%;
   border-color: #a43d3d;
   background: #a43d3d;
   color: #fff;
+  overflow-wrap: anywhere;
 }
 
 .physics-paint-memory-purge-frame:disabled,
