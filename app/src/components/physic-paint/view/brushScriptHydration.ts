@@ -48,11 +48,13 @@ import {
  * bounds is cloning. SIZED FROM MEASUREMENT (2026-10-23, mock-canvas harness
  * driving the real ledger): the heavy fixture (40 strokes x 180 points =
  * 7200 points, 40 clones) attaches in 1.84 ms at 1920x1080 and 0.61 ms at
- * 100x100; light attaches in 0.54 ms. The 200-stroke / 40000-point ceiling
- * therefore leaves a ~10x headroom over the largest measured fixture while
- * still bounding a pathological store. The h9v replay budget (600 points /
- * 10 strokes / 0 diffusion frames) is deliberately gone: a many-stroke frame
- * now attaches fine because navigation no longer replays it.
+ * 100x100; light attaches in 0.54 ms. The 200-stroke / 40000-point ceiling is
+ * 5x the heavy fixture's stroke count and 5.5x its point count; by linear
+ * scaling a full-ceiling attach costs roughly 10 ms, still an order of
+ * magnitude under the removed 233 ms light replay, while bounding a
+ * pathological store. The h9v replay budget (600 points / 10 strokes /
+ * 0 diffusion frames) is deliberately gone: a many-stroke frame now attaches
+ * fine because navigation no longer replays it.
  */
 export const MAX_ATTACH_STROKES = 200;
 export const MAX_ATTACH_POINTS = 40000;
