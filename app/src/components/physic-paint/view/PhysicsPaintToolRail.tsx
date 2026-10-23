@@ -44,7 +44,7 @@ export const PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [
   { id: 'paint', label: 'Paint', icon: paintModeNormalIcon, kind: 'tool' },
   { id: 'paint-physics', label: 'Paint with physics', icon: paintModePhysicsIcon, kind: 'tool' },
   { id: 'erase', label: 'Erase', icon: eraserIcon, kind: 'tool' },
-  { id: 'move', label: 'Move', tooltip: 'Move — Cmd toggles Move on/off · Backspace deletes the selected key · < sends the hovered stroke one step back · > one step forward', icon: moveToolIcon, kind: 'tool' },
+  { id: 'move', label: 'Move', tooltip: 'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward', icon: moveToolIcon, kind: 'tool' },
   { id: 'undo', label: 'Undo', icon: undoIcon, kind: 'action' },
   { id: 'redo', label: 'Redo', icon: undoIcon, kind: 'action' },
   { id: 'clear-frame', label: 'Clear current Roto frame', icon: clearCanvasIcon, kind: 'action' },

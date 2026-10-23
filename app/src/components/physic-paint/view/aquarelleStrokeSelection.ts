@@ -17,12 +17,30 @@
 //  rail toggle), never the Studio render body.
 // ============================================================
 
-import { computed, signal } from '@preact/signals';
+import { computed } from '@preact/signals';
 import { isAquarelleDryEvent, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleUvToEnginePixel,
   type EnginePixelSize,
 } from '../engine/aquarelleStrokeBridge';
+import {
+  MIN_STROKE_PAD_PX,
+  clearScriptStrokeDrag,
+  decimateScriptPoints,
+  hitsScriptStroke,
+  scriptSelectedStrokeId,
+  scriptSelectMode,
+  scriptStrokeBoundsPx,
+  scriptStrokeDrag,
+  selectScriptStroke,
+  setScriptSelectMode,
+  setScriptStrokeDrag,
+  type CanvasPoint,
+  type ScriptStrokeBounds,
+  type ScriptStrokeDrag,
+  type ScriptStrokeEditionPort,
+  type SelectableScriptStroke,
+} from './scriptStrokeEdition';
 import {
   aquarelleStrokeSerial,
   aquarelleStrokesRevision,
@@ -42,100 +60,45 @@ import {
   type AquarelleStrokeRegistrySnapshot,
 } from './aquarelleRecordState';
 
-/** Long polylines are decimated for rendering only (bounds use every point). */
-const MAX_POLYLINE_POINTS = 96;
+// 261023-g4p: the ONE shared edition module (scriptStrokeEdition) owns the
+// geometry, the select/drag signals and the group types. They are re-exported
+// under the watercolor names — including IDENTITY aliases for the three
+// signals — so every existing consumer compiles and behaves unchanged.
+export type { CanvasPoint, ScriptStrokeBounds };
+export type AquarelleStrokeBounds = ScriptStrokeBounds;
+export type SelectableAquarelleStroke = SelectableScriptStroke;
 
-/** Minimum hit/bounds pad — below this the outline of a thin pen is unclickable. */
-const MIN_STROKE_PAD_PX = 6;
+/** Rail Move/Select toggle. Compare-then-write (shared signal alias). */
+export const aquarelleSelectMode = scriptSelectMode;
 
-export interface CanvasPoint {
-  x: number;
-  y: number;
-}
-
-export interface AquarelleStrokeBounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export interface SelectableAquarelleStroke {
-  mutationId: number;
-  pointsPx: CanvasPoint[];
-  bounds: AquarelleStrokeBounds;
-  /** 261022-ujp: creation-order id, stable across restack/delete. */
-  serial: number;
-  /** 261022-ujp: 1-based position from the TOP of the paint stack. */
-  stackPosition: number;
-  /** 261022-ujp: number of strokes in this frame's stack. */
-  stackTotal: number;
-  /** 261022-ujp: the stroke's own colour — the selected box and badge wear it. */
-  color: string;
-}
-
-/** Rail Move/Select toggle. Compare-then-write. */
-export const aquarelleSelectMode = signal(false);
-
-/** The highlighted stroke (null = nothing selected). Compare-then-write. */
-export const aquarelleSelectedStrokeMutationId = signal<number | null>(null);
+/** The highlighted stroke (shared signal alias). */
+export const aquarelleSelectedStrokeMutationId = scriptSelectedStrokeId;
 
 export function selectAquarelleStroke(mutationId: number | null): void {
-  if (aquarelleSelectedStrokeMutationId.value === mutationId) return;
-  aquarelleSelectedStrokeMutationId.value = mutationId;
+  selectScriptStroke(mutationId);
 }
 
 export function setAquarelleSelectMode(on: boolean): void {
-  if (aquarelleSelectMode.value === on) return;
-  aquarelleSelectMode.value = on;
-  // Leaving select mode drops the highlight and any in-flight ghost so a
-  // later re-arm starts clean (compare-then-write clear).
-  if (!on) {
-    selectAquarelleStroke(null);
-    clearAquarelleStrokeDrag();
-  }
+  setScriptSelectMode(on);
 }
 
 export function toggleAquarelleSelectMode(): void {
   setAquarelleSelectMode(!aquarelleSelectMode.value);
 }
 
-/**
- * 261022-tv1: the live drag preview. Written in the overlay's pointer
- * handlers, read ONLY by that overlay leaf (the ghost). No Studio or layer
- * render body subscribes to it, and nothing but the ghost render depends on
- * it — no script mutation or apply happens while a drag is in progress.
- */
-export interface AquarelleStrokeDrag {
-  readonly mutationId: number;
-  readonly dxPx: number;
-  readonly dyPx: number;
-}
+/** 261022-tv1: the live drag preview (shared signal alias). */
+export type AquarelleStrokeDrag = ScriptStrokeDrag;
 
-export const aquarelleStrokeDrag = signal<AquarelleStrokeDrag | null>(null);
+export const aquarelleStrokeDrag = scriptStrokeDrag;
 
 /** Compare-then-write on all three fields (efx-preact-reactivity rule 3). */
 export function setAquarelleStrokeDrag(next: AquarelleStrokeDrag | null): void {
-  const current = aquarelleStrokeDrag.value;
-  if (next === null) {
-    if (current === null) return;
-    aquarelleStrokeDrag.value = null;
-    return;
-  }
-  if (
-    current !== null
-    && current.mutationId === next.mutationId
-    && current.dxPx === next.dxPx
-    && current.dyPx === next.dyPx
-  ) {
-    return;
-  }
-  aquarelleStrokeDrag.value = { mutationId: next.mutationId, dxPx: next.dxPx, dyPx: next.dyPx };
+  setScriptStrokeDrag(next);
 }
 
 /** Idempotent clear — a pointer-up/cancel with no drag armed is a no-op. */
 export function clearAquarelleStrokeDrag(): void {
-  setAquarelleStrokeDrag(null);
+  clearScriptStrokeDrag();
 }
 
 /**
@@ -168,73 +131,12 @@ function strokeRadiusPx(stroke: AquarelleStroke): number {
     : MIN_STROKE_PAD_PX;
 }
 
-/** Bounding box inflated by half the brush size on every side. */
+/** Bounding box inflated by half the brush size on every side (shared law). */
 export function aquarelleStrokeBoundsPx(
   points: readonly CanvasPoint[],
   brushSize: number,
 ): AquarelleStrokeBounds {
-  if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
-  const pad =
-    Number.isFinite(brushSize) && brushSize > 0
-      ? Math.max(MIN_STROKE_PAD_PX, brushSize / 2)
-      : MIN_STROKE_PAD_PX;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const point of points) {
-    if (point.x < minX) minX = point.x;
-    if (point.y < minY) minY = point.y;
-    if (point.x > maxX) maxX = point.x;
-    if (point.y > maxY) maxY = point.y;
-  }
-  return {
-    x: minX - pad,
-    y: minY - pad,
-    width: maxX - minX + pad * 2,
-    height: maxY - minY + pad * 2,
-  };
-}
-
-function distanceToSegmentPx(
-  px: number,
-  py: number,
-  a: CanvasPoint,
-  b: CanvasPoint,
-): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const lengthSq = dx * dx + dy * dy;
-  if (lengthSq === 0) return Math.hypot(px - a.x, py - a.y);
-  const t = Math.max(
-    0,
-    Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / lengthSq),
-  );
-  return Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy));
-}
-
-function hitsStroke(
-  pointPx: CanvasPoint,
-  pointsPx: readonly CanvasPoint[],
-  radius: number,
-): boolean {
-  if (pointsPx.length === 0) return false;
-  if (pointsPx.length === 1) {
-    return Math.hypot(pointPx.x - pointsPx[0]!.x, pointPx.y - pointsPx[0]!.y) <= radius;
-  }
-  for (let index = 1; index < pointsPx.length; index += 1) {
-    if (
-      distanceToSegmentPx(
-        pointPx.x,
-        pointPx.y,
-        pointsPx[index - 1]!,
-        pointsPx[index]!,
-      ) <= radius
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return scriptStrokeBoundsPx(points, brushSize);
 }
 
 /**
@@ -253,7 +155,7 @@ export function hitTestAquarelleStroke(
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     const pointsPx = aquarelleStrokePointsPx(stroke, size);
-    if (hitsStroke(pointPx, pointsPx, strokeRadiusPx(stroke))) return mutationId;
+    if (hitsScriptStroke(pointPx, pointsPx, strokeRadiusPx(stroke))) return mutationId;
   }
   return null;
 }
@@ -267,18 +169,6 @@ export function selectAquarelleStrokeAt(
   const hit = hitTestAquarelleStroke(pointPx, playFrame, size);
   selectAquarelleStroke(hit);
   return hit;
-}
-
-function decimatePoints(points: readonly CanvasPoint[]): CanvasPoint[] {
-  if (points.length <= MAX_POLYLINE_POINTS) return [...points];
-  const out: CanvasPoint[] = [];
-  for (let index = 0; index < MAX_POLYLINE_POINTS; index += 1) {
-    const sourceIndex = Math.round(
-      (index * (points.length - 1)) / (MAX_POLYLINE_POINTS - 1),
-    );
-    out.push(points[sourceIndex]!);
-  }
-  return out;
 }
 
 /**
@@ -310,9 +200,9 @@ export function listSelectableAquarelleStrokes(
     const stackIndex = stackOrder.indexOf(mutationId);
     out.push({
       mutationId,
-      pointsPx: decimatePoints(pointsPx),
+      pointsPx: decimateScriptPoints(pointsPx),
       // Bounds use every point — decimation must never clip the box ends.
-      bounds: aquarelleStrokeBoundsPx(pointsPx, Number(stroke.params['size'])),
+      bounds: scriptStrokeBoundsPx(pointsPx, Number(stroke.params['size'])),
       serial,
       stackPosition: stackIndex < 0 ? stackTotal : stackTotal - stackIndex,
       stackTotal,
@@ -321,6 +211,19 @@ export function listSelectableAquarelleStrokes(
   }
   return out;
 }
+
+/**
+ * 261023-g4p: the watercolor half of the shared edition port. The Studio
+ * registration adds `isActive` plus the delete/move/step callbacks (the same
+ * handlers the rail gestures and the keyboard actions already use).
+ */
+export const aquarelleScriptStrokeEditionPort: Pick<
+  ScriptStrokeEditionPort,
+  'listStrokes' | 'hitTestStroke'
+> = {
+  listStrokes: (playFrame, size) => listSelectableAquarelleStrokes(playFrame, size),
+  hitTestStroke: (pointPx, playFrame, size) => hitTestAquarelleStroke(pointPx, playFrame, size),
+};
 
 // ============================================================
 //  Delete edits (261022-pim). A delete is one in-memory script

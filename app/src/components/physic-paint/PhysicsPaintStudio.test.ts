@@ -31,6 +31,9 @@ const canvasMount = readFileSync(fileURLToPath(new URL('./engine/PhysicsPaintCan
 // 261022-pim: the Water color stroke select surface — overlay leaf + layer mount.
 const aquarelleCanvasLayer = readFileSync(fileURLToPath(new URL('./engine/AquarelleCanvasLayer.tsx', import.meta.url)), 'utf8');
 const aquarelleStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/AquarelleStrokeOverlay.tsx', import.meta.url)), 'utf8');
+// 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
+const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
+const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
 const memoizedCanvasMountPath = fileURLToPath(new URL('./engine/MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
 const memoizedCanvasMount = existsSync(memoizedCanvasMountPath) ? readFileSync(memoizedCanvasMountPath, 'utf8') : '';
 const engineLifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
@@ -2911,18 +2914,24 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(overlayIndex).toBeGreaterThan(-1);
     expect(overlayIndex).toBeGreaterThan(aquarelleCanvasLayer.indexOf('ref={attachEngine}'));
     expect(overlayIndex).toBeLessThan(aquarelleCanvasLayer.indexOf('<AquarelleBrushCursor />'));
-    expect(aquarelleStrokeOverlay).toContain('data-testid="aquarelle-stroke-overlay"');
-    expect(aquarelleStrokeOverlay).toContain("pointerEvents: 'auto'");
+    // 261023-g4p: the adapter carries the watercolor identity only; the ONE
+    // shared gesture implementation owns the surface.
+    expect(aquarelleStrokeOverlay).toContain('testId="aquarelle-stroke-overlay"');
+    expect(aquarelleStrokeOverlay).toContain('badgeTestId="aquarelle-stroke-badge"');
+    expect(aquarelleStrokeOverlay).toContain('ghostTestId="aquarelle-drag-ghost"');
+    expect(scriptStrokeOverlay).toContain('data-testid={props.testId}');
+    expect(scriptStrokeOverlay).toContain("pointerEvents: 'auto'");
     // 261022-tv1: a Cmd release mid-drag must not unmount the ghost surface.
-    expect(aquarelleStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
+    expect(scriptStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
   });
 
   it('applies selection in the pointer handler and reads Alt for delete', () => {
-    expect(aquarelleStrokeOverlay).toContain('onPointerDown={handlePointerDown}');
-    expect(aquarelleStrokeOverlay).toContain('selectAquarelleStrokeAt(');
-    expect(aquarelleStrokeOverlay).toContain('event.altKey');
-    expect(aquarelleStrokeOverlay).not.toContain('useEffect');
-    expect(aquarelleStrokeOverlay).not.toContain('useSignal');
+    expect(scriptStrokeOverlay).toContain('onPointerDown={handlePointerDown}');
+    expect(scriptStrokeOverlay).toContain('selectScriptStrokeAt(');
+    expect(scriptStrokeOverlay).toContain('event.altKey');
+    expect(aquarelleStrokeOverlay).not.toContain('onPointerDown');
+    expect(scriptStrokeOverlay).not.toContain('useEffect');
+    expect(scriptStrokeOverlay).not.toContain('useSignal');
   });
 
   it('renders the select/Move toggle in the watercolor rail bound to the select signal', () => {
@@ -2940,7 +2949,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     // Better hover text: the shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
     expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
-    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Backspace deletes the selected key · < sends the hovered stroke one step back · > one step forward'");
+    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward'");
     expect(toolRail).toContain('title={item.tooltip ?? item.label}');
   });
 
@@ -2957,6 +2966,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(studio).not.toContain('aquarelleSelectMode.value');
     expect(studio).not.toContain('aquarelleLiveStrokeCount.value');
     expect(studio).not.toContain('aquarelleSelectedStrokeMutationId.value');
+    // 261023-g4p: the shared edition signals stay leaf-only too.
+    expect(studio).not.toContain('scriptSelectMode.value');
+    expect(studio).not.toContain('scriptSelectedStrokeId.value');
+    expect(studio).not.toContain('scriptStrokeDrag');
     expect(studio).not.toContain('temporaryMove.value');
     // The held-Cmd / select reads live in the brush-cursor leaf, never the layer body.
     expect(aquarelleCanvasLayer.indexOf('temporaryMove.value')).toBeGreaterThan(
@@ -3025,12 +3038,17 @@ describe('261022-pim aquarelle delete undo wiring', () => {
   });
 
   it('wires the Delete/Backspace action and the Cmd tap toggle (watercolor only)', () => {
-    // The keyboard action consumes the key only in select mode with a
-    // selection; the peek reads keep the Studio render body unsubscribed.
-    expect(studio).toContain('deleteSelectedAquarelleStroke: () => {');
-    expect(studio).toContain('if (!aquarelleSelectMode.peek()) return false;');
-    expect(studio).toContain('const mutationId = aquarelleSelectedStrokeMutationId.peek();');
-    expect(studio).toContain('handleAquarelleDeleteStroke(mutationId);');
+    // 261023-g4p: the Studio delegates; the ONE consume law (active port +
+    // selected id, peek-only) lives in the shared edition module.
+    expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
+    expect(scriptStrokeEdition).toContain('if (!port.isActive()) return false;');
+    expect(scriptStrokeEdition).toContain('const id = scriptSelectedStrokeId.peek();');
+    expect(scriptStrokeEdition).toContain('port.deleteStroke(id);');
+    // The watercolor port reuses the same handlers the overlay/keyboard use.
+    expect(studio).toContain("isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),");
+    expect(studio).toContain('deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),');
+    expect(studio).toContain('moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),');
+    expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
     // A Cmd tap toggles the persistent select mode in watercolor mode.
     expect(studio).toContain('onMetaTap: () => {');
     expect(studio).toContain("if (activeModule.peek() === 'watercolor') {");
@@ -3103,16 +3121,19 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(aquarelleStrokeOverlay).toContain('onMoveStroke: (mutationId: number, dxPx: number, dyPx: number) => void;');
   });
 
-  it('keeps the gesture surface in the overlay leaf and the ghost signal out of the Studio', () => {
-    expect(aquarelleStrokeOverlay).toContain('DRAG_THRESHOLD_PX');
-    expect(aquarelleStrokeOverlay).toContain('onPointerMove={handlePointerMove}');
-    expect(aquarelleStrokeOverlay).toContain('onPointerUp={handlePointerUp}');
-    expect(aquarelleStrokeOverlay).toContain('onPointerCancel={handlePointerCancel}');
-    expect(aquarelleStrokeOverlay).toContain("data-testid={dragOffset ? 'aquarelle-drag-ghost' : undefined}");
-    expect(aquarelleStrokeOverlay).toContain('setPointerCapture(');
-    expect(aquarelleStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
-    expect(aquarelleStrokeOverlay).not.toContain('useEffect');
-    expect(aquarelleStrokeOverlay).not.toContain('useState');
+  it('keeps the gesture surface in the ONE shared overlay leaf and the ghost signal out of the Studio', () => {
+    expect(scriptStrokeOverlay).toContain('DRAG_THRESHOLD_PX');
+    expect(scriptStrokeOverlay).toContain('onPointerMove={handlePointerMove}');
+    expect(scriptStrokeOverlay).toContain('onPointerUp={handlePointerUp}');
+    expect(scriptStrokeOverlay).toContain('onPointerCancel={handlePointerCancel}');
+    expect(scriptStrokeOverlay).toContain('data-testid={dragOffset ? props.ghostTestId : undefined}');
+    expect(scriptStrokeOverlay).toContain('setPointerCapture(');
+    expect(scriptStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
+    expect(scriptStrokeOverlay).not.toContain('useEffect');
+    expect(scriptStrokeOverlay).not.toContain('useState');
+    // No second gesture copy remains in the adapter.
+    expect(aquarelleStrokeOverlay).not.toContain('DRAG_THRESHOLD_PX');
+    expect(aquarelleStrokeOverlay).not.toContain('handlePointerMove');
     expect(studio).not.toContain('aquarelleStrokeDrag');
   });
 
@@ -3124,14 +3145,15 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(beginMove.indexOf('clearAquarelleStrokeDrag();')).toBeLessThan(
       beginMove.indexOf('if (aquarelleScriptEditInFlight) return null;'),
     );
-    const disarm = selectionSource.slice(selectionSource.indexOf('export function setAquarelleSelectMode('));
-    expect(disarm.slice(0, disarm.indexOf('export function toggleAquarelleSelectMode'))).toContain('clearAquarelleStrokeDrag();');
+    // The disarm law itself is shared.
+    const disarm = scriptStrokeEdition.slice(scriptStrokeEdition.indexOf('export function setScriptSelectMode('));
+    expect(disarm.slice(0, disarm.indexOf('export interface ScriptStrokeDrag'))).toContain('clearScriptStrokeDrag();');
   });
 
   it('keeps the 261022-pim delete pins intact', () => {
     expect(studio).toContain('const handleAquarelleDeleteStroke = useCallback(');
     expect(studio).toContain('onAquarelleDeleteStroke: handleAquarelleDeleteStroke,');
-    expect(aquarelleStrokeOverlay).toContain('selectAquarelleStrokeAt(');
+    expect(scriptStrokeOverlay).toContain('selectScriptStrokeAt(');
   });
 });
 
@@ -3170,25 +3192,20 @@ describe('261022-ujp stroke stack step', () => {
     expect(studioKeyboard).toContain('actions.toggleRotoPlayback();');
   });
 
-  it('wires the Studio action with a mode+target gate and peek-only reads', () => {
-    const actionStart = studio.indexOf('stepSelectedStroke: (direction) => {');
-    const actionEnd = studio.indexOf('deleteBackgroundClip:', actionStart);
-    expect(actionStart).toBeGreaterThan(-1);
-    const action = studio.slice(actionStart, actionEnd);
-    // Water color: persistent select mode + a selected stroke owns the key.
-    expect(action).toContain("if (activeModule.peek() === 'watercolor') {");
-    expect(action).toContain('if (!aquarelleSelectMode.peek()) return false;');
-    expect(action).toContain('const mutationId = aquarelleSelectedStrokeMutationId.peek();');
-    expect(action).toContain('handleAquarelleStepStroke(mutationId, direction);');
-    // Brush: the Move-tool hover target IS the selection; null falls through.
-    expect(action).toContain('const engine = engineRef.current;');
-    expect(action).toContain('const mutationId = engine.getMoveTargetMutationId();');
-    expect(action).toContain('if (mutationId === null) return false;');
-    expect(action).toContain("if (direction === 'forward') engine.sendStrokeForward(mutationId);");
-    expect(action).toContain('else engine.sendStrokeBackward(mutationId);');
+  it('delegates the Studio action to the ONE shared consume law', () => {
+    // 261023-g4p: both modules use the same helper; the mode+target gate and
+    // the peek-only reads moved into scriptStrokeEdition.ts.
+    expect(studio).toContain('stepSelectedStroke: (direction) => stepSelectedScriptStroke(direction),');
+    expect(scriptStrokeEdition).toContain('if (!port.isActive()) return false;');
+    expect(scriptStrokeEdition).toContain('const id = scriptSelectedStrokeId.peek();');
+    expect(scriptStrokeEdition).toContain('port.stepStroke(id, direction);');
+    // The watercolor registration owns the watercolor mode + selection gate.
+    expect(studio).toContain("isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),");
     // Peek-only: the Studio render body never subscribes these signals.
     expect(studio).not.toContain('aquarelleSelectMode.value');
     expect(studio).not.toContain('aquarelleSelectedStrokeMutationId.value');
+    expect(studio).not.toContain('scriptSelectMode.value');
+    expect(studio).not.toContain('scriptSelectedStrokeId.value');
   });
 
   it('orders the watercolor handler: begin -> reset -> await apply -> record on success -> rollback', () => {
@@ -3275,7 +3292,7 @@ describe('261022-ujp stroke stack step', () => {
   });
 
   it('keeps the 261022-pim delete and 261022-tv1 move pins intact', () => {
-    expect(studio).toContain('deleteSelectedAquarelleStroke: () => {');
+    expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
     expect(studio).toContain('const handleAquarelleMoveStroke = useCallback(');
     expect(studioKeyboard).toContain('deleteSelectedAquarelleStroke?: () => boolean;');
   });

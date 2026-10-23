@@ -177,8 +177,8 @@ import {
 import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import {
   aquarelleLiveStrokeCount,
+  aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
-  aquarelleSelectedStrokeMutationId,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarelleReorderEdit,
@@ -190,6 +190,11 @@ import {
   setAquarelleScriptEditInFlight,
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
+import {
+  deleteSelectedScriptStroke,
+  setScriptStrokeEditionPort,
+  stepSelectedScriptStroke,
+} from './view/scriptStrokeEdition';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import './physicsPaintStudio.css';
@@ -4080,44 +4085,16 @@ export function PhysicsPaintStudio() {
         setBrushColor(paintStore.foregroundColor.peek(), settings.opacity);
       },
       deleteRotoKey: rotoPhysicalActions.deleteRotoFrame,
-      // 261022-pim: in select mode Delete/Backspace deletes the SELECTED
-      // watercolor stroke instead of the key. Peek-only (the keyboard path
-      // must not subscribe the Studio render body); false everywhere else so
-      // the key/clip branches keep their bindings.
-      deleteSelectedAquarelleStroke: () => {
-        if (!aquarelleSelectMode.peek()) return false;
-        const mutationId = aquarelleSelectedStrokeMutationId.peek();
-        if (mutationId === null) return false;
-        handleAquarelleDeleteStroke(mutationId);
-        return true;
-      },
-      // 261022-ujp: '<' / '>' step the targeted stroke one paint position.
-      // Water color requires select mode + a selected stroke; once those hold
-      // the key is consumed even when the handler refuses (lock, end of the
-      // stack), so playback keys stay untouched mid-stack-edit. Peek-only
-      // reads keep the Studio render body unsubscribed.
-      stepSelectedStroke: (direction) => {
-        if (activeModule.peek() === 'watercolor') {
-          if (!aquarelleSelectMode.peek()) return false;
-          const mutationId = aquarelleSelectedStrokeMutationId.peek();
-          if (mutationId === null) return false;
-          handleAquarelleStepStroke(mutationId, direction);
-          return true;
-        }
-        // Brush: the Move tool's hover target IS the selected stroke. Null on
-        // any other tool or with no stroke hovered, so the shortcut stays inert
-        // everywhere else. Once a target holds, the key is consumed even when
-        // the step is refused (physical lock, already at that end).
-        const engine = engineRef.current;
-        if (!engine) return false;
-        const mutationId = engine.getMoveTargetMutationId();
-        if (mutationId === null) return false;
-        if (!isPhysicalMutationLocked()) {
-          if (direction === 'forward') engine.sendStrokeForward(mutationId);
-          else engine.sendStrokeBackward(mutationId);
-        }
-        return true;
-      },
+      // 261023-g4p: both modules share ONE consume law (registered port
+      // active + a selected stroke). The helpers read `.peek()` only, so the
+      // Studio render body never subscribes the edition signals; false
+      // everywhere else so the key/clip branches keep their bindings.
+      deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),
+      // 261022-ujp / 261023-g4p: '<' / '>' step the targeted stroke one paint
+      // position through the same shared seam. Once a concrete target holds,
+      // the key is consumed even when the operation is refused (physical
+      // lock, end of the stack).
+      stepSelectedStroke: (direction) => stepSelectedScriptStroke(direction),
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
       // 261008-ryq: one-shot keyboard removal of the selected sound clip —
@@ -5122,6 +5099,18 @@ export function PhysicsPaintStudio() {
     setApplyStatus,
     clearOwnedScriptApplyRefusal,
   ]);
+
+  // 261023-g4p: register the watercolor edition port. This is a render-body
+  // write of a plain module variable (temporaryEraseDepsRef precedent) — no
+  // signal, no subscription. The keyboard helpers and the overlay resolve the
+  // same port, so rail gestures, Alt+click and Backspace can never diverge.
+  setScriptStrokeEditionPort({
+    isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),
+    ...aquarelleScriptStrokeEditionPort,
+    deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),
+    moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),
+    stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),
+  });
 
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
