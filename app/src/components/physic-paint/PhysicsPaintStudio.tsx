@@ -177,6 +177,7 @@ import {
 import {
   applyCompletedBrushMutation,
   attemptBrushScriptHydration,
+  engineHoldsBrushScriptFrame,
   type BrushHydrationRequest,
 } from './view/brushScriptHydration';
 import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
@@ -3254,6 +3255,39 @@ export function PhysicsPaintStudio() {
   }, [clearRotoLoopSelection, rotoKeyUtilities]);
   resetRotoKeySessionRef.current = resetRotoSpacingSelectionSession;
   resetRotoNavigationForLaunchRef.current = rotoNavigation.resetForLaunch;
+  // 261023-h9v: ONE observed arrival seam. Every cached-pixel load records
+  // whether a base actually arrived, so a later capture of this frame stays
+  // PARTIAL and navigation can never replace those pixels with a script.
+  // Defined BEFORE the frame-editing controller (it is wired as its loader).
+  const loadReferenceObserved = useCallback(
+    (frame: number, targetEngine: PreviewBackgroundEngine | null): boolean => {
+      const loaded = loadCachedRotoReferenceFrame(frame, targetEngine);
+      noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
+      return loaded;
+    },
+    [findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame],
+  );
+  // The frame-change effect must never reload cached pixels over a hydrated
+  // baseline — the engine already holds the whole script.
+  const loadReferenceForFrameEditing = useCallback(
+    (frame: number, targetEngine: PreviewBackgroundEngine | null): boolean => {
+      if (engineHoldsBrushScriptFrame(targetEngine, frame)) return true;
+      return loadReferenceObserved(frame, targetEngine);
+    },
+    [loadReferenceObserved],
+  );
+  // Stable hydration seam for the navigation callback (identity-stable deps).
+  const hydrateBrushScriptFrame = useCallback(
+    (targetEngine: EfxPaintEngine, request: BrushHydrationRequest): boolean =>
+      attemptBrushScriptHydration(targetEngine, request),
+    [],
+  );
+  // 261023-h9v: the engine's deferred undo pops history WITHOUT a completed
+  // mutation. Re-run the ONE completion law after a successful controller
+  // undo/redo so the retained script and the Move overlay stay fresh.
+  const refreshBrushScriptAfterHistory = useCallback((kind: 'undo' | 'redo') => {
+    applyCompletedBrushMutation(kind, launchContextRef.current?.startFrame ?? 0, engineRef.current);
+  }, []);
   const rotoFrameEditing = useRotoFrameEditingController({
     workflowMode, currentFrame, currentFrameSelectionKind,
     canvasSize: { width: canvasWidth, height: canvasHeight }, engine, launchContext,
@@ -3277,7 +3311,7 @@ export function PhysicsPaintStudio() {
         clearCachedRotoReferenceUrl();
       },
       resetReference: resetCachedRotoReference, setReferenceUrl: setCachedRotoReferenceUrl,
-      loadReferenceFrame: loadCachedRotoReferenceFrame,
+      loadReferenceFrame: loadReferenceForFrameEditing,
     },
     clearCachedFrame: rotoPersistence.clearCurrentFrame,
     playback: { stop: rotoCachedPlayback.stop }, syncPendingFrames: syncPendingRotoFrames,
@@ -3446,23 +3480,6 @@ export function PhysicsPaintStudio() {
   // propagation) and rotoFrameEditing is rebuilt per render — both route
   // through refs so this callback keeps a stable identity across
   // startFrame-only renders. The guards read the exact same live values.
-  // 261023-h9v: ONE observed arrival seam. Every cached-pixel load records
-  // whether a base actually arrived, so a later capture of this frame stays
-  // PARTIAL and navigation can never replace those pixels with a script.
-  const loadReferenceObserved = useCallback(
-    (frame: number, targetEngine: PreviewBackgroundEngine | null): boolean => {
-      const loaded = loadCachedRotoReferenceFrame(frame, targetEngine);
-      noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
-      return loaded;
-    },
-    [findCachedRotoDisplayFrame, loadCachedRotoReferenceFrame],
-  );
-  // Stable hydration seam for the navigation callback (identity-stable deps).
-  const hydrateBrushScriptFrame = useCallback(
-    (targetEngine: EfxPaintEngine, request: BrushHydrationRequest): boolean =>
-      attemptBrushScriptHydration(targetEngine, request),
-    [],
-  );
   const clearActiveSource = useCallback(() => {
     if (isPhysicalMutationLocked() || !engine || !launchContextRef.current) return;
     if (rotoFrameEditingRef.current.clearCurrentFrame()) {
@@ -3644,6 +3661,10 @@ export function PhysicsPaintStudio() {
         cachedRotoReferenceUrlRef.current = null;
         cachedRotoRepaintBaseFrameRef.current = null;
         setCachedRotoRepaintBaseFrame(null);
+        // 261023-h9v: the brush script is track-scoped session content — a
+        // cross-track switch must drop it fail-closed so no previous-track
+        // entry can hydrate or draw outlines on the new track.
+        resetBrushScriptStore();
       }
     }
     const engine = engineRef.current as PreviewBackgroundEngine | null;
@@ -3655,8 +3676,9 @@ export function PhysicsPaintStudio() {
     }
     // A hidden active track stays a blank canvas (hide/solo truth table); any
     // other switch reloads the current frame through the newly active track.
+    // 261023-h9v: the observed loader records base presence for the frame.
     if (visible) {
-      loadCachedRotoReferenceFrame(currentFrame, engine);
+      loadReferenceObserved(currentFrame, engine);
     }
     // studio-realm-divergence probe: at every real track-switch commit record
     // the armed cross-track guard, the document cursor and the launch cursor —
@@ -3685,7 +3707,7 @@ export function PhysicsPaintStudio() {
     // The lane's cached-frame fills are track-scoped too: the synchronous
     // guard above useRotoTimelineModel owns latestRotoFramesRef on the switch
     // render (47 close-out UAT round 9 — no one-render stale paint).
-  }, [efxPaintVersion.value, currentFrame, loadCachedRotoReferenceFrame, setCachedRotoReferenceUrl]);
+  }, [efxPaintVersion.value, currentFrame, loadReferenceObserved, setCachedRotoReferenceUrl]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({
     restoreFrame: (effect) => {
@@ -3693,7 +3715,9 @@ export function PhysicsPaintStudio() {
       // 38.1 D-03/D-04: canvas paint first within this flow; the startFrame
       // update propagates through the same rAF scheduler as navigation.
       if (engine && (effect.restore.kind === 'load-real-key' || effect.restore.kind === 'blank-real-key')) {
-        loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+        // 261023-h9v: the observed loader records the arrival base for the
+        // display-driven real-key loads too.
+        loadReferenceObserved(frame, engine as PreviewBackgroundEngine);
         // 52.1 fresh-frame warm: after the applied base's decode+drawImage lands,
         // drain the cold surface upload in the idle so the first stroke never
         // flushes it mid-paint (the fast-chained 2nd-stroke ~380ms freeze).
@@ -3734,6 +3758,9 @@ export function PhysicsPaintStudio() {
       (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
       (engine as PreviewBackgroundEngine).resetBackground(true);
       engine.clear();
+      // 261023-h9v: a cleared canvas and a retained script cannot both be
+      // true — an explicit display clear drops the frame's script.
+      clearBrushScriptFrame(frame);
     },
     navigate: navigateToSyncedPhysicalFrame,
     clearCachedReferenceFrame: rotoPersistence.removeCachedFrame,
@@ -3819,8 +3846,18 @@ export function PhysicsPaintStudio() {
         return true;
       },
     },
-    undoPaint: rotoFrameEditing.undo,
-    redoPaint: rotoFrameEditing.redo,
+    // 261023-h9v: after a successful controller undo/redo, refresh the
+    // retained brush script — the deferred undo path emits no completion.
+    undoPaint: () => {
+      const undone = rotoFrameEditing.undo();
+      if (undone) refreshBrushScriptAfterHistory('undo');
+      return undone;
+    },
+    redoPaint: () => {
+      const redone = rotoFrameEditing.redo();
+      if (redone) refreshBrushScriptAfterHistory('redo');
+      return redone;
+    },
   });
 
   // 38-11: the history hook returns a fresh wrapper object per render, but
@@ -4771,7 +4808,8 @@ export function PhysicsPaintStudio() {
     });
     handleEngineReady(readyEngine);
     rotoScript.updateEngine(readyEngine);
-    if (workflowMode === 'roto') loadCachedRotoReferenceFrame(currentFrame, readyEngine as PreviewBackgroundEngine);
+    // 261023-h9v: the observed loader records base presence for this arrival.
+    if (workflowMode === 'roto') loadReferenceObserved(currentFrame, readyEngine as PreviewBackgroundEngine);
     // quick 260928-dh1 (DEV ONLY): one-shot deposit speckle capture —
     // window.__EFX_DH1_CAPTURE__('red' | 'green'). Measurement-only pixel
     // reader (see depositSpeckleCapture.ts header for the 260925-dso
@@ -4792,7 +4830,10 @@ export function PhysicsPaintStudio() {
       readyEngine.setTool('move');
       readyEngine.setStrokeLabelsSuppressed(true);
       readyEngine.setCursorVisible(false);
-      flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());
+      // 261023-h9v: never flush an EMPTY fresh engine over a retained entry.
+      if (readyEngine.getStrokes().length > 0) {
+        flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());
+      }
     }
     // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —
     // one pinned pixel at m1 ribbon / m2 outline / m3 settled / m4 +2s /

@@ -3501,8 +3501,81 @@ describe('261023-h9v brush script rehydration surface', () => {
     expect(studio).toContain("} from './view/brushScriptHydration';");
     expect(studio).toContain('applyCompletedBrushMutation,');
     expect(studio).toContain('attemptBrushScriptHydration,');
+    expect(studio).toContain('engineHoldsBrushScriptFrame,');
     expect(studio).toContain('clearBrushScriptFrame,');
     expect(studio).toContain('noteBrushScriptArrivalBase,');
     expect(studio).not.toContain('deleteBrushScriptFrame');
+  });
+
+  // 261023-h9v Task 2: arrival seams, clobber guards, undo/redo freshness.
+  it('wires the frame-editing loader through the live-handle guard', () => {
+    expect(studio).toContain('loadReferenceFrame: loadReferenceForFrameEditing,');
+    const helperStart = studio.indexOf('const loadReferenceForFrameEditing = useCallback(');
+    expect(helperStart).toBeGreaterThan(-1);
+    const helperBody = studio.slice(helperStart, studio.indexOf('const hydrateBrushScriptFrame', helperStart));
+    expect(helperBody).toContain('if (engineHoldsBrushScriptFrame(targetEngine, frame)) return true;');
+    expect(helperBody).toContain('return loadReferenceObserved(frame, targetEngine);');
+    expect(helperBody.indexOf('engineHoldsBrushScriptFrame')).toBeLessThan(
+      helperBody.indexOf('return loadReferenceObserved'),
+    );
+  });
+
+  it('uses the observed loader at every arrival seam that can be painted', () => {
+    // Navigation refusal branch (Task 1) and display-port real-key loads.
+    expect(navigationBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
+    // Display-state effect reload.
+    const effectStart = studio.indexOf('const lastReferenceDisplayStateRef = useRef<string | null>(null);');
+    const effectBody = studio.slice(effectStart, studio.indexOf('rotoNavigation.configureRuntimePort', effectStart));
+    expect(effectBody).toContain('loadReferenceObserved(currentFrame, engine);');
+    // Display-port real-key / blank-real-key restore.
+    const portStart = studio.indexOf('rotoNavigation.configureDisplayPort({');
+    const portBody = studio.slice(portStart, studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory', portStart));
+    expect(portBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
+    // Engine-ready loader.
+    expect(studio).toContain("if (workflowMode === 'roto') loadReferenceObserved(currentFrame, readyEngine as PreviewBackgroundEngine);");
+  });
+
+  it('guards the engine-ready flush against an empty fresh engine', () => {
+    const readyStart = studio.indexOf('installScriptMemoryProbe(readyEngine');
+    const readyBody = studio.slice(readyStart, studio.indexOf('installLookDeltaCapture', readyStart));
+    expect(readyBody).toContain('if (readyEngine.getStrokes().length > 0) {');
+    expect(readyBody.indexOf('if (readyEngine.getStrokes().length > 0) {')).toBeLessThan(
+      readyBody.indexOf('flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());'),
+    );
+  });
+
+  it('drops the brush store on an in-place track switch', () => {
+    const effectStart = studio.indexOf('const lastReferenceDisplayStateRef = useRef<string | null>(null);');
+    const effectBody = studio.slice(effectStart, studio.indexOf('rotoNavigation.configureRuntimePort', effectStart));
+    expect(effectBody).toContain('if (hadPreviousTrack) {');
+    expect(effectBody).toContain('resetBrushScriptStore();');
+    expect(effectBody.indexOf('if (hadPreviousTrack) {')).toBeLessThan(
+      effectBody.indexOf('resetBrushScriptStore();'),
+    );
+  });
+
+  it('clears the retained script when the display port clears the canvas', () => {
+    const portStart = studio.indexOf('rotoNavigation.configureDisplayPort({');
+    const portBody = studio.slice(portStart, studio.indexOf('const rotoMoveHistory = useRotoPhysicalEditHistory', portStart));
+    const clearStart = portBody.indexOf('clearCanvas: (frame) => {');
+    expect(clearStart).toBeGreaterThan(-1);
+    const clearBody = portBody.slice(clearStart, portBody.indexOf('navigate:', clearStart));
+    expect(clearBody).toContain('engine.clear();');
+    expect(clearBody).toContain('clearBrushScriptFrame(frame);');
+    expect(clearBody.indexOf('engine.clear();')).toBeLessThan(
+      clearBody.indexOf('clearBrushScriptFrame(frame);'),
+    );
+  });
+
+  it('refreshes the retained script after a successful controller undo/redo', () => {
+    const refreshStart = studio.indexOf('const refreshBrushScriptAfterHistory = useCallback(');
+    expect(refreshStart).toBeGreaterThan(-1);
+    const refreshBody = studio.slice(refreshStart, studio.indexOf('const rotoFrameEditing', refreshStart));
+    expect(refreshBody).toContain('applyCompletedBrushMutation(kind, launchContextRef.current?.startFrame ?? 0, engineRef.current);');
+
+    const wiringStart = studio.indexOf('undoPaint: () => {');
+    const wiringBody = studio.slice(wiringStart, studio.indexOf('const rotoMoveHistoryUndo', wiringStart));
+    expect(wiringBody).toContain("if (undone) refreshBrushScriptAfterHistory('undo');");
+    expect(wiringBody).toContain("if (redone) refreshBrushScriptAfterHistory('redo');");
   });
 });
