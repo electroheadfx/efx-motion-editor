@@ -51,7 +51,7 @@ export interface RightPanelMemoryTabProps {
 }
 
 /** Which confirmation dialog is open. */
-type MemoryConfirmKind = 'none' | 'frame' | 'rail';
+type MemoryConfirmKind = 'none' | 'frame' | 'rail-frames' | 'clear-rail';
 
 export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMemoryTabProps) {
   // One signal for the lifetime of the tab — created in a ref (never a fresh
@@ -136,10 +136,17 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
     points: 0,
     approxBytes: 0,
   };
-  // Per-key purge needs a script on the DISPLAYED frame; clear-all needs a
-  // selected rail with at least one script on it.
+  // Per-key purge reads the displayed module's frame. Clear-all and the
+  // rail-range purge consider BOTH stores: the rail may hold scripts from the
+  // other module, and the actions clear them.
   const hasFrameScript = frameStats.strokes > 0;
-  const hasAnyScript = totals.strokes > 0;
+  const hasAnyScript = snapshot.watercolor.totals.strokes + snapshot.brush.totals.strokes > 0;
+  const keyRail = rail?.keyRail ?? null;
+  const keyRailFrames = keyRail ? new Set(keyRail.frames) : null;
+  const railHasScript = keyRailFrames
+    ? snapshot.watercolor.frames.some((row) => keyRailFrames.has(row.frame) && row.strokes > 0)
+      || snapshot.brush.frames.some((row) => keyRailFrames.has(row.frame) && row.strokes > 0)
+    : false;
 
   // A successful purge refreshes the gauge IMMEDIATELY (the debounced revision
   // read is the fallback, not the contract), then closes the dialog.
@@ -198,12 +205,26 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
         >
           {hasFrameScript ? `Purge script on frame ${currentFrame}` : 'No script on this frame'}
         </button>
+        {keyRail ? (
+          <button
+            type="button"
+            class="physics-paint-memory-purge-rail"
+            disabled={!railHasScript}
+            onClick={() => {
+              confirmSignal.value = 'rail-frames';
+            }}
+          >
+            {railHasScript
+              ? `Purge scripts on rail frames ${keyRail.startFrame}-${keyRail.endFrame}`
+              : `No scripts on rail frames ${keyRail.startFrame}-${keyRail.endFrame}`}
+          </button>
+        ) : null}
         <button
           type="button"
           class="physics-paint-memory-clear-rail"
           disabled={!hasAnyScript}
           onClick={() => {
-            confirmSignal.value = 'rail';
+            confirmSignal.value = 'clear-rail';
           }}
         >
           {`Clear all scripts on ${rail?.trackName ?? 'this rail'}`}
@@ -218,7 +239,9 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
           aria-label={
             confirm === 'frame'
               ? `Purge the script of Frame ${currentFrame}`
-              : 'Clear every script on the active rail'
+              : confirm === 'rail-frames'
+                ? `Purge scripts on rail frames ${keyRail?.startFrame ?? '?'}-${keyRail?.endFrame ?? '?'}`
+                : 'Clear every script on the active rail'
           }
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
@@ -247,12 +270,16 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
           <strong>
             {confirm === 'frame'
               ? `Purge the script of Frame ${currentFrame}?`
-              : 'Clear every script on the active rail?'}
+              : confirm === 'rail-frames'
+                ? `Purge scripts on rail frames ${keyRail?.startFrame ?? '?'}-${keyRail?.endFrame ?? '?'}?`
+                : 'Clear every script on the active rail?'}
           </strong>
           <p class="physics-paint-memory-confirm-copy">
             {confirm === 'frame'
               ? 'The painted pixels stay, but Move, Select and replay are lost for this key.'
-              : `Every key of this rail loses its script; the painted pixels stay on every key. Rail: ${rail?.trackName ?? 'this rail'}.`}
+              : confirm === 'rail-frames'
+                ? 'Every key in these rail frames loses its script; the painted pixels stay on every key. Other frames and rails are untouched.'
+                : `Every key of this rail loses its script; the painted pixels stay on every key. Rail: ${rail?.trackName ?? 'this rail'}.`}
           </p>
           <div class="physics-paint-memory-confirm-actions">
             <button
@@ -267,10 +294,20 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
               type="button"
               class="physics-paint-memory-confirm-ok destructive"
               onClick={() =>
-                confirmPurge(confirm === 'frame' ? ports.purgeFrame(currentFrame) : ports.clearRail())
+                confirmPurge(
+                  confirm === 'frame'
+                    ? ports.purgeFrame(currentFrame)
+                    : confirm === 'rail-frames'
+                      ? ports.purgeRail(keyRail?.frames ?? [])
+                      : ports.clearRail(),
+                )
               }
             >
-              {confirm === 'frame' ? 'Purge frame script' : 'Clear all rail scripts'}
+              {confirm === 'frame'
+                ? 'Purge frame script'
+                : confirm === 'rail-frames'
+                  ? 'Purge rail scripts'
+                  : 'Clear all rail scripts'}
             </button>
           </div>
         </div>

@@ -1294,6 +1294,7 @@ button.destructive {
 }
 
 .physics-paint-memory-purge-frame,
+.physics-paint-memory-purge-rail,
 .physics-paint-memory-clear-rail,
 .physics-paint-memory-confirm-cancel,
 .physics-paint-memory-confirm-ok {
@@ -1307,8 +1308,9 @@ button.destructive {
   cursor: pointer;
 }
 
-/* Contextual: the per-frame action is the blue primary arm. */
-.physics-paint-memory-purge-frame:not(:disabled) {
+/* Contextual: the frame and rail-range actions are the blue primary arms. */
+.physics-paint-memory-purge-frame:not(:disabled),
+.physics-paint-memory-purge-rail:not(:disabled) {
   border-color: #2d5be3;
   background: rgba(45, 91, 227, 0.22);
 }
@@ -1323,6 +1325,7 @@ button.destructive {
 }
 
 .physics-paint-memory-purge-frame:disabled,
+.physics-paint-memory-purge-rail:disabled,
 .physics-paint-memory-clear-rail:disabled {
   opacity: 0.45;
   cursor: default;

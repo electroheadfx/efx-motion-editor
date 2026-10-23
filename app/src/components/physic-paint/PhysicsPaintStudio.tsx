@@ -130,6 +130,7 @@ import { installLookDeltaCapture } from './performance/lookDeltaCapture';
 import { installScriptMemoryProbe } from './performance/scriptMemoryProbe';
 import {
   readStudioScriptMemorySnapshot,
+  type StudioScriptMemoryKeyRail,
   type StudioScriptMemoryRailContext,
   type StudioScriptMemorySectionPorts,
 } from './performance/studioScriptMemoryGauge';
@@ -5048,15 +5049,50 @@ export function PhysicsPaintStudio() {
     memoryFrame.value = currentFrame;
   }, [currentFrame, memoryFrame]);
   // quick-261023-ors UAT: clear-all always targets the ACTIVE track (the
-  // stores are track-scoped), so its name is always available as the button's
-  // context. The per-frame purge does not depend on this context.
+  // stores are track-scoped), so its name is always available. A selected key
+  // rail additionally offers a range purge over that rail's key frames.
+  // Loop Clip rails are derived and carry no key scripts, so they never
+  // produce a range action.
   const memoryRailContext = useSignal<StudioScriptMemoryRailContext | null>(null);
   useEffect(() => {
     const layerId = launchContextRef.current?.layerId;
     const document = layerId ? getEfxPaintDocument(layerId) : undefined;
     const activeTrack = document?.tracks.find((track) => track.id === document.activeTrackId);
-    memoryRailContext.value = activeTrack ? { trackName: activeTrack.name } : null;
-  }, [activeTrackIdForReads, efxPaintVersion.value, memoryRailContext]);
+    if (!activeTrack) {
+      memoryRailContext.value = null;
+      return;
+    }
+    const selection = selectedRotoKeyRail.value;
+    let keyRail: StudioScriptMemoryKeyRail | null = null;
+    if (selection && layerId) {
+      const frameById = new Map(
+        physicPaintStore
+          .getRotoRealKeyRecords(layerId, activeTrack.id)
+          .map((record) => [record.keyId, record.appFrame]),
+      );
+      const frames = [
+        ...new Set(
+          selection.keyIds
+            .map((keyId) => frameById.get(keyId))
+            .filter((frame): frame is number => typeof frame === 'number' && Number.isFinite(frame)),
+        ),
+      ].sort((left, right) => left - right);
+      if (frames.length > 0) {
+        keyRail = {
+          frames,
+          startFrame: frames[0]!,
+          endFrame: frames[frames.length - 1]!,
+        };
+      }
+    }
+    memoryRailContext.value = { trackName: activeTrack.name, keyRail };
+  }, [
+    selectedRotoKeyRail.value,
+    activeTrackIdForReads,
+    efxPaintVersion.value,
+    rotoPhysicalRevision.value,
+    memoryRailContext,
+  ]);
   // Identity-stable ports (the audioSectionPortsRef precedent): `read` resolves
   // the live engine and launch frame at call time, never captured here. The
   // purge functions are hoisted declarations below — a false return means
@@ -5067,6 +5103,7 @@ export function PhysicsPaintStudio() {
       frame: launchContextRef.current?.startFrame ?? 0,
     }),
     purgeFrame: (frame: number) => purgeMemoryScriptFrame(frame),
+    purgeRail: (frames: readonly number[]) => purgeMemoryRailScripts(frames),
     clearRail: () => clearMemoryRailScripts(),
   });
   // Second stable ref: the panel prop object never changes identity, so the
@@ -5090,6 +5127,16 @@ export function PhysicsPaintStudio() {
     const removedBrush = purgeBrushScriptFrame(frame);
     const total = removedWatercolor + (removedBrush ? 1 : 0);
     if (total === 0) return false;
+    void studioScriptSnapshot.persistAfterPurge();
+    return true;
+  }
+  function purgeMemoryRailScripts(frames: readonly number[]): boolean {
+    let removed = 0;
+    for (const frame of frames) {
+      removed += purgeAquarelleFrameScript(frame);
+      if (purgeBrushScriptFrame(frame)) removed += 1;
+    }
+    if (removed === 0) return false;
     void studioScriptSnapshot.persistAfterPurge();
     return true;
   }

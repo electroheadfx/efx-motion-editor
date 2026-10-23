@@ -47,13 +47,23 @@ export interface StudioScriptMemorySectionPorts {
   read: () => ScriptMemorySnapshot | null;
   /** Per-key purge: returns true when anything was removed. */
   purgeFrame: (frame: number) => boolean;
+  /** Purge the scripts on the selected key rail's frames. */
+  purgeRail: (frames: readonly number[]) => boolean;
   /** Clear the ACTIVE rail's scripts: returns true when anything was removed. */
   clearRail: () => boolean;
 }
 
-/** The active track name shown in the clear-all action. */
+/** The selected key rail's frame span (Loop Clip rails have none). */
+export interface StudioScriptMemoryKeyRail {
+  frames: readonly number[];
+  startFrame: number;
+  endFrame: number;
+}
+
+/** The active track name and the selected key rail (if any). */
 export interface StudioScriptMemoryRailContext {
   trackName: string;
+  keyRail: StudioScriptMemoryKeyRail | null;
 }
 
 /** The identity-stable section the Studio hands the right panel. */

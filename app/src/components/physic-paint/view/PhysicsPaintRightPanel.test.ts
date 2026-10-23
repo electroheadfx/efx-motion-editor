@@ -823,10 +823,14 @@ function memorySectionFixture(frame = 5) {
     ports: {
       read: () => SAMPLE_MEMORY_SNAPSHOT,
       purgeFrame: vi.fn(() => true),
+      purgeRail: vi.fn(() => true),
       clearRail: vi.fn(() => true),
     },
     frame: signal(frame),
-    railContext: signal<{ trackName: string } | null>({ trackName: 'Paint 1' }),
+    railContext: signal<{
+      trackName: string;
+      keyRail: { frames: readonly number[]; startFrame: number; endFrame: number } | null;
+    } | null>({ trackName: 'Paint 1', keyRail: null }),
   };
 }
 
@@ -980,6 +984,58 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(findByClass(withoutRail, 'physics-paint-memory-purge-frame')).toBeDefined();
     expect(findByClass(withoutRail, 'physics-paint-memory-clear-rail')).toBeDefined();
     expect(textContent(withoutRail)).toMatch(/Clear all scripts on\s+this rail/);
+  });
+
+  it('offers the rail-range purge only for a selected key rail with scripts', () => {
+    activeModule.value = 'brush';
+    const withScripts = memorySectionFixture(9);
+    withScripts.railContext.value = {
+      trackName: 'Paint 1',
+      keyRail: { frames: [5, 9], startFrame: 5, endFrame: 9 },
+    };
+    const tree = renderMemoryTab(baseProps({ memorySection: withScripts }));
+    expect(findByClass(tree, 'physics-paint-memory-purge-rail').props.disabled).toBe(false);
+    expect(textContent(tree)).toMatch(/Purge scripts on rail frames\s+5-9/);
+
+    const emptyRail = memorySectionFixture(9);
+    emptyRail.railContext.value = {
+      trackName: 'Paint 1',
+      keyRail: { frames: [42], startFrame: 42, endFrame: 42 },
+    };
+    const emptyTree = renderMemoryTab(baseProps({ memorySection: emptyRail }));
+    expect(findByClass(emptyTree, 'physics-paint-memory-purge-rail').props.disabled).toBe(true);
+    expect(textContent(emptyTree)).toMatch(/No scripts on rail frames\s+42-42/);
+
+    // A Loop Clip rail is derived and carries no key scripts: no range action.
+    const loopRail = memorySectionFixture(9);
+    const loopTree = renderMemoryTab(baseProps({ memorySection: loopRail }));
+    expect(
+      childrenOf(loopTree).some((node) => hasClass(node as AnyVNode, 'physics-paint-memory-purge-rail')),
+    ).toBe(false);
+  });
+
+  it('confirms the rail-range purge with the frame span', () => {
+    activeModule.value = 'brush';
+    const section = memorySectionFixture(9);
+    section.railContext.value = {
+      trackName: 'Paint 1',
+      keyRail: { frames: [5, 9], startFrame: 5, endFrame: 9 },
+    };
+    const props = baseProps({ memorySection: section });
+    let tree = renderMemoryTab(props);
+
+    (findByClass(tree, 'physics-paint-memory-purge-rail').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(textContent(tree)).toMatch(/Purge scripts on rail frames\s+5-9\s*\?/);
+    (findByClass(tree, 'physics-paint-memory-confirm-cancel').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(section.ports.purgeRail).not.toHaveBeenCalled();
+
+    (findByClass(tree, 'physics-paint-memory-purge-rail').props.onClick as () => void)();
+    tree = renderPanel(props);
+    (findByClass(tree, 'physics-paint-memory-confirm-ok').props.onClick as () => void)();
+    expect(section.ports.purgeRail).toHaveBeenCalledTimes(1);
+    expect(section.ports.purgeRail).toHaveBeenCalledWith([5, 9]);
   });
 
   it('disables clear-all when the rail holds no scripts at all', () => {
