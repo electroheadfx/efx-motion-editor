@@ -3768,3 +3768,44 @@ describe('261023-l35 save discipline in the Studio', () => {
     expect(switchBody).toContain('engineRef.current?.reserveMutationClock(nextMutationId);');
   });
 });
+
+// quick-261023-o3n: the Studio carries the LIVE package authority. It is a
+// plain ref (no signal, no state) set from the incoming settled context before
+// the launch restore, and refreshed by every project-context republish so a
+// Save As while the Studio is open is followed on the next write.
+describe('261023-o3n live package authority in the Studio', () => {
+  it('holds the authority in a plain ref and reads it live from the controller deps', () => {
+    expect(studio).toContain('const studioScriptSnapshotAuthorityRef = useRef<string | null>(null);');
+    expect(studio).toContain('getAuthority: () => studioScriptSnapshotAuthorityRef.current,');
+    expect(studio).toContain('bytes,\n        authority,');
+    expect(studio).toContain('identity.trackId,\n        authority,');
+  });
+
+  it('sets the authority from the INCOMING settled context before the identity guard and the restore', () => {
+    const restoreStart = studio.indexOf('restoreStudioScriptSnapshot: async (context, document) => {');
+    const authorityIndex = studio.indexOf(
+      'studioScriptSnapshotAuthorityRef.current = context.project?.scriptLibraryAuthority ?? null;',
+      restoreStart,
+    );
+    const guardIndex = studio.indexOf("const projectId = context.project?.projectId ?? '';", restoreStart);
+    const restoreIndex = studio.indexOf('studioScriptSnapshot.restore()', restoreStart);
+    expect(restoreStart).toBeGreaterThan(-1);
+    // The launchContextRef still holds the PREVIOUS context at this moment, so
+    // the authority must come from the incoming argument, before the guard.
+    expect(authorityIndex).toBeGreaterThan(restoreStart);
+    expect(guardIndex).toBeGreaterThan(authorityIndex);
+    expect(restoreIndex).toBeGreaterThan(authorityIndex);
+  });
+
+  it('refreshes the authority from every settled project-context republish (save-as rebind)', () => {
+    const settledStart = studio.indexOf('onSettledLaunchContext: (context) => {');
+    const authorityIndex = studio.indexOf(
+      'studioScriptSnapshotAuthorityRef.current = context.project?.scriptLibraryAuthority ?? null;',
+      settledStart,
+    );
+    const updateIndex = studio.indexOf('rotoScriptLibrary.updateProjectContext(context)', settledStart);
+    expect(settledStart).toBeGreaterThan(-1);
+    expect(authorityIndex).toBeGreaterThan(settledStart);
+    expect(updateIndex).toBeGreaterThan(authorityIndex);
+  });
+});

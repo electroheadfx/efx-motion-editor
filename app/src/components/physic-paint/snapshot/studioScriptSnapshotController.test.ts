@@ -135,24 +135,30 @@ interface Harness {
   write: ReturnType<typeof vi.fn>;
   read: ReturnType<typeof vi.fn>;
   setSignature: (value: string) => void;
+  setAuthority: (value: string | null) => void;
 }
 
 function harness(
-  overrides: Partial<Pick<StudioScriptSnapshotControllerDeps, 'getLiveFrames' | 'getContentSignature' | 'getBrushFrames'>> = {},
+  overrides: Partial<Pick<StudioScriptSnapshotControllerDeps, 'getLiveFrames' | 'getContentSignature' | 'getBrushFrames' | 'getAuthority'>> = {},
 ): Harness {
   let signature = 'sig-0';
+  let authority: string | null = null;
   const report = vi.fn();
   const write = vi.fn(
     async (
       _identity: StudioScriptSnapshotIdentity,
       bytes: Uint8Array,
+      _authority: string | null,
     ): Promise<StudioScriptSnapshotOperationResult<StudioScriptSnapshotWritePayload>> => ({
       ok: true,
       data: { byteLength: bytes.byteLength, digest: 'digest' },
     }),
   );
   const read = vi.fn(
-    async (): Promise<StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>> => ({
+    async (
+      _identity: StudioScriptSnapshotIdentity,
+      _authority: string | null,
+    ): Promise<StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>> => ({
       ok: false,
       error: { kind: 'missing' },
     }),
@@ -163,6 +169,7 @@ function harness(
     getBrushFrames: overrides.getBrushFrames ?? (() => []),
     getContentSignature: overrides.getContentSignature ?? (() => signature),
     getLiveFrames: overrides.getLiveFrames ?? (() => new Set([7, 9])),
+    getAuthority: overrides.getAuthority ?? (() => authority),
     report,
     write,
     read,
@@ -174,6 +181,9 @@ function harness(
     read,
     setSignature: (value: string) => {
       signature = value;
+    },
+    setAuthority: (value: string | null) => {
+      authority = value;
     },
   };
 }
@@ -188,7 +198,7 @@ describe('studioScriptSnapshotController', () => {
     const { controller, report, read } = harness();
     controller.bind(IDENTITY);
     const result = await controller.restore();
-    expect(read).toHaveBeenCalledWith(IDENTITY);
+    expect(read).toHaveBeenCalledWith(IDENTITY, null);
     expect(result).toEqual({ status: 'empty', maxRestoredMutationId: 0 });
     expect(report).not.toHaveBeenCalled();
     expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
@@ -318,6 +328,62 @@ describe('studioScriptSnapshotController', () => {
     controller.bind(IDENTITY);
     await controller.restore();
     expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7, 9]);
+  });
+});
+
+// ------------------------------------------------------------
+//  quick-261023-o3n — the live package authority.
+//  The controller reads the authority at PREPARE/RESTORE time
+//  (never at bind), so a save-as rebind while the Studio is open
+//  retargets the next save/restore; an already-prepared payload
+//  keeps the authority it was prepared with.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — live package authority', () => {
+  it('reads the authority at restore time and follows a change after bind', async () => {
+    const { controller, read, setAuthority } = harness();
+    controller.bind(IDENTITY);
+
+    setAuthority('authority-a');
+    await controller.restore();
+    expect(read).toHaveBeenLastCalledWith(IDENTITY, 'authority-a');
+
+    // A save-as republish rewrites the live authority: the NEXT restore
+    // follows it. The bind did not freeze the value.
+    setAuthority('authority-b');
+    await controller.restore();
+    expect(read).toHaveBeenLastCalledWith(IDENTITY, 'authority-b');
+  });
+
+  it('passes null through on both legs for an unsaved project', async () => {
+    const { controller, read, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+    expect(read).toHaveBeenLastCalledWith(IDENTITY, null);
+
+    // A mutation after the seed restore makes the save worth attempting.
+    setSignature('sig-1');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
+    // Null takes the Rust cache leg; it is never coerced into a path or token.
+    expect(write.mock.calls[0]?.[2]).toBeNull();
+  });
+
+  it('captures the authority at prepare time and never retargets a prepared payload', async () => {
+    const { controller, write, setSignature, setAuthority } = harness();
+    setSignature('sig-1');
+    controller.bind(IDENTITY);
+    setAuthority('authority-at-prepare');
+
+    const pending = controller.saveNow();
+    // The payload is already prepared: changing the authority now cannot
+    // retroactively move the queued write to the new package.
+    setAuthority('authority-after-prepare');
+    await pending;
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0]?.[2]).toBe('authority-at-prepare');
   });
 });
 

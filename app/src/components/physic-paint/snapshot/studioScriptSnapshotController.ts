@@ -36,6 +36,14 @@
 //  markDirty() for its duration: the seeded stores bump their
 //  revisions, and the seed IS the new saved baseline, not a
 //  mutation to persist.
+//
+//  PACKAGE AUTHORITY (quick 261023-o3n): `getAuthority()` is read
+//  LIVE at prepare time and at restore time — never at bind, never
+//  frozen at launch — so a save-as rebind while the Studio is open
+//  is followed by the NEXT save/restore. A prepared payload keeps
+//  the authority it was prepared with. A null authority (unsaved
+//  project) takes the app-cache leg in Rust; a stale token is
+//  refused there and reported through the existing failure paths.
 // ============================================================
 
 import { isAquarelleDryEvent, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
@@ -78,14 +86,24 @@ export interface StudioScriptSnapshotControllerDeps {
    * means unknown — pruning is DISABLED rather than wiping the script.
    */
   getLiveFrames: () => ReadonlySet<number> | null;
+  /**
+   * quick-261023-o3n: the OPAQUE `scriptLibraryAuthority` capability, or null
+   * for an unsaved project (the cache leg). Read LIVE at prepare/restore time —
+   * never captured at bind and never frozen at launch — so a save-as rebind is
+   * followed by the next save/restore. A stale token is refused by Rust and
+   * surfaces through the existing save/restore failure paths.
+   */
+  getAuthority: () => string | null;
   /** Status-capsule sink. Called only for failures. */
   report: (message: string) => void;
   write: (
     identity: StudioScriptSnapshotIdentity,
     bytes: Uint8Array,
+    authority: string | null,
   ) => Promise<StudioScriptSnapshotOperationResult<StudioScriptSnapshotWritePayload>>;
   read: (
     identity: StudioScriptSnapshotIdentity,
+    authority: string | null,
   ) => Promise<StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>>;
 }
 
@@ -216,9 +234,12 @@ export function createStudioScriptSnapshotController(
     const requestGeneration = generation;
     restoringCount += 1;
     try {
+      // The authority is read LIVE here (after the bound-identity guard, right
+      // before the read) so a save-as rebind is followed by this restore.
+      const authority = deps.getAuthority();
       let result: StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>;
       try {
-        result = await deps.read(identity);
+        result = await deps.read(identity, authority);
       } catch {
         result = { ok: false, error: { kind: 'io' } };
       }
@@ -269,6 +290,8 @@ export function createStudioScriptSnapshotController(
     bytes: Uint8Array;
     signature: string;
     generation: number;
+    /** Captured at prepare time; a later change never retargets this payload. */
+    authority: string | null;
   }
 
   /**
@@ -280,6 +303,9 @@ export function createStudioScriptSnapshotController(
     if (!identity) return null;
     const signature = deps.getContentSignature();
     if (signature === lastSavedSignature) return null;
+    // The authority is captured WITH the identity and bytes: the prepared
+    // payload is already bound to the package it was prepared for.
+    const authority = deps.getAuthority();
     try {
       const liveFrames = deps.getLiveFrames();
       const bytes = encodeStudioScriptSnapshot({
@@ -290,7 +316,7 @@ export function createStudioScriptSnapshotController(
         ),
         brushFrames: pruneBrushFramesToLiveFrames(deps.getBrushFrames(), liveFrames),
       });
-      return { identity, bytes, signature, generation };
+      return { identity, bytes, signature, generation, authority };
     } catch (error) {
       const kind =
         error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'io';
@@ -303,7 +329,7 @@ export function createStudioScriptSnapshotController(
   async function commitSave(prepared: PreparedSave): Promise<void> {
     let result: StudioScriptSnapshotOperationResult<StudioScriptSnapshotWritePayload>;
     try {
-      result = await deps.write(prepared.identity, prepared.bytes);
+      result = await deps.write(prepared.identity, prepared.bytes, prepared.authority);
     } catch {
       result = { ok: false, error: { kind: 'io' } };
     }

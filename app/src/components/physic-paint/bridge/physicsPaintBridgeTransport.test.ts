@@ -1184,6 +1184,34 @@ describe('project-context scope round trip (quick-260922-al1)', () => {
       .toEqual({ name: 'Demo', saved: true, contextId: 'ctx-1', layers: [], scriptScope: 'all' });
   });
 
+  it('CHILD ACCEPT KEEPS the script library authority — dropping it silently disables the package leg', () => {
+    expect(acceptPhysicPaintProjectContextPayload({
+      name: 'Demo',
+      saved: true,
+      contextId: 'ctx-rotating',
+      projectId: 'project-durable',
+      scriptLibraryAuthority: 'authority-capability',
+      layers: [],
+      scriptScope: 'all',
+    })).toEqual({
+      name: 'Demo',
+      saved: true,
+      contextId: 'ctx-rotating',
+      projectId: 'project-durable',
+      scriptLibraryAuthority: 'authority-capability',
+      layers: [],
+      scriptScope: 'all',
+    });
+    // Malformed/oversized values degrade to absent — the cache leg still works.
+    expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: true, contextId: 'ctx-1', scriptLibraryAuthority: '' }))
+      .toEqual({ name: 'Demo', saved: true, contextId: 'ctx-1', layers: [], scriptScope: 'all' });
+    expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: true, contextId: 'ctx-1', scriptLibraryAuthority: 'x'.repeat(PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH + 1) }))
+      .toEqual({ name: 'Demo', saved: true, contextId: 'ctx-1', layers: [], scriptScope: 'all' });
+    // A payload that never carried it produces no authority key at all.
+    expect(Object.keys(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: true, contextId: 'ctx-1' }) ?? {}))
+      .not.toContain('scriptLibraryAuthority');
+  });
+
   it('CHILD ACCEPT DEGRADES: a pre-al1 payload (no layers, no scope) still drives the panel as All-only', () => {
     expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: false, contextId: 'ctx-1' }))
       .toEqual({ name: 'Demo', saved: false, contextId: 'ctx-1', layers: [], scriptScope: 'all' });

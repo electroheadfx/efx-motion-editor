@@ -1023,12 +1023,19 @@ export function PhysicsPaintStudio() {
   const [, setLastError] = useState<string | null>(null);
   const [applyStatus, setApplyStatus] = useState<ApplyStatus>('idle');
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
-  // quick-261023-l35: the Studio script snapshot is an app-managed DISK CACHE
-  // (never part of the .mce package). The controller is a plain object in a
+  // quick-261023-l35/o3n: the Studio script snapshot lives INSIDE the .mce
+  // package when the project is saved (app cache only as the unsaved-project /
+  // missing-package fallback). The controller is a plain object in a
   // render-body ref: Preact state setters are identity-stable, and every other
   // port reads through refs, so it is created once (identity-stable deps — no
   // new closure per render, no render-body signal read).
   const studioScriptSnapshotIdentityRef = useRef<StudioScriptSnapshotIdentity | null>(null);
+  // quick-261023-o3n: the OPAQUE package capability (`scriptLibraryAuthority`).
+  // A plain ref — no signal, no state, no render-body write. It is set from the
+  // INCOMING settled launch context before the restore (the launchContextRef
+  // still holds the PREVIOUS context at that moment) and refreshed by every
+  // project-context republish, so a save-as rebind is followed live.
+  const studioScriptSnapshotAuthorityRef = useRef<string | null>(null);
   const studioScriptSnapshotControllerRef = useRef<StudioScriptSnapshotController | null>(null);
   if (studioScriptSnapshotControllerRef.current === null) {
     studioScriptSnapshotControllerRef.current = createStudioScriptSnapshotController({
@@ -1051,6 +1058,9 @@ export function PhysicsPaintStudio() {
         const records = physicPaintStore.getRotoRealKeyRecords(identity.layerId, identity.trackId);
         return new Set(records.map((record) => record.appFrame));
       },
+      // Read LIVE (never frozen at launch): the controller asks at prepare and
+      // restore time, so a save-as rebind retargets the next package write.
+      getAuthority: () => studioScriptSnapshotAuthorityRef.current,
       // Status channel: the EXISTING capsule trio — a status without a moving
       // applyStatus is filtered out by the capsule's success arbitration.
       report: (message) => {
@@ -1058,16 +1068,18 @@ export function PhysicsPaintStudio() {
         setApplyMessage(message);
         setLastError(message);
       },
-      write: (identity, bytes) => ipcStudioScriptSnapshotWrite(
+      write: (identity, bytes, authority) => ipcStudioScriptSnapshotWrite(
         identity.projectId,
         identity.layerId,
         identity.trackId,
         bytes,
+        authority,
       ),
-      read: (identity) => ipcStudioScriptSnapshotRead(
+      read: (identity, authority) => ipcStudioScriptSnapshotRead(
         identity.projectId,
         identity.layerId,
         identity.trackId,
+        authority,
       ),
     });
   }
@@ -4188,12 +4200,24 @@ export function PhysicsPaintStudio() {
     hydratePlaybackSettingsForLaunch: rotoPlaybackSettingsController.hydrateForLaunch,
     resetCachedReference: resetCachedRotoReference,
     loadCachedReferenceFrame: (frame, readyEngine) => { loadCachedRotoReferenceFrame(frame, readyEngine ?? null); },
-    onSettledLaunchContext: (context) => { void rotoScriptLibrary.updateProjectContext(context); },
-    // quick-261023-l35: restore the Studio script from the disk cache BEFORE
-    // the launch context is published, so the first frame render already sees
-    // the restored timeline instead of flashing an empty script. Awaited by
-    // the launch integration; never rejects.
+    onSettledLaunchContext: (context) => {
+      // quick-261023-o3n: every settled project-context republish is the
+      // save-as / rebind seam — refresh the live capability BEFORE the script
+      // library consumes the context, so the NEXT snapshot write targets the
+      // new package instead of the previous one.
+      studioScriptSnapshotAuthorityRef.current = context.project?.scriptLibraryAuthority ?? null;
+      void rotoScriptLibrary.updateProjectContext(context);
+    },
+    // quick-261023-l35/o3n: restore the Studio script BEFORE the launch context
+    // is published, so the first frame render already sees the restored
+    // timeline instead of flashing an empty script. The package copy is read
+    // first through the authority; the app cache is only the missing-copy
+    // fallback. Awaited by the launch integration; never rejects.
     restoreStudioScriptSnapshot: async (context, document) => {
+      // The incoming settled context is the only correct authority source
+      // here: `launchContextRef` still holds the PREVIOUS launch context at
+      // this moment. Set BEFORE the identity guard and the restore.
+      studioScriptSnapshotAuthorityRef.current = context.project?.scriptLibraryAuthority ?? null;
       const carriedTrackId = (document as { activeTrackId?: unknown } | null | undefined)?.activeTrackId;
       const projectId = context.project?.projectId ?? '';
       const layerId = context.layerId ?? '';

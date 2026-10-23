@@ -142,7 +142,7 @@ export function normalizeProjectContextLayers(value: unknown): PhysicPaintProjec
  */
 export function acceptPhysicPaintProjectContextPayload(value: unknown): PhysicPaintProjectContext | null {
   if (!value || typeof value !== 'object') return null;
-  const project = value as { name?: unknown; saved?: unknown; contextId?: unknown; projectId?: unknown; layers?: unknown; scriptScope?: unknown };
+  const project = value as { name?: unknown; saved?: unknown; contextId?: unknown; projectId?: unknown; scriptLibraryAuthority?: unknown; layers?: unknown; scriptScope?: unknown };
   if (typeof project.name !== 'string' || typeof project.saved !== 'boolean' || typeof project.contextId !== 'string') return null;
   const scriptScope = typeof project.scriptScope === 'string' && project.scriptScope.length > 0 && project.scriptScope.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH
     ? project.scriptScope
@@ -154,11 +154,20 @@ export function acceptPhysicPaintProjectContextPayload(value: unknown): PhysicPa
   const projectId = typeof project.projectId === 'string' && project.projectId.length > 0 && project.projectId.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH
     ? project.projectId
     : undefined;
+  // quick-261023-o3n: the OPAQUE package capability must survive the rebuild
+  // too — the same defect family as the 24e71c34 `projectId` drop. Dropping it
+  // silently disables the package leg: the Studio falls back to the app cache
+  // and the script stops travelling with the project. Bounded exactly like the
+  // other wire scalars; malformed values degrade to absent (cache leg).
+  const scriptLibraryAuthority = typeof project.scriptLibraryAuthority === 'string' && project.scriptLibraryAuthority.length > 0 && project.scriptLibraryAuthority.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH
+    ? project.scriptLibraryAuthority
+    : undefined;
   return {
     name: project.name,
     saved: project.saved,
     contextId: project.contextId,
     ...(projectId ? { projectId } : {}),
+    ...(scriptLibraryAuthority ? { scriptLibraryAuthority } : {}),
     layers: normalizeProjectContextLayers(project.layers),
     scriptScope,
   };
