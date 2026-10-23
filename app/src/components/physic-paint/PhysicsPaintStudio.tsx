@@ -5085,9 +5085,15 @@ export function PhysicsPaintStudio() {
         };
       }
     }
-    memoryRailContext.value = { trackName: activeTrack.name, keyRail };
+    const railSelected =
+      selection !== null
+      || selectedLoopClipId.value !== null
+      || railSetSelection.value !== null;
+    memoryRailContext.value = { trackName: activeTrack.name, railSelected, keyRail };
   }, [
     selectedRotoKeyRail.value,
+    selectedLoopClipId.value,
+    railSetSelection.value,
     activeTrackIdForReads,
     efxPaintVersion.value,
     rotoPhysicalRevision.value,

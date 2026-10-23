@@ -60,9 +60,12 @@ export interface StudioScriptMemoryKeyRail {
   endFrame: number;
 }
 
-/** The active track name and the selected key rail (if any). */
+/** The active track name and the selected rail (if any). */
 export interface StudioScriptMemoryRailContext {
   trackName: string;
+  /** True while a key or Loop Clip rail line is selected on the timeline. */
+  railSelected: boolean;
+  /** The selected KEY rail's frame span; null for a Loop Clip rail or none. */
   keyRail: StudioScriptMemoryKeyRail | null;
 }
 

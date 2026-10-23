@@ -829,8 +829,9 @@ function memorySectionFixture(frame = 5) {
     frame: signal(frame),
     railContext: signal<{
       trackName: string;
+      railSelected: boolean;
       keyRail: { frames: readonly number[]; startFrame: number; endFrame: number } | null;
-    } | null>({ trackName: 'Paint 1', keyRail: null }),
+    } | null>({ trackName: 'Paint 1', railSelected: false, keyRail: null }),
   };
 }
 
@@ -973,6 +974,10 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(findByClass(withScript, 'physics-paint-memory-clear-rail')).toBeDefined();
     expect(textContent(withScript)).toMatch(/Purge script on frame\s+9/);
     expect(textContent(withScript)).toMatch(/Clear all scripts on\s+Paint 1/);
+    // Actions first, then the warning, then the detail content.
+    const layout = textContent(withScript);
+    expect(layout.indexOf('Purge script on frame')).toBeLessThan(layout.indexOf('Purging keeps'));
+    expect(layout.indexOf('Purging keeps')).toBeLessThan(layout.indexOf('Frame caches'));
 
     // No script on the selected frame: the frame action is absent, not grayed.
     const blank = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(42) }));
@@ -996,16 +1001,22 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     const withScripts = memorySectionFixture(9);
     withScripts.railContext.value = {
       trackName: 'Paint 1',
+      railSelected: true,
       keyRail: { frames: [5, 9], startFrame: 5, endFrame: 9 },
     };
     const tree = renderMemoryTab(baseProps({ memorySection: withScripts }));
     expect(findByClass(tree, 'physics-paint-memory-purge-rail')).toBeDefined();
     expect(textContent(tree)).toMatch(/Purge scripts on rail frames\s+5-9/);
+    // A selected rail hides the single-frame action.
+    expect(
+      childrenOf(tree).some((node) => hasClass(node as AnyVNode, 'physics-paint-memory-purge-frame')),
+    ).toBe(false);
 
     // An empty rail gets no grayed button at all.
     const emptyRail = memorySectionFixture(9);
     emptyRail.railContext.value = {
       trackName: 'Paint 1',
+      railSelected: true,
       keyRail: { frames: [42], startFrame: 42, endFrame: 42 },
     };
     const emptyTree = renderMemoryTab(baseProps({ memorySection: emptyRail }));
@@ -1013,12 +1024,35 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
       childrenOf(emptyTree).some((node) => hasClass(node as AnyVNode, 'physics-paint-memory-purge-rail')),
     ).toBe(false);
 
-    // A Loop Clip rail is derived and carries no key scripts: no range action.
+    // A Loop Clip rail is derived and carries no key scripts: no range action,
+    // and the frame action also stays hidden while that rail is selected.
     const loopRail = memorySectionFixture(9);
+    loopRail.railContext.value = { trackName: 'Paint 1', railSelected: true, keyRail: null };
     const loopTree = renderMemoryTab(baseProps({ memorySection: loopRail }));
     expect(
       childrenOf(loopTree).some((node) => hasClass(node as AnyVNode, 'physics-paint-memory-purge-rail')),
     ).toBe(false);
+    expect(
+      childrenOf(loopTree).some((node) => hasClass(node as AnyVNode, 'physics-paint-memory-purge-frame')),
+    ).toBe(false);
+  });
+
+  it('shows the frame purge again once the rail is deselected', () => {
+    activeModule.value = 'brush';
+    const section = memorySectionFixture(9);
+    section.railContext.value = {
+      trackName: 'Paint 1',
+      railSelected: true,
+      keyRail: { frames: [9], startFrame: 9, endFrame: 9 },
+    };
+    const selectedTree = renderMemoryTab(baseProps({ memorySection: section }));
+    expect(
+      childrenOf(selectedTree).some((node) => hasClass(node as AnyVNode, 'physics-paint-memory-purge-frame')),
+    ).toBe(false);
+
+    section.railContext.value = { trackName: 'Paint 1', railSelected: false, keyRail: null };
+    const deselectedTree = renderMemoryTab(baseProps({ memorySection: section }));
+    expect(findByClass(deselectedTree, 'physics-paint-memory-purge-frame')).toBeDefined();
   });
 
   it('confirms the rail-range purge with the frame span', () => {
@@ -1026,6 +1060,7 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     const section = memorySectionFixture(9);
     section.railContext.value = {
       trackName: 'Paint 1',
+      railSelected: true,
       keyRail: { frames: [5, 9], startFrame: 5, endFrame: 9 },
     };
     const props = baseProps({ memorySection: section });

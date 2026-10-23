@@ -1205,6 +1205,14 @@ button.destructive {
   padding-top: 10px;
 }
 
+.physics-paint-memory-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 12px;
+}
+
 .physics-paint-memory-scripts,
 .physics-paint-memory-caches {
   display: flex;

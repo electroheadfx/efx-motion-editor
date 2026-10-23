@@ -141,6 +141,7 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
   // other module, and the actions clear them.
   const hasFrameScript = frameStats.strokes > 0;
   const hasAnyScript = snapshot.watercolor.totals.strokes + snapshot.brush.totals.strokes > 0;
+  const railSelected = rail?.railSelected === true;
   const keyRail = rail?.keyRail ?? null;
   const keyRailFrames = keyRail ? new Set(keyRail.frames) : null;
   const railHasScript = keyRailFrames
@@ -160,42 +161,8 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
 
   return (
     <div class="physics-paint-memory-tab" data-testid="right-panel-memory-tab">
-      <div class="physics-paint-memory-scripts">
-        <div class="physics-paint-memory-total" data-memory-scripts-total>
-          Scripts total · {scriptLabel}: {totals.strokes} strokes · {totals.points} points ·{' '}
-          {formatScriptMemoryBytes(totals.approxBytes)}
-        </div>
-        <div
-          class="physics-paint-memory-frame physics-paint-memory-frame-current"
-          data-memory-frame-row={currentFrame}
-        >
-          <span class="physics-paint-memory-frame-label">{`Frame ${currentFrame}`}</span>
-          <span class="physics-paint-memory-frame-stats">
-            {hasFrameScript
-              ? `${scriptLabel} ${frameStats.strokes} strokes · ${frameStats.points} points · ${formatScriptMemoryBytes(frameStats.approxBytes)}`
-              : `No ${scriptLabel.toLowerCase()} script on this key`}
-          </span>
-        </div>
-      </div>
-      <div class="physics-paint-memory-caches">
-        <div class="physics-paint-memory-cache-total" data-memory-cache-total>
-          Frame caches: {formatScriptMemoryBytes(snapshot.frameCache.totalBytes)}
-        </div>
-        {snapshot.frameCache.caches.map((cache) => (
-          <div key={cache.name} class="physics-paint-memory-cache-row">
-            <span class="physics-paint-memory-cache-name">{cache.name}</span>
-            <span class="physics-paint-memory-cache-bytes">
-              {formatScriptMemoryBytes(cache.byteTotalBytes)} · {cache.entryCount} entries
-            </span>
-          </div>
-        ))}
-      </div>
-      <p class="physics-paint-memory-warning">
-        Purging keeps the painted pixels but removes the script — Move, Select and replay are
-        lost for that key.
-      </p>
       <div class="physics-paint-memory-actions">
-        {hasFrameScript ? (
+        {!railSelected && hasFrameScript ? (
           <button
             type="button"
             class="physics-paint-memory-purge-frame"
@@ -228,6 +195,42 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
             {`Clear all scripts on ${rail?.trackName ?? 'this rail'}`}
           </button>
         ) : null}
+      </div>
+      <p class="physics-paint-memory-warning">
+        Purging keeps the painted pixels but removes the script — Move, Select and replay are
+        lost for that key.
+      </p>
+      <div class="physics-paint-memory-details">
+        <div class="physics-paint-memory-scripts">
+          <div class="physics-paint-memory-total" data-memory-scripts-total>
+            Scripts total · {scriptLabel}: {totals.strokes} strokes · {totals.points} points ·{' '}
+            {formatScriptMemoryBytes(totals.approxBytes)}
+          </div>
+          <div
+            class="physics-paint-memory-frame physics-paint-memory-frame-current"
+            data-memory-frame-row={currentFrame}
+          >
+            <span class="physics-paint-memory-frame-label">{`Frame ${currentFrame}`}</span>
+            <span class="physics-paint-memory-frame-stats">
+              {hasFrameScript
+                ? `${scriptLabel} ${frameStats.strokes} strokes · ${frameStats.points} points · ${formatScriptMemoryBytes(frameStats.approxBytes)}`
+                : `No ${scriptLabel.toLowerCase()} script on this key`}
+            </span>
+          </div>
+        </div>
+        <div class="physics-paint-memory-caches">
+          <div class="physics-paint-memory-cache-total" data-memory-cache-total>
+            Frame caches: {formatScriptMemoryBytes(snapshot.frameCache.totalBytes)}
+          </div>
+          {snapshot.frameCache.caches.map((cache) => (
+            <div key={cache.name} class="physics-paint-memory-cache-row">
+              <span class="physics-paint-memory-cache-name">{cache.name}</span>
+              <span class="physics-paint-memory-cache-bytes">
+                {formatScriptMemoryBytes(cache.byteTotalBytes)} · {cache.entryCount} entries
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
       {confirm !== 'none' ? (
         <div
