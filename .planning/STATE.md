@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-23T12:15:47.035Z"
+last_updated: "2026-10-23T13:47:19.540Z"
 last_activity: 2026-10-23
 last_activity_desc: Phase 56 complete
-state_head: eefb44934fd7922928912a3bb18622aad6ffeb21
+state_head: b3c23b1cc154b5ac4946aff338d95d3a27d0970e
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-j5b CLOSED: all live UAT rows passed (instant navigation, faithful parity, Duplicate phantom, revisit-after-edit, Duplicate-in-Move)
+Last activity: 2026-10-23 - Completed quick task 261023-l35: Studio script snapshot persistence (SNAP v1 Rust disk cache; automated gates green, 6 UAT rows pending)
 
 Progress: [██████████] 100%
 
@@ -579,6 +579,7 @@ None yet.
 | 261023-g4p | Brush per-frame script store + DEV probe totals; one shared script-edition seam gives Brush Move the Water color select/drag/delete/restack UI | 2026-10-23 | 2c2fb99f | [261023-g4p-read-specs-quick-prompts-studio-brush-sc](./quick/261023-g4p-read-specs-quick-prompts-studio-brush-sc/) |
 | 261023-h9v | In-session brush script rehydration on navigation: complete light brush frames restore silently into the engine (Move enabled on revisited keys); partial/heavy/diffusion frames fail closed to cached pixels. Fixes the clear-listener deleting the retained entry. | 2026-10-23 | 62bdaea4 | [261023-h9v-add-in-session-brush-script-rehydration-](./quick/261023-h9v-add-in-session-brush-script-rehydration-/) |
 | 261023-j5b | Lazy brush script attach over cached pixels (instant navigation) + faithful live-deposit rebake on edits; Duplicate phantom, revisit-cache duplicate and Duplicate-in-Move overlay fixes; diffusion/physics frames fail closed. UAT passed 2026-10-23. | 2026-10-23 | be5b3e90 | [261023-j5b-replace-eager-brush-script-replay-on-nav](./quick/261023-j5b-replace-eager-brush-script-replay-on-nav/) |
+| 261023-l35 | Persist the Studio script snapshot (watercolor timeline + per-frame brush ledger) to a Rust app-managed SNAP v1 binary cache keyed by project/layer/track; debounced save, close flush, launch restore, prune, fail-closed | 2026-10-23 | b3c23b1c | [261023-l35-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-l35-v2-0-0-read-specs-quick-prompts-studio-s/) |
 
 ### Roadmap Evolution
 
