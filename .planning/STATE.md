@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-23T06:26:35.946Z"
+last_updated: "2026-10-23T06:52:40.598Z"
 last_activity: 2026-10-23
 last_activity_desc: Phase 56 complete
-state_head: d10a2ed43477d06423e2d9c0e0b1e8071a03596d
+state_head: 45f8f4b433eb1f7d1e21e393f7e44c30f098ee76
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-bji UAT APPROVED: Studio Solo dims every non-target Paint row with the exact disabled-track fade (opacity 0.4 + grayscale 0.9), the Bg row stays bright, and disarm restores every row
+Last activity: 2026-10-23 - Quick task 261023-bxm complete: bottom-timeline Duplicate now settles the source key's displayed paint (script result, dirty preview, unfinished settle) before cloning, so the new key renders like the source; live UAT pending
 
 Progress: [██████████] 100%
 
@@ -573,6 +573,7 @@ None yet.
 | 261022-tv1 | Cmd+drag moves a selected watercolor stroke as a ghost, release translates the script and re-bakes, one undo step | 2026-10-22 | 649a924b | [261022-tv1-watercolor-stroke-move](./quick/261022-tv1-watercolor-stroke-move/) |
 | 261022-ujp | Feat: with move tool for brush or watercolor you move stroke to behind stroke stack. Each time I type 'space' key it goes one step behind from strokes stack list and re-render like for move and delete stroke. Space stack change action works only if I am in move mode and a stroke was selected. | 2026-10-22 | eac877a3 | [261022-ujp-feat-with-move-tool-for-brush-or-waterco](./quick/261022-ujp-feat-with-move-tool-for-brush-or-waterco/) |
 | 261023-bji | Feat: when the session Solo is armed in Studio, every non-target Paint row wears the exact disabled-track grey so only the soloed (active) track reads as audible; the Bg row stays bright and disarm restores everything | 2026-10-23 | d10a2ed4 | [261023-bji-feat-when-i-solo-track-in-studio-i-want-](./quick/261023-bji-feat-when-i-solo-track-in-studio-i-want-/) |
+| 261023-bxm | Duplicate carries the source key's script/uncooked paint to the next key (settle displayed pixels, then clone) | 2026-10-23 | 45f8f4b4 | [261023-bxm-feat-i-d-like-to-send-the-current-paint-](./quick/261023-bxm-feat-i-d-like-to-send-the-current-paint-/) |
 
 ### Roadmap Evolution
 
