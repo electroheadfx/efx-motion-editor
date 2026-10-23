@@ -195,3 +195,7 @@ None — no external service configuration required.
 - All five plan files present on disk.
 - Commit `45f8f4b4` is an ancestor of HEAD.
 - SUMMARY.md written at the required path with `status: complete` and the live UAT matrix marked PENDING.
+
+---
+
+**Superseded (2026-10-23) by quick 261023-cxc.** The raster-only duplicate implemented here failed live UAT: it copied the cooked cache, not the script, so Move/Select could not edit the duplicate. 261023-cxc added the script-aware duplicate (brush live strokes / watercolor recorded timeline) and kept this settle-then-clone behavior as the fallback for occupied next frames and scriptless keys. See `../261023-cxc-uat-follow-up-to-261023-bxm-the-bottom-t/`.

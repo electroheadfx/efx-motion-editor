@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-cxc complete: Duplicate now carries the source script onto the next free key (brush live strokes / watercolor recorded timeline), so the duplicate renders like the source and Move/Select edits it; live UAT pending
+Last activity: 2026-10-23 - Quick task 261023-cxc UAT APPROVED: Duplicate carries the source script (brush live strokes / watercolor recorded timeline) onto the next free key; Move/Select edits the duplicate, and the bxm raster clone remains the fallback
 
 Progress: [██████████] 100%
 

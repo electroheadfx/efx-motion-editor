@@ -56,7 +56,7 @@ coverage:
         ref: "app/src/components/physic-paint/hooks/useRotoKeyUtilities.test.ts (7 duplicateWithScript tests)"
         status: pass
     human_judgment: true
-    rationale: "Live UAT rows 1-4 are PENDING — the painted/editable result must be confirmed in the app by the user"
+    rationale: "Live UAT rows 1-4 are PASSED — the painted/editable result must be confirmed in the app by the user"
   - id: D2
     description: "Watercolor: the duplicate bakes the timeline and records a fresh-id copy on its own frame, so Move/Delete/stack-step edit the duplicate and never the source"
     verification:
@@ -67,7 +67,7 @@ coverage:
         ref: "view/aquarelleRecordState.move.test.ts + .delete.test.ts + .reorder.test.ts (25 tests)"
         status: pass
     human_judgment: true
-    rationale: "Live UAT rows 5-7 are PENDING user confirmation"
+    rationale: "Live UAT rows 5-7 are PASSED user confirmation"
   - id: D3
     description: "Occupied/over-capacity destination or no script falls back to the unchanged 261023-bxm clone; user navigation aborts without creating a key"
     verification:
@@ -78,7 +78,7 @@ coverage:
         ref: "the pre-existing 261023-bxm duplicate assertions inside useRotoKeyUtilities.test.ts stay green"
         status: pass
     human_judgment: true
-    rationale: "Live UAT rows 3, 4, 7, 8 are PENDING user confirmation"
+    rationale: "Live UAT rows 3, 4, 7, 8 are PASSED user confirmation"
 duration: 15min
 completed: 2026-10-23
 status: complete
@@ -216,20 +216,20 @@ Otherwise the plan executed exactly as written. No architectural decisions (Rule
 - The test harness initially failed 7 orchestrator assertions because default ports were plain functions, not spies. Wrapping every default port in `vi.fn(...)` fixed the harness; no production code changed.
 - Task 2's watercolor orchestrator tests passing at RED is expected: the apply-before-record order was already implemented in Task 1 as part of the same vertical slice. The six projection/copy tests supplied the behavioral RED.
 
-## Live UAT Matrix — PENDING
+## Live UAT Matrix — PASSED
 
-The quick stays automated-ready until every row passes in the app (user-run; the executor did not run the app).
+All eight rows passed in the app on 2026-10-23 (user-confirmed live UAT: "its amazing, all UAT approved").
 
 | # | Step | Expected | Status |
 |---|------|----------|--------|
-| 1 | Brush: paint/apply a script on key N where N+1 is a free frame, press bottom-timeline Duplicate | Key N+1 appears selected, renders the same paint, sits on the source's rail; the Move tool selects and moves its strokes; the source key is unchanged | PENDING |
-| 2 | Brush: Duplicate again after moving the duplicate's strokes | The next key carries the MOVED strokes (the duplicate's live script), not the source's original stroke positions | PENDING |
-| 3 | Brush: put a real key at N+1 first, then Duplicate key N | Unchanged ripple clone: the new key lands at N+1, the previous N+1 key shifts to N+2, same rail | PENDING |
-| 4 | Brush: a key with no live strokes (raster-only) on a free next frame, Duplicate | Unchanged 261023-bxm cache/display clone; no error | PENDING |
-| 5 | Watercolor: a key with recorded strokes on a free next frame, Duplicate | Key N+1 appears selected and painted; Move, Alt+click Delete, and stack-step act on the duplicate; the source key is unchanged | PENDING |
-| 6 | Watercolor: Duplicate again after moving the duplicate's strokes | The next key carries the moved watercolor strokes; editing it never changes the previous keys | PENDING |
-| 7 | Watercolor: a key with no recorded events on a free next frame, Duplicate | Cache/display clone (261023-bxm fallback); no pixels-only key is silently presented as re-editable | PENDING |
-| 8 | Any module: start Duplicate and immediately navigate to another frame | No key appears at N+1; an explicit interruption message is shown; the Studio stays usable | PENDING |
+| 1 | Brush: paint/apply a script on key N where N+1 is a free frame, press bottom-timeline Duplicate | Key N+1 appears selected, renders the same paint, sits on the source's rail; the Move tool selects and moves its strokes; the source key is unchanged | PASSED |
+| 2 | Brush: Duplicate again after moving the duplicate's strokes | The next key carries the MOVED strokes (the duplicate's live script), not the source's original stroke positions | PASSED |
+| 3 | Brush: put a real key at N+1 first, then Duplicate key N | Unchanged ripple clone: the new key lands at N+1, the previous N+1 key shifts to N+2, same rail | PASSED |
+| 4 | Brush: a key with no live strokes (raster-only) on a free next frame, Duplicate | Unchanged 261023-bxm cache/display clone; no error | PASSED |
+| 5 | Watercolor: a key with recorded strokes on a free next frame, Duplicate | Key N+1 appears selected and painted; Move, Alt+click Delete, and stack-step act on the duplicate; the source key is unchanged | PASSED |
+| 6 | Watercolor: Duplicate again after moving the duplicate's strokes | The next key carries the moved watercolor strokes; editing it never changes the previous keys | PASSED |
+| 7 | Watercolor: a key with no recorded events on a free next frame, Duplicate | Cache/display clone (261023-bxm fallback); no pixels-only key is silently presented as re-editable | PASSED |
+| 8 | Any module: start Duplicate and immediately navigate to another frame | No key appears at N+1; an explicit interruption message is shown; the Studio stays usable | PASSED |
 
 ## User Setup Required
 
@@ -237,17 +237,16 @@ None — no external service configuration required.
 
 ## Next Phase Readiness
 
-- Automated evidence complete; the quick is automated-ready.
-- Remaining gate: the eight live UAT rows above. Do not mark the quick closed before the user confirms them.
+- Automated evidence complete and all eight live UAT rows passed on 2026-10-23; the quick is closed.
 - Per the dispatch constraints, the SUMMARY was written but not committed, and STATE.md / ROADMAP.md were left untouched for the orchestrator's docs commit.
 
 ---
 *Quick: 261023-cxc*
-*Completed: 2026-10-23 (automated gates); live UAT pending*
+*Completed: 2026-10-23 (automated gates); live UAT APPROVED 2026-10-23*
 
 ## Self-Check: PASSED
 
 - Both created source/test files present on disk.
 - Commits `bad7eb1d` and `4427ec0b` are ancestors of HEAD.
-- SUMMARY.md written at the required path with `status: complete` and all eight live UAT rows marked PENDING.
+- SUMMARY.md written at the required path with `status: complete` and all eight live UAT rows marked PASSED.
 - Working tree contains only the uncommitted SUMMARY.md (docs commit deferred to the orchestrator by instruction).
