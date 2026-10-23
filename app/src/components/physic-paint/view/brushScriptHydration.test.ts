@@ -30,6 +30,7 @@ import {
   isBrushScriptFrameHydratable,
   MAX_ATTACH_POINTS,
   MAX_ATTACH_STROKES,
+  MAX_EDITABLE_DIFFUSION_FRAMES,
   planBrushScriptHydration,
   type BrushHydrationRequest,
 } from './brushScriptHydration';
@@ -58,6 +59,18 @@ function stroke(mutationId: number, pointCount = 2): PaintStroke {
     params: { ...PARAMS },
     timestamp: mutationId,
     mutationId,
+  };
+}
+
+function continuation(mutationId: number, diffusionFrames = 4): PaintStroke {
+  return {
+    tool: 'paint',
+    points: [],
+    color: '#123456',
+    params: { ...PARAMS },
+    timestamp: mutationId,
+    mutationId,
+    diffusionFrames,
   };
 }
 
@@ -197,13 +210,24 @@ describe('plan: every refusal is fail-closed', () => {
 
   it('refuses over the attach sanity cap (clone cost only)', () => {
     captureComplete(3, [stroke(1, MAX_ATTACH_POINTS + 1)]);
-    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'edit-cost' });
 
     captureComplete(
       3,
       Array.from({ length: MAX_ATTACH_STROKES + 1 }, (_, index) => stroke(index + 1, 1)),
     );
-    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'edit-cost' });
+  });
+
+  // 261023-j5b Task 3: a physics-run frame's faithful rebake replays solver
+  // frames (~700 ms each at HD) — it stays fail-closed on cached pixels.
+  it('refuses a frame carrying any diffusion continuation (unaffordable rebake)', () => {
+    captureBrushScriptForFrame(3, [
+      { primary: stroke(1), continuations: [continuation(1, 1)] },
+    ]);
+    expect(getBrushScriptFrameEntry(3)?.diffusionFrames).toBe(1);
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'edit-cost' });
+    expect(attemptBrushScriptHydration(createFakeEngine(), request())).toBe(false);
   });
 
   it('accepts exactly at the attach sanity boundary', () => {
@@ -253,6 +277,14 @@ describe('isBrushScriptFrameHydratable — the probe verdict', () => {
       points: MAX_ATTACH_POINTS,
       diffusionFrames: 0,
     })).toBe(true);
+  });
+
+  it('is false for any diffusion frame — the SAME gate the live policy applies', () => {
+    expect(isBrushScriptFrameHydratable({
+      ...within,
+      complete: true,
+      diffusionFrames: MAX_EDITABLE_DIFFUSION_FRAMES + 1,
+    })).toBe(false);
   });
 });
 

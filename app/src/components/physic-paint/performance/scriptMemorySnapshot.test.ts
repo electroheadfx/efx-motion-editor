@@ -419,7 +419,7 @@ describe('buildScriptMemorySnapshot — brush scope', () => {
     expect(snapshot.brush.note).toContain('for this Studio session only');
     expect(snapshot.brush.note).toContain('current engine frame is measured separately');
     expect(snapshot.brush.note).toContain('complete when its captured script is the whole content');
-    expect(snapshot.brush.note).toContain('real brush key');
+    expect(snapshot.brush.note).toContain('attaches its script silently over the cached pixels');
   });
 
   it('keeps the scope and note when the engine has no strokes', () => {
@@ -471,7 +471,7 @@ describe('buildScriptMemorySnapshot — brush completeness/hydratability', () =>
     diffusionFrames: number,
   ) => ({ frame: 1, strokes: 1, points, approxBytes: 100, complete, diffusionFrames });
 
-  it('marks a complete row within budget hydratable and counts the split', () => {
+  it('marks a complete row within the caps hydratable and counts the split', () => {
     const snapshot = buildScriptMemorySnapshot(
       brushInput([
         row(true, 100, 0),
@@ -496,14 +496,15 @@ describe('buildScriptMemorySnapshot — brush completeness/hydratability', () =>
     expect(snapshot.brush.totals.partialFrames).toBe(0);
   });
 
-  it('does not refuse a complete row for its diffusion count (navigation never replays)', () => {
-    // 261023-j5b removed the replay budget: diffusion only matters to the
-    // EDIT rebake cap (Task 3), never to the navigation attach verdict.
+  it('marks a complete row with ANY diffusion frame non-hydratable (unaffordable rebake)', () => {
+    // 261023-j5b Task 3: a physics-run frame's faithful rebake replays solver
+    // frames (~700 ms each at HD), so the probe reports it view-only even
+    // though its script is complete and small.
     const snapshot = buildScriptMemorySnapshot(
       brushInput([row(true, 10, 300), row(true, 10, 0)]),
     );
 
-    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([true, true]);
+    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
   });
 
   it('marks a complete row over the attach stroke cap non-hydratable', () => {
@@ -515,7 +516,7 @@ describe('buildScriptMemorySnapshot — brush completeness/hydratability', () =>
     expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
   });
 
-  it('never promotes a partial row, even when it is well within budget', () => {
+  it('never promotes a partial row, even when it is well within the caps', () => {
     const snapshot = buildScriptMemorySnapshot(brushInput([row(false, 1, 0)]));
 
     expect(snapshot.brush.frames[0]!.complete).toBe(false);

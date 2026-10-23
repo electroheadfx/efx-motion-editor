@@ -24,7 +24,10 @@
 //    watercolor — the aquarelle sheet owns its own record store;
 //    playback / scrub — a moving playhead must never pause for a
 //                 synchronous ledger mutation;
-//    budget     — the frame exceeds the attach (clone) sanity cap.
+//    edit-cost  — the frame exceeds the attach (clone) sanity cap, or it
+//                 carries diffusion frames whose faithful rebake is
+//                 unaffordable (measured 705 ms per diffusion frame at
+//                 1920x1080). Such frames stay view-only on cached pixels.
 //
 //  The module is DOM-free: the engine is a structural interface so
 //  unit suites can pin the policy without importing EfxPaintEngine.
@@ -42,23 +45,43 @@ import {
 /**
  * GENEROUS attach sanity cap (quick 261023-j5b). Attaching clones the stored
  * group list into the ledger — O(n), no replay — so the only cost this cap
- * bounds is cloning. Provisional values here; Task 3 replaces them with
- * numbers measured on the mock-canvas harness. The h9v replay budget
- * (600 points / 10 strokes / 0 diffusion frames) is deliberately gone: a
- * many-stroke frame now attaches fine because navigation no longer replays it.
+ * bounds is cloning. SIZED FROM MEASUREMENT (2026-10-23, mock-canvas harness
+ * driving the real ledger): the heavy fixture (40 strokes x 180 points =
+ * 7200 points, 40 clones) attaches in 1.84 ms at 1920x1080 and 0.61 ms at
+ * 100x100; light attaches in 0.54 ms. The 200-stroke / 40000-point ceiling
+ * therefore leaves a ~10x headroom over the largest measured fixture while
+ * still bounding a pathological store. The h9v replay budget (600 points /
+ * 10 strokes / 0 diffusion frames) is deliberately gone: a many-stroke frame
+ * now attaches fine because navigation no longer replays it.
  */
 export const MAX_ATTACH_STROKES = 200;
 export const MAX_ATTACH_POINTS = 40000;
+
+/**
+ * The EDIT-AFFORDABILITY gate. A physics-run frame stores zero-point diffusion
+ * continuations; the faithful rebake replays every continuation frame through
+ * the solver. Measured (h9v 705 ms, j5b 684 ms) for ONE diffusion frame at
+ * 1920x1080 — unaffordable for a synchronous first edit. Such frames stay
+ * view-only: cached pixels, no attach. (At 100x100 a frame is 8 ms, but the
+ * working canvas is HD, so the gate is HD-sized.)
+ */
+export const MAX_EDITABLE_DIFFUSION_FRAMES = 0;
 
 /** The attach sanity cap alone — stroke and point counts within the ceilings. */
 export function isWithinBrushAttachCap(strokes: number, points: number): boolean {
   return strokes <= MAX_ATTACH_STROKES && points <= MAX_ATTACH_POINTS;
 }
 
+/** The edit-affordability cap alone — zero diffusion frames (physics runs). */
+export function isWithinBrushEditCostCap(diffusionFrames: number): boolean {
+  return diffusionFrames <= MAX_EDITABLE_DIFFUSION_FRAMES;
+}
+
 /**
- * Probe-facing hydratability: complete AND within the attach sanity cap.
- * Liveness and the navigation-time gates (real key, module, playback, scrub)
- * are separate.
+ * Probe-facing EDITABLE verdict: complete, within the attach sanity cap, and
+ * within the edit-affordability cap. Liveness and the navigation-time gates
+ * (real key, module, playback, scrub) are separate. This is the SAME predicate
+ * the live navigation policy applies, so the probe can never disagree.
  */
 export function isBrushScriptFrameHydratable(entry: {
   readonly complete: boolean;
@@ -66,7 +89,11 @@ export function isBrushScriptFrameHydratable(entry: {
   readonly points: number;
   readonly diffusionFrames: number;
 }): boolean {
-  return entry.complete && isWithinBrushAttachCap(entry.strokes, entry.points);
+  return (
+    entry.complete &&
+    isWithinBrushAttachCap(entry.strokes, entry.points) &&
+    isWithinBrushEditCostCap(entry.diffusionFrames)
+  );
 }
 
 export interface BrushHydrationRequest {
@@ -90,7 +117,7 @@ export type BrushHydrationRefusal =
   | 'watercolor'
   | 'playback'
   | 'scrub'
-  | 'budget';
+  | 'edit-cost';
 
 export type BrushHydrationDecision =
   | { hydrate: true; entry: BrushScriptFrameEntry }
@@ -107,7 +134,12 @@ export function planBrushScriptHydration(request: BrushHydrationRequest): BrushH
   if (request.wasPlaying) return { hydrate: false, reason: 'playback' };
   if (request.scrubActive) return { hydrate: false, reason: 'scrub' };
   if (!isWithinBrushAttachCap(entry.strokes, entry.points)) {
-    return { hydrate: false, reason: 'budget' };
+    return { hydrate: false, reason: 'edit-cost' };
+  }
+  // A physics-run frame's faithful rebake replays solver frames at ~700 ms
+  // each on HD — fail closed to the cached pixels (view-only).
+  if (!isWithinBrushEditCostCap(entry.diffusionFrames)) {
+    return { hydrate: false, reason: 'edit-cost' };
   }
   return { hydrate: true, entry };
 }

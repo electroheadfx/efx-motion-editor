@@ -24,15 +24,18 @@
 //      retained points copy per stroke, per-frame rows + totals;
 //    - `currentEngineFrame` — the live engine's current frame only,
 //      measured separately (the engine still holds one frame; a
-//      COMPLETE real-key frame is silently rehydrated into it on
-//      navigation — quick 261023-h9v).
+//      complete real-key frame attaches its script SILENTLY into it
+//      on navigation over the cached pixels — quick 261023-j5b, which
+//      replaced h9v's eager replay).
 //  Neither part ever includes frame-cache bytes.
 //
-//  COMPLETENESS/HYDRATABILITY (261023-h9v): every brush row reports
+//  COMPLETENESS/EDITABILITY (261023-j5b): every brush row reports
 //  `complete` (the captured script is the whole frame content) and
-//  the derived `hydratable` verdict (complete AND within the
-//  documented hydration budget). A partial or over-budget frame keeps
-//  the cached-pixel path and must never hydrate.
+//  the derived `hydratable` verdict — complete, within the attach
+//  (clone) sanity cap, and no diffusion frames (a physics-run frame's
+//  faithful rebake costs ~700 ms per diffusion frame at HD). A partial
+//  or edit-unaffordable frame keeps cached pixels and is view-only.
+//  The verdict calls the SAME predicate as the live navigation policy.
 // ============================================================
 
 import type {
@@ -66,7 +69,7 @@ export interface ScriptMemoryBrushFrameInput extends ScriptMemoryFrameStats {
 
 /** One reported brush frame row: the input plus the derived verdict. */
 export interface ScriptMemoryBrushFrameStats extends ScriptMemoryBrushFrameInput {
-  /** complete AND within the documented hydration budget. */
+  /** complete AND within the attach sanity + edit-affordability caps. */
   hydratable: boolean;
 }
 
@@ -157,7 +160,7 @@ export interface ScriptMemoryWindowLike {
 export const SCRIPT_MEMORY_APPROX_METHOD = 'json-utf8-byte-length' as const;
 
 export const SCRIPT_MEMORY_BRUSH_NOTE =
-  'Brush frames are captured per frame for this Studio session only; the current engine frame is measured separately and only the engine\'s current frame is live. A frame is complete when its captured script is the whole content; only a complete, within-budget frame rehydrates when navigation returns to a real brush key, while a partial or over-budget frame keeps cached pixels and is view-only.';
+  'Brush frames are captured per frame for this Studio session only; the current engine frame is measured separately and only the engine\'s current frame is live. A frame is complete when its captured script is the whole content. Navigation never replays a script: a complete, edit-affordable frame attaches its script silently over the cached pixels, while a partial or physics-run (diffusion) frame keeps cached pixels and is view-only.';
 
 function countPoints(points: unknown): number {
   return Array.isArray(points) ? points.length : 0;
@@ -267,7 +270,7 @@ export function buildScriptMemorySnapshot(
   }
 
   // Copy the rows so the snapshot is a plain, detached value, and derive the
-  // ONE hydratability verdict from the shared policy budget.
+  // ONE editable verdict from the shared navigation predicate.
   const brushFrames: ScriptMemoryBrushFrameStats[] = input.brushScript.frames.map((row) => ({
     ...row,
     hydratable: isBrushScriptFrameHydratable(row),
