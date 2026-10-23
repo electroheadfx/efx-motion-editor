@@ -103,6 +103,10 @@ function baseInput(from: Fixture): ScriptMemorySnapshotInput {
     isStrokeDeleted: (mutationId) => mutationId === 4,
     dryEvents: from.dry,
     brushStrokes: null,
+    brushScript: {
+      frames: [],
+      totals: { strokes: 0, points: 0, approxBytes: 0 },
+    },
     frameCaches: [],
   };
 }
@@ -159,6 +163,10 @@ describe('buildScriptMemorySnapshot — empty state', () => {
       isStrokeDeleted: () => false,
       dryEvents: [],
       brushStrokes: null,
+      brushScript: {
+        frames: [],
+        totals: { strokes: 0, points: 0, approxBytes: 0 },
+      },
       frameCaches: [],
     });
 
@@ -178,13 +186,16 @@ describe('buildScriptMemorySnapshot — empty state', () => {
       approxBytes: 0,
     });
 
-    expect(snapshot.brush.available).toBe(false);
-    expect(snapshot.brush.strokes).toBe(0);
-    expect(snapshot.brush.points).toBe(0);
-    expect(snapshot.brush.approxBytes).toBe(0);
-    expect(snapshot.brush.skippedStrokes).toBe(0);
-    expect(snapshot.brush.scope).toBe('current-frame-only');
-    expect(snapshot.brush.note).toContain('no per-frame brush script store');
+    expect(snapshot.brush.scope).toBe('per-frame-session-store');
+    expect(snapshot.brush.frames).toEqual([]);
+    expect(snapshot.brush.totals).toEqual({ strokes: 0, points: 0, approxBytes: 0 });
+    expect(snapshot.brush.currentEngineFrame).toEqual({
+      available: false,
+      strokes: 0,
+      points: 0,
+      approxBytes: 0,
+    });
+    expect(snapshot.brush.note).toContain('captured per frame');
 
     expect(snapshot.frameCache).toEqual({ scope: 'this-webview', totalBytes: 0, caches: [] });
   });
@@ -277,6 +288,10 @@ describe('buildScriptMemorySnapshot — approxBytes method', () => {
       isStrokeDeleted: () => false,
       dryEvents: [],
       brushStrokes: null,
+      brushScript: {
+        frames: [],
+        totals: { strokes: 0, points: 0, approxBytes: 0 },
+      },
       frameCaches: [],
     });
 
@@ -322,6 +337,10 @@ describe('installScriptMemoryGlobal', () => {
       isStrokeDeleted: () => false,
       dryEvents: [],
       brushStrokes: null,
+      brushScript: {
+        frames: [],
+        totals: { strokes: 0, points: 0, approxBytes: 0 },
+      },
       frameCaches: [],
     }),
   };
@@ -347,20 +366,37 @@ describe('installScriptMemoryGlobal', () => {
 });
 
 describe('buildScriptMemorySnapshot — brush scope', () => {
-  it('reports the current engine strokes with the no-per-frame-store flag', () => {
+  const BRUSH_SCRIPT = {
+    frames: [
+      { frame: 2, strokes: 1, points: 2, approxBytes: 300 },
+      { frame: 7, strokes: 3, points: 9, approxBytes: 900 },
+    ],
+    totals: { strokes: 4, points: 11, approxBytes: 1200 },
+  };
+
+  it('reports the per-frame store separately from the current engine frame', () => {
     const from = fixture();
     const snapshot = buildScriptMemorySnapshot({
       ...baseInput(from),
       brushStrokes: BRUSH_STROKES,
+      brushScript: BRUSH_SCRIPT,
     });
 
-    expect(snapshot.brush.available).toBe(true);
-    expect(snapshot.brush.strokes).toBe(2);
-    expect(snapshot.brush.points).toBe(5);
-    expect(snapshot.brush.approxBytes).toBe(687);
-    expect(snapshot.brush.skippedStrokes).toBe(0);
-    expect(snapshot.brush.scope).toBe('current-frame-only');
-    expect(snapshot.brush.note).toContain('no per-frame brush script store');
+    expect(snapshot.brush.scope).toBe('per-frame-session-store');
+    expect(snapshot.brush.frames).toEqual(BRUSH_SCRIPT.frames);
+    expect(snapshot.brush.totals).toEqual(BRUSH_SCRIPT.totals);
+    // The current engine frame keeps the documented JSON-byte method and is
+    // NOT folded into the session totals.
+    expect(snapshot.brush.currentEngineFrame).toEqual({
+      available: true,
+      strokes: 2,
+      points: 5,
+      approxBytes: 687,
+    });
+    expect(snapshot.brush.totals.approxBytes).toBe(1200);
+    // The old current-frame-only scope string is gone.
+    expect(snapshot.brush.note).toContain('captured per frame');
+    expect(snapshot.brush.note).toContain('current engine frame is measured separately');
   });
 
   it('keeps the scope and note when the engine has no strokes', () => {
@@ -368,12 +404,18 @@ describe('buildScriptMemorySnapshot — brush scope', () => {
     const snapshot = buildScriptMemorySnapshot({
       ...baseInput(from),
       brushStrokes: null,
+      brushScript: BRUSH_SCRIPT,
     });
 
-    expect(snapshot.brush.available).toBe(false);
-    expect(snapshot.brush.strokes).toBe(0);
-    expect(snapshot.brush.scope).toBe('current-frame-only');
-    expect(snapshot.brush.note).toContain('no per-frame brush script store');
+    expect(snapshot.brush.currentEngineFrame).toEqual({
+      available: false,
+      strokes: 0,
+      points: 0,
+      approxBytes: 0,
+    });
+    // Session rows survive an engine-less read.
+    expect(snapshot.brush.frames).toEqual(BRUSH_SCRIPT.frames);
+    expect(snapshot.brush.scope).toBe('per-frame-session-store');
   });
 });
 

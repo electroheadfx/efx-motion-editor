@@ -19,8 +19,12 @@
 //  reported in their own `frameCache` section and are NEVER folded
 //  into watercolor or brush totals.
 //
-//  Brush counts only the current engine frame: navigation calls
-//  `engine.clear()` and there is no per-frame brush script store.
+//  Brush is reported in TWO parts (quick 261023-g4p):
+//    - `brushScript` — the session-level per-frame store, one
+//      retained points copy per stroke, per-frame rows + totals;
+//    - `currentEngineFrame` — the live engine's current frame only,
+//      measured separately (navigation still calls engine.clear()).
+//  Neither part ever includes frame-cache bytes.
 // ============================================================
 
 import type {
@@ -74,11 +78,16 @@ export interface ScriptMemorySnapshot {
     /** frames + deleted (deleted bytes are retained memory too). */
     totals: ScriptMemoryScriptStats & { frames: number };
   };
-  brush: ScriptMemoryScriptStats & {
-    available: boolean;
-    scope: 'current-frame-only';
+  brush: {
+    /** per-frame session store — every brush frame captured for this Studio session. */
+    scope: 'per-frame-session-store';
+    /** Captured frame rows, ascending by frame. */
+    frames: ScriptMemoryFrameStats[];
+    /** Sum of the captured frame rows only. */
+    totals: ScriptMemoryScriptStats;
+    /** The engine's current frame, measured separately (may be unavailable). */
+    currentEngineFrame: ScriptMemoryScriptStats & { available: boolean };
     note: string;
-    skippedStrokes: number;
   };
   frameCache: {
     scope: 'this-webview';
@@ -98,6 +107,11 @@ export interface ScriptMemorySnapshotInput {
   dryEvents: readonly AquarelleDryEvent[];
   /** `engine.getStrokes()` for the current frame, or null when no engine. */
   brushStrokes: readonly PaintStroke[] | null;
+  /** The session-level per-frame brush script store report. */
+  brushScript: {
+    frames: readonly ScriptMemoryFrameStats[];
+    totals: ScriptMemoryScriptStats;
+  };
   frameCaches: readonly ScriptMemoryCacheStat[];
 }
 
@@ -114,7 +128,7 @@ export interface ScriptMemoryWindowLike {
 export const SCRIPT_MEMORY_APPROX_METHOD = 'json-utf8-byte-length' as const;
 
 export const SCRIPT_MEMORY_BRUSH_NOTE =
-  'Brush counts only the current engine frame: navigation calls engine.clear() and there is no per-frame brush script store.';
+  'Brush frames are captured per frame for this Studio session; the current engine frame is measured separately and only the engine\'s current frame is live.';
 
 function countPoints(points: unknown): number {
   return Array.isArray(points) ? points.length : 0;
@@ -205,21 +219,18 @@ export function buildScriptMemorySnapshot(
   let brushStrokeCount = 0;
   let brushPoints = 0;
   let brushApproxBytes = 0;
-  let brushSkipped = 0;
 
   if (brushStrokes !== null) {
     brushStrokeCount = brushStrokes.length;
     for (const stroke of brushStrokes) {
       brushPoints += countPoints(stroke.points);
-      if (!Array.isArray(stroke.points)) brushSkipped += 1;
     }
     // One serialization for the whole array; per-stroke sums only on failure.
     const wholeBytes = safeJsonBytes(brushStrokes, encoder);
     if (wholeBytes === null) {
       for (const stroke of brushStrokes) {
         const bytes = safeJsonBytes(stroke, encoder);
-        if (bytes === null) brushSkipped += 1;
-        else brushApproxBytes += bytes;
+        if (bytes !== null) brushApproxBytes += bytes;
       }
     } else {
       brushApproxBytes = wholeBytes;
@@ -249,12 +260,16 @@ export function buildScriptMemorySnapshot(
       },
     },
     brush: {
-      available: brushStrokes !== null,
-      strokes: brushStrokeCount,
-      points: brushPoints,
-      approxBytes: brushApproxBytes,
-      skippedStrokes: brushSkipped,
-      scope: 'current-frame-only',
+      // Copy the rows so the snapshot is a plain, detached value.
+      frames: input.brushScript.frames.map((row) => ({ ...row })),
+      totals: { ...input.brushScript.totals },
+      currentEngineFrame: {
+        available: brushStrokes !== null,
+        strokes: brushStrokeCount,
+        points: brushPoints,
+        approxBytes: brushApproxBytes,
+      },
+      scope: 'per-frame-session-store',
       note: SCRIPT_MEMORY_BRUSH_NOTE,
     },
     frameCache: {

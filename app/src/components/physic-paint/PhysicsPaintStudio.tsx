@@ -166,6 +166,14 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
+import {
+  computeBrushScriptPruneFrame,
+  deleteBrushScriptFrame,
+  flushBrushScriptFrame,
+  markBrushScriptFrameDirty,
+  pruneBrushScriptsFromFrame,
+  resetBrushScriptStore,
+} from './view/brushScriptRecordState';
 import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
 import {
   aquarelleLiveStrokeCount,
@@ -1426,6 +1434,12 @@ export function PhysicsPaintStudio() {
   useEffect(() => () => {
     disarmSolo();
   }, []);
+  // 261023-g4p: Studio disposal clears the per-frame brush script store so a
+  // recreated engine/session can never inherit another session's frames.
+  // Teardown only — no selection work, no signal read.
+  useEffect(() => () => {
+    resetBrushScriptStore();
+  }, []);
   // quick-261003-vos: Alt = temporary erase — ONE module signal plus gated
   // window listeners (physicsPaintTemporaryErase). The deps live behind a
   // render-body ref (canvasEngineReadyImplRef precedent) so the
@@ -1670,6 +1684,16 @@ export function PhysicsPaintStudio() {
     if (layerId) physicPaintStore.setPaperId(layerId, paperId);
     setBackground(paperId as StudioBackgroundMode);
   };
+  // 261023-g4p: the brush store follows the physical key lifecycle — a
+  // successful accepted replace prunes every frame at/after the first
+  // divergent record position (fail closed, never remapped).
+  const pruneBrushScriptsForRecords = (
+    beforeRecords: readonly { keyId: string; appFrame: number }[],
+    nextRecords: readonly { keyId: string; appFrame: number }[],
+  ) => {
+    const pruneFrame = computeBrushScriptPruneFrame(beforeRecords, nextRecords);
+    if (pruneFrame !== null) pruneBrushScriptsFromFrame(pruneFrame);
+  };
   const replacePhysicalRecordsWithOwnership = (
     layerId: string,
     records: readonly PhysicPaintRotoRealKeyRecord[],
@@ -1693,7 +1717,9 @@ export function PhysicsPaintStudio() {
       currentIncomingBreaks,
       currentGroupOverrides,
     ) === nextRevision) {
-      return physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
+      const identicalRevisionResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
+      if (identicalRevisionResult.ok) pruneBrushScriptsForRecords(beforeRecords, records);
+      return identicalRevisionResult;
     }
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
     const realKeyOwnedReference = repaintBase && beforeRecords.some((record) => record.appFrame === repaintBase.appFrame)
@@ -1717,6 +1743,7 @@ export function PhysicsPaintStudio() {
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
     const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
     if (!result.ok) return result;
+    pruneBrushScriptsForRecords(beforeRecords, records);
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
     rotoEditBuffer.replacePreviewFrames(next.previewFrames);
@@ -1788,6 +1815,7 @@ export function PhysicsPaintStudio() {
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
     const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, studioActiveTrackId(), document, leaseToken);
     if (!result.ok) return result;
+    pruneBrushScriptsForRecords(beforeRecords, document.realKeyRecords);
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
     rotoEditBuffer.replacePreviewFrames(next.previewFrames);
@@ -3409,6 +3437,11 @@ export function PhysicsPaintStudio() {
       // flush — the rAF poll would queue it one rAF after scheduleRotoStartFramePropagation,
       // i.e. after this flush has already drained (the empty-frame-on-return race).
       aquarelleFlushCaptureRef.current?.();
+      // 261023-g4p: retain the outgoing brush frame BEFORE engine.clear()
+      // (engine-1 owns the visible brush script; navigation drops it).
+      if (activeModule.peek() !== 'watercolor') {
+        flushBrushScriptFrame(currentFrame, engine ? engine.getStrokes() : null);
+      }
       rotoPersistence.snapshotLivePixels(currentFrame);
       recordPhysicsPaintPerformance({ stage: 'nav.snapshotLivePixels', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
@@ -4682,7 +4715,7 @@ export function PhysicsPaintStudio() {
     // quick 261023-f9c (DEV ONLY): read-only script-memory measurement —
     // window.__EFX_SCRIPT_MEMORY__.snapshot(). Installs nothing in a production
     // build; no effect, no signal, no component state.
-    if (import.meta.env.DEV) installScriptMemoryProbe(readyEngine);
+    if (import.meta.env.DEV) installScriptMemoryProbe(readyEngine, () => launchContextRef.current?.startFrame ?? 0);
     // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —
     // one pinned pixel at m1 ribbon / m2 outline / m3 settled / m4 +2s /
     // m5 on-return, written to /tmp/efx-look-delta.json. No product change.
@@ -4700,6 +4733,13 @@ export function PhysicsPaintStudio() {
     physicPaintVersion.value++;
     rotoScript.observeCompletedMutation(mutationEngine, mutation);
     const { kind, isEmpty, mutationId } = mutation;
+    // 261023-g4p: stroke completion only MARKS the frame (O(1) — no
+    // projection here). A clear drops the frame's retained script.
+    if (activeModule.peek() !== 'watercolor') {
+      const scriptFrame = launchContextRef.current?.startFrame ?? 0;
+      if (kind === 'clear') deleteBrushScriptFrame(scriptFrame);
+      else markBrushScriptFrameDirty(scriptFrame);
+    }
     rotoMoveHistory.observePaintMutation(mutationId, kind);
     const acceptedTarget = rotoScript.getAcceptedTarget(mutationEngine, mutationId);
     const publicationIdentity = acceptedTarget?.publicationIdentity;

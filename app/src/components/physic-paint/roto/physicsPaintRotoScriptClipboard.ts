@@ -8,7 +8,14 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import type { PhysicPaintRenderedFrame, PhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
 import { getRecordedAquarellePayloadTimeline, getRecordedAquarelleStroke, isAquarelleStrokeDeleted } from '../view/aquarelleRecordState';
+import { freezeRecordedStrokeGroups, normalizeLogicalBrushes, type RecordedStrokeGroup } from '../view/recordedStrokeGroups';
 import type { RotoTimelineSelectionKind } from './rotoTimelineSelectors';
+
+// 261023-g4p: the projection and its group type live in ONE module
+// (view/recordedStrokeGroups) so the brush script store reuses the same
+// implementation. Re-exported here under the same names — no consumer change.
+export { normalizeLogicalBrushes };
+export type { RecordedStrokeGroup };
 
 export interface RotoScriptSourceSnapshot {
   selectionKind: RotoTimelineSelectionKind;
@@ -82,11 +89,6 @@ export interface RotoScriptOperationError {
   code: RotoScriptOperationErrorCode;
   message: string;
   cause?: string;
-}
-
-export interface RecordedStrokeGroup {
-  primary: Readonly<PaintStroke>;
-  continuations?: readonly Readonly<PaintStroke>[];
 }
 
 export interface RotoScriptEnginePort {
@@ -1260,46 +1262,14 @@ function countAquarelleStrokeEvents(events: readonly AquarellePayloadEvent[]): n
   return count;
 }
 
-export function normalizeLogicalBrushes(strokes: readonly PaintStroke[]): Readonly<RecordedStrokeGroup>[] {
-  const groups: RecordedStrokeGroup[] = [];
-  for (const stroke of strokes) {
-    if (stroke.points.length > 0) {
-      groups.push({ primary: cloneStroke(stroke), continuations: [] });
-      continue;
-    }
-    // A continuation must carry a POSITIVE diffusion count. A zero here is the
-    // engine's `|| 0` round-trip (loadProjectData / serializeProject) stamping
-    // the member onto every restored stroke — routing it into `continuations`
-    // makes the group unpersistable (serialize drops the zero, the schema then
-    // requires a positive count on every continuation).
-    if (typeof stroke.diffusionFrames === 'number' && stroke.diffusionFrames > 0 && groups.length > 0) {
-      const current = groups[groups.length - 1];
-      current.continuations = [...(current.continuations ?? []), cloneStroke(stroke)];
-    }
-  }
-  return groups.map((group) => ({ primary: cloneStroke(group.primary), continuations: group.continuations?.map(cloneStroke) }));
-}
-
 function cloneStroke(stroke: Readonly<PaintStroke>): PaintStroke {
   return { ...stroke, points: stroke.points.map((point) => ({ ...point })), params: { ...stroke.params } };
 }
 
 function deepFreezeScript(script: RotoPaintScript): RotoPaintScript {
   Object.freeze(script.provenance);
-  for (const brush of script.brushes) {
-    for (const point of brush.primary.points) Object.freeze(point);
-    Object.freeze(brush.primary.points);
-    Object.freeze(brush.primary.params);
-    Object.freeze(brush.primary);
-    for (const continuation of brush.continuations ?? []) {
-      Object.freeze(continuation.points);
-      Object.freeze(continuation.params);
-      Object.freeze(continuation);
-    }
-    if (brush.continuations) Object.freeze(brush.continuations);
-    Object.freeze(brush);
-  }
-  Object.freeze(script.brushes);
+  // 261023-g4p: the brush half of the freeze is the ONE shared helper.
+  script.brushes = freezeRecordedStrokeGroups(script.brushes);
   if (script.aquarelleEvents) {
     for (const event of script.aquarelleEvents) {
       if (!isAquarelleDryEvent(event)) {

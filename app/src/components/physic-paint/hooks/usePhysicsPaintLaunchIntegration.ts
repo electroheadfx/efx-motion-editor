@@ -14,6 +14,7 @@ import { efxPaintDocumentAudioStore } from '../audio/efxPaintDocumentAudioStore'
 import { installEfxPaintAudioPlaybackStateListener } from '../audio/efxPaintAudioOwnership';
 import { applyBackgroundFallbackToSettings, type PhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 import { hydrateRotoPhysicalLaunchContext } from '../roto/rotoLaunchHydration';
+import { resetBrushScriptStore } from '../view/brushScriptRecordState';
 import { registerDocument } from '../../../stores/efxPaintStore';
 import { imageStore } from '../../../stores/imageStore';
 import { requestImageLibrary } from '../../../lib/physicPaintBridge';
@@ -112,6 +113,9 @@ export function usePhysicsPaintLaunchIntegration(input: {
     input.resetNavigationForLaunchRef.current(playbackSettings);
     input.hydratePlaybackSettingsForLaunch(context, playbackSettings);
     input.resetCachedReference();
+    // 261023-g4p: the brush script store is session-scoped — a launch
+    // replacement starts from an empty store (no cross-launch leak).
+    resetBrushScriptStore();
   }, [input]);
 
   const applySettledLaunchContext = useCallback(async (context: PhysicPaintLaunchContext) => {
