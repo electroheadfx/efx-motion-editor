@@ -5132,6 +5132,14 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
                           layerId={props.layerId!}
                           frameCells={frameCells}
                           visible={track.visible}
+                          // 261023-bji: this row is ALWAYS a non-target track —
+                          // the Solo focus is the active track, rendered by
+                          // renderActiveLane above. The arm value already
+                          // subscribes this component (the isSoloArmed() read
+                          // in the body), so passing it down adds no new
+                          // signal or effect. The Background row below never
+                          // receives it: a Paint solo leaves it participating.
+                          soloDimmed={soloArmed}
                           // 47-05 Task 1 (TML-05, D-16): read-only cross-track
                           // drag feedback — the destination highlight + the
                           // live insertion preview. The gesture never mutates

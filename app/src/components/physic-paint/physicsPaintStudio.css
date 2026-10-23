@@ -5557,8 +5557,13 @@ button.destructive {
 /* 47-01 hide: a hidden Paint track fades its cells to gray — every key and
    interpolation cell stays rendered (hide never removes elements, TML-04);
    re-show restores full opacity instantly (the flag write is the only
-   mutation). */
-.physics-paint-track-row-hidden {
+   mutation).
+   261023-bji: a non-target Paint row wears the EXACT SAME fade while the
+   session Solo is armed — one shared rule so the two treatments can never
+   drift. The Background row is excluded because a Paint solo leaves it
+   participating (backgroundParticipates ignores the solo target). */
+.physics-paint-track-row-hidden,
+.physics-paint-track-row-solo-dimmed {
   opacity: 0.4;
   filter: grayscale(0.9);
 }

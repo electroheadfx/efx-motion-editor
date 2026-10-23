@@ -105,6 +105,15 @@ export interface PhysicsPaintTrackRowProps {
    * hidden state reads at a glance.
    */
   readonly visible?: boolean;
+  /**
+   * 261023-bji: true while the session Solo is armed. Every instance of this
+   * row is by construction a NON-target track — the solo target (the active
+   * track) renders as the rich lane, not through this component — so the
+   * strip dims every row instance unconditionally. The fixed Background
+   * instance is deliberately never given this prop: a Paint solo leaves the
+   * Background participating, so dimming it would be a lie.
+   */
+  readonly soloDimmed?: boolean;
   /** 47-05 Task 1 (TML-05, D-16): true while this row is the cross-track
    *  drag destination — read-only highlight feedback, the gesture never
    *  mutates the row until release commits through moveTrackItems. */
@@ -498,6 +507,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     frameCells,
     kind = 'paint',
     visible = true,
+    soloDimmed = false,
     crossDestination = false,
     crossInsertionFrame = null,
     onSelectTrack,
@@ -519,6 +529,7 @@ export function PhysicsPaintTrackRow(props: PhysicsPaintTrackRowProps) {
     'physics-paint-track-row',
     kind === 'background' ? 'physics-paint-track-row-background' : '',
     visible === false ? 'physics-paint-track-row-hidden' : '',
+    soloDimmed ? 'physics-paint-track-row-solo-dimmed' : '',
     crossDestination ? 'physics-paint-track-row-cross-destination' : '',
   ].filter(Boolean).join(' ');
   // Narrow per-track subscription (efx-preact-reactivity rule 5): reading THIS

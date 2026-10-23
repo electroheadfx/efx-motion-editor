@@ -633,3 +633,18 @@ describe('PhysicsPaintTrackRow — 52.2-12 render counters (D-18)', () => {
     expect(snapshotPhysicsPaintPerformance().counters['render.tracksStrip']).toBe(1);
   });
 });
+
+describe('PhysicsPaintTrackRow — 261023-bji solo focus dimming', () => {
+  it('carries the solo-dimmed class only when soloDimmed is set', () => {
+    const dimmed = render({ soloDimmed: true }) as TestVNode;
+    expect(hasClass(dimmed, 'physics-paint-track-row-solo-dimmed')).toBe(true);
+    const plain = render() as TestVNode;
+    expect(hasClass(plain, 'physics-paint-track-row-solo-dimmed')).toBe(false);
+  });
+
+  it('shares the exact hidden-track fade: opacity 0.4 + grayscale 0.9', () => {
+    const rule = cssRule('.physics-paint-track-row-solo-dimmed {');
+    expect(rule).toContain('opacity: 0.4');
+    expect(rule).toContain('filter: grayscale(0.9)');
+  });
+});

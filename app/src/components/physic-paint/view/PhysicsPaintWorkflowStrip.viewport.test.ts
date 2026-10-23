@@ -44,6 +44,8 @@ import { signal } from '@preact/signals';
 import { derivePhysicPaintRotoLoopRanges } from '../roto/physicsPaintRotoPhysicalResolver';
 import { buildRotoTimelineStructuralIndex, PhysicsPaintWorkflowStrip } from './PhysicsPaintWorkflowStrip';
 import { PhysicsPaintTrackRow, PhysicsPaintTrackRowHeader } from './PhysicsPaintTrackRow';
+// 261023-bji: the session Solo arm drives the non-target row fade.
+import { disarmSolo, isSoloArmed, toggleSolo } from './physicsPaintSoloArm';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const CELL_WIDTH_PX = 18;
@@ -692,6 +694,12 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
   });
 
   describe('47-01 multi-track row slice', () => {
+    // 261023-bji: the arm is a session signal — never let an armed Solo leak
+    // into another test in this file.
+    afterEach(() => {
+      disarmSolo();
+    });
+
     function makeMultiTrackDocument(layerId: string, secondId: string) {
       const document = createEfxPaintDocument(layerId);
       const trackA = document.tracks[0];
@@ -1031,6 +1039,49 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(String(lane.props.class)).toContain('physics-paint-lane-hidden');
       // The lane still renders its full cell extent (the fade is the only change).
       expect(findAll(lane, (vnode) => typeof vnode.props.frame === 'number').length).toBeGreaterThan(0);
+    });
+
+    it('dims every non-target Paint row with the disabled-track fade while Solo is armed (261023-bji)', () => {
+      const layerId = 'multi-track-layer';
+      const { document, trackA, trackB } = makeMultiTrackDocument(layerId, 'track-b');
+      const harness = createWorkflowHarness({
+        tracks: [trackA, trackB],
+        activeTrackId: trackB.id,
+        layerId,
+        background: document.background,
+      });
+      harness.render();
+
+      toggleSolo();
+      expect(isSoloArmed()).toBe(true);
+      harness.render();
+
+      const rows = harness.trackRows();
+      const aRow = rows.find((row) => row.props['data-track-id'] === trackA.id);
+      const bRow = rows.find((row) => row.props['data-track-id'] === trackB.id);
+      const bgRow = rows.find((row) => row.props['data-track-id'] === document.background.id);
+      expect(aRow).toBeDefined();
+      expect(bRow).toBeDefined();
+      expect(bgRow).toBeDefined();
+
+      // Every non-target Paint row wears the disabled-track fade exactly like
+      // a hidden row, and keeps its full cell lane rendered (dim never removes).
+      expect(String(aRow!.props.class)).toContain('physics-paint-track-row-solo-dimmed');
+      expect(harness.rowCells(trackA.id).length).toBeGreaterThan(0);
+
+      // The solo target IS the active track, rendered as the rich lane — the
+      // arm never dims it (only its own visibility can, via the lane class).
+      expect(String(bRow!.props.class)).toContain('physics-paint-lane');
+      expect(String(bRow!.props.class)).not.toContain('physics-paint-track-row-solo-dimmed');
+      expect(String(bRow!.props.class)).not.toContain('physics-paint-lane-hidden');
+
+      // A Paint solo leaves the Background participating — the Bg row stays bright.
+      expect(String(bgRow!.props.class)).not.toContain('physics-paint-track-row-solo-dimmed');
+
+      disarmSolo();
+      harness.render();
+      const aRowAfterDisarm = harness.trackRows().find((row) => row.props['data-track-id'] === trackA.id);
+      expect(String(aRowAfterDisarm!.props.class)).not.toContain('physics-paint-track-row-solo-dimmed');
     });
   });
 });
