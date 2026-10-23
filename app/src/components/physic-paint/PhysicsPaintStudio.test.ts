@@ -3635,7 +3635,11 @@ describe('261023-j5b paint-settings carrier seams', () => {
   it('the engine exposes the faithful rebake and the single edit seam', () => {
     expect(studio).toContain('hydrateBrushScriptFrame(engine, hydrationRequest)');
     expect(paintEngineSource).toContain('public rebakeStrokesFaithfully(settings?: PaintRenderSettings | null): number');
-    expect(paintEngineSource).toContain("if (visitMode === 'detached') this.clearPreviewBaseImage(true)");
+    // 261023-j5b follow-up: the base clear is complete-ledger driven, not
+    // detached-visit driven (a Duplicate-derived live visit must clear too).
+    expect(paintEngineSource).toContain('if (this.scriptBaseClearPending === true && this.cachedBaseClearedThisVisit !== true) {');
+    expect(paintEngineSource).toContain('this.clearPreviewBaseImage(true)');
+    expect(paintEngineSource).toContain('public setScriptBaseClearPending(pending: boolean): void');
     expect(paintEngineSource).toContain('this.redrawAfterScriptEdit()');
   });
 });

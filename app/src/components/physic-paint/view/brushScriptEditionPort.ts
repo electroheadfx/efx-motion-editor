@@ -23,6 +23,7 @@ import {
   brushScriptRevision,
   flushBrushScriptFrame,
   getBrushScriptForFrame,
+  isBrushScriptLedgerComplete,
 } from './brushScriptRecordState';
 import { engineHoldsBrushScriptFrame } from './brushScriptHydration';
 import {
@@ -52,6 +53,12 @@ export interface BrushScriptEditionEngine {
   getFramePaintSettings(): PaintRenderSettings | null;
   /** The paint globals currently live on the engine (fallback when none captured). */
   getPaintRenderSettings(): PaintRenderSettings;
+  /**
+   * 261023-j5b follow-up: declare whether this visit's ledger is the whole
+   * frame content before an edit, so a duplicate cached base is cleared once
+   * before the faithful rebake.
+   */
+  setScriptBaseClearPending(pending: boolean): void;
 }
 
 /**
@@ -61,6 +68,16 @@ export interface BrushScriptEditionEngine {
  */
 function resolvePaintSettings(engine: BrushScriptEditionEngine): PaintRenderSettings {
   return engine.getFramePaintSettings() ?? engine.getPaintRenderSettings();
+}
+
+/**
+ * 261023-j5b follow-up: tell the engine whether a cached preview base
+ * duplicates this frame's ledger BEFORE the edit rebakes. A complete ledger
+ * (including a Duplicate-derived live visit) clears the base once; a partial
+ * visit keeps its pre-existing base.
+ */
+function declareEditBase(engine: BrushScriptEditionEngine, frame: number): void {
+  engine.setScriptBaseClearPending(isBrushScriptLedgerComplete(frame));
 }
 
 /**
@@ -170,6 +187,7 @@ export function hitTestBrushScriptStroke(
 export function moveBrushScriptStroke(mutationId: number, dxPx: number, dyPx: number): boolean {
   const resolved = resolveEdition();
   if (!resolved || resolved.context.isLocked()) return false;
+  declareEditBase(resolved.engine, resolved.frame);
   const moved = resolved.engine.moveStroke(mutationId, dxPx, dyPx);
   if (moved) {
     flushBrushScriptFrame(
@@ -185,6 +203,7 @@ export function moveBrushScriptStroke(mutationId: number, dxPx: number, dyPx: nu
 export function deleteBrushScriptStroke(mutationId: number): boolean {
   const resolved = resolveEdition();
   if (!resolved || resolved.context.isLocked()) return false;
+  declareEditBase(resolved.engine, resolved.frame);
   const deleted = resolved.engine.deleteStroke(mutationId);
   if (!deleted) return false;
   flushBrushScriptFrame(
@@ -200,6 +219,7 @@ export function deleteBrushScriptStroke(mutationId: number): boolean {
 export function stepBrushScriptStroke(mutationId: number, direction: 'back' | 'forward'): boolean {
   const resolved = resolveEdition();
   if (!resolved || resolved.context.isLocked()) return false;
+  declareEditBase(resolved.engine, resolved.frame);
   const stepped =
     direction === 'back'
       ? resolved.engine.sendStrokeBackward(mutationId)

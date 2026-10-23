@@ -162,6 +162,18 @@ export function isBrushScriptFrameComplete(frame: number): boolean {
 }
 
 /**
+ * 261023-j5b follow-up: true when this frame's ledger is the whole content,
+ * so a cached preview base that duplicates it must be cleared before a
+ * faithful edit rebake. An uncaptured frame is complete unless a cached base
+ * arrived this session (that base is content the session ledger lacks).
+ */
+export function isBrushScriptLedgerComplete(frame: number): boolean {
+  const entry = brushScriptFrames.get(frame);
+  if (entry) return entry.complete;
+  return !arrivalBaseFrames.has(frame);
+}
+
+/**
  * Capture normalized groups for one frame. Callers pass the output of
  * normalizeLogicalBrushes; the groups are deep-frozen here and the entry is
  * immutable. Replaces any previous entry for the frame.

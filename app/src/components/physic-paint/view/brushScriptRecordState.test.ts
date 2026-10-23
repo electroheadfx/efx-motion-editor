@@ -27,6 +27,7 @@ import {
   getBrushScriptReport,
   getBrushScriptTotals,
   isBrushScriptFrameComplete,
+  isBrushScriptLedgerComplete,
   markBrushScriptFrameDirty,
   noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
@@ -286,6 +287,20 @@ describe('prune law (fail closed)', () => {
 //  those base pixels with a strokes-only script (paint loss).
 // ============================================================
 describe('completeness law (261023-h9v)', () => {
+  it('declares the ledger complete for a fresh uncaptured frame and a complete entry, partial otherwise', () => {
+    // No entry, no cached base: a fresh frame's session ledger is complete.
+    expect(isBrushScriptLedgerComplete(4)).toBe(true);
+    // No entry, but a cached base arrived: the ledger is partial.
+    noteBrushScriptArrivalBase(5, true);
+    expect(isBrushScriptLedgerComplete(5)).toBe(false);
+    // Captured complete stays complete; captured partial stays partial.
+    captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+    expect(isBrushScriptLedgerComplete(4)).toBe(true);
+    noteBrushScriptArrivalBase(6, true);
+    captureBrushScriptForFrame(6, [{ primary: stroke(2), continuations: [] }]);
+    expect(isBrushScriptLedgerComplete(6)).toBe(false);
+  });
+
   it('captures a frame with no arrival-base record as complete', () => {
     const entry = captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
     expect(entry.complete).toBe(true);

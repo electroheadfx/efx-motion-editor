@@ -423,6 +423,35 @@ describe('first edit: faithful rebake with LIVE deposit semantics', () => {
     expect(clearLog).toEqual([true])
   })
 
+  it('a LIVE complete visit (Duplicate-derived) clears the duplicated base once when declared', () => {
+    const { engine, clearLog } = createHarness()
+    engine.attachStrokesBaseline([group(7), group(9)])
+    // Duplicate-derived live visit: the ledger is present and the preview base
+    // still holds the same script; no edit has run yet.
+    engine.strokeReplayMode = 'live'
+    engine.setScriptBaseClearPending(true)
+
+    expect(engine.deleteStroke(7)).toBe(true)
+    expect(clearLog).toEqual([true])
+
+    // The port re-declares completeness on every edit; the once-per-visit
+    // guard must not wipe the just-rebaked pixels again.
+    engine.setScriptBaseClearPending(true)
+    expect(engine.moveStroke(9, 5, 0)).toBe(true)
+    expect(clearLog).toEqual([true])
+  })
+
+  it('a LIVE partial visit keeps its pre-existing base', () => {
+    const { engine, clearLog } = createHarness()
+    engine.attachStrokesBaseline([group(7)])
+    engine.strokeReplayMode = 'live'
+    engine.setScriptBaseClearPending(false)
+
+    expect(engine.deleteStroke(7)).toBe(true)
+
+    expect(clearLog).toEqual([])
+  })
+
   it('a second edit keeps replay:false (the visit never falls back to replay:true)', () => {
     const { engine, replayLog, prepareLog } = createHarness()
     engine.attachStrokesBaseline([group(7), group(9)])

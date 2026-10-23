@@ -81,6 +81,7 @@ function createFakeEngine(overrides: Record<string, unknown> = {}) {
     sendStrokeForward: vi.fn(() => true),
     setStrokeLabelsSuppressed: vi.fn(),
     setCursorVisible: vi.fn(),
+    setScriptBaseClearPending: vi.fn(),
     getFramePaintSettings: vi.fn(() => null as PaintRenderSettings | null),
     getPaintRenderSettings: vi.fn((): PaintRenderSettings => ({
       localSpreadStrength: 65,
@@ -222,7 +223,21 @@ describe('edits: lock gate, one engine call, store refresh', () => {
 
     expect(engine.moveStroke).toHaveBeenCalledTimes(1);
     expect(engine.moveStroke).toHaveBeenCalledWith(7, 10, 5);
+    expect(engine.setScriptBaseClearPending).toHaveBeenCalledWith(true);
     expect(getBrushScriptFrameEntry(3)?.strokes).toBe(1);
+  });
+
+  it('a partial visit declares that its cached base must survive the edit', () => {
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [stroke(7, [{ x: 30, y: 35 }])]),
+    });
+    configure(engine, { frame: 3 });
+    noteBrushScriptArrivalBase(3, true);
+    capture(3, [stroke(7, [{ x: 30, y: 35 }])]);
+
+    expect(moveBrushScriptStroke(7, 10, 5)).toBe(true);
+
+    expect(engine.setScriptBaseClearPending).toHaveBeenCalledWith(false);
   });
 
   it('delete calls the engine once, refreshes the store and clears a matching selection', () => {

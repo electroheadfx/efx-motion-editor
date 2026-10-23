@@ -782,6 +782,15 @@ export class EfxPaintEngine {
    * A faithful rebake applies them and restores the pre-rebake values.
    */
   private framePaintSettings: PaintRenderSettings | null = null
+  /**
+   * 261023-j5b follow-up: a cached preview base that duplicates the ledger
+   * (lazy attach, or a Duplicate-derived live visit) must be cleared before
+   * the faithful rebake, else the replay leaves a phantom copy no edit can
+   * remove. Cleared once per visit; a partial visit never clears, because its
+   * base predates the session strokes.
+   */
+  private scriptBaseClearPending = false
+  private cachedBaseClearedThisVisit = false
 
   // --- Bound Event Handlers (for removeEventListener) ---
   private readonly boundPointerDown: (e: PointerEvent) => void
@@ -1771,6 +1780,8 @@ export class EfxPaintEngine {
     // live again, and no stale frame paint settings survive into the next one.
     this.strokeReplayMode = 'live'
     this.framePaintSettings = null
+    this.scriptBaseClearPending = false
+    this.cachedBaseClearedThisVisit = false
     // 261022-ujp: a cleared surface starts a fresh creation-order numbering.
     this.strokeSerialMap().clear()
     this.nextStrokeSerial = 1
@@ -2192,6 +2203,10 @@ export class EfxPaintEngine {
     const attached = this.installStrokeBaseline(groups)
     if (attached === 0) return 0
     this.strokeReplayMode = 'detached'
+    // The cached pixels duplicate this complete ledger: the first faithful
+    // rebake must render from an empty surface.
+    this.scriptBaseClearPending = true
+    this.cachedBaseClearedThisVisit = false
     if (settings) this.framePaintSettings = settings
     this.displayCompositeDirty = true
     this.requestRender()
@@ -2231,14 +2246,17 @@ export class EfxPaintEngine {
    * it (the hydration policy gates on edit affordance); navigation itself
    * never invokes it.
    *
-   * Base handling: a 'detached' visit's cached pixels duplicate this ledger,
-   * so the base is cleared ONCE to avoid double paint. A 'live' visit keeps
-   * its pre-existing base — that base belongs to the frame BEFORE this
-   * visit's strokes.
+   * Base handling: a cached base that DUPLICATES the ledger (lazy attach, or
+   * a Duplicate-derived live visit) is cleared ONCE so the replay starts from
+   * an empty surface. A partial visit keeps its pre-existing base — that base
+   * is content the session ledger does not contain.
    */
   public rebakeStrokesFaithfully(settings?: PaintRenderSettings | null): number {
-    const visitMode = this.strokeReplayMode ?? 'live'
-    if (visitMode === 'detached') this.clearPreviewBaseImage(true)
+    if (this.scriptBaseClearPending === true && this.cachedBaseClearedThisVisit !== true) {
+      this.clearPreviewBaseImage(true)
+      this.cachedBaseClearedThisVisit = true
+    }
+    this.scriptBaseClearPending = false
     this.strokeReplayMode = 'faithful'
     // Determinism: an inherited keep-box from the previous gesture would make
     // the first replayed stroke prepare locally over an unrelated area.
@@ -2255,6 +2273,17 @@ export class EfxPaintEngine {
       this.rebakingFaithfully = false
       if (applied) this.applyPaintRenderSettings(previousSettings)
     }
+  }
+
+  /**
+   * 261023-j5b follow-up: the caller declares whether the current visit's
+   * ledger is the WHOLE frame content before a script edit. A complete ledger
+   * clears any cached base once before the faithful rebake (a Duplicate-
+   * derived live visit carries a base that already contains the script); a
+   * partial visit keeps its base. The engine clears at most once per visit.
+   */
+  public setScriptBaseClearPending(pending: boolean): void {
+    this.scriptBaseClearPending = pending === true
   }
 
   /**
