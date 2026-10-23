@@ -3642,4 +3642,11 @@ describe('261023-j5b paint-settings carrier seams', () => {
     expect(paintEngineSource).toContain('public setScriptBaseClearPending(pending: boolean): void');
     expect(paintEngineSource).toContain('this.redrawAfterScriptEdit()');
   });
+
+  it('a cleared-base capture encodes the live canvas alone, never the cached base', () => {
+    expect(paintEngineSource).toContain('public isLiveCanvasWholeFrame(): boolean');
+    expect(studio).toContain('const liveCanvasWholeFrame = mutationEngine.isLiveCanvasWholeFrame();');
+    expect(studio).toContain('const cachedBase = liveCanvasWholeFrame');
+    expect(studio).toContain('baseCanvas: liveCanvasWholeFrame');
+  });
 });

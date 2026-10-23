@@ -516,6 +516,66 @@ describe('paint settings: applied for the rebake, restored afterwards', () => {
   })
 })
 
+describe('capture state: the live canvas owns the whole frame after a cleared-base rebake', () => {
+  it('is false before any edit on a detached visit', () => {
+    const { engine } = createHarness()
+    engine.attachStrokesBaseline([group(7), group(9)])
+
+    expect(engine.isLiveCanvasWholeFrame()).toBe(false)
+  })
+
+  it('becomes true when the first edit clears the duplicate base and rebakes, and stays true', () => {
+    const { engine } = createHarness()
+    engine.attachStrokesBaseline([group(7), group(9)])
+
+    expect(engine.deleteStroke(7)).toBe(true)
+    expect(engine.isLiveCanvasWholeFrame()).toBe(true)
+
+    // Every later capture of the visit must also skip the base merge.
+    expect(engine.moveStroke(9, 5, 0)).toBe(true)
+    expect(engine.isLiveCanvasWholeFrame()).toBe(true)
+  })
+
+  it('reports whole-frame for a cleared Duplicate-derived live visit', () => {
+    const { engine } = createHarness()
+    engine.attachStrokesBaseline([group(7)])
+    engine.strokeReplayMode = 'live'
+    engine.setScriptBaseClearPending(true)
+
+    expect(engine.deleteStroke(7)).toBe(true)
+    expect(engine.isLiveCanvasWholeFrame()).toBe(true)
+  })
+
+  it('a partial visit keeps its base and never claims whole-frame', () => {
+    const { engine } = createHarness()
+    engine.attachStrokesBaseline([group(7)])
+    engine.strokeReplayMode = 'live'
+    engine.setScriptBaseClearPending(false)
+
+    expect(engine.deleteStroke(7)).toBe(true)
+    expect(engine.isLiveCanvasWholeFrame()).toBe(false)
+  })
+
+  it('a direct restore over a live visit keeps the base and never claims whole-frame', () => {
+    const { engine } = createHarness()
+
+    engine.restoreStrokesBaseline([group(4)])
+
+    expect(engine.isLiveCanvasWholeFrame()).toBe(false)
+  })
+
+  it('clear() ends the claim', () => {
+    const { engine } = createHarness()
+    engine.attachStrokesBaseline([group(7)])
+    engine.deleteStroke(7)
+    expect(engine.isLiveCanvasWholeFrame()).toBe(true)
+
+    engine.clear()
+
+    expect(engine.isLiveCanvasWholeFrame()).toBe(false)
+  })
+})
+
 describe('clear() ends the visit', () => {
   it('resets the replay mode to live and drops the frame paint settings', () => {
     const { engine } = createHarness()

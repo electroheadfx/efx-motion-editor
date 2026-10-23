@@ -2287,6 +2287,18 @@ export class EfxPaintEngine {
   }
 
   /**
+   * 261023-j5b follow-up: true once this visit cleared its duplicate cached
+   * base before a faithful rebake. The live alpha canvas then holds the WHOLE
+   * frame content, so pixel captures must encode it ALONE — merging the
+   * frame's cached base again would bake a second copy of every stroke into
+   * the cache, and navigation (which never replays) would show that duplicate
+   * on every revisit.
+   */
+  public isLiveCanvasWholeFrame(): boolean {
+    return this.cachedBaseClearedThisVisit === true
+  }
+
+  /**
    * 261023-j5b: apply captured paint globals for a rebake WITHOUT the public
    * setters. setPaperGrain()/setWetPaper() flush pending finalizations, and a
    * rebake can run from inside the live-erase apply — flushing there would

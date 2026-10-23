@@ -4996,11 +4996,18 @@ export function PhysicsPaintStudio() {
         return;
       }
       if (!liveAlphaCanvas) return;
+      // 261023-j5b: a faithful rebake that cleared the duplicate cached base
+      // leaves the WHOLE frame on the live canvas. Merging the frame's cached
+      // base again would bake a second copy of every stroke into the cache —
+      // the phantom survives the edit and reappears on every revisit.
+      const liveCanvasWholeFrame = mutationEngine.isLiveCanvasWholeFrame();
       const capturedBase = publicationIdentity?.cachedBase ?? null;
       const capturedBaseAppFrame = capturedBase?.appFrame ?? null;
-      const cachedBase = publicationIdentity
-        ? capturedBaseAppFrame === appFrame ? capturedBase : null
-        : cachedBaseAppFrame === appFrame ? cachedRepaintBase : null;
+      const cachedBase = liveCanvasWholeFrame
+        ? null
+        : publicationIdentity
+          ? capturedBaseAppFrame === appFrame ? capturedBase : null
+          : cachedBaseAppFrame === appFrame ? cachedRepaintBase : null;
       const snapshotStartedAt = profilePerformance ? performance.now() : 0;
       const capture = rotoPersistence.captureLivePixels({
         layerId: publicationIdentity?.layerId ?? currentLaunch.layerId,
@@ -5011,7 +5018,10 @@ export function PhysicsPaintStudio() {
         cachedBase,
         // 261003-erase-uat (B): a pixel erase punches the engine's copy of the
         // cached paint — merge against that, never the original cached bytes.
-        baseCanvas: (mutationEngine as EfxPaintEngine & { getPreviewBasePaintCanvas?: () => HTMLCanvasElement | null }).getPreviewBasePaintCanvas?.() ?? null,
+        // A cleared-base visit has no duplicated base left to merge at all.
+        baseCanvas: liveCanvasWholeFrame
+          ? null
+          : (mutationEngine as EfxPaintEngine & { getPreviewBasePaintCanvas?: () => HTMLCanvasElement | null }).getPreviewBasePaintCanvas?.() ?? null,
         background: publicationIdentity?.background,
         size: { width: canvasWidth, height: canvasHeight },
         mutationId,
