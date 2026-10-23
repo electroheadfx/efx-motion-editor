@@ -1593,3 +1593,90 @@ describe('261022-ujp aquarelle capture order', () => {
     await expect(applying).resolves.toBe(true);
   });
 });
+
+// Quick 261023-cxc: Duplicate's script path dispatches a PROVIDED script (the
+// captured source key) at the current source through the shared apply seam. No
+// clipboard read, no clipboard write — the transient script lives only in the
+// duplicate sequence's closure.
+describe('261023-cxc applyProvidedScript', () => {
+  function providedScript(): RotoPaintScript {
+    return {
+      provenance: { sessionId: 'duplicate-source', layerId: 'source-layer', sourceFrame: 4 },
+      sourceFrame: 4,
+      sourceDisplayFrame: 4,
+      sourceRevision: 0,
+      brushes: [{ primary: stroke(301, 12), continuations: [] }],
+    };
+  }
+
+  it('dispatches a provided brush script at the current source and leaves the clipboard null', async () => {
+    const test = harness([stroke(1)]);
+
+    const applying = test.controller.applyProvidedScript(providedScript());
+    await flushMicrotasks(20);
+
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
+    expect(test.controller.clipboard.value).toBeNull();
+    expect(test.controller.hasCopiedScript.value).toBe(false);
+
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBe('Applied 1');
+  });
+
+  it('prepares the physical target for the current source before enqueueing', async () => {
+    const test = harness([stroke(1)]);
+    const prepareTarget = vi.fn(async (current: RotoScriptSourceSnapshot) => ({ keyId: current.keyId ?? 'prepared', appFrame: current.appFrame }));
+    test.setPrepareTarget(prepareTarget);
+
+    const applying = test.controller.applyProvidedScript(providedScript());
+    await flushMicrotasks(20);
+
+    expect(prepareTarget).toHaveBeenCalledTimes(1);
+    expect(prepareTarget).toHaveBeenCalledWith({ selectionKind: 'real-key', layerId: null, keyId: 'key-4', appFrame: 4 });
+
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(applying).resolves.toBe(true);
+  });
+
+  it('returns false for a generated-interpolation source without enqueueing', async () => {
+    const test = harness([stroke(1)]);
+    test.setSource({ selectionKind: 'generated-interpolation', layerId: null, keyId: null, appFrame: 4 });
+
+    await expect(test.controller.applyProvidedScript(providedScript())).resolves.toBe(false);
+
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+    expect(test.controller.clipboard.value).toBeNull();
+  });
+
+  it('returns false while another apply is busy', async () => {
+    const test = harness([stroke(1)]);
+
+    const first = test.controller.applyProvidedScript(providedScript());
+    await flushMicrotasks(20);
+    expect(test.controller.applying.value).toBe(true);
+
+    await expect(test.controller.applyProvidedScript(providedScript())).resolves.toBe(false);
+    expect(test.engine.enqueueRecordedStroke).toHaveBeenCalledTimes(1);
+
+    test.controller.observeCompletedMutation(test.engine, completion(100));
+    await expect(first).resolves.toBe(true);
+  });
+
+  it('returns false without enqueueing when the target cannot be prepared', async () => {
+    const test = harness([stroke(1)]);
+    test.setPrepareTarget(async () => null);
+
+    await expect(test.controller.applyProvidedScript(providedScript())).resolves.toBe(false);
+
+    expect(test.engine.enqueueRecordedStroke).not.toHaveBeenCalled();
+  });
+
+  it('exposes the live source snapshot signal', () => {
+    const test = harness();
+    expect(test.controller.source.value).toEqual({ selectionKind: 'real-key', layerId: null, keyId: 'key-4', appFrame: 4 });
+
+    test.setSource({ selectionKind: 'real-key', layerId: 'layer-2', keyId: 'key-9', appFrame: 9 });
+    expect(test.controller.source.value).toEqual({ selectionKind: 'real-key', layerId: 'layer-2', keyId: 'key-9', appFrame: 9 });
+  });
+});

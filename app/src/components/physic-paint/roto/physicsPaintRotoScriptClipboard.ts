@@ -148,6 +148,8 @@ export enum RotoScriptClipboardReplacementOutcome {
 
 export interface RotoScriptClipboardController {
   clipboard: Signal<RotoPaintScript | null>;
+  /** 261023-cxc: the live source identity the apply seam will accept. */
+  source: ReadonlySignal<RotoScriptSourceSnapshot>;
   hasCopiedScript: ReadonlySignal<boolean>;
   copiedAppFrame: ReadonlySignal<number | null>;
   copiedStrokeCount: ReadonlySignal<number>;
@@ -170,6 +172,12 @@ export interface RotoScriptClipboardController {
    *  The timeline is the script — no engine capture, so repeated deletes keep
    *  working after an Apply refresh clears the guide strokes. */
   applyAquarelleTimeline: (events: readonly AquarellePayloadEvent[]) => Promise<boolean>;
+  /**
+   * 261023-cxc: dispatch a PROVIDED script at the current source through the
+   * shared apply seam. No clipboard read and no clipboard write — the
+   * transient script lives only in the Duplicate sequence's closure.
+   */
+  applyProvidedScript: (script: RotoPaintScript) => Promise<boolean>;
   discardScript: () => void;
   observeCompletedMutation: (engine: RotoScriptEnginePort, mutation: CompletedPaintMutation) => void;
   updateEngine: (engine: RotoScriptEnginePort | null) => void;
@@ -880,6 +888,35 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
   }
 
   /**
+   * 261023-cxc: Duplicate's script path. Apply a script captured from the
+   * SOURCE key at the CURRENT source (the promoted duplicate destination).
+   * Same ownership and dispatch as `applyCurrentScript`, but no clipboard
+   * read, no clipboard write, and no engine capture — the transient script
+   * lives only in the duplicate sequence's closure.
+   */
+  async function applyProvidedScript(script: RotoPaintScript): Promise<boolean> {
+    if (disposed || disposalRequested) return false;
+    const engine = engineState.peek();
+    if (!engine) return false;
+    const source = sourceState.peek();
+    if (source.selectionKind === 'generated-interpolation') return false;
+    if (busy.peek()) return false;
+    // A zero-brush engine-1 dispatch would open an operation no completion can
+    // settle (it would latch `busy` forever). The aquarelle branch is the one
+    // legal empty-brush dispatch.
+    const usesAquarelle = Boolean(
+      script.aquarelleEvents
+      && script.aquarelleEvents.length > 0
+      && ports.applyAquarelleEvents,
+    );
+    if (!usesAquarelle && script.brushes.length === 0) return false;
+    error.value = null;
+    // dispatchApply owns endOperation on every exit.
+    beginOperation(engine);
+    return dispatchApply(script, source, engine);
+  }
+
+  /**
    * 261022-pim: the ONE shared Apply dispatch. Apply Script (clipboard) and
    * Apply Current Script (live capture after a delete) both land here, so the
    * bake, the progress pill, publication and display reconcile cannot drift.
@@ -1178,6 +1215,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
 
   return {
     clipboard,
+    source: sourceState,
     hasCopiedScript,
     copiedAppFrame,
     copiedStrokeCount,
@@ -1196,6 +1234,7 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     applyScript,
     applyCurrentScript,
     applyAquarelleTimeline,
+    applyProvidedScript,
     discardScript,
     observeCompletedMutation,
     updateEngine,

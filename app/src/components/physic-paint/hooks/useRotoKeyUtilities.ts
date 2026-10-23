@@ -49,7 +49,16 @@ export interface RotoKeyUtilitiesInput {
    * afterwards either way.
    */
   bakeRotoKeyPaint?: (paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => Promise<boolean>;
+  /**
+   * Quick 261023-cxc: the script-aware Duplicate port. `handled` means the new
+   * key already exists, is selected, and carries the source script;
+   * `fallback` runs the 261023-bxm settle-then-clone in the same click;
+   * `aborted` means the sequence already published its own error.
+   */
+  duplicateWithScript?: (input: { sourceKeyId: string; sourceAppFrame: number }) => Promise<RotoDuplicateWithScriptOutcome>;
 }
+
+export type RotoDuplicateWithScriptOutcome = 'handled' | 'fallback' | 'aborted';
 
 export interface RotoKeyUtilities {
   session: RotoSession;
@@ -69,6 +78,11 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
   const [keyActionInFlight, setKeyActionInFlight] = useState(false);
   const [sessionVersion, setSessionVersion] = useState(0);
   const copiedKeyRef = useRef<RotoSessionCopiedKeyValue | null>(null);
+  // 261023-cxc: Duplicate's script sequence spans awaits, so the in-flight
+  // gate must be readable synchronously by a second click in the same tick —
+  // the state boolean only lands on the next render. Kept in lockstep with
+  // setKeyActionInFlight on every entry/exit.
+  const keyActionInFlightRef = useRef(false);
 
   const session = useMemo(() => createRotoSession({
     currentFrame: input.currentFrame,
@@ -173,19 +187,14 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
 
   const blocked = keyActionInFlight || input.flushInFlight || input.applyStatus === 'applying';
 
-  // Duplicate (quick 261023-bxm): settle the SOURCE key's displayed paint first
-  // when its record carries no inline bytes (a script's live result, an
-  // unfinished settle, a dirty preview), then clone it. This is the + Key law
-  // applied to Duplicate: displayed bytes win, a source with no resolvable
-  // paint fails closed instead of producing a blank duplicate. A record that
-  // already carries bytes takes today's path with no extra write.
-  const duplicateKey = useCallback(() => {
-    if (blocked || !requireCurrentRealKey()) return;
-    const sourceKeyId = input.currentKeyId;
-    if (!sourceKeyId) {
-      input.setApplyMessage('The selected Roto key is no longer available.');
-      return;
-    }
+  // Duplicate's raster path (quick 261023-bxm): settle the SOURCE key's
+  // displayed paint first when its record carries no inline bytes (a script's
+  // live result, an unfinished settle, a dirty preview), then clone it. This
+  // is the + Key law applied to Duplicate: displayed bytes win, a source with
+  // no resolvable paint fails closed instead of producing a blank duplicate. A
+  // record that already carries bytes takes today's path with no extra write.
+  // Factored (261023-cxc) so the script path can run it as its fallback.
+  const runSettleThenClone = useCallback(async (sourceKeyId: string): Promise<void> => {
     const sourceRecord = input.getRotoKeyRecords().find((record) => record.keyId === sourceKeyId) ?? null;
     const resolution = sourceRecord
       ? resolveRotoDuplicateSourcePaint({
@@ -200,51 +209,67 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
       return;
     }
     if (resolution.kind === 'ready') {
-      setKeyActionInFlight(true);
-      void input.physicalKeyUtilities.duplicateKey(sourceKeyId).catch((error) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        input.setApplyStatus('error');
-        input.setApplyMessage('Could not duplicate the Roto key.');
-        input.setLastError(detail);
-      }).finally(() => {
-        setKeyActionInFlight(false);
-      });
+      await input.physicalKeyUtilities.duplicateKey(sourceKeyId);
       return;
     }
     const paint = resolution.paint;
+    if (input.bakeRotoKeyPaint) {
+      await input.bakeRotoKeyPaint({
+        keyId: sourceKeyId,
+        appFrame: sourceRecord.appFrame,
+        bytes: paint.bytes,
+        ...(paint.width !== undefined ? { width: paint.width } : {}),
+        ...(paint.height !== undefined ? { height: paint.height } : {}),
+      });
+    }
+    // A `false` settlement can still have landed the pixels (a stale boolean
+    // is not proof of failure) — the record is the truth. Only a re-read that
+    // still lacks bytes fails closed.
+    const settled = input.getRotoKeyRecords().find((record) => record.keyId === sourceKeyId) ?? null;
+    if (!settled || resolveRotoDuplicateSourcePaint({ record: settled, displayed: null }).kind !== 'ready') {
+      input.setApplyStatus('error');
+      input.setApplyMessage(`Could not duplicate the Roto key — ${ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR}.`);
+      input.setLastError(ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR);
+      return;
+    }
+    await input.physicalKeyUtilities.duplicateKey(sourceKeyId);
+  }, [input]);
+
+  // Duplicate (quick 261023-cxc): when the source key carries a script and the
+  // next frame is a free cell, the Studio port copies the script onto the
+  // promoted blank key (the duplicate is immediately editable). Anything else
+  // falls back to the unchanged 261023-bxm settle-then-clone in the same
+  // click; a post-navigation abort runs neither — the port already published
+  // its explicit message.
+  const duplicateKey = useCallback(() => {
+    if (blocked || keyActionInFlightRef.current || !requireCurrentRealKey()) return;
+    const sourceKeyId = input.currentKeyId;
+    if (!sourceKeyId) {
+      input.setApplyMessage('The selected Roto key is no longer available.');
+      return;
+    }
+    const sourceAppFrame = input.currentFrame;
+    keyActionInFlightRef.current = true;
     setKeyActionInFlight(true);
     void (async () => {
       try {
-        if (input.bakeRotoKeyPaint) {
-          await input.bakeRotoKeyPaint({
-            keyId: sourceKeyId,
-            appFrame: sourceRecord.appFrame,
-            bytes: paint.bytes,
-            ...(paint.width !== undefined ? { width: paint.width } : {}),
-            ...(paint.height !== undefined ? { height: paint.height } : {}),
-          });
-        }
-        // A `false` settlement can still have landed the pixels (a stale
-        // boolean is not proof of failure) — the record is the truth. Only a
-        // re-read that still lacks bytes fails closed.
-        const settled = input.getRotoKeyRecords().find((record) => record.keyId === sourceKeyId) ?? null;
-        if (!settled || resolveRotoDuplicateSourcePaint({ record: settled, displayed: null }).kind !== 'ready') {
-          input.setApplyStatus('error');
-          input.setApplyMessage(`Could not duplicate the Roto key — ${ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR}.`);
-          input.setLastError(ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR);
+        if (input.duplicateWithScript) {
+          const outcome = await input.duplicateWithScript({ sourceKeyId, sourceAppFrame });
+          if (outcome === 'fallback') await runSettleThenClone(sourceKeyId);
           return;
         }
-        await input.physicalKeyUtilities.duplicateKey(sourceKeyId);
+        await runSettleThenClone(sourceKeyId);
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         input.setApplyStatus('error');
         input.setApplyMessage('Could not duplicate the Roto key.');
         input.setLastError(detail);
       } finally {
+        keyActionInFlightRef.current = false;
         setKeyActionInFlight(false);
       }
     })();
-  }, [blocked, input, requireCurrentRealKey]);
+  }, [blocked, input, requireCurrentRealKey, runSettleThenClone]);
 
   // Shared copy-side selection resolution (quick 260731-9l0): publishes its
   // own failure messages and returns null when it already messaged; otherwise

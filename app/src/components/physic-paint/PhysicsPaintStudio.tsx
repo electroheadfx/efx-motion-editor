@@ -137,7 +137,8 @@ import {
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
-import type { RotoScriptPhysicalTarget, RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
+import { normalizeLogicalBrushes, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
+import { runRotoDuplicateWithScript, waitForRotoDuplicateSourceFrame } from './roto/physicsPaintRotoDuplicateScript';
 import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
 import { buildReplayProposal, snapshotRevision, useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
@@ -181,6 +182,7 @@ import {
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
+import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import './physicsPaintStudio.css';
 const DEFAULT_ONION_STATE: Omit<PhysicsPaintOnionState, 'opacity'> = { enabled: false, previous: true, next: false, count: 1 };
 type ApplyStatus = 'idle' | 'applying' | 'success' | 'error';
@@ -1088,6 +1090,11 @@ export function PhysicsPaintStudio() {
   const resetRotoNavigationForLaunchRef = useRef<(settings: PhysicPaintRotoPlaybackSettings) => void>(() => {});
   const acceptRotoScriptBrushRef = useRef<() => void>(() => {});
   const prepareRotoScriptTargetRef = useRef<(source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>>(async () => null);
+  // Quick 261023-cxc: Duplicate's script path navigates through the SAME
+  // coordinator every other navigation uses. The keyUtilities literal is an
+  // ARGUMENT to that coordinator call, so it cannot reference the returned
+  // requestNavigation — the port is late-bound here right after the call.
+  const requestDuplicateNavigationRef = useRef<(frame: number) => Promise<boolean>>(async () => false);
   const promoteRotoPaintTargetRef = useRef<(source: {
     appFrame: number;
     selectionKind: 'real-key' | 'generated-interpolation' | 'empty';
@@ -2523,6 +2530,85 @@ export function PhysicsPaintStudio() {
           keyId,
         );
       },
+      // Quick 261023-cxc: the script-aware Duplicate. Only a REAL source key
+      // whose next cell is EMPTY and inside capacity is eligible — the script
+      // then paints the BLANK key promoteRotoPaintTargetRef creates, so no
+      // raster clone is ever involved and Move/Select can edit the duplicate.
+      // Everything else returns `fallback` and the hook runs the unchanged
+      // 261023-bxm settle-then-clone in the same click.
+      duplicateWithScript: async ({ sourceKeyId, sourceAppFrame }) => {
+        const outcome = await runRotoDuplicateWithScript(
+          { sourceKeyId, sourceAppFrame },
+          {
+            getSource: () => {
+              const source = rotoScript.source.peek();
+              return source.selectionKind === 'real-key' && source.keyId !== null
+                ? { keyId: source.keyId, appFrame: source.appFrame }
+                : null;
+            },
+            getDestination: (destinationFrame) => {
+              const launch = launchContextRef.current;
+              if (!launch) return 'out-of-capacity';
+              const kind = physicPaintStore
+                .getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())
+                ?.cells[destinationFrame]?.kind;
+              return kind === 'real' || kind === 'generated' || kind === 'empty'
+                ? kind
+                : 'out-of-capacity';
+            },
+            getCapacity: () => {
+              const launch = launchContextRef.current;
+              return launch ? physicPaintStore.getRotoPhysicalCapacity(launch.layerId, studioActiveTrackId()) : 0;
+            },
+            getModule: () => (activeModule.peek() === 'watercolor' ? 'watercolor' : 'brush'),
+            getBrushStrokeCount: () => engineRef.current?.getStrokeCount() ?? 0,
+            getAquarelleStrokeEventCount: (appFrame) => {
+              let count = 0;
+              for (const event of getAquarelleEventsForFrame(appFrame)) {
+                if (!isAquarelleDryEvent(event)) count += 1;
+              }
+              return count;
+            },
+            captureBrushScript: () => {
+              const engine = engineRef.current;
+              if (!engine) return null;
+              // normalizeLogicalBrushes is the SAME engine-strokes projection
+              // every script capture uses (clones points/params, groups
+              // continuations) — the duplicate starts from the authored script.
+              const brushes = normalizeLogicalBrushes(engine.getStrokes());
+              if (brushes.length === 0) return null;
+              const launch = launchContextRef.current;
+              return {
+                provenance: {
+                  sessionId: `roto-duplicate-${launch?.operationId ?? 'unlaunched'}`,
+                  layerId: launch?.layerId ?? 'unmounted-layer',
+                  sourceFrame: sourceAppFrame,
+                },
+                sourceFrame: sourceAppFrame,
+                sourceDisplayFrame: sourceAppFrame,
+                sourceRevision: 0,
+                brushes,
+              };
+            },
+            getAquarelleEvents: (appFrame) => getAquarelleEventsForFrame(appFrame),
+            navigateTo: (frame) => requestDuplicateNavigationRef.current(frame),
+            waitForSourceFrame: (frame) => waitForRotoDuplicateSourceFrame(rotoScript.source, {
+              originFrame: sourceAppFrame,
+              targetFrame: frame,
+            }),
+            applyBrushScript: (script) => rotoScript.applyProvidedScript(script),
+            applyAquarelleEvents: (events) => rotoScript.applyAquarelleTimeline(events),
+            // Task 2 fills the watercolor record copy.
+            recordAquarelleScriptCopy: async () => false,
+          },
+        );
+        if (outcome.outcome === 'aborted') {
+          setApplyStatus('error');
+          setApplyMessage(outcome.message);
+          setLastError(outcome.message);
+        }
+        return outcome.outcome;
+      },
     },
     playback: {
       initialSettings: initialRotoPlaybackSettings,
@@ -2548,6 +2634,9 @@ export function PhysicsPaintStudio() {
       setIsPlaying: handleRotoPlaybackPlaying,
     },
   });
+  // Quick 261023-cxc: late-bind the Duplicate navigation port (the literal
+  // above is an argument to the call, so it cannot reference the return).
+  requestDuplicateNavigationRef.current = rotoNavigation.requestNavigation;
   const rotoKeyUtilities = rotoNavigation.keyUtilities;
   const rotoSession = rotoKeyUtilities.session;
   const addRotoKey = rotoKeyUtilities.addKey;
