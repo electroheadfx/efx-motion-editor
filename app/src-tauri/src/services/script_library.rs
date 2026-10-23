@@ -284,6 +284,15 @@ impl ScriptLibraryState {
         canonical_saved_project_root(&active.root)
     }
 
+    /// quick-261023-o3n: exchange an opaque capability for the canonical saved
+    /// project root. The Studio script snapshot commands use this to select the
+    /// `.mce` package root without the renderer ever naming a path. A stale or
+    /// absent binding is an error — never a guessed path, and the caller maps
+    /// it to `refused` without surfacing the message.
+    pub fn resolve_authority_root(&self, authority: &str) -> Result<PathBuf, String> {
+        self.resolve(authority)
+    }
+
     pub fn validate_active_root(&self, root: &Path) -> Result<(), String> {
         let requested = canonical_saved_project_root(root)?;
         let active = self

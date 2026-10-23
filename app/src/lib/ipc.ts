@@ -638,13 +638,14 @@ export async function ipcEfxPaintReadFrameMedia(
   }
 }
 
-// --- Studio script snapshot cache commands (quick-261023-l35) ---
+// --- Studio script snapshot commands (quick-261023-l35, package leg o3n) ---
 
 /**
  * The snapshot store's failure taxonomy. `missing` is the silent no-op first
  * session (never reported), `refused` is a rule violation (bad key, oversized
- * or irregular file) and `io` covers every other failure. The Rust side
- * serializes one fixed label string, exactly like `EfxPaintMediaError`.
+ * or irregular file, stale capability) and `io` covers every other failure.
+ * The Rust side serializes one fixed label string, exactly like
+ * `EfxPaintMediaError`.
  */
 export type StudioScriptSnapshotFailure = { kind: 'missing' | 'refused' | 'io' };
 
@@ -661,21 +662,25 @@ function studioScriptSnapshotFailureFrom(error: unknown): StudioScriptSnapshotFa
 }
 
 /**
- * Write one key's Studio script snapshot below `<app_data_dir>/studio-script-
- * snapshots/`. The bytes cross as the raw invoke body — never a JSON number
- * array — and the renderer never names a filesystem path.
+ * Write one key's Studio script snapshot. The `authority` is the OPAQUE
+ * `scriptLibraryAuthority` capability — never a package path. When present and
+ * live, Rust resolves it to the canonical `.mce` package root and writes
+ * `<package>/scripts/<layerId>/<trackId>-v1.snap`; when absent (unsaved
+ * project) it writes the app-cache leg. A stale capability is refused. The
+ * bytes cross as the raw invoke body — never a JSON number array.
  */
 export async function ipcStudioScriptSnapshotWrite(
   projectId: string,
   layerId: string,
   trackId: string,
   bytes: Uint8Array,
+  authority?: string | null,
 ): Promise<Result<{ byteLength: number; digest: string }, StudioScriptSnapshotFailure>> {
   try {
     const data = await invoke<{ byteLength: number; digest: string }>(
       'studio_script_snapshot_write',
       bytes,
-      { headers: { projectId, layerId, trackId } },
+      { headers: { projectId, layerId, trackId, ...(authority ? { authority } : {}) } },
     );
     return { ok: true, data };
   } catch (error) {
@@ -684,20 +689,23 @@ export async function ipcStudioScriptSnapshotWrite(
 }
 
 /**
- * Read one key's Studio script snapshot back. The Rust side answers base64 (a
- * raw response body degrades to a JSON number array on macOS), decoded here to
- * a `Uint8Array`.
+ * Read one key's Studio script snapshot back. Rust reads the package copy
+ * first when the capability resolves and falls back to the app cache ONLY when
+ * the package copy is missing. The Rust side answers base64 (a raw response
+ * body degrades to a JSON number array on macOS), decoded here to a
+ * `Uint8Array`.
  */
 export async function ipcStudioScriptSnapshotRead(
   projectId: string,
   layerId: string,
   trackId: string,
+  authority?: string | null,
 ): Promise<Result<{ bytes: Uint8Array; digest: string; byteLength: number }, StudioScriptSnapshotFailure>> {
   try {
     const data = await invoke<{ bytesBase64: string; byteLength: number; digest: string }>(
       'studio_script_snapshot_read',
       undefined,
-      { headers: { projectId, layerId, trackId } },
+      { headers: { projectId, layerId, trackId, ...(authority ? { authority } : {}) } },
     );
     return {
       ok: true,

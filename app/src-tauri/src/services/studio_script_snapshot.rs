@@ -1,20 +1,38 @@
-//! quick-261023-l35: the Studio script snapshot DISK CACHE.
+//! quick-261023-l35: the Studio script snapshot service.
+//! quick-261023-o3n: the snapshot now lives INSIDE the `.mce` package when the
+//! project is saved, so the script travels with the project instead of dying
+//! with the machine's app-data cache.
 //!
 //! The Studio's script stores (watercolor timeline + per-frame brush groups)
 //! are session-scoped module state; closing the Studio destroys the webview
-//! realm and their content with it. This service persists the encoded snapshot
-//! as an app-managed machine cache — never part of the `.mce` package, never
-//! touched by the renderer.
+//! realm and their content with it. This service persists the encoded snapshot.
+//! The renderer never touches a filesystem path: it sends an opaque
+//! `scriptLibraryAuthority` token that the command exchanges for the canonical
+//! package root inside Rust.
 //!
-//! PATH LAW (T-261023-l35-01):
+//! PACKAGE PATH LAW (T-261023-o3n-01):
+//!   `<package>/scripts/<layerId>/<trackId>-v1.snap`
+//! One folder per layer, one file per track, version in the file name AND in
+//! the unchanged SNAP v1 header.
+//!
+//! CACHE PATH LAW (l35 — the unsaved-project / fallback leg):
 //!   `<app_data_dir>/studio-script-snapshots/<projectId>/<layerId>/<trackId>-v1.snap`
 //!
-//! The root is resolved ONCE in the command from `app.path().app_data_dir()`;
-//! this service takes it as an argument so it is unit-testable against a temp
-//! directory. Every key component is validated BEFORE any `join`: 1..=128
-//! bytes, every byte in `[A-Za-z0-9._-]`, and no leading dot (which also rules
-//! out `.` and `..`). A refused component returns `Refused` before a syscall,
-//! so a crafted renderer value can never escape the root.
+//! RESTORE PRECEDENCE (T-261023-o3n-03): when an authority resolves, the
+//! package copy is read FIRST. The cache is consulted ONLY when the package
+//! file is `Missing` (the l35 migration path for projects written before this
+//! quick). A package copy that is corrupt, foreign or a newer version is
+//! terminal: falling back to the cache there could resurrect a STALE script
+//! that the package copy superseded, so it never happens.
+//!
+//! WRITE TARGET: never dual-write. A bound authority writes only the package;
+//! no authority writes only the cache. A stale or unresolvable authority is
+//! refused on both legs by the command — the code never guesses a path.
+//!
+//! Every key component is validated BEFORE any `join`: 1..=128 bytes, every
+//! byte in `[A-Za-z0-9._-]`, and no leading dot (which also rules out `.` and
+//! `..`). A refused component returns `Refused` before a syscall, so a crafted
+//! renderer value can never escape the root.
 //!
 //! WRITE is atomic: a sibling temp file in the destination directory, then a
 //! rename over the target (mirrors `atomic_write_bytes` in `script_library.rs`
@@ -105,6 +123,11 @@ pub fn snapshot_root(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join(STUDIO_SCRIPT_SNAPSHOT_ROOT_DIR)
 }
 
+/// The one file name both roots share: `<trackId>-v1.snap`.
+fn snapshot_file_name(track_id: &str) -> String {
+    format!("{track_id}-v{STUDIO_SCRIPT_SNAPSHOT_FORMAT_VERSION}.{SNAPSHOT_EXTENSION}")
+}
+
 /// The key law (T-261023-l35-01). One component at a time; never join an
 /// unvalidated string.
 pub fn validate_snapshot_key_component(value: &str) -> Result<(), StudioScriptSnapshotError> {
@@ -138,21 +161,36 @@ pub fn resolve_snapshot_path(
     Ok(root
         .join(project_id)
         .join(layer_id)
-        .join(format!(
-            "{track_id}-v{STUDIO_SCRIPT_SNAPSHOT_FORMAT_VERSION}.{SNAPSHOT_EXTENSION}"
-        )))
+        .join(snapshot_file_name(track_id)))
 }
 
-/// Atomic snapshot write: create the key directories, write a sibling temp,
-/// fsync it, rename it over the target, then fsync the directory.
-pub fn write_snapshot(
-    root: &Path,
-    project_id: &str,
+/// Resolve one snapshot path below the `.mce` package's `scripts/` tree.
+///
+/// The package root comes ONLY from `ScriptLibraryState::resolve_authority_root`
+/// (canonicalized Rust-side) — never from the renderer. Layer and track are
+/// validated with the same key law before any join, so a crafted value can
+/// never escape the package. The project id is NOT part of the package path:
+/// the package IS the project.
+pub fn resolve_package_snapshot_path(
+    package_root: &Path,
     layer_id: &str,
     track_id: &str,
+) -> Result<PathBuf, StudioScriptSnapshotError> {
+    validate_snapshot_key_component(layer_id)?;
+    validate_snapshot_key_component(track_id)?;
+    Ok(package_root
+        .join("scripts")
+        .join(layer_id)
+        .join(snapshot_file_name(track_id)))
+}
+
+/// Atomic snapshot write at an ALREADY-RESOLVED target: create the key
+/// directories, write a sibling temp, fsync it, rename it over the target,
+/// then fsync the directory.
+fn write_snapshot_at(
+    target: &Path,
     bytes: &[u8],
 ) -> Result<SnapshotWriteResult, StudioScriptSnapshotError> {
-    let target = resolve_snapshot_path(root, project_id, layer_id, track_id)?;
     if bytes.len() as u64 > STUDIO_SCRIPT_SNAPSHOT_MAX_BYTES {
         return Err(StudioScriptSnapshotError::Refused);
     }
@@ -176,7 +214,7 @@ pub fn write_snapshot(
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
-        fs::rename(&temp_path, &target)?;
+        fs::rename(&temp_path, target)?;
         Ok(())
     })();
     if let Err(error) = result {
@@ -195,16 +233,11 @@ pub fn write_snapshot(
     })
 }
 
-/// Guarded snapshot read. An absent leaf is `Missing` (silent no-op); an
-/// oversized or irregular leaf is `Refused` BEFORE any read.
-pub fn read_snapshot(
-    root: &Path,
-    project_id: &str,
-    layer_id: &str,
-    track_id: &str,
-) -> Result<SnapshotReadResult, StudioScriptSnapshotError> {
-    let target = resolve_snapshot_path(root, project_id, layer_id, track_id)?;
-    let metadata = match fs::metadata(&target) {
+/// Guarded snapshot read at an ALREADY-RESOLVED target. An absent leaf is
+/// `Missing` (silent no-op); an oversized or irregular leaf is `Refused`
+/// BEFORE any read.
+fn read_snapshot_at(target: &Path) -> Result<SnapshotReadResult, StudioScriptSnapshotError> {
+    let metadata = match fs::metadata(target) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(StudioScriptSnapshotError::Missing);
@@ -218,7 +251,7 @@ pub fn read_snapshot(
     if !metadata.is_file() || metadata.len() > STUDIO_SCRIPT_SNAPSHOT_MAX_BYTES {
         return Err(StudioScriptSnapshotError::Refused);
     }
-    let bytes = fs::read(&target).map_err(|error| {
+    let bytes = fs::read(target).map_err(|error| {
         io_error(format!("Could not read the studio script snapshot: {error}"))
     })?;
     // The digest is computed from the bytes actually read, never from a
@@ -228,6 +261,120 @@ pub fn read_snapshot(
         digest: digest_bytes(&bytes),
         bytes,
     })
+}
+
+/// Cache-leg write (unchanged l35 behaviour, thin wrapper over the shared
+/// atomic writer).
+pub fn write_snapshot(
+    root: &Path,
+    project_id: &str,
+    layer_id: &str,
+    track_id: &str,
+    bytes: &[u8],
+) -> Result<SnapshotWriteResult, StudioScriptSnapshotError> {
+    let target = resolve_snapshot_path(root, project_id, layer_id, track_id)?;
+    write_snapshot_at(&target, bytes)
+}
+
+/// Cache-leg read (unchanged l35 behaviour, thin wrapper over the shared
+/// guarded reader).
+pub fn read_snapshot(
+    root: &Path,
+    project_id: &str,
+    layer_id: &str,
+    track_id: &str,
+) -> Result<SnapshotReadResult, StudioScriptSnapshotError> {
+    let target = resolve_snapshot_path(root, project_id, layer_id, track_id)?;
+    read_snapshot_at(&target)
+}
+
+/// Package-leg write: `<package>/scripts/<layerId>/<trackId>-v1.snap`.
+pub fn write_package_snapshot(
+    package_root: &Path,
+    layer_id: &str,
+    track_id: &str,
+    bytes: &[u8],
+) -> Result<SnapshotWriteResult, StudioScriptSnapshotError> {
+    let target = resolve_package_snapshot_path(package_root, layer_id, track_id)?;
+    write_snapshot_at(&target, bytes)
+}
+
+/// Package-leg read: `<package>/scripts/<layerId>/<trackId>-v1.snap`.
+pub fn read_package_snapshot(
+    package_root: &Path,
+    layer_id: &str,
+    track_id: &str,
+) -> Result<SnapshotReadResult, StudioScriptSnapshotError> {
+    let target = resolve_package_snapshot_path(package_root, layer_id, track_id)?;
+    read_snapshot_at(&target)
+}
+
+/// Which root a restore consumed. Recorded so the precedence law is explicit
+/// and testable; the wire never carries it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnapshotSource {
+    /// `<package>/scripts/<layerId>/<trackId>-v1.snap`
+    Package,
+    /// `<app_data_dir>/studio-script-snapshots/<projectId>/...` (l35 cache)
+    Cache,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SnapshotReadOutcome {
+    pub source: SnapshotSource,
+    pub snapshot: SnapshotReadResult,
+}
+
+/// Read with the package-first precedence law (T-261023-o3n-03).
+///
+/// With a package root: read the package copy; ONLY a `Missing` package file
+/// falls through to the cache (the l35 migration path). A `Refused` or `Io`
+/// package read is terminal — a corrupt, foreign or newer-version package copy
+/// must never cause the possibly older cache to be consumed. Without a package
+/// root (unsaved project) the cache is the only leg.
+pub fn read_snapshot_preferring_package(
+    cache_root: &Path,
+    package_root: Option<&Path>,
+    project_id: &str,
+    layer_id: &str,
+    track_id: &str,
+) -> Result<SnapshotReadOutcome, StudioScriptSnapshotError> {
+    if let Some(package_root) = package_root {
+        let target = resolve_package_snapshot_path(package_root, layer_id, track_id)?;
+        match read_snapshot_at(&target) {
+            Ok(snapshot) => {
+                return Ok(SnapshotReadOutcome {
+                    source: SnapshotSource::Package,
+                    snapshot,
+                })
+            }
+            Err(StudioScriptSnapshotError::Missing) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    let snapshot = read_snapshot(cache_root, project_id, layer_id, track_id)?;
+    Ok(SnapshotReadOutcome {
+        source: SnapshotSource::Cache,
+        snapshot,
+    })
+}
+
+/// Write with the never-dual-write law: a bound package root receives the
+/// snapshot and the cache is untouched; with no authority the cache is the
+/// only destination. A failed package write is NEVER silently redirected to
+/// the cache.
+pub fn write_snapshot_preferring_package(
+    cache_root: &Path,
+    package_root: Option<&Path>,
+    project_id: &str,
+    layer_id: &str,
+    track_id: &str,
+    bytes: &[u8],
+) -> Result<SnapshotWriteResult, StudioScriptSnapshotError> {
+    match package_root {
+        Some(package_root) => write_package_snapshot(package_root, layer_id, track_id, bytes),
+        None => write_snapshot(cache_root, project_id, layer_id, track_id, bytes),
+    }
 }
 
 #[cfg(test)]
@@ -353,6 +500,237 @@ mod tests {
             read_snapshot(&root, "project-1", "layer-1", "track-1").unwrap_err(),
             StudioScriptSnapshotError::Refused
         );
+        fs::remove_dir_all(root).expect("fixture cleanup");
+    }
+
+    // --- quick-261023-o3n: the package leg -----------------------------------
+
+    #[test]
+    fn package_path_is_scripts_layer_track_v1_snap() {
+        let package_root = fixture_root("package-layout");
+        let path = resolve_package_snapshot_path(&package_root, "layer-1", "track-1")
+            .expect("valid key");
+        assert_eq!(
+            path,
+            package_root
+                .join("scripts")
+                .join("layer-1")
+                .join("track-1-v1.snap")
+        );
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn package_path_refuses_invalid_components_before_any_join() {
+        let package_root = fixture_root("package-key-law");
+        for crafted in [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "a/b",
+            "a\\b",
+            "a\0b",
+            " leading",
+            "accents-é",
+            &"x".repeat(KEY_COMPONENT_MAX_BYTES + 1),
+        ] {
+            assert_eq!(
+                resolve_package_snapshot_path(&package_root, crafted, "track-1").unwrap_err(),
+                StudioScriptSnapshotError::Refused,
+                "expected layer refusal: {crafted:?}"
+            );
+            assert_eq!(
+                resolve_package_snapshot_path(&package_root, "layer-1", crafted).unwrap_err(),
+                StudioScriptSnapshotError::Refused,
+                "expected track refusal: {crafted:?}"
+            );
+        }
+        // Nothing was joined, so nothing was created.
+        assert!(!package_root.join("scripts").exists());
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn package_write_then_read_round_trips_and_leaves_no_temp_sibling() {
+        let package_root = fixture_root("package-round-trip");
+        let bytes = b"SNP1package-fixture-snapshot-body";
+        let write = write_package_snapshot(&package_root, "layer-1", "track-1", bytes)
+            .expect("package write");
+        assert_eq!(write.byte_length, bytes.len() as u64);
+        assert_eq!(write.digest, digest_bytes(bytes));
+
+        let read = read_package_snapshot(&package_root, "layer-1", "track-1")
+            .expect("package read");
+        assert_eq!(read.bytes, bytes);
+        assert_eq!(read.digest, write.digest);
+
+        let entries: Vec<String> = fs::read_dir(package_root.join("scripts/layer-1"))
+            .expect("package snapshot directory")
+            .map(|entry| entry.expect("entry").file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(entries, vec!["track-1-v1.snap".to_string()]);
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn a_second_package_write_replaces_the_snapshot_atomically() {
+        let package_root = fixture_root("package-replace");
+        write_package_snapshot(&package_root, "layer-1", "track-1", b"first")
+            .expect("initial package write");
+        write_package_snapshot(&package_root, "layer-1", "track-1", b"second")
+            .expect("replacement package write");
+        let read = read_package_snapshot(&package_root, "layer-1", "track-1")
+            .expect("package read");
+        assert_eq!(read.bytes, b"second");
+        let entries = fs::read_dir(package_root.join("scripts/layer-1"))
+            .expect("package snapshot directory")
+            .count();
+        assert_eq!(entries, 1);
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn prefers_the_package_copy_when_both_exist() {
+        let cache_root = fixture_root("prefer-cache");
+        let package_root = fixture_root("prefer-package");
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-1", b"cache-bytes")
+            .expect("cache write");
+        write_package_snapshot(&package_root, "layer-1", "track-1", b"package-bytes")
+            .expect("package write");
+
+        let outcome = read_snapshot_preferring_package(
+            &cache_root,
+            Some(&package_root),
+            "project-1",
+            "layer-1",
+            "track-1",
+        )
+        .expect("preferring read");
+        assert_eq!(outcome.source, SnapshotSource::Package);
+        assert_eq!(outcome.snapshot.bytes, b"package-bytes");
+
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn falls_back_to_the_cache_only_when_the_package_copy_is_missing() {
+        let cache_root = fixture_root("fallback-cache");
+        let package_root = fixture_root("fallback-package");
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-1", b"cache-bytes")
+            .expect("cache write");
+
+        let outcome = read_snapshot_preferring_package(
+            &cache_root,
+            Some(&package_root),
+            "project-1",
+            "layer-1",
+            "track-1",
+        )
+        .expect("fallback read");
+        assert_eq!(outcome.source, SnapshotSource::Cache);
+        assert_eq!(outcome.snapshot.bytes, b"cache-bytes");
+
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn an_oversized_package_copy_is_refused_without_consuming_the_cache() {
+        let cache_root = fixture_root("oversized-package-cache");
+        let package_root = fixture_root("oversized-package");
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-1", b"cache-bytes")
+            .expect("cache write");
+        let target = resolve_package_snapshot_path(&package_root, "layer-1", "track-1")
+            .expect("valid key");
+        fs::create_dir_all(target.parent().expect("parent")).expect("package directory");
+        let file = File::create(&target).expect("oversized package file");
+        file.set_len(STUDIO_SCRIPT_SNAPSHOT_MAX_BYTES + 1)
+            .expect("set length");
+        drop(file);
+
+        assert_eq!(
+            read_snapshot_preferring_package(
+                &cache_root,
+                Some(&package_root),
+                "project-1",
+                "layer-1",
+                "track-1",
+            )
+            .unwrap_err(),
+            StudioScriptSnapshotError::Refused
+        );
+
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn writes_only_the_package_when_bound_and_only_the_cache_when_absent() {
+        let cache_root = fixture_root("target-cache");
+        let package_root = fixture_root("target-package");
+
+        write_snapshot_preferring_package(
+            &cache_root,
+            Some(&package_root),
+            "project-1",
+            "layer-1",
+            "track-1",
+            b"package-bytes",
+        )
+        .expect("package-bound write");
+        assert_eq!(
+            read_package_snapshot(&package_root, "layer-1", "track-1")
+                .expect("package read")
+                .bytes,
+            b"package-bytes"
+        );
+        assert_eq!(
+            read_snapshot(&cache_root, "project-1", "layer-1", "track-1").unwrap_err(),
+            StudioScriptSnapshotError::Missing
+        );
+
+        write_snapshot_preferring_package(
+            &cache_root,
+            None,
+            "project-1",
+            "layer-1",
+            "track-1",
+            b"cache-bytes",
+        )
+        .expect("cache-only write");
+        assert_eq!(
+            read_snapshot(&cache_root, "project-1", "layer-1", "track-1")
+                .expect("cache read")
+                .bytes,
+            b"cache-bytes"
+        );
+        assert_eq!(
+            read_package_snapshot(&package_root, "layer-1", "track-1")
+                .expect("package read")
+                .bytes,
+            b"package-bytes"
+        );
+
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn authority_root_resolves_only_the_bound_capability() {
+        let root = fixture_root("authority");
+        let state = crate::services::script_library::ScriptLibraryState::default();
+        let authority = state.bind(&root).expect("bind");
+        assert_eq!(
+            state
+                .resolve_authority_root(&authority)
+                .expect("authority root"),
+            fs::canonicalize(&root).expect("canonical fixture root")
+        );
+        assert!(state.resolve_authority_root("unknown-token").is_err());
+        state.clear().expect("clear");
+        assert!(state.resolve_authority_root(&authority).is_err());
         fs::remove_dir_all(root).expect("fixture cleanup");
     }
 }
