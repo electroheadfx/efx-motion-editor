@@ -178,17 +178,25 @@ Docs artifacts (this SUMMARY, PLAN.md, deferred-items.md) are left uncommitted f
 
 None beyond the planned register. T-261023-ors-01..06 are mitigated as designed: validated key components before any join and an authority resolved only by Rust; persist-then-delete with a clean/bound guard and the brush purge marker; a debounced, subscription-scoped gauge; confirmed purges with frame/rail-scoped splices; the committed `(layerId, trackId)` only with fixed version 1; and a try/catch plus fire-and-forget cascade that reports once. No new dependency.
 
-## UAT Rows (PENDING — the user runs the app)
+## UAT Rows (PASSED — user-approved 2026-10-23)
 
 | # | Row | Expected | Status |
 |---|-----|----------|--------|
-| 1 | Open a heavy session | Gauge shows scripts and caches separately with plausible values | PENDING |
-| 2 | Duplicate several scripted keys | Scripts line grows; caches line stays independent | PENDING |
-| 3 | Purge one frame | That frame's script disappears; other frames and pixels unchanged; Move/Select disabled for that key | PENDING |
-| 4 | Clear all (active rail) | Scripts line drops to zero for that rail; pixels remain; the Studio stays usable | PENDING |
-| 5 | With persistence, close/reopen after a purge | Purged scripts do not come back | PENDING |
-| 6 | Cancel the confirmation | Nothing changes | PENDING |
-| 7 | Delete a scripted rail in the timeline | Its `scripts/<layerId>/<trackId>-v1.snap` and cache fallback are gone; other rails untouched; reopening shows no orphan script | PENDING |
+| 1 | Open a heavy session | Gauge shows scripts and caches separately with plausible values | PASSED |
+| 2 | Duplicate several scripted keys | Scripts line grows; caches line stays independent | PASSED |
+| 3 | Purge one frame | That frame's script disappears; other frames and pixels unchanged; Move/Select disabled for that key | PASSED |
+| 4 | Clear all (active rail) | Scripts line drops to zero for that rail; pixels remain; the Studio stays usable | PASSED |
+| 5 | With persistence, close/reopen after a purge | Purged scripts do not come back | PASSED |
+| 6 | Cancel the confirmation | Nothing changes | PASSED |
+| 7 | Delete a scripted rail in the timeline | Its `scripts/<layerId>/<trackId>-v1.snap` and cache fallback are gone; other rails untouched; reopening shows no orphan script | PASSED |
+
+### UAT feedback folded into the shipped UI (approved 2026-10-23)
+
+- Memory tab: 10px top padding; action buttons no longer inherit uppercase.
+- Gauge data is contextual to the active module (Brush or Watercolor), shows only the selected frame, and keeps frame caches in their own section.
+- Confirmations are modal dialogs matching the Scripts-tab delete confirmation (Cancel focused, Escape closes, Tab trapped).
+- Three purge scopes: **Purge script on frame N** (hidden while any rail is selected), **Purge scripts on rail frames X-Y** for a selected key rail, and **Clear all scripts on <track>** (active track only, never the whole layer).
+- Buttons with nothing to purge are hidden, not grayed; actions sit at the top, the editability warning below, then a 12px gap before the details.
 
 ## Self-Check: PASSED
 
