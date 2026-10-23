@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-23T07:41:12.760Z"
+last_updated: "2026-10-23T09:14:47.198Z"
 last_activity: 2026-10-23
 last_activity_desc: Phase 56 complete
-state_head: 4427ec0b21c5ec77a65adbf064b861a155c54e22
+state_head: 7d3572f8c54cbc0cadb7c669473c40fab85a6a90
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-cxc UAT APPROVED: Duplicate carries the source script (brush live strokes / watercolor recorded timeline) onto the next free key; Move/Select edits the duplicate, and the bxm raster clone remains the fallback
+Last activity: 2026-10-23 - Completed quick task 261023-f9c: read-only script-memory measurement (DEV window.__EFX_SCRIPT_MEMORY__.snapshot() + JSON-vs-AQTL-v1 codec prototype, 4.83x); live numbers PENDING user-run recipe
 
 Progress: [██████████] 100%
 
@@ -575,6 +575,7 @@ None yet.
 | 261023-bji | Feat: when the session Solo is armed in Studio, every non-target Paint row wears the exact disabled-track grey so only the soloed (active) track reads as audible; the Bg row stays bright and disarm restores everything | 2026-10-23 | d10a2ed4 | [261023-bji-feat-when-i-solo-track-in-studio-i-want-](./quick/261023-bji-feat-when-i-solo-track-in-studio-i-want-/) |
 | 261023-bxm | Duplicate carries the source key's script/uncooked paint to the next key (settle displayed pixels, then clone) | 2026-10-23 | 45f8f4b4 | [261023-bxm-feat-i-d-like-to-send-the-current-paint-](./quick/261023-bxm-feat-i-d-like-to-send-the-current-paint-/) |
 | 261023-cxc | Duplicate replays the source script onto the next free key (brush strokes / watercolor timeline) so Move/Select edits it; the bxm raster clone stays as fallback | 2026-10-23 | 4427ec0b | [261023-cxc-uat-follow-up-to-261023-bxm-the-bottom-t](./quick/261023-cxc-uat-follow-up-to-261023-bxm-the-bottom-t/) |
+| 261023-f9c | Read-only script-memory measurement: DEV window.__EFX_SCRIPT_MEMORY__.snapshot() (watercolor per-frame totals, current brush frame, frame caches reported separately) + JSON-vs-versioned packed-binary codec prototype with round-trip tests | 2026-10-23 | 7d3572f8 | [261023-f9c-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-f9c-v2-0-0-read-specs-quick-prompts-studio-s/) |
 
 ### Roadmap Evolution
 
