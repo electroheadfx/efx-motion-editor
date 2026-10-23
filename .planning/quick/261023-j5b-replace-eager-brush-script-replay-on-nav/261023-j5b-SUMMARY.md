@@ -199,7 +199,7 @@ No app, dev server, or Tauri build was run by the executor; live UAT belongs to 
 
 ## Visual-Parity Decision Point
 
-**The visual-parity fallback was NOT taken**, because the implementation meets the plan's parity requirement at the code level: every rebake replays with `replay:false`, so `prepareWetLayerForStroke` runs once per replayed stroke exactly as during live painting; `lastStrokeBounds` is reset for determinism; the frame's paint globals are applied for the rebake. The dedicated suite pins the semantics (per-stroke prepare count, `replay:false` on every edit, detached-only base clear, settings apply/restore).
+**The visual-parity fallback was NOT taken**, because the implementation meets the plan's parity requirement at the code level: every rebake replays with `replay:false`, so `prepareWetLayerForStroke` runs once per replayed stroke exactly as during live painting; `lastStrokeBounds` is reset for determinism; the frame's paint globals are applied for the rebake. The dedicated suite pins the semantics (per-stroke prepare count, `replay:false` on every edit, completeness-driven once-per-visit base clear, settings apply/restore).
 
 **The fallback remains available and is the documented answer if live UAT shows parity is not acceptable:** keep the cached-pixel, uneditable path rather than ship a replay look. That decision point belongs to the user's UAT (row 2 below). Do not mark the fallback accepted or rejected before that row is run.
 
@@ -211,6 +211,15 @@ Fix: the base clear is now **completeness-driven**, not visit-mode-driven. `EfxP
 
 Added UAT row:
 - **PENDING — Duplicate + edit:** Duplicate a brush key, enter Move, drag/delete a stroke: no phantom copy remains, the frame rebakes faithfully, and a partial frame still preserves its pre-existing base.
+
+## Follow-up fix 2 (post-UAT, 2026-10-23): duplicate baked into the cache
+
+The second live UAT found the phantom returning after navigating back to an edited key. The screen was correct right after the edit; the duplication was in the CACHED PIXELS. Cause: the completion capture merges the frame's cached base with the live alpha canvas. Once the faithful rebake has cleared that base to avoid the on-screen duplicate, the live canvas already holds the WHOLE frame content — but the capture still merged the pre-edit cached bytes over it, baking a second copy of every stroke into the cache. Navigation never replays the ledger, so every revisit displayed the duplicated cache ("the re-render is blocked").
+
+Fix: `EfxPaintEngine.isLiveCanvasWholeFrame()` reports that this visit cleared its duplicate base; the engine-1 completion capture then passes `cachedBase = null` and `baseCanvas = null`, encoding the live canvas alone. A live visit (base + session strokes) and a partial visit keep the merge path unchanged. The flag resets with `clear()`, so each visit decides independently. Committed `87686cfa`.
+
+Added UAT row:
+- **PENDING — Revisit after edit:** Edit a stroke with Move/Delete, navigate away, then return to the key: the frame shows the edited script exactly once (no duplicated/phantom strokes from the cache), and a second edit on the revisit stays clean.
 
 ## Live UAT (ALL PENDING — the user runs the app; none may be marked passed by the executor)
 
@@ -227,5 +236,5 @@ Added UAT row:
 ## Self-Check: PASSED
 
 - All 8 listed source/test artifacts exist on disk.
-- All task commits (`f8c5969f`, `47789f94`, `c99175b9`, `eefb4493`, `3d66fb56`) are ancestors of HEAD.
+- All task commits (`f8c5969f`, `47789f94`, `c99175b9`, `eefb4493`, `3d66fb56`, `87686cfa`) are ancestors of HEAD.
 - Working tree contains no uncommitted code changes; only the untracked `.planning/quick/261023-j5b-.../` docs (orchestrator-owned).

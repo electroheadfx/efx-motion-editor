@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-j5b follow-up: fixed the Duplicate phantom stroke (faithful edits now clear a duplicate cached base exactly once); live UAT pending (parity + duplicate + repeat edits)
+Last activity: 2026-10-23 - Quick task 261023-j5b follow-up 2: fixed the duplicate baked into the cache after a cleared-base edit (captures now encode the live canvas alone); live UAT pending (parity + duplicate + revisit-after-edit)
 
 Progress: [██████████] 100%
 
