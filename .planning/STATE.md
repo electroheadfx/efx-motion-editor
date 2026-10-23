@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Completed quick task 261023-bji: Studio Solo now dims every non-target Paint row with the exact disabled-track fade (opacity 0.4 + grayscale 0.9), Bg row stays bright, disarm restores
+Last activity: 2026-10-23 - Quick task 261023-bji UAT APPROVED: Studio Solo dims every non-target Paint row with the exact disabled-track fade (opacity 0.4 + grayscale 0.9), the Bg row stays bright, and disarm restores every row
 
 Progress: [██████████] 100%
 

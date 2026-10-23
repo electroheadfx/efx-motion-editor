@@ -127,8 +127,18 @@ None - plan executed exactly as written.
 - `pnpm --dir app typecheck` → 15 errors before and after (no new errors; baseline `/tmp/bji-typecheck-baseline.txt`).
 - `grep -q "physics-paint-track-row-solo-dimmed" app/src/components/physic-paint/physicsPaintStudio.css` → present.
 
+## Live UAT — APPROVED (2026-10-23)
+
+User-run, the only completion signal. All rows passed live:
+
+1. Two Paint tracks, Solo armed on B: A fades to the same grey as a hidden track; B and the Bg row stay bright.
+2. With Solo armed, clicking track A moves the bright row to A and fades B; the pill stays armed.
+3. Disarm restores every row immediately, no flicker or leftover grey.
+4. Hide/show a non-target track while armed: same grey in both states, no double-fade.
+5. Single-track document: nothing dims.
+
 ## Next Phase Readiness
-- Automated-ready; live UAT (5 rows from the plan) is pending and is the only remaining gate before "done" can be claimed.
+- Live UAT passed 2026-10-23; the feature is closed.
 - No document/persistence/compositor/monitor changes, so no regression surface outside the Studio presentation.
 
 ---
