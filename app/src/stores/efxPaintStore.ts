@@ -39,6 +39,19 @@ let _markProjectDirty: (() => void) | null = null;
 /** Inject the project-dirty callback (wired by projectStore in 45-05). */
 export function _setEfxPaintMarkDirtyCallback(cb: () => void) { _markProjectDirty = cb; }
 
+/**
+ * quick-261023-ors: the committed-rail-delete script cascade. A process-wide
+ * nullable hook — exactly one Studio (or none) is mounted at a time, so a new
+ * registration replaces the previous one and `null` unregisters.
+ */
+export type EfxPaintTrackScriptDelete = (layerId: string, trackId: string) => void;
+let _trackScriptDelete: EfxPaintTrackScriptDelete | null = null;
+export function _setEfxPaintTrackScriptDeleteCallback(
+  cb: EfxPaintTrackScriptDelete | null,
+): void {
+  _trackScriptDelete = cb;
+}
+
 /** Counter-signal bumped on every document mutation (subscribe for reactivity). */
 export const efxPaintVersion = signal(0);
 
@@ -479,6 +492,17 @@ export function commitDeleteTrack(
   if (!document.tracks.some((track) => track.id === trackId)) return { ok: false, error: 'unknown track' };
   if (!acknowledged) return { ok: false, error: 'delete not acknowledged' };
   if (document.tracks.length === 1) return { ok: false, error: 'last-track' };
+
+  // quick-261023-ors: delete the committed track's persisted Studio script
+  // snapshot on both legs. This runs AFTER every fail-closed guard (a refused
+  // delete touches no file) and BEFORE the runtime teardown/document mutation.
+  // The callback is fire-and-forget and wrapped: a cascade failure must never
+  // block or abort the rail deletion (T-261023-ors-06).
+  try {
+    _trackScriptDelete?.(layerId, trackId);
+  } catch {
+    // Swallowed by law: the rail delete still commits.
+  }
 
   severTrackHoldReferences(layerId, trackId);
   removeTrackRuntime(layerId, trackId);

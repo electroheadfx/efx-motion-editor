@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { testWebpBytes } from '../testUtils/testWebpBytes';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEfxPaintDocument, type EfxPaintDocument } from '../efx-paint/document/efxPaintDocument';
 import { buildEfxPaintDocumentRevision } from '../efx-paint/document/efxPaintDocumentRevision';
 import { buildPhysicPaintRotoPhysicalRevision } from '../components/physic-paint/roto/physicsPaintRotoPhysicalModel';
@@ -28,6 +28,7 @@ import {
   reset as resetEfxPaintStore,
   takePendingTrackDeletions,
   _setEfxPaintMarkDirtyCallback,
+  _setEfxPaintTrackScriptDeleteCallback,
 } from './efxPaintStore';
 import {
   getTrackPaintVersion,
@@ -872,5 +873,81 @@ describe('commitDeleteTrack sidecar deletion through the cache transaction (46-0
     expect(persisted.changedFiles.length).toBeGreaterThan(0);
     expect(removePhysicPaintCacheEntry).not.toHaveBeenCalled();
     expect(takePendingTrackDeletions(LAYER)).toEqual([]);
+  });
+});
+
+// quick-261023-ors Task 3: the committed-rail-delete script cascade.
+describe('commitDeleteTrack script cascade', () => {
+  beforeEach(() => {
+    resetEfxPaintStore();
+    physicPaintStore.reset();
+    _setEfxPaintMarkDirtyCallback(() => {});
+    _setPhysicPaintMarkDirtyCallback(() => {});
+  });
+
+  afterEach(() => {
+    _setEfxPaintTrackScriptDeleteCallback(null);
+  });
+
+  function seedTwoTracks(): void {
+    seedDocument([TRACK_A, TRACK_B], TRACK_A, (trackId) => {
+      if (trackId === TRACK_A) seedTrack(trackId, [makeRecord('key-a', 10, 'a')]);
+      else seedTrack(trackId, [makeRecord('key-b', 10, 'b')]);
+    });
+  }
+
+  it('invokes the hook exactly once with the committed ids', () => {
+    seedTwoTracks();
+    const cascade = vi.fn();
+    _setEfxPaintTrackScriptDeleteCallback(cascade);
+
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+
+    expect(cascade).toHaveBeenCalledTimes(1);
+    expect(cascade).toHaveBeenCalledWith(LAYER, TRACK_B);
+  });
+
+  it('never invokes the hook on a refused delete (all four guards)', () => {
+    seedTwoTracks();
+    const cascade = vi.fn();
+    _setEfxPaintTrackScriptDeleteCallback(cascade);
+
+    // no document
+    expect(commitDeleteTrack('no-such-layer', TRACK_B, true).ok).toBe(false);
+    // unknown track
+    expect(commitDeleteTrack(LAYER, 'ghost-track', true).ok).toBe(false);
+    // not acknowledged
+    expect(commitDeleteTrack(LAYER, TRACK_B, false).ok).toBe(false);
+    expect(cascade).not.toHaveBeenCalled();
+
+    // last surviving track: the first delete succeeds (hook fires once), the
+    // second is refused and must not fire it again.
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+    cascade.mockClear();
+    expect(commitDeleteTrack(LAYER, TRACK_A, true)).toEqual({ ok: false, error: 'last-track' });
+
+    expect(cascade).not.toHaveBeenCalled();
+  });
+
+  it('a throwing cascade never blocks the rail delete', () => {
+    seedTwoTracks();
+    _setEfxPaintTrackScriptDeleteCallback(() => {
+      throw new Error('cascade boom');
+    });
+
+    const result = commitDeleteTrack(LAYER, TRACK_B, true);
+    expect(result).toEqual({ ok: true });
+    expect(getDocument(LAYER)!.tracks.some((track) => track.id === TRACK_B)).toBe(false);
+    expect(physicPaintStore.getFrames(LAYER, TRACK_B).size).toBe(0);
+  });
+
+  it('unregistering with null removes the hook', () => {
+    seedTwoTracks();
+    const cascade = vi.fn();
+    _setEfxPaintTrackScriptDeleteCallback(cascade);
+    _setEfxPaintTrackScriptDeleteCallback(null);
+
+    expect(commitDeleteTrack(LAYER, TRACK_B, true)).toEqual({ ok: true });
+    expect(cascade).not.toHaveBeenCalled();
   });
 });

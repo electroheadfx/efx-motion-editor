@@ -9,6 +9,7 @@ import type { MissingRotoFrameDrawInstruction } from '../../lib/rotoFrameDraw';
 import { physicPaintRotoPhysicalOperationLeaseVersion, physicPaintStore, physicPaintVersion, rotoPhysicalRevision, resolveContentToken, hydrateBackgroundSourceImagesFromLibrary, hydrateReferenceSourceImagesFromLibrary, prefetchNeighborFrames, type PhysicPaintRotoPhysicalOperationLeaseToken } from '../../stores/physicPaintStore';
 import {
   _setEfxPaintRevealScriptLoader,
+  _setEfxPaintTrackScriptDeleteCallback,
   addBackgroundClip,
   addTrack,
   commitDeleteTrack,
@@ -157,6 +158,9 @@ import {
   createStudioScriptSnapshotController,
   type StudioScriptSnapshotController,
 } from './snapshot/studioScriptSnapshotController';
+// quick-261023-ors Task 3: the committed rail delete cascades to that rail's
+// persisted snapshot on BOTH legs (package + cache).
+import { createStudioScriptSnapshotTrackDelete } from './snapshot/studioScriptSnapshotTrackDelete';
 import type { StudioScriptSnapshotIdentity } from './performance/studioScriptSnapshotCodec';
 import type { AudioSectionPorts } from './view/PhysicsPaintAudioListSection';
 import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
@@ -1130,6 +1134,38 @@ export function PhysicsPaintStudio() {
       // Teardown clears the pending debounce timer; no later write occurs.
       studioScriptSnapshot.dispose();
     };
+  }, [studioScriptSnapshot]);
+  // quick-261023-ors Task 3: a committed `commitDeleteTrack` must also delete
+  // that rail's persisted snapshot. The store calls this ONE registered hook
+  // with the committed (layerId, trackId); the factory owns the fail-closed
+  // key law and runs `clearBinding` BEFORE dispatching the delete, so no
+  // pending debounce / in-flight restore / prepared save can rewrite the key
+  // the cascade is about to remove. Registration is identity-stable (the
+  // controller instance lives in a ref); teardown unregisters.
+  useEffect(() => {
+    const cascade = createStudioScriptSnapshotTrackDelete({
+      getIdentity: () => studioScriptSnapshotIdentityRef.current,
+      getAuthority: () => studioScriptSnapshotAuthorityRef.current,
+      clearBinding: () => {
+        studioScriptSnapshotIdentityRef.current = null;
+        studioScriptSnapshot.bind(null);
+      },
+      remove: (identity, authority, scope) => ipcStudioScriptSnapshotDelete(
+        identity.projectId,
+        identity.layerId,
+        identity.trackId,
+        authority,
+        scope,
+      ),
+      // The EXISTING capsule trio, exactly as the controller's own report.
+      report: (message) => {
+        setApplyStatus('error');
+        setApplyMessage(message);
+        setLastError(message);
+      },
+    });
+    _setEfxPaintTrackScriptDeleteCallback(cascade);
+    return () => _setEfxPaintTrackScriptDeleteCallback(null);
   }, [studioScriptSnapshot]);
   // 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen
   // (FRESH_FRAME_WARM_MS); the capsule renders a thin bar so the artist knows

@@ -3816,3 +3816,40 @@ describe('261023-o3n live package authority in the Studio', () => {
     expect(updateIndex).toBeGreaterThan(authorityIndex);
   });
 });
+
+// quick-261023-ors Task 3: a committed rail delete cascades to that rail's
+// snapshot on BOTH legs. The hook is registered ONCE (identity-stable deps) and
+// the binding is invalidated synchronously BEFORE the delete is dispatched.
+describe('261023-ors rail-delete snapshot cascade in the Studio', () => {
+  it('registers the store hook once and unregisters it on teardown', () => {
+    expect(studio).toContain(
+      "import { createStudioScriptSnapshotTrackDelete } from './snapshot/studioScriptSnapshotTrackDelete';",
+    );
+    expect(studio).toContain('_setEfxPaintTrackScriptDeleteCallback(cascade);');
+    expect(studio).toContain('return () => _setEfxPaintTrackScriptDeleteCallback(null);');
+  });
+
+  it('reads the live identity, authority and capsule ports through refs', () => {
+    const start = studio.indexOf('const cascade = createStudioScriptSnapshotTrackDelete({');
+    const body = studio.slice(start, studio.indexOf('}, [studioScriptSnapshot]);', start));
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toContain('getIdentity: () => studioScriptSnapshotIdentityRef.current,');
+    expect(body).toContain('getAuthority: () => studioScriptSnapshotAuthorityRef.current,');
+    expect(body).toContain('ipcStudioScriptSnapshotDelete(');
+    expect(body).toContain("setApplyStatus('error');");
+    expect(body).toContain('setApplyMessage(message);');
+    expect(body).toContain('setLastError(message);');
+  });
+
+  it('clears the identity ref and the controller binding before the factory dispatches', () => {
+    const start = studio.indexOf('clearBinding: () => {');
+    const body = studio.slice(start, studio.indexOf('remove: (identity, authority, scope)', start));
+    const nullIndex = body.indexOf('studioScriptSnapshotIdentityRef.current = null;');
+    const bindIndex = body.indexOf('studioScriptSnapshot.bind(null);');
+    expect(start).toBeGreaterThan(-1);
+    expect(nullIndex).toBeGreaterThan(-1);
+    // bind() bumps the generation and clears the debounce SYNCHRONOUSLY, so an
+    // in-flight restore and a prepared save are both invalidated first.
+    expect(bindIndex).toBeGreaterThan(nullIndex);
+  });
+});
