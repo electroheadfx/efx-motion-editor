@@ -138,7 +138,7 @@ import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkf
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
 import { normalizeLogicalBrushes, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
-import { runRotoDuplicateWithScript, waitForRotoDuplicateSourceFrame } from './roto/physicsPaintRotoDuplicateScript';
+import { copyAquarelleScriptToFrame, runRotoDuplicateWithScript, waitForRotoDuplicateSourceFrame } from './roto/physicsPaintRotoDuplicateScript';
 import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
 import { buildReplayProposal, snapshotRevision, useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
 import { useRotoScriptLibraryController } from './hooks/useRotoScriptLibraryController';
@@ -2598,8 +2598,23 @@ export function PhysicsPaintStudio() {
             }),
             applyBrushScript: (script) => rotoScript.applyProvidedScript(script),
             applyAquarelleEvents: (events) => rotoScript.applyAquarelleTimeline(events),
-            // Task 2 fills the watercolor record copy.
-            recordAquarelleScriptCopy: async () => false,
+            recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {
+              const engine = engineRef.current;
+              const launch = launchContextRef.current;
+              if (!engine || !launch) return false;
+              // Fresh ids through the SAME pair the live stroke-end path uses
+              // (enqueueRecordedStroke + recordAquarelleStroke): the duplicate
+              // is what Move / Delete / stack-step edit, never the source.
+              const recorded = copyAquarelleScriptToFrame({
+                events: getAquarelleEventsForFrame(sourceFrame),
+                destinationFrame,
+                allocateMutationId: (stroke) => engine.enqueueRecordedStroke({
+                  primary: aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight }),
+                }),
+                record: (mutationId, stroke) => { recordAquarelleStroke(mutationId, stroke); },
+              });
+              return recorded > 0;
+            },
           },
         );
         if (outcome.outcome === 'aborted') {

@@ -1,5 +1,10 @@
 import { effect, type ReadonlySignal } from '@preact/signals';
-import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
+import {
+  isAquarelleDryEvent,
+  type AquarelleDryEvent,
+  type AquarellePayloadEvent,
+  type AquarelleStroke,
+} from '@efxlab/efx-watercolor/payload';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 
 /**
@@ -157,6 +162,68 @@ export function waitForRotoDuplicateSourceFrame(
     if (settled) dispose();
     else stop = dispose;
   });
+}
+
+/**
+ * Project a recorded script event back onto the engine-2 runtime stroke shape.
+ *
+ * `pts[].tick` is host bookkeeping (`toStudioStroke` regenerates it from the
+ * index), so it is dropped. The source mutation id is NEVER carried — the
+ * copy allocates a fresh one. `playFrame` becomes the destination frame, and
+ * `diffusionFrames` takes the positive `cuisson` (the round-trip of
+ * `toStudioStroke`'s mapping) before falling back to the engine snapshot.
+ */
+export function aquarelleStrokeFromScriptEvent(
+  event: Exclude<AquarellePayloadEvent, AquarelleDryEvent>,
+  destinationFrame: number,
+): AquarelleStroke {
+  const engine = event.engine;
+  return {
+    tool: engine.tool,
+    color: engine.color,
+    params: { ...engine.params },
+    brushId: engine.brushId,
+    points: event.pts.map((point) => ({
+      x: point.x,
+      y: point.y,
+      p: point.p,
+      tx: point.tx,
+      ty: point.ty,
+      tw: point.tw,
+    })),
+    toolOverrides: engine.toolOverrides ? { ...engine.toolOverrides } : undefined,
+    diffusionFrames: event.cuisson > 0 ? event.cuisson : engine.diffusionFrames,
+    timestamp: engine.timestamp,
+    playFrame: destinationFrame,
+  };
+}
+
+export interface CopyAquarelleScriptToFrameInput {
+  readonly events: readonly AquarellePayloadEvent[];
+  readonly destinationFrame: number;
+  readonly allocateMutationId: (stroke: AquarelleStroke) => number;
+  readonly record: (mutationId: number, stroke: AquarelleStroke) => void;
+}
+
+/**
+ * Re-record a source frame's aquarelle timeline onto `destinationFrame`.
+ *
+ * Dry events are timeline markers, never paint — they are skipped here (the
+ * apply list still carries them in order). Every stroke is projected to a NEW
+ * object and recorded under a freshly allocated id, following
+ * `translateAquarelleStrokeInScript`'s replace-never-mutate posture: the input
+ * array and its events are never written. Returns the recorded stroke count.
+ */
+export function copyAquarelleScriptToFrame(input: CopyAquarelleScriptToFrameInput): number {
+  let recordedCount = 0;
+  for (const event of input.events) {
+    if (isAquarelleDryEvent(event)) continue;
+    const stroke = aquarelleStrokeFromScriptEvent(event, input.destinationFrame);
+    const mutationId = input.allocateMutationId(stroke);
+    input.record(mutationId, { ...stroke, mutationId });
+    recordedCount += 1;
+  }
+  return recordedCount;
 }
 
 /**
