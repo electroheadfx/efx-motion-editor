@@ -1,12 +1,14 @@
 // ============================================================
 //  brushScriptHydration.test.ts — RED-first contract for the
-//  navigation rehydration policy (quick 261023-h9v).
+//  navigation rehydration policy (quick 261023-h9v, reworked by
+//  261023-j5b).
 //
-//  LAW: only a COMPLETE retained script may replace the engine's
-//  strokes, and only on a real-key arrival, in Brush mode, while
-//  idle (not playing, not scrubbing), and within the documented
-//  serialized-cost budget. Every refusal is fail-closed: the caller
-//  keeps today's cached-pixel path and the engine is never touched.
+//  LAW: only a COMPLETE retained script may attach to the engine's
+//  ledger, and only on a real-key arrival, in Brush mode, while
+//  idle (not playing, not scrubbing), and within the generous
+//  attach (clone) sanity cap. Navigation ATTACHES SILENTLY — no
+//  stroke replay. Every refusal is fail-closed: the caller keeps
+//  today's cached-pixel path and the engine is never touched.
 //
 //  A structural fake engine stands in for EfxPaintEngine — this
 //  module is DOM-free and must stay that way.
@@ -26,9 +28,8 @@ import {
   attemptBrushScriptHydration,
   engineHoldsBrushScriptFrame,
   isBrushScriptFrameHydratable,
-  MAX_HYDRATION_DIFFUSION_FRAMES,
-  MAX_HYDRATION_POINTS,
-  MAX_HYDRATION_STROKES,
+  MAX_ATTACH_POINTS,
+  MAX_ATTACH_STROKES,
   planBrushScriptHydration,
   type BrushHydrationRequest,
 } from './brushScriptHydration';
@@ -85,13 +86,13 @@ function request(overrides: Partial<BrushHydrationRequest> = {}): BrushHydration
 }
 
 function createFakeEngine(options: {
-  restoreResult?: number;
+  attachResult?: number;
   serials?: Map<number, number>;
   strokes?: PaintStroke[];
 } = {}) {
   const strokes = options.strokes ?? [];
   return {
-    restoreStrokesBaseline: vi.fn(() => options.restoreResult ?? 1),
+    attachStrokesBaseline: vi.fn(() => options.attachResult ?? 1),
     getStrokeSerials: vi.fn(() => options.serials ?? new Map<number, number>()),
     getStrokes: vi.fn(() => strokes),
   };
@@ -120,14 +121,15 @@ describe('plan: the happy path', () => {
     }
   });
 
-  it('attempt calls restoreStrokesBaseline exactly once with the stored groups', () => {
+  it('attempt ATTACHES the stored groups silently — it never calls restoreStrokesBaseline', () => {
     captureComplete(3);
-    const engine = createFakeEngine({ restoreResult: 1 });
+    const engine = createFakeEngine({ attachResult: 1 });
     const stored = getBrushScriptFrameEntry(3)!;
 
     expect(attemptBrushScriptHydration(engine, request())).toBe(true);
-    expect(engine.restoreStrokesBaseline).toHaveBeenCalledTimes(1);
-    expect(engine.restoreStrokesBaseline).toHaveBeenCalledWith(stored.groups);
+    expect(engine.attachStrokesBaseline).toHaveBeenCalledTimes(1);
+    expect(engine.attachStrokesBaseline).toHaveBeenCalledWith(stored.groups);
+    expect((engine as unknown as Record<string, unknown>).restoreStrokesBaseline).toBeUndefined();
   });
 });
 
@@ -136,7 +138,7 @@ describe('plan: every refusal is fail-closed', () => {
     const engine = createFakeEngine();
     expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'no-entry' });
     expect(attemptBrushScriptHydration(engine, request())).toBe(false);
-    expect(engine.restoreStrokesBaseline).not.toHaveBeenCalled();
+    expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
   });
 
   it('refuses a partial entry (never replace cached pixels with a partial script)', () => {
@@ -145,7 +147,7 @@ describe('plan: every refusal is fail-closed', () => {
     const engine = createFakeEngine();
     expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'partial' });
     expect(attemptBrushScriptHydration(engine, request())).toBe(false);
-    expect(engine.restoreStrokesBaseline).not.toHaveBeenCalled();
+    expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
   });
 
   it('refuses an empty projection even when the entry says complete', () => {
@@ -160,7 +162,7 @@ describe('plan: every refusal is fail-closed', () => {
       expect(planBrushScriptHydration(request({ destinationKind }))).toEqual({ hydrate: false, reason: 'generated' });
       expect(attemptBrushScriptHydration(engine, request({ destinationKind }))).toBe(false);
     }
-    expect(engine.restoreStrokesBaseline).not.toHaveBeenCalled();
+    expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
   });
 
   it('refuses Water color mode', () => {
@@ -174,45 +176,43 @@ describe('plan: every refusal is fail-closed', () => {
     expect(planBrushScriptHydration(request({ scrubActive: true }))).toEqual({ hydrate: false, reason: 'scrub' });
   });
 
-  it('refuses over the points budget', () => {
-    captureComplete(3, [stroke(1, MAX_HYDRATION_POINTS + 1)]);
-    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
-  });
-
-  it('refuses over the stroke budget (the per-stroke replay cost driver)', () => {
+  it('attaches a frame with MANY strokes — navigation is no longer replay-budgeted', () => {
+    // h9v refused anything above 10 strokes / 600 points. Navigation now only
+    // clones; the old "over-budget" frame must attach.
     captureComplete(
       3,
-      Array.from({ length: MAX_HYDRATION_STROKES + 1 }, (_, index) => stroke(index + 1, 1)),
+      Array.from({ length: 40 }, (_, index) => stroke(index + 1, 180)),
     );
-    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
-  });
-
-  it('refuses any diffusion run (the measured cap is zero at HD)', () => {
-    captureBrushScriptForFrame(3, [{
-      primary: stroke(1),
-      continuations: [continuation(1, MAX_HYDRATION_DIFFUSION_FRAMES + 1)],
-    }]);
-    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
-  });
-
-  it('accepts exactly at the documented budget boundary', () => {
-    captureComplete(
-      3,
-      Array.from({ length: MAX_HYDRATION_STROKES }, (_, index) =>
-        stroke(index + 1, MAX_HYDRATION_POINTS / MAX_HYDRATION_STROKES),
-      ),
-    );
-    // 10 strokes x 60 points is the measured light fixture (~200-233 ms at HD).
-    expect(getBrushScriptFrameEntry(3)?.points).toBe(MAX_HYDRATION_POINTS);
-    expect(getBrushScriptFrameEntry(3)?.diffusionFrames).toBe(0);
     expect(planBrushScriptHydration(request()).hydrate).toBe(true);
   });
 
-  it('reports hydrated false when the engine refuses the restore (validation refusal)', () => {
+  it('refuses over the attach sanity cap (clone cost only)', () => {
+    captureComplete(3, [stroke(1, MAX_ATTACH_POINTS + 1)]);
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
+
+    captureComplete(
+      3,
+      Array.from({ length: MAX_ATTACH_STROKES + 1 }, (_, index) => stroke(index + 1, 1)),
+    );
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
+  });
+
+  it('accepts exactly at the attach sanity boundary', () => {
+    captureComplete(
+      3,
+      Array.from({ length: MAX_ATTACH_STROKES }, (_, index) =>
+        stroke(index + 1, MAX_ATTACH_POINTS / MAX_ATTACH_STROKES),
+      ),
+    );
+    expect(getBrushScriptFrameEntry(3)?.points).toBe(MAX_ATTACH_POINTS);
+    expect(planBrushScriptHydration(request()).hydrate).toBe(true);
+  });
+
+  it('reports hydrated false when the engine refuses the attach (validation refusal)', () => {
     captureComplete(3);
-    const engine = createFakeEngine({ restoreResult: 0 });
+    const engine = createFakeEngine({ attachResult: 0 });
     expect(attemptBrushScriptHydration(engine, request())).toBe(false);
-    expect(engine.restoreStrokesBaseline).toHaveBeenCalledTimes(1);
+    expect(engine.attachStrokesBaseline).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -224,30 +224,25 @@ describe('isBrushScriptFrameHydratable — the probe verdict', () => {
     expect(isBrushScriptFrameHydratable({ ...within, complete: false })).toBe(false);
   });
 
-  it('is false when any measured ceiling is exceeded', () => {
+  it('is false when any attach sanity ceiling is exceeded', () => {
     expect(isBrushScriptFrameHydratable({
       complete: true,
       ...within,
-      strokes: MAX_HYDRATION_STROKES + 1,
+      strokes: MAX_ATTACH_STROKES + 1,
     })).toBe(false);
     expect(isBrushScriptFrameHydratable({
       complete: true,
       ...within,
-      points: MAX_HYDRATION_POINTS + 1,
-    })).toBe(false);
-    expect(isBrushScriptFrameHydratable({
-      complete: true,
-      ...within,
-      diffusionFrames: MAX_HYDRATION_DIFFUSION_FRAMES + 1,
+      points: MAX_ATTACH_POINTS + 1,
     })).toBe(false);
   });
 
   it('accepts the boundary values exactly', () => {
     expect(isBrushScriptFrameHydratable({
       complete: true,
-      strokes: MAX_HYDRATION_STROKES,
-      points: MAX_HYDRATION_POINTS,
-      diffusionFrames: MAX_HYDRATION_DIFFUSION_FRAMES,
+      strokes: MAX_ATTACH_STROKES,
+      points: MAX_ATTACH_POINTS,
+      diffusionFrames: 0,
     })).toBe(true);
   });
 });

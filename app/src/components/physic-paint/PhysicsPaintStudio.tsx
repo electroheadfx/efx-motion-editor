@@ -178,6 +178,7 @@ import {
   applyCompletedBrushMutation,
   attemptBrushScriptHydration,
   engineHoldsBrushScriptFrame,
+  planBrushScriptHydration,
   type BrushHydrationRequest,
 } from './view/brushScriptHydration';
 import { getAquarelleEventsForFrame, recordAquarelleStroke, setAquarelleParam, setAquarelleStrokeDiffusionFrames } from './view/aquarelleRecordState';
@@ -3551,17 +3552,40 @@ export function PhysicsPaintStudio() {
         (engine as PreviewBackgroundEngine).clearPreviewBaseImage(true);
         (engine as PreviewBackgroundEngine).resetBackground(true);
         engine.clear();
-        // 261023-h9v: a COMPLETE retained script for the destination frame
-        // replaces the cached-pixel path (silent baseline restore, no double
-        // paint). Every refusal is fail-closed: record the arrival base and
-        // keep today's pixels — a PARTIAL script must never replace them.
-        if (!hydrateBrushScriptFrame(engine, {
+        // 261023-j5b LAZY ATTACH: pixels FIRST, ledger SECOND. The retained
+        // script is proof that the cached pixels already show this content, so
+        // navigation never replays it — the attach is a silent ledger install
+        // and the expensive faithful rebake belongs to the first edit. Order
+        // is load-bearing: loadCachedRotoReferenceFrame() internally calls
+        // engine.clear(), which would wipe an earlier attach.
+        // Every refusal is fail-closed: record the arrival base and keep
+        // today's pixels — a PARTIAL script must never replace them.
+        const hydrationRequest: BrushHydrationRequest = {
           frame,
           destinationKind,
           brushModuleActive: activeModule.peek() !== 'watercolor',
           wasPlaying: wasPlaying || rotoCachedPlayback.isActive,
           scrubActive: scrubActiveRef.current,
-        })) {
+        };
+        const hydrationPlan = planBrushScriptHydration(hydrationRequest);
+        if (hydrationPlan.hydrate) {
+          const loaded = loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+          if (hydrateBrushScriptFrame(engine, hydrationRequest)) {
+            // Attach success: NO arrival-base note — the cached pixels render
+            // the same script, so the entry stays COMPLETE for future visits.
+            if (!loaded) {
+              // No cached pixels exist anywhere for this key (a pruned or
+              // never-flushed display frame): repaint the script now so the
+              // frame is not blank. 261023-j5b Task 2 upgrades this stand-in
+              // to rebakeStrokesFaithfully (live deposit semantics).
+              engine.restoreStrokesBaseline(hydrationPlan.entry.groups);
+            }
+          } else {
+            // The engine refused the attach (malformed groups): fall back to
+            // today's observed loader semantics without loading twice.
+            noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
+          }
+        } else {
           loadReferenceObserved(frame, engine as PreviewBackgroundEngine);
         }
       }

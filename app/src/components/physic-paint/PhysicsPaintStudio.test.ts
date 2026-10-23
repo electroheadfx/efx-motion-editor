@@ -3443,23 +3443,34 @@ describe('261023-h9v brush script rehydration surface', () => {
     studio.indexOf('const navigateToSyncedPhysicalFrame', clearSourceStart),
   );
 
-  it('decides hydrate-or-cached-pixels once per navigation, after the engine clear', () => {
+  it('decides attach-or-cached-pixels once per navigation, pixels BEFORE the ledger', () => {
     expect(navigationStart).toBeGreaterThan(-1);
     expect(navigationBody).toContain('engine.clear();');
-    expect(navigationBody).toContain('if (!hydrateBrushScriptFrame(engine, {');
+    expect(navigationBody).toContain('const hydrationRequest: BrushHydrationRequest = {');
     expect(navigationBody).toContain('frame,');
     expect(navigationBody).toContain('destinationKind,');
     expect(navigationBody).toContain("brushModuleActive: activeModule.peek() !== 'watercolor',");
     expect(navigationBody).toContain('wasPlaying: wasPlaying || rotoCachedPlayback.isActive,');
     expect(navigationBody).toContain('scrubActive: scrubActiveRef.current,');
+    expect(navigationBody).toContain('const hydrationPlan = planBrushScriptHydration(hydrationRequest);');
     // Refusal = the observed cached-pixel path (which records the arrival base).
     expect(navigationBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
+    // Pixels FIRST, ledger SECOND — the loader's internal engine.clear() must
+    // run before the attach or the attached ledger would be wiped.
     expect(navigationBody.indexOf('engine.clear();')).toBeLessThan(
-      navigationBody.indexOf('hydrateBrushScriptFrame(engine, {'),
+      navigationBody.indexOf('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine)'),
     );
-    expect(navigationBody.indexOf('hydrateBrushScriptFrame(engine, {')).toBeLessThan(
-      navigationBody.indexOf('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);'),
+    expect(navigationBody.indexOf('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine)')).toBeLessThan(
+      navigationBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
     );
+    // Attach success records NO arrival base (the entry must stay complete);
+    // the arrival note exists only on the attach-refusal path.
+    const refusalIndex = navigationBody.indexOf('noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);');
+    expect(refusalIndex).toBeGreaterThan(
+      navigationBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
+    );
+    expect(navigationBody).toContain('if (!loaded) {');
+    expect(navigationBody).toContain('engine.restoreStrokesBaseline(hydrationPlan.entry.groups);');
     // The post-flush generated repaint stays a cached-pixel path.
     expect(navigationBody).toContain("?.cells[frame]?.kind === 'generated'");
   });

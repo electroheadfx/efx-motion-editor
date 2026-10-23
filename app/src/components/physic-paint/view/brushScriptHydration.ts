@@ -1,25 +1,30 @@
 // ============================================================
 //  brushScriptHydration — the in-session navigation rehydration
-//  policy (quick 261023-h9v).
+//  policy (quick 261023-h9v, reworked by 261023-j5b).
 //
-//  Navigation flushes the outgoing frame into the session store,
-//  calls engine.clear(), then loads the destination's cached
-//  pixels. This module is the ONE seam that may instead restore a
-//  COMPLETE retained script straight into the engine, replacing
-//  the cached-pixel path (no double paint).
+//  LAZY ATTACH: navigation flushes the outgoing frame into the
+//  session store, calls engine.clear(), loads the destination's
+//  cached pixels, and then ATTACHES a COMPLETE retained script
+//  into the engine ledger SILENTLY. Nothing is replayed and no
+//  pixel is repainted — the cached pixels are the display. The
+//  expensive faithful reconstruction (live deposit semantics)
+//  belongs to the first edit of the visit, not to navigation;
+//  the eager h9v restore replayed the whole script on arrival
+//  with `{ replay: true }`, which was slow AND corrupting.
 //
 //  FAIL-CLOSED: every refusal keeps today's cached-pixel path and
 //  never touches the engine. Refusals:
 //    no-entry   — the frame was never captured this session;
 //    empty      — the captured projection has no strokes;
 //    partial    — a cached pixel base sits under the session script
-//                 (restoring it would delete the base pixels);
-//    generated  — only a REAL key may hydrate (generated / none /
+//                 (the ledger could never be edited without deleting
+//                 the base pixels);
+//    generated  — only a REAL key may attach (generated / none /
 //                 no-launch destinations always repaint pixels);
 //    watercolor — the aquarelle sheet owns its own record store;
-//    playback / scrub — a moving playhead must never pause to
-//                 replay a retained script;
-//    budget     — the restore cost exceeds the documented ceiling.
+//    playback / scrub — a moving playhead must never pause for a
+//                 synchronous ledger mutation;
+//    budget     — the frame exceeds the attach (clone) sanity cap.
 //
 //  The module is DOM-free: the engine is a structural interface so
 //  unit suites can pin the policy without importing EfxPaintEngine.
@@ -35,42 +40,25 @@ import {
 } from './brushScriptRecordState';
 
 /**
- * MEASURED replay budget (quick 261023-h9v Task 3, 2026-10-23). The restore
- * replays synchronously through the engine harness (mock canvas, real
- * redrawAll). Costs at 1920x1080 — the largest supported working canvas:
- *
- *   point replay: 10x60 = 233 ms, 25x90 = 601 ms, 40x180 = 1102 ms,
- *                 40x600 (24000 pts) = 1492 ms;
- *   per-stroke fixed cost ~17.5 ms (the full-frame saved-wet scan in
- *                 applyStrokeToEngine), ~0.04 ms per extra point;
- *   diffusion:    1 frame = 21 ms @100x100, 250 ms @800x600, 331 ms @1280x720,
- *                 705 ms @1920x1080; 300 frames @800x600 measured 61 s.
- *
- * The points cap alone cannot bound cost (600 strokes x 1 point would pass a
- * 600-point cap but cost seconds), so strokes are gated separately. The
- * chosen ceilings keep the WORST allowed restore at the 10x60 light fixture
- * (~200-233 ms measured at 1920x1080), under the ~250 ms target. Any nonzero
- * diffusion run exceeds that target at HD, so physics-run frames never
- * hydrate — they keep the cached-pixel path and report hydratable=false.
+ * GENEROUS attach sanity cap (quick 261023-j5b). Attaching clones the stored
+ * group list into the ledger — O(n), no replay — so the only cost this cap
+ * bounds is cloning. Provisional values here; Task 3 replaces them with
+ * numbers measured on the mock-canvas harness. The h9v replay budget
+ * (600 points / 10 strokes / 0 diffusion frames) is deliberately gone: a
+ * many-stroke frame now attaches fine because navigation no longer replays it.
  */
-export const MAX_HYDRATION_POINTS = 600;
-export const MAX_HYDRATION_STROKES = 10;
-export const MAX_HYDRATION_DIFFUSION_FRAMES = 0;
+export const MAX_ATTACH_STROKES = 200;
+export const MAX_ATTACH_POINTS = 40000;
 
-/** The budget gate alone — strokes, points and diffusion within the ceilings. */
-export function isWithinBrushHydrationBudget(
-  strokes: number,
-  points: number,
-  diffusionFrames: number,
-): boolean {
-  return strokes <= MAX_HYDRATION_STROKES
-    && points <= MAX_HYDRATION_POINTS
-    && diffusionFrames <= MAX_HYDRATION_DIFFUSION_FRAMES;
+/** The attach sanity cap alone — stroke and point counts within the ceilings. */
+export function isWithinBrushAttachCap(strokes: number, points: number): boolean {
+  return strokes <= MAX_ATTACH_STROKES && points <= MAX_ATTACH_POINTS;
 }
 
 /**
- * Probe-facing hydratability: complete AND within budget. Liveness and the
- * navigation-time gates (real key, module, playback, scrub) are separate.
+ * Probe-facing hydratability: complete AND within the attach sanity cap.
+ * Liveness and the navigation-time gates (real key, module, playback, scrub)
+ * are separate.
  */
 export function isBrushScriptFrameHydratable(entry: {
   readonly complete: boolean;
@@ -78,14 +66,13 @@ export function isBrushScriptFrameHydratable(entry: {
   readonly points: number;
   readonly diffusionFrames: number;
 }): boolean {
-  return entry.complete
-    && isWithinBrushHydrationBudget(entry.strokes, entry.points, entry.diffusionFrames);
+  return entry.complete && isWithinBrushAttachCap(entry.strokes, entry.points);
 }
 
 export interface BrushHydrationRequest {
   /** The destination app frame. */
   frame: number;
-  /** The destination cell kind; only 'real' is hydratable. */
+  /** The destination cell kind; only 'real' is attachable. */
   destinationKind: string;
   /** Brush color mode is active (the Water color sheet owns its own store). */
   brushModuleActive: boolean;
@@ -119,21 +106,22 @@ export function planBrushScriptHydration(request: BrushHydrationRequest): BrushH
   if (!request.brushModuleActive) return { hydrate: false, reason: 'watercolor' };
   if (request.wasPlaying) return { hydrate: false, reason: 'playback' };
   if (request.scrubActive) return { hydrate: false, reason: 'scrub' };
-  if (
-    !isWithinBrushHydrationBudget(entry.strokes, entry.points, entry.diffusionFrames)
-  ) {
+  if (!isWithinBrushAttachCap(entry.strokes, entry.points)) {
     return { hydrate: false, reason: 'budget' };
   }
   return { hydrate: true, entry };
 }
 
-/** The engine surface the hydration seam needs (structural). */
+/** The engine surface the attach seam needs (structural). */
 export interface BrushHydrationEngine {
-  restoreStrokesBaseline(groups: readonly Readonly<RecordedStrokeGroup>[]): number;
+  attachStrokesBaseline(
+    groups: readonly Readonly<RecordedStrokeGroup>[],
+    settings?: { readonly localSpreadStrength: number; readonly wetPaper: boolean; readonly physicsStrength: number; readonly paperGrain: string } | null,
+  ): number;
 }
 
 /**
- * Plan + restore. Returns true only when the engine accepted a non-empty
+ * Plan + attach. Returns true only when the engine accepted a non-empty
  * baseline; every refusal is silent (the caller keeps the pixel path).
  */
 export function attemptBrushScriptHydration(
@@ -142,7 +130,7 @@ export function attemptBrushScriptHydration(
 ): boolean {
   const decision = planBrushScriptHydration(request);
   if (!decision.hydrate || !engine) return false;
-  return engine.restoreStrokesBaseline(decision.entry.groups) > 0;
+  return engine.attachStrokesBaseline(decision.entry.groups) > 0;
 }
 
 /** The engine surface the liveness gate needs (structural). */

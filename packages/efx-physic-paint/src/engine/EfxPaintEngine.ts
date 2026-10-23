@@ -113,6 +113,40 @@ export type RecordedStrokeGroup = {
   continuations?: readonly Readonly<PaintStroke>[]
 }
 
+/**
+ * 261023-j5b: the paint-relevant render globals a live stroke deposited with.
+ * Captured once per frame visit and re-applied around a faithful rebake, so a
+ * later slider change cannot repaint a retained script with different physics.
+ *
+ * `embossStrength` is deliberately ABSENT: it is consumed only at
+ * serialization/bake parity (getBakedCanvas / save), never by
+ * applyStrokeToEngine or renderPaintStroke, so it cannot change a rebake's
+ * deposit.
+ */
+export type PaintRenderSettings = {
+  /** state.localSpreadStrength, 0-100. */
+  readonly localSpreadStrength: number
+  readonly wetPaper: boolean
+  /** state.physicsStrength, the engine's internal 0-1 value. */
+  readonly physicsStrength: number
+  /** The paper grain key (currentPaperKey); '' = grain off. */
+  readonly paperGrain: string
+}
+
+/**
+ * 261023-j5b: what a full-surface rebuild may do with the ledger for the
+ * CURRENT frame visit.
+ *   live     — the frame was painted here; redrawAll replays (replay:true).
+ *   detached — a navigation attached the ledger over cached pixels; a redraw
+ *              must NEVER replay (the pixels are already on screen).
+ *   faithful — an edit promoted the frame; every later replay in this visit
+ *              uses LIVE deposit semantics (replay:false), so wet layers are
+ *              force-dried per stroke instead of accumulating.
+ * Read with `?? 'live'` everywhere: prototype-based harnesses never run the
+ * constructor.
+ */
+type StrokeReplayMode = 'live' | 'detached' | 'faithful'
+
 type PaintHistoryEntry = {
   mutationId: number
   actions: PaintStroke[]
@@ -734,6 +768,14 @@ export class EfxPaintEngine {
   private nextMutationId: number = 1
   private activeMutationId: number | null = null
   private lastCompletedMutationId: number | null = null
+  /** 261023-j5b: the frame-visit replay semantics (see StrokeReplayMode). */
+  private strokeReplayMode: StrokeReplayMode = 'live'
+  /**
+   * 261023-j5b: paint globals captured at the first live paint of the visit
+   * (or handed over by attachStrokesBaseline from the frame's retained entry).
+   * A faithful rebake applies them and restores the pre-rebake values.
+   */
+  private framePaintSettings: PaintRenderSettings | null = null
 
   // --- Bound Event Handlers (for removeEventListener) ---
   private readonly boundPointerDown: (e: PointerEvent) => void
@@ -1719,6 +1761,10 @@ export class EfxPaintEngine {
     this.activeMutationId = null
     this.allActions = []
     this.strokeStack = []
+    // 261023-j5b: clear() ends the frame visit — the next redrawAll() replays
+    // live again, and no stale frame paint settings survive into the next one.
+    this.strokeReplayMode = 'live'
+    this.framePaintSettings = null
     // 261022-ujp: a cleared surface starts a fresh creation-order numbering.
     this.strokeSerialMap().clear()
     this.nextStrokeSerial = 1
@@ -2040,14 +2086,14 @@ export class EfxPaintEngine {
   }
 
   /**
-   * 261023-h9v: restore a COMPLETE retained brush script as a silent baseline.
+   * 261023-j5b: install a COMPLETE retained brush script into the ledger.
    *
    * Mirrors loadProjectData: the stored groups become the live acceptance
    * ledger in the stored paint order, every primary keeps its stored
    * mutationId (the session store's identity law), continuations return as
-   * zero-point diffusion records, undo/redo/history are cleared (a baseline
-   * is never an undo step), and the surface replays synchronously. It NEVER
-   * emits a completed-mutation notification.
+   * zero-point diffusion records, and undo/redo/history are cleared (a
+   * baseline is never an undo step). NO drawing happens here — callers
+   * decide whether the pixels come from the cache (attach) or a rebake.
    *
    * Accepted limitation (shared with loadProjectData): serials follow the
    * stored paint order, so creation-order Move badges are exact only up to
@@ -2057,7 +2103,7 @@ export class EfxPaintEngine {
    * touched — malformed input returns 0 and the engine keeps its current
    * baseline. Returns the number of restored primary groups.
    */
-  public restoreStrokesBaseline(groups: readonly Readonly<RecordedStrokeGroup>[]): number {
+  private installStrokeBaseline(groups: readonly Readonly<RecordedStrokeGroup>[]): number {
     if (!Array.isArray(groups) || groups.length === 0) return 0
     const seen = new Set<number>()
     // Validation + clone pass: no engine field is touched until the whole
@@ -2099,7 +2145,7 @@ export class EfxPaintEngine {
     this.flushPendingStrokeFinalizations()
     this.allActions = restored
     // The stored list IS the paint order — reseed the projection from the
-    // freshly parsed ledger before the replay (loadProjectData precedent).
+    // freshly parsed ledger (loadProjectData precedent).
     this.strokeStack = [...restored]
     this.strokeSerialMap().clear()
     this.nextStrokeSerial = 1
@@ -2117,11 +2163,72 @@ export class EfxPaintEngine {
     this.historyEntries = []
     this.historyIndex = 0
     this.notifyHistoryAvailability()
+    return groups.length
+  }
+
+  /**
+   * 261023-j5b LAZY ATTACH: install a COMPLETE retained script over the
+   * cached pixels that already display the same content.
+   *
+   * No stroke replay (zero renderPaintStroke calls), no preview-base touch,
+   * no completed-mutation notification. The frame-visit mode becomes
+   * 'detached', so a later redrawAll (an async preview-base decode landing
+   * after the navigation) also skips the ledger replay. The display composite
+   * is marked dirty because the ledger now owns the pixels for export.
+   *
+   * `settings` is the frame's retained paint-global snapshot (the rebake
+   * consumes it); it is NOT applied here — the cached pixels already show it.
+   */
+  public attachStrokesBaseline(
+    groups: readonly Readonly<RecordedStrokeGroup>[],
+    settings?: PaintRenderSettings | null,
+  ): number {
+    const attached = this.installStrokeBaseline(groups)
+    if (attached === 0) return 0
+    this.strokeReplayMode = 'detached'
+    if (settings) this.framePaintSettings = settings
+    this.displayCompositeDirty = true
+    this.requestRender()
+    return attached
+  }
+
+  /**
+   * 261023-h9v: restore a COMPLETE retained brush script and redraw it
+   * synchronously. Kept as the no-cache fallback: install + a full-surface
+   * rebake (261023-j5b routes this through the faithful replay so a restored
+   * script cannot accumulate wet layers). Never emits a completed mutation.
+   */
+  public restoreStrokesBaseline(
+    groups: readonly Readonly<RecordedStrokeGroup>[],
+    settings?: PaintRenderSettings | null,
+  ): number {
+    const restored = this.installStrokeBaseline(groups)
+    if (restored === 0) return 0
+    // A restore repaints the whole surface, so it must never inherit a
+    // 'detached' visit (redrawAll skips the replay there and would leave the
+    // frame blank). 261023-j5b Task 2 turns this into the faithful mode.
+    this.strokeReplayMode = 'live'
+    if (settings) this.framePaintSettings = settings
     this.displayCompositeDirty = true
     this.requestRender()
     this.redrawAll()
     // NO notifyCompletedMutation: a baseline is not a paint action.
-    return groups.length
+    return restored
+  }
+
+  /** 261023-j5b: the paint globals currently live on the engine. */
+  public getPaintRenderSettings(): PaintRenderSettings {
+    return {
+      localSpreadStrength: this.state.localSpreadStrength,
+      wetPaper: this.state.wetPaper === true,
+      physicsStrength: this.state.physicsStrength,
+      paperGrain: this.currentPaperKey ?? '',
+    }
+  }
+
+  /** 261023-j5b: the visit's captured paint globals (null until a live paint). */
+  public getFramePaintSettings(): PaintRenderSettings | null {
+    return this.framePaintSettings ?? null
   }
 
   /** Lock/unlock pointer input (per D-11: painting disabled during animation) */
@@ -4330,6 +4437,16 @@ export class EfxPaintEngine {
 
   private redrawAll(): void {
     this.resetReplaySurface()
+
+    // 261023-j5b: a detached frame visit (navigation attach) already shows the
+    // cached pixels; the ledger exists only so edits can rebake later, never
+    // for an implicit replay. An async preview-base decode lands after the
+    // attach and calls redrawAll — replaying here is the eager-h9v bug (slow
+    // navigation + wet-layer accumulation). resetReplaySurface() above already
+    // repainted the preview base and cleared/rendered the wet layer.
+    // Reads tolerate an undefined field: prototype-based harnesses never run
+    // field initializers.
+    if ((this.strokeReplayMode ?? 'live') === 'detached') return
 
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 

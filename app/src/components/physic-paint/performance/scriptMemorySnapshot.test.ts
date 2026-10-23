@@ -29,9 +29,8 @@ import {
   type ScriptMemoryWindowLike,
 } from './scriptMemorySnapshot';
 import {
-  MAX_HYDRATION_DIFFUSION_FRAMES,
-  MAX_HYDRATION_POINTS,
-  MAX_HYDRATION_STROKES,
+  MAX_ATTACH_POINTS,
+  MAX_ATTACH_STROKES,
 } from '../view/brushScriptHydration';
 
 const encoder = new TextEncoder();
@@ -486,32 +485,31 @@ describe('buildScriptMemorySnapshot — brush completeness/hydratability', () =>
     expect(snapshot.brush.totals.partialFrames).toBe(1);
   });
 
-  it('marks a complete row over the point budget non-hydratable', () => {
+  it('marks a complete row over the attach point cap non-hydratable', () => {
     const snapshot = buildScriptMemorySnapshot(
-      brushInput([row(true, MAX_HYDRATION_POINTS + 1, 0), row(true, MAX_HYDRATION_POINTS, 0)]),
+      brushInput([row(true, MAX_ATTACH_POINTS + 1, 0), row(true, MAX_ATTACH_POINTS, 0)]),
     );
 
     expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
-    // Completeness itself is not changed by the budget.
+    // Completeness itself is not changed by the cap.
     expect(snapshot.brush.totals.completeFrames).toBe(2);
     expect(snapshot.brush.totals.partialFrames).toBe(0);
   });
 
-  it('marks a complete row over the diffusion budget non-hydratable', () => {
+  it('does not refuse a complete row for its diffusion count (navigation never replays)', () => {
+    // 261023-j5b removed the replay budget: diffusion only matters to the
+    // EDIT rebake cap (Task 3), never to the navigation attach verdict.
     const snapshot = buildScriptMemorySnapshot(
-      brushInput([
-        row(true, 10, MAX_HYDRATION_DIFFUSION_FRAMES + 1),
-        row(true, 10, MAX_HYDRATION_DIFFUSION_FRAMES),
-      ]),
+      brushInput([row(true, 10, 300), row(true, 10, 0)]),
     );
 
-    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
+    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([true, true]);
   });
 
-  it('marks a complete row over the stroke budget non-hydratable', () => {
+  it('marks a complete row over the attach stroke cap non-hydratable', () => {
     const snapshot = buildScriptMemorySnapshot(brushInput([
-      { ...row(true, 1, 0), strokes: MAX_HYDRATION_STROKES + 1 },
-      { ...row(true, 1, 0), strokes: MAX_HYDRATION_STROKES },
+      { ...row(true, 1, 0), strokes: MAX_ATTACH_STROKES + 1 },
+      { ...row(true, 1, 0), strokes: MAX_ATTACH_STROKES },
     ]));
 
     expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
