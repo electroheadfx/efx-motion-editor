@@ -126,6 +126,7 @@ import { usePhysicsPaintApplyResultController } from './hooks/usePhysicsPaintApp
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter } from './performance/physicsPaintPerformanceTrace';
 import { installDh1CaptureHook } from './performance/depositSpeckleCapture';
 import { installLookDeltaCapture } from './performance/lookDeltaCapture';
+import { installScriptMemoryProbe } from './performance/scriptMemoryProbe';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
 import {
   buildRotoRailSetOperationResult,
@@ -4678,6 +4679,10 @@ export function PhysicsPaintStudio() {
     // engine-ready seam like the __EFX_PHYSICS_PAINT_PROFILE__ precedent —
     // no effect, no signal, no component state.
     if (import.meta.env.DEV) installDh1CaptureHook(readyEngine);
+    // quick 261023-f9c (DEV ONLY): read-only script-memory measurement —
+    // window.__EFX_SCRIPT_MEMORY__.snapshot(). Installs nothing in a production
+    // build; no effect, no signal, no component state.
+    if (import.meta.env.DEV) installScriptMemoryProbe(readyEngine);
     // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —
     // one pinned pixel at m1 ribbon / m2 outline / m3 settled / m4 +2s /
     // m5 on-return, written to /tmp/efx-look-delta.json. No product change.

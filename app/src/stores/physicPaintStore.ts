@@ -403,6 +403,84 @@ const _rotoGeneratedCacheMetadata = new Map<string, Map<string, Map<number, Phys
 const _generatedRenderSourceCache = new Map<string, PhysicPaintRenderedFrame>();
 let _generatedRenderSourceCacheBytes = 0;
 const GENERATED_RENDER_SOURCE_CACHE_BYTE_CEILING = 64 * 1024 * 1024;
+
+/** Byte length of a cached byte array; a malformed frame counts as 0. */
+function _cachedByteLength(bytes: Uint8Array | undefined): number {
+  return bytes instanceof Uint8Array ? bytes.byteLength : 0;
+}
+
+/**
+ * quick 261023-f9c: READ-ONLY stats for the generated-render-source cache.
+ * No eviction, reset, or mutation — measurement only.
+ */
+export function getGeneratedRenderSourceCacheStats(): {
+  byteTotalBytes: number;
+  entryCount: number;
+  ceilingBytes: number;
+} {
+  return {
+    byteTotalBytes: _generatedRenderSourceCacheBytes,
+    entryCount: _generatedRenderSourceCache.size,
+    ceilingBytes: GENERATED_RENDER_SOURCE_CACHE_BYTE_CEILING,
+  };
+}
+
+/**
+ * quick 261023-f9c: READ-ONLY byte stats for both Roto cache maps.
+ * `realKeyBytes` / `generatedBytes` include each frame's onion preview
+ * bytes (the same Uint8Arrays the caches retain); `onionBytes` reports
+ * the onion share separately. Malformed (non-Uint8Array) bytes count 0.
+ */
+export function getRotoCacheByteStats(): {
+  realKeyBytes: number;
+  realKeyFrames: number;
+  generatedBytes: number;
+  generatedFrames: number;
+  onionBytes: number;
+  totalBytes: number;
+} {
+  let realKeyBytes = 0;
+  let realKeyFrames = 0;
+  let generatedBytes = 0;
+  let generatedFrames = 0;
+  let onionBytes = 0;
+
+  const accumulate = (
+    metadata: Map<string, Map<string, Map<number, PhysicPaintRotoCacheFrame>>>,
+    onFrame: (frame: PhysicPaintRotoCacheFrame) => void,
+  ): void => {
+    for (const layerTracks of metadata.values()) {
+      for (const frames of layerTracks.values()) {
+        for (const frame of frames.values()) onFrame(frame);
+      }
+    }
+  };
+
+  accumulate(_rotoCacheMetadata, (frame) => {
+    realKeyFrames += 1;
+    realKeyBytes += _cachedByteLength(frame.bytes);
+    const onion = _cachedByteLength(frame.onionBytes);
+    onionBytes += onion;
+    realKeyBytes += onion;
+  });
+  accumulate(_rotoGeneratedCacheMetadata, (frame) => {
+    generatedFrames += 1;
+    generatedBytes += _cachedByteLength(frame.bytes);
+    const onion = _cachedByteLength(frame.onionBytes);
+    onionBytes += onion;
+    generatedBytes += onion;
+  });
+
+  return {
+    realKeyBytes,
+    realKeyFrames,
+    generatedBytes,
+    generatedFrames,
+    onionBytes,
+    totalBytes: realKeyBytes + generatedBytes,
+  };
+}
+
 const _rotoInterpolationSettings = new Map<string, Map<string, PhysicPaintRotoInterpolationSettings>>();
 const _rotoInterpolationFailureStatus = new Map<string, Map<string, string>>();
 const ROTO_INTERPOLATION_FAILURE_STATUS = 'Generated in-betweens could not regenerate. Real keys were kept.';
