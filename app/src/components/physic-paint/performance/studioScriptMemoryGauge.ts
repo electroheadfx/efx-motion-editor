@@ -51,9 +51,11 @@ export interface StudioScriptMemorySectionPorts {
   clearRail: () => boolean;
 }
 
-/** A rail explicitly selected on the timeline (the clear-all context). */
+/** The active track's name and whether a rail line is explicitly selected. */
 export interface StudioScriptMemoryRailContext {
   trackName: string;
+  /** True while a key/loop rail line is selected on the timeline. */
+  railSelected: boolean;
 }
 
 /** The identity-stable section the Studio hands the right panel. */

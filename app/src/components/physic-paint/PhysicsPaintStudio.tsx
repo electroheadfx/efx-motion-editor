@@ -5053,18 +5053,20 @@ export function PhysicsPaintStudio() {
   // track-scoped), so the label and the purge target always agree.
   const memoryRailContext = useSignal<StudioScriptMemoryRailContext | null>(null);
   useEffect(() => {
+    const layerId = launchContextRef.current?.layerId;
+    const document = layerId ? getEfxPaintDocument(layerId) : undefined;
+    const activeTrack = document?.tracks.find((track) => track.id === document.activeTrackId);
+    if (!activeTrack) {
+      memoryRailContext.value = null;
+      return;
+    }
+    // The clear-all action always targets the ACTIVE track, so its name is
+    // always available; only the per-frame purge waits for a rail selection.
     const railSelected =
       selectedRotoKeyRail.value !== null
       || selectedLoopClipId.value !== null
       || railSetSelection.value !== null;
-    if (!railSelected) {
-      memoryRailContext.value = null;
-      return;
-    }
-    const layerId = launchContextRef.current?.layerId;
-    const document = layerId ? getEfxPaintDocument(layerId) : undefined;
-    const activeTrack = document?.tracks.find((track) => track.id === document.activeTrackId);
-    memoryRailContext.value = { trackName: activeTrack?.name ?? 'Active rail' };
+    memoryRailContext.value = { trackName: activeTrack.name, railSelected };
   }, [
     selectedRotoKeyRail.value,
     selectedLoopClipId.value,

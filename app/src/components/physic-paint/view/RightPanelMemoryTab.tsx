@@ -188,31 +188,28 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
         lost for that key.
       </p>
       <div class="physics-paint-memory-actions">
-        <button
-          type="button"
-          class="physics-paint-memory-purge-frame"
-          disabled={!hasFrameScript}
-          onClick={() => {
-            confirmSignal.value = 'frame';
-          }}
-        >
-          {`Purge frame ${currentFrame} script`}
-        </button>
-        {rail && hasAnyScript ? (
+        {rail?.railSelected ? (
           <button
             type="button"
-            class="physics-paint-memory-clear-rail"
+            class="physics-paint-memory-purge-frame"
+            disabled={!hasFrameScript}
             onClick={() => {
-              confirmSignal.value = 'rail';
+              confirmSignal.value = 'frame';
             }}
           >
-            {`Clear all scripts on ${rail.trackName}`}
+            {`Purge frame ${currentFrame} scripts`}
           </button>
-        ) : !rail ? (
-          <div class="physics-paint-memory-rail-hint">
-            Select a rail in the timeline to clear all of its scripts.
-          </div>
         ) : null}
+        <button
+          type="button"
+          class="physics-paint-memory-clear-rail"
+          disabled={!hasAnyScript}
+          onClick={() => {
+            confirmSignal.value = 'rail';
+          }}
+        >
+          {`Clear all scripts on ${rail?.trackName ?? 'this rail'}`}
+        </button>
       </div>
       {confirm !== 'none' ? (
         <div
@@ -257,7 +254,7 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
           <p class="physics-paint-memory-confirm-copy">
             {confirm === 'frame'
               ? 'The painted pixels stay, but Move, Select and replay are lost for this key.'
-              : `Every key of this rail loses its script; the painted pixels stay on every key.${rail ? ` Rail: ${rail.trackName}.` : ''}`}
+              : `Every key of this rail loses its script; the painted pixels stay on every key. Rail: ${rail?.trackName ?? 'this rail'}.`}
           </p>
           <div class="physics-paint-memory-confirm-actions">
             <button
