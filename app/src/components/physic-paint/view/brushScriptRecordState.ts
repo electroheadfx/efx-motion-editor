@@ -188,6 +188,21 @@ export function captureBrushScriptForFrame(
   complete?: boolean,
   paintSettings?: PaintRenderSettings | null,
 ): BrushScriptFrameEntry {
+  const entry = captureEntry(frame, groups, complete, paintSettings);
+  bumpRevision();
+  return entry;
+}
+
+/**
+ * The shared capture body WITHOUT the revision bump, so a restore can seed
+ * every frame and bump ONCE (quick-261023-l35) instead of once per frame.
+ */
+function captureEntry(
+  frame: number,
+  groups: readonly Readonly<RecordedStrokeGroup>[],
+  complete?: boolean,
+  paintSettings?: PaintRenderSettings | null,
+): BrushScriptFrameEntry {
   const frozen = freezeRecordedStrokeGroups(groups);
   const previous = brushScriptFrames.get(frame);
   const entry: BrushScriptFrameEntry = Object.freeze({
@@ -205,7 +220,6 @@ export function captureBrushScriptForFrame(
   });
   brushScriptFrames.set(frame, entry);
   dirtyBrushScriptFrames.delete(frame);
-  bumpRevision();
   return entry;
 }
 
@@ -262,6 +276,69 @@ export function getBrushScriptForFrame(frame: number): readonly Readonly<Recorde
 
 export function getBrushScriptFrameEntry(frame: number): BrushScriptFrameEntry | undefined {
   return brushScriptFrames.get(frame);
+}
+
+/**
+ * quick-261023-l35: every captured frame, ascending by frame — the snapshot
+ * codec's save input (the report rows are a narrower, different shape).
+ */
+export function getBrushScriptFrameEntries(): readonly BrushScriptFrameEntry[] {
+  return [...brushScriptFrames.values()].sort((left, right) => left.frame - right.frame);
+}
+
+/** One frame's restored content — the decode result, structurally. */
+export interface BrushScriptRestoreEntry {
+  frame: number;
+  groups: readonly Readonly<RecordedStrokeGroup>[];
+  complete: boolean;
+  paintSettings?: PaintRenderSettings | null;
+}
+
+/**
+ * quick-261023-l35: seed the whole store from a decoded snapshot. This is a
+ * SESSION SEED, not a capture point: the map, dirty marks and arrival-base
+ * notes are replaced wholesale, every entry's `complete` flag is kept
+ * VERBATIM (no arrival-base promotion), and the revision bumps ONCE.
+ * A zero-group frame is skipped — the store never retains a ghost row.
+ * Returns the number of restored entries.
+ */
+export function restoreBrushScriptFrames(
+  entries: readonly BrushScriptRestoreEntry[],
+): number {
+  brushScriptFrames.clear();
+  dirtyBrushScriptFrames.clear();
+  arrivalBaseFrames.clear();
+  let restored = 0;
+  for (const entry of entries) {
+    if (entry.groups.length === 0) continue;
+    captureEntry(entry.frame, entry.groups, entry.complete, entry.paintSettings);
+    restored += 1;
+  }
+  if (restored > 0) bumpRevision();
+  return restored;
+}
+
+/**
+ * quick-261023-l35: drop every captured frame whose app frame is not in the
+ * live real-key set (plus its dirty mark and arrival-base note). One bump.
+ * Returns the number of removed entries.
+ */
+export function pruneBrushScriptFramesTo(keepFrames: ReadonlySet<number>): number {
+  let removed = 0;
+  for (const key of [...brushScriptFrames.keys()]) {
+    if (keepFrames.has(key)) continue;
+    brushScriptFrames.delete(key);
+    dirtyBrushScriptFrames.delete(key);
+    arrivalBaseFrames.delete(key);
+    removed += 1;
+  }
+  if (removed > 0) bumpRevision();
+  return removed;
+}
+
+/** quick-261023-l35: true when at least one frame is retained. */
+export function hasBrushScriptFrames(): boolean {
+  return brushScriptFrames.size > 0;
 }
 
 export function getBrushScriptTotals(): BrushScriptFrameTotals {

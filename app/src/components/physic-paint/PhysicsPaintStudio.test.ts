@@ -3705,3 +3705,23 @@ describe('261023-l35 studio script snapshot seams', () => {
     expect(bridge).toContain('projectId: projectStore.projectId.peek()');
   });
 });
+
+// quick-261023-l35 Task 2: brush frames in the same snapshot.
+describe('261023-l35 brush frames in the Studio script snapshot', () => {
+  it('feeds the per-frame brush ledger to the controller', () => {
+    expect(studio).toContain('getBrushFrames: () => getBrushScriptFrameEntries(),');
+    expect(studio).toContain('${aquarelleStrokesRevision.peek()}:${brushScriptRevision.peek()}');
+  });
+
+  it('captures the current brush frame before the snapshot save on close', () => {
+    const closeStart = studio.indexOf('usePhysicsPaintCloseFlush(');
+    const closeBody = studio.slice(closeStart, studio.indexOf('// 41-05 (D-08): release the audio engine on Studio unmount', closeStart));
+    const captureIndex = closeBody.indexOf('flushBrushScriptFrame(');
+    const saveIndex = closeBody.indexOf('studioScriptSnapshot.saveNow(),');
+    expect(captureIndex).toBeGreaterThan(-1);
+    expect(saveIndex).toBeGreaterThan(captureIndex);
+    // Watercolor mode has its own capture step; the brush capture is gated out.
+    expect(closeBody).toContain("if (activeModule.peek() === 'watercolor') return;");
+    expect(closeBody).toContain('engineRef.current?.getFramePaintSettings() ?? engineRef.current?.getPaintRenderSettings()');
+  });
+});

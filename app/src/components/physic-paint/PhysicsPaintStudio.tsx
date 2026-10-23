@@ -177,9 +177,11 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import { activeModule } from '../shared/activeModule';
 import {
   adoptBrushScriptFrameAsComplete,
+  brushScriptRevision,
   clearBrushScriptFrame,
   computeBrushScriptPruneFrame,
   flushBrushScriptFrame,
+  getBrushScriptFrameEntries,
   noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
   resetBrushScriptStore,
@@ -1031,12 +1033,14 @@ export function PhysicsPaintStudio() {
     studioScriptSnapshotControllerRef.current = createStudioScriptSnapshotController({
       getIdentity: () => studioScriptSnapshotIdentityRef.current,
       getWatercolorEvents: () => getRecordedAquarellePayloadTimeline(),
-      // Task 2 wires the per-frame brush store here.
-      getBrushFrames: () => [],
-      // The aquarelle revision is the watercolor content fingerprint: it bumps
-      // on every record/restore/delete (and the brush revision joins it in
-      // Task 2), so a save can never miss a script mutation.
-      getContentSignature: () => String(aquarelleStrokesRevision.peek()),
+      getBrushFrames: () => getBrushScriptFrameEntries(),
+      // Both store revisions form the content fingerprint: each bumps on every
+      // record/capture/restore/delete, so a save can never miss a mutation —
+      // and a stroke that completes without a bump is the one silent-loss case
+      // this signature is chosen to rule out (recordAquarelleStroke and the
+      // brush capture path both bump).
+      getContentSignature: () =>
+        `${aquarelleStrokesRevision.peek()}:${brushScriptRevision.peek()}`,
       // Live real-key app frames for the bound track. An empty set disables
       // pruning in the controller (unknown ≠ empty), so a launch whose key
       // records are not loaded yet can never wipe the restored script.
@@ -3018,6 +3022,19 @@ export function PhysicsPaintStudio() {
         },
         () => rotoPlaybackSettingsController.flush(),
         () => flushDocumentSyncRef.current(),
+        // quick-261023-l35: the per-frame brush ledger is captured only at
+        // frame leave / Move entry / an explicit edit, so closing right after
+        // a stroke would save a snapshot missing the CURRENT frame. Capture it
+        // with the same call the frame-leave path uses, BEFORE the write.
+        // Watercolor mode has its own capture step above.
+        () => {
+          if (activeModule.peek() === 'watercolor') return;
+          flushBrushScriptFrame(
+            currentFrame,
+            engineRef.current?.getStrokes() ?? null,
+            engineRef.current?.getFramePaintSettings() ?? engineRef.current?.getPaintRenderSettings() ?? null,
+          );
+        },
         // quick-261023-l35 (T-261023-l35-05): the script snapshot save runs
         // LAST and is time-bounded — a hung disk write can never hold the
         // window open. saveNow() itself never rejects; this race is the

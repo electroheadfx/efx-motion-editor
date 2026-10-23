@@ -24,15 +24,19 @@ import {
   deleteBrushScriptFrame,
   flushBrushScriptFrame,
   getBrushScriptForFrame,
+  getBrushScriptFrameEntries,
   getBrushScriptFrameEntry,
   getBrushScriptReport,
   getBrushScriptTotals,
+  hasBrushScriptFrames,
   isBrushScriptFrameComplete,
   isBrushScriptLedgerComplete,
   markBrushScriptFrameDirty,
   noteBrushScriptArrivalBase,
+  pruneBrushScriptFramesTo,
   pruneBrushScriptsFromFrame,
   resetBrushScriptStore,
+  restoreBrushScriptFrames,
 } from './brushScriptRecordState';
 
 const encoder = new TextEncoder();
@@ -536,5 +540,110 @@ describe('delete and reset', () => {
     } finally {
       dispose();
     }
+  });
+});
+
+// quick-261023-l35: the snapshot seed/prune APIs. A restore is a session seed,
+// not a capture point: one revision bump, `complete` kept verbatim, ascending
+// reads, and no ghost rows for zero-group frames.
+describe('snapshot restore and prune (quick-261023-l35)', () => {
+  const SETTINGS: PaintRenderSettings = {
+    localSpreadStrength: 40,
+    wetPaper: true,
+    physicsStrength: 0.5,
+    paperGrain: 'paper/rough-1',
+  };
+
+  function countRuns(run: () => void): number {
+    let runs = 0;
+    const dispose = effect(() => {
+      void brushScriptRevision.value;
+      runs += 1;
+    });
+    try {
+      runs = 0;
+      run();
+      return runs;
+    } finally {
+      dispose();
+    }
+  }
+
+  it('restores entries ascending by frame with one revision bump', () => {
+    const restored = restoreBrushScriptFrames([
+      { frame: 9, groups: [{ primary: stroke(2), continuations: [continuation(3)] }], complete: false },
+      {
+        frame: 4,
+        groups: [{ primary: stroke(1), continuations: [] }],
+        complete: true,
+        paintSettings: SETTINGS,
+      },
+    ]);
+    expect(restored).toBe(2);
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([4, 9]);
+    expect(hasBrushScriptFrames()).toBe(true);
+  });
+
+  it('keeps each entry complete flag VERBATIM (no arrival-base promotion)', () => {
+    noteBrushScriptArrivalBase(9, true);
+    restoreBrushScriptFrames([
+      { frame: 9, groups: [{ primary: stroke(2), continuations: [] }], complete: false },
+      {
+        frame: 4,
+        groups: [{ primary: stroke(1), continuations: [] }],
+        complete: true,
+        paintSettings: SETTINGS,
+      },
+    ]);
+    expect(getBrushScriptFrameEntry(9)?.complete).toBe(false);
+    expect(getBrushScriptFrameEntry(4)?.complete).toBe(true);
+    expect(getBrushScriptFrameEntry(4)?.paintSettings).toEqual(SETTINGS);
+  });
+
+  it('bumps exactly once for the whole restore', () => {
+    const runs = countRuns(() => {
+      restoreBrushScriptFrames([
+        { frame: 2, groups: [{ primary: stroke(1), continuations: [] }], complete: true },
+        { frame: 5, groups: [{ primary: stroke(2), continuations: [] }], complete: true },
+        { frame: 7, groups: [{ primary: stroke(3), continuations: [] }], complete: true },
+      ]);
+    });
+    expect(runs).toBe(1);
+  });
+
+  it('replaces the previous store wholesale and skips zero-group frames', () => {
+    captureBrushScriptForFrame(2, [{ primary: stroke(1), continuations: [] }], true);
+    const restored = restoreBrushScriptFrames([
+      { frame: 5, groups: [{ primary: stroke(2), continuations: [] }], complete: true },
+      { frame: 8, groups: [], complete: true },
+    ]);
+    expect(restored).toBe(1);
+    expect(getBrushScriptForFrame(2)).toEqual([]);
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([5]);
+    expect(getBrushScriptFrameEntry(8)).toBeUndefined();
+  });
+
+  it('prunes only frames outside the keep set, with one bump', () => {
+    restoreBrushScriptFrames([
+      { frame: 2, groups: [{ primary: stroke(1), continuations: [] }], complete: true },
+      { frame: 5, groups: [{ primary: stroke(2), continuations: [] }], complete: true },
+      { frame: 7, groups: [{ primary: stroke(3), continuations: [] }], complete: true },
+    ]);
+    const runs = countRuns(() => {
+      expect(pruneBrushScriptFramesTo(new Set([5]))).toBe(2);
+    });
+    expect(runs).toBe(1);
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([5]);
+    expect(hasBrushScriptFrames()).toBe(true);
+    expect(pruneBrushScriptFramesTo(new Set([5]))).toBe(0);
+  });
+
+  it('reset empties the store', () => {
+    restoreBrushScriptFrames([
+      { frame: 5, groups: [{ primary: stroke(2), continuations: [] }], complete: true },
+    ]);
+    resetBrushScriptStore();
+    expect(hasBrushScriptFrames()).toBe(false);
+    expect(getBrushScriptFrameEntries()).toEqual([]);
   });
 });

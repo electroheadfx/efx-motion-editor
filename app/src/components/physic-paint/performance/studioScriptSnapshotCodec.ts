@@ -32,7 +32,7 @@
 // ============================================================
 
 import type { AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
-import type { PaintRenderSettings } from '@efxlab/efx-physic-paint';
+import type { BrushOpts, PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   decodeScriptTimelineBinary,
   encodeScriptTimelineBinary,
@@ -90,7 +90,6 @@ export interface StudioScriptSnapshotBrushFrame {
 
 export interface StudioScriptSnapshotEncodeInput extends StudioScriptSnapshotIdentity {
   watercolorEvents: readonly AquarellePayloadEvent[];
-  /** Task 2 fills the per-frame records; v1 reserves the section today. */
   brushFrames?: readonly StudioScriptSnapshotBrushFrame[];
 }
 
@@ -149,6 +148,18 @@ class Writer {
     this.ensure(4);
     this.view.setUint32(this.cursor, value, true);
     this.cursor += 4;
+  }
+
+  f32(value: number): void {
+    this.ensure(4);
+    this.view.setFloat32(this.cursor, value, true);
+    this.cursor += 4;
+  }
+
+  f64(value: number): void {
+    this.ensure(8);
+    this.view.setFloat64(this.cursor, value, true);
+    this.cursor += 8;
   }
 
   raw(bytes: Uint8Array): void {
@@ -218,6 +229,20 @@ class Reader {
     return value;
   }
 
+  f32(): number {
+    this.need(4);
+    const value = this.view.getFloat32(this.cursor, true);
+    this.cursor += 4;
+    return value;
+  }
+
+  f64(): number {
+    this.need(8);
+    const value = this.view.getFloat64(this.cursor, true);
+    this.cursor += 8;
+    return value;
+  }
+
   slice(length: number, what: string): Uint8Array {
     if (length < 0 || length > this.remaining) {
       fail('length', `${what} declared length ${length} exceeds the remaining bytes`, this.cursor);
@@ -253,20 +278,222 @@ function validateIdentityValue(value: unknown, what: string): string {
   return value;
 }
 
+// --- Brush section v1 -----------------------------------------------------
+
+/** frame u32 + flags u8 + reserved u8 + paintSettingsPresent u8 + groupCount u32. */
+const BRUSH_FRAME_MIN_BYTES = 4 + 1 + 1 + 1 + 4;
+/** continuationCount u32 + one minimum stroke record. */
+const BRUSH_GROUP_MIN_BYTES = 4 + (4 + 8 + 1 + 1 + 1 + 9 * 8 + 1 + 1 + 1 + 1);
+/** 7 f32 per point (x, y, p, tx, ty, tw, spd). */
+const BRUSH_POINT_BYTES = 7 * 4;
+
+const TOOL_CODES: readonly PaintStroke['tool'][] = ['paint', 'erase', 'move'];
+/** 0 = absent (null/undefined), 1 local, 2 last, 3 all. */
+const PHYSICS_MODE_CODES: readonly (PaintStroke['physicsMode'] | 'absent')[] = [
+  'absent',
+  'local',
+  'last',
+  'all',
+];
+const PARAM_KEYS = [
+  'size',
+  'opacity',
+  'pressure',
+  'waterAmount',
+  'dryAmount',
+  'edgeDetail',
+  'pickup',
+  'eraseStrength',
+  'antiAlias',
+] as const;
+
+function writeOptionalU32(writer: Writer, value: number | undefined): void {
+  if (typeof value === 'number') {
+    writer.u8(1);
+    writer.u32(value);
+  } else {
+    writer.u8(0);
+  }
+}
+
+function encodeStroke(writer: Writer, stroke: Readonly<PaintStroke>): void {
+  writer.u32(stroke.points.length);
+  writer.f64(stroke.timestamp);
+  const toolIndex = TOOL_CODES.indexOf(stroke.tool);
+  if (toolIndex < 0) fail('brush', `unsupported stroke tool "${String(stroke.tool)}"`);
+  writer.u8(toolIndex);
+  const physicsMode = stroke.physicsMode ?? 'absent';
+  const physicsIndex = PHYSICS_MODE_CODES.indexOf(physicsMode);
+  if (physicsIndex < 0) {
+    fail('brush', `unsupported physics mode "${String(physicsMode)}"`);
+  }
+  writer.u8(physicsIndex);
+  if (stroke.color === null || stroke.color === undefined) {
+    writer.u8(0);
+  } else {
+    writer.u8(1);
+    const encoded = UTF8_ENCODER.encode(stroke.color);
+    if (encoded.byteLength > 0xffff) fail('length', 'stroke color exceeds 65535 UTF-8 bytes');
+    writer.u16(encoded.byteLength);
+    writer.raw(encoded);
+  }
+  for (const key of PARAM_KEYS) writer.f64(stroke.params[key]);
+  writeOptionalU32(writer, stroke.mutationId);
+  writeOptionalU32(writer, stroke.diffusionFrames);
+  writeOptionalU32(writer, stroke.playFrame);
+  writer.u8(stroke.hasPenInput === true ? 1 : 0);
+  for (const point of stroke.points) {
+    writer.f32(point.x);
+    writer.f32(point.y);
+    writer.f32(point.p);
+    writer.f32(point.tx);
+    writer.f32(point.ty);
+    writer.f32(point.tw);
+    writer.f32(point.spd);
+  }
+}
+
+function encodeGroup(writer: Writer, group: Readonly<RecordedStrokeGroup>): void {
+  if (group.primary.points.length === 0) {
+    fail('brush', 'a brush group primary must carry points');
+  }
+  const continuations = group.continuations ?? [];
+  for (const continuation of continuations) {
+    if (continuation.points.length !== 0 || (continuation.diffusionFrames ?? 0) <= 0) {
+      // The engine's own baseline rule: a continuation is a zero-point
+      // positive-diffusion record. Never write a file decode would refuse.
+      fail('brush', 'a brush continuation must have no points and a positive diffusion count');
+    }
+  }
+  writer.u32(continuations.length);
+  encodeStroke(writer, group.primary);
+  for (const continuation of continuations) encodeStroke(writer, continuation);
+}
+
 /**
- * The v1 brush block. Task 1 reserves the section (frameCount 0); Task 2
- * writes one record per captured frame.
+ * The v1 brush block. BRUSH POINTS ARE PIXEL COORDINATES: encoded as f32,
+ * never clamped or normalized to [0,1] like the AQTL watercolor records
+ * (a UV projection would destroy the 3-decimal pixel coordinates the
+ * engine produces).
  */
 function encodeBrushSection(frames: readonly StudioScriptSnapshotBrushFrame[]): Uint8Array {
   const writer = new Writer();
   writer.u16(STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION);
   writer.u16(0);
-  writer.u32(frames.length === 0 ? 0 : frames.length);
-  if (frames.length > 0) {
-    // Fail closed rather than silently dropping a caller's brush frames.
-    fail('brush', 'the SNAP v1 brush records are not implemented yet');
+  writer.u32(frames.length);
+  const seenFrames = new Set<number>();
+  for (const frame of frames) {
+    if (!Number.isInteger(frame.frame) || frame.frame < 0) {
+      fail('brush', `invalid brush frame ${String(frame.frame)}`);
+    }
+    if (seenFrames.has(frame.frame)) {
+      fail('brush', `duplicate brush frame ${frame.frame}`);
+    }
+    seenFrames.add(frame.frame);
+    writer.u32(frame.frame);
+    writer.u8(frame.complete ? 1 : 0);
+    writer.u8(0);
+    const settings = frame.paintSettings ?? null;
+    if (settings === null) {
+      writer.u8(0);
+    } else {
+      writer.u8(1);
+      writer.f32(settings.localSpreadStrength);
+      writer.u8(settings.wetPaper ? 1 : 0);
+      writer.f32(settings.physicsStrength);
+      const encoded = UTF8_ENCODER.encode(settings.paperGrain);
+      if (encoded.byteLength > 0xffff) fail('length', 'paperGrain exceeds 65535 UTF-8 bytes');
+      writer.u16(encoded.byteLength);
+      writer.raw(encoded);
+    }
+    writer.u32(frame.groups.length);
+    for (const group of frame.groups) encodeGroup(writer, group);
   }
   return writer.finish();
+}
+
+function readOptionalU32(reader: Reader, what: string): number | undefined {
+  const present = reader.u8();
+  if (present > 1) fail('flags', `${what} presence must be 0 or 1`);
+  return present === 1 ? reader.u32() : undefined;
+}
+
+function decodeStroke(reader: Reader): PaintStroke {
+  const pointCount = reader.u32();
+  // Guard the allocation BEFORE reading anything: 7 f32 per point.
+  if (pointCount > Math.floor(reader.remaining / BRUSH_POINT_BYTES)) {
+    fail('count', `stroke declares ${pointCount} points beyond the remaining bytes`, reader.offset);
+  }
+  const timestamp = reader.f64();
+  const toolCode = reader.u8();
+  const tool = TOOL_CODES[toolCode];
+  if (!tool) fail('brush', `unsupported stroke tool code ${toolCode}`);
+  const physicsCode = reader.u8();
+  if (physicsCode >= PHYSICS_MODE_CODES.length) {
+    fail('brush', `unsupported physics mode code ${physicsCode}`);
+  }
+  const physicsMode = PHYSICS_MODE_CODES[physicsCode]!;
+  const colorPresent = reader.u8();
+  if (colorPresent > 1) fail('flags', 'stroke color presence must be 0 or 1');
+  const color = colorPresent === 1 ? reader.string('stroke color') : null;
+  const values = PARAM_KEYS.map(() => reader.f64());
+  const params: BrushOpts = {
+    size: values[0]!,
+    opacity: values[1]!,
+    pressure: values[2]!,
+    waterAmount: values[3]!,
+    dryAmount: values[4]!,
+    edgeDetail: values[5]!,
+    pickup: values[6]!,
+    eraseStrength: values[7]!,
+    antiAlias: values[8]!,
+  };
+  const mutationId = readOptionalU32(reader, 'mutationId');
+  const diffusionFrames = readOptionalU32(reader, 'diffusionFrames');
+  const playFrame = readOptionalU32(reader, 'playFrame');
+  const hasPenInput = reader.u8();
+  if (hasPenInput > 1) fail('flags', 'stroke hasPenInput must be 0 or 1');
+  // The points are LAST: re-check precisely before the loop.
+  if (pointCount > Math.floor(reader.remaining / BRUSH_POINT_BYTES)) {
+    fail('count', `stroke declares ${pointCount} points beyond the remaining bytes`, reader.offset);
+  }
+  const points: PaintStroke['points'] = [];
+  for (let index = 0; index < pointCount; index += 1) {
+    points.push({
+      x: reader.f32(),
+      y: reader.f32(),
+      p: reader.f32(),
+      tx: reader.f32(),
+      ty: reader.f32(),
+      tw: reader.f32(),
+      spd: reader.f32(),
+    });
+  }
+  const stroke: PaintStroke = { tool, points, color, params, timestamp };
+  if (mutationId !== undefined) stroke.mutationId = mutationId;
+  if (diffusionFrames !== undefined) stroke.diffusionFrames = diffusionFrames;
+  if (playFrame !== undefined) stroke.playFrame = playFrame;
+  if (hasPenInput === 1) stroke.hasPenInput = true;
+  if (physicsMode !== 'absent') stroke.physicsMode = physicsMode;
+  return stroke;
+}
+
+function decodeGroup(reader: Reader): Readonly<RecordedStrokeGroup> {
+  const continuationCount = reader.u32();
+  if (continuationCount > Math.floor(reader.remaining / BRUSH_GROUP_MIN_BYTES)) {
+    fail('count', `group declares ${continuationCount} continuations beyond the remaining bytes`, reader.offset);
+  }
+  const primary = decodeStroke(reader);
+  if (primary.points.length === 0) fail('count', 'a brush group primary must carry points');
+  const continuations: PaintStroke[] = [];
+  for (let index = 0; index < continuationCount; index += 1) {
+    const continuation = decodeStroke(reader);
+    if (continuation.points.length !== 0 || (continuation.diffusionFrames ?? 0) <= 0) {
+      fail('count', 'a brush continuation must have no points and a positive diffusion count');
+    }
+    continuations.push(continuation);
+  }
+  return { primary, continuations };
 }
 
 function decodeBrushSection(bytes: Uint8Array): StudioScriptSnapshotBrushFrame[] {
@@ -281,15 +508,49 @@ function decodeBrushSection(bytes: Uint8Array): StudioScriptSnapshotBrushFrame[]
   const reserved = reader.u16();
   if (reserved !== 0) fail('flags', 'brush section reserved word must be 0');
   const frameCount = reader.u32();
-  if (frameCount > 0) {
-    // v1's per-frame records land with the brush work; a forward file must
-    // fail closed rather than restore an empty ledger over real pixels.
-    fail('brush', 'the SNAP v1 brush records are not implemented yet');
+  if (frameCount > Math.floor(reader.remaining / BRUSH_FRAME_MIN_BYTES)) {
+    fail('count', `brush declares ${frameCount} frames beyond the remaining bytes`, reader.offset);
+  }
+  const frames: StudioScriptSnapshotBrushFrame[] = [];
+  for (let index = 0; index < frameCount; index += 1) {
+    const frame = reader.u32();
+    const flags = reader.u8();
+    if ((flags & ~1) !== 0) fail('flags', 'unsupported brush frame flags');
+    if (reader.u8() !== 0) fail('flags', 'brush frame reserved byte must be 0');
+    const settingsPresent = reader.u8();
+    if (settingsPresent > 1) fail('flags', 'paint settings presence must be 0 or 1');
+    let paintSettings: PaintRenderSettings | null = null;
+    if (settingsPresent === 1) {
+      const localSpreadStrength = reader.f32();
+      const wetPaperCode = reader.u8();
+      if (wetPaperCode > 1) fail('flags', 'wetPaper must be 0 or 1');
+      const physicsStrength = reader.f32();
+      paintSettings = {
+        localSpreadStrength,
+        wetPaper: wetPaperCode === 1,
+        physicsStrength,
+        paperGrain: reader.string('paperGrain'),
+      };
+    }
+    const groupCount = reader.u32();
+    if (groupCount > Math.floor(reader.remaining / BRUSH_GROUP_MIN_BYTES)) {
+      fail('count', `frame declares ${groupCount} groups beyond the remaining bytes`, reader.offset);
+    }
+    const groups: Readonly<RecordedStrokeGroup>[] = [];
+    for (let groupIndex = 0; groupIndex < groupCount; groupIndex += 1) {
+      groups.push(decodeGroup(reader));
+    }
+    frames.push({
+      frame,
+      complete: (flags & 1) === 1,
+      paintSettings,
+      groups,
+    });
   }
   if (reader.remaining !== 0) {
     fail('trailing', 'unread bytes remain in the brush section');
   }
-  return [];
+  return frames;
 }
 
 export function encodeStudioScriptSnapshot(

@@ -15,12 +15,14 @@ import type {
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
+import type { PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   STUDIO_SCRIPT_SNAPSHOT_MAGIC,
   STUDIO_SCRIPT_SNAPSHOT_VERSION,
   StudioScriptSnapshotCodecError,
   decodeStudioScriptSnapshot,
   encodeStudioScriptSnapshot,
+  type StudioScriptSnapshotBrushFrame,
   type StudioScriptSnapshotIdentity,
 } from './studioScriptSnapshotCodec';
 
@@ -203,5 +205,195 @@ describe('studioScriptSnapshotCodec', () => {
     const watercolorStart = 8 + identityByteLength + 4;
     const corrupted = withByte(bytes, watercolorStart, 0x00);
     expect(codeOf(() => decodeStudioScriptSnapshot(corrupted, IDENTITY))).toBe('watercolor');
+  });
+});
+
+// ------------------------------------------------------------
+//  quick-261023-l35 Task 2 — the brush section.
+//  Points are PIXEL coordinates: f32, never clamped to [0,1].
+// ------------------------------------------------------------
+
+function brushStroke(overrides: Partial<PaintStroke> = {}): PaintStroke {
+  return {
+    tool: 'paint',
+    points: [
+      { x: 812.125, y: 431.5, p: 0.625, tx: -4.5, ty: 3.25, tw: 1.5, spd: 0.375 },
+      { x: 900.75, y: 512.375, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.5 },
+    ],
+    color: '#336699',
+    params: {
+      size: 12.5,
+      opacity: 80,
+      pressure: 55,
+      waterAmount: 40,
+      dryAmount: 30,
+      edgeDetail: 20,
+      pickup: 10,
+      eraseStrength: 100,
+      antiAlias: 1,
+    },
+    timestamp: 1729590000000.125,
+    mutationId: 41,
+    playFrame: 12,
+    hasPenInput: true,
+    ...overrides,
+  };
+}
+
+function brushContinuation(mutationId: number, diffusionFrames = 3): PaintStroke {
+  return {
+    tool: 'paint',
+    points: [],
+    color: '#336699',
+    params: {
+      size: 12.5,
+      opacity: 80,
+      pressure: 55,
+      waterAmount: 40,
+      dryAmount: 30,
+      edgeDetail: 20,
+      pickup: 10,
+      eraseStrength: 100,
+      antiAlias: 1,
+    },
+    timestamp: 1729590000001.5,
+    mutationId,
+    diffusionFrames,
+  };
+}
+
+const BRUSH_SETTINGS: PaintRenderSettings = {
+  localSpreadStrength: 62,
+  wetPaper: true,
+  physicsStrength: 0.75,
+  paperGrain: 'paper/rough-1',
+};
+
+function brushFramesFixture(): StudioScriptSnapshotBrushFrame[] {
+  return [
+    {
+      frame: 12,
+      complete: false,
+      paintSettings: BRUSH_SETTINGS,
+      groups: [
+        {
+          primary: brushStroke(),
+          continuations: [brushContinuation(42, 3), brushContinuation(43, 7)],
+        },
+        { primary: brushStroke({ mutationId: 44, timestamp: 1729590000002 }), continuations: [] },
+      ],
+    },
+  ];
+}
+
+function brushContainer(frames: readonly StudioScriptSnapshotBrushFrame[]): Uint8Array {
+  return encodeStudioScriptSnapshot({
+    ...IDENTITY,
+    watercolorEvents: fixtureEvents(),
+    brushFrames: frames,
+  });
+}
+
+function brushBodyOffset(bytes: Uint8Array): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 8;
+  for (let index = 0; index < 3; index += 1) {
+    const length = view.getUint16(offset, true);
+    offset += 2 + length;
+  }
+  const watercolorLength = view.getUint32(offset, true);
+  offset += 4 + watercolorLength;
+  offset += 4; // the brush section length itself
+  return offset;
+}
+
+function replaceBrushBody(container: Uint8Array, brushBody: Uint8Array): Uint8Array {
+  const offset = brushBodyOffset(container);
+  const view = new DataView(container.buffer, container.byteOffset, container.byteLength);
+  const oldLength = view.getUint32(offset - 4, true);
+  const head = container.subarray(0, offset - 4);
+  const tail = container.subarray(offset + oldLength);
+  const out = new Uint8Array(head.byteLength + 4 + brushBody.byteLength + tail.byteLength);
+  out.set(head, 0);
+  new DataView(out.buffer).setUint32(head.byteLength, brushBody.byteLength, true);
+  out.set(brushBody, head.byteLength + 4);
+  out.set(tail, head.byteLength + 4 + brushBody.byteLength);
+  return out;
+}
+
+/** A brush body whose single stroke declares an impossible point count. */
+function brushBodyWithOversizedPointCount(): Uint8Array {
+  const body = new Uint8Array(4 + 4 + 4 + 3 + 4 + 4 + 4);
+  const view = new DataView(body.buffer);
+  let offset = 0;
+  view.setUint16(offset, 1, true); offset += 2; // version
+  view.setUint16(offset, 0, true); offset += 2; // reserved
+  view.setUint32(offset, 1, true); offset += 4; // frameCount
+  view.setUint32(offset, 7, true); offset += 4; // frame
+  body[offset] = 0; offset += 1; // flags
+  body[offset] = 0; offset += 1; // reserved
+  body[offset] = 0; offset += 1; // paintSettingsPresent
+  view.setUint32(offset, 1, true); offset += 4; // groupCount
+  view.setUint32(offset, 0, true); offset += 4; // continuationCount
+  view.setUint32(offset, 0xffffff, true); // pointCount
+  return body;
+}
+
+describe('studioScriptSnapshotCodec — brush section', () => {
+  it('round-trips frames, groups, continuations and sticky settings by value', () => {
+    const frames = brushFramesFixture();
+    const bytes = brushContainer(frames);
+    const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
+
+    expect(decoded.watercolorEvents).toHaveLength(2);
+    expect(decoded.brushFrames).toEqual(frames);
+    // Pixel coordinates survive verbatim — never normalized into [0,1].
+    const primary = decoded.brushFrames[0]!.groups[0]!.primary;
+    expect(primary.points[0]!.x).toBe(812.125);
+    expect(primary.points[0]!.y).toBe(431.5);
+    expect(primary.points[1]!.x).toBe(900.75);
+    expect(decoded.brushFrames[0]!.complete).toBe(false);
+    expect(decoded.brushFrames[0]!.paintSettings).toEqual(BRUSH_SETTINGS);
+
+    // The whole container is byte-stable through a decode/encode cycle.
+    expect(
+      encodeStudioScriptSnapshot({
+        ...IDENTITY,
+        watercolorEvents: decoded.watercolorEvents,
+        brushFrames: decoded.brushFrames,
+      }),
+    ).toEqual(bytes);
+  });
+
+  it('refuses an over-declared frame count before allocating', () => {
+    const bytes = brushContainer(brushFramesFixture());
+    const body = bytes.slice(brushBodyOffset(bytes));
+    new DataView(body.buffer, body.byteOffset, body.byteLength).setUint32(4, 0xffffff, true);
+    expect(codeOf(() => decodeStudioScriptSnapshot(replaceBrushBody(bytes, body), IDENTITY))).toBe(
+      'count',
+    );
+  });
+
+  it('refuses an oversized point count with the count code', () => {
+    const bytes = replaceBrushBody(brushContainer([]), brushBodyWithOversizedPointCount());
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('count');
+  });
+
+  it('refuses unknown frame flags with the flags code', () => {
+    const bytes = brushContainer(brushFramesFixture());
+    const body = bytes.slice(brushBodyOffset(bytes));
+    // Header (8) + frame u32 = 12; the flags byte follows.
+    body[12] = 0b0000_0010;
+    expect(codeOf(() => decodeStudioScriptSnapshot(replaceBrushBody(bytes, body), IDENTITY))).toBe(
+      'flags',
+    );
+  });
+
+  it('refuses a brush body shorter than its header', () => {
+    const bytes = brushContainer(brushFramesFixture());
+    const body = bytes.slice(brushBodyOffset(bytes), brushBodyOffset(bytes) + 6);
+    expect(codeOf(() => decodeStudioScriptSnapshot(replaceBrushBody(bytes, body), IDENTITY))).toBe(
+      'truncated',
+    );
   });
 });

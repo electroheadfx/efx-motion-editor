@@ -35,6 +35,7 @@ import {
   type StudioScriptSnapshotIdentity,
 } from '../performance/studioScriptSnapshotCodec';
 import { restoreAquarelleRecordTimeline } from '../view/aquarelleRecordState';
+import { restoreBrushScriptFrames } from '../view/brushScriptRecordState';
 
 export type StudioScriptSnapshotFailureKind = 'missing' | 'refused' | 'io';
 
@@ -199,11 +200,13 @@ export function createStudioScriptSnapshotController(
       return { status: 'empty', maxRestoredMutationId: 0 };
     }
 
-    const events = pruneWatercolorEventsToLiveFrames(
-      decoded.watercolorEvents,
-      deps.getLiveFrames(),
-    );
+    const liveFrames = deps.getLiveFrames();
+    const events = pruneWatercolorEventsToLiveFrames(decoded.watercolorEvents, liveFrames);
+    // The brush ledger is pruned to the SAME live real-key set: a frame whose
+    // key no longer exists must never reappear in the editable store.
+    const brushFrames = pruneBrushFramesToLiveFrames(decoded.brushFrames, liveFrames);
     const maxRestoredMutationId = restoreAquarelleRecordTimeline(events);
+    restoreBrushScriptFrames(brushFrames);
     lastSavedSignature = deps.getContentSignature();
     return { status: 'restored', maxRestoredMutationId };
   }

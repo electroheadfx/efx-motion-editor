@@ -15,14 +15,21 @@ import type {
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
+import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
   getRecordedAquarellePayloadTimeline,
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
 } from '../view/aquarelleRecordState';
 import {
+  getBrushScriptFrameEntries,
+  resetBrushScriptStore,
+  restoreBrushScriptFrames,
+} from '../view/brushScriptRecordState';
+import {
   decodeStudioScriptSnapshot,
   encodeStudioScriptSnapshot,
+  type StudioScriptSnapshotBrushFrame,
   type StudioScriptSnapshotIdentity,
 } from '../performance/studioScriptSnapshotCodec';
 import {
@@ -76,10 +83,49 @@ function fixtureEvents(): AquarellePayloadEvent[] {
   return [fixtureStroke(7, 101), fixtureStroke(9, 102), fixtureDry()];
 }
 
-function encodedFixture(): Uint8Array {
+const BRUSH_PARAMS: BrushOpts = {
+  size: 8,
+  opacity: 80,
+  pressure: 100,
+  waterAmount: 30,
+  dryAmount: 20,
+  edgeDetail: 50,
+  pickup: 10,
+  eraseStrength: 0,
+  antiAlias: 2,
+};
+
+function brushPoint(x: number, y: number): PenPoint {
+  return { x, y, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0.1 };
+}
+
+function brushStrokeFixture(mutationId: number): PaintStroke {
+  return {
+    tool: 'paint',
+    points: [brushPoint(120.5, 240.25), brushPoint(130.75, 250.125)],
+    color: '#123456',
+    params: { ...BRUSH_PARAMS },
+    timestamp: mutationId,
+    mutationId,
+  };
+}
+
+function brushFrameFixture(frame: number, mutationId: number): StudioScriptSnapshotBrushFrame {
+  return {
+    frame,
+    complete: true,
+    paintSettings: null,
+    groups: [{ primary: brushStrokeFixture(mutationId), continuations: [] }],
+  };
+}
+
+function encodedFixture(
+  brushFrames: readonly StudioScriptSnapshotBrushFrame[] = [],
+): Uint8Array {
   return encodeStudioScriptSnapshot({
     ...IDENTITY,
     watercolorEvents: fixtureEvents(),
+    brushFrames,
   });
 }
 
@@ -92,7 +138,7 @@ interface Harness {
 }
 
 function harness(
-  overrides: Partial<Pick<StudioScriptSnapshotControllerDeps, 'getLiveFrames' | 'getContentSignature'>> = {},
+  overrides: Partial<Pick<StudioScriptSnapshotControllerDeps, 'getLiveFrames' | 'getContentSignature' | 'getBrushFrames'>> = {},
 ): Harness {
   let signature = 'sig-0';
   const report = vi.fn();
@@ -114,7 +160,7 @@ function harness(
   const controller = createStudioScriptSnapshotController({
     getIdentity: () => IDENTITY,
     getWatercolorEvents: () => getRecordedAquarellePayloadTimeline(),
-    getBrushFrames: () => [],
+    getBrushFrames: overrides.getBrushFrames ?? (() => []),
     getContentSignature: overrides.getContentSignature ?? (() => signature),
     getLiveFrames: overrides.getLiveFrames ?? (() => new Set([7, 9])),
     report,
@@ -134,6 +180,7 @@ function harness(
 
 beforeEach(() => {
   resetAquarelleRecordState();
+  resetBrushScriptStore();
 });
 
 describe('studioScriptSnapshotController', () => {
@@ -235,5 +282,41 @@ describe('studioScriptSnapshotController', () => {
     expect(write).not.toHaveBeenCalled();
     expect(report).not.toHaveBeenCalled();
     expect(controller.isDirty()).toBe(false);
+  });
+
+  it('restores brush frames pruned to the live real-key frames', async () => {
+    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const { controller, read } = harness({ getLiveFrames: () => new Set([7]) });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    expect(await controller.restore()).toEqual({ status: 'restored', maxRestoredMutationId: 101 });
+    // Frame 9 is not a live real key: its brush ledger is pruned.
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7]);
+    expect(getBrushScriptFrameEntries()[0]?.complete).toBe(true);
+  });
+
+  it('saves the pruned brush ledger and never a stale frame', async () => {
+    restoreBrushScriptFrames([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const { controller, write } = harness({
+      getLiveFrames: () => new Set([7]),
+      getBrushFrames: () => getBrushScriptFrameEntries(),
+    });
+    controller.bind(IDENTITY);
+
+    await controller.saveNow();
+    const [, bytes] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
+    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7]);
+    expect(decoded.brushFrames[0]?.groups[0]?.primary.points[0]?.x).toBe(120.5);
+  });
+
+  it('does not prune brush frames when the live-frame set is unknown', async () => {
+    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const { controller, read } = harness({ getLiveFrames: () => null });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7, 9]);
   });
 });
