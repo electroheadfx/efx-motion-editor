@@ -62,7 +62,7 @@ import {
   setPhotoReferenceSource,
 } from '../../../stores/efxPaintStore';
 import { physicPaintStore } from '../../../stores/physicPaintStore';
-import { isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextLayer, isPhysicPaintProjectContextRequest, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH } from '../../../types/physicPaint';
+import { isPhysicPaintImageImportRequest, isPhysicPaintImageImportResult, isPhysicPaintImageLibraryResult, isPhysicPaintProjectContextLayer, isPhysicPaintProjectContextRequest, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYERS, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_LAYER_NAME_LENGTH, PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH } from '../../../types/physicPaint';
 import { acceptPhysicPaintProjectContextPayload, normalizeProjectContextLayers } from './usePhysicsPaintParentBridge';
 import { projectStore } from '../../../stores/projectStore';
 import { imageStore, _setImageMarkDirtyCallback } from '../../../stores/imageStore';
@@ -1159,6 +1159,29 @@ describe('project-context scope round trip (quick-260922-al1)', () => {
       layers: [{ id: 'layer-1', name: 'Character' }, { id: 'layer-3', name: 'Grain' }],
       scriptScope: 'layer-3',
     });
+  });
+
+  it('CHILD ACCEPT KEEPS the durable projectId — dropping it silently disables the Studio script snapshot', () => {
+    expect(acceptPhysicPaintProjectContextPayload({
+      name: 'Demo',
+      saved: true,
+      contextId: 'ctx-rotating',
+      projectId: 'project-durable',
+      layers: [],
+      scriptScope: 'all',
+    })).toEqual({
+      name: 'Demo',
+      saved: true,
+      contextId: 'ctx-rotating',
+      projectId: 'project-durable',
+      layers: [],
+      scriptScope: 'all',
+    });
+    // Malformed/oversized values degrade to absent, never reject the context.
+    expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: true, contextId: 'ctx-1', projectId: '' }))
+      .toEqual({ name: 'Demo', saved: true, contextId: 'ctx-1', layers: [], scriptScope: 'all' });
+    expect(acceptPhysicPaintProjectContextPayload({ name: 'Demo', saved: true, contextId: 'ctx-1', projectId: 'x'.repeat(PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH + 1) }))
+      .toEqual({ name: 'Demo', saved: true, contextId: 'ctx-1', layers: [], scriptScope: 'all' });
   });
 
   it('CHILD ACCEPT DEGRADES: a pre-al1 payload (no layers, no scope) still drives the panel as All-only', () => {

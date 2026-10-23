@@ -142,15 +142,23 @@ export function normalizeProjectContextLayers(value: unknown): PhysicPaintProjec
  */
 export function acceptPhysicPaintProjectContextPayload(value: unknown): PhysicPaintProjectContext | null {
   if (!value || typeof value !== 'object') return null;
-  const project = value as { name?: unknown; saved?: unknown; contextId?: unknown; layers?: unknown; scriptScope?: unknown };
+  const project = value as { name?: unknown; saved?: unknown; contextId?: unknown; projectId?: unknown; layers?: unknown; scriptScope?: unknown };
   if (typeof project.name !== 'string' || typeof project.saved !== 'boolean' || typeof project.contextId !== 'string') return null;
   const scriptScope = typeof project.scriptScope === 'string' && project.scriptScope.length > 0 && project.scriptScope.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH
     ? project.scriptScope
     : 'all';
+  // quick-261023-l35: the DURABLE identity must survive this rebuild — the
+  // project context this function returns REPLACES the launch context's
+  // `project`, and it is what the Studio's snapshot controller keys on. Drop
+  // it here and the controller binds null: no restore, no save, silently.
+  const projectId = typeof project.projectId === 'string' && project.projectId.length > 0 && project.projectId.length <= PHYSIC_PAINT_PROJECT_CONTEXT_MAX_SCOPE_LENGTH
+    ? project.projectId
+    : undefined;
   return {
     name: project.name,
     saved: project.saved,
     contextId: project.contextId,
+    ...(projectId ? { projectId } : {}),
     layers: normalizeProjectContextLayers(project.layers),
     scriptScope,
   };
