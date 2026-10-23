@@ -195,40 +195,39 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
         lost for that key.
       </p>
       <div class="physics-paint-memory-actions">
-        <button
-          type="button"
-          class="physics-paint-memory-purge-frame"
-          disabled={!hasFrameScript}
-          onClick={() => {
-            confirmSignal.value = 'frame';
-          }}
-        >
-          {hasFrameScript ? `Purge script on frame ${currentFrame}` : 'No script on this frame'}
-        </button>
-        {keyRail ? (
+        {hasFrameScript ? (
+          <button
+            type="button"
+            class="physics-paint-memory-purge-frame"
+            onClick={() => {
+              confirmSignal.value = 'frame';
+            }}
+          >
+            {`Purge script on frame ${currentFrame}`}
+          </button>
+        ) : null}
+        {keyRail && railHasScript ? (
           <button
             type="button"
             class="physics-paint-memory-purge-rail"
-            disabled={!railHasScript}
             onClick={() => {
               confirmSignal.value = 'rail-frames';
             }}
           >
-            {railHasScript
-              ? `Purge scripts on rail frames ${keyRail.startFrame}-${keyRail.endFrame}`
-              : `No scripts on rail frames ${keyRail.startFrame}-${keyRail.endFrame}`}
+            {`Purge scripts on rail frames ${keyRail.startFrame}-${keyRail.endFrame}`}
           </button>
         ) : null}
-        <button
-          type="button"
-          class="physics-paint-memory-clear-rail"
-          disabled={!hasAnyScript}
-          onClick={() => {
-            confirmSignal.value = 'clear-rail';
-          }}
-        >
-          {`Clear all scripts on ${rail?.trackName ?? 'this rail'}`}
-        </button>
+        {hasAnyScript ? (
+          <button
+            type="button"
+            class="physics-paint-memory-clear-rail"
+            onClick={() => {
+              confirmSignal.value = 'clear-rail';
+            }}
+          >
+            {`Clear all scripts on ${rail?.trackName ?? 'this rail'}`}
+          </button>
+        ) : null}
       </div>
       {confirm !== 'none' ? (
         <div
