@@ -30,7 +30,7 @@
 //  unit suites can pin the policy without importing EfxPaintEngine.
 // ============================================================
 
-import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import type { RecordedStrokeGroup } from './recordedStrokeGroups';
 import {
   flushBrushScriptFrame,
@@ -116,7 +116,7 @@ export function planBrushScriptHydration(request: BrushHydrationRequest): BrushH
 export interface BrushHydrationEngine {
   attachStrokesBaseline(
     groups: readonly Readonly<RecordedStrokeGroup>[],
-    settings?: { readonly localSpreadStrength: number; readonly wetPaper: boolean; readonly physicsStrength: number; readonly paperGrain: string } | null,
+    settings?: PaintRenderSettings | null,
   ): number;
 }
 
@@ -130,7 +130,7 @@ export function attemptBrushScriptHydration(
 ): boolean {
   const decision = planBrushScriptHydration(request);
   if (!decision.hydrate || !engine) return false;
-  return engine.attachStrokesBaseline(decision.entry.groups) > 0;
+  return engine.attachStrokesBaseline(decision.entry.groups, decision.entry.paintSettings ?? null) > 0;
 }
 
 /** The engine surface the liveness gate needs (structural). */

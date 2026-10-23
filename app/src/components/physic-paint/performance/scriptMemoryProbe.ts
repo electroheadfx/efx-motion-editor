@@ -68,7 +68,11 @@ export function snapshotScriptMemory(): ScriptMemorySnapshot {
   // stroke-completion path only marks frames dirty, so a probe read is one of
   // the sanctioned O(n) projection points. Idempotent and signal-free.
   const currentFrame = brushFrameGetter ? brushFrameGetter() : 0;
-  flushBrushScriptFrame(currentFrame, brushEngine ? brushEngine.getStrokes() : null);
+  flushBrushScriptFrame(
+    currentFrame,
+    brushEngine ? brushEngine.getStrokes() : null,
+    brushEngine ? brushEngine.getFramePaintSettings() ?? brushEngine.getPaintRenderSettings() : null,
+  );
   const strokes = getRecordedAquarelleStrokeEntries();
   const entries = new Map<number, StudioStroke<AquarelleStrokePayload>>();
   for (const [mutationId, , entry] of captureAquarelleStrokeRegistry().pairs) {

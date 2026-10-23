@@ -18,7 +18,7 @@
 //  read `.peek()`-free plain state at event time.
 // ============================================================
 
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
+import type { PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   brushScriptRevision,
   flushBrushScriptFrame,
@@ -48,6 +48,19 @@ export interface BrushScriptEditionEngine {
   sendStrokeForward(mutationId: number): boolean;
   setStrokeLabelsSuppressed(suppressed: boolean): void;
   setCursorVisible(visible: boolean): void;
+  /** 261023-j5b: the visit's captured paint globals (sticky, null until a live paint). */
+  getFramePaintSettings(): PaintRenderSettings | null;
+  /** The paint globals currently live on the engine (fallback when none captured). */
+  getPaintRenderSettings(): PaintRenderSettings;
+}
+
+/**
+ * 261023-j5b: an edit-triggered flush carries the visit's paint globals so the
+ * first faithful rebake replays with the painted look, not whatever the
+ * sliders read now.
+ */
+function resolvePaintSettings(engine: BrushScriptEditionEngine): PaintRenderSettings {
+  return engine.getFramePaintSettings() ?? engine.getPaintRenderSettings();
 }
 
 /**
@@ -158,7 +171,13 @@ export function moveBrushScriptStroke(mutationId: number, dxPx: number, dyPx: nu
   const resolved = resolveEdition();
   if (!resolved || resolved.context.isLocked()) return false;
   const moved = resolved.engine.moveStroke(mutationId, dxPx, dyPx);
-  if (moved) flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());
+  if (moved) {
+    flushBrushScriptFrame(
+      resolved.frame,
+      resolved.engine.getStrokes(),
+      resolvePaintSettings(resolved.engine),
+    );
+  }
   return moved;
 }
 
@@ -168,7 +187,11 @@ export function deleteBrushScriptStroke(mutationId: number): boolean {
   if (!resolved || resolved.context.isLocked()) return false;
   const deleted = resolved.engine.deleteStroke(mutationId);
   if (!deleted) return false;
-  flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());
+  flushBrushScriptFrame(
+    resolved.frame,
+    resolved.engine.getStrokes(),
+    resolvePaintSettings(resolved.engine),
+  );
   if (scriptSelectedStrokeId.peek() === mutationId) selectScriptStroke(null);
   return true;
 }
@@ -181,7 +204,13 @@ export function stepBrushScriptStroke(mutationId: number, direction: 'back' | 'f
     direction === 'back'
       ? resolved.engine.sendStrokeBackward(mutationId)
       : resolved.engine.sendStrokeForward(mutationId);
-  if (stepped) flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());
+  if (stepped) {
+    flushBrushScriptFrame(
+      resolved.frame,
+      resolved.engine.getStrokes(),
+      resolvePaintSettings(resolved.engine),
+    );
+  }
   return stepped;
 }
 

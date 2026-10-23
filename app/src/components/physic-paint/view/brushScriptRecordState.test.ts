@@ -14,7 +14,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
-import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
+import type { BrushOpts, PaintRenderSettings, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
   brushScriptRevision,
   captureBrushScriptForFrame,
@@ -377,6 +377,62 @@ describe('completeness law (261023-h9v)', () => {
   it('caps each continuation diffusion contribution at 600 frames', () => {
     flushBrushScriptFrame(7, [stroke(1), continuation(1, 5000), continuation(1, 4)]);
     expect(getBrushScriptReport().frames[0]).toMatchObject({ diffusionFrames: 604 });
+  });
+});
+
+// ============================================================
+//  261023-j5b — the frame's captured paint globals. The faithful
+//  rebake replays with the look the strokes were painted under, so
+//  the snapshot must survive recaptures (STICKY: first non-null
+//  wins) and be carried by every flush/capture point.
+// ============================================================
+describe('paint settings snapshot (261023-j5b)', () => {
+  const FIRST: PaintRenderSettings = {
+    localSpreadStrength: 30,
+    wetPaper: true,
+    physicsStrength: 0.6,
+    paperGrain: 'grainA',
+  };
+  const SECOND: PaintRenderSettings = {
+    localSpreadStrength: 90,
+    wetPaper: false,
+    physicsStrength: 0.1,
+    paperGrain: 'grainB',
+  };
+
+  it('captures the settings and keeps the FIRST non-null snapshot across recaptures', () => {
+    const entry = captureBrushScriptForFrame(3, [{ primary: stroke(1), continuations: [] }], undefined, FIRST);
+    expect(entry.paintSettings).toEqual(FIRST);
+
+    const recaptured = captureBrushScriptForFrame(3, [{ primary: stroke(2), continuations: [] }], undefined, SECOND);
+    expect(recaptured.paintSettings).toEqual(FIRST);
+  });
+
+  it('a null/absent snapshot never overwrites; the first later non-null snapshot sticks', () => {
+    captureBrushScriptForFrame(3, [{ primary: stroke(1), continuations: [] }]);
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toBeNull();
+
+    captureBrushScriptForFrame(3, [{ primary: stroke(2), continuations: [] }], undefined, SECOND);
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toEqual(SECOND);
+
+    captureBrushScriptForFrame(3, [{ primary: stroke(3), continuations: [] }]);
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toEqual(SECOND);
+  });
+
+  it('flush carries the settings into a fresh entry', () => {
+    expect(flushBrushScriptFrame(3, [stroke(1)], FIRST)).toBe(true);
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toEqual(FIRST);
+  });
+
+  it('an empty projection (entry dropped) forgets the settings with the frame', () => {
+    captureBrushScriptForFrame(3, [{ primary: stroke(1), continuations: [] }], undefined, FIRST);
+    // A dirty empty flush drops the ghost row (a clean capture is a no-op).
+    markBrushScriptFrameDirty(3);
+    expect(flushBrushScriptFrame(3, [])).toBe(false);
+    expect(getBrushScriptFrameEntry(3)).toBeUndefined();
+
+    captureBrushScriptForFrame(3, [{ primary: stroke(2), continuations: [] }], undefined, SECOND);
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toEqual(SECOND);
   });
 });
 

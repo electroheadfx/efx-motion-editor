@@ -771,6 +771,12 @@ export class EfxPaintEngine {
   /** 261023-j5b: the frame-visit replay semantics (see StrokeReplayMode). */
   private strokeReplayMode: StrokeReplayMode = 'live'
   /**
+   * 261023-j5b: true only around the faithful rebake's replay walk, so its
+   * internal applyStrokeToEngine calls never capture the temporary applied
+   * paint globals as the visit's settings.
+   */
+  private rebakingFaithfully = false
+  /**
    * 261023-j5b: paint globals captured at the first live paint of the visit
    * (or handed over by attachStrokesBaseline from the frame's retained entry).
    * A faithful rebake applies them and restores the pre-rebake values.
@@ -2193,10 +2199,10 @@ export class EfxPaintEngine {
   }
 
   /**
-   * 261023-h9v: restore a COMPLETE retained brush script and redraw it
-   * synchronously. Kept as the no-cache fallback: install + a full-surface
-   * rebake (261023-j5b routes this through the faithful replay so a restored
-   * script cannot accumulate wet layers). Never emits a completed mutation.
+   * 261023-h9v: restore a COMPLETE retained brush script and repaint it
+   * synchronously. Kept as the no-cache fallback: install + a faithful rebake
+   * (261023-j5b), so a restored script can never accumulate wet layers.
+   * Never emits a completed mutation.
    */
   public restoreStrokesBaseline(
     groups: readonly Readonly<RecordedStrokeGroup>[],
@@ -2204,16 +2210,85 @@ export class EfxPaintEngine {
   ): number {
     const restored = this.installStrokeBaseline(groups)
     if (restored === 0) return 0
-    // A restore repaints the whole surface, so it must never inherit a
-    // 'detached' visit (redrawAll skips the replay there and would leave the
-    // frame blank). 261023-j5b Task 2 turns this into the faithful mode.
-    this.strokeReplayMode = 'live'
     if (settings) this.framePaintSettings = settings
     this.displayCompositeDirty = true
     this.requestRender()
-    this.redrawAll()
+    this.rebakeStrokesFaithfully(settings ?? null)
     // NO notifyCompletedMutation: a baseline is not a paint action.
     return restored
+  }
+
+  /**
+   * 261023-j5b: rebuild the whole ledger with LIVE deposit semantics.
+   *
+   * The h9v restore replayed through redrawAll with `{ replay: true }`, which
+   * skips prepareWetLayerForStroke — every replayed stroke left its wet
+   * material behind, so strokes grew and gained halos. This walk runs one
+   * prepareWetLayerForStroke per replayed stroke (the dry/keep-box step), then
+   * the diffusion continuations, reproducing what a live paint would deposit.
+   *
+   * Cost: synchronous, roughly the h9v restore measurement. Callers must gate
+   * it (the hydration policy gates on edit affordance); navigation itself
+   * never invokes it.
+   *
+   * Base handling: a 'detached' visit's cached pixels duplicate this ledger,
+   * so the base is cleared ONCE to avoid double paint. A 'live' visit keeps
+   * its pre-existing base — that base belongs to the frame BEFORE this
+   * visit's strokes.
+   */
+  public rebakeStrokesFaithfully(settings?: PaintRenderSettings | null): number {
+    const visitMode = this.strokeReplayMode ?? 'live'
+    if (visitMode === 'detached') this.clearPreviewBaseImage(true)
+    this.strokeReplayMode = 'faithful'
+    // Determinism: an inherited keep-box from the previous gesture would make
+    // the first replayed stroke prepare locally over an unrelated area.
+    this.lastStrokeBounds = null
+    const previousSettings = this.getPaintRenderSettings()
+    const applied = settings ?? null
+    if (applied) this.applyPaintRenderSettings(applied)
+    this.displayCompositeDirty = true
+    try {
+      this.resetReplaySurface()
+      this.rebakingFaithfully = true
+      return this.replayLedger(false)
+    } finally {
+      this.rebakingFaithfully = false
+      if (applied) this.applyPaintRenderSettings(previousSettings)
+    }
+  }
+
+  /**
+   * 261023-j5b: apply captured paint globals for a rebake WITHOUT the public
+   * setters. setPaperGrain()/setWetPaper() flush pending finalizations, and a
+   * rebake can run from inside the live-erase apply — flushing there would
+   * finalize the in-flight stroke re-entrantly. Field effects mirror
+   * setPaperGrain() exactly (same key/height-map idempotence inputs).
+   */
+  private applyPaintRenderSettings(settings: PaintRenderSettings): void {
+    this.state.localSpreadStrength = settings.localSpreadStrength
+    this.state.wetPaper = settings.wetPaper
+    this.state.physicsStrength = settings.physicsStrength
+    const heightMap = this.paperTextures?.get(settings.paperGrain)?.heightMap ?? null
+    this.currentPaperKey = settings.paperGrain
+    this.texHeight = heightMap
+    this.paperHeight = heightMap
+    this.physicsHeightMap = this.paperHeight
+    this.displayCompositeDirty = true
+    this.requestRender()
+  }
+
+  /**
+   * 261023-j5b: the ONE edit-redraw seam for every script mutation. A visit
+   * already in 'faithful' just replays faithfully; the FIRST edit of an
+   * attached (or live) visit runs the full faithful rebake, which also clears
+   * the attached duplicate base exactly once.
+   */
+  private redrawAfterScriptEdit(): void {
+    if ((this.strokeReplayMode ?? 'live') === 'faithful') {
+      this.redrawAll()
+      return
+    }
+    this.rebakeStrokesFaithfully(this.framePaintSettings ?? null)
   }
 
   /** 261023-j5b: the paint globals currently live on the engine. */
@@ -3781,7 +3856,7 @@ export class EfxPaintEngine {
     this.redoStack = []
     this.notifyHistoryAvailability()
     this.displayCompositeDirty = true
-    this.redrawAll()
+    this.redrawAfterScriptEdit()
     this.notifyCompletedMutation('move', gesture.mutationId)
     this.updateMoveHover()
   }
@@ -3852,7 +3927,7 @@ export class EfxPaintEngine {
     this.redoStack = []
     this.notifyHistoryAvailability()
     this.displayCompositeDirty = true
-    this.redrawAll()
+    this.redrawAfterScriptEdit()
     this.requestRender()
     this.notifyCompletedMutation('move', mutationId)
     // moveHoverTargetId is deliberately kept: a repeated press steps the same
@@ -3884,7 +3959,7 @@ export class EfxPaintEngine {
     this.flushPendingStrokeFinalizations()
     if (!this.removeStrokeEntry(mutationId)) return false
     this.displayCompositeDirty = true
-    this.redrawAll()
+    this.redrawAfterScriptEdit()
     this.notifyCompletedMutation('erase', mutationId)
     return true
   }
@@ -3934,6 +4009,17 @@ export class EfxPaintEngine {
   ): void {
     if (points.length === 0) return
     this.displayCompositeDirty = true
+    // 261023-j5b: capture the visit's paint globals on the first LIVE deposit.
+    // A detached visit has not painted yet — its settings come from the
+    // retained store entry (attachStrokesBaseline). The rebake's own replay
+    // must never capture: it runs under temporarily applied globals.
+    if (
+      !this.rebakingFaithfully
+      && this.framePaintSettings == null
+      && (this.strokeReplayMode ?? 'live') !== 'detached'
+    ) {
+      this.framePaintSettings = this.getPaintRenderSettings()
+    }
 
     const observePrimitive = this.performanceListener ? this.recordPaintPrimitive.bind(this) : undefined
     const hasPenInput = options.hasPenInput ?? this.state.hasPenInput
@@ -4036,7 +4122,9 @@ export class EfxPaintEngine {
       let rebuilt = false
       if (options.liveErase && (opts.eraseStrength ?? 50) > 0) {
         rebuilt = this.removeWetIntersectedStrokes(points, opts) > 0
-        if (rebuilt) this.redrawAll()
+        // 261023-j5b: the ledger just changed — redraw through the faithful
+        // edit seam (a detached visit's first erase rebakes everything).
+        if (rebuilt) this.redrawAfterScriptEdit()
       }
       if (!rebuilt) {
         // 261003-erase-uat (B): cached paint lives on the preview-base paint
@@ -4258,7 +4346,7 @@ export class EfxPaintEngine {
         if (removed > 0) {
           this.clearEraseHover()
           this.displayCompositeDirty = true
-          this.redrawAll()
+          this.redrawAfterScriptEdit()
           this.notifyCompletedMutation('erase', mutationId)
           this.recordPerformance('pointer-up', 'sync-cpu', pointerUpStartedAt, { mutationId, outcome: 'pointer-delete' })
           return
@@ -4446,8 +4534,24 @@ export class EfxPaintEngine {
     // repainted the preview base and cleared/rendered the wet layer.
     // Reads tolerate an undefined field: prototype-based harnesses never run
     // field initializers.
-    if ((this.strokeReplayMode ?? 'live') === 'detached') return
+    const mode = this.strokeReplayMode ?? 'live'
+    if (mode === 'detached') return
+    // 'faithful' (261023-j5b) replays with LIVE deposit semantics
+    // (replay:false); 'live' is the historical fast pass (replay:true).
+    this.replayLedger(mode !== 'faithful')
+  }
 
+  /**
+   * 261023-j5b: the ONE ledger replay walk.
+   *
+   * `replay: true` is the historical fast pass — it skips
+   * prepareWetLayerForStroke, so wet material accumulates across strokes (the
+   * eager-navigation growth/halo bug). `replay: false` reproduces a live
+   * paint stroke by stroke: every deposit is dried into its keep-box before
+   * the next stroke, exactly as the pointer path does. Returns the number of
+   * replayed actions (queued finalizations excluded — the drain renders those).
+   */
+  private replayLedger(replay: boolean): number {
     const sampleHFn = (x: number, y: number) => sampleH(this.paperHeight, x, y, this.width, this.height)
 
     // Strokes still queued for finalization are rendered by the scheduled
@@ -4469,11 +4573,12 @@ export class EfxPaintEngine {
 
     for (let i = 0; i < replayCount; i++) {
       const a = ordered[i]
-      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId, replay: true })
+      this.applyStrokeToEngine(a.tool, a.points, a.color, a.params, { hasPenInput: this.strokeHasPenInput(a), physicsMode: a.physicsMode, mutationId: a.mutationId, replay })
       this.replayDiffusion(a.diffusionFrames || 0, sampleHFn, a.physicsMode)
     }
 
     this.renderVisibleWetLayer()
+    return replayCount
   }
 
   private replayDiffusion(
@@ -4623,6 +4728,10 @@ export class EfxPaintEngine {
     this.historyEntries = []
     this.historyIndex = 0
     this.notifyHistoryAvailability()
+    // 261023-j5b: a document load is a new visit — never inherit a detached
+    // (skipped replay) or faithful mode, nor the previous visit's settings.
+    this.strokeReplayMode = 'live'
+    this.framePaintSettings = null
 
     // Restore synchronously so loaded state is immediately available for apply/export.
     // Animated replay made apply race against setTimeout-delayed stroke restoration.

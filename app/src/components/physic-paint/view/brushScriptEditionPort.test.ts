@@ -15,7 +15,7 @@
 // ============================================================
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
+import type { PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   captureBrushScriptForFrame,
   getBrushScriptFrameEntry,
@@ -81,6 +81,13 @@ function createFakeEngine(overrides: Record<string, unknown> = {}) {
     sendStrokeForward: vi.fn(() => true),
     setStrokeLabelsSuppressed: vi.fn(),
     setCursorVisible: vi.fn(),
+    getFramePaintSettings: vi.fn(() => null as PaintRenderSettings | null),
+    getPaintRenderSettings: vi.fn((): PaintRenderSettings => ({
+      localSpreadStrength: 65,
+      wetPaper: true,
+      physicsStrength: 0.2,
+      paperGrain: '',
+    })),
     ...overrides,
   };
 }
@@ -265,6 +272,50 @@ describe('edits: lock gate, one engine call, store refresh', () => {
     expect(stepBrushScriptStroke(7, 'forward')).toBe(true);
     expect(engine.sendStrokeForward).toHaveBeenCalledWith(7);
     expect(getBrushScriptFrameEntry(3)).not.toBe(entryBefore);
+  });
+
+  // 261023-j5b: an edit-triggered flush carries the visit's paint globals so
+  // the first faithful rebake replays with the painted look, never whatever
+  // the sliders read now.
+  it("carries the visit's captured paint settings into the refreshed entry", () => {
+    const settings: PaintRenderSettings = {
+      localSpreadStrength: 42,
+      wetPaper: true,
+      physicsStrength: 0.75,
+      paperGrain: 'grainB',
+    };
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [stroke(7, [{ x: 30, y: 35 }])]),
+      getFramePaintSettings: vi.fn(() => settings),
+    });
+    configure(engine, { frame: 3 });
+
+    expect(moveBrushScriptStroke(7, 10, 5)).toBe(true);
+
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toEqual(settings);
+    // The captured snapshot wins — the live globals are not consulted.
+    expect(engine.getPaintRenderSettings).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the live engine globals when the visit captured none, on every op', () => {
+    const live: PaintRenderSettings = {
+      localSpreadStrength: 12,
+      wetPaper: false,
+      physicsStrength: 0.3,
+      paperGrain: 'grainA',
+    };
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [stroke(9, [{ x: 30, y: 35 }])]),
+      getFramePaintSettings: vi.fn(() => null),
+      getPaintRenderSettings: vi.fn(() => live),
+    });
+    configure(engine, { frame: 3 });
+
+    expect(deleteBrushScriptStroke(9)).toBe(true);
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toEqual(live);
+
+    expect(stepBrushScriptStroke(9, 'forward')).toBe(true);
+    expect(getBrushScriptFrameEntry(3)?.paintSettings).toEqual(live);
   });
 
   it('every op refuses while the physical mutation lock is held and never touches the engine', () => {

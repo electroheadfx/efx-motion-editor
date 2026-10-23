@@ -34,7 +34,7 @@
 // ============================================================
 
 import { signal } from '@preact/signals';
-import type { PaintStroke } from '@efxlab/efx-physic-paint';
+import type { PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   freezeRecordedStrokeGroups,
   normalizeLogicalBrushes,
@@ -59,6 +59,14 @@ export interface BrushScriptFrameEntry extends BrushScriptFrameTotals {
   readonly complete: boolean;
   /** Sum of every continuation diffusion count, each capped at 600 frames. */
   readonly diffusionFrames: number;
+  /**
+   * 261023-j5b: the paint globals captured on the frame's first live paint
+   * (localSpreadStrength / wetPaper / physicsStrength / paperGrain). The
+   * faithful rebake applies them and restores the live globals afterwards,
+   * so a slider change after painting cannot alter the replayed look.
+   * STICKY: the first non-null snapshot wins across recaptures.
+   */
+  readonly paintSettings?: PaintRenderSettings | null;
 }
 
 export interface BrushScriptReportRow extends BrushScriptFrameTotals {
@@ -166,6 +174,7 @@ export function captureBrushScriptForFrame(
   frame: number,
   groups: readonly Readonly<RecordedStrokeGroup>[],
   complete?: boolean,
+  paintSettings?: PaintRenderSettings | null,
 ): BrushScriptFrameEntry {
   const frozen = freezeRecordedStrokeGroups(groups);
   const previous = brushScriptFrames.get(frame);
@@ -179,6 +188,8 @@ export function captureBrushScriptForFrame(
     // sticky, and a first capture is complete unless its arrival had a base.
     complete: complete ?? (previous ? previous.complete : !arrivalBaseFrames.has(frame)),
     diffusionFrames: countDiffusionFrames(frozen),
+    // 261023-j5b: sticky paint globals — the first non-null snapshot wins.
+    paintSettings: previous?.paintSettings ?? paintSettings ?? null,
   });
   brushScriptFrames.set(frame, entry);
   dirtyBrushScriptFrames.delete(frame);
@@ -194,6 +205,7 @@ export function captureBrushScriptForFrame(
 export function flushBrushScriptFrame(
   frame: number,
   strokes: readonly PaintStroke[] | null,
+  paintSettings?: PaintRenderSettings | null,
 ): boolean {
   if (strokes === null) return false;
   const wasDirty = dirtyBrushScriptFrames.delete(frame);
@@ -205,7 +217,7 @@ export function flushBrushScriptFrame(
     if (brushScriptFrames.delete(frame)) bumpRevision();
     return false;
   }
-  captureBrushScriptForFrame(frame, groups);
+  captureBrushScriptForFrame(frame, groups, undefined, paintSettings);
   return true;
 }
 

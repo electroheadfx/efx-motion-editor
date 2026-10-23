@@ -1679,7 +1679,13 @@ export function PhysicsPaintStudio() {
       return;
     }
     if (activeModule.peek() === 'brush' && tool === 'move') {
-      flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, activeEngine.getStrokes());
+      // 261023-j5b: Move entry is a capture point — carry the frame's paint
+      // globals so the faithful rebake reproduces the painted look.
+      flushBrushScriptFrame(
+        launchContextRef.current?.startFrame ?? 0,
+        activeEngine.getStrokes(),
+        activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),
+      );
       selectToolEngine(tool, physicsMode);
       activeEngine.setStrokeLabelsSuppressed(true);
       activeEngine.setCursorVisible(false);
@@ -3541,7 +3547,13 @@ export function PhysicsPaintStudio() {
       // 261023-g4p: retain the outgoing brush frame BEFORE engine.clear()
       // (engine-1 owns the visible brush script; navigation drops it).
       if (activeModule.peek() !== 'watercolor') {
-        flushBrushScriptFrame(currentFrame, engine ? engine.getStrokes() : null);
+        // 261023-j5b: the frame-leave capture carries the visit's paint globals
+        // (the first-edit faithful rebake replays with them).
+        flushBrushScriptFrame(
+          currentFrame,
+          engine ? engine.getStrokes() : null,
+          engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,
+        );
       }
       rotoPersistence.snapshotLivePixels(currentFrame);
       recordPhysicsPaintPerformance({ stage: 'nav.snapshotLivePixels', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
@@ -3578,7 +3590,10 @@ export function PhysicsPaintStudio() {
               // never-flushed display frame): repaint the script now so the
               // frame is not blank. 261023-j5b Task 2 upgrades this stand-in
               // to rebakeStrokesFaithfully (live deposit semantics).
-              engine.restoreStrokesBaseline(hydrationPlan.entry.groups);
+              engine.restoreStrokesBaseline(
+                hydrationPlan.entry.groups,
+                hydrationPlan.entry.paintSettings ?? null,
+              );
             }
           } else {
             // The engine refused the attach (malformed groups): fall back to
@@ -4856,7 +4871,11 @@ export function PhysicsPaintStudio() {
       readyEngine.setCursorVisible(false);
       // 261023-h9v: never flush an EMPTY fresh engine over a retained entry.
       if (readyEngine.getStrokes().length > 0) {
-        flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());
+        flushBrushScriptFrame(
+          launchContextRef.current?.startFrame ?? 0,
+          readyEngine.getStrokes(),
+          readyEngine.getFramePaintSettings() ?? readyEngine.getPaintRenderSettings(),
+        );
       }
     }
     // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —

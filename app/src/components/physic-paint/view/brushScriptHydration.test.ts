@@ -61,18 +61,6 @@ function stroke(mutationId: number, pointCount = 2): PaintStroke {
   };
 }
 
-function continuation(mutationId: number, diffusionFrames = 4): PaintStroke {
-  return {
-    tool: 'paint',
-    points: [],
-    color: '#123456',
-    params: { ...PARAMS },
-    timestamp: mutationId,
-    mutationId,
-    diffusionFrames,
-  };
-}
-
 const IDLE_REQUEST: BrushHydrationRequest = {
   frame: 3,
   destinationKind: 'real',
@@ -128,8 +116,29 @@ describe('plan: the happy path', () => {
 
     expect(attemptBrushScriptHydration(engine, request())).toBe(true);
     expect(engine.attachStrokesBaseline).toHaveBeenCalledTimes(1);
-    expect(engine.attachStrokesBaseline).toHaveBeenCalledWith(stored.groups);
+    expect(engine.attachStrokesBaseline).toHaveBeenCalledWith(stored.groups, null);
     expect((engine as unknown as Record<string, unknown>).restoreStrokesBaseline).toBeUndefined();
+  });
+
+  // 261023-j5b: the attach carries the frame's captured paint globals so the
+  // first faithful edit rebake replays with the painted look.
+  it("forwards the entry's paintSettings snapshot to the attach", () => {
+    const settings = {
+      localSpreadStrength: 30,
+      wetPaper: true,
+      physicsStrength: 0.6,
+      paperGrain: 'grainA',
+    };
+    captureBrushScriptForFrame(
+      3,
+      [{ primary: stroke(1), continuations: [] }],
+      undefined,
+      settings,
+    );
+    const engine = createFakeEngine({ attachResult: 1 });
+
+    expect(attemptBrushScriptHydration(engine, request())).toBe(true);
+    expect(engine.attachStrokesBaseline).toHaveBeenCalledWith(getBrushScriptFrameEntry(3)!.groups, settings);
   });
 });
 

@@ -62,6 +62,9 @@ const aquarelleRecordStateSource = readFileSync(fileURLToPath(new URL('./view/aq
 const paintEngineSource = readFileSync(fileURLToPath(new URL('../../../../packages/efx-physic-paint/src/engine/EfxPaintEngine.ts', import.meta.url)), 'utf8');
 // 260922-rd4: the background transform wiring pins (STEP F).
 const backgroundClipSection = readFileSync(fileURLToPath(new URL('./view/PhysicsPaintBackgroundClipSection.tsx', import.meta.url)), 'utf8');
+// 261023-j5b: the paint-settings carrier seams (probe + store entry).
+const scriptMemoryProbeSource = readFileSync(fileURLToPath(new URL('./performance/scriptMemoryProbe.ts', import.meta.url)), 'utf8');
+const brushScriptRecordStateSource = readFileSync(fileURLToPath(new URL('./view/brushScriptRecordState.ts', import.meta.url)), 'utf8');
 
 describe('Physics Paint Play Script integration contract', () => {
   it('wires focused Roto script, Play Script, and cached playback controllers', () => {
@@ -3363,7 +3366,10 @@ describe('261023-g4p brush Move script-edition surface', () => {
     // Move entry: flush the outgoing frame, arm the engine Move, stand down
     // the engine badges and cursor.
     expect(wrapperBody).toContain("if (activeModule.peek() === 'brush' && tool === 'move') {");
-    expect(wrapperBody).toContain('flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, activeEngine.getStrokes());');
+    expect(wrapperBody).toContain('flushBrushScriptFrame(');
+    expect(wrapperBody).toContain('activeEngine.getStrokes(),');
+    // 261023-j5b: the capture carries the visit's paint globals.
+    expect(wrapperBody).toContain('activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),');
     expect(wrapperBody).toContain('activeEngine.setStrokeLabelsSuppressed(true);');
     expect(wrapperBody).toContain('activeEngine.setCursorVisible(false);');
     // Any other tool restores both.
@@ -3384,7 +3390,9 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(readyBody).toContain("readyEngine.setTool('move');");
     expect(readyBody).toContain('readyEngine.setStrokeLabelsSuppressed(true);');
     expect(readyBody).toContain('readyEngine.setCursorVisible(false);');
-    expect(readyBody).toContain('flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());');
+    expect(readyBody).toContain('flushBrushScriptFrame(');
+    expect(readyBody).toContain('readyEngine.getStrokes(),');
+    expect(readyBody).toContain('readyEngine.getFramePaintSettings() ?? readyEngine.getPaintRenderSettings(),');
     expect(readyBody.indexOf('settingsRef.current.tool')).toBeGreaterThan(-1);
   });
 
@@ -3414,10 +3422,14 @@ describe('261023-g4p brush Move script-edition surface', () => {
   it('keeps the brush port peek-only and lock-gated', () => {
     expect(brushScriptEditionPortSource).toContain('void brushScriptRevision.value;');
     expect(brushScriptEditionPortSource).toContain('if (!resolved || resolved.context.isLocked()) return false;');
-    expect(brushScriptEditionPortSource).toContain('if (moved) flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());');
     expect(brushScriptEditionPortSource).toContain('if (!deleted) return false;');
-    expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());');
-    expect(brushScriptEditionPortSource).toContain('if (stepped) flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());');
+    // 261023-j5b: every accepted edit flush carries the visit's paint
+    // settings (captured snapshot first, live globals as the fallback).
+    expect(brushScriptEditionPortSource).toContain('function resolvePaintSettings(engine: BrushScriptEditionEngine): PaintRenderSettings {');
+    expect(brushScriptEditionPortSource).toContain('return engine.getFramePaintSettings() ?? engine.getPaintRenderSettings();');
+    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(3);
+    expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(');
+    expect(brushScriptEditionPortSource).toContain('resolved.engine.getStrokes(),');
     // The Studio render body never subscribes the store revision.
     expect(studio).not.toContain('brushScriptRevision.value');
   });
@@ -3470,7 +3482,11 @@ describe('261023-h9v brush script rehydration surface', () => {
       navigationBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
     );
     expect(navigationBody).toContain('if (!loaded) {');
-    expect(navigationBody).toContain('engine.restoreStrokesBaseline(hydrationPlan.entry.groups);');
+    // 261023-j5b: the no-cache fallback repaints faithfully with the entry's
+    // captured paint globals.
+    expect(navigationBody).toContain('engine.restoreStrokesBaseline(');
+    expect(navigationBody).toContain('hydrationPlan.entry.groups,');
+    expect(navigationBody).toContain('hydrationPlan.entry.paintSettings ?? null,');
     // The post-flush generated repaint stays a cached-pixel path.
     expect(navigationBody).toContain("?.cells[frame]?.kind === 'generated'");
   });
@@ -3551,7 +3567,7 @@ describe('261023-h9v brush script rehydration surface', () => {
     const readyBody = studio.slice(readyStart, studio.indexOf('installLookDeltaCapture', readyStart));
     expect(readyBody).toContain('if (readyEngine.getStrokes().length > 0) {');
     expect(readyBody.indexOf('if (readyEngine.getStrokes().length > 0) {')).toBeLessThan(
-      readyBody.indexOf('flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());'),
+      readyBody.indexOf('flushBrushScriptFrame('),
     );
   });
 
@@ -3588,5 +3604,38 @@ describe('261023-h9v brush script rehydration surface', () => {
     const wiringBody = studio.slice(wiringStart, studio.indexOf('const rotoMoveHistoryUndo', wiringStart));
     expect(wiringBody).toContain("if (undone) refreshBrushScriptAfterHistory('undo');");
     expect(wiringBody).toContain("if (redone) refreshBrushScriptAfterHistory('redo');");
+  });
+});
+
+// 261023-j5b Task 2: the frame's paint globals must travel with every
+// script capture so the first faithful rebake replays the painted look.
+describe('261023-j5b paint-settings carrier seams', () => {
+  it('the frame-leave capture carries the visit paint settings', () => {
+    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {');
+    const navigationBody = studio.slice(
+      navigationStart,
+      studio.indexOf('const lastReferenceDisplayStateRef', navigationStart),
+    );
+    expect(navigationBody).toContain('engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,');
+  });
+
+  it('the DEV probe flush carries the engine paint settings', () => {
+    expect(scriptMemoryProbeSource).toContain(
+      'brushEngine.getFramePaintSettings() ?? brushEngine.getPaintRenderSettings()',
+    );
+  });
+
+  it('the store entry carries the STICKY paintSettings snapshot', () => {
+    expect(brushScriptRecordStateSource).toContain('readonly paintSettings?: PaintRenderSettings | null;');
+    expect(brushScriptRecordStateSource).toContain(
+      'paintSettings: previous?.paintSettings ?? paintSettings ?? null,',
+    );
+  });
+
+  it('the engine exposes the faithful rebake and the single edit seam', () => {
+    expect(studio).toContain('hydrateBrushScriptFrame(engine, hydrationRequest)');
+    expect(paintEngineSource).toContain('public rebakeStrokesFaithfully(settings?: PaintRenderSettings | null): number');
+    expect(paintEngineSource).toContain("if (visitMode === 'detached') this.clearPreviewBaseImage(true)");
+    expect(paintEngineSource).toContain('this.redrawAfterScriptEdit()');
   });
 });
