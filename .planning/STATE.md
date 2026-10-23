@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Completed quick task 261023-f9c: read-only script-memory measurement (DEV window.__EFX_SCRIPT_MEMORY__.snapshot() + JSON-vs-AQTL-v1 codec prototype, 4.83x); live numbers PENDING user-run recipe
+Last activity: 2026-10-23 - Quick task 261023-f9c UAT PASSED: script-memory snapshot records 6 duplicated keys as 36 strokes / 1,980 points / 194,980 B (0.25% of the 79.3 MB frame cache); JSON-vs-AQTL-v1 codec prototype measures 4.83x
 
 Progress: [██████████] 100%
 

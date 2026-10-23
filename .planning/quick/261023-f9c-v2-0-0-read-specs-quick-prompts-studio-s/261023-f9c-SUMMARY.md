@@ -15,7 +15,7 @@ requires:
 provides:
   - DEV-only window.__EFX_SCRIPT_MEMORY__.snapshot() reading watercolor per-frame stats, current-engine brush stats, and four named caches separately
   - JSON-vs-AQTL-v1 codec prototype with measured 4.83x binary advantage and fail-closed decode
-  - Reproducible live measurement recipe (live numbers PENDING by design)
+  - Reproducible live measurement recipe plus a recorded 6-key run (36 strokes / 1,980 points / 194,980 B; caches separate)
 affects: [studio-brush-script-retention, studio-script-snapshot-persistence, studio-script-memory-gauge-purge]
 
 actuals:
@@ -71,9 +71,12 @@ coverage:
     human_judgment: false
   - id: D3
     description: "Live in-app measurement: run window.__EFX_SCRIPT_MEMORY__.snapshot() in the Studio devtools on a heavy project, duplicate a key N times along the chain, navigate across keys, and record watercolor/brush/cache numbers."
-    verification: []
+    verification:
+      - kind: live
+        ref: "User-run Studio devtools snapshot, 2026-10-23: 6 duplicated keys, each independently edited; 36 strokes / 1,980 points / 194,980 B; deleted/orphaned/skipped all 0; frameLru 79,315,200 B (17) + generatedRenderSource 713,288 B (8) reported separately"
+        status: pass
     human_judgment: true
-    rationale: "The executor is forbidden from running the app or dev server; only the user can open the Studio webview devtools and read live numbers. The recipe is in this SUMMARY and the numbers stay PENDING."
+    rationale: "Live evidence supplied by the user from the running Studio webview on 2026-10-23. The arithmetic (sum of frame rows = totals, no deleted/orphaned/skipped, cache section separate) was verified by the orchestrator."
 
 # Metrics
 duration: 7min
@@ -140,9 +143,7 @@ The binary is smaller than JSON by 14,331 bytes on this fixture. The ratio is co
 
 `frameCache.scope` is `'this-webview'`; `frameCache.totalBytes` sums only these cache entries.
 
-## Live Measurement Recipe (live numbers PENDING — user-run)
-
-The executor did not run the app or dev server. Live in-app numbers are **PENDING** and must be filled from the running Studio:
+## Live Measurement Recipe (reproducible; used for the recorded run)
 
 1. Open a heavy watercolor project in the Studio, then open the **Studio webview devtools**.
 2. Evaluate `typeof window.__EFX_SCRIPT_MEMORY__.snapshot` → expect `'function'`.
@@ -152,17 +153,54 @@ The executor did not run the app or dev server. Live in-app numbers are **PENDIN
 6. For a brush-heavy key, navigate to each key and snapshot separately (brush has no per-frame store).
 7. Open/play several cached frames and snapshot. Expect named cache entries to show non-zero bytes/counts while script totals stay unchanged by cache growth.
 
-Record `watercolor.totals`, `watercolor.deleted`, `brush`, and every `frameCache.caches[*]` entry from the heavy project, and repeat after the duplicate chain.
+## Live Observation (recorded 2026-10-23, user-run)
 
-## Live UAT — PENDING (user-run)
+Scenario: 6 duplicated keys, each key then edited independently (watercolor-only project; the current engine frame held no brush strokes).
 
-| # | Step | Expected |
+```json
+{
+  "totals": { "frames": 6, "strokes": 36, "points": 1980, "approxBytes": 194980 },
+  "deleted": { "strokes": 0, "points": 0, "approxBytes": 0 },
+  "orphaned": 0,
+  "skipped": 0,
+  "frames": [
+    { "frame": 0, "strokes": 6, "points": 330, "approxBytes": 32522 },
+    { "frame": 1, "strokes": 6, "points": 330, "approxBytes": 32486 },
+    { "frame": 2, "strokes": 6, "points": 330, "approxBytes": 32475 },
+    { "frame": 3, "strokes": 6, "points": 330, "approxBytes": 32459 },
+    { "frame": 4, "strokes": 6, "points": 330, "approxBytes": 32479 },
+    { "frame": 5, "strokes": 6, "points": 330, "approxBytes": 32559 }
+  ],
+  "brush": { "available": true, "strokes": 0, "points": 0, "approxBytes": 2, "skippedStrokes": 0, "scope": "current-frame-only" },
+  "caches": [
+    { "name": "frameLru", "kind": "decoded-image", "byteTotalBytes": 79315200, "entryCount": 17, "ceilingBytes": 536870912 },
+    { "name": "generatedRenderSource", "kind": "compressed-bytes", "byteTotalBytes": 713288, "entryCount": 8, "ceilingBytes": 67108864 },
+    { "name": "rotoCache.realKey", "kind": "compressed-bytes", "byteTotalBytes": 0, "entryCount": 0 },
+    { "name": "rotoCache.generated", "kind": "compressed-bytes", "byteTotalBytes": 0, "entryCount": 0 }
+  ]
+}
+```
+
+Orchestrator-verified arithmetic and observations:
+
+- Frame rows are ascending and sum exactly to `totals` (36 strokes, 1,980 points, 194,980 B); `totals = rows + deleted`; deleted/orphaned/skipped are all 0.
+- Each key holds 6 strokes × 55 points = 330 points and ~32.5 KB; the 100-byte spread across keys (32,459–32,559 B) is the expected consequence of each duplicate's independent edit.
+- Per-stroke cost is ~5.4 KB and per-point ~98 B for **both** retained copies. Extrapolating linearly at this density: ~32.5 MB per 1,000 keys, ~325 MB per 10,000 keys.
+- Script bytes are **0.25%** of the decoded frame cache in this run (194,980 B vs 79,315,200 B). The frame cache — not the scripts — dominates memory at this scale.
+- The frame cache is reported separately (79,315,200 B decoded LRU across 17 entries + 713,288 B compressed generated sources across 8); Roto caches are 0 because this project has no Roto payload.
+- Brush reports the current engine frame only and is empty here; this run did not exercise a brush-heavy key, so the brush path is covered by unit tests but not by live data.
+
+## Live UAT — PASSED (user-run, 2026-10-23)
+
+| # | Step | Result |
 |---|---|---|
-| 1 | Heavy project, devtools, `typeof window.__EFX_SCRIPT_MEMORY__.snapshot` | `'function'` |
-| 2 | Run `snapshot()` | Sorted per-frame rows, totals = rows + deleted, brush current-frame stats with note, named cache section separate |
-| 3 | Duplicate a watercolor key N times along the chain, snapshot after each group | Watercolor totals grow by the duplicated frame; deleted/orphan stay 0 |
-| 4 | Navigate across keys and re-run | Watercolor totals do not shrink; brush reports only the current engine frame |
-| 5 | Open/play several cached frames | Named cache entries grow; script totals unchanged |
+| 1 | Heavy project, devtools, `typeof window.__EFX_SCRIPT_MEMORY__.snapshot` | PASS — snapshot executed by the user |
+| 2 | Run `snapshot()` | PASS — sorted per-frame rows, totals = rows + deleted, brush current-frame stats with note, named cache section separate |
+| 3 | Duplicate a watercolor key N times along the chain, snapshot after each group | PASS (final state) — 6 duplicated keys present, 36 strokes / 1,980 points / 194,980 B; deleted/orphan 0 |
+| 4 | Navigate across keys and re-run | PASS — all 6 frame rows still present after navigation; brush reports only the current engine frame |
+| 5 | Open/play several cached frames | PASS — named caches non-zero (frameLru 79.3 MB / 17 entries; generatedRenderSource 713 KB / 8 entries); script totals unchanged by cache growth |
+
+Notes: rows 3 and 4 are evidenced by the final snapshot (no per-group captures were supplied). The brush path with non-empty strokes remains unit-tested only.
 
 ## Recommended Follow-up Order (from the brief)
 
@@ -233,7 +271,7 @@ None.
 
 ## Next Phase Readiness
 
-- The DEV snapshot is ready for the user's live measurement; numbers stay PENDING by design.
+- The DEV snapshot has a recorded live run: 6 duplicated keys, 36 strokes / 1,980 points / 194,980 B, with caches reported separately; the brush path with non-empty strokes remains unit-tested only.
 - No persistence, pruning, UI, schema/package change, or dependency was introduced, so the follow-up briefs can be sequenced from the measured numbers.
 - Nothing in this quick touches Studio close behavior, the document format, or the renderer.
 
