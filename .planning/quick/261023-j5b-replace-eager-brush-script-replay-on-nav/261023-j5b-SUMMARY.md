@@ -166,8 +166,8 @@ The h9v constants `MAX_HYDRATION_POINTS = 600`, `MAX_HYDRATION_STROKES = 10` and
 
 | Check | Command | Result |
 |---|---|---|
-| Engine suites | `vitest run --root ../packages/efx-physic-paint` (attachBaseline, faithfulRebake, restoreBaseline, moveTranslate, erasePointerDelete, strokeReorder) | 6 files, **83 tests passed** |
-| App suites | `vitest run` (brushScriptHydration, brushScriptRecordState, brushScriptEditionPort, PhysicsPaintStudio, scriptMemorySnapshot) | 5 files, **320 tests passed** |
+| Engine suites | `vitest run --root ../packages/efx-physic-paint` (attachBaseline, faithfulRebake, restoreBaseline, moveTranslate, erasePointerDelete, strokeReorder) | 6 files, **85 tests passed** |
+| App suites | `vitest run` (brushScriptHydration, brushScriptRecordState, brushScriptEditionPort, PhysicsPaintStudio, scriptMemorySnapshot) | 5 files, **322 tests passed** |
 | Engine build | `pnpm --filter @efxlab/efx-physic-paint build` | succeeded (ESM + DTS) after the engine edits |
 | Typecheck | `pnpm --filter efx-motion-editor run typecheck` | **exactly the 15 documented pre-existing errors in 6 untouched files**; ZERO new errors in touched files |
 
@@ -203,9 +203,19 @@ No app, dev server, or Tauri build was run by the executor; live UAT belongs to 
 
 **The fallback remains available and is the documented answer if live UAT shows parity is not acceptable:** keep the cached-pixel, uneditable path rather than ship a replay look. That decision point belongs to the user's UAT (row 2 below). Do not mark the fallback accepted or rejected before that row is run.
 
+## Follow-up fix (post-UAT, 2026-10-23): Duplicate phantom stroke
+
+The first live UAT found that after Duplicating a key, the first Move/Delete on the duplicate left a phantom copy of the original stroke. Cause: the Duplicate destination is a LIVE visit whose cached preview base already contains the same script, and `rebakeStrokesFaithfully` only cleared the base for DETACHED visits. The replay drew the ledger over the base; the base copy was pixels, so it could not be selected or deleted.
+
+Fix: the base clear is now **completeness-driven**, not visit-mode-driven. `EfxPaintEngine.setScriptBaseClearPending()` is declared by the brush port before every edit; a complete ledger (including a Duplicate-derived live visit) clears the cached base exactly once per visit, while a partial visit keeps its pre-existing base. Attach still marks the clear pending. Committed `3d66fb56`.
+
+Added UAT row:
+- **PENDING — Duplicate + edit:** Duplicate a brush key, enter Move, drag/delete a stroke: no phantom copy remains, the frame rebakes faithfully, and a partial frame still preserves its pre-existing base.
+
 ## Live UAT (ALL PENDING — the user runs the app; none may be marked passed by the executor)
 
 - [ ] **PENDING — Navigation parity/speed:** Paint several overlapping multi-color strokes on a brush key; navigate away and back. The key appears instantly with its original look (no growth, no halos) and navigation is noticeably faster than the previous eager replay.
+- [ ] **PENDING — Duplicate + edit:** Duplicate a brush key, enter Move, drag/delete a stroke: no phantom copy remains, the frame rebakes faithfully, and a partial frame still preserves its pre-existing base.
 - [ ] **PENDING — First-edit rebake and repeat consistency:** Enter Move on that key and drag one stroke; the frame rebakes faithfully the first time, and a second move/step/delete in the same visit behaves identically (no fallback look change).
 - [ ] **PENDING — Undo/redo after rebake:** After the rebake, undo/redo still track the retained script and the Move overlay (h9v rows 3 and 7 still hold).
 - [ ] **PENDING — Partial frames unchanged:** A frame with pre-existing cached paint plus new brush strokes stays partial and view-only.
@@ -217,5 +227,5 @@ No app, dev server, or Tauri build was run by the executor; live UAT belongs to 
 ## Self-Check: PASSED
 
 - All 8 listed source/test artifacts exist on disk.
-- All four task commits (`f8c5969f`, `47789f94`, `c99175b9`, `eefb4493`) are ancestors of HEAD (`eefb4493`).
+- All task commits (`f8c5969f`, `47789f94`, `c99175b9`, `eefb4493`, `3d66fb56`) are ancestors of HEAD.
 - Working tree contains no uncommitted code changes; only the untracked `.planning/quick/261023-j5b-.../` docs (orchestrator-owned).
