@@ -2403,8 +2403,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
 
   it('keeps both callbacks identity-stable with the setter set they use declared', () => {
     expect(loadAndApplyBody).not.toBe('');
-    expect(studio).toContain('}, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);');
-    expect(studio).toContain('}, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);');
+    expect(studio).toContain('}, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);');
+    expect(studio).toContain('}, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);');
+    // The shared post-apply capture seam is itself identity-stable.
+    expect(studio).toContain('}, [rotoScript]);\n  const handleScriptRowActivate = useCallback(');
   });
 
   it('does NOT change handleScriptRowActivate — it loads, it never applies', () => {
@@ -3648,5 +3650,15 @@ describe('261023-j5b paint-settings carrier seams', () => {
     expect(studio).toContain('const liveCanvasWholeFrame = mutationEngine.isLiveCanvasWholeFrame();');
     expect(studio).toContain('const cachedBase = liveCanvasWholeFrame');
     expect(studio).toContain('baseCanvas: liveCanvasWholeFrame');
+  });
+
+  it('an applied or duplicated script is captured for Move at apply settle', () => {
+    expect(brushScriptRecordStateSource).toContain('export function adoptBrushScriptFrameAsComplete(');
+    // The generic Apply entry points refresh the store as soon as they settle.
+    expect(studio).toContain('const flushBrushScriptAfterApply = useCallback(() => {');
+    expect(studio).toContain('flushBrushScriptAfterApply();');
+    // Duplicate adopts the blank-born destination as COMPLETE.
+    expect(studio).toContain('adoptBrushScriptFrameAsComplete(');
+    expect(studio).toContain('rotoScript.source.peek().appFrame,');
   });
 });

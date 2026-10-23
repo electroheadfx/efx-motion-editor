@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import type { BrushOpts, PaintRenderSettings, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
+  adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
   captureBrushScriptForFrame,
   clearBrushScriptFrame,
@@ -392,6 +393,64 @@ describe('completeness law (261023-h9v)', () => {
   it('caps each continuation diffusion contribution at 600 frames', () => {
     flushBrushScriptFrame(7, [stroke(1), continuation(1, 5000), continuation(1, 4)]);
     expect(getBrushScriptReport().frames[0]).toMatchObject({ diffusionFrames: 604 });
+  });
+});
+
+// ============================================================
+//  261023-j5b follow-up — Duplicate adoption. A Duplicate
+//  destination was an EMPTY cell, so the promoted key is blank and
+//  the applied script is the whole frame BY CONSTRUCTION. This is
+//  the one sanctioned override of sticky completeness: an earlier
+//  arrival observation of the promoted BLANK base must not leave
+//  the frame partial.
+// ============================================================
+describe('duplicate adoption (261023-j5b follow-up)', () => {
+  it('adopts a blank-born destination as complete even after an arrival-base note', () => {
+    noteBrushScriptArrivalBase(4, true);
+    expect(isBrushScriptLedgerComplete(4)).toBe(false);
+
+    const entry = adoptBrushScriptFrameAsComplete(4, [stroke(1)]);
+
+    expect(entry?.complete).toBe(true);
+    expect(isBrushScriptFrameComplete(4)).toBe(true);
+    expect(isBrushScriptLedgerComplete(4)).toBe(true);
+    expect(getBrushScriptForFrame(4)).toHaveLength(1);
+  });
+
+  it('upgrades an existing partial entry (the promoted blank base held no content)', () => {
+    noteBrushScriptArrivalBase(4, true);
+    captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+    expect(getBrushScriptFrameEntry(4)?.complete).toBe(false);
+
+    expect(adoptBrushScriptFrameAsComplete(4, [stroke(2), stroke(3)])?.complete).toBe(true);
+    expect(getBrushScriptForFrame(4)).toHaveLength(2);
+  });
+
+  it('refuses an empty ledger and keeps the previous entry', () => {
+    captureBrushScriptForFrame(4, [{ primary: stroke(1), continuations: [] }]);
+
+    expect(adoptBrushScriptFrameAsComplete(4, [])).toBeNull();
+    expect(adoptBrushScriptFrameAsComplete(4, null)).toBeNull();
+    expect(getBrushScriptForFrame(4)).toHaveLength(1);
+  });
+
+  it('clears the dirty mark and carries the paint settings snapshot', () => {
+    const settings: PaintRenderSettings = {
+      localSpreadStrength: 42,
+      wetPaper: true,
+      physicsStrength: 0.6,
+      paperGrain: 'grainC',
+    };
+    markBrushScriptFrameDirty(4);
+
+    const entry = adoptBrushScriptFrameAsComplete(4, [stroke(1)], settings);
+
+    expect(entry?.paintSettings).toEqual(settings);
+    expect(entry?.complete).toBe(true);
+    // A clean, captured frame keeps its identity across a redundant flush.
+    const identity = getBrushScriptFrameEntry(4);
+    expect(flushBrushScriptFrame(4, [stroke(1)])).toBe(false);
+    expect(getBrushScriptFrameEntry(4)).toBe(identity);
   });
 });
 

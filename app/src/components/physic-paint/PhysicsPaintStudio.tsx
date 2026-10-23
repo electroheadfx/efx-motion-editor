@@ -167,6 +167,7 @@ import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
 import {
+  adoptBrushScriptFrameAsComplete,
   clearBrushScriptFrame,
   computeBrushScriptPruneFrame,
   flushBrushScriptFrame,
@@ -1557,6 +1558,23 @@ export function PhysicsPaintStudio() {
     setApplyMessage(null);
     setApplyStatus('idle');
   }, [setApplyMessage, setApplyStatus]);
+  // 261023-j5b follow-up: an engine-1 Apply lands its strokes in the LIVE
+  // engine. Both the Move overlay and the frame-editing reload gate read the
+  // session store, so capture the applied frame the moment the apply settles.
+  // Without this, applying (or duplicating) a script while Move is armed leaves
+  // the canvas in paint with NO script handles until a tool refresh.
+  const flushBrushScriptAfterApply = useCallback(() => {
+    if (activeModule.peek() === 'watercolor') return;
+    const activeEngine = engineRef.current;
+    if (!activeEngine) return;
+    const strokes = activeEngine.getStrokes();
+    if (strokes.length === 0) return;
+    flushBrushScriptFrame(
+      launchContextRef.current?.startFrame ?? rotoScript.source.peek().appFrame,
+      strokes,
+      activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),
+    );
+  }, [rotoScript]);
   const handleScriptRowActivate = useCallback(async (id: string) => {
     const loaded = await rotoScriptLibrary.activateAndLoad(id);
     if (!loaded) return;
@@ -1595,6 +1613,7 @@ export function PhysicsPaintStudio() {
       }
       const applied = await rotoScript.applyPreparedScript(preparation);
       if (applied) {
+        flushBrushScriptAfterApply();
         setLastError(null);
         clearOwnedScriptApplyRefusal();
       } else {
@@ -1616,7 +1635,7 @@ export function PhysicsPaintStudio() {
     } finally {
       rotoScript.cancelPreparedScriptLoadAndApply(preparation);
     }
-  }, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
+  }, [rotoScript, rotoScriptLibrary, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);
   // 260905-dso: the relocated buffer Apply/Clear handlers — identity-stable
   // useCallbacks wired into the workflow memo (the Tools popover Actions
   // section). Bodies moved verbatim from the rightPanel scripts props.
@@ -1624,6 +1643,7 @@ export function PhysicsPaintStudio() {
     void (async () => {
       const success = await rotoScript.applyScript();
       if (success) {
+        flushBrushScriptAfterApply();
         setLastError(null);
         clearOwnedScriptApplyRefusal();
       } else {
@@ -1640,7 +1660,7 @@ export function PhysicsPaintStudio() {
         }
       }
     })();
-  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal]);
+  }, [rotoScript, setLastError, setApplyMessage, setApplyStatus, clearOwnedScriptApplyRefusal, flushBrushScriptAfterApply]);
   const handleDiscardScript = useCallback(() => {
     rotoScript.discardScript();
     setLastError(null);
@@ -2692,7 +2712,25 @@ export function PhysicsPaintStudio() {
               originFrame: sourceAppFrame,
               targetFrame: frame,
             }),
-            applyBrushScript: (script) => rotoScript.applyProvidedScript(script),
+            applyBrushScript: async (script) => {
+              const applied = await rotoScript.applyProvidedScript(script);
+              // 261023-j5b follow-up: the decision table only reaches this
+              // path for an EMPTY destination, so the promoted key is blank and
+              // the applied script IS the whole frame. Adopt it as complete and
+              // capture it NOW: Move (already armed by the duplicate click)
+              // reads the store, not the live engine, for its handles.
+              if (applied) {
+                const engine = engineRef.current;
+                if (engine) {
+                  adoptBrushScriptFrameAsComplete(
+                    rotoScript.source.peek().appFrame,
+                    engine.getStrokes(),
+                    engine.getFramePaintSettings() ?? engine.getPaintRenderSettings(),
+                  );
+                }
+              }
+              return applied;
+            },
             applyAquarelleEvents: (events) => rotoScript.applyAquarelleTimeline(events),
             recordAquarelleScriptCopy: async (sourceFrame, destinationFrame) => {
               const engine = engineRef.current;

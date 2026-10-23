@@ -233,6 +233,28 @@ export function flushBrushScriptFrame(
   return true;
 }
 
+/**
+ * 261023-j5b follow-up: claim a frame whose ledger is the WHOLE content BY
+ * CONSTRUCTION. A Duplicate destination was an EMPTY cell, so the promoted key
+ * is blank and the applied script is everything it contains. An earlier
+ * arrival observation may have seen the promoted BLANK base and marked the
+ * frame partial; that base holds no content, so the claim clears it.
+ *
+ * This is the one sanctioned override of the sticky-completeness law and is
+ * valid ONLY for a blank-born destination. Returns null for an empty ledger.
+ */
+export function adoptBrushScriptFrameAsComplete(
+  frame: number,
+  strokes: readonly PaintStroke[] | null,
+  paintSettings?: PaintRenderSettings | null,
+): BrushScriptFrameEntry | null {
+  if (strokes === null) return null;
+  const groups = normalizeLogicalBrushes(strokes);
+  if (groups.length === 0) return null;
+  arrivalBaseFrames.delete(frame);
+  return captureBrushScriptForFrame(frame, groups, true, paintSettings);
+}
+
 /** Read API — a shared frozen empty array when the frame was never captured. */
 export function getBrushScriptForFrame(frame: number): readonly Readonly<RecordedStrokeGroup>[] {
   return brushScriptFrames.get(frame)?.groups ?? EMPTY_GROUPS;
