@@ -300,6 +300,9 @@ pub fn write_package_snapshot(
 }
 
 /// Package-leg read: `<package>/scripts/<layerId>/<trackId>-v1.snap`.
+/// Test-only: production restore goes through `read_snapshot_preferring_package`,
+/// which owns the package-first precedence law.
+#[cfg(test)]
 pub fn read_package_snapshot(
     package_root: &Path,
     layer_id: &str,
