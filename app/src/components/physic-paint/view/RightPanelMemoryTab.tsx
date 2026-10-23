@@ -188,18 +188,16 @@ export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMem
         lost for that key.
       </p>
       <div class="physics-paint-memory-actions">
-        {rail?.railSelected ? (
-          <button
-            type="button"
-            class="physics-paint-memory-purge-frame"
-            disabled={!hasFrameScript}
-            onClick={() => {
-              confirmSignal.value = 'frame';
-            }}
-          >
-            {`Purge frame ${currentFrame} scripts`}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          class="physics-paint-memory-purge-frame"
+          disabled={!hasFrameScript}
+          onClick={() => {
+            confirmSignal.value = 'frame';
+          }}
+        >
+          {hasFrameScript ? `Purge script on frame ${currentFrame}` : 'No script on this frame'}
+        </button>
         <button
           type="button"
           class="physics-paint-memory-clear-rail"

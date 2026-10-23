@@ -5047,34 +5047,16 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     memoryFrame.value = currentFrame;
   }, [currentFrame, memoryFrame]);
-  // quick-261023-ors UAT: the clear-all action is contextual — it appears only
-  // while a rail is explicitly selected on the timeline, with that rail's name
-  // as its context. Selecting a rail also activates its track (the stores are
-  // track-scoped), so the label and the purge target always agree.
+  // quick-261023-ors UAT: clear-all always targets the ACTIVE track (the
+  // stores are track-scoped), so its name is always available as the button's
+  // context. The per-frame purge does not depend on this context.
   const memoryRailContext = useSignal<StudioScriptMemoryRailContext | null>(null);
   useEffect(() => {
     const layerId = launchContextRef.current?.layerId;
     const document = layerId ? getEfxPaintDocument(layerId) : undefined;
     const activeTrack = document?.tracks.find((track) => track.id === document.activeTrackId);
-    if (!activeTrack) {
-      memoryRailContext.value = null;
-      return;
-    }
-    // The clear-all action always targets the ACTIVE track, so its name is
-    // always available; only the per-frame purge waits for a rail selection.
-    const railSelected =
-      selectedRotoKeyRail.value !== null
-      || selectedLoopClipId.value !== null
-      || railSetSelection.value !== null;
-    memoryRailContext.value = { trackName: activeTrack.name, railSelected };
-  }, [
-    selectedRotoKeyRail.value,
-    selectedLoopClipId.value,
-    railSetSelection.value,
-    activeTrackIdForReads,
-    efxPaintVersion.value,
-    memoryRailContext,
-  ]);
+    memoryRailContext.value = activeTrack ? { trackName: activeTrack.name } : null;
+  }, [activeTrackIdForReads, efxPaintVersion.value, memoryRailContext]);
   // Identity-stable ports (the audioSectionPortsRef precedent): `read` resolves
   // the live engine and launch frame at call time, never captured here. The
   // purge functions are hoisted declarations below — a false return means
