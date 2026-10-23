@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Completed quick task 261023-o3n: Studio scripts now persist inside the .mce package at scripts/<layerId>/<trackId>-v1.snap; 6 UAT rows pending
+Last activity: 2026-10-23 - Quick task 261023-o3n CLOSED: 6/6 UAT rows passed (scripts persist in the .mce package at scripts/<layerId>/<trackId>-v1.snap); script deletion lifecycle goes to the gauge-purge quick
 
 Progress: [██████████] 100%
 

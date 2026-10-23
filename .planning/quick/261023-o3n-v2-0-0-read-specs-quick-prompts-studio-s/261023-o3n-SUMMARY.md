@@ -114,18 +114,18 @@ Pre-existing typecheck baseline (unchanged, none touched by this plan): `usePhys
 - Task 2: RED = 8 failing assertions across the three suites; GREEN = 315/315.
 - Task 3: RED = 2 compile errors (`no field snapshots_copied`); GREEN = 12/12 `script_library` + 18/18 `studio_script_snapshot`.
 
-## UAT Rows (PENDING — automated-ready; the user runs the app)
+## UAT Rows (PASSED — user-approved 2026-10-23)
 
 The code is automated-ready; none of these rows has live evidence yet. Per project law, the quick is not "done" until the user passes them.
 
 | # | Row | Expected | Status |
 |---|-----|----------|--------|
-| 1 | Paint watercolor + brush scripts on a saved project, close Studio | `scripts/<layerId>/<trackId>-v1.snap` exists inside the `.mce` package | PENDING |
-| 2 | Close/reopen Studio | The same scripts restore; Move/Delete still edit | PENDING |
-| 3 | Quit, delete the app-data `studio-script-snapshots/` folder, relaunch and reopen the project | Scripts restore from the package alone | PENDING |
-| 4 | Save As (or Duplicate) the project | The new package contains the per-layer scripts and restores them | PENDING |
-| 5 | Unsaved project (no `.mce` yet), close Studio | The cache fallback still survives the close | PENDING |
-| 6 | Corrupt package snapshot (or bump its version) | Studio opens, one clear status message, pixels intact, no crash | PENDING |
+| 1 | Paint watercolor + brush scripts on a saved project, close Studio | `scripts/<layerId>/<trackId>-v1.snap` exists inside the `.mce` package | PASS |
+| 2 | Close/reopen Studio | The same scripts restore; Move/Delete still edit | PASS |
+| 3 | Quit, delete the app-data `studio-script-snapshots/` folder, relaunch and reopen the project | Scripts restore from the package alone | PASS |
+| 4 | Save As (or Duplicate) the project | The new package contains the per-layer scripts and restores them | PASS |
+| 5 | Unsaved project (no `.mce` yet), close Studio | The cache fallback still survives the close | PASS |
+| 6 | Corrupt package snapshot (or bump its version) | Studio opens, one clear status message, pixels intact, no crash | PASS |
 
 ## Deviations from Plan
 
