@@ -28,6 +28,11 @@ import {
   type ScriptMemorySnapshotInput,
   type ScriptMemoryWindowLike,
 } from './scriptMemorySnapshot';
+import {
+  MAX_HYDRATION_DIFFUSION_FRAMES,
+  MAX_HYDRATION_POINTS,
+  MAX_HYDRATION_STROKES,
+} from '../view/brushScriptHydration';
 
 const encoder = new TextEncoder();
 const jsonBytes = (value: unknown): number => encoder.encode(JSON.stringify(value)).byteLength;
@@ -188,7 +193,13 @@ describe('buildScriptMemorySnapshot — empty state', () => {
 
     expect(snapshot.brush.scope).toBe('per-frame-session-store');
     expect(snapshot.brush.frames).toEqual([]);
-    expect(snapshot.brush.totals).toEqual({ strokes: 0, points: 0, approxBytes: 0 });
+    expect(snapshot.brush.totals).toEqual({
+      strokes: 0,
+      points: 0,
+      approxBytes: 0,
+      completeFrames: 0,
+      partialFrames: 0,
+    });
     expect(snapshot.brush.currentEngineFrame).toEqual({
       available: false,
       strokes: 0,
@@ -368,8 +379,8 @@ describe('installScriptMemoryGlobal', () => {
 describe('buildScriptMemorySnapshot — brush scope', () => {
   const BRUSH_SCRIPT = {
     frames: [
-      { frame: 2, strokes: 1, points: 2, approxBytes: 300 },
-      { frame: 7, strokes: 3, points: 9, approxBytes: 900 },
+      { frame: 2, strokes: 1, points: 2, approxBytes: 300, complete: true, diffusionFrames: 0 },
+      { frame: 7, strokes: 3, points: 9, approxBytes: 900, complete: false, diffusionFrames: 12 },
     ],
     totals: { strokes: 4, points: 11, approxBytes: 1200 },
   };
@@ -383,8 +394,17 @@ describe('buildScriptMemorySnapshot — brush scope', () => {
     });
 
     expect(snapshot.brush.scope).toBe('per-frame-session-store');
-    expect(snapshot.brush.frames).toEqual(BRUSH_SCRIPT.frames);
-    expect(snapshot.brush.totals).toEqual(BRUSH_SCRIPT.totals);
+    // Complete rows carry the derived hydratable verdict; the partial row is
+    // visible as non-hydratable even though its strokes are retained.
+    expect(snapshot.brush.frames).toEqual([
+      { ...BRUSH_SCRIPT.frames[0], hydratable: true },
+      { ...BRUSH_SCRIPT.frames[1], hydratable: false },
+    ]);
+    expect(snapshot.brush.totals).toEqual({
+      ...BRUSH_SCRIPT.totals,
+      completeFrames: 1,
+      partialFrames: 1,
+    });
     // The current engine frame keeps the documented JSON-byte method and is
     // NOT folded into the session totals.
     expect(snapshot.brush.currentEngineFrame).toEqual({
@@ -394,9 +414,13 @@ describe('buildScriptMemorySnapshot — brush scope', () => {
       approxBytes: 687,
     });
     expect(snapshot.brush.totals.approxBytes).toBe(1200);
-    // The old current-frame-only scope string is gone.
+    // The note states session-only retention, the completeness law, and the
+    // real-key hydration rule.
     expect(snapshot.brush.note).toContain('captured per frame');
+    expect(snapshot.brush.note).toContain('for this Studio session only');
     expect(snapshot.brush.note).toContain('current engine frame is measured separately');
+    expect(snapshot.brush.note).toContain('complete when its captured script is the whole content');
+    expect(snapshot.brush.note).toContain('real brush key');
   });
 
   it('keeps the scope and note when the engine has no strokes', () => {
@@ -414,8 +438,91 @@ describe('buildScriptMemorySnapshot — brush scope', () => {
       approxBytes: 0,
     });
     // Session rows survive an engine-less read.
-    expect(snapshot.brush.frames).toEqual(BRUSH_SCRIPT.frames);
+    expect(snapshot.brush.frames).toEqual([
+      { ...BRUSH_SCRIPT.frames[0], hydratable: true },
+      { ...BRUSH_SCRIPT.frames[1], hydratable: false },
+    ]);
     expect(snapshot.brush.scope).toBe('per-frame-session-store');
+  });
+});
+
+describe('buildScriptMemorySnapshot — brush completeness/hydratability', () => {
+  function brushInput(
+    frames: Array<{
+      frame: number;
+      strokes: number;
+      points: number;
+      approxBytes: number;
+      complete: boolean;
+      diffusionFrames: number;
+    }>,
+  ): ScriptMemorySnapshotInput {
+    return {
+      ...baseInput(fixture()),
+      brushScript: {
+        frames,
+        totals: { strokes: 0, points: 0, approxBytes: 0 },
+      },
+    };
+  }
+
+  const row = (
+    complete: boolean,
+    points: number,
+    diffusionFrames: number,
+  ) => ({ frame: 1, strokes: 1, points, approxBytes: 100, complete, diffusionFrames });
+
+  it('marks a complete row within budget hydratable and counts the split', () => {
+    const snapshot = buildScriptMemorySnapshot(
+      brushInput([
+        row(true, 100, 0),
+        row(false, 100, 0),
+        { ...row(true, 200, 0), frame: 2 },
+      ]),
+    );
+
+    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([true, false, true]);
+    expect(snapshot.brush.totals.completeFrames).toBe(2);
+    expect(snapshot.brush.totals.partialFrames).toBe(1);
+  });
+
+  it('marks a complete row over the point budget non-hydratable', () => {
+    const snapshot = buildScriptMemorySnapshot(
+      brushInput([row(true, MAX_HYDRATION_POINTS + 1, 0), row(true, MAX_HYDRATION_POINTS, 0)]),
+    );
+
+    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
+    // Completeness itself is not changed by the budget.
+    expect(snapshot.brush.totals.completeFrames).toBe(2);
+    expect(snapshot.brush.totals.partialFrames).toBe(0);
+  });
+
+  it('marks a complete row over the diffusion budget non-hydratable', () => {
+    const snapshot = buildScriptMemorySnapshot(
+      brushInput([
+        row(true, 10, MAX_HYDRATION_DIFFUSION_FRAMES + 1),
+        row(true, 10, MAX_HYDRATION_DIFFUSION_FRAMES),
+      ]),
+    );
+
+    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
+  });
+
+  it('marks a complete row over the stroke budget non-hydratable', () => {
+    const snapshot = buildScriptMemorySnapshot(brushInput([
+      { ...row(true, 1, 0), strokes: MAX_HYDRATION_STROKES + 1 },
+      { ...row(true, 1, 0), strokes: MAX_HYDRATION_STROKES },
+    ]));
+
+    expect(snapshot.brush.frames.map((frame) => frame.hydratable)).toEqual([false, true]);
+  });
+
+  it('never promotes a partial row, even when it is well within budget', () => {
+    const snapshot = buildScriptMemorySnapshot(brushInput([row(false, 1, 0)]));
+
+    expect(snapshot.brush.frames[0]!.complete).toBe(false);
+    expect(snapshot.brush.frames[0]!.hydratable).toBe(false);
+    expect(snapshot.brush.totals).toMatchObject({ completeFrames: 0, partialFrames: 1 });
   });
 });
 

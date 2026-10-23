@@ -35,12 +35,52 @@ import {
 } from './brushScriptRecordState';
 
 /**
- * Documented serialized-cost budget. The restore replays every point
- * synchronously, so the ceiling is expressed in stored points rather than
- * bytes; the probe measures the real cost at the boundary.
+ * MEASURED replay budget (quick 261023-h9v Task 3, 2026-10-23). The restore
+ * replays synchronously through the engine harness (mock canvas, real
+ * redrawAll). Costs at 1920x1080 — the largest supported working canvas:
+ *
+ *   point replay: 10x60 = 233 ms, 25x90 = 601 ms, 40x180 = 1102 ms,
+ *                 40x600 (24000 pts) = 1492 ms;
+ *   per-stroke fixed cost ~17.5 ms (the full-frame saved-wet scan in
+ *                 applyStrokeToEngine), ~0.04 ms per extra point;
+ *   diffusion:    1 frame = 21 ms @100x100, 250 ms @800x600, 331 ms @1280x720,
+ *                 705 ms @1920x1080; 300 frames @800x600 measured 61 s.
+ *
+ * The points cap alone cannot bound cost (600 strokes x 1 point would pass a
+ * 600-point cap but cost seconds), so strokes are gated separately. The
+ * chosen ceilings keep the WORST allowed restore at the 10x60 light fixture
+ * (~200-233 ms measured at 1920x1080), under the ~250 ms target. Any nonzero
+ * diffusion run exceeds that target at HD, so physics-run frames never
+ * hydrate — they keep the cached-pixel path and report hydratable=false.
  */
-export const MAX_HYDRATION_POINTS = 24000;
-export const MAX_HYDRATION_DIFFUSION_FRAMES = 300;
+export const MAX_HYDRATION_POINTS = 600;
+export const MAX_HYDRATION_STROKES = 10;
+export const MAX_HYDRATION_DIFFUSION_FRAMES = 0;
+
+/** The budget gate alone — strokes, points and diffusion within the ceilings. */
+export function isWithinBrushHydrationBudget(
+  strokes: number,
+  points: number,
+  diffusionFrames: number,
+): boolean {
+  return strokes <= MAX_HYDRATION_STROKES
+    && points <= MAX_HYDRATION_POINTS
+    && diffusionFrames <= MAX_HYDRATION_DIFFUSION_FRAMES;
+}
+
+/**
+ * Probe-facing hydratability: complete AND within budget. Liveness and the
+ * navigation-time gates (real key, module, playback, scrub) are separate.
+ */
+export function isBrushScriptFrameHydratable(entry: {
+  readonly complete: boolean;
+  readonly strokes: number;
+  readonly points: number;
+  readonly diffusionFrames: number;
+}): boolean {
+  return entry.complete
+    && isWithinBrushHydrationBudget(entry.strokes, entry.points, entry.diffusionFrames);
+}
 
 export interface BrushHydrationRequest {
   /** The destination app frame. */
@@ -80,8 +120,7 @@ export function planBrushScriptHydration(request: BrushHydrationRequest): BrushH
   if (request.wasPlaying) return { hydrate: false, reason: 'playback' };
   if (request.scrubActive) return { hydrate: false, reason: 'scrub' };
   if (
-    entry.points > MAX_HYDRATION_POINTS
-    || entry.diffusionFrames > MAX_HYDRATION_DIFFUSION_FRAMES
+    !isWithinBrushHydrationBudget(entry.strokes, entry.points, entry.diffusionFrames)
   ) {
     return { hydrate: false, reason: 'budget' };
   }

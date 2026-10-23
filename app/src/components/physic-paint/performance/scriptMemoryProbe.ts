@@ -13,8 +13,13 @@
 //    - the four named frame caches (separate section, never folded in)
 //
 //  Brush frames are captured per frame for this Studio session; the
-//  current engine frame is reported separately because navigation
-//  still calls engine.clear().
+//  current engine frame is reported separately because the engine
+//  holds only one frame. Navigation to a complete REAL brush key
+//  rehydrates its retained script silently (quick 261023-h9v); the
+//  probe reports complete/hydratable per row so UAT can see whether a
+//  frame would take that path instead of the cached-pixel fallback.
+//  The current-frame flush below remains a sanctioned projection
+//  point: idempotent, signal-free, and never a hydration trigger.
 // ============================================================
 
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';

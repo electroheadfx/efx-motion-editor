@@ -25,8 +25,10 @@ import {
   applyCompletedBrushMutation,
   attemptBrushScriptHydration,
   engineHoldsBrushScriptFrame,
+  isBrushScriptFrameHydratable,
   MAX_HYDRATION_DIFFUSION_FRAMES,
   MAX_HYDRATION_POINTS,
+  MAX_HYDRATION_STROKES,
   planBrushScriptHydration,
   type BrushHydrationRequest,
 } from './brushScriptHydration';
@@ -177,7 +179,15 @@ describe('plan: every refusal is fail-closed', () => {
     expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
   });
 
-  it('refuses over the diffusion budget', () => {
+  it('refuses over the stroke budget (the per-stroke replay cost driver)', () => {
+    captureComplete(
+      3,
+      Array.from({ length: MAX_HYDRATION_STROKES + 1 }, (_, index) => stroke(index + 1, 1)),
+    );
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'budget' });
+  });
+
+  it('refuses any diffusion run (the measured cap is zero at HD)', () => {
     captureBrushScriptForFrame(3, [{
       primary: stroke(1),
       continuations: [continuation(1, MAX_HYDRATION_DIFFUSION_FRAMES + 1)],
@@ -186,10 +196,15 @@ describe('plan: every refusal is fail-closed', () => {
   });
 
   it('accepts exactly at the documented budget boundary', () => {
-    captureBrushScriptForFrame(3, [{
-      primary: stroke(1, MAX_HYDRATION_POINTS),
-      continuations: [continuation(1, MAX_HYDRATION_DIFFUSION_FRAMES)],
-    }]);
+    captureComplete(
+      3,
+      Array.from({ length: MAX_HYDRATION_STROKES }, (_, index) =>
+        stroke(index + 1, MAX_HYDRATION_POINTS / MAX_HYDRATION_STROKES),
+      ),
+    );
+    // 10 strokes x 60 points is the measured light fixture (~200-233 ms at HD).
+    expect(getBrushScriptFrameEntry(3)?.points).toBe(MAX_HYDRATION_POINTS);
+    expect(getBrushScriptFrameEntry(3)?.diffusionFrames).toBe(0);
     expect(planBrushScriptHydration(request()).hydrate).toBe(true);
   });
 
@@ -198,6 +213,42 @@ describe('plan: every refusal is fail-closed', () => {
     const engine = createFakeEngine({ restoreResult: 0 });
     expect(attemptBrushScriptHydration(engine, request())).toBe(false);
     expect(engine.restoreStrokesBaseline).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('isBrushScriptFrameHydratable — the probe verdict', () => {
+  const within = { strokes: 1, points: 10, diffusionFrames: 0 };
+
+  it('is true only for a complete row within every ceiling', () => {
+    expect(isBrushScriptFrameHydratable({ ...within, complete: true })).toBe(true);
+    expect(isBrushScriptFrameHydratable({ ...within, complete: false })).toBe(false);
+  });
+
+  it('is false when any measured ceiling is exceeded', () => {
+    expect(isBrushScriptFrameHydratable({
+      complete: true,
+      ...within,
+      strokes: MAX_HYDRATION_STROKES + 1,
+    })).toBe(false);
+    expect(isBrushScriptFrameHydratable({
+      complete: true,
+      ...within,
+      points: MAX_HYDRATION_POINTS + 1,
+    })).toBe(false);
+    expect(isBrushScriptFrameHydratable({
+      complete: true,
+      ...within,
+      diffusionFrames: MAX_HYDRATION_DIFFUSION_FRAMES + 1,
+    })).toBe(false);
+  });
+
+  it('accepts the boundary values exactly', () => {
+    expect(isBrushScriptFrameHydratable({
+      complete: true,
+      strokes: MAX_HYDRATION_STROKES,
+      points: MAX_HYDRATION_POINTS,
+      diffusionFrames: MAX_HYDRATION_DIFFUSION_FRAMES,
+    })).toBe(true);
   });
 });
 
