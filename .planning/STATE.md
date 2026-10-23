@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-23T15:35:26.696Z"
+last_updated: "2026-10-23T18:42:35.626Z"
 last_activity: 2026-10-23
 last_activity_desc: Phase 56 complete
-state_head: 6987642a0161a9889dd480eec648c5fcf29c8811
+state_head: c1132a139c38f6e8d2edaff35a8ee9692d481cd6
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-o3n CLOSED: 6/6 UAT rows passed (scripts persist in the .mce package at scripts/<layerId>/<trackId>-v1.snap); script deletion lifecycle goes to the gauge-purge quick
+Last activity: 2026-10-23 - Quick task 261023-ors COMPLETE (automated-ready; 7 UAT rows PENDING): Memory tab script gauge + confirmed per-key/active-rail purge with snapshot cleanup + rail-delete cascade
 
 Progress: [██████████] 100%
 
@@ -581,6 +581,7 @@ None yet.
 | 261023-j5b | Lazy brush script attach over cached pixels (instant navigation) + faithful live-deposit rebake on edits; Duplicate phantom, revisit-cache duplicate and Duplicate-in-Move overlay fixes; diffusion/physics frames fail closed. UAT passed 2026-10-23. | 2026-10-23 | be5b3e90 | [261023-j5b-replace-eager-brush-script-replay-on-nav](./quick/261023-j5b-replace-eager-brush-script-replay-on-nav/) |
 | 261023-l35 | Persist the Studio script snapshot (watercolor timeline + per-frame brush ledger) to a Rust app-managed SNAP v1 binary cache keyed by project/layer/track; debounced save, close flush, launch restore, prune, fail-closed | 2026-10-23 | b3c23b1c | [261023-l35-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-l35-v2-0-0-read-specs-quick-prompts-studio-s/) |
 | 261023-o3n | Store the Studio script snapshot inside the .mce package at scripts/<layerId>/<trackId>-v1.snap via the scriptLibraryAuthority seam; cache kept for unsaved/missing fallback; Save As/Duplicate carries the per-layer folders | 2026-10-23 | 6987642a | [261023-o3n-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-o3n-v2-0-0-read-specs-quick-prompts-studio-s/) |
+| 261023-ors | Studio script-memory gauge Memory tab + confirmed per-key/active-rail purge with snapshot cleanup + rail-delete cascade | 2026-10-23 | c1132a13 | [261023-ors-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-ors-v2-0-0-read-specs-quick-prompts-studio-s/) |
 
 ### Roadmap Evolution
 
