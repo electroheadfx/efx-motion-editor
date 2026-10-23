@@ -35,6 +35,9 @@ import {
   noteBrushScriptArrivalBase,
   pruneBrushScriptFramesTo,
   pruneBrushScriptsFromFrame,
+  purgeAllBrushScriptFrames,
+  purgeBrushScriptFrame,
+  purgedBrushScriptFrame,
   resetBrushScriptStore,
   restoreBrushScriptFrames,
 } from './brushScriptRecordState';
@@ -645,5 +648,161 @@ describe('snapshot restore and prune (quick-261023-l35)', () => {
     resetBrushScriptStore();
     expect(hasBrushScriptFrames()).toBe(false);
     expect(getBrushScriptFrameEntries()).toEqual([]);
+  });
+});
+
+// quick-261023-ors Task 2: the purge and its re-capture law. A purge is
+// confirmed in the Memory tab and keeps the pixels; the marker stops the
+// frame-leave flush from re-projecting the engine's stale strokes into the
+// store. Only an explicit new edit (markBrushScriptFrameDirty) or a capture
+// (adoption / restore) may re-open the frame — and the new entry is PARTIAL
+// because the surviving pixels are a cached base.
+describe('purge law (quick-261023-ors)', () => {
+  function countRuns(run: () => void): number {
+    let runs = 0;
+    const dispose = effect(() => {
+      void brushScriptRevision.value;
+      runs += 1;
+    });
+    try {
+      runs = 0;
+      run();
+      return runs;
+    } finally {
+      dispose();
+    }
+  }
+
+  it('purgeBrushScriptFrame drops the entry, marks the frame, and bumps once', () => {
+    flushBrushScriptFrame(5, [stroke(1)]);
+    expect(getBrushScriptFrameEntry(5)).toBeDefined();
+
+    const runs = countRuns(() => {
+      expect(purgeBrushScriptFrame(5)).toBe(true);
+    });
+
+    expect(runs).toBe(1);
+    expect(getBrushScriptFrameEntry(5)).toBeUndefined();
+    expect(getBrushScriptReport().frames).toEqual([]);
+    expect(purgedBrushScriptFrame(5)).toBe(true);
+    // Purged frames are a cached-pixel base: any future capture is partial.
+    expect(isBrushScriptLedgerComplete(5)).toBe(false);
+  });
+
+  it('purge of an uncaptured frame marks it without a bump', () => {
+    const runs = countRuns(() => {
+      expect(purgeBrushScriptFrame(7)).toBe(false);
+    });
+    expect(runs).toBe(0);
+    expect(purgedBrushScriptFrame(7)).toBe(true);
+  });
+
+  it('refuses to recapture a purged frame from the engine on frame leave', () => {
+    flushBrushScriptFrame(5, [stroke(1)]);
+    expect(purgeBrushScriptFrame(5)).toBe(true);
+
+    expect(flushBrushScriptFrame(5, [stroke(1)])).toBe(false);
+    expect(getBrushScriptFrameEntry(5)).toBeUndefined();
+    expect(getBrushScriptForFrame(5)).toEqual([]);
+  });
+
+  it('a dirty mark re-opens the frame; the new entry is partial', () => {
+    flushBrushScriptFrame(5, [stroke(1)], undefined);
+    expect(getBrushScriptFrameEntry(5)?.complete).toBe(true);
+    expect(purgeBrushScriptFrame(5)).toBe(true);
+
+    markBrushScriptFrameDirty(5);
+    expect(purgedBrushScriptFrame(5)).toBe(false);
+    expect(flushBrushScriptFrame(5, [stroke(2)])).toBe(true);
+    expect(getBrushScriptFrameEntry(5)?.complete).toBe(false);
+    expect(getBrushScriptFrameEntry(5)?.strokes).toBe(1);
+    expect(getBrushScriptForFrame(5)[0]!.primary.mutationId).toBe(2);
+  });
+
+  it('leaves other frames capturing normally', () => {
+    flushBrushScriptFrame(5, [stroke(1)]);
+    flushBrushScriptFrame(6, [stroke(2)]);
+    purgeBrushScriptFrame(5);
+
+    markBrushScriptFrameDirty(6);
+    expect(flushBrushScriptFrame(6, [stroke(3)])).toBe(true);
+    expect(getBrushScriptFrameEntry(6)?.strokes).toBe(1);
+    expect(purgedBrushScriptFrame(6)).toBe(false);
+  });
+
+  it('an explicit capture clears the purge marker', () => {
+    purgeBrushScriptFrame(5);
+    expect(purgedBrushScriptFrame(5)).toBe(true);
+    captureBrushScriptForFrame(5, [{ primary: stroke(1), continuations: [] }], true, null);
+    expect(purgedBrushScriptFrame(5)).toBe(false);
+    expect(getBrushScriptFrameEntry(5)?.strokes).toBe(1);
+  });
+
+  it('clear and delete drop the marker for their frame', () => {
+    purgeBrushScriptFrame(5);
+    expect(purgedBrushScriptFrame(5)).toBe(true);
+    clearBrushScriptFrame(5);
+    expect(purgedBrushScriptFrame(5)).toBe(false);
+
+    purgeBrushScriptFrame(6);
+    deleteBrushScriptFrame(6);
+    expect(purgedBrushScriptFrame(6)).toBe(false);
+  });
+
+  it('monotonic prunes drop the markers for the frames they drop', () => {
+    // A purge removes the entry, so these markers exist without store rows —
+    // the prunes must still stop a re-keyed frame from keeping a stale purge.
+    purgeBrushScriptFrame(2);
+    purgeBrushScriptFrame(5);
+    expect(purgedBrushScriptFrame(2)).toBe(true);
+    expect(purgedBrushScriptFrame(5)).toBe(true);
+
+    expect(pruneBrushScriptFramesTo(new Set([5]))).toBe(0);
+    expect(purgedBrushScriptFrame(2)).toBe(false);
+    expect(purgedBrushScriptFrame(5)).toBe(true);
+
+    expect(pruneBrushScriptsFromFrame(5)).toBe(0);
+    expect(purgedBrushScriptFrame(5)).toBe(false);
+  });
+
+  it('restore and reset clear every purge marker', () => {
+    purgeBrushScriptFrame(3);
+    purgeBrushScriptFrame(4);
+    restoreBrushScriptFrames([
+      { frame: 9, groups: [{ primary: stroke(9), continuations: [] }], complete: true },
+    ]);
+    expect(purgedBrushScriptFrame(3)).toBe(false);
+    expect(purgedBrushScriptFrame(4)).toBe(false);
+
+    purgeBrushScriptFrame(5);
+    resetBrushScriptStore();
+    expect(purgedBrushScriptFrame(5)).toBe(false);
+  });
+
+  it('purgeAllBrushScriptFrames drops every entry and marks each plus the current frame', () => {
+    flushBrushScriptFrame(2, [stroke(1)]);
+    flushBrushScriptFrame(5, [stroke(2)]);
+    markBrushScriptFrameDirty(8);
+
+    const runs = countRuns(() => {
+      expect(purgeAllBrushScriptFrames(8)).toBe(2);
+    });
+
+    expect(runs).toBe(1);
+    expect(getBrushScriptFrameEntries()).toEqual([]);
+    expect(purgedBrushScriptFrame(2)).toBe(true);
+    expect(purgedBrushScriptFrame(5)).toBe(true);
+    // The current frame may have had no entry — it is still purged.
+    expect(purgedBrushScriptFrame(8)).toBe(true);
+    expect(isBrushScriptLedgerComplete(2)).toBe(false);
+    expect(isBrushScriptLedgerComplete(8)).toBe(false);
+    expect(flushBrushScriptFrame(8, [stroke(3)])).toBe(false);
+  });
+
+  it('purgeAll on an empty store returns 0 without a bump', () => {
+    const runs = countRuns(() => {
+      expect(purgeAllBrushScriptFrames(null)).toBe(0);
+    });
+    expect(runs).toBe(0);
   });
 });

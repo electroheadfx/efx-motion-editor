@@ -718,6 +718,35 @@ export async function ipcStudioScriptSnapshotRead(
   }
 }
 
+/**
+ * quick-261023-ors: delete one key's Studio script snapshot legs.
+ *
+ * `scope: 'cache'` removes only the app-cache fallback — the purge's cleanup
+ * after it rewrote the authoritative package copy. `scope: 'both'` removes the
+ * cache leg and, when a live `authority` resolves, the package leg too (the
+ * rail-deletion cascade); an absent authority deletes only the cache. A stale
+ * authority is refused by Rust. `cacheRemoved`/`packageRemoved` report which
+ * exact leaf files were present; a missing file is `false`, never an error.
+ */
+export async function ipcStudioScriptSnapshotDelete(
+  projectId: string,
+  layerId: string,
+  trackId: string,
+  authority: string | null,
+  scope: 'cache' | 'both',
+): Promise<Result<{ cacheRemoved: boolean; packageRemoved: boolean }, StudioScriptSnapshotFailure>> {
+  try {
+    const data = await invoke<{ cacheRemoved: boolean; packageRemoved: boolean }>(
+      'studio_script_snapshot_delete',
+      undefined,
+      { headers: { projectId, layerId, trackId, scope, ...(authority ? { authority } : {}) } },
+    );
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, error: studioScriptSnapshotFailureFrom(error) };
+  }
+}
+
 // --- Package layer file commands (quick-260913-05k) ---
 
 /**

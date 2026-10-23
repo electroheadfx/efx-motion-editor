@@ -165,6 +165,7 @@ import { AUDIO_IMPORT_CTA } from './view/PhysicsPaintAudioModalView';
 // audioPeaksCache (the task-3 stain reads peaks keyed by sourceId).
 import {
   assetUrl,
+  ipcStudioScriptSnapshotDelete,
   ipcStudioScriptSnapshotRead,
   ipcStudioScriptSnapshotWrite,
 } from '../../lib/ipc';
@@ -188,6 +189,8 @@ import {
   getBrushScriptFrameEntries,
   noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
+  purgeAllBrushScriptFrames,
+  purgeBrushScriptFrame,
   resetBrushScriptStore,
 } from './view/brushScriptRecordState';
 import {
@@ -201,6 +204,8 @@ import {
   aquarelleStrokesRevision,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
+  purgeAllAquarelleKeyScripts,
+  purgeAquarelleFrameScript,
   recordAquarelleStroke,
   resetAquarelleRecordState,
   setAquarelleParam,
@@ -1084,6 +1089,16 @@ export function PhysicsPaintStudio() {
         identity.layerId,
         identity.trackId,
         authority,
+      ),
+      // quick-261023-ors: the delete leg. `cache` is the purge's post-rewrite
+      // cleanup; `both` is the rail-deletion cascade. An absent authority
+      // deletes the cache only (unsaved project); Rust refuses a stale one.
+      remove: (identity, authority, scope) => ipcStudioScriptSnapshotDelete(
+        identity.projectId,
+        identity.layerId,
+        identity.trackId,
+        authority,
+        scope,
       ),
     });
   }
@@ -5011,14 +5026,28 @@ export function PhysicsPaintStudio() {
   // right-panel memo keeps returning the cached props (signal reads bypass it
   // inside RightPanelMemoryTab).
   const memorySectionRef = useRef({ ports: memorySectionPortsRef.current, frame: memoryFrame });
-  // quick-261023-ors Task 2 fills these in (per-key purge + active-rail clear,
-  // both persisting through the snapshot controller). Task 1 ships the gauge
-  // read-only: a false return reports "nothing removed".
-  function purgeMemoryScriptFrame(_frame: number): boolean {
-    return false;
+  // quick-261023-ors Task 2: the two confirmed purges. Both remove ONLY the
+  // script (the engine's pixels and ledger are never touched), and a successful
+  // purge dispatches the snapshot cleanup immediately: the controller rewrites
+  // the authoritative leg with the pruned payload, then deletes the stale
+  // cache fallback. A false return means nothing was removed — never an error.
+  function purgeMemoryScriptFrame(frame: number): boolean {
+    const removedWatercolor = purgeAquarelleFrameScript(frame);
+    // Marking the brush frame purged is meaningful even when no entry existed
+    // (it stops a frame-leave flush from capturing the engine's stale strokes),
+    // but the return value counts only actual removals.
+    const removedBrush = purgeBrushScriptFrame(frame);
+    const total = removedWatercolor + (removedBrush ? 1 : 0);
+    if (total === 0) return false;
+    void studioScriptSnapshot.persistAfterPurge();
+    return true;
   }
   function clearMemoryRailScripts(): boolean {
-    return false;
+    const removedWatercolor = purgeAllAquarelleKeyScripts();
+    const removedBrush = purgeAllBrushScriptFrames(launchContextRef.current?.startFrame ?? null);
+    if (removedWatercolor + removedBrush === 0) return false;
+    void studioScriptSnapshot.persistAfterPurge();
+    return true;
   }
   const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleOpacityChange, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the

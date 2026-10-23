@@ -916,4 +916,105 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(textContent(tree)).toContain('Script memory is unavailable in this session.');
     expect(textContent(tree)).not.toContain('Scripts total');
   });
+
+  // quick-261023-ors Task 2: availability gating + the two inline confirmations.
+  function renderMemoryTab(props: PhysicsPaintRightPanelProps): AnyVNode {
+    const first = renderPanel(props);
+    clickToolTab(first, 'physics-paint-tab-top-memory');
+    const tree = renderPanel(props);
+    // The leaf's mount effect writes the snapshot signal after its first
+    // render; one expansion mounts it, and the lookups below re-expand and
+    // read the written signal (the harness has no scheduler of its own).
+    textContent(tree);
+    return tree;
+  }
+
+  it('enables the per-key purge only for a frame that has a script row', () => {
+    activeModule.value = 'brush';
+    // The fixture's only frames are 5 (watercolor) and 9 (brush).
+    const onScripted = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(5) }));
+    expect(findByClass(onScripted, 'physics-paint-memory-purge-frame').props.disabled).toBe(false);
+
+    const onBlank = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(42) }));
+    expect(findByClass(onBlank, 'physics-paint-memory-purge-frame').props.disabled).toBe(true);
+    // Clear-all still has script strokes on the rail.
+    expect(findByClass(onBlank, 'physics-paint-memory-clear-rail').props.disabled).toBe(false);
+  });
+
+  it('disables clear-all when the rail holds no scripts at all', () => {
+    activeModule.value = 'brush';
+    const empty: ScriptMemorySnapshot = {
+      ...SAMPLE_MEMORY_SNAPSHOT,
+      watercolor: {
+        ...SAMPLE_MEMORY_SNAPSHOT.watercolor,
+        frames: [],
+        totals: { frames: 0, strokes: 0, points: 0, approxBytes: 0 },
+      },
+      brush: {
+        ...SAMPLE_MEMORY_SNAPSHOT.brush,
+        frames: [],
+        totals: { strokes: 0, points: 0, approxBytes: 0, completeFrames: 0, partialFrames: 0 },
+      },
+    };
+    const section = memorySectionFixture(5);
+    const props = baseProps({
+      memorySection: { ...section, ports: { ...section.ports, read: () => empty } },
+    });
+    const tree = renderMemoryTab(props);
+    expect(findByClass(tree, 'physics-paint-memory-clear-rail').props.disabled).toBe(true);
+    expect(findByClass(tree, 'physics-paint-memory-purge-frame').props.disabled).toBe(true);
+  });
+
+  it('confirms the per-key purge, and Cancel changes nothing', () => {
+    activeModule.value = 'brush';
+    const section = memorySectionFixture(5);
+    const props = baseProps({ memorySection: section });
+    let tree = renderMemoryTab(props);
+
+    (findByClass(tree, 'physics-paint-memory-purge-frame').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(textContent(tree)).toMatch(/Purge the script of Frame\s+5\s*\?/);
+    expect(textContent(tree)).toContain('The painted pixels stay');
+
+    // Cancel restores the two buttons and touches neither store.
+    (findByClass(tree, 'physics-paint-memory-confirm-cancel').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(textContent(tree)).not.toMatch(/Purge the script of Frame\s+5\s*\?/);
+    expect(section.ports.purgeFrame).not.toHaveBeenCalled();
+    expect(section.ports.clearRail).not.toHaveBeenCalled();
+
+    // Confirm: the port is called with the displayed frame and the gauge is
+    // re-read immediately.
+    (findByClass(tree, 'physics-paint-memory-purge-frame').props.onClick as () => void)();
+    tree = renderPanel(props);
+    (findByClass(tree, 'physics-paint-memory-confirm-ok').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(section.ports.purgeFrame).toHaveBeenCalledTimes(1);
+    expect(section.ports.purgeFrame).toHaveBeenCalledWith(5);
+    expect(textContent(tree)).not.toMatch(/Purge the script of Frame\s+5\s*\?/);
+  });
+
+  it('confirms clear-all with the active-rail wording, and Cancel changes nothing', () => {
+    activeModule.value = 'brush';
+    const section = memorySectionFixture(5);
+    const props = baseProps({ memorySection: section });
+    let tree = renderMemoryTab(props);
+
+    (findByClass(tree, 'physics-paint-memory-clear-rail').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(textContent(tree)).toContain('Clear every script on the active rail');
+    expect(textContent(tree)).toContain('Every key of this rail loses its script');
+
+    (findByClass(tree, 'physics-paint-memory-confirm-cancel').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(textContent(tree)).not.toContain('Clear every script on the active rail');
+    expect(section.ports.clearRail).not.toHaveBeenCalled();
+
+    (findByClass(tree, 'physics-paint-memory-clear-rail').props.onClick as () => void)();
+    tree = renderPanel(props);
+    (findByClass(tree, 'physics-paint-memory-confirm-ok').props.onClick as () => void)();
+    tree = renderPanel(props);
+    expect(section.ports.clearRail).toHaveBeenCalledTimes(1);
+    expect(textContent(tree)).not.toContain('Clear every script on the active rail');
+  });
 });

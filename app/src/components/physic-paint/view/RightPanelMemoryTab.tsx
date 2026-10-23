@@ -46,12 +46,21 @@ export interface RightPanelMemoryTabProps {
   frame: Signal<number>;
 }
 
+/** Which inline confirmation is open. `none` is the two action buttons. */
+type MemoryConfirmKind = 'none' | 'frame' | 'rail';
+
 export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) {
   // One signal for the lifetime of the tab — created in a ref (never a fresh
   // signal per render, never useState).
   const snapshotRef = useRef<Signal<ScriptMemorySnapshot | null> | null>(null);
   if (snapshotRef.current === null) snapshotRef.current = signal<ScriptMemorySnapshot | null>(null);
   const snapshotSignal = snapshotRef.current;
+  // quick-261023-ors Task 2: the inline confirmation state is a signal in a
+  // ref too — a click writes it, the render-body read re-renders this leaf,
+  // and the memoized right panel never sees a prop change.
+  const confirmRef = useRef<Signal<MemoryConfirmKind> | null>(null);
+  if (confirmRef.current === null) confirmRef.current = signal<MemoryConfirmKind>('none');
+  const confirmSignal = confirmRef.current;
 
   useEffect(() => {
     // Mount read: the first paint already has figures.
@@ -100,6 +109,18 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
   const scriptsBytes = snapshot.watercolor.totals.approxBytes + snapshot.brush.totals.approxBytes;
   const scriptsStrokes = snapshot.watercolor.totals.strokes + snapshot.brush.totals.strokes;
   const scriptsPoints = snapshot.watercolor.totals.points + snapshot.brush.totals.points;
+  const confirm = confirmSignal.value;
+  // Per-key purge needs a script on the DISPLAYED frame; clear-all needs any
+  // script at all on the active rail. Both stay disabled otherwise.
+  const hasFrameScript = rows.some((row) => row.frame === currentFrame);
+  const hasAnyScript = scriptsStrokes > 0;
+
+  // A successful purge refreshes the gauge IMMEDIATELY (the debounced revision
+  // read is the fallback, not the contract), then closes the confirmation.
+  const confirmPurge = (removed: boolean) => {
+    if (removed) snapshotSignal.value = ports.read();
+    confirmSignal.value = 'none';
+  };
 
   return (
     <div class="physics-paint-memory-tab" data-testid="right-panel-memory-tab">
@@ -151,6 +172,92 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
         Purging keeps the painted pixels but removes the script — Move, Select and replay are
         lost for that key.
       </p>
+      <div class="physics-paint-memory-actions">
+        {confirm === 'frame' ? (
+          <div
+            class="physics-paint-memory-confirm"
+            role="group"
+            aria-label={`Confirm purge of frame ${currentFrame}`}
+            data-memory-confirm="frame"
+          >
+            <p class="physics-paint-memory-confirm-copy">
+              Purge the script of Frame {currentFrame}? The painted pixels stay, but Move, Select
+              and replay are lost for that key.
+            </p>
+            <div class="physics-paint-memory-confirm-actions">
+              <button
+                type="button"
+                class="physics-paint-memory-confirm-cancel"
+                onClick={() => {
+                  confirmSignal.value = 'none';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="physics-paint-memory-confirm-ok destructive"
+                onClick={() => confirmPurge(ports.purgeFrame(currentFrame))}
+              >
+                Purge frame script
+              </button>
+            </div>
+          </div>
+        ) : confirm === 'rail' ? (
+          <div
+            class="physics-paint-memory-confirm physics-paint-memory-confirm-strong"
+            role="group"
+            aria-label="Confirm clear all scripts on the active rail"
+            data-memory-confirm="rail"
+          >
+            <p class="physics-paint-memory-confirm-copy">
+              Clear every script on the active rail (the track you are editing)? Every key of this
+              rail loses its script; the painted pixels stay on every key.
+            </p>
+            <div class="physics-paint-memory-confirm-actions">
+              <button
+                type="button"
+                class="physics-paint-memory-confirm-cancel"
+                onClick={() => {
+                  confirmSignal.value = 'none';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="physics-paint-memory-confirm-ok destructive"
+                onClick={() => confirmPurge(ports.clearRail())}
+              >
+                Clear all rail scripts
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div class="physics-paint-memory-action-row">
+            <button
+              type="button"
+              class="physics-paint-memory-purge-frame"
+              disabled={!hasFrameScript}
+              onClick={() => {
+                confirmSignal.value = 'frame';
+              }}
+            >
+              {`Purge frame ${currentFrame} script`}
+            </button>
+            <button
+              type="button"
+              class="physics-paint-memory-clear-rail"
+              disabled={!hasAnyScript}
+              onClick={() => {
+                confirmSignal.value = 'rail';
+              }}
+            >
+              Clear all rail scripts
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

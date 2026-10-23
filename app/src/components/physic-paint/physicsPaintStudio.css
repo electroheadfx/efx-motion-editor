@@ -1290,6 +1290,73 @@ button.destructive {
   line-height: 1.4;
 }
 
+/* quick-261023-ors Task 2: the inline confirmations. Cancel is the quiet arm;
+   the confirm is the destructive arm. Nothing purges without this step. */
+.physics-paint-memory-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.physics-paint-memory-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.physics-paint-memory-purge-frame,
+.physics-paint-memory-clear-rail,
+.physics-paint-memory-confirm-cancel,
+.physics-paint-memory-confirm-ok {
+  padding: 4px 8px;
+  border: 1px solid #696d72;
+  border-radius: 6px;
+  color: #fff;
+  background: #2f3134;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.physics-paint-memory-purge-frame:disabled,
+.physics-paint-memory-clear-rail:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.physics-paint-memory-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #737980;
+  border-radius: 6px;
+  background: #292b2d;
+}
+
+.physics-paint-memory-confirm-strong {
+  border-color: #a43d3d;
+}
+
+.physics-paint-memory-confirm-copy {
+  margin: 0;
+  color: #f0c27a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.physics-paint-memory-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.physics-paint-memory-confirm-ok.destructive {
+  color: #fff;
+  background: #a43d3d;
+}
+
 /* 261018-l05 watercolor brush cards */
 /* Brush tab 14-card grid cells. Card/button/thumb/name styles moved out of
    WatercolorBrushLibrary inline style objects (261018-l05 move 2). Visual look

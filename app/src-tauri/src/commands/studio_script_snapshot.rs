@@ -21,8 +21,8 @@ use crate::commands::frame_codec::encode_base64;
 use crate::services::efx_paint_media::EfxPaintMediaIoError;
 use crate::services::script_library::ScriptLibraryState;
 use crate::services::studio_script_snapshot::{
-    read_snapshot_preferring_package, snapshot_root, write_snapshot_preferring_package,
-    StudioScriptSnapshotError,
+    delete_snapshot_legs, read_snapshot_preferring_package, snapshot_root,
+    write_snapshot_preferring_package, SnapshotDeleteScope, StudioScriptSnapshotError,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -44,6 +44,14 @@ pub struct StudioScriptSnapshotReadResponse {
     pub digest: String,
     /// Base64-encoded SNAP v1 container. Never a raw response body.
     pub bytes_base64: String,
+}
+
+/// quick-261023-ors: what a successful delete removed on each leg.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StudioScriptSnapshotDeleteResponse {
+    pub cache_removed: bool,
+    pub package_removed: bool,
 }
 
 fn io_error(message: impl Into<String>) -> StudioScriptSnapshotError {
@@ -95,6 +103,20 @@ fn optional_authority_root(
         .resolve_authority_root(authority)
         .map(Some)
         .map_err(|_| StudioScriptSnapshotError::Refused)
+}
+
+/// quick-261023-ors: parse the delete scope. ONLY `cache` and `both` are
+/// accepted; a missing, empty or foreign value is `Refused` before any path is
+/// resolved, so a crafted scope can never widen a delete.
+fn parse_delete_scope(headers: &HeaderMap) -> Result<SnapshotDeleteScope, StudioScriptSnapshotError> {
+    match headers
+        .get("scope")
+        .and_then(|value| value.to_str().ok())
+    {
+        Some("cache") => Ok(SnapshotDeleteScope::Cache),
+        Some("both") => Ok(SnapshotDeleteScope::Both),
+        _ => Err(StudioScriptSnapshotError::Refused),
+    }
 }
 
 /// Writes one key's script snapshot atomically. A bound authority writes the
@@ -163,6 +185,42 @@ pub fn studio_script_snapshot_read(
     })
 }
 
+/// Deletes one key's script snapshot legs (quick-261023-ors).
+///
+/// `scope: cache` removes only the app-cache fallback — the purge's cleanup
+/// after it rewrote the authoritative package copy. `scope: both` removes the
+/// cache leg and, when a live authority resolves, the package leg too — the
+/// rail-deletion cascade. A stale or forged authority is `refused` before any
+/// path is resolved; an absent authority with `scope: both` deletes only the
+/// cache (the unsaved-project case). Every key component passes the key law
+/// before any join, and only the exact `<trackId>-v1.snap` leaf is removed.
+#[tauri::command(async)]
+pub fn studio_script_snapshot_delete(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, ScriptLibraryState>,
+    request: Request,
+) -> Result<StudioScriptSnapshotDeleteResponse, StudioScriptSnapshotError> {
+    let headers = request.headers();
+    let project_id = header(headers, "projectId")?;
+    let layer_id = header(headers, "layerId")?;
+    let track_id = header(headers, "trackId")?;
+    let scope = parse_delete_scope(headers)?;
+    let package_root = optional_authority_root(&state, headers)?;
+    let root = snapshot_root_for(&app)?;
+    let outcome = delete_snapshot_legs(
+        &root,
+        package_root.as_deref(),
+        &project_id,
+        &layer_id,
+        &track_id,
+        scope,
+    )?;
+    Ok(StudioScriptSnapshotDeleteResponse {
+        cache_removed: outcome.cache_removed,
+        package_removed: outcome.package_removed,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +253,53 @@ mod tests {
         assert_eq!(
             optional_authority_root(&state, &headers).expect("bound"),
             Some(fs::canonicalize(&root).expect("canonical root"))
+        );
+        fs::remove_dir_all(root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn delete_scope_accepts_only_cache_and_both() {
+        let mut headers = HeaderMap::new();
+        assert_eq!(
+            parse_delete_scope(&headers).unwrap_err(),
+            StudioScriptSnapshotError::Refused
+        );
+        headers.insert("scope", HeaderValue::from_static("cache"));
+        assert_eq!(
+            parse_delete_scope(&headers).expect("cache scope"),
+            SnapshotDeleteScope::Cache
+        );
+        headers.insert("scope", HeaderValue::from_static("both"));
+        assert_eq!(
+            parse_delete_scope(&headers).expect("both scope"),
+            SnapshotDeleteScope::Both
+        );
+        for crafted in ["", "package", "BOTH", "cache ", "all"] {
+            let mut bad = HeaderMap::new();
+            bad.insert("scope", HeaderValue::from_str(crafted).expect("header"));
+            assert_eq!(
+                parse_delete_scope(&bad).unwrap_err(),
+                StudioScriptSnapshotError::Refused,
+                "expected scope refusal: {crafted:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stale_authority_is_refused_before_the_delete_resolves_a_package() {
+        let root = fixture_root("delete-stale");
+        let state = crate::services::script_library::ScriptLibraryState::default();
+        let authority = state.bind(&root).expect("bind");
+        state.clear().expect("clear");
+        let mut headers = HeaderMap::new();
+        headers.insert("scope", HeaderValue::from_static("both"));
+        headers.insert(
+            "authority",
+            HeaderValue::from_str(&authority).expect("header"),
+        );
+        assert_eq!(
+            optional_authority_root(&state, &headers).unwrap_err(),
+            StudioScriptSnapshotError::Refused
         );
         fs::remove_dir_all(root).expect("fixture cleanup");
     }

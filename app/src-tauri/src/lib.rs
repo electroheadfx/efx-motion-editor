@@ -971,6 +971,7 @@ pub fn run() {
             efx_paint_media_commands::efx_paint_read_frame_media,
             studio_script_snapshot_commands::studio_script_snapshot_write,
             studio_script_snapshot_commands::studio_script_snapshot_read,
+            studio_script_snapshot_commands::studio_script_snapshot_delete,
             debug_capture::write_debug_capture,
             config::config_get_theme,
             config::config_set_theme,

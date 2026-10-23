@@ -134,6 +134,7 @@ interface Harness {
   report: ReturnType<typeof vi.fn>;
   write: ReturnType<typeof vi.fn>;
   read: ReturnType<typeof vi.fn>;
+  remove: ReturnType<typeof vi.fn>;
   setSignature: (value: string) => void;
   setAuthority: (value: string | null) => void;
 }
@@ -163,6 +164,16 @@ function harness(
       error: { kind: 'missing' },
     }),
   );
+  const remove = vi.fn(
+    async (
+      _identity: StudioScriptSnapshotIdentity,
+      _authority: string | null,
+      _scope: 'cache' | 'both',
+    ): Promise<StudioScriptSnapshotOperationResult<{ cacheRemoved: boolean; packageRemoved: boolean }>> => ({
+      ok: true,
+      data: { cacheRemoved: true, packageRemoved: false },
+    }),
+  );
   const controller = createStudioScriptSnapshotController({
     getIdentity: () => IDENTITY,
     getWatercolorEvents: () => getRecordedAquarellePayloadTimeline(),
@@ -173,12 +184,14 @@ function harness(
     report,
     write,
     read,
+    remove,
   });
   return {
     controller,
     report,
     write,
     read,
+    remove,
     setSignature: (value: string) => {
       signature = value;
     },
@@ -558,6 +571,104 @@ describe('studioScriptSnapshotController — save discipline', () => {
       status: 'restored',
       maxRestoredMutationId: 102,
     });
+  });
+});
+
+// ------------------------------------------------------------
+//  quick-261023-ors Task 2 — the purge's persistence cleanup.
+//  Order law: rewrite the authoritative leg FIRST, then (only when
+//  the rewrite left the store clean and an authority is bound)
+//  delete the stale app-cache fallback. A failed rewrite must never
+//  delete the fallback; a rebind abandons the cleanup.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — persistAfterPurge', () => {
+  it('is a no-op without a bound identity', async () => {
+    const { controller, write, remove, report } = harness();
+    await expect(controller.persistAfterPurge()).resolves.toBeUndefined();
+    expect(write).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it('rewrites the authoritative leg, then deletes the cache leg when bound', async () => {
+    const { controller, write, remove, report, setAuthority } = harness();
+    setAuthority('vault-token');
+    controller.bind(IDENTITY);
+
+    await controller.persistAfterPurge();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0]![0]).toEqual(IDENTITY);
+    expect(write.mock.calls[0]![2]).toBe('vault-token');
+    // The cache deletion follows the successful rewrite and names the key.
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledWith(IDENTITY, 'vault-token', 'cache');
+    expect(report).not.toHaveBeenCalled();
+    expect(controller.isDirty()).toBe(false);
+  });
+
+  it('never deletes the cache leg without an authority (the cache IS the authority)', async () => {
+    const { controller, write, remove, report, setAuthority } = harness();
+    setAuthority(null);
+    controller.bind(IDENTITY);
+
+    await controller.persistAfterPurge();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveBeenCalled();
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it('keeps the fallback when the rewrite failed (still dirty)', async () => {
+    const { controller, write, remove, report, setAuthority } = harness();
+    setAuthority('vault-token');
+    write.mockResolvedValue({ ok: false, error: { kind: 'io' } });
+    controller.bind(IDENTITY);
+
+    await expect(controller.persistAfterPurge()).resolves.toBeUndefined();
+
+    expect(controller.isDirty()).toBe(true);
+    expect(remove).not.toHaveBeenCalled();
+    // The save failure itself reports once; the purge does not add a second.
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a failed cache delete ONCE and never rejects', async () => {
+    const { controller, remove, report, setAuthority } = harness();
+    setAuthority('vault-token');
+    remove.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+    controller.bind(IDENTITY);
+
+    await expect(controller.persistAfterPurge()).resolves.toBeUndefined();
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report.mock.calls[0]![0]).toContain('could not be cleaned after the purge');
+    expect(report.mock.calls[0]![0]).toContain('refused');
+  });
+
+  it('absorbs a rejecting cache delete as an io failure report', async () => {
+    const { controller, remove, report, setAuthority } = harness();
+    setAuthority('vault-token');
+    remove.mockRejectedValue(new Error('boom'));
+    controller.bind(IDENTITY);
+
+    await expect(controller.persistAfterPurge()).resolves.toBeUndefined();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report.mock.calls[0]![0]).toContain('io');
+  });
+
+  it('abandons the cleanup when the key is rebound before the rewrite completes', async () => {
+    const { controller, remove, report, setAuthority } = harness();
+    setAuthority('vault-token');
+    controller.bind(IDENTITY);
+    const pending = controller.persistAfterPurge();
+    // A track switch lands while the purge's flush is still awaiting the queue.
+    controller.bind({ ...IDENTITY, trackId: 'track-2' });
+    await pending;
+    expect(remove).not.toHaveBeenCalled();
+    expect(report).not.toHaveBeenCalled();
   });
 });
 

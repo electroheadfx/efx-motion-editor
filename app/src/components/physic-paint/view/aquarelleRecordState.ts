@@ -538,6 +538,74 @@ export function deleteAquarelleStrokeFromScript(mutationId: number): boolean {
 }
 
 /**
+ * quick-261023-ors: purge ONE key's aquarelle script (the confirmed per-key
+ * purge on the Memory tab). Every non-Dry timeline event whose `playFrame`
+ * equals `frame` leaves the timeline together with its registry entry,
+ * projected entry, deletion marker and creation serial; the frame's serial
+ * counter restarts. Dry is a sheet action with no frame anchor (D-15), so it
+ * keeps its place — and the record clock is NOT reset, so later strokes keep
+ * the tick cursor the session already reached.
+ *
+ * The engine's guide strokes are untouched, exactly like
+ * `deleteAquarelleStrokeFromScript`: the script (record state) is what the
+ * purge removes, never the painted pixels.
+ *
+ * Walks the timeline backwards so each splice is stable. Returns the number
+ * of events removed and bumps the revision ONCE, only when something left.
+ */
+export function purgeAquarelleFrameScript(frame: number): number {
+  let removed = 0;
+  for (let index = payloadTimeline.length - 1; index >= 0; index -= 1) {
+    const event = payloadTimeline[index]!;
+    if (isAquarelleDryEvent(event)) continue;
+    if (event.playFrame !== frame) continue;
+    payloadTimeline.splice(index, 1);
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (mutationId !== undefined) {
+      recordedStrokes.delete(mutationId);
+      recordedStrokeEntries.delete(mutationId);
+      deletedAquarelleStrokeIds.delete(mutationId);
+      aquarelleStrokeSerials.delete(mutationId);
+    }
+    removed += 1;
+  }
+  if (removed === 0) return 0;
+  aquarelleFrameSerialCounters.delete(frame);
+  bumpAquarelleStrokesRevision();
+  return removed;
+}
+
+/**
+ * quick-261023-ors: purge the ACTIVE RAIL's aquarelle script (the confirmed
+ * clear-all). Removes every stroke identity — timeline events AND registry
+ * entries, including already-deleted tombstones and orphaned entries that no
+ * timeline event references — while every Dry event stays (sheet actions are
+ * not per-rail script). All per-frame serial counters clear; the record clock
+ * is not reset.
+ *
+ * Returns the number of distinct stroke identities removed and bumps the
+ * revision ONCE, only when something left.
+ */
+export function purgeAllAquarelleKeyScripts(): number {
+  const removedIds = new Set<number>(recordedStrokes.keys());
+  for (let index = payloadTimeline.length - 1; index >= 0; index -= 1) {
+    const event = payloadTimeline[index]!;
+    if (isAquarelleDryEvent(event)) continue;
+    payloadTimeline.splice(index, 1);
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (mutationId !== undefined) removedIds.add(mutationId);
+  }
+  recordedStrokes.clear();
+  recordedStrokeEntries.clear();
+  deletedAquarelleStrokeIds.clear();
+  aquarelleStrokeSerials.clear();
+  aquarelleFrameSerialCounters.clear();
+  if (removedIds.size === 0) return 0;
+  bumpAquarelleStrokesRevision();
+  return removedIds.size;
+}
+
+/**
  * Undo half of a delete (261022-pim): unmark the stroke and reinsert its
  * timeline entry at the recorded index. Bumps the revision.
  */

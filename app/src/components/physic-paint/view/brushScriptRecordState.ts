@@ -96,6 +96,16 @@ const dirtyBrushScriptFrames = new Set<number>();
  * arrival with no base is a no-op, so a fresh frame stays complete.
  */
 const arrivalBaseFrames = new Set<number>();
+/**
+ * quick-261023-ors: frames whose script was explicitly PURGED (Memory tab,
+ * per-key or clear-all). The engine still holds the frame's strokes, so
+ * without this marker the next frame-leave flush would project them straight
+ * back into the store and the purge would be undone. `flushBrushScriptFrame`
+ * refuses a clean purged frame; only an explicit new edit
+ * (`markBrushScriptFrameDirty`), a capture, a clear/delete or a session seed
+ * (restore/reset) lifts the marker.
+ */
+const purgedBrushScriptFrames = new Set<number>();
 
 function bumpRevision(): void {
   brushScriptRevision.value = brushScriptRevision.value + 1;
@@ -141,9 +151,19 @@ function measureApproxBytes(groups: readonly Readonly<RecordedStrokeGroup>[]): n
 
 /**
  * O(1) stroke-completion mark. No projection, no signal write.
+ *
+ * quick-261023-ors: an explicit new edit re-opens a purged frame — the
+ * engine's stale strokes will be replaced by the caller's flush input, so the
+ * purge marker lifts here (the arrival-base note keeps the recapture partial).
  */
 export function markBrushScriptFrameDirty(frame: number): void {
+  purgedBrushScriptFrames.delete(frame);
   dirtyBrushScriptFrames.add(frame);
+}
+
+/** quick-261023-ors: true while the frame is held purged (flush must refuse). */
+export function purgedBrushScriptFrame(frame: number): boolean {
+  return purgedBrushScriptFrames.has(frame);
 }
 
 /**
@@ -220,6 +240,8 @@ function captureEntry(
   });
   brushScriptFrames.set(frame, entry);
   dirtyBrushScriptFrames.delete(frame);
+  // quick-261023-ors: a real capture is authoritative — the purge marker lifts.
+  purgedBrushScriptFrames.delete(frame);
   return entry;
 }
 
@@ -235,7 +257,11 @@ export function flushBrushScriptFrame(
 ): boolean {
   if (strokes === null) return false;
   const wasDirty = dirtyBrushScriptFrames.delete(frame);
-  if (!wasDirty && brushScriptFrames.has(frame)) return false;
+  // quick-261023-ors purge law: a clean frame is a no-op when it already has
+  // an entry (the existing law) OR when it was explicitly purged. Without the
+  // second leg the engine's stale strokes would resurrect the purged script
+  // on the very next frame leave.
+  if (!wasDirty && (brushScriptFrames.has(frame) || purgedBrushScriptFrames.has(frame))) return false;
   const groups = normalizeLogicalBrushes(strokes);
   if (groups.length === 0) {
     // An emptied frame must not keep a ghost row (undo-all / clear without a
@@ -308,6 +334,7 @@ export function restoreBrushScriptFrames(
   brushScriptFrames.clear();
   dirtyBrushScriptFrames.clear();
   arrivalBaseFrames.clear();
+  purgedBrushScriptFrames.clear();
   let restored = 0;
   for (const entry of entries) {
     if (entry.groups.length === 0) continue;
@@ -330,7 +357,11 @@ export function pruneBrushScriptFramesTo(keepFrames: ReadonlySet<number>): numbe
     brushScriptFrames.delete(key);
     dirtyBrushScriptFrames.delete(key);
     arrivalBaseFrames.delete(key);
+    purgedBrushScriptFrames.delete(key);
     removed += 1;
+  }
+  for (const key of [...purgedBrushScriptFrames]) {
+    if (!keepFrames.has(key)) purgedBrushScriptFrames.delete(key);
   }
   if (removed > 0) bumpRevision();
   return removed;
@@ -374,6 +405,7 @@ export function getBrushScriptReport(): BrushScriptReport {
  */
 export function deleteBrushScriptFrame(frame: number): boolean {
   dirtyBrushScriptFrames.delete(frame);
+  purgedBrushScriptFrames.delete(frame);
   if (!brushScriptFrames.delete(frame)) return false;
   bumpRevision();
   return true;
@@ -386,6 +418,7 @@ export function deleteBrushScriptFrame(frame: number): boolean {
 export function clearBrushScriptFrame(frame: number): boolean {
   dirtyBrushScriptFrames.delete(frame);
   arrivalBaseFrames.delete(frame);
+  purgedBrushScriptFrames.delete(frame);
   if (!brushScriptFrames.delete(frame)) return false;
   bumpRevision();
   return true;
@@ -395,9 +428,53 @@ export function clearBrushScriptFrame(frame: number): boolean {
 export function resetBrushScriptStore(): void {
   dirtyBrushScriptFrames.clear();
   arrivalBaseFrames.clear();
+  purgedBrushScriptFrames.clear();
   if (brushScriptFrames.size === 0) return;
   brushScriptFrames.clear();
   bumpRevision();
+}
+
+/**
+ * quick-261023-ors: purge ONE key's brush script (confirmed per-key purge on
+ * the Memory tab). The retained entry and its dirty mark leave; the frame is
+ * marked purged so no frame-leave flush can re-project the engine's stale
+ * strokes, and it is noted as an arrival base so any later recapture is
+ * PARTIAL — the surviving pixels are cached content the session store no
+ * longer holds. Returns true when an entry was actually removed, bumping the
+ * revision once in that case; an uncaptured frame is still marked (its engine
+ * content must not come back either) but never bumps.
+ */
+export function purgeBrushScriptFrame(frame: number): boolean {
+  dirtyBrushScriptFrames.delete(frame);
+  purgedBrushScriptFrames.add(frame);
+  arrivalBaseFrames.add(frame);
+  if (!brushScriptFrames.delete(frame)) return false;
+  bumpRevision();
+  return true;
+}
+
+/**
+ * quick-261023-ors: purge the ACTIVE RAIL's brush script (confirmed
+ * clear-all). Every retained entry leaves, each purged frame is marked plus
+ * the caller's current frame (`extraFrame`, even when it had no entry), all
+ * dirty marks clear, and every marked frame is an arrival base. One revision
+ * bump only when an entry was removed. Returns the number of entries dropped.
+ */
+export function purgeAllBrushScriptFrames(extraFrame: number | null): number {
+  let removed = 0;
+  for (const frame of [...brushScriptFrames.keys()]) {
+    brushScriptFrames.delete(frame);
+    purgedBrushScriptFrames.add(frame);
+    arrivalBaseFrames.add(frame);
+    removed += 1;
+  }
+  dirtyBrushScriptFrames.clear();
+  if (extraFrame !== null) {
+    purgedBrushScriptFrames.add(extraFrame);
+    arrivalBaseFrames.add(extraFrame);
+  }
+  if (removed > 0) bumpRevision();
+  return removed;
 }
 
 /**
@@ -410,10 +487,14 @@ export function pruneBrushScriptsFromFrame(frame: number): number {
     if (key < frame) continue;
     brushScriptFrames.delete(key);
     dirtyBrushScriptFrames.delete(key);
+    purgedBrushScriptFrames.delete(key);
     removed += 1;
   }
   for (const key of [...arrivalBaseFrames]) {
     if (key >= frame) arrivalBaseFrames.delete(key);
+  }
+  for (const key of [...purgedBrushScriptFrames]) {
+    if (key >= frame) purgedBrushScriptFrames.delete(key);
   }
   if (removed > 0) bumpRevision();
   return removed;

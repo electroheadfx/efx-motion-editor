@@ -380,6 +380,90 @@ pub fn write_snapshot_preferring_package(
     }
 }
 
+// --- quick-261023-ors: snapshot deletion (purge cleanup + rail cascade) ------
+
+/// Which legs a delete touches (quick-261023-ors).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SnapshotDeleteScope {
+    /// The app-cache fallback leg only — the purge already rewrote the package.
+    Cache,
+    /// The cache fallback AND (when an authority resolved) the package leg —
+    /// the rail-deletion cascade.
+    Both,
+}
+
+/// What a delete actually removed. A missing leg is `false`, never an error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SnapshotDeleteOutcome {
+    pub cache_removed: bool,
+    pub package_removed: bool,
+}
+
+/// Remove one ALREADY-RESOLVED snapshot leaf. Only a regular file is named
+/// here: `remove_file` never follows a symlink into its target and can never
+/// remove a directory, so a crafted path cannot recursively delete anything.
+/// An absent file is `Ok(false)` — the silent no-op the purge and the rail
+/// cascade both need; every other failure is `Io`.
+fn delete_snapshot_at(target: &Path) -> Result<bool, StudioScriptSnapshotError> {
+    match fs::remove_file(target) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(io_error(format!(
+            "Could not delete the studio script snapshot: {error}"
+        ))),
+    }
+}
+
+/// Delete the cache leg: `<app_data_dir>/studio-script-snapshots/<projectId>/<layerId>/<trackId>-v1.snap`.
+pub fn delete_snapshot(
+    root: &Path,
+    project_id: &str,
+    layer_id: &str,
+    track_id: &str,
+) -> Result<bool, StudioScriptSnapshotError> {
+    let target = resolve_snapshot_path(root, project_id, layer_id, track_id)?;
+    delete_snapshot_at(&target)
+}
+
+/// Delete the package leg: `<package>/scripts/<layerId>/<trackId>-v1.snap`.
+pub fn delete_package_snapshot(
+    package_root: &Path,
+    layer_id: &str,
+    track_id: &str,
+) -> Result<bool, StudioScriptSnapshotError> {
+    let target = resolve_package_snapshot_path(package_root, layer_id, track_id)?;
+    delete_snapshot_at(&target)
+}
+
+/// Delete one key's snapshot legs under a scope law (quick-261023-ors).
+///
+/// `Cache` removes the fallback leg only — the purge's post-rewrite cleanup,
+/// where the package copy was just rewritten and must stay. `Both` always
+/// removes the cache leg and removes the package leg only when an authority
+/// resolved (`package_root` is `Some`), so an unbound project deletes only the
+/// cache. Every key component is validated by the resolve helpers BEFORE any
+/// join or syscall; nothing but the exact `<trackId>-v1.snap` leaf is touched.
+pub fn delete_snapshot_legs(
+    cache_root: &Path,
+    package_root: Option<&Path>,
+    project_id: &str,
+    layer_id: &str,
+    track_id: &str,
+    scope: SnapshotDeleteScope,
+) -> Result<SnapshotDeleteOutcome, StudioScriptSnapshotError> {
+    let cache_removed = delete_snapshot(cache_root, project_id, layer_id, track_id)?;
+    let package_removed = match (scope, package_root) {
+        (SnapshotDeleteScope::Both, Some(package_root)) => {
+            delete_package_snapshot(package_root, layer_id, track_id)?
+        }
+        _ => false,
+    };
+    Ok(SnapshotDeleteOutcome {
+        cache_removed,
+        package_removed,
+    })
+}
+
 /// Save As / Duplicate: carry every per-layer Studio script snapshot into the
 /// new package (T-261023-o3n-05).
 ///
@@ -809,6 +893,198 @@ mod tests {
                 .expect("package read")
                 .bytes,
             b"package-bytes"
+        );
+
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    // --- quick-261023-ors: snapshot deletion --------------------------------
+
+    #[test]
+    fn delete_both_legs_removes_the_cache_and_package_files() {
+        let cache_root = fixture_root("delete-both-cache");
+        let package_root = fixture_root("delete-both-package");
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-1", b"cache-bytes")
+            .expect("cache write");
+        write_package_snapshot(&package_root, "layer-1", "track-1", b"package-bytes")
+            .expect("package write");
+        // A sibling track must survive both legs untouched.
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-2", b"cache-other")
+            .expect("other cache write");
+        write_package_snapshot(&package_root, "layer-1", "track-2", b"package-other")
+            .expect("other package write");
+
+        let outcome = delete_snapshot_legs(
+            &cache_root,
+            Some(&package_root),
+            "project-1",
+            "layer-1",
+            "track-1",
+            SnapshotDeleteScope::Both,
+        )
+        .expect("both-leg delete");
+        assert_eq!(
+            outcome,
+            SnapshotDeleteOutcome {
+                cache_removed: true,
+                package_removed: true,
+            }
+        );
+        assert_eq!(
+            read_snapshot(&cache_root, "project-1", "layer-1", "track-1").unwrap_err(),
+            StudioScriptSnapshotError::Missing
+        );
+        assert_eq!(
+            read_package_snapshot(&package_root, "layer-1", "track-1").unwrap_err(),
+            StudioScriptSnapshotError::Missing
+        );
+        // The other rail's two legs are still there.
+        assert!(read_snapshot(&cache_root, "project-1", "layer-1", "track-2").is_ok());
+        assert!(read_package_snapshot(&package_root, "layer-1", "track-2").is_ok());
+
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn deleting_missing_files_is_silent_on_both_legs() {
+        let cache_root = fixture_root("delete-missing-cache");
+        let package_root = fixture_root("delete-missing-package");
+        let outcome = delete_snapshot_legs(
+            &cache_root,
+            Some(&package_root),
+            "project-1",
+            "layer-1",
+            "track-1",
+            SnapshotDeleteScope::Both,
+        )
+        .expect("missing delete");
+        assert_eq!(
+            outcome,
+            SnapshotDeleteOutcome {
+                cache_removed: false,
+                package_removed: false,
+            }
+        );
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn scope_cache_leaves_the_package_copy_in_place() {
+        let cache_root = fixture_root("delete-scope-cache-cache");
+        let package_root = fixture_root("delete-scope-cache-package");
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-1", b"cache-bytes")
+            .expect("cache write");
+        write_package_snapshot(&package_root, "layer-1", "track-1", b"package-bytes")
+            .expect("package write");
+
+        let outcome = delete_snapshot_legs(
+            &cache_root,
+            Some(&package_root),
+            "project-1",
+            "layer-1",
+            "track-1",
+            SnapshotDeleteScope::Cache,
+        )
+        .expect("cache-scope delete");
+        assert_eq!(
+            outcome,
+            SnapshotDeleteOutcome {
+                cache_removed: true,
+                package_removed: false,
+            }
+        );
+        assert_eq!(
+            read_package_snapshot(&package_root, "layer-1", "track-1")
+                .expect("package survives")
+                .bytes,
+            b"package-bytes"
+        );
+
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+        fs::remove_dir_all(package_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn scope_both_without_an_authority_deletes_only_the_cache() {
+        let cache_root = fixture_root("delete-unbound-cache");
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-1", b"cache-bytes")
+            .expect("cache write");
+        let outcome = delete_snapshot_legs(
+            &cache_root,
+            None,
+            "project-1",
+            "layer-1",
+            "track-1",
+            SnapshotDeleteScope::Both,
+        )
+        .expect("unbound both-leg delete");
+        assert_eq!(
+            outcome,
+            SnapshotDeleteOutcome {
+                cache_removed: true,
+                package_removed: false,
+            }
+        );
+        assert_eq!(
+            read_snapshot(&cache_root, "project-1", "layer-1", "track-1").unwrap_err(),
+            StudioScriptSnapshotError::Missing
+        );
+        fs::remove_dir_all(cache_root).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn a_refused_key_deletes_nothing_before_any_filesystem_touch() {
+        let cache_root = fixture_root("delete-key-law-cache");
+        let package_root = fixture_root("delete-key-law-package");
+        // Seed a REAL file that a traversal attempt must never reach.
+        write_snapshot(&cache_root, "project-1", "layer-1", "track-1", b"protected")
+            .expect("protected cache write");
+        write_package_snapshot(&package_root, "layer-1", "track-1", b"protected-package")
+            .expect("protected package write");
+
+        for crafted in ["..", ".", "../escape", "a/b", "a\\b", " leading", ""] {
+            assert_eq!(
+                delete_snapshot_legs(
+                    &cache_root,
+                    Some(&package_root),
+                    "project-1",
+                    "layer-1",
+                    crafted,
+                    SnapshotDeleteScope::Both,
+                )
+                .unwrap_err(),
+                StudioScriptSnapshotError::Refused,
+                "expected track refusal: {crafted:?}"
+            );
+            assert_eq!(
+                delete_snapshot_legs(
+                    &cache_root,
+                    Some(&package_root),
+                    "project-1",
+                    crafted,
+                    "track-1",
+                    SnapshotDeleteScope::Both,
+                )
+                .unwrap_err(),
+                StudioScriptSnapshotError::Refused,
+                "expected layer refusal: {crafted:?}"
+            );
+        }
+        // Both protected files survive every refused attempt.
+        assert_eq!(
+            read_snapshot(&cache_root, "project-1", "layer-1", "track-1")
+                .expect("protected cache survives")
+                .bytes,
+            b"protected"
+        );
+        assert_eq!(
+            read_package_snapshot(&package_root, "layer-1", "track-1")
+                .expect("protected package survives")
+                .bytes,
+            b"protected-package"
         );
 
         fs::remove_dir_all(cache_root).expect("fixture cleanup");

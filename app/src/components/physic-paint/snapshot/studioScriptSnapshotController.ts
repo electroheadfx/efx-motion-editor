@@ -74,6 +74,18 @@ export type StudioScriptSnapshotOperationResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: { kind: StudioScriptSnapshotFailureKind } };
 
+/**
+ * quick-261023-ors: which persisted leg a delete touches. `cache` is the
+ * purge's post-rewrite cleanup (the package copy was just rewritten and must
+ * stay); `both` is the rail-deletion cascade.
+ */
+export type StudioScriptSnapshotDeleteScope = 'cache' | 'both';
+
+export interface StudioScriptSnapshotDeletePayload {
+  cacheRemoved: boolean;
+  packageRemoved: boolean;
+}
+
 export interface StudioScriptSnapshotControllerDeps {
   /** The current launch identity, or null while none is known. */
   getIdentity: () => StudioScriptSnapshotIdentity | null;
@@ -105,6 +117,16 @@ export interface StudioScriptSnapshotControllerDeps {
     identity: StudioScriptSnapshotIdentity,
     authority: string | null,
   ) => Promise<StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>>;
+  /**
+   * quick-261023-ors: delete one key's persisted legs. `cache` removes the
+   * fallback only (the purge rewrote the authoritative leg first); `both`
+   * removes the cache and, when `authority` resolves in Rust, the package leg.
+   */
+  remove: (
+    identity: StudioScriptSnapshotIdentity,
+    authority: string | null,
+    scope: StudioScriptSnapshotDeleteScope,
+  ) => Promise<StudioScriptSnapshotOperationResult<StudioScriptSnapshotDeletePayload>>;
 }
 
 export interface StudioScriptSnapshotRestoreResult {
@@ -133,6 +155,11 @@ export interface StudioScriptSnapshotController {
   reset(): void;
   /** Clear the pending debounce timer; performs no write (effect cleanup). */
   dispose(): void;
+  /**
+   * quick-261023-ors: rewrite the authoritative leg with the pruned payload,
+   * then delete the stale fallback cache leg. Never rejects.
+   */
+  persistAfterPurge(): Promise<void>;
   getBoundIdentity(): StudioScriptSnapshotIdentity | null;
   getLastSavedSignature(): string | null;
 }
@@ -178,6 +205,11 @@ export function studioScriptSnapshotRestoreFailureMessage(kind: string): string 
 
 export function studioScriptSnapshotSaveFailureMessage(kind: string): string {
   return `Studio script snapshot could not be saved (${kind}). Painting is unaffected.`;
+}
+
+/** quick-261023-ors: the purge applied in memory but the stale leg may remain. */
+export function studioScriptSnapshotPurgeFailureMessage(kind: string): string {
+  return `Studio script snapshot could not be cleaned after the purge (${kind}). The script is purged in this session; painting is unaffected.`;
 }
 
 export function createStudioScriptSnapshotController(
@@ -412,6 +444,41 @@ export function createStudioScriptSnapshotController(
     await enqueueSave(prepared);
   }
 
+  /**
+   * quick-261023-ors: the purge's persistence cleanup, ordered so a purged
+   * script can never come back.
+   *
+   * 1. Rewrite the AUTHORITATIVE leg synchronously at prepare time (flushNow):
+   *    with an authority bound that is the package sidecar; without one it is
+   *    the cache itself, so the pruned payload overwrites the stale file.
+   * 2. Only when that rewrite left the store clean (a failed write leaves it
+   *    dirty and must NOT delete the fallback) AND an authority is currently
+   *    bound, delete the stale app-cache leg. The package copy is the
+   *    authority's; deleting the cache is the whole point.
+   *
+   * A rebind during the await (track switch) abandons the cleanup: the purge
+   * belonged to the outgoing key and must not delete the incoming key's cache.
+   * Never rejects; a failed delete reports once through the capsule.
+   */
+  async function persistAfterPurge(): Promise<void> {
+    if (!boundIdentity) return;
+    const generationBefore = generation;
+    await flushNow();
+    if (generationBefore !== generation) return;
+    const identity = boundIdentity;
+    if (!identity) return;
+    if (isDirty()) return;
+    const authority = deps.getAuthority();
+    if (!authority) return;
+    let result: StudioScriptSnapshotOperationResult<StudioScriptSnapshotDeletePayload>;
+    try {
+      result = await deps.remove(identity, authority, 'cache');
+    } catch {
+      result = { ok: false, error: { kind: 'io' } };
+    }
+    if (!result.ok) deps.report(studioScriptSnapshotPurgeFailureMessage(result.error.kind));
+  }
+
   function saveNow(): Promise<void> {
     // Synchronous capture: the track switch calls this fire-and-forget BEFORE
     // the stores are reset, and the prepared payload must be the OUTGOING
@@ -449,6 +516,7 @@ export function createStudioScriptSnapshotController(
     isDirty,
     reset,
     dispose,
+    persistAfterPurge,
     getBoundIdentity: () => boundIdentity,
     getLastSavedSignature: () => lastSavedSignature,
   };
