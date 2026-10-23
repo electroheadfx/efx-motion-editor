@@ -221,6 +221,17 @@ Fix: `EfxPaintEngine.isLiveCanvasWholeFrame()` reports that this visit cleared i
 Added UAT row:
 - **PENDING — Revisit after edit:** Edit a stroke with Move/Delete, navigate away, then return to the key: the frame shows the edited script exactly once (no duplicated/phantom strokes from the cache), and a second edit on the revisit stays clean.
 
+## Follow-up fix 3 (post-UAT, 2026-10-23): Move surface missing after Duplicate
+
+The third live UAT found that Duplicating while already in Move mode lands on the new key with paint but NO Move outlines/badges; a Paint -> Move round-trip "refreshes" it. Cause: the script-aware Duplicate paints the promoted BLANK key through the live engine, but the session store had no entry for the destination frame. Both the overlay listing (`engineHoldsBrushScriptFrame`) and the frame-editing reload gate read the store, so the handles only appeared once the Move-entry flush captured the frame.
+
+Fix: every engine-1 apply now captures its frame at apply settle (`flushBrushScriptAfterApply` for Apply Script and Load & Apply). The Duplicate path adopts the destination with `adoptBrushScriptFrameAsComplete()`: the decision table only reaches that path for an EMPTY cell, so the promoted key is blank and the applied script is the whole frame BY CONSTRUCTION. This is the one sanctioned override of sticky completeness — it also clears any arrival-base mark left by the promoted blank base (which holds no content), so the first edit still clears its base. Committed `be5b3e90`.
+
+The "bolder" look on selection is the shared overlay's intended selected state (a solid colored polyline + solid box, versus the quiet double outline when unselected), not a paint change.
+
+Added UAT row:
+- **PENDING — Duplicate in Move mode:** Duplicate a brush key while Move is armed; the new key shows Move outlines and badges immediately (no tool refresh). Select a stroke (standard bolder selection), drag it: the faithful rebake renders correctly and the outline tracks the moved stroke.
+
 ## Live UAT (ALL PENDING — the user runs the app; none may be marked passed by the executor)
 
 - [ ] **PENDING — Navigation parity/speed:** Paint several overlapping multi-color strokes on a brush key; navigate away and back. The key appears instantly with its original look (no growth, no halos) and navigation is noticeably faster than the previous eager replay.
@@ -236,5 +247,5 @@ Added UAT row:
 ## Self-Check: PASSED
 
 - All 8 listed source/test artifacts exist on disk.
-- All task commits (`f8c5969f`, `47789f94`, `c99175b9`, `eefb4493`, `3d66fb56`, `87686cfa`) are ancestors of HEAD.
+- All task commits (`f8c5969f`, `47789f94`, `c99175b9`, `eefb4493`, `3d66fb56`, `87686cfa`, `be5b3e90`) are ancestors of HEAD.
 - Working tree contains no uncommitted code changes; only the untracked `.planning/quick/261023-j5b-.../` docs (orchestrator-owned).
