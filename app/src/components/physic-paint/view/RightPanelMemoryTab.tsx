@@ -32,6 +32,7 @@ import {
   type StudioScriptMemorySectionPorts,
 } from '../performance/studioScriptMemoryGauge';
 import type { ScriptMemorySnapshot } from '../performance/scriptMemorySnapshot';
+import { activeModule } from '../../shared/activeModule';
 import { aquarelleStrokesRevision } from './aquarelleRecordState';
 import { brushScriptRevision } from './brushScriptRecordState';
 
@@ -105,15 +106,25 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
     );
   }
 
-  const rows = buildStudioScriptMemoryFrameRows(snapshot);
-  const scriptsBytes = snapshot.watercolor.totals.approxBytes + snapshot.brush.totals.approxBytes;
-  const scriptsStrokes = snapshot.watercolor.totals.strokes + snapshot.brush.totals.strokes;
-  const scriptsPoints = snapshot.watercolor.totals.points + snapshot.brush.totals.points;
+  // Contextual gauge: the Studio runs one module at a time, so only that
+  // module's script store is meaningful. Showing both rows always left one
+  // side at zero on a real session.
+  const isWatercolor = activeModule.value === 'watercolor';
+  const scriptLabel = isWatercolor ? 'Watercolor' : 'Brush';
+  const totals = isWatercolor ? snapshot.watercolor.totals : snapshot.brush.totals;
+  const currentRow = buildStudioScriptMemoryFrameRows(snapshot).find(
+    (row) => row.frame === currentFrame,
+  );
+  const frameStats = (isWatercolor ? currentRow?.watercolor : currentRow?.brush) ?? {
+    strokes: 0,
+    points: 0,
+    approxBytes: 0,
+  };
   const confirm = confirmSignal.value;
   // Per-key purge needs a script on the DISPLAYED frame; clear-all needs any
   // script at all on the active rail. Both stay disabled otherwise.
-  const hasFrameScript = rows.some((row) => row.frame === currentFrame);
-  const hasAnyScript = scriptsStrokes > 0;
+  const hasFrameScript = frameStats.strokes > 0;
+  const hasAnyScript = totals.strokes > 0;
 
   // A successful purge refreshes the gauge IMMEDIATELY (the debounced revision
   // read is the fallback, not the contract), then closes the confirmation.
@@ -126,34 +137,20 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
     <div class="physics-paint-memory-tab" data-testid="right-panel-memory-tab">
       <div class="physics-paint-memory-scripts">
         <div class="physics-paint-memory-total" data-memory-scripts-total>
-          Scripts total: {scriptsStrokes} strokes · {scriptsPoints} points ·{' '}
-          {formatScriptMemoryBytes(scriptsBytes)}
+          Scripts total · {scriptLabel}: {totals.strokes} strokes · {totals.points} points ·{' '}
+          {formatScriptMemoryBytes(totals.approxBytes)}
         </div>
-        <div class="physics-paint-memory-line physics-paint-memory-line-watercolor">
-          Watercolor: {snapshot.watercolor.totals.strokes} strokes ·{' '}
-          {snapshot.watercolor.totals.points} points ·{' '}
-          {formatScriptMemoryBytes(snapshot.watercolor.totals.approxBytes)}
+        <div
+          class="physics-paint-memory-frame physics-paint-memory-frame-current"
+          data-memory-frame-row={currentFrame}
+        >
+          <span class="physics-paint-memory-frame-label">{`Frame ${currentFrame}`}</span>
+          <span class="physics-paint-memory-frame-stats">
+            {hasFrameScript
+              ? `${scriptLabel} ${frameStats.strokes} strokes · ${frameStats.points} points · ${formatScriptMemoryBytes(frameStats.approxBytes)}`
+              : `No ${scriptLabel.toLowerCase()} script on this key`}
+          </span>
         </div>
-        <div class="physics-paint-memory-line physics-paint-memory-line-brush">
-          Brush: {snapshot.brush.totals.strokes} strokes · {snapshot.brush.totals.points} points ·{' '}
-          {formatScriptMemoryBytes(snapshot.brush.totals.approxBytes)}
-        </div>
-        {rows.map((row) => (
-          <div
-            key={row.frame}
-            class={`physics-paint-memory-frame${row.frame === currentFrame ? ' physics-paint-memory-frame-current' : ''}`}
-            data-memory-frame-row={row.frame}
-          >
-            <span class="physics-paint-memory-frame-label">{`Frame ${row.frame}`}</span>
-            <span class="physics-paint-memory-frame-watercolor">
-              Watercolor {row.watercolor.strokes} strokes ·{' '}
-              {formatScriptMemoryBytes(row.watercolor.approxBytes)}
-            </span>
-            <span class="physics-paint-memory-frame-brush">
-              Brush {row.brush.strokes} strokes · {formatScriptMemoryBytes(row.brush.approxBytes)}
-            </span>
-          </div>
-        ))}
       </div>
       <div class="physics-paint-memory-caches">
         <div class="physics-paint-memory-cache-total" data-memory-cache-total>

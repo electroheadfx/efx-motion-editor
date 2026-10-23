@@ -1201,6 +1201,7 @@ button.destructive {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  padding-top: 10px;
 }
 
 .physics-paint-memory-scripts,
@@ -1218,7 +1219,6 @@ button.destructive {
   font-weight: 600;
 }
 
-.physics-paint-memory-line,
 .physics-paint-memory-frame,
 .physics-paint-memory-cache-row {
   display: flex;
@@ -1226,14 +1226,6 @@ button.destructive {
   gap: 8px;
   font-size: 11px;
   color: #c4cad0;
-}
-
-.physics-paint-memory-line-watercolor {
-  color: #8fd3ff;
-}
-
-.physics-paint-memory-line-brush {
-  color: #f0c27a;
 }
 
 .physics-paint-memory-frame {
@@ -1257,7 +1249,8 @@ button.destructive {
 }
 
 .physics-paint-memory-frame-watercolor,
-.physics-paint-memory-frame-brush {
+.physics-paint-memory-frame-brush,
+.physics-paint-memory-frame-stats {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1316,6 +1309,7 @@ button.destructive {
   color: #fff;
   background: #2f3134;
   font-size: 11px;
+  text-transform: none;
   cursor: pointer;
 }
 

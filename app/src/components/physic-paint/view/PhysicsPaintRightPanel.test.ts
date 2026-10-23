@@ -865,9 +865,9 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     expect(topPaneTabLabels(tree)).toEqual(['Color', 'Brush', 'Settings', 'Paper', 'Memory']);
   });
 
-  it('renders the gauge only on the Memory tab: scripts, per-frame rows, then frame caches', () => {
+  it('renders the gauge only on the Memory tab: contextual scripts, the selected frame, then frame caches', () => {
     activeModule.value = 'brush';
-    const props = baseProps({ memorySection: memorySectionFixture() });
+    const props = baseProps({ memorySection: memorySectionFixture(9) });
     const before = renderPanel(props);
     expect(textContent(before)).not.toContain('Frame caches');
 
@@ -879,18 +879,30 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     textContent(tree);
     const text = textContent(tree);
 
+    // Brush mode shows only the brush figure — the watercolor store is the
+    // other module's script and is never mixed into the same readout.
     expect(text).toContain('Scripts total');
-    expect(text).toContain('Watercolor:');
-    expect(text).toContain('Brush:');
-    // One merged row per app frame; the current frame (5) is marked.
-    expect(text).toContain('Frame 5');
+    expect(text).toMatch(/Scripts total\s*·\s*Brush\s*:/);
+    expect(text).not.toContain('Watercolor');
+    // Only the SELECTED frame is listed (no long per-frame inventory).
     expect(text).toContain('Frame 9');
+    expect(text).not.toContain('Frame 5');
     expect(findByClass(tree, 'physics-paint-memory-frame-current')).toBeDefined();
     // Caches are a SEPARATE section with their own total and named rows.
     expect(text).toContain('Frame caches');
     expect(text).toContain('frameLru');
     expect(text).toContain('generatedRenderSource');
     expect(text).toContain('Purging keeps the painted pixels');
+  });
+
+  it('shows the watercolor figure in watercolor mode for the selected frame', () => {
+    activeModule.value = 'watercolor';
+    const tree = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(5) }));
+    const text = textContent(tree);
+    expect(text).toMatch(/Scripts total\s*·\s*Watercolor\s*:/);
+    expect(text).not.toContain('Brush:');
+    expect(text).toContain('Frame 5');
+    expect(text).toContain('Watercolor 2 strokes');
   });
 
   it('renders an empty Memory body (no throw, no figures) when the section is absent', () => {
@@ -929,16 +941,21 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     return tree;
   }
 
-  it('enables the per-key purge only for a frame that has a script row', () => {
+  it('enables the per-key purge only for a selected frame that has a script in the active module', () => {
     activeModule.value = 'brush';
-    // The fixture's only frames are 5 (watercolor) and 9 (brush).
-    const onScripted = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(5) }));
+    // The fixture's brush script is on frame 9; watercolor is on frame 5.
+    const onScripted = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(9) }));
     expect(findByClass(onScripted, 'physics-paint-memory-purge-frame').props.disabled).toBe(false);
 
     const onBlank = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(42) }));
     expect(findByClass(onBlank, 'physics-paint-memory-purge-frame').props.disabled).toBe(true);
     // Clear-all still has script strokes on the rail.
     expect(findByClass(onBlank, 'physics-paint-memory-clear-rail').props.disabled).toBe(false);
+
+    // In watercolor mode the same frame 5 is the scripted one.
+    activeModule.value = 'watercolor';
+    const onWatercolor = renderMemoryTab(baseProps({ memorySection: memorySectionFixture(5) }));
+    expect(findByClass(onWatercolor, 'physics-paint-memory-purge-frame').props.disabled).toBe(false);
   });
 
   it('disables clear-all when the rail holds no scripts at all', () => {
@@ -967,19 +984,19 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
 
   it('confirms the per-key purge, and Cancel changes nothing', () => {
     activeModule.value = 'brush';
-    const section = memorySectionFixture(5);
+    const section = memorySectionFixture(9);
     const props = baseProps({ memorySection: section });
     let tree = renderMemoryTab(props);
 
     (findByClass(tree, 'physics-paint-memory-purge-frame').props.onClick as () => void)();
     tree = renderPanel(props);
-    expect(textContent(tree)).toMatch(/Purge the script of Frame\s+5\s*\?/);
+    expect(textContent(tree)).toMatch(/Purge the script of Frame\s+9\s*\?/);
     expect(textContent(tree)).toContain('The painted pixels stay');
 
     // Cancel restores the two buttons and touches neither store.
     (findByClass(tree, 'physics-paint-memory-confirm-cancel').props.onClick as () => void)();
     tree = renderPanel(props);
-    expect(textContent(tree)).not.toMatch(/Purge the script of Frame\s+5\s*\?/);
+    expect(textContent(tree)).not.toMatch(/Purge the script of Frame\s+9\s*\?/);
     expect(section.ports.purgeFrame).not.toHaveBeenCalled();
     expect(section.ports.clearRail).not.toHaveBeenCalled();
 
@@ -990,8 +1007,8 @@ describe('Physics Paint right panel Memory tab (quick-261023-ors)', () => {
     (findByClass(tree, 'physics-paint-memory-confirm-ok').props.onClick as () => void)();
     tree = renderPanel(props);
     expect(section.ports.purgeFrame).toHaveBeenCalledTimes(1);
-    expect(section.ports.purgeFrame).toHaveBeenCalledWith(5);
-    expect(textContent(tree)).not.toMatch(/Purge the script of Frame\s+5\s*\?/);
+    expect(section.ports.purgeFrame).toHaveBeenCalledWith(9);
+    expect(textContent(tree)).not.toMatch(/Purge the script of Frame\s+9\s*\?/);
   });
 
   it('confirms clear-all with the active-rail wording, and Cancel changes nothing', () => {
