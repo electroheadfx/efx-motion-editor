@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Completed quick task 261023-l35: Studio script snapshot persistence (SNAP v1 Rust disk cache; automated gates green, 6 UAT rows pending)
+Last activity: 2026-10-23 - Quick task 261023-l35 UAT approved (6/6) after 24e71c34; follow-up required: store the snapshot inside the .mce package in a per-layer folder
 
 Progress: [██████████] 100%
 
