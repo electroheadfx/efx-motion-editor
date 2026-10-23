@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-23T10:12:44.957Z"
+last_updated: "2026-10-23T11:36:30.149Z"
 last_activity: 2026-10-23
 last_activity_desc: Phase 56 complete
-state_head: 2c2fb99fc8c6da391df544880d048a5b7dcd9135
+state_head: 62bdaea42f20f1746b1671682aba602520b21d7f
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-23 - Quick task 261023-g4p: Brush Move parity UAT PASSED (shared Water color script-edition UI); per-frame brush store probe/prune/reset rows still pending; backward editability deferred by spec
+Last activity: 2026-10-23 - Completed quick task 261023-h9v: in-session brush script rehydration (complete light frames editable on return; heavy/diffusion frames fail closed to cached pixels); live UAT pending
 
 Progress: [██████████] 100%
 
@@ -577,6 +577,7 @@ None yet.
 | 261023-cxc | Duplicate replays the source script onto the next free key (brush strokes / watercolor timeline) so Move/Select edits it; the bxm raster clone stays as fallback | 2026-10-23 | 4427ec0b | [261023-cxc-uat-follow-up-to-261023-bxm-the-bottom-t](./quick/261023-cxc-uat-follow-up-to-261023-bxm-the-bottom-t/) |
 | 261023-f9c | Read-only script-memory measurement: DEV window.__EFX_SCRIPT_MEMORY__.snapshot() (watercolor per-frame totals, current brush frame, frame caches reported separately) + JSON-vs-versioned packed-binary codec prototype with round-trip tests | 2026-10-23 | 7d3572f8 | [261023-f9c-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-f9c-v2-0-0-read-specs-quick-prompts-studio-s/) |
 | 261023-g4p | Brush per-frame script store + DEV probe totals; one shared script-edition seam gives Brush Move the Water color select/drag/delete/restack UI | 2026-10-23 | 2c2fb99f | [261023-g4p-read-specs-quick-prompts-studio-brush-sc](./quick/261023-g4p-read-specs-quick-prompts-studio-brush-sc/) |
+| 261023-h9v | In-session brush script rehydration on navigation: complete light brush frames restore silently into the engine (Move enabled on revisited keys); partial/heavy/diffusion frames fail closed to cached pixels. Fixes the clear-listener deleting the retained entry. | 2026-10-23 | 62bdaea4 | [261023-h9v-add-in-session-brush-script-rehydration-](./quick/261023-h9v-add-in-session-brush-script-rehydration-/) |
 
 ### Roadmap Evolution
 
