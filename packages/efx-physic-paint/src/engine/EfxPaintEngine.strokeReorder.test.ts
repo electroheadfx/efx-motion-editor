@@ -190,6 +190,7 @@ vi.mock('../core/fluids', async (importOriginal) => {
 
 import { EfxPaintEngine } from './EfxPaintEngine'
 import type { CompletedPaintMutation } from './EfxPaintEngine'
+import { drawBrushCursor } from '../render/canvas'
 import type { BrushOpts, PenPoint, PaintStroke } from '../types'
 
 type EngineInternals = EfxPaintEngine & Record<string, any>
@@ -636,5 +637,86 @@ describe('261022-ujp Brush paint-order projection', () => {
 
     expect(engine.getStrokeCount()).toBe(3)
     expect(order(engine)).toEqual([a, c, b])
+  })
+})
+
+// ─── DIRECT API: serials, label suppression, cursor visibility ─────
+// 261023-g4p Task 3 — the brush script-edition overlay draws its own
+// badges and hides the engine glyphs while it is the active surface.
+
+type CursorMock = { mock: { calls: Array<unknown[]> }; mockClear(): void }
+const cursorMock = drawBrushCursor as unknown as CursorMock
+
+describe('DIRECT API: script-edition overlay support', () => {
+  it('GET STROKE SERIALS: a copy of the badge serial map (mutation never hits the ledger)', () => {
+    const engine = createHarness()
+    const a = paintStroke(engine, hLine(20), 100)
+    const b = paintStroke(engine, hLine(40), 300)
+
+    const serials = engine.getStrokeSerials()
+    expect([serials.get(a), serials.get(b)]).toEqual([1, 2])
+
+    // A copy: mutating the returned map leaves the engine's ledger intact.
+    serials.set(a, 999)
+    expect(engine.getStrokeSerials().get(a)).toBe(1)
+    expect(engine.getStrokeSerials().get(b)).toBe(2)
+  })
+
+  it('SET STROKE LABELS SUPPRESSED: badges draw, vanish after true, return after false', () => {
+    const engine = createHarness()
+    paintStroke(engine, hLine(30), 100)
+    engine.setTool('move')
+
+    const before = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(before.ctx)
+    expect(before.texts).toHaveLength(1)
+
+    engine.setStrokeLabelsSuppressed(true)
+    const hidden = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(hidden.ctx)
+    expect(hidden.texts).toEqual([])
+
+    // Idempotent: a second true is a no-op and still draws nothing.
+    engine.setStrokeLabelsSuppressed(true)
+    const stillHidden = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(stillHidden.ctx)
+    expect(stillHidden.texts).toEqual([])
+
+    engine.setStrokeLabelsSuppressed(false)
+    const restored = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(restored.ctx)
+    expect(restored.texts).toHaveLength(1)
+  })
+
+  it('SET CURSOR VISIBLE(false): the cursor rect is dropped, the draw skipped, the old rect erased', () => {
+    const engine = createHarness()
+    paintStroke(engine, hLine(30), 100)
+    engine.cursorX = 50
+    engine.cursorY = 30
+    expect((engine as EngineInternals).overlayBoundsForCursor()).not.toBeNull()
+
+    engine.setCursorVisible(false)
+    expect((engine as EngineInternals).overlayBoundsForCursor()).toBeNull()
+
+    // The fresh-composite overlay pass must skip the glyph entirely.
+    cursorMock.mockClear()
+    const hiddenPass = labelCtx()
+    ;(engine as EngineInternals).redrawDisplayOverlays(hiddenPass.ctx)
+    expect(cursorMock.mock.calls).toHaveLength(0)
+    expect(engine.lastCursorRect).toBeNull()
+
+    // The incremental path erases the previously drawn cursor rect.
+    const overlay = { ctx: { clearRect: vi.fn() } }
+    engine.cursorOverlay = overlay
+    engine.lastCursorRect = { x0: 40, y0: 20, x1: 60, y1: 40 }
+    ;(engine as EngineInternals).renderCursorOverlay()
+    expect(overlay.ctx.clearRect).toHaveBeenCalled()
+    expect(engine.lastCursorRect).toBeNull()
+
+    // Re-enabling restores the normal bounds (and the idempotent write is inert).
+    engine.setCursorVisible(true)
+    expect((engine as EngineInternals).overlayBoundsForCursor()).not.toBeNull()
+    engine.setCursorVisible(true)
+    expect((engine as EngineInternals).overlayBoundsForCursor()).not.toBeNull()
   })
 })

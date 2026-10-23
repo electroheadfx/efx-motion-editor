@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { effect, signal, useComputed, useSignal, type ReadonlySignal } from '@preact/signals';
-import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample } from '@efxlab/efx-physic-paint';
+import type { CompletedPaintMutation, EfxPaintDocument, EfxPaintEngine, PaintHistoryAvailability, PaintPerformanceSample, ToolType } from '@efxlab/efx-physic-paint';
 import type { BlendMode, DocumentSoundClip, FrameLoopClipRepeat, FrameLoopClipScale } from '../../efx-paint/document/efxPaintDocument';
 import type { SoundBandGesturePatch } from './view/soundBandGeometry';
 import type { PhysicPaintApplyResult, PhysicPaintAudioAssetRef, PhysicPaintLaunchContext, PhysicPaintRotoBackgroundMetadata, PhysicPaintRotoCacheFrame, PhysicPaintRotoPlaybackSettings, RailSetDeleteMember } from '../../types/physicPaint';
@@ -192,9 +192,14 @@ import {
 } from './view/aquarelleStrokeSelection';
 import {
   deleteSelectedScriptStroke,
-  setScriptStrokeEditionPort,
+  setScriptStrokeEditionPorts,
   stepSelectedScriptStroke,
 } from './view/scriptStrokeEdition';
+import {
+  brushScriptEditionPort,
+  configureBrushScriptEdition,
+  type BrushScriptEditionContext,
+} from './view/brushScriptEditionPort';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import './physicsPaintStudio.css';
@@ -1440,10 +1445,12 @@ export function PhysicsPaintStudio() {
     disarmSolo();
   }, []);
   // 261023-g4p: Studio disposal clears the per-frame brush script store so a
-  // recreated engine/session can never inherit another session's frames.
-  // Teardown only — no selection work, no signal read.
+  // recreated engine/session can never inherit another session's frames, and
+  // detaches the brush edition port from the dead session. Teardown only — no
+  // selection work, no signal read.
   useEffect(() => () => {
     resetBrushScriptStore();
+    configureBrushScriptEdition(null);
   }, []);
   // quick-261003-vos: Alt = temporary erase — ONE module signal plus gated
   // window listeners (physicsPaintTemporaryErase). The deps live behind a
@@ -1500,6 +1507,23 @@ export function PhysicsPaintStudio() {
     () => mountPhysicsPaintTemporaryErase({ window, document }, () => temporaryEraseDepsRef.current),
     [],
   );
+  // 261023-g4p: the brush script-edition port reads the live Studio seams at
+  // event time through this render-body ref (temporaryEraseDepsRef precedent)
+  // — never the first render's closures. The port gates every op on the
+  // physical-mutation lock; the frame is the Studio's current frame because
+  // brush strokes carry no playFrame metadata.
+  const brushScriptEditionDepsRef = useRef<BrushScriptEditionContext>({
+    getEngine: () => null,
+    getPlayFrame: () => 0,
+    isActive: () => false,
+    isLocked: () => true,
+  });
+  brushScriptEditionDepsRef.current = {
+    getEngine: () => engineRef.current,
+    getPlayFrame: () => launchContextRef.current?.startFrame ?? 0,
+    isActive: () => activeModule.peek() === 'brush' && settings.tool === 'move',
+    isLocked: () => isPhysicalMutationLocked(),
+  };
   // Armed-guarded re-apply: engine re-create or a rail tool switch while an
   // arm is held must land the EFFECTIVE tool (force bypasses the last-applied
   // dedupe — selectTool and the canvas mount write the engine behind our
@@ -1620,7 +1644,7 @@ export function PhysicsPaintStudio() {
   // a live self-promotion is exempt from it so the fast second stroke flows.
   const rotoInputDisabled = mutationLocked && !autoKeyPromotionPaintExempt.value;
   const {
-    selectTool,
+    selectTool: selectToolEngine,
     setBrushColor,
     setBrushSize,
     setBrushOpacity,
@@ -1633,6 +1657,31 @@ export function PhysicsPaintStudio() {
     setSmoothing,
     setEraseStrength,
   } = usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });
+  // 261023-g4p: the ONE tool-selection funnel for the rail and the Cmd tap.
+  // Entering Move in Brush mode arms the shared script-edition overlay; the
+  // engine keeps tool 'move' (stepStrokeInStack requires it) but its own stack
+  // badges and brush cursor stand down so the overlay is the only visible
+  // script surface. Leaving Move restores both. Water color and a refused
+  // selection (no engine / physical lock) are byte-identical passthroughs —
+  // the hook's own selectTool remains the only engine writer. Identity is
+  // stable per engine+lock because selectToolEngine is the hook's useMemo.
+  const selectTool = useCallback((tool: ToolType, physicsMode?: 'local' | null) => {
+    const activeEngine = engineRef.current;
+    if (!activeEngine || isPhysicalMutationLocked()) {
+      selectToolEngine(tool, physicsMode);
+      return;
+    }
+    if (activeModule.peek() === 'brush' && tool === 'move') {
+      flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, activeEngine.getStrokes());
+      selectToolEngine(tool, physicsMode);
+      activeEngine.setStrokeLabelsSuppressed(true);
+      activeEngine.setCursorVisible(false);
+      return;
+    }
+    activeEngine.setStrokeLabelsSuppressed(false);
+    activeEngine.setCursorVisible(true);
+    selectToolEngine(tool, physicsMode);
+  }, [selectToolEngine, isPhysicalMutationLocked]);
   // 49-04 UAT fix: the swatch click must ALSO write the document fallback so
   // the monitor fond layer resolves the paper/solid/transparent record. The
   // 49-03 S6 write-through helper (backgroundModeToFallback) existed but the
@@ -4693,6 +4742,17 @@ export function PhysicsPaintStudio() {
     // window.__EFX_SCRIPT_MEMORY__.snapshot(). Installs nothing in a production
     // build; no effect, no signal, no component state.
     if (import.meta.env.DEV) installScriptMemoryProbe(readyEngine, () => launchContextRef.current?.startFrame ?? 0);
+    // 261023-g4p: a recreated engine must re-enter the brush script-edition
+    // surface. The overlay is MOUNTED independently, but the engine defaults
+    // are fresh (labels + cursor on) — re-apply the suppression and project
+    // the current frame so the first click-select sees a script. Read the
+    // deferred settingsRef here only (this callback runs after mount).
+    if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {
+      readyEngine.setTool('move');
+      readyEngine.setStrokeLabelsSuppressed(true);
+      readyEngine.setCursorVisible(false);
+      flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());
+    }
     // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —
     // one pinned pixel at m1 ribbon / m2 outline / m3 settled / m4 +2s /
     // m5 on-return, written to /tmp/efx-look-delta.json. No product change.
@@ -5100,17 +5160,22 @@ export function PhysicsPaintStudio() {
     clearOwnedScriptApplyRefusal,
   ]);
 
-  // 261023-g4p: register the watercolor edition port. This is a render-body
-  // write of a plain module variable (temporaryEraseDepsRef precedent) — no
-  // signal, no subscription. The keyboard helpers and the overlay resolve the
-  // same port, so rail gestures, Alt+click and Backspace can never diverge.
-  setScriptStrokeEditionPort({
-    isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),
-    ...aquarelleScriptStrokeEditionPort,
-    deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),
-    moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),
-    stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),
+  // 261023-g4p: register BOTH module ports. This is a render-body write of a
+  // plain module variable (temporaryEraseDepsRef precedent) — no signal, no
+  // subscription. The keyboard helpers resolve the port whose surface is
+  // active, so rail gestures, Alt+click and Backspace can never diverge. The
+  // brush port reads the live Studio seams through brushScriptEditionDepsRef.
+  setScriptStrokeEditionPorts({
+    watercolor: {
+      isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),
+      ...aquarelleScriptStrokeEditionPort,
+      deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),
+      moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),
+      stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),
+    },
+    brush: brushScriptEditionPort,
   });
+  configureBrushScriptEdition(brushScriptEditionDepsRef.current);
 
   // 56-12 CACHE WRITE: the aquarelle sheet lands in the SAME WebP durability
   // class as engine-1 frames. Invoked by the live layer at stroke end, once Dry
@@ -5296,6 +5361,13 @@ export function PhysicsPaintStudio() {
     [],
   );
 
+  // 261023-g4p: same identity-stable frame getter for the brush script
+  // overlay — frame navigation must not invalidate the mount memo.
+  const getBrushScriptPlayFrame = useCallback(
+    () => launchContextRef.current?.startFrame ?? 0,
+    [],
+  );
+
   // F3 (R2.3): Studio paper → the aquarelle engine's deposit-grain preset.
   // Identity-stable getter — paper changes must not invalidate the mount memo.
   const settingsRef = useRef(settings);
@@ -5305,7 +5377,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStroke, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStroke, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -5329,6 +5401,11 @@ export function PhysicsPaintStudio() {
       trackOpacity: mountActiveTrack?.opacity ?? 1,
       trackBlendMode: mountActiveTrack?.blendMode ?? 'normal',
       aquarelleActive: activeModule.value === 'watercolor',
+      // 261023-g4p: the Brush Move tool arms the shared script-edition
+      // overlay. The mount additionally gates on !aquarelleActive, so Water
+      // color's own surface is never covered.
+      brushScriptEditionActive: settings.tool === 'move',
+      getBrushScriptPlayFrame,
       color: settings.color,
       // FRAME SCOPE: identity-stable getter — the sheet previews the live
       // edit frame without invalidating the mount memo on navigation.

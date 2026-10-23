@@ -660,6 +660,11 @@ export class EfxPaintEngine {
   /** Label boxes drawn in the last full overlay pass (incremental hover repaint). */
   private lastLabelRects = new Map<number, { x0: number; y0: number; x1: number; y1: number }>()
   private lastLabelHoverId: number | null = null
+  /**
+   * 261023-g4p: the brush script-edition overlay draws its own badges while it
+   * is the active surface, so the engine labels stand down (tool stays 'move').
+   */
+  private strokeLabelsSuppressed = false
   private undoStack: PaintHistoryEntry[] = []
   private redoStack: PaintHistoryEntry[] = []
   private historyEntries: PaintHistoryEntry[] = []
@@ -673,6 +678,11 @@ export class EfxPaintEngine {
   private rawPts: PenPoint[] = []
   private cursorX: number = -1
   private cursorY: number = -1
+  /**
+   * 261023-g4p: the script-edition overlay is the only visible pointer surface
+   * while Move is armed — the engine glyph is hidden (the tool itself stays).
+   */
+  private cursorVisible = true
   private lastPointerSampleTimeStamp: number = Number.NEGATIVE_INFINITY
   private lastAcceptedPointerSampleTimeStamp: number = Number.NEGATIVE_INFINITY
   private previewStroke: StrokePreview | null = null
@@ -2238,8 +2248,13 @@ export class EfxPaintEngine {
     this.lastPreviewBbox = this.previewStroke ? this.overlayBoundsForPreview(this.previewStroke) : null
     this.redrawStrokeStackLabels(displayCtx, null)
     if (this.cursorOverlay) return
-    drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
-    this.lastCursorRect = this.overlayBoundsForCursor()
+    // 261023-g4p: derive the draw from the bounds, not just the rect record —
+    // a hidden cursor (null bounds) must not be painted on a fresh composite.
+    const cursorRect = this.overlayBoundsForCursor()
+    if (cursorRect) {
+      drawBrushCursor(displayCtx, this.cursorX, this.cursorY, brushRenderRadius(this.state.brushOpts), this.state.tool, this.width, this.height, this.cursorGlyphMode())
+    }
+    this.lastCursorRect = cursorRect
   }
 
   /** Redraw the host-owned cursor canvas: erase the old ring rect, draw the new one. */
@@ -2323,6 +2338,9 @@ export class EfxPaintEngine {
       this.lastLabelHoverId = this.moveHoverTargetId
     }
     if (this.state.tool !== 'move') return
+    // 261023-g4p: while the script-edition overlay is the active surface it
+    // draws the badges — the engine must not paint a duplicate set.
+    if (this.strokeLabelsSuppressed === true) return
     const ordered = this.liveActionsInPaintOrder().filter(action =>
       action.tool === 'paint' && action.points.length > 0 && action.mutationId != null,
     )
@@ -2384,6 +2402,10 @@ export class EfxPaintEngine {
   }
 
   private overlayBoundsForCursor(): { x0: number; y0: number; x1: number; y1: number } | null {
+    // 261023-g4p: a hidden cursor has NO bounds — every draw path derives from
+    // this one point, so the incremental restore erases the previous rect and
+    // no new glyph is drawn.
+    if (this.cursorVisible === false) return null
     if (this.cursorX < 0) return null
     // 261003-ud9: pointer glyph — the hand's fingertip sits AT the cursor and
     // its body (23 × 31 + 3px under-stroke) extends down, thumb left and
@@ -3310,24 +3332,33 @@ export class EfxPaintEngine {
     return stroke.hasPenInput ?? stroke.points.some(p => p.p !== 0.5)
   }
 
+  /**
+   * 261003-erase-uat W-S removal core (261023-g4p extraction): splice one paint
+   * primary plus its following zero-point continuations from the acceptance
+   * ledger and drop the matching undo entry, then refresh history. Returns
+   * false when no live paint action owns the id (the id validation law for the
+   * public delete/erase entry points).
+   */
+  private removeStrokeEntry(mutationId: number): boolean {
+    const idx = this.allActions.findIndex(a => a.mutationId === mutationId && a.tool === 'paint')
+    if (idx < 0) return false
+    let end = idx + 1
+    while (end < this.allActions.length && this.allActions[end].points.length === 0) end++
+    this.allActions.splice(idx, end - idx)
+    const hIdx = this.undoStack.findIndex(e => e.mutationId === mutationId)
+    if (hIdx >= 0) this.undoStack.splice(hIdx, 1)
+    this.historyEntries = [...this.undoStack]
+    this.historyIndex = this.undoStack.length
+    this.notifyHistoryAvailability()
+    return true
+  }
+
   /** 261003-erase-uat W-S: remove paint strokes whose ribbon intersects the gesture. Hit-test is purely geometric against allActions — a stroke baked dry by a later stroke's keep-box is still a valid target (order-independent). Splices primary + zero-point continuations from allActions and matching undoStack entries together. Returns the number of strokes removed. */
   private removeWetIntersectedStrokes(gesturePoints: PenPoint[], gestureOpts: BrushOpts): number {
     const targets = this.resolveEraseTargetIds(gesturePoints, gestureOpts)
     let removed = 0
     for (const mid of targets) {
-      const idx = this.allActions.findIndex(a => a.mutationId === mid)
-      if (idx < 0) continue
-      let end = idx + 1
-      while (end < this.allActions.length && this.allActions[end].points.length === 0) end++
-      this.allActions.splice(idx, end - idx)
-      const hIdx = this.undoStack.findIndex(e => e.mutationId === mid)
-      if (hIdx >= 0) this.undoStack.splice(hIdx, 1)
-      removed++
-    }
-    if (removed > 0) {
-      this.historyEntries = [...this.undoStack]
-      this.historyIndex = this.undoStack.length
-      this.notifyHistoryAvailability()
+      if (this.removeStrokeEntry(mid)) removed++
     }
     return removed
   }
@@ -3645,6 +3676,56 @@ export class EfxPaintEngine {
   /** 261022-ujp: one step in front (toward the top of the paint stack). */
   public sendStrokeForward(mutationId: number): boolean {
     return this.stepStrokeInStack(mutationId, 'forward')
+  }
+
+  // ================================================================
+  //  PUBLIC — Script-edition operations (261023-g4p)
+  //  The overlay drives the engine by mutation id, never the pointer
+  //  gesture. Removal shares the erase core; translation shares the
+  //  move-commit contract (flush, redo cleared, one notification).
+  // ================================================================
+
+  /** Delete one recorded paint group (primary + continuations). False for an unknown id — no mutation, no notification. */
+  public deleteStroke(mutationId: number): boolean {
+    // Drain FIRST: a queued stroke's ledger entry already exists but its
+    // deposit pixels do not — removing before the flush would orphan them.
+    this.flushPendingStrokeFinalizations()
+    if (!this.removeStrokeEntry(mutationId)) return false
+    this.displayCompositeDirty = true
+    this.redrawAll()
+    this.notifyCompletedMutation('erase', mutationId)
+    return true
+  }
+
+  /** Translate one recorded paint group by an exact pixel delta. False for an unknown id or a sub-pixel delta — no mutation, no notification. */
+  public moveStroke(mutationId: number, dxPx: number, dyPx: number): boolean {
+    const stroke = this.allActions.find(a => a.mutationId === mutationId && a.tool === 'paint' && a.points.length > 0)
+    if (!stroke) return false
+    if (Math.abs(dxPx) < 1 && Math.abs(dyPx) < 1) return false
+    // Same commit contract as the pointer drag: the flush, the redo clear, the
+    // single 'move' notification and the replay all live in commitMoveGesture.
+    this.commitMoveGesture({ stroke, mutationId, startX: 0, startY: 0, dx: dxPx, dy: dyPx })
+    return true
+  }
+
+  /** A copy of the creation-order serial map the Move badges are drawn from. */
+  public getStrokeSerials(): Map<number, number> {
+    return new Map(this.strokeSerialMap())
+  }
+
+  /** The script-edition overlay draws the badges itself — engine labels stand down while it is active. */
+  public setStrokeLabelsSuppressed(suppressed: boolean): void {
+    if ((this.strokeLabelsSuppressed === true) === suppressed) return
+    this.strokeLabelsSuppressed = suppressed
+    this.displayCompositeDirty = true
+    this.requestRender()
+  }
+
+  /** Hide the engine brush cursor while the overlay owns the pointer surface. Idempotent. */
+  public setCursorVisible(visible: boolean): void {
+    if ((this.cursorVisible !== false) === visible) return
+    this.cursorVisible = visible
+    this.requestRender()
   }
 
   /** 261003-ud9: cursor glyph — pointing hand while a fresh stroke is hovered under the erase OR move cursor, ring/crosshair otherwise. */

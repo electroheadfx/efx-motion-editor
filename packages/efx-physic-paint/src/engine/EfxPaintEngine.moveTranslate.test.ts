@@ -796,3 +796,59 @@ describe('GUARD: the move tool never paints and never changes the existing paths
     expect(events.filter((e) => e.kind === 'erase')).toHaveLength(1)
   })
 })
+
+// ─── DIRECT API: moveStroke (261023-g4p Task 3) ────────────────────
+// The script-edition overlay drives the engine by id, not the pointer
+// gesture: moveStroke is the same commit contract (flush, redo cleared,
+// one 'move', no undo checkpoint) without a tool gate.
+
+describe('DIRECT API: moveStroke(id, dx, dy) translates one script stroke', () => {
+  it('MOVE: every point shifts by exactly the delta, attributes unchanged, one move notification', () => {
+    const engine = createHarness()
+    const id = paintStroke(engine, hLine(30), 100)
+    const before = engine.getStrokes()[0]
+    // A stale redo would repaint the pre-move pixels — the commit contract
+    // clears it (same law as the pointer drag).
+    engine.redoStack.push({ mutationId: 999, actions: [], checkpoint: null, deferred: null })
+    const undoBefore = engine.getHistoryAvailability().undo
+    const events = captureMutations(engine)
+
+    expect(engine.moveStroke(id, 12, -5)).toBe(true)
+
+    const after = strokeById(engine, id)
+    expect(after).toBeTruthy()
+    expect(after.points.map((p: PenPoint) => [p.x, p.y])).toEqual(
+      before.points.map((p: PenPoint) => [p.x + 12, p.y - 5]),
+    )
+    // p/tx/ty/tw/spd/timestamp/params are untouched — a rigid translation.
+    expect(after.points.map((p: PenPoint) => [p.p, p.tx, p.ty, p.tw, p.spd])).toEqual(
+      before.points.map((p: PenPoint) => [p.p, p.tx, p.ty, p.tw, p.spd]),
+    )
+    expect(after.params).toEqual(before.params)
+    expect(after.color).toBe(before.color)
+    expect(after.timestamp).toBe(before.timestamp)
+
+    const moveEvents = events.filter((e) => e.kind === 'move')
+    expect(moveEvents).toHaveLength(1)
+    expect(moveEvents[0].mutationId).toBe(id)
+    expect(engine.getStrokeCount()).toBe(1)
+    expect(engine.getHistoryAvailability().undo).toBe(undoBefore)
+    expect(engine.getHistoryAvailability().redo).toBe(0)
+  })
+
+  it('NO-OP: sub-pixel delta and unknown id return false with no notification or redraw', () => {
+    const engine = createHarness()
+    const id = paintStroke(engine, hLine(30), 100)
+    const before = engine.getStrokes()[0].points.map((p: PenPoint) => ({ x: p.x, y: p.y }))
+    const events = captureMutations(engine)
+    const redraw = vi.spyOn(engine as never, 'redrawAll' as never)
+
+    expect(engine.moveStroke(id, 0.5, -0.9)).toBe(false)
+    expect(engine.moveStroke(999999, 10, 10)).toBe(false)
+
+    expect(engine.getStrokes()[0].points.map((p: PenPoint) => ({ x: p.x, y: p.y }))).toEqual(before)
+    expect(events).toHaveLength(0)
+    expect(redraw).not.toHaveBeenCalled()
+    expect(engine.getStrokeCount()).toBe(1)
+  })
+})

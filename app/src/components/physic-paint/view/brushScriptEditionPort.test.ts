@@ -1,0 +1,291 @@
+// ============================================================
+//  brushScriptEditionPort — contract of record (quick 261023-g4p
+//  Task 3).
+//
+//  The brush side of the ONE script-edition seam: the store's
+//  per-frame groups map to SelectableScriptStroke rows (serial from
+//  the engine badge map, stack position from the TOP of the paint
+//  order), the hit test walks topmost-first, and every edit op is
+//  lock-gated, calls the engine exactly once, then refreshes the
+//  store for the frame it changed.
+//
+//  These cells drive the REAL store (brushScriptRecordState) so the
+//  flush-after-op law is pinned end-to-end, with a fake engine that
+//  records calls.
+// ============================================================
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PaintStroke } from '@efxlab/efx-physic-paint';
+import {
+  captureBrushScriptForFrame,
+  getBrushScriptFrameEntry,
+  markBrushScriptFrameDirty,
+  resetBrushScriptStore,
+} from './brushScriptRecordState';
+import { normalizeLogicalBrushes } from './recordedStrokeGroups';
+import {
+  configureBrushScriptEdition,
+  listBrushScriptStrokes,
+  hitTestBrushScriptStroke,
+  moveBrushScriptStroke,
+  deleteBrushScriptStroke,
+  stepBrushScriptStroke,
+  brushScriptEditionPort,
+} from './brushScriptEditionPort';
+import {
+  selectScriptStroke,
+  setScriptSelectMode,
+  scriptSelectedStrokeId,
+  scriptSelectMode,
+} from './scriptStrokeEdition';
+
+const OPTIONS = {
+  size: 12,
+  opacity: 100,
+  pressure: 100,
+  waterAmount: 0,
+  dryAmount: 100,
+  edgeDetail: 50,
+  pickup: 0,
+  eraseStrength: 100,
+  antiAlias: 0,
+};
+
+function point(x: number, y: number) {
+  return { x, y, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 };
+}
+
+function stroke(mutationId: number, points: Array<{ x: number; y: number }>, color?: string): PaintStroke {
+  return {
+    tool: 'paint',
+    points: points.map((p) => point(p.x, p.y)),
+    ...(color === undefined ? {} : { color }),
+    params: { ...OPTIONS },
+    timestamp: mutationId,
+    mutationId,
+  } as PaintStroke;
+}
+
+function capture(frame: number, strokes: PaintStroke[]): void {
+  captureBrushScriptForFrame(frame, normalizeLogicalBrushes(strokes));
+}
+
+function createFakeEngine(overrides: Record<string, unknown> = {}) {
+  return {
+    getStrokes: vi.fn(() => [] as PaintStroke[]),
+    getStrokeSerials: vi.fn(() => new Map<number, number>()),
+    moveStroke: vi.fn(() => true),
+    deleteStroke: vi.fn(() => true),
+    sendStrokeBackward: vi.fn(() => true),
+    sendStrokeForward: vi.fn(() => true),
+    setStrokeLabelsSuppressed: vi.fn(),
+    setCursorVisible: vi.fn(),
+    ...overrides,
+  };
+}
+
+function configure(
+  engine: ReturnType<typeof createFakeEngine>,
+  options: { active?: boolean; locked?: boolean; frame?: number } = {},
+): void {
+  configureBrushScriptEdition({
+    getEngine: () => engine,
+    getPlayFrame: () => options.frame ?? 3,
+    isActive: () => options.active ?? true,
+    isLocked: () => options.locked ?? false,
+  });
+}
+
+const SIZE = { width: 200, height: 120 };
+
+beforeEach(() => {
+  resetBrushScriptStore();
+  configureBrushScriptEdition(null);
+  setScriptSelectMode(false);
+  selectScriptStroke(null);
+});
+
+describe('listing: store groups become selectable rows', () => {
+  it('maps paint order bottom -> top with the engine serial, top-relative stack positions and the stroke colour', () => {
+    const groups = normalizeLogicalBrushes([
+      stroke(7, [{ x: 20, y: 30 }, { x: 80, y: 30 }], '#ff0000'),
+      stroke(9, [{ x: 20, y: 60 }, { x: 80, y: 60 }]),
+    ]);
+    captureBrushScriptForFrame(3, groups);
+    const engine = createFakeEngine({
+      getStrokeSerials: vi.fn(() => new Map([[7, 1], [9, 2]])),
+    });
+    configure(engine);
+
+    const rows = listBrushScriptStrokes(3, SIZE);
+
+    expect(rows.map((row) => row.mutationId)).toEqual([7, 9]);
+    // Bottom of the paint stack is position 2/2, top is 1/2.
+    expect(rows.map((row) => row.stackPosition)).toEqual([2, 1]);
+    expect(rows.map((row) => row.stackTotal)).toEqual([2, 2]);
+    expect(rows.map((row) => row.serial)).toEqual([1, 2]);
+    expect(rows[0].color).toBe('#ff0000');
+    expect(rows[1].color).toBe('#111827');
+    expect(rows[0].pointsPx).toHaveLength(2);
+    expect(rows[0].bounds.width).toBeGreaterThan(60);
+  });
+
+  it('falls back to the mutationId when the engine has no serial and decimates long polylines while bounds keep every point', () => {
+    const longPoints = Array.from({ length: 200 }, (_, index) => ({ x: index, y: 40 }));
+    capture(3, [stroke(42, longPoints)]);
+    const engine = createFakeEngine();
+    configure(engine);
+
+    const [row] = listBrushScriptStrokes(3, SIZE);
+
+    expect(row!.serial).toBe(42);
+    expect(row!.pointsPx).toHaveLength(96);
+    // Bounds span the FULL polyline (0..199), padded by max(6, size/2).
+    expect(row!.bounds.x).toBe(0 - 6);
+    expect(row!.bounds.width).toBe(199 + 12);
+  });
+
+  it('returns an empty list for an absent frame and for no context', () => {
+    configure(createFakeEngine());
+    expect(listBrushScriptStrokes(99, SIZE)).toEqual([]);
+
+    configureBrushScriptEdition(null);
+    expect(listBrushScriptStrokes(3, SIZE)).toEqual([]);
+  });
+});
+
+describe('hit test: topmost painted stroke wins', () => {
+  it('returns the topmost overlapping primary, null off-stroke, null for an absent frame', () => {
+    capture(3, [
+      stroke(5, [{ x: 20, y: 30 }, { x: 80, y: 30 }]),
+      stroke(6, [{ x: 20, y: 30 }, { x: 80, y: 30 }]),
+    ]);
+    configure(createFakeEngine());
+
+    // Both ribbons overlap at (50,30) — the later painted stroke is on top.
+    expect(hitTestBrushScriptStroke({ x: 50, y: 30 }, 3, SIZE)).toBe(6);
+    expect(hitTestBrushScriptStroke({ x: 50, y: 100 }, 3, SIZE)).toBeNull();
+    expect(hitTestBrushScriptStroke({ x: 50, y: 30 }, 99, SIZE)).toBeNull();
+  });
+});
+
+describe('edits: lock gate, one engine call, store refresh', () => {
+  it('move calls the engine once and flushes the changed frame into the store', () => {
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [stroke(7, [{ x: 30, y: 35 }])]),
+    });
+    configure(engine, { frame: 3 });
+
+    expect(moveBrushScriptStroke(7, 10, 5)).toBe(true);
+
+    expect(engine.moveStroke).toHaveBeenCalledTimes(1);
+    expect(engine.moveStroke).toHaveBeenCalledWith(7, 10, 5);
+    expect(getBrushScriptFrameEntry(3)?.strokes).toBe(1);
+  });
+
+  it('delete calls the engine once, refreshes the store and clears a matching selection', () => {
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [stroke(9, [{ x: 30, y: 35 }])]),
+    });
+    configure(engine, { frame: 3 });
+    setScriptSelectMode(true);
+    selectScriptStroke(7);
+
+    expect(deleteBrushScriptStroke(7)).toBe(true);
+
+    expect(engine.deleteStroke).toHaveBeenCalledTimes(1);
+    expect(engine.deleteStroke).toHaveBeenCalledWith(7);
+    expect(scriptSelectedStrokeId.value).toBeNull();
+    expect(scriptSelectMode.value).toBe(true);
+    expect(getBrushScriptFrameEntry(3)?.strokes).toBe(1);
+  });
+
+  it('delete keeps a different selection untouched', () => {
+    const engine = createFakeEngine();
+    configure(engine, { frame: 3 });
+    setScriptSelectMode(true);
+    selectScriptStroke(9);
+
+    expect(deleteBrushScriptStroke(7)).toBe(true);
+
+    expect(scriptSelectedStrokeId.value).toBe(9);
+  });
+
+  it('step forwards the direction and flushes only when the engine accepts the step', () => {
+    capture(3, [stroke(7, [{ x: 30, y: 35 }])]);
+    const entryBefore = getBrushScriptFrameEntry(3);
+    markBrushScriptFrameDirty(3);
+    const engine = createFakeEngine({
+      sendStrokeBackward: vi.fn(() => false),
+      getStrokes: vi.fn(() => [stroke(7, [{ x: 30, y: 35 }])]),
+    });
+    configure(engine, { frame: 3 });
+
+    // Refused at the bottom: no flush — the captured entry keeps its identity.
+    expect(stepBrushScriptStroke(7, 'back')).toBe(false);
+    expect(engine.sendStrokeBackward).toHaveBeenCalledWith(7);
+    expect(getBrushScriptFrameEntry(3)).toBe(entryBefore);
+
+    // Accepted: the dirty mark is projected.
+    expect(stepBrushScriptStroke(7, 'forward')).toBe(true);
+    expect(engine.sendStrokeForward).toHaveBeenCalledWith(7);
+    expect(getBrushScriptFrameEntry(3)).not.toBe(entryBefore);
+  });
+
+  it('every op refuses while the physical mutation lock is held and never touches the engine', () => {
+    const engine = createFakeEngine();
+    configure(engine, { locked: true });
+
+    expect(moveBrushScriptStroke(7, 10, 5)).toBe(false);
+    expect(deleteBrushScriptStroke(7)).toBe(false);
+    expect(stepBrushScriptStroke(7, 'back')).toBe(false);
+
+    expect(engine.moveStroke).not.toHaveBeenCalled();
+    expect(engine.deleteStroke).not.toHaveBeenCalled();
+    expect(engine.sendStrokeBackward).not.toHaveBeenCalled();
+    expect(engine.sendStrokeForward).not.toHaveBeenCalled();
+  });
+
+  it('ops refuse with no context and with no engine', () => {
+    expect(moveBrushScriptStroke(7, 10, 5)).toBe(false);
+    expect(deleteBrushScriptStroke(7)).toBe(false);
+    expect(stepBrushScriptStroke(7, 'forward')).toBe(false);
+
+    configureBrushScriptEdition({
+      getEngine: () => null,
+      getPlayFrame: () => 3,
+      isActive: () => true,
+      isLocked: () => false,
+    });
+    expect(moveBrushScriptStroke(7, 10, 5)).toBe(false);
+  });
+});
+
+describe('port: delegates through the registration', () => {
+  it('isActive follows the context and the list/hit functions delegate', () => {
+    capture(3, [stroke(5, [{ x: 20, y: 30 }, { x: 80, y: 30 }])]);
+    expect(brushScriptEditionPort.isActive()).toBe(false);
+
+    configure(createFakeEngine(), { active: true });
+    expect(brushScriptEditionPort.isActive()).toBe(true);
+    expect(brushScriptEditionPort.listStrokes(3, SIZE).map((row) => row.mutationId)).toEqual([5]);
+    expect(brushScriptEditionPort.hitTestStroke({ x: 50, y: 30 }, 3, SIZE)).toBe(5);
+
+    const engine = createFakeEngine();
+    configure(engine, { active: false });
+    expect(brushScriptEditionPort.isActive()).toBe(false);
+  });
+
+  it('the port edit callbacks route through the lock-gated ops', () => {
+    const engine = createFakeEngine();
+    configure(engine, { frame: 3 });
+
+    brushScriptEditionPort.moveStroke(7, 10, 5);
+    brushScriptEditionPort.deleteStroke(7);
+    brushScriptEditionPort.stepStroke(7, 'forward');
+
+    expect(engine.moveStroke).toHaveBeenCalledWith(7, 10, 5);
+    expect(engine.deleteStroke).toHaveBeenCalledWith(7);
+    expect(engine.sendStrokeForward).toHaveBeenCalledWith(7);
+  });
+});

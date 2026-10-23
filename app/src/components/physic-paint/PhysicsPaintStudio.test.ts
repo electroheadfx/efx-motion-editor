@@ -34,6 +34,9 @@ const aquarelleStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/Aqua
 // 261023-g4p: ONE shared gesture implementation + ONE shared edition module.
 const scriptStrokeOverlay = readFileSync(fileURLToPath(new URL('./engine/ScriptStrokeOverlay.tsx', import.meta.url)), 'utf8');
 const scriptStrokeEdition = readFileSync(fileURLToPath(new URL('./view/scriptStrokeEdition.ts', import.meta.url)), 'utf8');
+// 261023-g4p Task 3: the brush adapter of the same seam.
+const brushScriptEditionPortSource = readFileSync(fileURLToPath(new URL('./view/brushScriptEditionPort.ts', import.meta.url)), 'utf8');
+const brushScriptOverlay = readFileSync(fileURLToPath(new URL('./engine/BrushScriptOverlay.tsx', import.meta.url)), 'utf8');
 const memoizedCanvasMountPath = fileURLToPath(new URL('./engine/MemoizedPhysicsPaintCanvasMount.ts', import.meta.url));
 const memoizedCanvasMount = existsSync(memoizedCanvasMountPath) ? readFileSync(memoizedCanvasMountPath, 'utf8') : '';
 const engineLifecycle = readFileSync(fileURLToPath(new URL('./engine/usePhysicsPaintEngineLifecycle.ts', import.meta.url)), 'utf8');
@@ -3295,5 +3298,127 @@ describe('261022-ujp stroke stack step', () => {
     expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
     expect(studio).toContain('const handleAquarelleMoveStroke = useCallback(');
     expect(studioKeyboard).toContain('deleteSelectedAquarelleStroke?: () => boolean;');
+  });
+});
+
+// 261023-g4p Task 3: Brush Move parity — the engine by-id APIs, the brush
+// port registration, the ONE tool-selection funnel and the mount wiring.
+describe('261023-g4p brush Move script-edition surface', () => {
+  it('exposes the by-id engine APIs and keeps the erase path on the same removal core', () => {
+    expect(paintEngineSource).toContain('private removeStrokeEntry(mutationId: number): boolean {');
+    expect(paintEngineSource).toContain('public deleteStroke(mutationId: number): boolean {');
+    expect(paintEngineSource).toContain('public moveStroke(mutationId: number, dxPx: number, dyPx: number): boolean {');
+    expect(paintEngineSource).toContain('public getStrokeSerials(): Map<number, number> {');
+    expect(paintEngineSource).toContain('public setStrokeLabelsSuppressed(suppressed: boolean): void {');
+    expect(paintEngineSource).toContain('public setCursorVisible(visible: boolean): void {');
+    // deleteStroke: drain first, one 'erase', false leaves state untouched.
+    const deleteStart = paintEngineSource.indexOf('public deleteStroke(mutationId: number): boolean {');
+    const deleteBody = paintEngineSource.slice(deleteStart, paintEngineSource.indexOf('public moveStroke(', deleteStart));
+    expect(deleteBody).toContain('this.flushPendingStrokeFinalizations()');
+    expect(deleteBody.indexOf('this.flushPendingStrokeFinalizations()')).toBeLessThan(
+      deleteBody.indexOf('if (!this.removeStrokeEntry(mutationId)) return false'),
+    );
+    expect(deleteBody).toContain("this.notifyCompletedMutation('erase', mutationId)");
+    // moveStroke: the SAME commit contract as the pointer drag.
+    expect(paintEngineSource).toContain('this.commitMoveGesture({ stroke, mutationId, startX: 0, startY: 0, dx: dxPx, dy: dyPx })');
+    // The erase gesture now funnels through removeStrokeEntry too.
+    expect(paintEngineSource).toContain('if (this.removeStrokeEntry(mid)) removed++');
+    // Suppression gates are the tool gate + an early return.
+    expect(paintEngineSource).toContain('if (this.strokeLabelsSuppressed === true) return');
+    expect(paintEngineSource).toContain('if (this.cursorVisible === false) return null');
+    // redrawDisplayOverlays draws only when bounds survive (null drops the draw).
+    expect(paintEngineSource).toContain('const cursorRect = this.overlayBoundsForCursor()');
+  });
+
+  it('registers BOTH module ports and configures the brush context from a render-body ref', () => {
+    expect(studio).toContain('setScriptStrokeEditionPorts({');
+    expect(studio).toContain('brush: brushScriptEditionPort,');
+    expect(studio).toContain('configureBrushScriptEdition(brushScriptEditionDepsRef.current);');
+    expect(studio).toContain('const brushScriptEditionDepsRef = useRef<BrushScriptEditionContext>({');
+    expect(studio).toContain('getEngine: () => engineRef.current,');
+    expect(studio).toContain('getPlayFrame: () => launchContextRef.current?.startFrame ?? 0,');
+    expect(studio).toContain("isActive: () => activeModule.peek() === 'brush' && settings.tool === 'move',");
+    expect(studio).toContain('isLocked: () => isPhysicalMutationLocked(),');
+    // Studio teardown detaches the port from the dead session.
+    expect(studio).toContain('configureBrushScriptEdition(null);');
+    // The watercolor port keeps its exact previous contract.
+    expect(studio).toContain("isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),");
+    expect(studio).toContain('deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),');
+    expect(studio).toContain('moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),');
+    expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
+    // The brush port is the ONE adapter; the shared seam picks the active one.
+    expect(brushScriptEditionPortSource).toContain('export const brushScriptEditionPort: ScriptStrokeEditionPort = {');
+    expect(scriptStrokeEdition).toContain('if (watercolor?.isActive()) return watercolor;');
+    expect(scriptStrokeEdition).toContain('if (brush?.isActive()) return brush;');
+  });
+
+  it('funnels every tool selection through the Move-arming wrapper', () => {
+    expect(studio).toContain('selectTool: selectToolEngine,');
+    expect(studio).toContain('const selectTool = useCallback((tool: ToolType, physicsMode?: \'local\' | null) => {');
+    const wrapperStart = studio.indexOf('const selectTool = useCallback((tool: ToolType');
+    const wrapperBody = studio.slice(wrapperStart, studio.indexOf('// 49-04 UAT fix', wrapperStart));
+    // Refused selection = exact passthrough (no engine writes, no flag change).
+    expect(wrapperBody).toContain('if (!activeEngine || isPhysicalMutationLocked()) {');
+    expect(wrapperBody).toContain('selectToolEngine(tool, physicsMode);');
+    // Move entry: flush the outgoing frame, arm the engine Move, stand down
+    // the engine badges and cursor.
+    expect(wrapperBody).toContain("if (activeModule.peek() === 'brush' && tool === 'move') {");
+    expect(wrapperBody).toContain('flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, activeEngine.getStrokes());');
+    expect(wrapperBody).toContain('activeEngine.setStrokeLabelsSuppressed(true);');
+    expect(wrapperBody).toContain('activeEngine.setCursorVisible(false);');
+    // Any other tool restores both.
+    expect(wrapperBody).toContain('activeEngine.setStrokeLabelsSuppressed(false);');
+    expect(wrapperBody).toContain('activeEngine.setCursorVisible(true);');
+    // The rail and the Cmd tap both use the wrapper (existing pins above).
+    expect(studio).toContain('onSelectTool: selectTool,');
+    expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
+    expect(studio).toContain("selectTool('move', settings.physicsMode);");
+    // The hook itself is untouched.
+    expect(studio).toContain('usePhysicsPaintEngineActions({ engine, settings, setSettings, isMutationLocked: isPhysicalMutationLocked });');
+  });
+
+  it('re-applies the Move suppression for a recreated engine', () => {
+    const readyStart = studio.indexOf('installScriptMemoryProbe(readyEngine');
+    const readyBody = studio.slice(readyStart, studio.indexOf('installLookDeltaCapture', readyStart));
+    expect(readyBody).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
+    expect(readyBody).toContain("readyEngine.setTool('move');");
+    expect(readyBody).toContain('readyEngine.setStrokeLabelsSuppressed(true);');
+    expect(readyBody).toContain('readyEngine.setCursorVisible(false);');
+    expect(readyBody).toContain('flushBrushScriptFrame(launchContextRef.current?.startFrame ?? 0, readyEngine.getStrokes());');
+    expect(readyBody.indexOf('settingsRef.current.tool')).toBeGreaterThan(-1);
+  });
+
+  it('mounts the brush overlay from the canvas mount only while Move is armed', () => {
+    expect(canvasMount).toContain('brushScriptEditionActive?: boolean;');
+    expect(canvasMount).toContain('getBrushScriptPlayFrame?: () => number;');
+    expect(canvasMount).toContain('const getBrushScriptPlayFrameRef = useRef(props.getBrushScriptPlayFrame);');
+    expect(canvasMount).toContain('getBrushScriptPlayFrameRef.current = props.getBrushScriptPlayFrame;');
+    expect(canvasMount).toContain('{!aquarelleActive && (props.brushScriptEditionActive ?? false) ? (');
+    expect(canvasMount).toContain('<BrushScriptOverlay');
+    expect(canvasMount).toContain('getPlayFrame={() => getBrushScriptPlayFrameRef.current?.() ?? 0}');
+    // The engine surface stays mounted underneath.
+    expect(canvasMount.indexOf('<EfxPaintCanvas')).toBeLessThan(canvasMount.indexOf('<BrushScriptOverlay'));
+    expect(studio).toContain('brushScriptEditionActive: settings.tool === \'move\',');
+    expect(studio).toContain('getBrushScriptPlayFrame,');
+    expect(studio).toContain('settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd');
+    // The adapter owns no gesture logic — it renders the ONE shared surface.
+    expect(brushScriptOverlay).toContain('port={brushScriptEditionPort}');
+    expect(brushScriptOverlay).toContain('selectMode={props.active}');
+    expect(brushScriptOverlay).toContain('moveArmed={false}');
+    expect(brushScriptOverlay).toContain('testId="brush-script-overlay"');
+    expect(brushScriptOverlay).toContain('badgeTestId="brush-stroke-badge"');
+    expect(brushScriptOverlay).toContain('ghostTestId="brush-drag-ghost"');
+    expect(brushScriptOverlay).not.toContain('onPointerDown');
+  });
+
+  it('keeps the brush port peek-only and lock-gated', () => {
+    expect(brushScriptEditionPortSource).toContain('void brushScriptRevision.value;');
+    expect(brushScriptEditionPortSource).toContain('if (!resolved || resolved.context.isLocked()) return false;');
+    expect(brushScriptEditionPortSource).toContain('if (moved) flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());');
+    expect(brushScriptEditionPortSource).toContain('if (!deleted) return false;');
+    expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());');
+    expect(brushScriptEditionPortSource).toContain('if (stepped) flushBrushScriptFrame(resolved.frame, resolved.engine.getStrokes());');
+    // The Studio render body never subscribes the store revision.
+    expect(studio).not.toContain('brushScriptRevision.value');
   });
 });

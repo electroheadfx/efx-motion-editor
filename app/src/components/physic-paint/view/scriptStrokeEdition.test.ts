@@ -32,6 +32,7 @@ import {
   setScriptSelectMode,
   setScriptStrokeDrag,
   setScriptStrokeEditionPort,
+  setScriptStrokeEditionPorts,
   stepSelectedScriptStroke,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
@@ -73,6 +74,7 @@ function calls(): PortCalls {
 
 afterEach(() => {
   setScriptStrokeEditionPort(null);
+  setScriptStrokeEditionPorts(null);
   selectScriptStroke(null);
   setScriptSelectMode(false);
 });
@@ -247,6 +249,36 @@ describe('scriptStrokeEdition — keyboard consume law', () => {
       { id: 4, direction: 'back' },
       { id: 4, direction: 'forward' },
     ]);
+  });
+
+  it('resolves the ACTIVE module port when both are registered', () => {
+    const watercolorCalls = calls();
+    const brushCalls = calls();
+    setScriptStrokeEditionPorts({
+      watercolor: fakePort({ active: false, calls: watercolorCalls }),
+      brush: fakePort({ active: true, calls: brushCalls }),
+    });
+    selectScriptStroke(7);
+
+    expect(deleteSelectedScriptStroke()).toBe(true);
+    expect(brushCalls.deleted).toEqual([7]);
+    expect(watercolorCalls.deleted).toEqual([]);
+
+    // Neither surface active: the key is not consumed.
+    setScriptStrokeEditionPorts({
+      watercolor: fakePort({ active: false, calls: watercolorCalls }),
+      brush: fakePort({ active: false, calls: brushCalls }),
+    });
+    expect(deleteSelectedScriptStroke()).toBe(false);
+
+    // Both reporting active (defensive): watercolor is the deterministic winner.
+    setScriptStrokeEditionPorts({
+      watercolor: fakePort({ active: true, calls: watercolorCalls }),
+      brush: fakePort({ active: true, calls: brushCalls }),
+    });
+    expect(deleteSelectedScriptStroke()).toBe(true);
+    expect(watercolorCalls.deleted).toEqual([7]);
+    expect(brushCalls.deleted).toEqual([7]);
   });
 });
 

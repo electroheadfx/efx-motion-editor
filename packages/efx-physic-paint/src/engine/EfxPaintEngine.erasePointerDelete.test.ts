@@ -672,6 +672,78 @@ describe('DRAG GUARD: multi-sample erase behavior is unchanged', () => {
   })
 })
 
+// ─── DIRECT API: deleteStroke (261023-g4p Task 3) ──────────────────
+// The script-edition overlay deletes by id through the same removal core
+// as the erase click: flush first, splice the group + its undo entry,
+// refresh history, replay, one 'erase' notification.
+
+describe('DIRECT API: deleteStroke(id) removes one recorded paint group', () => {
+  it('DELETE: primary + following continuations and the undo entry go, one erase notification', () => {
+    const engine = createHarness()
+    const primary = pushPaintStroke(engine, hLine(30), 7, 'local', true)
+    const continuation = {
+      tool: 'paint' as const, points: [], color: '#123456', params: { ...defaultOpts },
+      timestamp: Date.now(), hasPenInput: false, physicsMode: 'local' as const,
+      mutationId: 7, diffusionFrames: 4,
+    }
+    engine.allActions.push(continuation)
+    pushPaintStroke(engine, hLine(70), 8, 'local', true)
+    const events = captureMutations(engine)
+    expect(engine.getStrokeCount()).toBe(3)
+
+    expect(engine.deleteStroke(7)).toBe(true)
+
+    expect(idsOf(engine)).toEqual([8])
+    expect(engine.allActions).not.toContain(primary)
+    expect(engine.allActions).not.toContain(continuation)
+    expect(engine.allActions.some((a: { mutationId?: number }) => a.mutationId === 7)).toBe(false)
+    expect(engine.undoStack.some((entry: { mutationId?: number }) => entry.mutationId === 7)).toBe(false)
+    expect(engine.getStrokeCount()).toBe(1)
+    expect(engine.getHistoryAvailability().undo).toBe(1)
+    // The replay dropped the group's deposit and kept the survivor's.
+    expect(wetAt(engine, 50, 30)).toBe(0)
+    expect(wetAt(engine, 50, 70)).toBeGreaterThan(0)
+    const erase = events.filter((e) => e.kind === 'erase')
+    expect(erase).toHaveLength(1)
+    expect(erase[0].mutationId).toBe(7)
+  })
+
+  it('DELETE unknown id: false, no notification, no redraw', () => {
+    const engine = createHarness()
+    pushPaintStroke(engine, hLine(30), 1, 'local', true)
+    const events = captureMutations(engine)
+    const redraw = vi.spyOn(engine as never, 'redrawAll' as never)
+
+    expect(engine.deleteStroke(999999)).toBe(false)
+
+    expect(redraw).not.toHaveBeenCalled()
+    expect(events).toHaveLength(0)
+    expect(engine.getStrokeCount()).toBe(1)
+  })
+
+  it('DELETE during drain: the queued stroke is flushed first, then removed with no orphan deposit', () => {
+    const engine = createHarness()
+    const events = captureMutations(engine)
+    engine.setTool('paint')
+    engine.onPointerDown(pointerEvent({ x: 20, y: 30, timeStamp: 10 }))
+    engine.onPointerMove(pointerEvent({ x: 50, y: 30, timeStamp: 20 }))
+    engine.onPointerMove(pointerEvent({ x: 80, y: 30, timeStamp: 30 }))
+    engine.onPointerUp(pointerEvent({ x: 80, y: 30, timeStamp: 40, buttons: 0 }))
+    expect(engine.pendingStrokeFinalizations).toHaveLength(1)
+    const id = engine.getStrokes()[0].mutationId as number
+
+    expect(engine.deleteStroke(id)).toBe(true)
+
+    expect(engine.pendingStrokeFinalizations).toHaveLength(0)
+    expect(engine.getStrokeCount()).toBe(0)
+    expect(wetAt(engine, 50, 30)).toBe(0)
+    expect(engine.save().tracks[0].strokes ?? []).toHaveLength(0)
+    const erase = events.filter((e) => e.kind === 'erase')
+    expect(erase).toHaveLength(1)
+    expect(erase[0].mutationId).toBe(id)
+  })
+})
+
 beforeEach(() => {
   vi.stubGlobal('document', { createElement: () => createMockCanvas(1, 1) })
 })

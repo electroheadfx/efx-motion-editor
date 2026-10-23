@@ -219,17 +219,42 @@ export interface ScriptStrokeEditionPort {
 }
 
 /**
- * The registered port (plain module variable — render-body ref-style write,
- * no signal, no subscription). The Studio registers the active module's port.
+ * The registered ports (plain module variable — render-body ref-style write,
+ * no signal, no subscription). The Studio registers both module ports; the
+ * resolver picks the one whose surface is currently active.
  */
-let scriptStrokeEditionPort: ScriptStrokeEditionPort | null = null;
-
-export function setScriptStrokeEditionPort(port: ScriptStrokeEditionPort | null): void {
-  scriptStrokeEditionPort = port;
+interface ScriptStrokeEditionPorts {
+  watercolor: ScriptStrokeEditionPort | null;
+  brush: ScriptStrokeEditionPort | null;
 }
 
+let scriptStrokeEditionPorts: ScriptStrokeEditionPorts = { watercolor: null, brush: null };
+
+/** Legacy single-port registration (watercolor slot) — kept for one-port callers. */
+export function setScriptStrokeEditionPort(port: ScriptStrokeEditionPort | null): void {
+  scriptStrokeEditionPorts = { watercolor: port, brush: null };
+}
+
+export function setScriptStrokeEditionPorts(
+  ports: { watercolor?: ScriptStrokeEditionPort | null; brush?: ScriptStrokeEditionPort | null } | null,
+): void {
+  scriptStrokeEditionPorts = {
+    watercolor: ports?.watercolor ?? null,
+    brush: ports?.brush ?? null,
+  };
+}
+
+/**
+ * Active port wins. Both ports gate their own `isActive()` on their module
+ * AND their selection state, so at most one can be active; the watercolor
+ * slot is the deterministic fallback when neither is (the consume law then
+ * refuses the key — no module surface owns it).
+ */
 export function resolveScriptStrokeEditionPort(): ScriptStrokeEditionPort | null {
-  return scriptStrokeEditionPort;
+  const { watercolor, brush } = scriptStrokeEditionPorts;
+  if (watercolor?.isActive()) return watercolor;
+  if (brush?.isActive()) return brush;
+  return watercolor ?? brush;
 }
 
 /** Hit-test through the port, then write the one selection signal. */
@@ -250,7 +275,7 @@ export function selectScriptStrokeAt(
  * refuses internally (physical lock, missing stroke). Peek-only reads.
  */
 export function deleteSelectedScriptStroke(): boolean {
-  const port = scriptStrokeEditionPort;
+  const port = resolveScriptStrokeEditionPort();
   if (!port) return false;
   if (!port.isActive()) return false;
   const id = scriptSelectedStrokeId.peek();
@@ -261,7 +286,7 @@ export function deleteSelectedScriptStroke(): boolean {
 
 /** Step the selected stroke; same consume law as delete. */
 export function stepSelectedScriptStroke(direction: 'back' | 'forward'): boolean {
-  const port = scriptStrokeEditionPort;
+  const port = resolveScriptStrokeEditionPort();
   if (!port) return false;
   if (!port.isActive()) return false;
   const id = scriptSelectedStrokeId.peek();
