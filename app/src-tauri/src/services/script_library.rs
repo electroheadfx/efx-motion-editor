@@ -235,6 +235,9 @@ pub struct ScriptLibraryMigration {
     pub deduplicated: usize,
     pub remapped: usize,
     pub skipped_invalid: usize,
+    /// quick-261023-o3n: per-layer Studio script snapshots carried into the
+    /// destination package (`scripts/<layerId>/<trackId>-v1.snap`).
+    pub snapshots_copied: usize,
     pub diagnostics: Vec<ScriptLibraryDiagnostic>,
 }
 
@@ -1952,6 +1955,23 @@ pub fn migrate_saved_projects(
         )?;
         result.remapped += 1;
     }
+    // quick-261023-o3n: carry the per-layer Studio script snapshots
+    // (`scripts/<layerId>/<trackId>-v1.snap`) into the new package. This runs
+    // AFTER the managed-script loop, so a managed-script failure aborts before
+    // any snapshot write. A snapshot read/write failure is propagated on
+    // purpose: `project_save_as_with_script_library` rolls the destination
+    // package back when `migrate_active` fails, so a failed copy is loud, not
+    // silent.
+    result.snapshots_copied = crate::services::studio_script_snapshot::migrate_package_snapshots(
+        &source_root,
+        &destination_root,
+    )
+    .map_err(|error| {
+        format!(
+            "Could not copy the Studio script snapshots: {}",
+            error.label()
+        )
+    })?;
     Ok(result)
 }
 
@@ -3099,5 +3119,93 @@ mod tests {
             }]
         });
         assert!(validate_document(document, None).is_ok(), "an engine-1 document must still validate");
+    }
+
+    // ---- quick-261023-o3n: Save As / Duplicate carries the snapshot folders ----
+
+    fn package_fixture(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "efx-script-library-package-{tag}-{}",
+            Uuid::new_v4()
+        ));
+        fs::create_dir_all(root.join("scripts")).expect("fixture scripts");
+        root
+    }
+
+    #[test]
+    fn save_as_copies_only_valid_snapshot_files_and_counts_them() {
+        let source = package_fixture("source");
+        let destination = package_fixture("destination");
+        fs::create_dir_all(source.join("scripts/layer-1")).expect("layer folder");
+        fs::write(
+            source.join("scripts/layer-1/track-1-v1.snap"),
+            b"snapshot-bytes",
+        )
+        .expect("valid snapshot");
+        // Foreign names and versions are never carried.
+        fs::write(source.join("scripts/layer-1/track-1-v2.snap"), b"newer").expect("newer");
+        fs::write(source.join("scripts/layer-1/notes.txt"), b"notes").expect("foreign");
+        fs::create_dir_all(source.join("scripts/bad layer")).expect("invalid layer folder");
+        fs::write(source.join("scripts/bad layer/track-1-v1.snap"), b"x").expect("bad layer");
+        fs::create_dir_all(source.join("scripts/.hidden")).expect("hidden layer folder");
+        fs::write(source.join("scripts/.hidden/track-1-v1.snap"), b"x").expect("hidden layer");
+
+        let result = migrate_saved_projects(&source, &destination).expect("migration");
+        assert_eq!(result.snapshots_copied, 1);
+        // The managed-script counters are untouched by the snapshot pass.
+        assert_eq!(result.copied, 0);
+        assert_eq!(result.deduplicated, 0);
+        assert_eq!(result.remapped, 0);
+        assert_eq!(result.skipped_invalid, 0);
+        assert_eq!(
+            fs::read(destination.join("scripts/layer-1/track-1-v1.snap")).expect("destination"),
+            b"snapshot-bytes"
+        );
+        assert!(!destination.join("scripts/layer-1/track-1-v2.snap").exists());
+        assert!(!destination.join("scripts/layer-1/notes.txt").exists());
+        assert!(!destination.join("scripts/bad layer").exists());
+        assert!(!destination.join("scripts/.hidden").exists());
+
+        fs::remove_dir_all(source).expect("fixture cleanup");
+        fs::remove_dir_all(destination).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn save_as_never_copies_symlinked_snapshot_entries() {
+        let source = package_fixture("symlink-source");
+        let destination = package_fixture("symlink-destination");
+        fs::create_dir_all(source.join("scripts/layer-1")).expect("layer folder");
+        let target = source.join("outside.snap");
+        fs::write(&target, b"outside").expect("outside file");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&target, source.join("scripts/layer-1/track-1-v1.snap"))
+            .expect("symlink");
+
+        let result = migrate_saved_projects(&source, &destination).expect("migration");
+        assert_eq!(result.snapshots_copied, 0);
+        assert!(!destination.join("scripts/layer-1/track-1-v1.snap").exists());
+
+        fs::remove_dir_all(source).expect("fixture cleanup");
+        fs::remove_dir_all(destination).expect("fixture cleanup");
+    }
+
+    #[test]
+    fn save_as_aborts_when_a_snapshot_cannot_be_read() {
+        let source = package_fixture("oversized-source");
+        let destination = package_fixture("oversized-destination");
+        fs::create_dir_all(source.join("scripts/layer-1")).expect("layer folder");
+        let oversized = File::create(source.join("scripts/layer-1/track-1-v1.snap"))
+            .expect("oversized snapshot");
+        oversized
+            .set_len(crate::services::studio_script_snapshot::STUDIO_SCRIPT_SNAPSHOT_MAX_BYTES + 1)
+            .expect("set length");
+        drop(oversized);
+
+        // Loud on purpose: the Save As transaction rolls the destination back.
+        assert!(migrate_saved_projects(&source, &destination).is_err());
+        assert!(!destination.join("scripts/layer-1/track-1-v1.snap").exists());
+
+        fs::remove_dir_all(source).expect("fixture cleanup");
+        fs::remove_dir_all(destination).expect("fixture cleanup");
     }
 }

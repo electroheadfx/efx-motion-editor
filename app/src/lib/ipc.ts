@@ -86,6 +86,8 @@ export interface ScriptLibraryMigrationResult {
   deduplicated: number;
   remapped: number;
   skippedInvalid: number;
+  /** quick-261023-o3n: per-layer Studio script snapshots carried by Save As. */
+  snapshotsCopied: number;
   diagnostics: Array<{ code: string; message: string; filename?: string }>;
 }
 

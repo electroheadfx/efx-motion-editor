@@ -377,6 +377,101 @@ pub fn write_snapshot_preferring_package(
     }
 }
 
+/// Save As / Duplicate: carry every per-layer Studio script snapshot into the
+/// new package (T-261023-o3n-05).
+///
+/// Only DIRECT layer folders whose name passes the key law are considered;
+/// symlinks, plain files and invalid names are skipped silently. Inside a
+/// layer folder only `<trackId>-<SNAPSHOT version>.snap` names whose track id
+/// validates are copied — a different version, a foreign file, a hidden temp
+/// file or a symlink is skipped. The destination path is derived ONLY from the
+/// validated source names, so no file is ever merged across layers or tracks.
+///
+/// The bytes go through the shared guarded reader (64 MiB cap checked from
+/// metadata BEFORE reading) and the shared atomic writer. Any `Io`/`Refused`
+/// failure is propagated on purpose: `project_save_as_with_script_library`
+/// rolls the destination package back when `migrate_active` fails, so a
+/// snapshot that cannot be copied aborts the Save As instead of being silently
+/// dropped.
+pub fn migrate_package_snapshots(
+    source_package_root: &Path,
+    destination_package_root: &Path,
+) -> Result<usize, StudioScriptSnapshotError> {
+    let source_scripts = source_package_root.join("scripts");
+    let metadata = match fs::symlink_metadata(&source_scripts) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => {
+            return Err(io_error(format!(
+                "Could not inspect the package scripts directory: {error}"
+            )))
+        }
+    };
+    // A symlinked or non-directory `scripts/` is not a layout this service
+    // writes, so there is nothing trustworthy to carry.
+    if !metadata.is_dir() {
+        return Ok(0);
+    }
+    let suffix = format!("-v{STUDIO_SCRIPT_SNAPSHOT_FORMAT_VERSION}.{SNAPSHOT_EXTENSION}");
+    let mut copied = 0usize;
+    let layer_entries = fs::read_dir(&source_scripts).map_err(|error| {
+        io_error(format!(
+            "Could not scan the package scripts directory: {error}"
+        ))
+    })?;
+    for layer_entry in layer_entries {
+        let Ok(layer_entry) = layer_entry else {
+            continue;
+        };
+        let Ok(layer_name) = layer_entry.file_name().into_string() else {
+            continue;
+        };
+        if validate_snapshot_key_component(&layer_name).is_err() {
+            continue;
+        }
+        let Ok(layer_type) = layer_entry.file_type() else {
+            continue;
+        };
+        // `file_type` does not follow symlinks: a linked folder is skipped.
+        if !layer_type.is_dir() {
+            continue;
+        }
+        let layer_dir = source_scripts.join(&layer_name);
+        let track_entries = fs::read_dir(&layer_dir).map_err(|error| {
+            io_error(format!(
+                "Could not scan a package layer script folder: {error}"
+            ))
+        })?;
+        for track_entry in track_entries {
+            let Ok(track_entry) = track_entry else {
+                continue;
+            };
+            let Ok(file_name) = track_entry.file_name().into_string() else {
+                continue;
+            };
+            let Some(track_id) = file_name.strip_suffix(suffix.as_str()) else {
+                continue;
+            };
+            if validate_snapshot_key_component(track_id).is_err() {
+                continue;
+            }
+            let Ok(file_type) = track_entry.file_type() else {
+                continue;
+            };
+            // A symlink (or anything not a regular file) is never read/copied.
+            if !file_type.is_file() {
+                continue;
+            }
+            let snapshot = read_snapshot_at(&layer_dir.join(&file_name))?;
+            let destination =
+                resolve_package_snapshot_path(destination_package_root, &layer_name, track_id)?;
+            write_snapshot_at(&destination, &snapshot.bytes)?;
+            copied += 1;
+        }
+    }
+    Ok(copied)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
