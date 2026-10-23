@@ -20,7 +20,7 @@ import { RightPanelSettingsTab } from './RightPanelSettingsTab';
 import { RightPanelPaperTab } from './RightPanelPaperTab';
 import { RightPanelMemoryTab } from './RightPanelMemoryTab';
 import { RightPanelTrackTab } from './RightPanelTrackTab';
-import type { StudioScriptMemorySectionPorts } from '../performance/studioScriptMemoryGauge';
+import type { StudioScriptMemorySection } from '../performance/studioScriptMemoryGauge';
 import { RightPanelOnionTab, RightPanelMotionTab } from './RightPanelOnionMotionTabs';
 import type { StudioBackgroundMode } from '../engine/physicsPaintStudioSettings';
 
@@ -112,7 +112,7 @@ export interface PhysicsPaintRightPanelProps {
    * backgroundClipSectionPortsRef precedent): the ports read live stores and
    * the frame signal carries the current app frame for the row marker.
    */
-  memorySection?: { ports: StudioScriptMemorySectionPorts; frame: Signal<number> };
+  memorySection?: StudioScriptMemorySection;
 }
 
 /** Minimum sidebar section share (%) — every section keeps at least this much
@@ -380,7 +380,11 @@ export function PhysicsPaintRightPanel({
             // memorySection renders an empty body (no crash, no figures).
             <div class="physics-paint-options-tab-panel physics-paint-options-tab-panel-flat" role="tabpanel" aria-label="Memory">
               {memorySection ? (
-                <RightPanelMemoryTab ports={memorySection.ports} frame={memorySection.frame} />
+                <RightPanelMemoryTab
+                  ports={memorySection.ports}
+                  frame={memorySection.frame}
+                  railContext={memorySection.railContext}
+                />
               ) : null}
             </div>
           ) : (

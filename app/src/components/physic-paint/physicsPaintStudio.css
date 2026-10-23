@@ -1197,6 +1197,7 @@ button.destructive {
    purge rows). Additive only — reuses the shared tab-panel spacing/tokens;
    these rules lay out its rows and the separate frame-cache section. */
 .physics-paint-memory-tab {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1292,11 +1293,34 @@ button.destructive {
   min-width: 0;
 }
 
-.physics-paint-memory-action-row {
+.physics-paint-memory-rail-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
+}
+
+/* UAT 261023-ors: the selected rail's context — blue, because it is the
+   target selector; the destructive action below it stays red. */
+.physics-paint-memory-rail-context {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid #2d5be3;
+  border-radius: 999px;
+  overflow: hidden;
+  color: #bcd2ff;
+  background: rgba(45, 91, 227, 0.22);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.physics-paint-memory-rail-hint {
+  color: #9aa1a8;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .physics-paint-memory-purge-frame,
@@ -1313,24 +1337,45 @@ button.destructive {
   cursor: pointer;
 }
 
+/* Contextual: the per-frame action is the blue primary arm. */
+.physics-paint-memory-purge-frame:not(:disabled) {
+  border-color: #2d5be3;
+  background: rgba(45, 91, 227, 0.22);
+}
+
+/* The rail-wide purge is destructive. */
+.physics-paint-memory-clear-rail {
+  border-color: #a43d3d;
+  background: #a43d3d;
+  color: #fff;
+}
+
 .physics-paint-memory-purge-frame:disabled,
 .physics-paint-memory-clear-rail:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-.physics-paint-memory-confirm {
+/* UAT 261023-ors: the confirmation is a modal panel like the Scripts-tab
+   delete confirmation, not an inline block. */
+.physics-paint-memory-confirmation {
+  position: absolute;
+  inset: 8px 4px auto;
+  z-index: 8;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
+  padding: 12px;
   border: 1px solid #737980;
-  border-radius: 6px;
+  border-radius: 7px;
   background: #292b2d;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
 }
 
-.physics-paint-memory-confirm-strong {
-  border-color: #a43d3d;
+.physics-paint-memory-confirmation > strong {
+  color: #f3f5f7;
+  font-size: 12px;
 }
 
 .physics-paint-memory-confirm-copy {

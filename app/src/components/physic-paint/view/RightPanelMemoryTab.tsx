@@ -26,13 +26,14 @@
 
 import { useEffect, useRef } from 'preact/hooks';
 import { effect, signal, type Signal } from '@preact/signals';
+import { activeModule } from '../../shared/activeModule';
 import {
   buildStudioScriptMemoryFrameRows,
   formatScriptMemoryBytes,
+  type StudioScriptMemoryRailContext,
   type StudioScriptMemorySectionPorts,
 } from '../performance/studioScriptMemoryGauge';
 import type { ScriptMemorySnapshot } from '../performance/scriptMemorySnapshot';
-import { activeModule } from '../../shared/activeModule';
 import { aquarelleStrokesRevision } from './aquarelleRecordState';
 import { brushScriptRevision } from './brushScriptRecordState';
 
@@ -43,25 +44,29 @@ export const MEMORY_GAUGE_CACHE_INTERVAL_MS = 2000;
 
 export interface RightPanelMemoryTabProps {
   ports: StudioScriptMemorySectionPorts;
-  /** The Studio's current app frame (drives the current-frame marker). */
+  /** The Studio's current app frame (drives the selected-frame readout). */
   frame: Signal<number>;
+  /** The rail explicitly selected on the timeline, or null. */
+  railContext: Signal<StudioScriptMemoryRailContext | null>;
 }
 
-/** Which inline confirmation is open. `none` is the two action buttons. */
+/** Which confirmation dialog is open. */
 type MemoryConfirmKind = 'none' | 'frame' | 'rail';
 
-export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) {
+export function RightPanelMemoryTab({ ports, frame, railContext }: RightPanelMemoryTabProps) {
   // One signal for the lifetime of the tab — created in a ref (never a fresh
   // signal per render, never useState).
   const snapshotRef = useRef<Signal<ScriptMemorySnapshot | null> | null>(null);
   if (snapshotRef.current === null) snapshotRef.current = signal<ScriptMemorySnapshot | null>(null);
   const snapshotSignal = snapshotRef.current;
-  // quick-261023-ors Task 2: the inline confirmation state is a signal in a
+  // quick-261023-ors Task 2: the modal confirmation state is a signal in a
   // ref too — a click writes it, the render-body read re-renders this leaf,
   // and the memoized right panel never sees a prop change.
   const confirmRef = useRef<Signal<MemoryConfirmKind> | null>(null);
   if (confirmRef.current === null) confirmRef.current = signal<MemoryConfirmKind>('none');
   const confirmSignal = confirmRef.current;
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     // Mount read: the first paint already has figures.
@@ -95,6 +100,17 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
 
   const snapshot = snapshotSignal.value;
   const currentFrame = frame.value;
+  const rail = railContext.value;
+  const confirm = confirmSignal.value;
+
+  // Modal focus: Cancel is the quiet default, exactly like the Scripts-tab
+  // delete confirmation. Synchronous (no rAF) so the harness and Node tests
+  // can run the whole flow.
+  useEffect(() => {
+    if (confirm === 'none') return;
+    const target = cancelRef.current;
+    if (target && typeof target.focus === 'function') target.focus();
+  }, [confirm]);
 
   if (snapshot === null) {
     return (
@@ -120,14 +136,16 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
     points: 0,
     approxBytes: 0,
   };
-  const confirm = confirmSignal.value;
-  // Per-key purge needs a script on the DISPLAYED frame; clear-all needs any
-  // script at all on the active rail. Both stay disabled otherwise.
+  // Per-key purge needs a script on the DISPLAYED frame; clear-all needs a
+  // selected rail with at least one script on it.
   const hasFrameScript = frameStats.strokes > 0;
   const hasAnyScript = totals.strokes > 0;
 
   // A successful purge refreshes the gauge IMMEDIATELY (the debounced revision
-  // read is the fallback, not the contract), then closes the confirmation.
+  // read is the fallback, not the contract), then closes the dialog.
+  const closeConfirm = () => {
+    confirmSignal.value = 'none';
+  };
   const confirmPurge = (removed: boolean) => {
     if (removed) snapshotSignal.value = ports.read();
     confirmSignal.value = 'none';
@@ -170,78 +188,21 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
         lost for that key.
       </p>
       <div class="physics-paint-memory-actions">
-        {confirm === 'frame' ? (
-          <div
-            class="physics-paint-memory-confirm"
-            role="group"
-            aria-label={`Confirm purge of frame ${currentFrame}`}
-            data-memory-confirm="frame"
-          >
-            <p class="physics-paint-memory-confirm-copy">
-              Purge the script of Frame {currentFrame}? The painted pixels stay, but Move, Select
-              and replay are lost for that key.
-            </p>
-            <div class="physics-paint-memory-confirm-actions">
-              <button
-                type="button"
-                class="physics-paint-memory-confirm-cancel"
-                onClick={() => {
-                  confirmSignal.value = 'none';
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                class="physics-paint-memory-confirm-ok destructive"
-                onClick={() => confirmPurge(ports.purgeFrame(currentFrame))}
-              >
-                Purge frame script
-              </button>
-            </div>
-          </div>
-        ) : confirm === 'rail' ? (
-          <div
-            class="physics-paint-memory-confirm physics-paint-memory-confirm-strong"
-            role="group"
-            aria-label="Confirm clear all scripts on the active rail"
-            data-memory-confirm="rail"
-          >
-            <p class="physics-paint-memory-confirm-copy">
-              Clear every script on the active rail (the track you are editing)? Every key of this
-              rail loses its script; the painted pixels stay on every key.
-            </p>
-            <div class="physics-paint-memory-confirm-actions">
-              <button
-                type="button"
-                class="physics-paint-memory-confirm-cancel"
-                onClick={() => {
-                  confirmSignal.value = 'none';
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                class="physics-paint-memory-confirm-ok destructive"
-                onClick={() => confirmPurge(ports.clearRail())}
-              >
-                Clear all rail scripts
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div class="physics-paint-memory-action-row">
-            <button
-              type="button"
-              class="physics-paint-memory-purge-frame"
-              disabled={!hasFrameScript}
-              onClick={() => {
-                confirmSignal.value = 'frame';
-              }}
-            >
-              {`Purge frame ${currentFrame} script`}
-            </button>
+        <button
+          type="button"
+          class="physics-paint-memory-purge-frame"
+          disabled={!hasFrameScript}
+          onClick={() => {
+            confirmSignal.value = 'frame';
+          }}
+        >
+          {`Purge frame ${currentFrame} script`}
+        </button>
+        {rail ? (
+          <div class="physics-paint-memory-rail-row">
+            <span class="physics-paint-memory-rail-context" data-memory-rail-context>
+              {rail.trackName}
+            </span>
             <button
               type="button"
               class="physics-paint-memory-clear-rail"
@@ -250,11 +211,81 @@ export function RightPanelMemoryTab({ ports, frame }: RightPanelMemoryTabProps) 
                 confirmSignal.value = 'rail';
               }}
             >
-              Clear all rail scripts
+              Clear all scripts on this rail
             </button>
+          </div>
+        ) : (
+          <div class="physics-paint-memory-rail-hint">
+            Select a rail in the timeline to clear all of its scripts.
           </div>
         )}
       </div>
+      {confirm !== 'none' ? (
+        <div
+          ref={dialogRef}
+          class="physics-paint-memory-confirmation"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            confirm === 'frame'
+              ? `Purge the script of Frame ${currentFrame}`
+              : 'Clear every script on the active rail'
+          }
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              closeConfirm();
+              return;
+            }
+            if (event.key !== 'Tab') return;
+            const controls = Array.from(
+              dialogRef.current?.querySelectorAll<HTMLElement>(
+                'button:not(:disabled), [tabindex]:not([tabindex="-1"])',
+              ) ?? [],
+            );
+            if (!controls.length) return;
+            const first = controls[0]!;
+            const last = controls[controls.length - 1]!;
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault();
+              last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first.focus();
+            }
+          }}
+        >
+          <strong>
+            {confirm === 'frame'
+              ? `Purge the script of Frame ${currentFrame}?`
+              : 'Clear every script on the active rail?'}
+          </strong>
+          <p class="physics-paint-memory-confirm-copy">
+            {confirm === 'frame'
+              ? 'The painted pixels stay, but Move, Select and replay are lost for this key.'
+              : `Every key of this rail loses its script; the painted pixels stay on every key.${rail ? ` Rail: ${rail.trackName}.` : ''}`}
+          </p>
+          <div class="physics-paint-memory-confirm-actions">
+            <button
+              ref={cancelRef}
+              type="button"
+              class="physics-paint-memory-confirm-cancel"
+              onClick={closeConfirm}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="physics-paint-memory-confirm-ok destructive"
+              onClick={() =>
+                confirmPurge(confirm === 'frame' ? ports.purgeFrame(currentFrame) : ports.clearRail())
+              }
+            >
+              {confirm === 'frame' ? 'Purge frame script' : 'Clear all rail scripts'}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

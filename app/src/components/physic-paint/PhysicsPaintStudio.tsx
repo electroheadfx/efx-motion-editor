@@ -130,6 +130,7 @@ import { installLookDeltaCapture } from './performance/lookDeltaCapture';
 import { installScriptMemoryProbe } from './performance/scriptMemoryProbe';
 import {
   readStudioScriptMemorySnapshot,
+  type StudioScriptMemoryRailContext,
   type StudioScriptMemorySectionPorts,
 } from './performance/studioScriptMemoryGauge';
 import { isRotoSessionCopiedRailSet } from './roto/physicsPaintRotoSession';
@@ -5046,6 +5047,32 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     memoryFrame.value = currentFrame;
   }, [currentFrame, memoryFrame]);
+  // quick-261023-ors UAT: the clear-all action is contextual — it appears only
+  // while a rail is explicitly selected on the timeline, with that rail's name
+  // as its context. Selecting a rail also activates its track (the stores are
+  // track-scoped), so the label and the purge target always agree.
+  const memoryRailContext = useSignal<StudioScriptMemoryRailContext | null>(null);
+  useEffect(() => {
+    const railSelected =
+      selectedRotoKeyRail.value !== null
+      || selectedLoopClipId.value !== null
+      || railSetSelection.value !== null;
+    if (!railSelected) {
+      memoryRailContext.value = null;
+      return;
+    }
+    const layerId = launchContextRef.current?.layerId;
+    const document = layerId ? getEfxPaintDocument(layerId) : undefined;
+    const activeTrack = document?.tracks.find((track) => track.id === document.activeTrackId);
+    memoryRailContext.value = { trackName: activeTrack?.name ?? 'Active rail' };
+  }, [
+    selectedRotoKeyRail.value,
+    selectedLoopClipId.value,
+    railSetSelection.value,
+    activeTrackIdForReads,
+    efxPaintVersion.value,
+    memoryRailContext,
+  ]);
   // Identity-stable ports (the audioSectionPortsRef precedent): `read` resolves
   // the live engine and launch frame at call time, never captured here. The
   // purge functions are hoisted declarations below — a false return means
@@ -5061,7 +5088,11 @@ export function PhysicsPaintStudio() {
   // Second stable ref: the panel prop object never changes identity, so the
   // right-panel memo keeps returning the cached props (signal reads bypass it
   // inside RightPanelMemoryTab).
-  const memorySectionRef = useRef({ ports: memorySectionPortsRef.current, frame: memoryFrame });
+  const memorySectionRef = useRef({
+    ports: memorySectionPortsRef.current,
+    frame: memoryFrame,
+    railContext: memoryRailContext,
+  });
   // quick-261023-ors Task 2: the two confirmed purges. Both remove ONLY the
   // script (the engine's pixels and ledger are never touched), and a successful
   // purge dispatches the snapshot cleanup immediately: the controller rewrites

@@ -19,6 +19,7 @@
 //  a row.
 // ============================================================
 
+import type { Signal } from '@preact/signals';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { AquarelleStrokePayload } from '@efxlab/efx-watercolor/payload';
 import type { StudioStroke } from '@efxlab/efx-paint-host/animation';
@@ -48,6 +49,18 @@ export interface StudioScriptMemorySectionPorts {
   purgeFrame: (frame: number) => boolean;
   /** Clear the ACTIVE rail's scripts: returns true when anything was removed. */
   clearRail: () => boolean;
+}
+
+/** A rail explicitly selected on the timeline (the clear-all context). */
+export interface StudioScriptMemoryRailContext {
+  trackName: string;
+}
+
+/** The identity-stable section the Studio hands the right panel. */
+export interface StudioScriptMemorySection {
+  ports: StudioScriptMemorySectionPorts;
+  frame: Signal<number>;
+  railContext: Signal<StudioScriptMemoryRailContext | null>;
 }
 
 /** One merged gauge row (watercolor and brush side by side). */
