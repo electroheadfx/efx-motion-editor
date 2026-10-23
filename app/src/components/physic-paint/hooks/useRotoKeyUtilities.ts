@@ -3,6 +3,11 @@ import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
 import { createRotoSession, isRotoSessionCopiedKeyGroup, isRotoSessionCopiedRailSet, type RotoSession, type RotoSessionActionResult, type RotoSessionCopiedGroupEntry, type RotoSessionCopiedKey, type RotoSessionCopiedKeyValue, type RotoSessionEffect } from '../roto/physicsPaintRotoSession';
 import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { PREVIOUS_KEY_BYTES_UNAVAILABLE_ERROR, resolvePreviousRealKeyBase, toEmptyKeyPayload } from '../roto/physicsPaintRotoPreviousKeyBase';
+import {
+  ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR,
+  resolveRotoDuplicateSourcePaint,
+  type RotoDisplayedKeyPaint,
+} from '../roto/physicsPaintRotoDuplicateSourcePaint';
 import type { RotoRailSetCopyPayload } from '../roto/physicsPaintRotoRailSetCopy';
 import type { RotoPhysicalKeyUtilityPort } from '../roto/rotoCoordinatorPorts';
 
@@ -31,6 +36,19 @@ export interface RotoKeyUtilitiesInput {
   setApplyMessage: (message: string | null) => void;
   setApplyStatus: (status: 'idle' | 'applying' | 'success' | 'error') => void;
   setLastError: (message: string | null) => void;
+  /**
+   * Quick 261023-bxm: THE display authority for a key frame (dirty preview for
+   * a real-key frame, else the accepted physical render source). Returns null
+   * when nothing is displayed or the bytes are empty — never invented bytes.
+   */
+  resolveDisplayedKeyPaint?: (appFrame: number) => RotoDisplayedKeyPaint | null;
+  /**
+   * Quick 261023-bxm: publish the displayed paint onto the source key through
+   * the live-pixel settlement seam (a pixel settlement, not a history
+   * command). Returns the settlement's boolean; the caller re-reads the record
+   * afterwards either way.
+   */
+  bakeRotoKeyPaint?: (paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => Promise<boolean>;
 }
 
 export interface RotoKeyUtilities {
@@ -155,6 +173,12 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
 
   const blocked = keyActionInFlight || input.flushInFlight || input.applyStatus === 'applying';
 
+  // Duplicate (quick 261023-bxm): settle the SOURCE key's displayed paint first
+  // when its record carries no inline bytes (a script's live result, an
+  // unfinished settle, a dirty preview), then clone it. This is the + Key law
+  // applied to Duplicate: displayed bytes win, a source with no resolvable
+  // paint fails closed instead of producing a blank duplicate. A record that
+  // already carries bytes takes today's path with no extra write.
   const duplicateKey = useCallback(() => {
     if (blocked || !requireCurrentRealKey()) return;
     const sourceKeyId = input.currentKeyId;
@@ -162,15 +186,64 @@ export function useRotoKeyUtilities(input: RotoKeyUtilitiesInput): RotoKeyUtilit
       input.setApplyMessage('The selected Roto key is no longer available.');
       return;
     }
-    setKeyActionInFlight(true);
-    void input.physicalKeyUtilities.duplicateKey(sourceKeyId).catch((error) => {
-      const detail = error instanceof Error ? error.message : String(error);
+    const sourceRecord = input.getRotoKeyRecords().find((record) => record.keyId === sourceKeyId) ?? null;
+    const resolution = sourceRecord
+      ? resolveRotoDuplicateSourcePaint({
+        record: sourceRecord,
+        displayed: input.resolveDisplayedKeyPaint?.(sourceRecord.appFrame) ?? null,
+      })
+      : null;
+    if (!sourceRecord || !resolution || resolution.kind === 'unavailable') {
       input.setApplyStatus('error');
-      input.setApplyMessage('Could not duplicate the Roto key.');
-      input.setLastError(detail);
-    }).finally(() => {
-      setKeyActionInFlight(false);
-    });
+      input.setApplyMessage(`Could not duplicate the Roto key — ${ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR}.`);
+      input.setLastError(ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR);
+      return;
+    }
+    if (resolution.kind === 'ready') {
+      setKeyActionInFlight(true);
+      void input.physicalKeyUtilities.duplicateKey(sourceKeyId).catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        input.setApplyStatus('error');
+        input.setApplyMessage('Could not duplicate the Roto key.');
+        input.setLastError(detail);
+      }).finally(() => {
+        setKeyActionInFlight(false);
+      });
+      return;
+    }
+    const paint = resolution.paint;
+    setKeyActionInFlight(true);
+    void (async () => {
+      try {
+        if (input.bakeRotoKeyPaint) {
+          await input.bakeRotoKeyPaint({
+            keyId: sourceKeyId,
+            appFrame: sourceRecord.appFrame,
+            bytes: paint.bytes,
+            ...(paint.width !== undefined ? { width: paint.width } : {}),
+            ...(paint.height !== undefined ? { height: paint.height } : {}),
+          });
+        }
+        // A `false` settlement can still have landed the pixels (a stale
+        // boolean is not proof of failure) — the record is the truth. Only a
+        // re-read that still lacks bytes fails closed.
+        const settled = input.getRotoKeyRecords().find((record) => record.keyId === sourceKeyId) ?? null;
+        if (!settled || resolveRotoDuplicateSourcePaint({ record: settled, displayed: null }).kind !== 'ready') {
+          input.setApplyStatus('error');
+          input.setApplyMessage(`Could not duplicate the Roto key — ${ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR}.`);
+          input.setLastError(ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR);
+          return;
+        }
+        await input.physicalKeyUtilities.duplicateKey(sourceKeyId);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        input.setApplyStatus('error');
+        input.setApplyMessage('Could not duplicate the Roto key.');
+        input.setLastError(detail);
+      } finally {
+        setKeyActionInFlight(false);
+      }
+    })();
   }, [blocked, input, requireCurrentRealKey]);
 
   // Shared copy-side selection resolution (quick 260731-9l0): publishes its

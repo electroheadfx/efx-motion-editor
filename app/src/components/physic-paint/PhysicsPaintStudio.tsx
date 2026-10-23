@@ -2488,6 +2488,41 @@ export function PhysicsPaintStudio() {
       setApplyMessage,
       setApplyStatus,
       setLastError,
+      // Quick 261023-bxm: Duplicate settles the SOURCE key's displayed paint
+      // before cloning when the record carries no inline bytes. The display
+      // authority is the same cached-first lookup the canvas renders from
+      // (dirty preview for a real-key frame, else the accepted render source);
+      // only non-empty bytes qualify, and the keyId guard lives in the pure
+      // resolver so paint belonging to another key can never be published.
+      resolveDisplayedKeyPaint: (appFrame) => {
+        const displayed = findCachedRotoDisplayFrame(appFrame);
+        if (!displayed || !(displayed.bytes instanceof Uint8Array) || displayed.bytes.byteLength === 0) return null;
+        const displayedKeyId = (displayed as { keyId?: string }).keyId;
+        return {
+          ...(displayedKeyId !== undefined ? { keyId: displayedKeyId } : {}),
+          bytes: displayed.bytes,
+          ...(displayed.width !== undefined ? { width: displayed.width } : {}),
+          ...(displayed.height !== undefined ? { height: displayed.height } : {}),
+        };
+      },
+      // The aquarelle Apply publish seam, verbatim: an explicit expectedKeyId
+      // makes this a pixel settlement on the source key, not a history
+      // command. A rejected settlement simply leaves the record unsettled and
+      // the duplicate fails closed after the re-read.
+      bakeRotoKeyPaint: async ({ keyId, appFrame, bytes, width, height }) => {
+        if (!launchContext) return false;
+        return rotoPersistence.upsertCachedFrame(
+          { frameIndex: 0, appFrame, bytes, width, height },
+          false,
+          undefined,
+          undefined,
+          launchContext.layerId,
+          undefined,
+          launchContext.operationId,
+          buildRotoBackgroundMetadata(settings),
+          keyId,
+        );
+      },
     },
     playback: {
       initialSettings: initialRotoPlaybackSettings,

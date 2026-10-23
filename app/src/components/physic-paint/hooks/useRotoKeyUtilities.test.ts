@@ -24,6 +24,7 @@ vi.mock('preact/hooks', () => {
 
 import * as preactHooks from 'preact/hooks';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import { ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR, type RotoDisplayedKeyPaint } from '../roto/physicsPaintRotoDuplicateSourcePaint';
 import type { PhysicPaintRotoRealKeyPayload, PhysicPaintRotoRealKeyRecord } from '../roto/physicsPaintRotoPhysicalModel';
 import { isRotoSessionCopiedKeyGroup, type RotoSessionCopiedKey } from '../roto/physicsPaintRotoSession';
 import { useRotoKeyUtilities, type RotoKeyUtilitiesInput } from './useRotoKeyUtilities';
@@ -83,6 +84,8 @@ interface HarnessOptions {
   selectedKeyIds?: readonly string[];
   applyStatus?: 'idle' | 'applying' | 'success' | 'error';
   flushInFlight?: boolean;
+  resolveDisplayedKeyPaint?: (appFrame: number) => RotoDisplayedKeyPaint | null;
+  bakeRotoKeyPaint?: (paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => Promise<boolean>;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -122,6 +125,8 @@ function createHarness(options: HarnessOptions = {}) {
     setApplyMessage,
     setApplyStatus,
     setLastError,
+    resolveDisplayedKeyPaint: options.resolveDisplayedKeyPaint,
+    bakeRotoKeyPaint: options.bakeRotoKeyPaint,
   };
   const utils = useRotoKeyUtilities(input);
   const copiedKeyRef = createdRefs[refIndex] as { current: unknown };
@@ -472,5 +477,153 @@ describe('useRotoKeyUtilities addKey nearest previous real key (261019-mj2 Task 
     expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
     expect(String(harness.setLastError.mock.calls[0]?.[0])).toContain('previous key bytes unavailable');
     expect(String(harness.setApplyMessage.mock.calls[0]?.[0])).toContain('previous key bytes unavailable');
+  });
+});
+
+// Quick 261023-bxm Task 1: Duplicate settles the source key's DISPLAYED paint
+// before cloning when the record carries no inline bytes, so a script result,
+// an unfinished settle, or a dirty preview is never cloned as a blank key.
+describe('useRotoKeyUtilities duplicateKey source paint (261023-bxm Task 1)', () => {
+  it('settles the displayed paint onto the source key, then duplicates it', async () => {
+    const displayedBytes = testWebpBytes('displayed-paint');
+    const displayed: RotoDisplayedKeyPaint = { keyId: 'key-a', bytes: displayedBytes, width: 100, height: 80 };
+    const records: PhysicPaintRotoRealKeyRecord[] = [realKeyRecordWithoutBytes('key-a', 3)];
+    let settleBake: (() => void) | null = null;
+    const bakeRotoKeyPaint = vi.fn((_paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => new Promise<boolean>((resolve) => {
+      settleBake = () => {
+        records[0] = realKeyRecord('key-a', 3, 'settled');
+        resolve(true);
+      };
+    }));
+    const harness = createHarness({
+      currentFrame: 3,
+      records,
+      realKeyFrames: [realKeyFrame(3)],
+      resolveDisplayedKeyPaint: () => displayed,
+      bakeRotoKeyPaint,
+    });
+
+    harness.utils.duplicateKey();
+    await flushAsync();
+
+    // The source is settled first and the duplicate has not run yet.
+    expect(bakeRotoKeyPaint).toHaveBeenCalledTimes(1);
+    expect(bakeRotoKeyPaint).toHaveBeenCalledWith({
+      keyId: 'key-a',
+      appFrame: 3,
+      bytes: displayedBytes,
+      width: 100,
+      height: 80,
+    });
+    expect(harness.input.physicalKeyUtilities.duplicateKey).not.toHaveBeenCalled();
+
+    if (!settleBake) throw new Error('expected a pending bake');
+    (settleBake as () => void)();
+    await flushAsync();
+
+    // Only after the settlement lands is the unchanged duplicate issued.
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledTimes(1);
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledWith('key-a');
+  });
+
+  it('fails closed without baking or duplicating when no displayed paint resolves', async () => {
+    const bakeRotoKeyPaint = vi.fn(async (_paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => true);
+    const resolveDisplayedKeyPaint = vi.fn(() => null);
+    const harness = createHarness({
+      currentFrame: 3,
+      records: [realKeyRecordWithoutBytes('key-a', 3)],
+      realKeyFrames: [realKeyFrame(3)],
+      resolveDisplayedKeyPaint,
+      bakeRotoKeyPaint,
+    });
+
+    harness.utils.duplicateKey();
+    await flushAsync();
+
+    expect(resolveDisplayedKeyPaint).toHaveBeenCalledWith(3);
+    expect(bakeRotoKeyPaint).not.toHaveBeenCalled();
+    expect(harness.input.physicalKeyUtilities.duplicateKey).not.toHaveBeenCalled();
+    expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
+    expect(String(harness.setApplyMessage.mock.calls[0]?.[0])).toContain('source key paint unavailable');
+    expect(harness.setLastError).toHaveBeenCalledWith(ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR);
+  });
+
+  it('fails closed when the displayed paint belongs to another key', async () => {
+    const bakeRotoKeyPaint = vi.fn(async (_paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => true);
+    const harness = createHarness({
+      currentFrame: 3,
+      records: [realKeyRecordWithoutBytes('key-a', 3)],
+      realKeyFrames: [realKeyFrame(3)],
+      resolveDisplayedKeyPaint: () => ({ keyId: 'key-other', bytes: testWebpBytes('other-key-paint') }),
+      bakeRotoKeyPaint,
+    });
+
+    harness.utils.duplicateKey();
+    await flushAsync();
+
+    expect(bakeRotoKeyPaint).not.toHaveBeenCalled();
+    expect(harness.input.physicalKeyUtilities.duplicateKey).not.toHaveBeenCalled();
+    expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
+    expect(String(harness.setApplyMessage.mock.calls[0]?.[0])).toContain('source key paint unavailable');
+  });
+
+  it('fails closed when the bake settles without bytes on the source record', async () => {
+    const bakeRotoKeyPaint = vi.fn(async (_paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => false);
+    const harness = createHarness({
+      currentFrame: 3,
+      records: [realKeyRecordWithoutBytes('key-a', 3)],
+      realKeyFrames: [realKeyFrame(3)],
+      resolveDisplayedKeyPaint: () => ({ keyId: 'key-a', bytes: testWebpBytes('displayed-paint') }),
+      bakeRotoKeyPaint,
+    });
+
+    harness.utils.duplicateKey();
+    await flushAsync();
+
+    expect(bakeRotoKeyPaint).toHaveBeenCalledTimes(1);
+    expect(harness.input.physicalKeyUtilities.duplicateKey).not.toHaveBeenCalled();
+    expect(harness.setApplyStatus).toHaveBeenCalledWith('error');
+    expect(harness.setApplyMessage).toHaveBeenCalledWith('Could not duplicate the Roto key — source key paint unavailable.');
+    expect(harness.setLastError).toHaveBeenCalledWith(ROTO_DUPLICATE_SOURCE_PAINT_UNAVAILABLE_ERROR);
+  });
+
+  it('proceeds when a false bake result nevertheless settled the source bytes', async () => {
+    const records: PhysicPaintRotoRealKeyRecord[] = [realKeyRecordWithoutBytes('key-a', 3)];
+    const bakeRotoKeyPaint = vi.fn(async (_paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => {
+      records[0] = realKeyRecord('key-a', 3, 'settled');
+      return false;
+    });
+    const harness = createHarness({
+      currentFrame: 3,
+      records,
+      realKeyFrames: [realKeyFrame(3)],
+      resolveDisplayedKeyPaint: () => ({ keyId: 'key-a', bytes: testWebpBytes('displayed-paint') }),
+      bakeRotoKeyPaint,
+    });
+
+    harness.utils.duplicateKey();
+    await flushAsync();
+
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledTimes(1);
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledWith('key-a');
+    expect(harness.setApplyStatus).not.toHaveBeenCalledWith('error');
+  });
+
+  it('duplicates immediately without baking when the source record already carries bytes', async () => {
+    const bakeRotoKeyPaint = vi.fn(async (_paint: { keyId: string; appFrame: number; bytes: Uint8Array; width?: number; height?: number }) => true);
+    const harness = createHarness({
+      currentFrame: 3,
+      records: [realKeyRecord('key-a', 3)],
+      realKeyFrames: [realKeyFrame(3)],
+      resolveDisplayedKeyPaint: () => ({ keyId: 'key-a', bytes: testWebpBytes('displayed-paint') }),
+      bakeRotoKeyPaint,
+    });
+
+    harness.utils.duplicateKey();
+    await flushAsync();
+
+    expect(bakeRotoKeyPaint).not.toHaveBeenCalled();
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledTimes(1);
+    expect(harness.input.physicalKeyUtilities.duplicateKey).toHaveBeenCalledWith('key-a');
   });
 });
