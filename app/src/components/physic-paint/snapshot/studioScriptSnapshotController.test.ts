@@ -8,7 +8,7 @@
 //  "never mutates on a refused read" is asserted against it.
 // ============================================================
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   AquarelleDryEvent,
   AquarellePayloadEvent,
@@ -318,5 +318,258 @@ describe('studioScriptSnapshotController', () => {
     controller.bind(IDENTITY);
     await controller.restore();
     expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7, 9]);
+  });
+});
+
+// ------------------------------------------------------------
+//  quick-261023-l35 Task 3 — save discipline.
+//  One 800 ms timer, at most one in-flight write, at most one
+//  queued follow-up; a failed write never re-arms itself.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — save discipline', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('coalesces two revision bumps inside the window into ONE write', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    controller.markDirty();
+    setSignature('sig-2');
+    controller.markDirty();
+
+    await vi.advanceTimersByTimeAsync(799);
+    expect(write).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    // The single write carried the LATEST content, not the first bump.
+    expect(controller.isDirty()).toBe(false);
+    controller.dispose();
+  });
+
+  it('arms exactly one timer when markDirty is called twice', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    controller.markDirty();
+    controller.markDirty();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(write).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  it('allows ONE queued follow-up for a bump during an in-flight write', async () => {
+    const { controller, write, setSignature } = harness();
+    let releaseFirstWrite!: () => void;
+    write.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        releaseFirstWrite = () => resolve({ ok: true, data: { byteLength: 1, digest: 'd' } });
+      }),
+    );
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    controller.markDirty();
+    await vi.advanceTimersByTimeAsync(800);
+    expect(write).toHaveBeenCalledTimes(1);
+
+    // Two bumps while the first write is still in flight.
+    setSignature('sig-2');
+    controller.markDirty();
+    setSignature('sig-3');
+    controller.markDirty();
+
+    releaseFirstWrite();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(write).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).toHaveBeenCalledTimes(2);
+    controller.dispose();
+  });
+
+  it('stops after a failed write instead of re-arming itself', async () => {
+    const { controller, write, report, setSignature } = harness();
+    write.mockResolvedValue({ ok: false, error: { kind: 'io' } });
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    controller.markDirty();
+
+    await vi.advanceTimersByTimeAsync(800);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  it('does not re-report a save failure after a successful retry', async () => {
+    const { controller, write, report, setSignature } = harness();
+    write.mockResolvedValueOnce({ ok: false, error: { kind: 'io' } });
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    await controller.saveNow();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(true);
+
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(false);
+  });
+
+  it('clears the timer on dispose and on reset — no later write occurs', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    controller.markDirty();
+    controller.dispose();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).not.toHaveBeenCalled();
+
+    controller.markDirty();
+    controller.reset();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('bind clears a pending debounce from the outgoing key', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    controller.markDirty();
+    controller.bind({ ...IDENTITY, trackId: 'track-2' });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('flushNow clears the timer and writes once', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    setSignature('sig-1');
+    controller.markDirty();
+    await controller.flushNow();
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(controller.isDirty()).toBe(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards an older in-flight restore when a newer key is bound', async () => {
+    const { controller, read } = harness();
+    const bytes = encodedFixture();
+    let releaseFirstRead!: (value: StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>) => void;
+    read.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        releaseFirstRead = resolve;
+      }),
+    );
+    controller.bind(IDENTITY);
+    const firstRestore = controller.restore();
+    // A rapid second switch: the first decode must not seed the store.
+    controller.bind({ ...IDENTITY, trackId: 'track-2' });
+    releaseFirstRead({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    await expect(firstRestore).resolves.toEqual({ status: 'empty', maxRestoredMutationId: 0 });
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
+
+    // The second key restores its OWN snapshot (the container carries its key).
+    const secondIdentity: StudioScriptSnapshotIdentity = { ...IDENTITY, trackId: 'track-2' };
+    const secondBytes = encodeStudioScriptSnapshot({
+      ...secondIdentity,
+      watercolorEvents: fixtureEvents(),
+    });
+    read.mockResolvedValue({
+      ok: true,
+      data: { bytes: secondBytes, digest: 'd', byteLength: secondBytes.byteLength },
+    });
+    await expect(controller.restore()).resolves.toEqual({
+      status: 'restored',
+      maxRestoredMutationId: 102,
+    });
+  });
+});
+
+// ------------------------------------------------------------
+//  quick-261023-l35 Task 3 — the measurement record.
+//  FIXTURE-DERIVED: this environment cannot run the app, so a live
+//  heavy-project measurement is not possible; this fixture mirrors
+//  the g4p measured shape (40 primaries x 180 points + one
+//  diffusion continuation each, three frames). The literal below is
+//  the contract — a format change must fail this test loudly.
+// ------------------------------------------------------------
+
+const HEAVY_PRIMARY_POINT_COUNT = 180;
+const HEAVY_GROUPS_PER_FRAME = 40;
+const HEAVY_FRAME_COUNT = 3;
+/** bytes — SNAP v1 container with three heavy brush frames, empty AQTL. */
+const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_790;
+
+function heavyPoint(index: number): PenPoint {
+  return {
+    x: 800 + index * 0.5,
+    y: 400 + index * 0.25,
+    p: 0.5,
+    tx: 0.125,
+    ty: -0.375,
+    tw: 0.0625,
+    spd: 0.25,
+  };
+}
+
+function heavyPrimary(frame: number, mutationId: number): PaintStroke {
+  return {
+    tool: 'paint',
+    points: Array.from({ length: HEAVY_PRIMARY_POINT_COUNT }, (_, index) => heavyPoint(index)),
+    color: '#123456',
+    params: { ...BRUSH_PARAMS },
+    timestamp: mutationId,
+    mutationId,
+    playFrame: frame,
+  };
+}
+
+function heavyContinuation(frame: number, mutationId: number): PaintStroke {
+  return {
+    tool: 'paint',
+    points: [],
+    color: '#123456',
+    params: { ...BRUSH_PARAMS },
+    timestamp: mutationId,
+    mutationId,
+    diffusionFrames: 2,
+    playFrame: frame,
+  };
+}
+
+function heavyBrushFrame(frame: number): StudioScriptSnapshotBrushFrame {
+  return {
+    frame,
+    complete: true,
+    paintSettings: null,
+    groups: Array.from({ length: HEAVY_GROUPS_PER_FRAME }, (_, index) => ({
+      primary: heavyPrimary(frame, 1000 + index),
+      continuations: [heavyContinuation(frame, 5000 + index)],
+    })),
+  };
+}
+
+describe('studioScriptSnapshotController — heavy fixture measurement', () => {
+  it('encodes the heavy three-frame fixture to the recorded byte length', () => {
+    const bytes = encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: [],
+      brushFrames: Array.from({ length: HEAVY_FRAME_COUNT }, (_, index) =>
+        heavyBrushFrame(100 + index),
+      ),
+    });
+    expect(bytes.byteLength).toBe(HEAVY_SNAPSHOT_BYTE_LENGTH);
+    // The whole container decodes back, so the measurement is of a legal file.
+    expect(decodeStudioScriptSnapshot(bytes, IDENTITY).brushFrames).toHaveLength(HEAVY_FRAME_COUNT);
   });
 });

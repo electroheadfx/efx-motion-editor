@@ -198,6 +198,7 @@ import {
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   recordAquarelleStroke,
+  resetAquarelleRecordState,
   setAquarelleParam,
   setAquarelleStrokeDiffusionFrames,
 } from './view/aquarelleRecordState';
@@ -1075,6 +1076,30 @@ export function PhysicsPaintStudio() {
   // seam so a recreated engine (crash-recovery reload) cannot reuse a restored
   // id and silently overwrite the restored registry entry.
   const studioScriptSnapshotReservedNextMutationIdRef = useRef(0);
+  // quick-261023-l35 Task 3: ONE coalescing subscription lives HERE, never in
+  // the controller module. `aquarelleStrokesRevision` and `brushScriptRevision`
+  // are the only inputs — recordAquarelleStroke and every brush
+  // capture/clear/prune bump them, so a completed stroke can never be lost
+  // silently. The first run is the seed read at mount (no mutation yet). The
+  // effect body writes no signal; the controller instance comes from a
+  // render-body ref, so the deps are identity-stable.
+  useEffect(() => {
+    let seedRun = true;
+    const disposeSubscription = effect(() => {
+      aquarelleStrokesRevision.value;
+      brushScriptRevision.value;
+      if (seedRun) {
+        seedRun = false;
+        return;
+      }
+      studioScriptSnapshot.markDirty();
+    });
+    return () => {
+      disposeSubscription();
+      // Teardown clears the pending debounce timer; no later write occurs.
+      studioScriptSnapshot.dispose();
+    };
+  }, [studioScriptSnapshot]);
   // 52.1 (warm progress): 0..100 while a blank key's settle gate holds the pen
   // (FRESH_FRAME_WARM_MS); the capsule renders a thin bar so the artist knows
   // when the canvas is released. 0 = idle, 100 = released.
@@ -3037,10 +3062,11 @@ export function PhysicsPaintStudio() {
         },
         // quick-261023-l35 (T-261023-l35-05): the script snapshot save runs
         // LAST and is time-bounded — a hung disk write can never hold the
-        // window open. saveNow() itself never rejects; this race is the
-        // second belt.
+        // window open. Task 3: flushNow() clears the debounce timer, waits out
+        // the in-flight write and then writes once if still dirty; it never
+        // rejects, and this race is the second belt.
         () => Promise.race([
-          studioScriptSnapshot.saveNow(),
+          studioScriptSnapshot.flushNow(),
           new Promise<void>((resolve) => {
             window.setTimeout(resolve, STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS);
           }),
@@ -3840,6 +3866,19 @@ export function PhysicsPaintStudio() {
       const hadPreviousTrack = lastEditStateTrackIdRef.current !== null;
       lastEditStateTrackIdRef.current = trackId;
       if (hadPreviousTrack) {
+        // quick-261023-l35 Task 3 (T-261023-l35-03/-07): the outgoing
+        // track's script is captured and SAVED BEFORE any reset — without
+        // this, the module stores would hold the outgoing track's strokes
+        // and the next save would write them under the incoming key, the
+        // exact cross-track mix the brief forbids.
+        aquarelleFlushCaptureRef.current?.();
+        const outgoingEngine = engineRef.current;
+        flushBrushScriptFrame(
+          currentFrame,
+          outgoingEngine?.getStrokes() ?? null,
+          outgoingEngine?.getFramePaintSettings() ?? outgoingEngine?.getPaintRenderSettings() ?? null,
+        );
+        void studioScriptSnapshot.saveNow();
         rotoEditBuffer.resetForLaunch();
         rotoPersistence.confirmedFramesRef.current = new Map();
         rotoEditableFramesRef.current = [];
@@ -3850,6 +3889,35 @@ export function PhysicsPaintStudio() {
         // cross-track switch must drop it fail-closed so no previous-track
         // entry can hydrate or draw outlines on the new track.
         resetBrushScriptStore();
+        // quick-261023-l35: the watercolor timeline is track-scoped too.
+        resetAquarelleRecordState();
+        // Bind the incoming key and restore it. Never awaited: this effect is
+        // synchronous, and the controller's generation guard — bumped by every
+        // bind — discards an earlier in-flight decode on a rapid double
+        // switch. The incoming restore prunes to the incoming track's
+        // getRotoRealKeyRecords frames.
+        const incomingProjectId = lc.project?.projectId ?? '';
+        if (incomingProjectId) {
+          const incomingIdentity: StudioScriptSnapshotIdentity = {
+            projectId: incomingProjectId,
+            layerId: lc.layerId,
+            trackId,
+          };
+          studioScriptSnapshotIdentityRef.current = incomingIdentity;
+          studioScriptSnapshot.bind(incomingIdentity);
+          void studioScriptSnapshot.restore().then((restored) => {
+            if (restored.maxRestoredMutationId <= 0) return;
+            const nextMutationId = Math.max(
+              studioScriptSnapshotReservedNextMutationIdRef.current,
+              restored.maxRestoredMutationId + 1,
+            );
+            studioScriptSnapshotReservedNextMutationIdRef.current = nextMutationId;
+            engineRef.current?.reserveMutationClock(nextMutationId);
+          });
+        } else {
+          studioScriptSnapshotIdentityRef.current = null;
+          studioScriptSnapshot.bind(null);
+        }
       }
     }
     const engine = engineRef.current as PreviewBackgroundEngine | null;

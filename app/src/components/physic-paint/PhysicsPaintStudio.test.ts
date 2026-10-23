@@ -3432,8 +3432,13 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(3);
     expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(');
     expect(brushScriptEditionPortSource).toContain('resolved.engine.getStrokes(),');
-    // The Studio render body never subscribes the store revision.
-    expect(studio).not.toContain('brushScriptRevision.value');
+    // The Studio render body never subscribes the store revision. The ONE
+    // allowed read is the snapshot coalescing effect (quick-261023-l35
+    // Task 3), which lives inside a useEffect, never the render body.
+    expect(studio.match(/brushScriptRevision\.value/g)).toHaveLength(1);
+    const coalescingEffectStart = studio.indexOf('// quick-261023-l35 Task 3: ONE coalescing subscription');
+    expect(coalescingEffectStart).toBeGreaterThan(-1);
+    expect(studio.indexOf('brushScriptRevision.value')).toBeGreaterThan(coalescingEffectStart);
   });
 });
 
@@ -3692,7 +3697,7 @@ describe('261023-l35 studio script snapshot seams', () => {
   it('bounds the close-path save and keeps a dirty script pending', () => {
     expect(studio).toContain('() => workflowMode === \'roto\' || studioScriptSnapshot.isDirty(),');
     expect(studio).toContain('const STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS = 2000;');
-    expect(studio).toContain('studioScriptSnapshot.saveNow(),');
+    expect(studio).toContain('studioScriptSnapshot.flushNow(),');
     expect(studio).toContain('window.setTimeout(resolve, STUDIO_SCRIPT_SNAPSHOT_CLOSE_BUDGET_MS);');
   });
 
@@ -3717,11 +3722,49 @@ describe('261023-l35 brush frames in the Studio script snapshot', () => {
     const closeStart = studio.indexOf('usePhysicsPaintCloseFlush(');
     const closeBody = studio.slice(closeStart, studio.indexOf('// 41-05 (D-08): release the audio engine on Studio unmount', closeStart));
     const captureIndex = closeBody.indexOf('flushBrushScriptFrame(');
-    const saveIndex = closeBody.indexOf('studioScriptSnapshot.saveNow(),');
+    const saveIndex = closeBody.indexOf('studioScriptSnapshot.flushNow(),');
     expect(captureIndex).toBeGreaterThan(-1);
     expect(saveIndex).toBeGreaterThan(captureIndex);
     // Watercolor mode has its own capture step; the brush capture is gated out.
     expect(closeBody).toContain("if (activeModule.peek() === 'watercolor') return;");
     expect(closeBody).toContain('engineRef.current?.getFramePaintSettings() ?? engineRef.current?.getPaintRenderSettings()');
+  });
+});
+
+// quick-261023-l35 Task 3: save discipline — the coalescing subscription, the
+// cross-track handoff, and the disposal path.
+describe('261023-l35 save discipline in the Studio', () => {
+  it('subscribes to BOTH store revisions with a first-run skip', () => {
+    const effectStart = studio.indexOf('// quick-261023-l35 Task 3: ONE coalescing subscription');
+    const effectBody = studio.slice(effectStart, studio.indexOf('}, [studioScriptSnapshot]);', effectStart));
+    expect(effectStart).toBeGreaterThan(-1);
+    expect(effectBody).toContain('aquarelleStrokesRevision.value;');
+    expect(effectBody).toContain('brushScriptRevision.value;');
+    expect(effectBody).toContain('let seedRun = true;');
+    expect(effectBody).toContain('studioScriptSnapshot.markDirty();');
+    expect(effectBody).toContain('studioScriptSnapshot.dispose();');
+  });
+
+  it('saves the outgoing key, resets both stores, then binds and restores', () => {
+    const switchStart = studio.indexOf('if (lastEditStateTrackIdRef.current !== trackId) {');
+    const switchBody = studio.slice(switchStart, studio.indexOf('const engine = engineRef.current as PreviewBackgroundEngine | null;', switchStart));
+    const flushCapture = switchBody.indexOf('aquarelleFlushCaptureRef.current?.();');
+    const brushCapture = switchBody.indexOf('flushBrushScriptFrame(');
+    const saveOutgoing = switchBody.indexOf('void studioScriptSnapshot.saveNow();');
+    const resetBrush = switchBody.indexOf('resetBrushScriptStore();');
+    const resetWatercolor = switchBody.indexOf('resetAquarelleRecordState();');
+    const bindIncoming = switchBody.indexOf('studioScriptSnapshot.bind(incomingIdentity);');
+    const restoreIncoming = switchBody.indexOf('void studioScriptSnapshot.restore()');
+    expect(flushCapture).toBeGreaterThan(-1);
+    expect(brushCapture).toBeGreaterThan(flushCapture);
+    expect(saveOutgoing).toBeGreaterThan(brushCapture);
+    expect(resetBrush).toBeGreaterThan(saveOutgoing);
+    expect(resetWatercolor).toBeGreaterThan(resetBrush);
+    expect(bindIncoming).toBeGreaterThan(resetWatercolor);
+    expect(restoreIncoming).toBeGreaterThan(bindIncoming);
+    // Restore is dispatched, never awaited inside the synchronous effect.
+    expect(switchBody).not.toContain('await studioScriptSnapshot.restore()');
+    // The incoming restore reserves the engine clock past restored ids.
+    expect(switchBody).toContain('engineRef.current?.reserveMutationClock(nextMutationId);');
   });
 });

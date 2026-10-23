@@ -24,6 +24,18 @@
 //  instead of wiping the script — an empty set at launch-restore
 //  time means the key records are not loaded yet, not that the
 //  script is empty.
+//
+//  SAVE DISCIPLINE: markDirty() coalesces mutations into ONE 800 ms
+//  debounced write — one timer, at most one in-flight write, at
+//  most one queued follow-up. TERMINATION LAWS (written, not
+//  implied): the timer is cleared by reset(), dispose() and bind();
+//  a successful write whose content still matches the baseline
+//  re-arms nothing; a FAILED write reports and stops — it never
+//  re-arms itself, so a dead disk cannot spin a write loop; only a
+//  NEW content-signature change re-arms. restore() suspends
+//  markDirty() for its duration: the seeded stores bump their
+//  revisions, and the seed IS the new saved baseline, not a
+//  mutation to persist.
 // ============================================================
 
 import { isAquarelleDryEvent, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
@@ -84,19 +96,31 @@ export interface StudioScriptSnapshotRestoreResult {
 }
 
 export interface StudioScriptSnapshotController {
-  /** Bind a key, or clear the binding. Resets the dirty baseline. */
+  /** Bind a key, or clear the binding. Resets the dirty baseline and the timer. */
   bind(identity: StudioScriptSnapshotIdentity | null): void;
   /** Read + decode + prune + seed the stores. Never rejects. */
   restore(): Promise<StudioScriptSnapshotRestoreResult>;
-  /** Encode + write the bound key. Never rejects. */
+  /**
+   * Arm the coalesced save when the content signature moved past the saved
+   * baseline. Idempotent: repeated calls inside one window arm ONE timer.
+   */
+  markDirty(): void;
+  /** Clear the timer, wait out any in-flight write, then write once if dirty. */
+  flushNow(): Promise<void>;
+  /** Encode + write the bound key now. Never rejects. */
   saveNow(): Promise<void>;
   /** True when the content changed since the last successful save / restore. */
   isDirty(): boolean;
   /** Drop the binding and every internal baseline (Studio disposal). */
   reset(): void;
+  /** Clear the pending debounce timer; performs no write (effect cleanup). */
+  dispose(): void;
   getBoundIdentity(): StudioScriptSnapshotIdentity | null;
   getLastSavedSignature(): string | null;
 }
+
+/** Coalescing window for script mutations (Task 3). */
+const STUDIO_SCRIPT_SNAPSHOT_DEBOUNCE_MS = 800;
 
 function normalizeIdentity(
   identity: StudioScriptSnapshotIdentity | null,
@@ -147,6 +171,27 @@ export function createStudioScriptSnapshotController(
   let generation = 0;
   /** One restore-failure report per bound identity. */
   let restoreFailureReported = false;
+  /** Coalescing timer — at most one armed at a time. */
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Serialized write queue. A payload is prepared SYNCHRONOUSLY at every
+   * enqueue site (so the track-switch save captures the outgoing script
+   * before any reset), then committed strictly in enqueue order — an older
+   * debounced payload can never land last and un-write a newer one.
+   */
+  let writeTail: Promise<void> = Promise.resolve();
+  /** True while drainSaves owns a queued write (coalescing flag). */
+  let writeBusy = false;
+  /** Set while a write is in flight and the content moved again. */
+  let followUpRequested = false;
+  /** Non-zero while restore() seeds the stores — seeding is not a mutation. */
+  let restoringCount = 0;
+
+  function clearSaveTimer(): void {
+    if (saveTimer === null) return;
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
 
   function reportRestoreFailureOnce(kind: string): void {
     if (restoreFailureReported) return;
@@ -156,6 +201,10 @@ export function createStudioScriptSnapshotController(
 
   function bind(identity: StudioScriptSnapshotIdentity | null): void {
     generation += 1;
+    // A pending debounce belongs to the OUTGOING key: a track switch must
+    // never let it fire against the incoming identity.
+    clearSaveTimer();
+    followUpRequested = false;
     boundIdentity = normalizeIdentity(identity);
     lastSavedSignature = null;
     restoreFailureReported = false;
@@ -165,62 +214,75 @@ export function createStudioScriptSnapshotController(
     const identity = boundIdentity;
     if (!identity) return { status: 'empty', maxRestoredMutationId: 0 };
     const requestGeneration = generation;
-
-    let result: StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>;
+    restoringCount += 1;
     try {
-      result = await deps.read(identity);
-    } catch {
-      result = { ok: false, error: { kind: 'io' } };
-    }
-    // A track switch / reset while the read was in flight: discard it whole.
-    if (requestGeneration !== generation) {
-      return { status: 'empty', maxRestoredMutationId: 0 };
-    }
-
-    if (!result.ok) {
-      if (result.error.kind === 'missing') {
-        // Silent no-op: the first session on a project has no snapshot yet.
-        lastSavedSignature = deps.getContentSignature();
+      let result: StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>;
+      try {
+        result = await deps.read(identity);
+      } catch {
+        result = { ok: false, error: { kind: 'io' } };
+      }
+      // A track switch / reset while the read was in flight: discard it whole.
+      if (requestGeneration !== generation) {
         return { status: 'empty', maxRestoredMutationId: 0 };
       }
-      reportRestoreFailureOnce(result.error.kind);
-      return { status: 'refused', maxRestoredMutationId: 0 };
-    }
 
-    let decoded: ReturnType<typeof decodeStudioScriptSnapshot>;
-    try {
-      decoded = decodeStudioScriptSnapshot(result.data.bytes, identity);
-    } catch (error) {
-      const kind =
-        error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'corrupt';
-      reportRestoreFailureOnce(kind);
-      return { status: 'refused', maxRestoredMutationId: 0 };
-    }
-    if (requestGeneration !== generation) {
-      return { status: 'empty', maxRestoredMutationId: 0 };
-    }
+      if (!result.ok) {
+        if (result.error.kind === 'missing') {
+          // Silent no-op: the first session on a project has no snapshot yet.
+          lastSavedSignature = deps.getContentSignature();
+          return { status: 'empty', maxRestoredMutationId: 0 };
+        }
+        reportRestoreFailureOnce(result.error.kind);
+        return { status: 'refused', maxRestoredMutationId: 0 };
+      }
 
-    const liveFrames = deps.getLiveFrames();
-    const events = pruneWatercolorEventsToLiveFrames(decoded.watercolorEvents, liveFrames);
-    // The brush ledger is pruned to the SAME live real-key set: a frame whose
-    // key no longer exists must never reappear in the editable store.
-    const brushFrames = pruneBrushFramesToLiveFrames(decoded.brushFrames, liveFrames);
-    const maxRestoredMutationId = restoreAquarelleRecordTimeline(events);
-    restoreBrushScriptFrames(brushFrames);
-    lastSavedSignature = deps.getContentSignature();
-    return { status: 'restored', maxRestoredMutationId };
+      let decoded: ReturnType<typeof decodeStudioScriptSnapshot>;
+      try {
+        decoded = decodeStudioScriptSnapshot(result.data.bytes, identity);
+      } catch (error) {
+        const kind =
+          error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'corrupt';
+        reportRestoreFailureOnce(kind);
+        return { status: 'refused', maxRestoredMutationId: 0 };
+      }
+      if (requestGeneration !== generation) {
+        return { status: 'empty', maxRestoredMutationId: 0 };
+      }
+
+      const liveFrames = deps.getLiveFrames();
+      const events = pruneWatercolorEventsToLiveFrames(decoded.watercolorEvents, liveFrames);
+      // The brush ledger is pruned to the SAME live real-key set: a frame whose
+      // key no longer exists must never reappear in the editable store.
+      const brushFrames = pruneBrushFramesToLiveFrames(decoded.brushFrames, liveFrames);
+      const maxRestoredMutationId = restoreAquarelleRecordTimeline(events);
+      restoreBrushScriptFrames(brushFrames);
+      lastSavedSignature = deps.getContentSignature();
+      return { status: 'restored', maxRestoredMutationId };
+    } finally {
+      restoringCount -= 1;
+    }
   }
 
-  async function saveNow(): Promise<void> {
-    const identity = boundIdentity;
-    if (!identity) return;
-    const signature = deps.getContentSignature();
-    const requestGeneration = generation;
+  interface PreparedSave {
+    identity: StudioScriptSnapshotIdentity;
+    bytes: Uint8Array;
+    signature: string;
+    generation: number;
+  }
 
-    let bytes: Uint8Array;
+  /**
+   * Encode the bound key NOW. Null when nothing changed (the baseline case)
+   * or when the encode itself failed (reported here, once per attempt).
+   */
+  function prepareSave(): PreparedSave | null {
+    const identity = boundIdentity;
+    if (!identity) return null;
+    const signature = deps.getContentSignature();
+    if (signature === lastSavedSignature) return null;
     try {
       const liveFrames = deps.getLiveFrames();
-      bytes = encodeStudioScriptSnapshot({
+      const bytes = encodeStudioScriptSnapshot({
         ...identity,
         watercolorEvents: pruneWatercolorEventsToLiveFrames(
           deps.getWatercolorEvents(),
@@ -228,28 +290,109 @@ export function createStudioScriptSnapshotController(
         ),
         brushFrames: pruneBrushFramesToLiveFrames(deps.getBrushFrames(), liveFrames),
       });
+      return { identity, bytes, signature, generation };
     } catch (error) {
       const kind =
         error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'io';
       deps.report(studioScriptSnapshotSaveFailureMessage(kind));
-      return;
+      return null;
     }
+  }
 
+  /** One write attempt. Never rejects; reports once per failed save. */
+  async function commitSave(prepared: PreparedSave): Promise<void> {
     let result: StudioScriptSnapshotOperationResult<StudioScriptSnapshotWritePayload>;
     try {
-      result = await deps.write(identity, bytes);
+      result = await deps.write(prepared.identity, prepared.bytes);
     } catch {
       result = { ok: false, error: { kind: 'io' } };
     }
     if (!result.ok) {
+      // A failed write reports ONCE and stops — it never re-arms itself.
       deps.report(studioScriptSnapshotSaveFailureMessage(result.error.kind));
       return;
     }
     // Only a save that still represents the CURRENT identity and content
     // clears the dirty flag; a mutation during the write leaves it dirty.
-    if (requestGeneration === generation && deps.getContentSignature() === signature) {
-      lastSavedSignature = signature;
+    if (prepared.generation === generation && deps.getContentSignature() === prepared.signature) {
+      lastSavedSignature = prepared.signature;
     }
+  }
+
+  /** FIFO write queue: exactly one commit is in flight at any time. */
+  function enqueueSave(prepared: PreparedSave): Promise<void> {
+    const run = writeTail.then(
+      () => commitSave(prepared),
+      () => commitSave(prepared),
+    );
+    writeTail = run;
+    return run;
+  }
+
+  /** Timer callback: one prepared write, draining at most one follow-up. */
+  async function drainSaves(): Promise<void> {
+    if (writeBusy) {
+      followUpRequested = true;
+      try {
+        await writeTail;
+      } catch {
+        // commitSave never rejects; defensive only.
+      }
+      return;
+    }
+    const prepared = prepareSave();
+    if (!prepared) return;
+    writeBusy = true;
+    try {
+      await enqueueSave(prepared);
+    } finally {
+      writeBusy = false;
+    }
+    if (followUpRequested) {
+      followUpRequested = false;
+      if (isDirty()) await drainSaves();
+    }
+  }
+
+  function markDirty(): void {
+    if (!boundIdentity) return;
+    // The restore's seed bumps are the new baseline, not a mutation.
+    if (restoringCount > 0) return;
+    if (deps.getContentSignature() === lastSavedSignature) return;
+    if (writeBusy) {
+      // In flight: request at most ONE queued follow-up.
+      followUpRequested = true;
+      return;
+    }
+    if (saveTimer !== null) return;
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      void drainSaves();
+    }, STUDIO_SCRIPT_SNAPSHOT_DEBOUNCE_MS);
+  }
+
+  async function flushNow(): Promise<void> {
+    // The close path's flush: clear the timer, wait out every write already
+    // queued for this key, then write once if the content is still newer.
+    clearSaveTimer();
+    try {
+      await writeTail;
+    } catch {
+      // commitSave never rejects; defensive only.
+    }
+    followUpRequested = false;
+    const prepared = prepareSave();
+    if (!prepared) return;
+    await enqueueSave(prepared);
+  }
+
+  function saveNow(): Promise<void> {
+    // Synchronous capture: the track switch calls this fire-and-forget BEFORE
+    // the stores are reset, and the prepared payload must be the OUTGOING
+    // script. The queue guarantees it lands after any older debounced write.
+    const prepared = prepareSave();
+    if (!prepared) return Promise.resolve();
+    return enqueueSave(prepared);
   }
 
   function isDirty(): boolean {
@@ -257,8 +400,15 @@ export function createStudioScriptSnapshotController(
     return deps.getContentSignature() !== lastSavedSignature;
   }
 
+  function dispose(): void {
+    clearSaveTimer();
+    followUpRequested = false;
+  }
+
   function reset(): void {
     generation += 1;
+    clearSaveTimer();
+    followUpRequested = false;
     boundIdentity = null;
     lastSavedSignature = null;
     restoreFailureReported = false;
@@ -267,9 +417,12 @@ export function createStudioScriptSnapshotController(
   return {
     bind,
     restore,
+    markDirty,
+    flushNow,
     saveNow,
     isDirty,
     reset,
+    dispose,
     getBoundIdentity: () => boundIdentity,
     getLastSavedSignature: () => lastSavedSignature,
   };
