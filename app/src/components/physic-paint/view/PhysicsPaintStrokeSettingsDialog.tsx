@@ -144,13 +144,14 @@ const SCROLL_CONTENT_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '10px',
-  padding: '0 12px 0',
+  padding: '10px 12px 0',
 };
 
+/** One tab's content: 15px rhythm between its rows. */
 const SECTION_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '8px',
+  gap: '15px',
 };
 
 const PAINT_ROW_LABEL_STYLE: CSSProperties = {
