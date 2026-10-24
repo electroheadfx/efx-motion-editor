@@ -145,23 +145,53 @@ function childrenOf(node: unknown): unknown[] {
   return [vnode, ...childrenOf(children)];
 }
 
+/**
+ * Expanding a function component outside a real render allocates its refs in
+ * the same index space as the dialog. Give every traversal its own stable
+ * band, so a lookup can never collide with a render-scoped ref (261024-vga
+ * tabs moved the dialog's ref count, which exposed the collision).
+ */
+const TRAVERSAL_REF_BASE = 1000;
+
+function withTraversalRefs<Value>(run: () => Value): Value {
+  const saved = hooks.cursor;
+  hooks.cursor = TRAVERSAL_REF_BASE;
+  try {
+    return run();
+  } finally {
+    hooks.cursor = saved;
+  }
+}
+
 function findByTestId(tree: unknown, testId: string): AnyVNode | undefined {
-  return childrenOf(tree).find((node) => {
+  return withTraversalRefs(() => childrenOf(tree).find((node) => {
     const vnode = node as AnyVNode;
     return typeof vnode.type !== 'function' && vnode.props?.['data-testid'] === testId;
-  }) as AnyVNode | undefined;
+  })) as AnyVNode | undefined;
 }
 
 function findComponent(tree: unknown, predicate: (props: Record<string, any>) => boolean): AnyVNode | undefined {
-  return childrenOf(tree).find((node) => {
+  return withTraversalRefs(() => childrenOf(tree).find((node) => {
     const vnode = node as AnyVNode;
     return typeof vnode.type === 'function' && predicate(vnode.props ?? {});
-  }) as AnyVNode | undefined;
+  })) as AnyVNode | undefined;
 }
 
 function renderDialog(bundle: StrokeSettingsDialogBundle | null | undefined): unknown {
   hooks.beginRender();
   return PhysicsPaintStrokeSettingsDialog({ bundle });
+}
+
+/** Activate one of the pinned tabs, then re-render from the live signal. */
+function renderDialogTab(
+  bundle: StrokeSettingsDialogBundle | null | undefined,
+  tab: 'geometry' | 'stack' | 'paint',
+): unknown {
+  const tree = renderDialog(bundle);
+  const button = findByTestId(tree, `stroke-settings-tab-${tab}`);
+  expect(button, `tab ${tab}`).toBeDefined();
+  (button!.props.onClick as () => void)();
+  return renderDialog(bundle);
 }
 
 function runDialogEffect(): void {
@@ -562,7 +592,7 @@ describe('261024-p5q dialog shell', () => {
   it('the Size row is a release-commit SliderStepper that commits one bundle patch for the whole selection', () => {
     const { bundle, calls } = createBundle();
     setScriptStrokeSelection([7, 9]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
 
     const slider = findComponent(tree, (props) => props.ariaLabel === 'Size');
     expect(slider).toBeDefined();
@@ -599,7 +629,7 @@ describe('261024-p5q dialog fields and shared color', () => {
       listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
     });
     setScriptStrokeSelection([7]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
 
     for (const field of BRUSH_SETTINGS_FIELDS) {
       if (field.kind !== 'numeric') continue;
@@ -615,7 +645,9 @@ describe('261024-p5q dialog fields and shared color', () => {
 
     // Opacity ALSO leads Geometry, while the Paint row stays (the dialog
     // mirrors the top bar, which surfaces both).
-    expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeDefined();
+    expect(
+      findByTestId(renderDialogTab(bundle, 'geometry'), 'stroke-settings-geometry-opacity'),
+    ).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-opacity')).toBeDefined();
 
     // An untouched row never writes; one row's onChange writes only that key.
@@ -643,7 +675,7 @@ describe('261024-p5q dialog fields and shared color', () => {
     });
     setScriptSelectMode(true);
     setScriptStrokeSelection([7]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
 
     for (const field of WATERCOLOR_SETTINGS_FIELDS) {
       const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
@@ -656,8 +688,9 @@ describe('261024-p5q dialog fields and shared color', () => {
 
     // Water color has no global opacity: Pigment (`load`) is a Paint row and
     // Geometry must not mirror it under the name Opacity.
-    expect(findComponent(tree, (props) => props.ariaLabel === 'Opacity')).toBeUndefined();
-    expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeUndefined();
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+    expect(findComponent(geometryTree, (props) => props.ariaLabel === 'Opacity')).toBeUndefined();
+    expect(findByTestId(geometryTree, 'stroke-settings-geometry-opacity')).toBeUndefined();
 
     const pigment = findComponent(tree, (props) => props.ariaLabel === 'Pigment')!;
     (pigment.props.onChange as (value: number) => void)(70);
@@ -675,7 +708,7 @@ describe('261024-p5q dialog fields and shared color', () => {
       }, id === 7 ? '#ff0000' : '#00ff00')),
     });
     setScriptStrokeSelection([7, 9]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
 
     const size = findComponent(tree, (props) => props.ariaLabel === 'Size')!;
     expect(size.props.mixed).toBe(true);
@@ -701,7 +734,7 @@ describe('261024-p5q dialog fields and shared color', () => {
       })),
     });
     setScriptStrokeSelection([7, 9]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
     expect(findByTestId(tree, 'stroke-settings-smoothing-mixed')).toBeUndefined();
     expect(
       findByTestId(tree, 'stroke-settings-smoothing-option-2')!.props['aria-pressed'],
@@ -717,7 +750,7 @@ describe('261024-p5q dialog fields and shared color', () => {
       )),
     });
     setScriptStrokeSelection([7, 9]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
 
     const thumb = findByTestId(tree, 'stroke-settings-color-thumb')!;
     expect(thumb).toBeDefined();
@@ -733,7 +766,7 @@ describe('261024-p5q dialog fields and shared color', () => {
       readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#ff0000')),
     });
     setScriptStrokeSelection([7, 9]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
     expect(findByTestId(tree, 'stroke-settings-color-thumb')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-color-mixed')).toBeUndefined();
   });
@@ -746,17 +779,62 @@ describe('261024-p5q dialog fields and shared color', () => {
     expect(dialogSource).toContain('data-testid="stroke-settings-header"');
   });
 
-  it('orders the sections Color - Geometry - Paint under ruled centered titles', () => {
-    const color = dialogSource.indexOf('<RuleSectionHeader text="Color"');
-    const geometry = dialogSource.indexOf('<RuleSectionHeader text="Geometry"');
-    const paint = dialogSource.indexOf('<RuleSectionHeader text="Paint"');
-    expect(color).toBeGreaterThan(-1);
-    expect(geometry).toBeGreaterThan(color);
-    expect(paint).toBeGreaterThan(geometry);
-    expect(dialogSource).toContain("import { RuleSectionHeader } from '../../shared/RuleSectionHeader'");
-    expect(dialogSource).toContain('padding: \'3px 0\'');
-    expect(dialogSource).toContain('SECTION_HEADER_FIRST_STYLE');
-    expect(dialogSource).toContain('paddingTop: 0');
+  it('puts Geometry, Stack and Paint on ONE pinned tab row, Geometry by default', () => {
+    const { bundle } = createBundle({
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      reorderStroke: () => true,
+    });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    const tabRow = findByTestId(tree, 'stroke-settings-tabs')!;
+    expect(tabRow).toBeDefined();
+    expect((tabRow.props.style as Record<string, unknown>).display).toBe('flex');
+    for (const tab of ['geometry', 'stack', 'paint']) {
+      expect(findByTestId(tree, `stroke-settings-tab-${tab}`), tab).toBeDefined();
+    }
+
+    // Geometry is the default: only its content is mounted.
+    expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(tree, 'stroke-settings-tab-paint')!.props['aria-selected']).toBe(false);
+    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-paint')).toBeUndefined();
+  });
+
+  it('switches content per tab and keeps the color readout inside Paint', () => {
+    const { bundle } = createBundle({
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+      reorderStroke: () => true,
+    });
+    setScriptStrokeSelection([7]);
+
+    const stackTree = renderDialogTab(bundle, 'stack');
+    expect(findByTestId(stackTree, 'stroke-settings-stack')).toBeDefined();
+    expect(findByTestId(stackTree, 'stroke-settings-geometry')).toBeUndefined();
+    expect(findByTestId(stackTree, 'stroke-settings-paint')).toBeUndefined();
+
+    const paintTree = renderDialogTab(bundle, 'paint');
+    expect(findByTestId(paintTree, 'stroke-settings-paint')).toBeDefined();
+    expect(findByTestId(paintTree, 'stroke-settings-color')).toBeDefined();
+    expect(findByTestId(paintTree, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(paintTree, 'stroke-settings-geometry')).toBeUndefined();
+
+    const geometryTree = renderDialogTab(bundle, 'geometry');
+    expect(findByTestId(geometryTree, 'stroke-settings-geometry')).toBeDefined();
+    expect(findByTestId(geometryTree, 'stroke-settings-paint')).toBeUndefined();
+    expect(findByTestId(geometryTree, 'stroke-settings-stack')).toBeUndefined();
+  });
+
+  it('omits the Stack tab when the bundle has no reorderStroke', () => {
+    const { bundle } = createBundle({
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+    });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-tab-geometry')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-stack')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-tab-paint')).toBeDefined();
   });
 
   it('gives the color block the full row and shows hex + rgb beneath it', () => {
@@ -764,7 +842,7 @@ describe('261024-p5q dialog fields and shared color', () => {
       readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#a1b2c3')),
     });
     setScriptStrokeSelection([7]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'paint');
 
     const thumb = findByTestId(tree, 'stroke-settings-color-thumb')!;
     expect(thumb.props.style.backgroundColor).toBe('#a1b2c3');
@@ -1129,27 +1207,27 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
     return input!.props.value;
   }
 
-  it('renders the Stack section between Geometry and Paint for BOTH modules', () => {
+  it('renders the Stack tab for BOTH modules and mounts its section only when opened', () => {
     const brush = stackBundle();
     setScriptStrokeSelection([11]);
-    expect(findByTestId(renderDialog(brush.bundle), 'stroke-settings-stack')).toBeDefined();
+    const brushTree = renderDialog(brush.bundle);
+    expect(findByTestId(brushTree, 'stroke-settings-tab-stack')).toBeDefined();
+    expect(findByTestId(brushTree, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(renderDialogTab(brush.bundle, 'stack'), 'stroke-settings-stack')).toBeDefined();
 
     setScriptSelectMode(true);
     const watercolor = stackBundle({ module: 'watercolor', brushMoveActive: false });
-    expect(findByTestId(renderDialog(watercolor.bundle), 'stroke-settings-stack')).toBeDefined();
-
-    const geometry = dialogSource.indexOf('<RuleSectionHeader text="Geometry"');
-    const stack = dialogSource.indexOf('<RuleSectionHeader text="Stack"');
-    const paint = dialogSource.indexOf('<RuleSectionHeader text="Paint"');
-    expect(geometry).toBeGreaterThan(-1);
-    expect(stack).toBeGreaterThan(geometry);
-    expect(paint).toBeGreaterThan(stack);
+    const watercolorDefault = renderDialogTab(watercolor.bundle, 'geometry');
+    expect(findByTestId(watercolorDefault, 'stroke-settings-tab-stack')).toBeDefined();
+    expect(findByTestId(watercolorDefault, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(renderDialogTab(watercolor.bundle, 'stack'), 'stroke-settings-stack')).toBeDefined();
   });
 
   it('is absent when the bundle provides no reorderStroke', () => {
     const { bundle } = createBundle({ listStrokes: () => rows });
     setScriptStrokeSelection([11]);
     const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-tab-stack')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-stack')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-stack-disabled')).toBeUndefined();
     expect(findComponent(tree, (props) => props.ariaLabel === 'Stack position')).toBeUndefined();
@@ -1158,7 +1236,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('shows the dot, serial, position and both neighbours for one selected stroke', () => {
     const { bundle } = stackBundle();
     setScriptStrokeSelection([11]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'stack');
     const dot = findByTestId(tree, 'stroke-settings-stack-dot')!;
     expect((dot.props.style as Record<string, unknown>).backgroundColor).toBe('#ff0000');
     expect(findByTestId(tree, 'stroke-settings-stack-serial')!.props.children).toBe('#12');
@@ -1170,13 +1248,13 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('renders an em dash at each stack edge', () => {
     const top = stackBundle();
     setScriptStrokeSelection([13]);
-    const topTree = renderDialog(top.bundle);
+    const topTree = renderDialogTab(top.bundle, 'stack');
     expect(findByTestId(topTree, 'stroke-settings-stack-above')!.props.children).toBe('Above —');
     expect(findByTestId(topTree, 'stroke-settings-stack-below')!.props.children).toBe('Below #12');
 
     const bottom = stackBundle();
     setScriptStrokeSelection([10]);
-    const bottomTree = renderDialog(bottom.bundle);
+    const bottomTree = renderDialogTab(bottom.bundle, 'stack');
     expect(findByTestId(bottomTree, 'stroke-settings-stack-above')!.props.children).toBe('Above #12');
     expect(findByTestId(bottomTree, 'stroke-settings-stack-below')!.props.children).toBe('Below —');
   });
@@ -1184,7 +1262,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('renders the position row as a release-commit free-entry SliderStepper without range bypass', () => {
     const { bundle } = stackBundle();
     setScriptStrokeSelection([11]);
-    const slider = stackSlider(renderDialog(bundle));
+    const slider = stackSlider(renderDialogTab(bundle, 'stack'));
     expect(slider.props.label).toBe('Position (1 = top)');
     expect(slider.props.value).toBe(2);
     expect([slider.props.min, slider.props.max, slider.props.step]).toEqual([1, 3, 1]);
@@ -1202,7 +1280,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('commits one reorder per gesture and nothing for the current position', async () => {
     const { bundle, reorderCalls } = stackBundle();
     setScriptStrokeSelection([11]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'stack');
 
     (stackSlider(tree).props.onChange as (value: number) => void)(1);
     expect(reorderCalls).toEqual([{ mutationId: 11, positionFromTop: 1 }]);
@@ -1226,7 +1304,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('collapses the Enter + blur pair into ONE call and frees the next gesture', async () => {
     const { bundle, reorderCalls } = stackBundle();
     setScriptStrokeSelection([11]);
-    const onChange = stackSlider(renderDialog(bundle)).props.onChange as (value: number) => void;
+    const onChange = stackSlider(renderDialogTab(bundle, 'stack')).props.onChange as (value: number) => void;
 
     // SliderStepper commits on Enter and then again from the blur it triggers.
     onChange(3);
@@ -1248,7 +1326,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
       },
     });
     setScriptStrokeSelection([11]);
-    const before = stackSlider(renderDialog(refused.bundle));
+    const before = stackSlider(renderDialogTab(refused.bundle, 'stack'));
     (before.props.onChange as (value: number) => void)(3);
     expect(calls).toEqual([3]);
     await Promise.resolve();
@@ -1273,7 +1351,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
     });
     setScriptSelectMode(true);
     setScriptStrokeSelection([11]);
-    const before = stackSlider(renderDialog(voided.bundle));
+    const before = stackSlider(renderDialogTab(voided.bundle, 'stack'));
     (before.props.onChange as (value: number) => void)(3);
     expect(calls).toEqual([3]);
     await Promise.resolve();
@@ -1288,7 +1366,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('a same-position commit changes neither the call count nor the slider key', async () => {
     const { bundle, reorderCalls } = stackBundle();
     setScriptStrokeSelection([11]);
-    const first = stackSlider(renderDialog(bundle));
+    const first = stackSlider(renderDialogTab(bundle, 'stack'));
     (first.props.onChange as (value: number) => void)(2);
     expect(reorderCalls).toHaveLength(0);
     await Promise.resolve();
@@ -1301,7 +1379,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('disables the section with the hint for a multi-stroke selection', () => {
     const { bundle, reorderCalls } = stackBundle();
     setScriptStrokeSelection([11, 13]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'stack');
     const hint = findByTestId(tree, 'stroke-settings-stack-disabled')!;
     expect(hint).toBeDefined();
     expect(hint.props.children).toBe('Select one stroke to change stack order');
@@ -1317,7 +1395,7 @@ describe('261024-vga Stack section: exact paint-order placement', () => {
   it('disables the section when the single selected id is absent from the listing', () => {
     const { bundle, reorderCalls } = stackBundle();
     setScriptStrokeSelection([99]);
-    const tree = renderDialog(bundle);
+    const tree = renderDialogTab(bundle, 'stack');
     expect(findByTestId(tree, 'stroke-settings-stack-disabled')).toBeDefined();
     expect(findComponent(tree, (props) => props.ariaLabel === 'Stack position')).toBeUndefined();
     expect(findByTestId(tree, 'stroke-settings-stack-top')!.props.disabled).toBe(true);

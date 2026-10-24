@@ -4,7 +4,6 @@ import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { SlidersHorizontal, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import { hexToRgba } from '../../../lib/colorUtils';
 import {
@@ -35,11 +34,15 @@ import { clampStackPosition } from './stackOrder';
  * trap — the canvas and its transform handles stay interactive behind it.
  *
  * 261024-p5q UAT revision: the header reuses the Document sound modal's
- * chrome (icon + title + rounded-square close), the sections read
- * Color -> Geometry -> Paint, and the internal scroll uses the app's
- * SidebarScrollArea thumb (never the OS scrollbar). The color is no longer
- * edited here: a read-only thumb shows the selected strokes' color and the
- * one shared picker in the sidebar Color tab commits the change.
+ * chrome (icon + title + rounded-square close) and the internal scroll uses
+ * the app's SidebarScrollArea thumb (never the OS scrollbar). The color is
+ * not edited here: a read-only thumb shows the selected strokes' color and
+ * the one shared picker in the sidebar Color tab commits the change.
+ *
+ * 261024-vga UAT revision: one pinned tab row (Geometry | Stack | Paint),
+ * Geometry by default, all three on one row. The color readout moved into
+ * Paint. The tabs hold no stroke data — a ref-held signal holds only the
+ * active tab key.
  *
  * Dismissal (exact law): `dismissed` is a signal written ONLY by Escape and
  * the header close button. `sawEmptySinceDismiss` is a plain module flag
@@ -83,6 +86,14 @@ interface DragStart {
   readonly baseY: number;
   readonly rect: { left: number; top: number; width: number } | null;
 }
+
+type StrokeSettingsTab = 'geometry' | 'stack' | 'paint';
+
+const STROKE_SETTINGS_TABS: ReadonlyArray<{ key: StrokeSettingsTab; label: string }> = [
+  { key: 'geometry', label: 'Geometry' },
+  { key: 'stack', label: 'Stack' },
+  { key: 'paint', label: 'Paint' },
+];
 
 export interface PhysicsPaintStrokeSettingsDialogProps {
   /** The view-supplied bundle for the ACTIVE module; absent means no dialog. */
@@ -130,17 +141,6 @@ const SECTION_STYLE: CSSProperties = {
   gap: '8px',
 };
 
-/** Sidebar Paper-tab rhythm: ruled centered title with breathing room. */
-const SECTION_HEADER_STYLE: CSSProperties = {
-  padding: '3px 0',
-};
-
-/** The Color header opens the sheet: no leading gap above its rule. */
-const SECTION_HEADER_FIRST_STYLE: CSSProperties = {
-  ...SECTION_HEADER_STYLE,
-  paddingTop: 0,
-};
-
 const PAINT_ROW_LABEL_STYLE: CSSProperties = {
   fontSize: '11px',
   fontWeight: 600,
@@ -182,6 +182,20 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
   background: 'var(--color-accent, #2f67e8)',
   borderColor: 'var(--color-accent, #2f67e8)',
   color: '#ffffff',
+};
+
+/** 261024-vga UAT revision: the three sections live on ONE pinned tab row. */
+const TAB_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  gap: '4px',
+  padding: '2px 12px 10px',
+  flex: '0 0 auto',
+};
+
+const TAB_STYLE: CSSProperties = {
+  ...SEGMENT_STYLE,
+  height: '24px',
+  fontSize: '11px',
 };
 
 const COLOR_BLOCK_STYLE: CSSProperties = {
@@ -282,6 +296,9 @@ export function PhysicsPaintStrokeSettingsDialog({
   if (!stackSyncRef.current) stackSyncRef.current = signal(0);
   /** Collapses SliderStepper's Enter + blur pair into ONE reorder call. */
   const lastStackEmitRef = useRef<number | null>(null);
+  /** 261024-vga UAT revision: the active section tab (ref-held, Geometry default). */
+  const settingsTabRef = useRef<Signal<StrokeSettingsTab> | null>(null);
+  if (!settingsTabRef.current) settingsTabRef.current = signal<StrokeSettingsTab>('geometry');
 
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
@@ -328,6 +345,12 @@ export function PhysicsPaintStrokeSettingsDialog({
   }, [open]);
 
   if (!bundle || !open) return null;
+
+  const requestedSettingsTab = settingsTabRef.current.value;
+  const stackTabAvailable = Boolean(bundle.reorderStroke);
+  const activeSettingsTab: StrokeSettingsTab = requestedSettingsTab === 'stack' && !stackTabAvailable
+    ? 'geometry'
+    : requestedSettingsTab;
 
   const ids = [...selection];
   const appearances = bundle.readAppearance(ids, bundle.playFrame);
@@ -541,40 +564,38 @@ export function PhysicsPaintStrokeSettingsDialog({
         </button>
       </div>
 
+      <div
+        role="tablist"
+        aria-label="Stroke settings sections"
+        data-testid="stroke-settings-tabs"
+        style={TAB_ROW_STYLE}
+      >
+        {STROKE_SETTINGS_TABS.map((tab) => {
+          if (tab.key === 'stack' && !stackTabAvailable) return null;
+          const active = activeSettingsTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              data-testid={`stroke-settings-tab-${tab.key}`}
+              aria-selected={active}
+              style={active ? { ...TAB_STYLE, ...SEGMENT_ACTIVE_STYLE } : TAB_STYLE}
+              onClick={() => {
+                settingsTabRef.current!.value = tab.key;
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
       <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
         <div style={SCROLL_CONTENT_STYLE}>
-          <div style={SECTION_STYLE}>
-            <div style={SECTION_HEADER_FIRST_STYLE}>
-              <RuleSectionHeader text="Color" />
-            </div>
-            <div
-              data-testid="stroke-settings-color"
-              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-            >
-              <div
-                data-testid="stroke-settings-color-thumb"
-                title={colorReading.color}
-                style={{ ...COLOR_BLOCK_STYLE, backgroundColor: colorReading.color }}
-              />
-              <div style={COLOR_READOUT_ROW_STYLE}>
-                <span data-testid="stroke-settings-color-hex">{colorReading.color.toUpperCase()}</span>
-                <span data-testid="stroke-settings-color-rgb">
-                  {`rgb(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b})`}
-                </span>
-                {colorReading.mixed ? (
-                  <span data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
-                    Mixed
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          {liveCenter ? (
-            <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
-              <div style={SECTION_HEADER_STYLE}>
-                <RuleSectionHeader text="Geometry" />
-              </div>
+          {activeSettingsTab === 'geometry' ? (
+            liveCenter ? (
+              <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
               {opacityField && opacityReading ? (
                 <div data-testid="stroke-settings-geometry-opacity">
                   <SliderStepper
@@ -680,14 +701,16 @@ export function PhysicsPaintStrokeSettingsDialog({
                   onChange={(value) => commitGeometryTransform('rotation', value)}
                 />
               </div>
-            </div>
+              </div>
+            ) : (
+              <span data-testid="stroke-settings-geometry-empty" style={PAINT_ROW_LABEL_STYLE}>
+                No stroke geometry available
+              </span>
+            )
           ) : null}
 
-          {bundle.reorderStroke ? (
+          {activeSettingsTab === 'stack' && bundle.reorderStroke ? (
             <div style={SECTION_STYLE} data-testid="stroke-settings-stack">
-              <div style={SECTION_HEADER_STYLE}>
-                <RuleSectionHeader text="Stack" />
-              </div>
               {stackStroke ? (
                 <>
                   <div style={STACK_HEADER_ROW_STYLE}>
@@ -761,11 +784,31 @@ export function PhysicsPaintStrokeSettingsDialog({
             </div>
           ) : null}
 
-          <div style={SECTION_STYLE}>
-            <div style={SECTION_HEADER_STYLE}>
-              <RuleSectionHeader text="Paint" />
-            </div>
-            {numericFields.map((field) => {
+          {activeSettingsTab === 'paint' ? (
+            <div style={SECTION_STYLE} data-testid="stroke-settings-paint">
+              <span style={PAINT_ROW_LABEL_STYLE}>Color</span>
+              <div
+                data-testid="stroke-settings-color"
+                style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+              >
+                <div
+                  data-testid="stroke-settings-color-thumb"
+                  title={colorReading.color}
+                  style={{ ...COLOR_BLOCK_STYLE, backgroundColor: colorReading.color }}
+                />
+                <div style={COLOR_READOUT_ROW_STYLE}>
+                  <span data-testid="stroke-settings-color-hex">{colorReading.color.toUpperCase()}</span>
+                  <span data-testid="stroke-settings-color-rgb">
+                    {`rgb(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b})`}
+                  </span>
+                  {colorReading.mixed ? (
+                    <span data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
+                      Mixed
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              {numericFields.map((field) => {
               const reading = readNumericField(appearances, ids, field);
               return (
                 <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
@@ -829,7 +872,8 @@ export function PhysicsPaintStrokeSettingsDialog({
                 </div>
               );
             })}
-          </div>
+            </div>
+          ) : null}
         </div>
       </SidebarScrollArea>
 
