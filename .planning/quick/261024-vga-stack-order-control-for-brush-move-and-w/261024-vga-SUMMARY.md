@@ -239,6 +239,10 @@ None.
 
 None — no external service configuration required.
 
+## UAT Revision
+
+**2026-10-25 — tabbed dialog (commit `27580c79`):** the three sections moved onto ONE pinned tab row (`Geometry | Stack | Paint`), Geometry is the default tab, and the color readout moved into Paint. Tab state is a ref-held signal (no useState, no render-body write). Automated gates re-run after the change: five app suites 378/378 and `tsc --noEmit` clean. The VERIFICATION.md covered digest predates this revision, so its status is stale until the next verifier run; the native UAT checklist above still applies.
+
 ## Next Phase Readiness
 
 - Automated gates are green and the feature is code-complete. Native UAT is still required before calling it done: both modules' Stack section, live re-bake ordering, Enter/blur coalescing, refused-commit input snap-back, undo/redo as one edit, save/reopen persistence, and physical-lock refusal.
