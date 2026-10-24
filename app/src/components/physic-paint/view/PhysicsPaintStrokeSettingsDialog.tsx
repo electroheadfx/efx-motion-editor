@@ -6,6 +6,7 @@ import { SlidersHorizontal, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
+import { hexToRgba } from '../../../lib/colorUtils';
 import {
   FRESH_STROKE_GEOMETRY_SESSION,
   STROKE_POSITION_RANGE,
@@ -78,10 +79,13 @@ export interface PhysicsPaintStrokeSettingsDialogProps {
 
 let sawEmptySinceDismiss = false;
 
+/** Distance from the canvas region's top/right edges. */
+const SURFACE_INSET_PX = 12;
+
 const SURFACE_STYLE: CSSProperties = {
   position: 'absolute',
-  top: '12px',
-  right: '12px',
+  top: `${SURFACE_INSET_PX}px`,
+  right: `${SURFACE_INSET_PX}px`,
   width: '320px',
   // A definite height is required: the SidebarScrollArea root is a flex child
   // whose inner scroller is absolutely positioned, so an auto-height surface
@@ -105,7 +109,7 @@ const SCROLL_CONTENT_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '10px',
-  padding: '10px 12px 12px',
+  padding: '10px 12px 0',
 };
 
 const SECTION_STYLE: CSSProperties = {
@@ -116,7 +120,13 @@ const SECTION_STYLE: CSSProperties = {
 
 /** Sidebar Paper-tab rhythm: ruled centered title with breathing room. */
 const SECTION_HEADER_STYLE: CSSProperties = {
-  padding: '6px 0',
+  padding: '3px 0',
+};
+
+/** The Color header opens the sheet: no leading gap above its rule. */
+const SECTION_HEADER_FIRST_STYLE: CSSProperties = {
+  ...SECTION_HEADER_STYLE,
+  paddingTop: 0,
 };
 
 const PAINT_ROW_LABEL_STYLE: CSSProperties = {
@@ -162,19 +172,40 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
   color: '#ffffff',
 };
 
-const COLOR_ROW_STYLE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '10px',
-};
-
-const COLOR_THUMB_STYLE: CSSProperties = {
-  width: '28px',
-  height: '28px',
-  flex: '0 0 auto',
+const COLOR_BLOCK_STYLE: CSSProperties = {
+  width: '100%',
+  height: '48px',
+  boxSizing: 'border-box',
   borderRadius: '6px',
   border: '1px solid rgba(255, 255, 255, 0.22)',
   boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.22)',
+};
+
+const COLOR_READOUT_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '8px',
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '10px',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+const RESIZE_HANDLE_STYLE: CSSProperties = {
+  flex: '0 0 12px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'ns-resize',
+  touchAction: 'none',
+};
+
+const RESIZE_GRIP_STYLE: CSSProperties = {
+  width: '34px',
+  height: '3px',
+  borderRadius: '2px',
+  background: 'rgba(255, 255, 255, 0.22)',
 };
 
 export function PhysicsPaintStrokeSettingsDialog({
@@ -186,6 +217,10 @@ export function PhysicsPaintStrokeSettingsDialog({
   const dragOffsetRef = useRef<Signal<DragOffset | null> | null>(null);
   if (!dragOffsetRef.current) dragOffsetRef.current = signal(null);
   const dragStartRef = useRef<DragStart | null>(null);
+  /** UAT: the sheet's height after a bottom-grip drag (null = CSS default). */
+  const resizeHeightRef = useRef<Signal<number | null> | null>(null);
+  if (!resizeHeightRef.current) resizeHeightRef.current = signal(null);
+  const resizeStartRef = useRef<{ pointerY: number; height: number; max: number } | null>(null);
   /**
    * The geometry session, keyed by the selection Set instance. A different
    * selection simply resolves FRESH — no render-body signal write, and a new
@@ -244,10 +279,18 @@ export function PhysicsPaintStrokeSettingsDialog({
   if (appearances.length === 0) return null;
 
   const fields = strokeSettingsFields(engineModule);
-  const numericFields = fields.filter((field) => field.kind === 'numeric');
+  /**
+   * UAT: opacity leads Geometry. Brush stores `opacity`; Water color's
+   * opacity-equivalent is the canonical Pigment (`load`). It is moved out of
+   * Paint so the sheet keeps exactly ONE control for the value.
+   */
+  const opacityField = fields.find((field) => field.key === (engineModule === 'watercolor' ? 'load' : 'opacity'));
+  const numericFields = fields.filter((field) => field.kind === 'numeric' && field.key !== opacityField?.key);
   const segmentedFields = fields.filter((field) => field.kind === 'segmented');
+  const opacityReading = opacityField ? readNumericField(appearances, ids, opacityField) : null;
 
   const colorReading = readColorField(appearances, ids);
+  const colorRgb = hexToRgba(colorReading.color);
 
   const offset = dragOffsetRef.current.value;
   const applied = offset && offset.selection === selection ? offset : null;
@@ -341,6 +384,34 @@ export function PhysicsPaintStrokeSettingsDialog({
     dragStartRef.current = null;
   };
 
+  const onResizePointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const rect = surfaceRef.current?.getBoundingClientRect?.();
+    if (!rect) return;
+    const parentHeight = surfaceRef.current?.parentElement?.getBoundingClientRect?.().height
+      ?? (typeof window !== 'undefined' ? window.innerHeight : rect.top + rect.height);
+    resizeStartRef.current = {
+      pointerY: event.clientY,
+      height: rect.height,
+      max: Math.max(240, parentHeight - SURFACE_INSET_PX * 2),
+    };
+    event.currentTarget?.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+
+  const onResizePointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
+    const start = resizeStartRef.current;
+    if (!start) return;
+    const next = Math.min(start.max, Math.max(240, start.height + (event.clientY - start.pointerY)));
+    resizeHeightRef.current!.value = next;
+  };
+
+  const endResize = () => {
+    resizeStartRef.current = null;
+  };
+
+  const resizedHeight = resizeHeightRef.current.value;
+
   return (
     <div
       ref={surfaceRef}
@@ -349,6 +420,7 @@ export function PhysicsPaintStrokeSettingsDialog({
       aria-label="Stroke settings"
       style={{
         ...SURFACE_STYLE,
+        height: resizedHeight === null ? SURFACE_STYLE.height : `${resizedHeight}px`,
         transform: `translate(${applied?.dxPx ?? 0}px, ${applied?.dyPx ?? 0}px)`,
       }}
     >
@@ -382,20 +454,29 @@ export function PhysicsPaintStrokeSettingsDialog({
       <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
         <div style={SCROLL_CONTENT_STYLE}>
           <div style={SECTION_STYLE}>
-            <div style={SECTION_HEADER_STYLE}>
+            <div style={SECTION_HEADER_FIRST_STYLE}>
               <RuleSectionHeader text="Color" />
             </div>
-            <div style={COLOR_ROW_STYLE} data-testid="stroke-settings-color">
-              <span
+            <div
+              data-testid="stroke-settings-color"
+              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+            >
+              <div
                 data-testid="stroke-settings-color-thumb"
                 title={colorReading.color}
-                style={{ ...COLOR_THUMB_STYLE, backgroundColor: colorReading.color }}
+                style={{ ...COLOR_BLOCK_STYLE, backgroundColor: colorReading.color }}
               />
-              {colorReading.mixed ? (
-                <span data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
-                  Mixed
+              <div style={COLOR_READOUT_ROW_STYLE}>
+                <span data-testid="stroke-settings-color-hex">{colorReading.color.toUpperCase()}</span>
+                <span data-testid="stroke-settings-color-rgb">
+                  {`rgb(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b})`}
                 </span>
-              ) : null}
+                {colorReading.mixed ? (
+                  <span data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
+                    Mixed
+                  </span>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -404,6 +485,27 @@ export function PhysicsPaintStrokeSettingsDialog({
               <div style={SECTION_HEADER_STYLE}>
                 <RuleSectionHeader text="Geometry" />
               </div>
+              {opacityField && opacityReading ? (
+                <div data-testid="stroke-settings-geometry-opacity">
+                  <SliderStepper
+                    label="Opacity"
+                    ariaLabel="Opacity"
+                    value={opacityReading.value}
+                    min={opacityField.min}
+                    max={opacityField.max}
+                    step={opacityField.step}
+                    mixed={opacityReading.mixed}
+                    commitOnRelease
+                    allowOutOfRangeEntry
+                    onChange={(value) => {
+                      void bundle.applyAppearance(
+                        ids,
+                        buildAppearancePatch(engineModule, opacityField.key, value),
+                      );
+                    }}
+                  />
+                </div>
+              ) : null}
               <div data-testid="stroke-settings-geometry-x">
                 <SliderStepper
                   label="X"
@@ -562,6 +664,18 @@ export function PhysicsPaintStrokeSettingsDialog({
           </div>
         </div>
       </SidebarScrollArea>
+
+      <div
+        data-testid="stroke-settings-resize"
+        aria-hidden="true"
+        style={RESIZE_HANDLE_STYLE}
+        onPointerDown={onResizePointerDown}
+        onPointerMove={onResizePointerMove}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+      >
+        <span style={RESIZE_GRIP_STYLE} />
+      </div>
     </div>
   );
 }

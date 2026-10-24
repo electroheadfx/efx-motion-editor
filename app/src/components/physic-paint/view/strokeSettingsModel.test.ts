@@ -576,12 +576,14 @@ describe('261024-p5q dialog shell', () => {
 
 describe('261024-p5q dialog fields and shared color', () => {
   it('renders every brush Paint field as a release-commit SliderStepper', () => {
-    const { bundle, calls } = createBundle();
+    const { bundle, calls } = createBundle({
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
+    });
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
 
     for (const field of BRUSH_SETTINGS_FIELDS) {
-      if (field.kind !== 'numeric') continue;
+      if (field.kind !== 'numeric' || field.key === 'opacity') continue;
       const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
       expect(slider, field.key).toBeDefined();
       expect(slider!.props.commitOnRelease).toBe(true);
@@ -591,6 +593,10 @@ describe('261024-p5q dialog fields and shared color', () => {
       expect(slider!.props.mixed).toBe(false);
       expect(findByTestId(tree, `stroke-settings-${field.key}`), field.key).toBeDefined();
     }
+
+    // Opacity leads Geometry and stays OUT of the Paint list (one control).
+    expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeDefined();
+    expect(findByTestId(tree, 'stroke-settings-opacity')).toBeUndefined();
 
     // An untouched row never writes; one row's onChange writes only that key.
     expect(calls).toEqual([]);
@@ -603,6 +609,7 @@ describe('261024-p5q dialog fields and shared color', () => {
     const { bundle, calls } = createBundle({
       module: 'watercolor',
       brushMoveActive: false,
+      listStrokes: () => [selectableStroke(7, { x: 0, y: 0, width: 100, height: 100 })],
       readAppearance: (ids) => ids.map((id) => appearance(id, {
         size: 20,
         load: 60,
@@ -619,15 +626,18 @@ describe('261024-p5q dialog fields and shared color', () => {
     const tree = renderDialog(bundle);
 
     for (const field of WATERCOLOR_SETTINGS_FIELDS) {
+      if (field.key === 'load') continue;
       const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
       expect(slider, field.key).toBeDefined();
       expect(slider!.props.mixed).toBe(false);
-      expect(slider!.props.value).toBe(
-        field.key === 'size' ? 20 : field.key === 'load' ? 60 : 50,
-      );
+      expect(slider!.props.value).toBe(field.key === 'size' ? 20 : 50);
     }
 
-    const load = findComponent(tree, (props) => props.ariaLabel === 'Pigment')!;
+    // The canonical Pigment (`load`) is the Water color opacity, moved to the
+    // top of Geometry under the user-facing "Opacity" label.
+    const load = findComponent(tree, (props) => props.ariaLabel === 'Opacity')!;
+    expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeDefined();
+    expect(load.props.value).toBe(60);
     (load.props.onChange as (value: number) => void)(70);
     expect(calls).toEqual([{ ids: [7], patch: { params: { load: 70 } } }]);
   });
@@ -722,7 +732,32 @@ describe('261024-p5q dialog fields and shared color', () => {
     expect(geometry).toBeGreaterThan(color);
     expect(paint).toBeGreaterThan(geometry);
     expect(dialogSource).toContain("import { RuleSectionHeader } from '../../shared/RuleSectionHeader'");
-    expect(dialogSource).toContain('padding: \'6px 0\'');
+    expect(dialogSource).toContain('padding: \'3px 0\'');
+    expect(dialogSource).toContain('SECTION_HEADER_FIRST_STYLE');
+    expect(dialogSource).toContain('paddingTop: 0');
+  });
+
+  it('gives the color block the full row and shows hex + rgb beneath it', () => {
+    const { bundle } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#a1b2c3')),
+    });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    const thumb = findByTestId(tree, 'stroke-settings-color-thumb')!;
+    expect(thumb.props.style.backgroundColor).toBe('#a1b2c3');
+    expect(thumb.props.style.width).toBe('100%');
+    expect(findByTestId(tree, 'stroke-settings-color-hex')!.props.children).toBe('#A1B2C3');
+    expect(findByTestId(tree, 'stroke-settings-color-rgb')!.props.children).toBe('rgb(161, 178, 195)');
+  });
+
+  it('offers a bottom resize grip for the sheet height', () => {
+    const { bundle } = createBundle();
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-resize')).toBeDefined();
+    expect(dialogSource).toContain('resizeHeightRef');
+    expect(dialogSource).toContain('cursor: \'ns-resize\'');
   });
 
   it('pins the UAT ranges: size 800, scale 500, position 2000', () => {
