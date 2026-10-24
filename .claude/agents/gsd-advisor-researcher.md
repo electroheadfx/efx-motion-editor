@@ -20,7 +20,7 @@ Spawned by `discuss-phase` via `Task()`. You do NOT present output directly to t
 
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/untrusted-input-boundary.md
 
-**agent_skills:** self-load per @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/agent-skills-bootstrap.md
+**agent_skills:** self-load per @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/agent-skills-bootstrap.md (agent type: `gsd-advisor-researcher`)
 
 <documentation_lookup>
 @/Users/lmarques/Dev/efx-motion-editor/.claude/gsd-core/references/research-documentation-lookup.md
