@@ -400,6 +400,36 @@ describe('identity remap (key-spacing-script-loss)', () => {
     expect(result).toBeNull();
     expect(getBrushScriptForFrame(5)[0]!.primary.mutationId).toBe(1);
   });
+
+  it('is an identity-stable no-op when the key layout did not change', () => {
+    captureBrushScriptForFrame(0, group(1));
+    captureBrushScriptForFrame(2, group(2));
+    markBrushScriptFrameDirty(0);
+    noteBrushScriptArrivalBase(2, true);
+    purgeBrushScriptFrame(6);
+    const records = [
+      { keyId: 'a', appFrame: 0 },
+      { keyId: 'b', appFrame: 2 },
+      { keyId: 'c', appFrame: 6 },
+    ];
+    const entry0 = getBrushScriptFrameEntry(0);
+    const entry2 = getBrushScriptFrameEntry(2);
+    const revision = brushScriptRevision.value;
+
+    const result = remapBrushScriptsForRecords(records, records);
+
+    expect(result).toEqual({ remapped: 0, dropped: 0 });
+    expect(brushScriptRevision.value).toBe(revision);
+    // Unmoved entries keep their exact object identity.
+    expect(getBrushScriptFrameEntry(0)).toBe(entry0);
+    expect(getBrushScriptFrameEntry(2)).toBe(entry2);
+    // Every marker set moved with its frame (no-op here) instead of dropping.
+    expect(purgedBrushScriptFrame(6)).toBe(true);
+    deleteBrushScriptFrame(2);
+    expect(isBrushScriptLedgerComplete(2)).toBe(false);
+    // The dirty mark survived too: a clean captured frame would refuse.
+    expect(flushBrushScriptFrame(0, [stroke(9)])).toBe(true);
+  });
 });
 
 // ============================================================
