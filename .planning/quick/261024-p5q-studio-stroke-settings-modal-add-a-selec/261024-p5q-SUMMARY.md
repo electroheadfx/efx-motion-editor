@@ -141,7 +141,7 @@ _Note: per the dispatch contract, `.planning/` artifacts were deliberately not c
 6. **Brush Paint Size**: max 400 px in the dialog (per-stroke rendering has no engine cap; the live top-bar slider remains 1-80).
 7. **Scale / Scale X / Scale Y**: max 500%.
 8. **X / Y**: max 2000 px.
-9. **Water color Size stays at 80**: the aquarelle canonical parameter maps `size / 32` and is engine-capped, so a larger UI value would not render larger.
+9. **Water color Size reaches 400**: the canonical 1-400 px value maps through `toEngineParams`; every legacy value (1-80) keeps its exact pre-change footprint, and the 80-400 band extends the vendor footprint scale linearly to ~5x an 80 px stroke. The live top-bar watercolor slider remains 1-80.
 
 ## UAT Rows (for the user)
 
@@ -154,7 +154,7 @@ _Note: per the dispatch contract, `.planning/` artifacts were deliberately not c
 7. The header drag moves the dialog and the offset resets on reopen; canvas transform handles still work behind it.
 8. The sidebar Color tab is the color editing surface for the selection; the top bar and every other sidebar field never mirror the modal edits, and the Color tab's non-selection behavior is unchanged.
 9. Header/scroll/order: the dialog wears the Document sound header (icon, title, rounded-square close), scrolls with the app scrollbar, and reads Color - Geometry - Paint.
-10. Ranges: Brush Size reaches 400; Scale / Scale X / Scale Y reach 500; X / Y reach 2000.
+10. Ranges: Brush and Water color Size reach 400; Scale / Scale X / Scale Y reach 500; X / Y reach 2000.
 
 ## Gate Totals
 

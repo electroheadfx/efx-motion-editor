@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-24 - Quick 261024-p5q UAT UI revision applied (header, scrollbar, color thumb, ranges); live UAT pending
+Last activity: 2026-10-24 - Quick 261024-p5q Water color Paint Size raised to 400 px (mapping extended past 80); live UAT pending
 
 Progress: [██████████] 100%
 
@@ -593,7 +593,7 @@ None yet.
 | 261024-i51 | Fix pre-existing typecheck and vitest baseline failures | 2026-10-24 | 25949add | [261024-i51-fix-pre-existing-typecheck-and-vitest-ba](./quick/261024-i51-fix-pre-existing-typecheck-and-vitest-ba/) |
 | 261024-m20 | Remap watercolor scripts by key identity on accepted physical replaces; extract one shared key-identity frame map for roto, brush and watercolor | 2026-10-24 | 55a5a95f | [261024-m20-watercolor-key-spacing-remap](./quick/261024-m20-watercolor-key-spacing-remap/) |
 | 261024-mz5 | Feat Studio: Add multiselect strokes (verify its already in brush) then Add rotation and scale for stroke(s) (single or multi select) | 2026-10-24 | 5e4c1b70 | [261024-mz5-feat-studio-add-multiselect-strokes-veri](./quick/261024-mz5-feat-studio-add-multiselect-strokes-veri/) |
-| 261024-p5q | Studio stroke settings modal: selection-gated movable dialog for selected strokes (Brush Move / Water color Select) | 2026-10-24 | f750e381 | [261024-p5q-studio-stroke-settings-modal-add-a-selec](./quick/261024-p5q-studio-stroke-settings-modal-add-a-selec/) |
+| 261024-p5q | Studio stroke settings modal: selection-gated movable dialog for selected strokes (Brush Move / Water color Select) | 2026-10-24 | 9b53c7d1 | [261024-p5q-studio-stroke-settings-modal-add-a-selec](./quick/261024-p5q-studio-stroke-settings-modal-add-a-selec/) |
 
 ### Roadmap Evolution
 
