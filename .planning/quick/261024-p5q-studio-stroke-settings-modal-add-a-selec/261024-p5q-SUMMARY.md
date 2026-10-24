@@ -127,27 +127,42 @@ _Note: per the dispatch contract, `.planning/` artifacts were deliberately not c
 - **Brush appearance** (`setStrokeAppearance`): validate the ENTIRE patch first (known keys, finite values, non-empty color, at least one member) -> `flushPendingStrokeFinalizations()` -> resolve targets (paint only, dedupe ids) -> compare-then-write each key/color -> 0 changed = no history change, no redraw, no notification -> otherwise `redoStack = []`, `notifyHistoryAvailability()`, `displayCompositeDirty = true`, `redrawAfterScriptEdit()`, ONE `notifyCompletedMutation('move', firstChangedId)`. No undo checkpoint. The port adds the lock gate, `declareEditBase`, ONE engine call and ONE `flushBrushScriptFrame(... resolvePaintSettings(engine))` only when changes > 0.
 - **Watercolor appearance** (`updateAquarelleStrokesInScript` + `beginAquarelleAppearanceEdit`): strokes and entries are REPLACED, the entry is regenerated with `toStudioStroke(nextStroke)` at the SAME `payloadTimeline` index, one `bumpAquarelleStrokesRevision()` per effective batch; no-op/unknown/deleted ids and invalid patches change nothing and store no edit. The edit stores one before/after `AquarelleScriptSnapshot` (10-entry cap).
 - **Watercolor handler**: peek-only guards (physical lock, `rotoScript.applying`/`mutationLocked`, `currentCell.kind === 'real'`, in-flight) -> `aquarelleStrokesOnFrame` -> begin edit -> in-flight true -> reset sheet -> `await applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))` -> success records ONE `aquarelle-script` ledger entry and returns true; failure calls `restoreAquarelleEditSnapshot(editId, 'undo')`, surfaces the shared refusal copy and returns false; `finally` clears the flag.
-- **Color boundaries**: the unmodified `RightPanelColorTab.onColorChange` writes `{ selection, color }` to a dialog draft only. The wrapper recognizes only the picker's own surfaces: pointerup on the color box / hue strip, change on the color chip, Enter / blur on the hex field (blur deferred one microtask so the field's own handler lands first), and click on a swatch. `commitColor` writes ONLY a draft the shared picker emitted for the current selection — a bare pointerup/click/blur never invents the representative color. The dedupe baseline is keyed by the selection Set, and a mixed hydrated color always writes on the first commit even when it reproduces the representative color.
+- **Color boundary (UAT revision)**: the dialog shows a read-only color thumb; the ONE picker is the sidebar `RightPanelColorTab`. Its optional `onColorCommit` fires at box/hue release, color-chip change, hex Enter/blur and swatch click (never on live moves); the Studio routes it to the selected strokes through `applyBrushScriptStrokeAppearance` (Brush Move) or `handleAquarelleAppearanceStrokes` (Water color Select). One gesture = one stroke write; an unchanged color is refused by the engine/script update.
 - **Geometry baseline**: every row is `commitOnRelease` + `freeEntry`. Uniform applies `next / uniformPct` and multiplies both axis displays; Scale X / Scale Y apply `next / their own baseline` and move no other baseline; rotation applies the degree delta; X/Y commit `round(target - live centre)` in px and refuse a zero delta. The session is keyed by the selection Set, is written ONLY in the promise continuation after a true result, and re-baselines to 100% / 0 degrees on any membership change. Every transform anchors at the union-box centre of the selected strokes. Nothing persists.
 - **Dismissal edge**: `dismissed` is a boolean signal written ONLY by Escape and the header close button; `sawEmptySinceDismiss` is a plain module flag written idempotently in the render body through `shouldMarkSawEmpty`; open = `surfaceActive && size > 0 && (!dismissed || sawEmptySinceDismiss)`.
+
+## UAT Revision (2026-10-24)
+
+1. **App scrollbar**: the dialog body uses `SidebarScrollArea` (the right-sidebar custom thumb), never the OS scrollbar; the surface has a bounded height so the track is real.
+2. **Color thumb only**: removed the embedded picker. The dialog shows a 28px color thumb at the top (plus a red Mixed badge); the sidebar Color tab is the ONE picker and commits to the selected strokes once per gesture.
+3. **Section order**: Color -> Geometry -> Paint.
+4. **Header**: the Document sound modal chrome — `SlidersHorizontal` icon, shared title style, rounded-square close button.
+5. **Mixed is red**: `#ef4444` in the SliderStepper value box and every Mixed caption.
+6. **Brush Paint Size**: max 400 px in the dialog (per-stroke rendering has no engine cap; the live top-bar slider remains 1-80).
+7. **Scale / Scale X / Scale Y**: max 500%.
+8. **X / Y**: max 2000 px.
+9. **Water color Size stays at 80**: the aquarelle canonical parameter maps `size / 32` and is engine-capped, so a larger UI value would not render larger.
 
 ## UAT Rows (for the user)
 
 1. Brush Move: select one stroke -> the dialog appears at the canvas region's top-right with the locked Paint fields (Size, Opacity, Shape detail, Blending, Smoothing) hydrated from that stroke.
 2. Escape hides it without clearing the selection and without hijacking a focused value/hex field; a non-empty reselect keeps it hidden; empty-then-select reopens it; outside clicks never close it.
 3. Mixed Brush sizes show "Mixed" and the first drag writes every selected stroke; the mixed color badge shows the first-selected stroke's color; an untouched Opacity stays unchanged.
-4. Color-box drag updates the picker live but writes only on release; a swatch click writes immediately once; brush redo state follows the Move law (redo cleared, no new undo checkpoint).
+4. The dialog shows only a color thumb; use the sidebar Color tab. A picker gesture writes the selected strokes once on release / swatch / hex commit; live drags do not write; brush redo state follows the Move law (redo cleared, no new undo checkpoint).
 5. Water color Select: pigment/water edits re-bake once and undo restores one step; a refused re-bake shows the refusal and restores the pre-attempt script.
 6. Geometry: X/Y move by the typed delta; uniform 100 -> 120 -> 90 compounds to 0.9x; rotation is about the selection center; a refused watercolor commit leaves the session value unchanged; a membership change resets scale/rotation.
 7. The header drag moves the dialog and the offset resets on reopen; canvas transform handles still work behind it.
-8. The right sidebar and top bar never mirror the modal edits, and the shared color control behaves exactly as before in the sidebar.
+8. The sidebar Color tab is the color editing surface for the selection; the top bar and every other sidebar field never mirror the modal edits, and the Color tab's non-selection behavior is unchanged.
+9. Header/scroll/order: the dialog wears the Document sound header (icon, title, rounded-square close), scrolls with the app scrollbar, and reads Color - Geometry - Paint.
+10. Ranges: Brush Size reaches 400; Scale / Scale X / Scale Y reach 500; X / Y reach 2000.
 
 ## Gate Totals
 
 - Task 2 targeted suites: 102/102 across `aquarelleStrokeSelection.test.ts`, `strokeSettingsModel.test.ts`, `SliderStepper.test.tsx.test.ts`, `brushScriptEditionPort.test.ts`; app typecheck clean. RED evidence before implementation: 21 failed | 55 passed.
 - Task 3 RED evidence: 12 failed | 32 passed in `strokeSettingsModel.test.ts` before the geometry implementation; 44/44 after.
 - Task 3 targeted final: 114/114 across the four suites; app typecheck clean; `@efxlab/efx-physic-paint run check` clean; engine package build clean.
-- Full app suite: 331 test files passed, 2 skipped; 5980 tests passed, 1 skipped, 96 todo (6077 total).
+- Full app suite: 331 test files passed, 2 skipped; 5981 tests passed, 1 skipped, 96 todo (6078 total) after the UAT revision.
+- UAT-revision focused rerun: 333/333 across `strokeSettingsModel.test.ts`, `PhysicsPaintPalette.test.ts`, `SliderStepper.test.tsx.test.ts`, and `PhysicsPaintStudio.test.ts`; app typecheck clean.
 - Full engine suite: 423 passed, 32 failed, 3 skipped (458). The 32 failures are PRE-EXISTING and unrelated: the same 7 files and the same 32 failures reproduce at the base commit `9488cd0f` (32 failed | 417 passed | 3 skipped; HEAD adds exactly the 6 new appearance tests, all passing). Causes are the engine's stale prototype harnesses / canvas-API environment (`getImageData` undefined, missing `previewBaseMatteCache` etc.) plus intentionally-red contract tests; `.planning/WINDOWS.md` already records two of them (#74 liveAlphaCache, #80 cooperativeFinalization).
 - No new dependency, no package.json/pnpm-lock change, no schema or persistence change, no per-tick writes (one batch write per commit), and no edits to `RightPanelColorTab.tsx`, `scriptStrokeEdition.ts`, `physicsPaintStudio.css`, the legacy inline editor, or `paintContext`/schema files.
 
