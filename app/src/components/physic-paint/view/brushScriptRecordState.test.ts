@@ -38,6 +38,7 @@ import {
   purgeAllBrushScriptFrames,
   purgeBrushScriptFrame,
   purgedBrushScriptFrame,
+  remapBrushScriptsForRecords,
   resetBrushScriptStore,
   restoreBrushScriptFrames,
 } from './brushScriptRecordState';
@@ -282,6 +283,122 @@ describe('prune law (fail closed)', () => {
     flushBrushScriptFrame(7, [stroke(1)]);
     // Never captured before → the flush captures regardless of dirty.
     expect(getBrushScriptFrameEntry(7)).toBeDefined();
+  });
+});
+
+// ============================================================
+//  key-spacing-script-loss — frame entries follow KEY IDENTITY.
+//
+//  Force-spacing rewrites appFrames but keeps key IDs. The old
+//  fail-closed prune dropped every script at/after the first moved
+//  key (the last scripts on a respaced rail vanished). The remap
+//  moves each captured frame to its key's new frame and drops only
+//  keys that truly disappeared.
+// ============================================================
+describe('identity remap (key-spacing-script-loss)', () => {
+  const group = (mutationId: number) => [{ primary: stroke(mutationId), continuations: [] }];
+
+  it('keeps every respaced key script by moving it with the key identity', () => {
+    captureBrushScriptForFrame(0, group(1));
+    captureBrushScriptForFrame(2, group(2));
+    captureBrushScriptForFrame(10, group(3));
+    captureBrushScriptForFrame(14, group(4));
+    const revision = brushScriptRevision.value;
+
+    const result = remapBrushScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 2 },
+        { keyId: 'c', appFrame: 10 },
+        { keyId: 'd', appFrame: 14 },
+      ],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 2 },
+        { keyId: 'c', appFrame: 4 },
+        { keyId: 'd', appFrame: 6 },
+      ],
+    );
+
+    expect(result).toEqual({ remapped: 2, dropped: 0 });
+    expect(getBrushScriptReport().frames.map((row) => row.frame)).toEqual([0, 2, 4, 6]);
+    expect(getBrushScriptForFrame(4)[0]!.primary.mutationId).toBe(3);
+    expect(getBrushScriptForFrame(6)[0]!.primary.mutationId).toBe(4);
+    expect(brushScriptRevision.value).toBe(revision + 1);
+  });
+
+  it('moves a surviving key script and drops only the deleted key script', () => {
+    captureBrushScriptForFrame(0, group(1));
+    captureBrushScriptForFrame(5, group(2));
+    captureBrushScriptForFrame(10, group(3));
+
+    const result = remapBrushScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 5 },
+        { keyId: 'c', appFrame: 10 },
+      ],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'c', appFrame: 5 },
+      ],
+    );
+
+    expect(result).toEqual({ remapped: 1, dropped: 1 });
+    expect(getBrushScriptReport().frames.map((row) => row.frame)).toEqual([0, 5]);
+    expect(getBrushScriptForFrame(5)[0]!.primary.mutationId).toBe(3);
+  });
+
+  it('keeps a scripted frame that gains a key (direct auto-paint)', () => {
+    captureBrushScriptForFrame(0, group(1));
+    captureBrushScriptForFrame(5, group(2));
+
+    const result = remapBrushScriptsForRecords(
+      [{ keyId: 'a', appFrame: 0 }],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 5 },
+      ],
+    );
+
+    expect(result).toEqual({ remapped: 0, dropped: 0 });
+    expect(getBrushScriptForFrame(5)[0]!.primary.mutationId).toBe(2);
+  });
+
+  it('moves a purged marker with its key instead of leaving it behind', () => {
+    captureBrushScriptForFrame(0, group(1));
+    captureBrushScriptForFrame(10, group(2));
+    purgeBrushScriptFrame(10);
+
+    const result = remapBrushScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 10 },
+      ],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 4 },
+      ],
+    );
+
+    expect(result).toEqual({ remapped: 0, dropped: 0 });
+    expect(purgedBrushScriptFrame(10)).toBe(false);
+    expect(purgedBrushScriptFrame(4)).toBe(true);
+  });
+
+  it('fails closed on a malformed layout without mutating the store', () => {
+    captureBrushScriptForFrame(5, group(1));
+
+    const result = remapBrushScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'a', appFrame: 5 },
+      ],
+      [{ keyId: 'b', appFrame: 5 }],
+    );
+
+    expect(result).toBeNull();
+    expect(getBrushScriptForFrame(5)[0]!.primary.mutationId).toBe(1);
   });
 });
 

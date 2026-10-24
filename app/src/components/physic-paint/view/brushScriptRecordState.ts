@@ -15,11 +15,14 @@
 //    - flush is a no-op when the frame is clean and already
 //      captured; repeated flushes keep the same entry identity.
 //
-//  FRAME-ANCHOR LAW (fail closed): entries follow the physical key
-//  lifecycle. A deleted key, an inserted/rippled frame, a deleted
-//  slot, or any first divergent record position prunes EVERY
-//  captured frame at or after the first divergent app frame.
-//  Stale entries are never remapped — they are dropped.
+//  FRAME-ANCHOR LAW: entries follow the physical key IDENTITY.
+//  An accepted key move (force-spacing, insertion/ripple, deletion)
+//  remaps every captured frame, dirty mark, arrival-base note and
+//  purge marker onto the surviving key's next appFrame
+//  (key-spacing-script-loss: the old fail-closed prune erased the
+//  last scripts of a respaced rail). Only a key that truly
+//  disappeared drops its session entry; a malformed layout (duplicate
+//  keyId or appFrame) falls back to the fail-closed prune.
 //
 //  COMPLETENESS LAW (261023-h9v): an entry is complete only when its
 //  groups are the WHOLE frame content. A frame that arrived over a
@@ -534,6 +537,125 @@ export function computeBrushScriptPruneFrame(
   if (beforeSorted.length === afterSorted.length) return null;
   const longer = beforeSorted.length > afterSorted.length ? beforeSorted : afterSorted;
   return longer[common]?.appFrame ?? null;
+}
+
+export interface BrushScriptRecordRemapResult {
+  /** Captured entries whose appFrame changed. */
+  remapped: number;
+  /** Captured entries whose key disappeared (or whose frame is unowned). */
+  dropped: number;
+}
+
+function buildBrushScriptFrameRemap(
+  before: readonly BrushScriptFrameRecordAnchor[],
+  after: readonly BrushScriptFrameRecordAnchor[],
+): Map<number, number> | null {
+  const keyIdByOldFrame = new Map<number, string>();
+  const beforeKeyIds = new Set<string>();
+  for (const record of before) {
+    if (beforeKeyIds.has(record.keyId) || keyIdByOldFrame.has(record.appFrame)) return null;
+    beforeKeyIds.add(record.keyId);
+    keyIdByOldFrame.set(record.appFrame, record.keyId);
+  }
+  const frameByKeyId = new Map<string, number>();
+  const afterFrames = new Set<number>();
+  for (const record of after) {
+    if (frameByKeyId.has(record.keyId) || afterFrames.has(record.appFrame)) return null;
+    frameByKeyId.set(record.keyId, record.appFrame);
+    afterFrames.add(record.appFrame);
+  }
+  const frameRemap = new Map<number, number>();
+  const destinations = new Set<number>();
+  // Owned frames first: a surviving key always wins its new destination.
+  for (const [oldFrame, keyId] of keyIdByOldFrame) {
+    const nextFrame = frameByKeyId.get(keyId);
+    if (nextFrame === undefined) continue;
+    frameRemap.set(oldFrame, nextFrame);
+    destinations.add(nextFrame);
+  }
+  // A frame that just gained a key (direct auto-paint) keeps its script.
+  for (const frame of afterFrames) {
+    if (keyIdByOldFrame.has(frame) || destinations.has(frame)) continue;
+    frameRemap.set(frame, frame);
+  }
+  return frameRemap;
+}
+
+function sameFrameSet(left: ReadonlySet<number>, right: ReadonlySet<number>): boolean {
+  if (left.size !== right.size) return false;
+  for (const frame of left) {
+    if (!right.has(frame)) return false;
+  }
+  return true;
+}
+
+function remapFrameSet(
+  source: ReadonlySet<number>,
+  frameRemap: ReadonlyMap<number, number>,
+): Set<number> {
+  const target = new Set<number>();
+  for (const frame of source) {
+    const nextFrame = frameRemap.get(frame);
+    if (nextFrame !== undefined) target.add(nextFrame);
+  }
+  return target;
+}
+
+/**
+ * key-spacing-script-loss: move the whole frame-indexed ledger onto the next
+ * physical key layout by KEY IDENTITY. Force-spacing rewrites appFrames but
+ * keeps key IDs, so every surviving key's script must move with it instead of
+ * being pruned at the first divergent record. Frames that disappear with their
+ * key are dropped from the SESSION only — the snapshot's retained union keeps
+ * them in the authoritative file. Returns null for a malformed layout
+ * (duplicate keyId or appFrame) without mutating anything; the caller keeps
+ * the fail-closed prune for that impossible-after-validation case.
+ */
+export function remapBrushScriptsForRecords(
+  before: readonly BrushScriptFrameRecordAnchor[],
+  after: readonly BrushScriptFrameRecordAnchor[],
+): BrushScriptRecordRemapResult | null {
+  const frameRemap = buildBrushScriptFrameRemap(before, after);
+  if (frameRemap === null) return null;
+
+  const nextFrames = new Map<number, BrushScriptFrameEntry>();
+  let remapped = 0;
+  let dropped = 0;
+  for (const [oldFrame, entry] of brushScriptFrames) {
+    const nextFrame = frameRemap.get(oldFrame);
+    if (nextFrame === undefined) {
+      dropped += 1;
+      continue;
+    }
+    nextFrames.set(
+      nextFrame,
+      nextFrame === oldFrame ? entry : Object.freeze({ ...entry, frame: nextFrame }),
+    );
+    if (nextFrame !== oldFrame) remapped += 1;
+  }
+  const nextDirty = remapFrameSet(dirtyBrushScriptFrames, frameRemap);
+  const nextArrival = remapFrameSet(arrivalBaseFrames, frameRemap);
+  const nextPurged = remapFrameSet(purgedBrushScriptFrames, frameRemap);
+  if (
+    remapped === 0
+    && dropped === 0
+    && sameFrameSet(dirtyBrushScriptFrames, nextDirty)
+    && sameFrameSet(arrivalBaseFrames, nextArrival)
+    && sameFrameSet(purgedBrushScriptFrames, nextPurged)
+  ) {
+    return { remapped, dropped };
+  }
+
+  brushScriptFrames.clear();
+  for (const [frame, entry] of nextFrames) brushScriptFrames.set(frame, entry);
+  dirtyBrushScriptFrames.clear();
+  for (const frame of nextDirty) dirtyBrushScriptFrames.add(frame);
+  arrivalBaseFrames.clear();
+  for (const frame of nextArrival) arrivalBaseFrames.add(frame);
+  purgedBrushScriptFrames.clear();
+  for (const frame of nextPurged) purgedBrushScriptFrames.add(frame);
+  bumpRevision();
+  return { remapped, dropped };
 }
 
 /** Test-only visibility: the frozen empty read must stay identity-stable. */

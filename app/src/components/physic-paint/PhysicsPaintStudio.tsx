@@ -197,6 +197,7 @@ import {
   pruneBrushScriptsFromFrame,
   purgeAllBrushScriptFrames,
   purgeBrushScriptFrame,
+  remapBrushScriptsForRecords,
   resetBrushScriptStore,
 } from './view/brushScriptRecordState';
 import {
@@ -1942,13 +1943,17 @@ export function PhysicsPaintStudio() {
     if (layerId) physicPaintStore.setPaperId(layerId, paperId);
     setBackground(paperId as StudioBackgroundMode);
   };
-  // 261023-g4p: the brush store follows the physical key lifecycle — a
-  // successful accepted replace prunes every frame at/after the first
-  // divergent record position (fail closed, never remapped).
-  const pruneBrushScriptsForRecords = (
+  // key-spacing-script-loss: the brush store follows the physical key
+  // IDENTITY. Force-spacing rewrites appFrames but keeps key IDs, so a
+  // successful accepted replace remaps every captured frame onto its
+  // surviving key's new frame. Only frames whose key disappeared are dropped
+  // (the snapshot's retained union keeps them in the file), and only a
+  // malformed layout falls back to the 261023-g4p fail-closed prune.
+  const applyBrushScriptRecordRemap = (
     beforeRecords: readonly { keyId: string; appFrame: number }[],
     nextRecords: readonly { keyId: string; appFrame: number }[],
   ) => {
+    if (remapBrushScriptsForRecords(beforeRecords, nextRecords) !== null) return;
     const pruneFrame = computeBrushScriptPruneFrame(beforeRecords, nextRecords);
     if (pruneFrame !== null) pruneBrushScriptsFromFrame(pruneFrame);
   };
@@ -1976,7 +1981,7 @@ export function PhysicsPaintStudio() {
       currentGroupOverrides,
     ) === nextRevision) {
       const identicalRevisionResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
-      if (identicalRevisionResult.ok) pruneBrushScriptsForRecords(beforeRecords, records);
+      if (identicalRevisionResult.ok) applyBrushScriptRecordRemap(beforeRecords, records);
       return identicalRevisionResult;
     }
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
@@ -2001,7 +2006,7 @@ export function PhysicsPaintStudio() {
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
     const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
     if (!result.ok) return result;
-    pruneBrushScriptsForRecords(beforeRecords, records);
+    applyBrushScriptRecordRemap(beforeRecords, records);
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
     rotoEditBuffer.replacePreviewFrames(next.previewFrames);
@@ -2073,7 +2078,7 @@ export function PhysicsPaintStudio() {
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
     const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, studioActiveTrackId(), document, leaseToken);
     if (!result.ok) return result;
-    pruneBrushScriptsForRecords(beforeRecords, document.realKeyRecords);
+    applyBrushScriptRecordRemap(beforeRecords, document.realKeyRecords);
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
     rotoEditBuffer.replacePreviewFrames(next.previewFrames);
