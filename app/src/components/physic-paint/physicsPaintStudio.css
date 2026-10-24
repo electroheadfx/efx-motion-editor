@@ -518,15 +518,12 @@ button.destructive {
 }
 
 /* I-11 follow-up: hide the last optional watercolor knobs as the settings
-   area narrows. Order: Pigment (new, last) → Grain → Edges; Water stays.
-   Thresholds follow the control widths (140px + 10px gap at wide viewports,
-   115px + 8px below 1180px): 6/5/4 visible = 890/740/590 and 730/607/484.
+   area narrows. Order: Grain → Edges; Water and the primary Pigment control
+   stay. Thresholds follow the control widths (140px + 10px gap at wide
+   viewports, 115px + 8px below 1180px): 5/4/3 visible = 740/590 and 607/484.
    These rules MUST follow .physics-paint-topbar-control's display:flex — the
    descendant selector keeps them winning at equal source order. */
 @media (min-width: 1181px) {
-  @container (max-width: 889px) {
-    .physics-paint-topbar-primary .physics-paint-topbar-optional-pigment { display: none; }
-  }
   @container (max-width: 739px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }
@@ -536,9 +533,6 @@ button.destructive {
 }
 
 @media (max-width: 1180px) {
-  @container (max-width: 729px) {
-    .physics-paint-topbar-primary .physics-paint-topbar-optional-pigment { display: none; }
-  }
   @container (max-width: 606px) {
     .physics-paint-topbar-primary .physics-paint-topbar-optional-grain { display: none; }
   }

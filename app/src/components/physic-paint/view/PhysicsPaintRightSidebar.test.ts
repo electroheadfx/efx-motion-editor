@@ -27,6 +27,22 @@ function rule(selector: string): string {
 }
 
 describe('native-approved Physics Paint right sidebar', () => {
+  it('keeps the Paint-tab Opacity row Brush-only; Water color shows Pigment', () => {
+    // The top size/opacity pair is Brush-only: watercolor has no global
+    // opacity, and its canonical Pigment (`load`) is a globals row. An
+    // Opacity-labelled slider bound to `load` is the confusion this pins out.
+    expect(rightPanel).toContain("activeModule.value !== 'watercolor' ? (");
+    expect(rightPanel).toContain('label="Opacity"');
+    expect(rightPanel).not.toContain(
+      "value={activeModule.value === 'watercolor' ? aquarelleParams.value.load : opacity}",
+    );
+    const globals = readFileSync(
+      fileURLToPath(new URL('./AquarelleGlobalsPanel.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(globals).toContain("{ key: 'load', label: 'Pigment' }");
+  });
+
   it('renders the top pane with mode-derived Color/Brush/Settings/Paper tabs and the Tool pane behind Paint/Track/Audio tabs, keeping the lower Actions/Onion/Motion tab group', () => {
     // 261018-cy1 + I-11 / D: the top-pane tab list is mode-derived (Brush mode
     // = Color + Paper; watercolor adds Brush + Settings) and the retired

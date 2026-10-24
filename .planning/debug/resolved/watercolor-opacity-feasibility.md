@@ -2,7 +2,7 @@
 status: resolved
 trigger: "Water color per-stroke global opacity feasibility — can aquarelle bake isolate one stroke's contribution so it can be alpha-composited without altering wet-on-wet behaviour? Prove it on engine 2 with a scratch sheet/FBO, a fixed seed, and a parity pin that opacity 100 reproduces today's bake. No UI, no schema, no persistence. Verdict: viable architecture + cost, or blocked with evidence. The current dialog row is left as-is (Water color Geometry 'Opacity' = Pigment) until you decide which path to take."
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-10-24 (product decision recorded, live UAT passed)
 ---
 
 # Debug Session: watercolor-opacity-feasibility
@@ -98,3 +98,12 @@ updated: 2026-10-24
 - files_changed: /Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor/probe/watercolor-opacity/probe.ts; /Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor/probe/watercolor-opacity/index.html; /Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor/probe/watercolor-opacity/run.mjs (test/scratch harness, outside `src/`; unshipped)
 - verification: `node /Users/lmarques/Dev/efx-motion-editor/packages/efx-watercolor/probe/watercolor-opacity/run.mjs` → `/tmp/watercolor-opacity-probe/result.json`; full package suite `pnpm --filter @efxlab/efx-watercolor exec vitest run` → 130 passed, 4 skipped (pre-existing GPU pins).
 - recommendation: Keep the Studio dialog row "Water color → Geometry → Opacity" mapped to Pigment (`load`) for now. If global opacity is pursued, implement the display crossfade/delta at bake/export — do not build per-stroke scratch-FBO layers or alpha-composite the current opaque export. Open the implementation as its own scoped task; this session deliberately ships nothing.
+
+## Product decision (2026-10-24)
+
+- **Closure:** closed as **blocked-for-per-stroke-alpha**. No per-stroke RGBA opacity layers are pursued.
+- **Engine 1 (Brush) keeps true per-stroke opacity** — there it is a real composited alpha.
+- **Water color labels the value for what it is.** The Geometry lead row labelled "Opacity" was `load` = Pigment; it is removed (Pigment already lives in the Paint list). The top bar's duplicate Opacity/Pigment pair collapses to one module-labelled primary control (Brush: Opacity; Water color: Pigment). The right panel Paint tab keeps Pigment via the watercolor globals panel and no longer shows the duplicate Opacity row.
+- **The display crossfade is NOT adopted under the name "opacity".** It is filed separately as a compositing/export **"frame fade"** with an explicit contract (see `.planning/todos/pending/261024-frame-fade-compositing.md`): it fades a cumulative frame delta, not the stroke's own pixels, and goes stale if the stroke is later moved, scaled, or re-baked.
+- **Revisit exact per-stroke translucency only if it becomes a hard product requirement** — and then as a phase-level memory/compression problem first (what makes a per-stroke before/after state affordable), not as a dialog feature.
+- **Verification:** `pnpm typecheck` green; `vitest run src/components/physic-paint` = 174 files, 3770 tests passed. Live visual UAT PASSED 2026-10-24 (all rows approved).

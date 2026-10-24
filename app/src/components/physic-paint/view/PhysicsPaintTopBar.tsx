@@ -11,9 +11,11 @@ import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
  * rows and those props left for the Paper tab (PaperPicker) — one home for
  * paper + background.
  *
- * 261018-f15 C1: Water / Edges / Grain follow Opacity in Water color mode and
- * write setAquarelleParam('water' | 'edge' | 'granulation') — the same seam
- * the Paint-tab globals use. Brush mode keeps Brush size + Opacity only.
+ * 261018-f15 C1: Water / Edges / Grain follow the primary control in Water
+ * color mode and write setAquarelleParam('water' | 'edge' | 'granulation') —
+ * the same seam the Paint-tab globals use. Brush mode keeps Brush size +
+ * Opacity only; Water color labels that slot Pigment because its value is the
+ * canonical `load`, never an alpha.
  *
  * 261018-gqo move 5: Engine ready is pinned left alone; Modes + Brush size +
  * Opacity (+ Water/Edges/Grain) form ONE centered group. DOM grouping and CSS
@@ -26,8 +28,8 @@ import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
  *
  * I-11 follow-up: the slider cluster now centers in the space AFTER the left
  * cluster (not the whole window), which stops the cluster colliding with the
- * ModuleSwitcher. Pigment joins Water / Edges / Grain, and the last optional
- * watercolor knobs hide as the settings area narrows (container queries in
+ * ModuleSwitcher. Water / Edges / Grain are the optional watercolor knobs and
+ * hide as the settings area narrows (container queries in
  * physicsPaintStudio.css).
  */
 export interface PhysicsPaintTopBarProps {
@@ -85,13 +87,13 @@ export function PhysicsPaintTopBar({
   recordPhysicsPaintPerformanceCounter('render.topBar');
   const statusCopy = ready ? 'Engine ready' : 'Engine not ready';
   const statusTone = getPhysicsPaintEngineStatusTone({ ready });
+  const isWatercolor = activeModule.value === 'watercolor';
   // UI checklist row 3: one shared Size slider — the displayed Brush size is
   // the live aquarelle size in Water color mode (signal read bypasses the memo).
-  const liveBrushSize = activeModule.value === 'watercolor' ? aquarelleParams.value.size : brushSize;
-  // Opacity routes to aquarelle load in Water color; display the live value
-  // too, or the slider snaps back to engine-1's opacity (the setting looked
-  // dead: the paint changed, the thumb did not).
-  const liveOpacity = activeModule.value === 'watercolor' ? aquarelleParams.value.load : opacity;
+  const liveBrushSize = isWatercolor ? aquarelleParams.value.size : brushSize;
+  // Water color has no opacity — its canonical Pigment `load` rides this same
+  // primary control, so the bar never shows Opacity and Pigment twice.
+  const liveOpacity = isWatercolor ? aquarelleParams.value.load : opacity;
 
   return (
     <header class="physics-paint-topbar" aria-label="Physics Paint controls">
@@ -109,8 +111,16 @@ export function PhysicsPaintTopBar({
           the left cluster; the last optional knobs hide via container queries. */}
       <div class="physics-paint-topbar-primary">
         <TopBarSlider id="physics-brush-size" label="Brush size" min={1} max={80} value={liveBrushSize} onChange={onBrushSizeChange} disabled={disabled} />
-        <TopBarSlider id="physics-brush-opacity" label="Opacity" min={10} max={100} value={liveOpacity} onChange={onOpacityChange} disabled={disabled} />
-        {activeModule.value === 'watercolor' ? (
+        <TopBarSlider
+          id={isWatercolor ? 'physics-aquarelle-pigment' : 'physics-brush-opacity'}
+          label={isWatercolor ? 'Pigment' : 'Opacity'}
+          min={isWatercolor ? 0 : 10}
+          max={100}
+          value={liveOpacity}
+          onChange={onOpacityChange}
+          disabled={disabled}
+        />
+        {isWatercolor ? (
           <>
             <TopBarSlider
               id="physics-aquarelle-water"
@@ -141,16 +151,6 @@ export function PhysicsPaintTopBar({
               onChange={(value) => setAquarelleParam('granulation', value)}
               disabled={disabled}
               class="physics-paint-topbar-optional-grain"
-            />
-            <TopBarSlider
-              id="physics-aquarelle-pigment"
-              label="Pigment"
-              min={0}
-              max={100}
-              value={aquarelleParams.value.load}
-              onChange={(value) => setAquarelleParam('load', value)}
-              disabled={disabled}
-              class="physics-paint-topbar-optional-pigment"
             />
           </>
         ) : null}

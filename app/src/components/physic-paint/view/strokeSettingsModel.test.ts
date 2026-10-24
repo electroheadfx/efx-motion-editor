@@ -635,11 +635,10 @@ describe('261024-p5q dialog fields and shared color', () => {
       );
     }
 
-    // The canonical Pigment (`load`) ALSO leads Geometry as "Opacity": the
-    // top bar surfaces both, and the dialog mirrors it.
-    const geometryOpacity = findComponent(tree, (props) => props.ariaLabel === 'Opacity')!;
-    expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeDefined();
-    expect(geometryOpacity.props.value).toBe(60);
+    // Water color has no global opacity: Pigment (`load`) is a Paint row and
+    // Geometry must not mirror it under the name Opacity.
+    expect(findComponent(tree, (props) => props.ariaLabel === 'Opacity')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeUndefined();
 
     const pigment = findComponent(tree, (props) => props.ariaLabel === 'Pigment')!;
     (pigment.props.onChange as (value: number) => void)(70);

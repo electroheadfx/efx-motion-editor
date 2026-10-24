@@ -485,7 +485,10 @@ export function PhysicsPaintRightPanel({
             {/* 261018-f15 C2: Brush size + Opacity pair at the TOP of the Paint
                 tab — a second home over the SAME handlers the top bar uses
                 (write-through, never a second setter). Display rules match the
-                top bar: live aquarelle size in watercolor, settings otherwise. */}
+                top bar: live aquarelle size in watercolor, settings otherwise.
+                Water color has no global opacity; its Pigment (`load`) lives
+                in the module globals below, so the mislabelled duplicate row
+                is Brush-only. */}
             <div class="paint-tab-size-opacity" data-paint-tab-size-opacity style={{ display: 'flex', flexDirection: 'column', gap: '11px', paddingBottom: '8px' }}>
               <SliderStepper
                 id="paint-tab-brush-size"
@@ -497,16 +500,18 @@ export function PhysicsPaintRightPanel({
                 ariaLabel="Brush size"
                 onChange={onBrushSizeChange}
               />
-              <SliderStepper
-                id="paint-tab-brush-opacity"
-                label="Opacity"
-                value={activeModule.value === 'watercolor' ? aquarelleParams.value.load : opacity}
-                step={1}
-                min={10}
-                max={100}
-                ariaLabel="Opacity"
-                onChange={onOpacityChange}
-              />
+              {activeModule.value !== 'watercolor' ? (
+                <SliderStepper
+                  id="paint-tab-brush-opacity"
+                  label="Opacity"
+                  value={opacity}
+                  step={1}
+                  min={10}
+                  max={100}
+                  ariaLabel="Opacity"
+                  onChange={onOpacityChange}
+                />
+              ) : null}
             </div>
             {/* 56-02 (D-05) / 261017-w4x I-05 (Q3): MODULE-ONLY block — drains
                 per activeModule. The shared Opacity option-group left with I-05. */}

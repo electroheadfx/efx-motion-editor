@@ -280,12 +280,13 @@ export function PhysicsPaintStrokeSettingsDialog({
 
   const fields = strokeSettingsFields(engineModule);
   /**
-   * UAT: Opacity also leads Geometry (brush `opacity`; Water color's
-   * opacity-equivalent is the canonical Pigment `load`). The Paint list keeps
-   * the module's full field set — the top bar surfaces Opacity and Pigment
-   * side by side for Water color, and the dialog mirrors that.
+   * Brush only: Opacity is a real composited alpha and leads Geometry.
+   * Water color has no global opacity — its canonical Pigment (`load`) is
+   * already a Paint row, so Geometry does not mirror it under the name Opacity.
    */
-  const opacityField = fields.find((field) => field.key === (engineModule === 'watercolor' ? 'load' : 'opacity'));
+  const opacityField = engineModule === 'watercolor'
+    ? undefined
+    : fields.find((field) => field.key === 'opacity');
   const numericFields = fields.filter((field) => field.kind === 'numeric');
   const segmentedFields = fields.filter((field) => field.kind === 'segmented');
   const opacityReading = opacityField ? readNumericField(appearances, ids, opacityField) : null;

@@ -98,19 +98,19 @@ describe('PhysicsPaintTopBar small-width responsiveness (36.15-06 fix)', () => {
 
   it('hides the last optional watercolor knobs via container queries (I-11 follow-up)', () => {
     const styles = css();
-    expect(styles, 'Pigment hides first at wide viewports').toContain('@container (max-width: 889px)');
-    expect(styles, 'Grain hides next').toContain('@container (max-width: 739px)');
+    expect(styles, 'Grain hides first at wide viewports').toContain('@container (max-width: 739px)');
     expect(styles, 'Edges hides last').toContain('@container (max-width: 589px)');
     expect(styles, 'narrow-viewport thresholds follow the 115px control width').toContain(
-      '@container (max-width: 729px)',
+      '@container (max-width: 606px)',
     );
-    expect(styles).toContain('.physics-paint-topbar-optional-pigment');
+    // Pigment is the primary control in Water color, never an optional knob.
+    expect(styles).not.toContain('.physics-paint-topbar-optional-pigment');
     expect(styles).toContain('.physics-paint-topbar-optional-grain');
     expect(styles).toContain('.physics-paint-topbar-optional-edges');
     // The hide rules must out-rank .physics-paint-topbar-control's display:flex
     // (the equal-specificity bug that kept every knob visible).
     const controlAt = styles.indexOf('.physics-paint-topbar-control {');
-    const hideAt = styles.indexOf('.physics-paint-topbar-primary .physics-paint-topbar-optional-pigment');
+    const hideAt = styles.indexOf('.physics-paint-topbar-primary .physics-paint-topbar-optional-grain');
     expect(controlAt, 'control display rule must exist').toBeGreaterThan(-1);
     expect(hideAt, 'hide rule must exist').toBeGreaterThan(-1);
     expect(hideAt, 'hide rule must follow the control display rule').toBeGreaterThan(controlAt);
@@ -195,10 +195,11 @@ describe('261017-vcn top bar slim (I-04 remainder)', () => {
   });
 });
 
-// 261018-f15 C1: Water / Edges / Grain ride the watercolor branch after
-// Opacity and write setAquarelleParam('water' | 'edge' | 'granulation').
+// 261018-f15 C1: Water / Edges / Grain ride the watercolor branch after the
+// primary control and write setAquarelleParam('water' | 'edge' | 'granulation').
+// The primary control is Pigment (`load`) in Water color — never Opacity.
 describe('261018-f15 watercolor top-bar aquarelle globals', () => {
-  it('watercolor branch shows Water / Edges / Grain after Opacity', async () => {
+  it('watercolor branch shows the primary Pigment control, then Water / Edges / Grain', async () => {
     vi.resetModules();
     vi.doMock('../../shared/activeModule', () => ({
       activeModule: { value: 'watercolor' },
@@ -214,7 +215,7 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
         (node) => typeof (node as AnyVNode).props?.label === 'string',
       ) as AnyVNode[];
       const labels = controls.map((s) => s.props.label);
-      expect(labels).toEqual(['Brush size', 'Opacity', 'Water', 'Edges', 'Grain', 'Pigment']);
+      expect(labels).toEqual(['Brush size', 'Pigment', 'Water', 'Edges', 'Grain']);
     } finally {
       vi.doUnmock('../../shared/activeModule');
       vi.doUnmock('./aquarelleRecordState');
@@ -246,19 +247,21 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
     }
   });
 
-  it('Water / Edges / Grain / Pigment route to setAquarelleParam (source pin)', () => {
+  it('Water / Edges / Grain route to setAquarelleParam; Pigment is the primary control (source pin)', () => {
     const body = stripComments(topBarSource());
     expect(body).toContain('setAquarelleParam');
     expect(body).toContain("setAquarelleParam('water'");
     expect(body).toContain("setAquarelleParam('edge'");
     expect(body).toContain("setAquarelleParam('granulation'");
-    expect(body).toContain("setAquarelleParam('load'");
+    // Pigment (`load`) rides the primary slot through the Studio router — it
+    // is not a second optional knob and never wears the Opacity label.
+    expect(body).not.toContain('physics-paint-topbar-optional-pigment');
+    expect(body).toContain("label={isWatercolor ? 'Pigment' : 'Opacity'}");
     // Optional knobs carry the query-hidden classes.
-    expect(body).toContain('physics-paint-topbar-optional-pigment');
     expect(body).toContain('physics-paint-topbar-optional-grain');
     expect(body).toContain('physics-paint-topbar-optional-edges');
     // Mode gate: the watercolor knobs mount only behind the watercolor read.
-    expect(body).toContain("activeModule.value === 'watercolor'");
+    expect(body).toContain('isWatercolor');
   });
 });
 
