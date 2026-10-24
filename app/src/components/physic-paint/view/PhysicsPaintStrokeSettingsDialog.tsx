@@ -275,22 +275,55 @@ export function PhysicsPaintStrokeSettingsDialog({
    * selection Set: a membership change starts unset, so a mixed selection's
    * first commit always writes (even when it reproduces the representative
    * colour). Repeated boundaries in one gesture are idempotent.
+   *
+   * A boundary commits ONLY a draft the shared picker just emitted: a bare
+   * pointerup/click/change never invents the representative colour. This is
+   * what keeps clicking the chip/hex field or opening the native colour
+   * picker from collapsing a mixed selection before the user picks anything.
    */
   const commitColor = () => {
     const current = colorDraftRef.current!.value;
-    const nextColor = current && current.selection === selection
-      ? current.color
-      : colorReading.color;
+    if (!current || current.selection !== selection) return;
+    const nextColor = current.color;
     const baseline = colorCommittedRef.current;
     if (baseline && baseline.selection === selection && baseline.color === nextColor) return;
     colorCommittedRef.current = { selection, color: nextColor };
     void bundle.applyAppearance(ids, buildColorPatch(nextColor));
   };
 
+  /** The wrapper only recognizes the picker's own boundary surfaces. */
+  const eventTargets = (event: unknown, selector: string): boolean => {
+    const target = (event as { target?: { closest?: (query: string) => unknown } } | null)?.target;
+    return Boolean(target?.closest?.(selector));
+  };
+
+  const commitColorOnPointerUp = (event: unknown) => {
+    if (!eventTargets(event, '.physics-paint-color-box, .physics-paint-hue-strip')) return;
+    commitColor();
+  };
+
+  const commitColorOnChange = (event: unknown) => {
+    if (!eventTargets(event, '.physics-paint-color-chip')) return;
+    commitColor();
+  };
+
+  const commitColorOnKeyDown = (event: unknown) => {
+    if ((event as { key?: string } | null)?.key !== 'Enter') return;
+    if (!eventTargets(event, '.physics-paint-hex-input')) return;
+    commitColor();
+  };
+
+  const commitColorOnClick = (event: unknown) => {
+    // The swatch button owns the click; its remove control is a sibling.
+    if (!eventTargets(event, '.physics-paint-swatch')) return;
+    commitColor();
+  };
+
   /**
    * Preact runs `onBlurCapture` BEFORE the focused field's own `onBlur`, so a
    * hex commit would still be only in the field's state. Defer one microtask
-   * to commit the draft the field handler just wrote.
+   * to commit the draft the field handler just wrote. An invalid entry or an
+   * Escape cancel leaves no draft, and commitColor then writes nothing.
    */
   const onColorBlurCapture = () => {
     queueMicrotask(commitColor);
@@ -492,13 +525,11 @@ export function PhysicsPaintStrokeSettingsDialog({
         <div style={SECTION_TITLE_STYLE}>Color</div>
         <div
           data-testid="stroke-settings-color"
-          onPointerUp={commitColor}
-          onChange={commitColor}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') commitColor();
-          }}
+          onPointerUp={commitColorOnPointerUp}
+          onChange={commitColorOnChange}
+          onKeyDown={commitColorOnKeyDown}
           onBlurCapture={onColorBlurCapture}
-          onClick={commitColor}
+          onClick={commitColorOnClick}
         >
           {colorReading.mixed ? (
             <div data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>

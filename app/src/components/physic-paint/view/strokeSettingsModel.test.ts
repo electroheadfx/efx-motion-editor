@@ -565,6 +565,21 @@ describe('261024-p5q dialog shell', () => {
 //  writes every selected stroke exactly once.
 // ============================================================
 
+/** Minimal boundary event: `closest` matches only the named selector. */
+function colorBoundaryEvent(selector: string, key?: string) {
+  return {
+    key,
+    target: {
+      closest: (query: string) => (query.includes(selector) ? {} : null),
+    },
+  };
+}
+
+/** A target the wrapper's boundary guards must all reject. */
+const NOT_A_COLOR_BOUNDARY = {
+  target: { closest: () => null },
+};
+
 describe('261024-p5q dialog fields and shared color', () => {
   it('renders every brush Paint field as a release-commit SliderStepper', () => {
     const { bundle, calls } = createBundle();
@@ -713,12 +728,12 @@ describe('261024-p5q dialog fields and shared color', () => {
     expect(draftTab.props.color).toBe('#00ff00');
 
     const section = findByTestId(withDraft, 'stroke-settings-color')!;
-    (section.props.onPointerUp as () => void)();
+    (section.props.onPointerUp as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-color-box'));
     expect(calls).toEqual([{ ids: [7, 9], patch: { color: '#00ff00' } }]);
 
     // Repeated boundaries in the same gesture stay idempotent.
-    (section.props.onPointerUp as () => void)();
-    (section.props.onClick as () => void)();
+    (section.props.onPointerUp as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-hue-strip'));
+    (section.props.onClick as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-swatch'));
     expect(calls).toEqual([{ ids: [7, 9], patch: { color: '#00ff00' } }]);
   });
 
@@ -732,8 +747,13 @@ describe('261024-p5q dialog fields and shared color', () => {
     });
     setScriptStrokeSelection([7, 9]);
     const tree = renderDialog(bundle);
-    const section = findByTestId(tree, 'stroke-settings-color')!;
-    (section.props.onPointerUp as () => void)();
+    const colorTab = findComponent(
+      tree,
+      (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+    )!;
+    (colorTab.props.onColorChange as (color: string, opacity: number) => void)('#ff0000', 100);
+    const section = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
+    (section.props.onPointerUp as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-color-box'));
     expect(calls).toEqual([{ ids: [7, 9], patch: { color: '#ff0000' } }]);
   });
 
@@ -741,22 +761,85 @@ describe('261024-p5q dialog fields and shared color', () => {
     const { bundle, calls } = createBundle({
       readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#ff0000')),
     });
+    const boundary = (tree: ReturnType<typeof renderDialog>) => {
+      const colorTab = findComponent(
+        tree,
+        (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+      )!;
+      (colorTab.props.onColorChange as (color: string, opacity: number) => void)('#ff0000', 100);
+      const section = findByTestId(tree, 'stroke-settings-color')!;
+      (section.props.onPointerUp as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-color-box'));
+    };
+
     setScriptStrokeSelection([7]);
-    const first = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
-    (first.props.onPointerUp as () => void)();
+    boundary(renderDialog(bundle));
     expect(calls).toHaveLength(1);
 
     // Same colour, same ids: idempotent.
-    const again = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
-    (again.props.onPointerUp as () => void)();
+    boundary(renderDialog(bundle));
     expect(calls).toHaveLength(1);
 
     // A new selection Set is a new baseline — the first commit writes again.
     setScriptStrokeSelection([7, 9]);
-    const nextSelection = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
-    (nextSelection.props.onPointerUp as () => void)();
+    boundary(renderDialog(bundle));
     expect(calls).toHaveLength(2);
     expect(calls[1]).toEqual({ ids: [7, 9], patch: { color: '#ff0000' } });
+  });
+
+  it('a swatch click writes once — its pointerup is not a colour boundary', () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(
+        id,
+        { size: 12 },
+        id === 7 ? '#ff0000' : '#00ff00',
+      )),
+    });
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialog(bundle);
+    const section = findByTestId(tree, 'stroke-settings-color')!;
+    // The physical sequence: pointerup on the swatch, then the swatch's click.
+    (section.props.onPointerUp as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-swatch'));
+    expect(calls).toEqual([]);
+    const colorTab = findComponent(
+      tree,
+      (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+    )!;
+    (colorTab.props.onColorChange as (color: string, opacity: number) => void)('#00ff00', 100);
+    (section.props.onClick as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-swatch'));
+    expect(calls).toEqual([{ ids: [7, 9], patch: { color: '#00ff00' } }]);
+  });
+
+  it('a bare click into the chip or hex field never writes a colour', async () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(
+        id,
+        { size: 12 },
+        id === 7 ? '#ff0000' : '#00ff00',
+      )),
+    });
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialog(bundle);
+    const colorTab = findComponent(
+      tree,
+      (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+    )!;
+    (colorTab.props.onColorChange as (color: string, opacity: number) => void)('#00ff00', 100);
+    const section = findByTestId(tree, 'stroke-settings-color')!;
+    (section.props.onPointerUp as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-color-chip'));
+    (section.props.onPointerUp as (event: unknown) => void)(colorBoundaryEvent('.physics-paint-hex-input'));
+    (section.props.onClick as (event: unknown) => void)(NOT_A_COLOR_BOUNDARY);
+    expect(calls).toEqual([]);
+  });
+
+  it('a hex blur with no picker draft writes nothing (Escape / invalid entry)', async () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#ff0000')),
+    });
+    setScriptStrokeSelection([7]);
+    const section = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
+    (section.props.onBlurCapture as () => void)();
+    await Promise.resolve();
+    expect(calls).toEqual([]);
   });
 
   it('the blur boundary commits the draft after the hex field handler ran', async () => {
