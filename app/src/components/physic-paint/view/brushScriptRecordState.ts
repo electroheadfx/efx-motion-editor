@@ -20,7 +20,9 @@
 //  remaps every captured frame, dirty mark, arrival-base note and
 //  purge marker onto the surviving key's next appFrame
 //  (key-spacing-script-loss: the old fail-closed prune erased the
-//  last scripts of a respaced rail). Only a key that truly
+//  last scripts of a respaced rail). The old→new map comes from the
+//  shared `buildKeyIdentityFrameMap` (roto/keyIdentityFrameMap) — one
+//  mapping law for every session store. Only a key that truly
 //  disappeared drops its session entry; a malformed layout (duplicate
 //  keyId or appFrame) falls back to the fail-closed prune.
 //
@@ -43,6 +45,10 @@ import {
   normalizeLogicalBrushes,
   type RecordedStrokeGroup,
 } from './recordedStrokeGroups';
+import {
+  buildKeyIdentityFrameMap,
+  type KeyIdentityFrameRecord,
+} from '../roto/keyIdentityFrameMap';
 
 export interface BrushScriptFrameTotals {
   strokes: number;
@@ -503,10 +509,8 @@ export function pruneBrushScriptsFromFrame(frame: number): number {
   return removed;
 }
 
-export interface BrushScriptFrameRecordAnchor {
-  keyId: string;
-  appFrame: number;
-}
+/** A physical key-record anchor — the shared key-identity pair. */
+export type BrushScriptFrameRecordAnchor = KeyIdentityFrameRecord;
 
 /**
  * PURE prune anchor: compare the physical key-record list before/after an
@@ -546,41 +550,6 @@ export interface BrushScriptRecordRemapResult {
   dropped: number;
 }
 
-function buildBrushScriptFrameRemap(
-  before: readonly BrushScriptFrameRecordAnchor[],
-  after: readonly BrushScriptFrameRecordAnchor[],
-): Map<number, number> | null {
-  const keyIdByOldFrame = new Map<number, string>();
-  const beforeKeyIds = new Set<string>();
-  for (const record of before) {
-    if (beforeKeyIds.has(record.keyId) || keyIdByOldFrame.has(record.appFrame)) return null;
-    beforeKeyIds.add(record.keyId);
-    keyIdByOldFrame.set(record.appFrame, record.keyId);
-  }
-  const frameByKeyId = new Map<string, number>();
-  const afterFrames = new Set<number>();
-  for (const record of after) {
-    if (frameByKeyId.has(record.keyId) || afterFrames.has(record.appFrame)) return null;
-    frameByKeyId.set(record.keyId, record.appFrame);
-    afterFrames.add(record.appFrame);
-  }
-  const frameRemap = new Map<number, number>();
-  const destinations = new Set<number>();
-  // Owned frames first: a surviving key always wins its new destination.
-  for (const [oldFrame, keyId] of keyIdByOldFrame) {
-    const nextFrame = frameByKeyId.get(keyId);
-    if (nextFrame === undefined) continue;
-    frameRemap.set(oldFrame, nextFrame);
-    destinations.add(nextFrame);
-  }
-  // A frame that just gained a key (direct auto-paint) keeps its script.
-  for (const frame of afterFrames) {
-    if (keyIdByOldFrame.has(frame) || destinations.has(frame)) continue;
-    frameRemap.set(frame, frame);
-  }
-  return frameRemap;
-}
-
 function sameFrameSet(left: ReadonlySet<number>, right: ReadonlySet<number>): boolean {
   if (left.size !== right.size) return false;
   for (const frame of left) {
@@ -615,7 +584,7 @@ export function remapBrushScriptsForRecords(
   before: readonly BrushScriptFrameRecordAnchor[],
   after: readonly BrushScriptFrameRecordAnchor[],
 ): BrushScriptRecordRemapResult | null {
-  const frameRemap = buildBrushScriptFrameRemap(before, after);
+  const frameRemap = buildKeyIdentityFrameMap(before, after);
   if (frameRemap === null) return null;
 
   const nextFrames = new Map<number, BrushScriptFrameEntry>();
