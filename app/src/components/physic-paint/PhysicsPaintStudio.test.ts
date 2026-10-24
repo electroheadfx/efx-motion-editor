@@ -2960,8 +2960,8 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
     // Better hover text: the shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
-    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward'");
+    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Corner handles scale · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward'");
     expect(toolRail).toContain('title={item.tooltip ?? item.label}');
   });
 
@@ -3127,7 +3127,7 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(canvasMount).toContain('onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(canvasMount).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(studio).toContain('onAquarelleMoveStrokes: handleAquarelleMoveStrokes,');
-    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes]');
+    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
     expect(aquarelleCanvasLayer).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
     expect(aquarelleStrokeOverlay).toContain('onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
@@ -4027,5 +4027,70 @@ describe('261024-m20 accepted-replace key-identity remaps', () => {
     const documentCall = documentSlice.indexOf('applyScriptRecordRemaps(beforeRecords, document.realKeyRecords);', documentGuard);
     expect(documentGuard).toBeGreaterThanOrEqual(0);
     expect(documentCall).toBeGreaterThan(documentGuard);
+  });
+});
+
+// 261024-mz5 Task 3: the Water color half of the shared transform surface.
+// The adapter now supplies the transform callback, the mount threads it like
+// the delete/move callbacks, and the Studio commits it through the SAME guard
+// chain + Apply pipeline as a move, with ONE bridge crossing for the centre
+// and a NEGATED screen angle (uv y points up).
+describe('261024-mz5 watercolor transform surface', () => {
+  it('threads the transform callback from the adapter through the mount to the Studio', () => {
+    // Adapter: prop + port operation.
+    expect(aquarelleStrokeOverlay).toContain('onTransformStrokes: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;');
+    expect(aquarelleStrokeOverlay).toContain('onTransformStrokes={props.onTransformStrokes}');
+    expect(aquarelleStrokeOverlay).toContain('transformStrokes: props.onTransformStrokes,');
+    // Canvas layer: ref + one render-body assignment (the delete/move pattern).
+    expect(aquarelleCanvasLayer).toContain('onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;');
+    expect(aquarelleCanvasLayer).toContain('const onTransformStrokesRef = useRef(props.onTransformStrokes);');
+    expect(aquarelleCanvasLayer).toContain('onTransformStrokesRef.current = props.onTransformStrokes;');
+    expect(aquarelleCanvasLayer).toContain('onTransformStrokes={(mutationIds, transform) => onTransformStrokesRef.current?.(mutationIds, transform)}');
+    // Mount: same ref pattern, the aquarelle-prefixed prop name.
+    expect(canvasMount).toContain('onAquarelleTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;');
+    expect(canvasMount).toContain('const onAquarelleTransformStrokesRef = useRef(props.onAquarelleTransformStrokes);');
+    expect(canvasMount).toContain('onAquarelleTransformStrokesRef.current = props.onAquarelleTransformStrokes;');
+    expect(canvasMount).toContain('onTransformStrokes={(mutationIds, transform) => onAquarelleTransformStrokesRef.current?.(mutationIds, transform)}');
+    // Studio: the mount prop and the registered watercolor port operation.
+    expect(studio).toContain('onAquarelleTransformStrokes: handleAquarelleTransformStrokes,');
+    expect(studio).toContain('transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),');
+    expect(studio).toContain('aquarelleEnginePixelToUv');
+  });
+
+  it('commits a watercolor transform through the move guard chain and the shared Apply pipeline', () => {
+    const start = studio.indexOf('const handleAquarelleTransformStrokes = useCallback(');
+    expect(start).toBeGreaterThan(-1);
+    const body = studio.slice(start, studio.indexOf('const handleAquarelleStepStroke', start));
+    // The move guard chain, unchanged and peek-only.
+    expect(body).toContain('if (isPhysicalMutationLocked()) return;');
+    expect(body).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;');
+    expect(body).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;");
+    expect(body).toContain('if (isAquarelleScriptEditInFlight()) return;');
+    expect(body).toContain('const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);');
+    expect(body).toContain('if (frameIds.length === 0) return;');
+    // ONE bridge crossing for the centre; the screen angle is NEGATED for uv.
+    expect(body).toContain('const center = aquarelleEnginePixelToUv(');
+    expect(body).toContain('{ x: transform.centerX, y: transform.centerY },');
+    expect(body).toContain('angleRad: -transform.angleRad,');
+    expect(body).toContain('factor: transform.factor,');
+    expect(body).toContain('const editId = beginAquarelleTransformEdit(frameIds, {');
+    expect(body).toContain('if (editId === null) return;');
+    // begin -> reset -> await apply -> record on success -> raw rollback on failure.
+    const reset = body.indexOf('aquarelleResetSheetRef.current?.();');
+    const apply = body.indexOf('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    const record = body.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId)');
+    const rollback = body.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
+    expect(reset).toBeGreaterThan(-1);
+    expect(apply).toBeGreaterThan(reset);
+    expect(record).toBeGreaterThan(apply);
+    expect(rollback).toBeGreaterThan(apply);
+    expect(body).toContain("?? 'Could not re-apply the watercolor script — the stroke was restored.'");
+    // The refusals surface and the in-flight flag clears in `finally`.
+    expect(body).toContain('setAquarelleScriptEditInFlight(true);');
+    expect(body).toContain('setAquarelleScriptEditInFlight(false);');
+  });
+
+  it('mentions the corner scale and the top rotate handle in both tooltips', () => {
+    expect(toolRail).toContain('Corner handles scale · Top handle rotates');
   });
 });

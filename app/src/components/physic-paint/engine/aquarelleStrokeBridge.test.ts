@@ -18,6 +18,7 @@ import { resolve } from 'node:path';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import {
   aquarelleEnginePixelDeltaToUv,
+  aquarelleEnginePixelToUv,
   aquarelleStrokeToPaintStroke,
   aquarelleUvToEnginePixel,
 } from './aquarelleStrokeBridge';
@@ -110,6 +111,32 @@ describe('aquarelleEnginePixelDeltaToUv', () => {
     expect(aquarelleEnginePixelDeltaToUv({ x: 10, y: 10 }, { width: Number.NaN, height: 200 })).toEqual({ x: 0, y: 0 });
     expect(aquarelleEnginePixelDeltaToUv({ x: 10, y: 10 }, { width: 400, height: Infinity })).toEqual({ x: 0, y: 0 });
     expect(aquarelleEnginePixelDeltaToUv({ x: Number.POSITIVE_INFINITY, y: 0 }, { width: 400, height: 200 })).toEqual({ x: 0, y: 0 });
+  });
+});
+
+// 261024-mz5 Task 3: the absolute-point inverse. A transform centre captured
+// in canvas pixels must cross into document UV exactly once — the same law the
+// delta path already follows (y flipped, degenerate sheet refused).
+describe('aquarelleEnginePixelToUv', () => {
+  it('maps a canvas pixel point back to document UV (y flip)', () => {
+    expect(
+      aquarelleEnginePixelToUv({ x: 100, y: 50 }, { width: 400, height: 200 }),
+    ).toEqual({ x: 0.25, y: 0.75 });
+
+    // Round-trip: every point lands on itself through the forward map too.
+    const uv = { x: 0.3, y: 0.7 };
+    const px = aquarelleUvToEnginePixel(uv, { width: 400, height: 200 });
+    const back = aquarelleEnginePixelToUv(px, { width: 400, height: 200 });
+    expect(back.x).toBeCloseTo(uv.x, 12);
+    expect(back.y).toBeCloseTo(uv.y, 12);
+  });
+
+  it('refuses a degenerate sheet or point', () => {
+    expect(aquarelleEnginePixelToUv({ x: 10, y: 10 }, { width: 0, height: 200 })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelToUv({ x: 10, y: 10 }, { width: 400, height: 0 })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelToUv({ x: 10, y: 10 }, { width: Number.NaN, height: 200 })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelToUv({ x: 10, y: 10 }, { width: 400, height: Infinity })).toEqual({ x: 0, y: 0 });
+    expect(aquarelleEnginePixelToUv({ x: Number.NaN, y: 10 }, { width: 400, height: 200 })).toEqual({ x: 0, y: 0 });
   });
 });
 

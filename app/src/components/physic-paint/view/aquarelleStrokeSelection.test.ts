@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
+  getRecordedAquarelleStroke,
   markAquarelleStrokeDeleted,
   recordAquarelleStroke,
   sendAquarelleStrokeBackwardInScript,
@@ -23,8 +24,10 @@ import {
   aquarelleStrokePointsPx,
   aquarelleStrokesOnFrame,
   beginAquarelleDeleteEdit,
+  beginAquarelleTransformEdit,
   hitTestAquarelleStroke,
   listSelectableAquarelleStrokes,
+  restoreAquarelleEditSnapshot,
   selectAquarelleStroke,
   setAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
@@ -194,6 +197,34 @@ describe('261022-pim aquarelle stroke select mode', () => {
     const editId = beginAquarelleDeleteEdit([9501, 9502]);
     expect(editId).not.toBeNull();
     expect([...scriptSelectedStrokeIds.value]).toEqual([9503]);
+  });
+
+  // 261024-mz5 Task 3: scale/rotate is ONE edit for the WHOLE selection —
+  // undo restores both strokes by reference and the selection is kept.
+  it('a multi-id transform edit restores both strokes on undo and keeps the selection', () => {
+    recordAquarelleStroke(9601, stroke({ points: [point(0.1, 0.5)], playFrame: 601 }));
+    recordAquarelleStroke(9602, stroke({ points: [point(0.2, 0.5)], playFrame: 601 }));
+    const firstBefore = getRecordedAquarelleStroke(9601)!;
+    const secondBefore = getRecordedAquarelleStroke(9602)!;
+    setScriptStrokeSelection([9601, 9602]);
+
+    const editId = beginAquarelleTransformEdit([9601, 9602], {
+      kind: 'scale',
+      centerUvX: 0.5,
+      centerUvY: 0.5,
+      angleRad: 0,
+      factor: 2,
+    });
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(9601)!.points[0]!.x).toBeCloseTo(-0.3, 12);
+    // Every stroke still exists — the selection is kept.
+    expect([...scriptSelectedStrokeIds.value].sort()).toEqual([9601, 9602]);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(9601)).toBe(firstBefore);
+    expect(getRecordedAquarelleStroke(9602)).toBe(secondBefore);
+    expect(getRecordedAquarelleStroke(9601)!.points[0]!.x).toBe(0.1);
+    clearScriptStrokeSelection();
   });
 
   it('setAquarelleSelectMode is compare-then-write', () => {
