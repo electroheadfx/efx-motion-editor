@@ -274,7 +274,7 @@ describe('261024-p5q field registry: the locked per-engine sets', () => {
     ]);
   });
 
-  it('water color exposes size (1..80) plus the seven 0..100 canonical globals', () => {
+  it('water color exposes size (1..400) plus the seven 0..100 canonical globals', () => {
     expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).toEqual([
       'size',
       'load',
@@ -286,7 +286,7 @@ describe('261024-p5q field registry: the locked per-engine sets', () => {
       'dry',
     ]);
     const size = fieldOf(WATERCOLOR_SETTINGS_FIELDS, 'size');
-    expect([size.min, size.max]).toEqual([1, 80]);
+    expect([size.min, size.max]).toEqual([1, 400]);
     for (const field of WATERCOLOR_SETTINGS_FIELDS) {
       if (field.key === 'size') continue;
       expect([field.key, field.min, field.max]).toEqual([field.key, 0, 100]);

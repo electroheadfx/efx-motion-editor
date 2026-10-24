@@ -203,7 +203,7 @@ describe('toStudioStroke payload round-trip', () => {
     const projected = toStudioStroke(runtime)
     const reparsed = adapter.payloadCodec.parse(adapter.payloadCodec.serialize(projected))
 
-    // Canonical: size is 1..80 px, the rest 0..100. Mapped would be 0..1.
+    // Canonical: size is 1..400 px, the rest 0..100. Mapped would be 0..1.
     expect(reparsed?.engine.params['size']).toBe(12)
     expect(reparsed?.engine.params['water']).toBe(50)
     expect(reparsed?.engine.params['load']).toBe(50)

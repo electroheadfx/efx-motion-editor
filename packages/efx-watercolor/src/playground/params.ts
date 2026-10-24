@@ -1,7 +1,7 @@
 // ============================================================
 //  params.ts — the ONE canonical ↔ vendor Params mapping.
 //
-//  Record stores CANONICAL AQUA-04 globals (size 1..80 px, the
+//  Record stores CANONICAL AQUA-04 globals (size 1..400 px, the
 //  other seven 0..100). Live and bake BOTH map through
 //  toEngineParams() so the two halves cannot drift (A1/A2).
 //  Never store the mapped 0..1 values in the payload.
@@ -37,9 +37,27 @@ function num(v: number | undefined, fallback: number): number {
 }
 
 /**
- * Canonical AQUA-04 globals → vendor `Params` (all 0..1).
- * `size` is 1..80 px on the slider; the vendor takes a 0..1
- * footprint scale where 32 px ≈ 1.0.
+ * Legacy top-bar domain. Every value at or below 80 keeps the exact
+ * pre-400 mapping so recorded strokes render unchanged; the former
+ * 33..80 band was already flat at the 1.0 vendor ceiling.
+ */
+const LEGACY_SIZE_MAX_PX = 80
+/** Largest size the Stroke Settings dialog records. */
+const SIZE_MAX_PX = 400
+/** Vendor footprint scale at 400 px: ~5x the footprint of an 80 px stroke. */
+const SIZE_SCALE_AT_MAX = 1.7325
+
+function sizeToEngineScale(sizePx: number): number {
+  if (sizePx <= 32) return Math.max(0, sizePx / 32)
+  if (sizePx <= LEGACY_SIZE_MAX_PX) return 1
+  const t = Math.min(1, (sizePx - LEGACY_SIZE_MAX_PX) / (SIZE_MAX_PX - LEGACY_SIZE_MAX_PX))
+  return 1 + t * (SIZE_SCALE_AT_MAX - 1)
+}
+
+/**
+ * Canonical AQUA-04 globals → vendor `Params` (all 0..1, size may
+ * exceed 1 above 80 px). `size` is 1..400 px on the slider; 32 px
+ * ≈ 1.0, and the 80..400 band scales up to ≈1.73.
  */
 export function toEngineParams(
   canonical: Partial<AquarelleCanonicalParams> | Record<string, number> | undefined,
@@ -47,7 +65,7 @@ export function toEngineParams(
   const p = (canonical ?? {}) as Partial<AquarelleCanonicalParams>
   const d = DEFAULT_CANONICAL_PARAMS
   return {
-    size: Math.max(0, Math.min(1, num(p.size, d.size) / 32)),
+    size: sizeToEngineScale(num(p.size, d.size)),
     water: num(p.water, d.water) / 100,
     load: num(p.load, d.load) / 100,
     flow: num(p.flow, d.flow) / 100,

@@ -76,7 +76,7 @@ export const WATERCOLOR_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object
     key: 'size',
     label: 'Size',
     min: 1,
-    max: 80,
+    max: 400,
     step: 1,
     kind: 'numeric' as const,
     fallback: DEFAULT_CANONICAL_PARAMS.size,
