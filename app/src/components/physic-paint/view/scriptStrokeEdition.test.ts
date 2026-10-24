@@ -158,8 +158,11 @@ describe('scriptStrokeEdition — shared signals', () => {
       kind: 'rotate',
       centerX: 10,
       centerY: 20,
+      anchorX: 10,
+      anchorY: 20,
       angleRad: 0.4,
-      factor: 1,
+      scaleX: 1,
+      scaleY: 1,
     });
 
     setScriptSelectMode(false);
@@ -181,8 +184,11 @@ describe('scriptStrokeEdition — shared signals', () => {
       kind: 'rotate' as const,
       centerX: 10,
       centerY: 20,
+      anchorX: 10,
+      anchorY: 20,
       angleRad: 0.4,
-      factor: 1,
+      scaleX: 1,
+      scaleY: 1,
     };
     try {
       const before = runs;
@@ -194,8 +200,10 @@ describe('scriptStrokeEdition — shared signals', () => {
       setScriptStrokeTransform({ ...preview, ids: [3] });
       expect(runs).toBe(before + 2);
       setScriptStrokeTransform({ ...preview, ids: [3], angleRad: 0.5 });
-      setScriptStrokeTransform({ ...preview, ids: [3], angleRad: 0.5, factor: 1.2 });
-      setScriptStrokeTransform({ ...preview, ids: [3], angleRad: 0.5, factor: 1.2, centerX: 11 });
+      setScriptStrokeTransform({ ...preview, ids: [3], angleRad: 0.5, scaleX: 1.2 });
+      setScriptStrokeTransform({
+        ...preview, ids: [3], angleRad: 0.5, scaleX: 1.2, centerX: 11,
+      });
       expect(runs).toBe(before + 5);
       // A stale clear is a no-op.
       clearScriptStrokeTransform();

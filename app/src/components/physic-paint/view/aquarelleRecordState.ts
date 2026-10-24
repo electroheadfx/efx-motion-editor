@@ -468,15 +468,19 @@ export function translateAquarelleStrokeInScript(
 /**
  * 261024-mz5: the document-UV transform a watercolor selection commit carries.
  * Structurally the shared `ScriptStrokeTransform` with a UV centre — the Studio
- * converts the canvas-pixel centre through `aquarelleEnginePixelToUv` and
- * NEGATES the screen angle (uv y points up) before calling.
+ * converts the canvas-pixel centre AND anchor through `aquarelleEnginePixelToUv`
+ * and NEGATES the screen angle (uv y points up) before calling. Uniform corner
+ * scale uses anchor == centre; edge resize anchors at the opposite edge.
  */
 export interface AquarelleStrokeTransform {
   readonly kind: 'rotate' | 'scale';
   readonly centerUvX: number;
   readonly centerUvY: number;
+  readonly anchorUvX: number;
+  readonly anchorUvY: number;
   readonly angleRad: number;
-  readonly factor: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
 }
 
 /** Identity tolerances — same law as the shared transform builders. */
@@ -492,26 +496,31 @@ const TRANSFORM_IDENTITY_FACTOR_EPSILON = 0.01;
  * Objects are REPLACED, never mutated in place, and the new entry is written at
  * the SAME timeline index — the snapshot law from translate applies unchanged.
  * One revision bump per effective batch. Non-finite geometry, a non-positive
- * factor, an identity transform, and unknown/deleted/out-of-timeline ids are
+ * scale, an identity transform, and unknown/deleted/out-of-timeline ids are
  * refused with 0 and bump nothing.
  */
 export function transformAquarelleStrokesInScript(
   mutationIds: readonly number[],
   transform: AquarelleStrokeTransform,
 ): number {
-  const { centerUvX, centerUvY, angleRad, factor } = transform;
+  const { centerUvX, centerUvY, anchorUvX, anchorUvY, angleRad, scaleX, scaleY } = transform;
   if (
     !Number.isFinite(centerUvX)
     || !Number.isFinite(centerUvY)
+    || !Number.isFinite(anchorUvX)
+    || !Number.isFinite(anchorUvY)
     || !Number.isFinite(angleRad)
-    || !Number.isFinite(factor)
-    || factor <= 0
+    || !Number.isFinite(scaleX)
+    || !Number.isFinite(scaleY)
+    || scaleX <= 0
+    || scaleY <= 0
   ) {
     return 0;
   }
   if (
     Math.abs(angleRad) < TRANSFORM_IDENTITY_ANGLE_EPSILON
-    && Math.abs(factor - 1) < TRANSFORM_IDENTITY_FACTOR_EPSILON
+    && Math.abs(scaleX - 1) < TRANSFORM_IDENTITY_FACTOR_EPSILON
+    && Math.abs(scaleY - 1) < TRANSFORM_IDENTITY_FACTOR_EPSILON
   ) {
     return 0;
   }
@@ -538,9 +547,12 @@ export function transformAquarelleStrokesInScript(
   const cos = Math.cos(angleRad);
   const sin = Math.sin(angleRad);
   const mapPoint = (x: number, y: number): { x: number; y: number } => {
-    // Scale FIRST, then rotate about the same UV centre (the shared law).
-    const dx = (x - centerUvX) * factor;
-    const dy = (y - centerUvY) * factor;
+    // Scale FIRST about the UV anchor, then rotate about the centre (the
+    // shared law). A uniform corner scale uses anchor == centre.
+    const scaledX = anchorUvX + (x - anchorUvX) * scaleX;
+    const scaledY = anchorUvY + (y - anchorUvY) * scaleY;
+    const dx = scaledX - centerUvX;
+    const dy = scaledY - centerUvY;
     return {
       x: centerUvX + dx * cos - dy * sin,
       y: centerUvY + dx * sin + dy * cos,

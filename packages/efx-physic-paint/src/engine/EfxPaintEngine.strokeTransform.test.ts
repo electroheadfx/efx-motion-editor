@@ -371,11 +371,19 @@ function rotateAbout(x: number, y: number, centerX: number, centerY: number, ang
 }
 
 const ROTATE: StrokeTransform = {
-  kind: 'rotate', centerX: 50, centerY: 50, angleRad: Math.PI / 2, factor: 1,
+  kind: 'rotate',
+  centerX: 50, centerY: 50,
+  anchorX: 50, anchorY: 50,
+  angleRad: Math.PI / 2,
+  scaleX: 1, scaleY: 1,
 }
 
 const SCALE: StrokeTransform = {
-  kind: 'scale', centerX: 50, centerY: 50, angleRad: 0, factor: 2,
+  kind: 'scale',
+  centerX: 50, centerY: 50,
+  anchorX: 50, anchorY: 50,
+  angleRad: 0,
+  scaleX: 2, scaleY: 2,
 }
 
 beforeEach(() => {
@@ -438,6 +446,30 @@ describe('261024-mz5 transformStrokes — point math', () => {
     }
     expect(JSON.stringify(entryOf(engine, a).params)).toBe(paramsBefore)
   })
+
+  it('resizes ONE axis about the opposite edge (non-uniform edge scale)', () => {
+    const { engine } = createTransformHarness()
+    const a = paintStroke(engine, hLine(20), 100)
+    const before = snapshotPoints(entryOf(engine, a))
+    const paramsBefore = JSON.stringify(entryOf(engine, a).params)
+
+    // Right-edge handle: anchor at the left edge x=10, width ×2, y untouched.
+    expect(engine.transformStrokes([a], {
+      kind: 'scale',
+      centerX: 50, centerY: 50,
+      anchorX: 10, anchorY: 50,
+      angleRad: 0,
+      scaleX: 2, scaleY: 1,
+    })).toBe(1)
+
+    const after = entryOf(engine, a).points
+    for (let index = 0; index < before.length; index += 1) {
+      expect(after[index].x).toBeCloseTo(10 + (before[index].x - 10) * 2, 6)
+      expect(after[index].y).toBeCloseTo(before[index].y, 6)
+      expect(after[index].p).toBe(before[index].p)
+    }
+    expect(JSON.stringify(entryOf(engine, a).params)).toBe(paramsBefore)
+  })
 })
 
 describe('261024-mz5 transformStrokes — one commit', () => {
@@ -472,18 +504,23 @@ describe('261024-mz5 transformStrokes — one commit', () => {
     expect(entryOf(engine, a).points[0].x).toBeCloseTo(50 + (before[0].x - 50) * 2, 6)
   })
 
-  it('all-unknown, identity, zero-factor and non-finite transforms are no-ops', () => {
+  it('all-unknown, identity, non-positive-scale and non-finite transforms are no-ops', () => {
     const { engine, redraw } = createTransformHarness()
     const a = paintStroke(engine, hLine(20), 100)
     const before = snapshotPoints(entryOf(engine, a))
     const events = captureMutations(engine)
 
     expect(engine.transformStrokes([999999], ROTATE)).toBe(0)
-    expect(engine.transformStrokes([a], { ...ROTATE, angleRad: 0, factor: 1 })).toBe(0)
+    expect(engine.transformStrokes([a], {
+      ...ROTATE, angleRad: 0, scaleX: 1, scaleY: 1,
+    })).toBe(0)
     expect(engine.transformStrokes([a], { ...ROTATE, centerX: Number.NaN })).toBe(0)
+    expect(engine.transformStrokes([a], { ...ROTATE, anchorX: Number.NaN })).toBe(0)
     expect(engine.transformStrokes([a], { ...ROTATE, angleRad: Number.NaN })).toBe(0)
-    expect(engine.transformStrokes([a], { ...ROTATE, factor: Number.NaN })).toBe(0)
-    expect(engine.transformStrokes([a], { ...ROTATE, factor: 0 })).toBe(0)
+    expect(engine.transformStrokes([a], { ...ROTATE, scaleX: Number.NaN })).toBe(0)
+    expect(engine.transformStrokes([a], { ...ROTATE, scaleY: 0 })).toBe(0)
+    expect(engine.transformStrokes([a], { ...ROTATE, scaleX: 0 })).toBe(0)
+    expect(engine.transformStrokes([a], { ...ROTATE, scaleX: -2 })).toBe(0)
 
     expect(entryOf(engine, a).points).toEqual(before)
     expect(events.filter((event) => event.kind === 'move')).toHaveLength(0)
@@ -523,7 +560,11 @@ describe('261024-mz5 transformStrokes — ledger integrity', () => {
     engine.strokeStack = [primary1, continuation, primary2]
 
     expect(engine.transformStrokes([1], {
-      kind: 'scale', centerX: 0, centerY: 0, angleRad: 0, factor: 2,
+      kind: 'scale',
+      centerX: 0, centerY: 0,
+      anchorX: 0, anchorY: 0,
+      angleRad: 0,
+      scaleX: 2, scaleY: 2,
     })).toBe(1)
 
     expect(primary1.points[0]).toMatchObject({ x: 20, y: 20, p: 0.5 })

@@ -121,8 +121,11 @@ const TRANSFORM = {
   kind: 'rotate' as const,
   centerX: 100,
   centerY: 100,
+  anchorX: 100,
+  anchorY: 100,
   angleRad: Math.PI / 4,
-  factor: 1,
+  scaleX: 1,
+  scaleY: 1,
 };
 
 beforeEach(() => {

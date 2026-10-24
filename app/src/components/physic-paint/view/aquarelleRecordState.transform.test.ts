@@ -61,13 +61,16 @@ function timelineStrokeAt(index: number): AquarelleTimelineStroke {
   return event;
 }
 
-/** Uniform scale ×2 about the sheet centre. */
+/** Uniform scale ×2 about the sheet centre (anchor == centre). */
 const SCALE_2: AquarelleStrokeTransform = {
   kind: 'scale',
   centerUvX: 0.5,
   centerUvY: 0.5,
+  anchorUvX: 0.5,
+  anchorUvY: 0.5,
   angleRad: 0,
-  factor: 2,
+  scaleX: 2,
+  scaleY: 2,
 };
 
 /** 90° rotation about the sheet centre (uv space). */
@@ -75,8 +78,11 @@ const ROTATE_90: AquarelleStrokeTransform = {
   kind: 'rotate',
   centerUvX: 0.5,
   centerUvY: 0.5,
+  anchorUvX: 0.5,
+  anchorUvY: 0.5,
   angleRad: Math.PI / 2,
-  factor: 1,
+  scaleX: 1,
+  scaleY: 1,
 };
 
 describe('261024-mz5 aquarelle stroke transform', () => {
@@ -165,7 +171,35 @@ describe('261024-mz5 aquarelle stroke transform', () => {
     expect(timelineStrokeAt(index).pts[0]!.y).toBeCloseTo(0.1, 12);
   });
 
-  it('refuses identity, non-finite, non-positive factors, and empty targets', () => {
+  it('resizes ONE uv axis about the opposite edge (non-uniform edge scale)', () => {
+    const id = 7019;
+    recordAquarelleStroke(id, stroke(id, [point(0.1, 0.5), point(0.2, 0.4)]));
+    const index = getRecordedAquarellePayloadTimeline().length - 1;
+    const originalStroke = getRecordedAquarelleStroke(id)!;
+
+    // Left-edge anchor at uv x=0, width ×2, y untouched.
+    expect(transformAquarelleStrokesInScript([id], {
+      kind: 'scale',
+      centerUvX: 0.5,
+      centerUvY: 0.5,
+      anchorUvX: 0,
+      anchorUvY: 0.5,
+      angleRad: 0,
+      scaleX: 2,
+      scaleY: 1,
+    })).toBe(1);
+
+    const resized = getRecordedAquarelleStroke(id)!;
+    expect(resized.points[0]!.x).toBeCloseTo(0.2, 12);
+    expect(resized.points[0]!.y).toBeCloseTo(0.5, 12);
+    expect(resized.points[1]!.x).toBeCloseTo(0.4, 12);
+    expect(resized.points[1]!.y).toBeCloseTo(0.4, 12);
+    expect(resized.params).toBe(originalStroke.params);
+    expect(timelineStrokeAt(index).pts[0]!.x).toBeCloseTo(0.2, 12);
+    expect(timelineStrokeAt(index).pts[0]!.y).toBeCloseTo(0.5, 12);
+  });
+
+  it('refuses identity, non-finite, non-positive scales, and empty targets', () => {
     const id = 7013;
     recordAquarelleStroke(id, stroke(id, [point(0.1, 0.5)]));
     const revision = aquarelleStrokesRevision.value;
@@ -173,15 +207,16 @@ describe('261024-mz5 aquarelle stroke transform', () => {
     const original = getRecordedAquarelleStroke(id)!;
 
     // Identity scale / identity rotation.
-    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, factor: 1 })).toBe(0);
+    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, scaleX: 1, scaleY: 1 })).toBe(0);
     expect(transformAquarelleStrokesInScript([id], { ...ROTATE_90, angleRad: 0 })).toBe(0);
     // Non-finite geometry.
     expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, centerUvX: Number.NaN })).toBe(0);
+    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, anchorUvY: Number.NaN })).toBe(0);
     expect(transformAquarelleStrokesInScript([id], { ...ROTATE_90, angleRad: Number.POSITIVE_INFINITY })).toBe(0);
-    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, factor: Number.NaN })).toBe(0);
-    // A collapse factor is refused too — size may never reach zero.
-    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, factor: 0 })).toBe(0);
-    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, factor: -2 })).toBe(0);
+    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, scaleX: Number.NaN })).toBe(0);
+    // A collapse scale is refused too — size may never reach zero.
+    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, scaleX: 0 })).toBe(0);
+    expect(transformAquarelleStrokesInScript([id], { ...SCALE_2, scaleY: -2 })).toBe(0);
     // Unknown id and an empty batch.
     expect(transformAquarelleStrokesInScript([999999], SCALE_2)).toBe(0);
     expect(transformAquarelleStrokesInScript([], SCALE_2)).toBe(0);

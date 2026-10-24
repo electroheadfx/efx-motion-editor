@@ -2962,8 +2962,8 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
     // Better hover text: the shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
-    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
-    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Corner handles scale · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward'");
+    expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
+    expect(toolRail).toContain("'Move — Cmd toggles Move on/off · Click selects a stroke · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward'");
     expect(toolRail).toContain('title={item.tooltip ?? item.label}');
   });
 
@@ -3506,12 +3506,12 @@ describe('261024-mz5 Studio multi-select surface', () => {
 });
 
 // 261024-mz5 Task 2: transform handles. The overlay renders the union box and
-// the five handles ONLY when the adapter supplies a commit callback; a handle
+// the nine handles ONLY when the adapter supplies a commit callback; a handle
 // hit wins over a stroke hit; pointermove writes only the preview signal and
 // pointerup commits through the adapter. The watercolor adapter stays
 // un-wired until Task 3 can commit the re-bake.
 describe('261024-mz5 Studio transform handles surface', () => {
-  it('renders the union box and the five handles only behind an adapter callback', () => {
+  it('renders the union box and the nine handles only behind an adapter callback', () => {
     expect(scriptStrokeOverlay).toContain(
       'onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;',
     );
@@ -3565,8 +3565,10 @@ describe('261024-mz5 Studio transform handles surface', () => {
     expect(transformBody).toContain('this.flushPendingStrokeFinalizations()');
     expect(transformBody).toContain('const cos = Math.cos(transform.angleRad)');
     expect(transformBody).toContain('const sin = Math.sin(transform.angleRad)');
-    expect(transformBody).toContain('const dx = (p.x - transform.centerX) * transform.factor');
-    expect(transformBody).toContain('const dy = (p.y - transform.centerY) * transform.factor');
+    expect(transformBody).toContain('const scaledX = transform.anchorX + (p.x - transform.anchorX) * transform.scaleX');
+    expect(transformBody).toContain('const scaledY = transform.anchorY + (p.y - transform.anchorY) * transform.scaleY');
+    expect(transformBody).toContain('const dx = scaledX - transform.centerX');
+    expect(transformBody).toContain('const dy = scaledY - transform.centerY');
     expect(transformBody).toContain('x: transform.centerX + dx * cos - dy * sin,');
     expect(transformBody).toContain('y: transform.centerY + dx * sin + dy * cos,');
     // The Move law: redo dies, one 'move', one replay, no checkpoint.
@@ -3575,7 +3577,9 @@ describe('261024-mz5 Studio transform handles surface', () => {
     expect(transformBody).toContain("this.notifyCompletedMutation('move', targets[0]!.mutationId)");
     expect(transformBody).toContain('this.updateMoveHover()');
     // Identity and non-finite transforms return before any mutation.
-    expect(transformBody).toContain('if (Math.abs(transform.angleRad) < 1e-6 && Math.abs(transform.factor - 1) < 0.01) return 0');
+    expect(transformBody).toContain('Math.abs(transform.angleRad) < 1e-6');
+    expect(transformBody).toContain('Math.abs(transform.scaleX - 1) < 0.01');
+    expect(transformBody).toContain('Math.abs(transform.scaleY - 1) < 0.01');
     expect(transformBody).not.toContain('params =');
     expect(transformBody).not.toContain('params:');
   });
@@ -4070,11 +4074,17 @@ describe('261024-mz5 watercolor transform surface', () => {
     expect(body).toContain('if (isAquarelleScriptEditInFlight()) return;');
     expect(body).toContain('const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);');
     expect(body).toContain('if (frameIds.length === 0) return;');
-    // ONE bridge crossing for the centre; the screen angle is NEGATED for uv.
+    // ONE bridge crossing each for the centre and the edge anchor; the screen
+    // angle is NEGATED for uv and the per-axis scale passes through.
     expect(body).toContain('const center = aquarelleEnginePixelToUv(');
     expect(body).toContain('{ x: transform.centerX, y: transform.centerY },');
+    expect(body).toContain('const anchor = aquarelleEnginePixelToUv(');
+    expect(body).toContain('{ x: transform.anchorX, y: transform.anchorY },');
+    expect(body).toContain('anchorUvX: anchor.x,');
+    expect(body).toContain('anchorUvY: anchor.y,');
     expect(body).toContain('angleRad: -transform.angleRad,');
-    expect(body).toContain('factor: transform.factor,');
+    expect(body).toContain('scaleX: transform.scaleX,');
+    expect(body).toContain('scaleY: transform.scaleY,');
     expect(body).toContain('const editId = beginAquarelleTransformEdit(frameIds, {');
     expect(body).toContain('if (editId === null) return;');
     // begin -> reset -> await apply -> record on success -> raw rollback on failure.
@@ -4092,7 +4102,7 @@ describe('261024-mz5 watercolor transform surface', () => {
     expect(body).toContain('setAquarelleScriptEditInFlight(false);');
   });
 
-  it('mentions the corner scale and the top rotate handle in both tooltips', () => {
-    expect(toolRail).toContain('Corner handles scale · Top handle rotates');
+  it('mentions the corner scale, edge resize and the top rotate handle in both tooltips', () => {
+    expect(toolRail).toContain('Corner handles scale · Edge handles resize width or height · Top handle rotates');
   });
 });

@@ -10,12 +10,18 @@
 //    - the union box spans every selected stroke's inflated bounds;
 //    - the four corner squares are UNIFORM scale about the box
 //      CENTRE (the inline editor's geometry law);
+//    - the four edge midpoint squares are NON-UNIFORM scale along
+//      one axis, anchored at the OPPOSITE edge — r/l resize width,
+//      t/b resize height, the other axis is untouched (the inline
+//      editor's D-04 law);
 //    - the rotate circle sits above top-centre on a stem;
-//    - scale = currentDistance / startDistance — direct
+//    - corner scale = currentDistance / startDistance — direct
 //      manipulation, the inline editor's `newDist / startDist`
-//      (D-06 reference) — clamped to [0.1, 10];
+//      (D-06 reference) — clamped to [0.1, 10]; edge scale is
+//      (pointer - anchor) / original side, same clamp;
 //    - Shift snaps rotation to 15 degrees (PI / 12);
-//    - apply = scale FIRST, then rotate about the same centre.
+//    - apply = scale FIRST (about the anchor), then rotate about
+//      the centre.
 //
 //  Only x / y move. Every other point field (pressure, tilt,
 //  twist, speed) and the stroke's `params` are out of scope here.
@@ -36,16 +42,22 @@ export interface ScriptStrokeSelectionBox {
 
 export interface ScriptStrokeTransform {
   readonly kind: 'rotate' | 'scale';
+  /** Rotation centre — also the uniform-scale anchor. */
   readonly centerX: number;
   readonly centerY: number;
+  /** Scale anchor: the box centre for corners, the opposite edge for edges. */
+  readonly anchorX: number;
+  readonly anchorY: number;
   readonly angleRad: number;
-  readonly factor: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
 }
 
 export type ScriptStrokeTransformCorner = 'tl' | 'tr' | 'bl' | 'br';
+export type ScriptStrokeTransformEdge = 't' | 'r' | 'b' | 'l';
 
 export interface ScriptStrokeTransformHandle {
-  readonly id: ScriptStrokeTransformCorner | 'rotate';
+  readonly id: ScriptStrokeTransformCorner | ScriptStrokeTransformEdge | 'rotate';
   readonly kind: 'rotate' | 'scale';
   readonly x: number;
   readonly y: number;
@@ -107,24 +119,31 @@ export function scriptStrokeSelectionBox(
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-/** The five drawn handles: four scale corners plus the rotate circle. */
+/** The nine drawn handles: four scale corners, four edge midpoints, the rotate circle. */
 export function scriptStrokeTransformHandles(
   box: ScriptStrokeSelectionBox,
 ): ScriptStrokeTransformHandle[] {
   const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
   return [
     { id: 'tl', kind: 'scale', x: box.x, y: box.y },
     { id: 'tr', kind: 'scale', x: box.x + box.width, y: box.y },
     { id: 'bl', kind: 'scale', x: box.x, y: box.y + box.height },
     { id: 'br', kind: 'scale', x: box.x + box.width, y: box.y + box.height },
+    { id: 't', kind: 'scale', x: centerX, y: box.y },
+    { id: 'r', kind: 'scale', x: box.x + box.width, y: centerY },
+    { id: 'b', kind: 'scale', x: centerX, y: box.y + box.height },
+    { id: 'l', kind: 'scale', x: box.x, y: centerY },
     { id: 'rotate', kind: 'rotate', x: centerX, y: box.y - SCRIPT_TRANSFORM_ROTATE_STEM_PX },
   ];
 }
 
 /**
  * The handle under a canvas point (handle hit-testing wins over the
- * stroke hit test). Corners use the padded square, the rotate handle
- * accepts the circle AND the stem.
+ * stroke hit test). Every scale handle uses the padded square — corners
+ * are listed first, so a corner wins over the adjacent edge midpoint.
+ * The rotate handle accepts the circle AND the stem; the edge handles
+ * are tested before the stem so the top midpoint stays grabbable.
  */
 export function hitTestScriptStrokeTransformHandle(
   point: ScriptTransformPoint,
@@ -170,68 +189,140 @@ export function rotateScriptPoint<T extends ScriptTransformPoint>(
   } as T;
 }
 
-/** Scale one point about a centre, preserving every other field. */
+/** Scale one point per axis about an anchor, preserving every other field. */
 export function scaleScriptPoint<T extends ScriptTransformPoint>(
   point: T,
-  centerX: number,
-  centerY: number,
-  factor: number,
+  anchorX: number,
+  anchorY: number,
+  scaleX: number,
+  scaleY: number,
 ): T {
   return {
     ...point,
-    x: centerX + (point.x - centerX) * factor,
-    y: centerY + (point.y - centerY) * factor,
+    x: anchorX + (point.x - anchorX) * scaleX,
+    y: anchorY + (point.y - anchorY) * scaleY,
   } as T;
 }
 
-/** The shared commit math: scale first, then rotate about the centre. */
+/** The shared commit math: scale first (about the anchor), then rotate about the centre. */
 export function applyScriptStrokeTransform<T extends ScriptTransformPoint>(
   point: T,
   transform: ScriptStrokeTransform,
 ): T {
-  const scaled = scaleScriptPoint(point, transform.centerX, transform.centerY, transform.factor);
+  const scaled = scaleScriptPoint(
+    point,
+    transform.anchorX,
+    transform.anchorY,
+    transform.scaleX,
+    transform.scaleY,
+  );
   return rotateScriptPoint(scaled, transform.centerX, transform.centerY, transform.angleRad);
 }
 
+function clampScaleFactor(value: number): number {
+  return Math.min(SCALE_MAX_FACTOR, Math.max(SCALE_MIN_FACTOR, value));
+}
+
+function isCornerHandle(id: ScriptStrokeTransformHandle['id']): id is ScriptStrokeTransformCorner {
+  return id === 'tl' || id === 'tr' || id === 'bl' || id === 'br';
+}
+
 /**
- * Build the live transform from a handle gesture. Scale is direct
- * manipulation (drag away from the centre = grow), rotated by the
- * atan2 difference. Shift snaps the rotation to 15 degrees.
+ * Build the live transform from a handle gesture. Corners scale uniformly
+ * about the box centre (drag away = grow, `currentDistance / startDistance`);
+ * edge midpoints scale ONE axis, anchored at the opposite edge (the inline
+ * editor's D-04 law); rotation is the atan2 difference. Shift snaps rotation
+ * to 15 degrees. Every factor is clamped to [0.1, 10].
  */
 export function buildScriptStrokeTransform(
-  kind: 'rotate' | 'scale',
-  center: ScriptTransformPoint,
+  handle: ScriptStrokeTransformHandle,
+  box: ScriptStrokeSelectionBox,
   startPoint: ScriptTransformPoint,
   currentPoint: ScriptTransformPoint,
   snap: boolean,
 ): ScriptStrokeTransform {
-  if (kind === 'scale') {
-    const startDistance = Math.hypot(startPoint.x - center.x, startPoint.y - center.y);
-    const currentDistance = Math.hypot(currentPoint.x - center.x, currentPoint.y - center.y);
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+
+  if (handle.kind === 'rotate') {
+    const startAngle = Math.atan2(startPoint.y - centerY, startPoint.x - centerX);
+    const currentAngle = Math.atan2(currentPoint.y - centerY, currentPoint.x - centerX);
+    let angleRad = currentAngle - startAngle;
+    if (snap) angleRad = Math.round(angleRad / ROTATE_SNAP_RAD) * ROTATE_SNAP_RAD;
+    return {
+      kind: 'rotate',
+      centerX,
+      centerY,
+      anchorX: centerX,
+      anchorY: centerY,
+      angleRad: normalizeAngle(angleRad),
+      scaleX: 1,
+      scaleY: 1,
+    };
+  }
+
+  if (isCornerHandle(handle.id)) {
+    const startDistance = Math.hypot(startPoint.x - centerX, startPoint.y - centerY);
+    const currentDistance = Math.hypot(currentPoint.x - centerX, currentPoint.y - centerY);
     // A degenerate distance is identity, never NaN or a collapse to zero: a
     // pointer exactly on the centre has no direction to scale along.
     const rawFactor =
       startDistance > 0 && currentDistance > 0 ? currentDistance / startDistance : 1;
-    const factor = Math.min(SCALE_MAX_FACTOR, Math.max(SCALE_MIN_FACTOR, rawFactor));
-    return { kind, centerX: center.x, centerY: center.y, angleRad: 0, factor };
+    const factor = clampScaleFactor(rawFactor);
+    return {
+      kind: 'scale',
+      centerX,
+      centerY,
+      anchorX: centerX,
+      anchorY: centerY,
+      angleRad: 0,
+      scaleX: factor,
+      scaleY: factor,
+    };
   }
-  const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x);
-  const currentAngle = Math.atan2(currentPoint.y - center.y, currentPoint.x - center.x);
-  let angleRad = currentAngle - startAngle;
-  if (snap) angleRad = Math.round(angleRad / ROTATE_SNAP_RAD) * ROTATE_SNAP_RAD;
+
+  // Edge midpoint: one axis scales, the opposite edge is the anchor, and the
+  // other axis stays untouched (non-uniform resize — D-04).
+  let anchorX = centerX;
+  let anchorY = centerY;
+  let scaleX = 1;
+  let scaleY = 1;
+  if (handle.id === 'r' || handle.id === 'l') {
+    if (box.width > 0) {
+      if (handle.id === 'r') {
+        anchorX = box.x;
+        scaleX = clampScaleFactor((currentPoint.x - anchorX) / box.width);
+      } else {
+        anchorX = box.x + box.width;
+        scaleX = clampScaleFactor((anchorX - currentPoint.x) / box.width);
+      }
+    }
+  } else if (box.height > 0) {
+    if (handle.id === 'b') {
+      anchorY = box.y;
+      scaleY = clampScaleFactor((currentPoint.y - anchorY) / box.height);
+    } else {
+      anchorY = box.y + box.height;
+      scaleY = clampScaleFactor((anchorY - currentPoint.y) / box.height);
+    }
+  }
   return {
-    kind,
-    centerX: center.x,
-    centerY: center.y,
-    angleRad: normalizeAngle(angleRad),
-    factor: 1,
+    kind: 'scale',
+    centerX,
+    centerY,
+    anchorX,
+    anchorY,
+    angleRad: 0,
+    scaleX,
+    scaleY,
   };
 }
 
-/** True when a release would be a no-op (tiny angle, tiny factor delta). */
+/** True when a release would be a no-op (tiny angle, tiny per-axis scale delta). */
 export function isIdentityScriptStrokeTransform(transform: ScriptStrokeTransform): boolean {
   return (
     Math.abs(transform.angleRad) < IDENTITY_ANGLE_EPSILON
-    && Math.abs(transform.factor - 1) < IDENTITY_FACTOR_EPSILON
+    && Math.abs(transform.scaleX - 1) < IDENTITY_FACTOR_EPSILON
+    && Math.abs(transform.scaleY - 1) < IDENTITY_FACTOR_EPSILON
   );
 }

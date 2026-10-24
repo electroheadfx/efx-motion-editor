@@ -216,8 +216,11 @@ export function setScriptStrokeTransform(next: ScriptStrokeTransformPreview | nu
     && current.kind === next.kind
     && current.centerX === next.centerX
     && current.centerY === next.centerY
+    && current.anchorX === next.anchorX
+    && current.anchorY === next.anchorY
     && current.angleRad === next.angleRad
-    && current.factor === next.factor
+    && current.scaleX === next.scaleX
+    && current.scaleY === next.scaleY
   ) {
     return;
   }
@@ -226,8 +229,11 @@ export function setScriptStrokeTransform(next: ScriptStrokeTransformPreview | nu
     kind: next.kind,
     centerX: next.centerX,
     centerY: next.centerY,
+    anchorX: next.anchorX,
+    anchorY: next.anchorY,
     angleRad: next.angleRad,
-    factor: next.factor,
+    scaleX: next.scaleX,
+    scaleY: next.scaleY,
   };
 }
 

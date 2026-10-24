@@ -54,6 +54,7 @@ import {
   scriptStrokeTransformHandles,
   type ScriptStrokeSelectionBox,
   type ScriptStrokeTransform,
+  type ScriptStrokeTransformHandle,
 } from '../view/scriptStrokeTransform';
 
 const SELECTED_STROKE_COLOR = '#38bdf8';
@@ -79,9 +80,9 @@ interface ScriptTransformGesture {
   readonly pointerId: number;
   /** The captured selection this handle gesture transforms. */
   readonly mutationIds: readonly number[];
-  readonly transformKind: 'rotate' | 'scale';
-  readonly centerX: number;
-  readonly centerY: number;
+  /** The handle and box captured at pointerdown — a live box cannot retarget. */
+  readonly handle: ScriptStrokeTransformHandle;
+  readonly box: ScriptStrokeSelectionBox;
   readonly startX: number;
   readonly startY: number;
   started: boolean;
@@ -89,10 +90,16 @@ interface ScriptTransformGesture {
 
 type ScriptOverlayGesture = ScriptDragGesture | ScriptTransformGesture;
 
-function scaleCursor(corner: 'tl' | 'tr' | 'bl' | 'br'): string {
+function cursorForHandle(id: ScriptStrokeTransformHandle['id']): string {
   // The cursor names the axis pair the drag follows, matching the box's
   // rotation-free geometry (handles are screen-aligned, like the inline editor).
-  return corner === 'tl' || corner === 'br' ? 'nwse-resize' : 'nesw-resize';
+  switch (id) {
+    case 'rotate': return 'grab';
+    case 't': case 'b': return 'ns-resize';
+    case 'l': case 'r': return 'ew-resize';
+    case 'tl': case 'br': return 'nwse-resize';
+    case 'tr': case 'bl': return 'nesw-resize';
+  }
 }
 
 export function ScriptStrokeOverlay(props: {
@@ -155,9 +162,8 @@ export function ScriptStrokeOverlay(props: {
         kind: 'transform',
         pointerId: event.pointerId,
         mutationIds: [...scriptSelectedStrokeIds.peek()],
-        transformKind: handleHit.kind,
-        centerX: selectionBox.x + selectionBox.width / 2,
-        centerY: selectionBox.y + selectionBox.height / 2,
+        handle: handleHit,
+        box: selectionBox,
         startX: point.x,
         startY: point.y,
         started: false,
@@ -225,16 +231,14 @@ export function ScriptStrokeOverlay(props: {
     const gesture = gestureRef.current;
     if (!gesture) {
       // Hover cursor: an imperative style write — no state, no signal, no
-      // effect. Scale corners name their axis pair; the rotate handle grabs.
+      // effect. Every scale handle names its axis pair; the rotate handle grabs.
       const point = canvasPointOf(event);
       const hovered = selectionBox !== null && props.onTransformStrokes !== undefined
         ? hitTestScriptStrokeTransformHandle(point, selectionBox)
         : null;
       (event.currentTarget as HTMLElement).style.cursor = hovered === null
         ? 'default'
-        : hovered.kind === 'rotate'
-          ? 'grab'
-          : scaleCursor(hovered.id === 'rotate' ? 'tl' : hovered.id);
+        : cursorForHandle(hovered.id);
       return;
     }
     if (gesture.pointerId !== event.pointerId) return;
@@ -248,8 +252,8 @@ export function ScriptStrokeOverlay(props: {
     if (gesture.kind === 'transform') {
       // Preview only: no script mutation and no apply before release.
       const transform = buildScriptStrokeTransform(
-        gesture.transformKind,
-        { x: gesture.centerX, y: gesture.centerY },
+        gesture.handle,
+        gesture.box,
         { x: gesture.startX, y: gesture.startY },
         point,
         event.shiftKey,
@@ -284,8 +288,8 @@ export function ScriptStrokeOverlay(props: {
     releasePointerCapture(event);
     if (gesture.kind === 'transform') {
       const transform = buildScriptStrokeTransform(
-        gesture.transformKind,
-        { x: gesture.centerX, y: gesture.centerY },
+        gesture.handle,
+        gesture.box,
         { x: gesture.startX, y: gesture.startY },
         point,
         event.shiftKey,
@@ -448,7 +452,8 @@ export function ScriptStrokeOverlay(props: {
             </g>
           );
         })}
-        {/* 261024-mz5 Task 2: the selection union box and its five handles.
+        {/* 261024-mz5 Task 2: the selection union box and its nine handles
+            (four uniform corners, four non-uniform edge midpoints, rotate).
             Rendered only when the adapter can commit a transform. */}
         {selectionBox !== null && props.onTransformStrokes !== undefined ? (
           <g>

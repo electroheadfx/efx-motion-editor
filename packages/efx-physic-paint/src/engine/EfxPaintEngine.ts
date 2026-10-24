@@ -339,17 +339,22 @@ export type PaintHistoryAvailability = {
 }
 
 /**
- * 261024-mz5: a uniform scale + rotation about a canvas-space centre.
- * Structurally identical to the app's ScriptStrokeTransform (the engine
- * cannot import app code). `factor` scales point deltas FIRST, then
- * `angleRad` rotates them — never the stroke's `params`.
+ * 261024-mz5: a per-axis scale about an anchor, then a rotation about a
+ * canvas-space centre. Structurally identical to the app's
+ * ScriptStrokeTransform (the engine cannot import app code). Scale runs
+ * FIRST, then `angleRad` rotates — never the stroke's `params`.
+ * Uniform corner scale uses anchor == centre and scaleX == scaleY; edge
+ * resize uses the opposite edge as the anchor and leaves one axis at 1.
  */
 export interface StrokeTransform {
   readonly kind: 'rotate' | 'scale'
   readonly centerX: number
   readonly centerY: number
+  readonly anchorX: number
+  readonly anchorY: number
   readonly angleRad: number
-  readonly factor: number
+  readonly scaleX: number
+  readonly scaleY: number
 }
 
 /** Pointer-input activity kind reported to the Studio's gesture-idle scheduler. */
@@ -4102,25 +4107,35 @@ export class EfxPaintEngine {
   }
 
   /**
-   * 261024-mz5 Task 2: uniformly scale + rotate every selected stroke in ONE
-   * commit. Each point delta from the centre is scaled FIRST and rotated
-   * SECOND; every other point field is copied as-is and `params` is never
-   * touched (brush size stays fixed — D-06). The commit law is the Move law:
-   * drain queued finalizations first, clear redo WITHOUT pushing an undo
-   * checkpoint, refresh history, replay once, emit ONE 'move' notification
-   * and refresh the move hover. Returns the number of transformed strokes;
-   * zero means no mutation, no redraw, no notification.
+   * 261024-mz5 Task 2: scale + rotate every selected stroke in ONE commit.
+   * Points scale per axis about `anchorX/anchorY` FIRST (uniform corners use
+   * the centre and equal factors; edge handles use the opposite edge and
+   * leave one factor at 1), then rotate about `centerX/centerY`. Every other
+   * point field is copied as-is and `params` is never touched (brush size
+   * stays fixed — D-06). The commit law is the Move law: drain queued
+   * finalizations first, clear redo WITHOUT pushing an undo checkpoint,
+   * refresh history, replay once, emit ONE 'move' notification and refresh
+   * the move hover. Returns the number of transformed strokes; zero means no
+   * mutation, no redraw, no notification.
    */
   public transformStrokes(
     mutationIds: readonly number[],
     transform: StrokeTransform,
   ): number {
-    if (!Number.isFinite(transform.centerX) || !Number.isFinite(transform.centerY)) return 0
+    if (
+      !Number.isFinite(transform.centerX) || !Number.isFinite(transform.centerY)
+      || !Number.isFinite(transform.anchorX) || !Number.isFinite(transform.anchorY)
+    ) return 0
     if (!Number.isFinite(transform.angleRad)) return 0
-    if (!Number.isFinite(transform.factor) || transform.factor <= 0) return 0
+    if (!Number.isFinite(transform.scaleX) || transform.scaleX <= 0) return 0
+    if (!Number.isFinite(transform.scaleY) || transform.scaleY <= 0) return 0
     const cos = Math.cos(transform.angleRad)
     const sin = Math.sin(transform.angleRad)
-    if (Math.abs(transform.angleRad) < 1e-6 && Math.abs(transform.factor - 1) < 0.01) return 0
+    if (
+      Math.abs(transform.angleRad) < 1e-6
+      && Math.abs(transform.scaleX - 1) < 0.01
+      && Math.abs(transform.scaleY - 1) < 0.01
+    ) return 0
     // Drain FIRST: the entries must be settled before they are looked up and
     // the replay below must see the flushed canvas (the move-commit law).
     this.flushPendingStrokeFinalizations()
@@ -4135,8 +4150,10 @@ export class EfxPaintEngine {
     if (targets.length === 0) return 0
     for (const { entry } of targets) {
       entry.points = entry.points.map(p => {
-        const dx = (p.x - transform.centerX) * transform.factor
-        const dy = (p.y - transform.centerY) * transform.factor
+        const scaledX = transform.anchorX + (p.x - transform.anchorX) * transform.scaleX
+        const scaledY = transform.anchorY + (p.y - transform.anchorY) * transform.scaleY
+        const dx = scaledX - transform.centerX
+        const dy = scaledY - transform.centerY
         return {
           ...p,
           x: transform.centerX + dx * cos - dy * sin,

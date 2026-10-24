@@ -212,8 +212,11 @@ describe('261022-pim aquarelle stroke select mode', () => {
       kind: 'scale',
       centerUvX: 0.5,
       centerUvY: 0.5,
+      anchorUvX: 0.5,
+      anchorUvY: 0.5,
       angleRad: 0,
-      factor: 2,
+      scaleX: 2,
+      scaleY: 2,
     });
     expect(editId).not.toBeNull();
     expect(getRecordedAquarelleStroke(9601)!.points[0]!.x).toBeCloseTo(-0.3, 12);

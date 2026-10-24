@@ -5736,11 +5736,17 @@ export function PhysicsPaintStudio() {
     // current edit frame before the batch edit.
     const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
     if (frameIds.length === 0) return;
-    // The centre crosses from canvas pixels to document UV exactly once. uv y
-    // points UP, so the screen angle is NEGATED; scale is sign-invariant.
+    // The centre AND the scale anchor cross from canvas pixels to document UV
+    // exactly once. uv y points UP, so the screen angle is NEGATED; scale is
+    // sign-invariant. Uniform corner scale carries anchor == centre.
+    const sheetSize = { width: canvasWidth, height: canvasHeight };
     const center = aquarelleEnginePixelToUv(
       { x: transform.centerX, y: transform.centerY },
-      { width: canvasWidth, height: canvasHeight },
+      sheetSize,
+    );
+    const anchor = aquarelleEnginePixelToUv(
+      { x: transform.anchorX, y: transform.anchorY },
+      sheetSize,
     );
     // One transform = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds.
@@ -5748,8 +5754,11 @@ export function PhysicsPaintStudio() {
       kind: transform.kind,
       centerUvX: center.x,
       centerUvY: center.y,
+      anchorUvX: anchor.x,
+      anchorUvY: anchor.y,
       angleRad: -transform.angleRad,
-      factor: transform.factor,
+      scaleX: transform.scaleX,
+      scaleY: transform.scaleY,
     });
     if (editId === null) return;
     setAquarelleScriptEditInFlight(true);
