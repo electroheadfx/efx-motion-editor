@@ -245,6 +245,8 @@ None — no external service configuration required.
 
 **2026-10-25 — second revision (commit `2ccb4eef`):** the dialog tabs now reuse the sidebar's options-tab chrome (one pinned row, active tab visually connected to the surface). The `<` / `>` stack-step shortcuts are RETIRED, together with their dead keyboard action/helper wiring. The dialog's drag offset and resize height are now module-scope signals, so the layout persists for the whole Studio lifecycle — across selection changes, dismiss/reopen and module switches. Gates re-run: seven app suites 524/524 and `tsc --noEmit` clean.
 
+**2026-10-25 — third revision (commit `f0428ba3`):** closing the sheet (X or Escape) now LEAVES the Move/Select surface and restores the previous tool — Brush returns to its last non-Move tool (Paint/Erase), Water color toggles Select off — instead of setting a sticky dismissal. Selecting a stroke again (or re-entering Move/Select via Cmd) re-opens the sheet. Gates re-run: dialog + Studio 327/327 and `tsc --noEmit` clean.
+
 ## Next Phase Readiness
 
 - Automated gates are green and the feature is code-complete. Native UAT is still required before calling it done: both modules' Stack section, live re-bake ordering, Enter/blur coalescing, refused-commit input snap-back, undo/redo as one edit, save/reopen persistence, and physical-lock refusal.
