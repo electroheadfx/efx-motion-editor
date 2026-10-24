@@ -13,12 +13,15 @@ import type { AquarelleDryEvent, AquarelleStrokePayload } from '@efxlab/efx-wate
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import {
   aquarelleRecordClock,
+  aquarelleStrokesRevision,
   getAquarelleEventsForFrame,
   getRecordedAquarelleDryEvents,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
+  remapAquarelleScriptsForRecords,
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
+  translateAquarelleStrokeInScript,
 } from './aquarelleRecordState';
 
 function fixturePoint(index: number): StudioPoint {
@@ -104,5 +107,66 @@ describe('restoreAquarelleRecordTimeline', () => {
     expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
     expect(getRecordedAquarelleStroke(101)).toBeUndefined();
     expect(aquarelleRecordClock()).toBe(0);
+  });
+});
+
+// ============================================================
+//  quick-261024-m20 — a restored session follows the same
+//  key-identity remap law as a live one: strokes, their projected
+//  entries and their playFrame anchors move together, the
+//  registry/timeline lockstep survives, and Dry events stay put.
+// ============================================================
+describe('261024-m20 restored-session key-identity remap', () => {
+  it('remaps restored strokes onto their new frames with the Dry untouched', () => {
+    restoreAquarelleRecordTimeline([fixtureStroke(10, 201), fixtureDry(4), fixtureStroke(14, 202)]);
+    const dry = getRecordedAquarelleDryEvents()[0]!;
+    const revision = aquarelleStrokesRevision.value;
+
+    const result = remapAquarelleScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 10 },
+        { keyId: 'b', appFrame: 14 },
+      ],
+      [
+        { keyId: 'a', appFrame: 4 },
+        { keyId: 'b', appFrame: 6 },
+      ],
+    );
+
+    expect(result).toEqual({ moved: 2, dropped: 0 });
+    expect(getRecordedAquarelleStroke(201)!.playFrame).toBe(4);
+    expect(getRecordedAquarelleStroke(202)!.playFrame).toBe(6);
+    expect(getAquarelleEventsForFrame(4).some(
+      (event) => !('kind' in event)
+        && (event.engine as AquarelleStrokePayload).mutationId === 201,
+    )).toBe(true);
+    expect(getAquarelleEventsForFrame(6).some(
+      (event) => !('kind' in event)
+        && (event.engine as AquarelleStrokePayload).mutationId === 202,
+    )).toBe(true);
+    expect(getRecordedAquarelleDryEvents()[0]).toBe(dry);
+    expect(getAquarelleEventsForFrame(4)).toContain(dry);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+    // Lockstep: translate finds the timeline entry by indexOf after the remap.
+    expect(translateAquarelleStrokeInScript(201, 0.01, 0.01)).toBe(true);
+  });
+
+  it('drops a restored stroke whose key disappeared while the Dry survives', () => {
+    restoreAquarelleRecordTimeline([fixtureStroke(10, 301), fixtureDry(4)]);
+    const dry = getRecordedAquarelleDryEvents()[0]!;
+
+    const result = remapAquarelleScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 10 },
+      ],
+      [{ keyId: 'a', appFrame: 0 }],
+    );
+
+    expect(result).toEqual({ moved: 0, dropped: 1 });
+    expect(getRecordedAquarelleStroke(301)).toBeUndefined();
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(1);
+    expect(getRecordedAquarelleDryEvents()[0]).toBe(dry);
+    expect(getAquarelleEventsForFrame(10)).toEqual([dry]);
   });
 });

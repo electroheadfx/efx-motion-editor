@@ -9,22 +9,28 @@
 //  restored together.
 // ============================================================
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import {
   toStudioStroke as aquarelleToStudioStroke,
   type AquarellePayloadEvent,
   type AquarellePoint,
   type AquarelleStroke,
+  type AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
 import {
+  aquarelleStrokeSerial,
   aquarelleStrokesRevision,
   deleteAquarelleStrokeFromScript,
+  emitAquarelleDry,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   isAquarelleStrokeDeleted,
+  markAquarelleStrokeDeleted,
   recordAquarelleStroke,
+  remapAquarelleScriptsForRecords,
+  resetAquarelleRecordState,
   translateAquarelleStrokeInScript,
 } from './aquarelleRecordState';
 import {
@@ -76,6 +82,15 @@ function timelineStrokeCount(): number {
 function strokeIdsOfFrame(playFrame: number): number[] {
   return getAquarelleEventsForFrame(playFrame).flatMap((event) =>
     'kind' in event ? [] : [(event.engine as { mutationId?: number }).mutationId ?? -1],
+  );
+}
+
+/** The one timeline entry projecting a stroke identity (the registry's object). */
+function findStrokeEntry(mutationId: number): AquarelleTimelineStroke | undefined {
+  return getRecordedAquarellePayloadTimeline().find(
+    (event): event is AquarelleTimelineStroke =>
+      !('kind' in event)
+      && (event.engine as { mutationId?: number }).mutationId === mutationId,
   );
 }
 
@@ -316,5 +331,218 @@ describe('261022-tv1 aquarelle stroke drag signal', () => {
     setAquarelleStrokeDrag({ mutationId: id, dxPx: 20, dyPx: 10 });
     expect(beginAquarelleMoveEdit(id, 0.01, 0.01)).not.toBeNull();
     expect(aquarelleStrokeDrag.value).toBeNull();
+  });
+});
+
+// ============================================================
+//  quick-261024-m20 — the watercolor instance of key-spacing
+//  script loss. Force-spacing rewrites appFrames but keeps key
+//  IDs, so the recorded strokes, their projected timeline entries
+//  and their playFrame anchors must follow the KEY IDENTITY.
+//  Registry and timeline stay in lockstep; the snapshot retained
+//  union is untouched (session-only drop).
+// ============================================================
+describe('261024-m20 aquarelle key-identity remap', () => {
+  beforeEach(() => {
+    resetAquarelleRecordState();
+  });
+
+  it('moves every respaced key script onto its key\'s new frame', () => {
+    recordAquarelleStroke(1, stroke(1, 0));
+    recordAquarelleStroke(2, stroke(2, 2));
+    recordAquarelleStroke(3, stroke(3, 10));
+    recordAquarelleStroke(4, stroke(4, 14));
+    const stroke3Before = getRecordedAquarelleStroke(3)!;
+    const entry3Before = findStrokeEntry(3)!;
+    const stroke1 = getRecordedAquarelleStroke(1)!;
+    const stroke2 = getRecordedAquarelleStroke(2)!;
+    const entry1 = findStrokeEntry(1)!;
+    const entry2 = findStrokeEntry(2)!;
+    const revision = aquarelleStrokesRevision.value;
+
+    const result = remapAquarelleScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 2 },
+        { keyId: 'c', appFrame: 10 },
+        { keyId: 'd', appFrame: 14 },
+      ],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 2 },
+        { keyId: 'c', appFrame: 4 },
+        { keyId: 'd', appFrame: 6 },
+      ],
+    );
+
+    expect(result).toEqual({ moved: 2, dropped: 0 });
+    expect(getRecordedAquarelleStroke(1)!.playFrame).toBe(0);
+    expect(getRecordedAquarelleStroke(2)!.playFrame).toBe(2);
+    expect(getRecordedAquarelleStroke(3)!.playFrame).toBe(4);
+    expect(getRecordedAquarelleStroke(4)!.playFrame).toBe(6);
+    expect(strokeIdsOfFrame(4)).toEqual([3]);
+    expect(strokeIdsOfFrame(6)).toEqual([4]);
+    expect(strokeIdsOfFrame(10)).toEqual([]);
+    expect(strokeIdsOfFrame(14)).toEqual([]);
+
+    // Unmoved strokes and entries keep their exact object identity.
+    expect(getRecordedAquarelleStroke(1)).toBe(stroke1);
+    expect(getRecordedAquarelleStroke(2)).toBe(stroke2);
+    expect(findStrokeEntry(1)).toBe(entry1);
+    expect(findStrokeEntry(2)).toBe(entry2);
+
+    // Moved ones are REPLACED objects with both anchors updated.
+    const stroke3After = getRecordedAquarelleStroke(3)!;
+    expect(stroke3After).not.toBe(stroke3Before);
+    const entry3After = findStrokeEntry(3)!;
+    expect(entry3After).not.toBe(entry3Before);
+    expect(entry3After.playFrame).toBe(4);
+    expect((entry3After.engine as AquarelleStrokePayload).playFrame).toBe(4);
+
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+  });
+
+  it('drops only the deleted key script and moves the survivor', () => {
+    recordAquarelleStroke(11, stroke(11, 0));
+    recordAquarelleStroke(12, stroke(12, 5));
+    recordAquarelleStroke(13, stroke(13, 10));
+
+    const result = remapAquarelleScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 5 },
+        { keyId: 'c', appFrame: 10 },
+      ],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'c', appFrame: 5 },
+      ],
+    );
+
+    expect(result).toEqual({ moved: 1, dropped: 1 });
+    expect(getRecordedAquarelleStroke(12)).toBeUndefined();
+    expect(findStrokeEntry(12)).toBeUndefined();
+    expect(strokeIdsOfFrame(5)).toEqual([13]);
+    expect(getRecordedAquarelleStroke(13)!.playFrame).toBe(5);
+    // The moved key kept frame 10's serial counter (1), so a later stroke on
+    // its new frame continues at 2 — never a restart.
+    recordAquarelleStroke(14, stroke(14, 5));
+    expect(aquarelleStrokeSerial(14, 5)).toBe(2);
+  });
+
+  it('keeps a surviving deletion marker and clears a dropped one', () => {
+    recordAquarelleStroke(21, stroke(21, 5));
+    recordAquarelleStroke(22, stroke(22, 10));
+    markAquarelleStrokeDeleted(21);
+    markAquarelleStrokeDeleted(22);
+
+    const result = remapAquarelleScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 5 },
+        { keyId: 'c', appFrame: 10 },
+      ],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'c', appFrame: 5 },
+      ],
+    );
+
+    expect(result).toEqual({ moved: 1, dropped: 1 });
+    // Survivor keeps its deletion marker and moves with its key.
+    expect(isAquarelleStrokeDeleted(22)).toBe(true);
+    expect(getRecordedAquarelleStroke(22)!.playFrame).toBe(5);
+    // Dropped identity loses its marker and its serial.
+    expect(isAquarelleStrokeDeleted(21)).toBe(false);
+    expect(getRecordedAquarelleStroke(21)).toBeUndefined();
+    // A fresh serial lookup cannot resolve the old serial (1): the frame
+    // counter moved with key c, so it assigns 2.
+    expect(aquarelleStrokeSerial(21, 5)).toBe(2);
+  });
+
+  it('leaves Dry events by identity and at their relative position', () => {
+    recordAquarelleStroke(31, stroke(31, 0));
+    const dry = emitAquarelleDry(5);
+    recordAquarelleStroke(32, stroke(32, 10));
+    expect(getRecordedAquarellePayloadTimeline().indexOf(dry)).toBe(1);
+
+    remapAquarelleScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 10 },
+      ],
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'b', appFrame: 4 },
+      ],
+    );
+
+    const timeline = getRecordedAquarellePayloadTimeline();
+    expect(timeline[1]).toBe(dry);
+    expect(timeline.filter((event) => 'kind' in event)).toHaveLength(1);
+    expect(getAquarelleEventsForFrame(0)).toContain(dry);
+    expect(getAquarelleEventsForFrame(4)).toContain(dry);
+  });
+
+  it('keeps the registry entry as the very timeline object after a remap', () => {
+    recordAquarelleStroke(41, stroke(41, 10));
+
+    remapAquarelleScriptsForRecords(
+      [{ keyId: 'a', appFrame: 10 }],
+      [{ keyId: 'a', appFrame: 4 }],
+    );
+
+    // translate/delete find the entry by indexOf: both succeed only while the
+    // timeline still holds the registry's very object.
+    expect(translateAquarelleStrokeInScript(41, 0.02, 0.02)).toBe(true);
+    expect(findStrokeEntry(41)!.pts[0]!.x).toBeCloseTo(0.12, 12);
+    expect(deleteAquarelleStrokeFromScript(41)).toBe(true);
+    expect(findStrokeEntry(41)).toBeUndefined();
+  });
+
+  it('fails closed on a malformed layout without mutating or bumping', () => {
+    recordAquarelleStroke(51, stroke(51, 5));
+    const revision = aquarelleStrokesRevision.value;
+    const timelineBefore = [...getRecordedAquarellePayloadTimeline()];
+    const strokeBefore = getRecordedAquarelleStroke(51)!;
+
+    const result = remapAquarelleScriptsForRecords(
+      [
+        { keyId: 'a', appFrame: 0 },
+        { keyId: 'a', appFrame: 5 },
+      ],
+      [{ keyId: 'b', appFrame: 5 }],
+    );
+
+    expect(result).toBeNull();
+    expect(aquarelleStrokesRevision.value).toBe(revision);
+    const timelineAfter = getRecordedAquarellePayloadTimeline();
+    expect(timelineAfter).toHaveLength(timelineBefore.length);
+    expect(timelineAfter.every((event, index) => event === timelineBefore[index])).toBe(true);
+    expect(getRecordedAquarelleStroke(51)).toBe(strokeBefore);
+  });
+
+  it('is a no-op for an identical key layout', () => {
+    recordAquarelleStroke(61, stroke(61, 0));
+    recordAquarelleStroke(62, stroke(62, 5));
+    emitAquarelleDry(3);
+    const records = [
+      { keyId: 'a', appFrame: 0 },
+      { keyId: 'b', appFrame: 5 },
+    ];
+    const revision = aquarelleStrokesRevision.value;
+    const stroke61 = getRecordedAquarelleStroke(61)!;
+    const entry61 = findStrokeEntry(61)!;
+    const timelineBefore = [...getRecordedAquarellePayloadTimeline()];
+
+    const result = remapAquarelleScriptsForRecords(records, records);
+
+    expect(result).toEqual({ moved: 0, dropped: 0 });
+    expect(aquarelleStrokesRevision.value).toBe(revision);
+    expect(getRecordedAquarelleStroke(61)).toBe(stroke61);
+    expect(findStrokeEntry(61)).toBe(entry61);
+    const timelineAfter = getRecordedAquarellePayloadTimeline();
+    expect(timelineAfter).toHaveLength(timelineBefore.length);
+    expect(timelineAfter.every((event, index) => event === timelineBefore[index])).toBe(true);
   });
 });
