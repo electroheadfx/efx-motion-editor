@@ -394,7 +394,14 @@ describe('export preflight scans all participating tracks (48-03, CMP-05)', () =
     expect(renderGlobalFrameMock).toHaveBeenCalledTimes(16);
   });
 
-  it('solo narrows the scan to the soloed visible track (a visible-not-soloed track cannot block)', async () => {
+  it('a lingering document solo flag is inert: a visible non-soloed track still blocks export', async () => {
+    // 261022-iff: paint solo is SESSION-only. exportEngine.ts:99 calls
+    // participatingPaintTracks(document) with the default null (disarmed),
+    // efxPaintCompositor.ts:188 documents the session port as "null/absent =
+    // disarmed (export, main preview and every other consumer)", and
+    // efxPaintHideSolo.ts:21-23 states `track.solo` is never read. So track-1's
+    // stale flag cannot narrow the preflight — the retired "document solo
+    // narrows export" behavior has no current equivalent.
     registerDocument(makeTwoTrackDocument(LAYER, { solo: true }, { visible: true, solo: false }));
     install('track-1', [record('A0', 0)], []);
     install('track-2', [record('A', 0)], [loopClip('loop-b', 10, ['A', 'missing-1'], 2)]);
@@ -402,8 +409,12 @@ describe('export preflight scans all participating tracks (48-03, CMP-05)', () =
 
     await startExport();
 
-    expect(exportStore.progress.peek().status).toBe('complete');
-    expect(renderGlobalFrameMock).toHaveBeenCalledTimes(16);
+    expect(exportStore.progress.peek().status).toBe('error');
+    expect(exportStore.progress.peek().errorMessage).toBe(
+      'Export blocked — Group at frame 10 references a missing source frame (11). Repair or unlink the Group, then export again.',
+    );
+    expect(exportCreateDirMock).not.toHaveBeenCalled();
+    expect(renderGlobalFrameMock).not.toHaveBeenCalled();
   });
 
   it('preserves the locked error copy and earliest-global ordering across participating tracks', async () => {

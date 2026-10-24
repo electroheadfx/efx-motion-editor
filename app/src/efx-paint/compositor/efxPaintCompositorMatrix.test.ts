@@ -20,7 +20,8 @@
  *   6.  Add/lighter                               → "matrix row 6 …"
  *   7.  Hidden upper track                        → "matrix row 7 …"
  *   8.  One soloed track                          → "matrix row 8 …"
- *   9.  Multiple soloed tracks if allowed         → "matrix row 9 …"
+ *   9.  Multiple soloed tracks if allowed         → "matrix row 9 …" (session
+ *           solo admits exactly ONE target; document `solo` flags are inert)
  *  10.  Hidden-and-soloed precedence              → "matrix row 10 …"
  *  11.  Empty upper frame over lower content      → "matrix row 11 …"
  *  12.  Basic, FX, and Physics/Roto content where supported
@@ -225,6 +226,8 @@ function makeHarness(options: {
   background?: 'content' | 'gap' | 'missing';
   backgroundResolutions?: ReadonlyMap<number, EfxPaintBackgroundFrameResolution>;
   backgroundSourceImages?: Record<string, CanvasImageSource>;
+  /** 261022-iff: the SESSION solo target port (null/absent = disarmed). */
+  soloTrackId?: string | null;
 } = {}): { ops: RecordedCanvasOp[]; ports: EfxPaintCompositorPorts } {
   const ops: RecordedCanvasOp[] = [];
   const content = options.content ?? {};
@@ -248,6 +251,7 @@ function makeHarness(options: {
     },
     resolveBackgroundSourceImage: (sourceRef: string) => options.backgroundSourceImages?.[sourceRef] ?? raster(sourceRef),
     compositeOp: (mode: BlendMode) => BLEND_OPS[mode] ?? 'source-over',
+    soloTrackId: options.soloTrackId ?? null,
   };
   return { ops, ports };
 }
@@ -500,17 +504,20 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     expect(result.participates.trackIds).toEqual(['track-a']);
   });
 
-  it('matrix row 8 — one soloed track: only the soloed visible track draws', () => {
+  it('matrix row 8 — one soloed track: only the session solo target draws', () => {
+    // 261022-iff: solo is SESSION-only — the target arrives through
+    // `ports.soloTrackId`, never through the document.
     const { ops, ports } = makeHarness({
       content: {
         'track-a': { kind: 'content', raster: raster('track-a') },
         'track-b': { kind: 'content', raster: raster('track-b') },
         'track-c': { kind: 'content', raster: raster('track-c') },
       },
+      soloTrackId: 'track-b',
     });
     const doc = makeDocument([
       makeTrack('track-a', { order: 2 }),
-      makeTrack('track-b', { order: 1, solo: true }),
+      makeTrack('track-b', { order: 1 }),
       makeTrack('track-c', { order: 0 }),
     ]);
 
@@ -521,13 +528,18 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     expect(result.participates.trackIds).toEqual(['track-b']);
   });
 
-  it('matrix row 9 — multiple soloed tracks: all soloed AND visible tracks draw in stable order', () => {
+  it('matrix row 9 — a session solo admits exactly ONE target; document solo flags are inert', () => {
+    // The retired multi-solo model read `track.solo` from the document and drew
+    // every flagged track. The current contract is a single session target
+    // (261022-iff IFF-02): lingering `solo` flags are never read, so with
+    // `soloTrackId: 'track-a'` only track-a draws regardless of track-c's flag.
     const { ops, ports } = makeHarness({
       content: {
         'track-a': { kind: 'content', raster: raster('track-a') },
         'track-b': { kind: 'content', raster: raster('track-b') },
         'track-c': { kind: 'content', raster: raster('track-c') },
       },
+      soloTrackId: 'track-a',
     });
     const doc = makeDocument([
       makeTrack('track-a', { order: 2, solo: true }),
@@ -538,13 +550,13 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
     const result = compositeFrame(doc, 0, SIZE, ports);
 
     const draws = ops.filter((op) => op.type === 'drawImage');
-    expect(draws.map((draw) => draw.source)).toEqual(['track-a', 'track-c']);
-    // trackIds is document (top-to-bottom) order; the draw order above is the
-    // reversed bottom-to-top order.
-    expect(result.participates.trackIds).toEqual(['track-c', 'track-a']);
+    expect(draws.map((draw) => draw.source)).toEqual(['track-a']);
+    // trackIds is document (top-to-bottom) order; the single target is the only
+    // participant.
+    expect(result.participates.trackIds).toEqual(['track-a']);
   });
 
-  it('matrix row 10 — hidden-and-soloed precedence: hide wins (no draw) AND the hidden solo never arms solo mode', () => {
+  it('matrix row 10 — hidden-and-soloed precedence: hide wins (no draw) AND the lingering solo flag never arms solo mode', () => {
     const { ops, ports } = makeHarness({
       content: {
         'track-a': { kind: 'content', raster: raster('track-a') },
@@ -558,8 +570,9 @@ describe('pixel acceptance matrix — Paint track rows (SPECS rows 1-11)', () =>
 
     const result = compositeFrame(doc, 0, SIZE, ports);
 
-    // track-b hidden → never draws (hide wins over solo); its solo flag does not
-    // arm solo mode (edge CMP-02 adjacency), so track-a stays visible.
+    // track-b hidden → never draws (hide wins over solo); its lingering `solo`
+    // document flag is inert — it never arms session solo (edge CMP-02
+    // adjacency) — so track-a stays visible.
     const draws = ops.filter((op) => op.type === 'drawImage');
     expect(draws.map((draw) => draw.source)).toEqual(['track-a']);
     expect(result.participates.trackIds).toEqual(['track-a']);
