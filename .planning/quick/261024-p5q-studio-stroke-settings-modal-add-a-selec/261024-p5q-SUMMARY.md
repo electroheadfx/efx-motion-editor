@@ -138,10 +138,12 @@ _Note: per the dispatch contract, `.planning/` artifacts were deliberately not c
 3. **Section order**: Color -> Geometry -> Paint.
 4. **Header**: the Document sound modal chrome — `SlidersHorizontal` icon, shared title style, rounded-square close button.
 5. **Mixed is red**: `#ef4444` in the SliderStepper value box and every Mixed caption.
-6. **Brush Paint Size**: max 400 px in the dialog (per-stroke rendering has no engine cap; the live top-bar slider remains 1-80).
+6. **Brush Paint Size**: max 800 px in the dialog (per-stroke rendering has no engine cap; the live top-bar slider remains 1-80).
 7. **Scale / Scale X / Scale Y**: max 500%.
 8. **X / Y**: max 2000 px.
-9. **Water color Size reaches 400**: the canonical 1-400 px value maps through `toEngineParams`; every legacy value (1-80) keeps its exact pre-change footprint, and the 80-400 band extends the vendor footprint scale linearly to ~5x an 80 px stroke. The live top-bar watercolor slider remains 1-80.
+9. **Water color Size reaches 800**: the canonical 1-800 px value maps through `toEngineParams`; every legacy value (1-80) keeps its exact pre-change footprint, the 80-800 band extends the vendor footprint scale linearly to ~10x an 80 px stroke, and typed values above 800 keep growing to a finite safety ceiling. The live top-bar watercolor slider remains 1-80.
+10. **Ruled section titles**: Color / Geometry / Paint use the shared `RuleSectionHeader` (centered uppercase label between two 1px rules, the Sidebar Paper-tab look) with 6px top/bottom padding.
+11. **Free typed entry**: every dialog slider accepts typed values outside its track range and ± steps keep stepping; only the track (and its knob) stays bounded. Geometry transforms no longer clamp typed scale/rotation values.
 
 ## UAT Rows (for the user)
 
@@ -154,7 +156,8 @@ _Note: per the dispatch contract, `.planning/` artifacts were deliberately not c
 7. The header drag moves the dialog and the offset resets on reopen; canvas transform handles still work behind it.
 8. The sidebar Color tab is the color editing surface for the selection; the top bar and every other sidebar field never mirror the modal edits, and the Color tab's non-selection behavior is unchanged.
 9. Header/scroll/order: the dialog wears the Document sound header (icon, title, rounded-square close), scrolls with the app scrollbar, and reads Color - Geometry - Paint.
-10. Ranges: Brush and Water color Size reach 400; Scale / Scale X / Scale Y reach 500; X / Y reach 2000.
+10. Ranges: Brush and Water color Size reach 800 (typing may exceed it); Scale / Scale X / Scale Y reach 500; X / Y reach 2000; every typed value outside a track range is still accepted.
+11. Section titles read as ruled centered headers (the Sidebar Paper tab's TEXTURE style) with vertical breathing room.
 
 ## Gate Totals
 
