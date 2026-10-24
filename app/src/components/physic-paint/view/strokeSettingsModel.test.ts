@@ -583,7 +583,7 @@ describe('261024-p5q dialog fields and shared color', () => {
     const tree = renderDialog(bundle);
 
     for (const field of BRUSH_SETTINGS_FIELDS) {
-      if (field.kind !== 'numeric' || field.key === 'opacity') continue;
+      if (field.kind !== 'numeric') continue;
       const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
       expect(slider, field.key).toBeDefined();
       expect(slider!.props.commitOnRelease).toBe(true);
@@ -594,9 +594,10 @@ describe('261024-p5q dialog fields and shared color', () => {
       expect(findByTestId(tree, `stroke-settings-${field.key}`), field.key).toBeDefined();
     }
 
-    // Opacity leads Geometry and stays OUT of the Paint list (one control).
+    // Opacity ALSO leads Geometry, while the Paint row stays (the dialog
+    // mirrors the top bar, which surfaces both).
     expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeDefined();
-    expect(findByTestId(tree, 'stroke-settings-opacity')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-opacity')).toBeDefined();
 
     // An untouched row never writes; one row's onChange writes only that key.
     expect(calls).toEqual([]);
@@ -626,19 +627,22 @@ describe('261024-p5q dialog fields and shared color', () => {
     const tree = renderDialog(bundle);
 
     for (const field of WATERCOLOR_SETTINGS_FIELDS) {
-      if (field.key === 'load') continue;
       const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
       expect(slider, field.key).toBeDefined();
       expect(slider!.props.mixed).toBe(false);
-      expect(slider!.props.value).toBe(field.key === 'size' ? 20 : 50);
+      expect(slider!.props.value).toBe(
+        field.key === 'size' ? 20 : field.key === 'load' ? 60 : 50,
+      );
     }
 
-    // The canonical Pigment (`load`) is the Water color opacity, moved to the
-    // top of Geometry under the user-facing "Opacity" label.
-    const load = findComponent(tree, (props) => props.ariaLabel === 'Opacity')!;
+    // The canonical Pigment (`load`) ALSO leads Geometry as "Opacity": the
+    // top bar surfaces both, and the dialog mirrors it.
+    const geometryOpacity = findComponent(tree, (props) => props.ariaLabel === 'Opacity')!;
     expect(findByTestId(tree, 'stroke-settings-geometry-opacity')).toBeDefined();
-    expect(load.props.value).toBe(60);
-    (load.props.onChange as (value: number) => void)(70);
+    expect(geometryOpacity.props.value).toBe(60);
+
+    const pigment = findComponent(tree, (props) => props.ariaLabel === 'Pigment')!;
+    (pigment.props.onChange as (value: number) => void)(70);
     expect(calls).toEqual([{ ids: [7], patch: { params: { load: 70 } } }]);
   });
 

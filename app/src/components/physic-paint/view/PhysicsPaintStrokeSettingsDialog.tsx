@@ -109,7 +109,7 @@ const SCROLL_CONTENT_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '10px',
-  padding: '10px 12px 0',
+  padding: '0 12px 0',
 };
 
 const SECTION_STYLE: CSSProperties = {
@@ -280,12 +280,13 @@ export function PhysicsPaintStrokeSettingsDialog({
 
   const fields = strokeSettingsFields(engineModule);
   /**
-   * UAT: opacity leads Geometry. Brush stores `opacity`; Water color's
-   * opacity-equivalent is the canonical Pigment (`load`). It is moved out of
-   * Paint so the sheet keeps exactly ONE control for the value.
+   * UAT: Opacity also leads Geometry (brush `opacity`; Water color's
+   * opacity-equivalent is the canonical Pigment `load`). The Paint list keeps
+   * the module's full field set — the top bar surfaces Opacity and Pigment
+   * side by side for Water color, and the dialog mirrors that.
    */
   const opacityField = fields.find((field) => field.key === (engineModule === 'watercolor' ? 'load' : 'opacity'));
-  const numericFields = fields.filter((field) => field.kind === 'numeric' && field.key !== opacityField?.key);
+  const numericFields = fields.filter((field) => field.kind === 'numeric');
   const segmentedFields = fields.filter((field) => field.kind === 'segmented');
   const opacityReading = opacityField ? readNumericField(appearances, ids, opacityField) : null;
 
@@ -388,12 +389,13 @@ export function PhysicsPaintStrokeSettingsDialog({
     if (event.button !== 0) return;
     const rect = surfaceRef.current?.getBoundingClientRect?.();
     if (!rect) return;
-    const parentHeight = surfaceRef.current?.parentElement?.getBoundingClientRect?.().height
-      ?? (typeof window !== 'undefined' ? window.innerHeight : rect.top + rect.height);
+    // Grow to the APP bottom, not the canvas region's: the sheet overlays the
+    // region without being clipped by it.
+    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : rect.top + rect.height;
     resizeStartRef.current = {
       pointerY: event.clientY,
       height: rect.height,
-      max: Math.max(240, parentHeight - SURFACE_INSET_PX * 2),
+      max: Math.max(240, viewportHeight - rect.top - SURFACE_INSET_PX),
     };
     event.currentTarget?.setPointerCapture?.(event.pointerId);
     event.preventDefault();
