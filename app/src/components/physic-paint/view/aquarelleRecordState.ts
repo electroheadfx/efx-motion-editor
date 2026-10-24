@@ -29,6 +29,10 @@ import {
   type AquarelleToolOverrides,
 } from '@efxlab/efx-watercolor/brushes';
 import { BRUSH_PRESETS } from '@efxlab/efx-watercolor';
+import {
+  buildKeyIdentityFrameMap,
+  type KeyIdentityFrameRecord,
+} from '../roto/keyIdentityFrameMap';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
 export interface AquarelleGlobalParams {
@@ -258,15 +262,27 @@ export function buildAquarelleStrokePayload(
  * end with the full AquarelleStroke (points + ticks + params). The
  * PlayScript bake projection reads it back so the aquarelle engine
  * replays the exact marks the user painted.
+ *
+ * FRAME-ANCHOR LAW (quick-261024-m20): every recorded stroke and its projected
+ * timeline entry are anchored to their edit frame's KEY IDENTITY, not to the
+ * number. An accepted physical replace (force-spacing, ripple, deletion)
+ * remaps `playFrame` onto the surviving key's next appFrame through the shared
+ * `buildKeyIdentityFrameMap` — registry, projected entries and the payload
+ * timeline stay in lockstep. A key that disappeared drops its script from the
+ * SESSION only: the snapshot retained union keeps the file content and an
+ * explicit purge remains the only destructive path. A malformed layout fails
+ * closed (null, nothing mutated). Dry events carry no frame anchor and are
+ * never touched.
  */
 const recordedStrokes = new Map<number, AquarelleStroke>();
 /** The projected timeline entry per stroke, so a measured cuisson can patch it. */
 const recordedStrokeEntries = new Map<number, ReturnType<typeof toStudioStroke>>();
 
 /**
- * 261022-pim: the recorded-stroke revision. Bumps whenever the stroke SET
- * changes (record, delete, restore) — the narrow select overlay leaf reads it
- * so it re-lists outlines without the Studio body subscribing to the map.
+ * 261022-pim: the recorded-stroke revision. Bumps whenever the stroke SET or
+ * its frame anchors change (record, delete, restore, key-identity remap) —
+ * the narrow select overlay leaf reads it so it re-lists outlines without the
+ * Studio body subscribing to the map.
  */
 export const aquarelleStrokesRevision = signal(0);
 
@@ -722,6 +738,157 @@ export function restoreAquarelleRecordTimeline(
  * when something was actually cleared — a reset on an already-empty store is a
  * no-op (efx-preact-reactivity rule 3). Dry sinks stay attached.
  */
+export interface AquarelleRecordRemapResult {
+  /** Recorded strokes whose playFrame anchor changed. */
+  moved: number;
+  /** Recorded strokes whose key disappeared (or whose frame is unowned). */
+  dropped: number;
+}
+
+/**
+ * quick-261024-m20: move the whole watercolor record state onto the next
+ * physical key layout by KEY IDENTITY (key-spacing-script-loss). Force-spacing
+ * rewrites appFrames but keeps key IDs, so every recorded stroke, its projected
+ * timeline entry and its playFrame anchors move with the surviving key.
+ *
+ * SESSION-ONLY: a key that disappeared drops its entries from this store; the
+ * snapshot controller's retained union keeps them in the authoritative file
+ * (no purge is called here and no file is written).
+ *
+ * Objects are REPLACED, never mutated in place: an aquarelle script snapshot
+ * holds the live references, so the pre-remap side must stay intact for undo.
+ * The same projected-entry object serves both the registry and the timeline
+ * (`payloadTimeline.indexOf(entry)` survives). Dry events carry no frame anchor
+ * (D-15) and are pushed through verbatim, preserving identity and order.
+ *
+ * Returns null for a malformed layout (duplicate keyId or appFrame on either
+ * side) without mutating anything. A no-op layout mutates nothing and does not
+ * bump the revision; an effective remap bumps it exactly once.
+ */
+export function remapAquarelleScriptsForRecords(
+  before: readonly KeyIdentityFrameRecord[],
+  after: readonly KeyIdentityFrameRecord[],
+): AquarelleRecordRemapResult | null {
+  const frameRemap = buildKeyIdentityFrameMap(before, after);
+  if (frameRemap === null) return null;
+
+  const nextStrokes = new Map<number, AquarelleStroke>();
+  const nextEntries = new Map<number, ReturnType<typeof toStudioStroke>>();
+  const droppedIds = new Set<number>();
+  let moved = 0;
+  let dropped = 0;
+  let entryReplaced = 0;
+
+  for (const [mutationId, stroke] of recordedStrokes) {
+    const anchor = stroke.playFrame ?? 0;
+    const nextFrame = frameRemap.get(anchor);
+    if (nextFrame === undefined) {
+      dropped += 1;
+      droppedIds.add(mutationId);
+      continue;
+    }
+    if (nextFrame !== anchor) {
+      moved += 1;
+      nextStrokes.set(mutationId, { ...stroke, playFrame: nextFrame });
+    } else {
+      nextStrokes.set(mutationId, stroke);
+    }
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!entry) continue;
+    if ((entry.playFrame ?? 0) === nextFrame) {
+      nextEntries.set(mutationId, entry);
+      continue;
+    }
+    entryReplaced += 1;
+    nextEntries.set(mutationId, {
+      ...entry,
+      playFrame: nextFrame,
+      engine: { ...entry.engine, playFrame: nextFrame },
+    });
+  }
+
+  const nextTimeline: AquarellePayloadEvent[] = [];
+  let timelineChanged = false;
+  for (const event of payloadTimeline) {
+    if (isAquarelleDryEvent(event)) {
+      nextTimeline.push(event);
+      continue;
+    }
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    if (mutationId !== undefined) {
+      if (droppedIds.has(mutationId)) {
+        timelineChanged = true;
+        continue;
+      }
+      const entry = nextEntries.get(mutationId);
+      if (!entry) {
+        // An identity with no projected entry cannot stay in lockstep.
+        timelineChanged = true;
+        continue;
+      }
+      if (entry !== event) timelineChanged = true;
+      nextTimeline.push(entry);
+      continue;
+    }
+    // A timeline-only stroke (no identity) follows its own anchor or leaves.
+    const anchor = event.playFrame ?? 0;
+    const nextFrame = frameRemap.get(anchor);
+    if (nextFrame === undefined) {
+      timelineChanged = true;
+      continue;
+    }
+    if (nextFrame === anchor) {
+      nextTimeline.push(event);
+      continue;
+    }
+    timelineChanged = true;
+    nextTimeline.push({
+      ...event,
+      playFrame: nextFrame,
+      engine: { ...event.engine, playFrame: nextFrame },
+    });
+  }
+
+  const nextCounters = new Map<number, number>();
+  for (const [frame, serial] of aquarelleFrameSerialCounters) {
+    const nextFrame = frameRemap.get(frame);
+    if (nextFrame === undefined) continue;
+    nextCounters.set(nextFrame, serial);
+  }
+  const countersUnchanged = nextCounters.size === aquarelleFrameSerialCounters.size
+    && [...nextCounters].every(
+      ([frame, serial]) => aquarelleFrameSerialCounters.get(frame) === serial,
+    );
+  const timelineUnchanged = !timelineChanged
+    && nextTimeline.length === payloadTimeline.length
+    && nextTimeline.every((event, index) => event === payloadTimeline[index]);
+
+  if (
+    moved === 0
+    && dropped === 0
+    && entryReplaced === 0
+    && timelineUnchanged
+    && countersUnchanged
+  ) {
+    return { moved, dropped };
+  }
+
+  recordedStrokes.clear();
+  for (const [mutationId, stroke] of nextStrokes) recordedStrokes.set(mutationId, stroke);
+  recordedStrokeEntries.clear();
+  for (const [mutationId, entry] of nextEntries) recordedStrokeEntries.set(mutationId, entry);
+  for (const mutationId of droppedIds) {
+    deletedAquarelleStrokeIds.delete(mutationId);
+    aquarelleStrokeSerials.delete(mutationId);
+  }
+  aquarelleFrameSerialCounters.clear();
+  for (const [frame, serial] of nextCounters) aquarelleFrameSerialCounters.set(frame, serial);
+  payloadTimeline.length = 0;
+  for (const event of nextTimeline) payloadTimeline.push(event);
+  bumpAquarelleStrokesRevision();
+  return { moved, dropped };
+}
+
 export function resetAquarelleRecordState(): void {
   const hadContent =
     payloadTimeline.length > 0 ||
