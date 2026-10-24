@@ -232,7 +232,7 @@ vi.mock('../core/fluids', async (importOriginal) => {
 import { EfxPaintEngine } from './EfxPaintEngine'
 import type { CompletedPaintMutation } from './EfxPaintEngine'
 import { drawBrushCursor } from '../render/canvas'
-import type { BrushOpts, PenPoint } from '../types'
+import type { BrushOpts, PaintStroke, PenPoint } from '../types'
 
 type EngineInternals = EfxPaintEngine & Record<string, any>
 
@@ -850,5 +850,147 @@ describe('DIRECT API: moveStroke(id, dx, dy) translates one script stroke', () =
     expect(events).toHaveLength(0)
     expect(redraw).not.toHaveBeenCalled()
     expect(engine.getStrokeCount()).toBe(1)
+  })
+})
+
+// ─── APPEARANCE: getStrokeAppearance / setStrokeAppearance (261024-p5q) ──
+// The Stroke Settings dialog edits per-stroke intrinsic params and color.
+// The READ is narrow (no point copies — getStrokes() is too heavy for a
+// render hydration). The WRITE is one batch commit under the Move law:
+// drain queued finalizations, compare-then-write, clear redo WITHOUT a new
+// undo checkpoint, replay once, one 'move' notification naming the first
+// CHANGED id. Points are never touched.
+
+describe('APPEARANCE: getStrokeAppearance / setStrokeAppearance (one batch commit, Move law)', () => {
+  it('GET: returns narrow params/color copies for live paint entries and ignores unknown ids', () => {
+    const engine = createHarness()
+    const id = paintStroke(engine, hLine(30), 100)
+
+    const rows = engine.getStrokeAppearance([id, 999999])
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0].mutationId).toBe(id)
+    expect(rows[0].params).toEqual(defaultOpts)
+    expect(rows[0].color).toBe('#123456')
+    // Narrow: no points cross the seam.
+    expect('points' in rows[0]).toBe(false)
+    // The returned params record is a copy — mutating it cannot reach the engine.
+    rows[0].params.size = 999
+    expect(strokeById(engine, id).params.size).toBe(defaultOpts.size)
+  })
+
+  it('SET: merges params and color into EVERY listed stroke in ONE move commit', () => {
+    const engine = createHarness()
+    const first = paintStroke(engine, hLine(30), 100)
+    const second = paintStroke(engine, hLine(60), 200)
+    const pointsBefore = engine.getStrokes().map((s: PaintStroke) => (
+      s.points.map((p: PenPoint) => ({ ...p }))
+    ))
+    engine.redoStack.push({ mutationId: 999, actions: [], checkpoint: null, deferred: null })
+    const undoBefore = engine.getHistoryAvailability().undo
+    const events = captureMutations(engine)
+    const availability: Array<{ undo: number; redo: number }> = []
+    engine.setHistoryAvailabilityListener((next) => { availability.push(next) })
+    const redraw = vi.spyOn(engine as never, 'redrawAfterScriptEdit' as never)
+
+    expect(engine.setStrokeAppearance(
+      [first, second],
+      { params: { size: 40, edgeDetail: 25 }, color: '#abcdef' },
+    )).toBe(2)
+
+    expect(strokeById(engine, first).params.size).toBe(40)
+    expect(strokeById(engine, second).params.edgeDetail).toBe(25)
+    expect(strokeById(engine, first).color).toBe('#abcdef')
+    expect(strokeById(engine, second).color).toBe('#abcdef')
+    // Untouched params keep their values.
+    expect(strokeById(engine, first).params.opacity).toBe(defaultOpts.opacity)
+    // Points are untouched — an appearance edit never moves a stroke.
+    expect(engine.getStrokes().map((s: PaintStroke) => s.points)).toEqual(pointsBefore)
+
+    const moveEvents = events.filter((e) => e.kind === 'move')
+    expect(moveEvents).toHaveLength(1)
+    expect(moveEvents[0].mutationId).toBe(first)
+    expect(engine.getHistoryAvailability().undo).toBe(undoBefore)
+    expect(engine.getHistoryAvailability().redo).toBe(0)
+    expect(availability.at(-1)).toEqual({ undo: undoBefore, redo: 0 })
+    expect(redraw).toHaveBeenCalledTimes(1)
+  })
+
+  it('NAMES THE FIRST CHANGED ID: an already-matching first target is skipped', () => {
+    const engine = createHarness()
+    const first = paintStroke(engine, hLine(30), 100)
+    const second = paintStroke(engine, hLine(60), 200)
+    // Settle the first target on the value the batch will apply.
+    expect(engine.setStrokeAppearance([first], { params: { size: 44 } })).toBe(1)
+    const events = captureMutations(engine)
+
+    expect(engine.setStrokeAppearance([first, second], { params: { size: 44 } })).toBe(1)
+
+    expect(events.filter((e) => e.kind === 'move').map((e) => e.mutationId)).toEqual([second])
+    expect(strokeById(engine, first).params.size).toBe(44)
+    expect(strokeById(engine, second).params.size).toBe(44)
+  })
+
+  it('REFUSES: empty/no-op/invalid patches and unknown ids return 0 with no mutation, redraw or notification', () => {
+    const engine = createHarness()
+    const id = paintStroke(engine, hLine(30), 100)
+    const before = engine.getStrokes()[0]
+    const events = captureMutations(engine)
+    const redraw = vi.spyOn(engine as never, 'redrawAfterScriptEdit' as never)
+
+    expect(engine.setStrokeAppearance([id], {})).toBe(0)
+    expect(engine.setStrokeAppearance([id], { params: {} })).toBe(0)
+    expect(engine.setStrokeAppearance([id], { params: { size: before.params.size } })).toBe(0)
+    expect(engine.setStrokeAppearance([id], { color: before.color })).toBe(0)
+    expect(engine.setStrokeAppearance([999999], { params: { size: 40 } })).toBe(0)
+    expect(engine.setStrokeAppearance([id], { params: { size: Number.NaN } })).toBe(0)
+    expect(engine.setStrokeAppearance([id], { params: { size: Number.POSITIVE_INFINITY } })).toBe(0)
+    expect(engine.setStrokeAppearance([id], { color: '' })).toBe(0)
+    expect(engine.setStrokeAppearance([id], { color: 42 as unknown as string })).toBe(0)
+    // One unknown key refuses the WHOLE patch — the valid sibling never lands.
+    expect(engine.setStrokeAppearance([id], { params: { size: 40, spread: 1 } })).toBe(0)
+
+    expect(strokeById(engine, id).params.size).toBe(before.params.size)
+    expect(strokeById(engine, id).color).toBe(before.color)
+    expect(events).toHaveLength(0)
+    expect(redraw).not.toHaveBeenCalled()
+    expect(engine.getStrokeCount()).toBe(1)
+  })
+
+  it('QUEUED: a still-queued stroke is flushed first and re-found by mutationId before the appearance write', () => {
+    const engine = createHarness()
+    engine.setTool('paint')
+    engine.onPointerDown(ev(20, 30, 10, 1))
+    engine.onPointerMove(ev(50, 30, 20, 1))
+    engine.onPointerUp(ev(80, 30, 30, 0))
+    expect(engine.pendingStrokeFinalizations).toHaveLength(1)
+    const id = engine.getStrokes()[0].mutationId
+
+    expect(engine.setStrokeAppearance([id], { params: { size: 44 } })).toBe(1)
+
+    expect(engine.pendingStrokeFinalizations).toHaveLength(0)
+    expect(strokeById(engine, id).params.size).toBe(44)
+  })
+
+  it('CONTINUATIONS: a zero-point continuation stays attached and untouched', () => {
+    const engine = createHarness()
+    const id = paintStroke(engine, hLine(30), 100)
+    const continuation: PaintStroke = {
+      mutationId: id,
+      tool: 'paint',
+      points: [],
+      color: null,
+      params: { ...defaultOpts },
+      timestamp: 0,
+    }
+    engine.allActions.push(continuation)
+
+    expect(engine.setStrokeAppearance([id], { params: { size: 33 } })).toBe(1)
+
+    expect(strokeById(engine, id).params.size).toBe(33)
+    // Only the primary is an appearance target — the continuation is not a row.
+    expect(engine.allActions.at(-1)).toBe(continuation)
+    expect(continuation.params.size).toBe(defaultOpts.size)
+    expect(continuation.points).toHaveLength(0)
   })
 })

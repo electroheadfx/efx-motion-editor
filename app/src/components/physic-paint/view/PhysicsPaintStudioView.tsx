@@ -25,6 +25,8 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import { subscribeRotoPlaybackBackground } from './rotoPlaybackBackground';
 import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
+import { MemoizedPhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
+import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -326,6 +328,9 @@ export interface PhysicsPaintStudioViewProps {
   /** 261022-o2a: the floating Script picker opened by the Tools Scripts
    *  actions — a movable, non-modal dialog in the Photo Reference family. */
   scriptPickerDialog?: ComponentProps<typeof PhysicsPaintScriptPickerDialog> | null;
+  /** quick 261024-p5q: the selection-gated Stroke Settings dialog bundle for
+   *  the ACTIVE module (Brush Move / Water color Select). Absent -> closed. */
+  strokeSettingsDialog?: StrokeSettingsDialogBundle | null;
   workflow: ComponentProps<typeof PhysicsPaintWorkflowStrip>;
   status: {
     shortcutsVisible: boolean;
@@ -346,7 +351,7 @@ export interface PhysicsPaintStudioViewProps {
 
 export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   recordPhysicsPaintPerformanceCounter('render.studioView');
-  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
+  const { layout, topBar, toolRail, canvas, rightPanel, playScriptDialog, referenceDialog, scriptPickerDialog, strokeSettingsDialog, workflow, status, backgroundPicker, referencePicker, audioPicker, audioModal } = props;
   // 260923-fhn (Quick 4): while either gallery picker is open, every parent
   // modal steps aside — the picker overlay is absolute z-20 inside the canvas
   // region, the parents are fixed z-70/72, and stacked they fight for space.
@@ -382,6 +387,13 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
               pattern). It previously rendered inside the workflow strip, whose
               overflow-y:hidden clipped it away: the pill never appeared. */}
           <PhysicsPaintApplyProgressPill rotoScript={workflow.rotoScript} />
+          {/* quick 261024-p5q: the Stroke Settings dialog seats top-right inside
+              the canvas region and rides the same picker step-aside as every
+              other parent dialog. It is selection-gated inside the component;
+              the canvas and its transform handles stay interactive behind it. */}
+          {!pickerOpen ? (
+            <MemoizedPhysicsPaintStrokeSettingsDialog bundle={strokeSettingsDialog} />
+          ) : null}
         </section>
 
         <PhysicsPaintRightPanelRegion

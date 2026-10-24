@@ -357,6 +357,23 @@ export interface StrokeTransform {
   readonly scaleY: number
 }
 
+/**
+ * 261024-p5q: the narrow per-stroke appearance row the Stroke Settings
+ * dialog hydrates from (no point copies — getStrokes() is too heavy for a
+ * render hydration).
+ */
+export interface StrokeAppearanceRecord {
+  readonly mutationId: number
+  readonly params: Record<string, number>
+  readonly color: string | null
+}
+
+/** 261024-p5q: one canonical-unit batch appearance write. */
+export interface StrokeAppearancePatch {
+  readonly params?: Readonly<Record<string, number>>
+  readonly color?: string
+}
+
 /** Pointer-input activity kind reported to the Studio's gesture-idle scheduler. */
 export type InputActivityKind = 'down' | 'move' | 'up' | 'cancel'
 
@@ -443,6 +460,11 @@ const BACKGROUND_KEYS = new Set(['id', 'clips', 'fallback', 'visible', 'revision
 const STROKE_KEYS = new Set(['tool', 'pts', 'color', 'params', 'time', 'hasPenInput', 'diffusionFrames', 'playFrame', 'physicsMode'])
 const SETTINGS_KEYS = new Set(['bgMode', 'paperGrain', 'embossStrength', 'wetPaper'])
 const BLEND_MODES = new Set(['normal', 'screen', 'multiply', 'overlay', 'add'])
+/** 261024-p5q: the ONLY per-stroke keys the appearance patch may write. */
+const BRUSH_APPEARANCE_PARAM_KEYS: ReadonlySet<string> = new Set([
+  'size', 'opacity', 'pressure', 'waterAmount', 'dryAmount',
+  'edgeDetail', 'pickup', 'eraseStrength', 'antiAlias',
+])
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
@@ -4104,6 +4126,107 @@ export class EfxPaintEngine {
     this.notifyCompletedMutation('move', targets[0]!.mutationId)
     this.updateMoveHover()
     return targets.length
+  }
+
+  /**
+   * 261024-p5q: narrow appearance read for the Stroke Settings dialog.
+   * Returns `{ mutationId, params, color }` copies for the listed LIVE
+   * paint entries only (unknown ids ignored, request order preserved,
+   * duplicates collapsed). No points are copied — mutating the returned
+   * params never reaches the engine.
+   */
+  public getStrokeAppearance(mutationIds: readonly number[]): StrokeAppearanceRecord[] {
+    const seen = new Set<number>()
+    const rows: StrokeAppearanceRecord[] = []
+    for (const mutationId of mutationIds) {
+      if (seen.has(mutationId)) continue
+      seen.add(mutationId)
+      const entry = this.allActions.find(
+        a => a.mutationId === mutationId && a.tool === 'paint' && a.points.length > 0,
+      )
+      if (!entry) continue
+      const params: Record<string, number> = {}
+      for (const key of BRUSH_APPEARANCE_PARAM_KEYS) {
+        const value = entry.params[key as keyof BrushOpts]
+        if (typeof value === 'number' && Number.isFinite(value)) params[key] = value
+      }
+      rows.push({ mutationId, params, color: entry.color ?? null })
+    }
+    return rows
+  }
+
+  /**
+   * 261024-p5q: merge per-stroke params and/or replace the color for every
+   * listed stroke in ONE commit under the Move law — drain queued
+   * finalizations first, compare-then-write each key, clear the redo stack
+   * WITHOUT pushing an undo checkpoint, refresh history, replay once, emit
+   * ONE 'move' notification naming the FIRST CHANGED id. The whole patch is
+   * validated before any mutation: unknown keys, non-finite values, an empty
+   * color or an empty patch refuse the batch whole. Returns the number of
+   * strokes that actually changed; zero means no mutation, no redraw, no
+   * notification.
+   */
+  public setStrokeAppearance(
+    mutationIds: readonly number[],
+    patch: StrokeAppearancePatch,
+  ): number {
+    const params = patch?.params
+    const color = patch?.color
+    const paramKeys: string[] = []
+    if (params !== undefined) {
+      if (!params || typeof params !== 'object') return 0
+      for (const key of Object.keys(params)) {
+        if (!BRUSH_APPEARANCE_PARAM_KEYS.has(key)) return 0
+        const value = params[key]
+        if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+        paramKeys.push(key)
+      }
+    }
+    if (color !== undefined && (typeof color !== 'string' || color.length === 0)) return 0
+    if (paramKeys.length === 0 && color === undefined) return 0
+
+    // Drain FIRST: the entries must be settled before they are looked up and
+    // the replay below must see the flushed canvas (the move-commit law).
+    this.flushPendingStrokeFinalizations()
+    const targets: Array<{ mutationId: number; entry: PaintStroke }> = []
+    for (const mutationId of mutationIds) {
+      if (targets.some(target => target.mutationId === mutationId)) continue
+      const entry = this.allActions.find(
+        a => a.mutationId === mutationId && a.tool === 'paint' && a.points.length > 0,
+      )
+      if (entry) targets.push({ mutationId, entry })
+    }
+    if (targets.length === 0) return 0
+
+    const changed: number[] = []
+    for (const { mutationId, entry } of targets) {
+      let entryChanged = false
+      if (paramKeys.length > 0 && params) {
+        const nextParams: BrushOpts = { ...entry.params }
+        for (const key of paramKeys) {
+          const typedKey = key as keyof BrushOpts
+          const value = params[key]!
+          if (nextParams[typedKey] !== value) {
+            nextParams[typedKey] = value
+            entryChanged = true
+          }
+        }
+        if (entryChanged) entry.params = nextParams
+      }
+      if (color !== undefined && entry.color !== color) {
+        entry.color = color
+        entryChanged = true
+      }
+      if (entryChanged) changed.push(mutationId)
+    }
+    if (changed.length === 0) return 0
+
+    this.redoStack = []
+    this.notifyHistoryAvailability()
+    this.displayCompositeDirty = true
+    this.redrawAfterScriptEdit()
+    this.notifyCompletedMutation('move', changed[0]!)
+    return changed.length
   }
 
   /**

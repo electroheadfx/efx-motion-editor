@@ -243,10 +243,19 @@ import {
   type ScriptStrokeTransform,
 } from './view/scriptStrokeEdition';
 import {
+  applyBrushScriptStrokeAppearance,
   brushScriptEditionPort,
   configureBrushScriptEdition,
+  listBrushScriptStrokes,
+  moveBrushScriptStrokes,
+  readBrushScriptStrokeAppearance,
+  transformBrushScriptStrokes,
   type BrushScriptEditionContext,
 } from './view/brushScriptEditionPort';
+import type {
+  ScriptStrokeAppearancePatch,
+  StrokeSettingsDialogBundle,
+} from './view/strokeSettingsModel';
 import type { AquarelleStroke } from '@efxlab/efx-watercolor';
 import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import './physicsPaintStudio.css';
@@ -829,6 +838,9 @@ export function PhysicsPaintStudio() {
   // 261022-o2a: the picker bundle memo sits beside the reference dialog memo —
   // the dialog re-resolves only when its visibility/intent changes.
   const scriptPickerDialogPropsMemo = useRef(createIdentityMemo()).current;
+  // quick 261024-p5q: the Stroke Settings bundle re-resolves only when the
+  // active module, the Brush Move gate, the play frame or the canvas size move.
+  const strokeSettingsDialogPropsMemo = useRef(createIdentityMemo()).current;
   const canvasStackPropsMemo = useRef(createIdentityMemo()).current;
   const canvasMountPropsMemo = useRef(createIdentityMemo()).current;
   const scheduleRotoStartFramePropagation = useCallback((frame: number) => {
@@ -7211,6 +7223,30 @@ export function PhysicsPaintStudio() {
       onClose: closeScriptPicker,
     }),
   );
+  // quick 261024-p5q: the Stroke Settings dialog bundle for the ACTIVE module.
+  // Callbacks only — this body NEVER reads the stroke-selection signals (the
+  // dialog leaf subscribes them). Water color supplies its bundle in Task 2.
+  const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(
+    [activeModule.value, settings.tool, launchContext?.startFrame ?? 0, canvasWidth, canvasHeight],
+    () => {
+      if (activeModule.value === 'watercolor') return null;
+      const playFrame = getBrushScriptPlayFrame();
+      const canvasSize = { width: canvasWidth, height: canvasHeight };
+      const bundle: StrokeSettingsDialogBundle = {
+        module: 'brush',
+        brushMoveActive: settings.tool === 'move',
+        playFrame,
+        canvasSize,
+        listStrokes: (frame, size) => listBrushScriptStrokes(frame, size),
+        readAppearance: (ids, frame) => readBrushScriptStrokeAppearance(ids, frame),
+        applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
+          applyBrushScriptStrokeAppearance(ids, patch),
+        moveStrokes: (ids, dxPx, dyPx) => moveBrushScriptStrokes(ids, dxPx, dyPx),
+        transformStrokes: (ids, transform) => transformBrushScriptStrokes(ids, transform),
+      };
+      return bundle;
+    },
+  );
   const viewModel = usePhysicsPaintStudioViewModel({
     layout,
     topBar,
@@ -7220,6 +7256,7 @@ export function PhysicsPaintStudio() {
     playScriptDialog,
     referenceDialog,
     scriptPickerDialog,
+    strokeSettingsDialog,
     workflow: {
         layerId: multiTrackRowBundle.layerId,
         tracks: multiTrackRowBundle.tracks,

@@ -15,6 +15,7 @@
 // ============================================================
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { effect } from '@preact/signals';
 import type { PaintRenderSettings, PaintStroke } from '@efxlab/efx-physic-paint';
 import {
   captureBrushScriptForFrame,
@@ -25,6 +26,7 @@ import {
 } from './brushScriptRecordState';
 import { normalizeLogicalBrushes } from './recordedStrokeGroups';
 import {
+  applyBrushScriptStrokeAppearance,
   configureBrushScriptEdition,
   listBrushScriptStrokes,
   hitTestBrushScriptStroke,
@@ -32,6 +34,7 @@ import {
   moveBrushScriptStrokes,
   deleteBrushScriptStroke,
   deleteBrushScriptStrokes,
+  readBrushScriptStrokeAppearance,
   transformBrushScriptStrokes,
   stepBrushScriptStroke,
   brushScriptEditionPort,
@@ -81,6 +84,12 @@ function createFakeEngine(overrides: Record<string, unknown> = {}) {
   return {
     getStrokes: vi.fn(() => [] as PaintStroke[]),
     getStrokeSerials: vi.fn(() => new Map<number, number>()),
+    getStrokeAppearance: vi.fn(() => [] as Array<{
+      mutationId: number;
+      params: Record<string, number>;
+      color: string | null;
+    }>),
+    setStrokeAppearance: vi.fn(() => 0),
     moveStroke: vi.fn(() => true),
     moveStrokes: vi.fn(() => 1),
     deleteStroke: vi.fn(() => true),
@@ -498,5 +507,100 @@ describe('261024-mz5 batch edits: one commit, one flush, selection pruned', () =
     expect(getBrushScriptFrameEntry(3)?.strokes).toBe(2);
     // A transform keeps the selection, exactly like a move.
     expect([...scriptSelectedStrokeIds.value].sort()).toEqual([7, 9]);
+  });
+});
+
+// 261024-p5q: the Stroke Settings dialog reads per-stroke appearance and
+// writes it through ONE engine commit + ONE retained-script flush.
+describe('261024-p5q appearance: held-frame read, one commit + one flush', () => {
+  it('reads only the held frame and subscribes the store revision', () => {
+    capture(3, [stroke(7, [{ x: 20, y: 30 }])]);
+    const engine = createFakeEngine({
+      getStrokeSerials: vi.fn(() => new Map([[7, 1]])),
+      getStrokeAppearance: vi.fn(() => [
+        { mutationId: 7, params: { ...OPTIONS, size: 33 }, color: '#ff0000' },
+      ]),
+    });
+    configure(engine, { frame: 3 });
+
+    let runs = 0;
+    const dispose = effect(() => {
+      void readBrushScriptStrokeAppearance([7], 3);
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      markBrushScriptFrameDirty(3);
+      capture(3, [stroke(7, [{ x: 20, y: 30 }])]);
+      expect(runs).toBe(before + 1);
+
+      expect(readBrushScriptStrokeAppearance([7], 3)).toEqual([
+        { mutationId: 7, params: { ...OPTIONS, size: 33 }, color: '#ff0000' },
+      ]);
+      expect(engine.getStrokeAppearance).toHaveBeenCalledWith([7]);
+    } finally {
+      dispose();
+    }
+
+    // Another frame holds nothing — the engine liveness gate refuses.
+    expect(readBrushScriptStrokeAppearance([7], 4)).toEqual([]);
+    // No context -> empty (the narrow-leaf read never throws).
+    configureBrushScriptEdition(null);
+    expect(readBrushScriptStrokeAppearance([7], 3)).toEqual([]);
+  });
+
+  it('applies through ONE engine call and flushes the frame ONCE', () => {
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [
+        stroke(7, [{ x: 30, y: 35 }], '#abcdef'),
+        stroke(9, [{ x: 60, y: 35 }], '#abcdef'),
+      ]),
+      setStrokeAppearance: vi.fn(() => 2),
+    });
+    configure(engine, { frame: 3 });
+
+    expect(applyBrushScriptStrokeAppearance(
+      [7, 9],
+      { params: { size: 42 }, color: '#abcdef' },
+    )).toBe(true);
+
+    expect(engine.setStrokeAppearance).toHaveBeenCalledTimes(1);
+    expect(engine.setStrokeAppearance).toHaveBeenCalledWith(
+      [7, 9],
+      { params: { size: 42 }, color: '#abcdef' },
+    );
+    expect(engine.setScriptBaseClearPending).toHaveBeenCalledWith(true);
+    expect(engine.getStrokes).toHaveBeenCalledTimes(1);
+    expect(getBrushScriptFrameEntry(3)?.strokes).toBe(2);
+  });
+
+  it('a locked context or a zero-change result performs no flush and returns false', () => {
+    const engine = createFakeEngine({ setStrokeAppearance: vi.fn(() => 0) });
+    configure(engine, { frame: 3 });
+
+    expect(applyBrushScriptStrokeAppearance([7], { params: { size: 42 } })).toBe(false);
+    expect(engine.setStrokeAppearance).toHaveBeenCalledTimes(1);
+    expect(engine.getStrokes).not.toHaveBeenCalled();
+
+    const locked = createFakeEngine();
+    configure(locked, { frame: 3, locked: true });
+    expect(applyBrushScriptStrokeAppearance([7], { color: '#abcdef' })).toBe(false);
+    expect(locked.setStrokeAppearance).not.toHaveBeenCalled();
+    expect(locked.setScriptBaseClearPending).not.toHaveBeenCalled();
+
+    configureBrushScriptEdition(null);
+    expect(applyBrushScriptStrokeAppearance([7], { color: '#abcdef' })).toBe(false);
+  });
+
+  it('refuses an empty id list or an empty patch before touching the engine', () => {
+    const engine = createFakeEngine();
+    configure(engine, { frame: 3 });
+
+    expect(applyBrushScriptStrokeAppearance([], { params: { size: 42 } })).toBe(false);
+    expect(applyBrushScriptStrokeAppearance([7], {})).toBe(false);
+    expect(applyBrushScriptStrokeAppearance([7], { params: {} })).toBe(false);
+
+    expect(engine.setStrokeAppearance).not.toHaveBeenCalled();
+    expect(engine.setScriptBaseClearPending).not.toHaveBeenCalled();
   });
 });

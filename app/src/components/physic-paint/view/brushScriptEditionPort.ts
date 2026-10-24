@@ -39,6 +39,7 @@ import {
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
 import type { ScriptStrokeTransform } from './scriptStrokeTransform';
+import type { ScriptStrokeAppearance, ScriptStrokeAppearancePatch } from './strokeSettingsModel';
 
 /** The engine surface the brush port needs (structural — the overlay never imports the engine class). */
 export interface BrushScriptEditionEngine {
@@ -51,6 +52,14 @@ export interface BrushScriptEditionEngine {
   deleteStrokes(mutationIds: readonly number[]): number;
   /** 261024-mz5 Task 2: points-only scale/rotate in ONE commit. */
   transformStrokes(mutationIds: readonly number[], transform: ScriptStrokeTransform): number;
+  /** 261024-p5q: narrow appearance read for the Stroke Settings dialog. */
+  getStrokeAppearance(mutationIds: readonly number[]): Array<{
+    mutationId: number;
+    params: Record<string, number>;
+    color: string | null;
+  }>;
+  /** 261024-p5q: merge per-stroke params/color into every listed stroke in ONE commit. */
+  setStrokeAppearance(mutationIds: readonly number[], patch: ScriptStrokeAppearancePatch): number;
   sendStrokeBackward(mutationId: number): boolean;
   sendStrokeForward(mutationId: number): boolean;
   setStrokeLabelsSuppressed(suppressed: boolean): void;
@@ -251,6 +260,57 @@ export function deleteBrushScriptStrokes(mutationIds: readonly number[]): boolea
 /** Single-stroke wrapper — one stroke of the batch path. */
 export function deleteBrushScriptStroke(mutationId: number): boolean {
   return deleteBrushScriptStrokes([mutationId]);
+}
+
+function hasAppearanceContent(patch: ScriptStrokeAppearancePatch | null | undefined): boolean {
+  if (!patch) return false;
+  const hasParams = patch.params !== undefined && Object.keys(patch.params).length > 0;
+  const hasColor = typeof patch.color === 'string' && patch.color.length > 0;
+  return hasParams || hasColor;
+}
+
+/**
+ * 261024-p5q: narrow appearance read for the Stroke Settings dialog. The
+ * leaf subscribes `brushScriptRevision` so every flush re-reads; a frame the
+ * engine does not hold (stale/other-track visit) yields no rows.
+ */
+export function readBrushScriptStrokeAppearance(
+  mutationIds: readonly number[],
+  playFrame: number,
+): ScriptStrokeAppearance[] {
+  void brushScriptRevision.value;
+  const engine = brushScriptEditionContext?.getEngine() ?? null;
+  if (!engine || !engineHoldsBrushScriptFrame(engine, playFrame)) return [];
+  return engine.getStrokeAppearance(mutationIds).map((row) => ({
+    mutationId: row.mutationId,
+    params: { ...row.params },
+    color: row.color,
+  }));
+}
+
+/**
+ * 261024-p5q: write appearance for the whole selection in ONE engine commit,
+ * then refresh the frame's retained script ONCE. Lock-gated; an empty batch
+ * or an empty patch refuses before the edit base is declared. A zero-change
+ * engine result performs no flush.
+ */
+export function applyBrushScriptStrokeAppearance(
+  mutationIds: readonly number[],
+  patch: ScriptStrokeAppearancePatch,
+): boolean {
+  const resolved = resolveEdition();
+  if (!resolved || resolved.context.isLocked()) return false;
+  if (mutationIds.length === 0) return false;
+  if (!hasAppearanceContent(patch)) return false;
+  declareEditBase(resolved.engine, resolved.frame);
+  const changed = resolved.engine.setStrokeAppearance(mutationIds, patch) > 0;
+  if (!changed) return false;
+  flushBrushScriptFrame(
+    resolved.frame,
+    resolved.engine.getStrokes(),
+    resolvePaintSettings(resolved.engine),
+  );
+  return true;
 }
 
 /**
