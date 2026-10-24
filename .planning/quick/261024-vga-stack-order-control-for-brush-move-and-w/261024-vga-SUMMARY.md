@@ -243,6 +243,8 @@ None — no external service configuration required.
 
 **2026-10-25 — tabbed dialog (commit `27580c79`):** the three sections moved onto ONE pinned tab row (`Geometry | Stack | Paint`), Geometry is the default tab, and the color readout moved into Paint. Tab state is a ref-held signal (no useState, no render-body write). Automated gates re-run after the change: five app suites 378/378 and `tsc --noEmit` clean. The VERIFICATION.md covered digest predates this revision, so its status is stale until the next verifier run; the native UAT checklist above still applies.
 
+**2026-10-25 — second revision (commit `2ccb4eef`):** the dialog tabs now reuse the sidebar's options-tab chrome (one pinned row, active tab visually connected to the surface). The `<` / `>` stack-step shortcuts are RETIRED, together with their dead keyboard action/helper wiring. The dialog's drag offset and resize height are now module-scope signals, so the layout persists for the whole Studio lifecycle — across selection changes, dismiss/reopen and module switches. Gates re-run: seven app suites 524/524 and `tsc --noEmit` clean.
+
 ## Next Phase Readiness
 
 - Automated gates are green and the feature is code-complete. Native UAT is still required before calling it done: both modules' Stack section, live re-bake ordering, Enter/blur coalescing, refused-commit input snap-back, undo/redo as one edit, save/reopen persistence, and physical-lock refusal.
