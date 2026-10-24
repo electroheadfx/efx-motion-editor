@@ -100,7 +100,7 @@ function segmentedButtonClass(active: boolean) {
  */
 function activeGrainOptionValue(grainStrength: number): number {
   const value = Number.isFinite(grainStrength) ? grainStrength : 0.35;
-  let best = GRAIN_STRENGTH_OPTIONS[0].value;
+  let best: number = GRAIN_STRENGTH_OPTIONS[0].value;
   let bestDistance = Math.abs(value - best);
   for (const option of GRAIN_STRENGTH_OPTIONS) {
     const distance = Math.abs(value - option.value);

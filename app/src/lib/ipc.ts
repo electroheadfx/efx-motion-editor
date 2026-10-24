@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { base64ToBytes } from './webpBytes';
 import type { ProjectData, MceProject } from '../types/project';
 import type { ImageInfo, ImportResult } from '../types/image';
-import type { PersistedRotoScriptV1 } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
+import type { PersistedRotoScriptAnyV1, PersistedRotoScriptV1 } from '../components/physic-paint/roto/physicsPaintRotoScriptSchema';
 import {
   isPhysicPaintActionTransactionResult,
   type PhysicPaintActionHistoryReleaseRequest,
@@ -103,8 +103,8 @@ export function scriptLibraryScan(authority: string): Promise<Result<Omit<Physic
 export function scriptLibraryLoad(authority: string, scriptId: string) {
   return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_load', { authority, scriptId });
 }
-export function scriptLibrarySave(authority: string, script: PersistedRotoScriptV1) {
-  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_save', { authority, script });
+export function scriptLibrarySave(authority: string, script: PersistedRotoScriptAnyV1) {
+  return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptAnyV1 }>('script_library_save', { authority, script });
 }
 export function scriptLibraryRename(authority: string, scriptId: string, expectedRevision: string, name: string) {
   return safeInvoke<{ scan: Omit<PhysicPaintScriptLibraryResult, 'operationId' | 'kind' | 'ok'>; script: PersistedRotoScriptV1 }>('script_library_rename', { authority, scriptId, expectedRevision, name });

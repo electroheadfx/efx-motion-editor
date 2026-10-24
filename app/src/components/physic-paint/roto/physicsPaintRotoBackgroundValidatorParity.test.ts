@@ -25,7 +25,7 @@
  * `.test.ts` on purpose — Vitest only collects `*.test.ts`.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isPhysicPaintRotoBackgroundMetadata } from '../../../types/physicPaint';
+import { isPhysicPaintRotoBackgroundMetadata, type PhysicPaintRotoBackgroundMode } from '../../../types/physicPaint';
 import { isRotoBackground } from './physicsPaintRotoScriptSchema';
 import {
   buildPhysicPaintRotoPhysicalRevision,
@@ -60,6 +60,13 @@ const documentWith = (background: unknown) => {
     revision: buildPhysicPaintRotoPhysicalRevision(realKeyRecords, interpolation, [], [], []),
   };
 };
+
+/**
+ * The illegal empty-string background the write paths must never produce.
+ * Typed as the union so the runtime comparison stays against `''` without a
+ * TS2367 no-overlap diagnostic.
+ */
+const EMPTY_BACKGROUND = '' as PhysicPaintRotoBackgroundMode;
 
 /** The locked legal background set both contracts must accept. */
 const LEGAL_BACKGROUNDS = [
@@ -126,7 +133,7 @@ describe('NO EMPTY-STRING WRITE — _writePaperDisplay never stores background: 
     expect(physicPaintStore.setPaperStrength(LAYER, 0.8)).toBe(false);
     expect(physicPaintStore.setPaperScale(LAYER, 2)).toBe(false);
     const mirror = physicPaintStore.getRotoBackgroundMetadata(LAYER, activeTrackId);
-    expect(mirror === null || mirror.background !== '').toBe(true);
+    expect(mirror === null || mirror.background !== EMPTY_BACKGROUND).toBe(true);
     if (mirror) expect(isPhysicPaintRotoBackgroundMetadata(mirror)).toBe(true);
   });
 
@@ -139,7 +146,7 @@ describe('NO EMPTY-STRING WRITE — _writePaperDisplay never stores background: 
     expect(physicPaintStore.setPaperId(LAYER, 'transparent')).toBe(true);
     const cleared = physicPaintStore.getRotoBackgroundMetadata(LAYER, activeTrackId);
     expect(cleared?.background).toBe('transparent');
-    expect(cleared === null || cleared.background !== '').toBe(true);
+    expect(cleared === null || cleared.background !== EMPTY_BACKGROUND).toBe(true);
   });
 });
 

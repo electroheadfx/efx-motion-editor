@@ -58,7 +58,7 @@ engineMock.getEnginePaperSheet.mockImplementation((id: string, width: number, he
   canvas.width = width;
   canvas.height = height;
   const pixels = seededPixels(id, width, height, scale);
-  const context = canvas.getContext('2d');
+  const context = canvas.getContext('2d')!;
   const image = context.createImageData(width, height);
   image.data.set(pixels);
   context.putImageData(image, 0, 0);
@@ -821,11 +821,27 @@ describe('261017-mdr cache discipline', () => {
 });
 
 // Opaque-sheet density arm is unchanged (drawProjectPaperRaster options).
+/**
+ * Recording stand-in for the Canvas 2D surface drawProjectPaperRaster touches.
+ * Declared so `this.*` inside the recording methods is typed (an untyped object
+ * literal infers `this` as `{}`).
+ */
+interface RecordingPaperContext {
+  globalAlpha: number;
+  globalCompositeOperation: string;
+  fillStyle: string;
+  save(): void;
+  restore(): void;
+  fillRect(): void;
+  createPattern(): string;
+  drawImage(): void;
+}
+
 describe('261017-lny opaque density', () => {
   it('opaque-sheet arm: globalAlpha = 1 and no white fillRect before the sheet draw', () => {
     const ops: string[] = [];
     let alphaAtDraw = 1;
-    const context = {
+    const context: RecordingPaperContext = {
       globalAlpha: 1,
       globalCompositeOperation: 'source-over',
       fillStyle: '#fff',
@@ -834,8 +850,8 @@ describe('261017-lny opaque density', () => {
       fillRect() { ops.push(`fill:${String(this.fillStyle)}:a=${this.globalAlpha}`); },
       createPattern() { ops.push('pattern'); return 'textured-pattern'; },
       drawImage() { ops.push(`draw:a=${this.globalAlpha}`); alphaAtDraw = this.globalAlpha; },
-    } as unknown as CanvasRenderingContext2D & { globalAlpha: number };
-    drawProjectPaperRaster(context, { width: 2, height: 1 } as CanvasImageSource, 8, 4, 1, { opaqueSheet: true });
+    };
+    drawProjectPaperRaster(context as unknown as CanvasRenderingContext2D, { width: 2, height: 1 } as CanvasImageSource, 8, 4, 1, { opaqueSheet: true });
     expect(alphaAtDraw).toBe(1);
     expect(ops).toEqual(['save', 'draw:a=1', 'restore']);
     expect(ops.some((op) => op.startsWith('fill:'))).toBe(false);
@@ -844,7 +860,7 @@ describe('261017-lny opaque density', () => {
 
   it('jpg arm keeps white + 0.18 (and the opaque flag is opt-in)', () => {
     const ops: Array<{ kind: string; alpha: number }> = [];
-    const context = {
+    const context: RecordingPaperContext = {
       globalAlpha: 1,
       globalCompositeOperation: 'source-over',
       fillStyle: '#fff',
@@ -853,8 +869,8 @@ describe('261017-lny opaque density', () => {
       fillRect() { ops.push({ kind: String(this.fillStyle).startsWith('pattern') ? 'pattern' : 'fill', alpha: this.globalAlpha }); },
       createPattern() { return 'pattern:fixture'; },
       drawImage() { ops.push({ kind: 'draw', alpha: this.globalAlpha }); },
-    } as unknown as CanvasRenderingContext2D;
-    drawProjectPaperRaster(context, { width: 2, height: 1 } as CanvasImageSource, 8, 4);
+    };
+    drawProjectPaperRaster(context as unknown as CanvasRenderingContext2D, { width: 2, height: 1 } as CanvasImageSource, 8, 4);
     expect(ops).toEqual([
       { kind: 'fill', alpha: 1 },
       { kind: 'pattern', alpha: 0.18 },

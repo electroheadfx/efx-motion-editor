@@ -120,8 +120,12 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     activeTool: 'paint',
     color: '#103c65',
     opacity: 100,
-    size: 11,
-    onSizeChange: vi.fn(),
+    // 261018-f15 C2: the panel's size router is brushSize/onBrushSizeChange
+    // (the retired `size`/`onSizeChange` props no longer exist). The palette
+    // suite does not exercise size or opacity.
+    brushSize: 11,
+    onBrushSizeChange: vi.fn(),
+    onOpacityChange: vi.fn(),
     edgeDetail: 50,
     pickup: 50,
     spread: 50,
@@ -138,6 +142,9 @@ function baseProps(overrides: Partial<PhysicsPaintRightPanelProps> = {}): Physic
     onEraseStrengthChange: vi.fn(),
     onOnionChange: vi.fn(),
     onPlayWiggleChange: vi.fn(),
+    onUndo: vi.fn(),
+    onRedo: vi.fn(),
+    onClearFrame: vi.fn(),
     trackName: 'Paint 1',
     trackOpacity: 1,
     trackBlendMode: 'normal',
