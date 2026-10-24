@@ -276,6 +276,12 @@ describe('261022-tv1 aquarelle move edit snapshots', () => {
 // registry strokes and timeline entries swap together at the SAME indexes,
 // with exactly one revision bump per effective batch.
 describe('261024-mz5 aquarelle batch translate/delete', () => {
+  // Frame 504 is shared with a single-stroke cell above — start clean so the
+  // batch assertions see ONLY this batch's strokes.
+  beforeEach(() => {
+    resetAquarelleRecordState();
+  });
+
   it('translates both strokes and both timeline entries at the same indexes with one bump', () => {
     const first = 9101;
     const second = 9102;
@@ -403,10 +409,10 @@ describe('261022-tv1 aquarelle stroke drag signal', () => {
     });
     try {
       const before = runs;
-      setAquarelleStrokeDrag({ mutationId: 8601, dxPx: 12, dyPx: -4 });
-      setAquarelleStrokeDrag({ mutationId: 8601, dxPx: 12, dyPx: -4 });
+      setAquarelleStrokeDrag({ mutationIds: [8601], dxPx: 12, dyPx: -4 });
+      setAquarelleStrokeDrag({ mutationIds: [8601], dxPx: 12, dyPx: -4 });
       expect(runs).toBe(before + 1);
-      setAquarelleStrokeDrag({ mutationId: 8601, dxPx: 13, dyPx: -4 });
+      setAquarelleStrokeDrag({ mutationIds: [8601], dxPx: 13, dyPx: -4 });
       expect(runs).toBe(before + 2);
       clearAquarelleStrokeDrag();
       clearAquarelleStrokeDrag();
@@ -423,12 +429,12 @@ describe('261022-tv1 aquarelle stroke drag signal', () => {
     recordAquarelleStroke(id, stroke(id, 509));
 
     setAquarelleSelectMode(true);
-    setAquarelleStrokeDrag({ mutationId: id, dxPx: 20, dyPx: 10 });
+    setAquarelleStrokeDrag({ mutationIds: [id], dxPx: 20, dyPx: 10 });
     expect(aquarelleStrokeDrag.value).not.toBeNull();
     setAquarelleSelectMode(false);
     expect(aquarelleStrokeDrag.value).toBeNull();
 
-    setAquarelleStrokeDrag({ mutationId: id, dxPx: 20, dyPx: 10 });
+    setAquarelleStrokeDrag({ mutationIds: [id], dxPx: 20, dyPx: 10 });
     expect(beginAquarelleMoveEdit(id, 0.01, 0.01)).not.toBeNull();
     expect(aquarelleStrokeDrag.value).toBeNull();
   });

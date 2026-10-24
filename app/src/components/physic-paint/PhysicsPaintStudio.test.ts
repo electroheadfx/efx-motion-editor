@@ -3137,7 +3137,7 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(scriptStrokeOverlay).toContain('onPointerMove={handlePointerMove}');
     expect(scriptStrokeOverlay).toContain('onPointerUp={handlePointerUp}');
     expect(scriptStrokeOverlay).toContain('onPointerCancel={handlePointerCancel}');
-    expect(scriptStrokeOverlay).toContain('data-testid={dragOffset ? props.ghostTestId : undefined}');
+    expect(scriptStrokeOverlay).toContain('data-testid={dragged ? props.ghostTestId : undefined}');
     expect(scriptStrokeOverlay).toContain('setPointerCapture(');
     expect(scriptStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
     expect(scriptStrokeOverlay).not.toContain('useEffect');
@@ -3253,7 +3253,7 @@ describe('261022-ujp stroke stack step', () => {
     expect(reorderStart).toBeGreaterThan(-1);
     const reorder = aquarelleRecordStateSource.slice(
       reorderStart,
-      aquarelleRecordStateSource.indexOf('export function deleteAquarelleStrokeFromScript', reorderStart),
+      aquarelleRecordStateSource.indexOf('export function deleteAquarelleStrokesFromScript', reorderStart),
     );
     // Index assignment, not a splice: every per-stroke field and the Map
     // insertion order (newest-last hit-testing) stay untouched. The entries are
@@ -3319,16 +3319,27 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(paintEngineSource).toContain('public getStrokeSerials(): Map<number, number> {');
     expect(paintEngineSource).toContain('public setStrokeLabelsSuppressed(suppressed: boolean): void {');
     expect(paintEngineSource).toContain('public setCursorVisible(visible: boolean): void {');
-    // deleteStroke: drain first, one 'erase', false leaves state untouched.
-    const deleteStart = paintEngineSource.indexOf('public deleteStroke(mutationId: number): boolean {');
+    // deleteStrokes (the 261024-mz5 batch core): drain first, one 'erase',
+    // zero removals leave state untouched; deleteStroke delegates to it.
+    const deleteStart = paintEngineSource.indexOf('public deleteStrokes(mutationIds: readonly number[]): number {');
     const deleteBody = paintEngineSource.slice(deleteStart, paintEngineSource.indexOf('public moveStroke(', deleteStart));
     expect(deleteBody).toContain('this.flushPendingStrokeFinalizations()');
     expect(deleteBody.indexOf('this.flushPendingStrokeFinalizations()')).toBeLessThan(
-      deleteBody.indexOf('if (!this.removeStrokeEntry(mutationId)) return false'),
+      deleteBody.indexOf('if (this.removeStrokeEntry(mutationId)) removed.push(mutationId)'),
     );
-    expect(deleteBody).toContain("this.notifyCompletedMutation('erase', mutationId)");
-    // moveStroke: the SAME commit contract as the pointer drag.
-    expect(paintEngineSource).toContain('this.commitMoveGesture({ stroke, mutationId, startX: 0, startY: 0, dx: dxPx, dy: dyPx })');
+    expect(deleteBody).toContain('if (removed.length === 0) return 0');
+    expect(deleteBody).toContain("this.notifyCompletedMutation('erase', removed[0]!)");
+    // moveStrokes (the 261024-mz5 batch core): the SAME commit contract as
+    // the pointer drag — drain, map points, redo cleared, one 'move', one
+    // replay — and moveStroke delegates to it.
+    const moveStart = paintEngineSource.indexOf('public moveStrokes(');
+    expect(moveStart).toBeGreaterThan(-1);
+    const moveBody = paintEngineSource.slice(moveStart, paintEngineSource.indexOf('public getStrokeSerials()', moveStart));
+    expect(moveBody).toContain('this.flushPendingStrokeFinalizations()');
+    expect(moveBody).toContain('this.redoStack = []');
+    expect(moveBody).toContain('this.redrawAfterScriptEdit()');
+    expect(moveBody).toContain("this.notifyCompletedMutation('move', targets[0]!.mutationId)");
+    expect(paintEngineSource).toContain('return this.moveStrokes([mutationId], dxPx, dyPx) > 0');
     // The erase gesture now funnels through removeStrokeEntry too.
     expect(paintEngineSource).toContain('if (this.removeStrokeEntry(mid)) removed++');
     // Suppression gates are the tool gate + an early return.

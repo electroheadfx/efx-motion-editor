@@ -1,11 +1,13 @@
 // ============================================================
 //  AquarelleStrokeOverlay — the Water color adapter of the ONE
-//  shared script-edition surface (quick 261023-g4p Task 2).
+//  shared script-edition surface (quick 261023-g4p Task 2;
+//  multi-select 261024-mz5).
 //
 //  The gesture implementation moved to ScriptStrokeOverlay; this
 //  file only binds the watercolor selection port, the select /
-//  held-Cmd mode, and the watercolor test ids. No gesture logic
-//  lives here — the shared file is the only implementation.
+//  held-Cmd mode, the batch callbacks and the watercolor test
+//  ids. No gesture logic lives here — the shared file is the only
+//  implementation.
 // ============================================================
 
 import type { JSX } from 'preact';
@@ -21,14 +23,14 @@ export function AquarelleStrokeOverlay(props: {
   width: number;
   height: number;
   getPlayFrame: () => number;
-  onDeleteStroke: (mutationId: number) => void;
-  onMoveStroke: (mutationId: number, dxPx: number, dyPx: number) => void;
+  onDeleteStrokes: (mutationIds: readonly number[]) => void;
+  onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
 }): JSX.Element | null {
   const port: ScriptStrokeEditionPort = {
     ...aquarelleScriptStrokeEditionPort,
     isActive: () => aquarelleSelectMode.peek(),
-    deleteStroke: props.onDeleteStroke,
-    moveStroke: props.onMoveStroke,
+    deleteStrokes: props.onDeleteStrokes,
+    moveStrokes: props.onMoveStrokes,
     // The watercolor overlay gestures never call the keyboard port op.
     stepStroke: () => {},
   };
@@ -40,8 +42,8 @@ export function AquarelleStrokeOverlay(props: {
       port={port}
       selectMode={aquarelleSelectMode.value}
       moveArmed={temporaryMove.value}
-      onDeleteStroke={props.onDeleteStroke}
-      onMoveStroke={props.onMoveStroke}
+      onDeleteStrokes={props.onDeleteStrokes}
+      onMoveStrokes={props.onMoveStrokes}
       testId="aquarelle-stroke-overlay"
       badgeTestId="aquarelle-stroke-badge"
       ghostTestId="aquarelle-drag-ghost"

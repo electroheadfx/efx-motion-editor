@@ -20,7 +20,7 @@
 //  active module; a port that reports inactive refuses every key.
 // ============================================================
 
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 
 /** Long polylines are decimated for rendering only (bounds use every point). */
 export const MAX_POLYLINE_POINTS = 96;
@@ -63,21 +63,72 @@ export interface SelectableScriptStroke {
 /** Rail Move/Select toggle. Compare-then-write. */
 export const scriptSelectMode = signal(false);
 
-/** The highlighted stroke (null = nothing selected). Compare-then-write. */
-export const scriptSelectedStrokeId = signal<number | null>(null);
+/**
+ * The highlighted strokes (261024-mz5: one SET, not a single id).
+ * Compare-then-write on membership — an identical membership never
+ * allocates a new Set nor notifies a subscriber.
+ */
+export const scriptSelectedStrokeIds = signal<ReadonlySet<number>>(new Set());
 
+/**
+ * The single-id view of the selection: the id when exactly ONE stroke is
+ * selected, else null. Existing single-stroke consumers (badges, the
+ * watercolor alias) read this computed instead of a raw signal, so they
+ * keep the original notify-only-on-change law.
+ */
+export const scriptSelectedStrokeId = computed<number | null>(() => {
+  const ids = scriptSelectedStrokeIds.value;
+  if (ids.size !== 1) return null;
+  return ids.values().next().value ?? null;
+});
+
+function sameSelection(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+  if (a === b) return true;
+  if (a.size !== b.size) return false;
+  for (const id of b) {
+    if (!a.has(id)) return false;
+  }
+  return true;
+}
+
+/** Replace the selection with any iterable of ids. Compare-then-write. */
+export function setScriptStrokeSelection(ids: Iterable<number>): void {
+  const next = new Set<number>();
+  for (const id of ids) {
+    if (Number.isFinite(id)) next.add(id);
+  }
+  if (sameSelection(scriptSelectedStrokeIds.value, next)) return;
+  scriptSelectedStrokeIds.value = next;
+}
+
+/** Replace the selection with one stroke (or clear it). Compare-then-write. */
 export function selectScriptStroke(mutationId: number | null): void {
-  if (scriptSelectedStrokeId.value === mutationId) return;
-  scriptSelectedStrokeId.value = mutationId;
+  setScriptStrokeSelection(mutationId === null ? [] : [mutationId]);
+}
+
+/** Add the id when absent, remove it when present. Compare-then-write. */
+export function toggleScriptStrokeSelection(mutationId: number): void {
+  const current = scriptSelectedStrokeIds.value;
+  const next = new Set(current);
+  if (next.has(mutationId)) next.delete(mutationId);
+  else next.add(mutationId);
+  if (sameSelection(current, next)) return;
+  scriptSelectedStrokeIds.value = next;
+}
+
+/** Idempotent clear — an empty selection never notifies. */
+export function clearScriptStrokeSelection(): void {
+  if (scriptSelectedStrokeIds.value.size === 0) return;
+  scriptSelectedStrokeIds.value = new Set();
 }
 
 export function setScriptSelectMode(on: boolean): void {
   if (scriptSelectMode.value === on) return;
   scriptSelectMode.value = on;
-  // Leaving select mode drops the highlight and any in-flight ghost so a
+  // Leaving select mode drops the selection and any in-flight ghost so a
   // later re-arm starts clean (compare-then-write clear).
   if (!on) {
-    selectScriptStroke(null);
+    clearScriptStrokeSelection();
     clearScriptStrokeDrag();
   }
 }
@@ -89,14 +140,24 @@ export function setScriptSelectMode(on: boolean): void {
  * in progress.
  */
 export interface ScriptStrokeDrag {
-  readonly mutationId: number;
+  /** Every stroke the gesture moves (one id for a single-stroke drag). */
+  readonly mutationIds: readonly number[];
   readonly dxPx: number;
   readonly dyPx: number;
 }
 
 export const scriptStrokeDrag = signal<ScriptStrokeDrag | null>(null);
 
-/** Compare-then-write on all three fields (efx-preact-reactivity rule 3). */
+function sameIdList(a: readonly number[], b: readonly number[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return false;
+  }
+  return true;
+}
+
+/** Compare-then-write on the id list and the delta (rule 3). */
 export function setScriptStrokeDrag(next: ScriptStrokeDrag | null): void {
   const current = scriptStrokeDrag.value;
   if (next === null) {
@@ -106,13 +167,17 @@ export function setScriptStrokeDrag(next: ScriptStrokeDrag | null): void {
   }
   if (
     current !== null
-    && current.mutationId === next.mutationId
+    && sameIdList(current.mutationIds, next.mutationIds)
     && current.dxPx === next.dxPx
     && current.dyPx === next.dyPx
   ) {
     return;
   }
-  scriptStrokeDrag.value = { mutationId: next.mutationId, dxPx: next.dxPx, dyPx: next.dyPx };
+  scriptStrokeDrag.value = {
+    mutationIds: [...next.mutationIds],
+    dxPx: next.dxPx,
+    dyPx: next.dyPx,
+  };
 }
 
 /** Idempotent clear — a pointer-up/cancel with no drag armed is a no-op. */
@@ -213,8 +278,9 @@ export interface ScriptStrokeEditionPort {
   isActive(): boolean;
   listStrokes(playFrame: number, size: ScriptStrokeSize): SelectableScriptStroke[];
   hitTestStroke(pointPx: CanvasPoint, playFrame: number, size: ScriptStrokeSize): number | null;
-  deleteStroke(id: number): void;
-  moveStroke(id: number, dxPx: number, dyPx: number): void;
+  /** 261024-mz5: the WHOLE selection in one batch edit. */
+  deleteStrokes(ids: readonly number[]): void;
+  moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): void;
   stepStroke(id: number, direction: 'back' | 'forward'): void;
 }
 
@@ -257,38 +323,58 @@ export function resolveScriptStrokeEditionPort(): ScriptStrokeEditionPort | null
   return watercolor ?? brush;
 }
 
-/** Hit-test through the port, then write the one selection signal. */
+/**
+ * Hit-test through the port, then update the selection under the modifier
+ * law: a plain hit REPLACES, an additive hit TOGGLES, a plain empty hit
+ * CLEARS and an additive empty hit KEEPS the current selection.
+ */
 export function selectScriptStrokeAt(
   pointPx: CanvasPoint,
   playFrame: number,
   size: ScriptStrokeSize,
   port: ScriptStrokeEditionPort,
+  additive = false,
 ): number | null {
   const hit = port.hitTestStroke(pointPx, playFrame, size);
-  selectScriptStroke(hit);
+  if (hit === null) {
+    if (!additive) clearScriptStrokeSelection();
+  } else if (additive) {
+    toggleScriptStrokeSelection(hit);
+  } else {
+    selectScriptStroke(hit);
+  }
   return hit;
 }
 
 /**
- * Delete the selected stroke. CONSUME LAW: once a port reports active and a
- * stroke is selected, the key is consumed even when the port's own operation
- * refuses internally (physical lock, missing stroke). Peek-only reads.
+ * Delete the WHOLE selection in one batch call. CONSUME LAW: once a port
+ * reports active and the set is non-empty, the key is consumed even when the
+ * port's own operation refuses internally (physical lock, missing strokes).
+ * Peek-only reads — the keyboard helper never subscribes a render body.
  */
 export function deleteSelectedScriptStroke(): boolean {
   const port = resolveScriptStrokeEditionPort();
   if (!port) return false;
   if (!port.isActive()) return false;
-  const id = scriptSelectedStrokeId.peek();
-  if (id === null) return false;
-  port.deleteStroke(id);
+  if (scriptSelectedStrokeIds.peek().size === 0) return false;
+  const ids = [...scriptSelectedStrokeIds.peek()];
+  port.deleteStrokes(ids);
   return true;
 }
 
-/** Step the selected stroke; same consume law as delete. */
+/**
+ * Step a SINGLE selected stroke; same consume law as delete. With 2+
+ * selected the key is consumed (the surface owns it) but nothing steps —
+ * restacking is a one-stroke operation by design.
+ */
 export function stepSelectedScriptStroke(direction: 'back' | 'forward'): boolean {
   const port = resolveScriptStrokeEditionPort();
   if (!port) return false;
   if (!port.isActive()) return false;
+  if (scriptSelectedStrokeIds.peek().size === 0) return false;
+  // 261024-mz5: restacking is a one-stroke operation by design — a
+  // multi-selection consumes the key but never steps anything.
+  if (scriptSelectedStrokeIds.peek().size !== 1) return true;
   const id = scriptSelectedStrokeId.peek();
   if (id === null) return false;
   port.stepStroke(id, direction);

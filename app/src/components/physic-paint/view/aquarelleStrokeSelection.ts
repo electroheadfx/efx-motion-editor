@@ -29,12 +29,15 @@ import {
   decimateScriptPoints,
   hitsScriptStroke,
   scriptSelectedStrokeId,
+  scriptSelectedStrokeIds,
   scriptSelectMode,
   scriptStrokeBoundsPx,
   scriptStrokeDrag,
   selectScriptStroke,
   setScriptSelectMode,
   setScriptStrokeDrag,
+  setScriptStrokeSelection,
+  toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeBounds,
   type ScriptStrokeDrag,
@@ -47,7 +50,7 @@ import {
   bumpAquarelleStrokesRevision,
   captureAquarelleStrokeRegistry,
   clearAquarelleStrokeDeletion,
-  deleteAquarelleStrokeFromScript,
+  deleteAquarelleStrokesFromScript,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStrokeEntries,
@@ -55,7 +58,7 @@ import {
   markAquarelleStrokeDeleted,
   restoreAquarelleStrokeRegistry,
   stepAquarelleStrokeInScript,
-  translateAquarelleStrokeInScript,
+  translateAquarelleStrokesInScript,
   type AquarelleStackStepDirection,
   type AquarelleStrokeRegistrySnapshot,
 } from './aquarelleRecordState';
@@ -71,11 +74,44 @@ export type SelectableAquarelleStroke = SelectableScriptStroke;
 /** Rail Move/Select toggle. Compare-then-write (shared signal alias). */
 export const aquarelleSelectMode = scriptSelectMode;
 
-/** The highlighted stroke (shared signal alias). */
+/** The highlighted stroke SET (shared signal alias — 261024-mz5). */
+export const aquarelleSelectedStrokeMutationIds = scriptSelectedStrokeIds;
+
+/** The singleton view of the selection (computed shared alias). */
 export const aquarelleSelectedStrokeMutationId = scriptSelectedStrokeId;
 
 export function selectAquarelleStroke(mutationId: number | null): void {
   selectScriptStroke(mutationId);
+}
+
+export function setAquarelleStrokeSelection(ids: Iterable<number>): void {
+  setScriptStrokeSelection(ids);
+}
+
+export function toggleAquarelleStrokeSelection(mutationId: number): void {
+  toggleScriptStrokeSelection(mutationId);
+}
+
+/**
+ * 261024-mz5: keep only ids that are recorded, non-deleted strokes of the
+ * CURRENT edit frame. Stale ids from another frame (or a tombstoned stroke)
+ * must never reach a batch edit.
+ */
+export function aquarelleStrokesOnFrame(
+  mutationIds: readonly number[],
+  playFrame: number,
+): number[] {
+  const entries = getRecordedAquarelleStrokeEntries();
+  const out: number[] = [];
+  for (const mutationId of mutationIds) {
+    if (out.includes(mutationId)) continue;
+    const stroke = entries.get(mutationId);
+    if (!stroke) continue;
+    if (isAquarelleStrokeDeleted(mutationId)) continue;
+    if ((stroke.playFrame ?? 0) !== playFrame) continue;
+    out.push(mutationId);
+  }
+  return out;
 }
 
 export function setAquarelleSelectMode(on: boolean): void {
@@ -160,14 +196,25 @@ export function hitTestAquarelleStroke(
   return null;
 }
 
-/** Hit-test then select — the pointer handler's ONE selection write. */
+/**
+ * Hit-test then update the selection — the pointer handler's ONE selection
+ * write. Plain hit replaces, additive hit toggles, plain-empty clears and
+ * additive-empty keeps (the shared modifier law).
+ */
 export function selectAquarelleStrokeAt(
   pointPx: CanvasPoint,
   playFrame: number,
   size: EnginePixelSize,
+  additive = false,
 ): number | null {
   const hit = hitTestAquarelleStroke(pointPx, playFrame, size);
-  selectAquarelleStroke(hit);
+  if (hit === null) {
+    if (!additive) selectAquarelleStroke(null);
+  } else if (additive) {
+    toggleAquarelleStrokeSelection(hit);
+  } else {
+    selectAquarelleStroke(hit);
+  }
   return hit;
 }
 
@@ -301,15 +348,21 @@ function replaceDeletedMembership(deleted: readonly number[]): void {
   }
 }
 
+/** Drop every selected id that no longer names a live recorded stroke. */
 function clearSelectionIfGone(): void {
-  const selected = aquarelleSelectedStrokeMutationId.value;
-  if (selected === null) return;
-  if (
-    !getRecordedAquarelleStrokeEntries().has(selected)
-    || isAquarelleStrokeDeleted(selected)
-  ) {
-    selectAquarelleStroke(null);
+  const selected = aquarelleSelectedStrokeMutationIds.value;
+  if (selected.size === 0) return;
+  const entries = getRecordedAquarelleStrokeEntries();
+  const live: number[] = [];
+  let changed = false;
+  for (const mutationId of selected) {
+    if (entries.has(mutationId) && !isAquarelleStrokeDeleted(mutationId)) {
+      live.push(mutationId);
+    } else {
+      changed = true;
+    }
   }
+  if (changed) setScriptStrokeSelection(live);
 }
 
 /**
@@ -347,19 +400,38 @@ function storeAquarelleEdit(record: AquarelleEditRecord): number {
   return editId;
 }
 
+/** Accept a single id or a batch, de-duplicated and finite-only. */
+function normalizeAquarelleMutationIds(ids: number | readonly number[]): number[] {
+  const list = typeof ids === 'number' ? [ids] : [...ids];
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const mutationId of list) {
+    if (!Number.isFinite(mutationId)) continue;
+    if (seen.has(mutationId)) continue;
+    seen.add(mutationId);
+    out.push(mutationId);
+  }
+  return out;
+}
+
 /**
- * Delete one recorded stroke as a single edit and store its before/after
- * snapshots. Returns a monotonic edit id or null when refused.
+ * Delete one stroke OR the whole selection as a single edit and store its
+ * before/after snapshots. Returns a monotonic edit id or null when refused.
+ * Deleted ids leave the selection; survivors stay selected.
  */
-export function beginAquarelleDeleteEdit(mutationId: number): number | null {
+export function beginAquarelleDeleteEdit(
+  mutationIds: number | readonly number[],
+): number | null {
   // A delete/apply must never leave a drag ghost behind.
   clearAquarelleStrokeDrag();
   if (aquarelleScriptEditInFlight) return null;
+  const ids = normalizeAquarelleMutationIds(mutationIds);
+  if (ids.length === 0) return null;
   const before = captureAquarelleSnapshot();
-  if (!deleteAquarelleStrokeFromScript(mutationId)) return null;
+  if (deleteAquarelleStrokesFromScript(ids) === 0) return null;
   const after = captureAquarelleSnapshot();
   const editId = storeAquarelleEdit({ before, after });
-  if (aquarelleSelectedStrokeMutationId.value === mutationId) selectAquarelleStroke(null);
+  clearSelectionIfGone();
   // The last stroke is gone: there is nothing left to select, and leaving
   // select mode on would keep the overlay (painting blocked) behind a now
   // disabled Select button.
@@ -368,21 +440,23 @@ export function beginAquarelleDeleteEdit(mutationId: number): number | null {
 }
 
 /**
- * 261022-tv1: move one recorded stroke by a document-UV delta as a single
- * edit (move + its re-bake = ONE `aquarelle-script` ledger command). The
- * selection is kept — the stroke still exists, at its new place. Returns a
- * monotonic edit id or null when refused.
+ * 261022-tv1 / 261024-mz5: move one stroke or the whole selection by a
+ * document-UV delta as a single edit (move + its re-bake = ONE
+ * `aquarelle-script` ledger command). The selection is kept — every stroke
+ * still exists, at its new place. Returns an edit id or null when refused.
  */
 export function beginAquarelleMoveEdit(
-  mutationId: number,
+  mutationIds: number | readonly number[],
   dxUv: number,
   dyUv: number,
 ): number | null {
   // A move/apply must never leave the released ghost behind.
   clearAquarelleStrokeDrag();
   if (aquarelleScriptEditInFlight) return null;
+  const ids = normalizeAquarelleMutationIds(mutationIds);
+  if (ids.length === 0) return null;
   const before = captureAquarelleSnapshot();
-  if (!translateAquarelleStrokeInScript(mutationId, dxUv, dyUv)) return null;
+  if (translateAquarelleStrokesInScript(ids, dxUv, dyUv) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

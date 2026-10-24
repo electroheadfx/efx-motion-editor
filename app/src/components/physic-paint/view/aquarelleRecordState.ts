@@ -387,54 +387,82 @@ export function restoreAquarelleStrokeRegistry(
 }
 
 /**
- * 261022-tv1: translate one recorded stroke (and its payload-timeline entry)
- * by a document-UV delta. Everything else — ticks, recordedOrder, cuisson,
- * traceSeed, playFrame, params, the record clock — is untouched.
+ * 261022-tv1 / 261024-mz5: translate one recorded stroke OR the whole
+ * selection (and its payload-timeline entry) by a document-UV delta.
+ * Everything else — ticks, recordedOrder, cuisson, traceSeed, playFrame,
+ * params, the record clock — is untouched. Returns the number of changed
+ * strokes; unknown/deleted ids are ignored and an empty batch bumps nothing.
  *
  * Objects are REPLACED, never mutated in place: an aquarelle script snapshot
  * keeps the live event references (that is what lets a measured cuisson patch
  * survive a swap), so an in-place translate would also translate the captured
  * `before` side and undo could never restore the origin. The new entry is
- * spliced at the SAME index so replay order is preserved.
+ * written at the SAME index so replay order is preserved.
  */
+export function translateAquarelleStrokesInScript(
+  mutationIds: readonly number[],
+  dxUv: number,
+  dyUv: number,
+): number {
+  if (!Number.isFinite(dxUv) || !Number.isFinite(dyUv)) return 0;
+  if (dxUv === 0 && dyUv === 0) return 0;
+
+  // Resolve every target BEFORE mutating: an unknown/deleted/out-of-timeline
+  // id is ignored, and an all-unknown batch touches nothing.
+  const targets: Array<{
+    mutationId: number;
+    stroke: AquarelleStroke;
+    entry: ReturnType<typeof toStudioStroke>;
+    index: number;
+  }> = [];
+  for (const mutationId of mutationIds) {
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    const index = payloadTimeline.indexOf(entry);
+    if (index < 0) continue;
+    if (targets.some((target) => target.mutationId === mutationId)) continue;
+    targets.push({ mutationId, stroke, entry, index });
+  }
+  if (targets.length === 0) return 0;
+
+  for (const { mutationId, stroke, entry, index } of targets) {
+    const movedStroke: AquarelleStroke = {
+      ...stroke,
+      points: stroke.points.map((strokePoint) => ({
+        x: strokePoint.x + dxUv,
+        y: strokePoint.y + dyUv,
+        p: strokePoint.p,
+        tx: strokePoint.tx,
+        ty: strokePoint.ty,
+        tw: strokePoint.tw,
+      })),
+    };
+    const movedEntry: ReturnType<typeof toStudioStroke> = {
+      ...entry,
+      pts: entry.pts.map((strokePoint) => ({
+        ...strokePoint,
+        x: strokePoint.x + dxUv,
+        y: strokePoint.y + dyUv,
+      })),
+    };
+
+    recordedStrokes.set(mutationId, movedStroke);
+    recordedStrokeEntries.set(mutationId, movedEntry);
+    // SAME index — replay order is preserved (no splice, only a replace).
+    payloadTimeline[index] = movedEntry;
+  }
+  bumpAquarelleStrokesRevision();
+  return targets.length;
+}
+
+/** Single-stroke wrapper — one stroke of the batch path. */
 export function translateAquarelleStrokeInScript(
   mutationId: number,
   dxUv: number,
   dyUv: number,
 ): boolean {
-  if (!Number.isFinite(dxUv) || !Number.isFinite(dyUv)) return false;
-  if (dxUv === 0 && dyUv === 0) return false;
-  const stroke = recordedStrokes.get(mutationId);
-  const entry = recordedStrokeEntries.get(mutationId);
-  if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) return false;
-  const index = payloadTimeline.indexOf(entry);
-  if (index < 0) return false;
-
-  const movedStroke: AquarelleStroke = {
-    ...stroke,
-    points: stroke.points.map((strokePoint) => ({
-      x: strokePoint.x + dxUv,
-      y: strokePoint.y + dyUv,
-      p: strokePoint.p,
-      tx: strokePoint.tx,
-      ty: strokePoint.ty,
-      tw: strokePoint.tw,
-    })),
-  };
-  const movedEntry: ReturnType<typeof toStudioStroke> = {
-    ...entry,
-    pts: entry.pts.map((strokePoint) => ({
-      ...strokePoint,
-      x: strokePoint.x + dxUv,
-      y: strokePoint.y + dyUv,
-    })),
-  };
-
-  recordedStrokes.set(mutationId, movedStroke);
-  recordedStrokeEntries.set(mutationId, movedEntry);
-  payloadTimeline[index] = movedEntry;
-  bumpAquarelleStrokesRevision();
-  return true;
+  return translateAquarelleStrokesInScript([mutationId], dxUv, dyUv) > 0;
 }
 
 /** Stack-step direction: `back` = one step behind, `forward` = one step in front. */
@@ -536,21 +564,35 @@ export function sendAquarelleStrokeForwardInScript(mutationId: number): boolean 
 }
 
 /**
- * Remove a recorded stroke from the SCRIPT (261022-pim). The engine-1 guide
- * stroke stays in the engine's ledger (capture order + paint barriers remain
- * stable); the marker plus the timeline splice are the script mutation the
- * capture and every replay path honor. Returns false for an unknown or
- * already-deleted id (a second Alt+click is a no-op).
+ * Remove one recorded stroke OR the whole selection from the SCRIPT
+ * (261022-pim / 261024-mz5). The engine-1 guide strokes stay in the engine's
+ * ledger (capture order + paint barriers remain stable); the markers plus the
+ * timeline splices are the script mutation the capture and every replay path
+ * honor. Returns the number of removed strokes; unknown/already-deleted ids
+ * are ignored and bump nothing.
  */
-export function deleteAquarelleStrokeFromScript(mutationId: number): boolean {
-  const stroke = recordedStrokes.get(mutationId);
-  const entry = recordedStrokeEntries.get(mutationId);
-  if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) return false;
-  markAquarelleStrokeDeleted(mutationId);
-  const index = payloadTimeline.indexOf(entry);
-  if (index >= 0) payloadTimeline.splice(index, 1);
+export function deleteAquarelleStrokesFromScript(
+  mutationIds: readonly number[],
+): number {
+  const removed: number[] = [];
+  for (const mutationId of mutationIds) {
+    if (removed.includes(mutationId)) continue;
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    markAquarelleStrokeDeleted(mutationId);
+    const index = payloadTimeline.indexOf(entry);
+    if (index >= 0) payloadTimeline.splice(index, 1);
+    removed.push(mutationId);
+  }
+  if (removed.length === 0) return 0;
   bumpAquarelleStrokesRevision();
-  return true;
+  return removed.length;
+}
+
+/** Single-stroke wrapper — one stroke of the batch path (a second click is a no-op). */
+export function deleteAquarelleStrokeFromScript(mutationId: number): boolean {
+  return deleteAquarelleStrokesFromScript([mutationId]) > 0;
 }
 
 /**

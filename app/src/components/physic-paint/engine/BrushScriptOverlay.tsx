@@ -27,9 +27,9 @@ export function BrushScriptOverlay(props: {
       port={brushScriptEditionPort}
       selectMode={props.active}
       moveArmed={false}
-      onDeleteStroke={(mutationId) => brushScriptEditionPort.deleteStroke(mutationId)}
-      onMoveStroke={(mutationId, dxPx, dyPx) =>
-        brushScriptEditionPort.moveStroke(mutationId, dxPx, dyPx)}
+      onDeleteStrokes={(mutationIds) => brushScriptEditionPort.deleteStrokes(mutationIds)}
+      onMoveStrokes={(mutationIds, dxPx, dyPx) =>
+        brushScriptEditionPort.moveStrokes(mutationIds, dxPx, dyPx)}
       testId="brush-script-overlay"
       badgeTestId="brush-stroke-badge"
       ghostTestId="brush-drag-ghost"

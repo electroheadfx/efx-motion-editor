@@ -4008,27 +4008,83 @@ export class EfxPaintEngine {
   //  move-commit contract (flush, redo cleared, one notification).
   // ================================================================
 
-  /** Delete one recorded paint group (primary + continuations). False for an unknown id — no mutation, no notification. */
+  /**
+   * Delete one recorded paint group (primary + continuations). False for an
+   * unknown id — no mutation, no notification.
+   */
   public deleteStroke(mutationId: number): boolean {
+    return this.deleteStrokes([mutationId]) > 0
+  }
+
+  /**
+   * 261024-mz5: delete a whole selection in ONE edit. Drains queued
+   * finalizations first, splices every live group (primary + continuations,
+   * with its undo entry), then commits ONCE: the redo stack dies (a stale
+   * redo would repaint deleted pixels), history is refreshed, the composite
+   * is replayed and ONE 'erase' notification names the first removed id.
+   * Returns the number of removed groups; zero means no mutation, no redraw,
+   * no notification.
+   */
+  public deleteStrokes(mutationIds: readonly number[]): number {
     // Drain FIRST: a queued stroke's ledger entry already exists but its
     // deposit pixels do not — removing before the flush would orphan them.
     this.flushPendingStrokeFinalizations()
-    if (!this.removeStrokeEntry(mutationId)) return false
+    const removed: number[] = []
+    for (const mutationId of mutationIds) {
+      if (removed.includes(mutationId)) continue
+      if (this.removeStrokeEntry(mutationId)) removed.push(mutationId)
+    }
+    if (removed.length === 0) return 0
+    this.redoStack = []
+    this.notifyHistoryAvailability()
     this.displayCompositeDirty = true
     this.redrawAfterScriptEdit()
-    this.notifyCompletedMutation('erase', mutationId)
-    return true
+    this.notifyCompletedMutation('erase', removed[0]!)
+    return removed.length
   }
 
   /** Translate one recorded paint group by an exact pixel delta. False for an unknown id or a sub-pixel delta — no mutation, no notification. */
   public moveStroke(mutationId: number, dxPx: number, dyPx: number): boolean {
-    const stroke = this.allActions.find(a => a.mutationId === mutationId && a.tool === 'paint' && a.points.length > 0)
-    if (!stroke) return false
-    if (Math.abs(dxPx) < 1 && Math.abs(dyPx) < 1) return false
-    // Same commit contract as the pointer drag: the flush, the redo clear, the
-    // single 'move' notification and the replay all live in commitMoveGesture.
-    this.commitMoveGesture({ stroke, mutationId, startX: 0, startY: 0, dx: dxPx, dy: dyPx })
-    return true
+    return this.moveStrokes([mutationId], dxPx, dyPx) > 0
+  }
+
+  /**
+   * 261024-mz5: translate every selected stroke in ONE commit (the
+   * move-commit law): drain queued finalizations first, map every point of
+   * every live primary, clear the redo stack WITHOUT pushing an undo
+   * checkpoint, refresh history, replay once and emit ONE 'move'
+   * notification. Returns the number of translated strokes; zero means no
+   * mutation, no redraw, no notification.
+   */
+  public moveStrokes(
+    mutationIds: readonly number[],
+    dxPx: number,
+    dyPx: number,
+  ): number {
+    if (!Number.isFinite(dxPx) || !Number.isFinite(dyPx)) return 0
+    if (Math.abs(dxPx) < 1 && Math.abs(dyPx) < 1) return 0
+    // Drain FIRST: the entries must be settled before they are looked up and
+    // the replay below must see the flushed canvas (commitMoveGesture law).
+    this.flushPendingStrokeFinalizations()
+    const targets: Array<{ mutationId: number; entry: PaintStroke }> = []
+    for (const mutationId of mutationIds) {
+      if (targets.some(target => target.mutationId === mutationId)) continue
+      const entry = this.allActions.find(
+        a => a.mutationId === mutationId && a.tool === 'paint' && a.points.length > 0,
+      )
+      if (entry) targets.push({ mutationId, entry })
+    }
+    if (targets.length === 0) return 0
+    for (const { entry } of targets) {
+      entry.points = entry.points.map(p => ({ ...p, x: p.x + dxPx, y: p.y + dyPx }))
+    }
+    this.redoStack = []
+    this.notifyHistoryAvailability()
+    this.displayCompositeDirty = true
+    this.redrawAfterScriptEdit()
+    this.notifyCompletedMutation('move', targets[0]!.mutationId)
+    this.updateMoveHover()
+    return targets.length
   }
 
   /** A copy of the creation-order serial map the Move badges are drawn from. */

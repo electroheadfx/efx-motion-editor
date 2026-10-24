@@ -30,9 +30,9 @@ import {
   decimateScriptPoints,
   hitsScriptStroke,
   MIN_STROKE_PAD_PX,
-  scriptSelectedStrokeId,
+  scriptSelectedStrokeIds,
   scriptStrokeBoundsPx,
-  selectScriptStroke,
+  setScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
   type ScriptStrokeSize,
@@ -45,6 +45,9 @@ export interface BrushScriptEditionEngine {
   getStrokeSerials(): Map<number, number>;
   moveStroke(mutationId: number, dxPx: number, dyPx: number): boolean;
   deleteStroke(mutationId: number): boolean;
+  /** 261024-mz5: one batch commit for the whole selection. */
+  moveStrokes(mutationIds: readonly number[], dxPx: number, dyPx: number): number;
+  deleteStrokes(mutationIds: readonly number[]): number;
   sendStrokeBackward(mutationId: number): boolean;
   sendStrokeForward(mutationId: number): boolean;
   setStrokeLabelsSuppressed(suppressed: boolean): void;
@@ -183,12 +186,20 @@ export function hitTestBrushScriptStroke(
   return null;
 }
 
-/** Translate one captured stroke, then refresh the frame's retained script. */
-export function moveBrushScriptStroke(mutationId: number, dxPx: number, dyPx: number): boolean {
+/**
+ * Translate the whole selection, then refresh the frame's retained script
+ * ONCE. One engine commit + one flush per gesture (261024-mz5).
+ */
+export function moveBrushScriptStrokes(
+  mutationIds: readonly number[],
+  dxPx: number,
+  dyPx: number,
+): boolean {
   const resolved = resolveEdition();
   if (!resolved || resolved.context.isLocked()) return false;
+  if (mutationIds.length === 0) return false;
   declareEditBase(resolved.engine, resolved.frame);
-  const moved = resolved.engine.moveStroke(mutationId, dxPx, dyPx);
+  const moved = resolved.engine.moveStrokes(mutationIds, dxPx, dyPx) > 0;
   if (moved) {
     flushBrushScriptFrame(
       resolved.frame,
@@ -199,20 +210,44 @@ export function moveBrushScriptStroke(mutationId: number, dxPx: number, dyPx: nu
   return moved;
 }
 
-/** Delete one captured stroke; a vanished id also drops the highlight. */
-export function deleteBrushScriptStroke(mutationId: number): boolean {
+/** Single-stroke wrapper — one stroke of the batch path. */
+export function moveBrushScriptStroke(mutationId: number, dxPx: number, dyPx: number): boolean {
+  return moveBrushScriptStrokes([mutationId], dxPx, dyPx);
+}
+
+/**
+ * Delete the whole selection in ONE engine edit + ONE flush, then prune the
+ * deleted ids from the selection (survivors stay selected).
+ */
+export function deleteBrushScriptStrokes(mutationIds: readonly number[]): boolean {
   const resolved = resolveEdition();
   if (!resolved || resolved.context.isLocked()) return false;
+  if (mutationIds.length === 0) return false;
   declareEditBase(resolved.engine, resolved.frame);
-  const deleted = resolved.engine.deleteStroke(mutationId);
+  const deleted = resolved.engine.deleteStrokes(mutationIds) > 0;
   if (!deleted) return false;
   flushBrushScriptFrame(
     resolved.frame,
     resolved.engine.getStrokes(),
     resolvePaintSettings(resolved.engine),
   );
-  if (scriptSelectedStrokeId.peek() === mutationId) selectScriptStroke(null);
+  const selection = scriptSelectedStrokeIds.peek();
+  if (selection.size > 0) {
+    const requested = new Set(mutationIds);
+    const survivors: number[] = [];
+    let changed = false;
+    for (const mutationId of selection) {
+      if (requested.has(mutationId)) changed = true;
+      else survivors.push(mutationId);
+    }
+    if (changed) setScriptStrokeSelection(survivors);
+  }
   return true;
+}
+
+/** Single-stroke wrapper — one stroke of the batch path. */
+export function deleteBrushScriptStroke(mutationId: number): boolean {
+  return deleteBrushScriptStrokes([mutationId]);
 }
 
 /** Step one captured stroke through the paint stack; the store refreshes only on an accepted step. */
@@ -239,11 +274,11 @@ export const brushScriptEditionPort: ScriptStrokeEditionPort = {
   isActive: () => brushScriptEditionContext?.isActive() === true,
   listStrokes: (playFrame, size) => listBrushScriptStrokes(playFrame, size),
   hitTestStroke: (pointPx, playFrame, size) => hitTestBrushScriptStroke(pointPx, playFrame, size),
-  deleteStroke: (mutationId) => {
-    deleteBrushScriptStroke(mutationId);
+  deleteStrokes: (mutationIds) => {
+    deleteBrushScriptStrokes(mutationIds);
   },
-  moveStroke: (mutationId, dxPx, dyPx) => {
-    moveBrushScriptStroke(mutationId, dxPx, dyPx);
+  moveStrokes: (mutationIds, dxPx, dyPx) => {
+    moveBrushScriptStrokes(mutationIds, dxPx, dyPx);
   },
   stepStroke: (mutationId, direction) => {
     stepBrushScriptStroke(mutationId, direction);

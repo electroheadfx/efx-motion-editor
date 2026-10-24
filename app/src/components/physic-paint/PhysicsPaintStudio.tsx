@@ -223,6 +223,7 @@ import {
   aquarelleLiveStrokeCount,
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
+  aquarelleStrokesOnFrame,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarelleReorderEdit,
@@ -5583,18 +5584,23 @@ export function PhysicsPaintStudio() {
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);
   }, []);
 
-  // 261022-pim: Alt+click delete. The stroke leaves the recorded script, the
-  // live sheet resets, and the whole current-frame script re-applies through
-  // the shared Apply pipeline (same bake, pill, publish, display reconcile).
-  // Guards are peek-only: the handler must not subscribe the Studio body.
-  const handleAquarelleDeleteStroke = useCallback((mutationId: number) => {
+  // 261022-pim / 261024-mz5: Alt+click delete of the whole selection. The
+  // strokes leave the recorded script, the live sheet resets, and the whole
+  // current-frame script re-applies through the shared Apply pipeline (same
+  // bake, pill, publish, display reconcile). Guards are peek-only: the
+  // handler must not subscribe the Studio body.
+  const handleAquarelleDeleteStrokes = useCallback((ids: readonly number[]) => {
     if (isPhysicalMutationLocked()) return;
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
     if (isAquarelleDeleteInFlight()) return;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
+    if (frameIds.length === 0) return;
     // One delete = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds (Task 3).
-    const editId = beginAquarelleDeleteEdit(mutationId);
+    const editId = beginAquarelleDeleteEdit(frameIds);
     if (editId === null) return;
     setAquarelleDeleteInFlight(true);
     void (async () => {
@@ -5642,17 +5648,22 @@ export function PhysicsPaintStudio() {
     clearOwnedScriptApplyRefusal,
   ]);
 
-  // 261022-tv1: Cmd+drag stroke move. The overlay wrote only the ghost drag
-  // signal during the gesture; this release path translates the recorded
-  // stroke + its payload-timeline entry, resets the sheet, and re-applies the
-  // current frame's script through the SAME shared Apply pipeline as delete.
-  // One move + its re-bake = ONE `aquarelle-script` ledger entry. Guards are
-  // peek-only: the handler must not subscribe the Studio body.
-  const handleAquarelleMoveStroke = useCallback((mutationId: number, dxPx: number, dyPx: number) => {
+  // 261022-tv1 / 261024-mz5: Cmd+drag stroke move of the whole selection. The
+  // overlay wrote only the ghost drag signal during the gesture; this release
+  // path translates every recorded stroke + its payload-timeline entry, resets
+  // the sheet, and re-applies the current frame's script through the SAME
+  // shared Apply pipeline as delete. One move + its re-bake = ONE
+  // `aquarelle-script` ledger entry. Guards are peek-only: the handler must
+  // not subscribe the Studio body.
+  const handleAquarelleMoveStrokes = useCallback((ids: readonly number[], dxPx: number, dyPx: number) => {
     if (isPhysicalMutationLocked()) return;
     if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
     if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
     if (isAquarelleScriptEditInFlight()) return;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
+    if (frameIds.length === 0) return;
     // The delta crosses from canvas pixels to document UV exactly once.
     const delta = aquarelleEnginePixelDeltaToUv(
       { x: dxPx, y: dyPx },
@@ -5660,7 +5671,7 @@ export function PhysicsPaintStudio() {
     );
     // One move = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds.
-    const editId = beginAquarelleMoveEdit(mutationId, delta.x, delta.y);
+    const editId = beginAquarelleMoveEdit(frameIds, delta.x, delta.y);
     if (editId === null) return;
     setAquarelleScriptEditInFlight(true);
     void (async () => {
@@ -5766,8 +5777,8 @@ export function PhysicsPaintStudio() {
     watercolor: {
       isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),
       ...aquarelleScriptStrokeEditionPort,
-      deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),
-      moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),
+      deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),
+      moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
       stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),
     },
     brush: brushScriptEditionPort,
@@ -5974,7 +5985,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStroke, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -6014,8 +6025,8 @@ export function PhysicsPaintStudio() {
       onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
       onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
-      onAquarelleDeleteStroke: handleAquarelleDeleteStroke,
-      onAquarelleMoveStroke: handleAquarelleMoveStroke,
+      onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,
+      onAquarelleMoveStrokes: handleAquarelleMoveStrokes,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the
