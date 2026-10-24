@@ -144,10 +144,10 @@ _Note: per the dispatch contract, `.planning/` artifacts were deliberately not c
 9. **Water color Size reaches 800**: the canonical 1-800 px value maps through `toEngineParams`; every legacy value (1-80) keeps its exact pre-change footprint, the 80-800 band extends the vendor footprint scale linearly to ~10x an 80 px stroke, and typed values above 800 keep growing to a finite safety ceiling. The live top-bar watercolor slider remains 1-80.
 10. **Ruled section titles**: Color / Geometry / Paint use the shared `RuleSectionHeader` (centered uppercase label between two 1px rules, the Sidebar Paper-tab look) with 6px top/bottom padding.
 11. **Free typed entry**: every dialog slider accepts typed values outside its track range and ± steps keep stepping; only the track (and its knob) stays bounded. Geometry transforms no longer clamp typed scale/rotation values.
-12. **Tighter rules**: section-header padding drops to 3px, the Color header gets padding-top 0, and the scroll content has padding-bottom 0.
+12. **Tighter rules**: section-header padding drops to 3px, the Color header gets padding-top 0, and the scroll content has zero top and bottom padding.
 13. **Color block**: the 28px thumb becomes a full-width 48px swatch with its hex and `rgb(r, g, b)` readouts underneath; the red Mixed badge sits in that readout row.
-14. **Resizable sheet**: a bottom grip drags the dialog height (240px minimum, bounded by the canvas region); the chosen height survives close/reopen within the Studio session.
-15. **Geometry opacity**: Opacity is the first row of Geometry (brush `opacity`; water color canonical Pigment `load` shown under the Opacity label) and is removed from the Paint list so exactly one control edits it.
+14. **Resizable sheet**: a bottom grip drags the dialog height (240px minimum) up to the APP bottom, not the canvas region's; the chosen height survives close/reopen within the Studio session.
+15. **Geometry opacity**: Opacity is the first row of Geometry (brush `opacity`; water color canonical Pigment `load`). The Paint list keeps the full module field set, mirroring the top bar, which surfaces Opacity and Pigment side by side in Water color.
 
 ## UAT Rows (for the user)
 
