@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-24T11:15:08.262Z"
+last_updated: "2026-10-24T14:08:29.614Z"
 last_activity: 2026-10-24
 last_activity_desc: Phase 56 complete
-state_head: 25949add8d13dce070d97735f6dcdc0e8764ef83
+state_head: 55a5a95f0e298d99715c2ba28d63858acef5139e
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-24 - Completed quick task 261024-i51: fix pre-existing typecheck and vitest baseline failures
+Last activity: 2026-10-24 - Completed quick task 261024-m20: watercolor key-spacing script remap + shared key-identity frame map
 
 Progress: [██████████] 100%
 
@@ -584,6 +584,7 @@ None yet.
 | 261023-ors | Studio script-memory gauge Memory tab + confirmed per-key/active-rail purge with snapshot cleanup + rail-delete cascade | 2026-10-23 | c1132a13 | [261023-ors-v2-0-0-read-specs-quick-prompts-studio-s](./quick/261023-ors-v2-0-0-read-specs-quick-prompts-studio-s/) |
 | 261024-hsd | update preact to 11.0.2 | 2026-10-24 | 0b15de7c | [261024-hsd-update-preact-to-11-0-2](./quick/261024-hsd-update-preact-to-11-0-2/) |
 | 261024-i51 | Fix pre-existing typecheck and vitest baseline failures | 2026-10-24 | 25949add | [261024-i51-fix-pre-existing-typecheck-and-vitest-ba](./quick/261024-i51-fix-pre-existing-typecheck-and-vitest-ba/) |
+| 261024-m20 | Remap watercolor scripts by key identity on accepted physical replaces; extract one shared key-identity frame map for roto, brush and watercolor | 2026-10-24 | 55a5a95f | [261024-m20-watercolor-key-spacing-remap](./quick/261024-m20-watercolor-key-spacing-remap/) |
 
 ### Roadmap Evolution
 
