@@ -338,6 +338,20 @@ export type PaintHistoryAvailability = {
   redo: number
 }
 
+/**
+ * 261024-mz5: a uniform scale + rotation about a canvas-space centre.
+ * Structurally identical to the app's ScriptStrokeTransform (the engine
+ * cannot import app code). `factor` scales point deltas FIRST, then
+ * `angleRad` rotates them — never the stroke's `params`.
+ */
+export interface StrokeTransform {
+  readonly kind: 'rotate' | 'scale'
+  readonly centerX: number
+  readonly centerY: number
+  readonly angleRad: number
+  readonly factor: number
+}
+
 /** Pointer-input activity kind reported to the Studio's gesture-idle scheduler. */
 export type InputActivityKind = 'down' | 'move' | 'up' | 'cancel'
 
@@ -4077,6 +4091,58 @@ export class EfxPaintEngine {
     if (targets.length === 0) return 0
     for (const { entry } of targets) {
       entry.points = entry.points.map(p => ({ ...p, x: p.x + dxPx, y: p.y + dyPx }))
+    }
+    this.redoStack = []
+    this.notifyHistoryAvailability()
+    this.displayCompositeDirty = true
+    this.redrawAfterScriptEdit()
+    this.notifyCompletedMutation('move', targets[0]!.mutationId)
+    this.updateMoveHover()
+    return targets.length
+  }
+
+  /**
+   * 261024-mz5 Task 2: uniformly scale + rotate every selected stroke in ONE
+   * commit. Each point delta from the centre is scaled FIRST and rotated
+   * SECOND; every other point field is copied as-is and `params` is never
+   * touched (brush size stays fixed — D-06). The commit law is the Move law:
+   * drain queued finalizations first, clear redo WITHOUT pushing an undo
+   * checkpoint, refresh history, replay once, emit ONE 'move' notification
+   * and refresh the move hover. Returns the number of transformed strokes;
+   * zero means no mutation, no redraw, no notification.
+   */
+  public transformStrokes(
+    mutationIds: readonly number[],
+    transform: StrokeTransform,
+  ): number {
+    if (!Number.isFinite(transform.centerX) || !Number.isFinite(transform.centerY)) return 0
+    if (!Number.isFinite(transform.angleRad)) return 0
+    if (!Number.isFinite(transform.factor) || transform.factor <= 0) return 0
+    const cos = Math.cos(transform.angleRad)
+    const sin = Math.sin(transform.angleRad)
+    if (Math.abs(transform.angleRad) < 1e-6 && Math.abs(transform.factor - 1) < 0.01) return 0
+    // Drain FIRST: the entries must be settled before they are looked up and
+    // the replay below must see the flushed canvas (the move-commit law).
+    this.flushPendingStrokeFinalizations()
+    const targets: Array<{ mutationId: number; entry: PaintStroke }> = []
+    for (const mutationId of mutationIds) {
+      if (targets.some(target => target.mutationId === mutationId)) continue
+      const entry = this.allActions.find(
+        a => a.mutationId === mutationId && a.tool === 'paint' && a.points.length > 0,
+      )
+      if (entry) targets.push({ mutationId, entry })
+    }
+    if (targets.length === 0) return 0
+    for (const { entry } of targets) {
+      entry.points = entry.points.map(p => {
+        const dx = (p.x - transform.centerX) * transform.factor
+        const dy = (p.y - transform.centerY) * transform.factor
+        return {
+          ...p,
+          x: transform.centerX + dx * cos - dy * sin,
+          y: transform.centerY + dx * sin + dy * cos,
+        }
+      })
     }
     this.redoStack = []
     this.notifyHistoryAvailability()

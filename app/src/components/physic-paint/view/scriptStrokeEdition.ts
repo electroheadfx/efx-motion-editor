@@ -21,6 +21,10 @@
 // ============================================================
 
 import { computed, signal } from '@preact/signals';
+import type { ScriptStrokeTransform } from './scriptStrokeTransform';
+
+/** The shared transform type — adapters import it from here, never redeclare it. */
+export type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
 /** Long polylines are decimated for rendering only (bounds use every point). */
 export const MAX_POLYLINE_POINTS = 96;
@@ -125,11 +129,12 @@ export function clearScriptStrokeSelection(): void {
 export function setScriptSelectMode(on: boolean): void {
   if (scriptSelectMode.value === on) return;
   scriptSelectMode.value = on;
-  // Leaving select mode drops the selection and any in-flight ghost so a
-  // later re-arm starts clean (compare-then-write clear).
+  // Leaving select mode drops the selection and any in-flight ghost/preview
+  // so a later re-arm starts clean (compare-then-write clear).
   if (!on) {
     clearScriptStrokeSelection();
     clearScriptStrokeDrag();
+    clearScriptStrokeTransform();
   }
 }
 
@@ -183,6 +188,52 @@ export function setScriptStrokeDrag(next: ScriptStrokeDrag | null): void {
 /** Idempotent clear — a pointer-up/cancel with no drag armed is a no-op. */
 export function clearScriptStrokeDrag(): void {
   setScriptStrokeDrag(null);
+}
+
+/**
+ * The live handle-gesture preview (261024-mz5). Written ONLY by the
+ * overlay's pointer handlers and read ONLY by that overlay leaf — no
+ * script mutation and no commit runs while a handle is being dragged.
+ */
+export interface ScriptStrokeTransformPreview extends ScriptStrokeTransform {
+  /** The captured selection the gesture transforms. */
+  readonly ids: readonly number[];
+}
+
+export const scriptStrokeTransform = signal<ScriptStrokeTransformPreview | null>(null);
+
+/** Compare-then-write over the id list and every geometry field (rule 3). */
+export function setScriptStrokeTransform(next: ScriptStrokeTransformPreview | null): void {
+  const current = scriptStrokeTransform.value;
+  if (next === null) {
+    if (current === null) return;
+    scriptStrokeTransform.value = null;
+    return;
+  }
+  if (
+    current !== null
+    && sameIdList(current.ids, next.ids)
+    && current.kind === next.kind
+    && current.centerX === next.centerX
+    && current.centerY === next.centerY
+    && current.angleRad === next.angleRad
+    && current.factor === next.factor
+  ) {
+    return;
+  }
+  scriptStrokeTransform.value = {
+    ids: [...next.ids],
+    kind: next.kind,
+    centerX: next.centerX,
+    centerY: next.centerY,
+    angleRad: next.angleRad,
+    factor: next.factor,
+  };
+}
+
+/** Idempotent clear — a release/cancel with no preview armed is a no-op. */
+export function clearScriptStrokeTransform(): void {
+  setScriptStrokeTransform(null);
 }
 
 export function distanceToSegmentPx(
@@ -281,6 +332,8 @@ export interface ScriptStrokeEditionPort {
   /** 261024-mz5: the WHOLE selection in one batch edit. */
   deleteStrokes(ids: readonly number[]): void;
   moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): void;
+  /** 261024-mz5 Task 2: uniform scale + rotation in ONE commit. */
+  transformStrokes(ids: readonly number[], transform: ScriptStrokeTransform): void;
   stepStroke(id: number, direction: 'back' | 'forward'): void;
 }
 

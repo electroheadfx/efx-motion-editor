@@ -3140,7 +3140,9 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
     expect(scriptStrokeOverlay).toContain('onPointerCancel={handlePointerCancel}');
     expect(scriptStrokeOverlay).toContain('data-testid={dragged ? props.ghostTestId : undefined}');
     expect(scriptStrokeOverlay).toContain('setPointerCapture(');
-    expect(scriptStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
+    expect(scriptStrokeOverlay).toContain(
+      'if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;',
+    );
     expect(scriptStrokeOverlay).not.toContain('useEffect');
     expect(scriptStrokeOverlay).not.toContain('useState');
     // No second gesture copy remains in the adapter.

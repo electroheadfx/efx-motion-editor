@@ -38,6 +38,7 @@ import {
   type ScriptStrokeSize,
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
+import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
 /** The engine surface the brush port needs (structural — the overlay never imports the engine class). */
 export interface BrushScriptEditionEngine {
@@ -48,6 +49,8 @@ export interface BrushScriptEditionEngine {
   /** 261024-mz5: one batch commit for the whole selection. */
   moveStrokes(mutationIds: readonly number[], dxPx: number, dyPx: number): number;
   deleteStrokes(mutationIds: readonly number[]): number;
+  /** 261024-mz5 Task 2: points-only scale/rotate in ONE commit. */
+  transformStrokes(mutationIds: readonly number[], transform: ScriptStrokeTransform): number;
   sendStrokeBackward(mutationId: number): boolean;
   sendStrokeForward(mutationId: number): boolean;
   setStrokeLabelsSuppressed(suppressed: boolean): void;
@@ -250,6 +253,29 @@ export function deleteBrushScriptStroke(mutationId: number): boolean {
   return deleteBrushScriptStrokes([mutationId]);
 }
 
+/**
+ * Scale + rotate the whole selection in ONE engine commit, then refresh the
+ * frame's retained script ONCE (261024-mz5 Task 2). The selection is kept —
+ * exactly like a move.
+ */
+export function transformBrushScriptStrokes(
+  mutationIds: readonly number[],
+  transform: ScriptStrokeTransform,
+): boolean {
+  const resolved = resolveEdition();
+  if (!resolved || resolved.context.isLocked()) return false;
+  if (mutationIds.length === 0) return false;
+  declareEditBase(resolved.engine, resolved.frame);
+  const transformed = resolved.engine.transformStrokes(mutationIds, transform) > 0;
+  if (!transformed) return false;
+  flushBrushScriptFrame(
+    resolved.frame,
+    resolved.engine.getStrokes(),
+    resolvePaintSettings(resolved.engine),
+  );
+  return true;
+}
+
 /** Step one captured stroke through the paint stack; the store refreshes only on an accepted step. */
 export function stepBrushScriptStroke(mutationId: number, direction: 'back' | 'forward'): boolean {
   const resolved = resolveEdition();
@@ -279,6 +305,9 @@ export const brushScriptEditionPort: ScriptStrokeEditionPort = {
   },
   moveStrokes: (mutationIds, dxPx, dyPx) => {
     moveBrushScriptStrokes(mutationIds, dxPx, dyPx);
+  },
+  transformStrokes: (mutationIds, transform) => {
+    transformBrushScriptStrokes(mutationIds, transform);
   },
   stepStroke: (mutationId, direction) => {
     stepBrushScriptStroke(mutationId, direction);

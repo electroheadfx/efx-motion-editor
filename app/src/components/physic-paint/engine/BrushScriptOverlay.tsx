@@ -30,6 +30,8 @@ export function BrushScriptOverlay(props: {
       onDeleteStrokes={(mutationIds) => brushScriptEditionPort.deleteStrokes(mutationIds)}
       onMoveStrokes={(mutationIds, dxPx, dyPx) =>
         brushScriptEditionPort.moveStrokes(mutationIds, dxPx, dyPx)}
+      onTransformStrokes={(mutationIds, transform) =>
+        brushScriptEditionPort.transformStrokes(mutationIds, transform)}
       testId="brush-script-overlay"
       badgeTestId="brush-stroke-badge"
       ghostTestId="brush-drag-ghost"

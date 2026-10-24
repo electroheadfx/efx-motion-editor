@@ -29,31 +29,70 @@ import type { JSX, TargetedPointerEvent } from 'preact';
 import { useRef } from 'preact/hooks';
 import {
   clearScriptStrokeDrag,
+  clearScriptStrokeTransform,
   scriptSelectedStrokeIds,
   scriptStrokeDrag,
+  scriptStrokeTransform,
   selectScriptStroke,
   selectScriptStrokeAt,
   setScriptStrokeDrag,
   setScriptStrokeSelection,
+  setScriptStrokeTransform,
   toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
 } from '../view/scriptStrokeEdition';
+import {
+  SCRIPT_TRANSFORM_HANDLE_SIZE_PX,
+  SCRIPT_TRANSFORM_ROTATE_RADIUS_PX,
+  SCRIPT_TRANSFORM_ROTATE_STEM_PX,
+  applyScriptStrokeTransform,
+  buildScriptStrokeTransform,
+  hitTestScriptStrokeTransformHandle,
+  isIdentityScriptStrokeTransform,
+  scriptStrokeSelectionBox,
+  scriptStrokeTransformHandles,
+  type ScriptStrokeSelectionBox,
+  type ScriptStrokeTransform,
+} from '../view/scriptStrokeTransform';
 
 const SELECTED_STROKE_COLOR = '#38bdf8';
 const OUTLINE_DARK = '#111111';
 const OUTLINE_LIGHT = '#ffffff';
+const TRANSFORM_HANDLE_COLOR = '#f59e0b';
 
 /** Canvas pixels the pointer must travel before the press becomes a move. */
 const DRAG_THRESHOLD_PX = 3;
 
 interface ScriptDragGesture {
+  readonly kind: 'drag';
   readonly pointerId: number;
   /** Captured at pointerdown — a later selection change never retargets. */
   readonly mutationIds: readonly number[];
   readonly startX: number;
   readonly startY: number;
   started: boolean;
+}
+
+interface ScriptTransformGesture {
+  readonly kind: 'transform';
+  readonly pointerId: number;
+  /** The captured selection this handle gesture transforms. */
+  readonly mutationIds: readonly number[];
+  readonly transformKind: 'rotate' | 'scale';
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly startX: number;
+  readonly startY: number;
+  started: boolean;
+}
+
+type ScriptOverlayGesture = ScriptDragGesture | ScriptTransformGesture;
+
+function scaleCursor(corner: 'tl' | 'tr' | 'bl' | 'br'): string {
+  // The cursor names the axis pair the drag follows, matching the box's
+  // rotation-free geometry (handles are screen-aligned, like the inline editor).
+  return corner === 'tl' || corner === 'br' ? 'nwse-resize' : 'nesw-resize';
 }
 
 export function ScriptStrokeOverlay(props: {
@@ -65,17 +104,20 @@ export function ScriptStrokeOverlay(props: {
   moveArmed: boolean;
   onDeleteStrokes: (mutationIds: readonly number[]) => void;
   onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
+  /** 261024-mz5 Task 2: when absent, the transform handles never render. */
+  onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
   testId: string;
   badgeTestId: string;
   ghostTestId: string;
 }): JSX.Element | null {
   // Gesture state lives in a ref — no component state, no effect.
-  const gestureRef = useRef<ScriptDragGesture | null>(null);
+  const gestureRef = useRef<ScriptOverlayGesture | null>(null);
   const { selectMode, moveArmed } = props;
-  // The drag read is narrow (this leaf only). It also keeps the surface
-  // mounted when a held Cmd is released in the middle of the gesture.
+  // Narrow reads (this leaf only). They also keep the surface mounted when a
+  // held Cmd is released, or a transform preview is in flight, mid-gesture.
   const drag = scriptStrokeDrag.value;
-  if (!selectMode && !moveArmed && drag === null) return null;
+  const transformPreview = scriptStrokeTransform.value;
+  if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;
 
   // Narrow subscriptions: the port's listing repaints the outlines when the
   // script changes; the selected SET drives the highlights.
@@ -83,6 +125,9 @@ export function ScriptStrokeOverlay(props: {
   const size = { width: props.width, height: props.height };
   const strokes = props.port.listStrokes(playFrame, size);
   const selectedIds = scriptSelectedStrokeIds.value;
+  const selectionBox: ScriptStrokeSelectionBox | null = scriptStrokeSelectionBox(
+    strokes.filter((entry) => selectedIds.has(entry.mutationId)),
+  );
 
   const canvasPointOf = (event: TargetedPointerEvent<HTMLDivElement>): CanvasPoint => {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
@@ -99,6 +144,31 @@ export function ScriptStrokeOverlay(props: {
     // The overlay owns the gesture: no pointer reaches the engine canvas.
     event.preventDefault();
     const point = canvasPointOf(event);
+    // Handle hit-testing WINS over stroke hit-testing. Handles exist only when
+    // the adapter can commit a transform, so a module without that capability
+    // never swallows a stroke click.
+    const handleHit = selectionBox !== null && props.onTransformStrokes !== undefined
+      ? hitTestScriptStrokeTransformHandle(point, selectionBox)
+      : null;
+    if (handleHit !== null && selectionBox !== null) {
+      gestureRef.current = {
+        kind: 'transform',
+        pointerId: event.pointerId,
+        mutationIds: [...scriptSelectedStrokeIds.peek()],
+        transformKind: handleHit.kind,
+        centerX: selectionBox.x + selectionBox.width / 2,
+        centerY: selectionBox.y + selectionBox.height / 2,
+        startX: point.x,
+        startY: point.y,
+        started: false,
+      };
+      try {
+        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+      } catch {
+        // A detached overlay cannot capture; the element still owns pointerup.
+      }
+      return;
+    }
     const toggleModifier = event.metaKey || event.ctrlKey;
     const hit = props.port.hitTestStroke(point, playFrame, size);
     const current = scriptSelectedStrokeIds.peek();
@@ -135,6 +205,7 @@ export function ScriptStrokeOverlay(props: {
     const ids = [...scriptSelectedStrokeIds.peek()];
     // Arm the gesture. No drag signal, no script mutation, no apply yet.
     gestureRef.current = {
+      kind: 'drag',
       pointerId: event.pointerId,
       mutationIds: ids,
       startX: point.x,
@@ -152,13 +223,39 @@ export function ScriptStrokeOverlay(props: {
 
   const handlePointerMove = (event: TargetedPointerEvent<HTMLDivElement>) => {
     const gesture = gestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture) {
+      // Hover cursor: an imperative style write — no state, no signal, no
+      // effect. Scale corners name their axis pair; the rotate handle grabs.
+      const point = canvasPointOf(event);
+      const hovered = selectionBox !== null && props.onTransformStrokes !== undefined
+        ? hitTestScriptStrokeTransformHandle(point, selectionBox)
+        : null;
+      (event.currentTarget as HTMLElement).style.cursor = hovered === null
+        ? 'default'
+        : hovered.kind === 'rotate'
+          ? 'grab'
+          : scaleCursor(hovered.id === 'rotate' ? 'tl' : hovered.id);
+      return;
+    }
+    if (gesture.pointerId !== event.pointerId) return;
     const point = canvasPointOf(event);
     const dxPx = point.x - gesture.startX;
     const dyPx = point.y - gesture.startY;
     if (!gesture.started) {
       if (Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
       gesture.started = true;
+    }
+    if (gesture.kind === 'transform') {
+      // Preview only: no script mutation and no apply before release.
+      const transform = buildScriptStrokeTransform(
+        gesture.transformKind,
+        { x: gesture.centerX, y: gesture.centerY },
+        { x: gesture.startX, y: gesture.startY },
+        point,
+        event.shiftKey,
+      );
+      setScriptStrokeTransform({ ids: gesture.mutationIds, ...transform });
+      return;
     }
     setScriptStrokeDrag({ mutationIds: gesture.mutationIds, dxPx, dyPx });
   };
@@ -184,18 +281,33 @@ export function ScriptStrokeOverlay(props: {
     // happened on pointerdown, so it must not move anything.
     const crossed = gesture.started || Math.hypot(dxPx, dyPx) >= DRAG_THRESHOLD_PX;
     gestureRef.current = null;
-    clearScriptStrokeDrag();
     releasePointerCapture(event);
+    if (gesture.kind === 'transform') {
+      const transform = buildScriptStrokeTransform(
+        gesture.transformKind,
+        { x: gesture.centerX, y: gesture.centerY },
+        { x: gesture.startX, y: gesture.startY },
+        point,
+        event.shiftKey,
+      );
+      clearScriptStrokeTransform();
+      // A sub-threshold drag or an identity transform commits nothing.
+      if (!crossed || isIdentityScriptStrokeTransform(transform)) return;
+      props.onTransformStrokes?.(gesture.mutationIds, transform);
+      return;
+    }
+    clearScriptStrokeDrag();
     if (!crossed) return;
     props.onMoveStrokes(gesture.mutationIds, dxPx, dyPx);
   };
 
-  // A cancelled gesture leaves the script untouched: no move, no apply.
+  // A cancelled gesture leaves the script untouched: no move, no transform.
   const handlePointerCancel = (event: TargetedPointerEvent<HTMLDivElement>) => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     gestureRef.current = null;
     clearScriptStrokeDrag();
+    clearScriptStrokeTransform();
   };
 
   return (
@@ -233,8 +345,17 @@ export function ScriptStrokeOverlay(props: {
           const dragged = drag !== null && drag.mutationIds.includes(entry.mutationId);
           const offsetX = dragged ? drag!.dxPx : 0;
           const offsetY = dragged ? drag!.dyPx : 0;
+          // A handle gesture previews the transform on every captured stroke;
+          // still no script mutation and no engine call.
+          const transformed = transformPreview !== null
+            && transformPreview.ids.includes(entry.mutationId);
           const points = entry.pointsPx
-            .map((p) => `${p.x + offsetX},${p.y + offsetY}`)
+            .map((p) => {
+              const moved = transformed
+                ? applyScriptStrokeTransform(p, transformPreview!)
+                : p;
+              return `${moved.x + offsetX},${moved.y + offsetY}`;
+            })
             .join(' ');
           const label = `#${entry.serial} · ${entry.stackPosition}/${entry.stackTotal}`;
           const badgeX = Math.max(4, entry.bounds.x + offsetX);
@@ -327,6 +448,62 @@ export function ScriptStrokeOverlay(props: {
             </g>
           );
         })}
+        {/* 261024-mz5 Task 2: the selection union box and its five handles.
+            Rendered only when the adapter can commit a transform. */}
+        {selectionBox !== null && props.onTransformStrokes !== undefined ? (
+          <g>
+            <rect
+              data-testid="stroke-transform-box"
+              x={selectionBox.x}
+              y={selectionBox.y}
+              width={selectionBox.width}
+              height={selectionBox.height}
+              fill="none"
+              stroke={TRANSFORM_HANDLE_COLOR}
+              strokeWidth={1.5}
+              strokeDasharray="6 4"
+              opacity={0.9}
+              vectorEffect="non-scaling-stroke"
+            />
+            <line
+              x1={selectionBox.x + selectionBox.width / 2}
+              y1={selectionBox.y}
+              x2={selectionBox.x + selectionBox.width / 2}
+              y2={selectionBox.y - SCRIPT_TRANSFORM_ROTATE_STEM_PX}
+              stroke={TRANSFORM_HANDLE_COLOR}
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+            {scriptStrokeTransformHandles(selectionBox).map((handle) =>
+              handle.id === 'rotate' ? (
+                <circle
+                  key={handle.id}
+                  data-testid="stroke-transform-handle-rotate"
+                  cx={handle.x}
+                  cy={handle.y}
+                  r={SCRIPT_TRANSFORM_ROTATE_RADIUS_PX}
+                  fill="#ffffff"
+                  stroke={TRANSFORM_HANDLE_COLOR}
+                  strokeWidth={2}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ) : (
+                <rect
+                  key={handle.id}
+                  data-testid={`stroke-transform-handle-scale-${handle.id}`}
+                  x={handle.x - SCRIPT_TRANSFORM_HANDLE_SIZE_PX / 2}
+                  y={handle.y - SCRIPT_TRANSFORM_HANDLE_SIZE_PX / 2}
+                  width={SCRIPT_TRANSFORM_HANDLE_SIZE_PX}
+                  height={SCRIPT_TRANSFORM_HANDLE_SIZE_PX}
+                  fill="#ffffff"
+                  stroke={TRANSFORM_HANDLE_COLOR}
+                  strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ),
+            )}
+          </g>
+        ) : null}
       </svg>
     </div>
   );

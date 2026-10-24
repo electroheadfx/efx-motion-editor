@@ -212,7 +212,7 @@ describe('scriptStrokeTransform — gesture builders', () => {
     const huge = buildScriptStrokeTransform('scale', CENTER, { x: 101, y: 100 }, { x: 500, y: 100 }, false);
     expect(huge.factor).toBe(10);
 
-    const tiny = buildScriptStrokeTransform('scale', CENTER, { x: 101, y: 100 }, { x: 100.5, y: 100 }, false);
+    const tiny = buildScriptStrokeTransform('scale', CENTER, { x: 101, y: 100 }, { x: 100.01, y: 100 }, false);
     expect(tiny.factor).toBe(0.1);
 
     // Pointer exactly on the centre: a degenerate distance is identity, not NaN.

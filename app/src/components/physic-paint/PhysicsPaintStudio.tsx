@@ -5779,6 +5779,9 @@ export function PhysicsPaintStudio() {
       ...aquarelleScriptStrokeEditionPort,
       deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),
       moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
+      // 261024-mz5 Task 2: the watercolor surface exposes no transform handles
+      // yet (Task 3 wires the UV-space commit), so this op is unreachable.
+      transformStrokes: () => {},
       stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),
     },
     brush: brushScriptEditionPort,

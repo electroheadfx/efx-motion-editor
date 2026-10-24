@@ -31,6 +31,10 @@ export function AquarelleStrokeOverlay(props: {
     isActive: () => aquarelleSelectMode.peek(),
     deleteStrokes: props.onDeleteStrokes,
     moveStrokes: props.onMoveStrokes,
+    // 261024-mz5 Task 2: the shared overlay never passes the transform
+    // callback here (Task 3 wires the watercolor transform), so this op is
+    // unreachable.
+    transformStrokes: () => {},
     // The watercolor overlay gestures never call the keyboard port op.
     stepStroke: () => {},
   };
