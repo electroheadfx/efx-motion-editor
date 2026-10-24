@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 27
+open_count: 28
 waived_count: 6
 fixed_count: 69
-total_count: 102
-last_updated: 2026-10-18T07:38:41.483Z
+total_count: 103
+last_updated: 2026-10-24T10:55:47.595Z
 ---
 
 # Broken Windows Ledger
@@ -117,6 +117,7 @@ last_updated: 2026-10-18T07:38:41.483Z
 | 100 | quick-261017-vcn | deviation | app/src/components/shared/NumericStepper.test.tsx |  | Rule 3: grainScaleStep import + GRAIN_CALL_SITE_REL retargeted to PaperPicker (ripple of the locked Q6 move) | open |  | 2026-10-17T21:05:48.124Z |  |
 | 101 | quick-261017-vcn | deviation | app/src/components/physic-paint/view/RightPanelPaperTab.tsx |  | Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two) | open |  | 2026-10-17T21:05:48.265Z |  |
 | 102 | quick-261018-cy1 | stub | none |  | no stubs | waived | Mistaken ledger append — this quick has no stubs; entry was a no-op probe, not a defect | 2026-10-18T07:38:06.691Z | 2026-10-18T07:38:41.483Z |
+| 103 | quick-261024-hsd | unrun-verify | app/src/lib/projectPaperRaster.test.ts |  | Task 2 gates could not pass on the pristine tree: 15 pre-existing app typecheck errors and 10 pre-existing vitest failures (identical on the preact 11.0.1 baseline), so the automated verify exits 1 for reasons unrelated to the preact 11.0.2 bump. | open |  | 2026-10-24T10:55:47.595Z |  |
 
 ````json
 [
@@ -1372,6 +1373,19 @@ last_updated: 2026-10-18T07:38:41.483Z
     "reason": "Mistaken ledger append — this quick has no stubs; entry was a no-op probe, not a defect",
     "recorded_at": "2026-10-18T07:38:06.691Z",
     "resolved_at": "2026-10-18T07:38:41.483Z",
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 103,
+    "kind": "unrun-verify",
+    "phase": "quick-261024-hsd",
+    "file": "app/src/lib/projectPaperRaster.test.ts",
+    "line": null,
+    "description": "Task 2 gates could not pass on the pristine tree: 15 pre-existing app typecheck errors and 10 pre-existing vitest failures (identical on the preact 11.0.1 baseline), so the automated verify exits 1 for reasons unrelated to the preact 11.0.2 bump.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-24T10:55:47.595Z",
+    "resolved_at": null,
     "milestone": "v2.0.0"
   }
 ]
