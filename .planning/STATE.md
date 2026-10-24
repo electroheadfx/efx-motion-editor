@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-25 - Completed quick task 261024-vga: stack-order control for Brush Move and Water color Select stroke settings; automated gates green, native UAT pending
+Last activity: 2026-10-25 - Quick task 261024-vga COMPLETE: stack-order control, tabbed Stroke settings, retired </> shortcuts, Studio-lifecycle layout persistence; native UAT approved
 
 Progress: [██████████] 100%
 

@@ -239,6 +239,10 @@ None.
 
 None — no external service configuration required.
 
+## Native UAT — APPROVED
+
+**2026-10-25 — all native UAT rows approved by the user.** The Stack section, tabbed layout, retired `<` / `>` shortcuts, Studio-lifecycle layout persistence and the move-mode close behavior are accepted. Remaining automated verification is green; the quick task is CLOSED.
+
 ## UAT Revision
 
 **2026-10-25 — tabbed dialog (commit `27580c79`):** the three sections moved onto ONE pinned tab row (`Geometry | Stack | Paint`), Geometry is the default tab, and the color readout moved into Paint. Tab state is a ref-held signal (no useState, no render-body write). Automated gates re-run after the change: five app suites 378/378 and `tsc --noEmit` clean. The VERIFICATION.md covered digest predates this revision, so its status is stale until the next verifier run; the native UAT checklist above still applies.
