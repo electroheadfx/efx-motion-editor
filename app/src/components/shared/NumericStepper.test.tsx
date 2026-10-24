@@ -488,9 +488,18 @@ function stepperElements(source: string): string[] {
   return source.match(/<(NumericStepper|SliderStepper)[\s\S]*?\/>/g) ?? [];
 }
 
-/** The sole allowed consumer of the exception options (260924-d6l Pin 3).
- *  261017-vcn Q6: the grain widget moved to the Paper tab (PaperPicker). */
+/** The allowed consumers of the exception options (260924-d6l Pin 3).
+ *  261017-vcn Q6: the grain widget moved to the Paper tab (PaperPicker).
+ *  261024-p5q: the Stroke Settings geometry rows type absolute targets
+ *  (X/Y px, free-entry scale / rotation), so the dialog is a second explicit
+ *  opt-in call site — the allowance stays a fixed list, never a blanket rule. */
 const GRAIN_CALL_SITE_REL = 'src/components/physic-paint/view/PaperPicker.tsx';
+const STROKE_SETTINGS_CALL_SITE_REL =
+  'src/components/physic-paint/view/PhysicsPaintStrokeSettingsDialog.tsx';
+const EXCEPTION_CALL_SITE_RELS = new Set([
+  GRAIN_CALL_SITE_REL,
+  STROKE_SETTINGS_CALL_SITE_REL,
+]);
 
 /** The opt-in exception-option identifiers the paper grain field alone may pass. */
 const EXCEPTION_OPTION_IDENTIFIER = /\b(resolveStep|freeEntry)\b/;
@@ -574,10 +583,10 @@ describe('numericStepperSweep', () => {
     expect(source, 'The strip must import the shared FPS_PRESETS list').toContain('FPS_PRESETS');
   });
 
-  it('scopes the exception options (resolveStep/freeEntry) to the paper-grain call site only', () => {
+  it('scopes the exception options (resolveStep/freeEntry) to the paper-grain and stroke-settings call sites', () => {
     const offenders = stepperCallSites().filter(
       (relPath) =>
-        relPath !== GRAIN_CALL_SITE_REL &&
+        !EXCEPTION_CALL_SITE_RELS.has(relPath) &&
         EXCEPTION_OPTION_IDENTIFIER.test(readSweptSource(relPath)),
     );
     // Positive control: the scan must actually see the grain call site, so an

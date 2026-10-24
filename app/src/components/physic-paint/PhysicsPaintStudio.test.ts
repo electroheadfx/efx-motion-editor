@@ -1421,8 +1421,9 @@ describe('localized render instrumentation', () => {
     // layout, topBar, toolRail, rightPanel, playScriptDialog, canvasStack,
     // canvasMount, referenceDialog (50-UAT modal redesign), scriptPickerDialog
     // (261022-o2a: the Tools Create Rail / Load + Apply picker is owned by the
-    // Studio and rendered by the view).
-    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(9);
+    // Studio and rendered by the view), strokeSettingsDialog
+    // (261024-p5q: the active module's Stroke Settings callback bundle).
+    expect(countOccurrences(studio, 'PropsMemo.resolve(')).toBe(10);
     expect(studioView).toContain('}, []);');
     expect(canvasMount).toContain('}, [props.height, props.width]);');
   });
@@ -2434,8 +2435,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarelleStepStroke — same mapper, same capsule.
     // 261024-mz5: a seventh site — the watercolor transform re-bake failure in
     // handleAquarelleTransformStrokes — same mapper, same capsule.
+    // 261024-p5q: an eighth site — the watercolor appearance re-bake failure in
+    // handleAquarelleAppearanceStrokes — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(8); // one import + seven call sites
+    expect(mentions).toBe(9); // one import + eight call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -3449,7 +3452,8 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(brushScriptEditionPortSource).toContain('function resolvePaintSettings(engine: BrushScriptEditionEngine): PaintRenderSettings {');
     expect(brushScriptEditionPortSource).toContain('return engine.getFramePaintSettings() ?? engine.getPaintRenderSettings();');
     // 261024-mz5 Task 2: the transform batch is the fourth flush site.
-    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(4);
+    // 261024-p5q Task 1: the appearance batch is the fifth flush site.
+    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(5);
     expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(');
     expect(brushScriptEditionPortSource).toContain('resolved.engine.getStrokes(),');
     // The Studio render body never subscribes the store revision. The ONE
@@ -3472,7 +3476,11 @@ describe('261024-mz5 Studio multi-select surface', () => {
     expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
     expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('const handleAquarelleDeleteStrokes = useCallback((ids: readonly number[]) => {');
-    expect(studio).toContain('const handleAquarelleMoveStrokes = useCallback((ids: readonly number[], dxPx: number, dyPx: number) => {');
+    // 261024-p5q: the move handler is now async and returns whether the
+    // re-bake succeeded, so the Stroke Settings dialog commits geometry only
+    // on a true result.
+    expect(studio).toContain('const handleAquarelleMoveStrokes = useCallback(async (');
+    expect(studio).toContain('): Promise<boolean> => {');
     // Frame filter before any mutation.
     expect(studio).toContain('aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0)');
     // The shared consume law passes the whole set.
@@ -4067,13 +4075,16 @@ describe('261024-mz5 watercolor transform surface', () => {
     const start = studio.indexOf('const handleAquarelleTransformStrokes = useCallback(');
     expect(start).toBeGreaterThan(-1);
     const body = studio.slice(start, studio.indexOf('const handleAquarelleStepStroke', start));
-    // The move guard chain, unchanged and peek-only.
-    expect(body).toContain('if (isPhysicalMutationLocked()) return;');
-    expect(body).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;');
-    expect(body).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;");
-    expect(body).toContain('if (isAquarelleScriptEditInFlight()) return;');
-    expect(body).toContain('const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);');
-    expect(body).toContain('if (frameIds.length === 0) return;');
+    // The move guard chain, unchanged and peek-only. 261024-p5q: the handler
+    // is async and reports whether the re-bake succeeded (false on every
+    // guard/refusal) so the dialog never advances on a refused commit.
+    expect(body).toContain('if (isPhysicalMutationLocked()) return false;');
+    expect(body).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;');
+    expect(body).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;");
+    expect(body).toContain('if (isAquarelleScriptEditInFlight()) return false;');
+    expect(body).toContain('const playFrame = launchContextRef.current?.startFrame ?? 0;');
+    expect(body).toContain('const frameIds = aquarelleStrokesOnFrame(ids, playFrame);');
+    expect(body).toContain('if (frameIds.length === 0) return false;');
     // ONE bridge crossing each for the centre and the edge anchor; the screen
     // angle is NEGATED for uv and the per-axis scale passes through.
     expect(body).toContain('const center = aquarelleEnginePixelToUv(');
@@ -4086,7 +4097,7 @@ describe('261024-mz5 watercolor transform surface', () => {
     expect(body).toContain('scaleX: transform.scaleX,');
     expect(body).toContain('scaleY: transform.scaleY,');
     expect(body).toContain('const editId = beginAquarelleTransformEdit(frameIds, {');
-    expect(body).toContain('if (editId === null) return;');
+    expect(body).toContain('if (editId === null) return false;');
     // begin -> reset -> await apply -> record on success -> raw rollback on failure.
     const reset = body.indexOf('aquarelleResetSheetRef.current?.();');
     const apply = body.indexOf('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');

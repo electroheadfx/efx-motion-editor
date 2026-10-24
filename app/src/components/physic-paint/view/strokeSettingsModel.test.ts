@@ -24,9 +24,14 @@ import type { VNode } from 'preact';
 import { DEFAULT_CANONICAL_PARAMS } from '@efxlab/efx-watercolor';
 import {
   BRUSH_SETTINGS_FIELDS,
+  FRESH_STROKE_GEOMETRY_SESSION,
+  STROKE_ROTATION_RANGE,
+  STROKE_SCALE_RANGE,
   WATERCOLOR_SETTINGS_FIELDS,
   buildAppearancePatch,
   buildColorPatch,
+  geometryMoveDelta,
+  geometryTransform,
   readColorField,
   readNumericField,
   resolveStrokeSettingsOpen,
@@ -40,7 +45,9 @@ import { PhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDi
 import {
   setScriptSelectMode,
   setScriptStrokeSelection,
+  type SelectableScriptStroke,
 } from './scriptStrokeEdition';
+import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
 const dialogSource = readFileSync(
   fileURLToPath(new URL('./PhysicsPaintStrokeSettingsDialog.tsx', import.meta.url)),
@@ -211,6 +218,21 @@ function createBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
     ...overrides,
   };
   return { bundle, calls };
+}
+
+function selectableStroke(
+  mutationId: number,
+  bounds: { x: number; y: number; width: number; height: number },
+): SelectableScriptStroke {
+  return {
+    mutationId,
+    pointsPx: [],
+    bounds,
+    serial: mutationId,
+    stackPosition: 1,
+    stackTotal: 1,
+    color: '#ff0000',
+  };
 }
 
 // ── Pure model ─────────────────────────────────────────────────────
@@ -766,5 +788,273 @@ describe('261024-p5q dialog fields and shared color', () => {
     expect(dialogSource).not.toContain('paintStore');
     expect(dialogSource).not.toContain('setScriptStrokeSelection');
     expect(dialogSource).not.toContain('ScriptStrokeEditionPort');
+  });
+});
+
+// ============================================================
+//  261024-p5q Task 3 — the geometry session law. Every control
+//  applies the delta from ITS last applied value, a refused
+//  commit never advances the baseline, and the session is keyed
+//  by the selection Set (membership change re-baselines).
+// ============================================================
+
+describe('261024-p5q geometry session and deltas', () => {
+  const center = { x: 100, y: 50 };
+
+  it('starts every control at its identity value', () => {
+    expect(FRESH_STROKE_GEOMETRY_SESSION).toEqual({
+      uniformPct: 100,
+      scaleXPct: 100,
+      scaleYPct: 100,
+      rotationDeg: 0,
+    });
+    expect([STROKE_SCALE_RANGE.min, STROKE_SCALE_RANGE.max]).toEqual([10, 1000]);
+    expect([STROKE_ROTATION_RANGE.min, STROKE_ROTATION_RANGE.max]).toEqual([-360, 360]);
+  });
+
+  it('compounds uniform scale per commit about the selection centre', () => {
+    const first = geometryTransform(
+      'uniform',
+      120,
+      FRESH_STROKE_GEOMETRY_SESSION,
+      center,
+    )!;
+    expect(first.transform).toEqual({
+      kind: 'scale',
+      centerX: 100,
+      centerY: 50,
+      anchorX: 100,
+      anchorY: 50,
+      angleRad: 0,
+      scaleX: 1.2,
+      scaleY: 1.2,
+    });
+    expect(first.nextSession).toEqual({
+      uniformPct: 120,
+      scaleXPct: 120,
+      scaleYPct: 120,
+      rotationDeg: 0,
+    });
+
+    const second = geometryTransform('uniform', 90, first.nextSession, center)!;
+    expect(second.transform.scaleX).toBeCloseTo(0.75);
+    expect(second.transform.scaleY).toBeCloseTo(0.75);
+    expect(second.nextSession).toEqual({
+      uniformPct: 90,
+      scaleXPct: 90,
+      scaleYPct: 90,
+      rotationDeg: 0,
+    });
+  });
+
+  it('updates one scale axis without touching the other', () => {
+    const x = geometryTransform(
+      'scaleX',
+      150,
+      FRESH_STROKE_GEOMETRY_SESSION,
+      center,
+    )!;
+    expect(x.transform.scaleX).toBe(1.5);
+    expect(x.transform.scaleY).toBe(1);
+    expect(x.nextSession).toEqual({
+      uniformPct: 100,
+      scaleXPct: 150,
+      scaleYPct: 100,
+      rotationDeg: 0,
+    });
+
+    const y = geometryTransform('scaleY', 50, x.nextSession, center)!;
+    expect(y.transform.scaleX).toBe(1);
+    expect(y.transform.scaleY).toBe(0.5);
+    expect(y.nextSession).toEqual({
+      uniformPct: 100,
+      scaleXPct: 150,
+      scaleYPct: 50,
+      rotationDeg: 0,
+    });
+  });
+
+  it('applies the rotation delta about the centre', () => {
+    const first = geometryTransform(
+      'rotation',
+      30,
+      FRESH_STROKE_GEOMETRY_SESSION,
+      center,
+    )!;
+    expect(first.transform.kind).toBe('rotate');
+    expect(first.transform.centerX).toBe(100);
+    expect(first.transform.centerY).toBe(50);
+    expect(first.transform.angleRad).toBeCloseTo(Math.PI / 6);
+    expect([first.transform.scaleX, first.transform.scaleY]).toEqual([1, 1]);
+
+    const second = geometryTransform('rotation', 10, first.nextSession, center)!;
+    expect(second.transform.angleRad).toBeCloseTo((-20 * Math.PI) / 180);
+    expect(second.nextSession.rotationDeg).toBe(10);
+  });
+
+  it('clamps to the declared ranges and refuses same-value or non-finite input', () => {
+    const clamped = geometryTransform(
+      'uniform',
+      5000,
+      FRESH_STROKE_GEOMETRY_SESSION,
+      center,
+    )!;
+    expect(clamped.nextSession.uniformPct).toBe(1000);
+    expect(clamped.transform.scaleX).toBe(10);
+
+    const rotation = geometryTransform(
+      'rotation',
+      400,
+      FRESH_STROKE_GEOMETRY_SESSION,
+      center,
+    )!;
+    expect(rotation.nextSession.rotationDeg).toBe(360);
+
+    expect(geometryTransform('uniform', 100, FRESH_STROKE_GEOMETRY_SESSION, center)).toBeNull();
+    expect(geometryTransform('rotation', 0, FRESH_STROKE_GEOMETRY_SESSION, center)).toBeNull();
+    expect(
+      geometryTransform('uniform', Number.NaN, FRESH_STROKE_GEOMETRY_SESSION, center),
+    ).toBeNull();
+    expect(
+      geometryTransform('rotation', Number.POSITIVE_INFINITY, FRESH_STROKE_GEOMETRY_SESSION, center),
+    ).toBeNull();
+  });
+
+  it('rounds typed X/Y targets to integer pixel deltas and refuses sub-pixel moves', () => {
+    expect(geometryMoveDelta({ x: 130, y: 45 }, { x: 100, y: 50 })).toEqual({
+      dxPx: 30,
+      dyPx: -5,
+    });
+    expect(geometryMoveDelta({ x: 100.4, y: 49.6 }, { x: 100, y: 50 })).toBeNull();
+    expect(geometryMoveDelta({ x: Number.NaN, y: 50 }, { x: 100, y: 50 })).toBeNull();
+  });
+});
+
+describe('261024-p5q dialog geometry', () => {
+  const strokes = [
+    // Only stroke 7 is selected in most cells: its centre is (100, 50).
+    selectableStroke(7, { x: 80, y: 40, width: 40, height: 20 }),
+    selectableStroke(9, { x: 0, y: 0, width: 10, height: 10 }),
+  ];
+
+  function geometryBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    const transformCalls: Array<{ ids: number[]; transform: ScriptStrokeTransform }> = [];
+    const moveCalls: Array<{ ids: number[]; dx: number; dy: number }> = [];
+    const created = createBundle({
+      canvasSize: { width: 400, height: 300 },
+      listStrokes: () => strokes,
+      moveStrokes: (ids, dxPx, dyPx) => {
+        moveCalls.push({ ids: [...ids], dx: dxPx, dy: dyPx });
+        return true;
+      },
+      transformStrokes: (ids, transform) => {
+        transformCalls.push({ ids: [...ids], transform });
+        return true;
+      },
+      ...overrides,
+    });
+    return { ...created, transformCalls, moveCalls };
+  }
+
+  function geometryRow(tree: unknown, label: string) {
+    const row = findComponent(tree, (props) => props.ariaLabel === label);
+    expect(row, label).toBeDefined();
+    return row!;
+  }
+
+  it('renders X / Y / scale / rotation as release-commit free-entry rows', () => {
+    const { bundle } = geometryBundle();
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    for (const label of ['X', 'Y', 'Scale', 'Scale X', 'Scale Y', 'Rotation']) {
+      const row = geometryRow(tree, label);
+      expect(row.props.commitOnRelease, label).toBe(true);
+      expect(row.props.freeEntry, label).toBe(true);
+    }
+
+    // The live selection centre, filtered to the selected ids only.
+    expect(geometryRow(tree, 'X').props.value).toBe(100);
+    expect(geometryRow(tree, 'Y').props.value).toBe(50);
+    expect(geometryRow(tree, 'Scale').props.value).toBe(100);
+    expect(geometryRow(tree, 'Scale X').props.value).toBe(100);
+    expect(geometryRow(tree, 'Scale Y').props.value).toBe(100);
+    expect(geometryRow(tree, 'Rotation').props.value).toBe(0);
+    expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
+  });
+
+  it('awaits each transform and advances the session only on a true result', async () => {
+    const { bundle, transformCalls } = geometryBundle();
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    (geometryRow(tree, 'Scale').props.onChange as (value: number) => void)(120);
+    expect(transformCalls).toHaveLength(1);
+    expect(transformCalls[0]!.ids).toEqual([7]);
+    expect(transformCalls[0]!.transform.scaleX).toBeCloseTo(1.2);
+    // The display only moves after the awaited result.
+    expect(geometryRow(renderDialog(bundle), 'Scale').props.value).toBe(100);
+    await Promise.resolve();
+    expect(geometryRow(renderDialog(bundle), 'Scale').props.value).toBe(120);
+
+    (geometryRow(renderDialog(bundle), 'Scale').props.onChange as (value: number) => void)(90);
+    expect(transformCalls[1]!.transform.scaleX).toBeCloseTo(0.75);
+    await Promise.resolve();
+    const compounded = renderDialog(bundle);
+    expect(geometryRow(compounded, 'Scale').props.value).toBe(90);
+    expect(geometryRow(compounded, 'Scale X').props.value).toBe(90);
+    expect(geometryRow(compounded, 'Scale Y').props.value).toBe(90);
+  });
+
+  it('keeps the previous session value when the commit is refused', async () => {
+    const { bundle } = geometryBundle({ transformStrokes: () => Promise.resolve(false) });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+    (geometryRow(tree, 'Scale').props.onChange as (value: number) => void)(120);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(geometryRow(renderDialog(bundle), 'Scale').props.value).toBe(100);
+  });
+
+  it('re-baselines scale and rotation on a selection membership change', async () => {
+    const { bundle } = geometryBundle();
+    setScriptStrokeSelection([7]);
+    (geometryRow(renderDialog(bundle), 'Scale').props.onChange as (value: number) => void)(120);
+    await Promise.resolve();
+    (geometryRow(renderDialog(bundle), 'Rotation').props.onChange as (value: number) => void)(30);
+    await Promise.resolve();
+
+    const committed = renderDialog(bundle);
+    expect(geometryRow(committed, 'Scale').props.value).toBe(120);
+    expect(geometryRow(committed, 'Rotation').props.value).toBe(30);
+
+    setScriptStrokeSelection([7, 9]);
+    const rebased = renderDialog(bundle);
+    expect(geometryRow(rebased, 'Scale').props.value).toBe(100);
+    expect(geometryRow(rebased, 'Scale X').props.value).toBe(100);
+    expect(geometryRow(rebased, 'Scale Y').props.value).toBe(100);
+    expect(geometryRow(rebased, 'Rotation').props.value).toBe(0);
+  });
+
+  it('moves by the typed absolute X/Y delta and ignores a no-op target', () => {
+    const { bundle, moveCalls } = geometryBundle();
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    (geometryRow(tree, 'X').props.onChange as (value: number) => void)(130);
+    expect(moveCalls).toEqual([{ ids: [7], dx: 30, dy: 0 }]);
+
+    (geometryRow(renderDialog(bundle), 'Y').props.onChange as (value: number) => void)(50);
+    expect(moveCalls).toHaveLength(1);
+  });
+
+  it('structural pins: selection-box centre source, no persistent transform record', () => {
+    expect(dialogSource).toContain('scriptStrokeSelectionBox');
+    expect(dialogSource).toContain('bundle.listStrokes');
+    expect(dialogSource).toContain('data-testid="stroke-settings-geometry"');
+    expect(dialogSource).not.toContain('localStorage');
+    expect(dialogSource).not.toContain('transformRecord');
+    expect(modelSource).toContain('geometryTransform');
+    expect(modelSource).toContain('geometryMoveDelta');
   });
 });

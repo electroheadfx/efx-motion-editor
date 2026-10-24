@@ -5,16 +5,24 @@ import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { SliderStepper } from '../../shared/SliderStepper';
 import { RightPanelColorTab } from './RightPanelColorTab';
 import {
+  FRESH_STROKE_GEOMETRY_SESSION,
+  STROKE_ROTATION_RANGE,
+  STROKE_SCALE_RANGE,
   buildAppearancePatch,
   buildColorPatch,
+  geometryMoveDelta,
+  geometryTransform,
   readColorField,
   readNumericField,
   resolveStrokeSettingsOpen,
   shouldMarkSawEmpty,
   strokeSettingsFields,
+  type StrokeGeometryControl,
+  type StrokeGeometrySession,
   type StrokeSettingsDialogBundle,
 } from './strokeSettingsModel';
 import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition';
+import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
 
 /**
  * quick 261024-p5q: the Stroke Settings dialog — a selection-gated, movable
@@ -33,8 +41,16 @@ import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition
  *
  * Signals only: ref-held signals, no React-style component state, no
  * render-body signal writes, all styling inline (no CSS file change). The
- * full Paint field set and the shared Color control ship here; geometry lands
- * in Task 3.
+ * full Paint field set, the shared Color control and the session-relative
+ * Geometry section all ship here.
+ *
+ * Geometry: every row is a release-commit, free-entry SliderStepper. X/Y type
+ * an absolute target and commit `target - live centre` in integer px; Scale /
+ * Scale X / Scale Y / Rotation apply the delta from that row's last APPLIED
+ * value (a refused commit keeps the previous session value). The session is
+ * keyed by the selection Set, so a membership change re-baselines to identity.
+ * Transforms anchor at the union-box centre of the selected strokes; nothing
+ * persists.
  *
  * Color: the shared RightPanelColorTab is imported UNMODIFIED. Its live
  * onColorChange writes a dialog draft signal only; the wrapper's boundary
@@ -178,6 +194,13 @@ export function PhysicsPaintStrokeSettingsDialog({
   if (!colorDraftRef.current) colorDraftRef.current = signal(null);
   /** Per-selection dedupe baseline: the last colour this selection committed. */
   const colorCommittedRef = useRef<{ selection: ReadonlySet<number>; color: string } | null>(null);
+  /**
+   * The geometry session, keyed by the selection Set instance. A different
+   * selection simply resolves FRESH — no render-body signal write, and a new
+   * membership always re-baselines to 100% / 0 degrees.
+   */
+  const geometrySessionRef = useRef<Signal<{ selection: ReadonlySet<number>; session: StrokeGeometrySession } | null> | null>(null);
+  if (!geometrySessionRef.current) geometrySessionRef.current = signal(null);
 
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
@@ -275,6 +298,51 @@ export function PhysicsPaintStrokeSettingsDialog({
 
   const offset = dragOffsetRef.current.value;
   const applied = offset && offset.selection === selection ? offset : null;
+
+  /**
+   * Geometry is session-relative: the display states what the strokes LAST
+   * received, so a refused commit (watercolor re-bake) never advances it.
+   * The union box is computed from the SELECTED strokes of this frame only;
+   * every transform anchors at its centre.
+   */
+  const geometryState = geometrySessionRef.current.value;
+  const geometrySession = geometryState && geometryState.selection === selection
+    ? geometryState.session
+    : FRESH_STROKE_GEOMETRY_SESSION;
+  const selectionBox = scriptStrokeSelectionBox(
+    bundle.listStrokes(bundle.playFrame, bundle.canvasSize)
+      .filter((stroke) => selection.has(stroke.mutationId)),
+  );
+  const liveCenter = selectionBox
+    ? { x: selectionBox.x + selectionBox.width / 2, y: selectionBox.y + selectionBox.height / 2 }
+    : null;
+
+  const commitGeometryTransform = (control: StrokeGeometryControl, nextValue: number) => {
+    if (!liveCenter) return;
+    const result = geometryTransform(control, nextValue, geometrySession, liveCenter);
+    if (!result) return;
+    // Keyed by the captured selection: a membership change mid-flight leaves
+    // the NEW selection on its fresh baseline instead of inheriting this one.
+    const commitSelection = selection;
+    void Promise.resolve(bundle.transformStrokes([...commitSelection], result.transform))
+      .then((ok) => {
+        if (!ok) return;
+        geometrySessionRef.current!.value = {
+          selection: commitSelection,
+          session: result.nextSession,
+        };
+      });
+  };
+
+  const commitGeometryMove = (axis: 'x' | 'y', nextValue: number) => {
+    if (!liveCenter) return;
+    const target = axis === 'x'
+      ? { x: nextValue, y: liveCenter.y }
+      : { x: liveCenter.x, y: nextValue };
+    const delta = geometryMoveDelta(target, liveCenter);
+    if (!delta) return;
+    void Promise.resolve(bundle.moveStrokes(ids, delta.dxPx, delta.dyPx));
+  };
 
   const dismiss = () => {
     dismissedRef.current!.value = true;
@@ -446,6 +514,90 @@ export function PhysicsPaintStrokeSettingsDialog({
           />
         </div>
       </div>
+
+      {liveCenter ? (
+        <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
+          <div style={SECTION_TITLE_STYLE}>Geometry</div>
+          <div data-testid="stroke-settings-geometry-x">
+            <SliderStepper
+              label="X"
+              ariaLabel="X"
+              value={Math.round(liveCenter.x)}
+              min={0}
+              max={bundle.canvasSize.width}
+              step={1}
+              freeEntry
+              commitOnRelease
+              onChange={(value) => commitGeometryMove('x', value)}
+            />
+          </div>
+          <div data-testid="stroke-settings-geometry-y">
+            <SliderStepper
+              label="Y"
+              ariaLabel="Y"
+              value={Math.round(liveCenter.y)}
+              min={0}
+              max={bundle.canvasSize.height}
+              step={1}
+              freeEntry
+              commitOnRelease
+              onChange={(value) => commitGeometryMove('y', value)}
+            />
+          </div>
+          <div data-testid="stroke-settings-geometry-scale">
+            <SliderStepper
+              label="Scale"
+              ariaLabel="Scale"
+              value={geometrySession.uniformPct}
+              min={STROKE_SCALE_RANGE.min}
+              max={STROKE_SCALE_RANGE.max}
+              step={1}
+              freeEntry
+              commitOnRelease
+              onChange={(value) => commitGeometryTransform('uniform', value)}
+            />
+          </div>
+          <div data-testid="stroke-settings-geometry-scale-x">
+            <SliderStepper
+              label="Scale X"
+              ariaLabel="Scale X"
+              value={geometrySession.scaleXPct}
+              min={STROKE_SCALE_RANGE.min}
+              max={STROKE_SCALE_RANGE.max}
+              step={1}
+              freeEntry
+              commitOnRelease
+              onChange={(value) => commitGeometryTransform('scaleX', value)}
+            />
+          </div>
+          <div data-testid="stroke-settings-geometry-scale-y">
+            <SliderStepper
+              label="Scale Y"
+              ariaLabel="Scale Y"
+              value={geometrySession.scaleYPct}
+              min={STROKE_SCALE_RANGE.min}
+              max={STROKE_SCALE_RANGE.max}
+              step={1}
+              freeEntry
+              commitOnRelease
+              onChange={(value) => commitGeometryTransform('scaleY', value)}
+            />
+          </div>
+          <div data-testid="stroke-settings-geometry-rotation">
+            <SliderStepper
+              label="Rotation"
+              ariaLabel="Rotation"
+              value={geometrySession.rotationDeg}
+              min={STROKE_ROTATION_RANGE.min}
+              max={STROKE_ROTATION_RANGE.max}
+              step={1}
+              freeEntry
+              commitOnRelease
+              onChange={(value) => commitGeometryTransform('rotation', value)}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

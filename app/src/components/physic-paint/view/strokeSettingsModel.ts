@@ -244,3 +244,152 @@ export interface StrokeSettingsDialogBundle {
   moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): boolean | Promise<boolean>;
   transformStrokes(ids: readonly number[], transform: ScriptStrokeTransform): boolean | Promise<boolean>;
 }
+
+// ============================================================
+//  Geometry session law (Task 3). Session-relative only: every
+//  control applies the delta from ITS last APPLIED value, so a
+//  refused commit never compounds and the display always states
+//  what the strokes actually received. Nothing persists.
+// ============================================================
+
+export interface StrokeGeometryPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** The four geometry rows' cumulative display values. */
+export interface StrokeGeometrySession {
+  readonly uniformPct: number;
+  readonly scaleXPct: number;
+  readonly scaleYPct: number;
+  readonly rotationDeg: number;
+}
+
+export const FRESH_STROKE_GEOMETRY_SESSION: StrokeGeometrySession = Object.freeze({
+  uniformPct: 100,
+  scaleXPct: 100,
+  scaleYPct: 100,
+  rotationDeg: 0,
+});
+
+/** Declared display ranges — typed input and every commit clamp here. */
+export const STROKE_SCALE_RANGE = Object.freeze({ min: 10, max: 1000 });
+export const STROKE_ROTATION_RANGE = Object.freeze({ min: -360, max: 360 });
+
+export type StrokeGeometryControl = 'uniform' | 'scaleX' | 'scaleY' | 'rotation';
+
+export interface StrokeGeometryMoveDelta {
+  readonly dxPx: number;
+  readonly dyPx: number;
+}
+
+export interface StrokeGeometryTransformResult {
+  readonly transform: ScriptStrokeTransform;
+  readonly nextSession: StrokeGeometrySession;
+}
+
+function clampRange(value: number, range: { readonly min: number; readonly max: number }): number {
+  return Math.min(range.max, Math.max(range.min, value));
+}
+
+/** Percent displays are user-facing: keep float drift out of the session. */
+function roundSession(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * X/Y typed absolute target -> integer delta from the LIVE selection centre.
+ * A sub-pixel target (both rounded deltas zero) is a no-op, never a write.
+ */
+export function geometryMoveDelta(
+  nextCenter: StrokeGeometryPoint,
+  liveCenter: StrokeGeometryPoint,
+): StrokeGeometryMoveDelta | null {
+  if (!Number.isFinite(nextCenter.x) || !Number.isFinite(nextCenter.y)) return null;
+  if (!Number.isFinite(liveCenter.x) || !Number.isFinite(liveCenter.y)) return null;
+  const dxPx = Math.round(nextCenter.x - liveCenter.x);
+  const dyPx = Math.round(nextCenter.y - liveCenter.y);
+  if (dxPx === 0 && dyPx === 0) return null;
+  return { dxPx, dyPx };
+}
+
+/**
+ * One geometry row's commit. The factor/delta is relative to that row's last
+ * APPLIED value; uniform also compounds the single-axis displays. Null means
+ * "write nothing" (same value after clamping, non-finite input, zero baseline).
+ * Every transform anchors at the selection centre.
+ */
+export function geometryTransform(
+  control: StrokeGeometryControl,
+  nextValue: number,
+  session: StrokeGeometrySession,
+  center: StrokeGeometryPoint,
+): StrokeGeometryTransformResult | null {
+  if (!Number.isFinite(nextValue)) return null;
+  if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) return null;
+
+  if (control === 'rotation') {
+    const rotationDeg = clampRange(nextValue, STROKE_ROTATION_RANGE);
+    const deltaDeg = rotationDeg - session.rotationDeg;
+    if (deltaDeg === 0) return null;
+    return {
+      transform: {
+        kind: 'rotate',
+        centerX: center.x,
+        centerY: center.y,
+        anchorX: center.x,
+        anchorY: center.y,
+        angleRad: (deltaDeg * Math.PI) / 180,
+        scaleX: 1,
+        scaleY: 1,
+      },
+      nextSession: { ...session, rotationDeg },
+    };
+  }
+
+  const nextPct = clampRange(nextValue, STROKE_SCALE_RANGE);
+  if (control === 'uniform') {
+    if (session.uniformPct <= 0) return null;
+    const factor = nextPct / session.uniformPct;
+    if (factor === 1) return null;
+    return {
+      transform: {
+        kind: 'scale',
+        centerX: center.x,
+        centerY: center.y,
+        anchorX: center.x,
+        anchorY: center.y,
+        angleRad: 0,
+        scaleX: factor,
+        scaleY: factor,
+      },
+      nextSession: {
+        uniformPct: nextPct,
+        scaleXPct: roundSession(clampRange(session.scaleXPct * factor, STROKE_SCALE_RANGE)),
+        scaleYPct: roundSession(clampRange(session.scaleYPct * factor, STROKE_SCALE_RANGE)),
+        rotationDeg: session.rotationDeg,
+      },
+    };
+  }
+
+  const baseline = control === 'scaleX' ? session.scaleXPct : session.scaleYPct;
+  if (baseline <= 0) return null;
+  const factor = nextPct / baseline;
+  if (factor === 1) return null;
+  return {
+    transform: {
+      kind: 'scale',
+      centerX: center.x,
+      centerY: center.y,
+      anchorX: center.x,
+      anchorY: center.y,
+      angleRad: 0,
+      scaleX: control === 'scaleX' ? factor : 1,
+      scaleY: control === 'scaleY' ? factor : 1,
+    },
+    nextSession: {
+      ...session,
+      ...(control === 'scaleX' ? { scaleXPct: nextPct } : { scaleYPct: nextPct }),
+    },
+  };
+}
