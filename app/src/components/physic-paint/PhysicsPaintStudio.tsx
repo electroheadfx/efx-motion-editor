@@ -214,6 +214,7 @@ import {
   purgeAllAquarelleKeyScripts,
   purgeAquarelleFrameScript,
   recordAquarelleStroke,
+  remapAquarelleScriptsForRecords,
   resetAquarelleRecordState,
   setAquarelleParam,
   setAquarelleStrokeDiffusionFrames,
@@ -1943,19 +1944,24 @@ export function PhysicsPaintStudio() {
     if (layerId) physicPaintStore.setPaperId(layerId, paperId);
     setBackground(paperId as StudioBackgroundMode);
   };
-  // key-spacing-script-loss: the brush store follows the physical key
-  // IDENTITY. Force-spacing rewrites appFrames but keeps key IDs, so a
-  // successful accepted replace remaps every captured frame onto its
-  // surviving key's new frame. Only frames whose key disappeared are dropped
-  // (the snapshot's retained union keeps them in the file), and only a
-  // malformed layout falls back to the 261023-g4p fail-closed prune.
-  const applyBrushScriptRecordRemap = (
+  // key-spacing-script-loss (brush + quick-261024-m20 watercolor): both session
+  // stores follow the physical key IDENTITY. Force-spacing rewrites appFrames
+  // but keeps key IDs, so a successful accepted replace remaps every captured
+  // frame and every recorded watercolor stroke onto its surviving key's new
+  // frame. Only keys that disappeared are dropped from the SESSION — the
+  // snapshot's retained union keeps them in the file. The watercolor remap is
+  // session-only; a null result (malformed layout) leaves it untouched (fail
+  // closed), while the brush ledger falls back to the 261023-g4p fail-closed
+  // prune for that impossible-after-validation case.
+  const applyScriptRecordRemaps = (
     beforeRecords: readonly { keyId: string; appFrame: number }[],
     nextRecords: readonly { keyId: string; appFrame: number }[],
   ) => {
-    if (remapBrushScriptsForRecords(beforeRecords, nextRecords) !== null) return;
-    const pruneFrame = computeBrushScriptPruneFrame(beforeRecords, nextRecords);
-    if (pruneFrame !== null) pruneBrushScriptsFromFrame(pruneFrame);
+    if (remapBrushScriptsForRecords(beforeRecords, nextRecords) === null) {
+      const pruneFrame = computeBrushScriptPruneFrame(beforeRecords, nextRecords);
+      if (pruneFrame !== null) pruneBrushScriptsFromFrame(pruneFrame);
+    }
+    remapAquarelleScriptsForRecords(beforeRecords, nextRecords);
   };
   const replacePhysicalRecordsWithOwnership = (
     layerId: string,
@@ -1981,7 +1987,7 @@ export function PhysicsPaintStudio() {
       currentGroupOverrides,
     ) === nextRevision) {
       const identicalRevisionResult = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
-      if (identicalRevisionResult.ok) applyBrushScriptRecordRemap(beforeRecords, records);
+      if (identicalRevisionResult.ok) applyScriptRecordRemaps(beforeRecords, records);
       return identicalRevisionResult;
     }
     const repaintBase = cachedRotoRepaintBaseFrameRef.current;
@@ -2006,7 +2012,7 @@ export function PhysicsPaintStudio() {
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
     const result = physicPaintStore.replaceRotoPhysicalRecords(layerId, studioActiveTrackId(), records, interpolation, physicPaintStore.getRotoPhysicalCapacity(layerId, studioActiveTrackId()));
     if (!result.ok) return result;
-    applyBrushScriptRecordRemap(beforeRecords, records);
+    applyScriptRecordRemaps(beforeRecords, records);
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
     rotoEditBuffer.replacePreviewFrames(next.previewFrames);
@@ -2078,7 +2084,7 @@ export function PhysicsPaintStudio() {
     if (!ownership.ok) return { ok: false as const, error: ownership.error };
     const result = physicPaintStore.replaceRotoPhysicalDocument(layerId, studioActiveTrackId(), document, leaseToken);
     if (!result.ok) return result;
-    applyBrushScriptRecordRemap(beforeRecords, document.realKeyRecords);
+    applyScriptRecordRemaps(beforeRecords, document.realKeyRecords);
     const next = ownership.value;
     rotoEditBuffer.replaceFrameStates(next.frameStates);
     rotoEditBuffer.replacePreviewFrames(next.previewFrames);

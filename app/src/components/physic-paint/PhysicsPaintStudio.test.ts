@@ -3853,3 +3853,40 @@ describe('261023-ors rail-delete snapshot cascade in the Studio', () => {
     expect(bindIndex).toBeGreaterThan(nullIndex);
   });
 });
+
+// quick-261024-m20: every accepted physical replace remaps BOTH session stores
+// (brush ledger + watercolor record state) by key identity AFTER the store
+// commit; a failed replace calls neither.
+describe('261024-m20 accepted-replace key-identity remaps', () => {
+  it('calls both remaps after each accepted replace and never on failure', () => {
+    const recordsStart = studio.indexOf('const replacePhysicalRecordsWithOwnership = (');
+    const documentStart = studio.indexOf('const replacePhysicalDocumentWithOwnership = (', recordsStart);
+    const documentEnd = studio.indexOf('const physicalEditCoordinator = useRotoPhysicalEditCoordinator', documentStart);
+    expect(recordsStart).toBeGreaterThanOrEqual(0);
+    expect(documentStart).toBeGreaterThan(recordsStart);
+    expect(documentEnd).toBeGreaterThan(documentStart);
+    const recordsSlice = studio.slice(recordsStart, documentStart);
+    const documentSlice = studio.slice(documentStart, documentEnd);
+
+    // ONE wrapper drives both stores.
+    expect(studio).toContain('const applyScriptRecordRemaps = (');
+    expect(studio).toContain('remapBrushScriptsForRecords(beforeRecords, nextRecords)');
+    expect(studio).toContain('remapAquarelleScriptsForRecords(beforeRecords, nextRecords)');
+
+    // Identical-revision branch: the remap runs only inside the ok branch.
+    expect(recordsSlice).toContain('if (identicalRevisionResult.ok) applyScriptRecordRemaps(beforeRecords, records);');
+
+    // Normal records path: the remap call follows the commit guard.
+    const recordsGuard = recordsSlice.indexOf('if (!result.ok) return result;');
+    const recordsCall = recordsSlice.indexOf('applyScriptRecordRemaps(beforeRecords, records);', recordsGuard);
+    expect(recordsGuard).toBeGreaterThanOrEqual(0);
+    expect(recordsCall).toBeGreaterThan(recordsGuard);
+
+    // Document path: same law, with the accepted document records.
+    expect(documentSlice).toContain('applyScriptRecordRemaps(beforeRecords, document.realKeyRecords);');
+    const documentGuard = documentSlice.indexOf('if (!result.ok) return result;');
+    const documentCall = documentSlice.indexOf('applyScriptRecordRemaps(beforeRecords, document.realKeyRecords);', documentGuard);
+    expect(documentGuard).toBeGreaterThanOrEqual(0);
+    expect(documentCall).toBeGreaterThan(documentGuard);
+  });
+});
