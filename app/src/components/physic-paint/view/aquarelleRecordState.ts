@@ -465,6 +465,88 @@ export function translateAquarelleStrokeInScript(
   return translateAquarelleStrokesInScript([mutationId], dxUv, dyUv) > 0;
 }
 
+/** The canonical-unit appearance write (quick 261024-p5q). */
+export interface AquarelleStrokeAppearancePatch {
+  readonly params?: Readonly<Record<string, number>>;
+  readonly color?: string;
+}
+
+/**
+ * quick 261024-p5q: set canonical params and/or the colour on one recorded
+ * stroke OR the whole selection. The Paint section of the Stroke Settings
+ * dialog is the only caller; the payload never sees engine 0..1 units.
+ *
+ * The translate/transform law applies unchanged: validate and resolve every
+ * target BEFORE mutating, REPLACE the stroke and its entry (never mutate in
+ * place — snapshots hold the live event references), regenerate the entry
+ * with `toStudioStroke` so the new params/colour travel in `engine`, and
+ * write it at the SAME timeline index. `cuisson` is re-derived from the
+ * stroke's preserved measured `diffusionFrames`. Targets whose appearance is
+ * already equal are skipped; one revision bump per effective batch. Unknown
+ * keys, non-finite values, an empty colour, unknown/deleted ids and a no-op
+ * patch are refused with 0 and bump nothing.
+ */
+export function updateAquarelleStrokesInScript(
+  mutationIds: readonly number[],
+  patch: AquarelleStrokeAppearancePatch,
+): number {
+  const params = patch.params;
+  const paramEntries = params ? Object.entries(params) : [];
+  const hasColor = patch.color !== undefined;
+  // Validate the WHOLE patch first: one unknown key or non-finite value
+  // refuses the batch before anything is drained or touched.
+  for (const [key, value] of paramEntries) {
+    if (!AQUARELLE_GLOBAL_KEYS.includes(key as AquarelleGlobalKey)) return 0;
+    if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  }
+  if (hasColor && (typeof patch.color !== 'string' || patch.color.length === 0)) return 0;
+  if (paramEntries.length === 0 && !hasColor) return 0;
+
+  const targets: Array<{
+    mutationId: number;
+    stroke: AquarelleStroke;
+    index: number;
+    nextParams: Record<string, number>;
+    nextColor: string | null;
+  }> = [];
+  const seen = new Set<number>();
+  for (const mutationId of mutationIds) {
+    if (seen.has(mutationId)) continue;
+    seen.add(mutationId);
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    const index = payloadTimeline.indexOf(entry);
+    if (index < 0) continue;
+
+    let changed = false;
+    const nextParams: Record<string, number> = { ...stroke.params };
+    for (const [key, value] of paramEntries) {
+      if (nextParams[key] !== value) changed = true;
+      nextParams[key] = value;
+    }
+    const nextColor: string | null = hasColor ? (patch.color as string) : stroke.color;
+    if (hasColor && nextColor !== stroke.color) changed = true;
+    if (!changed) continue;
+    targets.push({ mutationId, stroke, index, nextParams, nextColor });
+  }
+  if (targets.length === 0) return 0;
+
+  for (const { mutationId, stroke, index, nextParams, nextColor } of targets) {
+    const nextStroke: AquarelleStroke = { ...stroke, params: nextParams, color: nextColor };
+    // Regenerate through the ONE projection so the engine payload carries the
+    // new canonical params/colour; pts/cuisson/recordedOrder re-derive from
+    // the preserved points and diffusionFrames.
+    const nextEntry = toStudioStroke(nextStroke);
+    recordedStrokes.set(mutationId, nextStroke);
+    recordedStrokeEntries.set(mutationId, nextEntry);
+    // SAME index — replay order is preserved (replace only, never splice).
+    payloadTimeline[index] = nextEntry;
+  }
+  bumpAquarelleStrokesRevision();
+  return targets.length;
+}
+
 /**
  * 261024-mz5: the document-UV transform a watercolor selection commit carries.
  * Structurally the shared `ScriptStrokeTransform` with a UV centre — the Studio

@@ -234,6 +234,121 @@ describe('slider-stepper — track range and commit law stay separate', () => {
 });
 
 /**
+ * 261024-p5q — mixed display. A mixed stepper shows "Mixed" instead of a
+ * number, neutralizes the track, and bypasses the equality guards so the
+ * first gesture always writes (the dialog's whole point: an untouched field
+ * never writes, but one gesture writes every selected stroke even when it
+ * lands on the representative value). Every non-mixed path is byte-identical.
+ */
+describe('slider-stepper — mixed display and first-gesture commit (261024-p5q)', () => {
+  function styleOf(vnode: AnyVNode): Record<string, unknown> {
+    return (vnode.props.style ?? {}) as Record<string, unknown>;
+  }
+
+  function trackOf(tree: AnyVNode): AnyVNode {
+    const track = byClass(tree, 'slider-stepper-track');
+    expect(track).toBeDefined();
+    return track!;
+  }
+
+  /** A 100px-wide track starting at x=0 — `clientX` maps straight to a fraction. */
+  function trackTarget(width = 100) {
+    return {
+      setPointerCapture: () => {},
+      getBoundingClientRect: () => ({ left: 0, top: 0, width, height: 22, right: width, bottom: 22 }),
+    };
+  }
+
+  it('shows Mixed, carries the mixed class and neutralizes the progress fill', () => {
+    const tree = renderStepper({ mixed: true, value: 12, min: 1, max: 80, commitOnRelease: true });
+    expect(String(tree.props.class ?? '').split(/\s+/)).toContain('slider-stepper-mixed');
+
+    const value = byClass(tree, 'slider-stepper-value')!;
+    expect(value.props.value).toBe('Mixed');
+
+    const progress = byClass(tree, 'slider-stepper-progress')!;
+    expect(styleOf(progress).width).toBe('0px');
+    // The value box carries the muted/italic mixed treatment inline.
+    expect(styleOf(value).fontStyle).toBe('italic');
+  });
+
+  it('Escape and an invalid entry both restore the Mixed readout', () => {
+    const tree = renderStepper({ mixed: true, value: 12, min: 1, max: 80 });
+    const value = byClass(tree, 'slider-stepper-value')!;
+
+    const escapeTarget = { value: '12', blur: vi.fn() };
+    (value.props as any).onKeyDown({ key: 'Escape', currentTarget: escapeTarget });
+    expect(escapeTarget.value).toBe('Mixed');
+
+    const invalidTarget = { value: 'abc', ...value.props };
+    (value.props as any).onBlur({ currentTarget: invalidTarget });
+    expect(invalidTarget.value).toBe('Mixed');
+  });
+
+  it('a track release on the representative value still emits when mixed', () => {
+    const onChange = vi.fn();
+    const tree = renderStepper({
+      mixed: true,
+      value: 50,
+      min: 0,
+      max: 100,
+      step: 1,
+      commitOnRelease: true,
+      onChange,
+      ariaLabel: 'Opacity',
+    });
+    const track = trackOf(tree);
+    track.props.onPointerDown({
+      clientX: 50,
+      preventDefault: () => {},
+      currentTarget: trackTarget(),
+    });
+    // No commit while the pointer is down.
+    expect(onChange).not.toHaveBeenCalled();
+    track.props.onPointerUp();
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(50);
+  });
+
+  it('typed entry and the plus/minus step emit even at the representative value', () => {
+    const onChange = vi.fn();
+    const tree = renderStepper({
+      mixed: true,
+      value: 80,
+      min: 1,
+      max: 80,
+      step: 1,
+      onChange,
+      ariaLabel: 'Size',
+    });
+    const value = byClass(tree, 'slider-stepper-value')!;
+    const typed = { value: '80' };
+    (value.props as any).onBlur({ currentTarget: typed });
+    expect(onChange).toHaveBeenCalledWith(80);
+
+    const plus = findAll(tree, (vnode) => vnode.props?.['data-testid'] === 'slider-stepper-plus')[0]!;
+    (plus.props as any).onClick({ detail: 0 });
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(80);
+  });
+
+  it('a non-mixed stepper keeps every equality guard', () => {
+    const onChange = vi.fn();
+    const tree = renderStepper({ value: 80, min: 1, max: 80, step: 1, onChange, ariaLabel: 'Size' });
+    expect(String(tree.props.class ?? '')).not.toContain('slider-stepper-mixed');
+
+    const value = byClass(tree, 'slider-stepper-value')!;
+    const typed = { value: '80' };
+    (value.props as any).onBlur({ currentTarget: typed });
+    expect(onChange).not.toHaveBeenCalled();
+
+    const plus = findAll(tree, (vnode) => vnode.props?.['data-testid'] === 'slider-stepper-plus')[0]!;
+    (plus.props as any).onClick({ detail: 0 });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * 261010-nzu — color-only token migration. Every color slot resolves through a
  * sidebar theme var whose CSS fallback is the exact pre-quick Studio literal,
  * so a surface that does not define the vars (Studio) renders byte-identical

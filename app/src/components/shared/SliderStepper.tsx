@@ -54,6 +54,14 @@ export interface SliderStepperProps {
    * surface). The knob still follows the pointer through a local draft.
    */
   commitOnRelease?: boolean;
+  /**
+   * quick 261024-p5q: the selected strokes disagree. The readout shows
+   * "Mixed", the track neutralizes, and the equality guard is bypassed in
+   * every emission path so the first gesture always writes — including a
+   * release that lands exactly on the representative value. Every non-mixed
+   * path stays byte-identical.
+   */
+  mixed?: boolean;
   /** Second row under the bar — the fade-curve select lives here. */
   below?: ComponentChildren;
   id?: string;
@@ -110,6 +118,15 @@ const VALUE_STYLE: CSSProperties = {
   textAlign: 'center',
   color: 'var(--sidebar-text-primary, #eceff2)',
   fontVariantNumeric: 'tabular-nums',
+};
+
+/** quick 261024-p5q: the undetermined readout (mixed selection). */
+const MIXED_DISPLAY = 'Mixed';
+
+/** Inline mixed treatment on the existing value box — no CSS file change. */
+const MIXED_VALUE_STYLE: CSSProperties = {
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontStyle: 'italic',
 };
 
 const BAR_ROW_STYLE: CSSProperties = {
@@ -242,6 +259,7 @@ export function SliderStepper({
   onFocus,
   onBlur,
   commitOnRelease,
+  mixed = false,
   below,
   id,
   class: className,
@@ -256,7 +274,7 @@ export function SliderStepper({
   const draftRef = useRef(signal<number | null>(null));
   const draft = draftRef.current;
 
-  const display = formatStepperValue(value, step, precision, presets);
+  const display = mixed ? MIXED_DISPLAY : formatStepperValue(value, step, precision, presets);
 
   const trackFloor = sliderMin ?? min ?? 0;
   const trackCeiling = sliderMax ?? max ?? Math.max(value, trackFloor + 1);
@@ -292,12 +310,12 @@ export function SliderStepper({
         stopCoalescing();
         return;
       }
-      if (next !== value) onChange(next);
+      if (next !== value || mixed) onChange(next);
       return;
     }
     const effectiveStep = resolveStep ? resolveStep(base) : step;
     const next = clampToStep(base + direction * effectiveStep, effectiveStep, min, max);
-    if (next !== value) onChange(next);
+    if (next !== value || mixed) onChange(next);
   };
 
   const handlePressStart = (direction: 1 | -1) => (event: TargetedPointerEvent<HTMLButtonElement>) => {
@@ -354,7 +372,7 @@ export function SliderStepper({
       draft.value = next;
       return;
     }
-    if (next !== value) onChange(next);
+    if (next !== value || mixed) onChange(next);
   };
 
   const handleTrackPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
@@ -377,7 +395,7 @@ export function SliderStepper({
     if (commitOnRelease && draft.value !== null) {
       const next = draft.value;
       draft.value = null;
-      if (next !== value) onChange(next);
+      if (next !== value || mixed) onChange(next);
     }
     stopCoalescing();
   };
@@ -385,7 +403,7 @@ export function SliderStepper({
   const commitInput = (element: HTMLInputElement) => {
     const next = commitStepperInput(element.value, { step, presets, resolveStep, freeEntry, min, max });
     if (next !== null) {
-      if (next !== value) onChange(next);
+      if (next !== value || mixed) onChange(next);
       element.value = formatStepperValue(next, step, precision, presets);
     } else {
       element.value = display;
@@ -394,15 +412,24 @@ export function SliderStepper({
 
   // 48-06: while a release-commit drag is live the knob follows `draft.value`
   // (a signal, so the move re-renders it) — the parent value only moves on release.
+  // 261024-p5q: a mixed selection is neutral until the first draft exists.
+  const neutralMixed = mixed && draft.value === null;
   const shownFraction = (() => {
+    if (neutralMixed) return 0;
     const shown = draft.value ?? value;
     const span = trackSpan;
     if (span <= 0) return 0;
     return Math.min(1, Math.max(0, (shown - trackFloor) / span));
   })();
 
+  const rootClass = [
+    'slider-stepper',
+    mixed ? 'slider-stepper-mixed' : null,
+    className ?? null,
+  ].filter((token): token is string => token !== null).join(' ');
+
   return (
-    <div id={id} class={className ? `slider-stepper ${className}` : 'slider-stepper'} style={FIELD_STYLE} data-testid="slider-stepper">
+    <div id={id} class={rootClass} style={FIELD_STYLE} data-testid="slider-stepper">
       <div class="slider-stepper-label-row" style={LABEL_ROW_STYLE}>
         <div class="slider-stepper-label-cell" style={LABEL_CELL_STYLE}>
           <span class="slider-stepper-label" style={LABEL_STYLE}>{label}</span>
@@ -412,7 +439,7 @@ export function SliderStepper({
           type="text"
           inputMode="decimal"
           class="slider-stepper-value"
-          style={VALUE_STYLE}
+          style={mixed ? { ...VALUE_STYLE, ...MIXED_VALUE_STYLE } : VALUE_STYLE}
           value={display}
           disabled={disabled}
           aria-label={ariaLabel}
@@ -468,7 +495,12 @@ export function SliderStepper({
             <div class="slider-stepper-track-line" style={TRACK_LINE_STYLE} />
             <div
               class="slider-stepper-progress"
-              style={{ ...PROGRESS_STYLE, width: `calc((100% - 11px) * ${shownFraction} + 5.5px)` }}
+              style={{
+                ...PROGRESS_STYLE,
+                width: neutralMixed
+                  ? '0px'
+                  : `calc((100% - 11px) * ${shownFraction} + 5.5px)`,
+              }}
             />
             <div
               class="slider-stepper-knob"

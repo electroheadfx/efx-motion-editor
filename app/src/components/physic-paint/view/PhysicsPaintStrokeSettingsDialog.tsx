@@ -3,8 +3,11 @@ import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { SliderStepper } from '../../shared/SliderStepper';
+import { RightPanelColorTab } from './RightPanelColorTab';
 import {
   buildAppearancePatch,
+  buildColorPatch,
+  readColorField,
   readNumericField,
   resolveStrokeSettingsOpen,
   shouldMarkSawEmpty,
@@ -29,9 +32,15 @@ import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition
  * INSIDE the dialog owns the key.
  *
  * Signals only: ref-held signals, no React-style component state, no
- * render-body signal writes, all styling inline (no CSS file change). Task 1
- * ships the Brush Size row end-to-end; the remaining rows land in Task 2 and
- * geometry in Task 3.
+ * render-body signal writes, all styling inline (no CSS file change). The
+ * full Paint field set and the shared Color control ship here; geometry lands
+ * in Task 3.
+ *
+ * Color: the shared RightPanelColorTab is imported UNMODIFIED. Its live
+ * onColorChange writes a dialog draft signal only; the wrapper's boundary
+ * handlers (pointerup, change, Enter, blur-capture, click) perform the ONE
+ * stroke write per gesture. The dedupe baseline is keyed by the selection Set
+ * so a membership change re-arms the first commit.
  */
 
 interface DragOffset {
@@ -113,6 +122,48 @@ const SECTION_TITLE_STYLE: CSSProperties = {
   color: 'var(--sidebar-text-secondary, #9aa5b1)',
 };
 
+const PAINT_ROW_LABEL_STYLE: CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 600,
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+};
+
+const SEGMENT_LABEL_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+  marginBottom: '4px',
+};
+
+const MIXED_CAPTION_STYLE: CSSProperties = {
+  fontSize: '10px',
+  fontStyle: 'italic',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+};
+
+const SEGMENT_GROUP_STYLE: CSSProperties = {
+  display: 'flex',
+  gap: '4px',
+};
+
+const SEGMENT_STYLE: CSSProperties = {
+  flex: '1 1 0',
+  height: '20px',
+  padding: '0',
+  borderRadius: '3px',
+  border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.55))',
+  background: 'transparent',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontSize: '10px',
+  cursor: 'pointer',
+};
+
+const SEGMENT_ACTIVE_STYLE: CSSProperties = {
+  background: 'var(--color-accent, #2f67e8)',
+  borderColor: 'var(--color-accent, #2f67e8)',
+  color: '#ffffff',
+};
+
 export function PhysicsPaintStrokeSettingsDialog({
   bundle,
 }: PhysicsPaintStrokeSettingsDialogProps) {
@@ -122,6 +173,11 @@ export function PhysicsPaintStrokeSettingsDialog({
   const dragOffsetRef = useRef<Signal<DragOffset | null> | null>(null);
   if (!dragOffsetRef.current) dragOffsetRef.current = signal(null);
   const dragStartRef = useRef<DragStart | null>(null);
+  /** The picker's live colour — a draft only; strokes move at a boundary. */
+  const colorDraftRef = useRef<Signal<{ selection: ReadonlySet<number>; color: string } | null> | null>(null);
+  if (!colorDraftRef.current) colorDraftRef.current = signal(null);
+  /** Per-selection dedupe baseline: the last colour this selection committed. */
+  const colorCommittedRef = useRef<{ selection: ReadonlySet<number>; color: string } | null>(null);
 
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
@@ -173,8 +229,49 @@ export function PhysicsPaintStrokeSettingsDialog({
   if (appearances.length === 0) return null;
 
   const fields = strokeSettingsFields(engineModule);
-  const sizeField = fields[0]!;
-  const sizeReading = readNumericField(appearances, ids, sizeField);
+  const numericFields = fields.filter((field) => field.kind === 'numeric');
+  const segmentedFields = fields.filter((field) => field.kind === 'segmented');
+
+  const colorReading = readColorField(appearances, ids);
+  const draftState = colorDraftRef.current.value;
+  const draftColor = draftState && draftState.selection === selection ? draftState.color : null;
+  const shownColor = draftColor ?? colorReading.color;
+
+  /**
+   * The shared picker's live changes land here ONLY: a dialog draft. Strokes
+   * are written by {@link commitColor} at a gesture boundary, never per tick.
+   */
+  const writeColorDraft = (nextColor: string) => {
+    const current = colorDraftRef.current!.value;
+    if (current && current.selection === selection && current.color === nextColor) return;
+    colorDraftRef.current!.value = { selection, color: nextColor };
+  };
+
+  /**
+   * ONE stroke write per boundary. The dedupe baseline is keyed by the
+   * selection Set: a membership change starts unset, so a mixed selection's
+   * first commit always writes (even when it reproduces the representative
+   * colour). Repeated boundaries in one gesture are idempotent.
+   */
+  const commitColor = () => {
+    const current = colorDraftRef.current!.value;
+    const nextColor = current && current.selection === selection
+      ? current.color
+      : colorReading.color;
+    const baseline = colorCommittedRef.current;
+    if (baseline && baseline.selection === selection && baseline.color === nextColor) return;
+    colorCommittedRef.current = { selection, color: nextColor };
+    void bundle.applyAppearance(ids, buildColorPatch(nextColor));
+  };
+
+  /**
+   * Preact runs `onBlurCapture` BEFORE the focused field's own `onBlur`, so a
+   * hex commit would still be only in the field's state. Defer one microtask
+   * to commit the draft the field handler just wrote.
+   */
+  const onColorBlurCapture = () => {
+    queueMicrotask(commitColor);
+  };
 
   const offset = dragOffsetRef.current.value;
   const applied = offset && offset.selection === selection ? offset : null;
@@ -258,17 +355,93 @@ export function PhysicsPaintStrokeSettingsDialog({
 
       <div style={SECTION_STYLE}>
         <div style={SECTION_TITLE_STYLE}>Paint</div>
-        <div data-testid="stroke-settings-size">
-          <SliderStepper
-            label={sizeField.label}
-            ariaLabel={sizeField.label}
-            value={sizeReading.value}
-            min={sizeField.min}
-            max={sizeField.max}
-            step={sizeField.step}
-            commitOnRelease
-            onChange={(value) => {
-              void bundle.applyAppearance(ids, buildAppearancePatch(engineModule, sizeField.key, value));
+        {numericFields.map((field) => {
+          const reading = readNumericField(appearances, ids, field);
+          return (
+            <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
+              <SliderStepper
+                label={field.label}
+                ariaLabel={field.label}
+                value={reading.value}
+                min={field.min}
+                max={field.max}
+                step={field.step}
+                mixed={reading.mixed}
+                commitOnRelease
+                onChange={(value) => {
+                  void bundle.applyAppearance(
+                    ids,
+                    buildAppearancePatch(engineModule, field.key, value),
+                  );
+                }}
+              />
+            </div>
+          );
+        })}
+        {segmentedFields.map((field) => {
+          const reading = readNumericField(appearances, ids, field);
+          return (
+            <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
+              <div style={SEGMENT_LABEL_ROW_STYLE}>
+                <span style={PAINT_ROW_LABEL_STYLE}>{field.label}</span>
+                {reading.mixed ? (
+                  <span
+                    data-testid={`stroke-settings-${field.key}-mixed`}
+                    style={MIXED_CAPTION_STYLE}
+                  >
+                    Mixed
+                  </span>
+                ) : null}
+              </div>
+              <div role="group" aria-label={field.label} style={SEGMENT_GROUP_STYLE}>
+                {(field.options ?? []).map((option) => {
+                  const active = !reading.mixed && reading.value === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      data-testid={`stroke-settings-${field.key}-option-${option.value}`}
+                      aria-pressed={active}
+                      style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                      onClick={() => {
+                        void bundle.applyAppearance(
+                          ids,
+                          buildAppearancePatch(engineModule, field.key, option.value),
+                        );
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={SECTION_STYLE}>
+        <div style={SECTION_TITLE_STYLE}>Color</div>
+        <div
+          data-testid="stroke-settings-color"
+          onPointerUp={commitColor}
+          onChange={commitColor}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitColor();
+          }}
+          onBlurCapture={onColorBlurCapture}
+          onClick={commitColor}
+        >
+          {colorReading.mixed ? (
+            <div data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
+              Mixed
+            </div>
+          ) : null}
+          <RightPanelColorTab
+            color={shownColor}
+            opacity={100}
+            onColorChange={(nextColor) => {
+              writeColorDraft(nextColor);
             }}
           />
         </div>

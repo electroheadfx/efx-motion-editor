@@ -224,12 +224,15 @@ import {
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
   aquarelleStrokesOnFrame,
+  beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarelleReorderEdit,
   beginAquarelleTransformEdit,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
+  listSelectableAquarelleStrokes,
+  readAquarelleStrokeAppearance,
   restoreAquarelleEditSnapshot,
   restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
@@ -5669,15 +5672,23 @@ export function PhysicsPaintStudio() {
   // shared Apply pipeline as delete. One move + its re-bake = ONE
   // `aquarelle-script` ledger entry. Guards are peek-only: the handler must
   // not subscribe the Studio body.
-  const handleAquarelleMoveStrokes = useCallback((ids: readonly number[], dxPx: number, dyPx: number) => {
-    if (isPhysicalMutationLocked()) return;
-    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
-    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
-    if (isAquarelleScriptEditInFlight()) return;
+  //
+  // quick 261024-p5q: returns whether the re-bake succeeded so the Stroke
+  // Settings dialog can advance its geometry session ONLY on a true result.
+  const handleAquarelleMoveStrokes = useCallback(async (
+    ids: readonly number[],
+    dxPx: number,
+    dyPx: number,
+  ): Promise<boolean> => {
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
+    if (isAquarelleScriptEditInFlight()) return false;
     // Stale ids never leak across frames: keep only live strokes of the
     // current edit frame before the batch edit.
-    const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
-    if (frameIds.length === 0) return;
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
+    if (frameIds.length === 0) return false;
     // The delta crosses from canvas pixels to document UV exactly once.
     const delta = aquarelleEnginePixelDeltaToUv(
       { x: dxPx, y: dyPx },
@@ -5686,34 +5697,32 @@ export function PhysicsPaintStudio() {
     // One move = one edit with before/after script snapshots. The ledger
     // records it only after the re-bake succeeds.
     const editId = beginAquarelleMoveEdit(frameIds, delta.x, delta.y);
-    if (editId === null) return;
+    if (editId === null) return false;
     setAquarelleScriptEditInFlight(true);
-    void (async () => {
-      try {
-        // The recorded timeline IS the script (same replay source as delete).
-        const playFrame = launchContextRef.current?.startFrame ?? 0;
-        aquarelleResetSheetRef.current?.();
-        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
-        if (ok) {
-          rotoMoveHistory.recordAquarelleScriptEdit(editId);
-          setLastError(null);
-          clearOwnedScriptApplyRefusal();
-          return;
-        }
-        // Failed re-bake: put the pre-move script back exactly.
-        restoreAquarelleEditSnapshot(editId, 'undo');
-        const error = rotoScript.error.peek();
-        const message = buildRotoScriptApplyRefusalMessage(error)
-          ?? error?.message
-          ?? 'Could not re-apply the watercolor script — the stroke was restored.';
-        setLastError(message);
-        setApplyMessage(message);
-        setApplyStatus('error');
-        scriptApplyRefusalOwnedRef.current = true;
-      } finally {
-        setAquarelleScriptEditInFlight(false);
+    try {
+      // The recorded timeline IS the script (same replay source as delete).
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (ok) {
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        return true;
       }
-    })();
+      // Failed re-bake: put the pre-move script back exactly.
+      restoreAquarelleEditSnapshot(editId, 'undo');
+      const error = rotoScript.error.peek();
+      const message = buildRotoScriptApplyRefusalMessage(error)
+        ?? error?.message
+        ?? 'Could not re-apply the watercolor script — the stroke was restored.';
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+      scriptApplyRefusalOwnedRef.current = true;
+      return false;
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
   }, [
     isPhysicalMutationLocked,
     rotoScript,
@@ -5729,6 +5738,69 @@ export function PhysicsPaintStudio() {
     canvasHeight,
   ]);
 
+  // quick 261024-p5q Task 2: intrinsic / color appearance of the selected
+  // watercolor strokes. Same shape as the move handler: the recorded registry
+  // is replaced (never mutated), the sheet is reset, and the current frame's
+  // script is re-applied through the SAME shared Apply pipeline as
+  // delete/move. One appearance batch + its re-bake = ONE `aquarelle-script`
+  // ledger entry. Returns whether the re-bake succeeded so the Stroke Settings
+  // dialog advances its drafts ONLY on a true result. Guards are peek-only: the
+  // handler must not subscribe the Studio body.
+  const handleAquarelleAppearanceStrokes = useCallback(async (
+    ids: readonly number[],
+    patch: ScriptStrokeAppearancePatch,
+  ): Promise<boolean> => {
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
+    if (isAquarelleScriptEditInFlight()) return false;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
+    if (frameIds.length === 0) return false;
+    // One appearance batch = one edit with before/after script snapshots. The
+    // ledger records it only after the re-bake succeeds.
+    const editId = beginAquarelleAppearanceEdit(frameIds, patch);
+    if (editId === null) return false;
+    setAquarelleScriptEditInFlight(true);
+    try {
+      // The recorded timeline IS the script (same replay source as delete).
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (ok) {
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        return true;
+      }
+      // Failed re-bake: put the pre-edit appearance back exactly.
+      restoreAquarelleEditSnapshot(editId, 'undo');
+      const error = rotoScript.error.peek();
+      const message = buildRotoScriptApplyRefusalMessage(error)
+        ?? error?.message
+        ?? 'Could not re-apply the watercolor script — the stroke settings were restored.';
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+      scriptApplyRefusalOwnedRef.current = true;
+      return false;
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
+
   // 261024-mz5 Task 3: corner-scale / top-rotate of the whole watercolor
   // selection. The overlay wrote only the live preview during the gesture; this
   // release path transforms every recorded stroke + its payload-timeline entry
@@ -5736,18 +5808,22 @@ export function PhysicsPaintStudio() {
   // through the SAME shared Apply pipeline as delete/move. One transform + its
   // re-bake = ONE `aquarelle-script` ledger entry. Guards are peek-only: the
   // handler must not subscribe the Studio body.
-  const handleAquarelleTransformStrokes = useCallback((
+  //
+  // quick 261024-p5q: returns whether the re-bake succeeded so the Stroke
+  // Settings dialog advances its geometry session ONLY on a true result.
+  const handleAquarelleTransformStrokes = useCallback(async (
     ids: readonly number[],
     transform: ScriptStrokeTransform,
-  ) => {
-    if (isPhysicalMutationLocked()) return;
-    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
-    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
-    if (isAquarelleScriptEditInFlight()) return;
+  ): Promise<boolean> => {
+    if (isPhysicalMutationLocked()) return false;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return false;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return false;
+    if (isAquarelleScriptEditInFlight()) return false;
     // Stale ids never leak across frames: keep only live strokes of the
     // current edit frame before the batch edit.
-    const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
-    if (frameIds.length === 0) return;
+    const playFrame = launchContextRef.current?.startFrame ?? 0;
+    const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
+    if (frameIds.length === 0) return false;
     // The centre AND the scale anchor cross from canvas pixels to document UV
     // exactly once. uv y points UP, so the screen angle is NEGATED; scale is
     // sign-invariant. Uniform corner scale carries anchor == centre.
@@ -5772,34 +5848,32 @@ export function PhysicsPaintStudio() {
       scaleX: transform.scaleX,
       scaleY: transform.scaleY,
     });
-    if (editId === null) return;
+    if (editId === null) return false;
     setAquarelleScriptEditInFlight(true);
-    void (async () => {
-      try {
-        // The recorded timeline IS the script (same replay source as delete).
-        const playFrame = launchContextRef.current?.startFrame ?? 0;
-        aquarelleResetSheetRef.current?.();
-        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
-        if (ok) {
-          rotoMoveHistory.recordAquarelleScriptEdit(editId);
-          setLastError(null);
-          clearOwnedScriptApplyRefusal();
-          return;
-        }
-        // Failed re-bake: put the pre-transform script back exactly.
-        restoreAquarelleEditSnapshot(editId, 'undo');
-        const error = rotoScript.error.peek();
-        const message = buildRotoScriptApplyRefusalMessage(error)
-          ?? error?.message
-          ?? 'Could not re-apply the watercolor script — the stroke was restored.';
-        setLastError(message);
-        setApplyMessage(message);
-        setApplyStatus('error');
-        scriptApplyRefusalOwnedRef.current = true;
-      } finally {
-        setAquarelleScriptEditInFlight(false);
+    try {
+      // The recorded timeline IS the script (same replay source as delete).
+      aquarelleResetSheetRef.current?.();
+      const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      if (ok) {
+        rotoMoveHistory.recordAquarelleScriptEdit(editId);
+        setLastError(null);
+        clearOwnedScriptApplyRefusal();
+        return true;
       }
-    })();
+      // Failed re-bake: put the pre-transform script back exactly.
+      restoreAquarelleEditSnapshot(editId, 'undo');
+      const error = rotoScript.error.peek();
+      const message = buildRotoScriptApplyRefusalMessage(error)
+        ?? error?.message
+        ?? 'Could not re-apply the watercolor script — the stroke was restored.';
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+      scriptApplyRefusalOwnedRef.current = true;
+      return false;
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+    }
   }, [
     isPhysicalMutationLocked,
     rotoScript,
@@ -7225,17 +7299,42 @@ export function PhysicsPaintStudio() {
   );
   // quick 261024-p5q: the Stroke Settings dialog bundle for the ACTIVE module.
   // Callbacks only — this body NEVER reads the stroke-selection signals (the
-  // dialog leaf subscribes them). Water color supplies its bundle in Task 2.
+  // dialog leaf subscribes them).
   const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(
-    [activeModule.value, settings.tool, launchContext?.startFrame ?? 0, canvasWidth, canvasHeight],
+    [
+      activeModule.value,
+      settings.tool,
+      launchContext?.startFrame ?? 0,
+      canvasWidth,
+      canvasHeight,
+      handleAquarelleAppearanceStrokes,
+      handleAquarelleMoveStrokes,
+      handleAquarelleTransformStrokes,
+    ],
     () => {
-      if (activeModule.value === 'watercolor') return null;
-      const playFrame = getBrushScriptPlayFrame();
+      const playFrame = launchContextRef.current?.startFrame ?? 0;
       const canvasSize = { width: canvasWidth, height: canvasHeight };
+      if (activeModule.value === 'watercolor') {
+        const bundle: StrokeSettingsDialogBundle = {
+          module: 'watercolor',
+          // Water color's edition surface is Select mode, never a Move tool.
+          brushMoveActive: false,
+          playFrame,
+          canvasSize,
+          listStrokes: (frame, size) => listSelectableAquarelleStrokes(frame, size),
+          readAppearance: (ids, frame) => readAquarelleStrokeAppearance(ids, frame),
+          applyAppearance: (ids, patch: ScriptStrokeAppearancePatch) =>
+            handleAquarelleAppearanceStrokes(ids, patch),
+          moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
+          transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
+        };
+        return bundle;
+      }
+      const brushPlayFrame = getBrushScriptPlayFrame();
       const bundle: StrokeSettingsDialogBundle = {
         module: 'brush',
         brushMoveActive: settings.tool === 'move',
-        playFrame,
+        playFrame: brushPlayFrame,
         canvasSize,
         listStrokes: (frame, size) => listBrushScriptStrokes(frame, size),
         readAppearance: (ids, frame) => readBrushScriptStrokeAppearance(ids, frame),

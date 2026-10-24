@@ -60,10 +60,15 @@ import {
   stepAquarelleStrokeInScript,
   transformAquarelleStrokesInScript,
   translateAquarelleStrokesInScript,
+  updateAquarelleStrokesInScript,
   type AquarelleStackStepDirection,
   type AquarelleStrokeRegistrySnapshot,
   type AquarelleStrokeTransform,
 } from './aquarelleRecordState';
+import type {
+  ScriptStrokeAppearance,
+  ScriptStrokeAppearancePatch,
+} from './strokeSettingsModel';
 
 // 261023-g4p: the ONE shared edition module (scriptStrokeEdition) owns the
 // geometry, the select/drag signals and the group types. They are re-exported
@@ -112,6 +117,31 @@ export function aquarelleStrokesOnFrame(
     if (isAquarelleStrokeDeleted(mutationId)) continue;
     if ((stroke.playFrame ?? 0) !== playFrame) continue;
     out.push(mutationId);
+  }
+  return out;
+}
+
+/**
+ * quick 261024-p5q: the Water color half of the Stroke Settings hydration.
+ * Narrow revision read (a commit re-reads the dialog), frame/deleted filter
+ * through `aquarelleStrokesOnFrame`, and the CALLER's id order preserved so
+ * mixed readings always pick the first-selected stroke. Params are copied.
+ */
+export function readAquarelleStrokeAppearance(
+  mutationIds: readonly number[],
+  playFrame: number,
+): ScriptStrokeAppearance[] {
+  void aquarelleStrokesRevision.value;
+  const entries = getRecordedAquarelleStrokeEntries();
+  const out: ScriptStrokeAppearance[] = [];
+  for (const mutationId of aquarelleStrokesOnFrame(mutationIds, playFrame)) {
+    const stroke = entries.get(mutationId);
+    if (!stroke) continue;
+    out.push({
+      mutationId,
+      params: { ...stroke.params },
+      color: typeof stroke.color === 'string' && stroke.color.length > 0 ? stroke.color : null,
+    });
   }
   return out;
 }
@@ -459,6 +489,29 @@ export function beginAquarelleMoveEdit(
   if (ids.length === 0) return null;
   const before = captureAquarelleSnapshot();
   if (translateAquarelleStrokesInScript(ids, dxUv, dyUv) === 0) return null;
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * quick 261024-p5q: set canonical params/colour on one stroke or the whole
+ * selection as a single edit (update + its re-bake = ONE `aquarelle-script`
+ * ledger command). Same ghost clear, in-flight guard and snapshot pair as
+ * move/transform. The selection is kept — every stroke still exists. Returns
+ * an edit id or null when refused (an empty or zero-change batch stores
+ * nothing).
+ */
+export function beginAquarelleAppearanceEdit(
+  mutationIds: number | readonly number[],
+  patch: ScriptStrokeAppearancePatch,
+): number | null {
+  // An appearance commit must never leave a released ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const ids = normalizeAquarelleMutationIds(mutationIds);
+  if (ids.length === 0) return null;
+  const before = captureAquarelleSnapshot();
+  if (updateAquarelleStrokesInScript(ids, patch) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

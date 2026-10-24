@@ -530,9 +530,241 @@ describe('261024-p5q dialog shell', () => {
     expect(dialogSource).toContain('data-testid="stroke-settings-dialog"');
     expect(dialogSource).toContain('data-testid="stroke-settings-header"');
     expect(dialogSource).toContain('data-testid="stroke-settings-close"');
-    expect(dialogSource).toContain('stroke-settings-size');
+    expect(dialogSource).toContain('stroke-settings-${field.key}');
     expect(dialogSource).toContain('scriptSelectedStrokeIds.value');
     expect(dialogSource).not.toContain('useState');
-    expect(dialogSource).not.toContain('RightPanelColorTab');
+  });
+});
+
+// ============================================================
+//  261024-p5q Task 2 — the full Paint field set, mixed chrome and
+//  the shared color control. The picker is imported UNMODIFIED:
+//  live changes feed a dialog draft only, and one boundary handler
+//  writes every selected stroke exactly once.
+// ============================================================
+
+describe('261024-p5q dialog fields and shared color', () => {
+  it('renders every brush Paint field as a release-commit SliderStepper', () => {
+    const { bundle, calls } = createBundle();
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    for (const field of BRUSH_SETTINGS_FIELDS) {
+      if (field.kind !== 'numeric') continue;
+      const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
+      expect(slider, field.key).toBeDefined();
+      expect(slider!.props.commitOnRelease).toBe(true);
+      expect(slider!.props.min).toBe(field.min);
+      expect(slider!.props.max).toBe(field.max);
+      expect(slider!.props.step).toBe(field.step);
+      expect(slider!.props.mixed).toBe(false);
+      expect(findByTestId(tree, `stroke-settings-${field.key}`), field.key).toBeDefined();
+    }
+
+    // An untouched row never writes; one row's onChange writes only that key.
+    expect(calls).toEqual([]);
+    const opacity = findComponent(tree, (props) => props.ariaLabel === 'Opacity')!;
+    (opacity.props.onChange as (value: number) => void)(55);
+    expect(calls).toEqual([{ ids: [7], patch: { params: { opacity: 55 } } }]);
+  });
+
+  it('renders the full water color field set in canonical units', () => {
+    const { bundle, calls } = createBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      readAppearance: (ids) => ids.map((id) => appearance(id, {
+        size: 20,
+        load: 60,
+        water: 50,
+        flow: 50,
+        bleed: 50,
+        edge: 50,
+        granulation: 50,
+        dry: 50,
+      })),
+    });
+    setScriptSelectMode(true);
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+
+    for (const field of WATERCOLOR_SETTINGS_FIELDS) {
+      const slider = findComponent(tree, (props) => props.ariaLabel === field.label);
+      expect(slider, field.key).toBeDefined();
+      expect(slider!.props.mixed).toBe(false);
+      expect(slider!.props.value).toBe(
+        field.key === 'size' ? 20 : field.key === 'load' ? 60 : 50,
+      );
+    }
+
+    const load = findComponent(tree, (props) => props.ariaLabel === 'Pigment')!;
+    (load.props.onChange as (value: number) => void)(70);
+    expect(calls).toEqual([{ ids: [7], patch: { params: { load: 70 } } }]);
+  });
+
+  it('shows Mixed on differing numeric rows and on the smoothing group', () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(id, {
+        size: id === 7 ? 40 : 20,
+        opacity: 100,
+        edgeDetail: 50,
+        pickup: 0,
+        antiAlias: id === 7 ? 0 : 2,
+      }, id === 7 ? '#ff0000' : '#00ff00')),
+    });
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialog(bundle);
+
+    const size = findComponent(tree, (props) => props.ariaLabel === 'Size')!;
+    expect(size.props.mixed).toBe(true);
+    // The representative is the FIRST-SELECTED stroke, not registry order.
+    expect(size.props.value).toBe(40);
+
+    expect(findByTestId(tree, 'stroke-settings-smoothing-mixed')).toBeDefined();
+    expect(
+      findByTestId(tree, 'stroke-settings-smoothing-option-1')!.props['aria-pressed'],
+    ).toBe(false);
+    (findByTestId(tree, 'stroke-settings-smoothing-option-3')!.props.onClick as () => void)();
+    expect(calls).toEqual([{ ids: [7, 9], patch: { params: { antiAlias: 3 } } }]);
+  });
+
+  it('marks the agreed smoothing segment active and hides the Mixed caption', () => {
+    const { bundle } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(id, {
+        size: 12,
+        opacity: 100,
+        edgeDetail: 50,
+        pickup: 0,
+        antiAlias: 2,
+      })),
+    });
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-smoothing-mixed')).toBeUndefined();
+    expect(
+      findByTestId(tree, 'stroke-settings-smoothing-option-2')!.props['aria-pressed'],
+    ).toBe(true);
+  });
+
+  it('wraps the shared color tab with the first-selected colour and a Mixed badge', () => {
+    const { bundle } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(
+        id,
+        { size: 12 },
+        id === 7 ? '#ff0000' : '#00ff00',
+      )),
+    });
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialog(bundle);
+
+    const colorTab = findComponent(
+      tree,
+      (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+    );
+    expect(colorTab, 'RightPanelColorTab').toBeDefined();
+    expect(colorTab!.props.color).toBe('#ff0000');
+    expect(findByTestId(tree, 'stroke-settings-color-mixed')).toBeDefined();
+  });
+
+  it('live colour changes feed the draft only; one boundary writes once', () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(
+        id,
+        { size: 12 },
+        id === 7 ? '#ff0000' : '#00ff00',
+      )),
+    });
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialog(bundle);
+    const colorTab = findComponent(
+      tree,
+      (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+    )!;
+
+    (colorTab.props.onColorChange as (color: string, opacity: number) => void)('#00ff00', 100);
+    expect(calls).toEqual([]); // the live change never writes strokes
+
+    const withDraft = renderDialog(bundle);
+    const draftTab = findComponent(
+      withDraft,
+      (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+    )!;
+    expect(draftTab.props.color).toBe('#00ff00');
+
+    const section = findByTestId(withDraft, 'stroke-settings-color')!;
+    (section.props.onPointerUp as () => void)();
+    expect(calls).toEqual([{ ids: [7, 9], patch: { color: '#00ff00' } }]);
+
+    // Repeated boundaries in the same gesture stay idempotent.
+    (section.props.onPointerUp as () => void)();
+    (section.props.onClick as () => void)();
+    expect(calls).toEqual([{ ids: [7, 9], patch: { color: '#00ff00' } }]);
+  });
+
+  it('a mixed hydrated colour always writes on the first commit, even unchanged', () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(
+        id,
+        { size: 12 },
+        id === 7 ? '#ff0000' : '#00ff00',
+      )),
+    });
+    setScriptStrokeSelection([7, 9]);
+    const tree = renderDialog(bundle);
+    const section = findByTestId(tree, 'stroke-settings-color')!;
+    (section.props.onPointerUp as () => void)();
+    expect(calls).toEqual([{ ids: [7, 9], patch: { color: '#ff0000' } }]);
+  });
+
+  it('the dedupe baseline resets on every selection change', () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#ff0000')),
+    });
+    setScriptStrokeSelection([7]);
+    const first = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
+    (first.props.onPointerUp as () => void)();
+    expect(calls).toHaveLength(1);
+
+    // Same colour, same ids: idempotent.
+    const again = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
+    (again.props.onPointerUp as () => void)();
+    expect(calls).toHaveLength(1);
+
+    // A new selection Set is a new baseline — the first commit writes again.
+    setScriptStrokeSelection([7, 9]);
+    const nextSelection = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
+    (nextSelection.props.onPointerUp as () => void)();
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual({ ids: [7, 9], patch: { color: '#ff0000' } });
+  });
+
+  it('the blur boundary commits the draft after the hex field handler ran', async () => {
+    const { bundle, calls } = createBundle({
+      readAppearance: (ids) => ids.map((id) => appearance(id, { size: 12 }, '#ff0000')),
+    });
+    setScriptStrokeSelection([7]);
+    const tree = renderDialog(bundle);
+    const colorTab = findComponent(
+      tree,
+      (props) => typeof props.onColorChange === 'function' && props.opacity === 100,
+    )!;
+    (colorTab.props.onColorChange as (color: string, opacity: number) => void)('#00ff00', 100);
+
+    const section = findByTestId(renderDialog(bundle), 'stroke-settings-color')!;
+    (section.props.onBlurCapture as () => void)();
+    // The capture phase runs BEFORE the hex field's own onBlur, so the commit
+    // is deferred one microtask — no write from the stale draft.
+    expect(calls).toEqual([]);
+    await Promise.resolve();
+    expect(calls).toEqual([{ ids: [7], patch: { color: '#00ff00' } }]);
+  });
+
+  it('structural pins: shared picker import only, no Studio writes, no useState', () => {
+    expect(dialogSource).toContain("import { RightPanelColorTab } from './RightPanelColorTab'");
+    expect(dialogSource).toContain('data-testid="stroke-settings-color"');
+    expect(dialogSource).not.toContain('useState');
+    expect(dialogSource).not.toContain('physicsPaintStudio.css');
+    expect(dialogSource).not.toContain('paintStore');
+    expect(dialogSource).not.toContain('setScriptStrokeSelection');
+    expect(dialogSource).not.toContain('ScriptStrokeEditionPort');
   });
 });
