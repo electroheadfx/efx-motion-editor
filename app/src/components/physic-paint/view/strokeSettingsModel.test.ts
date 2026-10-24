@@ -255,7 +255,7 @@ describe('261024-p5q field registry: the locked per-engine sets', () => {
       'smoothing',
     ]);
     const size = fieldOf(BRUSH_SETTINGS_FIELDS, 'size');
-    expect([size.min, size.max, size.step]).toEqual([1, 400, 1]);
+    expect([size.min, size.max, size.step]).toEqual([1, 800, 1]);
     const opacity = fieldOf(BRUSH_SETTINGS_FIELDS, 'opacity');
     expect([opacity.min, opacity.max, opacity.step]).toEqual([10, 100, 1]);
     const detail = fieldOf(BRUSH_SETTINGS_FIELDS, 'edgeDetail');
@@ -274,7 +274,7 @@ describe('261024-p5q field registry: the locked per-engine sets', () => {
     ]);
   });
 
-  it('water color exposes size (1..400) plus the seven 0..100 canonical globals', () => {
+  it('water color exposes size (1..800) plus the seven 0..100 canonical globals', () => {
     expect(WATERCOLOR_SETTINGS_FIELDS.map((field) => field.key)).toEqual([
       'size',
       'load',
@@ -286,7 +286,7 @@ describe('261024-p5q field registry: the locked per-engine sets', () => {
       'dry',
     ]);
     const size = fieldOf(WATERCOLOR_SETTINGS_FIELDS, 'size');
-    expect([size.min, size.max]).toEqual([1, 400]);
+    expect([size.min, size.max]).toEqual([1, 800]);
     for (const field of WATERCOLOR_SETTINGS_FIELDS) {
       if (field.key === 'size') continue;
       expect([field.key, field.min, field.max]).toEqual([field.key, 0, 100]);
@@ -550,7 +550,8 @@ describe('261024-p5q dialog shell', () => {
     expect(slider!.props.commitOnRelease).toBe(true);
     expect(slider!.props.value).toBe(12);
     expect(slider!.props.min).toBe(1);
-    expect(slider!.props.max).toBe(400);
+    expect(slider!.props.max).toBe(800);
+    expect(slider!.props.allowOutOfRangeEntry).toBe(true);
 
     (slider!.props.onChange as (value: number) => void)(42);
     expect(calls).toEqual([{ ids: [7, 9], patch: { params: { size: 42 } } }]);
@@ -713,20 +714,30 @@ describe('261024-p5q dialog fields and shared color', () => {
     expect(dialogSource).toContain('data-testid="stroke-settings-header"');
   });
 
-  it('orders the sections Color - Geometry - Paint', () => {
-    const color = dialogSource.indexOf('>Color</div>');
-    const geometry = dialogSource.indexOf('>Geometry</div>');
-    const paint = dialogSource.indexOf('>Paint</div>');
+  it('orders the sections Color - Geometry - Paint under ruled centered titles', () => {
+    const color = dialogSource.indexOf('<RuleSectionHeader text="Color"');
+    const geometry = dialogSource.indexOf('<RuleSectionHeader text="Geometry"');
+    const paint = dialogSource.indexOf('<RuleSectionHeader text="Paint"');
     expect(color).toBeGreaterThan(-1);
     expect(geometry).toBeGreaterThan(color);
     expect(paint).toBeGreaterThan(geometry);
+    expect(dialogSource).toContain("import { RuleSectionHeader } from '../../shared/RuleSectionHeader'");
+    expect(dialogSource).toContain('padding: \'6px 0\'');
   });
 
-  it('pins the UAT ranges: brush size 400, scale 500, position 2000', () => {
-    expect(BRUSH_SETTINGS_FIELDS.find((field) => field.key === 'size')!.max).toBe(400);
+  it('pins the UAT ranges: size 800, scale 500, position 2000', () => {
+    expect(BRUSH_SETTINGS_FIELDS.find((field) => field.key === 'size')!.max).toBe(800);
+    expect(WATERCOLOR_SETTINGS_FIELDS.find((field) => field.key === 'size')!.max).toBe(800);
     expect(STROKE_SCALE_RANGE.max).toBe(500);
     expect(STROKE_POSITION_RANGE).toEqual({ min: 0, max: 2000 });
     expect(dialogSource).toContain('max={STROKE_POSITION_RANGE.max}');
+  });
+
+  it('lets every dialog slider accept typed values beyond the track range', () => {
+    const sliders = dialogSource.match(/<SliderStepper\b/g) ?? [];
+    const freeEntry = dialogSource.match(/allowOutOfRangeEntry/g) ?? [];
+    expect(sliders.length).toBeGreaterThan(0);
+    expect(freeEntry).toHaveLength(sliders.length);
   });
 
   it('structural pins: no picker, no Studio writes, no useState', () => {
@@ -843,15 +854,15 @@ describe('261024-p5q geometry session and deltas', () => {
     expect(second.nextSession.rotationDeg).toBe(10);
   });
 
-  it('clamps to the declared ranges and refuses same-value or non-finite input', () => {
-    const clamped = geometryTransform(
+  it('accepts typed values beyond the track ranges and refuses same-value or non-finite input', () => {
+    const beyond = geometryTransform(
       'uniform',
       5000,
       FRESH_STROKE_GEOMETRY_SESSION,
       center,
     )!;
-    expect(clamped.nextSession.uniformPct).toBe(500);
-    expect(clamped.transform.scaleX).toBe(5);
+    expect(beyond.nextSession.uniformPct).toBe(5000);
+    expect(beyond.transform.scaleX).toBe(50);
 
     const rotation = geometryTransform(
       'rotation',
@@ -859,7 +870,7 @@ describe('261024-p5q geometry session and deltas', () => {
       FRESH_STROKE_GEOMETRY_SESSION,
       center,
     )!;
-    expect(rotation.nextSession.rotationDeg).toBe(360);
+    expect(rotation.nextSession.rotationDeg).toBe(400);
 
     expect(geometryTransform('uniform', 100, FRESH_STROKE_GEOMETRY_SESSION, center)).toBeNull();
     expect(geometryTransform('rotation', 0, FRESH_STROKE_GEOMETRY_SESSION, center)).toBeNull();

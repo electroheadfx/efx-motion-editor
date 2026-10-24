@@ -222,6 +222,39 @@ describe('slider-stepper — track range and commit law stay separate', () => {
     expect(onChange).toHaveBeenCalledWith(100);
   });
 
+  it('allowOutOfRangeEntry accepts typed values and ± steps beyond max, while the track still ends at max', () => {
+    const onChange = vi.fn();
+    const tree = renderStepper({
+      value: 50,
+      min: 1,
+      max: 80,
+      step: 1,
+      onChange,
+      ariaLabel: 'Size',
+      allowOutOfRangeEntry: true,
+    });
+    const value = byClass(tree, 'slider-stepper-value')!;
+    (value.props as any).onBlur({ currentTarget: { value: '1200' } });
+    expect(onChange).toHaveBeenCalledWith(1200);
+
+    const plus = findAll(tree, (vnode) => vnode.props?.['data-testid'] === 'slider-stepper-plus')[0]!;
+    (plus.props as any).onClick({ detail: 0 });
+    expect(onChange).toHaveBeenLastCalledWith(51);
+
+    // The track is display-only: regardless of the free entry, dragging
+    // cannot produce a value outside the track's own range.
+    const track = byClass(tree, 'slider-stepper-track')!;
+    track.props.onPointerDown({
+      clientX: 100,
+      preventDefault: () => {},
+      currentTarget: {
+        setPointerCapture: () => {},
+        getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 22, right: 100, bottom: 22 }),
+      },
+    });
+    expect(onChange).toHaveBeenLastCalledWith(80);
+  });
+
   it('an unparseable entry reverts to the displayed value', () => {
     const onChange = vi.fn();
     const tree = renderStepper({ value: 13, min: 0, onChange });

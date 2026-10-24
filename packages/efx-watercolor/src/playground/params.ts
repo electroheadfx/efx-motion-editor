@@ -1,7 +1,7 @@
 // ============================================================
 //  params.ts — the ONE canonical ↔ vendor Params mapping.
 //
-//  Record stores CANONICAL AQUA-04 globals (size 1..400 px, the
+//  Record stores CANONICAL AQUA-04 globals (size 1..800 px, the
 //  other seven 0..100). Live and bake BOTH map through
 //  toEngineParams() so the two halves cannot drift (A1/A2).
 //  Never store the mapped 0..1 values in the payload.
@@ -42,22 +42,26 @@ function num(v: number | undefined, fallback: number): number {
  * 33..80 band was already flat at the 1.0 vendor ceiling.
  */
 const LEGACY_SIZE_MAX_PX = 80
-/** Largest size the Stroke Settings dialog records. */
-const SIZE_MAX_PX = 400
-/** Vendor footprint scale at 400 px: ~5x the footprint of an 80 px stroke. */
-const SIZE_SCALE_AT_MAX = 1.7325
+/** Largest size the Stroke Settings track shows. */
+const SIZE_MAX_PX = 800
+/** Vendor footprint scale at 800 px: ~10x the footprint of an 80 px stroke. */
+const SIZE_SCALE_AT_MAX = 2.04795
+/** Typed values may exceed the 800 px track; this safety ceiling keeps the
+ *  vendor's exponential footprint finite (≈30k px) for absurd entries. */
+const SIZE_SCALE_HARD_MAX = 4
 
 function sizeToEngineScale(sizePx: number): number {
   if (sizePx <= 32) return Math.max(0, sizePx / 32)
   if (sizePx <= LEGACY_SIZE_MAX_PX) return 1
-  const t = Math.min(1, (sizePx - LEGACY_SIZE_MAX_PX) / (SIZE_MAX_PX - LEGACY_SIZE_MAX_PX))
-  return 1 + t * (SIZE_SCALE_AT_MAX - 1)
+  const t = (sizePx - LEGACY_SIZE_MAX_PX) / (SIZE_MAX_PX - LEGACY_SIZE_MAX_PX)
+  return Math.min(SIZE_SCALE_HARD_MAX, 1 + t * (SIZE_SCALE_AT_MAX - 1))
 }
 
 /**
  * Canonical AQUA-04 globals → vendor `Params` (all 0..1, size may
- * exceed 1 above 80 px). `size` is 1..400 px on the slider; 32 px
- * ≈ 1.0, and the 80..400 band scales up to ≈1.73.
+ * exceed 1 above 80 px). `size` shows 1..800 px on the track; 32 px
+ * ≈ 1.0, and the 80..800 band scales linearly (typed values above
+ * 800 keep growing to a finite safety ceiling).
  */
 export function toEngineParams(
   canonical: Partial<AquarelleCanonicalParams> | Record<string, number> | undefined,

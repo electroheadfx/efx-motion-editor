@@ -4,6 +4,7 @@ import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
 import { SlidersHorizontal, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
+import { RuleSectionHeader } from '../../shared/RuleSectionHeader';
 import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   FRESH_STROKE_GEOMETRY_SESSION,
@@ -113,12 +114,9 @@ const SECTION_STYLE: CSSProperties = {
   gap: '8px',
 };
 
-const SECTION_TITLE_STYLE: CSSProperties = {
-  fontSize: '10px',
-  fontWeight: 700,
-  letterSpacing: '0.06em',
-  textTransform: 'uppercase',
-  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+/** Sidebar Paper-tab rhythm: ruled centered title with breathing room. */
+const SECTION_HEADER_STYLE: CSSProperties = {
+  padding: '6px 0',
 };
 
 const PAINT_ROW_LABEL_STYLE: CSSProperties = {
@@ -384,7 +382,9 @@ export function PhysicsPaintStrokeSettingsDialog({
       <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
         <div style={SCROLL_CONTENT_STYLE}>
           <div style={SECTION_STYLE}>
-            <div style={SECTION_TITLE_STYLE}>Color</div>
+            <div style={SECTION_HEADER_STYLE}>
+              <RuleSectionHeader text="Color" />
+            </div>
             <div style={COLOR_ROW_STYLE} data-testid="stroke-settings-color">
               <span
                 data-testid="stroke-settings-color-thumb"
@@ -401,7 +401,9 @@ export function PhysicsPaintStrokeSettingsDialog({
 
           {liveCenter ? (
             <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
-              <div style={SECTION_TITLE_STYLE}>Geometry</div>
+              <div style={SECTION_HEADER_STYLE}>
+                <RuleSectionHeader text="Geometry" />
+              </div>
               <div data-testid="stroke-settings-geometry-x">
                 <SliderStepper
                   label="X"
@@ -412,6 +414,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   step={1}
                   freeEntry
                   commitOnRelease
+                  allowOutOfRangeEntry
                   onChange={(value) => commitGeometryMove('x', value)}
                 />
               </div>
@@ -425,6 +428,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   step={1}
                   freeEntry
                   commitOnRelease
+                  allowOutOfRangeEntry
                   onChange={(value) => commitGeometryMove('y', value)}
                 />
               </div>
@@ -438,6 +442,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   step={1}
                   freeEntry
                   commitOnRelease
+                  allowOutOfRangeEntry
                   onChange={(value) => commitGeometryTransform('uniform', value)}
                 />
               </div>
@@ -451,6 +456,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   step={1}
                   freeEntry
                   commitOnRelease
+                  allowOutOfRangeEntry
                   onChange={(value) => commitGeometryTransform('scaleX', value)}
                 />
               </div>
@@ -464,6 +470,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   step={1}
                   freeEntry
                   commitOnRelease
+                  allowOutOfRangeEntry
                   onChange={(value) => commitGeometryTransform('scaleY', value)}
                 />
               </div>
@@ -477,6 +484,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                   step={1}
                   freeEntry
                   commitOnRelease
+                  allowOutOfRangeEntry
                   onChange={(value) => commitGeometryTransform('rotation', value)}
                 />
               </div>
@@ -484,7 +492,9 @@ export function PhysicsPaintStrokeSettingsDialog({
           ) : null}
 
           <div style={SECTION_STYLE}>
-            <div style={SECTION_TITLE_STYLE}>Paint</div>
+            <div style={SECTION_HEADER_STYLE}>
+              <RuleSectionHeader text="Paint" />
+            </div>
             {numericFields.map((field) => {
               const reading = readNumericField(appearances, ids, field);
               return (
@@ -498,6 +508,7 @@ export function PhysicsPaintStrokeSettingsDialog({
                     step={field.step}
                     mixed={reading.mixed}
                     commitOnRelease
+                    allowOutOfRangeEntry
                     onChange={(value) => {
                       void bundle.applyAppearance(
                         ids,

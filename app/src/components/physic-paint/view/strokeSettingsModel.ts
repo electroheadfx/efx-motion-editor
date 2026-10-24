@@ -49,7 +49,7 @@ export interface StrokeSettingsField {
 
 /** Brush Paint-tab fields (Move tool). Erase strength and Spread are absent. */
 export const BRUSH_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object.freeze([
-  Object.freeze({ key: 'size', label: 'Size', min: 1, max: 400, step: 1, kind: 'numeric' as const }),
+  Object.freeze({ key: 'size', label: 'Size', min: 1, max: 800, step: 1, kind: 'numeric' as const }),
   Object.freeze({ key: 'opacity', label: 'Opacity', min: 10, max: 100, step: 1, kind: 'numeric' as const }),
   Object.freeze({ key: 'edgeDetail', label: 'Shape detail', min: 0, max: 100, step: 1, kind: 'numeric' as const }),
   Object.freeze({ key: 'pickup', label: 'Blending', min: 0, max: 100, step: 1, kind: 'numeric' as const }),
@@ -76,7 +76,7 @@ export const WATERCOLOR_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object
     key: 'size',
     label: 'Size',
     min: 1,
-    max: 400,
+    max: 800,
     step: 1,
     kind: 'numeric' as const,
     fallback: DEFAULT_CANONICAL_PARAMS.size,
@@ -272,7 +272,7 @@ export const FRESH_STROKE_GEOMETRY_SESSION: StrokeGeometrySession = Object.freez
   rotationDeg: 0,
 });
 
-/** Declared display ranges — typed input and every commit clamp here. */
+/** Track display ranges only — typed commits may exceed them. */
 export const STROKE_SCALE_RANGE = Object.freeze({ min: 10, max: 500 });
 export const STROKE_ROTATION_RANGE = Object.freeze({ min: -360, max: 360 });
 /** X/Y typed absolute targets (canvas px). */
@@ -288,10 +288,6 @@ export interface StrokeGeometryMoveDelta {
 export interface StrokeGeometryTransformResult {
   readonly transform: ScriptStrokeTransform;
   readonly nextSession: StrokeGeometrySession;
-}
-
-function clampRange(value: number, range: { readonly min: number; readonly max: number }): number {
-  return Math.min(range.max, Math.max(range.min, value));
 }
 
 /** Percent displays are user-facing: keep float drift out of the session. */
@@ -318,8 +314,9 @@ export function geometryMoveDelta(
 /**
  * One geometry row's commit. The factor/delta is relative to that row's last
  * APPLIED value; uniform also compounds the single-axis displays. Null means
- * "write nothing" (same value after clamping, non-finite input, zero baseline).
- * Every transform anchors at the selection centre.
+ * "write nothing" (same value, non-finite input, zero baseline). Typed values
+ * may exceed the track ranges — only the track is bounded. Every transform
+ * anchors at the selection centre.
  */
 export function geometryTransform(
   control: StrokeGeometryControl,
@@ -331,7 +328,7 @@ export function geometryTransform(
   if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) return null;
 
   if (control === 'rotation') {
-    const rotationDeg = clampRange(nextValue, STROKE_ROTATION_RANGE);
+    const rotationDeg = nextValue;
     const deltaDeg = rotationDeg - session.rotationDeg;
     if (deltaDeg === 0) return null;
     return {
@@ -349,7 +346,7 @@ export function geometryTransform(
     };
   }
 
-  const nextPct = clampRange(nextValue, STROKE_SCALE_RANGE);
+  const nextPct = nextValue;
   if (control === 'uniform') {
     if (session.uniformPct <= 0) return null;
     const factor = nextPct / session.uniformPct;
@@ -367,8 +364,8 @@ export function geometryTransform(
       },
       nextSession: {
         uniformPct: nextPct,
-        scaleXPct: roundSession(clampRange(session.scaleXPct * factor, STROKE_SCALE_RANGE)),
-        scaleYPct: roundSession(clampRange(session.scaleYPct * factor, STROKE_SCALE_RANGE)),
+        scaleXPct: roundSession(session.scaleXPct * factor),
+        scaleYPct: roundSession(session.scaleYPct * factor),
         rotationDeg: session.rotationDeg,
       },
     };

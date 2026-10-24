@@ -10,10 +10,14 @@ describe('toEngineParams', () => {
     expect(toEngineParams({ size: 80 }).size).toBe(1);
   });
 
-  it('extends the footprint scale monotonically through the 80..400 dialog band', () => {
-    expect(toEngineParams({ size: 240 }).size).toBeCloseTo(1 + (160 / 320) * 0.7325, 12);
-    expect(toEngineParams({ size: 400 }).size).toBeCloseTo(1.7325, 12);
-    expect(toEngineParams({ size: 1000 }).size).toBeCloseTo(1.7325, 12);
+  it('extends the footprint scale monotonically through the 80..800 track band', () => {
+    expect(toEngineParams({ size: 400 }).size).toBeCloseTo(1 + (320 / 720) * 1.04795, 12);
+    expect(toEngineParams({ size: 800 }).size).toBeCloseTo(2.04795, 12);
+  });
+
+  it('keeps growing for typed values above the 800 track, up to the safety ceiling', () => {
+    expect(toEngineParams({ size: 1000 }).size).toBeCloseTo(1 + (920 / 720) * 1.04795, 12);
+    expect(toEngineParams({ size: 100_000 }).size).toBe(4);
   });
 
   it('never lets a non-finite size fall out of the mapping', () => {

@@ -62,6 +62,12 @@ export interface SliderStepperProps {
    * path stays byte-identical.
    */
   mixed?: boolean;
+  /**
+   * 261024-p5q UAT: typed commits and ± steps accept values outside
+   * min..max. The track still spans min..max (the knob pins at the end), so
+   * the UI states the range without rejecting an out-of-range entry.
+   */
+  allowOutOfRangeEntry?: boolean;
   /** Second row under the bar — the fade-curve select lives here. */
   below?: ComponentChildren;
   id?: string;
@@ -260,6 +266,7 @@ export function SliderStepper({
   onBlur,
   commitOnRelease,
   mixed = false,
+  allowOutOfRangeEntry = false,
   below,
   id,
   class: className,
@@ -314,7 +321,9 @@ export function SliderStepper({
       return;
     }
     const effectiveStep = resolveStep ? resolveStep(base) : step;
-    const next = clampToStep(base + direction * effectiveStep, effectiveStep, min, max);
+    const next = allowOutOfRangeEntry
+      ? clampToStep(base + direction * effectiveStep, effectiveStep)
+      : clampToStep(base + direction * effectiveStep, effectiveStep, min, max);
     if (next !== value || mixed) onChange(next);
   };
 
@@ -401,7 +410,14 @@ export function SliderStepper({
   };
 
   const commitInput = (element: HTMLInputElement) => {
-    const next = commitStepperInput(element.value, { step, presets, resolveStep, freeEntry, min, max });
+    const next = commitStepperInput(element.value, {
+      step,
+      presets,
+      resolveStep,
+      freeEntry,
+      min: allowOutOfRangeEntry ? undefined : min,
+      max: allowOutOfRangeEntry ? undefined : max,
+    });
     if (next !== null) {
       if (next !== value || mixed) onChange(next);
       element.value = formatStepperValue(next, step, precision, presets);
