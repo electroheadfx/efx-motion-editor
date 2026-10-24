@@ -2932,8 +2932,9 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(aquarelleStrokeOverlay).toContain('ghostTestId="aquarelle-drag-ghost"');
     expect(scriptStrokeOverlay).toContain('data-testid={props.testId}');
     expect(scriptStrokeOverlay).toContain("pointerEvents: 'auto'");
-    // 261022-tv1: a Cmd release mid-drag must not unmount the ghost surface.
-    expect(scriptStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null) return null;');
+    // 261022-tv1: a Cmd release mid-drag must not unmount the ghost surface;
+    // 261024-mz5 Task 2: nor may an in-flight transform preview.
+    expect(scriptStrokeOverlay).toContain('if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;');
   });
 
   it('applies selection in the pointer handler and reads Alt for delete', () => {
@@ -3443,7 +3444,8 @@ describe('261023-g4p brush Move script-edition surface', () => {
     // settings (captured snapshot first, live globals as the fallback).
     expect(brushScriptEditionPortSource).toContain('function resolvePaintSettings(engine: BrushScriptEditionEngine): PaintRenderSettings {');
     expect(brushScriptEditionPortSource).toContain('return engine.getFramePaintSettings() ?? engine.getPaintRenderSettings();');
-    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(3);
+    // 261024-mz5 Task 2: the transform batch is the fourth flush site.
+    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(4);
     expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(');
     expect(brushScriptEditionPortSource).toContain('resolved.engine.getStrokes(),');
     // The Studio render body never subscribes the store revision. The ONE
@@ -3496,6 +3498,87 @@ describe('261024-mz5 Studio multi-select surface', () => {
     expect(scriptStrokeOverlay).toContain('clearScriptStrokeDrag();');
     expect(scriptStrokeOverlay).not.toContain('useEffect');
     expect(scriptStrokeOverlay).not.toContain('useSignal');
+  });
+});
+
+// 261024-mz5 Task 2: transform handles. The overlay renders the union box and
+// the five handles ONLY when the adapter supplies a commit callback; a handle
+// hit wins over a stroke hit; pointermove writes only the preview signal and
+// pointerup commits through the adapter. The watercolor adapter stays
+// un-wired until Task 3 can commit the re-bake.
+describe('261024-mz5 Studio transform handles surface', () => {
+  it('renders the union box and the five handles only behind an adapter callback', () => {
+    expect(scriptStrokeOverlay).toContain(
+      'onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;',
+    );
+    expect(scriptStrokeOverlay).toContain('data-testid="stroke-transform-box"');
+    expect(scriptStrokeOverlay).toContain('data-testid="stroke-transform-handle-rotate"');
+    expect(scriptStrokeOverlay).toContain('data-testid={`stroke-transform-handle-scale-${handle.id}`}');
+    // The preview keeps the surface mounted mid-gesture.
+    expect(scriptStrokeOverlay).toContain(
+      'if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;',
+    );
+    // Handles are gated on the adapter callback: an adapter that cannot
+    // commit (watercolor, until Task 3) never shows them.
+    expect(scriptStrokeOverlay).toContain('selectionBox !== null && props.onTransformStrokes !== undefined');
+    expect(aquarelleStrokeOverlay).not.toContain('onTransformStrokes');
+  });
+
+  it('hit-tests the handle BEFORE the stroke and previews without mutating', () => {
+    const handleSite = scriptStrokeOverlay.indexOf('hitTestScriptStrokeTransformHandle(point, selectionBox)');
+    const strokeSite = scriptStrokeOverlay.indexOf('props.port.hitTestStroke(point, playFrame, size)');
+    expect(handleSite).toBeGreaterThan(-1);
+    expect(strokeSite).toBeGreaterThan(handleSite);
+
+    expect(scriptStrokeOverlay).toContain('buildScriptStrokeTransform(');
+    expect(scriptStrokeOverlay).toContain('setScriptStrokeTransform({ ids: gesture.mutationIds, ...transform });');
+    // Release clears the preview and commits; cancel clears and commits nothing.
+    expect(scriptStrokeOverlay).toContain('clearScriptStrokeTransform();');
+    expect(scriptStrokeOverlay).toContain('props.onTransformStrokes?.(gesture.mutationIds, transform);');
+    expect(scriptStrokeOverlay).toContain('isIdentityScriptStrokeTransform(transform)');
+    expect(scriptStrokeOverlay).not.toContain('useEffect');
+    expect(scriptStrokeOverlay).not.toContain('useSignal');
+  });
+
+  it('wires the brush adapter, the port and the engine transform core', () => {
+    expect(brushScriptOverlay).toContain('onTransformStrokes={(mutationIds, transform) =>');
+    expect(brushScriptOverlay).toContain('brushScriptEditionPort.transformStrokes(mutationIds, transform)');
+
+    expect(brushScriptEditionPortSource).toContain('export function transformBrushScriptStrokes(');
+    expect(brushScriptEditionPortSource).toContain('resolved.engine.transformStrokes(mutationIds, transform)');
+    expect(brushScriptEditionPortSource).toContain('transformStrokes: (mutationIds, transform) => {');
+    expect(brushScriptEditionPortSource).toContain('transformStrokes(mutationIds: readonly number[], transform: ScriptStrokeTransform): number;');
+    // The shared seam exposes the preview signal as compare-then-write.
+    expect(scriptStrokeEdition).toContain('export function setScriptStrokeTransform(');
+    expect(scriptStrokeEdition).toContain('export function clearScriptStrokeTransform(): void {');
+
+    const transformStart = paintEngineSource.indexOf('public transformStrokes(');
+    expect(transformStart).toBeGreaterThan(-1);
+    const transformBody = paintEngineSource.slice(
+      transformStart,
+      paintEngineSource.indexOf('public getStrokeSerials()', transformStart),
+    );
+    expect(transformBody).toContain('this.flushPendingStrokeFinalizations()');
+    expect(transformBody).toContain('const cos = Math.cos(transform.angleRad)');
+    expect(transformBody).toContain('const sin = Math.sin(transform.angleRad)');
+    expect(transformBody).toContain('const dx = (p.x - transform.centerX) * transform.factor');
+    expect(transformBody).toContain('const dy = (p.y - transform.centerY) * transform.factor');
+    expect(transformBody).toContain('x: transform.centerX + dx * cos - dy * sin,');
+    expect(transformBody).toContain('y: transform.centerY + dx * sin + dy * cos,');
+    // The Move law: redo dies, one 'move', one replay, no checkpoint.
+    expect(transformBody).toContain('this.redoStack = []');
+    expect(transformBody).toContain('this.redrawAfterScriptEdit()');
+    expect(transformBody).toContain("this.notifyCompletedMutation('move', targets[0]!.mutationId)");
+    expect(transformBody).toContain('this.updateMoveHover()');
+    // Identity and non-finite transforms return before any mutation.
+    expect(transformBody).toContain('if (Math.abs(transform.angleRad) < 1e-6 && Math.abs(transform.factor - 1) < 0.01) return 0');
+    expect(transformBody).not.toContain('params =');
+    expect(transformBody).not.toContain('params:');
+  });
+
+  it('keeps the transform signals out of the Studio render body', () => {
+    expect(studio).not.toContain('scriptStrokeTransform');
+    expect(studio).not.toContain('scriptStrokeTransform.value');
   });
 });
 

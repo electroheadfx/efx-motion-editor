@@ -32,6 +32,7 @@ import {
   moveBrushScriptStrokes,
   deleteBrushScriptStroke,
   deleteBrushScriptStrokes,
+  transformBrushScriptStrokes,
   stepBrushScriptStroke,
   brushScriptEditionPort,
 } from './brushScriptEditionPort';
@@ -84,6 +85,7 @@ function createFakeEngine(overrides: Record<string, unknown> = {}) {
     moveStrokes: vi.fn(() => 1),
     deleteStroke: vi.fn(() => true),
     deleteStrokes: vi.fn(() => 1),
+    transformStrokes: vi.fn(() => 1),
     sendStrokeBackward: vi.fn(() => true),
     sendStrokeForward: vi.fn(() => true),
     setStrokeLabelsSuppressed: vi.fn(),
@@ -113,6 +115,15 @@ function configure(
 }
 
 const SIZE = { width: 200, height: 120 };
+
+/** The SAME object identity must reach the engine (one gesture, one transform). */
+const TRANSFORM = {
+  kind: 'rotate' as const,
+  centerX: 100,
+  centerY: 100,
+  angleRad: Math.PI / 4,
+  factor: 1,
+};
 
 beforeEach(() => {
   resetBrushScriptStore();
@@ -349,10 +360,12 @@ describe('edits: lock gate, one engine call, store refresh', () => {
     expect(moveBrushScriptStrokes([7, 9], 10, 5)).toBe(false);
     expect(deleteBrushScriptStroke(7)).toBe(false);
     expect(deleteBrushScriptStrokes([7, 9])).toBe(false);
+    expect(transformBrushScriptStrokes([7, 9], TRANSFORM)).toBe(false);
     expect(stepBrushScriptStroke(7, 'back')).toBe(false);
 
     expect(engine.moveStrokes).not.toHaveBeenCalled();
     expect(engine.deleteStrokes).not.toHaveBeenCalled();
+    expect(engine.transformStrokes).not.toHaveBeenCalled();
     expect(engine.sendStrokeBackward).not.toHaveBeenCalled();
     expect(engine.sendStrokeForward).not.toHaveBeenCalled();
   });
@@ -360,6 +373,7 @@ describe('edits: lock gate, one engine call, store refresh', () => {
   it('ops refuse with no context and with no engine', () => {
     expect(moveBrushScriptStroke(7, 10, 5)).toBe(false);
     expect(deleteBrushScriptStroke(7)).toBe(false);
+    expect(transformBrushScriptStrokes([7], TRANSFORM)).toBe(false);
     expect(stepBrushScriptStroke(7, 'forward')).toBe(false);
 
     configureBrushScriptEdition({
@@ -369,6 +383,7 @@ describe('edits: lock gate, one engine call, store refresh', () => {
       isLocked: () => false,
     });
     expect(moveBrushScriptStroke(7, 10, 5)).toBe(false);
+    expect(transformBrushScriptStrokes([7], TRANSFORM)).toBe(false);
   });
 });
 
@@ -395,10 +410,12 @@ describe('port: delegates through the registration', () => {
 
     brushScriptEditionPort.moveStrokes([7, 9], 10, 5);
     brushScriptEditionPort.deleteStrokes([7]);
+    brushScriptEditionPort.transformStrokes([7], TRANSFORM);
     brushScriptEditionPort.stepStroke(7, 'forward');
 
     expect(engine.moveStrokes).toHaveBeenCalledWith([7, 9], 10, 5);
     expect(engine.deleteStrokes).toHaveBeenCalledWith([7]);
+    expect(engine.transformStrokes).toHaveBeenCalledWith([7], TRANSFORM);
     expect(engine.sendStrokeForward).toHaveBeenCalledWith(7);
   });
 });
@@ -448,11 +465,35 @@ describe('261024-mz5 batch edits: one commit, one flush, selection pruned', () =
     const engine = createFakeEngine({
       moveStrokes: vi.fn(() => 0),
       deleteStrokes: vi.fn(() => 0),
+      transformStrokes: vi.fn(() => 0),
     });
     configure(engine, { frame: 3 });
 
     expect(moveBrushScriptStrokes([7, 9], 10, 5)).toBe(false);
     expect(deleteBrushScriptStrokes([7, 9])).toBe(false);
+    expect(transformBrushScriptStrokes([7, 9], TRANSFORM)).toBe(false);
     expect(engine.getStrokes).not.toHaveBeenCalled();
+  });
+
+  it('transformBrushScriptStrokes sends both ids and the SAME transform in ONE engine call, then flushes once', () => {
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [
+        stroke(7, [{ x: 30, y: 35 }]),
+        stroke(9, [{ x: 60, y: 35 }]),
+      ]),
+    });
+    configure(engine, { frame: 3 });
+    setScriptSelectMode(true);
+    setScriptStrokeSelection([7, 9]);
+
+    expect(transformBrushScriptStrokes([7, 9], TRANSFORM)).toBe(true);
+
+    expect(engine.transformStrokes).toHaveBeenCalledTimes(1);
+    expect(engine.transformStrokes).toHaveBeenCalledWith([7, 9], TRANSFORM);
+    // One flush: the retained script reads the engine's live strokes once.
+    expect(engine.getStrokes).toHaveBeenCalledTimes(1);
+    expect(getBrushScriptFrameEntry(3)?.strokes).toBe(2);
+    // A transform keeps the selection, exactly like a move.
+    expect([...scriptSelectedStrokeIds.value].sort()).toEqual([7, 9]);
   });
 });

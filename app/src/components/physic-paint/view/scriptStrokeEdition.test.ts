@@ -25,6 +25,7 @@ import {
 import {
   clearScriptStrokeDrag,
   clearScriptStrokeSelection,
+  clearScriptStrokeTransform,
   deleteSelectedScriptStroke,
   hitsScriptStroke,
   scriptSelectedStrokeId,
@@ -32,6 +33,7 @@ import {
   scriptSelectMode,
   scriptStrokeBoundsPx,
   scriptStrokeDrag,
+  scriptStrokeTransform,
   selectScriptStroke,
   selectScriptStrokeAt,
   setScriptSelectMode,
@@ -39,12 +41,14 @@ import {
   setScriptStrokeEditionPort,
   setScriptStrokeEditionPorts,
   setScriptStrokeSelection,
+  setScriptStrokeTransform,
   stepSelectedScriptStroke,
   toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
   type SelectableScriptStroke,
 } from './scriptStrokeEdition';
+import type { ScriptStrokeTransform } from './scriptStrokeTransform';
 
 const SIZE = { width: 400, height: 200 };
 
@@ -54,6 +58,7 @@ function point(x: number, y: number): CanvasPoint {
 
 interface PortCalls {
   deleted: number[][];
+  transformed: Array<{ ids: number[]; transform: ScriptStrokeTransform }>;
   stepped: Array<{ id: number; direction: 'back' | 'forward' }>;
 }
 
@@ -69,6 +74,9 @@ function fakePort(options: {
       options.calls.deleted.push([...ids]);
     },
     moveStrokes: () => {},
+    transformStrokes: (ids, transform) => {
+      options.calls.transformed.push({ ids: [...ids], transform });
+    },
     stepStroke: (id, direction) => {
       options.calls.stepped.push({ id, direction });
     },
@@ -76,7 +84,7 @@ function fakePort(options: {
 }
 
 function calls(): PortCalls {
-  return { deleted: [], stepped: [] };
+  return { deleted: [], transformed: [], stepped: [] };
 }
 
 function selected(): number[] {
@@ -87,6 +95,7 @@ afterEach(() => {
   setScriptStrokeEditionPort(null);
   setScriptStrokeEditionPorts(null);
   clearScriptStrokeSelection();
+  clearScriptStrokeTransform();
   setScriptSelectMode(false);
 });
 
@@ -140,16 +149,61 @@ describe('scriptStrokeEdition — shared signals', () => {
     }
   });
 
-  it('turning select mode off clears the selection and the drag', () => {
+  it('turning select mode off clears the selection, the drag and the transform preview', () => {
     setScriptSelectMode(true);
     selectScriptStroke(11);
     setScriptStrokeDrag({ mutationIds: [11], dxPx: 5, dyPx: 6 });
+    setScriptStrokeTransform({
+      ids: [11],
+      kind: 'rotate',
+      centerX: 10,
+      centerY: 20,
+      angleRad: 0.4,
+      factor: 1,
+    });
 
     setScriptSelectMode(false);
 
     expect(scriptSelectedStrokeIds.value.size).toBe(0);
     expect(scriptSelectedStrokeId.value).toBeNull();
     expect(scriptStrokeDrag.value).toBeNull();
+    expect(scriptStrokeTransform.value).toBeNull();
+  });
+
+  it('is compare-then-write on the transform preview over every field', () => {
+    let runs = 0;
+    const dispose = effect(() => {
+      void scriptStrokeTransform.value;
+      runs += 1;
+    });
+    const preview = {
+      ids: [3, 7],
+      kind: 'rotate' as const,
+      centerX: 10,
+      centerY: 20,
+      angleRad: 0.4,
+      factor: 1,
+    };
+    try {
+      const before = runs;
+      setScriptStrokeTransform(preview);
+      // A different array carrying THE SAME values is not a change.
+      setScriptStrokeTransform({ ...preview, ids: [3, 7] });
+      expect(runs).toBe(before + 1);
+      // The id list is compared member by member.
+      setScriptStrokeTransform({ ...preview, ids: [3] });
+      expect(runs).toBe(before + 2);
+      setScriptStrokeTransform({ ...preview, ids: [3], angleRad: 0.5 });
+      setScriptStrokeTransform({ ...preview, ids: [3], angleRad: 0.5, factor: 1.2 });
+      setScriptStrokeTransform({ ...preview, ids: [3], angleRad: 0.5, factor: 1.2, centerX: 11 });
+      expect(runs).toBe(before + 5);
+      // A stale clear is a no-op.
+      clearScriptStrokeTransform();
+      clearScriptStrokeTransform();
+      expect(runs).toBe(before + 6);
+    } finally {
+      dispose();
+    }
   });
 });
 
