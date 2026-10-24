@@ -1,15 +1,18 @@
 // ============================================================
 //  scriptStrokeEdition.test.ts — the shared script-edition seam
-//  (quick 261023-g4p Task 2).
+//  (quick 261023-g4p Task 2; multi-select 261024-mz5 Task 1).
 //
-//  One selection/drag state and one gesture geometry serve both
-//  the watercolor module and the brush Move surface. The
-//  watercolor module must alias these signals by identity so its
-//  existing consumers can never diverge from the shared state.
+//  One selection SET, one drag state and one gesture geometry
+//  serve both the watercolor module and the brush Move surface.
+//  The watercolor module aliases these signals by identity so
+//  its existing consumers can never diverge from the shared
+//  state.
 //
-//  The keyboard consume law: a key is consumed exactly once a
-//  registered port reports active AND a stroke is selected —
-//  even when the port's operation refuses internally.
+//  The keyboard consume law: Delete is consumed once a registered
+//  port reports active AND the selection is non-empty — the whole
+//  set goes to the port in ONE batch call. '<' / '>' stay
+//  single-stroke: a multi-selection consumes the key but never
+//  steps anything.
 // ============================================================
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -21,9 +24,11 @@ import {
 } from './aquarelleStrokeSelection';
 import {
   clearScriptStrokeDrag,
+  clearScriptStrokeSelection,
   deleteSelectedScriptStroke,
   hitsScriptStroke,
   scriptSelectedStrokeId,
+  scriptSelectedStrokeIds,
   scriptSelectMode,
   scriptStrokeBoundsPx,
   scriptStrokeDrag,
@@ -33,7 +38,9 @@ import {
   setScriptStrokeDrag,
   setScriptStrokeEditionPort,
   setScriptStrokeEditionPorts,
+  setScriptStrokeSelection,
   stepSelectedScriptStroke,
+  toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
   type SelectableScriptStroke,
@@ -46,7 +53,7 @@ function point(x: number, y: number): CanvasPoint {
 }
 
 interface PortCalls {
-  deleted: number[];
+  deleted: number[][];
   stepped: Array<{ id: number; direction: 'back' | 'forward' }>;
 }
 
@@ -58,10 +65,10 @@ function fakePort(options: {
     isActive: () => options.active ?? true,
     listStrokes: (): SelectableScriptStroke[] => [],
     hitTestStroke: () => null,
-    deleteStroke: (id) => {
-      options.calls.deleted.push(id);
+    deleteStrokes: (ids) => {
+      options.calls.deleted.push([...ids]);
     },
-    moveStroke: () => {},
+    moveStrokes: () => {},
     stepStroke: (id, direction) => {
       options.calls.stepped.push({ id, direction });
     },
@@ -72,10 +79,14 @@ function calls(): PortCalls {
   return { deleted: [], stepped: [] };
 }
 
+function selected(): number[] {
+  return [...scriptSelectedStrokeIds.value].sort((a, b) => a - b);
+}
+
 afterEach(() => {
   setScriptStrokeEditionPort(null);
   setScriptStrokeEditionPorts(null);
-  selectScriptStroke(null);
+  clearScriptStrokeSelection();
   setScriptSelectMode(false);
 });
 
@@ -105,26 +116,7 @@ describe('scriptStrokeEdition — shared signals', () => {
     }
   });
 
-  it('is compare-then-write on the selected id', () => {
-    let runs = 0;
-    const dispose = effect(() => {
-      void scriptSelectedStrokeId.value;
-      runs += 1;
-    });
-    try {
-      const before = runs;
-      selectScriptStroke(7);
-      selectScriptStroke(7);
-      expect(runs).toBe(before + 1);
-      selectScriptStroke(null);
-      selectScriptStroke(null);
-      expect(runs).toBe(before + 2);
-    } finally {
-      dispose();
-    }
-  });
-
-  it('is compare-then-write on all three drag fields', () => {
+  it('is compare-then-write on the drag over every field', () => {
     let runs = 0;
     const dispose = effect(() => {
       void scriptStrokeDrag.value;
@@ -132,12 +124,12 @@ describe('scriptStrokeEdition — shared signals', () => {
     });
     try {
       const before = runs;
-      setScriptStrokeDrag({ mutationId: 3, dxPx: 2, dyPx: 4 });
-      setScriptStrokeDrag({ mutationId: 3, dxPx: 2, dyPx: 4 });
+      setScriptStrokeDrag({ mutationIds: [3], dxPx: 2, dyPx: 4 });
+      setScriptStrokeDrag({ mutationIds: [3], dxPx: 2, dyPx: 4 });
       expect(runs).toBe(before + 1);
-      setScriptStrokeDrag({ mutationId: 3, dxPx: 2, dyPx: 5 });
-      setScriptStrokeDrag({ mutationId: 3, dxPx: 3, dyPx: 5 });
-      setScriptStrokeDrag({ mutationId: 4, dxPx: 3, dyPx: 5 });
+      setScriptStrokeDrag({ mutationIds: [3, 7], dxPx: 2, dyPx: 4 });
+      setScriptStrokeDrag({ mutationIds: [3, 7], dxPx: 2, dyPx: 5 });
+      setScriptStrokeDrag({ mutationIds: [3], dxPx: 2, dyPx: 5 });
       expect(runs).toBe(before + 4);
       // A stale clear (no drag armed) is a no-op.
       clearScriptStrokeDrag();
@@ -151,12 +143,93 @@ describe('scriptStrokeEdition — shared signals', () => {
   it('turning select mode off clears the selection and the drag', () => {
     setScriptSelectMode(true);
     selectScriptStroke(11);
-    setScriptStrokeDrag({ mutationId: 11, dxPx: 5, dyPx: 6 });
+    setScriptStrokeDrag({ mutationIds: [11], dxPx: 5, dyPx: 6 });
 
     setScriptSelectMode(false);
 
+    expect(scriptSelectedStrokeIds.value.size).toBe(0);
     expect(scriptSelectedStrokeId.value).toBeNull();
     expect(scriptStrokeDrag.value).toBeNull();
+  });
+});
+
+describe('scriptStrokeEdition — selection set law', () => {
+  it('plain select replaces, toggle flips, any iterable is accepted, clear empties', () => {
+    selectScriptStroke(7);
+    expect(selected()).toEqual([7]);
+    selectScriptStroke(9);
+    expect(selected()).toEqual([9]);
+
+    toggleScriptStrokeSelection(7);
+    expect(selected()).toEqual([7, 9]);
+    toggleScriptStrokeSelection(7);
+    expect(selected()).toEqual([9]);
+
+    setScriptStrokeSelection(new Set([7, 9]));
+    expect(selected()).toEqual([7, 9]);
+    setScriptStrokeSelection([9]);
+    expect(selected()).toEqual([9]);
+
+    clearScriptStrokeSelection();
+    expect(scriptSelectedStrokeIds.value.size).toBe(0);
+  });
+
+  it('is compare-then-write: one notification per effective membership change', () => {
+    let runs = 0;
+    const dispose = effect(() => {
+      void scriptSelectedStrokeIds.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      selectScriptStroke(7);
+      selectScriptStroke(7);
+      expect(runs).toBe(before + 1);
+      toggleScriptStrokeSelection(7);
+      expect(runs).toBe(before + 2);
+      toggleScriptStrokeSelection(7);
+      expect(runs).toBe(before + 3);
+      // Identical membership: no new Set, no notification.
+      setScriptStrokeSelection([7]);
+      expect(runs).toBe(before + 3);
+      clearScriptStrokeSelection();
+      clearScriptStrokeSelection();
+      expect(runs).toBe(before + 4);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('the single-id computed alias notifies exactly when its value changes', () => {
+    let runs = 0;
+    const dispose = effect(() => {
+      void scriptSelectedStrokeId.value;
+      runs += 1;
+    });
+    try {
+      const before = runs;
+      selectScriptStroke(7);
+      expect(scriptSelectedStrokeId.value).toBe(7);
+      expect(runs).toBe(before + 1);
+      // {7} -> {7,9}: the singleton value becomes null.
+      toggleScriptStrokeSelection(9);
+      expect(scriptSelectedStrokeId.value).toBeNull();
+      expect(runs).toBe(before + 2);
+      // {7,9} -> {7}: back to the singleton.
+      toggleScriptStrokeSelection(9);
+      expect(scriptSelectedStrokeId.value).toBe(7);
+      expect(runs).toBe(before + 3);
+      // {7} -> {}: null.
+      toggleScriptStrokeSelection(7);
+      expect(scriptSelectedStrokeId.value).toBeNull();
+      expect(runs).toBe(before + 4);
+      // null -> null with a different multi-set: no notification.
+      setScriptStrokeSelection([7, 9]);
+      expect(scriptSelectedStrokeId.value).toBeNull();
+      expect(runs).toBe(before + 4);
+    } finally {
+      dispose();
+    }
   });
 });
 
@@ -210,24 +283,24 @@ describe('scriptStrokeEdition — keyboard consume law', () => {
 
     const active = calls();
     setScriptStrokeEditionPort(fakePort({ active: true, calls: active }));
-    selectScriptStroke(null);
+    clearScriptStrokeSelection();
     expect(deleteSelectedScriptStroke()).toBe(false);
     expect(active.deleted).toEqual([]);
   });
 
-  it('deleteSelectedScriptStroke calls the port once and consumes the key', () => {
+  it('deleteSelectedScriptStroke passes the WHOLE selection in one batch call', () => {
     const portCalls = calls();
     setScriptStrokeEditionPort(fakePort({ calls: portCalls }));
-    selectScriptStroke(9);
+    setScriptStrokeSelection([7, 9]);
 
     expect(deleteSelectedScriptStroke()).toBe(true);
-    expect(portCalls.deleted).toEqual([9]);
+    expect(portCalls.deleted).toEqual([[7, 9]]);
     // Consumed even if the port's own operation refused internally.
     expect(deleteSelectedScriptStroke()).toBe(true);
-    expect(portCalls.deleted).toEqual([9, 9]);
+    expect(portCalls.deleted).toEqual([[7, 9], [7, 9]]);
   });
 
-  it('stepSelectedScriptStroke follows the same consume law and forwards the direction', () => {
+  it('stepSelectedScriptStroke consumes a multi-selection without stepping anything', () => {
     expect(stepSelectedScriptStroke('back')).toBe(false);
 
     const inactive = calls();
@@ -238,11 +311,17 @@ describe('scriptStrokeEdition — keyboard consume law', () => {
 
     const active = calls();
     setScriptStrokeEditionPort(fakePort({ active: true, calls: active }));
-    selectScriptStroke(null);
+    clearScriptStrokeSelection();
     expect(stepSelectedScriptStroke('back')).toBe(false);
     expect(active.stepped).toEqual([]);
 
-    selectScriptStroke(4);
+    // 2+ selected: the key is consumed, the port is never asked.
+    setScriptStrokeSelection([4, 6]);
+    expect(stepSelectedScriptStroke('back')).toBe(true);
+    expect(active.stepped).toEqual([]);
+
+    // Exactly one: the step is forwarded.
+    setScriptStrokeSelection([4]);
     expect(stepSelectedScriptStroke('back')).toBe(true);
     expect(stepSelectedScriptStroke('forward')).toBe(true);
     expect(active.stepped).toEqual([
@@ -258,10 +337,10 @@ describe('scriptStrokeEdition — keyboard consume law', () => {
       watercolor: fakePort({ active: false, calls: watercolorCalls }),
       brush: fakePort({ active: true, calls: brushCalls }),
     });
-    selectScriptStroke(7);
+    setScriptStrokeSelection([7]);
 
     expect(deleteSelectedScriptStroke()).toBe(true);
-    expect(brushCalls.deleted).toEqual([7]);
+    expect(brushCalls.deleted).toEqual([[7]]);
     expect(watercolorCalls.deleted).toEqual([]);
 
     // Neither surface active: the key is not consumed.
@@ -277,13 +356,41 @@ describe('scriptStrokeEdition — keyboard consume law', () => {
       brush: fakePort({ active: true, calls: brushCalls }),
     });
     expect(deleteSelectedScriptStroke()).toBe(true);
-    expect(watercolorCalls.deleted).toEqual([7]);
-    expect(brushCalls.deleted).toEqual([7]);
+    expect(watercolorCalls.deleted).toEqual([[7]]);
+    expect(brushCalls.deleted).toEqual([[7]]);
   });
 });
 
-describe('scriptStrokeEdition — selectScriptStrokeAt', () => {
-  it('hit-tests through the port, writes the selection, and returns the hit', () => {
+describe('scriptStrokeEdition — selectScriptStrokeAt modifiers', () => {
+  it('replaces on a plain hit, toggles on an additive hit, and keeps on additive-empty', () => {
+    let hit: number | null = 42;
+    const port: ScriptStrokeEditionPort = {
+      ...fakePort({ calls: calls() }),
+      hitTestStroke: () => hit,
+    };
+
+    selectScriptStroke(7);
+    expect(selectScriptStrokeAt(point(1, 1), 3, SIZE, port)).toBe(42);
+    expect(selected()).toEqual([42]);
+
+    hit = 9;
+    expect(selectScriptStrokeAt(point(1, 1), 3, SIZE, port, true)).toBe(9);
+    expect(selected()).toEqual([9, 42]);
+    // Additive on an already-selected stroke toggles it off.
+    expect(selectScriptStrokeAt(point(1, 1), 3, SIZE, port, true)).toBe(9);
+    expect(selected()).toEqual([42]);
+
+    // Plain-empty clears; additive-empty keeps.
+    hit = null;
+    expect(selectScriptStrokeAt(point(1, 1), 3, SIZE, port)).toBeNull();
+    expect(selected()).toEqual([]);
+
+    selectScriptStroke(7);
+    expect(selectScriptStrokeAt(point(1, 1), 3, SIZE, port, true)).toBeNull();
+    expect(selected()).toEqual([7]);
+  });
+
+  it('hit-tests through the port with the exact point, frame and size', () => {
     const port: ScriptStrokeEditionPort = {
       ...fakePort({ calls: calls() }),
       hitTestStroke: (pointPx, playFrame, size) => {

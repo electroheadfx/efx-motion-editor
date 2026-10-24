@@ -2992,12 +2992,12 @@ describe('261022-pim watercolor stroke select surface', () => {
   });
 
   it('wires the delete callback through the canvas mount props and memo deps', () => {
-    expect(canvasMount).toContain('onAquarelleDeleteStroke?: (mutationId: number) => void;');
+    expect(canvasMount).toContain('onAquarelleDeleteStrokes?: (mutationIds: readonly number[]) => void;');
     expect(canvasMount).toContain(
-      'onDeleteStroke={(mutationId) => onAquarelleDeleteStrokeRef.current?.(mutationId)}',
+      'onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}',
     );
-    expect(studio).toContain('onAquarelleDeleteStroke: handleAquarelleDeleteStroke,');
-    expect(studio).toContain('getAquarellePaperId, handleAquarelleDeleteStroke]');
+    expect(studio).toContain('onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,');
+    expect(studio).toContain('getAquarellePaperId, handleAquarelleDeleteStrokes]');
   });
 });
 
@@ -3007,13 +3007,13 @@ describe('261022-pim watercolor stroke select surface', () => {
 // shared apply, and rolls the raw snapshot back on failure. Neither path
 // consults the coordinator.
 describe('261022-pim aquarelle delete undo wiring', () => {
-  const deleteHandlerStart = studio.indexOf('const handleAquarelleDeleteStroke = useCallback(');
+  const deleteHandlerStart = studio.indexOf('const handleAquarelleDeleteStrokes = useCallback(');
   const deleteHandlerEnd = studio.indexOf('const canvasMountPropsMemo', deleteHandlerStart);
   const deleteHandler = studio.slice(deleteHandlerStart, deleteHandlerEnd);
 
   it('records the edit as one aquarelle-script command only after the re-bake succeeds', () => {
     expect(deleteHandlerStart).toBeGreaterThan(-1);
-    expect(deleteHandler).toContain('const editId = beginAquarelleDeleteEdit(mutationId);');
+    expect(deleteHandler).toContain('const editId = beginAquarelleDeleteEdit(frameIds);');
     expect(deleteHandler).not.toContain('deleteAquarelleStrokeForEdit');
 
     // 261022-pim: the re-bake reads the RECORDED timeline, never the live
@@ -3053,12 +3053,12 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     // selected id, peek-only) lives in the shared edition module.
     expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
     expect(scriptStrokeEdition).toContain('if (!port.isActive()) return false;');
-    expect(scriptStrokeEdition).toContain('const id = scriptSelectedStrokeId.peek();');
-    expect(scriptStrokeEdition).toContain('port.deleteStroke(id);');
+    expect(scriptStrokeEdition).toContain('const ids = [...scriptSelectedStrokeIds.peek()];');
+    expect(scriptStrokeEdition).toContain('port.deleteStrokes(ids);');
     // The watercolor port reuses the same handlers the overlay/keyboard use.
     expect(studio).toContain("isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),");
-    expect(studio).toContain('deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),');
-    expect(studio).toContain('moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),');
+    expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
+    expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
     // A Cmd tap toggles the persistent select mode in watercolor mode.
     expect(studio).toContain('onMetaTap: () => {');
@@ -3086,13 +3086,13 @@ describe('261022-pim aquarelle delete undo wiring', () => {
 // only the ghost signal; the release path is begin edit -> reset sheet ->
 // await the shared apply -> record on success -> raw rollback on failure.
 describe('261022-tv1 watercolor stroke move wiring', () => {
-  const moveHandlerStart = studio.indexOf('const handleAquarelleMoveStroke = useCallback(');
+  const moveHandlerStart = studio.indexOf('const handleAquarelleMoveStrokes = useCallback(');
   const moveHandlerEnd = studio.indexOf('// 56-12 CACHE WRITE', moveHandlerStart);
   const moveHandler = studio.slice(moveHandlerStart, moveHandlerEnd);
 
   it('exists and owns the release path in order (begin -> reset -> await apply -> record on success -> rollback)', () => {
     expect(moveHandlerStart).toBeGreaterThan(-1);
-    const beginSite = moveHandler.indexOf('const editId = beginAquarelleMoveEdit(mutationId, delta.x, delta.y);');
+    const beginSite = moveHandler.indexOf('const editId = beginAquarelleMoveEdit(frameIds, delta.x, delta.y);');
     const resetSite = moveHandler.indexOf('aquarelleResetSheetRef.current?.();');
     const applySite = moveHandler.indexOf('const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));');
     const successSite = moveHandler.indexOf('if (ok) {');
@@ -3123,13 +3123,13 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
   });
 
   it('wires the move callback through the canvas mount props and memo deps', () => {
-    expect(canvasMount).toContain('onAquarelleMoveStroke?: (mutationId: number, dxPx: number, dyPx: number) => void;');
-    expect(canvasMount).toContain('onMoveStroke={(mutationId, dxPx, dyPx) => onAquarelleMoveStrokeRef.current?.(mutationId, dxPx, dyPx)}');
-    expect(studio).toContain('onAquarelleMoveStroke: handleAquarelleMoveStroke,');
-    expect(studio).toContain('handleAquarelleMoveStroke, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStroke]');
-    expect(aquarelleCanvasLayer).toContain('onMoveStroke?: (mutationId: number, dxPx: number, dyPx: number) => void;');
-    expect(aquarelleCanvasLayer).toContain('onMoveStroke={(mutationId, dxPx, dyPx) => onMoveStrokeRef.current?.(mutationId, dxPx, dyPx)}');
-    expect(aquarelleStrokeOverlay).toContain('onMoveStroke: (mutationId: number, dxPx: number, dyPx: number) => void;');
+    expect(canvasMount).toContain('onAquarelleMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
+    expect(canvasMount).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onAquarelleMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
+    expect(studio).toContain('onAquarelleMoveStrokes: handleAquarelleMoveStrokes,');
+    expect(studio).toContain('handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes]');
+    expect(aquarelleCanvasLayer).toContain('onMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
+    expect(aquarelleCanvasLayer).toContain('onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}');
+    expect(aquarelleStrokeOverlay).toContain('onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;');
   });
 
   it('keeps the gesture surface in the ONE shared overlay leaf and the ghost signal out of the Studio', () => {
@@ -3162,8 +3162,8 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
   });
 
   it('keeps the 261022-pim delete pins intact', () => {
-    expect(studio).toContain('const handleAquarelleDeleteStroke = useCallback(');
-    expect(studio).toContain('onAquarelleDeleteStroke: handleAquarelleDeleteStroke,');
+    expect(studio).toContain('const handleAquarelleDeleteStrokes = useCallback(');
+    expect(studio).toContain('onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,');
     expect(scriptStrokeOverlay).toContain('selectScriptStrokeAt(');
   });
 });
@@ -3304,7 +3304,7 @@ describe('261022-ujp stroke stack step', () => {
 
   it('keeps the 261022-pim delete and 261022-tv1 move pins intact', () => {
     expect(studio).toContain('deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),');
-    expect(studio).toContain('const handleAquarelleMoveStroke = useCallback(');
+    expect(studio).toContain('const handleAquarelleMoveStrokes = useCallback(');
     expect(studioKeyboard).toContain('deleteSelectedAquarelleStroke?: () => boolean;');
   });
 });
@@ -3351,8 +3351,8 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(studio).toContain('configureBrushScriptEdition(null);');
     // The watercolor port keeps its exact previous contract.
     expect(studio).toContain("isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),");
-    expect(studio).toContain('deleteStroke: (mutationId) => handleAquarelleDeleteStroke(mutationId),');
-    expect(studio).toContain('moveStroke: (mutationId, dxPx, dyPx) => handleAquarelleMoveStroke(mutationId, dxPx, dyPx),');
+    expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
+    expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
     expect(studio).toContain('stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),');
     // The brush port is the ONE adapter; the shared seam picks the active one.
     expect(brushScriptEditionPortSource).toContain('export const brushScriptEditionPort: ScriptStrokeEditionPort = {');
@@ -3442,6 +3442,49 @@ describe('261023-g4p brush Move script-edition surface', () => {
     const coalescingEffectStart = studio.indexOf('// quick-261023-l35 Task 3: ONE coalescing subscription');
     expect(coalescingEffectStart).toBeGreaterThan(-1);
     expect(studio.indexOf('brushScriptRevision.value')).toBeGreaterThan(coalescingEffectStart);
+  });
+});
+
+// 261024-mz5 Task 1: the Studio selection is a SET. The shared overlay owns
+// the modifier law (Cmd/Ctrl toggles, Shift adds, plain replaces, empty clears),
+// captures the id array at pointerdown, and hands the WHOLE array to the batch
+// callbacks. The Studio registers batch port ops and still never subscribes the
+// edition signals in its render body.
+describe('261024-mz5 Studio multi-select surface', () => {
+  it('registers batch delete/move port ops', () => {
+    expect(studio).toContain('deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),');
+    expect(studio).toContain('moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),');
+    expect(studio).toContain('const handleAquarelleDeleteStrokes = useCallback((ids: readonly number[]) => {');
+    expect(studio).toContain('const handleAquarelleMoveStrokes = useCallback((ids: readonly number[], dxPx: number, dyPx: number) => {');
+    // Frame filter before any mutation.
+    expect(studio).toContain('aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0)');
+    // The shared consume law passes the whole set.
+    expect(scriptStrokeEdition).toContain('port.deleteStrokes(ids);');
+    expect(scriptStrokeEdition).toContain('const ids = [...scriptSelectedStrokeIds.peek()];');
+    expect(scriptStrokeEdition).toContain("if (scriptSelectedStrokeIds.peek().size !== 1) return true;");
+  });
+
+  it('keeps the edition signals out of the Studio render body', () => {
+    expect(studio).not.toContain('scriptSelectedStrokeIds.value');
+    expect(studio).not.toContain('scriptSelectedStrokeId.value');
+    expect(studio).not.toContain('scriptStrokeDrag');
+    expect(studio).not.toContain('scriptStrokeTransform');
+  });
+
+  it('the shared overlay owns the modifier selection law and the batch hand-off', () => {
+    expect(scriptStrokeOverlay).toContain('event.metaKey');
+    expect(scriptStrokeOverlay).toContain('event.ctrlKey');
+    expect(scriptStrokeOverlay).toContain('event.shiftKey');
+    expect(scriptStrokeOverlay).toContain('toggleScriptStrokeSelection(');
+    // The id array is captured at pointerdown — a later selection change must
+    // not retarget an in-flight gesture.
+    expect(scriptStrokeOverlay).toContain('mutationIds: ids');
+    expect(scriptStrokeOverlay).toContain('props.onMoveStrokes(');
+    expect(scriptStrokeOverlay).toContain('props.onDeleteStrokes(');
+    // Cancel clears the ghost and commits nothing.
+    expect(scriptStrokeOverlay).toContain('clearScriptStrokeDrag();');
+    expect(scriptStrokeOverlay).not.toContain('useEffect');
+    expect(scriptStrokeOverlay).not.toContain('useSignal');
   });
 });
 

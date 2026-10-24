@@ -18,13 +18,21 @@ import {
 } from './aquarelleRecordState';
 import {
   aquarelleSelectMode,
+  aquarelleSelectedStrokeMutationIds,
   aquarelleStrokeBoundsPx,
   aquarelleStrokePointsPx,
+  aquarelleStrokesOnFrame,
+  beginAquarelleDeleteEdit,
   hitTestAquarelleStroke,
   listSelectableAquarelleStrokes,
   selectAquarelleStroke,
   setAquarelleSelectMode,
 } from './aquarelleStrokeSelection';
+import {
+  clearScriptStrokeSelection,
+  scriptSelectedStrokeIds,
+  setScriptStrokeSelection,
+} from './scriptStrokeEdition';
 
 const SHEET = { width: 400, height: 200 };
 
@@ -155,6 +163,37 @@ describe('261022-pim aquarelle stroke select mode', () => {
     expect(listSelectableAquarelleStrokes(301, SHEET).map((entry) => (
       [entry.mutationId, entry.serial, entry.stackPosition, entry.stackTotal]
     ))).toEqual([[9302, 2, 1, 1]]);
+  });
+
+  // 261024-mz5: one gesture edits the WHOLE selection; every id is filtered
+  // to the current edit frame (recorded, non-deleted) before mutating.
+  it('aquarelleStrokesOnFrame keeps only recorded, non-deleted strokes of the frame', () => {
+    recordAquarelleStroke(9401, stroke({ points: [point(0.1, 0.5)], playFrame: 401 }));
+    recordAquarelleStroke(9402, stroke({ points: [point(0.2, 0.5)], playFrame: 402 }));
+    recordAquarelleStroke(9403, stroke({ points: [point(0.3, 0.5)], playFrame: 401 }));
+    markAquarelleStrokeDeleted(9403);
+
+    expect(aquarelleStrokesOnFrame([9401, 9402, 9403, 999999], 401)).toEqual([9401]);
+    expect(aquarelleStrokesOnFrame([9401, 9402], 402)).toEqual([9402]);
+    expect(aquarelleStrokesOnFrame([], 401)).toEqual([]);
+  });
+
+  it('the selected set is the shared signal by identity', () => {
+    setScriptStrokeSelection([7, 9]);
+    expect(aquarelleSelectedStrokeMutationIds).toBe(scriptSelectedStrokeIds);
+    expect([...aquarelleSelectedStrokeMutationIds.value].sort()).toEqual([7, 9]);
+    clearScriptStrokeSelection();
+  });
+
+  it('a batch delete removes the deleted ids from the selection and keeps survivors', () => {
+    recordAquarelleStroke(9501, stroke({ points: [point(0.1, 0.5)], playFrame: 501 }));
+    recordAquarelleStroke(9502, stroke({ points: [point(0.2, 0.5)], playFrame: 501 }));
+    recordAquarelleStroke(9503, stroke({ points: [point(0.3, 0.5)], playFrame: 501 }));
+    setScriptStrokeSelection([9501, 9502, 9503]);
+
+    const editId = beginAquarelleDeleteEdit([9501, 9502]);
+    expect(editId).not.toBeNull();
+    expect([...scriptSelectedStrokeIds.value]).toEqual([9503]);
   });
 
   it('setAquarelleSelectMode is compare-then-write', () => {

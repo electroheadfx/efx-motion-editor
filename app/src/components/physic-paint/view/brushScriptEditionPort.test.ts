@@ -29,15 +29,20 @@ import {
   listBrushScriptStrokes,
   hitTestBrushScriptStroke,
   moveBrushScriptStroke,
+  moveBrushScriptStrokes,
   deleteBrushScriptStroke,
+  deleteBrushScriptStrokes,
   stepBrushScriptStroke,
   brushScriptEditionPort,
 } from './brushScriptEditionPort';
 import {
+  clearScriptStrokeSelection,
+  scriptSelectedStrokeId,
+  scriptSelectedStrokeIds,
+  scriptSelectMode,
   selectScriptStroke,
   setScriptSelectMode,
-  scriptSelectedStrokeId,
-  scriptSelectMode,
+  setScriptStrokeSelection,
 } from './scriptStrokeEdition';
 
 const OPTIONS = {
@@ -76,7 +81,9 @@ function createFakeEngine(overrides: Record<string, unknown> = {}) {
     getStrokes: vi.fn(() => [] as PaintStroke[]),
     getStrokeSerials: vi.fn(() => new Map<number, number>()),
     moveStroke: vi.fn(() => true),
+    moveStrokes: vi.fn(() => 1),
     deleteStroke: vi.fn(() => true),
+    deleteStrokes: vi.fn(() => 1),
     sendStrokeBackward: vi.fn(() => true),
     sendStrokeForward: vi.fn(() => true),
     setStrokeLabelsSuppressed: vi.fn(),
@@ -111,7 +118,7 @@ beforeEach(() => {
   resetBrushScriptStore();
   configureBrushScriptEdition(null);
   setScriptSelectMode(false);
-  selectScriptStroke(null);
+  clearScriptStrokeSelection();
 });
 
 describe('listing: store groups become selectable rows', () => {
@@ -221,8 +228,9 @@ describe('edits: lock gate, one engine call, store refresh', () => {
 
     expect(moveBrushScriptStroke(7, 10, 5)).toBe(true);
 
-    expect(engine.moveStroke).toHaveBeenCalledTimes(1);
-    expect(engine.moveStroke).toHaveBeenCalledWith(7, 10, 5);
+    // The singular wrapper is a one-element batch: ONE engine commit + ONE flush.
+    expect(engine.moveStrokes).toHaveBeenCalledTimes(1);
+    expect(engine.moveStrokes).toHaveBeenCalledWith([7], 10, 5);
     expect(engine.setScriptBaseClearPending).toHaveBeenCalledWith(true);
     expect(getBrushScriptFrameEntry(3)?.strokes).toBe(1);
   });
@@ -250,8 +258,8 @@ describe('edits: lock gate, one engine call, store refresh', () => {
 
     expect(deleteBrushScriptStroke(7)).toBe(true);
 
-    expect(engine.deleteStroke).toHaveBeenCalledTimes(1);
-    expect(engine.deleteStroke).toHaveBeenCalledWith(7);
+    expect(engine.deleteStrokes).toHaveBeenCalledTimes(1);
+    expect(engine.deleteStrokes).toHaveBeenCalledWith([7]);
     expect(scriptSelectedStrokeId.value).toBeNull();
     expect(scriptSelectMode.value).toBe(true);
     expect(getBrushScriptFrameEntry(3)?.strokes).toBe(1);
@@ -338,11 +346,13 @@ describe('edits: lock gate, one engine call, store refresh', () => {
     configure(engine, { locked: true });
 
     expect(moveBrushScriptStroke(7, 10, 5)).toBe(false);
+    expect(moveBrushScriptStrokes([7, 9], 10, 5)).toBe(false);
     expect(deleteBrushScriptStroke(7)).toBe(false);
+    expect(deleteBrushScriptStrokes([7, 9])).toBe(false);
     expect(stepBrushScriptStroke(7, 'back')).toBe(false);
 
-    expect(engine.moveStroke).not.toHaveBeenCalled();
-    expect(engine.deleteStroke).not.toHaveBeenCalled();
+    expect(engine.moveStrokes).not.toHaveBeenCalled();
+    expect(engine.deleteStrokes).not.toHaveBeenCalled();
     expect(engine.sendStrokeBackward).not.toHaveBeenCalled();
     expect(engine.sendStrokeForward).not.toHaveBeenCalled();
   });
@@ -383,12 +393,66 @@ describe('port: delegates through the registration', () => {
     const engine = createFakeEngine();
     configure(engine, { frame: 3 });
 
-    brushScriptEditionPort.moveStroke(7, 10, 5);
-    brushScriptEditionPort.deleteStroke(7);
+    brushScriptEditionPort.moveStrokes([7, 9], 10, 5);
+    brushScriptEditionPort.deleteStrokes([7]);
     brushScriptEditionPort.stepStroke(7, 'forward');
 
-    expect(engine.moveStroke).toHaveBeenCalledWith(7, 10, 5);
-    expect(engine.deleteStroke).toHaveBeenCalledWith(7);
+    expect(engine.moveStrokes).toHaveBeenCalledWith([7, 9], 10, 5);
+    expect(engine.deleteStrokes).toHaveBeenCalledWith([7]);
     expect(engine.sendStrokeForward).toHaveBeenCalledWith(7);
+  });
+});
+
+// 261024-mz5: one gesture edits the WHOLE selection — one engine commit,
+// one retained-script flush, and the selection pruned by identity.
+describe('261024-mz5 batch edits: one commit, one flush, selection pruned', () => {
+  it('moveBrushScriptStrokes sends both ids in ONE engine call and flushes once', () => {
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [
+        stroke(7, [{ x: 30, y: 35 }]),
+        stroke(9, [{ x: 60, y: 35 }]),
+      ]),
+    });
+    configure(engine, { frame: 3 });
+    setScriptSelectMode(true);
+    setScriptStrokeSelection([7, 9]);
+
+    expect(moveBrushScriptStrokes([7, 9], 10, 5)).toBe(true);
+
+    expect(engine.moveStrokes).toHaveBeenCalledTimes(1);
+    expect(engine.moveStrokes).toHaveBeenCalledWith([7, 9], 10, 5);
+    // One flush: the flush reads the engine's live strokes exactly once.
+    expect(engine.getStrokes).toHaveBeenCalledTimes(1);
+    expect(getBrushScriptFrameEntry(3)?.strokes).toBe(2);
+    // A move keeps the selection.
+    expect([...scriptSelectedStrokeIds.value].sort()).toEqual([7, 9]);
+  });
+
+  it('deleteBrushScriptStrokes removes every deleted id from the selection in one edit', () => {
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [stroke(9, [{ x: 60, y: 35 }])]),
+    });
+    configure(engine, { frame: 3 });
+    setScriptSelectMode(true);
+    setScriptStrokeSelection([7, 9, 11]);
+
+    expect(deleteBrushScriptStrokes([7, 9])).toBe(true);
+
+    expect(engine.deleteStrokes).toHaveBeenCalledTimes(1);
+    expect(engine.deleteStrokes).toHaveBeenCalledWith([7, 9]);
+    expect([...scriptSelectedStrokeIds.value]).toEqual([11]);
+    expect(scriptSelectMode.value).toBe(true);
+  });
+
+  it('a refused batch (unknown ids) does not flush', () => {
+    const engine = createFakeEngine({
+      moveStrokes: vi.fn(() => 0),
+      deleteStrokes: vi.fn(() => 0),
+    });
+    configure(engine, { frame: 3 });
+
+    expect(moveBrushScriptStrokes([7, 9], 10, 5)).toBe(false);
+    expect(deleteBrushScriptStrokes([7, 9])).toBe(false);
+    expect(engine.getStrokes).not.toHaveBeenCalled();
   });
 });

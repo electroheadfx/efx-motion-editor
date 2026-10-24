@@ -22,6 +22,7 @@ import {
   aquarelleStrokeSerial,
   aquarelleStrokesRevision,
   deleteAquarelleStrokeFromScript,
+  deleteAquarelleStrokesFromScript,
   emitAquarelleDry,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
@@ -32,6 +33,7 @@ import {
   remapAquarelleScriptsForRecords,
   resetAquarelleRecordState,
   translateAquarelleStrokeInScript,
+  translateAquarelleStrokesInScript,
 } from './aquarelleRecordState';
 import {
   aquarelleStrokeDrag,
@@ -267,6 +269,104 @@ describe('261022-tv1 aquarelle move edit snapshots', () => {
     expect(isAquarelleScriptEditInFlight()).toBe(false);
     expect(getRecordedAquarelleStroke(id)).toBe(originalStroke);
     expect(aquarelleStrokesRevision.value).toBe(revision);
+  });
+});
+
+// 261024-mz5: one gesture edits the WHOLE selection in ONE in-memory edit —
+// registry strokes and timeline entries swap together at the SAME indexes,
+// with exactly one revision bump per effective batch.
+describe('261024-mz5 aquarelle batch translate/delete', () => {
+  it('translates both strokes and both timeline entries at the same indexes with one bump', () => {
+    const first = 9101;
+    const second = 9102;
+    recordAquarelleStroke(first, stroke(first, 501));
+    recordAquarelleStroke(second, stroke(second, 501));
+    const firstIndex = timelineStrokeCount() - 2;
+    const secondIndex = timelineStrokeCount() - 1;
+    const firstEntry = timelineStrokeAt(firstIndex);
+    const secondEntry = timelineStrokeAt(secondIndex);
+    const revision = aquarelleStrokesRevision.value;
+
+    expect(translateAquarelleStrokesInScript([first, second], 0.05, -0.1)).toBe(2);
+
+    expect(getRecordedAquarelleStroke(first)!.points[0]!.x).toBeCloseTo(0.15, 12);
+    expect(getRecordedAquarelleStroke(first)!.points[0]!.y).toBeCloseTo(0.4, 12);
+    expect(getRecordedAquarelleStroke(second)!.points[0]!.x).toBeCloseTo(0.15, 12);
+    expect(getRecordedAquarelleStroke(second)!.points[0]!.y).toBeCloseTo(0.4, 12);
+
+    const movedFirst = timelineStrokeAt(firstIndex);
+    const movedSecond = timelineStrokeAt(secondIndex);
+    expect(movedFirst).not.toBe(firstEntry);
+    expect(movedSecond).not.toBe(secondEntry);
+    expect(movedFirst.pts[0]!.x).toBeCloseTo(0.15, 12);
+    expect(movedSecond.pts[0]!.x).toBeCloseTo(0.15, 12);
+    // Everything that is not a coordinate survives untouched.
+    expect(movedFirst.ticks).toBe(firstEntry.ticks);
+    expect(movedSecond.ticks).toBe(secondEntry.ticks);
+    expect(movedFirst.playFrame).toBe(firstEntry.playFrame);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
+  });
+
+  it('ignores unknown and deleted ids; an all-unknown batch bumps nothing', () => {
+    const live = 9103;
+    recordAquarelleStroke(live, stroke(live, 502));
+    const revision = aquarelleStrokesRevision.value;
+
+    expect(translateAquarelleStrokesInScript([999999], 0.01, 0.01)).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revision);
+
+    expect(deleteAquarelleStrokesFromScript([live])).toBe(1);
+    const revisionAfterDelete = aquarelleStrokesRevision.value;
+    const timelineAfterDelete = [...getRecordedAquarellePayloadTimeline()];
+
+    expect(translateAquarelleStrokesInScript([live], 0.01, 0.01)).toBe(0);
+    expect(deleteAquarelleStrokesFromScript([live])).toBe(0);
+    expect(aquarelleStrokesRevision.value).toBe(revisionAfterDelete);
+    expect(getRecordedAquarellePayloadTimeline()).toEqual(timelineAfterDelete);
+  });
+
+  it('a multi-id move edit restores both strokes on undo', () => {
+    const first = 9104;
+    const second = 9105;
+    recordAquarelleStroke(first, stroke(first, 503));
+    recordAquarelleStroke(second, stroke(second, 503));
+    const firstIndex = timelineStrokeCount() - 2;
+    const secondIndex = timelineStrokeCount() - 1;
+    const firstStroke = getRecordedAquarelleStroke(first)!;
+    const secondStroke = getRecordedAquarelleStroke(second)!;
+    const firstEntry = timelineStrokeAt(firstIndex);
+    const secondEntry = timelineStrokeAt(secondIndex);
+
+    const editId = beginAquarelleMoveEdit([first, second], 0.05, -0.1);
+    expect(editId).not.toBeNull();
+    expect(getRecordedAquarelleStroke(first)).not.toBe(firstStroke);
+    expect(getRecordedAquarelleStroke(second)).not.toBe(secondStroke);
+
+    expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+    expect(getRecordedAquarelleStroke(first)).toBe(firstStroke);
+    expect(getRecordedAquarelleStroke(second)).toBe(secondStroke);
+    expect(timelineStrokeAt(firstIndex)).toBe(firstEntry);
+    expect(timelineStrokeAt(secondIndex)).toBe(secondEntry);
+    expect(getRecordedAquarelleStroke(first)!.points[0]!.x).toBeCloseTo(0.1, 12);
+    expect(getRecordedAquarelleStroke(second)!.points[0]!.x).toBeCloseTo(0.1, 12);
+  });
+
+  it('deletes every listed id in ONE edit and one revision bump', () => {
+    const first = 9106;
+    const second = 9107;
+    const kept = 9108;
+    recordAquarelleStroke(first, stroke(first, 504));
+    recordAquarelleStroke(second, stroke(second, 504));
+    recordAquarelleStroke(kept, stroke(kept, 504));
+    const revision = aquarelleStrokesRevision.value;
+
+    expect(deleteAquarelleStrokesFromScript([first, second])).toBe(2);
+
+    expect(isAquarelleStrokeDeleted(first)).toBe(true);
+    expect(isAquarelleStrokeDeleted(second)).toBe(true);
+    expect(isAquarelleStrokeDeleted(kept)).toBe(false);
+    expect(strokeIdsOfFrame(504)).toEqual([kept]);
+    expect(aquarelleStrokesRevision.value).toBe(revision + 1);
   });
 });
 
