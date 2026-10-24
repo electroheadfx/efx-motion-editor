@@ -241,6 +241,7 @@ import {
 } from './view/aquarelleStrokeSelection';
 import {
   deleteSelectedScriptStroke,
+  scriptSelectedStrokeIds,
   setScriptStrokeEditionPorts,
   stepSelectedScriptStroke,
   type ScriptStrokeTransform,
@@ -616,6 +617,13 @@ export function PhysicsPaintStudio() {
   // track selection returns the panel to Track option and a Bg rail selection
   // opens the Background option tab (selection-driven, never stuck on the clip).
   const rightPanelToolTab = useSignal<'paint' | 'track' | 'background' | 'audio'>('paint');
+  // 261024-p5q UAT: the sidebar Color tab's commit boundary recolors the
+  // selected strokes. The watercolor handler is declared later in the body;
+  // the ref (plain, render-body ref-style write) keeps this earlier handler
+  // pointing at the latest one. The brush path calls its adapter directly.
+  const aquarelleAppearanceCommitRef = useRef<
+    ((ids: readonly number[], patch: ScriptStrokeAppearancePatch) => Promise<boolean>) | null
+  >(null);
   /* ---------------------------------------------------------------------------
    * 52.5-01b (D-02/D-03/D-05) + 261008-ig1 Task 2 + 261008-ryq: the Document
    * sound signals. They live HERE, ABOVE the keyboard hook — its state object
@@ -5182,7 +5190,21 @@ export function PhysicsPaintStudio() {
     void studioScriptSnapshot.persistAfterPurge();
     return true;
   }
-  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleOpacityChange, undo, redo, clearActiveSource, memorySectionRef], () => {
+  // 261024-p5q UAT: the sidebar Color tab is the ONE picker. Its commit
+  // boundary (one per gesture) recolors the selected strokes when a stroke
+  // edition surface owns the selection; otherwise it is the plain brush-color
+  // write. Peek-only reads — the Studio body never subscribes the selection.
+  const handleRightPanelColorCommit = useCallback((color: string) => {
+    const ids = [...scriptSelectedStrokeIds.peek()];
+    if (ids.length === 0) return;
+    if (activeModule.peek() === 'watercolor') {
+      if (!aquarelleSelectMode.peek()) return;
+      void aquarelleAppearanceCommitRef.current?.(ids, { color });
+      return;
+    }
+    if (settings.tool === 'move') applyBrushScriptStrokeAppearance(ids, { color });
+  }, [settings.tool]);
+  const rightPanel = rightPanelPropsMemo.resolve([settings.tool, settings.color, settings.opacity, settings.size, settings.edgeDetail, settings.pickup, settings.spread, settings.smoothing, settings.eraseStrength, settings.physicsMode, settings.background, settings.grainStrength, settings.grainScale, onion, isPlaying, staticControlsLocked, rotoLegacyInterpolationSettings, setBrushColor, setEdgeDetail, setPickup, setSpread, setSmoothing, setEraseStrength, setOnion, updatePanelMotion, rotoScriptLibrary, rotoPlayScript, rotoScript, playButtonRef, selectedLoopClip, effectiveLinkedGroupIndex, linkedRotoGroups.length, handlePreviousLinkedGroup, handleNextLinkedGroup, handleGoToLinkedGroup, handleOpenRotoLoopEdit, handleCloseRotoLoopClip, handleScriptRowActivate, handleSelectedScriptLoadAndApply, setLastError, launchContext?.layerId, efxPaintVersion.value, setApplyMessage, selectedBackgroundClipId, backgroundClipSectionPortsRef, audioSectionPortsRef, rightPanelToolTab, handlePaperIdChange, handleBackgroundChange, handleGrainStrengthChange, handleGrainScaleChange, handleBrushSizeChange, handleOpacityChange, handleRightPanelColorCommit, undo, redo, clearActiveSource, memorySectionRef], () => {
     // 47-03 TML-04: the Track section always shows the ACTIVE track — the
     // document's activeTrackId authority (not the launch track) — so a
     // row-header click re-resolves the memo through efxPaintVersion and the
@@ -5254,6 +5276,7 @@ export function PhysicsPaintStudio() {
       setBrushColor(color, opacity);
       paintStore.setForeground(color);
     },
+    onColorCommit: handleRightPanelColorCommit,
     onEdgeDetailChange: setEdgeDetail,
     onPickupChange: setPickup,
     onSpreadChange: setSpread,
@@ -5800,6 +5823,9 @@ export function PhysicsPaintStudio() {
     setApplyStatus,
     clearOwnedScriptApplyRefusal,
   ]);
+  // 261024-p5q UAT: the early sidebar color-commit handler resolves this ref
+  // at event time; assignment is a plain render-body ref write (port precedent).
+  aquarelleAppearanceCommitRef.current = handleAquarelleAppearanceStrokes;
 
   // 261024-mz5 Task 3: corner-scale / top-rotate of the whole watercolor
   // selection. The overlay wrote only the live preview during the gesture; this

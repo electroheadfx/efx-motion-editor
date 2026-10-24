@@ -53,6 +53,8 @@ export interface PhysicsPaintRightPanelProps {
   engineControlsDisabled?: boolean;
   playWiggle: PhysicsPaintPlayWiggleSettings;
   onColorChange: (color: string, opacity: number) => void;
+  /** 261024-p5q UAT: one commit per picker gesture — edits the selected strokes. */
+  onColorCommit?: (color: string, opacity: number) => void;
   onEdgeDetailChange: (value: number) => void;
   onPickupChange: (value: number) => void;
   onSpreadChange: (value: number) => void;
@@ -197,6 +199,7 @@ export function PhysicsPaintRightPanel({
   engineControlsDisabled = false,
   playWiggle,
   onColorChange,
+  onColorCommit,
   onEdgeDetailChange,
   onPickupChange,
   onSpreadChange,
@@ -394,6 +397,7 @@ export function PhysicsPaintRightPanel({
               opacity={opacity}
               disabled={engineControlsDisabled}
               onColorChange={onColorChange}
+              onColorCommit={onColorCommit}
             />
           </div>
           )}

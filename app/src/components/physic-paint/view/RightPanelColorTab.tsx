@@ -30,6 +30,13 @@ export function RightPanelColorTab(props: {
   color: string;
   disabled?: boolean;
   onColorChange: (color: string, opacity: number) => void;
+  /**
+   * 261024-p5q: the ONE commit boundary per picker gesture (box/hue release,
+   * color-chip change, hex Enter/blur, swatch click). Live moves still flow
+   * through onColorChange only. Optional — the sidebar and every existing
+   * consumer keep their exact behavior when it is absent.
+   */
+  onColorCommit?: (color: string, opacity: number) => void;
   opacity: number;
 }) {
   const [hexInput, setHexInput] = useState(props.color);
@@ -37,6 +44,7 @@ export function RightPanelColorTab(props: {
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
   const [hiddenPaletteColors, setHiddenPaletteColors] = useState<string[]>([]);
   const previousColorRef = useRef(props.color);
+  const lastColorRef = useRef(normalizeHexInput(props.color) ?? props.color);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
   const draggingColorBox = useRef(false);
@@ -58,6 +66,8 @@ export function RightPanelColorTab(props: {
     if (previousColorRef.current === props.color) return;
     previousColorRef.current = props.color;
     setHexInput(props.color);
+    const normalized = normalizeHexInput(props.color);
+    if (normalized) lastColorRef.current = normalized;
   }, [props.color]);
 
   const currentRgb = hexToRgba(props.color);
@@ -83,15 +93,24 @@ export function RightPanelColorTab(props: {
     context.fillRect(0, 0, canvas.width, canvas.height);
   }, [currentHsv.h]);
 
-  const commitColor = useCallback((nextColor: string, nextOpacity = props.opacity) => {
+  const commitColor = useCallback((nextColor: string, nextOpacity = props.opacity): string | null => {
     const normalized = normalizeHexInput(nextColor);
     if (!normalized) {
       setHexInput(currentHex);
-      return;
+      return null;
     }
     setHexInput(normalized);
+    lastColorRef.current = normalized;
     props.onColorChange(normalized, nextOpacity);
+    return normalized;
   }, [currentHex, props.onColorChange, props.opacity]);
+
+  /** One commit-boundary emission; live moves never reach it. */
+  const emitColorCommit = useCallback((color: string) => {
+    const normalized = normalizeHexInput(color);
+    if (!normalized) return;
+    props.onColorCommit?.(normalized, props.opacity);
+  }, [props.onColorCommit, props.opacity]);
 
   const commitHsv = useCallback((h: number, s: number, v: number) => {
     const rgb = hsvToRgb(h, s, v);
@@ -117,7 +136,9 @@ export function RightPanelColorTab(props: {
 
   const addFavorite = useCallback(() => {
     const nextHex = normalizeHexInput(hexInput) ?? currentHex;
-    if (nextHex !== currentHex) commitColor(nextHex);
+    if (nextHex !== currentHex) {
+      if (commitColor(nextHex)) emitColorCommit(nextHex);
+    }
     setHiddenPaletteColors((colors) => {
       const updated = colors.filter((item) => item !== nextHex);
       if (updated.length !== colors.length) {
@@ -188,7 +209,11 @@ export function RightPanelColorTab(props: {
             handleColorBoxPointer(event as unknown as PointerEvent);
           }}
           onPointerMove={(event) => draggingColorBox.current && handleColorBoxPointer(event as unknown as PointerEvent)}
-          onPointerUp={() => { draggingColorBox.current = false; }}
+          onPointerUp={() => {
+            if (!draggingColorBox.current) return;
+            draggingColorBox.current = false;
+            emitColorCommit(lastColorRef.current);
+          }}
         />
         <span
           class="physics-paint-color-cursor"
@@ -208,7 +233,11 @@ export function RightPanelColorTab(props: {
           handleHuePointer(event as unknown as PointerEvent);
         }}
         onPointerMove={(event) => draggingHue.current && handleHuePointer(event as unknown as PointerEvent)}
-        onPointerUp={() => { draggingHue.current = false; }}
+        onPointerUp={() => {
+          if (!draggingHue.current) return;
+          draggingHue.current = false;
+          emitColorCommit(lastColorRef.current);
+        }}
       >
         <span class="physics-paint-hue-cursor" style={{ left: `${currentHsv.h * 100}%` }} />
       </div>
@@ -221,6 +250,7 @@ export function RightPanelColorTab(props: {
           aria-label="Brush color"
           disabled={props.disabled}
           onInput={(event) => commitColor((event.target as HTMLInputElement).value)}
+          onChange={() => emitColorCommit(lastColorRef.current)}
         />
         <input
           type="text"
@@ -230,9 +260,13 @@ export function RightPanelColorTab(props: {
           placeholder="#103c65"
           disabled={props.disabled}
           onInput={(event) => setHexInput((event.target as HTMLInputElement).value)}
-          onBlur={() => commitColor(hexInput)}
+          onBlur={() => {
+            if (commitColor(hexInput)) emitColorCommit(lastColorRef.current);
+          }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') commitColor(hexInput);
+            if (event.key === 'Enter') {
+              if (commitColor(hexInput)) emitColorCommit(lastColorRef.current);
+            }
           }}
         />
         <button type="button" class="physics-paint-text-button physics-paint-add-swatch" disabled={props.disabled} onClick={addFavorite}>+</button>
@@ -248,7 +282,9 @@ export function RightPanelColorTab(props: {
               title={swatch}
               aria-label={`Use ${swatch}`}
               disabled={props.disabled}
-              onClick={() => commitColor(swatch)}
+              onClick={() => {
+                if (commitColor(swatch)) emitColorCommit(swatch);
+              }}
             />
             <button
               type="button"

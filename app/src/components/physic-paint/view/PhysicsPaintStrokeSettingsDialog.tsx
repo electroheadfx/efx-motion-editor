@@ -2,14 +2,15 @@ import { useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
+import { SlidersHorizontal, X } from 'lucide-preact';
 import { SliderStepper } from '../../shared/SliderStepper';
-import { RightPanelColorTab } from './RightPanelColorTab';
+import { SidebarScrollArea } from '../../sidebar/SidebarScrollArea';
 import {
   FRESH_STROKE_GEOMETRY_SESSION,
+  STROKE_POSITION_RANGE,
   STROKE_ROTATION_RANGE,
   STROKE_SCALE_RANGE,
   buildAppearancePatch,
-  buildColorPatch,
   geometryMoveDelta,
   geometryTransform,
   readColorField,
@@ -30,6 +31,13 @@ import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
  * Select). Patterned on the Photo Reference dialog: no backdrop, no focus
  * trap — the canvas and its transform handles stay interactive behind it.
  *
+ * 261024-p5q UAT revision: the header reuses the Document sound modal's
+ * chrome (icon + title + rounded-square close), the sections read
+ * Color -> Geometry -> Paint, and the internal scroll uses the app's
+ * SidebarScrollArea thumb (never the OS scrollbar). The color is no longer
+ * edited here: a read-only thumb shows the selected strokes' color and the
+ * one shared picker in the sidebar Color tab commits the change.
+ *
  * Dismissal (exact law): `dismissed` is a signal written ONLY by Escape and
  * the header close button. `sawEmptySinceDismiss` is a plain module flag
  * (NOT a signal) marking "the selection was empty at least once after the
@@ -39,11 +47,6 @@ import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
  * does. Escape passes through when a focused input/textarea/contenteditable
  * INSIDE the dialog owns the key.
  *
- * Signals only: ref-held signals, no React-style component state, no
- * render-body signal writes, all styling inline (no CSS file change). The
- * full Paint field set, the shared Color control and the session-relative
- * Geometry section all ship here.
- *
  * Geometry: every row is a release-commit, free-entry SliderStepper. X/Y type
  * an absolute target and commit `target - live centre` in integer px; Scale /
  * Scale X / Scale Y / Rotation apply the delta from that row's last APPLIED
@@ -51,12 +54,6 @@ import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
  * keyed by the selection Set, so a membership change re-baselines to identity.
  * Transforms anchor at the union-box centre of the selected strokes; nothing
  * persists.
- *
- * Color: the shared RightPanelColorTab is imported UNMODIFIED. Its live
- * onColorChange writes a dialog draft signal only; the wrapper's boundary
- * handlers (pointerup, change, Enter, blur-capture, click) perform the ONE
- * stroke write per gesture. The dedupe baseline is keyed by the selection Set
- * so a membership change re-arms the first commit.
  */
 
 interface DragOffset {
@@ -85,49 +82,35 @@ const SURFACE_STYLE: CSSProperties = {
   top: '12px',
   right: '12px',
   width: '320px',
-  maxHeight: 'calc(100% - 24px)',
-  overflowY: 'auto',
+  // A definite height is required: the SidebarScrollArea root is a flex child
+  // whose inner scroller is absolutely positioned, so an auto-height surface
+  // would collapse its track to zero.
+  height: 'min(520px, calc(100% - 24px))',
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
   zIndex: 50,
   boxSizing: 'border-box',
-  padding: '10px',
-  borderRadius: '6px',
-  border: '1px solid var(--sidebar-border-unselected, rgba(159, 165, 174, 0.35))',
-  background: 'var(--sidebar-bg, #1f242b)',
+  padding: '0',
+  borderRadius: '10px',
+  border: '1px solid rgba(255, 255, 255, 0.09)',
+  background: 'rgba(28, 30, 34, 0.9)',
   color: 'var(--sidebar-text-primary, #eceff2)',
-  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
   pointerEvents: 'auto',
 };
 
-const HEADER_STYLE: CSSProperties = {
+const SCROLL_CONTENT_STYLE: CSSProperties = {
   display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  cursor: 'move',
-  userSelect: 'none',
-  touchAction: 'none',
-};
-
-const CLOSE_STYLE: CSSProperties = {
-  width: '18px',
-  height: '18px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '0',
-  border: 'none',
-  borderRadius: '3px',
-  background: 'transparent',
-  color: 'var(--sidebar-text-secondary, #9aa5b1)',
-  cursor: 'pointer',
-  fontSize: '13px',
-  lineHeight: '1',
+  flexDirection: 'column',
+  gap: '10px',
+  padding: '10px 12px 12px',
 };
 
 const SECTION_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '8px',
-  marginTop: '8px',
 };
 
 const SECTION_TITLE_STYLE: CSSProperties = {
@@ -151,10 +134,11 @@ const SEGMENT_LABEL_ROW_STYLE: CSSProperties = {
   marginBottom: '4px',
 };
 
+/** 261024-p5q UAT: a mixed readout is red, never the quiet gray. */
 const MIXED_CAPTION_STYLE: CSSProperties = {
   fontSize: '10px',
   fontStyle: 'italic',
-  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  color: '#ef4444',
 };
 
 const SEGMENT_GROUP_STYLE: CSSProperties = {
@@ -180,6 +164,21 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
   color: '#ffffff',
 };
 
+const COLOR_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+};
+
+const COLOR_THUMB_STYLE: CSSProperties = {
+  width: '28px',
+  height: '28px',
+  flex: '0 0 auto',
+  borderRadius: '6px',
+  border: '1px solid rgba(255, 255, 255, 0.22)',
+  boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.22)',
+};
+
 export function PhysicsPaintStrokeSettingsDialog({
   bundle,
 }: PhysicsPaintStrokeSettingsDialogProps) {
@@ -189,11 +188,6 @@ export function PhysicsPaintStrokeSettingsDialog({
   const dragOffsetRef = useRef<Signal<DragOffset | null> | null>(null);
   if (!dragOffsetRef.current) dragOffsetRef.current = signal(null);
   const dragStartRef = useRef<DragStart | null>(null);
-  /** The picker's live colour — a draft only; strokes move at a boundary. */
-  const colorDraftRef = useRef<Signal<{ selection: ReadonlySet<number>; color: string } | null> | null>(null);
-  if (!colorDraftRef.current) colorDraftRef.current = signal(null);
-  /** Per-selection dedupe baseline: the last colour this selection committed. */
-  const colorCommittedRef = useRef<{ selection: ReadonlySet<number>; color: string } | null>(null);
   /**
    * The geometry session, keyed by the selection Set instance. A different
    * selection simply resolves FRESH — no render-body signal write, and a new
@@ -256,78 +250,6 @@ export function PhysicsPaintStrokeSettingsDialog({
   const segmentedFields = fields.filter((field) => field.kind === 'segmented');
 
   const colorReading = readColorField(appearances, ids);
-  const draftState = colorDraftRef.current.value;
-  const draftColor = draftState && draftState.selection === selection ? draftState.color : null;
-  const shownColor = draftColor ?? colorReading.color;
-
-  /**
-   * The shared picker's live changes land here ONLY: a dialog draft. Strokes
-   * are written by {@link commitColor} at a gesture boundary, never per tick.
-   */
-  const writeColorDraft = (nextColor: string) => {
-    const current = colorDraftRef.current!.value;
-    if (current && current.selection === selection && current.color === nextColor) return;
-    colorDraftRef.current!.value = { selection, color: nextColor };
-  };
-
-  /**
-   * ONE stroke write per boundary. The dedupe baseline is keyed by the
-   * selection Set: a membership change starts unset, so a mixed selection's
-   * first commit always writes (even when it reproduces the representative
-   * colour). Repeated boundaries in one gesture are idempotent.
-   *
-   * A boundary commits ONLY a draft the shared picker just emitted: a bare
-   * pointerup/click/change never invents the representative colour. This is
-   * what keeps clicking the chip/hex field or opening the native colour
-   * picker from collapsing a mixed selection before the user picks anything.
-   */
-  const commitColor = () => {
-    const current = colorDraftRef.current!.value;
-    if (!current || current.selection !== selection) return;
-    const nextColor = current.color;
-    const baseline = colorCommittedRef.current;
-    if (baseline && baseline.selection === selection && baseline.color === nextColor) return;
-    colorCommittedRef.current = { selection, color: nextColor };
-    void bundle.applyAppearance(ids, buildColorPatch(nextColor));
-  };
-
-  /** The wrapper only recognizes the picker's own boundary surfaces. */
-  const eventTargets = (event: unknown, selector: string): boolean => {
-    const target = (event as { target?: { closest?: (query: string) => unknown } } | null)?.target;
-    return Boolean(target?.closest?.(selector));
-  };
-
-  const commitColorOnPointerUp = (event: unknown) => {
-    if (!eventTargets(event, '.physics-paint-color-box, .physics-paint-hue-strip')) return;
-    commitColor();
-  };
-
-  const commitColorOnChange = (event: unknown) => {
-    if (!eventTargets(event, '.physics-paint-color-chip')) return;
-    commitColor();
-  };
-
-  const commitColorOnKeyDown = (event: unknown) => {
-    if ((event as { key?: string } | null)?.key !== 'Enter') return;
-    if (!eventTargets(event, '.physics-paint-hex-input')) return;
-    commitColor();
-  };
-
-  const commitColorOnClick = (event: unknown) => {
-    // The swatch button owns the click; its remove control is a sibling.
-    if (!eventTargets(event, '.physics-paint-swatch')) return;
-    commitColor();
-  };
-
-  /**
-   * Preact runs `onBlurCapture` BEFORE the focused field's own `onBlur`, so a
-   * hex commit would still be only in the field's state. Defer one microtask
-   * to commit the draft the field handler just wrote. An invalid entry or an
-   * Escape cancel leaves no draft, and commitColor then writes nothing.
-   */
-  const onColorBlurCapture = () => {
-    queueMicrotask(commitColor);
-  };
 
   const offset = dragOffsetRef.current.value;
   const applied = offset && offset.selection === selection ? offset : null;
@@ -433,202 +355,202 @@ export function PhysicsPaintStrokeSettingsDialog({
       }}
     >
       <div
+        class="physics-paint-photo-reference-header"
         data-testid="stroke-settings-header"
-        style={HEADER_STYLE}
         onPointerDown={onHeaderPointerDown}
         onPointerMove={onHeaderPointerMove}
         onPointerUp={endHeaderDrag}
         onPointerCancel={endHeaderDrag}
       >
-        <strong style={{ fontSize: '12px' }}>Stroke settings</strong>
-        <span style={{ flex: '1 1 0' }} aria-hidden="true" />
+        <SlidersHorizontal
+          size={15}
+          class="physics-paint-photo-reference-header-icon"
+          aria-hidden="true"
+        />
+        <strong>Stroke settings</strong>
+        <span class="physics-paint-photo-reference-header-spacer" aria-hidden="true" />
         <button
           type="button"
+          class="physics-paint-photo-reference-close"
           data-testid="stroke-settings-close"
-          aria-label="Close stroke settings"
+          aria-label="Close"
           title="Close"
-          style={CLOSE_STYLE}
           onClick={dismiss}
         >
-          ×
+          <X size={12} aria-hidden="true" />
         </button>
       </div>
 
-      <div style={SECTION_STYLE}>
-        <div style={SECTION_TITLE_STYLE}>Paint</div>
-        {numericFields.map((field) => {
-          const reading = readNumericField(appearances, ids, field);
-          return (
-            <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
-              <SliderStepper
-                label={field.label}
-                ariaLabel={field.label}
-                value={reading.value}
-                min={field.min}
-                max={field.max}
-                step={field.step}
-                mixed={reading.mixed}
-                commitOnRelease
-                onChange={(value) => {
-                  void bundle.applyAppearance(
-                    ids,
-                    buildAppearancePatch(engineModule, field.key, value),
-                  );
-                }}
+      <SidebarScrollArea class="physics-paint-stroke-settings-scroll" interactive>
+        <div style={SCROLL_CONTENT_STYLE}>
+          <div style={SECTION_STYLE}>
+            <div style={SECTION_TITLE_STYLE}>Color</div>
+            <div style={COLOR_ROW_STYLE} data-testid="stroke-settings-color">
+              <span
+                data-testid="stroke-settings-color-thumb"
+                title={colorReading.color}
+                style={{ ...COLOR_THUMB_STYLE, backgroundColor: colorReading.color }}
               />
+              {colorReading.mixed ? (
+                <span data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
+                  Mixed
+                </span>
+              ) : null}
             </div>
-          );
-        })}
-        {segmentedFields.map((field) => {
-          const reading = readNumericField(appearances, ids, field);
-          return (
-            <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
-              <div style={SEGMENT_LABEL_ROW_STYLE}>
-                <span style={PAINT_ROW_LABEL_STYLE}>{field.label}</span>
-                {reading.mixed ? (
-                  <span
-                    data-testid={`stroke-settings-${field.key}-mixed`}
-                    style={MIXED_CAPTION_STYLE}
-                  >
-                    Mixed
-                  </span>
-                ) : null}
-              </div>
-              <div role="group" aria-label={field.label} style={SEGMENT_GROUP_STYLE}>
-                {(field.options ?? []).map((option) => {
-                  const active = !reading.mixed && reading.value === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      data-testid={`stroke-settings-${field.key}-option-${option.value}`}
-                      aria-pressed={active}
-                      style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
-                      onClick={() => {
-                        void bundle.applyAppearance(
-                          ids,
-                          buildAppearancePatch(engineModule, field.key, option.value),
-                        );
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+          </div>
 
-      <div style={SECTION_STYLE}>
-        <div style={SECTION_TITLE_STYLE}>Color</div>
-        <div
-          data-testid="stroke-settings-color"
-          onPointerUp={commitColorOnPointerUp}
-          onChange={commitColorOnChange}
-          onKeyDown={commitColorOnKeyDown}
-          onBlurCapture={onColorBlurCapture}
-          onClick={commitColorOnClick}
-        >
-          {colorReading.mixed ? (
-            <div data-testid="stroke-settings-color-mixed" style={MIXED_CAPTION_STYLE}>
-              Mixed
+          {liveCenter ? (
+            <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
+              <div style={SECTION_TITLE_STYLE}>Geometry</div>
+              <div data-testid="stroke-settings-geometry-x">
+                <SliderStepper
+                  label="X"
+                  ariaLabel="X"
+                  value={Math.round(liveCenter.x)}
+                  min={STROKE_POSITION_RANGE.min}
+                  max={STROKE_POSITION_RANGE.max}
+                  step={1}
+                  freeEntry
+                  commitOnRelease
+                  onChange={(value) => commitGeometryMove('x', value)}
+                />
+              </div>
+              <div data-testid="stroke-settings-geometry-y">
+                <SliderStepper
+                  label="Y"
+                  ariaLabel="Y"
+                  value={Math.round(liveCenter.y)}
+                  min={STROKE_POSITION_RANGE.min}
+                  max={STROKE_POSITION_RANGE.max}
+                  step={1}
+                  freeEntry
+                  commitOnRelease
+                  onChange={(value) => commitGeometryMove('y', value)}
+                />
+              </div>
+              <div data-testid="stroke-settings-geometry-scale">
+                <SliderStepper
+                  label="Scale"
+                  ariaLabel="Scale"
+                  value={geometrySession.uniformPct}
+                  min={STROKE_SCALE_RANGE.min}
+                  max={STROKE_SCALE_RANGE.max}
+                  step={1}
+                  freeEntry
+                  commitOnRelease
+                  onChange={(value) => commitGeometryTransform('uniform', value)}
+                />
+              </div>
+              <div data-testid="stroke-settings-geometry-scale-x">
+                <SliderStepper
+                  label="Scale X"
+                  ariaLabel="Scale X"
+                  value={geometrySession.scaleXPct}
+                  min={STROKE_SCALE_RANGE.min}
+                  max={STROKE_SCALE_RANGE.max}
+                  step={1}
+                  freeEntry
+                  commitOnRelease
+                  onChange={(value) => commitGeometryTransform('scaleX', value)}
+                />
+              </div>
+              <div data-testid="stroke-settings-geometry-scale-y">
+                <SliderStepper
+                  label="Scale Y"
+                  ariaLabel="Scale Y"
+                  value={geometrySession.scaleYPct}
+                  min={STROKE_SCALE_RANGE.min}
+                  max={STROKE_SCALE_RANGE.max}
+                  step={1}
+                  freeEntry
+                  commitOnRelease
+                  onChange={(value) => commitGeometryTransform('scaleY', value)}
+                />
+              </div>
+              <div data-testid="stroke-settings-geometry-rotation">
+                <SliderStepper
+                  label="Rotation"
+                  ariaLabel="Rotation"
+                  value={geometrySession.rotationDeg}
+                  min={STROKE_ROTATION_RANGE.min}
+                  max={STROKE_ROTATION_RANGE.max}
+                  step={1}
+                  freeEntry
+                  commitOnRelease
+                  onChange={(value) => commitGeometryTransform('rotation', value)}
+                />
+              </div>
             </div>
           ) : null}
-          <RightPanelColorTab
-            color={shownColor}
-            opacity={100}
-            onColorChange={(nextColor) => {
-              writeColorDraft(nextColor);
-            }}
-          />
-        </div>
-      </div>
 
-      {liveCenter ? (
-        <div style={SECTION_STYLE} data-testid="stroke-settings-geometry">
-          <div style={SECTION_TITLE_STYLE}>Geometry</div>
-          <div data-testid="stroke-settings-geometry-x">
-            <SliderStepper
-              label="X"
-              ariaLabel="X"
-              value={Math.round(liveCenter.x)}
-              min={0}
-              max={bundle.canvasSize.width}
-              step={1}
-              freeEntry
-              commitOnRelease
-              onChange={(value) => commitGeometryMove('x', value)}
-            />
-          </div>
-          <div data-testid="stroke-settings-geometry-y">
-            <SliderStepper
-              label="Y"
-              ariaLabel="Y"
-              value={Math.round(liveCenter.y)}
-              min={0}
-              max={bundle.canvasSize.height}
-              step={1}
-              freeEntry
-              commitOnRelease
-              onChange={(value) => commitGeometryMove('y', value)}
-            />
-          </div>
-          <div data-testid="stroke-settings-geometry-scale">
-            <SliderStepper
-              label="Scale"
-              ariaLabel="Scale"
-              value={geometrySession.uniformPct}
-              min={STROKE_SCALE_RANGE.min}
-              max={STROKE_SCALE_RANGE.max}
-              step={1}
-              freeEntry
-              commitOnRelease
-              onChange={(value) => commitGeometryTransform('uniform', value)}
-            />
-          </div>
-          <div data-testid="stroke-settings-geometry-scale-x">
-            <SliderStepper
-              label="Scale X"
-              ariaLabel="Scale X"
-              value={geometrySession.scaleXPct}
-              min={STROKE_SCALE_RANGE.min}
-              max={STROKE_SCALE_RANGE.max}
-              step={1}
-              freeEntry
-              commitOnRelease
-              onChange={(value) => commitGeometryTransform('scaleX', value)}
-            />
-          </div>
-          <div data-testid="stroke-settings-geometry-scale-y">
-            <SliderStepper
-              label="Scale Y"
-              ariaLabel="Scale Y"
-              value={geometrySession.scaleYPct}
-              min={STROKE_SCALE_RANGE.min}
-              max={STROKE_SCALE_RANGE.max}
-              step={1}
-              freeEntry
-              commitOnRelease
-              onChange={(value) => commitGeometryTransform('scaleY', value)}
-            />
-          </div>
-          <div data-testid="stroke-settings-geometry-rotation">
-            <SliderStepper
-              label="Rotation"
-              ariaLabel="Rotation"
-              value={geometrySession.rotationDeg}
-              min={STROKE_ROTATION_RANGE.min}
-              max={STROKE_ROTATION_RANGE.max}
-              step={1}
-              freeEntry
-              commitOnRelease
-              onChange={(value) => commitGeometryTransform('rotation', value)}
-            />
+          <div style={SECTION_STYLE}>
+            <div style={SECTION_TITLE_STYLE}>Paint</div>
+            {numericFields.map((field) => {
+              const reading = readNumericField(appearances, ids, field);
+              return (
+                <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
+                  <SliderStepper
+                    label={field.label}
+                    ariaLabel={field.label}
+                    value={reading.value}
+                    min={field.min}
+                    max={field.max}
+                    step={field.step}
+                    mixed={reading.mixed}
+                    commitOnRelease
+                    onChange={(value) => {
+                      void bundle.applyAppearance(
+                        ids,
+                        buildAppearancePatch(engineModule, field.key, value),
+                      );
+                    }}
+                  />
+                </div>
+              );
+            })}
+            {segmentedFields.map((field) => {
+              const reading = readNumericField(appearances, ids, field);
+              return (
+                <div key={field.key} data-testid={`stroke-settings-${field.key}`}>
+                  <div style={SEGMENT_LABEL_ROW_STYLE}>
+                    <span style={PAINT_ROW_LABEL_STYLE}>{field.label}</span>
+                    {reading.mixed ? (
+                      <span
+                        data-testid={`stroke-settings-${field.key}-mixed`}
+                        style={MIXED_CAPTION_STYLE}
+                      >
+                        Mixed
+                      </span>
+                    ) : null}
+                  </div>
+                  <div role="group" aria-label={field.label} style={SEGMENT_GROUP_STYLE}>
+                    {(field.options ?? []).map((option) => {
+                      const active = !reading.mixed && reading.value === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          data-testid={`stroke-settings-${field.key}-option-${option.value}`}
+                          aria-pressed={active}
+                          style={active ? { ...SEGMENT_STYLE, ...SEGMENT_ACTIVE_STYLE } : SEGMENT_STYLE}
+                          onClick={() => {
+                            void bundle.applyAppearance(
+                              ids,
+                              buildAppearancePatch(engineModule, field.key, option.value),
+                            );
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      ) : null}
+      </SidebarScrollArea>
     </div>
   );
 }

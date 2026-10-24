@@ -315,6 +315,46 @@ describe('native-approved Physics Paint palette behavior', () => {
     expect(props.onColorChange).not.toHaveBeenCalled();
   });
 
+  it('emits ONE color commit per gesture (hex Enter, swatch click, box release), never on live input', async () => {
+    const onColorChange = vi.fn();
+    const onColorCommit = vi.fn();
+    const props = baseProps({ onColorChange, onColorCommit });
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    const hex = findByAria(tree, 'Brush color hex value');
+    hex.props.onInput({ target: { value: '#22aa44' } });
+    tree = renderPanel(props);
+    // Typed hex does not go live; the field commits on Enter/blur only.
+    expect(onColorChange).not.toHaveBeenCalled();
+    expect(onColorCommit).not.toHaveBeenCalled();
+
+    findByAria(tree, 'Brush color hex value').props.onKeyDown({
+      key: 'Enter',
+      currentTarget: { blur: vi.fn() },
+    });
+    expect(onColorChange).toHaveBeenLastCalledWith('#22aa44', 100);
+    expect(onColorCommit).toHaveBeenCalledTimes(1);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#22aa44', 100);
+
+    findByAria(tree, 'Use #2d5be3').props.onClick();
+    expect(onColorCommit).toHaveBeenCalledTimes(2);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#2d5be3', 100);
+
+    // A drag on the color box commits on release, not on pointerdown.
+    const box = childrenOf(tree).find(
+      (node) => (node as AnyVNode).props?.class === 'physics-paint-color-box',
+    ) as AnyVNode;
+    box.props.onPointerDown({
+      pointerId: 1,
+      currentTarget: { setPointerCapture: vi.fn() },
+    });
+    expect(onColorCommit).toHaveBeenCalledTimes(2);
+    box.props.onPointerUp();
+    expect(onColorCommit).toHaveBeenCalledTimes(3);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#2d5be3', 100);
+  });
+
   it('restores a removed built-in default through + as the newest persisted favorite', async () => {
     mocks.loadHiddenPaletteColors.mockResolvedValue(['#103c65']);
     const props = baseProps();

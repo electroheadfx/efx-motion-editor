@@ -268,8 +268,9 @@ describe('slider-stepper — mixed display and first-gesture commit (261024-p5q)
 
     const progress = byClass(tree, 'slider-stepper-progress')!;
     expect(styleOf(progress).width).toBe('0px');
-    // The value box carries the muted/italic mixed treatment inline.
+    // The value box carries the red/italic mixed treatment inline.
     expect(styleOf(value).fontStyle).toBe('italic');
+    expect(styleOf(value).color).toBe('#ef4444');
   });
 
   it('Escape and an invalid entry both restore the Mixed readout', () => {

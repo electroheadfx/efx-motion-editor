@@ -125,7 +125,7 @@ const MIXED_DISPLAY = 'Mixed';
 
 /** Inline mixed treatment on the existing value box — no CSS file change. */
 const MIXED_VALUE_STYLE: CSSProperties = {
-  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  color: '#ef4444',
   fontStyle: 'italic',
 };
 

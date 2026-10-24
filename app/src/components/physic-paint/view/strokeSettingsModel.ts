@@ -49,7 +49,7 @@ export interface StrokeSettingsField {
 
 /** Brush Paint-tab fields (Move tool). Erase strength and Spread are absent. */
 export const BRUSH_SETTINGS_FIELDS: readonly StrokeSettingsField[] = Object.freeze([
-  Object.freeze({ key: 'size', label: 'Size', min: 1, max: 80, step: 1, kind: 'numeric' as const }),
+  Object.freeze({ key: 'size', label: 'Size', min: 1, max: 400, step: 1, kind: 'numeric' as const }),
   Object.freeze({ key: 'opacity', label: 'Opacity', min: 10, max: 100, step: 1, kind: 'numeric' as const }),
   Object.freeze({ key: 'edgeDetail', label: 'Shape detail', min: 0, max: 100, step: 1, kind: 'numeric' as const }),
   Object.freeze({ key: 'pickup', label: 'Blending', min: 0, max: 100, step: 1, kind: 'numeric' as const }),
@@ -273,8 +273,10 @@ export const FRESH_STROKE_GEOMETRY_SESSION: StrokeGeometrySession = Object.freez
 });
 
 /** Declared display ranges — typed input and every commit clamp here. */
-export const STROKE_SCALE_RANGE = Object.freeze({ min: 10, max: 1000 });
+export const STROKE_SCALE_RANGE = Object.freeze({ min: 10, max: 500 });
 export const STROKE_ROTATION_RANGE = Object.freeze({ min: -360, max: 360 });
+/** X/Y typed absolute targets (canvas px). */
+export const STROKE_POSITION_RANGE = Object.freeze({ min: 0, max: 2000 });
 
 export type StrokeGeometryControl = 'uniform' | 'scaleX' | 'scaleY' | 'rotation';
 
