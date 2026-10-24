@@ -74,9 +74,21 @@ import { clampStackPosition } from './stackOrder';
  */
 
 interface DragOffset {
-  readonly selection: ReadonlySet<number>;
   readonly dxPx: number;
   readonly dyPx: number;
+}
+
+/**
+ * 261024-vga UAT revision: the dialog's layout lives at module scope so it
+ * survives selection changes, dismiss/reopen and module switches for the whole
+ * Studio lifecycle. It resets only when this module unloads.
+ */
+const strokeSettingsDragOffset = signal<DragOffset | null>(null);
+const strokeSettingsResizeHeight = signal<number | null>(null);
+
+export function resetStrokeSettingsDialogLayout(): void {
+  strokeSettingsDragOffset.value = null;
+  strokeSettingsResizeHeight.value = null;
 }
 
 interface DragStart {
@@ -184,20 +196,6 @@ const SEGMENT_ACTIVE_STYLE: CSSProperties = {
   color: '#ffffff',
 };
 
-/** 261024-vga UAT revision: the three sections live on ONE pinned tab row. */
-const TAB_ROW_STYLE: CSSProperties = {
-  display: 'flex',
-  gap: '4px',
-  padding: '2px 12px 10px',
-  flex: '0 0 auto',
-};
-
-const TAB_STYLE: CSSProperties = {
-  ...SEGMENT_STYLE,
-  height: '24px',
-  fontSize: '11px',
-};
-
 const COLOR_BLOCK_STYLE: CSSProperties = {
   width: '100%',
   height: '48px',
@@ -273,12 +271,7 @@ export function PhysicsPaintStrokeSettingsDialog({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const dismissedRef = useRef<Signal<boolean> | null>(null);
   if (!dismissedRef.current) dismissedRef.current = signal(false);
-  const dragOffsetRef = useRef<Signal<DragOffset | null> | null>(null);
-  if (!dragOffsetRef.current) dragOffsetRef.current = signal(null);
   const dragStartRef = useRef<DragStart | null>(null);
-  /** UAT: the sheet's height after a bottom-grip drag (null = CSS default). */
-  const resizeHeightRef = useRef<Signal<number | null> | null>(null);
-  if (!resizeHeightRef.current) resizeHeightRef.current = signal(null);
   const resizeStartRef = useRef<{ pointerY: number; height: number; max: number } | null>(null);
   /**
    * The geometry session, keyed by the selection Set instance. A different
@@ -372,8 +365,7 @@ export function PhysicsPaintStrokeSettingsDialog({
   const colorReading = readColorField(appearances, ids);
   const colorRgb = hexToRgba(colorReading.color);
 
-  const offset = dragOffsetRef.current.value;
-  const applied = offset && offset.selection === selection ? offset : null;
+  const applied = strokeSettingsDragOffset.value;
 
   /**
    * Geometry is session-relative: the display states what the strokes LAST
@@ -460,8 +452,7 @@ export function PhysicsPaintStrokeSettingsDialog({
   const onHeaderPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const rect = surfaceRef.current?.getBoundingClientRect?.() ?? null;
-    const current = dragOffsetRef.current!.value;
-    const base = current && current.selection === selection ? current : null;
+    const base = strokeSettingsDragOffset.value;
     dragStartRef.current = {
       pointerX: event.clientX,
       pointerY: event.clientY,
@@ -489,7 +480,7 @@ export function PhysicsPaintStrokeSettingsDialog({
         window.innerHeight - 48 - start.rect.top,
       );
     }
-    dragOffsetRef.current!.value = { selection, dxPx: nextX, dyPx: nextY };
+    strokeSettingsDragOffset.value = { dxPx: nextX, dyPx: nextY };
   };
 
   const endHeaderDrag = () => {
@@ -516,14 +507,14 @@ export function PhysicsPaintStrokeSettingsDialog({
     const start = resizeStartRef.current;
     if (!start) return;
     const next = Math.min(start.max, Math.max(240, start.height + (event.clientY - start.pointerY)));
-    resizeHeightRef.current!.value = next;
+    strokeSettingsResizeHeight.value = next;
   };
 
   const endResize = () => {
     resizeStartRef.current = null;
   };
 
-  const resizedHeight = resizeHeightRef.current.value;
+  const resizedHeight = strokeSettingsResizeHeight.value;
 
   return (
     <div
@@ -565,10 +556,10 @@ export function PhysicsPaintStrokeSettingsDialog({
       </div>
 
       <div
+        class="physics-paint-options-tabs physics-paint-stroke-settings-tabs"
         role="tablist"
         aria-label="Stroke settings sections"
         data-testid="stroke-settings-tabs"
-        style={TAB_ROW_STYLE}
       >
         {STROKE_SETTINGS_TABS.map((tab) => {
           if (tab.key === 'stack' && !stackTabAvailable) return null;
@@ -580,7 +571,7 @@ export function PhysicsPaintStrokeSettingsDialog({
               role="tab"
               data-testid={`stroke-settings-tab-${tab.key}`}
               aria-selected={active}
-              style={active ? { ...TAB_STYLE, ...SEGMENT_ACTIVE_STYLE } : TAB_STYLE}
+              class={`physics-paint-options-tab${active ? ' active' : ''}`}
               onClick={() => {
                 settingsTabRef.current!.value = tab.key;
               }}

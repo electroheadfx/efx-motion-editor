@@ -1157,6 +1157,22 @@ button.destructive {
   box-shadow: none !important;
 }
 
+/* 261024-vga UAT revision: the Stroke settings dialog reuses the sidebar tab
+   chrome — one row, active tab visually connected to the surface below. */
+.physics-paint-stroke-settings-tabs {
+  padding: 0 12px;
+  margin-top: 2px;
+}
+
+.physics-paint-stroke-settings-tabs .physics-paint-options-tab {
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.physics-paint-stroke-settings-tabs .physics-paint-options-tab.active {
+  border-bottom-color: #1c1e22 !important;
+}
+
 .physics-paint-options-tab-panel {
   display: flex;
   flex-direction: column;

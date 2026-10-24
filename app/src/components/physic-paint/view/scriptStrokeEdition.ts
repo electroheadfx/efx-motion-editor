@@ -421,21 +421,3 @@ export function deleteSelectedScriptStroke(): boolean {
   return true;
 }
 
-/**
- * Step a SINGLE selected stroke; same consume law as delete. With 2+
- * selected the key is consumed (the surface owns it) but nothing steps —
- * restacking is a one-stroke operation by design.
- */
-export function stepSelectedScriptStroke(direction: 'back' | 'forward'): boolean {
-  const port = resolveScriptStrokeEditionPort();
-  if (!port) return false;
-  if (!port.isActive()) return false;
-  if (scriptSelectedStrokeIds.peek().size === 0) return false;
-  // 261024-mz5: restacking is a one-stroke operation by design — a
-  // multi-selection consumes the key but never steps anything.
-  if (scriptSelectedStrokeIds.peek().size !== 1) return true;
-  const id = scriptSelectedStrokeId.peek();
-  if (id === null) return false;
-  port.stepStroke(id, direction);
-  return true;
-}

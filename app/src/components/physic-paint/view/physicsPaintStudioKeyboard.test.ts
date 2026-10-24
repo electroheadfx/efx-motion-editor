@@ -957,10 +957,9 @@ describe('261022-pim aquarelle stroke delete shortcut', () => {
   });
 });
 
-// 261022-ujp: '<' steps a stroke back and '>' steps it forward when the action
-// consumes the key. The branch precedes the playback toggle and only owns the
-// key once the action returns true; Space keeps the playback binding verbatim.
-describe('261022-ujp stroke stack step shortcut', () => {
+// 261024-vga: the '<' / '>' stack-step shortcuts are retired — the Stack
+// section in the Stroke settings dialog owns exact placement.
+describe('261024-vga retired stroke stack step shortcut', () => {
   const baseState: PhysicsPaintStudioKeyboardState = {
     currentFrame: 4,
     isPlaying: false,
@@ -969,61 +968,27 @@ describe('261022-ujp stroke stack step shortcut', () => {
   };
   const frames = [{ frame: 1 }, { frame: 3 }, { frame: 7 }];
 
-  it('< steps back and > steps forward when the action consumes the key', () => {
-    for (const [key, direction] of [['<', 'back'], ['>', 'forward']] as const) {
-      const handlers = { ...actions(), stepSelectedStroke: vi.fn(() => true) };
-      // '<' and '>' arrive with Shift on a US layout — the gate must allow it.
-      const { event, preventDefault } = eventFor(key, new TestHTMLElement('canvas') as unknown as EventTarget, {
-        shiftKey: true,
-      });
-
-      dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
-
-      expect(handlers.stepSelectedStroke).toHaveBeenCalledWith(direction);
-      expect(handlers.toggleRotoPlayback).not.toHaveBeenCalled();
-      expect(preventDefault).toHaveBeenCalledOnce();
-    }
-  });
-
-  it('the stack keys fall through when the action returns false', () => {
-    const handlers = { ...actions(), stepSelectedStroke: vi.fn(() => false) };
-    const { event, preventDefault } = eventFor('<', new TestHTMLElement('canvas') as unknown as EventTarget);
+  it.each(['<', '>'])('%s is no longer consumed', (key) => {
+    const handlers = actions();
+    const { event, preventDefault } = eventFor(
+      key,
+      new TestHTMLElement('canvas') as unknown as EventTarget,
+      { shiftKey: true },
+    );
 
     dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
 
-    expect(handlers.stepSelectedStroke).toHaveBeenCalledOnce();
-    expect(handlers.toggleRotoPlayback).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+    expect(handlers.toggleRotoPlayback).not.toHaveBeenCalled();
   });
 
-  it('the stack keys never step on repeat, a modifier, or while playing', () => {
-    for (const overrides of [
-      { repeat: true },
-      { metaKey: true },
-      { ctrlKey: true },
-      { altKey: true },
-    ]) {
-      const handlers = { ...actions(), stepSelectedStroke: vi.fn(() => true) };
-      const { event } = eventFor('>', new TestHTMLElement('canvas') as unknown as EventTarget, overrides);
-
-      dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
-
-      expect(handlers.stepSelectedStroke).not.toHaveBeenCalled();
-    }
-
-    const handlers = { ...actions(), stepSelectedStroke: vi.fn(() => true) };
-    const { event } = eventFor('<', new TestHTMLElement('canvas') as unknown as EventTarget);
-    dispatchPhysicsPaintStudioKeyDown(event, { ...baseState, isPlaying: true }, handlers, frames);
-    expect(handlers.stepSelectedStroke).not.toHaveBeenCalled();
-  });
-
-  it('Space is playback-only again', () => {
-    const handlers = { ...actions(), stepSelectedStroke: vi.fn(() => true) };
-    const { event } = eventFor(' ', new TestHTMLElement('canvas') as unknown as EventTarget);
+  it('Space keeps the playback binding', () => {
+    const handlers = actions();
+    const { event, preventDefault } = eventFor(' ', new TestHTMLElement('canvas') as unknown as EventTarget);
 
     dispatchPhysicsPaintStudioKeyDown(event, baseState, handlers, frames);
 
-    expect(handlers.stepSelectedStroke).not.toHaveBeenCalled();
     expect(handlers.toggleRotoPlayback).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
   });
 });

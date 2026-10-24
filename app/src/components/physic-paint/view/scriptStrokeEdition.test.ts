@@ -42,7 +42,6 @@ import {
   setScriptStrokeEditionPorts,
   setScriptStrokeSelection,
   setScriptStrokeTransform,
-  stepSelectedScriptStroke,
   toggleScriptStrokeSelection,
   type CanvasPoint,
   type ScriptStrokeEditionPort,
@@ -360,36 +359,6 @@ describe('scriptStrokeEdition — keyboard consume law', () => {
     // Consumed even if the port's own operation refused internally.
     expect(deleteSelectedScriptStroke()).toBe(true);
     expect(portCalls.deleted).toEqual([[7, 9], [7, 9]]);
-  });
-
-  it('stepSelectedScriptStroke consumes a multi-selection without stepping anything', () => {
-    expect(stepSelectedScriptStroke('back')).toBe(false);
-
-    const inactive = calls();
-    setScriptStrokeEditionPort(fakePort({ active: false, calls: inactive }));
-    selectScriptStroke(2);
-    expect(stepSelectedScriptStroke('forward')).toBe(false);
-    expect(inactive.stepped).toEqual([]);
-
-    const active = calls();
-    setScriptStrokeEditionPort(fakePort({ active: true, calls: active }));
-    clearScriptStrokeSelection();
-    expect(stepSelectedScriptStroke('back')).toBe(false);
-    expect(active.stepped).toEqual([]);
-
-    // 2+ selected: the key is consumed, the port is never asked.
-    setScriptStrokeSelection([4, 6]);
-    expect(stepSelectedScriptStroke('back')).toBe(true);
-    expect(active.stepped).toEqual([]);
-
-    // Exactly one: the step is forwarded.
-    setScriptStrokeSelection([4]);
-    expect(stepSelectedScriptStroke('back')).toBe(true);
-    expect(stepSelectedScriptStroke('forward')).toBe(true);
-    expect(active.stepped).toEqual([
-      { id: 4, direction: 'back' },
-      { id: 4, direction: 'forward' },
-    ]);
   });
 
   it('resolves the ACTIVE module port when both are registered', () => {

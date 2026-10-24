@@ -42,7 +42,10 @@ import {
   type StrokeSettingsDialogBundle,
   type StrokeSettingsField,
 } from './strokeSettingsModel';
-import { PhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
+import {
+  PhysicsPaintStrokeSettingsDialog,
+  resetStrokeSettingsDialogLayout,
+} from './PhysicsPaintStrokeSettingsDialog';
 import {
   setScriptSelectMode,
   setScriptStrokeSelection,
@@ -106,6 +109,7 @@ const windowListeners: Array<(event: unknown) => void> = [];
 
 beforeEach(() => {
   hooks.reset();
+  resetStrokeSettingsDialogLayout();
   windowListeners.length = 0;
   (globalThis as unknown as { window: unknown }).window = {
     innerWidth: 1280,
@@ -562,7 +566,7 @@ describe('261024-p5q dialog shell', () => {
     expect(renderDialog(bundle)).toBeNull();
   });
 
-  it('header drag writes the offset signal keyed by the selection Set instance', () => {
+  it('header drag persists across selection changes and dismiss/reopen', () => {
     const { bundle } = createBundle();
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
@@ -583,10 +587,18 @@ describe('261024-p5q dialog shell', () => {
     const moved = findByTestId(renderDialog(bundle), 'stroke-settings-dialog');
     expect((moved!.props.style as Record<string, unknown>).transform).toBe('translate(30px, 20px)');
 
-    // A new selection Set re-baselines the offset.
+    // The layout belongs to the Studio lifecycle, not to one selection.
     setScriptStrokeSelection([9]);
-    const reset = findByTestId(renderDialog(bundle), 'stroke-settings-dialog');
-    expect((reset!.props.style as Record<string, unknown>).transform).toBe('translate(0px, 0px)');
+    const kept = findByTestId(renderDialog(bundle), 'stroke-settings-dialog');
+    expect((kept!.props.style as Record<string, unknown>).transform).toBe('translate(30px, 20px)');
+
+    // Dismiss, observe the empty edge, reselect: the position survives.
+    (findByTestId(renderDialog(bundle), 'stroke-settings-close')!.props.onClick as () => void)();
+    setScriptStrokeSelection([]);
+    renderDialog(bundle);
+    setScriptStrokeSelection([7]);
+    const reopened = findByTestId(renderDialog(bundle), 'stroke-settings-dialog');
+    expect((reopened!.props.style as Record<string, unknown>).transform).toBe('translate(30px, 20px)');
   });
 
   it('the Size row is a release-commit SliderStepper that commits one bundle patch for the whole selection', () => {
@@ -789,13 +801,15 @@ describe('261024-p5q dialog fields and shared color', () => {
 
     const tabRow = findByTestId(tree, 'stroke-settings-tabs')!;
     expect(tabRow).toBeDefined();
-    expect((tabRow.props.style as Record<string, unknown>).display).toBe('flex');
+    // The sidebar tab chrome, reused verbatim on one row.
+    expect(tabRow.props.class).toContain('physics-paint-options-tabs');
     for (const tab of ['geometry', 'stack', 'paint']) {
       expect(findByTestId(tree, `stroke-settings-tab-${tab}`), tab).toBeDefined();
     }
 
     // Geometry is the default: only its content is mounted.
     expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props['aria-selected']).toBe(true);
+    expect(findByTestId(tree, 'stroke-settings-tab-geometry')!.props.class).toContain('active');
     expect(findByTestId(tree, 'stroke-settings-tab-paint')!.props['aria-selected']).toBe(false);
     expect(findByTestId(tree, 'stroke-settings-geometry')).toBeDefined();
     expect(findByTestId(tree, 'stroke-settings-stack')).toBeUndefined();
@@ -856,7 +870,11 @@ describe('261024-p5q dialog fields and shared color', () => {
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
     expect(findByTestId(tree, 'stroke-settings-resize')).toBeDefined();
-    expect(dialogSource).toContain('resizeHeightRef');
+    // 261024-vga: layout lives at module scope for the Studio lifecycle.
+    expect(dialogSource).toContain('strokeSettingsResizeHeight');
+    expect(dialogSource).not.toContain('resizeHeightRef');
+    expect(dialogSource).toContain('strokeSettingsDragOffset');
+    expect(dialogSource).not.toContain('dragOffsetRef');
     expect(dialogSource).toContain('cursor: \'ns-resize\'');
   });
 

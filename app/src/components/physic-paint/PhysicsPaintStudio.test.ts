@@ -3183,44 +3183,18 @@ describe('261022-tv1 watercolor stroke move wiring', () => {
 // with a concrete target; the watercolor path is one revision-authoritative
 // edit, the brush path is a paint-order projection over an untouched ledger.
 describe('261022-ujp stroke stack step', () => {
-  it('routes < and > through the stack action BEFORE the playback toggle', () => {
-    expect(studioKeyboard).toContain("stepSelectedStroke?: (direction: 'back' | 'forward') => boolean;");
-    const stackSite = studioKeyboard.indexOf('actions.stepSelectedStroke');
-    const playbackSite = studioKeyboard.indexOf('actions.toggleRotoPlayback();');
-    expect(stackSite).toBeGreaterThan(-1);
-    expect(playbackSite).toBeGreaterThan(stackSite);
-    const branch = studioKeyboard.slice(
-      studioKeyboard.lastIndexOf('if (', stackSite),
-      playbackSite,
-    );
-    expect(branch).toContain("(event.key === '<' || event.key === '>')");
-    expect(branch).toContain('!event.repeat');
-    expect(branch).toContain('!event.metaKey');
-    expect(branch).toContain('!event.ctrlKey');
-    expect(branch).toContain('!event.altKey');
-    // '<' and '>' are Shift-produced on a US layout — guarding Shift would
-    // disable the shortcut outright.
-    expect(branch).not.toContain('!event.shiftKey');
-    expect(branch).toContain('!state.isPlaying');
-    expect(branch).toContain('&& actions.stepSelectedStroke');
-    expect(branch).toContain("event.key === '<' ? 'back' : 'forward'");
-    // Never preventDefault BEFORE the action reports consumption.
-    expect(branch.indexOf('event.preventDefault();')).toBeGreaterThan(
-      branch.indexOf('actions.stepSelectedStroke('),
-    );
-    // Space keeps its playback binding and is no longer a stack key.
-    expect(studioKeyboard).not.toContain('stepSelectedStrokeBackward');
+  it('retires the < and > shortcut while keeping Space on playback', () => {
+    expect(studioKeyboard).not.toContain('stepSelectedStroke');
+    expect(studioKeyboard).not.toContain("event.key === '<'");
     expect(studioKeyboard).toContain('actions.toggleRotoPlayback();');
   });
 
-  it('delegates the Studio action to the ONE shared consume law', () => {
-    // 261023-g4p: both modules use the same helper; the mode+target gate and
-    // the peek-only reads moved into scriptStrokeEdition.ts.
-    expect(studio).toContain('stepSelectedStroke: (direction) => stepSelectedScriptStroke(direction),');
-    expect(scriptStrokeEdition).toContain('if (!port.isActive()) return false;');
-    expect(scriptStrokeEdition).toContain('const id = scriptSelectedStrokeId.peek();');
-    expect(scriptStrokeEdition).toContain('port.stepStroke(id, direction);');
-    // The watercolor registration owns the watercolor mode + selection gate.
+  it('no longer wires a Studio stack-step shortcut action', () => {
+    // 261024-vga: the Stack section owns exact placement; the keyboard path
+    // is gone from both the Studio action map and the shared helper.
+    expect(studio).not.toContain('stepSelectedStroke:');
+    expect(scriptStrokeEdition).not.toContain('stepSelectedScriptStroke');
+    // The watercolor registration keeps its own mode + selection gate.
     expect(studio).toContain("isActive: () => activeModule.peek() === 'watercolor' && aquarelleSelectMode.peek(),");
     // Peek-only: the Studio render body never subscribes these signals.
     expect(studio).not.toContain('aquarelleSelectMode.value');
@@ -3489,7 +3463,6 @@ describe('261024-mz5 Studio multi-select surface', () => {
     // The shared consume law passes the whole set.
     expect(scriptStrokeEdition).toContain('port.deleteStrokes(ids);');
     expect(scriptStrokeEdition).toContain('const ids = [...scriptSelectedStrokeIds.peek()];');
-    expect(scriptStrokeEdition).toContain("if (scriptSelectedStrokeIds.peek().size !== 1) return true;");
   });
 
   it('keeps the edition signals out of the Studio render body', () => {

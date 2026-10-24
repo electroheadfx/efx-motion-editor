@@ -244,7 +244,6 @@ import {
   deleteSelectedScriptStroke,
   scriptSelectedStrokeIds,
   setScriptStrokeEditionPorts,
-  stepSelectedScriptStroke,
   type ScriptStrokeTransform,
 } from './view/scriptStrokeEdition';
 import {
@@ -4622,11 +4621,6 @@ export function PhysicsPaintStudio() {
       // Studio render body never subscribes the edition signals; false
       // everywhere else so the key/clip branches keep their bindings.
       deleteSelectedAquarelleStroke: () => deleteSelectedScriptStroke(),
-      // 261022-ujp / 261023-g4p: '<' / '>' step the targeted stroke one paint
-      // position through the same shared seam. Once a concrete target holds,
-      // the key is consumed even when the operation is refused (physical
-      // lock, end of the stack).
-      stepSelectedStroke: (direction) => stepSelectedScriptStroke(direction),
       // 49-06 UAT: a selected Bg clip owns Delete/Backspace (selection-driven).
       deleteBackgroundClip: handleDeleteSelectedBackgroundClip,
       // 261008-ryq: one-shot keyboard removal of the selected sound clip —
