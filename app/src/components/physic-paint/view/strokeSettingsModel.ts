@@ -243,6 +243,12 @@ export interface StrokeSettingsDialogBundle {
   applyAppearance(ids: readonly number[], patch: ScriptStrokeAppearancePatch): boolean | Promise<boolean>;
   moveStrokes(ids: readonly number[], dxPx: number, dyPx: number): boolean | Promise<boolean>;
   transformStrokes(ids: readonly number[], transform: ScriptStrokeTransform): boolean | Promise<boolean>;
+  /**
+   * 261024-vga: place ONE stroke at an exact stack position (1 = topmost).
+   * Present only where the module supports reordering — its absence hides
+   * the Stack section entirely.
+   */
+  readonly reorderStroke?: (mutationId: number, positionFromTop: number) => boolean | void;
 }
 
 // ============================================================

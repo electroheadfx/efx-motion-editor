@@ -26,6 +26,7 @@ import {
 } from './strokeSettingsModel';
 import { scriptSelectedStrokeIds, scriptSelectMode } from './scriptStrokeEdition';
 import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
+import { clampStackPosition } from './stackOrder';
 
 /**
  * quick 261024-p5q: the Stroke Settings dialog — a selection-gated, movable
@@ -56,6 +57,17 @@ import { scriptStrokeSelectionBox } from './scriptStrokeTransform';
  * keyed by the selection Set, so a membership change re-baselines to identity.
  * Transforms anchor at the union-box centre of the selected strokes; nothing
  * persists.
+ *
+ * Stack (261024-vga): for a single selected stroke whose bundle provides
+ * `reorderStroke`, a position row states where the stroke sits in the paint
+ * order (1 = topmost, the badge law) and places it exactly there through the
+ * bundle. The section owns NO stroke-list state. SliderStepper writes its
+ * input's DOM value directly on commit and a re-render with an unchanged
+ * `value` prop cannot rewrite it, so a ref-held nonce is the row's Preact key:
+ * after every commit the input remounts at the live position (a refused
+ * placement must never leave the typed value on screen). A ref-held
+ * last-emitted guard collapses SliderStepper's Enter + blur pair into ONE
+ * reorder call.
  */
 
 interface DragOffset {
@@ -192,6 +204,39 @@ const COLOR_READOUT_ROW_STYLE: CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 };
 
+/** The Stack identity row: colour dot, serial, public position. */
+const STACK_HEADER_ROW_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '6px',
+};
+
+const STACK_DOT_STYLE: CSSProperties = {
+  flex: '0 0 10px',
+  width: '10px',
+  height: '10px',
+  borderRadius: '2px',
+  border: '1px solid rgba(255, 255, 255, 0.25)',
+};
+
+const STACK_SERIAL_STYLE: CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '10px',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
+const STACK_NEIGHBOURS_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '8px',
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '10px',
+  color: 'var(--sidebar-text-secondary, #9aa5b1)',
+  fontVariantNumeric: 'tabular-nums',
+};
+
 const RESIZE_HANDLE_STYLE: CSSProperties = {
   flex: '0 0 12px',
   display: 'flex',
@@ -228,6 +273,15 @@ export function PhysicsPaintStrokeSettingsDialog({
    */
   const geometrySessionRef = useRef<Signal<{ selection: ReadonlySet<number>; session: StrokeGeometrySession } | null> | null>(null);
   if (!geometrySessionRef.current) geometrySessionRef.current = signal(null);
+  /**
+   * 261024-vga: the Stack row's remount nonce (ref-held signal, read in the
+   * render body). Bumped after every attempted placement so the keyed input
+   * remounts and rewrites its DOM value from the live position.
+   */
+  const stackSyncRef = useRef<Signal<number> | null>(null);
+  if (!stackSyncRef.current) stackSyncRef.current = signal(0);
+  /** Collapses SliderStepper's Enter + blur pair into ONE reorder call. */
+  const lastStackEmitRef = useRef<number | null>(null);
 
   const selection = scriptSelectedStrokeIds.value;
   const engineModule = bundle?.module ?? 'brush';
@@ -235,6 +289,7 @@ export function PhysicsPaintStrokeSettingsDialog({
     ? (engineModule === 'watercolor' ? scriptSelectMode.value : bundle.brushMoveActive)
     : false;
   const dismissed = dismissedRef.current.value;
+  const stackSyncNonce = stackSyncRef.current.value;
 
   // Plain (non-signal) render-body flag write — the dismissal edge marker.
   if (shouldMarkSawEmpty({ dismissed, surfaceActive, selectionSize: selection.size })) {
@@ -307,13 +362,45 @@ export function PhysicsPaintStrokeSettingsDialog({
   const geometrySession = geometryState && geometryState.selection === selection
     ? geometryState.session
     : FRESH_STROKE_GEOMETRY_SESSION;
+  const strokes = bundle.listStrokes(bundle.playFrame, bundle.canvasSize);
   const selectionBox = scriptStrokeSelectionBox(
-    bundle.listStrokes(bundle.playFrame, bundle.canvasSize)
-      .filter((stroke) => selection.has(stroke.mutationId)),
+    strokes.filter((stroke) => selection.has(stroke.mutationId)),
   );
   const liveCenter = selectionBox
     ? { x: selectionBox.x + selectionBox.width / 2, y: selectionBox.y + selectionBox.height / 2 }
     : null;
+
+  /**
+   * Stack placement is single-stroke only. Neighbours are derived from the
+   * public position (1 = topmost), never from the listing order.
+   */
+  const stackStroke = selection.size === 1
+    ? strokes.find((stroke) => stroke.mutationId === ids[0])
+    : undefined;
+  const stackAbove = stackStroke
+    ? strokes.find((stroke) => stroke.stackPosition === stackStroke.stackPosition - 1)
+    : undefined;
+  const stackBelow = stackStroke
+    ? strokes.find((stroke) => stroke.stackPosition === stackStroke.stackPosition + 1)
+    : undefined;
+
+  const commitStackPosition = (positionFromTop: number) => {
+    const reorderStroke = bundle.reorderStroke;
+    if (!reorderStroke || !stackStroke) return;
+    const clamped = clampStackPosition(positionFromTop, stackStroke.stackTotal);
+    // The live slot is not a commit — and it must never re-key the input.
+    if (clamped === stackStroke.stackPosition) return;
+    // Enter commits, then the blur it triggers commits again in the same tick.
+    if (lastStackEmitRef.current === clamped) return;
+    lastStackEmitRef.current = clamped;
+    queueMicrotask(() => {
+      if (lastStackEmitRef.current === clamped) lastStackEmitRef.current = null;
+    });
+    // Remount the position input at the LIVE position, even when the commit
+    // was refused and the `value` prop is unchanged.
+    stackSyncRef.current!.value += 1;
+    void reorderStroke(stackStroke.mutationId, clamped);
+  };
 
   const commitGeometryTransform = (control: StrokeGeometryControl, nextValue: number) => {
     if (!liveCenter) return;
@@ -592,6 +679,84 @@ export function PhysicsPaintStrokeSettingsDialog({
                   allowOutOfRangeEntry
                   onChange={(value) => commitGeometryTransform('rotation', value)}
                 />
+              </div>
+            </div>
+          ) : null}
+
+          {bundle.reorderStroke ? (
+            <div style={SECTION_STYLE} data-testid="stroke-settings-stack">
+              <div style={SECTION_HEADER_STYLE}>
+                <RuleSectionHeader text="Stack" />
+              </div>
+              {stackStroke ? (
+                <>
+                  <div style={STACK_HEADER_ROW_STYLE}>
+                    <span
+                      data-testid="stroke-settings-stack-dot"
+                      style={{ ...STACK_DOT_STYLE, backgroundColor: stackStroke.color }}
+                    />
+                    <span data-testid="stroke-settings-stack-serial" style={STACK_SERIAL_STYLE}>
+                      {`#${stackStroke.serial}`}
+                    </span>
+                    <span
+                      data-testid="stroke-settings-stack-position"
+                      style={{ ...STACK_SERIAL_STYLE, marginLeft: 'auto' }}
+                    >
+                      {`${stackStroke.stackPosition}/${stackStroke.stackTotal}`}
+                    </span>
+                  </div>
+                  <div data-testid="stroke-settings-stack-stepper">
+                    <SliderStepper
+                      key={`stack-position-${stackSyncNonce}`}
+                      label="Position (1 = top)"
+                      ariaLabel="Stack position"
+                      value={stackStroke.stackPosition}
+                      min={1}
+                      max={stackStroke.stackTotal}
+                      step={1}
+                      freeEntry
+                      commitOnRelease
+                      onChange={(value) => commitStackPosition(value)}
+                    />
+                  </div>
+                  <div style={STACK_NEIGHBOURS_STYLE}>
+                    <span data-testid="stroke-settings-stack-above">
+                      {stackAbove ? `Above #${stackAbove.serial}` : 'Above —'}
+                    </span>
+                    <span data-testid="stroke-settings-stack-below">
+                      {stackBelow ? `Below #${stackBelow.serial}` : 'Below —'}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span data-testid="stroke-settings-stack-disabled" style={PAINT_ROW_LABEL_STYLE}>
+                  Select one stroke to change stack order
+                </span>
+              )}
+              <div style={SEGMENT_GROUP_STYLE}>
+                <button
+                  type="button"
+                  data-testid="stroke-settings-stack-top"
+                  aria-label="Move stroke to top"
+                  disabled={!stackStroke}
+                  style={SEGMENT_STYLE}
+                  onClick={() => commitStackPosition(1)}
+                >
+                  Top
+                </button>
+                <button
+                  type="button"
+                  data-testid="stroke-settings-stack-bottom"
+                  aria-label="Move stroke to bottom"
+                  disabled={!stackStroke}
+                  style={SEGMENT_STYLE}
+                  onClick={() => {
+                    if (!stackStroke) return;
+                    commitStackPosition(stackStroke.stackTotal);
+                  }}
+                >
+                  Bottom
+                </button>
               </div>
             </div>
           ) : null}

@@ -243,6 +243,25 @@ function selectableStroke(
   };
 }
 
+/** quick 261024-vga: one stack row with an explicit serial/position/colour. */
+function stackStrokeFixture(
+  mutationId: number,
+  serial: number,
+  stackPosition: number,
+  stackTotal: number,
+  color: string,
+): SelectableScriptStroke {
+  return {
+    mutationId,
+    pointsPx: [],
+    bounds: { x: mutationId, y: 0, width: 10, height: 10 },
+    serial,
+    stackPosition,
+    stackTotal,
+    color,
+  };
+}
+
 // ── Pure model ─────────────────────────────────────────────────────
 
 describe('261024-p5q field registry: the locked per-engine sets', () => {
@@ -775,7 +794,10 @@ describe('261024-p5q dialog fields and shared color', () => {
     const sliders = dialogSource.match(/<SliderStepper\b/g) ?? [];
     const freeEntry = dialogSource.match(/allowOutOfRangeEntry/g) ?? [];
     expect(sliders.length).toBeGreaterThan(0);
-    expect(freeEntry).toHaveLength(sliders.length);
+    // quick 261024-vga: `Stack position` is deliberately range-clamped (the
+    // adapters clamp anyway), so every PRE-EXISTING slider still bypasses the
+    // track range (8/8 before the Stack section, 8/9 after).
+    expect(freeEntry).toHaveLength(sliders.length - 1);
   });
 
   it('structural pins: no picker, no Studio writes, no useState', () => {
@@ -1056,5 +1078,250 @@ describe('261024-p5q dialog geometry', () => {
     expect(dialogSource).not.toContain('transformRecord');
     expect(modelSource).toContain('geometryTransform');
     expect(modelSource).toContain('geometryMoveDelta');
+  });
+});
+
+// ============================================================
+//  quick 261024-vga Task 1 — the Stack section. One selected
+//  stroke, an exact position stepper (1 = topmost, the badge
+//  law), Above/Below readouts and Top/Bottom. The bundle's
+//  reorderStroke is the whole commit channel; the section owns
+//  NO stroke-list state. The ref-held sync nonce re-keys the
+//  stepper after every commit so a refused placement remounts
+//  the input at the live position, and a last-emitted guard
+//  collapses the Enter + blur pair into ONE call.
+// ============================================================
+
+describe('261024-vga Stack section: exact paint-order placement', () => {
+  // Bottom -> top: serial 11 at position 3, the selected serial 12 at 2,
+  // serial 13 at the top. Selection [11] therefore reads 2/3.
+  const rows = [
+    stackStrokeFixture(11, 12, 2, 3, '#ff0000'),
+    stackStrokeFixture(13, 13, 1, 3, '#00ff00'),
+    stackStrokeFixture(10, 11, 3, 3, '#0000ff'),
+  ];
+
+  function stackBundle(overrides: Partial<StrokeSettingsDialogBundle> = {}) {
+    const reorderCalls: Array<{ mutationId: number; positionFromTop: number }> = [];
+    const created = createBundle({
+      listStrokes: () => rows,
+      reorderStroke: (mutationId, positionFromTop) => {
+        reorderCalls.push({ mutationId, positionFromTop });
+        return true;
+      },
+      ...overrides,
+    });
+    return { ...created, reorderCalls };
+  }
+
+  function stackSlider(tree: unknown) {
+    const slider = findComponent(tree, (props) => props.ariaLabel === 'Stack position');
+    expect(slider, 'Stack position slider').toBeDefined();
+    return slider!;
+  }
+
+  /** The mounted readout input INSIDE the Stack row (never another slider's). */
+  function stackInputValue(tree: unknown): unknown {
+    const stepper = findByTestId(tree, 'stroke-settings-stack-stepper');
+    expect(stepper, 'Stack stepper container').toBeDefined();
+    const input = findByTestId(stepper!, 'slider-stepper-value');
+    expect(input, 'mounted Stack input').toBeDefined();
+    return input!.props.value;
+  }
+
+  it('renders the Stack section between Geometry and Paint for BOTH modules', () => {
+    const brush = stackBundle();
+    setScriptStrokeSelection([11]);
+    expect(findByTestId(renderDialog(brush.bundle), 'stroke-settings-stack')).toBeDefined();
+
+    setScriptSelectMode(true);
+    const watercolor = stackBundle({ module: 'watercolor', brushMoveActive: false });
+    expect(findByTestId(renderDialog(watercolor.bundle), 'stroke-settings-stack')).toBeDefined();
+
+    const geometry = dialogSource.indexOf('<RuleSectionHeader text="Geometry"');
+    const stack = dialogSource.indexOf('<RuleSectionHeader text="Stack"');
+    const paint = dialogSource.indexOf('<RuleSectionHeader text="Paint"');
+    expect(geometry).toBeGreaterThan(-1);
+    expect(stack).toBeGreaterThan(geometry);
+    expect(paint).toBeGreaterThan(stack);
+  });
+
+  it('is absent when the bundle provides no reorderStroke', () => {
+    const { bundle } = createBundle({ listStrokes: () => rows });
+    setScriptStrokeSelection([11]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-stack')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-stack-disabled')).toBeUndefined();
+    expect(findComponent(tree, (props) => props.ariaLabel === 'Stack position')).toBeUndefined();
+  });
+
+  it('shows the dot, serial, position and both neighbours for one selected stroke', () => {
+    const { bundle } = stackBundle();
+    setScriptStrokeSelection([11]);
+    const tree = renderDialog(bundle);
+    const dot = findByTestId(tree, 'stroke-settings-stack-dot')!;
+    expect((dot.props.style as Record<string, unknown>).backgroundColor).toBe('#ff0000');
+    expect(findByTestId(tree, 'stroke-settings-stack-serial')!.props.children).toBe('#12');
+    expect(findByTestId(tree, 'stroke-settings-stack-position')!.props.children).toBe('2/3');
+    expect(findByTestId(tree, 'stroke-settings-stack-above')!.props.children).toBe('Above #13');
+    expect(findByTestId(tree, 'stroke-settings-stack-below')!.props.children).toBe('Below #11');
+  });
+
+  it('renders an em dash at each stack edge', () => {
+    const top = stackBundle();
+    setScriptStrokeSelection([13]);
+    const topTree = renderDialog(top.bundle);
+    expect(findByTestId(topTree, 'stroke-settings-stack-above')!.props.children).toBe('Above —');
+    expect(findByTestId(topTree, 'stroke-settings-stack-below')!.props.children).toBe('Below #12');
+
+    const bottom = stackBundle();
+    setScriptStrokeSelection([10]);
+    const bottomTree = renderDialog(bottom.bundle);
+    expect(findByTestId(bottomTree, 'stroke-settings-stack-above')!.props.children).toBe('Above #12');
+    expect(findByTestId(bottomTree, 'stroke-settings-stack-below')!.props.children).toBe('Below —');
+  });
+
+  it('renders the position row as a release-commit free-entry SliderStepper without range bypass', () => {
+    const { bundle } = stackBundle();
+    setScriptStrokeSelection([11]);
+    const slider = stackSlider(renderDialog(bundle));
+    expect(slider.props.label).toBe('Position (1 = top)');
+    expect(slider.props.value).toBe(2);
+    expect([slider.props.min, slider.props.max, slider.props.step]).toEqual([1, 3, 1]);
+    expect(slider.props.freeEntry).toBe(true);
+    expect(slider.props.commitOnRelease).toBe(true);
+    // The adapters clamp regardless — the Stack row never bypasses the range.
+    expect(slider.props.allowOutOfRangeEntry).toBeUndefined();
+    expect(slider.key).toBeDefined();
+    // The section is driven by ref-held state only.
+    expect(dialogSource).toContain('stackSyncRef');
+    expect(dialogSource).toContain('lastStackEmitRef');
+    expect(dialogSource).not.toContain('useState');
+  });
+
+  it('commits one reorder per gesture and nothing for the current position', async () => {
+    const { bundle, reorderCalls } = stackBundle();
+    setScriptStrokeSelection([11]);
+    const tree = renderDialog(bundle);
+
+    (stackSlider(tree).props.onChange as (value: number) => void)(1);
+    expect(reorderCalls).toEqual([{ mutationId: 11, positionFromTop: 1 }]);
+
+    // Separate gestures by the guard's microtask (models the next user task).
+    await Promise.resolve();
+    (stackSlider(renderDialog(bundle)).props.onChange as (value: number) => void)(2);
+    expect(reorderCalls).toHaveLength(1);
+
+    await Promise.resolve();
+    findByTestId(renderDialog(bundle), 'stroke-settings-stack-top')!.props.onClick();
+    expect(reorderCalls).toHaveLength(2);
+    expect(reorderCalls[1]).toEqual({ mutationId: 11, positionFromTop: 1 });
+
+    await Promise.resolve();
+    findByTestId(renderDialog(bundle), 'stroke-settings-stack-bottom')!.props.onClick();
+    expect(reorderCalls).toHaveLength(3);
+    expect(reorderCalls[2]).toEqual({ mutationId: 11, positionFromTop: 3 });
+  });
+
+  it('collapses the Enter + blur pair into ONE call and frees the next gesture', async () => {
+    const { bundle, reorderCalls } = stackBundle();
+    setScriptStrokeSelection([11]);
+    const onChange = stackSlider(renderDialog(bundle)).props.onChange as (value: number) => void;
+
+    // SliderStepper commits on Enter and then again from the blur it triggers.
+    onChange(3);
+    onChange(3);
+    expect(reorderCalls).toHaveLength(1);
+
+    await Promise.resolve();
+    onChange(3);
+    expect(reorderCalls).toHaveLength(2);
+    await Promise.resolve();
+  });
+
+  it('re-keys the position row after a refused commit so the typed value never survives', async () => {
+    const calls: number[] = [];
+    const refused = stackBundle({
+      reorderStroke: (_mutationId, positionFromTop) => {
+        calls.push(positionFromTop);
+        return false;
+      },
+    });
+    setScriptStrokeSelection([11]);
+    const before = stackSlider(renderDialog(refused.bundle));
+    (before.props.onChange as (value: number) => void)(3);
+    expect(calls).toEqual([3]);
+    await Promise.resolve();
+
+    const after = renderDialog(refused.bundle);
+    const afterSlider = stackSlider(after);
+    // Preact remounts a keyed child whose key changed — the ONLY thing that
+    // rewrites the input DOM value when the `value` prop is unchanged.
+    expect(afterSlider.key).not.toBe(before.key);
+    expect(afterSlider.props.value).toBe(2);
+    expect(stackInputValue(after)).toBe('2');
+  });
+
+  it('re-keys after a void (watercolor) commit too', async () => {
+    const calls: number[] = [];
+    const voided = stackBundle({
+      module: 'watercolor',
+      brushMoveActive: false,
+      reorderStroke: (_mutationId, positionFromTop) => {
+        calls.push(positionFromTop);
+      },
+    });
+    setScriptSelectMode(true);
+    setScriptStrokeSelection([11]);
+    const before = stackSlider(renderDialog(voided.bundle));
+    (before.props.onChange as (value: number) => void)(3);
+    expect(calls).toEqual([3]);
+    await Promise.resolve();
+
+    const after = renderDialog(voided.bundle);
+    const afterSlider = stackSlider(after);
+    expect(afterSlider.key).not.toBe(before.key);
+    expect(afterSlider.props.value).toBe(2);
+    expect(stackInputValue(after)).toBe('2');
+  });
+
+  it('a same-position commit changes neither the call count nor the slider key', async () => {
+    const { bundle, reorderCalls } = stackBundle();
+    setScriptStrokeSelection([11]);
+    const first = stackSlider(renderDialog(bundle));
+    (first.props.onChange as (value: number) => void)(2);
+    expect(reorderCalls).toHaveLength(0);
+    await Promise.resolve();
+
+    const second = stackSlider(renderDialog(bundle));
+    expect(second.key).toBe(first.key);
+    expect(stackInputValue(renderDialog(bundle))).toBe('2');
+  });
+
+  it('disables the section with the hint for a multi-stroke selection', () => {
+    const { bundle, reorderCalls } = stackBundle();
+    setScriptStrokeSelection([11, 13]);
+    const tree = renderDialog(bundle);
+    const hint = findByTestId(tree, 'stroke-settings-stack-disabled')!;
+    expect(hint).toBeDefined();
+    expect(hint.props.children).toBe('Select one stroke to change stack order');
+    expect(findByTestId(tree, 'stroke-settings-stack-top')!.props.disabled).toBe(true);
+    expect(findByTestId(tree, 'stroke-settings-stack-bottom')!.props.disabled).toBe(true);
+    expect(findComponent(tree, (props) => props.ariaLabel === 'Stack position')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-stack-serial')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-stack-stepper')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-stack-above')).toBeUndefined();
+    expect(reorderCalls).toHaveLength(0);
+  });
+
+  it('disables the section when the single selected id is absent from the listing', () => {
+    const { bundle, reorderCalls } = stackBundle();
+    setScriptStrokeSelection([99]);
+    const tree = renderDialog(bundle);
+    expect(findByTestId(tree, 'stroke-settings-stack-disabled')).toBeDefined();
+    expect(findComponent(tree, (props) => props.ariaLabel === 'Stack position')).toBeUndefined();
+    expect(findByTestId(tree, 'stroke-settings-stack-top')!.props.disabled).toBe(true);
+    expect(findByTestId(tree, 'stroke-settings-stack-bottom')!.props.disabled).toBe(true);
+    expect(reorderCalls).toHaveLength(0);
   });
 });
