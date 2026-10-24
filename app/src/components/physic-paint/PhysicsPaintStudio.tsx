@@ -102,7 +102,7 @@ import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, t
 import { DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT, DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH, getPhysicsPaintWorkingSize } from './engine/physicsPaintCanvasSizing';
 import { usePhysicsPaintEngineLifecycle } from './engine/usePhysicsPaintEngineLifecycle';
 import { usePhysicsPaintEngineActions } from './engine/usePhysicsPaintEngineActions';
-import { aquarelleEnginePixelDeltaToUv, aquarelleStrokeToPaintStroke } from './engine/aquarelleStrokeBridge';
+import { aquarelleEnginePixelDeltaToUv, aquarelleEnginePixelToUv, aquarelleStrokeToPaintStroke } from './engine/aquarelleStrokeBridge';
 import { useRotoBackgroundMetadataSync } from './hooks/useRotoBackgroundMetadataSync';
 import { getOnionFrameOpacity, projectRotoOnionPreviewFrames } from './roto/rotoOnionPreview';
 import { selectPhysicsPaintMissingConditions, selectRotoPlaybackAvailable } from './view/physicsPaintStudioSelectors';
@@ -227,6 +227,7 @@ import {
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
   beginAquarelleReorderEdit,
+  beginAquarelleTransformEdit,
   isAquarelleDeleteInFlight,
   isAquarelleScriptEditInFlight,
   restoreAquarelleEditSnapshot,
@@ -239,6 +240,7 @@ import {
   deleteSelectedScriptStroke,
   setScriptStrokeEditionPorts,
   stepSelectedScriptStroke,
+  type ScriptStrokeTransform,
 } from './view/scriptStrokeEdition';
 import {
   brushScriptEditionPort,
@@ -5715,6 +5717,83 @@ export function PhysicsPaintStudio() {
     canvasHeight,
   ]);
 
+  // 261024-mz5 Task 3: corner-scale / top-rotate of the whole watercolor
+  // selection. The overlay wrote only the live preview during the gesture; this
+  // release path transforms every recorded stroke + its payload-timeline entry
+  // in UV space, resets the sheet, and re-applies the current frame's script
+  // through the SAME shared Apply pipeline as delete/move. One transform + its
+  // re-bake = ONE `aquarelle-script` ledger entry. Guards are peek-only: the
+  // handler must not subscribe the Studio body.
+  const handleAquarelleTransformStrokes = useCallback((
+    ids: readonly number[],
+    transform: ScriptStrokeTransform,
+  ) => {
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
+    if (isAquarelleScriptEditInFlight()) return;
+    // Stale ids never leak across frames: keep only live strokes of the
+    // current edit frame before the batch edit.
+    const frameIds = aquarelleStrokesOnFrame(ids, launchContextRef.current?.startFrame ?? 0);
+    if (frameIds.length === 0) return;
+    // The centre crosses from canvas pixels to document UV exactly once. uv y
+    // points UP, so the screen angle is NEGATED; scale is sign-invariant.
+    const center = aquarelleEnginePixelToUv(
+      { x: transform.centerX, y: transform.centerY },
+      { width: canvasWidth, height: canvasHeight },
+    );
+    // One transform = one edit with before/after script snapshots. The ledger
+    // records it only after the re-bake succeeds.
+    const editId = beginAquarelleTransformEdit(frameIds, {
+      kind: transform.kind,
+      centerUvX: center.x,
+      centerUvY: center.y,
+      angleRad: -transform.angleRad,
+      factor: transform.factor,
+    });
+    if (editId === null) return;
+    setAquarelleScriptEditInFlight(true);
+    void (async () => {
+      try {
+        // The recorded timeline IS the script (same replay source as delete).
+        const playFrame = launchContextRef.current?.startFrame ?? 0;
+        aquarelleResetSheetRef.current?.();
+        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+        if (ok) {
+          rotoMoveHistory.recordAquarelleScriptEdit(editId);
+          setLastError(null);
+          clearOwnedScriptApplyRefusal();
+          return;
+        }
+        // Failed re-bake: put the pre-transform script back exactly.
+        restoreAquarelleEditSnapshot(editId, 'undo');
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? 'Could not re-apply the watercolor script — the stroke was restored.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      } finally {
+        setAquarelleScriptEditInFlight(false);
+      }
+    })();
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+    canvasWidth,
+    canvasHeight,
+  ]);
+
   // 261022-ujp: '<' / '>' stack step. The reorder swaps the recorded stroke
   // one payload position, resets the sheet, and re-applies the current frame's
   // script through the SAME shared Apply pipeline as delete/move. Reorder +
@@ -5779,9 +5858,7 @@ export function PhysicsPaintStudio() {
       ...aquarelleScriptStrokeEditionPort,
       deleteStrokes: (ids) => handleAquarelleDeleteStrokes(ids),
       moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
-      // 261024-mz5 Task 2: the watercolor surface exposes no transform handles
-      // yet (Task 3 wires the UV-space commit), so this op is unreachable.
-      transformStrokes: () => {},
+      transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
       stepStroke: (mutationId, direction) => handleAquarelleStepStroke(mutationId, direction),
     },
     brush: brushScriptEditionPort,
@@ -5988,7 +6065,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -6030,6 +6107,7 @@ export function PhysicsPaintStudio() {
       onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
       onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,
       onAquarelleMoveStrokes: handleAquarelleMoveStrokes,
+      onAquarelleTransformStrokes: handleAquarelleTransformStrokes,
     };
   });
   // 48-05 (D-09): the missing-source capsule publication handler — maps the

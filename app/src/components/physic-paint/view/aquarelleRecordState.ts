@@ -465,6 +465,121 @@ export function translateAquarelleStrokeInScript(
   return translateAquarelleStrokesInScript([mutationId], dxUv, dyUv) > 0;
 }
 
+/**
+ * 261024-mz5: the document-UV transform a watercolor selection commit carries.
+ * Structurally the shared `ScriptStrokeTransform` with a UV centre — the Studio
+ * converts the canvas-pixel centre through `aquarelleEnginePixelToUv` and
+ * NEGATES the screen angle (uv y points up) before calling.
+ */
+export interface AquarelleStrokeTransform {
+  readonly kind: 'rotate' | 'scale';
+  readonly centerUvX: number;
+  readonly centerUvY: number;
+  readonly angleRad: number;
+  readonly factor: number;
+}
+
+/** Identity tolerances — same law as the shared transform builders. */
+const TRANSFORM_IDENTITY_ANGLE_EPSILON = 1e-6;
+const TRANSFORM_IDENTITY_FACTOR_EPSILON = 0.01;
+
+/**
+ * 261024-mz5: scale + rotate one recorded stroke OR the whole selection (and
+ * its payload-timeline entry) about a document-UV centre. POINTS ONLY: every
+ * point's p/tx/ty/tw and the stroke's whole `params` bag are carried across
+ * byte-identical — brush size is never scaled (D-06).
+ *
+ * Objects are REPLACED, never mutated in place, and the new entry is written at
+ * the SAME timeline index — the snapshot law from translate applies unchanged.
+ * One revision bump per effective batch. Non-finite geometry, a non-positive
+ * factor, an identity transform, and unknown/deleted/out-of-timeline ids are
+ * refused with 0 and bump nothing.
+ */
+export function transformAquarelleStrokesInScript(
+  mutationIds: readonly number[],
+  transform: AquarelleStrokeTransform,
+): number {
+  const { centerUvX, centerUvY, angleRad, factor } = transform;
+  if (
+    !Number.isFinite(centerUvX)
+    || !Number.isFinite(centerUvY)
+    || !Number.isFinite(angleRad)
+    || !Number.isFinite(factor)
+    || factor <= 0
+  ) {
+    return 0;
+  }
+  if (
+    Math.abs(angleRad) < TRANSFORM_IDENTITY_ANGLE_EPSILON
+    && Math.abs(factor - 1) < TRANSFORM_IDENTITY_FACTOR_EPSILON
+  ) {
+    return 0;
+  }
+
+  // Resolve every target BEFORE mutating — an all-unknown batch touches
+  // nothing and bumps nothing.
+  const targets: Array<{
+    mutationId: number;
+    stroke: AquarelleStroke;
+    entry: ReturnType<typeof toStudioStroke>;
+    index: number;
+  }> = [];
+  for (const mutationId of mutationIds) {
+    const stroke = recordedStrokes.get(mutationId);
+    const entry = recordedStrokeEntries.get(mutationId);
+    if (!stroke || !entry || deletedAquarelleStrokeIds.has(mutationId)) continue;
+    const index = payloadTimeline.indexOf(entry);
+    if (index < 0) continue;
+    if (targets.some((target) => target.mutationId === mutationId)) continue;
+    targets.push({ mutationId, stroke, entry, index });
+  }
+  if (targets.length === 0) return 0;
+
+  const cos = Math.cos(angleRad);
+  const sin = Math.sin(angleRad);
+  const mapPoint = (x: number, y: number): { x: number; y: number } => {
+    // Scale FIRST, then rotate about the same UV centre (the shared law).
+    const dx = (x - centerUvX) * factor;
+    const dy = (y - centerUvY) * factor;
+    return {
+      x: centerUvX + dx * cos - dy * sin,
+      y: centerUvY + dx * sin + dy * cos,
+    };
+  };
+
+  for (const { mutationId, stroke, entry, index } of targets) {
+    const transformedStroke: AquarelleStroke = {
+      ...stroke,
+      points: stroke.points.map((strokePoint) => {
+        const mapped = mapPoint(strokePoint.x, strokePoint.y);
+        return {
+          x: mapped.x,
+          y: mapped.y,
+          // Coordinates only — the sample fields survive untouched.
+          p: strokePoint.p,
+          tx: strokePoint.tx,
+          ty: strokePoint.ty,
+          tw: strokePoint.tw,
+        };
+      }),
+    };
+    const transformedEntry: ReturnType<typeof toStudioStroke> = {
+      ...entry,
+      pts: entry.pts.map((strokePoint) => {
+        const mapped = mapPoint(strokePoint.x, strokePoint.y);
+        return { ...strokePoint, x: mapped.x, y: mapped.y };
+      }),
+    };
+
+    recordedStrokes.set(mutationId, transformedStroke);
+    recordedStrokeEntries.set(mutationId, transformedEntry);
+    // SAME index — replay order is preserved (a replace, never a splice).
+    payloadTimeline[index] = transformedEntry;
+  }
+  bumpAquarelleStrokesRevision();
+  return targets.length;
+}
+
 /** Stack-step direction: `back` = one step behind, `forward` = one step in front. */
 export type AquarelleStackStepDirection = 'back' | 'forward';
 

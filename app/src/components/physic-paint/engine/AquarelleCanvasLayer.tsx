@@ -41,6 +41,7 @@ import {
   snapshotAquarelleRecord,
 } from '../view/aquarelleRecordState';
 import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
+import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import { temporaryMove } from '../view/physicsPaintTemporaryErase';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
 
@@ -258,6 +259,12 @@ export function AquarelleCanvasLayer(props: {
    * through the shared Apply path.
    */
   onMoveStrokes?: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
+  /**
+   * 261024-mz5: a committed corner-scale / rotate release. The Studio
+   * transforms every recorded stroke of the selection + its timeline entry in
+   * UV space and re-bakes through the shared Apply path.
+   */
+  onTransformStrokes?: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
 }) {
   const engineRef = useRef<WatercolorEngine | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -275,6 +282,7 @@ export function AquarelleCanvasLayer(props: {
   const onResetSheetReadyRef = useRef(props.onResetSheetReady);
   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
   const onMoveStrokesRef = useRef(props.onMoveStrokes);
+  const onTransformStrokesRef = useRef(props.onTransformStrokes);
   disabledRef.current = props.disabled ?? false;
   colorRef.current = props.color ?? '#103c65';
   widthRef.current = props.width;
@@ -289,6 +297,7 @@ export function AquarelleCanvasLayer(props: {
   onResetSheetReadyRef.current = props.onResetSheetReady;
   onDeleteStrokesRef.current = props.onDeleteStrokes;
   onMoveStrokesRef.current = props.onMoveStrokes;
+  onTransformStrokesRef.current = props.onTransformStrokes;
 
   // FRAME SCOPE: the sheet previews ONE edit frame. Changing frames must never
   // leak the previous frame's paint (the user saw the same paint on every
@@ -582,6 +591,7 @@ export function AquarelleCanvasLayer(props: {
         getPlayFrame={() => getPlayFrameRef.current()}
         onDeleteStrokes={(mutationIds) => onDeleteStrokesRef.current?.(mutationIds)}
         onMoveStrokes={(mutationIds, dxPx, dyPx) => onMoveStrokesRef.current?.(mutationIds, dxPx, dyPx)}
+        onTransformStrokes={(mutationIds, transform) => onTransformStrokesRef.current?.(mutationIds, transform)}
       />
       <AquarelleBrushCursor />
     </div>

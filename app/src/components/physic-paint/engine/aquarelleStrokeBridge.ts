@@ -44,6 +44,31 @@ export function aquarelleUvToEnginePixel(
 }
 
 /**
+ * Canvas pixels (engine-1, y down) → document UV (aquarelle, y up). The exact
+ * inverse of {@link aquarelleUvToEnginePixel}: `x / width`, and y is flipped
+ * back (`1 - y / height`). This is the ONE absolute pixel→UV crossing — a
+ * transform centre captured in canvas pixels must pass through it, never a
+ * hand-rolled flip. A degenerate (zero or non-finite) sheet or point returns
+ * `{0, 0}` so no NaN/Infinity can reach the recorded script.
+ */
+export function aquarelleEnginePixelToUv(
+  point: { x: number; y: number },
+  size: EnginePixelSize,
+): { x: number; y: number } {
+  if (
+    !Number.isFinite(point.x)
+    || !Number.isFinite(point.y)
+    || !Number.isFinite(size.width)
+    || !Number.isFinite(size.height)
+    || size.width === 0
+    || size.height === 0
+  ) {
+    return { x: 0, y: 0 };
+  }
+  return { x: point.x / size.width, y: 1 - point.y / size.height };
+}
+
+/**
  * Canvas-pixel delta (engine-1, y down) → document-UV delta (aquarelle, y up).
  * The exact inverse of {@link aquarelleUvToEnginePixel}: `x / width` and a
  * NEGATED `y / height`. This is the ONE pixel→UV crossing — callers must not

@@ -2432,8 +2432,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // no new status surface.
     // 261022-ujp: a sixth site — the stroke stack step re-bake failure in
     // handleAquarelleStepStroke — same mapper, same capsule.
+    // 261024-mz5: a seventh site — the watercolor transform re-bake failure in
+    // handleAquarelleTransformStrokes — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(7); // one import + six call sites
+    expect(mentions).toBe(8); // one import + seven call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -2998,7 +3000,7 @@ describe('261022-pim watercolor stroke select surface', () => {
       'onDeleteStrokes={(mutationIds) => onAquarelleDeleteStrokesRef.current?.(mutationIds)}',
     );
     expect(studio).toContain('onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,');
-    expect(studio).toContain('getAquarellePaperId, handleAquarelleDeleteStrokes]');
+    expect(studio).toContain('getAquarellePaperId, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes]');
   });
 });
 
@@ -3521,9 +3523,9 @@ describe('261024-mz5 Studio transform handles surface', () => {
       'if (!selectMode && !moveArmed && drag === null && transformPreview === null) return null;',
     );
     // Handles are gated on the adapter callback: an adapter that cannot
-    // commit (watercolor, until Task 3) never shows them.
+    // commit never shows them. Both adapters supply it after 261024-mz5 Task 3.
     expect(scriptStrokeOverlay).toContain('selectionBox !== null && props.onTransformStrokes !== undefined');
-    expect(aquarelleStrokeOverlay).not.toContain('onTransformStrokes');
+    expect(aquarelleStrokeOverlay).toContain('onTransformStrokes={props.onTransformStrokes}');
   });
 
   it('hit-tests the handle BEFORE the stroke and previews without mutating', () => {

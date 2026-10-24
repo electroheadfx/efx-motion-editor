@@ -58,9 +58,11 @@ import {
   markAquarelleStrokeDeleted,
   restoreAquarelleStrokeRegistry,
   stepAquarelleStrokeInScript,
+  transformAquarelleStrokesInScript,
   translateAquarelleStrokesInScript,
   type AquarelleStackStepDirection,
   type AquarelleStrokeRegistrySnapshot,
+  type AquarelleStrokeTransform,
 } from './aquarelleRecordState';
 
 // 261023-g4p: the ONE shared edition module (scriptStrokeEdition) owns the
@@ -457,6 +459,28 @@ export function beginAquarelleMoveEdit(
   if (ids.length === 0) return null;
   const before = captureAquarelleSnapshot();
   if (translateAquarelleStrokesInScript(ids, dxUv, dyUv) === 0) return null;
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * 261024-mz5: scale + rotate one stroke or the whole selection about a
+ * document-UV centre as a single edit (transform + its re-bake = ONE
+ * `aquarelle-script` ledger command). Same in-flight guard and ghost clear as
+ * move. The selection is kept — every stroke still exists, transformed.
+ * Returns an edit id or null when refused.
+ */
+export function beginAquarelleTransformEdit(
+  mutationIds: number | readonly number[],
+  transform: AquarelleStrokeTransform,
+): number | null {
+  // A transform/apply must never leave the released ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const ids = normalizeAquarelleMutationIds(mutationIds);
+  if (ids.length === 0) return null;
+  const before = captureAquarelleSnapshot();
+  if (transformAquarelleStrokesInScript(ids, transform) === 0) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

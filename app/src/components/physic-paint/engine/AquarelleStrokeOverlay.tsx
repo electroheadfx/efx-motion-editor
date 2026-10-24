@@ -17,7 +17,7 @@ import {
   aquarelleSelectMode,
 } from '../view/aquarelleStrokeSelection';
 import { ScriptStrokeOverlay } from './ScriptStrokeOverlay';
-import type { ScriptStrokeEditionPort } from '../view/scriptStrokeEdition';
+import type { ScriptStrokeEditionPort, ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 
 export function AquarelleStrokeOverlay(props: {
   width: number;
@@ -25,16 +25,16 @@ export function AquarelleStrokeOverlay(props: {
   getPlayFrame: () => number;
   onDeleteStrokes: (mutationIds: readonly number[]) => void;
   onMoveStrokes: (mutationIds: readonly number[], dxPx: number, dyPx: number) => void;
+  // 261024-mz5: supplied by the Studio — the handles render only when this
+  // callback exists, so an adapter that cannot commit never shows them.
+  onTransformStrokes: (mutationIds: readonly number[], transform: ScriptStrokeTransform) => void;
 }): JSX.Element | null {
   const port: ScriptStrokeEditionPort = {
     ...aquarelleScriptStrokeEditionPort,
     isActive: () => aquarelleSelectMode.peek(),
     deleteStrokes: props.onDeleteStrokes,
     moveStrokes: props.onMoveStrokes,
-    // 261024-mz5 Task 2: the shared overlay never passes the transform
-    // callback here (Task 3 wires the watercolor transform), so this op is
-    // unreachable.
-    transformStrokes: () => {},
+    transformStrokes: props.onTransformStrokes,
     // The watercolor overlay gestures never call the keyboard port op.
     stepStroke: () => {},
   };
@@ -48,6 +48,7 @@ export function AquarelleStrokeOverlay(props: {
       moveArmed={temporaryMove.value}
       onDeleteStrokes={props.onDeleteStrokes}
       onMoveStrokes={props.onMoveStrokes}
+      onTransformStrokes={props.onTransformStrokes}
       testId="aquarelle-stroke-overlay"
       badgeTestId="aquarelle-stroke-badge"
       ghostTestId="aquarelle-drag-ghost"
