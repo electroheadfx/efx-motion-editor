@@ -17,13 +17,32 @@
 //  identity and never mutates a store. A failed write reports and
 //  stops; painting is never blocked.
 //
-//  PRUNE LAW: stroke events (and brush frames) whose frame is not a
-//  live real-key app frame are dropped at save and at restore; Dry
-//  events are sheet actions with no frame anchor and are always
-//  kept. An UNKNOWN live-frame set (null or empty) disables pruning
-//  instead of wiping the script — an empty set at launch-restore
-//  time means the key records are not loaded yet, not that the
-//  script is empty.
+//  PRUNE LAW: pruning is a SESSION law, never a file law
+//  (studio-snapshot-empty-save). At RESTORE, stroke events (and
+//  brush frames) whose frame is not a live real-key app frame are
+//  kept OUT OF THE SESSION; Dry events are sheet actions with no
+//  frame anchor and are always seeded. The RAW decoded content is
+//  retained for the binding, and a routine save writes the union of
+//  the session and that retained content — the session wins for every
+//  identity it still owns, so a deleted key's script cannot reappear
+//  in the session, yet deleting the key never erases its script from
+//  the authoritative snapshot (undo / a later restore can recover
+//  it). An UNKNOWN live-frame set (null or empty) disables
+//  restore-time pruning instead of wiping the session — an empty set
+//  at launch-restore time means the key records are not loaded yet,
+//  not that the script is empty. Only an EXPLICIT purge
+//  (persistAfterPurge) writes the session alone and drops retained
+//  entries.
+//
+//  RESTORE-SETTLEMENT LAW (studio-snapshot-empty-save): a bind
+//  starts a new generation whose session is empty. NO save may be
+//  prepared until that generation's restore has settled (including a
+//  missing / refused / corrupt outcome). A save prepared inside the
+//  rebind window encodes an empty payload under the INCOMING identity
+//  and overwrites the surviving rail's good file (16,512 B -> 162 B).
+//  A routine save additionally never writes an empty payload: an
+//  empty session does not prove the snapshot is empty. Only
+//  persistAfterPurge (explicit, confirmed purge) may land one.
 //
 //  SAVE DISCIPLINE: markDirty() coalesces mutations into ONE 800 ms
 //  debounced write — one timer, at most one in-flight write, at
@@ -135,6 +154,18 @@ export interface StudioScriptSnapshotRestoreResult {
   maxRestoredMutationId: number;
 }
 
+/**
+ * studio-snapshot-empty-save: the explicit-purge door. A routine save is
+ * never allowed to land an empty payload and always unions the retained file
+ * content; only a confirmed purge passes `allowEmpty` + `sessionOnly`.
+ */
+export interface StudioScriptSnapshotSaveOptions {
+  /** Explicit purge/delete intent: an empty payload may land. */
+  allowEmpty?: boolean;
+  /** Explicit purge: write the session alone, dropping retained entries. */
+  sessionOnly?: boolean;
+}
+
 export interface StudioScriptSnapshotController {
   /** Bind a key, or clear the binding. Resets the dirty baseline and the timer. */
   bind(identity: StudioScriptSnapshotIdentity | null): void;
@@ -146,7 +177,7 @@ export interface StudioScriptSnapshotController {
    */
   markDirty(): void;
   /** Clear the timer, wait out any in-flight write, then write once if dirty. */
-  flushNow(): Promise<void>;
+  flushNow(options?: StudioScriptSnapshotSaveOptions): Promise<void>;
   /** Encode + write the bound key now. Never rejects. */
   saveNow(): Promise<void>;
   /** True when the content changed since the last successful save / restore. */
@@ -199,6 +230,87 @@ export function pruneBrushFramesToLiveFrames<T extends { frame: number }>(
   return frames.filter((frame) => liveFrames.has(frame.frame));
 }
 
+/** The raw content of one snapshot: what the FILE holds, not the session. */
+export interface StudioScriptSnapshotContent {
+  watercolorEvents: AquarellePayloadEvent[];
+  brushFrames: StudioScriptSnapshotBrushFrame[];
+}
+
+function eventMutationId(event: AquarellePayloadEvent): number | undefined {
+  if (isAquarelleDryEvent(event)) return undefined;
+  return event.engine?.mutationId;
+}
+
+/**
+ * studio-snapshot-empty-save: union the session with the content the file is
+ * already known to hold. The session WINS for every identity it still owns
+ * (an edited stroke, a recaptured frame); entries the session no longer holds
+ * — a deleted key's restore-time or apply-time prune — survive in the file.
+ * Retained strokes without a mutationId cannot be matched safely and are
+ * dropped (the record path always assigns one); Dry events carry no frame
+ * anchor and are kept from both sides.
+ */
+export function mergeStudioScriptSnapshotContent(
+  retained: StudioScriptSnapshotContent | null,
+  sessionEvents: readonly AquarellePayloadEvent[],
+  sessionBrushFrames: readonly StudioScriptSnapshotBrushFrame[],
+): StudioScriptSnapshotContent {
+  const watercolorEvents: AquarellePayloadEvent[] = [];
+  if (!retained) {
+    watercolorEvents.push(...sessionEvents);
+  } else {
+    const sessionStrokesById = new Map<number, AquarellePayloadEvent>();
+    for (const event of sessionEvents) {
+      const id = eventMutationId(event);
+      if (id !== undefined) sessionStrokesById.set(id, event);
+    }
+    const retainedStrokeIds = new Set<number>();
+    const retainedDryRefs = new Set<AquarellePayloadEvent>();
+    for (const event of retained.watercolorEvents) {
+      if (isAquarelleDryEvent(event)) {
+        retainedDryRefs.add(event);
+        watercolorEvents.push(event);
+        continue;
+      }
+      const id = eventMutationId(event);
+      if (id === undefined) continue;
+      retainedStrokeIds.add(id);
+      watercolorEvents.push(sessionStrokesById.get(id) ?? event);
+    }
+    for (const event of sessionEvents) {
+      if (isAquarelleDryEvent(event)) {
+        if (!retainedDryRefs.has(event)) watercolorEvents.push(event);
+        continue;
+      }
+      const id = eventMutationId(event);
+      if (id !== undefined && retainedStrokeIds.has(id)) continue;
+      watercolorEvents.push(event);
+    }
+  }
+
+  const sessionByFrame = new Map<number, StudioScriptSnapshotBrushFrame>();
+  for (const frame of sessionBrushFrames) {
+    if (frame.groups.length > 0) sessionByFrame.set(frame.frame, frame);
+  }
+  const brushFrames: StudioScriptSnapshotBrushFrame[] = [];
+  const seenFrames = new Set<number>();
+  if (retained) {
+    const retainedFrames = [...retained.brushFrames]
+      .filter((frame) => frame.groups.length > 0)
+      .sort((left, right) => left.frame - right.frame);
+    for (const frame of retainedFrames) {
+      if (seenFrames.has(frame.frame)) continue;
+      seenFrames.add(frame.frame);
+      brushFrames.push(sessionByFrame.get(frame.frame) ?? frame);
+    }
+  }
+  for (const frame of [...sessionByFrame.values()].sort((left, right) => left.frame - right.frame)) {
+    if (seenFrames.has(frame.frame)) continue;
+    brushFrames.push(frame);
+  }
+  return { watercolorEvents, brushFrames };
+}
+
 export function studioScriptSnapshotRestoreFailureMessage(kind: string): string {
   return `Studio script snapshot could not be restored (${kind}). The frame pixels are unchanged.`;
 }
@@ -219,6 +331,18 @@ export function createStudioScriptSnapshotController(
   let lastSavedSignature: string | null = null;
   /** Invalidates an in-flight restore across a rebind / reset. */
   let generation = 0;
+  /**
+   * studio-snapshot-empty-save: the generation whose restore has settled.
+   * A save prepared before this matches the current generation would encode
+   * the empty post-reset session under the incoming key.
+   */
+  let restoreSettledGeneration: number | null = null;
+  /**
+   * The raw content last read from / written to the bound key's file. Routine
+   * saves union it with the session so a deleted-key prune never erases the
+   * script from the authoritative snapshot; an explicit purge drops it.
+   */
+  let retainedContent: StudioScriptSnapshotContent | null = null;
   /** One restore-failure report per bound identity. */
   let restoreFailureReported = false;
   /** Coalescing timer — at most one armed at a time. */
@@ -257,6 +381,10 @@ export function createStudioScriptSnapshotController(
     followUpRequested = false;
     boundIdentity = normalizeIdentity(identity);
     lastSavedSignature = null;
+    // A new binding has NO settled restore and NO retained content: an empty
+    // session must never be saved under it until its own restore has run.
+    restoreSettledGeneration = null;
+    retainedContent = null;
     restoreFailureReported = false;
   }
 
@@ -281,6 +409,10 @@ export function createStudioScriptSnapshotController(
       }
 
       if (!result.ok) {
+        // No readable file content is retained: a missing file IS empty, a
+        // refused one is UNKNOWN and must never be overwritten by an empty
+        // session. The empty-save guard covers both.
+        retainedContent = null;
         if (result.error.kind === 'missing') {
           // Silent no-op: the first session on a project has no snapshot yet.
           lastSavedSignature = deps.getContentSignature();
@@ -296,6 +428,7 @@ export function createStudioScriptSnapshotController(
       } catch (error) {
         const kind =
           error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'corrupt';
+        retainedContent = null;
         reportRestoreFailureOnce(kind);
         return { status: 'refused', maxRestoredMutationId: 0 };
       }
@@ -310,10 +443,21 @@ export function createStudioScriptSnapshotController(
       const brushFrames = pruneBrushFramesToLiveFrames(decoded.brushFrames, liveFrames);
       const maxRestoredMutationId = restoreAquarelleRecordTimeline(events);
       restoreBrushScriptFrames(brushFrames);
+      // The FILE holds the UNPRUNED content: pruning was a session seed, not
+      // a file rewrite. Retain it so a later routine save cannot drop a
+      // deleted key's script from the authoritative snapshot.
+      retainedContent = {
+        watercolorEvents: [...decoded.watercolorEvents],
+        brushFrames: decoded.brushFrames.filter((frame) => frame.groups.length > 0),
+      };
       lastSavedSignature = deps.getContentSignature();
       return { status: 'restored', maxRestoredMutationId };
     } finally {
       restoringCount -= 1;
+      // Settles even a missing / refused / corrupt restore: the generation's
+      // session is now a known state and routine saves may proceed (subject
+      // to the empty-payload guard).
+      if (requestGeneration === generation) restoreSettledGeneration = generation;
     }
   }
 
@@ -324,31 +468,52 @@ export function createStudioScriptSnapshotController(
     generation: number;
     /** Captured at prepare time; a later change never retargets this payload. */
     authority: string | null;
+    /** Exactly what these bytes carry — the new retained baseline on success. */
+    content: StudioScriptSnapshotContent;
   }
 
   /**
-   * Encode the bound key NOW. Null when nothing changed (the baseline case)
-   * or when the encode itself failed (reported here, once per attempt).
+   * Encode the bound key NOW. Null when nothing changed (the baseline case),
+   * when the current generation's restore has not settled, when a routine
+   * save would land an EMPTY payload, or when the encode itself failed
+   * (reported here, once per attempt).
    */
-  function prepareSave(): PreparedSave | null {
+  function prepareSave(options?: StudioScriptSnapshotSaveOptions): PreparedSave | null {
     const identity = boundIdentity;
     if (!identity) return null;
+    // studio-snapshot-empty-save: the rebind window's empty session must never
+    // be encoded under the incoming identity.
+    if (restoreSettledGeneration !== generation) return null;
     const signature = deps.getContentSignature();
     if (signature === lastSavedSignature) return null;
+    const sessionOnly = options?.sessionOnly === true;
+    const allowEmpty = options?.allowEmpty === true;
     // The authority is captured WITH the identity and bytes: the prepared
     // payload is already bound to the package it was prepared for.
     const authority = deps.getAuthority();
     try {
-      const liveFrames = deps.getLiveFrames();
+      // No save-time pruning: the session is unioned with what the file is
+      // known to hold, so a deleted key's script survives in the snapshot.
+      const content = mergeStudioScriptSnapshotContent(
+        sessionOnly ? null : retainedContent,
+        deps.getWatercolorEvents(),
+        deps.getBrushFrames(),
+      );
+      if (
+        !allowEmpty
+        && content.watercolorEvents.length === 0
+        && content.brushFrames.length === 0
+      ) {
+        // An empty session proves nothing about the file (refused read, or a
+        // rebind whose restore has not seeded it). Never overwrite with it.
+        return null;
+      }
       const bytes = encodeStudioScriptSnapshot({
         ...identity,
-        watercolorEvents: pruneWatercolorEventsToLiveFrames(
-          deps.getWatercolorEvents(),
-          liveFrames,
-        ),
-        brushFrames: pruneBrushFramesToLiveFrames(deps.getBrushFrames(), liveFrames),
+        watercolorEvents: content.watercolorEvents,
+        brushFrames: content.brushFrames,
       });
-      return { identity, bytes, signature, generation, authority };
+      return { identity, bytes, signature, generation, authority, content };
     } catch (error) {
       const kind =
         error instanceof StudioScriptSnapshotCodecError ? `corrupt:${error.code}` : 'io';
@@ -370,9 +535,14 @@ export function createStudioScriptSnapshotController(
       deps.report(studioScriptSnapshotSaveFailureMessage(result.error.kind));
       return;
     }
+    if (prepared.generation !== generation) return;
+    // The file now holds exactly this content. A purge's session-only
+    // rewrite intentionally replaces the retained set (that is the
+    // destructive path); a routine save's union becomes the new baseline.
+    retainedContent = prepared.content;
     // Only a save that still represents the CURRENT identity and content
     // clears the dirty flag; a mutation during the write leaves it dirty.
-    if (prepared.generation === generation && deps.getContentSignature() === prepared.signature) {
+    if (deps.getContentSignature() === prepared.signature) {
       lastSavedSignature = prepared.signature;
     }
   }
@@ -429,7 +599,7 @@ export function createStudioScriptSnapshotController(
     }, STUDIO_SCRIPT_SNAPSHOT_DEBOUNCE_MS);
   }
 
-  async function flushNow(): Promise<void> {
+  async function flushNow(options?: StudioScriptSnapshotSaveOptions): Promise<void> {
     // The close path's flush: clear the timer, wait out every write already
     // queued for this key, then write once if the content is still newer.
     clearSaveTimer();
@@ -439,7 +609,7 @@ export function createStudioScriptSnapshotController(
       // commitSave never rejects; defensive only.
     }
     followUpRequested = false;
-    const prepared = prepareSave();
+    const prepared = prepareSave(options);
     if (!prepared) return;
     await enqueueSave(prepared);
   }
@@ -463,7 +633,10 @@ export function createStudioScriptSnapshotController(
   async function persistAfterPurge(): Promise<void> {
     if (!boundIdentity) return;
     const generationBefore = generation;
-    await flushNow();
+    // The EXPLICIT destructive path: the session is the whole truth, so the
+    // purged entries cannot be resurrected from the retained baseline, and an
+    // empty result (purge everything) is allowed to land.
+    await flushNow({ allowEmpty: true, sessionOnly: true });
     if (generationBefore !== generation) return;
     const identity = boundIdentity;
     if (!identity) return;
@@ -504,6 +677,8 @@ export function createStudioScriptSnapshotController(
     followUpRequested = false;
     boundIdentity = null;
     lastSavedSignature = null;
+    restoreSettledGeneration = null;
+    retainedContent = null;
     restoreFailureReported = false;
   }
 

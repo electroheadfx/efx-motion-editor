@@ -18,11 +18,14 @@ import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation
 import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
   getRecordedAquarellePayloadTimeline,
+  purgeAquarelleFrameScript,
   resetAquarelleRecordState,
   restoreAquarelleRecordTimeline,
 } from '../view/aquarelleRecordState';
 import {
   getBrushScriptFrameEntries,
+  pruneBrushScriptsFromFrame,
+  purgeBrushScriptFrame,
   resetBrushScriptStore,
   restoreBrushScriptFrames,
 } from '../view/brushScriptRecordState';
@@ -263,9 +266,12 @@ describe('studioScriptSnapshotController', () => {
   });
 
   it('never rejects when the write fails, and reports the failure', async () => {
-    const { controller, write, report } = harness();
+    const { controller, write, report, setSignature } = harness();
     write.mockResolvedValue({ ok: false, error: { kind: 'io' } });
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-1');
     await expect(controller.saveNow()).resolves.toBeUndefined();
     expect(report).toHaveBeenCalledTimes(1);
     expect(String(report.mock.calls[0]?.[0])).toContain('could not be saved');
@@ -273,16 +279,20 @@ describe('studioScriptSnapshotController', () => {
   });
 
   it('never rejects when the write throws', async () => {
-    const { controller, write } = harness();
+    const { controller, write, setSignature } = harness();
     write.mockRejectedValue(new Error('disk gone'));
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-1');
     await expect(controller.saveNow()).resolves.toBeUndefined();
   });
 
-  it('saves the pruned bound key and clears the dirty flag', async () => {
-    restoreAquarelleRecordTimeline(fixtureEvents());
+  it('saves the bound key and clears the dirty flag', async () => {
     const { controller, write, setSignature } = harness({ getLiveFrames: () => new Set([7]) });
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     expect(controller.isDirty()).toBe(true);
 
@@ -291,7 +301,9 @@ describe('studioScriptSnapshotController', () => {
     const [identity, bytes] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
     expect(identity).toEqual(IDENTITY);
     const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
-    expect(decoded.watercolorEvents).toHaveLength(2);
+    // studio-snapshot-empty-save: no save-time prune — the frame-9 stroke
+    // survives even though frame 9 is not a live key.
+    expect(decoded.watercolorEvents).toHaveLength(3);
     expect(controller.isDirty()).toBe(false);
 
     // A later mutation marks it dirty again.
@@ -319,18 +331,21 @@ describe('studioScriptSnapshotController', () => {
     expect(getBrushScriptFrameEntries()[0]?.complete).toBe(true);
   });
 
-  it('saves the pruned brush ledger and never a stale frame', async () => {
-    restoreBrushScriptFrames([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
-    const { controller, write } = harness({
+  it('saves the whole brush ledger without save-time pruning', async () => {
+    const { controller, write, setSignature } = harness({
       getLiveFrames: () => new Set([7]),
       getBrushFrames: () => getBrushScriptFrameEntries(),
     });
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreBrushScriptFrames([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    setSignature('sig-1');
 
     await controller.saveNow();
     const [, bytes] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
     const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
-    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7]);
+    // studio-snapshot-empty-save: pruning is a session law, not a file law.
+    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
     expect(decoded.brushFrames[0]?.groups[0]?.primary.points[0]?.x).toBe(120.5);
   });
 
@@ -376,6 +391,7 @@ describe('studioScriptSnapshotController — live package authority', () => {
     expect(read).toHaveBeenLastCalledWith(IDENTITY, null);
 
     // A mutation after the seed restore makes the save worth attempting.
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     await controller.saveNow();
     expect(write).toHaveBeenCalledTimes(1);
@@ -385,8 +401,10 @@ describe('studioScriptSnapshotController — live package authority', () => {
 
   it('captures the authority at prepare time and never retargets a prepared payload', async () => {
     const { controller, write, setSignature, setAuthority } = harness();
-    setSignature('sig-1');
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-1');
     setAuthority('authority-at-prepare');
 
     const pending = controller.saveNow();
@@ -418,6 +436,8 @@ describe('studioScriptSnapshotController — save discipline', () => {
   it('coalesces two revision bumps inside the window into ONE write', async () => {
     const { controller, write, setSignature } = harness();
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     controller.markDirty();
     setSignature('sig-2');
@@ -435,6 +455,8 @@ describe('studioScriptSnapshotController — save discipline', () => {
   it('arms exactly one timer when markDirty is called twice', async () => {
     const { controller, write, setSignature } = harness();
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     controller.markDirty();
     controller.markDirty();
@@ -452,6 +474,8 @@ describe('studioScriptSnapshotController — save discipline', () => {
       }),
     );
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     controller.markDirty();
     await vi.advanceTimersByTimeAsync(800);
@@ -475,6 +499,8 @@ describe('studioScriptSnapshotController — save discipline', () => {
     const { controller, write, report, setSignature } = harness();
     write.mockResolvedValue({ ok: false, error: { kind: 'io' } });
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     controller.markDirty();
 
@@ -492,6 +518,8 @@ describe('studioScriptSnapshotController — save discipline', () => {
     const { controller, write, report, setSignature } = harness();
     write.mockResolvedValueOnce({ ok: false, error: { kind: 'io' } });
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     await controller.saveNow();
     expect(report).toHaveBeenCalledTimes(1);
@@ -531,6 +559,8 @@ describe('studioScriptSnapshotController — save discipline', () => {
   it('flushNow clears the timer and writes once', async () => {
     const { controller, write, setSignature } = harness();
     controller.bind(IDENTITY);
+    await controller.restore();
+    restoreAquarelleRecordTimeline(fixtureEvents());
     setSignature('sig-1');
     controller.markDirty();
     await controller.flushNow();
@@ -575,6 +605,178 @@ describe('studioScriptSnapshotController — save discipline', () => {
 });
 
 // ------------------------------------------------------------
+//  studio-snapshot-empty-save — RED-first regression suite.
+//
+//  A rebind (active-track switch after a rail/key deletion) resets the
+//  module stores, binds the incoming key and starts its restore
+//  WITHOUT awaiting it. A save prepared inside that window encoded an
+//  EMPTY payload under the incoming identity and overwrote the
+//  surviving rail's good snapshot (16,512 B -> 162 B). Two laws:
+//    1. No save may be prepared until the CURRENT binding generation's
+//       restore has settled (both restore-in-flight and refused reads).
+//    2. A routine save never writes an empty payload; only an explicit
+//       purge may (persistAfterPurge).
+//  And pruning is non-destructive at save time: deleted-key entries
+//  stay in the authoritative snapshot. The session is pruned at
+//  restore, so the deleted key's script cannot reappear.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — empty-save guard (studio-snapshot-empty-save)', () => {
+  it('never prepares a save while the bound key’s restore is in flight', async () => {
+    const { controller, read, write, setSignature } = harness();
+    const bytes = encodedFixture();
+    let releaseRead!: (value: StudioScriptSnapshotOperationResult<StudioScriptSnapshotReadPayload>) => void;
+    read.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        releaseRead = resolve;
+      }),
+    );
+
+    controller.bind(IDENTITY);
+    const restorePromise = controller.restore();
+    // The track switch already reset both module stores: the incoming key's
+    // content has not been seeded yet. This is the exact empty window.
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(0);
+    expect(getBrushScriptFrameEntries()).toHaveLength(0);
+
+    await controller.saveNow();
+    await controller.flushNow();
+    // The rebuilt snapshot must never be written from an empty store.
+    expect(write).not.toHaveBeenCalled();
+
+    releaseRead({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    await restorePromise;
+
+    // After settlement, a real mutation writes the RESTORED payload — not
+    // an empty container. (liveFrames defaults to {7, 9}, so nothing prunes.)
+    setSignature('sig-after-restore');
+    await controller.saveNow();
+    expect(write).toHaveBeenCalledTimes(1);
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    expect(decoded.watercolorEvents).toHaveLength(3);
+  });
+
+  it('never writes an empty payload over a refused snapshot', async () => {
+    const { controller, read, write, report, setSignature } = harness();
+    read.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
+
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'refused', maxRestoredMutationId: 0 });
+    // A refused read leaves the file contents UNKNOWN: an empty store says
+    // nothing about what is on disk, so the dirty save must be withheld.
+    setSignature('sig-dirty-empty');
+    await controller.saveNow();
+    expect(write).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(String(report.mock.calls[0]?.[0])).toContain('could not be restored');
+  });
+
+  it('never writes an empty payload after a missing snapshot', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    expect(await controller.restore()).toEqual({ status: 'empty', maxRestoredMutationId: 0 });
+
+    setSignature('sig-dirty-empty');
+    await controller.saveNow();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('keeps deleted-key entries in the snapshot (no save-time prune)', async () => {
+    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    let liveFrames: ReadonlySet<number> = new Set([7, 9]);
+    const { controller, read, write, setSignature } = harness({
+      getLiveFrames: () => liveFrames,
+      getBrushFrames: () => getBrushScriptFrameEntries(),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    // Both keys are live at restore: the session holds both script entries.
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7, 9]);
+
+    // The key at frame 9 is deleted: it is no longer a live real key. The
+    // save must NOT drop its script from the authoritative snapshot.
+    liveFrames = new Set([7]);
+    setSignature('sig-after-key-delete');
+    await controller.saveNow();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
+    expect(decoded.watercolorEvents).toHaveLength(3);
+  });
+
+  it('does not drop restore-pruned entries from the authoritative snapshot', async () => {
+    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const { controller, read, write, setSignature } = harness({
+      // The key at frame 9 was deleted before this Studio session.
+      getLiveFrames: () => new Set([7]),
+      getBrushFrames: () => getBrushScriptFrameEntries(),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    // Pruned from the SESSION: the deleted key's script cannot reappear.
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7]);
+    expect(getRecordedAquarellePayloadTimeline()).toHaveLength(2);
+
+    // A later mutation saves the session plus the file's pruned-out entries.
+    setSignature('sig-after-restore');
+    await controller.saveNow();
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
+    expect(decoded.watercolorEvents).toHaveLength(3);
+  });
+
+  it('keeps a brush entry the apply-time fail-closed prune removed from the session', async () => {
+    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const { controller, read, write, setSignature } = harness({
+      getLiveFrames: () => new Set([7, 9]),
+      getBrushFrames: () => getBrushScriptFrameEntries(),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // 261023-g4p apply-time law: the physical edit prunes the session entry.
+    expect(pruneBrushScriptsFromFrame(8)).toBe(1);
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7]);
+
+    setSignature('sig-after-apply-prune');
+    await controller.saveNow();
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    // The session prune is a SESSION law; the snapshot keeps the entry.
+    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7, 9]);
+  });
+
+  it('lets an explicit purge replace the snapshot with the purged session', async () => {
+    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const { controller, read, write, setSignature } = harness({
+      getLiveFrames: () => new Set([7, 9]),
+      getBrushFrames: () => getBrushScriptFrameEntries(),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // Memory-tab purge: the removed entries must NOT come back.
+    expect(purgeAquarelleFrameScript(9)).toBe(1);
+    expect(purgeBrushScriptFrame(9)).toBe(true);
+    setSignature('sig-after-purge');
+    await controller.persistAfterPurge();
+
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    expect(decoded.brushFrames.map((entry) => entry.frame)).toEqual([7]);
+    expect(decoded.watercolorEvents).toHaveLength(2);
+  });
+});
+
+// ------------------------------------------------------------
 //  quick-261023-ors Task 2 — the purge's persistence cleanup.
 //  Order law: rewrite the authoritative leg FIRST, then (only when
 //  the rewrite left the store clean and an authority is bound)
@@ -592,9 +794,12 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
   });
 
   it('rewrites the authoritative leg, then deletes the cache leg when bound', async () => {
-    const { controller, write, remove, report, setAuthority } = harness();
+    const { controller, write, remove, report, setAuthority, setSignature } = harness();
     setAuthority('vault-token');
     controller.bind(IDENTITY);
+    await controller.restore();
+    // The purge removed entries; the store signature moved.
+    setSignature('sig-purge');
 
     await controller.persistAfterPurge();
 
@@ -609,9 +814,11 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
   });
 
   it('never deletes the cache leg without an authority (the cache IS the authority)', async () => {
-    const { controller, write, remove, report, setAuthority } = harness();
+    const { controller, write, remove, report, setAuthority, setSignature } = harness();
     setAuthority(null);
     controller.bind(IDENTITY);
+    await controller.restore();
+    setSignature('sig-purge');
 
     await controller.persistAfterPurge();
 
@@ -621,10 +828,12 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
   });
 
   it('keeps the fallback when the rewrite failed (still dirty)', async () => {
-    const { controller, write, remove, report, setAuthority } = harness();
+    const { controller, write, remove, report, setAuthority, setSignature } = harness();
     setAuthority('vault-token');
     write.mockResolvedValue({ ok: false, error: { kind: 'io' } });
     controller.bind(IDENTITY);
+    await controller.restore();
+    setSignature('sig-purge');
 
     await expect(controller.persistAfterPurge()).resolves.toBeUndefined();
 
@@ -635,10 +844,12 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
   });
 
   it('reports a failed cache delete ONCE and never rejects', async () => {
-    const { controller, remove, report, setAuthority } = harness();
+    const { controller, remove, report, setAuthority, setSignature } = harness();
     setAuthority('vault-token');
     remove.mockResolvedValue({ ok: false, error: { kind: 'refused' } });
     controller.bind(IDENTITY);
+    await controller.restore();
+    setSignature('sig-purge');
 
     await expect(controller.persistAfterPurge()).resolves.toBeUndefined();
 
@@ -649,10 +860,12 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
   });
 
   it('absorbs a rejecting cache delete as an io failure report', async () => {
-    const { controller, remove, report, setAuthority } = harness();
+    const { controller, remove, report, setAuthority, setSignature } = harness();
     setAuthority('vault-token');
     remove.mockRejectedValue(new Error('boom'));
     controller.bind(IDENTITY);
+    await controller.restore();
+    setSignature('sig-purge');
 
     await expect(controller.persistAfterPurge()).resolves.toBeUndefined();
     expect(report).toHaveBeenCalledTimes(1);
@@ -660,9 +873,11 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
   });
 
   it('abandons the cleanup when the key is rebound before the rewrite completes', async () => {
-    const { controller, remove, report, setAuthority } = harness();
+    const { controller, remove, report, setAuthority, setSignature } = harness();
     setAuthority('vault-token');
     controller.bind(IDENTITY);
+    await controller.restore();
+    setSignature('sig-purge');
     const pending = controller.persistAfterPurge();
     // A track switch lands while the purge's flush is still awaiting the queue.
     controller.bind({ ...IDENTITY, trackId: 'track-2' });
