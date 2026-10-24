@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-24T15:05:34.970Z"
+last_updated: "2026-10-24T17:48:14.117Z"
 last_activity: 2026-10-24
 last_activity_desc: Phase 56 complete
-state_head: 5e4c1b70c0234d5adef8f45553c83fa29b1445c6
+state_head: 9b420450e8c11a16fd7cae96a7b39b669b22ce4b
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-24 - Completed quick task 261024-mz5: Studio multi-select strokes + rotation and scale for the selected stroke(s)
+Last activity: 2026-10-24 - Completed quick task 261024-p5q: Studio stroke settings modal (Needs Review — live UAT pending)
 
 Progress: [██████████] 100%
 
@@ -593,6 +593,7 @@ None yet.
 | 261024-i51 | Fix pre-existing typecheck and vitest baseline failures | 2026-10-24 | 25949add | [261024-i51-fix-pre-existing-typecheck-and-vitest-ba](./quick/261024-i51-fix-pre-existing-typecheck-and-vitest-ba/) |
 | 261024-m20 | Remap watercolor scripts by key identity on accepted physical replaces; extract one shared key-identity frame map for roto, brush and watercolor | 2026-10-24 | 55a5a95f | [261024-m20-watercolor-key-spacing-remap](./quick/261024-m20-watercolor-key-spacing-remap/) |
 | 261024-mz5 | Feat Studio: Add multiselect strokes (verify its already in brush) then Add rotation and scale for stroke(s) (single or multi select) | 2026-10-24 | 5e4c1b70 | [261024-mz5-feat-studio-add-multiselect-strokes-veri](./quick/261024-mz5-feat-studio-add-multiselect-strokes-veri/) |
+| 261024-p5q | Studio stroke settings modal: selection-gated movable dialog for selected strokes (Brush Move / Water color Select) | 2026-10-24 | 9b420450 | [261024-p5q-studio-stroke-settings-modal-add-a-selec](./quick/261024-p5q-studio-stroke-settings-modal-add-a-selec/) |
 
 ### Roadmap Evolution
 
