@@ -249,6 +249,12 @@ export interface StrokeSettingsDialogBundle {
    * the Stack section entirely.
    */
   readonly reorderStroke?: (mutationId: number, positionFromTop: number) => boolean | void;
+  /**
+   * 261024-vga UAT: close the sheet by LEAVING the Move/Select surface and
+   * restoring the previous tool. Without it, the dialog falls back to the
+   * legacy sticky dismissal (hidden until the selection goes empty).
+   */
+  readonly closeMoveMode?: () => void;
 }
 
 // ============================================================

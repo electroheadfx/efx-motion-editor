@@ -556,7 +556,7 @@ describe('261024-p5q dialog shell', () => {
     expect(findByTestId(renderDialog(bundle), 'stroke-settings-dialog')).toBeDefined();
   });
 
-  it('the close button writes the same dismissal boolean', () => {
+  it('the close button falls back to the sticky dismissal without closeMoveMode', () => {
     const { bundle } = createBundle();
     setScriptStrokeSelection([7]);
     const tree = renderDialog(bundle);
@@ -564,6 +564,31 @@ describe('261024-p5q dialog shell', () => {
     expect(close).toBeDefined();
     (close!.props.onClick as () => void)();
     expect(renderDialog(bundle)).toBeNull();
+  });
+
+  it('the close button LEAVES Move mode when the bundle provides closeMoveMode', () => {
+    const closeMoveMode = vi.fn();
+    const { bundle } = createBundle({ closeMoveMode });
+    setScriptStrokeSelection([7]);
+    const close = findByTestId(renderDialog(bundle), 'stroke-settings-close')!;
+    (close.props.onClick as () => void)();
+
+    expect(closeMoveMode).toHaveBeenCalledOnce();
+    // The Studio flips the surface gate; the sheet then unmounts.
+    expect(renderDialog({ ...bundle, brushMoveActive: false })).toBeNull();
+    // Re-entering Move re-opens it for the same (non-empty) selection.
+    expect(findByTestId(renderDialog(bundle), 'stroke-settings-dialog')).toBeDefined();
+  });
+
+  it('Escape also LEAVES Move mode when the bundle provides closeMoveMode', () => {
+    const closeMoveMode = vi.fn();
+    const { bundle } = createBundle({ closeMoveMode });
+    setScriptStrokeSelection([7]);
+    renderDialog(bundle);
+    runDialogEffect();
+
+    expect(dispatchEscape({ closest: () => null })).toEqual({ prevented: true, stopped: true });
+    expect(closeMoveMode).toHaveBeenCalledOnce();
   });
 
   it('header drag persists across selection changes and dismiss/reopen', () => {

@@ -7403,6 +7403,9 @@ export function PhysicsPaintStudio() {
           moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
           transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
           reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
+          closeMoveMode: () => {
+            if (aquarelleSelectMode.peek()) toggleAquarelleSelectMode();
+          },
         };
         return bundle;
       }
@@ -7419,6 +7422,7 @@ export function PhysicsPaintStudio() {
         moveStrokes: (ids, dxPx, dyPx) => moveBrushScriptStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => transformBrushScriptStrokes(ids, transform),
         reorderStroke: (mutationId, positionFromTop) => placeBrushScriptStroke(mutationId, positionFromTop),
+        closeMoveMode: () => selectTool(lastNonMoveToolRef.current, settingsRef.current.physicsMode),
       };
       return bundle;
     },

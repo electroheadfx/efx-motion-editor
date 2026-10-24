@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useCallback, useEffect, useRef } from 'preact/hooks';
 import { signal, type Signal } from '@preact/signals';
 import { memo } from 'preact/compat';
 import type { CSSProperties, TargetedPointerEvent } from 'preact';
@@ -316,6 +316,21 @@ export function PhysicsPaintStrokeSettingsDialog({
       sawEmptySinceDismiss,
     });
 
+  /**
+   * 261024-vga UAT: close = LEAVE Move/Select (restore the previous tool) so
+   * the next stroke selection re-opens the sheet. The legacy sticky dismissal
+   * remains only for a bundle without `closeMoveMode`.
+   */
+  const closeMoveMode = bundle?.closeMoveMode;
+  const closeSurface = useCallback(() => {
+    if (closeMoveMode) {
+      closeMoveMode();
+      return;
+    }
+    dismissedRef.current!.value = true;
+    sawEmptySinceDismiss = false;
+  }, [closeMoveMode]);
+
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -329,14 +344,13 @@ export function PhysicsPaintStrokeSettingsDialog({
           .closest?.('[data-testid="stroke-settings-dialog"]');
         if (insideDialog) return;
       }
-      dismissedRef.current!.value = true;
-      sawEmptySinceDismiss = false;
+      closeSurface();
       event.preventDefault();
       event.stopPropagation();
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [open]);
+  }, [open, closeSurface]);
 
   if (!bundle || !open) return null;
 
@@ -445,11 +459,6 @@ export function PhysicsPaintStrokeSettingsDialog({
     void Promise.resolve(bundle.moveStrokes(ids, delta.dxPx, delta.dyPx));
   };
 
-  const dismiss = () => {
-    dismissedRef.current!.value = true;
-    sawEmptySinceDismiss = false;
-  };
-
   const onHeaderPointerDown = (event: TargetedPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const rect = surfaceRef.current?.getBoundingClientRect?.() ?? null;
@@ -550,7 +559,7 @@ export function PhysicsPaintStrokeSettingsDialog({
           data-testid="stroke-settings-close"
           aria-label="Close"
           title="Close"
-          onClick={dismiss}
+          onClick={closeSurface}
         >
           <X size={12} aria-hidden="true" />
         </button>
