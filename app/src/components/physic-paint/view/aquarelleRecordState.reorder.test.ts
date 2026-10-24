@@ -20,18 +20,23 @@ import {
 } from '@efxlab/efx-watercolor/payload';
 import {
   aquarelleStrokesRevision,
+  clearAquarelleStrokeDeletion,
   deleteAquarelleStrokeFromScript,
   emitAquarelleDry,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
+  getRecordedAquarelleStrokeEntries,
+  placeAquarelleStrokeInScript,
   recordAquarelleStroke,
   sendAquarelleStrokeBackwardInScript,
   sendAquarelleStrokeForwardInScript,
 } from './aquarelleRecordState';
 import {
   aquarelleSelectedStrokeMutationId,
+  beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
+  listSelectableAquarelleStrokes,
   restoreAquarelleEditSnapshot,
   selectAquarelleStroke,
   setAquarelleScriptEditInFlight,
@@ -264,5 +269,205 @@ describe('261022-ujp aquarelle stroke stack step', () => {
       setAquarelleScriptEditInFlight(false);
       selectAquarelleStroke(null);
     }
+  });
+});
+
+// ============================================================
+//  quick 261024-vga Task 3 — exact payload placement.
+//
+//  The public position is 1 = TOPMOST, the timeline is bottom -> top, so the
+//  target index is `total - position`. The affected window (from the moved
+//  slot to the target, inclusive) is re-stamped with the window's sorted
+//  recording slots: the bake derives each stroke's start tick from that clock,
+//  so the new paint order must keep the slots ascending. Dry events and every
+//  other-frame entry keep their object identity and absolute index.
+// ============================================================
+
+describe('261024-vga aquarelle exact stack placement', () => {
+  function recordFrame(playFrame: number, ids: readonly number[]): void {
+    for (const mutationId of ids) recordAquarelleStroke(mutationId, stroke(mutationId, playFrame));
+  }
+
+  /** The frame's timeline entry for one id (searched in payload order). */
+  function frameEntryForId(playFrame: number, mutationId: number): AquarellePayloadEvent | undefined {
+    return getAquarelleEventsForFrame(playFrame).find(
+      (event) => !isAquarelleDryEvent(event)
+        && (event.engine as { mutationId?: number }).mutationId === mutationId,
+    );
+  }
+
+  const SIZE = { width: 200, height: 120 };
+
+  it('places a stroke at the exact public position (1 = topmost)', () => {
+    recordFrame(701, [9101, 9102, 9103, 9104]);
+
+    // Already top (1) and already at its live slot (3) both refuse.
+    expect(placeAquarelleStrokeInScript(9104, 1)).toBe(false);
+    expect(placeAquarelleStrokeInScript(9102, 3)).toBe(false);
+    expect(frameIds(701)).toEqual([9101, 9102, 9103, 9104]);
+
+    expect(placeAquarelleStrokeInScript(9102, 1)).toBe(true);
+    expect(frameIds(701)).toEqual([9101, 9103, 9104, 9102]);
+    expect(timelineIds().slice(-4)).toEqual([9101, 9103, 9104, 9102]);
+
+    recordFrame(702, [9201, 9202, 9203, 9204]);
+    expect(placeAquarelleStrokeInScript(9202, 4)).toBe(true);
+    expect(frameIds(702)).toEqual([9202, 9201, 9203, 9204]);
+
+    recordFrame(703, [9351, 9352, 9353, 9354]);
+    expect(placeAquarelleStrokeInScript(9351, 1)).toBe(true);
+    expect(frameIds(703)).toEqual([9352, 9353, 9354, 9351]);
+  })
+
+  it('clamps an out-of-range position to the bottom row', () => {
+    recordFrame(704, [9401, 9402, 9403, 9404]);
+    expect(placeAquarelleStrokeInScript(9403, 99)).toBe(true);
+    expect(frameIds(704)).toEqual([9403, 9401, 9402, 9404]);
+  });
+
+  it('keeps Dry events and other-frame strokes object-identical at their absolute index', () => {
+    recordAquarelleStroke(9501, stroke(9501, 705));
+    const dry = emitAquarelleDry(9501);
+    recordAquarelleStroke(9503, stroke(9503, 706));
+    recordAquarelleStroke(9502, stroke(9502, 705));
+
+    const timelineBefore = [...getRecordedAquarellePayloadTimeline()];
+    const dryIndex = timelineBefore.indexOf(dry);
+    const otherEntry = asTimelineStroke(frameEntryForId(706, 9503));
+    const otherIndex = timelineBefore.indexOf(otherEntry);
+    expect(dryIndex).toBeGreaterThan(-1);
+    expect(otherIndex).toBeGreaterThan(-1);
+
+    // 9502 is the frame's top row, so asking for the bottom row moves it.
+    expect(placeAquarelleStrokeInScript(9502, 2)).toBe(true);
+
+    const timelineAfter = getRecordedAquarellePayloadTimeline();
+    expect(frameIds(705)).toEqual([9502, 9501]);
+    expect(frameIds(706)).toEqual([9503]);
+    // Dry: same object, same absolute index.
+    expect(timelineAfter[dryIndex]).toBe(dry);
+    expect(isAquarelleDryEvent(timelineAfter[dryIndex]!)).toBe(true);
+    // Other-frame stroke: same object, same absolute index.
+    expect(timelineAfter[otherIndex]).toBe(timelineBefore[otherIndex]);
+    // Same-frame strokes receive the collected slots.
+    const moved = asTimelineStroke(timelineAfter.find((event) => !isAquarelleDryEvent(event)
+      && (event.engine as { mutationId?: number }).mutationId === 9502));
+    const passed = asTimelineStroke(timelineAfter.find((event) => !isAquarelleDryEvent(event)
+      && (event.engine as { mutationId?: number }).mutationId === 9501));
+    expect(moved.recordedOrder).toBe(9501);
+    expect(passed.recordedOrder).toBe(9502);
+  });
+
+  it('keeps recording slots ascending and preserves every other field', () => {
+    recordFrame(707, [9601, 9602, 9603, 9604]);
+    const before = asTimelineStroke(frameEntryForId(707, 9601));
+
+    expect(placeAquarelleStrokeInScript(9601, 1)).toBe(true);
+    expect(frameIds(707)).toEqual([9602, 9603, 9604, 9601]);
+
+    const slots = frameIds(707).map((id) => getRecordedAquarelleStroke(id)!.timestamp);
+    expect(slots).toEqual([...slots].sort((a, b) => a - b));
+    for (const id of frameIds(707)) {
+      const entry = asTimelineStroke(frameEntryForId(707, id));
+      expect(entry.recordedOrder).toBe(getRecordedAquarelleStroke(id)!.timestamp);
+      expect((entry.engine as { timestamp?: number }).timestamp).toBe(entry.recordedOrder);
+    }
+
+    const after = asTimelineStroke(frameEntryForId(707, 9601));
+    expect(after.ticks).toBe(before.ticks);
+    expect(after.playFrame).toBe(before.playFrame);
+    expect(after.pts).toBe(before.pts);
+    expect(getRecordedAquarelleStroke(9601)!.points[0]!.x).toBe(0.1);
+  });
+
+  it('leaves the registry insertion order intact and reports the new top-relative positions', () => {
+    recordFrame(708, [9701, 9702, 9703]);
+    const registryOrderBefore = [...getRecordedAquarelleStrokeEntries().keys()];
+
+    expect(placeAquarelleStrokeInScript(9701, 1)).toBe(true);
+    expect(frameIds(708)).toEqual([9702, 9703, 9701]);
+    expect([...getRecordedAquarelleStrokeEntries().keys()]).toEqual(registryOrderBefore);
+
+    const rows = listSelectableAquarelleStrokes(708, SIZE);
+    const positionOf = (mutationId: number) =>
+      rows.find((row) => row.mutationId === mutationId)?.stackPosition;
+    // Bottom -> top 9702, 9703, 9701: 9701 is position 1/3.
+    expect(positionOf(9702)).toBe(3);
+    expect(positionOf(9703)).toBe(2);
+    expect(positionOf(9701)).toBe(1);
+  });
+
+  it('bumps the revision exactly once and every refusal changes nothing', () => {
+    recordFrame(709, [9801, 9802, 9803, 9804]);
+
+    const revisionBefore = aquarelleStrokesRevision.value;
+    expect(placeAquarelleStrokeInScript(9801, 1)).toBe(true);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore + 1);
+    // Bottom -> top now 9802, 9803, 9804, 9801.
+    expect(frameIds(709)).toEqual([9802, 9803, 9804, 9801]);
+
+    const revisionAfterPlace = aquarelleStrokesRevision.value;
+    const timelineRef = getRecordedAquarellePayloadTimeline();
+    const snapshot = [...timelineRef];
+
+    // Same position (top, 9801).
+    expect(placeAquarelleStrokeInScript(9801, 1)).toBe(false);
+    // Out-of-range that clamps to the live slot (bottom, 9802).
+    expect(placeAquarelleStrokeInScript(9802, 99)).toBe(false);
+    // Unknown id.
+    expect(placeAquarelleStrokeInScript(999999, 1)).toBe(false);
+
+    expect(aquarelleStrokesRevision.value).toBe(revisionAfterPlace);
+    expect(getRecordedAquarellePayloadTimeline()).toBe(timelineRef);
+    expect([...getRecordedAquarellePayloadTimeline()]).toEqual(snapshot);
+    snapshot.forEach((event, index) => {
+      expect(getRecordedAquarellePayloadTimeline()[index]).toBe(event);
+    });
+
+    // A deleted id refuses and bumps nothing.
+    expect(deleteAquarelleStrokeFromScript(9803)).toBe(true);
+    const revisionAfterDelete = aquarelleStrokesRevision.value;
+    expect(placeAquarelleStrokeInScript(9803, 1)).toBe(false);
+    expect(aquarelleStrokesRevision.value).toBe(revisionAfterDelete);
+
+    // An entry that exists in the registry but is ABSENT from the timeline
+    // (tombstone cleared without restoring the event) refuses too.
+    clearAquarelleStrokeDeletion(9803);
+    expect(placeAquarelleStrokeInScript(9803, 1)).toBe(false);
+    expect(aquarelleStrokesRevision.value).toBe(revisionAfterDelete);
+  });
+
+  it('a place edit restores the previous order on undo and the new order on redo', () => {
+    recordFrame(712, [9951, 9952]);
+    selectAquarelleStroke(9951);
+
+    try {
+      const editId = beginAquarellePlaceEdit(9951, 1);
+      expect(editId).not.toBeNull();
+      expect(frameIds(712)).toEqual([9952, 9951]);
+      // The selection is kept — the stroke still exists.
+      expect(aquarelleSelectedStrokeMutationId.value).toBe(9951);
+
+      expect(restoreAquarelleEditSnapshot(editId!, 'undo')).not.toBeNull();
+      expect(frameIds(712)).toEqual([9951, 9952]);
+      expect(restoreAquarelleEditSnapshot(editId!, 'redo')).not.toBeNull();
+      expect(frameIds(712)).toEqual([9952, 9951]);
+
+      // The shared in-flight guard refuses before touching the timeline.
+      setAquarelleScriptEditInFlight(true);
+      expect(beginAquarellePlaceEdit(9951, 2)).toBeNull();
+    } finally {
+      setAquarelleScriptEditInFlight(false);
+      selectAquarelleStroke(null);
+    }
+  });
+
+  it('a single-stroke frame cannot place anywhere and stores no edit', () => {
+    recordFrame(713, [9961]);
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(beginAquarellePlaceEdit(9961, 1)).toBeNull();
+    expect(beginAquarellePlaceEdit(9961, 99)).toBeNull();
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
   });
 });

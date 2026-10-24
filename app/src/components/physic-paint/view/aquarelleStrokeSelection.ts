@@ -56,6 +56,7 @@ import {
   getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
+  placeAquarelleStrokeInScript,
   restoreAquarelleStrokeRegistry,
   stepAquarelleStrokeInScript,
   transformAquarelleStrokesInScript,
@@ -553,6 +554,25 @@ export function beginAquarelleReorderEdit(
   if (aquarelleScriptEditInFlight) return null;
   const before = captureAquarelleSnapshot();
   if (!stepAquarelleStrokeInScript(mutationId, direction)) return null;
+  const after = captureAquarelleSnapshot();
+  return storeAquarelleEdit({ before, after });
+}
+
+/**
+ * 261024-vga: place one recorded stroke at an exact stack position as a single
+ * edit (placement + its re-bake = ONE `aquarelle-script` ledger command). The
+ * selection is kept — the stroke still exists. Returns a monotonic edit id or
+ * null when refused.
+ */
+export function beginAquarellePlaceEdit(
+  mutationId: number,
+  positionFromTop: number,
+): number | null {
+  // A placement must never leave a drag ghost behind.
+  clearAquarelleStrokeDrag();
+  if (aquarelleScriptEditInFlight) return null;
+  const before = captureAquarelleSnapshot();
+  if (!placeAquarelleStrokeInScript(mutationId, positionFromTop)) return null;
   const after = captureAquarelleSnapshot();
   return storeAquarelleEdit({ before, after });
 }

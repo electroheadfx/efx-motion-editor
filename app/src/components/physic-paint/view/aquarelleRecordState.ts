@@ -33,6 +33,7 @@ import {
   buildKeyIdentityFrameMap,
   type KeyIdentityFrameRecord,
 } from '../roto/keyIdentityFrameMap';
+import { reorderForStackPosition, targetIndexForStackPosition } from './stackOrder';
 
 /** The 8 AQUA-04 globals. `size` maps to the shared Size slider (D-05). */
 export interface AquarelleGlobalParams {
@@ -770,6 +771,73 @@ export function sendAquarelleStrokeBackwardInScript(mutationId: number): boolean
 /** 261022-ujp: one step in front (toward the top of the paint stack). */
 export function sendAquarelleStrokeForwardInScript(mutationId: number): boolean {
   return stepAquarelleStrokeInScript(mutationId, 'forward');
+}
+
+/**
+ * 261024-vga: place one recorded stroke at an exact public stack position
+ * (1 = TOPMOST, `total` = bottom) in ONE script mutation.
+ *
+ * The frame's non-Dry strokes are collected in payload order and reordered
+ * through the ONE shared law (`reorderForStackPosition`). Only the window the
+ * stroke travels across is re-stamped: its recording slots (ascending by
+ * position) are re-assigned to the new order, so the bake's monotonic settle
+ * clock stays intact. Dry events and other frames keep their absolute timeline
+ * index and object identity; registry insertion order never changes.
+ *
+ * Refuses unknown, deleted, out-of-timeline and same-position ids without
+ * touching the revision.
+ */
+export function placeAquarelleStrokeInScript(
+  mutationId: number,
+  positionFromTop: number,
+): boolean {
+  const entry = recordedStrokeEntries.get(mutationId);
+  if (!entry || deletedAquarelleStrokeIds.has(mutationId)) return false;
+  if (payloadTimeline.indexOf(entry) < 0) return false;
+
+  const frame = entry.playFrame;
+  const collectedIndices: number[] = [];
+  const collected: Array<ReturnType<typeof toStudioStroke>> = [];
+  for (let index = 0; index < payloadTimeline.length; index += 1) {
+    const event = payloadTimeline[index]!;
+    if (isAquarelleDryEvent(event)) continue;
+    const candidate = event as ReturnType<typeof toStudioStroke>;
+    if (candidate.playFrame !== frame) continue;
+    const candidateId = (candidate.engine as AquarelleStrokePayload).mutationId;
+    if (candidateId === undefined || deletedAquarelleStrokeIds.has(candidateId)) continue;
+    collectedIndices.push(index);
+    collected.push(candidate);
+  }
+
+  const fromIndex = collected.indexOf(entry);
+  if (fromIndex < 0) return false;
+  const { items: reordered, changed } = reorderForStackPosition(
+    collected,
+    fromIndex,
+    positionFromTop,
+  );
+  if (!changed) return false;
+
+  const targetIndex = targetIndexForStackPosition(positionFromTop, collected.length);
+  const low = Math.min(fromIndex, targetIndex);
+  const high = Math.max(fromIndex, targetIndex);
+  const slots = collected
+    .slice(low, high + 1)
+    .map((slotEntry) => slotEntry.recordedOrder)
+    .sort((left, right) => left - right);
+
+  for (let offset = 0; offset < slots.length; offset += 1) {
+    const next = withRecordedSlot(reordered[low + offset]!, slots[offset]!);
+    const nextId = (next.engine as AquarelleStrokePayload).mutationId;
+    payloadTimeline[collectedIndices[low + offset]!] = next;
+    if (nextId === undefined) continue;
+    recordedStrokeEntries.set(nextId, next);
+    const stroke = recordedStrokes.get(nextId);
+    if (stroke) recordedStrokes.set(nextId, { ...stroke, timestamp: next.recordedOrder });
+  }
+
+  bumpAquarelleStrokesRevision();
+  return true;
 }
 
 /**

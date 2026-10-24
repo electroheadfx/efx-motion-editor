@@ -227,6 +227,7 @@ import {
   beginAquarelleAppearanceEdit,
   beginAquarelleDeleteEdit,
   beginAquarelleMoveEdit,
+  beginAquarellePlaceEdit,
   beginAquarelleReorderEdit,
   beginAquarelleTransformEdit,
   isAquarelleDeleteInFlight,
@@ -5969,6 +5970,58 @@ export function PhysicsPaintStudio() {
     clearOwnedScriptApplyRefusal,
   ]);
 
+  // 261024-vga: exact stack placement (1 = topmost) from the Stroke Settings
+  // dialog. Same path as the stack step: one in-memory placement, a sheet
+  // reset, and the SAME shared Apply pipeline. Placement + re-bake = ONE
+  // `aquarelle-script` ledger entry. Guards are peek-only and mirror the step
+  // handler's order: the handler must not subscribe the Studio body.
+  const handleAquarellePlaceStroke = useCallback((mutationId: number, positionFromTop: number) => {
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;
+    if (isAquarelleScriptEditInFlight()) return;
+    const editId = beginAquarellePlaceEdit(mutationId, positionFromTop);
+    if (editId === null) return;
+    setAquarelleScriptEditInFlight(true);
+    void (async () => {
+      try {
+        // The recorded timeline IS the script (same replay source as delete).
+        const playFrame = launchContextRef.current?.startFrame ?? 0;
+        aquarelleResetSheetRef.current?.();
+        const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+        if (ok) {
+          rotoMoveHistory.recordAquarelleScriptEdit(editId);
+          setLastError(null);
+          clearOwnedScriptApplyRefusal();
+          return;
+        }
+        // Failed re-bake: put the pre-placement order back exactly.
+        restoreAquarelleEditSnapshot(editId, 'undo');
+        const error = rotoScript.error.peek();
+        const message = buildRotoScriptApplyRefusalMessage(error)
+          ?? error?.message
+          ?? 'Could not re-apply the watercolor script — the stroke order was restored.';
+        setLastError(message);
+        setApplyMessage(message);
+        setApplyStatus('error');
+        scriptApplyRefusalOwnedRef.current = true;
+      } finally {
+        setAquarelleScriptEditInFlight(false);
+      }
+    })();
+  }, [
+    isPhysicalMutationLocked,
+    rotoScript,
+    rotoTimelineModel,
+    // The hook returns a fresh wrapper each render; its recorder is the
+    // stable useCallback — depend on it, never the wrapper object.
+    rotoMoveHistory.recordAquarelleScriptEdit,
+    setLastError,
+    setApplyMessage,
+    setApplyStatus,
+    clearOwnedScriptApplyRefusal,
+  ]);
+
   // 261023-g4p: register BOTH module ports. This is a render-body write of a
   // plain module variable (temporaryEraseDepsRef precedent) — no signal, no
   // subscription. The keyboard helpers resolve the port whose surface is
@@ -7337,6 +7390,7 @@ export function PhysicsPaintStudio() {
       handleAquarelleAppearanceStrokes,
       handleAquarelleMoveStrokes,
       handleAquarelleTransformStrokes,
+      handleAquarellePlaceStroke,
     ],
     () => {
       const playFrame = launchContextRef.current?.startFrame ?? 0;
@@ -7354,6 +7408,7 @@ export function PhysicsPaintStudio() {
             handleAquarelleAppearanceStrokes(ids, patch),
           moveStrokes: (ids, dxPx, dyPx) => handleAquarelleMoveStrokes(ids, dxPx, dyPx),
           transformStrokes: (ids, transform) => handleAquarelleTransformStrokes(ids, transform),
+          reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),
         };
         return bundle;
       }

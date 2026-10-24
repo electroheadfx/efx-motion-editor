@@ -2437,8 +2437,10 @@ describe('quick-260922-al1 explicit Action-apply refusal on the status capsule',
     // handleAquarelleTransformStrokes — same mapper, same capsule.
     // 261024-p5q: an eighth site — the watercolor appearance re-bake failure in
     // handleAquarelleAppearanceStrokes — same mapper, same capsule.
+    // 261024-vga: a ninth site — the exact stack placement re-bake failure in
+    // handleAquarellePlaceStroke — same mapper, same capsule.
     const mentions = studio.split('buildRotoScriptApplyRefusalMessage').length - 1;
-    expect(mentions).toBe(9); // one import + eight call sites
+    expect(mentions).toBe(10); // one import + nine call sites
     expect(studio).toContain("import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';");
   });
 
@@ -3453,7 +3455,8 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(brushScriptEditionPortSource).toContain('return engine.getFramePaintSettings() ?? engine.getPaintRenderSettings();');
     // 261024-mz5 Task 2: the transform batch is the fourth flush site.
     // 261024-p5q Task 1: the appearance batch is the fifth flush site.
-    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(5);
+    // 261024-vga: the exact-placement flush is the sixth flush site.
+    expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(6);
     expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(');
     expect(brushScriptEditionPortSource).toContain('resolved.engine.getStrokes(),');
     // The Studio render body never subscribes the store revision. The ONE
@@ -4115,5 +4118,56 @@ describe('261024-mz5 watercolor transform surface', () => {
 
   it('mentions the corner scale, edge resize and the top rotate handle in both tooltips', () => {
     expect(toolRail).toContain('Corner handles scale · Edge handles resize width or height · Top handle rotates');
+  });
+});
+
+// quick 261024-vga: the Stroke Settings Stack section's watercolor commit
+// channel. One exact placement = begin edit -> reset sheet -> await the shared
+// apply -> record on success -> rollback on failure, exactly like the step and
+// move paths, and the bundle callback is the dialog's only reorder seam.
+describe('261024-vga watercolor exact stack placement wiring', () => {
+  const placeHandlerStart = studio.indexOf('const handleAquarellePlaceStroke = useCallback(');
+  const placeHandlerEnd = studio.indexOf('// 261023-g4p: register BOTH module ports', placeHandlerStart);
+  const placeHandler = placeHandlerStart >= 0 && placeHandlerEnd > placeHandlerStart
+    ? studio.slice(placeHandlerStart, placeHandlerEnd)
+    : '';
+
+  it('exists and owns the place path in order (begin -> reset -> await apply -> record on success -> rollback)', () => {
+    expect(placeHandlerStart).toBeGreaterThan(-1);
+    expect(placeHandlerEnd).toBeGreaterThan(placeHandlerStart);
+    const beginSite = placeHandler.indexOf('beginAquarellePlaceEdit(mutationId, positionFromTop)');
+    const resetSite = placeHandler.indexOf('aquarelleResetSheetRef.current?.();');
+    const applySite = placeHandler.indexOf('await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame))');
+    const recordSite = placeHandler.indexOf('rotoMoveHistory.recordAquarelleScriptEdit(editId)');
+    const rollbackSite = placeHandler.indexOf("restoreAquarelleEditSnapshot(editId, 'undo')");
+    expect(beginSite).toBeGreaterThan(-1);
+    expect(resetSite).toBeGreaterThan(beginSite);
+    expect(applySite).toBeGreaterThan(resetSite);
+    expect(recordSite).toBeGreaterThan(applySite);
+    expect(rollbackSite).toBeGreaterThan(recordSite);
+  });
+
+  it('gates on the same peek-only tokens as the step handler', () => {
+    expect(placeHandler).toContain('if (isPhysicalMutationLocked()) return;');
+    expect(placeHandler).toContain('if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;');
+    expect(placeHandler).toContain("if (rotoTimelineModel.currentCell.peek().kind !== 'real') return;");
+    expect(placeHandler).toContain('if (isAquarelleScriptEditInFlight()) return;');
+    expect(placeHandler).toContain('finally {');
+    expect(placeHandler).toContain('setAquarelleScriptEditInFlight(false);');
+  });
+
+  it('never captures the engine, the clipboard or a second apply path', () => {
+    expect(placeHandler).not.toContain('engineRef');
+    expect(placeHandler).not.toContain('clipboard');
+    expect(placeHandler).not.toContain('applyCurrentScript');
+  });
+
+  it('wires the watercolor bundle callback and the memo dependency', () => {
+    expect(studio).toContain('reorderStroke: (mutationId, positionFromTop) => handleAquarellePlaceStroke(mutationId, positionFromTop),');
+    const memoStart = studio.indexOf('const strokeSettingsDialog = strokeSettingsDialogPropsMemo.resolve(');
+    expect(memoStart).toBeGreaterThan(-1);
+    const memoDepEnd = studio.indexOf('() => {', memoStart);
+    expect(memoDepEnd).toBeGreaterThan(memoStart);
+    expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarellePlaceStroke');
   });
 });
