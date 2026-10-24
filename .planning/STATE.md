@@ -4,11 +4,11 @@ milestone: v2.0.0
 milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
-stopped_at: Phase 56 complete — all phases complete
-last_updated: "2026-10-24T14:08:29.614Z"
+stopped_at: Completed 261024-mz5-PLAN.md
+last_updated: "2026-10-24T15:05:34.970Z"
 last_activity: 2026-10-24
 last_activity_desc: Phase 56 complete
-state_head: 55a5a95f0e298d99715c2ba28d63858acef5139e
+state_head: 5e4c1b70c0234d5adef8f45553c83fa29b1445c6
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-24 - Completed quick task 261024-m20: watercolor key-spacing script remap + shared key-identity frame map
+Last activity: 2026-10-24 - Completed quick task 261024-mz5: Studio multi-select strokes + rotation and scale for the selected stroke(s)
 
 Progress: [██████████] 100%
 
@@ -183,6 +183,7 @@ Progress: [██████████] 100%
 | Phase quick-261018-f15 P261018-f15 | 23 | 3 tasks | 16 files |
 | Phase quick-261018-gqo P261018-gqo | 8min | 3 tasks | 12 files |
 | Phase quick-261018-odm P261018-odm | 12min | 4 tasks | 8 files |
+| Phase quick-261024-mz5 P261024-mz5 | 19 | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -519,6 +520,12 @@ Recent decisions affecting current work:
 - [Phase quick-261018-gqo]: Oracle Title Case paper names; PAPER-04 scans relabel to Scan 1/2/3 (no PAPER N placeholder, no invented paper types)
 - [Phase quick-261018-gqo]: Top bar Modes+settings one centered group; Engine ready left; slider min-width 112px; write-through pair unchanged
 - [Phase quick-261018-odm]: Dual-engine script envelope: document engineId discriminates efx-physic-paint vs efx-watercolor; aquarelle pts stay UV; Dry events persist as distinguished stroke entries (D-16)
+- [Phase quick-261024-mz5]: Scale is direct manipulation: factor = currentDistance / startDistance, clamped [0.1, 10] — the plan text's inverted ratio was overridden
+- [Phase quick-261024-mz5]: A degenerate (zero) distance is identity, never NaN and never a collapse
+- [Phase quick-261024-mz5]: transformStrokes honors angle and factor together: scale first, then rotate about the same centre, matching the shared apply law
+- [Phase quick-261024-mz5]: Handles render only when the adapter supplies onTransformStrokes; hit-testing the handle wins over the stroke hit test
+- [Phase quick-261024-mz5]: Watercolor transform is UV-space via one aquarelleEnginePixelToUv crossing and a NEGATED screen angle (UV y is up)
+- [Phase quick-261024-mz5]: Watercolor failure path restores the raw pre-attempt snapshot and surfaces the existing refusal capsule
 
 ### Pending Todos
 
@@ -585,6 +592,7 @@ None yet.
 | 261024-hsd | update preact to 11.0.2 | 2026-10-24 | 0b15de7c | [261024-hsd-update-preact-to-11-0-2](./quick/261024-hsd-update-preact-to-11-0-2/) |
 | 261024-i51 | Fix pre-existing typecheck and vitest baseline failures | 2026-10-24 | 25949add | [261024-i51-fix-pre-existing-typecheck-and-vitest-ba](./quick/261024-i51-fix-pre-existing-typecheck-and-vitest-ba/) |
 | 261024-m20 | Remap watercolor scripts by key identity on accepted physical replaces; extract one shared key-identity frame map for roto, brush and watercolor | 2026-10-24 | 55a5a95f | [261024-m20-watercolor-key-spacing-remap](./quick/261024-m20-watercolor-key-spacing-remap/) |
+| 261024-mz5 | Feat Studio: Add multiselect strokes (verify its already in brush) then Add rotation and scale for stroke(s) (single or multi select) | 2026-10-24 | 5e4c1b70 | [261024-mz5-feat-studio-add-multiselect-strokes-veri](./quick/261024-mz5-feat-studio-add-multiselect-strokes-veri/) |
 
 ### Roadmap Evolution
 
@@ -638,8 +646,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-21T16:35:00Z
-Stopped at: Phase 56 complete — branch merged to dev for user verification
+Last session: 2026-10-24T15:04:48.947Z
+Stopped at: Completed 261024-mz5-PLAN.md
 Resume file: None
 
 ## Operator Next Steps

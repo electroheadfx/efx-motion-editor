@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 27
+open_count: 31
 waived_count: 6
 fixed_count: 70
-total_count: 103
-last_updated: 2026-10-24T11:13:28.077Z
+total_count: 107
+last_updated: 2026-10-24T15:04:35.585Z
 ---
 
 # Broken Windows Ledger
@@ -118,6 +118,10 @@ last_updated: 2026-10-24T11:13:28.077Z
 | 101 | quick-261017-vcn | deviation | app/src/components/physic-paint/view/RightPanelPaperTab.tsx |  | Rule 3: unused RightPanelPaperTab wrapper retyped to the new PaperPicker ports (third commit beyond the planned two) | open |  | 2026-10-17T21:05:48.265Z |  |
 | 102 | quick-261018-cy1 | stub | none |  | no stubs | waived | Mistaken ledger append — this quick has no stubs; entry was a no-op probe, not a defect | 2026-10-18T07:38:06.691Z | 2026-10-18T07:38:41.483Z |
 | 103 | quick-261024-hsd | unrun-verify | app/src/lib/projectPaperRaster.test.ts |  | Task 2 gates could not pass on the pristine tree: 15 pre-existing app typecheck errors and 10 pre-existing vitest failures (identical on the preact 11.0.1 baseline), so the automated verify exits 1 for reasons unrelated to the preact 11.0.2 bump. | fixed |  | 2026-10-24T10:55:47.595Z | 2026-10-24T11:13:28.077Z |
+| 104 | quick-261024-mz5 | deviation | app/src/components/physic-paint/view/scriptStrokeTransform.ts |  | Rule 1 bug: scale factor direction corrected to currentDistance/startDistance (plan text inverted the cited inline-editor oracle) | open |  | 2026-10-24T15:04:35.134Z |  |
+| 105 | quick-261024-mz5 | deviation | app/src/components/physic-paint/view/scriptStrokeTransform.ts |  | Rule 1 bug: degenerate (zero) distance returns identity before clamping; clamp cell arithmetic fixed to 0.01 distance | open |  | 2026-10-24T15:04:35.281Z |  |
+| 106 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.tsx |  | Rule 3 blocking: interim no-op watercolor transformStrokes while the port type was widened; removed in Task 3 | open |  | 2026-10-24T15:04:35.435Z |  |
+| 107 | quick-261024-mz5 | deviation | app/src/components/physic-paint/PhysicsPaintStudio.test.ts |  | Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback) | open |  | 2026-10-24T15:04:35.585Z |  |
 
 ````json
 [
@@ -1386,6 +1390,58 @@ last_updated: 2026-10-24T11:13:28.077Z
     "reason": "",
     "recorded_at": "2026-10-24T10:55:47.595Z",
     "resolved_at": "2026-10-24T11:13:28.077Z",
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 104,
+    "kind": "deviation",
+    "phase": "quick-261024-mz5",
+    "file": "app/src/components/physic-paint/view/scriptStrokeTransform.ts",
+    "line": null,
+    "description": "Rule 1 bug: scale factor direction corrected to currentDistance/startDistance (plan text inverted the cited inline-editor oracle)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-24T15:04:35.134Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 105,
+    "kind": "deviation",
+    "phase": "quick-261024-mz5",
+    "file": "app/src/components/physic-paint/view/scriptStrokeTransform.ts",
+    "line": null,
+    "description": "Rule 1 bug: degenerate (zero) distance returns identity before clamping; clamp cell arithmetic fixed to 0.01 distance",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-24T15:04:35.281Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 106,
+    "kind": "deviation",
+    "phase": "quick-261024-mz5",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.tsx",
+    "line": null,
+    "description": "Rule 3 blocking: interim no-op watercolor transformStrokes while the port type was widened; removed in Task 3",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-24T15:04:35.435Z",
+    "resolved_at": null,
+    "milestone": "v2.0.0"
+  },
+  {
+    "id": 107,
+    "kind": "deviation",
+    "phase": "quick-261024-mz5",
+    "file": "app/src/components/physic-paint/PhysicsPaintStudio.test.ts",
+    "line": null,
+    "description": "Rule 3 blocking: updated four stale source pins to the intended new contracts (overlay early return, mount memo deps, refusal call-site count, watercolor transform callback)",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-24T15:04:35.585Z",
+    "resolved_at": null,
     "milestone": "v2.0.0"
   }
 ]
