@@ -62,6 +62,8 @@ export interface BrushScriptEditionEngine {
   setStrokeAppearance(mutationIds: readonly number[], patch: ScriptStrokeAppearancePatch): number;
   sendStrokeBackward(mutationId: number): boolean;
   sendStrokeForward(mutationId: number): boolean;
+  /** 261024-vga: exact placement (1 = topmost) — one commit. */
+  moveStrokeToStackPosition(mutationId: number, positionFromTop: number): boolean;
   setStrokeLabelsSuppressed(suppressed: boolean): void;
   setCursorVisible(visible: boolean): void;
   /** 261023-j5b: the visit's captured paint globals (sticky, null until a live paint). */
@@ -353,6 +355,28 @@ export function stepBrushScriptStroke(mutationId: number, direction: 'back' | 'f
     );
   }
   return stepped;
+}
+
+/**
+ * 261024-vga: place one captured stroke at an exact stack position. Mirrors
+ * stepBrushScriptStroke: lock-gated, declares the edit base, ONE engine call,
+ * and flushes the frame only on an accepted placement. The boolean is the
+ * whole refusal channel — the dialog's ref-held sync nonce re-syncs the
+ * readout, so no extra signal or callback is added here.
+ */
+export function placeBrushScriptStroke(mutationId: number, positionFromTop: number): boolean {
+  const resolved = resolveEdition();
+  if (!resolved || resolved.context.isLocked()) return false;
+  declareEditBase(resolved.engine, resolved.frame);
+  const placed = resolved.engine.moveStrokeToStackPosition(mutationId, positionFromTop);
+  if (placed) {
+    flushBrushScriptFrame(
+      resolved.frame,
+      resolved.engine.getStrokes(),
+      resolvePaintSettings(resolved.engine),
+    );
+  }
+  return placed;
 }
 
 /** The registered brush port consumed by the shared overlay + keyboard seam. */

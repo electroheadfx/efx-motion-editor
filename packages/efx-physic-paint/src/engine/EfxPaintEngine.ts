@@ -51,6 +51,7 @@ import { drawBg, drawBrushCursor, drawQueuedStrokePolyline, drawStrokePreview, s
 import type { StrokePreview, DualCanvas } from '../render/canvas'
 import { createLookDeltaProbe, readStudioPixel } from './lookDeltaProbe'
 import type { LookDeltaProbe, LookDeltaReport } from './lookDeltaProbe'
+import { reorderForStackPosition } from './stackOrder'
 
 /**
  * Quantized undo snapshot — the wet/saved buffers are stored at reduced
@@ -4040,6 +4041,72 @@ export class EfxPaintEngine {
   /** 261022-ujp: one step in front (toward the top of the paint stack). */
   public sendStrokeForward(mutationId: number): boolean {
     return this.stepStrokeInStack(mutationId, 'forward')
+  }
+
+  /**
+   * 261024-vga: place one stroke at an EXACT public stack position
+   * (1 = topmost, `total` = bottom) — the sibling of stepStrokeInStack.
+   *
+   * The row boundary is the same one the dialog listing uses
+   * (normalizeLogicalBrushes): a group starts at EVERY live points-bearing
+   * entry, whatever the tool, so an erase stroke between two paints is its own
+   * row and is never absorbed; zero-point entries are continuations and follow
+   * their primary. Entries before the first points-bearing entry are the
+   * pinned leading tail — the listing never shows them, so they are not
+   * counted as a row. The acceptance ledger, the undo stack and the serial map
+   * are never touched; the commit contract is exactly stepStrokeInStack's.
+   */
+  public moveStrokeToStackPosition(mutationId: number, positionFromTop: number): boolean {
+    if (this.state.tool !== 'move') return false
+    // Drain FIRST: the group walk requires settled entries (the placeholder
+    // continuation of a just-finished stroke must travel with its primary).
+    this.flushPendingStrokeFinalizations()
+
+    const live = this.liveActionsInPaintOrder()
+    const primaryIndex = live.findIndex(action =>
+      action.mutationId === mutationId && action.tool === 'paint' && action.points.length > 0,
+    )
+    if (primaryIndex < 0) return false
+
+    const leading: PaintStroke[] = []
+    const groups: PaintStroke[][] = []
+    const groupOfIndex: number[] = []
+    for (let index = 0; index < live.length; index += 1) {
+      const action = live[index]
+      if (action.points.length > 0) {
+        groups.push([action])
+        groupOfIndex[index] = groups.length - 1
+        continue
+      }
+      const current = groups[groups.length - 1]
+      if (current) {
+        current.push(action)
+        groupOfIndex[index] = groups.length - 1
+      } else {
+        leading.push(action)
+        groupOfIndex[index] = -1
+      }
+    }
+
+    const fromIndex = groupOfIndex[primaryIndex]
+    if (fromIndex === undefined || fromIndex < 0) return false
+    const { items, changed } = reorderForStackPosition(groups, fromIndex, positionFromTop)
+    if (!changed) return false
+
+    // Materialize the live order; dead refs are dropped here safely because a
+    // reorder clears the redo stack, so no ledger entry can bring one back.
+    this.strokeStack = [...leading, ...items.flat()]
+
+    // A stale redo would repaint pre-reorder pixels — the move-commit law.
+    this.redoStack = []
+    this.notifyHistoryAvailability()
+    this.displayCompositeDirty = true
+    this.redrawAfterScriptEdit()
+    this.requestRender()
+    this.notifyCompletedMutation('move', mutationId)
+    // moveHoverTargetId is deliberately kept: a repeated placement targets the
+    // same stroke.
+    return true
   }
 
   // ================================================================

@@ -252,6 +252,7 @@ import {
   configureBrushScriptEdition,
   listBrushScriptStrokes,
   moveBrushScriptStrokes,
+  placeBrushScriptStroke,
   readBrushScriptStrokeAppearance,
   transformBrushScriptStrokes,
   type BrushScriptEditionContext,
@@ -7368,6 +7369,7 @@ export function PhysicsPaintStudio() {
           applyBrushScriptStrokeAppearance(ids, patch),
         moveStrokes: (ids, dxPx, dyPx) => moveBrushScriptStrokes(ids, dxPx, dyPx),
         transformStrokes: (ids, transform) => transformBrushScriptStrokes(ids, transform),
+        reorderStroke: (mutationId, positionFromTop) => placeBrushScriptStroke(mutationId, positionFromTop),
       };
       return bundle;
     },

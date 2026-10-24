@@ -640,6 +640,254 @@ describe('261022-ujp Brush paint-order projection', () => {
   })
 })
 
+// ============================================================
+//  261024-vga Task 2 — exact stack placement.
+//
+//  Arrays are BOTTOM -> TOP; the public position is 1 = TOPMOST, so the
+//  target group index is `total - position`. A group starts at EVERY live
+//  points-bearing entry regardless of tool (the same boundary the dialog
+//  listing uses, normalizeLogicalBrushes) — an erase stroke between two
+//  paints is its own row and is never absorbed. Leading zero-point entries
+//  are pinned at the bottom and are never counted as a row.
+// ============================================================
+
+describe('261024-vga exact stack placement', () => {
+  function point(x: number, y: number) {
+    return { x, y, p: 0.5, tx: 0, ty: 0, tw: 0, spd: 0 }
+  }
+
+  function stroke(
+    mutationId: number,
+    timestamp: number,
+    points: Array<ReturnType<typeof point>>,
+    tool: 'paint' | 'erase' = 'paint',
+  ): PaintStroke {
+    return {
+      tool,
+      points,
+      color: tool === 'erase' ? null : '#000000',
+      params: { ...defaultOpts },
+      timestamp,
+      mutationId,
+    }
+  }
+
+  function fivePainted() {
+    const engine = createHarness()
+    const a = paintStroke(engine, hLine(10), 100)
+    const b = paintStroke(engine, hLine(30), 300)
+    const c = paintStroke(engine, hLine(50), 500)
+    const d = paintStroke(engine, hLine(70), 700)
+    const e = paintStroke(engine, hLine(90), 900)
+    engine.setTool('move')
+    return { engine, a, b, c, d, e }
+  }
+
+  it('places a stroke at the exact public position (1 = topmost)', () => {
+    {
+      const { engine, a, b, c, d, e } = fivePainted()
+      expect(engine.moveStrokeToStackPosition(c, 1)).toBe(true)
+      expect(order(engine)).toEqual([a, b, d, e, c])
+    }
+    {
+      const { engine, a, b, c, d, e } = fivePainted()
+      expect(engine.moveStrokeToStackPosition(c, 5)).toBe(true)
+      expect(order(engine)).toEqual([c, a, b, d, e])
+    }
+    {
+      const { engine, a, b, c, d, e } = fivePainted()
+      expect(engine.moveStrokeToStackPosition(a, 3)).toBe(true)
+      expect(order(engine)).toEqual([b, c, a, d, e])
+    }
+  })
+
+  it('keeps the acceptance ledger in its original order', () => {
+    const { engine, a, c } = fivePainted()
+    const ledgerBefore = engine.allActions.map((action: PaintStroke) => action.mutationId)
+    expect(engine.moveStrokeToStackPosition(c, 1)).toBe(true)
+    expect(engine.moveStrokeToStackPosition(a, 2)).toBe(true)
+    expect(engine.allActions.map((action: PaintStroke) => action.mutationId)).toEqual(ledgerBefore)
+    // The paint-order projection references the SAME ledger objects: A moved
+    // to position 2 => [B, D, E, A, C].
+    expect(engine.strokeStack[3]).toBe(engine.allActions[0])
+  })
+
+  it('is ONE move commit: one notification, redo cleared, no new undo checkpoint', () => {
+    const { engine, c } = fivePainted()
+    engine.redoStack.push({ mutationId: 999, actions: [], checkpoint: null, deferred: null } as never)
+    const undoBefore = engine.getHistoryAvailability().undo
+    const checkpointsBefore = engine.undoStack.length
+    const events = captureMutations(engine)
+    const redraw = vi.spyOn(engine, 'redrawAfterScriptEdit')
+
+    expect(engine.moveStrokeToStackPosition(c, 1)).toBe(true)
+
+    const moves = events.filter((event) => event.kind === 'move')
+    expect(moves).toHaveLength(1)
+    expect(moves[0].mutationId).toBe(c)
+    expect(engine.getHistoryAvailability().redo).toBe(0)
+    expect(engine.getHistoryAvailability().undo).toBe(undoBefore)
+    expect(engine.undoStack.length).toBe(checkpointsBefore)
+    expect(redraw).toHaveBeenCalledTimes(1)
+    expect(engine.requestRender).toHaveBeenCalled()
+    expect(engine.displayCompositeDirty).toBe(true)
+  })
+
+  it('a placement on the live slot is a no-op with no notification', () => {
+    const { engine, c } = fivePainted()
+    engine.redoStack.push({ mutationId: 999, actions: [], checkpoint: null, deferred: null } as never)
+    const events = captureMutations(engine)
+    expect(engine.moveStrokeToStackPosition(c, 3)).toBe(false)
+    expect(order(engine)).toHaveLength(5)
+    expect(events.filter((event) => event.kind === 'move')).toHaveLength(0)
+    // Nothing was committed, so the stale redo is untouched.
+    expect(engine.redoStack).toHaveLength(1)
+  })
+
+  it('clamps out-of-range positions to the ends', () => {
+    {
+      const { engine, a, b, c, d, e } = fivePainted()
+      expect(engine.moveStrokeToStackPosition(a, 0)).toBe(true)
+      expect(order(engine)).toEqual([b, c, d, e, a])
+    }
+    {
+      // Position 99 clamps to the BOTTOM row: C leaves its live slot.
+      const { engine, a, b, c, d, e } = fivePainted()
+      expect(engine.moveStrokeToStackPosition(c, 99)).toBe(true)
+      expect(order(engine)).toEqual([c, a, b, d, e])
+    }
+  })
+
+  it('a primary and its continuations travel together and stay contiguous', () => {
+    const engine = createHarness()
+    const primary1 = stroke(1, 1, [point(10, 10)])
+    const continuation = { ...stroke(1, 1, []), diffusionFrames: 4 }
+    const primary2 = stroke(2, 2, [point(20, 20)])
+    engine.allActions = [primary1, continuation, primary2]
+    engine.strokeStack = [primary1, continuation, primary2]
+    engine.setTool('move')
+
+    expect(engine.moveStrokeToStackPosition(1, 1)).toBe(true)
+
+    expect(engine.strokeStack).toEqual([primary2, primary1, continuation])
+    expect(engine.strokeStack[2].points).toHaveLength(0)
+    expect(engine.allActions).toEqual([primary1, continuation, primary2])
+  })
+
+  it('an erase stroke is its own row and is never absorbed', () => {
+    const engine = createHarness()
+    const a = stroke(1, 1, [point(10, 10)])
+    const x = stroke(2, 2, [point(20, 20)], 'erase')
+    const b = stroke(3, 3, [point(30, 30)])
+    engine.allActions = [a, x, b]
+    engine.strokeStack = [a, x, b]
+    engine.setTool('move')
+
+    // Groups are [A], [X], [B]: position 1 puts A on top of B while X stays a
+    // separate row (the law-consistent order; never [B, A, X]).
+    expect(engine.moveStrokeToStackPosition(1, 1)).toBe(true)
+    expect(engine.strokeStack).toEqual([x, b, a])
+    expect(engine.allActions).toEqual([a, x, b])
+
+    // An erase entry is not a movable target.
+    expect(engine.moveStrokeToStackPosition(2, 1)).toBe(false)
+    expect(engine.strokeStack).toEqual([x, b, a])
+  })
+
+  it('a physics placeholder is never a group start', () => {
+    const engine = createHarness()
+    const primary1 = stroke(1, 1, [point(10, 10)])
+    const continuation = { ...stroke(1, 1, []), diffusionFrames: 4 }
+    const placeholder = stroke(1, 1, [])
+    const primary2 = stroke(2, 2, [point(20, 20)])
+    engine.allActions = [primary1, continuation, placeholder, primary2]
+    engine.strokeStack = [primary1, continuation, placeholder, primary2]
+    engine.setTool('move')
+
+    // Two rows only: [primary1 + its zero-point entries], [primary2].
+    expect(engine.moveStrokeToStackPosition(1, 1)).toBe(true)
+    expect(engine.strokeStack).toEqual([primary2, primary1, continuation, placeholder])
+  })
+
+  it('a leading zero-point entry stays pinned and is never counted as a row', () => {
+    const engine = createHarness()
+    const lead = stroke(9, 0, [])
+    const a = stroke(1, 1, [point(10, 10)])
+    const b = stroke(2, 2, [point(20, 20)])
+    engine.allActions = [lead, a, b]
+    engine.strokeStack = [lead, a, b]
+    engine.setTool('move')
+
+    // A is the bottom ROW: position 99 clamps to 2 and changes nothing. Were
+    // the leading entry counted, A would be placed below it.
+    expect(engine.moveStrokeToStackPosition(1, 99)).toBe(false)
+    expect(engine.strokeStack).toEqual([lead, a, b])
+
+    expect(engine.moveStrokeToStackPosition(2, 3)).toBe(true)
+    expect(engine.strokeStack).toEqual([lead, b, a])
+  })
+
+  it('save/load and undo/redo keep the placed order', () => {
+    const engine = createHarness()
+    paintStroke(engine, hLine(20), 100)
+    paintStroke(engine, hLine(40), 300)
+    const c = paintStroke(engine, hLine(60), 500)
+    engine.setTool('move')
+    // C is already the top row; place it at the BOTTOM row (position 3).
+    expect(engine.moveStrokeToStackPosition(c, 3)).toBe(true)
+
+    const doc = engine.save()
+    const strokes = doc.tracks[0].strokes ?? []
+    expect(strokes.map((entry) => entry.pts[0][1])).toEqual([60, 20, 40])
+
+    const reloaded = createHarness()
+    reloaded.load(doc)
+    expect(reloaded.getStrokes().map((entry: PaintStroke) => entry.points[0].y)).toEqual([60, 20, 40])
+
+    // The placed order survives an undo -> redo round trip.
+    expect(engine.undo()).toBe(true)
+    expect(engine.redo()).toBe(true)
+    engine.flushPendingStrokeFinalizations()
+    expect(engine.getStrokes().map((entry: PaintStroke) => entry.points[0].y)).toEqual([60, 20, 40])
+  })
+
+  it('refuses outside the move tool and for unknown ids without a commit', () => {
+    const { engine, b } = fivePainted()
+    const events = captureMutations(engine)
+    engine.redoStack.push({ mutationId: 999, actions: [], checkpoint: null, deferred: null } as never)
+
+    engine.setTool('paint')
+    expect(engine.moveStrokeToStackPosition(b, 1)).toBe(false)
+
+    engine.setTool('move')
+    expect(engine.moveStrokeToStackPosition(999999, 1)).toBe(false)
+
+    expect(order(engine)).toHaveLength(5)
+    expect(events.filter((event) => event.kind === 'move')).toHaveLength(0)
+    expect(engine.redoStack).toHaveLength(1)
+  })
+
+  it('drains a queued finalization before placing', () => {
+    const engine = createHarness()
+    paintStroke(engine, hLine(20), 100)
+    paintStroke(engine, hLine(40), 300)
+
+    engine.setTool('paint')
+    engine.onPointerDown(ev(20, 90, 500, 1))
+    engine.onPointerMove(ev(50, 90, 510, 1))
+    engine.onPointerUp(ev(80, 90, 520, 0))
+    // The just-finished stroke is accepted but its finalization is queued.
+    const pendingId = engine.strokeStack[engine.strokeStack.length - 1].mutationId as number
+    expect(engine.pendingStrokeFinalizations.length).toBeGreaterThan(0)
+
+    engine.setTool('move')
+    // The fresh stroke is the TOP row; place it at the bottom row (position 3).
+    expect(engine.moveStrokeToStackPosition(pendingId, 3)).toBe(true)
+    expect(engine.pendingStrokeFinalizations).toHaveLength(0)
+    expect(order(engine)[0]).toBe(pendingId)
+  })
+})
+
 // ─── DIRECT API: serials, label suppression, cursor visibility ─────
 // 261023-g4p Task 3 — the brush script-edition overlay draws its own
 // badges and hides the engine glyphs while it is the active surface.

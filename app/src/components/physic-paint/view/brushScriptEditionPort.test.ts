@@ -37,6 +37,7 @@ import {
   readBrushScriptStrokeAppearance,
   transformBrushScriptStrokes,
   stepBrushScriptStroke,
+  placeBrushScriptStroke,
   brushScriptEditionPort,
 } from './brushScriptEditionPort';
 import {
@@ -97,6 +98,7 @@ function createFakeEngine(overrides: Record<string, unknown> = {}) {
     transformStrokes: vi.fn(() => 1),
     sendStrokeBackward: vi.fn(() => true),
     sendStrokeForward: vi.fn(() => true),
+    moveStrokeToStackPosition: vi.fn(() => true),
     setStrokeLabelsSuppressed: vi.fn(),
     setCursorVisible: vi.fn(),
     setScriptBaseClearPending: vi.fn(),
@@ -602,5 +604,71 @@ describe('261024-p5q appearance: held-frame read, one commit + one flush', () =>
 
     expect(engine.setStrokeAppearance).not.toHaveBeenCalled();
     expect(engine.setScriptBaseClearPending).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+//  quick 261024-vga Task 2 — exact stack placement through the
+//  ONE script-edition seam. The boolean is the whole refusal
+//  channel: the dialog's ref-held sync nonce re-syncs the
+//  readout, so the port adds no extra signal or callback.
+// ============================================================
+
+describe('261024-vga placeBrushScriptStroke', () => {
+  it('calls the engine ONCE with (mutationId, positionFromTop), declares the base and flushes ONCE', () => {
+    capture(3, [stroke(7, [{ x: 30, y: 35 }])]);
+    const entryBefore = getBrushScriptFrameEntry(3);
+    markBrushScriptFrameDirty(3);
+    const engine = createFakeEngine({
+      getStrokes: vi.fn(() => [stroke(7, [{ x: 30, y: 35 }])]),
+    });
+    configure(engine, { frame: 3 });
+
+    expect(placeBrushScriptStroke(7, 1)).toBe(true);
+
+    expect(engine.moveStrokeToStackPosition).toHaveBeenCalledTimes(1);
+    expect(engine.moveStrokeToStackPosition).toHaveBeenCalledWith(7, 1);
+    expect(engine.setScriptBaseClearPending).toHaveBeenCalledWith(true);
+    expect(engine.getStrokes).toHaveBeenCalledTimes(1);
+    expect(getBrushScriptFrameEntry(3)).not.toBe(entryBefore);
+  });
+
+  it('a refused placement performs no flush and returns false', () => {
+    capture(3, [stroke(7, [{ x: 30, y: 35 }])]);
+    const entryBefore = getBrushScriptFrameEntry(3);
+    const engine = createFakeEngine({
+      moveStrokeToStackPosition: vi.fn(() => false),
+      getStrokes: vi.fn(() => [stroke(7, [{ x: 30, y: 35 }])]),
+    });
+    configure(engine, { frame: 3 });
+
+    expect(placeBrushScriptStroke(7, 3)).toBe(false);
+
+    expect(engine.moveStrokeToStackPosition).toHaveBeenCalledWith(7, 3);
+    expect(engine.getStrokes).not.toHaveBeenCalled();
+    expect(getBrushScriptFrameEntry(3)).toBe(entryBefore);
+  });
+
+  it('a locked context performs no engine call and no flush', () => {
+    const engine = createFakeEngine();
+    configure(engine, { frame: 3, locked: true });
+
+    expect(placeBrushScriptStroke(7, 1)).toBe(false);
+
+    expect(engine.moveStrokeToStackPosition).not.toHaveBeenCalled();
+    expect(engine.setScriptBaseClearPending).not.toHaveBeenCalled();
+    expect(engine.getStrokes).not.toHaveBeenCalled();
+  });
+
+  it('no context and no engine return false without touching anything', () => {
+    expect(placeBrushScriptStroke(7, 1)).toBe(false);
+
+    configureBrushScriptEdition({
+      getEngine: () => null,
+      getPlayFrame: () => 3,
+      isActive: () => true,
+      isLocked: () => false,
+    });
+    expect(placeBrushScriptStroke(7, 1)).toBe(false);
   });
 });
