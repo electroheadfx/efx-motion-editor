@@ -358,7 +358,9 @@ describe('260923-bcm Studio live wiring source pins', () => {
 
   it('engine actions destructure and export setGrainScale for the grain handlers', () => {
     const studio = studioSource();
-    const destructure = studio.slice(studio.indexOf('const {\n    selectTool,'), studio.indexOf('} = usePhysicsPaintEngineActions'));
+    // 261023-g4p: the engine-actions destructure now opens with
+    // `selectTool: selectToolEngine,` (the ONE tool-selection funnel).
+    const destructure = studio.slice(studio.indexOf('const {\n    selectTool: selectToolEngine,'), studio.indexOf('} = usePhysicsPaintEngineActions'));
     expect(destructure).toContain('setGrainScale');
     expect(destructure).toContain('setGrainStrength');
   });

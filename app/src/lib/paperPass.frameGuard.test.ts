@@ -98,7 +98,11 @@ describe('260925-iy6 frame/export guard', () => {
   // notice (the same class of miss as 260924-m7w's opacity-blind pins).
   it('P4(f) both flattened getters delegate to the ONE _resolveFlattenedFrame seam', () => {
     expect(occurrences(storeSource, 'return _resolveFlattenedFrame(')).toBe(2);
-    const including = storeSource.indexOf('getFlattenedFrame(layerId: string, frame: number, includeFond = true)');
+    // The getter gained the session `soloTrackId` argument, so anchor on the
+    // call-shaped literal (occurs once, at the definition) instead of the old
+    // parameter list.
+    expect(occurrences(storeSource, 'getFlattenedFrame(')).toBe(1);
+    const including = storeSource.indexOf('getFlattenedFrame(');
     const excluding = storeSource.indexOf('getFlattenedFrameExcluding(');
     const seam = storeSource.indexOf('function _resolveFlattenedFrame');
     expect(including).toBeGreaterThanOrEqual(0);

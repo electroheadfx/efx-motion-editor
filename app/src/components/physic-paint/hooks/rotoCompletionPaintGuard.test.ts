@@ -225,6 +225,10 @@ describe('completion paint through the reference loader (integration)', () => {
       previewBackgroundSeparated: false,
       previewBaseImage: null,
       previewBaseImageCache: new Map<string, unknown>(),
+      // EfxPaintEngine.ts:617 class-field initializer is skipped by
+      // Object.create(prototype), so the harness must supply the cache
+      // repairPreviewBaseMatte reads.
+      previewBaseMatteCache: new Map<string, CanvasImageSource | null>(),
       previewBackgroundRequestId: 0,
       appliedPreviewBaseDataUrl: null,
       previewBaseSettledListeners: null,

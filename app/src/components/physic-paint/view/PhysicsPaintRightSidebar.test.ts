@@ -162,7 +162,9 @@ describe('native-approved Physics Paint right sidebar', () => {
   });
 
   it('keeps full-row load-only activation and contextual Actions behavior', () => {
-    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load + Apply to Frame"', 'label="Create Rail…"', 'label="Delete Script"', 'label="Refresh Scripts"']);
+    // 261022-o2a: ONE row of four actions — Delete moved into the row
+    // confirmation surface, so it is no longer a toolbar token.
+    expectInOrder(scriptsPanel, ['label="Save Script"', 'label="Load + Apply to Frame"', 'label="Create Rail…"', 'label="Refresh Scripts"']);
     expect(scriptsPanel).toContain('if (selectedLoopClip)');
     expect(scriptsPanel).toContain('<Paintbrush size={16} />');
     expect(scriptsPanel).toContain('<Play size={16} />');
@@ -193,7 +195,9 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(rule('.physics-paint-right-panel')).toMatch(/overflow:\s*hidden/);
     expect(rule('.physics-paint-options-tabs')).toMatch(/min-width:\s*0[\s\S]*overflow:\s*hidden/);
     expect(rule('.physics-paint-options-tab')).toMatch(/min-width:\s*0[\s\S]*white-space:\s*nowrap/);
-    expect(rule('.physics-paint-scripts-toolbar')).toMatch(/grid-template-columns:\s*repeat\(6,\s*auto\)[\s\S]*min-width:\s*0/);
+    // 261022-o2a: the toolbar is ONE row of four actions (Save / Apply /
+    // Create Rail / Refresh); Delete and Copy moved out.
+    expect(rule('.physics-paint-scripts-toolbar')).toMatch(/grid-template-columns:\s*repeat\(4,\s*auto\)[\s\S]*min-width:\s*0/);
     expect(rule('.physics-paint-scripts-list')).toMatch(/min-width:\s*0[\s\S]*overflow-x:\s*hidden/);
 
     const narrow = css.slice(css.indexOf('@media (max-width: 1180px)'), css.indexOf('@media (max-width: 860px)'));

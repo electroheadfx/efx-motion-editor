@@ -837,9 +837,13 @@ describe('PhysicsPaintWorkflowStrip horizontal viewport authority', () => {
       expect(activeHeader!.props['data-tools-open']).toBeUndefined();
       expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools-toggle'))).toHaveLength(0);
       expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tools'))).toHaveLength(0);
-      // The inline controls render: the solo chip and exactly three tool
-      // buttons (eye, blend, trash).
-      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(1);
+      // 261022-iff: the per-track S chip is retired — the ONE Solo is the
+      // session Focus on the playback pill (the strip's Focus dimming test
+      // covers the arm). The active-lane marker is the header class asserted
+      // above; the inline controls are exactly three tool buttons
+      // (eye, blend, trash).
+      expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-solo'))).toHaveLength(0);
+      expect(activeHeader!.props.class).toContain('physics-paint-track-row-header-active');
       expect(findAll(activeHeader!, (vnode) => hasClass(vnode, 'physics-paint-track-row-tool-button'))).toHaveLength(3);
       // 47-01 UAT round 5: the header label carries the FULL track name (the
       // "Track 1" vs "1" fix) — the label span text must match the track name.
