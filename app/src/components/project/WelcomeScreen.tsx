@@ -221,7 +221,7 @@ export function WelcomeScreen() {
       {/* Left Sidebar */}
       <div class="flex flex-col gap-8 w-[420px] h-full bg-(--color-bg-sidebar) px-10 pt-12 pb-12 shrink-0">
         {/* Logo */}
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 ml-2">
           <div class="w-8 h-8 rounded-md bg-(--color-accent)" />
           <span class="text-xl font-bold text-(--color-text-primary)">
             EFX-Motion
