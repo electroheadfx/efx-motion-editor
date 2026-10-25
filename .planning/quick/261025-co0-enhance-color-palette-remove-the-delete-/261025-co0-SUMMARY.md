@@ -56,7 +56,10 @@ coverage:
     human_judgment: false
   - id: D2
     description: "Live Studio: no X on hover, accent outline on the selected swatch without moving the 32px grid, focus survives clicks in WKWebView, palette Delete/Backspace never deletes a stroke/clip/layer, and the rewrite persists across a Studio reopen"
-    verification: []
+    verification:
+      - kind: human
+        ref: "Live Studio UAT — 7 native rows"
+        status: pass
     human_judgment: true
     rationale: "Visual geometry, WKWebView focus behavior, global keyboard routing, and cross-session persistence are native-surface judgments vitest cannot observe."
 
@@ -111,6 +114,10 @@ None - plan executed exactly as written.
 - None. The obsolete removal test was expected to fail during Task 1 and was replaced in Task 2, as the plan specified.
 - STATE.md / ROADMAP.md were intentionally left untouched: the orchestrator owns the docs commit for this quick task.
 
+## UAT
+
+- **Native UAT approved (2026-10-25):** all 7 live Studio rows passed — no-X hover, select/deselect outline, commit rewrite of a favorite and a default, persistence across reopen, palette Delete/Backspace containment, no-selection/repeat safety, and switching swatch A → B.
+
 ## User Setup Required
 
 None - no external service configuration required.
@@ -122,6 +129,6 @@ Automated verification is green:
 - `pnpm --dir app exec vitest run src/components/physic-paint/view/PhysicsPaintPalette.test.ts src/components/physic-paint/view/PhysicsPaintRightSidebar.test.ts src/components/physic-paint/view/PhysicsPaintRightPanel.test.ts` → 3 files, 62 tests passed.
 - `pnpm --dir app run typecheck` → clean.
 
-Awaiting the plan's 7 native UAT rows in the live Studio (no-X hover, select/deselect, commit rewrite of a favorite and a default, persistence across reopen, palette Delete/Backspace containment, no-selection/repeat safety, switching swatch A → B). Not marked user-approved until that live run passes.
+All 7 native UAT rows from `261025-co0-PLAN.md` were **approved on 2026-10-25** (no-X hover, select/deselect, commit rewrite of a favorite and a default, persistence across reopen, palette Delete/Backspace containment, no-selection/repeat safety, switching swatch A → B).
 
 ## Self-Check: PASSED
