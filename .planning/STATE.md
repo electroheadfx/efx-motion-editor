@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-25T08:23:18.000Z"
+last_updated: "2026-10-25T08:38:04.033Z"
 last_activity: 2026-10-25
-last_activity_desc: Quick task 261025-co0 UAT approved
-state_head: ac9fa3a1ac7c2d06b8f9c3049c3715a4c728c3b0
+last_activity_desc: Quick task 261025-d3r automated-ready — Brush Move hand hidden; native UAT pending
+state_head: a8cb7897f9703ef4efa9658bf1d50b220a2a5301
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-25 - Quick task 261025-co0 COMPLETE: selectable palette swatches with commit-time in-place color rewrite and Delete/Backspace removal; native UAT approved
+Last activity: 2026-10-25 - Completed quick task 261025-d3r: Brush Move hides the legacy pointing-hand cursor on hover (erase hover keeps it); held-Cmd momentary Move retained — native UAT pending
 
 Progress: [██████████] 100%
 
@@ -597,6 +597,7 @@ None yet.
 | 261024-vga | stack-order control for Brush Move and Water color Select stroke settings | 2026-10-25 | 475a3816 | [261024-vga-stack-order-control-for-brush-move-and-w](./quick/261024-vga-stack-order-control-for-brush-move-and-w/) |
 | 261025-awl | One module per frame: detect the selected key's script owner, auto-switch on explicit frame selection, lock the non-owning Studio module slot, and add a confirmed Raster action that preserves pixels | 2026-10-25 | 8037302b | [261025-awl-auto-mode-switch-on-frame-is-detect-that](./quick/261025-awl-auto-mode-switch-on-frame-is-detect-that/) |
 | 261025-co0 | Color palette: remove the per-swatch X, add selectable swatches with commit-time in-place color rewrite, and delete the selected swatch with Delete/Backspace | 2026-10-25 | ac9fa3a1 | [261025-co0-enhance-color-palette-remove-the-delete-](./quick/261025-co0-enhance-color-palette-remove-the-delete-/) |
+| 261025-d3r | Brush Move hides the legacy pointing-hand cursor on hover (erase hover keeps it); held-Cmd momentary Move retained | 2026-10-25 | a8cb7897 | [261025-d3r-in-brush-there-is-the-old-move-code-with](./quick/261025-d3r-in-brush-there-is-the-old-move-code-with/) |
 
 ### Roadmap Evolution
 
