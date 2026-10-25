@@ -162,6 +162,17 @@ User follow-up: "c'est possible d'avoir le pointer finger when I hover on a stro
 - Gate: `PhysicsPaintStudio.test.ts` 278/278 (new source pin included); app typecheck clean. The engine package is unchanged by this revision.
 - Added UAT row: with persistent Move (or Water color Select), hover a stroke → pointer finger; empty canvas → arrow; scale/rotate handle → its axis/grab cursor.
 
+## UAT revision 2 — deselect on a canvas-region background click (2026-10-25)
+
+User follow-up: "is it possible to click outside canvas to deselect, actually click outside a stroke deselect but when canvas are full of stroke its difficult to deselect with a click"
+
+- A plain left click on the dark workspace around the canvas sheet now clears the Move/Select selection (`PhysicsPaintStudioView` region pointerdown + `view/scriptSelectionDeselect.ts`).
+- Scope guards: the canvas sheet keeps the overlay's own hit/empty-click law; the Stroke Settings dialog (`[role="dialog"]`) and the full-area gallery pickers keep the selection because their clicks operate ON it; Cmd/Ctrl/Shift clicks keep the set (the overlay's additive-empty law); non-primary buttons are ignored.
+- Applies to Brush Move and Water color Select (one shared surface).
+- Commit: `0df26296`.
+- Gate: `scriptSelectionDeselect.test.ts` 4/4, `PhysicsPaintStudio.test.ts` 279/279, app typecheck clean.
+- Added UAT rows: full-canvas Move → click the dark margin → deselect; Cmd-click the margin → keep; click inside the Stroke Settings dialog → keep; click a stroke/empty canvas → overlay law unchanged.
+
 ## User Setup Required
 
 None - no external service configuration required.
