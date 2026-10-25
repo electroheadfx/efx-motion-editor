@@ -219,6 +219,7 @@ None — all three tasks were implemented as specified. Test-pin corrections mad
 ## UAT Revisions
 
 - **UAT revision 1 (2026-10-25):** the locked module slot must be a truly inactive HTML button, not a styled-but-enabled button with `aria-disabled`. `ModuleSwitcher` now sets `disabled={isInert || isLocked}`, the custom Enter/Space guard was removed (native disabled handles it), and the tests assert the native attribute instead of `aria-disabled`. Same look and tooltip as before, now with real disabled semantics and no tab stop.
+- **UAT approved (2026-10-25):** all 15 native UAT rows passed after revision 1.
 
 ## Known Stubs
 
@@ -235,7 +236,7 @@ None — no external service configuration required.
 ## Next Phase Readiness
 
 - All automated verification is green: 376 tests across the 8 plan-listed suites, 11 engine tests, and a clean app typecheck.
-- 15 native UAT rows from `261025-awl-PLAN.md` are **pending a live Studio run** (auto-switch rows 1-7, Raster rows 8-15). Per project policy this quick is automation-ready, not UAT-approved, until those rows pass.
+- All 15 native UAT rows from `261025-awl-PLAN.md` were **approved on 2026-10-25** (auto-switch rows 1-7, Raster rows 8-15), after the native-disabled lock revision.
 - Known boundary (unchanged, by design): after leaving and returning, a post-Raster brush ledger is partial and stays view-only under the existing partial-attach refusal; making it attachable again requires a persistent raster-base model and is out of this quick's scope.
 
 ---
