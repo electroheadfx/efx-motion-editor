@@ -147,7 +147,7 @@ plan_head_after: 8037302b2448be22fda0a683f5cda148925dbcb9
 ## Accomplishments
 
 - **Ownership resolver** — `resolveFrameScriptOwner` reads the brush store, the aquarelle timeline (ignoring Dry events, other frames and deleted tombstones) and an optional live brush sample; `both`/`null` leave the active module untouched.
-- **Studio-scoped module lock** — `frameScriptOwner` feeds `ModuleSwitcher lockedModule` only from the Studio TopBar; the locked slot carries `aria-disabled`, muted styling and a tooltip naming the owner and the Raster remedy, while the main Toolbar mount stays fully enabled.
+- **Studio-scoped module lock** — `frameScriptOwner` feeds `ModuleSwitcher lockedModule` only from the Studio TopBar; the locked slot is a NATIVE disabled HTML button (same semantics as Krita) with muted styling and a tooltip naming the owner and the Raster remedy, while the main Toolbar mount stays fully enabled.
 - **Auto-switch on explicit selection** — the navigation funnel (`!wasPlaying && !rotoCachedPlayback.isActive`), launch restore (both exits), track switch, brush completion (paints/erases/undo/redo, excluding `clear`), aquarelle stroke-end/delete/history, clear source/canvas, brush Move/Select deletes and every Memory purge seam republish ownership.
 - **Raster action** — a Stamp-icon control immediately before Tools, disabled with a specific reason (engine, playback, mutation lock, no script), with a Cancel-first confirmation dialog portaled above the strip.
 - **Fail-closed conversion** — flushes pending finalizations, snapshots/awaits pixels, verifies the retained raster, clears the preview base/background/engine ledger, reloads the retained raster, and only then purges both stores with Memory-tab semantics plus snapshot cleanup. Failures before the purge change nothing; `activeModule` is never written.
@@ -215,6 +215,10 @@ None — all three tasks were implemented as specified. Test-pin corrections mad
 - Studio pin formatting: the callback terminator is formatted as `},\n    [],\n  );`; the pin was adjusted to match (Task 2).
 - Delete-handler pin ordering: the first `return;` in the sliced handler was an unrelated guard; the pin now compares against the return after the refresh (Task 2).
 - Strip wiring pin: `onRasterKey?: (frame: number) => void;` appears three times (strip props, static-chrome props, leaf props); the pin was corrected to 3 (Task 3).
+
+## UAT Revisions
+
+- **UAT revision 1 (2026-10-25):** the locked module slot must be a truly inactive HTML button, not a styled-but-enabled button with `aria-disabled`. `ModuleSwitcher` now sets `disabled={isInert || isLocked}`, the custom Enter/Space guard was removed (native disabled handles it), and the tests assert the native attribute instead of `aria-disabled`. Same look and tooltip as before, now with real disabled semantics and no tab stop.
 
 ## Known Stubs
 
