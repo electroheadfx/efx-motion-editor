@@ -152,6 +152,16 @@ Native UAT is **pending** (user-driven, live Studio):
 | 5 | With persistent Move selected, force an engine re-create (canvas size in Tools, or Water color → Brush), then hover | No hand; overlay remains the visible surface |
 | 6 | With a physical mutation lock active (playback running), press rail Move or tap Cmd | Move is not entered and no hand appears; after the lock clears Move works normally |
 
+## UAT revision 1 — pointer finger on hittable strokes (2026-10-25)
+
+User follow-up: "c'est possible d'avoir le pointer finger when I hover on a stroke so I see if I can click ?"
+
+- The shared `ScriptStrokeOverlay` hover handler now hit-tests the stroke under the pointer: a hittable stroke sets `cursor: pointer`, empty canvas keeps `default`. Transform handles keep their axis/grab cursors and still win over the stroke test. One surface, so Brush Move and Water color Select both get it.
+- The old engine hand stays removed — this is a deliberate overlay affordance for click-to-select, not the legacy 261004-dn5 cursor.
+- Commit: `f2d7a346`.
+- Gate: `PhysicsPaintStudio.test.ts` 278/278 (new source pin included); app typecheck clean. The engine package is unchanged by this revision.
+- Added UAT row: with persistent Move (or Water color Select), hover a stroke → pointer finger; empty canvas → arrow; scale/rotate handle → its axis/grab cursor.
+
 ## User Setup Required
 
 None - no external service configuration required.

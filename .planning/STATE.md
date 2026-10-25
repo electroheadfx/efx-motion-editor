@@ -7,7 +7,7 @@ status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
 last_updated: "2026-10-25T08:38:04.033Z"
 last_activity: 2026-10-25
-last_activity_desc: Quick task 261025-d3r automated-ready — Brush Move hand hidden; native UAT pending
+last_activity_desc: Quick task 261025-d3r automated-ready — Brush Move hand hidden + pointer cursor on hittable strokes; native UAT pending
 state_head: a8cb7897f9703ef4efa9658bf1d50b220a2a5301
 progress:
   total_phases: 3
