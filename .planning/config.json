@@ -32,7 +32,8 @@
     "base_branch": "dev"
   },
   "mempalace": {
-    "enabled": true
+    "enabled": true,
+    "wing": "efx_motion_editor"
   },
   "intel": {
     "enabled": false
