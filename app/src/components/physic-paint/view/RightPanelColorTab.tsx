@@ -5,7 +5,6 @@
 // ============================================================
 
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
-import { X } from 'lucide-preact';
 import { hexToRgba, rgbaToHex, rgbToHsv, hsvToRgb } from '../../../lib/colorUtils';
 import {
   loadFavoriteColors,
@@ -43,10 +42,12 @@ export function RightPanelColorTab(props: {
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const [favoriteColors, setFavoriteColors] = useState<string[]>([]);
   const [hiddenPaletteColors, setHiddenPaletteColors] = useState<string[]>([]);
+  const [selectedSwatch, setSelectedSwatch] = useState<string | null>(null);
   const previousColorRef = useRef(props.color);
   const lastColorRef = useRef(normalizeHexInput(props.color) ?? props.color);
   const colorBoxRef = useRef<HTMLCanvasElement>(null);
   const hueRef = useRef<HTMLDivElement>(null);
+  const swatchGridRef = useRef<HTMLDivElement>(null);
   const draggingColorBox = useRef(false);
   const draggingHue = useRef(false);
 
@@ -105,12 +106,64 @@ export function RightPanelColorTab(props: {
     return normalized;
   }, [currentHex, props.onColorChange, props.opacity]);
 
+  /**
+   * 261025-co0: a committed color change edits the selected palette entry in
+   * place (favorite, recent, or built-in default). Commit-only — never on a
+   * live drag, and a no-op when the color is unchanged.
+   */
+  const rewriteSelectedSwatch = useCallback((nextColor: string) => {
+    const previousColor = selectedSwatch;
+    const normalizedNext = normalizeHexInput(nextColor);
+    if (!previousColor || !normalizedNext || previousColor === normalizedNext) return;
+    setFavoriteColors((colors) => {
+      const normalized = colors.map(normalizeHexInput).filter((item): item is string => item !== null);
+      if (!normalized.includes(previousColor)) return normalized;
+      const updated = normalized
+        .map((item) => (item === previousColor ? normalizedNext : item))
+        .filter((item, index, source) => source.indexOf(item) === index);
+      void saveFavoriteColors(updated).catch((saveError) => console.error('Failed to rewrite favorite color', saveError));
+      return updated;
+    });
+    setRecentColors((colors) => {
+      const normalized = colors.map(normalizeHexInput).filter((item): item is string => item !== null);
+      if (!normalized.includes(previousColor)) return normalized;
+      const updated = normalized
+        .map((item) => (item === previousColor ? normalizedNext : item))
+        .filter((item, index, source) => source.indexOf(item) === index);
+      void saveRecentColors(updated).catch((saveError) => console.error('Failed to rewrite recent color', saveError));
+      return updated;
+    });
+    if (DEFAULT_PALETTE.includes(previousColor)) {
+      // The existing hide-default convention: the built-in disappears and the
+      // replacement becomes the newest favorite.
+      setHiddenPaletteColors((colors) => {
+        if (colors.includes(previousColor)) return colors;
+        const updated = [...colors, previousColor];
+        void saveHiddenPaletteColors(updated).catch((saveError) => console.error('Failed to hide palette color', saveError));
+        return updated;
+      });
+      setFavoriteColors((colors) => {
+        const normalized = colors.map(normalizeHexInput).filter((item): item is string => item !== null);
+        if (normalized.includes(normalizedNext)) return normalized;
+        const updated = [...normalized, normalizedNext];
+        void saveFavoriteColors(updated).catch((saveError) => console.error('Failed to save favorite colors', saveError));
+        return updated;
+      });
+    }
+    // Keep the selection on the entry that now holds the new color so a
+    // following Delete removes the updated swatch.
+    setSelectedSwatch(normalizedNext);
+  }, [selectedSwatch]);
+
   /** One commit-boundary emission; live moves never reach it. */
-  const emitColorCommit = useCallback((color: string) => {
+  const emitColorCommit = useCallback((color: string, options?: { fromSwatch?: boolean }) => {
     const normalized = normalizeHexInput(color);
     if (!normalized) return;
+    // A swatch click passes fromSwatch so a stale selectedSwatch closure can
+    // never rewrite the previously selected swatch.
+    if (!options?.fromSwatch) rewriteSelectedSwatch(normalized);
     props.onColorCommit?.(normalized, props.opacity);
-  }, [props.onColorCommit, props.opacity]);
+  }, [props.onColorCommit, props.opacity, rewriteSelectedSwatch]);
 
   const commitHsv = useCallback((h: number, s: number, v: number) => {
     const rgb = hsvToRgb(h, s, v);
@@ -153,7 +206,7 @@ export function RightPanelColorTab(props: {
       void saveFavoriteColors(updated).catch((saveError) => console.error('Failed to save favorite colors', saveError));
       return updated;
     });
-  }, [commitColor, currentHex, hexInput]);
+  }, [commitColor, currentHex, emitColorCommit, hexInput]);
 
   const removePaletteColor = useCallback((swatch: string) => {
     setFavoriteColors((colors) => {
@@ -179,6 +232,25 @@ export function RightPanelColorTab(props: {
       });
     }
   }, []);
+
+  /**
+   * 261025-co0: palette-owned Delete/Backspace. Focus inside the grid means
+   * the key deletes the selected swatch — the global tinykeys handler
+   * (lib/shortcuts.ts only suppresses INPUT/TEXTAREA/SELECT, not buttons) and
+   * the document-level Studio router are both stopped here so a stroke, clip,
+   * or layer can never be deleted by the same press.
+   */
+  const handleSwatchGridKeyDown = useCallback((event: KeyboardEvent) => {
+    if (props.disabled) return;
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!selectedSwatch || event.repeat) return;
+    removePaletteColor(selectedSwatch);
+    setSelectedSwatch(null);
+    swatchGridRef.current?.focus();
+  }, [props.disabled, removePaletteColor, selectedSwatch]);
 
   const normalizedFavoriteColors = favoriteColors
     .map(normalizeHexInput)
@@ -272,7 +344,13 @@ export function RightPanelColorTab(props: {
         <button type="button" class="physics-paint-text-button physics-paint-add-swatch" disabled={props.disabled} onClick={addFavorite}>+</button>
       </div>
 
-      <div class="physics-paint-swatch-grid" aria-label="Color palette">
+      <div
+        ref={swatchGridRef}
+        class="physics-paint-swatch-grid"
+        aria-label="Color palette"
+        tabIndex={-1}
+        onKeyDown={handleSwatchGridKeyDown}
+      >
         {swatches.map((swatch) => (
           <div key={swatch} class="physics-paint-swatch-cell">
             <button
@@ -281,21 +359,14 @@ export function RightPanelColorTab(props: {
               style={{ backgroundColor: swatch }}
               title={swatch}
               aria-label={`Use ${swatch}`}
+              aria-pressed={selectedSwatch === swatch}
               disabled={props.disabled}
-              onClick={() => {
-                if (commitColor(swatch)) emitColorCommit(swatch);
+              onClick={(event) => {
+                (event.currentTarget as HTMLElement).focus();
+                setSelectedSwatch((current) => (current === swatch ? null : swatch));
+                if (commitColor(swatch)) emitColorCommit(swatch, { fromSwatch: true });
               }}
             />
-            <button
-              type="button"
-              class="physics-paint-swatch-remove"
-              title={`Remove ${swatch} from palette`}
-              aria-label={`Remove ${swatch} from palette`}
-              disabled={props.disabled}
-              onClick={() => removePaletteColor(swatch)}
-            >
-              <X aria-hidden="true" size={10} strokeWidth={2.4} />
-            </button>
           </div>
         ))}
       </div>

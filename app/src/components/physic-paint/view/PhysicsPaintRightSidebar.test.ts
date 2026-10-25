@@ -140,14 +140,16 @@ describe('native-approved Physics Paint right sidebar', () => {
     expect(parsed.permissions).toContain('store:default');
   });
 
-  it('locks the approved eight-column three-row palette and outside top-left removal offset', () => {
+  it('locks the approved eight-column three-row palette and the selected-swatch accent outline', () => {
     expect(rule('.physics-paint-swatch-grid')).toMatch(/grid-template-columns:\s*repeat\(8,\s*minmax\(0,\s*1fr\)\)/);
     expect(rule('.physics-paint-swatch-grid')).toMatch(/grid-auto-rows:\s*32px/);
     expect(rule('.physics-paint-swatch-grid')).toMatch(/gap:\s*7px/);
     expect(rule('.physics-paint-swatch-grid')).toMatch(/min-height:\s*110px/);
     expect(rule('.physics-paint-swatch-cell')).toMatch(/height:\s*32px/);
-    expect(rule('.physics-paint-swatch-remove')).toMatch(/top:\s*-5px/);
-    expect(rule('.physics-paint-swatch-remove')).toMatch(/left:\s*-5px/);
+    // 261025-co0: the per-swatch removal control and its CSS rules are gone.
+    expect(css).not.toContain('.physics-paint-swatch-remove');
+    expect(rule('.physics-paint-swatch[aria-pressed="true"]')).toMatch(/outline:\s*2px solid var\(--color-accent, #2d5be3\)/);
+    expect(rule('.physics-paint-swatch[aria-pressed="true"]')).toMatch(/outline-offset:\s*1px/);
   });
 
   it('places a Lucide-grip 32px grab handle between each section pair with keyboard and pointer resize clamped to 15% minimum sections', () => {
@@ -156,11 +158,16 @@ describe('native-approved Physics Paint right sidebar', () => {
     // — one between the brush color and tool sections, one between the tool
     // and scripts sections; Gap I-2 sets the fixed handle band to the user's
     // 32px spec.
-    // 261018-0ox I-10: the swatch-remove X lives in RightPanelColorTab; the
-    // panel keeps GripHorizontal for the two resizer handles.
+    // 261025-co0: the per-swatch X is gone — swatches toggle selection and the
+    // grid owns palette Delete/Backspace; the panel keeps GripHorizontal for
+    // the two resizer handles.
     expect(rightPanel).toContain("import { GripHorizontal } from 'lucide-preact'");
     const colorTab = readFileSync(fileURLToPath(new URL('./RightPanelColorTab.tsx', import.meta.url)), 'utf8');
-    expect(colorTab).toContain("import { X } from 'lucide-preact'");
+    expect(colorTab).toContain('const [selectedSwatch, setSelectedSwatch] = useState<string | null>(null)');
+    expect(colorTab).toContain('aria-pressed={selectedSwatch === swatch}');
+    expect(colorTab).toContain('tabIndex={-1}');
+    expect(colorTab).toContain('onKeyDown={handleSwatchGridKeyDown}');
+    expect(colorTab).not.toContain("from 'lucide-preact'");
     expect(rightPanel.match(/class="physics-paint-right-pane-resizer"/g)).toHaveLength(2);
     expect(rightPanel.match(/role="separator"/g)).toHaveLength(2);
     expect(rightPanel).toContain('aria-label="Resize brush color and tool sections"');

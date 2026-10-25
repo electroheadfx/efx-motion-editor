@@ -1023,35 +1023,9 @@ button.destructive {
   cursor: pointer;
 }
 
-.physics-paint-swatch-remove {
-  position: absolute;
-  top: -5px;
-  left: -5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.56);
-  border-radius: 999px;
-  opacity: 0;
-  background: rgba(20, 22, 24, 0.86);
-  color: #fff;
-  line-height: 1;
-  transform: scale(0.86);
-  transition: opacity 0.12s, transform 0.12s, background-color 0.12s;
-}
-
-.physics-paint-swatch-cell:hover .physics-paint-swatch-remove,
-.physics-paint-swatch-remove:focus-visible {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.physics-paint-swatch-remove:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.72);
-  background: rgba(170, 45, 45, 0.94);
+.physics-paint-swatch[aria-pressed="true"] {
+  outline: 2px solid var(--color-accent, #2d5be3);
+  outline-offset: 1px;
 }
 
 /* SPECS/slider-stepper: the blended field stacks label+value over the bar, so
