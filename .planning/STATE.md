@@ -7,7 +7,7 @@ status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
 last_updated: "2026-10-25T08:38:04.033Z"
 last_activity: 2026-10-25
-last_activity_desc: Quick task 261025-d3r automated-ready — brush hand hidden, pointer on hittable strokes, background-click deselect; native UAT pending
+last_activity_desc: Quick task 261025-d3r UAT approved — brush hand hidden, pointer on hittable strokes, background-click deselect
 state_head: a8cb7897f9703ef4efa9658bf1d50b220a2a5301
 progress:
   total_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-25 - Completed quick task 261025-d3r: Brush Move hides the legacy pointing-hand cursor on hover (erase hover keeps it); held-Cmd momentary Move retained — native UAT pending
+Last activity: 2026-10-25 - Completed quick task 261025-d3r: Brush Move hides the legacy pointing-hand cursor on hover (erase hover keeps it); held-Cmd momentary Move retained; pointer finger on hittable strokes + background-click deselect — native UAT approved
 
 Progress: [██████████] 100%
 

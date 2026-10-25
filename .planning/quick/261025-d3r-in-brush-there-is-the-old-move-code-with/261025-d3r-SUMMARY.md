@@ -75,8 +75,8 @@ coverage:
     description: "Live Studio: held-Cmd move hover and drag never draw the engine hand; persistent Move stays overlay-only; erase hover still draws the hand; no ghost trails after an engine re-create or under a physical mutation lock"
     verification:
       - kind: human
-        ref: "Live Studio UAT — 6 native rows (261025-d3r-PLAN.md)"
-        status: pending
+        ref: "Live Studio UAT — 6 native rows (261025-d3r-PLAN.md) + revision rows 1–2"
+        status: pass
     human_judgment: true
     rationale: "Cursor glyph visibility, momentary Cmd key-down routing and WKWebView rendering are native-surface judgments vitest cannot observe."
 
@@ -141,7 +141,7 @@ None — the change is local cursor rendering only; no new endpoint, auth path, 
 
 ## UAT
 
-Native UAT is **pending** (user-driven, live Studio):
+Native UAT **APPROVED 2026-10-25** (user-driven, live Studio). All rows below passed, plus both revision rows (pointer finger on hittable strokes; background-click deselect):
 
 | # | Action | Expected |
 |---|--------|----------|
@@ -187,7 +187,7 @@ Automated verification is green:
 - `pnpm --filter @efxlab/efx-physic-paint run check` → clean.
 - `pnpm --filter efx-motion-editor run typecheck` → clean.
 
-Remaining gate: the 6 native UAT rows above (user's live Studio run).
+UAT gate closed 2026-10-25 — all six native rows and both revision rows approved by the user.
 
 ## Self-Check: PASSED
 
