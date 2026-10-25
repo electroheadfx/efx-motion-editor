@@ -166,12 +166,12 @@ describe('ModuleSwitcher', () => {
 });
 
 describe('Studio ownership lock (quick-261025-awl)', () => {
-  it('locks the non-owning slot with aria-disabled, the locked class and the lock tooltip', () => {
+  it('locks the non-owning slot as a native disabled button with the lock tooltip', () => {
     const tree = renderSwitcher({ lockedModule: 'watercolor' });
     const watercolor = findButtons(tree)[1];
-    // aria-disabled, not the native attribute (reserved for Krita).
-    expect(watercolor.props?.['aria-disabled']).toBe('true');
-    expect(watercolor.props?.disabled).toBe(false);
+    // A genuinely inactive HTML button, exactly like Krita.
+    expect(watercolor.props?.disabled).toBe(true);
+    expect(watercolor.props?.['aria-disabled']).toBeUndefined();
     expect(String(watercolor.props?.class ?? '')).toContain('module-switcher-slot-locked');
     const title = String(watercolor.props?.title ?? '');
     expect(title).toContain('Brush script');
@@ -182,7 +182,7 @@ describe('Studio ownership lock (quick-261025-awl)', () => {
   it('locks the Brush slot for a Water color frame and keeps its title distinct', () => {
     const tree = renderSwitcher({ lockedModule: 'brush' });
     const brush = findButtons(tree)[0];
-    expect(brush.props?.['aria-disabled']).toBe('true');
+    expect(brush.props?.disabled).toBe(true);
     expect(String(brush.props?.title ?? '')).toContain('Water color script');
   });
 
@@ -198,29 +198,18 @@ describe('Studio ownership lock (quick-261025-awl)', () => {
     expect(activeModule.value).toBe('brush');
   });
 
-  it('prevents Enter and Space on the locked slot without blocking other keys', () => {
+  it('removes the locked slot from the tab order via the native disabled attribute', () => {
     const tree = renderSwitcher({ lockedModule: 'brush' });
-    const onKeyDown = findButtons(tree)[0].props?.onKeyDown as
-      | ((event: { key: string; preventDefault: () => void }) => void)
-      | undefined;
-    expect(onKeyDown).toBeTypeOf('function');
-
-    let prevented = false;
-    onKeyDown!({ key: 'Enter', preventDefault: () => { prevented = true; } });
-    expect(prevented).toBe(true);
-
-    prevented = false;
-    onKeyDown!({ key: ' ', preventDefault: () => { prevented = true; } });
-    expect(prevented).toBe(true);
-
-    prevented = false;
-    onKeyDown!({ key: 'Tab', preventDefault: () => { prevented = true; } });
-    expect(prevented).toBe(false);
+    const brush = findButtons(tree)[0];
+    // Native disabled: no keyboard activation, no focus, no custom key handler.
+    expect(brush.props?.disabled).toBe(true);
+    expect(brush.props?.onKeyDown).toBeUndefined();
   });
 
   it('leaves both slots enabled when no owner is locked', () => {
     const tree = renderSwitcher({ lockedModule: null });
     for (const button of findButtons(tree).slice(0, 2)) {
+      expect(button.props?.disabled).toBe(false);
       expect(button.props?.['aria-disabled']).toBeUndefined();
       expect(String(button.props?.class ?? '')).not.toContain('module-switcher-slot-locked');
     }
@@ -229,6 +218,7 @@ describe('Studio ownership lock (quick-261025-awl)', () => {
   it('keeps today’s behavior without the prop', () => {
     const tree = renderSwitcher();
     for (const button of findButtons(tree).slice(0, 2)) {
+      expect(button.props?.disabled).toBe(false);
       expect(button.props?.['aria-disabled']).toBeUndefined();
     }
     clickButton(findButtons(tree)[1]);

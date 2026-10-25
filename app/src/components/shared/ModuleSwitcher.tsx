@@ -13,6 +13,7 @@ export interface ModuleSwitcherProps {
   /**
    * quick-261025-awl (D-03): the non-owning module for the selected key.
    * Only the Studio's top-bar mount passes it; the Toolbar mount stays bare.
+   * A locked slot is a NATIVE disabled button, exactly like Krita.
    */
   lockedModule?: ActiveModule | null;
 }
@@ -48,16 +49,8 @@ export function ModuleSwitcher({ lockedModule = null }: ModuleSwitcherProps = {}
             title={isInert ? 'Coming in v2.1.0' : lockTitle ?? slot.label}
             aria-label={slot.label}
             aria-pressed={isInert ? undefined : isActive}
-            aria-disabled={isLocked ? 'true' : undefined}
-            disabled={isInert}
+            disabled={isInert || isLocked}
             onClick={isInert || isLocked ? () => {} : () => selectModule(slot.id)}
-            onKeyDown={
-              isLocked
-                ? (event: KeyboardEvent) => {
-                    if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
-                  }
-                : undefined
-            }
           >
             {slot.label}
           </button>
