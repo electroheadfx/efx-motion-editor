@@ -65,8 +65,8 @@ function* walk(node: unknown): Generator<TestVNode> {
   for (const child of childrenOf(vnode)) yield* walk(child);
 }
 
-function renderSwitcher(): TestVNode {
-  return materialize(ModuleSwitcher()) as TestVNode;
+function renderSwitcher(props: { lockedModule?: ActiveModule | null } = {}): TestVNode {
+  return materialize(ModuleSwitcher(props)) as TestVNode;
 }
 
 function findButtons(tree: TestVNode): TestVNode[] {
@@ -165,6 +165,87 @@ describe('ModuleSwitcher', () => {
   });
 });
 
+describe('Studio ownership lock (quick-261025-awl)', () => {
+  it('locks the non-owning slot with aria-disabled, the locked class and the lock tooltip', () => {
+    const tree = renderSwitcher({ lockedModule: 'watercolor' });
+    const watercolor = findButtons(tree)[1];
+    // aria-disabled, not the native attribute (reserved for Krita).
+    expect(watercolor.props?.['aria-disabled']).toBe('true');
+    expect(watercolor.props?.disabled).toBe(false);
+    expect(String(watercolor.props?.class ?? '')).toContain('module-switcher-slot-locked');
+    const title = String(watercolor.props?.title ?? '');
+    expect(title).toContain('Brush script');
+    expect(title).toContain('Water color is unavailable');
+    expect(title).toContain('Raster');
+  });
+
+  it('locks the Brush slot for a Water color frame and keeps its title distinct', () => {
+    const tree = renderSwitcher({ lockedModule: 'brush' });
+    const brush = findButtons(tree)[0];
+    expect(brush.props?.['aria-disabled']).toBe('true');
+    expect(String(brush.props?.title ?? '')).toContain('Water color script');
+  });
+
+  it('clicking the locked slot leaves activeModule unchanged while the owner still switches', () => {
+    activeModule.value = 'brush';
+    const tree = renderSwitcher({ lockedModule: 'watercolor' });
+    const buttons = findButtons(tree);
+    clickButton(buttons[1]);
+    expect(activeModule.value).toBe('brush');
+
+    activeModule.value = 'watercolor';
+    clickButton(buttons[0]);
+    expect(activeModule.value).toBe('brush');
+  });
+
+  it('prevents Enter and Space on the locked slot without blocking other keys', () => {
+    const tree = renderSwitcher({ lockedModule: 'brush' });
+    const onKeyDown = findButtons(tree)[0].props?.onKeyDown as
+      | ((event: { key: string; preventDefault: () => void }) => void)
+      | undefined;
+    expect(onKeyDown).toBeTypeOf('function');
+
+    let prevented = false;
+    onKeyDown!({ key: 'Enter', preventDefault: () => { prevented = true; } });
+    expect(prevented).toBe(true);
+
+    prevented = false;
+    onKeyDown!({ key: ' ', preventDefault: () => { prevented = true; } });
+    expect(prevented).toBe(true);
+
+    prevented = false;
+    onKeyDown!({ key: 'Tab', preventDefault: () => { prevented = true; } });
+    expect(prevented).toBe(false);
+  });
+
+  it('leaves both slots enabled when no owner is locked', () => {
+    const tree = renderSwitcher({ lockedModule: null });
+    for (const button of findButtons(tree).slice(0, 2)) {
+      expect(button.props?.['aria-disabled']).toBeUndefined();
+      expect(String(button.props?.class ?? '')).not.toContain('module-switcher-slot-locked');
+    }
+  });
+
+  it('keeps today’s behavior without the prop', () => {
+    const tree = renderSwitcher();
+    for (const button of findButtons(tree).slice(0, 2)) {
+      expect(button.props?.['aria-disabled']).toBeUndefined();
+    }
+    clickButton(findButtons(tree)[1]);
+    expect(activeModule.value).toBe('watercolor');
+  });
+
+  it('keeps Krita inert and never locked', () => {
+    const tree = renderSwitcher({ lockedModule: 'watercolor' });
+    const krita = findButtons(tree)[2];
+    expect(krita.props?.disabled).toBe(true);
+    const cls = String(krita.props?.class ?? '');
+    expect(cls).toContain('module-switcher-slot-inert');
+    expect(cls).not.toContain('module-switcher-slot-locked');
+    expect(krita.props?.['aria-disabled']).toBeUndefined();
+  });
+});
+
 describe('activeModule signal', () => {
   it('exports activeModule as a signal defaulting to brush', () => {
     activeModule.value = 'brush';
@@ -185,6 +266,11 @@ describe('activeModule signal', () => {
     expect(toolbarSource).toMatch(/from\s+['"].*shared\/ModuleSwitcher['"]/);
     expect(topBarSource).toMatch(/from\s+['"].*shared\/ModuleSwitcher['"]/);
     expect(toolbarSource).toMatch(/<ModuleSwitcher\s*\/>/);
-    expect(topBarSource).toMatch(/<ModuleSwitcher\s*\/>/);
+    // quick-261025-awl: the Studio mount passes the ownership lock; the
+    // Toolbar mount stays bare (different realm, no prop -> fully enabled).
+    expect(topBarSource).not.toMatch(/<ModuleSwitcher\s*\/>/);
+    expect(topBarSource).toMatch(
+      /<ModuleSwitcher\s+lockedModule=\{lockedModuleForOwner\(frameScriptOwner\.value\)\}\s*\/>/,
+    );
   });
 });

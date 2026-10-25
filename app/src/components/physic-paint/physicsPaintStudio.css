@@ -722,6 +722,20 @@ button.destructive {
   box-shadow: none;
 }
 
+/* quick-261025-awl (D-03): the Studio ownership lock — the non-owning module
+   slot for the selected key. Same muted family as the inert slot; the owner
+   slot stays fully enabled. */
+.module-switcher-slot-locked,
+.module-switcher-slot-locked:hover:not(:disabled),
+.module-switcher-slot-locked.active {
+  color: var(--color-text-dim, #6b7280);
+  background: #505255;
+  border-color: #696d72;
+  cursor: default;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
 .physics-paint-canvas-region {
   position: relative;
   grid-row: 2;

@@ -1,0 +1,90 @@
+// ============================================================
+//  quick-261025-awl Task 1 (D-02/D-03) — Studio-scoped module lock.
+//
+//  One ownership signal shared by the Studio seams and the top-bar
+//  switcher: compare-then-write only, brush owns -> Water color locks,
+//  watercolor owns -> Brush locks, both/none leaves both enabled.
+// ============================================================
+
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { effect } from '@preact/signals';
+import {
+  clearFrameScriptOwner,
+  frameScriptOwner,
+  lockedModuleForOwner,
+  lockedModuleTooltip,
+  setFrameScriptOwner,
+  type FrameScriptOwner,
+} from './frameModuleLock';
+
+beforeEach(() => {
+  clearFrameScriptOwner();
+});
+
+afterEach(() => {
+  clearFrameScriptOwner();
+});
+
+describe('lockedModuleForOwner', () => {
+  it('locks Water color when Brush owns the frame', () => {
+    expect(lockedModuleForOwner('brush')).toBe('watercolor');
+  });
+
+  it('locks Brush when Water color owns the frame', () => {
+    expect(lockedModuleForOwner('watercolor')).toBe('brush');
+  });
+
+  it('locks nothing for a both-owned or empty frame', () => {
+    expect(lockedModuleForOwner('both')).toBeNull();
+    expect(lockedModuleForOwner(null)).toBeNull();
+  });
+});
+
+describe('frameScriptOwner signal', () => {
+  it('defaults to null', () => {
+    expect(frameScriptOwner.value).toBeNull();
+  });
+
+  it('writes only on change (compare-then-write)', () => {
+    const seen: FrameScriptOwner[] = [];
+    const dispose = effect(() => {
+      seen.push(frameScriptOwner.value);
+    });
+    try {
+      setFrameScriptOwner('brush');
+      setFrameScriptOwner('brush');
+      setFrameScriptOwner('both');
+      setFrameScriptOwner('both');
+      setFrameScriptOwner(null);
+      setFrameScriptOwner(null);
+    } finally {
+      dispose();
+    }
+    // One initial effect run + one run per actual value change.
+    expect(seen).toEqual([null, 'brush', 'both', null]);
+  });
+
+  it('clearFrameScriptOwner restores null', () => {
+    setFrameScriptOwner('watercolor');
+    clearFrameScriptOwner();
+    expect(frameScriptOwner.value).toBeNull();
+  });
+});
+
+describe('lockedModuleTooltip', () => {
+  it('names the Brush owner, the locked Water color slot and the Raster remedy', () => {
+    const copy = lockedModuleTooltip('watercolor');
+    expect(copy).toContain('Brush script');
+    expect(copy).toContain('Water color is unavailable');
+    expect(copy).toContain('Raster');
+    expect(copy).toContain('either module can paint');
+  });
+
+  it('mirrors the copy for a locked Brush slot', () => {
+    const copy = lockedModuleTooltip('brush');
+    expect(copy).toContain('Water color script');
+    expect(copy).toContain('Brush is unavailable');
+    expect(copy).toContain('Raster');
+    expect(copy).toContain('either module can paint');
+  });
+});

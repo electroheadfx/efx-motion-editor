@@ -1351,6 +1351,21 @@ export function getAquarelleEventsForFrame(
 }
 
 /**
+ * quick-261025-awl (D-01): true when the frame holds at least one recorded,
+ * non-deleted aquarelle stroke. Dry is a global sheet action (D-15) and never
+ * owns a frame; the tombstone marker keeps a stale read from resurrecting a
+ * deleted stroke. Read-only — never bumps the revision.
+ */
+export function hasAquarelleScriptForFrame(playFrame: number): boolean {
+  return payloadTimeline.some((event) => {
+    if (isAquarelleDryEvent(event)) return false;
+    if (event.playFrame !== playFrame) return false;
+    const mutationId = (event.engine as AquarelleStrokePayload).mutationId;
+    return mutationId === undefined || !deletedAquarelleStrokeIds.has(mutationId);
+  });
+}
+
+/**
  * Fire a recorded Dry event (D-15) onto the record path.
  * `tick` is the host-grid tick from the Studio record clock;
  * recordedOrder is the shared ordering key (Date.now() until the

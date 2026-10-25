@@ -1,6 +1,7 @@
 import { SliderStepper } from '../../shared/SliderStepper';
 import { ModuleSwitcher } from '../../shared/ModuleSwitcher';
 import { activeModule } from '../../shared/activeModule';
+import { frameScriptOwner, lockedModuleForOwner } from '../../shared/frameModuleLock';
 import { getPhysicsPaintEngineStatusTone } from './physicsPaintWorkflowPresentation';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { aquarelleParams, setAquarelleParam } from './aquarelleRecordState';
@@ -103,7 +104,7 @@ export function PhysicsPaintTopBar({
           <span class={`physics-paint-status-pill ${statusTone}`}>{statusCopy}</span>
         </div>
         {/* 56-02 (D-01): module switcher — one shared component, one signal */}
-        <ModuleSwitcher />
+        <ModuleSwitcher lockedModule={lockedModuleForOwner(frameScriptOwner.value)} />
       </div>
 
       {/* Center: sliders only — Brush size + Opacity (+ Water/Edges/Grain/Pigment).

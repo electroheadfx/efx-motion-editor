@@ -22,6 +22,7 @@ import {
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
   getRecordedAquarelleStrokeEntries,
+  hasAquarelleScriptForFrame,
   isAquarelleStrokeDeleted,
   markAquarelleStrokeDeleted,
   purgeAllAquarelleKeyScripts,
@@ -141,6 +142,41 @@ describe('quick-261023-ors purgeAquarelleFrameScript', () => {
     expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
     expect(getRecordedAquarellePayloadTimeline()).toEqual(timelineBefore);
     expect(getRecordedAquarelleStroke(8501)).toBeDefined();
+  });
+});
+
+describe('quick-261025-awl hasAquarelleScriptForFrame', () => {
+  it('is true only for a recorded, non-deleted stroke on that frame', () => {
+    recordAquarelleStroke(9301, stroke(9301, 100));
+    expect(hasAquarelleScriptForFrame(100)).toBe(true);
+    expect(hasAquarelleScriptForFrame(101)).toBe(false);
+  });
+
+  it('ignores Dry events (a sheet action owns no frame)', () => {
+    emitAquarelleDry(4242);
+    expect(hasAquarelleScriptForFrame(100)).toBe(false);
+  });
+
+  it('ignores a deleted-stroke tombstone', () => {
+    recordAquarelleStroke(9302, stroke(9302, 100));
+    markAquarelleStrokeDeleted(9302);
+    expect(hasAquarelleScriptForFrame(100)).toBe(false);
+  });
+
+  it('ignores other frames', () => {
+    recordAquarelleStroke(9303, stroke(9303, 100));
+    expect(hasAquarelleScriptForFrame(200)).toBe(false);
+  });
+
+  it('is false after purgeAquarelleFrameScript and never bumps the revision', () => {
+    recordAquarelleStroke(9304, stroke(9304, 100));
+    const revisionBefore = aquarelleStrokesRevision.value;
+
+    expect(hasAquarelleScriptForFrame(100)).toBe(true);
+    expect(aquarelleStrokesRevision.value).toBe(revisionBefore);
+
+    expect(purgeAquarelleFrameScript(100)).toBe(1);
+    expect(hasAquarelleScriptForFrame(100)).toBe(false);
   });
 });
 
