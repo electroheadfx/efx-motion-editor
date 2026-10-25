@@ -764,7 +764,7 @@ export class EfxPaintEngine {
   private previewStroke: StrokePreview | null = null
   /** 261003-ud9: mutationId of the fresh stroke under the erase cursor — drives the hover preview ribbon and the pointer glyph. */
   private eraseHoverTargetId: number | null = null
-  /** 261004-dn5: mutationId of the fresh stroke under the move cursor — drives the move hover preview and the pointer glyph. */
+  /** 261004-dn5: mutationId of the fresh stroke under the move cursor — drives the move hover preview (261025-d3r: never the pointer glyph). */
   private moveHoverTargetId: number | null = null
   /** 261004-dn5: the live click-drag translation of one script-backed stroke (null when no move gesture is in flight). */
   private moveGesture: MoveGesture | null = null
@@ -2775,9 +2775,10 @@ export class EfxPaintEngine {
     // 261003-ud9: pointer glyph — the hand's fingertip sits AT the cursor and
     // its body (23 × 31 + 3px under-stroke) extends down, thumb left and
     // knuckles right; the restore box must fully contain it or the incremental
-    // erase clips the thumb or the wrist. 261004-dn5: the move hover uses the
-    // same glyph, so it needs the same box.
-    if (this.eraseHoverTargetId != null || this.moveHoverTargetId != null) {
+    // erase clips the thumb or the wrist. 261025-d3r: the hand is erase-only,
+    // so a move hover falls through to the ring box below — glyph and restore
+    // box share one predicate and can never disagree.
+    if (this.pointerHandActive()) {
       return { x0: this.cursorX - 10, y0: this.cursorY - 3, x1: this.cursorX + 19, y1: this.cursorY + 34 }
     }
     const r = brushRenderRadius(this.state.brushOpts)
@@ -4380,9 +4381,14 @@ export class EfxPaintEngine {
     this.requestRender()
   }
 
-  /** 261003-ud9: cursor glyph — pointing hand while a fresh stroke is hovered under the erase OR move cursor, ring/crosshair otherwise. */
+  /** 261025-d3r: erase-only pointing hand (261003-ud9); ring/crosshair otherwise. */
   private cursorGlyphMode(): 'brush' | 'pointer' {
-    return this.eraseHoverTargetId != null || this.moveHoverTargetId != null ? 'pointer' : 'brush'
+    return this.pointerHandActive() ? 'pointer' : 'brush'
+  }
+
+  /** 261025-d3r: the pointing hand belongs to the ERASE hover only (261003-ud9 retained). Move's affordance is the hovered stroke's preview ribbon in momentary Move and the script-edition overlay in persistent Move — never the hand. */
+  private pointerHandActive(): boolean {
+    return this.eraseHoverTargetId != null
   }
 
   private applyStrokeToEngine(

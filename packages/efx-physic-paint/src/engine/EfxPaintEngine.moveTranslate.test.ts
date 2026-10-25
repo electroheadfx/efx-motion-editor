@@ -7,8 +7,12 @@
 //    (fallback '#888888'), its render radius and opacity 0.6. Off the stroke,
 //    after onPointerLeave and after leaving the tool the preview is cleared.
 //    Pixel-only paint (no recorded entry) is never a preview target.
-//  - CURSOR GLYPH: drawBrushCursor runs in pointer mode while a move hover
-//    target is active (same glyph family as the erase hover).
+//  - CURSOR GLYPH (261025-d3r): the pointing hand is ERASE-ONLY. With a move
+//    hover target active the cursor stays in brush mode (ring/crosshair) while
+//    the hover target and its preview ribbon still report the stroke — the
+//    preview ribbon is the momentary-Move affordance, never a hand. The cursor
+//    restore box follows the drawn glyph (ring in move hover at every brush
+//    size, hand in erase hover), so no ghost is left behind.
 //  - DRAG RIGIDITY: pointerdown on the stroke, pointermove by (dx, dy),
 //    pointerup — EVERY point of the target entry gains exactly (dx, dy) while
 //    p / tx / ty / tw / spd / timestamp / params are byte-identical: a rigid
@@ -508,26 +512,45 @@ describe('HOVER: move tool previews the fresh stroke under the pointer', () => {
     expect(engine.previewStroke).toBeNull()
   })
 
-  it('HOVER POINTER CURSOR: drawBrushCursor runs in pointer mode while a move hover target is active', () => {
+  it('HOVER CURSOR: the pointing hand is erase-only — move hover keeps brush mode and the ring restore box', () => {
     const engine = createHarness()
-    paintStroke(engine, hLine(30), 100)
+    const id = paintStroke(engine, hLine(30), 100)
     engine.setTool('move')
     const ctx = createDisplayCtx()
     cursorMock.mockClear()
 
     hover(engine, 50, 30, 200)
-    expect(engine.moveHoverTargetId).not.toBeNull()
+    // D-02 retained: the momentary-Move affordance is the target + its ribbon.
+    expect(engine.moveHoverTargetId).toBe(id)
+    expect(engine.previewStroke).not.toBeNull()
 
     engine.redrawDisplayOverlays(ctx)
-    expect(cursorMode()).toBe('pointer')
+    expect(cursorMode()).toBe('brush')
 
+    // D-05: the restore box follows the RING, not the old asymmetric hand box.
+    // Brush size 12 → render radius 6 → half-size max(6+3, 7) = 9.
     const box = engine.overlayBoundsForCursor()
     expect(box).not.toBeNull()
-    expect(box!.x0).toBeLessThanOrEqual(50)
-    expect(box!.y1).toBeGreaterThanOrEqual(30)
+    expect([box!.x0, box!.y0, box!.x1, box!.y1]).toEqual([41, 21, 59, 39])
+
+    // Brush size 40 → render radius 20 → half-size 23. The old hand box would
+    // stay 40/27/69/64 here and leave a ghost on the incremental restore path.
+    engine.setBrushSize(40)
+    engine.redrawDisplayOverlays(ctx)
+    expect(cursorMode()).toBe('brush')
+    const bigBox = engine.overlayBoundsForCursor()
+    expect(bigBox).not.toBeNull()
+    expect([bigBox!.x0, bigBox!.y0, bigBox!.x1, bigBox!.y1]).toEqual([27, 7, 73, 53])
+
+    // D-04 retained: the erase hover still draws the pointing hand.
+    engine.setTool('erase')
+    hover(engine, 50, 30, 240)
+    expect(engine.eraseHoverTargetId).toBe(id)
+    engine.redrawDisplayOverlays(ctx)
+    expect(cursorMode()).toBe('pointer')
   })
 
-  it('HOVER POINTER CURSOR: brush mode off the stroke and after leaving the tool', () => {
+  it('HOVER CURSOR: brush mode off the stroke and after leaving the tool', () => {
     const engine = createHarness()
     paintStroke(engine, hLine(30), 100)
     engine.setTool('move')
