@@ -4291,3 +4291,91 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
       .toContain('resolved.context.onScriptChanged?.(resolved.frame);');
   });
 });
+
+describe('quick-261025-awl Raster handler (D-04)', () => {
+  const handlerStart = studio.indexOf(
+    'const rasterKeyImplRef = useRef<(frame: number) => Promise<void>>(async () => {});',
+  );
+  const handlerEnd = studio.indexOf('const handleRasterKeyRequest = useCallback(', handlerStart);
+  const handler = studio.slice(handlerStart, handlerEnd);
+
+  it('exists with the stable strip callback wired into the workflow props', () => {
+    expect(handlerStart).toBeGreaterThan(-1);
+    expect(handlerEnd).toBeGreaterThan(handlerStart);
+    expect(studio).toContain('const handleRasterKeyRequest = useCallback((frame: number) => {');
+    expect(studio).toContain('void rasterKeyImplRef.current(frame);');
+    expect(studio).toContain('onRasterKey: handleRasterKeyRequest, frameScriptOwner,');
+  });
+
+  it('refuses in the documented guard order', () => {
+    const guards = [
+      'if (!engine) return;',
+      'if (isPhysicalMutationLocked()) return;',
+      'if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;',
+      'if (rotoCachedPlayback.isActive) return;',
+      'if (!readyToApply) return;',
+      'if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;',
+      'if (owner === null) return;',
+    ];
+    let previous = -1;
+    for (const guard of guards) {
+      const index = handler.indexOf(guard);
+      expect(index, guard).toBeGreaterThan(previous);
+      previous = index;
+    }
+    expect(handler).toContain('const owner = resolveFrameScriptOwner(frame, {');
+    expect(handler).toContain('active: activeModule.peek() === \'brush\',');
+    expect(handler).toContain('strokeCount: engine.getStrokeCount(),');
+    // The frame identity is re-checked after the awaited pixel flush.
+    expect(
+      countOccurrences(
+        handler,
+        'if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;',
+      ),
+    ).toBe(2);
+  });
+
+  it('runs capture, verification, ledger clear and reload strictly before the purge', () => {
+    const order = [
+      'engine.flushPendingStrokeFinalizations();',
+      'engine.forceDry();',
+      'rotoPersistenceRef.current.snapshotLivePixels(frame);',
+      'await flushAquarellePixels(frame);',
+      'findCachedRotoDisplayFrameRef.current(frame)',
+      'engine.clearPreviewBaseImage(true);',
+      'engine.resetBackground(true);',
+      'engine.clear();',
+      'loadCachedRotoReferenceFrame(frame, engine)',
+      'purgeMemoryScriptFrame(frame);',
+      'applyFrameModuleState(frame);',
+    ];
+    let previous = -1;
+    for (const step of order) {
+      const index = handler.indexOf(step);
+      expect(index, step).toBeGreaterThan(previous);
+      previous = index;
+    }
+    expect(handler).toContain('if (owner !== \'watercolor\') {');
+  });
+
+  it('fails closed with the nothing-changed copy for both pre-purge failures', () => {
+    expect(handler).toContain(
+      '"The key\'s painted pixels are not available — nothing changed."',
+    );
+    expect(handler).toContain(
+      '"The key\'s painted pixels could not be reloaded — nothing changed."',
+    );
+    expect(handler).toContain("'Rastering the key failed — nothing changed.'");
+    // Both failure paths return before the purge call.
+    const firstReturnAfterFailure = handler.indexOf('return;', handler.indexOf('findCachedRotoDisplayFrameRef.current(frame)'));
+    const purge = handler.indexOf('purgeMemoryScriptFrame(frame);');
+    expect(firstReturnAfterFailure).toBeGreaterThan(-1);
+    expect(firstReturnAfterFailure).toBeLessThan(purge);
+  });
+
+  it('never writes activeModule — the module survives the conversion', () => {
+    expect(handler).not.toContain('activeModule.value');
+    expect(handler).not.toContain('activeModule.peek() !==');
+    expect(handler).not.toContain('activeModule.peek() === \'watercolor\')');
+  });
+});

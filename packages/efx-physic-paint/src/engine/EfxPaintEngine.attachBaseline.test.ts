@@ -330,6 +330,18 @@ describe('attachStrokesBaseline', () => {
     expect((engine as any).strokeReplayMode).toBe('live')
   })
 
+  it('clear() empties the stroke ledger so a later paint cannot recapture it', () => {
+    const engine = createHarness()
+    engine.attachStrokesBaseline([group(4)])
+    expect(engine.getStrokes()).toHaveLength(1)
+    expect(engine.getStrokeCount()).toBe(1)
+
+    engine.clear()
+
+    expect(engine.getStrokes()).toHaveLength(0)
+    expect(engine.getStrokeCount()).toBe(0)
+  })
+
   it('undefined mode is read as live — prototype harnesses never run the constructor', () => {
     const engine = createHarness()
     delete (engine as any).strokeReplayMode

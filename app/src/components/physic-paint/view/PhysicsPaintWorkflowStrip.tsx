@@ -1,4 +1,4 @@
-import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Paintbrush, Play, Plus, RotateCcw, Save, Scissors, Square, SquareSplitHorizontal, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
+import { AlignHorizontalSpaceAround, BetweenVerticalStart, ChevronFirst, ChevronLast, ChevronsLeft, ChevronsRight, ClipboardCopy, ClipboardPaste, ClipboardPen, ClipboardX, CopyPlus, Focus, Info, ListChecks, MoveHorizontal, Paintbrush, Play, Plus, RotateCcw, Save, Scissors, Square, SquareSplitHorizontal, Stamp, ToolCase, Trash2, TriangleAlert, Volume2, VolumeX, X } from 'lucide-preact';
 
 import { Fragment, type ComponentChildren, type RefObject } from 'preact';
 import { createPortal, memo } from 'preact/compat';
@@ -25,6 +25,8 @@ import {
 } from './physicsPaintWorkflowPresentation';
 import { PHYSIC_PAINT_MAX_APPLY_FRAMES } from '../../../types/physicPaint';
 import type { PhysicPaintRotoCacheFrame } from '../../../types/physicPaint';
+import { resolveRasterKeyPresentation } from './rasterKeyPresentation';
+import type { FrameScriptOwner } from '../../shared/frameModuleLock';
 import type { RotoKeyUtilityActionState } from '../roto/physicsPaintRotoKeyController';
 import type { RotoScriptClipboardController } from '../roto/physicsPaintRotoScriptClipboard';
 import type { RotoScriptLibraryAvailability } from '../roto/physicsPaintRotoScriptLibrary';
@@ -305,6 +307,18 @@ export interface PhysicsPaintWorkflowStripProps {
   onRotoInterpolationModeChange?: (mode: PhysicPaintRotoInterpolationState['mode']) => void;
   /** + Key header action: promote the current frame to an empty real key. */
   onAddRotoKey?: () => void;
+  /**
+   * quick-261025-awl (D-04): convert the current key to raster-only. The
+   * confirmation lives in the strip's Raster leaf; the Studio handler does the
+   * pixel-preserving purge. Absent = the Raster control is not rendered.
+   */
+  onRasterKey?: (frame: number) => void;
+  /**
+   * quick-261025-awl: the current key's script owner. Passed as a signal
+   * REFERENCE — only the Raster leaf reads .value, so the strip body and the
+   * memoized chrome never subscribe to ownership changes.
+   */
+  frameScriptOwner?: ReadonlySignal<FrameScriptOwner>;
   /** + Rail header action: create a blank key that deliberately starts a NEW rail. */
   onCreateRotoKeyRail?: () => void;
   onDuplicateRotoKey?: () => void;
@@ -899,6 +913,177 @@ function PhysicsPaintWorkflowLiveStatus(props: { capsuleText: Signal<string>; is
   );
 }
 
+/**
+ * quick-261025-awl (D-04): the Raster header action, rendered immediately
+ * before Tools. The leaf owns the confirmation state (a ref-held signal — never
+ * useState), the styled tooltip and the portaled dialog, so the strip body
+ * never subscribes to ownership: only this leaf reads `props.ownerSignal.value`.
+ *
+ * The dialog reuses the Memory-tab confirmation classes and focus contract:
+ * Cancel is focused synchronously on open, Escape closes, Tab cycles the two
+ * buttons. Confirm closes first, then forwards the frame — the Studio handler
+ * re-validates everything and does the pixel-preserving purge.
+ */
+function PhysicsPaintRasterKeyControl(props: {
+  currentFrame: Signal<number>;
+  ownerSignal: ReadonlySignal<FrameScriptOwner>;
+  ready: boolean;
+  playbackActive: boolean;
+  mutationLocked: boolean;
+  onRasterKey?: (frame: number) => void;
+}) {
+  const tooltip = useStyledTooltip();
+  // One signal for the lifetime of the leaf — created in a ref (never a fresh
+  // signal per render, never useState).
+  const openRef = useRef<Signal<boolean> | null>(null);
+  if (openRef.current === null) openRef.current = signal(false);
+  const openSignal = openRef.current;
+  const open = openSignal.value;
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+
+  const frame = props.currentFrame.value;
+  const owner = props.ownerSignal.value;
+  const presentation = resolveRasterKeyPresentation({
+    hasScript: owner !== null,
+    ready: props.ready,
+    playbackActive: props.playbackActive,
+    mutationLocked: props.mutationLocked,
+  });
+
+  // Modal focus: Cancel is the quiet default, exactly like the Memory tab.
+  // Synchronous (no rAF) so the harness and Node tests can run the whole flow.
+  useEffect(() => {
+    if (!open) return;
+    const target = cancelRef.current;
+    if (target && typeof target.focus === 'function') target.focus();
+  }, [open]);
+
+  // The strip clips overflow, so the dialog portals to document.body and is
+  // positioned above the strip with the shared toolbox placement helper
+  // (start hidden, then set left/top/visibility — the PhysicsPaintToolboxPopover
+  // contract).
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    const trigger = triggerRef.current;
+    if (!open || !dialog || !trigger) return;
+    const panelSize = { width: dialog.offsetWidth, height: dialog.offsetHeight };
+    const anchorRect = trigger.getBoundingClientRect();
+    const strip = trigger.closest('.physics-paint-workflow-strip');
+    const stripRect = strip ? strip.getBoundingClientRect() : anchorRect;
+    const placement = computeToolboxPopoverPlacement({ anchorRect, stripRect, panelSize });
+    dialog.style.left = `${placement.left}px`;
+    dialog.style.top = `${placement.top}px`;
+    dialog.style.visibility = 'visible';
+  });
+
+  const closeConfirm = () => {
+    openSignal.value = false;
+  };
+  const confirmRaster = () => {
+    closeConfirm();
+    props.onRasterKey?.(props.currentFrame.peek());
+  };
+
+  const dialog = open ? (
+    <div
+      ref={dialogRef}
+      class="physics-paint-memory-confirmation physics-paint-raster-confirmation"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Raster key ${frame}`}
+      style={{ visibility: 'hidden' }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeConfirm();
+          return;
+        }
+        if (event.key !== 'Tab') return;
+        const controls = Array.from(
+          dialogRef.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), [tabindex]:not([tabindex="-1"])',
+          ) ?? [],
+        );
+        if (!controls.length) return;
+        const first = controls[0]!;
+        const last = controls[controls.length - 1]!;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }}
+    >
+      <strong>{`Raster key ${frame}?`}</strong>
+      <p class="physics-paint-memory-confirm-copy">
+        This removes the key's Brush and Water color script and keeps the painted pixels. Move, Select and replay are lost for this key.
+      </p>
+      <div class="physics-paint-memory-confirm-actions">
+        <button
+          ref={cancelRef}
+          type="button"
+          class="physics-paint-memory-confirm-cancel"
+          onClick={closeConfirm}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="physics-paint-memory-confirm-ok destructive"
+          onClick={confirmRaster}
+        >
+          Raster key
+        </button>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <Fragment>
+      <span
+        ref={triggerRef}
+        class="physics-paint-roto-key-icon-action"
+        onPointerEnter={tooltip.onPointerEnter}
+        onPointerLeave={tooltip.onPointerLeave}
+      >
+        <button
+          type="button"
+          class="physics-paint-roto-key-icon-button"
+          aria-label="Raster the key"
+          aria-disabled={presentation.disabled ? 'true' : undefined}
+          onFocus={tooltip.onFocus}
+          onBlur={tooltip.onBlur}
+          onClick={() => {
+            if (presentation.disabled) return;
+            tooltip.hide();
+            openSignal.value = true;
+          }}
+          onKeyDown={(event) => {
+            if (!presentation.disabled) return;
+            if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
+          }}
+        >
+          <span class="physics-paint-toolbox-badge-anchor">
+            <Stamp size={18} aria-hidden="true" />
+          </span>
+          <span class="physics-paint-roto-key-icon-label">Raster</span>
+        </button>
+        <PhysicsPaintStyledTooltip visible={tooltip.visible} region="bottom">
+          {buildGuardedActionTooltipCopy(
+            'Raster the key — remove its script and keep the painted pixels.',
+            presentation.reason,
+          )}
+        </PhysicsPaintStyledTooltip>
+      </span>
+      {dialog && typeof document !== 'undefined' ? createPortal(dialog, document.body) : dialog}
+    </Fragment>
+  );
+}
+
 interface PhysicsPaintWorkflowStaticChromeProps {
   currentFrame: Signal<number>;
   capsuleText: Signal<string>;
@@ -909,6 +1094,9 @@ interface PhysicsPaintWorkflowStaticChromeProps {
   ready: boolean;
   playbackAvailable: boolean;
   playbackActive: boolean;
+  /** quick-261025-awl (D-04): Raster header action — signal reference + stable callback. */
+  onRasterKey?: (frame: number) => void;
+  frameScriptOwner?: ReadonlySignal<FrameScriptOwner>;
   playbackTick: Signal<RotoCachedPlaybackTick | null> | null | undefined;
   playbackLoop: boolean;
   playbackFps: number;
@@ -1302,6 +1490,19 @@ function PhysicsPaintWorkflowStaticChromeImpl(props: PhysicsPaintWorkflowStaticC
             hook only; the PROJECT fps store is never touched here. */}
       </div>
       <PhysicsPaintWorkflowLiveStatus capsuleText={props.capsuleText} isError={props.capsuleIsError} warmProgress={props.warmProgress} />
+      {/* quick-261025-awl (D-04): Raster sits immediately before Tools. Rendered
+          only when the Studio supplies the ownership signal (older render-only
+          mounts without it stay byte-identical). */}
+      {props.frameScriptOwner ? (
+        <PhysicsPaintRasterKeyControl
+          currentFrame={props.currentFrame}
+          ownerSignal={props.frameScriptOwner}
+          ready={props.ready}
+          playbackActive={props.playbackActive}
+          mutationLocked={props.mutationLocked}
+          onRasterKey={props.onRasterKey}
+        />
+      ) : null}
       <span
         class="physics-paint-roto-key-icon-action physics-paint-toolbox-button-anchor"
         ref={toolboxAnchorRef}
@@ -4928,6 +5129,8 @@ export function PhysicsPaintWorkflowStrip(props: PhysicsPaintWorkflowStripProps)
         ready={props.ready !== false}
         playbackAvailable={Boolean(props.rotoCachedPlaybackAvailable)}
         playbackActive={Boolean(props.isRotoCachedPlaybackActive)}
+        onRasterKey={props.onRasterKey}
+        frameScriptOwner={props.frameScriptOwner}
         playbackTick={props.rotoCachedPlaybackTick}
         playbackLoop={Boolean(props.rotoCachedPlaybackLoop)}
         playbackFps={props.rotoCachedPlaybackFps ?? 0}

@@ -178,6 +178,22 @@ describe('quick-261025-awl hasAquarelleScriptForFrame', () => {
     expect(purgeAquarelleFrameScript(100)).toBe(1);
     expect(hasAquarelleScriptForFrame(100)).toBe(false);
   });
+
+  it('records only the new strokes after a Raster conversion (old strokes never return)', () => {
+    recordAquarelleStroke(9401, stroke(9401, 100));
+    recordAquarelleStroke(9402, stroke(9402, 100));
+    emitAquarelleDry(31);
+
+    expect(purgeAquarelleFrameScript(100)).toBe(2);
+
+    recordAquarelleStroke(9403, stroke(9403, 100));
+
+    expect(nonDryIds()).toEqual([9403]);
+    expect(hasAquarelleScriptForFrame(100)).toBe(true);
+    expect(getRecordedAquarelleStroke(9401)).toBeUndefined();
+    expect(getRecordedAquarelleStroke(9402)).toBeUndefined();
+    expect(getRecordedAquarelleStroke(9403)).toBeDefined();
+  });
 });
 
 describe('quick-261023-ors purgeAllAquarelleKeyScripts', () => {

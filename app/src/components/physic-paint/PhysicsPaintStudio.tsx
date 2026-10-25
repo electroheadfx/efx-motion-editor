@@ -186,7 +186,7 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { clearFrameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
+import { clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
   adoptBrushScriptFrameAsComplete,
@@ -6258,6 +6258,75 @@ export function PhysicsPaintStudio() {
     await rotoPersistenceRef.current.flushLivePixels(appFrame);
   }, []);
 
+  // quick-261025-awl (D-04): convert the current key to raster-only. The strip
+  // receives a stable callback (rasterKeyImplRef.current) exactly like the
+  // canvas-ready/completed-mutation precedents; the implementation is
+  // reassigned every render so it always sees the latest closures.
+  //
+  // ORDER IS THE SAFETY CONTRACT: capture the pixels, verify the retained
+  // raster, clear the engine ledger and reload the retained raster, and only
+  // THEN purge both script stores. Every failure before the purge leaves the
+  // stores untouched. The handler never writes activeModule — after the purge
+  // the owner is null, so applyFrameModuleState leaves the module as it was.
+  const rasterKeyImplRef = useRef<(frame: number) => Promise<void>>(async () => {});
+  rasterKeyImplRef.current = async (frame) => {
+    const engine = engineRef.current as PreviewBackgroundEngine | null;
+    if (!engine) return;
+    if (isPhysicalMutationLocked()) return;
+    if (rotoScript.applying.peek() || rotoScript.mutationLocked.peek()) return;
+    if (rotoCachedPlayback.isActive) return;
+    if (!readyToApply) return;
+    // The confirmation may sit open while the window moves on (frame change,
+    // track switch): a stale frame must never purge a different key.
+    if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;
+    const owner = resolveFrameScriptOwner(frame, {
+      active: activeModule.peek() === 'brush',
+      strokeCount: engine.getStrokeCount(),
+    });
+    if (owner === null) return;
+    const reportNothingChanged = (message: string) => {
+      setLastError(message);
+      setApplyMessage(message);
+      setApplyStatus('error');
+    };
+    try {
+      engine.flushPendingStrokeFinalizations();
+      if (owner !== 'watercolor') {
+        engine.forceDry();
+        rotoPersistenceRef.current.snapshotLivePixels(frame);
+      }
+      await flushAquarellePixels(frame);
+      // Re-check after the await: navigation may have moved on while the pixel
+      // flush was draining.
+      if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;
+      if (!findCachedRotoDisplayFrameRef.current(frame)) {
+        reportNothingChanged(
+          "The key's painted pixels are not available — nothing changed.",
+        );
+        return;
+      }
+      engine.clearPreviewBaseImage(true);
+      engine.resetBackground(true);
+      engine.clear();
+      if (!loadCachedRotoReferenceFrame(frame, engine)) {
+        reportNothingChanged(
+          "The key's painted pixels could not be reloaded — nothing changed.",
+        );
+        return;
+      }
+    } catch {
+      reportNothingChanged('Rastering the key failed — nothing changed.');
+      return;
+    }
+    // Committed: both stores lose the key's script (Memory-tab per-key
+    // semantics + snapshot cleanup), then the ownership signal republishes.
+    purgeMemoryScriptFrame(frame);
+    applyFrameModuleState(frame);
+  };
+  const handleRasterKeyRequest = useCallback((frame: number) => {
+    void rasterKeyImplRef.current(frame);
+  }, []);
+
   // CACHE MERGE BASE (aquarelle-cache-lost-on-return): a frame change clears
   // the sheet, so the next session's first capture must re-read the cache as
   // its multiply base. Keeping the previous session's base drops that paint.
@@ -7594,6 +7663,10 @@ export function PhysicsPaintStudio() {
         // intent routes through the monitor funnel for immediate effect.
         audioPreviewEnabled: audioPreviewEnabled.value, onAudioPreviewToggle: handleAudioPreviewToggle,
         onRotoInterpolationModeChange: handleRotoInterpolationModeChange,
+        // quick-261025-awl (D-04): the Raster header action. The stable callback
+        // and the ownership SIGNAL REFERENCE keep the static-chrome memo intact;
+        // only the strip's Raster leaf reads .value.
+        onRasterKey: handleRasterKeyRequest, frameScriptOwner,
         onDuplicateRotoKey: duplicateRotoKey, onAddRotoKey: addRotoKey, onCreateRotoKeyRail: handleCreateRotoKeyRail, onInsertRotoFrame: rotoPhysicalActions.insertRotoFrame, onDeleteRotoFrame: rotoPhysicalActions.deleteRotoFrame, rotoPhysicalActions, publishDocumentSync: async () => {
           documentSyncDirty.value = true;
           await flushDocumentSyncRef.current();

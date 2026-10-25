@@ -1403,6 +1403,17 @@ button.destructive {
   background: #a43d3d;
 }
 
+/* quick-261025-awl (D-04): the Raster confirmation reuses the Memory-tab
+   dialog classes but portals to document.body (the strip clips overflow), so
+   it is viewport-fixed and positioned by computeToolboxPopoverPlacement. */
+.physics-paint-raster-confirmation {
+  position: fixed;
+  inset: auto;
+  z-index: 60;
+  width: 300px;
+  box-sizing: border-box;
+}
+
 /* 261018-l05 watercolor brush cards */
 /* Brush tab 14-card grid cells. Card/button/thumb/name styles moved out of
    WatercolorBrushLibrary inline style objects (261018-l05 move 2). Visual look
