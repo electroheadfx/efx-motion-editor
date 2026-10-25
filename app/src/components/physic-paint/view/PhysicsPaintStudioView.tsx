@@ -1,4 +1,4 @@
-import type { ComponentChildren, ComponentProps } from 'preact';
+import type { ComponentChildren, ComponentProps, TargetedPointerEvent } from 'preact';
 import { memo } from 'preact/compat';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Signal } from '@preact/signals';
@@ -27,6 +27,8 @@ import { PhysicsPaintProgramMonitor } from './PhysicsPaintProgramMonitor';
 import type { PhysicsPaintProgramMonitorProps } from './PhysicsPaintProgramMonitor';
 import { MemoizedPhysicsPaintStrokeSettingsDialog } from './PhysicsPaintStrokeSettingsDialog';
 import type { StrokeSettingsDialogBundle } from './strokeSettingsModel';
+import { clearScriptStrokeSelection, scriptSelectedStrokeIds } from './scriptStrokeEdition';
+import { shouldClearSelectionOnCanvasRegionPointerDown } from './scriptSelectionDeselect';
 
 interface PhysicsPaintCanvasStackViewProps {
   canvasKey: string;
@@ -364,6 +366,16 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
   // Document sound modal (and every other parent dialog) hides while the
   // shared gallery runs in kind 'audio' mode.
   const pickerOpen = Boolean(backgroundPicker?.open || referencePicker?.open || audioPicker?.open);
+  // 261025-d3r revision: a plain click on the canvas region's background —
+  // outside the canvas sheet and selection-scoped chrome — clears the
+  // Move/Select selection, so a canvas full of strokes is never a trap.
+  // Additive clicks keep the set (the overlay's additive-empty law).
+  const handleCanvasRegionPointerDown = (event: TargetedPointerEvent<HTMLElement>) => {
+    if (scriptSelectedStrokeIds.peek().size === 0) return;
+    const target = event.target as HTMLElement | null;
+    if (!shouldClearSelectionOnCanvasRegionPointerDown(event, target)) return;
+    clearScriptStrokeSelection();
+  };
   return (
     <main class="demo-shell">
       <section
@@ -375,7 +387,11 @@ export function PhysicsPaintStudioView(props: PhysicsPaintStudioViewProps) {
         <MemoizedPhysicsPaintTopBar {...topBar} />
         <PhysicsPaintToolRail {...toolRail} />
 
-        <section class="physics-paint-main physics-paint-canvas-region" aria-label="Physics Paint canvas">
+        <section
+          class="physics-paint-main physics-paint-canvas-region"
+          aria-label="Physics Paint canvas"
+          onPointerDown={handleCanvasRegionPointerDown}
+        >
           <MemoizedPhysicsPaintCanvasStack {...canvas} />
           {/* 49-04 (Task 2): the picker is an overlay INSIDE the canvas region —
               the engine canvas stays mounted underneath (D-01 lock). */}

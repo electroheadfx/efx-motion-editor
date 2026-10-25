@@ -4396,3 +4396,14 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
     expect(handler).not.toContain('activeModule.peek() === \'watercolor\')');
   });
 });
+
+// 261025-d3r revision: the dark canvas-region background is a deselect
+// target, so a canvas full of strokes is never a selection trap.
+describe('261025-d3r canvas-region deselect', () => {
+  it('clears the Move/Select selection on a plain background click outside the canvas', () => {
+    expect(studioView).toContain('onPointerDown={handleCanvasRegionPointerDown}');
+    expect(studioView).toContain('if (scriptSelectedStrokeIds.peek().size === 0) return;');
+    expect(studioView).toContain('shouldClearSelectionOnCanvasRegionPointerDown(event, target)');
+    expect(studioView).toContain('clearScriptStrokeSelection();');
+  });
+});
