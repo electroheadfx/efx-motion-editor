@@ -3528,6 +3528,23 @@ describe('261024-mz5 Studio transform handles surface', () => {
     expect(scriptStrokeOverlay).not.toContain('useSignal');
   });
 
+  it('points at a hittable stroke on hover and keeps handle cursors first (261025-d3r revision)', () => {
+    expect(scriptStrokeOverlay).toContain(
+      'const clickable = props.port.hitTestStroke(point, playFrame, size) !== null;',
+    );
+    expect(scriptStrokeOverlay).toContain(
+      "(event.currentTarget as HTMLElement).style.cursor = clickable ? 'pointer' : 'default';",
+    );
+    const handleCursorSite = scriptStrokeOverlay.indexOf(
+      '(event.currentTarget as HTMLElement).style.cursor = cursorForHandle(hovered.id);',
+    );
+    const strokeCursorSite = scriptStrokeOverlay.indexOf(
+      'const clickable = props.port.hitTestStroke(point, playFrame, size) !== null;',
+    );
+    expect(handleCursorSite).toBeGreaterThan(-1);
+    expect(strokeCursorSite).toBeGreaterThan(handleCursorSite);
+  });
+
   it('wires the brush adapter, the port and the engine transform core', () => {
     expect(brushScriptOverlay).toContain('onTransformStrokes={(mutationIds, transform) =>');
     expect(brushScriptOverlay).toContain('brushScriptEditionPort.transformStrokes(mutationIds, transform)');

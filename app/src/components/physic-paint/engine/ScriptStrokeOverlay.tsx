@@ -236,9 +236,14 @@ export function ScriptStrokeOverlay(props: {
       const hovered = selectionBox !== null && props.onTransformStrokes !== undefined
         ? hitTestScriptStrokeTransformHandle(point, selectionBox)
         : null;
-      (event.currentTarget as HTMLElement).style.cursor = hovered === null
-        ? 'default'
-        : cursorForHandle(hovered.id);
+      if (hovered !== null) {
+        (event.currentTarget as HTMLElement).style.cursor = cursorForHandle(hovered.id);
+        return;
+      }
+      // A hittable stroke is clickable right now — point at it. Empty canvas
+      // keeps the default arrow because a click there only clears.
+      const clickable = props.port.hitTestStroke(point, playFrame, size) !== null;
+      (event.currentTarget as HTMLElement).style.cursor = clickable ? 'pointer' : 'default';
       return;
     }
     if (gesture.pointerId !== event.pointerId) return;
