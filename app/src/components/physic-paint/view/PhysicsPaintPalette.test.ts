@@ -232,6 +232,38 @@ function paletteColors(tree: AnyVNode): string[] {
     .map((node) => (node as AnyVNode).props['aria-label'].slice(4));
 }
 
+function swatchNodes(tree: AnyVNode): AnyVNode[] {
+  return childrenOf(findByAria(tree, 'Color palette')).filter(
+    (node) => typeof (node as AnyVNode).props?.['aria-label'] === 'string' && (node as AnyVNode).props['aria-label'].startsWith('Use '),
+  ) as AnyVNode[];
+}
+
+/** 261025-co0: an event-like object for the palette grid's Delete/Backspace handler. */
+function paletteKeyEvent(
+  overrides: Partial<{
+    key: string;
+    repeat: boolean;
+    metaKey: boolean;
+    ctrlKey: boolean;
+    altKey: boolean;
+    shiftKey: boolean;
+    preventDefault: ReturnType<typeof vi.fn>;
+    stopPropagation: ReturnType<typeof vi.fn>;
+  }> = {},
+) {
+  return {
+    key: 'Delete',
+    repeat: false,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   runtime = new HookRuntime();
   componentFrames = new Map();
@@ -287,32 +319,219 @@ describe('native-approved Physics Paint palette behavior', () => {
     expect(colors[colors.length - 1]).toBe(recents[recents.length - 1]);
   });
 
-  it('gives every visible swatch a removal action that does not select color and persists favorite/recent/default deletion', async () => {
+  it('renders no removal control and gives every swatch a boolean aria-pressed', async () => {
     mocks.loadFavoriteColors.mockResolvedValue(['#abcdef']);
     mocks.loadRecentColors.mockResolvedValue(['#fedcba']);
     const props = baseProps();
     let tree = renderPanel(props);
     tree = await settleLoads(props);
 
-    const visible = paletteColors(tree);
-    for (const color of visible) expect(findByAria(tree, `Remove ${color} from palette`)).toBeDefined();
+    const labels = childrenOf(tree)
+      .map((node) => (node as AnyVNode).props?.['aria-label'])
+      .filter((label): label is string => typeof label === 'string');
+    expect(labels.some((label) => label.startsWith('Remove '))).toBe(false);
 
-    findByAria(tree, 'Remove #abcdef from palette').props.onClick();
+    const nodes = swatchNodes(tree);
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const node of nodes) {
+      expect(typeof node.props['aria-pressed']).toBe('boolean');
+      expect(node.props['aria-pressed']).toBe(false);
+    }
+  });
+
+  it('selects, applies, commits once, and focuses on a swatch click, then deselects on a second click', async () => {
+    mocks.loadFavoriteColors.mockResolvedValue(['#abcdef']);
+    const onColorChange = vi.fn();
+    const onColorCommit = vi.fn();
+    const props = baseProps({ onColorChange, onColorCommit });
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    const focus = vi.fn();
+    findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus } });
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(onColorChange).toHaveBeenCalledTimes(1);
+    expect(onColorChange).toHaveBeenLastCalledWith('#abcdef', 100);
+    expect(onColorCommit).toHaveBeenCalledTimes(1);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#abcdef', 100);
+
     tree = renderPanel(props);
-    expect(props.onColorChange).not.toHaveBeenCalled();
+    expect(findByAria(tree, 'Use #abcdef').props['aria-pressed']).toBe(true);
+    for (const node of swatchNodes(tree)) {
+      if (node.props['aria-label'] === 'Use #abcdef') continue;
+      expect(node.props['aria-pressed']).toBe(false);
+    }
+
+    findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+    expect(findByAria(tree, 'Use #abcdef').props['aria-pressed']).toBe(false);
+    expect(onColorCommit).toHaveBeenCalledTimes(2);
+    expect(onColorCommit).toHaveBeenLastCalledWith('#abcdef', 100);
+  });
+
+  it('does not rewrite the previously selected swatch when another swatch is clicked', async () => {
+    mocks.loadFavoriteColors.mockResolvedValue(['#abcdef']);
+    const props = baseProps();
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+    expect(findByAria(tree, 'Use #abcdef').props['aria-pressed']).toBe(true);
+
+    findByAria(tree, 'Use #103c65').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+
+    expect(mocks.saveFavoriteColors).not.toHaveBeenCalled();
+    expect(mocks.saveRecentColors).not.toHaveBeenCalled();
+    expect(mocks.saveHiddenPaletteColors).not.toHaveBeenCalled();
+    expect(paletteColors(tree)).toContain('#abcdef');
+    expect(findByAria(tree, 'Use #103c65').props['aria-pressed']).toBe(true);
+    expect(findByAria(tree, 'Use #abcdef').props['aria-pressed']).toBe(false);
+  });
+
+  it('rewrites the selected favorite in place on a committed color change', async () => {
+    mocks.loadFavoriteColors.mockResolvedValue(['#abcdef']);
+    const props = baseProps();
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+    expect(findByAria(tree, 'Use #abcdef').props['aria-pressed']).toBe(true);
+
+    findByAria(tree, 'Brush color hex value').props.onInput({ target: { value: '#22aa44' } });
+    tree = renderPanel(props);
+    findByAria(tree, 'Brush color hex value').props.onKeyDown({ key: 'Enter', currentTarget: { blur: vi.fn() } });
+    tree = renderPanel(props);
+
+    expect(mocks.saveFavoriteColors).toHaveBeenLastCalledWith(['#22aa44']);
+    expect(mocks.saveRecentColors).not.toHaveBeenCalled();
+    expect(paletteColors(tree)[0]).toBe('#22aa44');
+    expect(paletteColors(tree)).not.toContain('#abcdef');
+    expect(findByAria(tree, 'Use #22aa44').props['aria-pressed']).toBe(true);
+  });
+
+  it('hides a rewritten built-in default and adds the replacement as the newest favorite', async () => {
+    const props = baseProps();
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    findByAria(tree, 'Use #2d5be3').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+    expect(findByAria(tree, 'Use #2d5be3').props['aria-pressed']).toBe(true);
+
+    findByAria(tree, 'Brush color hex value').props.onInput({ target: { value: '#445566' } });
+    tree = renderPanel(props);
+    findByAria(tree, 'Brush color hex value').props.onKeyDown({ key: 'Enter', currentTarget: { blur: vi.fn() } });
+    tree = renderPanel(props);
+
+    expect(mocks.saveHiddenPaletteColors).toHaveBeenLastCalledWith(['#2d5be3']);
+    expect(mocks.saveFavoriteColors).toHaveBeenLastCalledWith(['#445566']);
+    expect(paletteColors(tree)).not.toContain('#2d5be3');
+    expect(paletteColors(tree)[0]).toBe('#445566');
+    expect(findByAria(tree, 'Use #445566').props['aria-pressed']).toBe(true);
+  });
+
+  it('never writes palette preferences on an unselected or identical commit', async () => {
+    mocks.loadFavoriteColors.mockResolvedValue(['#abcdef']);
+    const props = baseProps();
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    findByAria(tree, 'Brush color hex value').props.onInput({ target: { value: '#22aa44' } });
+    tree = renderPanel(props);
+    findByAria(tree, 'Brush color hex value').props.onKeyDown({ key: 'Enter', currentTarget: { blur: vi.fn() } });
+    tree = renderPanel(props);
+    expect(mocks.saveFavoriteColors).not.toHaveBeenCalled();
+    expect(mocks.saveRecentColors).not.toHaveBeenCalled();
+    expect(mocks.saveHiddenPaletteColors).not.toHaveBeenCalled();
+
+    findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+    findByAria(tree, 'Brush color hex value').props.onKeyDown({ key: 'Enter', currentTarget: { blur: vi.fn() } });
+    tree = renderPanel(props);
+    expect(mocks.saveFavoriteColors).not.toHaveBeenCalled();
+    expect(mocks.saveRecentColors).not.toHaveBeenCalled();
+    expect(mocks.saveHiddenPaletteColors).not.toHaveBeenCalled();
+  });
+
+  it('deletes the selected favorite, recent, or default with Delete/Backspace and contains the key', async () => {
+    mocks.loadFavoriteColors.mockResolvedValue(['#abcdef']);
+    mocks.loadRecentColors.mockResolvedValue(['#fedcba']);
+    const props = baseProps();
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+    let event = paletteKeyEvent();
+    findByAria(tree, 'Color palette').props.onKeyDown(event);
+    tree = renderPanel(props);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
     expect(mocks.saveFavoriteColors).toHaveBeenLastCalledWith([]);
     expect(paletteColors(tree)).not.toContain('#abcdef');
+    expect(swatchNodes(tree).every((node) => node.props['aria-pressed'] === false)).toBe(true);
 
-    findByAria(tree, 'Remove #fedcba from palette').props.onClick();
+    findByAria(tree, 'Use #fedcba').props.onClick({ currentTarget: { focus: vi.fn() } });
     tree = renderPanel(props);
+    event = paletteKeyEvent({ key: 'Backspace' });
+    findByAria(tree, 'Color palette').props.onKeyDown(event);
+    tree = renderPanel(props);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
     expect(mocks.saveRecentColors).toHaveBeenLastCalledWith([]);
     expect(paletteColors(tree)).not.toContain('#fedcba');
 
-    findByAria(tree, 'Remove #103c65 from palette').props.onClick();
+    findByAria(tree, 'Use #103c65').props.onClick({ currentTarget: { focus: vi.fn() } });
     tree = renderPanel(props);
+    event = paletteKeyEvent();
+    findByAria(tree, 'Color palette').props.onKeyDown(event);
+    tree = renderPanel(props);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
     expect(mocks.saveHiddenPaletteColors).toHaveBeenLastCalledWith(['#103c65']);
     expect(paletteColors(tree)).not.toContain('#103c65');
-    expect(props.onColorChange).not.toHaveBeenCalled();
+    expect(swatchNodes(tree).every((node) => node.props['aria-pressed'] === false)).toBe(true);
+  });
+
+  it('contains Delete/Backspace without mutating on no selection, key repeat, or modifiers', async () => {
+    mocks.loadFavoriteColors.mockResolvedValue(['#abcdef']);
+    const props = baseProps();
+    let tree = renderPanel(props);
+    tree = await settleLoads(props);
+
+    // No selection: the key is contained but nothing is saved.
+    let event = paletteKeyEvent();
+    findByAria(tree, 'Color palette').props.onKeyDown(event);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(mocks.saveFavoriteColors).not.toHaveBeenCalled();
+    expect(mocks.saveRecentColors).not.toHaveBeenCalled();
+    expect(mocks.saveHiddenPaletteColors).not.toHaveBeenCalled();
+
+    // Selected + key repeat: contained, still nothing saved.
+    findByAria(tree, 'Use #abcdef').props.onClick({ currentTarget: { focus: vi.fn() } });
+    tree = renderPanel(props);
+    event = paletteKeyEvent({ repeat: true });
+    findByAria(tree, 'Color palette').props.onKeyDown(event);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(mocks.saveFavoriteColors).not.toHaveBeenCalled();
+
+    // Modifier combinations and non-delete keys stay available to the global
+    // and Studio handlers, so neither spy fires and nothing is saved.
+    event = paletteKeyEvent({ metaKey: true });
+    findByAria(tree, 'Color palette').props.onKeyDown(event);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+
+    event = paletteKeyEvent({ key: 'ArrowLeft' });
+    findByAria(tree, 'Color palette').props.onKeyDown(event);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.stopPropagation).not.toHaveBeenCalled();
+    expect(mocks.saveFavoriteColors).not.toHaveBeenCalled();
   });
 
   it('emits ONE color commit per gesture (hex Enter, swatch click, box release), never on live input', async () => {
@@ -337,7 +556,7 @@ describe('native-approved Physics Paint palette behavior', () => {
     expect(onColorCommit).toHaveBeenCalledTimes(1);
     expect(onColorCommit).toHaveBeenLastCalledWith('#22aa44', 100);
 
-    findByAria(tree, 'Use #2d5be3').props.onClick();
+    findByAria(tree, 'Use #2d5be3').props.onClick({ currentTarget: { focus: vi.fn() } });
     expect(onColorCommit).toHaveBeenCalledTimes(2);
     expect(onColorCommit).toHaveBeenLastCalledWith('#2d5be3', 100);
 
