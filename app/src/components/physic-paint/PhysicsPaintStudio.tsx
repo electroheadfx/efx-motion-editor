@@ -186,6 +186,8 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
+import { clearFrameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
+import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
@@ -1660,6 +1662,10 @@ export function PhysicsPaintStudio() {
     // baseline with the realm — a dead session must never be read as dirty.
     studioScriptSnapshot.reset();
   }, [studioScriptSnapshot]);
+  // quick-261025-awl: a closed Studio cannot leave a stale ownership lock.
+  useEffect(() => () => {
+    clearFrameScriptOwner();
+  }, []);
   // quick-261003-vos: Alt = temporary erase — ONE module signal plus gated
   // window listeners (physicsPaintTemporaryErase). The deps live behind a
   // render-body ref (canvasEngineReadyImplRef precedent) so the
@@ -1715,6 +1721,22 @@ export function PhysicsPaintStudio() {
     () => mountPhysicsPaintTemporaryErase({ window, document }, () => temporaryEraseDepsRef.current),
     [],
   );
+  // quick-261025-awl (D-01/D-02): the ONE explicit-selection ownership funnel.
+  // Resolves the frame's single script owner from both session stores (plus an
+  // optional live Brush ledger sample) and switches the active module only for
+  // exactly one owner; both/none leave it untouched. Always republishes the
+  // lock signal so the Studio top bar never shows a stale owner. Declared here
+  // (before every seam) so later closures reference it without a TDZ hazard.
+  const applyFrameModuleState = useCallback(
+    (frame: number, liveBrush?: LiveBrushScriptSample | null) => {
+      const owner = resolveFrameScriptOwner(frame, liveBrush ?? null);
+      if (owner === 'brush' || owner === 'watercolor') {
+        if (activeModule.peek() !== owner) activeModule.value = owner;
+      }
+      setFrameScriptOwner(owner);
+    },
+    [],
+  );
   // 261023-g4p: the brush script-edition port reads the live Studio seams at
   // event time through this render-body ref (temporaryEraseDepsRef precedent)
   // — never the first render's closures. The port gates every op on the
@@ -1731,6 +1753,11 @@ export function PhysicsPaintStudio() {
     getPlayFrame: () => launchContextRef.current?.startFrame ?? 0,
     isActive: () => activeModule.peek() === 'brush' && settings.tool === 'move',
     isLocked: () => isPhysicalMutationLocked(),
+    // quick-261025-awl: a Move/Select delete can remove the last stroke and
+    // therefore change the frame's owner.
+    onScriptChanged: (frame) => {
+      applyFrameModuleState(frame);
+    },
   };
   // Armed-guarded re-apply: engine re-create or a rail tool switch while an
   // arm is held must land the EFFECTIVE tool (force bypasses the last-applied
@@ -3774,9 +3801,12 @@ export function PhysicsPaintStudio() {
       // navigation), so this is the ONE explicit drop site outside prune /
       // launch teardown. Water color owns its own record store.
       if (activeModule.peek() === 'brush') clearBrushScriptFrame(currentFrame);
+      // quick-261025-awl (D-02/D-03): the explicit clear can empty the frame —
+      // refresh OUTSIDE the module gate so the owner lock can never go stale.
+      applyFrameModuleState(currentFrame);
       rotoScript.notifySourceRevision();
     }
-  }, [currentFrame, engine, rotoScript]);
+  }, [applyFrameModuleState, currentFrame, engine, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
@@ -3834,6 +3864,10 @@ export function PhysicsPaintStudio() {
           engine ? engine.getFramePaintSettings() ?? engine.getPaintRenderSettings() : null,
         );
       }
+      // quick-261025-awl (D-02): an EXPLICIT selection switches the module
+      // BEFORE hydration reads activeModule, so the destination's single owner
+      // governs the attach. Playback and mid-drag scrubs never switch.
+      if (!wasPlaying && !rotoCachedPlayback.isActive) applyFrameModuleState(frame);
       rotoPersistence.snapshotLivePixels(currentFrame);
       recordPhysicsPaintPerformance({ stage: 'nav.snapshotLivePixels', category: 'sync-cpu', durationMs: performance.now() - snapshotStartedAtMs, timestamp: performance.now(), sourceFrame: frame });
       const flushPromise = rotoPersistence.flushLivePixels(currentFrame);
@@ -3937,7 +3971,7 @@ export function PhysicsPaintStudio() {
       rotoCachedPlayback.seek(frame);
     }
     return true;
-  }, [bridgeMode, currentFrame, engine, findCachedRotoDisplayFrame, hydrateBrushScriptFrame, launchContext, loadCachedRotoReferenceFrame, loadReferenceObserved, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
+  }, [applyFrameModuleState, bridgeMode, currentFrame, engine, findCachedRotoDisplayFrame, hydrateBrushScriptFrame, launchContext, loadCachedRotoReferenceFrame, loadReferenceObserved, rotoCachedPlayback, rotoNavigationGeneration, rotoPersistence, rotoKeyRecords, scheduleRotoStartFramePropagation, setCachedRotoReferenceUrl, selectedKeyId]);
   // 47-01 (TML-03): the canvas reference image is track-scoped. The document's
   // active track can change with no runtime content mutation (row click,
   // addTrack, duplicateTrack) and its visibility can flip through
@@ -4013,6 +4047,10 @@ export function PhysicsPaintStudio() {
           studioScriptSnapshotIdentityRef.current = incomingIdentity;
           studioScriptSnapshot.bind(incomingIdentity);
           void studioScriptSnapshot.restore().then((restored) => {
+            // quick-261025-awl (D-02): a track switch rebuilds the frame's
+            // stores — republish the owner BEFORE the mutation-clock early
+            // return so switching to a script-less track unlocks.
+            applyFrameModuleState(launchContextRef.current?.startFrame ?? currentFrame);
             if (restored.maxRestoredMutationId <= 0) return;
             const nextMutationId = Math.max(
               studioScriptSnapshotReservedNextMutationIdRef.current,
@@ -4067,7 +4105,7 @@ export function PhysicsPaintStudio() {
     // The lane's cached-frame fills are track-scoped too: the synchronous
     // guard above useRotoTimelineModel owns latestRotoFramesRef on the switch
     // render (47 close-out UAT round 9 — no one-render stale paint).
-  }, [efxPaintVersion.value, currentFrame, loadReferenceObserved, setCachedRotoReferenceUrl]);
+  }, [applyFrameModuleState, efxPaintVersion.value, currentFrame, loadReferenceObserved, setCachedRotoReferenceUrl]);
   rotoNavigation.configureRuntimePort({ navigateToSyncedFrame: navigateToSyncedPhysicalFrame });
   rotoNavigation.configureDisplayPort({
     restoreFrame: (effect) => {
@@ -4121,6 +4159,8 @@ export function PhysicsPaintStudio() {
       // 261023-h9v: a cleared canvas and a retained script cannot both be
       // true — an explicit display clear drops the frame's script.
       clearBrushScriptFrame(frame);
+      // quick-261025-awl (D-02/D-03): the display clear changed the owner.
+      applyFrameModuleState(frame);
     },
     navigate: navigateToSyncedPhysicalFrame,
     clearCachedReferenceFrame: rotoPersistence.removeCachedFrame,
@@ -4203,6 +4243,9 @@ export function PhysicsPaintStudio() {
           return false;
         }
         rotoScript.notifySourceRevision();
+        // quick-261025-awl (D-02/D-03): an aquarelle undo/redo can add or
+        // remove the frame's last stroke — republish the captured frame.
+        applyFrameModuleState(playFrame);
         return true;
       },
     },
@@ -4323,6 +4366,9 @@ export function PhysicsPaintStudio() {
         // guess a key — a wrong key would mix projects or layers.
         studioScriptSnapshotIdentityRef.current = null;
         studioScriptSnapshot.bind(null);
+        // quick-261025-awl (D-02): launch settle with no durable identity —
+        // still publish the start frame's owner.
+        applyFrameModuleState(context.startFrame);
         return;
       }
       const identity: StudioScriptSnapshotIdentity = { projectId, layerId, trackId };
@@ -4339,6 +4385,9 @@ export function PhysicsPaintStudio() {
         // engine-ready seam re-applies this reservation.
         engineRef.current?.reserveMutationClock(nextMutationId);
       }
+      // quick-261025-awl (D-02): the Studio launch settle publishes the start
+      // frame's owner so the first render already shows the right module.
+      applyFrameModuleState(context.startFrame);
     },
   });
   usePhysicsPaintWorkflowIntegration({
@@ -5166,6 +5215,9 @@ export function PhysicsPaintStudio() {
     const removedBrush = purgeBrushScriptFrame(frame);
     const total = removedWatercolor + (removedBrush ? 1 : 0);
     if (total === 0) return false;
+    // quick-261025-awl (D-02/D-03): only a purge of the CURRENT frame can move
+    // the owner; purging another frame must never switch the active module.
+    if (frame === (launchContextRef.current?.startFrame ?? -1)) applyFrameModuleState(frame);
     void studioScriptSnapshot.persistAfterPurge();
     return true;
   }
@@ -5176,6 +5228,9 @@ export function PhysicsPaintStudio() {
       if (purgeBrushScriptFrame(frame)) removed += 1;
     }
     if (removed === 0) return false;
+    // quick-261025-awl: refresh only when the rail purge touched the live frame.
+    const liveFrame = launchContextRef.current?.startFrame ?? -1;
+    if (frames.includes(liveFrame)) applyFrameModuleState(liveFrame);
     void studioScriptSnapshot.persistAfterPurge();
     return true;
   }
@@ -5183,6 +5238,9 @@ export function PhysicsPaintStudio() {
     const removedWatercolor = purgeAllAquarelleKeyScripts();
     const removedBrush = purgeAllBrushScriptFrames(launchContextRef.current?.startFrame ?? null);
     if (removedWatercolor + removedBrush === 0) return false;
+    // quick-261025-awl: clear-all touches every frame, including the live one.
+    const liveFrame = launchContextRef.current?.startFrame;
+    if (liveFrame !== undefined) applyFrameModuleState(liveFrame);
     void studioScriptSnapshot.persistAfterPurge();
     return true;
   }
@@ -5400,6 +5458,16 @@ export function PhysicsPaintStudio() {
     if (activeModule.peek() !== 'watercolor') {
       const scriptFrame = launchContextRef.current?.startFrame ?? 0;
       applyCompletedBrushMutation(kind, scriptFrame, mutationEngine);
+      // quick-261025-awl (D-02/D-03): paints/erases/undo/redo can change the
+      // owner. 'clear' is EXCLUDED — engine.clear() fires on every navigation
+      // after the outgoing frame was flushed, and refreshing there would
+      // overwrite the destination's owner with the outgoing frame's.
+      if (kind !== 'clear') {
+        applyFrameModuleState(scriptFrame, {
+          active: true,
+          strokeCount: mutationEngine.getStrokeCount(),
+        });
+      }
     }
     rotoMoveHistory.observePaintMutation(mutationId, kind);
     const acceptedTarget = rotoScript.getAcceptedTarget(mutationEngine, mutationId);
@@ -5611,10 +5679,13 @@ export function PhysicsPaintStudio() {
       // The sheet now holds paint that no queue can see until it is captured;
       // the close/save flush gate reads this flag.
       aquarelleSheetHasPaintRef.current = true;
+      // quick-261025-awl (D-02/D-03): the first recorded stroke makes Water
+      // color the frame's owner — republish so the Brush slot locks.
+      applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }
-  }, [recordAquarelleStroke, canvasWidth, canvasHeight]);
+  }, [applyFrameModuleState, recordAquarelleStroke, canvasWidth, canvasHeight]);
   const handleAquarelleStrokeSettled = useCallback((stroke: AquarelleStroke, ticks: number) => {
     const mutationId = aquarelleStrokeMutationIdsRef.current.get(stroke);
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);
@@ -5650,6 +5721,9 @@ export function PhysicsPaintStudio() {
           rotoMoveHistory.recordAquarelleScriptEdit(editId);
           setLastError(null);
           clearOwnedScriptApplyRefusal();
+          // quick-261025-awl (D-02/D-03): deleting the last stroke clears the
+          // owner and unlocks both modules.
+          applyFrameModuleState(playFrame);
           return;
         }
         // Failed re-bake: put the pre-delete script back exactly so the next
@@ -5672,6 +5746,7 @@ export function PhysicsPaintStudio() {
       }
     })();
   }, [
+    applyFrameModuleState,
     isPhysicalMutationLocked,
     rotoScript,
     rotoTimelineModel,

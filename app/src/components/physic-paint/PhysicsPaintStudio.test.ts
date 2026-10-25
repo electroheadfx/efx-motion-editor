@@ -4144,3 +4144,150 @@ describe('261024-vga watercolor exact stack placement wiring', () => {
     expect(studio.slice(memoStart, memoDepEnd)).toContain('handleAquarellePlaceStroke');
   });
 });
+
+// ============================================================
+//  quick-261025-awl Task 2 — explicit-selection module ownership.
+//
+//  ONE stable funnel resolves the frame's script owner; every
+//  explicit-selection / ownership-changing seam republishes it.
+//  Playback and mid-drag scrubs never switch, and 'clear' never
+//  overwrites the destination owner.
+// ============================================================
+describe('quick-261025-awl explicit-selection module ownership', () => {
+  it('declares ONE stable applyFrameModuleState callback with the owner rule', () => {
+    expect(studio).toContain('const applyFrameModuleState = useCallback(');
+    const start = studio.indexOf('const applyFrameModuleState = useCallback(');
+    const end = studio.indexOf('// 261023-g4p: the brush script-edition port', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const funnel = studio.slice(start, end);
+    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, liveBrush ?? null);');
+    expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
+    expect(funnel).toContain('if (activeModule.peek() !== owner) activeModule.value = owner;');
+    expect(funnel).toContain('setFrameScriptOwner(owner);');
+    expect(funnel).toContain('    [],');
+  });
+
+  it('gates the navigation funnel between the outgoing flush and the pixel snapshot', () => {
+    const navigationStart = studio.indexOf('const navigateToSyncedPhysicalFrame = useCallback(');
+    const navigationEnd = studio.indexOf('rotoNavigation.configureRuntimePort(', navigationStart);
+    const navigation = studio.slice(navigationStart, navigationEnd);
+    expect(navigationStart).toBeGreaterThan(-1);
+
+    const funnel = 'if (!wasPlaying && !rotoCachedPlayback.isActive) applyFrameModuleState(frame);';
+    const funnelIndex = navigation.indexOf(funnel);
+    const flushIndex = navigation.indexOf('flushBrushScriptFrame(');
+    const snapshotIndex = navigation.indexOf('rotoPersistence.snapshotLivePixels(currentFrame);');
+    expect(funnelIndex).toBeGreaterThan(-1);
+    expect(flushIndex).toBeGreaterThan(-1);
+    expect(snapshotIndex).toBeGreaterThan(-1);
+    expect(funnelIndex).toBeGreaterThan(flushIndex);
+    expect(funnelIndex).toBeLessThan(snapshotIndex);
+    // The destination module governs hydration (read after the funnel).
+    expect(funnelIndex).toBeLessThan(navigation.indexOf('const hydrationPlan = planBrushScriptHydration(hydrationRequest);'));
+  });
+
+  it('publishes the owner on BOTH launch-restore exits, after the restore', () => {
+    const restoreStart = studio.indexOf('restoreStudioScriptSnapshot: async (context, document) => {');
+    const restoreEnd = studio.indexOf('usePhysicsPaintWorkflowIntegration({', restoreStart);
+    const restore = studio.slice(restoreStart, restoreEnd);
+    expect(restoreStart).toBeGreaterThan(-1);
+
+    expect(countOccurrences(restore, 'applyFrameModuleState(context.startFrame);')).toBe(2);
+    const restoreAwait = restore.indexOf('const restored = await studioScriptSnapshot.restore();');
+    expect(restoreAwait).toBeGreaterThan(-1);
+    expect(restore.indexOf('applyFrameModuleState(context.startFrame);', restoreAwait)).toBeGreaterThan(restoreAwait);
+  });
+
+  it('republishes on a cross-track switch before the mutation-clock early return', () => {
+    const switchStart = studio.indexOf('void studioScriptSnapshot.restore().then((restored) => {');
+    const switchEnd = studio.indexOf('} else {', switchStart);
+    const switchBlock = studio.slice(switchStart, switchEnd);
+    expect(switchStart).toBeGreaterThan(-1);
+    expect(switchBlock).toContain('applyFrameModuleState(launchContextRef.current?.startFrame ?? currentFrame);');
+    expect(switchBlock.indexOf('applyFrameModuleState(launchContextRef.current?.startFrame ?? currentFrame);'))
+      .toBeLessThan(switchBlock.indexOf('if (restored.maxRestoredMutationId <= 0) return;'));
+  });
+
+  it('refreshes after a non-clear brush completion and never on clear', () => {
+    const completionStart = studio.indexOf('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {');
+    const blockStart = studio.indexOf("if (activeModule.peek() !== 'watercolor') {", completionStart);
+    const blockEnd = studio.indexOf('rotoMoveHistory.observePaintMutation(', blockStart);
+    const block = studio.slice(blockStart, blockEnd);
+    expect(blockStart).toBeGreaterThan(-1);
+    expect(block).toContain("if (kind !== 'clear') {");
+    expect(block).toContain('applyFrameModuleState(scriptFrame, {');
+    expect(block).toContain('strokeCount: mutationEngine.getStrokeCount(),');
+    expect(block.indexOf("if (kind !== 'clear') {"))
+      .toBeLessThan(block.indexOf('applyFrameModuleState(scriptFrame, {'));
+  });
+
+  it('republishes on the aquarelle stroke-end, delete and history seams', () => {
+    const strokeEndStart = studio.indexOf('const handleAquarelleStrokeEnd = useCallback(');
+    const strokeEndEnd = studio.indexOf('const handleAquarelleStrokeSettled = useCallback(', strokeEndStart);
+    expect(studio.slice(strokeEndStart, strokeEndEnd))
+      .toContain('applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);');
+
+    const deleteStart = studio.indexOf('const handleAquarelleDeleteStrokes = useCallback(');
+    const deleteEnd = studio.indexOf('const handleAquarelleMoveStrokes', deleteStart);
+    const deleteHandler = studio.slice(deleteStart, deleteEnd);
+    const refreshIndex = deleteHandler.indexOf('applyFrameModuleState(playFrame);');
+    const clearRefusalIndex = deleteHandler.indexOf('clearOwnedScriptApplyRefusal();');
+    const nextReturnIndex = deleteHandler.indexOf('return;', refreshIndex);
+    expect(refreshIndex).toBeGreaterThan(clearRefusalIndex);
+    expect(nextReturnIndex).toBeGreaterThan(refreshIndex);
+
+    const replayStart = studio.indexOf('replay: async (editId, direction) => {');
+    const replayEnd = studio.indexOf('return true;', replayStart);
+    const replay = studio.slice(replayStart, replayEnd);
+    expect(replay).toContain('rotoScript.notifySourceRevision();');
+    expect(replay.indexOf('applyFrameModuleState(playFrame);'))
+      .toBeGreaterThan(replay.indexOf('rotoScript.notifySourceRevision();'));
+  });
+
+  it('republishes on clearActiveSource, clearCanvas and every Memory purge seam', () => {
+    const clearSourceStart = studio.indexOf('const clearActiveSource = useCallback(');
+    const clearSourceEnd = studio.indexOf('const navigateToSyncedPhysicalFrame', clearSourceStart);
+    const clearSource = studio.slice(clearSourceStart, clearSourceEnd);
+    expect(clearSource).toContain('clearBrushScriptFrame(currentFrame);');
+    expect(clearSource).toContain('applyFrameModuleState(currentFrame);');
+
+    const clearCanvasStart = studio.indexOf('clearCanvas: (frame) => {');
+    const clearCanvasEnd = studio.indexOf('navigate: navigateToSyncedPhysicalFrame', clearCanvasStart);
+    const clearCanvas = studio.slice(clearCanvasStart, clearCanvasEnd);
+    expect(clearCanvas).toContain('clearBrushScriptFrame(frame);');
+    expect(clearCanvas).toContain('applyFrameModuleState(frame);');
+
+    const purgeStart = studio.indexOf('function purgeMemoryScriptFrame(frame: number): boolean {');
+    const railStart = studio.indexOf('function purgeMemoryRailScripts(', purgeStart);
+    const clearStart = studio.indexOf('function clearMemoryRailScripts(', railStart);
+    const clearEnd = studio.indexOf('const handleRightPanelColorCommit', clearStart);
+    const purgeFrame = studio.slice(purgeStart, railStart);
+    const purgeRail = studio.slice(railStart, clearStart);
+    const purgeClear = studio.slice(clearStart, clearEnd);
+    expect(purgeStart).toBeGreaterThan(-1);
+
+    expect(purgeFrame).toContain('frame === (launchContextRef.current?.startFrame ?? -1)');
+    expect(purgeFrame).toContain('applyFrameModuleState(frame);');
+    expect(purgeRail).toContain('frames.includes(liveFrame)');
+    expect(purgeRail).toContain('applyFrameModuleState(liveFrame);');
+    expect(purgeClear).toContain('const liveFrame = launchContextRef.current?.startFrame;');
+    expect(purgeClear).toContain('applyFrameModuleState(liveFrame);');
+  });
+
+  it('wires the brush port delete callback and clears the lock on unmount', () => {
+    expect(studio).toContain('onScriptChanged: (frame) => {');
+    expect(studio).toContain('applyFrameModuleState(frame);');
+    expect(studio).toContain('clearFrameScriptOwner();');
+    const teardownStart = studio.indexOf('useEffect(() => () => {\n    clearFrameScriptOwner();');
+    expect(teardownStart).toBeGreaterThan(-1);
+
+    // ONE notify site in the port, inside deleteBrushScriptStrokes only.
+    expect(brushScriptEditionPortSource).toContain('resolved.context.onScriptChanged?.(resolved.frame);');
+    expect(countOccurrences(brushScriptEditionPortSource, 'onScriptChanged?.(')).toBe(1);
+    const deleteStart = brushScriptEditionPortSource.indexOf('export function deleteBrushScriptStrokes(');
+    const deleteEnd = brushScriptEditionPortSource.indexOf('/** Single-stroke wrapper', deleteStart);
+    expect(brushScriptEditionPortSource.slice(deleteStart, deleteEnd))
+      .toContain('resolved.context.onScriptChanged?.(resolved.frame);');
+  });
+});

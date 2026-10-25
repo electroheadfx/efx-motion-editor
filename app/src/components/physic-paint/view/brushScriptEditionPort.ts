@@ -107,6 +107,12 @@ export interface BrushScriptEditionContext {
   isActive(): boolean;
   /** The physical-mutation lock — every edit refuses while it is held. */
   isLocked(): boolean;
+  /**
+   * quick-261025-awl: fired after an accepted edit that can change the frame's
+   * script ownership. Only the delete paths call it — a delete can remove the
+   * last stroke. Move/transform/appearance/step/place never notify.
+   */
+  onScriptChanged?(frame: number): void;
 }
 
 let brushScriptEditionContext: BrushScriptEditionContext | null = null;
@@ -245,6 +251,9 @@ export function deleteBrushScriptStrokes(mutationIds: readonly number[]): boolea
     resolved.engine.getStrokes(),
     resolvePaintSettings(resolved.engine),
   );
+  // quick-261025-awl: a delete may have removed the frame's last stroke —
+  // republish the owner so the Studio lock and Raster availability stay live.
+  resolved.context.onScriptChanged?.(resolved.frame);
   const selection = scriptSelectedStrokeIds.peek();
   if (selection.size > 0) {
     const requested = new Set(mutationIds);

@@ -115,13 +115,19 @@ function createFakeEngine(overrides: Record<string, unknown> = {}) {
 
 function configure(
   engine: ReturnType<typeof createFakeEngine>,
-  options: { active?: boolean; locked?: boolean; frame?: number } = {},
+  options: {
+    active?: boolean;
+    locked?: boolean;
+    frame?: number;
+    onScriptChanged?: (frame: number) => void;
+  } = {},
 ): void {
   configureBrushScriptEdition({
     getEngine: () => engine,
     getPlayFrame: () => options.frame ?? 3,
     isActive: () => options.active ?? true,
     isLocked: () => options.locked ?? false,
+    ...(options.onScriptChanged ? { onScriptChanged: options.onScriptChanged } : {}),
   });
 }
 
@@ -670,5 +676,49 @@ describe('261024-vga placeBrushScriptStroke', () => {
       isLocked: () => false,
     });
     expect(placeBrushScriptStroke(7, 1)).toBe(false);
+  });
+});
+
+// ============================================================
+//  quick-261025-awl Task 2 — ownership refresh seam.
+//
+//  A Move/Select delete is the one port edit that can remove the
+//  frame's last stroke, so it notifies the Studio ownership funnel.
+//  Every other edit path stays silent.
+// ============================================================
+describe('quick-261025-awl ownership refresh on an accepted delete', () => {
+  it('notifies once with the edited frame after an accepted delete', () => {
+    const onScriptChanged = vi.fn();
+    const engine = createFakeEngine({ getStrokes: vi.fn(() => []) });
+    configure(engine, { frame: 5, onScriptChanged });
+
+    expect(deleteBrushScriptStrokes([7])).toBe(true);
+
+    expect(onScriptChanged).toHaveBeenCalledTimes(1);
+    expect(onScriptChanged).toHaveBeenCalledWith(5);
+    expect(engine.getStrokes).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not notify for a refused delete, a move, or a step', () => {
+    const onScriptChanged = vi.fn();
+    const refused = createFakeEngine({ deleteStrokes: vi.fn(() => 0) });
+    configure(refused, { frame: 5, onScriptChanged });
+    expect(deleteBrushScriptStrokes([7])).toBe(false);
+
+    const engine = createFakeEngine();
+    configure(engine, { frame: 5, onScriptChanged });
+    expect(moveBrushScriptStrokes([7], 10, 5)).toBe(true);
+    expect(stepBrushScriptStroke(7, 'forward')).toBe(true);
+
+    expect(onScriptChanged).not.toHaveBeenCalled();
+  });
+
+  it('does not notify from a locked context', () => {
+    const onScriptChanged = vi.fn();
+    configure(createFakeEngine(), { frame: 5, locked: true, onScriptChanged });
+
+    expect(deleteBrushScriptStrokes([7])).toBe(false);
+
+    expect(onScriptChanged).not.toHaveBeenCalled();
   });
 });
