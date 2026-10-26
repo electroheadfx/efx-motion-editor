@@ -220,13 +220,21 @@ None — plan executed exactly as written.
 - **Diagnostic:** the report now carries `cellKeyId`, `cellInsideRail`, `store.keyId`, and per store frame `keyId`/`liveKeyId`/`pixelOnly`.
 - **Pins:** codec v2 round-trip + v1 compatibility; controller v2 key-mismatch drop, legacy rail-frame drop and legacy ordinary-key keep; store key-provider stamping and decoded-identity restore.
 
+**Follow-up 5 (2026-10-26, fifth native pass): a rail frame resolves as a REAL key.** The remaining phantoms sat on rail-owned frames: the physical cell projection resolves a real key BEFORE Loop Clip ranges (D-26), and a rail bakes INTO key records, so `currentCell.kind === 'real'` was true on every baked key and the cell-kind gate never saw the rail. The replaced key's retained script therefore kept `frameScriptOwner = 'brush'` and Move opened with phantom handles; a move then rebaked from that phantom script and erased the baked pixels.
+
+- **Fix (Move gate):** `moveAvailable` now also requires the current frame to lie OUTSIDE every Loop Clip range (Play Script / Motion / Static / Reveal), via the pure `isRotoLoopRailFrame(ranges, frame)` in `view/frameScriptOwnership.ts`, reading the timeline model's `loopResolutionContext`.
+- **Fix (owner funnel):** `applyFrameModuleState` treats rail frames as pixel-only by law: it purges the frame's retained brush script (`purgeBrushScriptFrame`, so a frame-leave flush and a later hydration both refuse it) and never publishes an owner. The frame-change effect purges on arrival to a rail frame too.
+- **Diagnostic:** every owner resolve now writes `/tmp/efx-move-provenance.json` in DEV (no Move click needed); build stamp is `quick-261026-odd-diag-3-rail`.
+- **Pins:** `frameScriptOwnership.test.ts` rail-interval boundaries (inclusive start, half-open end, gaps, no ranges); the two Studio source pins updated to the new gate and funnel shapes.
+- **Test evidence:** full `vitest run` green and `tsc --noEmit` clean.
+
 ## User Setup Required
 
 None — no external service configuration or dependency was added.
 
 ## Native UAT (user-driven — executor never started the dev server)
 
-**Status: pending** — restart the app (fresh process) so the restore + save guide filters run. If a phantom handle remains, click Move once: the app writes `/tmp/efx-move-provenance.json` (`build` must read `quick-261026-odd-diag-1`); the report names each listed group's engine/store/registry provenance.
+**Status: pending** — reopen the Studio so the new gate + purge code loads. The app writes `/tmp/efx-build-check.json` at engine-ready and `/tmp/efx-move-provenance.json` on every owner resolve; both must read `quick-261026-odd-diag-3-rail` before any result is trusted. The report names `cellInsideRail`, `cellKeyId`, and each group's engine/store/registry provenance.
 
 | # | Action | Expected | Status |
 |---|--------|----------|--------|
