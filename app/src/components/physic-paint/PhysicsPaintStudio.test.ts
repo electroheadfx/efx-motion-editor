@@ -2964,7 +2964,7 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(watercolorRail).toContain('const selectActive = aquarelleSelectMode.value || temporaryMove.value;');
     // Select/Move owns the active state: the paint tool is deselected.
     expect(watercolorRail).toContain('const isActive = !selectActive && active === id;');
-    expect(watercolorRail).toContain('aquarelleLiveStrokeCount.value === 0');
+    expect(watercolorRail).toContain('disabled={disabled || !selectAvailable.value}');
     // Better hover text: the shortcut, the drag, the Backspace delete and the
     // 261022-ujp Space step live on it.
     expect(watercolorRail).toContain('Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward');
@@ -2974,7 +2974,7 @@ describe('261022-pim watercolor stroke select surface', () => {
 
   it('greys Move and makes Cmd inert when there is no live script (both modes)', () => {
     expect(studio).toContain("isMoveAvailable: () => (activeModule.peek() === 'watercolor'");
-    expect(studio).toContain('? aquarelleLiveStrokeCount.peek() > 0');
+    expect(studio).toContain('? watercolorMoveAvailable.peek()');
     expect(studio).toContain(': moveAvailable.peek()),');
     // Deleting the last selectable stroke leaves select mode.
     const selectionSource = readFileSync(fileURLToPath(new URL('./view/aquarelleStrokeSelection.ts', import.meta.url)), 'utf8');
@@ -2995,19 +2995,19 @@ describe('261022-pim watercolor stroke select surface', () => {
     // A derived cell drops any stale capture and releases the owner.
     expect(studio).toContain('dropNonKeyCellBrushScript(currentFrame);');
     expect(studio).toContain('clearFrameScriptOwner();');
-    // quick-261026-odd: a Play Script / Motion / Static bake purges the baked
-    // span's scripts so no phantom handles survive over the new pixels.
-    expect(studio).toContain("accepted.operationKind === 'play-script'");
-    expect(studio).toContain('purgeAquarelleFrameScript(bakedFrame);');
-    // The purge is durable: the snapshot's retained union drops the same
-    // frames for the bake, Reveal and the one-time migration.
-    expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(bakedFrames);');
-    expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(revealFrames);');
-    // The one-time rail cleanup runs once per project/layer/track, and its
-    // durable marker rides the snapshot (never a webview-local marker).
-    expect(studio).toContain('if (!studioScriptSnapshot.isRailCleanupDone()) {');
-    expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(railFrames);');
-    expect(studio).toContain('studioScriptSnapshot.markRailCleanupDone();');
+    // The Water color half is frame-scoped: Select needs a script on the
+    // CURRENT key, never a session-wide stroke count.
+    expect(studio).toContain('const watercolorMoveAvailable = useComputed(() => {');
+    expect(studio).toContain('return cell.kind === \'real\' && hasAquarelleScriptForFrame(cell.appFrame);');
+    expect(studio).toContain("if (activeModule.value !== 'watercolor' || !aquarelleSelectMode.peek()) return;");
+    // No purge: a script is content. The render must follow it instead.
+    expect(studio).not.toContain('runPendingRailScriptCleanup');
+    expect(studio).not.toContain('studioScriptSnapshot.dropRetainedForFrames');
+    expect(studio).not.toContain('studioScriptSnapshot.markRailCleanupDone');
+    // The script publish targets the DISPLAYED key (a frame override when the
+    // loop/Group frame has one), so the render and the script cannot split.
+    expect(studio).toContain('const displayed = physicPaintStore.getRotoPhysicalRenderSource(');
+    expect(studio).toContain("const renderKeyId = displayed?.kind === 'real' ? displayed.keyId : frame.keyId;");
     expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
     expect(studio).toContain('if (moveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');
@@ -4219,7 +4219,7 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
     expect(funnel).toContain('if (activeModule.peek() !== owner) activeModule.value = owner;');
     expect(funnel).toContain('setFrameScriptOwner(owner);');
-    expect(funnel).toContain('[runPendingRailScriptCleanup],');
+    expect(funnel).toContain('[],');
   });
 
   it('gates the navigation funnel between the outgoing flush and the pixel snapshot', () => {

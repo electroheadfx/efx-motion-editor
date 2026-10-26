@@ -15,7 +15,6 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import { readEffectiveTool, temporaryMove } from './physicsPaintTemporaryErase';
 import { aquarelleActiveTool, setAquarelleTool, emitAquarelleDry, aquarelleRecordClock } from './aquarelleRecordState';
 import {
-  aquarelleLiveStrokeCount,
   aquarelleSelectMode,
   setAquarelleSelectMode,
   toggleAquarelleSelectMode,
@@ -61,6 +60,7 @@ const WATERCOLOR_RAIL_TOOLS: ReadonlyArray<{ id: AquarelleTool; label: string; I
 function WatercolorRail({
   disabled,
   historyAvailability,
+  selectAvailable,
   onUndo,
   onRedo,
   onClearFrame,
@@ -68,6 +68,8 @@ function WatercolorRail({
 }: {
   disabled: boolean;
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
+  /** Frame-scoped: the current key must own a Water color script. */
+  selectAvailable: ReadonlySignal<boolean>;
   onUndo: () => void;
   onRedo: () => void;
   onClearFrame: () => void;
@@ -109,7 +111,7 @@ function WatercolorRail({
         type="button"
         class={`physics-paint-icon-button${selectActive ? ' active' : ''}`}
         data-testid="aquarelle-select-toggle"
-        disabled={disabled || aquarelleLiveStrokeCount.value === 0}
+        disabled={disabled || !selectAvailable.value}
         title="Select — Cmd toggles Select on/off · Drag moves the selected stroke · Corner handles scale · Edge handles resize width or height · Top handle rotates · Backspace deletes the selected stroke · < sends the selected stroke one step back · > one step forward"
         aria-label="Select"
         aria-pressed={selectActive}
@@ -165,6 +167,8 @@ export interface PhysicsPaintToolRailProps {
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
   /** quick-261026-odd — gates the Move icon; Move needs a Brush script on the current key. */
   moveAvailable: ReadonlySignal<boolean>;
+  /** quick-261026-odd — gates Water color Select; the current key must own a script. */
+  selectAvailable: ReadonlySignal<boolean>;
   disabled?: boolean;
   onSelectTool: (tool: ToolType, physicsMode: 'local' | null) => void;
   onUndo: () => void;
@@ -223,6 +227,7 @@ function PhysicsPaintToolRailImpl({
   physicsMode,
   historyAvailability,
   moveAvailable,
+  selectAvailable,
   disabled = false,
   onSelectTool,
   onUndo,
@@ -238,6 +243,7 @@ function PhysicsPaintToolRailImpl({
       <WatercolorRail
         disabled={disabled}
         historyAvailability={historyAvailability}
+        selectAvailable={selectAvailable}
         onUndo={onUndo}
         onRedo={onRedo}
         onClearFrame={onClearFrame}

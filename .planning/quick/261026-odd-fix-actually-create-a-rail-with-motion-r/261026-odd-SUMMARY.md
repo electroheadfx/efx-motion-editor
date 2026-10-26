@@ -242,13 +242,22 @@ None — plan executed exactly as written.
 - **Pins:** `railScriptCleanup.test.ts` (finite/infinity/capacity spans, unknown document, per-track marker, unreadable storage = done); controller `dropRetainedForFrames` union test; Studio source pins for the bake, Reveal and migration purges.
 - **Test evidence:** full `vitest run` green (338 files, 6142 passed, 2 skipped) and `tsc --noEmit` clean.
 
+**Follow-up 8 (2026-10-26, post-cleanup): override scripts are content; purge retired.** The durable cleanup ran and deleted the Paint-4 scripts on frames 6–15 — including the frame-override scripts at 11 and 15, which the user reported as real content. Disk evidence: the loop clip carries `frameOverrides` at 11 and 15 (post-bake edits), while the migration treated the raw span 6–15 as generated. The frame-15 script is **unrecoverable**: the applied script library row holds only the four frame-4 source strokes, and no pre-cleanup snapshot copy exists. Its baked WebP pixels are intact.
+
+- **Purge retired:** removed the launch migration, the store-authoritative retry, the accepted Play Script / Motion / Static bake purge, the Reveal creation purge, the `railScriptCleanup` module and its test, and every retained-union drop. No automatic mass deletion remains; manual Clear/Delete are unchanged.
+- **Script/render split fixed at the publish seam:** a script Apply/move now resolves the **displayed** render key with `getRotoPhysicalRenderSource` before `upsertCachedFrame`. On a Loop/Group frame with an existing frame override, the old code published to the timeline cell's source key; the paint router refused it as a stale target, so the re-baked wash never reached the canvas. That is the recorded-script-without-render phantom. Publishing to the override key the canvas actually shows closes the split.
+- **NO MOVE/EDIT enforced frame-scoped:** Water color's Select toggle, Cmd tap/held-Cmd and the auto-disarm now read `watercolorMoveAvailable = currentCell.kind === 'real' && hasAquarelleScriptForFrame(currentCell.appFrame)` instead of the session-wide `aquarelleLiveStrokeCount`. Painting the first stroke creates the script and re-enables Select; navigating to a scriptless key disarms it. Brush Move keeps the owner + cell-kind + key-identity gate.
+- **Pins:** Studio pins now require the displayed-key publish and the frame-scoped Water color gate, and contain inverted `not.toContain` guards for the retired purge paths. `railScriptCleanup.test.ts` deleted with its module.
+- **Test evidence:** full `vitest run` green (337 files, 6138 passed, 1 skipped) and `tsc --noEmit` clean.
+- **UAT pending:** (1) on a Loop/Group frame with an override, paint then Select-move — the moved wash must render, with no guides over old paint; (2) on a key with no script, the Water color Select toggle is greyed and Cmd is inert; painting a stroke re-enables Select. DEV build stamp is `quick-261026-odd-diag-6-render-target`.
+
 ## User Setup Required
 
 None — no external service configuration or dependency was added.
 
 ## Native UAT (user-driven — executor never started the dev server)
 
-**Status: pending** — reopen the Studio so the new gate + purge code loads. The app writes `/tmp/efx-build-check.json` at engine-ready and `/tmp/efx-move-provenance.json` on every owner resolve; both must read `quick-261026-odd-diag-3-rail` before any result is trusted. The report names `cellInsideRail`, `cellKeyId`, and each group's engine/store/registry provenance.
+**Status: pending** — reopen the Studio so the frame-scoped gate and displayed-key publish load. The app writes `/tmp/efx-build-check.json` at engine-ready and `/tmp/efx-move-provenance.json` on every owner resolve; both must read `quick-261026-odd-diag-6-render-target` before any result is trusted. The report names `cellInsideRail`, `cellKeyId`, and each group's engine/store/registry provenance.
 
 | # | Action | Expected | Status |
 |---|--------|----------|--------|
@@ -264,6 +273,8 @@ None — no external service configuration or dependency was added.
 | 10 | Open the Memory tab on that Water color key | The per-frame Brush row stays empty; only the Water color row lists the wash strokes | pending |
 | 11 | Select a derived Motion/Static/Reveal rail cell with a soloed/masked neighbor track under it | Move is greyed, no phantom handles render, and the cell stays non-editable as a script | pending |
 | 12 | Switch between a scripted real key on one track and a cell on another, toggling solo/hide | Handles appear only on the active real key; no script crosses keys or tracks | pending |
+| 13 | On a key with no Water color script, click the rail Select toggle and press Cmd | Select is greyed and Cmd is inert; painting a stroke then re-enables Select; deleting the last stroke disarms it | pending |
+| 14 | On a Loop/Group frame with a frame override, paint a Water color stroke, then Select-move it | The moved wash re-renders on the canvas; no guides remain over the old paint (the reported phantom) | pending |
 
 ## Known Stubs
 

@@ -162,7 +162,6 @@ import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsP
 import { getTimelineViewportFrames } from './view/PhysicsPaintWorkflowStrip';
 import {
   createStudioScriptSnapshotController,
-  studioScriptSnapshotRailCleanupRevision,
   type StudioScriptSnapshotController,
 } from './snapshot/studioScriptSnapshotController';
 // quick-261023-ors Task 3: the committed rail delete cascades to that rail's
@@ -193,7 +192,6 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import { activeModule } from '../shared/activeModule';
 import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
-import { resolveCarriedRailFrames } from './view/railScriptCleanup';
 import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
@@ -224,6 +222,7 @@ import {
   aquarelleStrokesRevision,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
+  hasAquarelleScriptForFrame,
   purgeAllAquarelleKeyScripts,
   purgeAquarelleFrameScript,
   recordAquarelleStroke,
@@ -233,7 +232,6 @@ import {
   setAquarelleStrokeDiffusionFrames,
 } from './view/aquarelleRecordState';
 import {
-  aquarelleLiveStrokeCount,
   aquarelleScriptStrokeEditionPort,
   aquarelleSelectMode,
   aquarelleStrokesOnFrame,
@@ -251,6 +249,7 @@ import {
   restoreAquarelleSnapshotRaw,
   setAquarelleDeleteInFlight,
   setAquarelleScriptEditInFlight,
+  setAquarelleSelectMode,
   toggleAquarelleSelectMode,
 } from './view/aquarelleStrokeSelection';
 import {
@@ -1131,7 +1130,7 @@ export function PhysicsPaintStudio() {
       // this signature is chosen to rule out (recordAquarelleStroke and the
       // brush capture path both bump).
       getContentSignature: () =>
-        `${aquarelleStrokesRevision.peek()}:${brushScriptRevision.peek()}:${studioScriptSnapshotRailCleanupRevision.peek()}`,
+        `${aquarelleStrokesRevision.peek()}:${brushScriptRevision.peek()}`,
       // Live real-key app frames for the bound track. An empty set disables
       // pruning in the controller (unknown ≠ empty), so a launch whose key
       // records are not loaded yet can never wipe the restored script.
@@ -1559,6 +1558,15 @@ export function PhysicsPaintStudio() {
     if (entryKeyId !== null && entryKeyId !== cell.keyId) return false;
     return true;
   });
+  // quick-261026-odd follow-up: Water color's Select/Move is bound to the
+  // CURRENT key's script, never the session. The tool rail has no frame prop,
+  // so the Studio owns this frame-scoped gate and passes it down. Painting a
+  // stroke on a rail/empty key creates its script and re-enables Select.
+  const watercolorMoveAvailable = useComputed(() => {
+    void aquarelleStrokesRevision.value;
+    const cell = rotoTimelineModel.currentCell.value;
+    return cell.kind === 'real' && hasAquarelleScriptForFrame(cell.appFrame);
+  });
   // quick-261026-odd follow-up: a derived cell has no key script by
   // construction. Drop any stale brush capture for it and release the owner,
   // so a Motion/Static/Reveal rail cell can never keep Move or the Brush
@@ -1618,6 +1626,16 @@ export function PhysicsPaintStudio() {
           grainScale: bgMeta.grainScale ?? 1,
         },
         publish: async (frame) => {
+          // The canvas shows the Loop/Group frame override when one exists,
+          // even though the timeline cell still reports the source key.
+          // Publishing to the source key is refused as a stale target, which
+          // left a re-baked script unrendered (phantom strokes over old paint).
+          const displayed = physicPaintStore.getRotoPhysicalRenderSource(
+            launchContext?.layerId ?? '',
+            studioActiveTrackId(),
+            frame.appFrame,
+          );
+          const renderKeyId = displayed?.kind === 'real' ? displayed.keyId : frame.keyId;
           const ok = await rotoPersistence.upsertCachedFrame(
             { frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes, width: frame.width, height: frame.height },
             false,
@@ -1627,7 +1645,7 @@ export function PhysicsPaintStudio() {
             undefined,
             launchContext?.operationId,
             bgMeta,
-            frame.keyId,
+            renderKeyId,
           );
           // aquarelle-apply-invisible: a cache-only publish never reaches the
           // display — the live aquarelle sheet is empty and the engine-1
@@ -1813,7 +1831,7 @@ export function PhysicsPaintStudio() {
     // 261022-pim: no live script (cooked/baked sheet, or a fresh session) →
     // Move is greyed in the rail and Cmd is inert in both modes.
     isMoveAvailable: () => (activeModule.peek() === 'watercolor'
-      ? aquarelleLiveStrokeCount.peek() > 0
+      ? watercolorMoveAvailable.peek()
       : moveAvailable.peek()),
   };
   // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
@@ -1830,33 +1848,8 @@ export function PhysicsPaintStudio() {
   // exactly one owner; both/none leave it untouched. Always republishes the
   // lock signal so the Studio top bar never shows a stale owner. Declared here
   // (before every seam) so later closures reference it without a TDZ hazard.
-  // quick-261026-odd: the rail cleanup retry. The launch-document attempt can
-  // miss when the carried document's physical state is not ready; this runs at
-  // every owner resolve AFTER the launch context has reached the store, so the
-  // pending cleanup lands on the first navigation even then. The marker keeps
-  // it once per project/layer/track.
-  const runPendingRailScriptCleanup = useCallback(() => {
-    const cleanupIdentity = studioScriptSnapshotIdentityRef.current;
-    if (!cleanupIdentity || studioScriptSnapshot.isRailCleanupDone()) return;
-    const physical = physicPaintStore.getRotoPhysicalDocument(cleanupIdentity.layerId, cleanupIdentity.trackId);
-    if (!physical) return;
-    const railFrames = resolveStudioPixelOnlyFrames(cleanupIdentity);
-    // Mark done ONLY after a purge with a NON-EMPTY rail set. An empty set can
-    // mean "the store is not ready yet", and marking then is what skipped the
-    // purge in diag-4. A track with no rails simply retries harmlessly.
-    if (railFrames && railFrames.size > 0) {
-      for (const railFrame of railFrames) {
-        purgeBrushScriptFrame(railFrame);
-        purgeAquarelleFrameScript(railFrame);
-      }
-      studioScriptSnapshot.dropRetainedForFrames(railFrames);
-      studioScriptSnapshot.markRailCleanupDone();
-      studioScriptSnapshot.markDirty();
-    }
-  }, []);
   const applyFrameModuleState = useCallback(
     (frame: number, liveBrush?: LiveBrushScriptSample | null) => {
-      runPendingRailScriptCleanup();
       // quick-261026-odd follow-up: a Water color key's engine-1 guide proxies
       // are not a Brush script. Drop any guide groups an older capture stored
       // before resolving ownership, so a wash-only key cannot keep the Brush
@@ -1873,7 +1866,7 @@ export function PhysicsPaintStudio() {
       // so a fresh diag lands without requiring a Move click.
       if (import.meta.env.DEV) captureMoveProvenanceNow('owner-resolve');
     },
-    [runPendingRailScriptCleanup],
+    [],
   );
   // 261023-g4p: the brush script-edition port reads the live Studio seams at
   // event time through this render-body ref (temporaryEraseDepsRef precedent)
@@ -2100,6 +2093,18 @@ export function PhysicsPaintStudio() {
     });
     return dispose;
   }, [selectTool, settings.tool, settings.physicsMode, mutationLocked]);
+  // The Water color half of the same law: Select cannot stay armed on a key
+  // with no script. Painting the first stroke creates the script and re-arms;
+  // navigating to a scriptless key disarms. Same effect() precedent — no
+  // signal writes in the render body.
+  useEffect(() => {
+    const dispose = effect(() => {
+      if (activeModule.value !== 'watercolor' || !aquarelleSelectMode.peek()) return;
+      if (watercolorMoveAvailable.value || mutationLocked) return;
+      setAquarelleSelectMode(false);
+    });
+    return dispose;
+  }, [watercolorMoveAvailable, mutationLocked]);
   // 49-04 UAT fix: the swatch click must ALSO write the document fallback so
   // the monitor fond layer resolves the paper/solid/transparent record. The
   // 49-03 S6 write-through helper (backgroundModeToFallback) existed but the
@@ -3460,29 +3465,8 @@ export function PhysicsPaintStudio() {
       });
       if (result.ok) {
         if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
-        // quick-261026-odd follow-up: the Reveal bake REPLACED every key in its
-        // span with pixel-only content. Any retained Brush or Water color
-        // script for those keys is stale by construction — drop it now so it
-        // can neither stay in the session nor be written back to a snapshot.
-        const revealCapacity = carriedLaunch
-          ? physicPaintStore.getRotoPhysicalCapacity(carriedLaunch.layerId, studioActiveTrackId())
-          : input.startFrame + input.frameCount;
-        const revealEnd = input.repeat === 'infinity'
-          ? revealCapacity
-          : input.startFrame + input.frameCount * input.repeat;
-        const revealFrames = new Set<number>();
-        for (let frame = input.startFrame; frame < Math.min(revealEnd, revealCapacity); frame += 1) {
-          revealFrames.add(frame);
-          purgeBrushScriptFrame(frame);
-          purgeAquarelleFrameScript(frame);
-        }
-        // The snapshot's retained union would otherwise re-seed those scripts
-        // on the next restore (a routine save keeps retained entries) — drop
-        // the same frames from it so the purge is durable.
-        studioScriptSnapshot.dropRetainedForFrames(revealFrames);
-        studioScriptSnapshot.markDirty();
-        // quick-261026-odd: the Reveal bake wrote pixel-only keys; republish the
-        // current key's owner so a prior Brush owner cannot keep Move open.
+        // Republish the current key's owner so a prior Brush owner cannot keep
+        // Move open after the bake.
         applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
         return { ok: true };
       }
@@ -4586,30 +4570,6 @@ export function PhysicsPaintStudio() {
         // engine-ready seam re-applies this reservation.
         engineRef.current?.reserveMutationClock(nextMutationId);
       }
-      // quick-261026-odd ONE-TIME MIGRATION: scripts recorded before the
-      // rail-bake purge existed are stale on every rail frame — the rail owns
-      // those pixels (Motion / Static / Play Script / Reveal bake into key
-      // records). Purge both stores across the track's rail spans and drop the
-      // same frames from the snapshot's retained union, once per project/layer/
-      // track. A script painted on a rail frame AFTER this build is never
-      // touched again (rail membership is not a permanent gate).
-      if (!studioScriptSnapshot.isRailCleanupDone()) {
-        // The carried document is the launch authority for a rail LIST, but an
-        // empty list there is ambiguous (the store's physical state lands
-        // later) and must never mark the track clean — that is exactly what
-        // skipped the purge in diag-4. Purging a NON-EMPTY list here is safe;
-        // marking is owned by the store-authoritative retry.
-        const railFrames = resolveCarriedRailFrames(document, identity.trackId);
-        if (railFrames !== null && railFrames.size > 0) {
-          for (const railFrame of railFrames) {
-            purgeBrushScriptFrame(railFrame);
-            purgeAquarelleFrameScript(railFrame);
-          }
-          studioScriptSnapshot.dropRetainedForFrames(railFrames);
-          studioScriptSnapshot.markRailCleanupDone();
-          studioScriptSnapshot.markDirty();
-        }
-      }
       // quick-261025-awl (D-02): the Studio launch settle publishes the start
       // frame's owner so the first render already shows the right module.
       applyFrameModuleState(context.startFrame);
@@ -4628,32 +4588,8 @@ export function PhysicsPaintStudio() {
       const accepted = physicalEditCoordinator.acceptedOutput.peek();
       try {
         if (transition === 'accepted' && accepted) {
-          // quick-261026-odd: a Play Script / Motion / Static bake REPLACED
-          // the span's pixels. Every script recorded on those keys before the
-          // bake no longer describes the render, so purge BOTH stores across
-          // the affected span — otherwise the stale script keeps Move/Select
-          // handles alive over pixels it never painted (phantom strokes).
-          // loopOnly edits change no pixels; Reveal purges at creation.
-          const semanticDelta = accepted.semanticDelta;
-          if (
-            accepted.operationKind === 'play-script'
-            && semanticDelta?.kind === 'play-script'
-            && semanticDelta.loopOnly !== true
-          ) {
-            const start = Math.max(0, semanticDelta.affectedStartAppFrame);
-            const end = semanticDelta.affectedEndAppFrame;
-            const bakedFrames = new Set<number>();
-            for (let bakedFrame = start; bakedFrame <= end; bakedFrame += 1) {
-              bakedFrames.add(bakedFrame);
-              purgeBrushScriptFrame(bakedFrame);
-              purgeAquarelleFrameScript(bakedFrame);
-            }
-            // The retained union would re-seed them on the next restore.
-            studioScriptSnapshot.dropRetainedForFrames(bakedFrames);
-            studioScriptSnapshot.markDirty();
-          }
-          // Republish the current key's owner from the cleaned stores in the
-          // same accepted transition so the gate closes without a navigation.
+          // Republish the current key's owner in the same accepted transition
+          // so the Move gate closes without a navigation.
           applyFrameModuleState(currentFrame);
           // D-17 post-acceptance selection aftermath: group-aware kinds keep
           // the set (move re-anchors to the grabbed key; force-spacing keyIds
@@ -5274,11 +5210,12 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, moveAvailable, setBrushColor], () => ({
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, moveAvailable, watercolorMoveAvailable, setBrushColor], () => ({
     activeTool: settings.tool,
     physicsMode: settings.physicsMode,
     historyAvailability,
     moveAvailable,
+    selectAvailable: watercolorMoveAvailable,
     disabled: !engine || staticControlsLocked,
     onSelectTool: selectTool,
     onUndo: undo,
@@ -5713,16 +5650,6 @@ export function PhysicsPaintStudio() {
           selectMode: aquarelleSelectMode.peek(),
           heldArm: temporaryMove.peek(),
         }),
-        getRailCleanupState: () => {
-          const cleanupIdentity = studioScriptSnapshotIdentityRef.current;
-          const railFrames = cleanupIdentity
-            ? resolveStudioPixelOnlyFrames(cleanupIdentity)
-            : null;
-          return {
-            done: studioScriptSnapshot.isRailCleanupDone(),
-            railFrameCount: railFrames === null ? null : railFrames.size,
-          };
-        },
       });
     }
     // 261023-g4p: a recreated engine must re-enter the brush script-edition

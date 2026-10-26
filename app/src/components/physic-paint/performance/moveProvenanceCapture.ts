@@ -31,7 +31,7 @@ import { engineHoldsBrushScriptFrame } from '../view/brushScriptHydration';
 
 export const MOVE_PROVENANCE_PATH = '/tmp/efx-move-provenance.json';
 /** Bumped by every diagnostic revision so the report names its build. */
-export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-5-durable';
+export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-6-render-target';
 
 export interface MoveProvenanceEngine {
   getStrokes(): readonly PaintStroke[];
