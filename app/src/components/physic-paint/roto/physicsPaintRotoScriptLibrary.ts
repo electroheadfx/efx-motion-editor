@@ -15,6 +15,7 @@ import { proposePhysicPaintRotoActionGroupLifecycle, type PhysicPaintRotoActionG
 import { createPersistedRotoScript, isRefusedRotoScriptRow, normalizeRotoScriptName, persistedRotoScriptToRuntime, serializeAquarelleRotoScript, type RotoScriptLibraryRow } from './physicsPaintRotoScriptSchema';
 import { RotoScriptClipboardReplacementOutcome, type PreparedRotoScriptLoadAndApply, type RotoPaintScript, type RotoScriptPersistenceCapture } from './physicsPaintRotoScriptClipboard';
 import type { PersistedRotoScriptThumbnailV1 } from './physicsPaintRotoScriptSchema';
+import type { RotoScriptThumbnailComposite } from './physicsPaintRotoScriptThumbnail';
 
 export type ReferencedActionDeletionMode = 'keep-groups' | 'delete-action-and-groups';
 
@@ -57,7 +58,12 @@ export interface PrepareReferencedActionDeletionInput {
 export interface RotoScriptLibraryControllerPorts {
   request: (request: PhysicPaintScriptLibraryRequest) => Promise<PhysicPaintScriptLibraryResult>;
   capturePersistence: () => Promise<RotoScriptPersistenceCapture | null>;
-  captureThumbnail: (scriptAlphaCanvas: HTMLCanvasElement) => Promise<PersistedRotoScriptThumbnailV1>;
+  /**
+   * 261026-nvq: `composite` tells the encoder how the source composites over
+   * the thumbnail's paper. Aquarelle sheets are opaque transmittance and pass
+   * 'multiply'; engine-1 alpha canvases pass (or omit) 'source-over'.
+   */
+  captureThumbnail: (scriptAlphaCanvas: HTMLCanvasElement, composite?: RotoScriptThumbnailComposite) => Promise<PersistedRotoScriptThumbnailV1>;
   replaceClipboard: (script: RotoPaintScript, preparation?: PreparedRotoScriptLoadAndApply) => RotoScriptClipboardReplacementOutcome;
   getLaunchContext: () => PhysicPaintLaunchContext | null;
   log: (message: string, error?: boolean) => void;
@@ -494,7 +500,12 @@ export function createRotoScriptLibraryController(ports: RotoScriptLibraryContro
       const captured = await ports.capturePersistence();
       if (disposed || acceptedContextGeneration !== contextGeneration) return fail('Save cancelled — the project context changed.');
       if (!captured) return fail('Paint at least one brush on a real Roto key.');
-      const thumbnail = await ports.captureThumbnail(captured.scriptAlphaCanvas);
+      // 261026-nvq: aquarelle captures carry the live wash sheet — the engine-1
+      // canvas holds only the invisible guide proxies. The sheet is opaque
+      // transmittance and multiplies over the paper (same law as the live seam).
+      const thumbnailSource = captured.aquarelleAlphaCanvas ?? captured.scriptAlphaCanvas;
+      const thumbnailComposite: RotoScriptThumbnailComposite = captured.aquarelleAlphaCanvas ? 'multiply' : 'source-over';
+      const thumbnail = await ports.captureThumbnail(thumbnailSource, thumbnailComposite);
       if (disposed || acceptedContextGeneration !== contextGeneration) return fail('Save cancelled — the project context changed.');
       const scriptSnapshot = captured.script;
       const id = crypto.randomUUID();

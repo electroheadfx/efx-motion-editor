@@ -56,6 +56,11 @@ describe('persistent Roto script library hook adapters', () => {
     };
     const adapter = createRotoScriptLibraryControllerAdapter(() => ports, ports.request);
     expect(adapter.referencedActionDeletion).toBe(referencedActionDeletion);
+    // 261026-nvq: the adapter must forward the thumbnail composite mode — a
+    // one-argument forwarder silently dropped 'multiply' on the production path.
+    const canvas = {} as HTMLCanvasElement;
+    adapter.captureThumbnail(canvas, 'multiply');
+    expect(ports.captureThumbnail).toHaveBeenCalledWith(canvas, 'multiply');
     const replacement = { ...referencedActionDeletion, getPhysicalDocument: vi.fn() };
     ports.referencedActionDeletion = replacement;
     expect(adapter.referencedActionDeletion).toBe(replacement);

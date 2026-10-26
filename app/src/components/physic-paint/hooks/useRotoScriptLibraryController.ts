@@ -570,7 +570,7 @@ export function createRotoScriptLibraryControllerAdapter(
     // an edit there changed nothing.
     publishScriptScope: (scope) => getPorts().publishScriptScope(scope),
     capturePersistence: () => getPorts().capturePersistence(),
-    captureThumbnail: (canvas) => getPorts().captureThumbnail(canvas),
+    captureThumbnail: (canvas, composite) => getPorts().captureThumbnail(canvas, composite),
     replaceClipboard: (script, preparation) => getPorts().replaceClipboard(script, preparation),
     getLaunchContext: () => getPorts().getLaunchContext(),
     log: (message, error) => getPorts().log(message, error),

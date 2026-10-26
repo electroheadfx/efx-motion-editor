@@ -1346,6 +1346,10 @@ export function PhysicsPaintStudio() {
   // save/close flush must wait for those enqueues, otherwise it drains an empty
   // queue and the sheet's pixels are serialized as the blank key payload.
   const aquarelleCapturesInFlightRef = useRef<Set<Promise<void>>>(new Set());
+  // SAVE PATH (261026-nvq): the live aquarelle sheet factory registered by the
+  // mounted layer. Declared ABOVE the clipboard controller so its port closure
+  // can read it without a TDZ hazard; ref-only — no state, no signal.
+  const aquarelleSnapshotRef = useRef<(() => HTMLCanvasElement | null) | null>(null);
   const syncPendingRotoFrames = useCallback(() => {
     resetRotoKeySessionRef.current({ clearClipboard: false });
   }, []);
@@ -1518,6 +1522,15 @@ export function PhysicsPaintStudio() {
     } : null,
     prepareTarget: (source) => prepareRotoScriptTargetRef.current(source),
     flushSourcePublication: (appFrame) => rotoPersistence.flushLivePixels(appFrame),
+    // SAVE PATH (261026-nvq): the live aquarelle sheet for the Save Script
+    // thumbnail. Read eagerly by the clipboard port (the sheet is frame-scoped),
+    // ink-gated with the SAME floor as the cache capture so a blank/cleared
+    // sheet can never become a blank row — the engine canvas stays the source.
+    captureAquarelleCanvas: () => {
+      const canvas = aquarelleSnapshotRef.current?.() ?? null;
+      if (!canvas) return null;
+      return measureAquarelleCanvasInk(canvas) >= AQUARELLE_MIN_CAPTURE_INK ? canvas : null;
+    },
     // 261018: aquarelle Apply — replay through the fluid engine and publish
     // the wash onto the target key (engine-1 draws only the guide line).
     applyAquarelleEvents: async ({ events, target, onProgress }) => {
@@ -1579,10 +1592,13 @@ export function PhysicsPaintStudio() {
   const rotoScriptLibrary = useRotoScriptLibraryController({
     request: async () => { throw new Error('Bridge request adapter is installed by the library hook.'); },
     capturePersistence: rotoScript.captureScriptForPersistence,
-    captureThumbnail: async (scriptAlphaCanvas) => {
+    captureThumbnail: async (scriptAlphaCanvas, composite) => {
       const currentBridgeMode = bridgeMode === 'Unavailable' ? await detectPhysicsPaintBridgeMode() : bridgeMode;
       return createRotoScriptThumbnail({
         scriptAlphaCanvas,
+        // 261026-nvq: 'multiply' for the opaque aquarelle transmittance sheet,
+        // 'source-over' (default) for the engine-1 alpha canvas.
+        scriptComposite: composite,
         sourceWidth: projectCanvasWidth,
         sourceHeight: projectCanvasHeight,
         background: buildRotoBackgroundMetadata(settings),
@@ -6364,6 +6380,13 @@ export function PhysicsPaintStudio() {
     aquarelleSheetHasPaintRef.current = false;
   }, []);
 
+  // SAVE PATH (261026-nvq): the layer registers its composited-sheet factory
+  // through the canvas-mount seam; Save Script reads it through the clipboard
+  // port. Ref-assignment only — no state, no signal, no render.
+  const handleAquarelleSnapshotReady = useCallback((snapshot: (() => HTMLCanvasElement | null) | null) => {
+    aquarelleSnapshotRef.current = snapshot;
+  }, []);
+
   // Quick 261019-mj2 Task 3: same-frame sheet reset registration for the
   // generated-cell self-promotion (the Studio calls it synchronously).
   const handleAquarelleResetSheetReady = useCallback((resetSheet: () => void) => {
@@ -6395,7 +6418,7 @@ export function PhysicsPaintStudio() {
     [],
   );
 
-  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
+  const canvasMount = canvasMountPropsMemo.resolve([canvasWidth, canvasHeight, paperTextureScale, handleCanvasEngineReady, setCanvasMounted, handleNativePenInputReady, handleCanvasCompletedMutation, handleCanvasInputActivity, recordEnginePerformance, rotoScript.prepareEngineDisposal, getStrokeMetadata, launchContext?.layerId, efxPaintVersion.value, activeModule.value, settings.color, settings.tool, getBrushScriptPlayFrame, handleAquarelleStrokeEnd, handleAquarelleStrokeSettled, handleAquarelleCaptureFrame, handleAquarelleSheetSessionEnd, handleAquarelleResetSheetReady, handleAquarelleSnapshotReady, handleAquarelleMoveStrokes, getAquarellePlayFrame, getAquarellePaperId, handleAquarelleDeleteStrokes, handleAquarelleTransformStrokes], () => {
     // 48-06 (N2/N3): the active track's opacity/blend (D-01) ride the engine
     // shell as CSS group opacity/mix-blend — the D-05 exclusion keeps the
     // active track out of the monitor's composite, so without this the Studio
@@ -6433,6 +6456,7 @@ export function PhysicsPaintStudio() {
       onAquarelleStrokeSettled: handleAquarelleStrokeSettled,
       onAquarelleCaptureFrame: handleAquarelleCaptureFrame,
       onAquarelleFlushCaptureReady: handleAquarelleFlushCaptureReady,
+      onAquarelleSnapshotReady: handleAquarelleSnapshotReady,
       onAquarelleSheetSessionEnd: handleAquarelleSheetSessionEnd,
       onAquarelleResetSheetReady: handleAquarelleResetSheetReady,
       onAquarelleDeleteStrokes: handleAquarelleDeleteStrokes,

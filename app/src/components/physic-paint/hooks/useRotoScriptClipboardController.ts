@@ -17,6 +17,7 @@ export function useRotoScriptClipboardController(ports: RotoScriptClipboardContr
       getPublicationIdentity: () => portsRef.current.getPublicationIdentity?.() ?? null,
       prepareTarget: (source) => portsRef.current.prepareTarget(source),
       flushSourcePublication: (appFrame) => portsRef.current.flushSourcePublication?.(appFrame) ?? Promise.resolve(),
+      captureAquarelleCanvas: () => portsRef.current.captureAquarelleCanvas?.() ?? null,
       applyAquarelleEvents: (input) => portsRef.current.applyAquarelleEvents?.(input) ?? Promise.resolve(false),
       onFirstAcceptedBrush: () => portsRef.current.onFirstAcceptedBrush?.(),
       setNavigationLocked: (locked) => portsRef.current.setNavigationLocked?.(locked),

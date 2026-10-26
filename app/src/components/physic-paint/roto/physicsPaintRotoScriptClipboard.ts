@@ -103,6 +103,14 @@ export interface RotoScriptEnginePort {
 export interface RotoScriptPersistenceCapture {
   script: RotoPaintScript;
   scriptAlphaCanvas: HTMLCanvasElement;
+  /**
+   * 261026-nvq: the live aquarelle sheet (MODE.transparent OPAQUE
+   * transmittance, white = no pigment) for the capture's source frame. Present
+   * only when `script.aquarelleEvents` is present and the host's ink gate
+   * accepted the sheet. In-memory only — never persisted; the thumbnail source
+   * for aquarelle saves, drawn with multiply by the encoder.
+   */
+  aquarelleAlphaCanvas?: HTMLCanvasElement;
 }
 
 export interface RotoScriptClipboardControllerPorts {
@@ -113,6 +121,14 @@ export interface RotoScriptClipboardControllerPorts {
   getPublicationIdentity?: () => RotoScriptPublicationIdentity | null;
   prepareTarget: (source: RotoScriptSourceSnapshot) => Promise<RotoScriptPhysicalTarget | null>;
   flushSourcePublication?: (appFrame: number) => Promise<void>;
+  /**
+   * 261026-nvq SAVE-PATH seam: the live aquarelle sheet for the current edit
+   * frame. Called EAGERLY by captureScriptForPersistence — the sheet is
+   * frame-scoped and a frame change during the drain clears it. Returns null
+   * when the host has no sheet (module unmounted) or the ink gate rejected a
+   * blank sheet, in which case the engine alpha canvas stays the thumbnail.
+   */
+  captureAquarelleCanvas?: () => HTMLCanvasElement | null;
   /**
    * 261018: aquarelle Apply seam. When the script carries `aquarelleEvents`,
    * applyScript routes through this (aquarelle engine replay + wash publish)
@@ -497,6 +513,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
     // library status is the only reporter and it has no reader).
     refreshSourceHasBrushes(engine);
     if (!availability.value.canCopy) return null;
+    // SAVE PATH (261026-nvq): read the live aquarelle sheet EAGERLY, before the
+    // first await below. The sheet is frame-scoped — a frame change during the
+    // drain clears it — so a deferred read would save an empty sheet.
+    const aquarelleAlphaCanvas = ports.captureAquarelleCanvas?.() ?? null;
     const source = sourceState.peek();
     const acceptedEngineGeneration = engineGeneration;
     const acceptedLaunchGeneration = launchGeneration;
@@ -517,7 +537,14 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
         sourceRevision: sourceRevision + 1, brushes,
         ...(aquarelleEvents ? { aquarelleEvents } : {}),
       });
-      return { script, scriptAlphaCanvas: engine.copyLiveAlphaCanvas() };
+      return {
+        script,
+        scriptAlphaCanvas: engine.copyLiveAlphaCanvas(),
+        // 261026-nvq: attach the sheet only for an aquarelle script — a mixed
+        // key keeps today's engine-1 thumbnail source, and a blank sheet (ink
+        // gate returned null) falls back to the engine canvas.
+        ...(aquarelleEvents !== undefined && aquarelleAlphaCanvas !== null ? { aquarelleAlphaCanvas } : {}),
+      };
     } catch (cause) {
       error.value = operationError('copy', 'copy-drain-failed', 'Save Script could not finish accepted paint work', cause);
       return null;

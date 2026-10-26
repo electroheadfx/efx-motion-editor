@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import { RotoScriptClipboardReplacementOutcome, createRotoScriptClipboardController, normalizeLogicalBrushes, type RecordedStrokeGroup, type RotoPaintScript, type RotoScriptActionAvailability, type RotoScriptClipboardControllerPorts, type RotoScriptPersistenceCapture, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './physicsPaintRotoScriptClipboard';
 import { createDryEvent, isAquarelleDryEvent, toStudioStroke as aquarelleToStudioStroke, type AquarellePayloadEvent, type AquarelleStroke } from '@efxlab/efx-watercolor/payload';
-import { deleteAquarelleStrokeFromScript, emitAquarelleDry, recordAquarelleStroke, sendAquarelleStrokeBackwardInScript } from '../view/aquarelleRecordState';
+import { deleteAquarelleStrokeFromScript, emitAquarelleDry, purgeAllAquarelleKeyScripts, recordAquarelleStroke, sendAquarelleStrokeBackwardInScript } from '../view/aquarelleRecordState';
 import { filterScriptRows } from './physicsPaintRotoScriptScope';
 import { createRotoScriptLibraryController } from './physicsPaintRotoScriptLibrary';
 import { createPersistedRotoScript } from './physicsPaintRotoScriptSchema';
@@ -1678,5 +1678,105 @@ describe('261023-cxc applyProvidedScript', () => {
 
     test.setSource({ selectionKind: 'real-key', layerId: 'layer-2', keyId: 'key-9', appFrame: 9 });
     expect(test.controller.source.value).toEqual({ selectionKind: 'real-key', layerId: 'layer-2', keyId: 'key-9', appFrame: 9 });
+  });
+});
+
+// 261026-nvq: Save Script used to persist only the engine-1 alpha canvas —
+// for a Water color key that is the invisible guide proxies, never the wash.
+// The host's live aquarelle sheet rides the capture in-memory only (the
+// persisted schema is untouched) and is attached ONLY when the capture is an
+// aquarelle script. The sheet must be read eagerly: it is frame-scoped and the
+// frame change that suspends the drain would clear it.
+describe('261026-nvq persistence aquarelle sheet seam', () => {
+  function recordSaveStroke(mutationId: number, playFrame = 4): void {
+    const live: AquarelleStroke = {
+      tool: 'brush',
+      color: '#123456',
+      params: { size: 8, water: 50, load: 50, flow: 50, bleed: 50, dry: 50, edge: 50, granulation: 50 },
+      brushId: 'wc/round-medium',
+      points: [
+        { x: 0.1, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+        { x: 0.14, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 },
+      ],
+      mutationId,
+      timestamp: mutationId,
+      playFrame,
+    };
+    recordAquarelleStroke(mutationId, live);
+  }
+
+  function fakeCanvas(id: string): HTMLCanvasElement {
+    return { id } as unknown as HTMLCanvasElement;
+  }
+
+  // The record registry is module-level and shared with the other suites.
+  afterEach(() => { purgeAllAquarelleKeyScripts(); });
+
+  it('attaches the live sheet to an all-aquarelle capture, keeping the engine canvas', async () => {
+    purgeAllAquarelleKeyScripts();
+    const sheet = fakeCanvas('sheet');
+    const engineAlpha = fakeCanvas('engine-alpha');
+    const test = harness([stroke(901)], { captureAquarelleCanvas: () => sheet });
+    recordSaveStroke(901);
+    Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => engineAlpha) });
+    test.controller.observeCompletedMutation(test.engine, completion(901));
+
+    const capture = await test.controller.captureScriptForPersistence();
+
+    // Dry events from earlier suites survive the registry purge by design.
+    expect(capture?.script.aquarelleEvents?.filter((event) => !isAquarelleDryEvent(event))).toHaveLength(1);
+    expect(capture?.aquarelleAlphaCanvas).toBe(sheet);
+    // The engine-1 canvas stays exactly as today — only the thumbnail source
+    // choice changes for aquarelle saves.
+    expect(capture?.scriptAlphaCanvas).toBe(engineAlpha);
+  });
+
+  it('a blank sheet (port returns null) leaves aquarelleAlphaCanvas undefined', async () => {
+    purgeAllAquarelleKeyScripts();
+    const engineAlpha = fakeCanvas('engine-alpha');
+    const test = harness([stroke(902)], { captureAquarelleCanvas: () => null });
+    recordSaveStroke(902);
+    Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => engineAlpha) });
+    test.controller.observeCompletedMutation(test.engine, completion(902));
+
+    const capture = await test.controller.captureScriptForPersistence();
+
+    expect(capture?.script.aquarelleEvents?.filter((event) => !isAquarelleDryEvent(event))).toHaveLength(1);
+    expect(capture?.aquarelleAlphaCanvas).toBeUndefined();
+    expect(capture?.scriptAlphaCanvas).toBe(engineAlpha);
+  });
+
+  it('a mixed key never carries the sheet even when the host supplied one', async () => {
+    purgeAllAquarelleKeyScripts();
+    const test = harness([stroke(903), stroke(904)], { captureAquarelleCanvas: () => fakeCanvas('sheet') });
+    recordSaveStroke(903);
+    // 904 is an engine-1 stroke with no recorded AquarelleStroke — mixed key.
+    test.controller.observeCompletedMutation(test.engine, completion(903));
+    test.controller.observeCompletedMutation(test.engine, completion(904));
+
+    const capture = await test.controller.captureScriptForPersistence();
+
+    expect(capture?.script.aquarelleEvents).toBeUndefined();
+    expect(capture?.aquarelleAlphaCanvas).toBeUndefined();
+  });
+
+  it('reads the sheet eagerly, before the drain suspends', async () => {
+    purgeAllAquarelleKeyScripts();
+    const sheet = fakeCanvas('sheet');
+    let liveSheet: HTMLCanvasElement | null = sheet;
+    const captureAquarelleCanvas = vi.fn(() => liveSheet);
+    const test = harness([stroke(905)], { captureAquarelleCanvas });
+    recordSaveStroke(905);
+    Object.assign(test.engine, { copyLiveAlphaCanvas: vi.fn(() => fakeCanvas('engine-alpha')) });
+
+    const promise = test.controller.captureScriptForPersistence();
+    // A frame change clears the live sheet while the drain is still waiting —
+    // the captured copy must already exist.
+    liveSheet = null;
+    test.controller.observeCompletedMutation(test.engine, completion(905));
+
+    const capture = await promise;
+    expect(captureAquarelleCanvas).toHaveBeenCalledTimes(1);
+    expect(capture?.aquarelleAlphaCanvas).toBe(sheet);
   });
 });

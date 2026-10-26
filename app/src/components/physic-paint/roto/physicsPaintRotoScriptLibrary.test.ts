@@ -16,14 +16,17 @@ function harness(saved = true) {
   const request = vi.fn(async (input: PhysicPaintScriptLibraryRequest) => { requests.push(input); return result(input); });
   const clipboard = { current: null as unknown };
   const capture: RotoScriptPersistenceCapture = { script: { provenance: { sessionId: 's', layerId: 'layer-1', sourceFrame: 4 }, sourceFrame: 4, sourceDisplayFrame: 4, sourceRevision: 1, brushes: [{ primary: { tool: 'paint', points: [{ x: 1, y: 2, p: 1, tx: 0, ty: 0, tw: 0, spd: 0 }], color: '#000000', params: { size: 1, opacity: 100, pressure: 100, waterAmount: 0, dryAmount: 0, edgeDetail: 0, pickup: 0, eraseStrength: 0, antiAlias: 0 }, timestamp: 1 }, continuations: [] }] }, scriptAlphaCanvas: {} as HTMLCanvasElement };
-  const thumbnail: PersistedRotoScriptThumbnailV1 = { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: 'data:image/webp;base64,UklGRgQAAABXRUJQ' };
+  // A structurally valid 1x1 VP8L WebP: saveActiveFrame validates the persisted
+  // document, so the harness thumbnail must parse (261026-nvq needs a real save).
+  const thumbnail: PersistedRotoScriptThumbnailV1 = { mimeType: 'image/webp', width: 1, height: 1, quality: 0.8, dataUrl: webp };
   const replaceClipboard = vi.fn((value, _preparation?: PreparedRotoScriptLoadAndApply) => { clipboard.current = value; return RotoScriptClipboardReplacementOutcome.Replaced; });
   const log = vi.fn();
   // quick-260922-al1: the outbound scope port, injected so the idempotence and
   // loop-termination claims are observable rather than assumed.
   const publishScriptScope = vi.fn();
-  const controller = createRotoScriptLibraryController({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail: vi.fn(async () => thumbnail), replaceClipboard, getLaunchContext: () => launch, log, publishScriptScope });
-  return { controller, request, requests, clipboard, replaceClipboard, log, publishScriptScope, setLaunch: (value: PhysicPaintLaunchContext) => { launch = value; } };
+  const captureThumbnail = vi.fn(async () => thumbnail);
+  const controller = createRotoScriptLibraryController({ request, capturePersistence: vi.fn(async () => capture), captureThumbnail, replaceClipboard, getLaunchContext: () => launch, log, publishScriptScope });
+  return { controller, request, requests, clipboard, replaceClipboard, log, publishScriptScope, capture, captureThumbnail, setLaunch: (value: PhysicPaintLaunchContext) => { launch = value; } };
 }
 
 const scriptIds = {
@@ -134,6 +137,28 @@ describe('Roto script library controller', () => {
     });
     await expect(controller.saveActiveFrame()).resolves.toBe(false);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('capture exploded'), true);
+  });
+
+  // 261026-nvq: the thumbnail SOURCE is the live aquarelle sheet when the
+  // capture carries one, and it must follow the transmittance law (multiply)
+  // so white (no pigment) never covers the paper. Every other save keeps the
+  // engine-1 alpha canvas and source-over.
+  it('feeds the aquarelle sheet to the thumbnail encoder as multiply', async () => {
+    const test = harness();
+    const aquarelleCanvas = { id: 'aquarelle-sheet' } as unknown as HTMLCanvasElement;
+    test.capture.aquarelleAlphaCanvas = aquarelleCanvas;
+
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
+
+    expect(test.captureThumbnail).toHaveBeenCalledWith(aquarelleCanvas, 'multiply');
+  });
+
+  it('keeps the engine-1 alpha canvas with a source-over thumbnail', async () => {
+    const test = harness();
+
+    await expect(test.controller.saveActiveFrame()).resolves.toBe(true);
+
+    expect(test.captureThumbnail).toHaveBeenCalledWith(test.capture.scriptAlphaCanvas, 'source-over');
   });
 
   it('drives explicit scans, stable sorting, naming and expected revisions', async () => {
