@@ -1519,6 +1519,10 @@ export async function createRevealRail(
     repeat?: number | 'infinity';
     /** G-52-3 (D-09): the creation-time motion wiggle feeding the bake (both variants). */
     motion?: Readonly<{ deformation: number; position: number }>;
+    /** The PROJECT canvas dims the reference transform is authored against (never the child-realm provider). */
+    projectSize: Readonly<{ width: number; height: number }>;
+    /** The Studio paper an aquarelle wash deposits on (watercolor scripts only). */
+    aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
     signal?: AbortSignal;
     onProgress?: (completed: number, total: number) => void;
   },
@@ -1547,6 +1551,8 @@ export async function createRevealRail(
     canonicalStart: input.startFrame,
     motion: bakeMotion,
     mode: input.variant,
+    projectSize: input.projectSize,
+    aquarellePaper: input.aquarellePaper,
     signal: input.signal ?? new AbortController().signal,
     onProgress: input.onProgress,
   });
@@ -1647,7 +1653,14 @@ function _projectTrackRotoPhysical(layerId: string, trackId: string): Pick<Inter
 export async function replayRevealRail(
   layerId: string,
   loopId: string,
-  input: { signal?: AbortSignal; onProgress?: (completed: number, total: number) => void } = {},
+  input: {
+    /** The PROJECT canvas dims the reference transform is authored against (never the child-realm provider). */
+    projectSize: Readonly<{ width: number; height: number }>;
+    /** The Studio paper an aquarelle wash deposits on (watercolor scripts only). */
+    aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
+    signal?: AbortSignal;
+    onProgress?: (completed: number, total: number) => void;
+  },
 ): Promise<RevealRailMutationResult> {
   const document = getDocument(layerId);
   if (!document) return { ok: false, reason: 'no-document' };
@@ -1667,6 +1680,8 @@ export async function replayRevealRail(
     canonicalStart: rail.clip.placementStart,
     motion: rail.clip.motion ?? { deformation: 0, position: 0 },
     mode: rail.clip.mode,
+    projectSize: input.projectSize,
+    aquarellePaper: input.aquarellePaper,
     signal: input.signal ?? new AbortController().signal,
     onProgress: input.onProgress,
   });

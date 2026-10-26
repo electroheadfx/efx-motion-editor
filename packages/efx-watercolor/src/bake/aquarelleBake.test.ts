@@ -774,47 +774,36 @@ describe('261019 recorded-timeline progressive replay', () => {
     expect(log.stepsByFrame[3]).toBeGreaterThanOrEqual(120)
   })
 
-  it('applies the Play Motion held pose to the stroke points before the fluid deposit', async () => {
+  it('poses each captured progressive frame through the poseFrame seam at its OUTPUT frame', async () => {
     const source = makeStroke({
       points: Array.from({ length: 5 }, (_, index) => ({ x: 0.2 + index * 0.05, y: 0.5, p: 0.5, tx: 0, ty: 0, tw: 0 })),
       timestamp: 1000,
       diffusionFrames: 0,
     })
-    const feedWith = async (position: number): Promise<StudioStroke<AquarelleStrokePayload>> => {
-      const { adapter, log } = makeTimelineAdapter(0)
-      const bake = createAquarelleBake(adapter, {
-        encodeWebp: pixelEncoder,
-        width: 1000,
-        height: 1000,
-        frameCount: 4,
-        motion: { deformation: 0, position, startFrame: 0 },
-      })
-      const result = await bake.bake([source])
-      expect(result.ok).toBe(true)
-      const fed = log.renders
-        .flatMap((entry) => entry.strokes)
-        .find((entry) => entry.stroke.pts.length === 5)
-      expect(fed).toBeDefined()
-      return fed!.stroke
-    }
-    const posed = await feedWith(100)
-    const repeat = await feedWith(100)
-    const unposed = await feedWith(0)
-    // Zero motion leaves the recorded stroke byte-identical (same instance).
-    expect(unposed).toBe(source)
-    // The pose is deterministic for the same script + settings.
-    expect(posed.pts.map((point) => [point.x, point.y])).toEqual(repeat.pts.map((point) => [point.x, point.y]))
-    // The position amplitude is 12 canvas px — in this 1000px document a uv
-    // offset can never exceed it.
-    const moved = posed.pts.reduce((sum, point, index) => (
-      sum
-      + Math.abs(point.x - source.pts[index]!.x)
-      + Math.abs(point.y - source.pts[index]!.y)
-    ), 0)
-    expect(moved).toBeGreaterThan(0)
-    for (const [index, point] of posed.pts.entries()) {
-      expect(Math.abs(point.x - source.pts[index]!.x)).toBeLessThanOrEqual(12 / 1000 + 1e-9)
-      expect(Math.abs(point.y - source.pts[index]!.y)).toBeLessThanOrEqual(12 / 1000 + 1e-9)
-    }
+    const { adapter } = makeTimelineAdapter(0)
+    const poseCalls: number[] = []
+    const posed: CanvasImageSource[] = []
+    const bake = createAquarelleBake(adapter, {
+      width: 8,
+      height: 8,
+      frameCount: 4,
+      // Each marker encodes its OUTPUT frame so the committed order is pinned.
+      encodeWebp: (frame) => new Uint8Array([(frame as unknown as { marker: number }).marker]),
+      poseFrame: (frame, frameIndex) => {
+        poseCalls.push(frameIndex)
+        const marker = { width: 8, height: 8, marker: frameIndex } as unknown as CanvasImageSource
+        posed.push(marker)
+        return marker
+      },
+    })
+    const result = await bake.bake([source])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // The seam runs once per output frame, in output-frame order.
+    expect([...poseCalls].sort((left, right) => left - right)).toEqual([0, 1, 2, 3])
+    // The posed frame — not the adapter capture — is what reaches the encoder.
+    expect(result.frames.map((frame) => frame.bytes[0])).toEqual([0, 1, 2, 3])
+    expect(result.frames).toHaveLength(4)
+    expect(posed).toHaveLength(4)
   })
 })

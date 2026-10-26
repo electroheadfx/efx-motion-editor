@@ -58,6 +58,7 @@ import { layerStore } from '../stores/layerStore';
 import { audioStore } from '../stores/audioStore';
 import {
   physicPaintStore,
+  getFrameMediaBytes,
   hasFrameMediaBytes,
   installFrameMediaBytes,
   registerBackgroundSourceImage,
@@ -3506,7 +3507,14 @@ export async function preserveMirroredInlineBytes(
       // vs parent `physical-778-cb0f65eb` on a Studio-added track, same 3
       // records, same counts, stable for minutes).
       let bytes = current?.payload.bytes;
-      if (bytes === undefined && media !== undefined) bytes = bytesByDigest?.get(media.digest);
+      if (bytes === undefined && media !== undefined) {
+        // A brand-new key (a Reveal bake authored in the child) has no runtime
+        // record here and no entry in the pre-install digest map; its pixels
+        // exist only in the bridged byte channel. Reading that store keeps the
+        // parent's revision byte-shaped for this sync instead of permanently
+        // media-shaped (the stale-revision cascade).
+        bytes = bytesByDigest?.get(media.digest) ?? getFrameMediaBytes(media.digest);
+      }
       if (media === undefined || bytes === undefined || await frameDigestForInlineBytes(bytes) !== media.digest) {
         preserved.push(record);
         continue;
@@ -3558,6 +3566,11 @@ function scheduleMirrorOfSyncedDocument(document: EfxPaintDocument): void {
 }
 
 async function mirrorSyncedTrackDocuments(document: EfxPaintDocument): Promise<void> {
+  // The digest-keyed byte channel installs asynchronously (the listener tracks
+  // every install). A brand-new key's bytes are only readable from the bridged
+  // store once its install lands, so the preserve below must not run before
+  // them — otherwise the exact keys this sync introduced stay media-shaped.
+  await awaitPendingPhysicPaintFrameMediaInstalls();
   // studio-realm-divergence (nature: contract): layer-wide digest → bytes map,
   // built BEFORE any install so a track processed earlier cannot already have
   // swapped the source bytes for the wire's media shape. This is what lets a

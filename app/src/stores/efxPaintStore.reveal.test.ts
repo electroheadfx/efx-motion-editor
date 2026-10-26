@@ -59,6 +59,7 @@ vi.mock('../lib/webpFrameCodec', () => ({ decodeWebpFrame: decodeWebpFrameMock }
 const flushDecode = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 const TEST_TRACK_ID = 'track-1';
+const TEST_PROJECT_SIZE = { width: 4, height: 3 } as const;
 
 function makeTrackDocument(layerId: string): EfxPaintDocument {
   const document = createEfxPaintDocument(layerId);
@@ -95,10 +96,17 @@ function stagedFrames(start: number, count: number, bytes = PNG_1X1_WEBP): Array
   }));
 }
 
-async function createRail(layerId: string, startFrame = 10, frameCount = 2, variant: 'progressive' | 'static' = 'progressive'): Promise<BackgroundEditDescriptor> {
+async function createRail(
+  layerId: string,
+  startFrame = 10,
+  frameCount = 2,
+  variant: 'progressive' | 'static' = 'progressive',
+  projectSize: { width: number; height: number } = TEST_PROJECT_SIZE,
+): Promise<BackgroundEditDescriptor> {
   harness.renderReveal.mockResolvedValue(stagedFrames(startFrame, frameCount));
   const result = await createRevealRail(layerId, {
     trackId: TEST_TRACK_ID,
+    projectSize,
     scriptId: 'script-1',
     variant,
     startFrame,
@@ -172,6 +180,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     harness.renderReveal.mockRejectedValue(new DOMException('Play Script generation cancelled.', 'AbortError'));
     const result = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'script-1',
       variant: 'progressive',
       startFrame: 10,
@@ -197,6 +206,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     registerDocument(makeTrackDocument(layerId));
     const result = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'script-1',
       variant: 'progressive',
       startFrame: 10,
@@ -215,6 +225,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     _setEfxPaintRevealScriptLoader(async () => null);
     const result = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'missing-script',
       variant: 'progressive',
       startFrame: 10,
@@ -282,13 +293,12 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
   });
 
   it('bakes at the WORKING canvas size with the project→working zoom, matching the PlayScript size authority (G-52-2a)', async () => {
-    _setPhysicPaintCompositorSizeProvider(() => ({ width: 1920, height: 1080 }));
     const layerId = 'layer-reveal';
     registerDocument(makeTrackDocument(layerId));
     setPhotoReferenceSource(layerId, ['ref-a']);
     registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
 
-    await createRail(layerId);
+    await createRail(layerId, 10, 2, 'progressive', { width: 1920, height: 1080 });
     // Script strokes live in working coordinates: the bake must render at
     // getPhysicsPaintWorkingSize(1920×1080) = 1920×1080 (cap raised, no
     // downscale) — never a downscaled size — and hand the mask composite the
@@ -344,6 +354,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
 
     const result = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'script-1',
       variant: 'progressive',
       startFrame: 10,
@@ -367,6 +378,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
 
     const result = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'script-1',
       variant: 'static',
       startFrame: 10,
@@ -386,6 +398,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     // An invalid finite repeat fails closed before any bake.
     const rejected = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'script-1',
       variant: 'progressive',
       startFrame: 20,
@@ -480,7 +493,7 @@ describe('reveal rail create + bake + flattened + undo (52-01 Task 1)', () => {
     // Replay re-bakes the same span with FRESH key identities: without the
     // prune the replaced leading break would orphan against the new records
     // and the acknowledged revision check fails closed.
-    const replayResult = await replayRevealRail(layerId, loopId);
+    const replayResult = await replayRevealRail(layerId, loopId, { projectSize: TEST_PROJECT_SIZE });
     expect(replayResult.ok).toBe(true);
     const rebakedFirst = physicPaintStore.getRotoRealKeyRecords(layerId, TEST_TRACK_ID)
       .find((record) => record.appFrame === 10)!.keyId;
@@ -543,7 +556,7 @@ describe('reveal rail undo-by-reference — replay/delete/span (52-01 Task 3, RV
     const preReplay = getDocument(layerId)!;
     const replayedBytes = testWebpBytes('replayed');
     harness.renderReveal.mockResolvedValue(stagedFrames(10, 2, replayedBytes));
-    const replayResult = await replayRevealRail(layerId, loopId);
+    const replayResult = await replayRevealRail(layerId, loopId, { projectSize: TEST_PROJECT_SIZE });
     expect(replayResult.ok).toBe(true);
     const replayDescriptor = (replayResult as OkRevealMutation).descriptor!;
     expect(replayDescriptor.operationKind).toBe('reveal-replay');
@@ -732,6 +745,7 @@ describe('reveal bake frame-aligned reference resolution — WR-02 (260920-kov)'
     const bakeResult = await commitRevealBake({
       layerId,
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       script,
       frameCount: 3,
       canonicalStart: 0,
@@ -747,6 +761,7 @@ describe('reveal bake frame-aligned reference resolution — WR-02 (260920-kov)'
     // The rail-creation entry surfaces the same refusal and writes no clip.
     const createResult = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'script-1',
       variant: 'progressive',
       startFrame: 0,
@@ -774,15 +789,42 @@ describe('reveal bake frame-aligned reference resolution — WR-02 (260920-kov)'
   });
 
   it('WR-02 control: the project→working zoom still rides on the reference object (G-52-2a)', async () => {
-    _setPhysicPaintCompositorSizeProvider(() => ({ width: 1920, height: 1080 }));
     const layerId = 'layer-reveal';
     registerMultiImageLayer(layerId, ['ref-a']);
     registerReferenceSourceImage('ref-a', testWebpBytes('ref-a'));
 
-    await createRail(layerId, 0, 2);
+    await createRail(layerId, 0, 2, 'progressive', { width: 1920, height: 1080 });
 
     expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({
       reference: expect.objectContaining({ zoom: 1920 / 1920 }),
+    }));
+  });
+
+  it('carries the explicit project size and the aquarelle paper into the bake (square/vertical size authority)', async () => {
+    const layerId = 'layer-reveal';
+    registerDocument(makeTrackDocument(layerId));
+    setPhotoReferenceSource(layerId, ['ref-a']);
+    registerReferenceSourceImage('ref-a', testWebpBytes('data:ref-a'));
+    harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
+
+    const result = await createRevealRail(layerId, {
+      trackId: TEST_TRACK_ID,
+      projectSize: { width: 1080, height: 1920 },
+      aquarellePaper: { paperId: 'canvas1', grainStrength: 0.4, grainScale: 1 },
+      scriptId: 'script-1',
+      variant: 'progressive',
+      startFrame: 10,
+      frameCount: 2,
+    });
+
+    expect(result.ok).toBe(true);
+    // The child realm has no hydrated projectStore: the carried portrait dims
+    // (not the 1920×1080 default) must size the bake, and the Studio paper
+    // must reach the aquarelle branch.
+    expect(harness.renderReveal).toHaveBeenCalledWith(expect.objectContaining({
+      size: { width: 1080, height: 1920 },
+      reference: expect.objectContaining({ zoom: 1080 / 1080 }),
+      aquarellePaper: { paperId: 'canvas1', grainStrength: 0.4, grainScale: 1 },
     }));
   });
 });
@@ -891,6 +933,7 @@ describe('reveal rail span resize — the derived extent law, WR-01 (260920-kov)
     harness.renderReveal.mockResolvedValue(stagedFrames(10, 2));
     const createResult = await createRevealRail(layerId, {
       trackId: TEST_TRACK_ID,
+      projectSize: TEST_PROJECT_SIZE,
       scriptId: 'script-1',
       variant: 'progressive',
       startFrame: 10,

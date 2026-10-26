@@ -1,9 +1,11 @@
 import { EfxPaintEngine, type PaintStroke, toStudioStroke, fromStudioStroke, type PhysicStrokePayload } from '@efxlab/efx-physic-paint';
 import { buildProgressiveStrokeSchedule, buildStaticStrokeSchedule, getProgressiveFrameStrokes, getStaticFrameStrokes, transformRecordedStrokeForHeldPose, type StudioStroke } from '@efxlab/efx-paint-host/animation';
+import { computeAquarelleSheetPose, drawAquarelleSheetPose } from './aquarelleFramePose';
 import type { PhysicPaintRenderedFrame } from '../../../types/physicPaint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
 import { mergeRotoAlphaCanvases } from './physicsPaintRotoAlphaMerge';
 import { encodeRotoFrameFromCanvas } from './rotoCanvasFrames';
+import { transmittanceToAlpha } from '../../../lib/rasterAlpha';
 
 const MAX_FRAME_COUNT = 10_000;
 const MAX_AGGREGATE_RGBA_BYTES = 512 * 1024 * 1024;
@@ -48,6 +50,12 @@ export interface RotoRevealRenderInput {
   defaultPaper?: string;
   paperTextureScale?: number;
   /**
+   * The Studio paper an aquarelle wash deposits on (engine-2 only). Engine-1
+   * ignores it; without it the aquarelle bake uses its default paper. The
+   * mask reads the wash alpha, so the paper only shapes the edges.
+   */
+  aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
+  /**
    * The frame-aligned reference plus the display transform (D-14).
    *
    * `bytesByAppFrame` maps an APPLICATION frame to the reference image that
@@ -79,6 +87,16 @@ export interface RotoRevealRenderInput {
 export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Promise<StagedRotoPlayScriptFrame[]> {
   validateRenderInput(input);
   throwIfAborted(input.signal);
+
+  // Engine-2 scripts bake through the aquarelle wash path (the wash IS the
+  // coverage). Engine-1 draws only the guide line for such a script, which is
+  // exactly the wrong mask. Mirror the apply channel's discriminator: the
+  // persisted envelope names 'efx-watercolor', the in-memory capture carries
+  // aquarelleEvents instead.
+  const aquarelleEvents = input.script.aquarelleEvents;
+  if (input.script.engineId === 'efx-watercolor' || (aquarelleEvents !== undefined && aquarelleEvents.length > 0)) {
+    return renderRotoRevealFramesAquarelle(input, aquarelleEvents ?? []);
+  }
 
   const host = document.createElement('div');
   const engine = new EfxPaintEngine(host, {
@@ -117,7 +135,7 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
       if (referenceBytes === undefined) throw new Error(`No reveal reference image for frame ${destination}.`);
       let referenceImage = referenceImages.get(referenceBytes);
       if (referenceImage === undefined) {
-        referenceImage = await loadRevealReferenceImage(referenceBytes);
+        referenceImage = await loadRevealWebpImage(referenceBytes);
         referenceImages.set(referenceBytes, referenceImage);
       }
       throwIfAborted(input.signal);
@@ -168,6 +186,142 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
 }
 
 /**
+ * Engine-2 Reveal: the wash alpha IS the coverage. Reuses the exact bake the
+ * Play/Apply aquarelle path uses (progressive growth across the span, paper,
+ * Dry events in recorded order), then feeds each baked wash frame's alpha to
+ * the same reference-mask composite engine-1 uses. Static mode bakes one
+ * settled wash and holds it across the span.
+ *
+ * The fluid sheet is cumulative — deposited pigment cannot be re-warped every
+ * frame — and the bake's per-deposit wiggle pose would freeze a single-stroke
+ * script into one pose (no motion at all). Reveal only consumes the wash as a
+ * mask, so the bake runs unposed and the flattened coverage takes the held
+ * pose of the OUTPUT frame (`poseRevealCoverage`): the whole revealed
+ * silhouette wiggles with engine-1's amplitude and hold law.
+ */
+async function renderRotoRevealFramesAquarelle(
+  input: RotoRevealRenderInput,
+  events: NonNullable<RotoPaintScript['aquarelleEvents']>,
+): Promise<StagedRotoPlayScriptFrame[]> {
+  if (events.length === 0) throw new Error('Aquarelle reveal requires recorded script events.');
+  throwIfAborted(input.signal);
+
+  const [{ createAquarelleEngineAdapter }, { createAquarelleBake }, { paperPresetForStudioId }, { encodeWebpFrame }] = await Promise.all([
+    import('@efxlab/efx-watercolor'),
+    import('@efxlab/efx-watercolor/bake'),
+    import('../engine/AquarelleCanvasLayer'),
+    import('../../../lib/webpFrameCodec'),
+  ]);
+  throwIfAborted(input.signal);
+
+  const paper = input.aquarellePaper;
+  const adapter = createAquarelleEngineAdapter({
+    width: input.size.width,
+    height: input.size.height,
+    paperPreset: paper ? paperPresetForStudioId(paper.paperId) : undefined,
+    paperStrength: paper?.grainStrength,
+  });
+  const isStatic = (input.mode ?? 'progressive') === 'static';
+  // The fluid bake reports committed frames as it goes; the composite turn
+  // reports the rest. Monotonic, so the dialog bar never walks backwards.
+  let reportedProgress = 0;
+  const reportProgress = (completed: number): void => {
+    const next = Math.max(reportedProgress, Math.min(input.frameCount, Math.trunc(completed)));
+    if (next === reportedProgress) return;
+    reportedProgress = next;
+    input.onProgress?.(next, input.frameCount);
+  };
+  const bake = createAquarelleBake(adapter, {
+    width: input.size.width,
+    height: input.size.height,
+    ...(paper ? { paper: { paperId: paper.paperId, grainStrength: paper.grainStrength, grainScale: paper.grainScale } } : {}),
+    encodeWebp: async (frame, width, height) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('Could not create aquarelle reveal encode canvas.');
+      context.drawImage(frame, 0, 0, width, height);
+      const imageData = context.getImageData(0, 0, width, height);
+      return encodeWebpFrame({
+        rgba: new Uint8Array(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength),
+        width,
+        height,
+      });
+    },
+    frameCount: isStatic ? 1 : input.frameCount,
+    // No bake motion: its per-deposit pose is frozen into the cumulative wash.
+    // Reveal poses the flattened coverage once per output frame instead.
+    onCommit: () => reportProgress(reportedProgress + 1),
+  });
+  const interruptOnAbort = () => bake.interrupt();
+  input.signal.addEventListener('abort', interruptOnAbort, { once: true });
+  const staged: StagedRotoPlayScriptFrame[] = [];
+  try {
+    const result = await bake.bake(events);
+    throwIfAborted(input.signal);
+    if (!result.ok) {
+      throw new Error(result.reason === 'cancelled' ? 'Aquarelle reveal bake cancelled.' : 'Aquarelle reveal bake failed.');
+    }
+    const frames = result.frames;
+    if (frames.length === 0) throw new Error('Aquarelle reveal bake produced no frames.');
+    if (!isStatic && frames.length !== input.frameCount) throw new Error('Aquarelle reveal bake frame count mismatch.');
+    // Decode-once per distinct payload: static mode reuses the single wash for
+    // every span frame, and a repeated reference payload shares one decode.
+    const washImages = new Map<Uint8Array, HTMLImageElement>();
+    // The aquarelle capture is MODE.transparent TRANSMITTANCE (opaque, white =
+    // no pigment), not alpha. `transmittanceToAlpha` is the app's one conversion
+    // to pigment coverage (alpha = 1 - min(r,g,b)); without it the mask would
+    // be opaque everywhere and reveal the whole photo.
+    const coverageByBytes = new Map<Uint8Array, HTMLCanvasElement>();
+    const referenceImages = new Map<Uint8Array, HTMLImageElement>();
+    for (let frameIndex = 0; frameIndex < input.frameCount; frameIndex += 1) {
+      throwIfAborted(input.signal);
+      const destination = input.canonicalStart + frameIndex;
+      const washFrame = isStatic ? frames[0]! : frames[frameIndex]!;
+      let coverage = coverageByBytes.get(washFrame.bytes);
+      if (coverage === undefined) {
+        const washImage = washImages.get(washFrame.bytes) ?? await loadRevealWebpImage(washFrame.bytes);
+        washImages.set(washFrame.bytes, washImage);
+        const washCanvas = document.createElement('canvas');
+        washCanvas.width = input.size.width;
+        washCanvas.height = input.size.height;
+        const washContext = washCanvas.getContext('2d', { willReadFrequently: true });
+        if (!washContext) throw new Error('Could not create aquarelle reveal mask canvas.');
+        washContext.drawImage(washImage, 0, 0, input.size.width, input.size.height);
+        const converted = transmittanceToAlpha(washCanvas);
+        if (!converted) throw new Error('Could not convert the aquarelle wash to pigment alpha.');
+        coverage = converted;
+        coverageByBytes.set(washFrame.bytes, coverage);
+      }
+      const referenceBytes = input.reference.bytesByAppFrame.get(destination);
+      if (referenceBytes === undefined) throw new Error(`No reveal reference image for frame ${destination}.`);
+      let referenceImage = referenceImages.get(referenceBytes);
+      if (referenceImage === undefined) {
+        referenceImage = await loadRevealWebpImage(referenceBytes);
+        referenceImages.set(referenceBytes, referenceImage);
+      }
+      throwIfAborted(input.signal);
+      const posedCoverage = poseRevealCoverage(coverage, destination, input.motion);
+      const masked = compositeRevealMask(referenceImage, posedCoverage, input.size, input.reference.transform, input.reference.zoom);
+      const encoded = await encodeRotoFrameFromCanvas(masked, destination, input.size);
+      throwIfAborted(input.signal);
+      staged.push({ ...encoded, frameIndex, appFrame: destination, source: 'real-key' });
+      reportProgress(frameIndex + 1);
+      await yieldToBrowser(input.signal);
+    }
+    return staged;
+  } catch (error) {
+    staged.length = 0;
+    throw error;
+  } finally {
+    input.signal.removeEventListener('abort', interruptOnAbort);
+    bake.dispose();
+    adapter.dispose();
+  }
+}
+
+/**
  * 52-01 (D-17/D-18): the reference-mask composite that REPLACES the PlayScript
  * `mergeRotoAlphaCanvases` step. Draws the reference image AS PLACED (the
  * Phase 50 position/scale/rotation transform, D-14) at FULL source opacity
@@ -184,7 +338,7 @@ export async function renderRotoRevealFrames(input: RotoRevealRenderInput): Prom
  */
 function compositeRevealMask(
   referenceImage: HTMLImageElement,
-  scriptAlphaCanvas: HTMLCanvasElement,
+  coverageAlpha: CanvasImageSource,
   size: Readonly<{ width: number; height: number }>,
   transform: Readonly<{ x: number; y: number; scaleX: number; scaleY: number; rotation: number }>,
   zoom: number,
@@ -207,11 +361,23 @@ function compositeRevealMask(
   context.restore();
 
   context.globalCompositeOperation = 'destination-in';
-  context.drawImage(scriptAlphaCanvas, 0, 0, size.width, size.height);
+  context.drawImage(coverageAlpha, 0, 0, size.width, size.height);
   return output;
 }
 
-function loadRevealReferenceImage(bytes: Uint8Array): Promise<HTMLImageElement> {
+/** Per-output-frame pose for the flattened aquarelle coverage (see aquarelleFramePose). */
+function poseRevealCoverage(
+  coverage: HTMLCanvasElement,
+  destinationFrame: number,
+  motion: Readonly<{ deformation: number; position: number }>,
+): HTMLCanvasElement {
+  const pose = computeAquarelleSheetPose(coverage.width, coverage.height, destinationFrame, motion);
+  return pose
+    ? drawAquarelleSheetPose(coverage, coverage.width, coverage.height, pose)
+    : coverage;
+}
+
+function loadRevealWebpImage(bytes: Uint8Array): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const blobUrl = URL.createObjectURL(new Blob([bytes.slice()], { type: 'image/webp' }));
@@ -221,7 +387,7 @@ function loadRevealReferenceImage(bytes: Uint8Array): Promise<HTMLImageElement> 
     };
     image.onerror = () => {
       URL.revokeObjectURL(blobUrl);
-      reject(new Error('Could not load reveal reference image.'));
+      reject(new Error('Could not load reveal WebP image.'));
     };
     image.src = blobUrl;
   });

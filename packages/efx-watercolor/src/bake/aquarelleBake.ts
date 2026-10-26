@@ -33,7 +33,6 @@ import {
 import {
   buildProgressiveStrokeSchedule,
   getProgressiveFrameStrokes,
-  transformRecordedStrokeForHeldPose,
 } from '@efxlab/efx-paint-host/animation'
 import {
   DIFFUSION_CAP,
@@ -100,18 +99,13 @@ export interface AquarelleBakeOptions {
    */
   frameCount?: number
   /**
-   * 261019b Motion wiggle (the Play dialog's deformation + position). The
+   * 261026 Motion wiggle (the Play dialog's deformation + position). The
    * aquarelle sheet is cumulative — deposited pigment cannot be re-warped
-   * every frame — so each stroke takes the engine-1 held pose ONCE, at the
-   * output frame where it begins to draw. `startFrame` is the absolute Studio
-   * frame of the span's first output (the pose key), matching engine-1's
-   * destinationSourceFrame law.
+   * inside the sim — so the pose is applied to each CAPTURED progressive
+   * frame instead. Receives the 0-based OUTPUT frame index; the caller adds
+   * its absolute start frame. Returning the input frame is allowed (identity).
    */
-  motion?: {
-    readonly deformation: number
-    readonly position: number
-    readonly startFrame: number
-  }
+  poseFrame?: (frame: CanvasImageSource, frameIndex: number) => CanvasImageSource
   /**
    * 261022 Apply parity: fires only during progressive replay (a bake with
    * `frameCount` set), once per FULLY FED stroke event, cumulative from 1 to
@@ -350,9 +344,7 @@ export function createAquarelleBake(
 
     // Each Dry fires before the next stroke's first frame (recorded order).
     const startFrameOf = new Map<StudioStroke<AquarelleStrokePayload>, number>()
-    /** Motion copies keyed by the ORIGINAL stroke (Dry mapping identity). */
-    const strokeAlias = new Map<StudioStroke<AquarelleStrokePayload>, StudioStroke<AquarelleStrokePayload>>()
-    let timed = timedBase
+    const timed = timedBase
     let timelineEnd = 0
     // True when the settle hit the visible cap (the live sheet force-dries) —
     // a naturally shorter sleep already baked itself and must not be fixed.
@@ -380,35 +372,6 @@ export function createAquarelleBake(
         frameSpan - 1,
         Math.ceil((tick * frameSpan) / timelineEnd) - 1,
       ))
-      // 261019b Motion: aquarelle points are document uv (y up) while the
-      // shared held-pose law is in canvas pixels — scale in, transform, scale
-      // back. Each stroke takes its pose at the output frame where it begins;
-      // deposited pigment cannot be re-warped per frame in a cumulative sim.
-      const motion = options.motion
-      const width = options.width
-      const height = options.height
-      if (motion && width && height && (motion.deformation > 0 || motion.position > 0)) {
-        timed = timedBase.map((entry, index) => {
-          const stroke = entry.stroke
-          if (stroke.pts.length === 0) return entry
-          const pixelStroke: StudioStroke<AquarelleStrokePayload> = {
-            ...stroke,
-            pts: stroke.pts.map((point) => ({ ...point, x: point.x * width, y: point.y * height })),
-          }
-          const moved = transformRecordedStrokeForHeldPose(pixelStroke, {
-            destinationSourceFrame: motion.startFrame + frameForTick(entry.beginTick),
-            strokeIndex: index,
-            deformation: motion.deformation,
-            position: motion.position,
-          })
-          const uvStroke: StudioStroke<AquarelleStrokePayload> = {
-            ...stroke,
-            pts: moved.pts.map((point) => ({ ...point, x: point.x / width, y: point.y / height })),
-          }
-          strokeAlias.set(stroke, uvStroke)
-          return { ...entry, stroke: uvStroke }
-        })
-      }
       for (const entry of timedBase) startFrameOf.set(entry.stroke, frameForTick(entry.beginTick))
     } else {
       for (const entry of schedule) startFrameOf.set(entry.stroke, entry.startFrame)
@@ -428,7 +391,7 @@ export function createAquarelleBake(
       const stroke = event as StudioStroke<AquarelleStrokePayload>
       if (timed) {
         if (pendingDrys.length > 0) {
-          drysBeforeStroke.set(strokeAlias.get(stroke) ?? stroke, pendingDrys)
+          drysBeforeStroke.set(stroke, pendingDrys)
           pendingDrys = []
         }
         continue
@@ -588,7 +551,8 @@ export function createAquarelleBake(
       const outcome = host.submit<AquarelleBakeFrame>({
         mode: 'flush-survives-navigation',
         produce: async () => {
-          const frame = await framePromise
+          const captured = await framePromise
+          const frame = options.poseFrame ? options.poseFrame(captured, frameIndex) : captured
           const fallback = readSize(frame)
           const width = options.width ?? fallback.width
           const height = options.height ?? fallback.height

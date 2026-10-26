@@ -54,7 +54,7 @@ describe('Reveal leak contract (RVL-05, D-15 bake-time guarantee)', () => {
   it('keeps the reveal bake path tokens out of the four raster surfaces', () => {
     // The reveal bake reads the reference via `_resolveReferenceSourceImage`
     // (frame-aligned, null-on-missing fail-closed) and renders it through
-    // `renderRotoRevealFrames`/`compositeRevealMask`/`loadRevealReferenceImage`,
+    // `renderRotoRevealFrames`/`compositeRevealMask`/`loadRevealWebpImage`,
     // committing via `commitRevealBake` and the `createRevealRail`/
     // `replayRevealRail`/`deleteRevealRail`/`resizeRevealRail` mutations
     // (railKind 'reveal'). None of that bake path may leak a token into any
@@ -63,7 +63,7 @@ describe('Reveal leak contract (RVL-05, D-15 bake-time guarantee)', () => {
     const revealBakeTokens = [
       'renderRotoRevealFrames',
       'compositeRevealMask',
-      'loadRevealReferenceImage',
+      'loadRevealWebpImage',
       'commitRevealBake',
       '_resolveReferenceSourceImage',
       'createRevealRail',

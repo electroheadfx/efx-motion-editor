@@ -39,6 +39,7 @@ import {
   type AquarelleBakePaper,
 } from '@efxlab/efx-watercolor/bake';
 import { paperPresetForStudioId } from '../engine/AquarelleCanvasLayer';
+import { createAquarelleDeformPoser, drawAquarelleSheetDeform } from './aquarelleFramePose';
 
 export type RotoPlayScriptPhase = 'idle' | 'preparing' | 'rendering' | 'committing' | 'regenerating' | 'complete' | 'cancelled' | 'failed';
 
@@ -1231,8 +1232,9 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
     size: { width: number; height: number };
     acceptedGeneration: number;
     motion: { deformation: number; position: number };
+    mode: RotoPlayScriptMode;
   }): Promise<PhysicPaintRotoCacheFrame[]> {
-    const { snapshot, count, start, size, acceptedGeneration } = input;
+    const { snapshot, count, start, size, acceptedGeneration, mode } = input;
     // 261017-fz3: paper enters the bake AND its cache key. Single source:
     // ports.getBackgroundMetadata() (never a second paper source).
     const bgMeta = ports.getBackgroundMetadata();
@@ -1255,13 +1257,14 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       height: size.height,
       paper: bakePaper,
       encodeWebp: encodeAquarelleWebpFrame,
-      // 261018 progressive Play: emit `count` frames with stroke growth
-      // across the span (buildProgressiveStrokeSchedule) — not one frame per
-      // stroke. This is what makes intermediate keys animate like brush mode.
-      frameCount: count,
-      // 261019b: wire the Play Motion wiggle (D-09) into the fluid replay —
-      // engine-1's held-pose law, applied per stroke at its deposit frame.
-      motion: { ...input.motion, startFrame: start },
+      // 261018 progressive Play: emit `count` frames with stroke growth across
+      // the span. Static bakes ONE settled wash and derives `count` posed
+      // copies below — the complete drawing on every frame (engine-1 static).
+      frameCount: mode === 'static' ? 1 : count,
+      // 261026: the cumulative sheet cannot re-warp deposits, so the pose is
+      // applied to each CAPTURED progressive frame at its OUTPUT frame — this
+      // is what makes already-drawn paint move with the animation.
+      poseFrame: mode === 'progressive' ? createAquarelleDeformPoser(size, input.motion, start, 'white') : undefined,
       // 261022-ljt / LJT-01: consume the bake's existing per-committed-frame
       // seam so the Play dialog bar advances exactly like brush mode. AQUA-07
       // flushes (not aborts) on dispose, so commits legitimately continue
@@ -1287,6 +1290,49 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
         throw new Error(result.reason === 'cancelled'
           ? 'Aquarelle bake cancelled.'
           : 'Aquarelle bake failed. Nothing changed.');
+      }
+      if (mode === 'static') {
+        // Static holds ONE settled wash across the span. With motion, each
+        // output frame gets its own held pose so the complete drawing wiggles
+        // frame to frame (engine-1 static parity).
+        const base = result.frames[0];
+        if (!base) throw new Error('Aquarelle static bake produced no frame.');
+        const moving = input.motion.deformation !== 0 || input.motion.position !== 0;
+        let bitmap: ImageBitmap | null = null;
+        try {
+          if (moving) {
+            bitmap = await createImageBitmap(new Blob([base.bytes.slice()], { type: 'image/webp' }));
+          }
+          const staged: PhysicPaintRotoCacheFrame[] = [];
+          for (let j = 0; j < count; j += 1) {
+            if (disposed || generation !== acceptedGeneration) {
+              throw new DOMException('Play Script generation cancelled.', 'AbortError');
+            }
+            let bytes = base.bytes;
+            if (bitmap) {
+              bytes = await encodeAquarelleWebpFrame(
+                drawAquarelleSheetDeform(bitmap, size.width, size.height, start + j, input.motion, 'white'),
+                size.width,
+                size.height,
+              );
+            }
+            staged.push({
+              frameIndex: j,
+              appFrame: start + j,
+              bytes,
+              width: size.width,
+              height: size.height,
+              source: 'real-key' as const,
+            });
+            committedFrames = Math.max(committedFrames, Math.min(count, j + 1));
+            progress.value = { completed: committedFrames, total: count };
+            status.value = `Rendering ${committedFrames} / ${count}`;
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
+          return staged;
+        } finally {
+          bitmap?.close();
+        }
       }
       // 261018 progressive Play: frameCount emits exactly `count` frames with
       // stroke growth across the span. Map them 1:1 onto the output range.
@@ -1498,7 +1544,7 @@ export function createRotoPlayScriptController(ports: RotoPlayScriptControllerPo
       // with mode 'flush-survives-navigation' (AQUA-07 / D-21). The engine-1
       // path below is byte-stable — this is a branch, not a rewrite.
       const staged = snapshot.engineId === 'efx-watercolor'
-        ? await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion })
+        ? await bakeAquarelleScript({ snapshot, count, start, size: ports.getSize(), acceptedGeneration, motion, mode: renderMode })
         : await renderRotoPlayScriptFrames({
             script: snapshot, frameCount: count, canonicalStart: start, motion, mode: renderMode, overrideColor: renderOverrideColor, existingFrames, size: ports.getSize(), signal: abortController.signal,
             onProgress: (completed, total) => { if (generation === acceptedGeneration) { progress.value = { completed, total }; status.value = `Rendering ${completed} / ${total}`; } },

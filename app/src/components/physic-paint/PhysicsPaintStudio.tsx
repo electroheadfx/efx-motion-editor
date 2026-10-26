@@ -3280,7 +3280,24 @@ export function PhysicsPaintStudio() {
     photoReferenceRevision: efxPaintVersion,
     openPhotoReference: () => { referenceDialogOpen.value = true; },
     createReveal: async (input) => {
-      const result = await createRevealRail(input.layerId, input);
+      // The Studio child has no hydrated projectStore — carry the launch dims
+      // explicitly so a square project never bakes a 1920×1080 landscape mask.
+      const carriedLaunch = launchContextRef.current;
+      // Engine-2 scripts bake the wash on the same paper Apply uses, so the
+      // revealed alpha edges match the sheet.
+      const backgroundMetadata = buildRotoBackgroundMetadata(settings);
+      const result = await createRevealRail(input.layerId, {
+        ...input,
+        projectSize: {
+          width: carriedLaunch?.width ?? DEFAULT_PHYSICS_PAINT_CANVAS_WIDTH,
+          height: carriedLaunch?.height ?? DEFAULT_PHYSICS_PAINT_CANVAS_HEIGHT,
+        },
+        aquarellePaper: {
+          paperId: backgroundMetadata.background,
+          grainStrength: backgroundMetadata.grainStrength,
+          grainScale: backgroundMetadata.grainScale ?? 1,
+        },
+      });
       if (result.ok) {
         if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
         return { ok: true };

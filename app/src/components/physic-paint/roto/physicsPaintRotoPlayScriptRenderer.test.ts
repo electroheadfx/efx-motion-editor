@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PaintStroke } from '@efxlab/efx-physic-paint';
 import type { RotoPaintScript } from './physicsPaintRotoScriptClipboard';
@@ -344,5 +346,34 @@ describe('renderRotoPlayScriptFrames HOLD-01 static/hold materialization', () =>
       { destinationSourceFrame: 17, strokeIndex: 1 },
       { destinationSourceFrame: 17, strokeIndex: 2 },
     ]);
+  });
+});
+
+describe('renderRotoRevealFrames aquarelle branch (engine-2 reveal)', () => {
+  const renderer = readFileSync(fileURLToPath(new URL('./physicsPaintRotoPlayScriptRenderer.ts', import.meta.url)), 'utf8');
+
+  it('dispatches aquarelle scripts to the wash bake and masks with pigment alpha, never the opaque transmittance alpha', () => {
+    // Engine-2 identity: the persisted envelope names 'efx-watercolor'; the
+    // in-memory capture carries aquarelleEvents instead.
+    expect(renderer).toContain("input.script.engineId === 'efx-watercolor'");
+    expect(renderer).toContain('aquarelleEvents.length > 0');
+    expect(renderer).toContain('renderRotoRevealFramesAquarelle(input, aquarelleEvents ?? [])');
+    // The wash runs through the SAME bake as Play/Apply (paper + growth).
+    expect(renderer).toContain('createAquarelleBake(adapter, {');
+    expect(renderer).toContain('...(paper ? { paper: { paperId: paper.paperId, grainStrength: paper.grainStrength, grainScale: paper.grainScale } } : {}),');
+    // MODE.transparent capture is opaque transmittance; the mask needs pigment
+    // alpha (1 − min(r,g,b)), or the whole photo is revealed.
+    expect(renderer).toContain('transmittanceToAlpha(washCanvas)');
+    expect(renderer).toContain('compositeRevealMask(referenceImage, posedCoverage');
+  });
+
+  it('poses the flattened wash per OUTPUT frame instead of freezing motion per deposit', () => {
+    // The cumulative sheet cannot re-warp deposits, so the bake stays unposed
+    // and the coverage takes the frame's held pose — a single stroke must move.
+    expect(renderer).not.toContain('motion: { ...input.motion, startFrame: input.canonicalStart }');
+    expect(renderer).toContain('const posedCoverage = poseRevealCoverage(coverage, destination, input.motion);');
+    expect(renderer).toContain('computeAquarelleSheetPose(coverage.width, coverage.height, destinationFrame, motion)');
+    expect(renderer).toContain('drawAquarelleSheetPose(coverage, coverage.width, coverage.height, pose)');
+    expect(renderer).toContain('frameCount: isStatic ? 1 : input.frameCount');
   });
 });

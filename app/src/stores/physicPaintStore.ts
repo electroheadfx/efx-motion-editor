@@ -609,6 +609,18 @@ export function hasFrameMediaBytes(digest: string): boolean {
 }
 
 /**
+ * The bridged raster bytes one digest delivered to this realm, or undefined
+ * when it holds none. The parent mirror needs the bytes themselves — not just
+ * the has/hasn't answer — to rebuild a byte-shaped record for a key it has
+ * never seen (a Reveal bake authored in the Studio child, whose pixels arrive
+ * only through the document sync's digest channel). Returning the stored
+ * reference is safe: installs replace the map entry, never mutate the array.
+ */
+export function getFrameMediaBytes(digest: string): Uint8Array | undefined {
+  return _frameMediaBytes.get(digest);
+}
+
+/**
  * Install bridged raster bytes under their content digest. `expectedDigest`
  * claims the content; the digest is recomputed from the bytes and a mismatch
  * is refused and recorded, never applied (T-52.2-33/34 — the digest is the
@@ -1972,6 +1984,15 @@ export interface RevealBakeInput {
   canonicalStart: number;
   motion: Readonly<{ deformation: number; position: number }>;
   mode: 'progressive' | 'static';
+  /**
+   * The PROJECT canvas dims the reference transform and the Studio canvas are
+   * authored against. Carried explicitly: Reveal creation runs in the Studio
+   * child realm, whose projectStore is never hydrated (see the bake's size
+   * authority note below).
+   */
+  projectSize: Readonly<{ width: number; height: number }>;
+  /** The Studio paper an aquarelle wash deposits on (engine-2 scripts only). */
+  aquarellePaper?: Readonly<{ paperId: string; grainStrength: number; grainScale: number }>;
   signal: AbortSignal;
   onProgress?: (completed: number, total: number) => void;
 }
@@ -1997,8 +2018,12 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
   // in working coordinates. Rendering at project size squashes coverage into
   // the up-left quadrant and makes the reference mask sample the wrong region
   // (G-52-2a). The project→working zoom rides with the reference so the mask
-  // composite reproduces the ghost draw math exactly.
-  const projectSize = _compositorSizeProvider?.() ?? FALLBACK_COMPOSITE_SIZE;
+  // composite reproduces the ghost draw math exactly. The project size is
+  // CARRIED, never read from `_compositorSizeProvider`: Reveal creation runs in
+  // the Studio child realm, where that provider is wired to projectStore's
+  // untouched 1920×1080 defaults — a square project then bakes a landscape
+  // mask (the square-format squash).
+  const projectSize = input.projectSize;
   const size = getPhysicsPaintWorkingSize(projectSize.width, projectSize.height);
   const referenceZoom = size.width / projectSize.width;
 
@@ -2026,6 +2051,7 @@ export async function commitRevealBake(input: RevealBakeInput): Promise<RevealBa
       mode: input.mode,
       size,
       reference: { bytesByAppFrame, transform: track.transform, zoom: referenceZoom },
+      aquarellePaper: input.aquarellePaper,
       signal: input.signal,
       onProgress: input.onProgress,
     });

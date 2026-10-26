@@ -2571,6 +2571,7 @@ describe('useRotoPhysicalEditHistory reveal rail entries (G-52-5)', () => {
     ]);
     const result = await createRevealRail(layerId, {
       trackId: REVEAL_TRACK_ID,
+      projectSize: { width: 4, height: 3 },
       scriptId: 'script-1',
       variant: 'progressive',
       startFrame: 10,
