@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const layer = readFileSync(resolve(__dirname, './AquarelleCanvasLayer.tsx'), 'utf8');
+const mount = readFileSync(resolve(__dirname, './PhysicsPaintCanvasMount.tsx'), 'utf8');
 const engine = readFileSync(
   resolve(__dirname, '../../../../../packages/efx-watercolor/src/playground/Engine.ts'),
   'utf8',
@@ -110,6 +111,27 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     // The seam unregisters on unmount: the save/close flush must never call a
     // closure holding a destroyed engine.
     expect(layer).toContain('onFlushCaptureReadyRef.current?.(null)');
+  });
+
+  it('SAVE: the live sheet snapshot is registered after engine setup and unregistered on cleanup', () => {
+    // 261026-nvq: the Save Script thumbnail must read the SAME composited sheet
+    // the cache capture resolves — not a second readback. The seam registers
+    // the existing `snapshot` closure through the mount lifecycle and clears it
+    // before engine.destroy() so a stale closure can never be invoked.
+    expect(layer).toContain('onSnapshotReady');
+    expect(layer).toContain('onSnapshotReadyRef.current?.(snapshot)');
+    expect(layer).toContain('onSnapshotReadyRef.current?.(null)');
+    // Registration must land AFTER the engine is configured (compositor layer,
+    // live config, paper) — a pre-configuration snapshot would export the wrong
+    // mode.
+    expect(layer.indexOf('engine.setCompositorLayer(true)'))
+      .toBeLessThan(layer.indexOf('onSnapshotReadyRef.current?.(snapshot)'));
+    // The unregister rides the same cleanup as the flush-capture seam.
+    expect(layer.indexOf('onSnapshotReadyRef.current?.(null)'))
+      .toBeLessThan(layer.indexOf('engine.destroy()'));
+    // The mount forwards the seam through a ref like every other aquarelle
+    // callback — no effect, no state, no memo.
+    expect(mount).toContain('onAquarelleSnapshotReady');
   });
 
   it('no double composite: the live aquarelle layer replaces the active track in the monitor', () => {

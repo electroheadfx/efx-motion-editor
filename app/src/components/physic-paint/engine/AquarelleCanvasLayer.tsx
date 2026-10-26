@@ -233,6 +233,14 @@ export function AquarelleCanvasLayer(props: {
    */
   onFlushCaptureReady?: (flushCapture: (() => void) | null) => void;
   /**
+   * SAVE-PATH seam (261026-nvq): registers the current edit frame's composited
+   * sheet factory — the SAME `snapshot` closure the cache capture resolves,
+   * never a second readback. The sheet is MODE.transparent OPAQUE
+   * transmittance (white = no pigment), so a consumer must multiply it over
+   * its background. Null on cleanup; mirrors onFlushCaptureReady.
+   */
+  onSnapshotReady?: (snapshot: (() => HTMLCanvasElement | null) | null) => void;
+  /**
    * CACHE MERGE BASE (aquarelle-cache-lost-on-return): a new sheet session
    * begins when the edit frame changes and the engine is cleared. The next
    * session's first capture must re-read the cache as its multiply base — a
@@ -278,6 +286,7 @@ export function AquarelleCanvasLayer(props: {
   const onStrokeSettledRef = useRef(props.onStrokeSettled);
   const onCaptureFrameRef = useRef(props.onCaptureFrame);
   const onFlushCaptureReadyRef = useRef(props.onFlushCaptureReady);
+  const onSnapshotReadyRef = useRef(props.onSnapshotReady);
   const onSheetSessionEndRef = useRef(props.onSheetSessionEnd);
   const onResetSheetReadyRef = useRef(props.onResetSheetReady);
   const onDeleteStrokesRef = useRef(props.onDeleteStrokes);
@@ -293,6 +302,7 @@ export function AquarelleCanvasLayer(props: {
   onStrokeSettledRef.current = props.onStrokeSettled;
   onCaptureFrameRef.current = props.onCaptureFrame;
   onFlushCaptureReadyRef.current = props.onFlushCaptureReady;
+  onSnapshotReadyRef.current = props.onSnapshotReady;
   onSheetSessionEndRef.current = props.onSheetSessionEnd;
   onResetSheetReadyRef.current = props.onResetSheetReady;
   onDeleteStrokesRef.current = props.onDeleteStrokes;
@@ -427,6 +437,12 @@ export function AquarelleCanvasLayer(props: {
     };
     onFlushCaptureReadyRef.current?.(flushCapture);
 
+    // SAVE PATH (261026-nvq): register the SAME composited-sheet factory the
+    // cache capture resolves. A separate `exportCanvas` read would be a second
+    // readback and could diverge; the engine is configured above, so this is
+    // the first moment the export reflects the live mode + paper.
+    onSnapshotReadyRef.current?.(snapshot);
+
     // D-15: user-initiated Dry is one event with two ends. The record end
     // (aquarelleRecordState) already appended it to the payload timeline;
     // this is the LIVE end — force-dry the wet sheet so the paint stops
@@ -540,6 +556,9 @@ export function AquarelleCanvasLayer(props: {
       // Unregister the flush seam: the engine is about to die, and a stale
       // closure accessing it would fail the save/close flush.
       onFlushCaptureReadyRef.current?.(null);
+      // SAVE PATH (261026-nvq): drop the snapshot seam too — a later Save must
+      // never call a closure holding the destroyed engine.
+      onSnapshotReadyRef.current?.(null);
       window.removeEventListener('pointerdown', reopenSettleOnPaint, true);
       offDry();
       offDryCapture();
