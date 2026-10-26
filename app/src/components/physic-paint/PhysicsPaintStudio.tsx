@@ -201,6 +201,7 @@ import {
   dropNonKeyCellBrushScript,
   flushBrushScriptFrame,
   getBrushScriptFrameEntries,
+  getBrushScriptFrameEntry,
   normalizeBrushScriptGroups,
   noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
@@ -1553,7 +1554,12 @@ export function PhysicsPaintStudio() {
     if (!brushMoveAvailable.value) return false;
     const cell = rotoTimelineModel.currentCell.value;
     if (cell.kind !== 'real') return false;
-    return !isRotoLoopRailFrame(rotoTimelineModel.loopResolutionContext.value.ranges, cell.appFrame);
+    if (isRotoLoopRailFrame(rotoTimelineModel.loopResolutionContext.value.ranges, cell.appFrame)) return false;
+    // A retained script belongs to the KEY it was captured on. An entry whose
+    // stored identity is a different key is stale — never offer Move for it.
+    const entryKeyId = getBrushScriptFrameEntry(cell.appFrame)?.keyId ?? null;
+    if (entryKeyId !== null && entryKeyId !== cell.keyId) return false;
+    return true;
   });
   // quick-261026-odd follow-up: a derived cell has no key script by
   // construction. Drop any stale brush capture for it and release the owner,

@@ -2986,7 +2986,9 @@ describe('261022-pim watercolor stroke select surface', () => {
     // quick-261026-odd: a rail frame resolves as a REAL key (D-26), so the
     // cell kind alone never sees it — the loop-range test is the second half.
     expect(studio).toContain("if (cell.kind !== 'real') return false;");
-    expect(studio).toContain('return !isRotoLoopRailFrame(rotoTimelineModel.loopResolutionContext.value.ranges, cell.appFrame);');
+    expect(studio).toContain('if (isRotoLoopRailFrame(rotoTimelineModel.loopResolutionContext.value.ranges, cell.appFrame)) return false;');
+    // A retained script never unlocks Move on a DIFFERENT key's cell.
+    expect(studio).toContain('if (entryKeyId !== null && entryKeyId !== cell.keyId) return false;');
     expect(studio).toContain("if (tool === 'move' && activeModule.peek() === 'brush' && !moveAvailable.peek()) return;");
     expect(studio).toContain("if (activeModule.value !== 'brush' || settings.tool !== 'move') return;");
     expect(studio).toContain('if (moveAvailable.value || mutationLocked) return;');
