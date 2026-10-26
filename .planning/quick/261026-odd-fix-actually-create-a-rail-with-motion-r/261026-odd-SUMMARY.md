@@ -150,7 +150,7 @@ plan_head_after: a74bf8cc6a47a171f20cbcde9fc6041310f5955b
 
 ## Accomplishments
 
-- `frameModuleLock.ts` now exports `brushMoveAvailable`, a computed that opens only for `'brush'`/`'both'` and closes for `null`/`'watercolor'` — the ONE Move enable gate shared by the rail, the Cmd tap, the held-Cmd arm and every programmatic activation. The compare-then-write owner setter is untouched.
+- `frameModuleLock.ts` now exports `brushMoveAvailable`, a computed that opens only for `'brush'` (follow-up 2026-10-26: `'both'` is the unsupported mixed state and stays closed) and closes for `null`/`'watercolor'` — the ONE Move enable gate shared by the rail, the Cmd tap, the held-Cmd arm and every programmatic activation. The compare-then-write owner setter is untouched.
 - `PhysicsPaintToolRail` takes `moveAvailable`, derives `moveDisabled`, and suppresses the `active` class on a blocked Move (`moveBlocked`), so a disabled Move can never render blue.
 - The ONE `selectTool` funnel refuses `'move'` on a scriptless Brush key as its FIRST statement, before the no-engine / physical-lock early return, so no shortcut or programmatic reselect can bypass the greyed icon.
 - A force-exit effect leaves Move through `selectTool(lastNonMoveToolRef.current, …)` when `brushMoveAvailable` closes, restoring labels and cursor; `mutationLocked` in the outer deps makes a mid-operation refusal retry when the lock clears.
@@ -194,7 +194,11 @@ None — plan executed exactly as written.
 
 ## Issues Encountered
 
-None.
+**Follow-up (2026-10-26, native UAT): Water color keys leaked into Brush ownership.** The first UAT pass showed Move still active on a wash-only key, with the Move overlay drawing eight invisible thin strokes.
+
+- **Root cause:** Water color strokes are enqueued into engine-1 as invisible *guide proxies* that share the aquarelle stroke's `mutationId` (the aquarelle engine reads them; engine-1 only draws their line). Any Brush-store capture that ran while the module was not Water color — navigation, Apply settle, track switch, Move entry, or the Memory-tab read — projected those guides into the per-frame Brush store. The key then resolved `brush`/`both`: the Brush module stayed unlocked and Move opened on strokes the artist never made.
+- **Fix:** `flushBrushScriptFrame` now drops guide groups (identified by the recorded aquarelle registry, live and restored ids match by construction). `restoreBrushScriptFrames` and the snapshot restore drop them from persisted rows and from the retained file content. `purgeAquarelleGuideGroups(frame)` repairs an already-captured frame, called by the owner funnel before resolution. `brushMoveAvailable` is now `owner === 'brush'` — a mixed `'both'` key stays closed.
+- **Pins:** `brushScriptRecordState.test.ts` (flush drop, guide-only no-entry, restore filter, live purge) and the owner-funnel source pin in `PhysicsPaintStudio.test.ts`; `frameModuleLock.test.ts` now asserts `'both'` stays closed.
 
 ## User Setup Required
 
@@ -202,7 +206,7 @@ None — no external service configuration or dependency was added.
 
 ## Native UAT (user-driven — executor never started the dev server)
 
-**Status: pending** — all 8 rows await the user's live Studio run.
+**Status: pending** — rows await the user's live Studio run with the guide-proxy follow-up loaded (reload the Studio so the snapshot restore cleans persisted guide rows).
 
 | # | Action | Expected | Status |
 |---|--------|----------|--------|
@@ -214,6 +218,8 @@ None — no external service configuration or dependency was added.
 | 6 | From Move on a scripted key, run a Play Script Motion/Static apply that replaces the key | On the accepted edit the tool leaves Move without needing a frame navigation | pending |
 | 7 | Raster a scripted key from the timeline header | After the raster, Move is greyed on that key in the same step | pending |
 | 8 | Water color mode on an aquarelle key | The Water color rail's Select toggle behaves exactly as before; the Brush Move gate does not alter it | pending |
+| 9 | Select a Water color key whose wash is visible and whose key was previously visited (the reported repro) | Move is greyed, the Brush module slot is locked, and the Move overlay shows no invisible guide strokes | pending |
+| 10 | Open the Memory tab on that Water color key | The per-frame Brush row stays empty; only the Water color row lists the wash strokes | pending |
 
 ## Known Stubs
 
