@@ -4598,17 +4598,18 @@ export function PhysicsPaintStudio() {
         // The carried document is the launch authority (the store's physical
         // state lands later). A missing physical state means "unknown" — never
         // mark the track clean; the next launch retries.
+        // NEVER mark the track clean here: an empty rail list in the carried
+        // payload is ambiguous (the store may not hold the physical state yet),
+        // and marking it early is what skipped the purge. The store-authoritative
+        // retry in runPendingRailScriptCleanup owns the marker.
         const railFrames = resolveCarriedRailFrames(document, identity.trackId);
-        if (railFrames !== null) {
-          if (railFrames.size > 0) {
-            for (const railFrame of railFrames) {
-              purgeBrushScriptFrame(railFrame);
-              purgeAquarelleFrameScript(railFrame);
-            }
-            studioScriptSnapshot.dropRetainedForFrames(railFrames);
-            studioScriptSnapshot.markDirty();
+        if (railFrames !== null && railFrames.size > 0) {
+          for (const railFrame of railFrames) {
+            purgeBrushScriptFrame(railFrame);
+            purgeAquarelleFrameScript(railFrame);
           }
-          markRailScriptCleanupDone(identity);
+          studioScriptSnapshot.dropRetainedForFrames(railFrames);
+          studioScriptSnapshot.markDirty();
         }
       }
       // quick-261025-awl (D-02): the Studio launch settle publishes the start

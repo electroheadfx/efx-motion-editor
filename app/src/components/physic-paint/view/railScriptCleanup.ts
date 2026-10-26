@@ -40,7 +40,13 @@ export interface RailCleanupIdentity {
 
 type RailCleanupStorage = Pick<Storage, 'getItem' | 'setItem'>;
 
-const RAIL_SCRIPT_CLEANUP_KEY = 'efx.rail-script-cleanup.v1';
+/**
+ * v2 (2026-10-26): v1 could be marked done by the launch-document attempt
+ * while the carried rail list was still empty, so the purge never ran.
+ * Bumping the key invalidates that early marker and re-runs the cleanup once
+ * with the store-authoritative path.
+ */
+const RAIL_SCRIPT_CLEANUP_KEY = 'efx.rail-script-cleanup.v2';
 
 function defaultStorage(): RailCleanupStorage | null {
   try {
