@@ -200,6 +200,10 @@ None — plan executed exactly as written.
 - **Fix:** `flushBrushScriptFrame` now drops guide groups (identified by the recorded aquarelle registry, live and restored ids match by construction). `restoreBrushScriptFrames` and the snapshot restore drop them from persisted rows and from the retained file content. `purgeAquarelleGuideGroups(frame)` repairs an already-captured frame, called by the owner funnel before resolution. `brushMoveAvailable` is now `owner === 'brush'` — a mixed `'both'` key stays closed.
 - **Pins:** `brushScriptRecordState.test.ts` (flush drop, guide-only no-entry, restore filter, live purge) and the owner-funnel source pin in `PhysicsPaintStudio.test.ts`; `frameModuleLock.test.ts` now asserts `'both'` stays closed.
 
+**Follow-up 2 (2026-10-26, second native pass): phantom handles on a derived rail cell.** The key at frame 6 of a Motion/Static/Reveal rail (a derived cell over a soloed/masked neighbor) still showed four phantom Move handles. The registry-based filter could not identify guides on a frame whose aquarelle script is not in the session, and Move was gated only on the owner signal, not on the cell kind.
+
+- **Fix:** `aquarelleStrokeToPaintStroke` now stamps every Water color guide proxy with `guideProxy: true` on the engine-1 `PaintStroke`; capture, restore, purge and the Move overlay refuse it by that marker (registry match stays as the second belt). `moveAvailable` is a Studio computed combining `brushMoveAvailable` with `currentCell.kind === 'real'`, wired through the rail, Cmd tap, held-Cmd arm, `selectTool` guard, force-exit effect and engine re-create — a derived or empty cell has no Move by construction. Selecting a non-key cell drops any stale brush capture (`dropNonKeyCellBrushScript`) and releases the owner, so scripts are strictly per real key and per track, never a blend borrowed from the display.
+
 ## User Setup Required
 
 None — no external service configuration or dependency was added.
@@ -220,6 +224,8 @@ None — no external service configuration or dependency was added.
 | 8 | Water color mode on an aquarelle key | The Water color rail's Select toggle behaves exactly as before; the Brush Move gate does not alter it | pending |
 | 9 | Select a Water color key whose wash is visible and whose key was previously visited (the reported repro) | Move is greyed, the Brush module slot is locked, and the Move overlay shows no invisible guide strokes | pending |
 | 10 | Open the Memory tab on that Water color key | The per-frame Brush row stays empty; only the Water color row lists the wash strokes | pending |
+| 11 | Select a derived Motion/Static/Reveal rail cell with a soloed/masked neighbor track under it | Move is greyed, no phantom handles render, and the cell stays non-editable as a script | pending |
+| 12 | Switch between a scripted real key on one track and a cell on another, toggling solo/hide | Handles appear only on the active real key; no script crosses keys or tracks | pending |
 
 ## Known Stubs
 
