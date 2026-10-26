@@ -204,13 +204,21 @@ None — plan executed exactly as written.
 
 - **Fix:** `aquarelleStrokeToPaintStroke` now stamps every Water color guide proxy with `guideProxy: true` on the engine-1 `PaintStroke`; capture, restore, purge and the Move overlay refuse it by that marker (registry match stays as the second belt). `moveAvailable` is a Studio computed combining `brushMoveAvailable` with `currentCell.kind === 'real'`, wired through the rail, Cmd tap, held-Cmd arm, `selectTool` guard, force-exit effect and engine re-create — a derived or empty cell has no Move by construction. Selecting a non-key cell drops any stale brush capture (`dropNonKeyCellBrushScript`) and releases the owner, so scripts are strictly per real key and per track, never a blend borrowed from the display.
 
+**Follow-up 3 (2026-10-26, third native pass): restored guide rows lost their marker.** The Move overlay still listed thin "invisible" strokes on a wash key. Root cause: guide proxies could enter the store through capture seams that bypassed the flush filter (the Duplicate `captureBrushScript` path and `adoptBrushScriptFrameAsComplete`), and the binary snapshot codec never encodes `guideProxy` — every save/restore silently turned a persisted guide row into an ordinary Brush stroke. The overlay's liveness gate then found the matching engine strokes and drew handles that Move could never legitimately own.
+
+- **Fix (single funnel):** `captureEntry` now filters guide groups for EVERY store write (flush, adopt, restore, remap); an empty or guide-only capture stores no entry. `adoptBrushScriptFrameAsComplete` normalizes through `normalizeBrushScriptGroups`, so Duplicate from a mixed ledger never carries guides.
+- **Fix (persistence):** `prepareSave` runs `withoutAquarelleGuideFrames` over the merged content before encoding, so a guide row can never be written into a snapshot again, including rows retained from an older file.
+- **Fix (Duplicate):** the Studio's `captureBrushScript` uses `normalizeBrushScriptGroups(engine.getStrokes())` — guide proxies are render input and must never be applied as a visible Brush script on the destination.
+- **Diagnostic (DEV ONLY):** `performance/moveProvenanceCapture.ts` writes `/tmp/efx-move-provenance.json` on Move entry and on `window.__EFX_MOVE_PROVENANCE__()`. Each listed group reports `guideProxy`, `classifiedGuide`, the aquarelle `registryMatch`, engine presence/serial, plus frame, cell kind, owner, module, tool, moveAvailable, snapshot track vs active track, every store frame's guide/real counts, and the aquarelle events of the frame. `build` names the diagnostic revision (`quick-261026-odd-diag-1`).
+- **Pins:** `brushScriptRecordState.test.ts` (single-funnel guide-only capture stores nothing; adopt refuses a guide-only ledger), `brushScriptHydration.test.ts` (an empty capture refuses with `no-entry`).
+
 ## User Setup Required
 
 None — no external service configuration or dependency was added.
 
 ## Native UAT (user-driven — executor never started the dev server)
 
-**Status: pending** — rows await the user's live Studio run with the guide-proxy follow-up loaded (reload the Studio so the snapshot restore cleans persisted guide rows).
+**Status: pending** — restart the app (fresh process) so the restore + save guide filters run. If a phantom handle remains, click Move once: the app writes `/tmp/efx-move-provenance.json` (`build` must read `quick-261026-odd-diag-1`); the report names each listed group's engine/store/registry provenance.
 
 | # | Action | Expected | Status |
 |---|--------|----------|--------|
