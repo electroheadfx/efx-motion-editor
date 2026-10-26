@@ -5687,6 +5687,10 @@ export function PhysicsPaintStudio() {
         },
         isPixelOnlyFrame: (frame) =>
           resolveStudioPixelOnlyFrames(studioScriptSnapshotIdentityRef.current)?.has(frame) ?? false,
+        getOverlayArmed: () => ({
+          selectMode: aquarelleSelectMode.peek(),
+          heldArm: temporaryMove.peek(),
+        }),
       });
     }
     // 261023-g4p: a recreated engine must re-enter the brush script-edition

@@ -60,6 +60,8 @@ export interface MoveProvenanceDeps {
   getLiveKeyIdForFrame?(frame: number): string | null;
   /** True on a Play Script / Reveal rail frame (pixels only by law). */
   isPixelOnlyFrame?(frame: number): boolean;
+  /** Which script-edition surface is armed and why. */
+  getOverlayArmed?(): { selectMode: boolean; heldArm: boolean };
 }
 
 let installedDeps: MoveProvenanceDeps | null = null;
@@ -128,6 +130,9 @@ export async function captureMoveProvenance(reason: string): Promise<void> {
       moveAvailable: readOr(() => deps.getMoveAvailable(), false, errors, 'moveAvailable'),
       cellKeyId: deps.getCellKeyId ? readOr(() => deps.getCellKeyId!(), null, errors, 'cellKeyId') : null,
       cellInsideRail: deps.isPixelOnlyFrame ? readOr(() => deps.isPixelOnlyFrame!(frame), false, errors, 'cellInsideRail') : null,
+      overlayArmed: deps.getOverlayArmed
+        ? readOr(() => deps.getOverlayArmed!(), { selectMode: false, heldArm: false }, errors, 'overlayArmed')
+        : null,
       store: {
         hasEntry: entry !== undefined,
         keyId: entry?.keyId ?? null,
