@@ -1830,6 +1830,12 @@ export function PhysicsPaintStudio() {
         if (activeModule.peek() !== owner) activeModule.value = owner;
       }
       setFrameScriptOwner(owner);
+      // DEV-only provenance: an owner republish while Move is armed is the
+      // exact reported path (navigate onto a phantom key). Auto-write the
+      // report so no extra Move click is needed.
+      if (import.meta.env.DEV && settingsRef.current.tool === 'move') {
+        captureMoveProvenanceNow('owner-resolve');
+      }
     },
     [],
   );
