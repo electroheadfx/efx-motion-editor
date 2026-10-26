@@ -8,12 +8,20 @@
  *
  * quick-261026-odd (empty-script gate): ownership is bound to the physical
  * KEY, never to the display. A Brush capture only owns a frame when it is
- * hydratable AND stamped with the CURRENT projection cell's key id. A legacy
- * `keyId:null` row, a row whose key was replaced at the same frame, a partial
- * or edit-cost row, and a missing entry all resolve NO owner — cached pixels
- * keep rendering, but nothing locks a module and nothing reports an editable
- * script. Identity is unprovable for those rows; the next live paint writes a
- * key-stamped capture.
+ * stamped with the CURRENT projection cell's key id. A legacy `keyId:null`
+ * row, a row whose key was replaced at the same frame, and a missing entry
+ * all resolve NO owner — cached pixels keep rendering, but nothing locks a
+ * module and nothing reports an editable script. Identity is unprovable for
+ * those rows; the next live paint writes a key-stamped capture.
+ *
+ * 261027 (studio-strokes-lost-redraw): COMPLETENESS gates HYDRATION only,
+ * never ownership. A rasterized key's arrival-base capture is partial (the
+ * hydration plan refuses the edit cost), but it is still the current key's
+ * live Brush script. Excluding it left a leftover aquarelle registry script
+ * as the sole owner: the Studio auto-switched to Water color after a Brush
+ * stroke and the Brush stroke lost its editable identity. With the partial
+ * row counted, such a key resolves 'both' — no single-owner switch fires —
+ * and Move stays available while the live ledger holds the strokes.
  */
 import type { FrameScriptOwner } from '../../shared/frameModuleLock';
 import {
@@ -21,7 +29,6 @@ import {
   purgedBrushScriptFrame,
 } from './brushScriptRecordState';
 import { hasAquarelleScriptForFrame } from './aquarelleRecordState';
-import { isBrushScriptFrameHydratable } from './brushScriptHydration';
 
 export type { FrameScriptOwner };
 
@@ -50,17 +57,18 @@ export function resolveFrameScriptOwner(
     ? cell.keyId
     : null;
   const realCell = cellKeyId !== null && cellKeyId.length > 0;
-  // Stored Brush script: the entry must be the CURRENT key's complete,
-  // affordable script. Any other entry is content the engine cannot edit
-  // here, so it must never publish an owner.
+  // Stored Brush script: the entry must be the CURRENT key's script. Any
+  // other entry is content the engine cannot attribute here, so it must never
+  // publish an owner. Completeness is deliberately NOT required — a partial
+  // (arrival-base) row is still this key's Brush script; it only cannot be
+  // HYDRATED back into the engine (planBrushScriptHydration refuses it).
   const entry = realCell ? getBrushScriptFrameEntry(frame) : undefined;
   const storedBrush =
     entry !== undefined
     && entry.groups.length > 0
     && entry.keyId !== null
     && entry.keyId !== undefined
-    && entry.keyId === cellKeyId
-    && isBrushScriptFrameHydratable(entry);
+    && entry.keyId === cellKeyId;
   // The live ledger leg stays cell-independent on purpose: the FIRST stroke
   // of a visit makes the frame's owner before any capture exists (the frame
   // may still be mid self-promotion). Move itself stays cell-gated.

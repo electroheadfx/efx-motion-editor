@@ -29,15 +29,19 @@ export function clearFrameScriptOwner(): void {
 /**
  * quick-261026-odd — the Move tool's ONE enable gate.
  *
- * Move translates a Brush stroke script. Only a Brush-ONLY key can enter it:
- * a Water color key and a scriptless key (Motion/Static/Reveal rails bake
- * pixels only) have nothing to move, and 'both' is the unsupported mixed
- * state — a Water color wash plus engine-1 guide proxies is not a movable
- * Brush script. Derived from frameScriptOwner so the rail, the Cmd tap, the
- * held-Cmd arm and every programmatic activation read the same truth.
+ * Move translates a Brush stroke script. A Water color key and a scriptless
+ * key (Motion/Static/Reveal rails bake pixels only) have nothing to move.
+ * 261027 (studio-strokes-lost-redraw): 'both' now OPENS the gate too. A
+ * raster key's arrival-base capture is partial (not hydratable) while a
+ * leftover aquarelle registry script survives, so the frame resolves 'both';
+ * closing Move there made the freshly painted Brush stroke uneditable. The
+ * composite `moveAvailable` still gates the dead case — a 'both' frame with
+ * no hydratable stored row AND no engine-held strokes exposes no Move.
+ * Derived from frameScriptOwner so the rail, the Cmd tap, the held-Cmd arm
+ * and every programmatic activation read the same truth.
  */
 export const brushMoveAvailable = computed(
-  () => frameScriptOwner.value === 'brush',
+  () => frameScriptOwner.value === 'brush' || frameScriptOwner.value === 'both',
 );
 
 /** The non-owning module for a single-owner frame; both/none lock nothing. */

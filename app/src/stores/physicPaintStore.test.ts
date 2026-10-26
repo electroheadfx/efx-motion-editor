@@ -2576,6 +2576,66 @@ describe('physicPaintStore', () => {
       expect((await excludingEmpty.encodeBytes())).toEqual((await including.encodeBytes()));
     });
 
+    // 261027 (studio-strokes-lost-redraw RC-A): the watercolor sandwich. The
+    // active track's aquarelle DOM stack (cached base z3 + live sheet z4)
+    // paints ABOVE the single z-0 monitor INSIDE the same tracks group, so the
+    // monitor cannot substitute it into one composite (the selection-dependent
+    // composite loss). The slice API partitions the participating stack around
+    // the active track: 'below' keeps the tracks beneath it AND the Background,
+    // 'above' keeps the tracks above it with the Background OFF (an opaque
+    // background there would mask everything beneath inside the group).
+    // Neither slice contains the active track.
+    it('getFlattenedFrameSlice partitions the stack around the active track and isolates the background to the below slice', async () => {
+      const frameTop = makeFrame(0, 5).bytes;
+      const frameMid = makeFrame(1, 5).bytes;
+      const frameBottom = makeFrame(2, 5).bytes;
+      registerBackgroundSourceImage('bg-ref-1', makeFrame(0, 0).bytes);
+      registerDocument(flatDocument([
+        flatTrack('track-top', { order: 0 }),
+        flatTrack('track-mid', { order: 1 }),
+        flatTrack('track-bottom', { order: 2 }),
+      ], {
+        visible: true,
+        clips: [{ id: 'clip-1', startFrame: 5, sourceFrameRefs: ['bg-ref-1'], repeat: { mode: 'finite', count: 1 }, sourceKind: 'imported-background', revision: 1 }],
+      }));
+      seedRoto('track-top', [{ keyId: 'kt', appFrame: 5, bytes: frameTop }]);
+      seedRoto('track-mid', [{ keyId: 'km', appFrame: 5, bytes: frameMid }]);
+      seedRoto('track-bottom', [{ keyId: 'kb', appFrame: 5, bytes: frameBottom }]);
+
+      const full = (await flattenAfterDecode(FLAT_LAYER, 5, false))!;
+      // Both track rasters and the background source are decoded now, so the
+      // slice calls resolve synchronously under their own `excl:`/`bg:0` keys.
+      const below = physicPaintStore.getFlattenedFrameSlice(FLAT_LAYER, 5, 'track-mid', 'below')!;
+      const above = physicPaintStore.getFlattenedFrameSlice(FLAT_LAYER, 5, 'track-mid', 'above')!;
+
+      const belowLog = decodeFlatLog(await below.encodeBytes());
+      const aboveLog = decodeFlatLog(await above.encodeBytes());
+
+      // Full composite: three track draws + the background draw.
+      expect(decodeFlatLog(await full.encodeBytes()).match(/draw\(/g)?.length).toBe(4);
+      // Below: the bottom track + the Background (never the active track).
+      expect(belowLog.match(/draw\(/g)?.length).toBe(2);
+      // Above: the top track only — the Background is suppressed.
+      expect(aboveLog.match(/draw\(/g)?.length).toBe(1);
+      // The three variants never share a cache entry.
+      expect(below.cacheKey).not.toBe(full.cacheKey);
+      expect(above.cacheKey).not.toBe(full.cacheKey);
+      expect(above.cacheKey).not.toBe(below.cacheKey);
+      // The `bg:0` term: the same exclusion set WITH the background keys apart.
+      const aboveWithBackground = physicPaintStore.getFlattenedFrameExcluding(
+        FLAT_LAYER,
+        5,
+        new Set(['track-mid', 'track-bottom']),
+        false,
+      )!;
+      expect(aboveWithBackground).not.toBeNull();
+      expect(aboveWithBackground.cacheKey).not.toBe(above.cacheKey);
+      // An active track outside the participating set fails open to the full
+      // composite (no seam to sandwich — e.g. the active track is hidden).
+      const failOpen = physicPaintStore.getFlattenedFrameSlice(FLAT_LAYER, 5, 'missing-track', 'below')!;
+      expect(failOpen.cacheKey).toBe(full.cacheKey);
+    });
+
     // 261022-iff IFF-02/03/04: the session solo target threads through BOTH
     // flattened APIs. It is a cache-key term (its own `solo:` term) and it
     // narrows the participating set — never a document write.

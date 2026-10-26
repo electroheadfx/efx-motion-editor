@@ -6881,6 +6881,17 @@ button.destructive {
   mix-blend-mode: normal;
 }
 
+/* 261027 (studio-strokes-lost-redraw RC-A): the watercolor sandwich's ABOVE
+   slice. Water color mode renders the active track's DOM stack inside this
+   same group (cached base z3, live sheet z4), so the tracks above the active
+   one are drawn by a second monitor layered OVER that stack. Still INSIDE the
+   tracks group, so the group's ONE paper multiply covers it exactly like every
+   other track sheet; the onion/reference overlays are group siblings (z5+) and
+   stay above it. */
+.physics-paint-program-monitor.physics-paint-program-monitor-above {
+  z-index: 5;
+}
+
 .physics-paint-program-monitor > canvas {
   display: block;
   width: 100%;

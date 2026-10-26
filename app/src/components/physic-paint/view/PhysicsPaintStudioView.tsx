@@ -61,6 +61,15 @@ interface PhysicsPaintCanvasStackViewProps {
    */
   programMonitor?: PhysicsPaintProgramMonitorProps | null;
   /**
+   * 261027 (studio-strokes-lost-redraw RC-A): the watercolor sandwich's ABOVE
+   * slice. Water color mode renders the active track's pixels in a DOM stack
+   * INSIDE the tracks group (cached base z3 + live sheet z4) that sits above
+   * the single z-0 monitor, so the tracks ABOVE the active one must be drawn
+   * by a second monitor layered over that stack (z5). Null in Brush mode and
+   * during playback — the single-monitor slot-substitution path is unchanged.
+   */
+  programMonitorAbove?: PhysicsPaintProgramMonitorProps | null;
+  /**
    * 48-06 (UAT-B): the active track is hidden — the engine canvas is blank by
    * law (261022-iff: Solo can never hide the active track it targets, so hide
    * is the only trigger), so its surface must step aside
@@ -231,6 +240,15 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
         {canvasBounds && props.programMonitor ? (
           <div class="physics-paint-program-monitor" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
             <PhysicsPaintProgramMonitor {...props.programMonitor} />
+          </div>
+        ) : null}
+        {/* 261027 (RC-A): the watercolor sandwich's ABOVE slice — layered OVER
+            the active track's DOM stack (cached base z3 / live sheet z4) but
+            still INSIDE the tracks group, so the group's ONE paper multiply
+            covers it exactly like every other track sheet. */}
+        {canvasBounds && props.programMonitorAbove ? (
+          <div class="physics-paint-program-monitor physics-paint-program-monitor-above" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }}>
+            <PhysicsPaintProgramMonitor {...props.programMonitorAbove} />
           </div>
         ) : null}
       </div>

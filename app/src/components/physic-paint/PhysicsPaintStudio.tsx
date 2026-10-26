@@ -7438,6 +7438,22 @@ export function PhysicsPaintStudio() {
     const engineSurfaceHidden = programMonitorLayerId !== null
       && programMonitorActiveTrackId !== null
       && !resolvePhysicPaintTrackVisibility(programMonitorLayerId, programMonitorActiveTrackId);
+    // 261027 (studio-strokes-lost-redraw RC-A): the watercolor SANDWICH. The
+    // active track's aquarelle DOM stack (cached base z3 + live sheet z4)
+    // paints ABOVE the single z-0 monitor INSIDE the tracks group, so the old
+    // exclude-active single monitor could never reproduce the stack — every
+    // track above the selected one was masked (the selection-dependent
+    // composite loss). In Water color at rest the composite splits instead:
+    // the main monitor draws the 'below' slice (tracks beneath + Background)
+    // and a second monitor draws the 'above' slice (tracks above, background
+    // suppressed) layered over the active DOM stack (z5, inside the group).
+    // A hidden active track keeps the single-monitor path: the store's hide
+    // filter already drops it and there is no DOM stack to sandwich.
+    const useWatercolorSlices = activeModule.value === 'watercolor'
+      && !isPlaying
+      && !rotoCachedPlayback.isActive
+      && !engineSurfaceHidden
+      && programMonitorActiveTrackId !== null;
     // 49-03 (D-11 consumption half): the monitor fond is the DOCUMENT FALLBACK —
     // the same resolved instruction the flattened path uses (one authority, two
     // consumers, Pitfall 1). The per-track roto background metadata fond walk is
@@ -7496,9 +7512,26 @@ export function PhysicsPaintStudio() {
         // 56-12: the live aquarelle canvas SUPPLIES the active track's pixels.
         // Including them here too double-composites (the "micro flash" when the
         // cache write lands) and over-saturates the live look.
-        excludeActive: activeModule.value === 'watercolor'
-          || engineSurfaceHidden
-          || (engine != null && engine.getAppliedPreviewBaseContentToken() != null),
+        // 261027: the watercolor sandwich replaces the exclude-active single
+        // monitor with the below/above slices (see useWatercolorSlices).
+        slice: useWatercolorSlices ? ('below' as const) : null,
+        excludeActive: useWatercolorSlices
+          ? false
+          : activeModule.value === 'watercolor'
+            || engineSurfaceHidden
+            || (engine != null && engine.getAppliedPreviewBaseContentToken() != null),
+      } : null,
+      // 261027 (RC-A): the above-monitor — the sandwich's upper slice. The
+      // public capsule seam stays on the main monitor (it reads the full
+      // path); this instance only draws the tracks above the active track.
+      programMonitorAbove: programMonitorLayerId && useWatercolorSlices ? {
+        layerId: programMonitorLayerId,
+        currentFrame,
+        isPlaying: false,
+        activeTrackId: programMonitorActiveTrackId,
+        width: canvasWidth,
+        height: canvasHeight,
+        slice: 'above' as const,
       } : null,
       // 50-04 (S3): the reference ghost monitor-paint layer — concrete values
       // only. The ghost layer subscribes to the store version clocks in its OWN

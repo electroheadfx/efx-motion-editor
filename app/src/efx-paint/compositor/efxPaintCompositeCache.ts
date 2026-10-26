@@ -105,6 +105,15 @@ export interface EfxPaintFlattenedCacheKeyInput {
    * derivation byte-identical (the 48-01/48-04 contract).
    */
   readonly soloTrackId?: string | null;
+  /**
+   * 261027 (studio-strokes-lost-redraw RC-A): the caller suppresses the
+   * document Background layer (the Studio's watercolor ABOVE slice — it draws
+   * over the active track inside the tracks group, where an opaque background
+   * would mask everything beneath). The `bg:0` term is emitted ONLY when
+   * false, so every existing key stays byte-identical (the `fond:0`/`excl:`
+   * precedent).
+   */
+  readonly includeBackground?: boolean;
 }
 
 /**
@@ -178,6 +187,10 @@ export function deriveEfxPaintFlattenedCacheKey(input: EfxPaintFlattenedCacheKey
     // 48-06 (UAT-C): emitted ONLY when the caller wants the fond-less
     // composite (the Studio monitor) — with-fond keys stay byte-identical.
     ...(input.includeFond === false ? ['fond:0'] : []),
+    // 261027 (RC-A): emitted ONLY when the caller suppresses the document
+    // Background (the watercolor ABOVE slice) — every existing key stays
+    // byte-identical.
+    ...(input.includeBackground === false ? ['bg:0'] : []),
     // 49-06 (UAT round 6): emitted ONLY when the document has background clips
     // with runtime source bytes — clip-less documents keep byte-identical keys.
     ...(input.backgroundSourceRevision ? [`bgsrc:${encodeCanonicalString(input.backgroundSourceRevision)}`] : []),

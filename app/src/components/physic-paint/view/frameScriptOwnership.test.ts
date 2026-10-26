@@ -6,9 +6,10 @@
 //  live brush ledger sample, and it never reads or writes a signal.
 //
 //  quick-261026-odd (empty-script gate): ownership is KEY-bound. A
-//  Brush entry only owns a frame when it is hydratable and stamped
-//  with the CURRENT real cell's key id; legacy null-keyId rows,
-//  replaced keys and non-hydratable rows resolve NO owner.
+//  Brush entry only owns a frame when it is stamped with the CURRENT
+//  real cell's key id; legacy null-keyId rows and replaced keys
+//  resolve NO owner. Completeness gates HYDRATION only — a partial
+//  arrival-base row is still the key's live Brush script (261027).
 // ============================================================
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -169,10 +170,22 @@ describe('resolveFrameScriptOwner', () => {
     expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
   });
 
-  it('never counts a non-hydratable (partial) row', () => {
+  // 261027 (studio-strokes-lost-redraw): a rasterized arrival-base capture is
+  // PARTIAL — hydration refuses it (edit cost), but it is still the CURRENT
+  // key's live Brush script. Ownership must count it: otherwise a leftover
+  // aquarelle registry script stays the sole owner, the Studio auto-switches to
+  // Water color after a Brush stroke, and the Brush stroke is never editable.
+  it('counts a key-matched partial (arrival-base) row as the Brush script', () => {
     noteBrushScriptArrivalBase(10, true);
     captureBrush(10);
-    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBe('brush');
+  });
+
+  it('returns both for a partial Brush row alongside an aquarelle script (no single-owner switch)', () => {
+    noteBrushScriptArrivalBase(10, true);
+    captureBrush(10);
+    recordAquarelleStroke(107, aquarelleStroke(107, 10));
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBe('both');
   });
 
   it('never counts a script on a derived or empty cell', () => {

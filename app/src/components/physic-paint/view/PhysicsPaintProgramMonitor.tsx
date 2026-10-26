@@ -112,6 +112,18 @@ export interface PhysicsPaintProgramMonitorProps {
    * track from the STORE so the paint is never absent.
    */
   readonly excludeActive?: boolean;
+  /**
+   * 261027 (studio-strokes-lost-redraw RC-A): the watercolor sandwich seam.
+   * Water color mode cannot substitute the active track into ONE z-0 monitor —
+   * its aquarelle DOM stack (cached base z3 + live sheet z4) paints ABOVE the
+   * monitor inside the same tracks group. The Studio therefore splits the
+   * composite around the active track: the SINGLE monitor instance draws the
+   * 'below' slice (tracks beneath it + the Background), and a SECOND instance
+   * (the above-monitor) draws the 'above' slice (tracks above it, background
+   * suppressed). Null/absent in Brush mode, where the slot-substitution path
+   * stays byte-identical. Ignored during playback (the full path is truth).
+   */
+  readonly slice?: 'below' | 'above' | null;
 }
 
 const EMPTY_EXCLUDED_TRACKS: ReadonlySet<string> = new Set();
@@ -166,16 +178,27 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     // or intentionally hidden — the store's copy is excluded either way.
     const record = props.isPlaying
       ? physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false, soloTrackId)
-      : props.excludeActive
-        ? physicPaintStore.getFlattenedFrameExcluding(
+      : props.slice != null && props.activeTrackId
+        // 261027 (RC-A): the watercolor sandwich — this instance draws only
+        // one side of the active track's DOM seat.
+        ? physicPaintStore.getFlattenedFrameSlice(
             layerId,
             resolvedFrame,
-            props.activeTrackId ? new Set([props.activeTrackId]) : EMPTY_EXCLUDED_TRACKS,
+            props.activeTrackId,
+            props.slice,
             false,
-            props.liveOverlay ?? null,
             soloTrackId,
           )
-        : physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false, soloTrackId);
+        : props.excludeActive
+          ? physicPaintStore.getFlattenedFrameExcluding(
+              layerId,
+              resolvedFrame,
+              props.activeTrackId ? new Set([props.activeTrackId]) : EMPTY_EXCLUDED_TRACKS,
+              false,
+              props.liveOverlay ?? null,
+              soloTrackId,
+            )
+          : physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false, soloTrackId);
     // Pending decode: the store returns null this tick. Keep the last drawn
     // frame — no flicker-to-blank; the next version-clock bump re-runs the
     // effect and draws the completed raster.
@@ -226,7 +249,7 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
     // version clocks are read inside the effect's dep array (narrow leaf
     // subscription, never the Studio root); resolvedFrame is the exact
     // playback/editing frame this effect draws.
-  }, [props.layerId, resolvedFrame, props.isPlaying, props.activeTrackId, props.liveOverlay, props.width, props.height, soloTrackId, physicPaintVersion.value, efxPaintVersion.value]);
+  }, [props.layerId, resolvedFrame, props.isPlaying, props.activeTrackId, props.liveOverlay, props.slice, props.width, props.height, soloTrackId, physicPaintVersion.value, efxPaintVersion.value]);
 
   // Task 2 (D-09): the missing-source capsule publication — a narrow effect
   // (this leaf, never the Studio root render body) that reads the current
@@ -242,6 +265,10 @@ export function PhysicsPaintProgramMonitor(props: PhysicsPaintProgramMonitorProp
   // (getFlattenedFrame null) leaves the capsule unchanged — unknown, not cleared.
   useEffect(() => {
     if (props.isPlaying || !props.onMissingSourcesChange) return;
+    // 261027 (RC-A): only ONE slice instance owns the capsule publication —
+    // the full-path read below covers every track, so the above-monitor must
+    // not double-publish the same report.
+    if (props.slice === 'above') return;
     const { layerId } = props;
     if (!layerId) return;
     const record = physicPaintStore.getFlattenedFrame(layerId, resolvedFrame, false, soloTrackId);

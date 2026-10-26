@@ -73,12 +73,18 @@ describe('frameScriptOwner signal', () => {
 });
 
 describe('brushMoveAvailable', () => {
-  it("opens only for a Brush-ONLY key — mixed 'both' stays closed", () => {
+  // 261027 (studio-strokes-lost-redraw): a raster key that carries BOTH the
+  // live Brush capture and a leftover aquarelle registry script resolves
+  // 'both'. Move must stay available there — the tracked live Brush ledger
+  // holds the strokes even though the partial stored row is not hydratable.
+  // The moveAvailable composite still gates the dead case (no hydratable
+  // store row AND no engine-held strokes → no Move).
+  it("opens for a Brush key and for the mixed 'both' state", () => {
     expect(brushMoveAvailable.value).toBe(false);
     setFrameScriptOwner('watercolor');
     expect(brushMoveAvailable.value).toBe(false);
     setFrameScriptOwner('both');
-    expect(brushMoveAvailable.value).toBe(false);
+    expect(brushMoveAvailable.value).toBe(true);
     setFrameScriptOwner('brush');
     expect(brushMoveAvailable.value).toBe(true);
     clearFrameScriptOwner();
@@ -98,8 +104,8 @@ describe('brushMoveAvailable', () => {
     } finally {
       dispose();
     }
-    // One initial run + one per actual BOOLEAN change: 'both' closes Move
-    // (mixed state), watercolor/null keep false.
+    // One initial run + one per actual BOOLEAN change: brush/both stay open,
+    // watercolor and none close.
     expect(seen).toEqual([false, true, false]);
   });
 });

@@ -2842,6 +2842,29 @@ export function _referenceSourceRevision(document: EfxPaintDocument): string {
  * term) and the compositor ports — never written to the document, never saved,
  * never part of undo/revision. Null = disarmed.
  */
+/**
+ * 261027 (studio-strokes-lost-redraw RC-A): per-call composite options for the
+ * Studio's watercolor sandwich slices.
+ */
+interface FlattenedFrameSliceOptions {
+  /**
+   * Draw the document Background beneath the tracks (default true). The ABOVE
+   * slice draws over the active track inside the same tracks group, so an
+   * opaque background there would mask everything beneath it — it passes
+   * false (the `bg:0` key term keeps the variants in distinct memo entries).
+   */
+  readonly includeBackground?: boolean;
+  /**
+   * Content already exists BENEATH this composite inside the same tracks
+   * group (the ABOVE slice sits over the active track's DOM stack). A single
+   * watercolor track must then be pigment-converted even on the fond-less
+   * path: its stored opaque transmittance sheet would otherwise mask the
+   * content below (the `hasFond` fast path only covers the group's one
+   * paper multiply).
+   */
+  readonly contentBeneath?: boolean;
+}
+
 function _resolveFlattenedFrame(
   layerId: string,
   frame: number,
@@ -2849,6 +2872,7 @@ function _resolveFlattenedFrame(
   includeFond = true,
   liveOverlay?: HTMLCanvasElement | null,
   soloTrackId: string | null = null,
+  sliceOptions: FlattenedFrameSliceOptions = {},
 ): EfxPaintFlattenedFrameRecord | null {
   if (!Number.isInteger(frame) || frame < 0) return null;
   const efxDocument = getEfxPaintDocument(layerId);
@@ -2886,6 +2910,7 @@ function _resolveFlattenedFrame(
     excludeTrackIds: excludeTrackIds.size > 0 ? [...excludeTrackIds].sort() : undefined,
     includeFond,
     soloTrackId,
+    includeBackground: sliceOptions.includeBackground,
   });
 
   const flattenedMemo = _getOrCreateCompositorMemo(_flattenedMemo, layerId);
@@ -2911,9 +2936,12 @@ function _resolveFlattenedFrame(
   // Background CONTENT at this frame — the visibility flag alone is not enough
   // (the Background track is visible by default with zero clips). A real clip
   // here makes the flattened raster opaque for a legitimate reason; only a
-  // frame with no background content can be aquarelle transmittance.
+  // frame with no background content can be aquarelle transmittance. 261027:
+  // a call that suppresses the Background (the watercolor ABOVE slice) skips
+  // the pre-resolution entirely — a pending background decode must not null
+  // the slice, and a background missing source belongs to the BELOW slice.
   let backgroundContentAtFrame = false;
-  if (backgroundParticipates(efxDocument)) {
+  if (sliceOptions.includeBackground !== false && backgroundParticipates(efxDocument)) {
     backgroundContext = deriveEfxPaintBackgroundResolution(efxDocument.background, BACKGROUND_RESOLUTION_CAPACITY);
     const backgroundResolution = resolveEfxPaintBackgroundFrame(backgroundContext, frame, knownSources);
     backgroundContentAtFrame = backgroundResolution.kind === 'content';
@@ -2937,8 +2965,11 @@ function _resolveFlattenedFrame(
     backgroundContentAtFrame,
     // The Studio monitor path (includeFond=false) still has its fond layer
     // beneath the isolated tracks group; only a null instruction on the
-    // including path means the raster is delivered without a fond.
-    hasFond: includeFond ? fondInstruction !== null : true,
+    // including path means the raster is delivered without a fond. 261027: an
+    // ABOVE slice has other content beneath it INSIDE the group — its stored
+    // opaque transmittance sheet would mask that content, so it converts as if
+    // no fond existed.
+    hasFond: includeFond ? fondInstruction !== null : !sliceOptions.contentBeneath,
   });
   // `transmittanceSourceToPigmentAlpha` memoizes by raster identity (the
   // content-token LRU hands out one immutable bitmap per revision), so repeated
@@ -2982,6 +3013,7 @@ function _resolveFlattenedFrame(
     backgroundClipRevisions,
     excludeTrackIds,
     soloTrackId,
+    includeBackground: sliceOptions.includeBackground,
     // studio-multi-track-only-active: the active track's live engine raster
     // replaces its excluded store copy INSIDE the ordered track loop, so the
     // selection never overrides the layer stack. The overlay is scaled and
@@ -3191,6 +3223,54 @@ export const physicPaintStore = {
     soloTrackId: string | null = null,
   ): EfxPaintFlattenedFrameRecord | null {
     return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond, liveOverlay, soloTrackId);
+  },
+
+  /**
+   * 261027 (studio-strokes-lost-redraw RC-A): the watercolor SANDWICH slice.
+   *
+   * The active track's aquarelle DOM stack (cached base z3 + live sheet z4)
+   * paints ABOVE the single z-0 program monitor INSIDE the same tracks group,
+   * so a single composite can never reproduce the true stack while a lower
+   * track is selected — the active sheet masked every track above it. The
+   * Studio instead draws the participating stack in two slices around the
+   * active track's DOM seat:
+   *   - 'below' — the tracks beneath the active track AND the document
+   *     Background (keepGap-bottom semantics of the ordered stack);
+   *   - 'above' — the tracks above it, Background SUPPRESSED (the slice draws
+   *     over the active DOM stack; an opaque background there would mask it)
+   *     and watercolor sheets pigment-converted (content exists beneath).
+   * The active track is excluded from BOTH slices — its pixels come from the
+   * DOM stack. A caller-supplied active track that does not participate
+   * (hidden, or outside the solo focus) fails open to the full composite: there
+   * is no seam to sandwich. The exclude sets and the `bg:0` flag are key
+   * terms, so every variant has its own memo entry. Never a document write.
+   */
+  getFlattenedFrameSlice(
+    layerId: string,
+    frame: number,
+    activeTrackId: string,
+    slice: 'below' | 'above',
+    includeFond = false,
+    soloTrackId: string | null = null,
+  ): EfxPaintFlattenedFrameRecord | null {
+    const efxDocument = getEfxPaintDocument(layerId);
+    if (!efxDocument) return null;
+    const participating = participatingPaintTracks(efxDocument, soloTrackId);
+    const activeIndex = participating.findIndex((track) => track.id === activeTrackId);
+    if (activeIndex < 0) {
+      return _resolveFlattenedFrame(layerId, frame, EMPTY_EXCLUDED_TRACKS, includeFond, undefined, soloTrackId);
+    }
+    const keep = slice === 'above'
+      ? participating.slice(0, activeIndex)
+      : participating.slice(activeIndex + 1);
+    const keepIds = new Set(keep.map((track) => track.id));
+    const excludeTrackIds = new Set(
+      participating.filter((track) => !keepIds.has(track.id)).map((track) => track.id),
+    );
+    return _resolveFlattenedFrame(layerId, frame, excludeTrackIds, includeFond, undefined, soloTrackId, {
+      includeBackground: slice === 'below',
+      contentBeneath: slice === 'above',
+    });
   },
 
   /**

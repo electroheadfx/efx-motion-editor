@@ -97,7 +97,11 @@ describe('260925-iy6 frame/export guard', () => {
   // silently drop the tooth from the non-active tracks and no colour test would
   // notice (the same class of miss as 260924-m7w's opacity-blind pins).
   it('P4(f) both flattened getters delegate to the ONE _resolveFlattenedFrame seam', () => {
-    expect(occurrences(storeSource, 'return _resolveFlattenedFrame(')).toBe(2);
+    // 261027 (studio-strokes-lost-redraw): getFlattenedFrameSlice adds two
+    // more delegations — the below/above slice call and its fail-open full
+    // composite — so the watercolor sandwich rides the SAME paper-pass seam
+    // instead of forking a parallel resolve path.
+    expect(occurrences(storeSource, 'return _resolveFlattenedFrame(')).toBe(4);
     // The getter gained the session `soloTrackId` argument, so anchor on the
     // call-shaped literal (occurs once, at the definition) instead of the old
     // parameter list.

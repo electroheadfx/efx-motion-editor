@@ -161,7 +161,22 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
   });
 
   it('no double composite: the live aquarelle layer replaces the active track in the monitor', () => {
-    expect(studio).toContain("activeModule.value === 'watercolor'\n          || engineSurfaceHidden");
+    // 261027 (studio-strokes-lost-redraw RC-A): Water color at rest no longer
+    // excludes the active track from ONE z-0 monitor (the aquarelle DOM stack
+    // is layered above every monitor). The composite is split around the
+    // active track's DOM seat instead: the main monitor draws the 'below'
+    // slice (tracks beneath + Background) and a second monitor draws the
+    // 'above' slice over the live stack. The active track appears in NEITHER
+    // slice, so it is still never double-composited.
+    expect(studio).toContain("const useWatercolorSlices = activeModule.value === 'watercolor'");
+    expect(studio).toContain("slice: useWatercolorSlices ? ('below' as const) : null");
+    expect(studio).toContain('excludeActive: useWatercolorSlices');
+    expect(studio).toContain("slice: 'above' as const");
+    // The above-monitor sits over the live sheet (z4) INSIDE the tracks group.
+    const aboveRule = css.slice(css.indexOf('.physics-paint-program-monitor.physics-paint-program-monitor-above'));
+    expect(aboveRule.slice(0, aboveRule.indexOf('}'))).toContain('z-index: 5');
+    const liveRule = css.slice(css.indexOf('.demo-canvas-shell .aquarelle-live-canvas'));
+    expect(liveRule.slice(0, liveRule.indexOf('}'))).toContain('z-index: 4');
   });
 
   it('F1/F2: STORAGE keeps the opaque transmittance encoding (option B)', () => {

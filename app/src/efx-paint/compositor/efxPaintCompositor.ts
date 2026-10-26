@@ -196,6 +196,15 @@ export interface EfxPaintCompositorPorts {
    * stays excluded (T-48-16 anti double-apply) and this raster supplies it.
    */
   engineOverlay?: { readonly trackId: string; readonly raster: CanvasImageSource } | null;
+  /**
+   * 261027 (studio-strokes-lost-redraw RC-A): draw the document Background
+   * beneath the tracks (default true). The Studio's watercolor sandwich splits
+   * its composite around the active track inside ONE tracks group: the ABOVE
+   * slice draws over the active DOM stack, where an opaque Background would
+   * mask everything beneath it — that caller passes false. The flattened key
+   * derives the same flag (`bg:0`), so the two variants never share a memo.
+   */
+  includeBackground?: boolean;
 }
 
 /** One missing-source report entry (CMP-05, D-09). */
@@ -253,6 +262,10 @@ export function compositeFrame(
             ? [...ports.excludeTrackIds].sort()
             : undefined,
           soloTrackId: ports.soloTrackId ?? null,
+          // 261027 (RC-A): the watercolor ABOVE slice suppresses the
+          // Background — the flag joins the key so the two variants never
+          // share a memo entry.
+          includeBackground: ports.includeBackground,
         })
       : null;
   if (flattenedKey !== null) {
@@ -347,7 +360,10 @@ export function compositeFrame(
   // decode this tick contributes transparent pixels, the 48-03 pending-decode
   // semantics); 'missing' contributes transparent pixels AND a report entry
   // keyed by the background track id (D-09).
-  const backgroundActive = backgroundParticipates(document);
+  // 261027 (RC-A): the Studio's watercolor ABOVE slice draws over the active
+  // track inside the same tracks group — its caller suppresses the Background
+  // so an opaque clip cannot mask the tracks beneath it.
+  const backgroundActive = ports.includeBackground !== false && backgroundParticipates(document);
   if (backgroundActive) {
     const backgroundResolution = ports.resolveBackgroundFrame(frame);
     if (backgroundResolution.kind === 'content') {
