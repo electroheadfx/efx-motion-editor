@@ -4,15 +4,22 @@ trigger: "Studio compositor and main-editor compositor disagree for watercolor t
 goal: find_and_fix
 symptoms_prefilled: true
 created: 2026-10-26T00:00:00.000Z
-updated: 2026-10-26T00:00:00.000Z
+updated: 2026-10-26T23:30:00.000Z
 ---
 
 ## Current Focus
 
-hypothesis: CONFIRMED — two independent divergences plus one same-track path. (H1, Studio glazing) In aquarelle mode the Studio gave each watercolor layer its own CSS `mix-blend-mode: multiply` and lifted the tracks-group isolation, so a watercolor track glazed/multiplied over the tracks beneath instead of masking them; the editor flattened tracks source-over first, which is the user-approved opaque-sheet law. (H2, editor speckle) The editor passed the flattened paint through `applyPaperPass` (paper tooth) before the multiply over the fond; for a watercolor transmittance raster (alpha = 1, paper response already baked by the engine) this second paper modulation produces the fine dark speckle over dense pigment — proof: Track 1 alone already shows the speckle, and the Studio live sheet never receives the pass. (H3, same track) The same-track capture merge used `mergeBlend: 'multiply'`, so a new watercolor sheet multiplied with the cached paint underneath instead of overpainting it.
-test: validated by code inspection + user-provided image comparison + full test suite (6164 passed). Live UAT pending.
-expecting: OPAQUE SHEETS (user law 2026-10-26): each Paint track is a sheet over the document paper; the tracks group multiplies once over the fond; a top watercolor track masks the tracks below; same-track watercolor over cached paint overpaints the cache; Studio and editor show the same pixels.
-next_action: live UAT — (1) Studio two-track watercolor-over-brush masks the brush and matches the editor preview; (2) editor speckle gone on Track 1 alone and in the two-track composite; (3) same-track watercolor over cached paint overpaints (no strokes showing through); (4) reopening a cached watercolor frame shows the cache before any new stroke; (5) brush-mode appearance unchanged.
+hypothesis: CONFIRMED — ROUND 2 FIXED, AWAITING LIVE UAT. The watercolor sheet is OPAQUE transmittance in storage (`vec4(t, 1.0)`, white = no pigment); all display/composite seams now re-express it as STRAIGHT-ALPHA PIGMENT (alpha = 1 − min(r,g,b), color = (r,g,b − min)/alpha) so it stacks as a real paint layer: dense pigment masks, light washes stay translucent, and the one fond multiply (paper × t) stays exact. Engine-1 real-alpha paint is untouched (the full-opacity probe returns false).
+test: All automated gates green — targeted 68/68, full app suite 6179 passed / 2 files skipped, `npx tsc --noEmit` clean. RED-first evidence: 12 intended failures before implementation.
+expecting (live UAT): soft wash borders translucent in Studio AND editor/export; dense pigment masks lower tracks; cached base visible through unpainted areas; no speckle; Studio/editor parity.
+next_action: user runs the live UAT rows in the Round 2 verification list, then archive this session if the surfaces match.
+
+round2_constraints: |
+  1. PAPER PASS GATE MUST BE RE-KEYED. `shouldApplyPaperPass` currently skips the tooth when the PRE-FOND raster is fully opaque (the aquarelle signature). Once the sheet carries pigment alpha the raster is no longer fully opaque, so that probe would re-enable the pass and the dense-pigment speckle returns. The gate needs an explicit aquarelle signal from the composite (e.g. the store sets "converted a transmittance track" while pre-resolving).
+  2. STUDIO LIVE SURFACE. The live canvas renders with `MODE.transparent` when `compositorLayer` is on (Engine.ts:2071) — either add a pigment-alpha display mode (GPU, preferred: premultiplied rgb = t − min(t), alpha = 1 − min(t)) or convert the canvas before draw. The cached base `<img>` (`.aquarelle-cached-base`) holds the raw opaque sheet and needs the same alpha treatment, otherwise the same-track hard mask persists.
+  3. STORAGE vs SEAM. Two viable designs: (A) store watercolor frames already carrying alpha (GPU at capture; needs a persisted aquarelle discriminator for the paper-pass gate — the frame records carry none today) or (B) keep storing opaque transmittance and convert at each display/composite seam (no format change, old projects keep rendering; cost is a per-frame CPU conversion that MUST be memoized per track/frame revision). Prefer the design with the smaller trusted surface and state the tradeoff explicitly.
+  4. OUT OF SCOPE: the "new stroke loses existing strokes" bug the user also hit is a separate known regression — do NOT fix it in this session; only ensure this change does not worsen it.
+  5. The conversion law already exists in app/src/lib/rasterAlpha.ts `transmittanceToAlpha` (alpha = 1 − min; color = (rgb − min)/alpha, straight alpha). Reuse it rather than writing a second formula.
 
 ## Symptoms
 
@@ -97,18 +104,72 @@ evidence_images:
   found: The live transmittance sheet is opaque (alpha = 1) even when empty. Under the new source-over-inside-group law, an empty sheet would paint opaque white over the cached base and the fond. Added a module-level `aquarelleLivePaint` signal set from `engine.hasPaint` at the end of the rAF tick (after the frame-change clear) and applied as `opacity: 0/1` on the live canvas — opacity, not visibility, so the canvas stays the pointer target.
   implication: Empty-sheet washout regression prevented. A cleared/new sheet starts hidden in the same tick it is cleared.
 
+- timestamp: 2026-10-26T22:40:00.000Z
+  checked: app/src/efx-paint/compositor/efxPaintCompositor.ts:315-324 + physicPaintStore.ts ports wiring
+  found: The compositor reads `ports.trackRasterMemo.get(trackKey)` BEFORE `ports.resolveTrackContent`. Wrapping only the resolve port would have been bypassed for every memoized track (the common case), silently restoring the opaque sheet.
+  implication: A converting composite must be handed NO raw per-track memo (`trackRasterMemo: convertTransmittanceTracks ? undefined : trackRasterMemo`); the memo keeps RAW resolutions for the non-converting seams. Pinned in paperPass.frameGuard.test.ts U1b.
+
+- timestamp: 2026-10-26T22:55:00.000Z
+  checked: app/src/components/physic-paint/PhysicsPaintStudio.tsx:7493 (program monitor liveOverlay)
+  found: In aquarelle mode the monitor passes `liveOverlay: null` and `excludeActive: true` — the aquarelle live surface never reaches the store as a mutable overlay canvas. No conversion of a mutating canvas is needed (and the WeakMap helper must never be given one: its memo assumes immutable pixels).
+  implication: Conversion is safely limited to pre-resolved ImageBitmaps / registered frame canvases / one-shot export snapshots.
+
+- timestamp: 2026-10-26T23:05:00.000Z
+  checked: consumer audit — aquarelleFramePose.ts, physicsPaintRotoPlayScriptRenderer.ts, physicsPaintRotoScriptThumbnail.ts, physicsPaintRotoScriptLibrary.ts, physicsPaintRotoAlphaMerge.ts, physicsPaintRotoScriptRebake.ts, aquarelleRenderSplitCapture.ts
+  found: Pose white margins, script thumbnails/library, and the render-split diagnostics all consume STORED opaque bytes and stay exact (paper × t). The reveal bake already converts via `transmittanceToAlpha`. Two seams needed the pigment law: the same-track capture merge and the script rebake (both `'multiply'` → `'pigment-alpha'`, composing over white).
+  implication: The opaque-storage invariant holds everywhere; only the seams that STACK the sheet changed.
+
+- timestamp: 2026-10-26T23:20:00.000Z
+  checked: RED-first targeted run (7 files) before implementation
+  found: 12 intended failures: helper missing, predicate file missing, gate not re-keyed, store conversion absent, Engine `MODE.pigment` absent, shader mode 4 absent, cached-base component absent, capture still `source-over`, rebake still `multiply`.
+  implication: Each new law had a failing test first. After implementation: targeted 68/68 green.
+
+- timestamp: 2026-10-26T23:25:00.000Z
+  checked: full `npx vitest run` + `npx tsc --noEmit`
+  found: Two source-contract pins broke for legitimate reasons: (a) PhysicsPaintStudio.test pinned the moved `class="aquarelle-cached-base"` string — retargeted to the `AquarelleCachedBaseLayer` mount; (b) physicPaintStore.test RED 8b indexed `createdCanvases[0]`, which is now a 64×64 probe canvas — retargeted to the 4×3 compositor canvas by size. Final: 340 files passed | 2 skipped; 6179 passed | 1 skipped | 96 todo; tsc clean.
+  implication: No behavioral regression in the engine-1 paths; the only breakages were test selectors.
+
 ## Resolution
 
 root_cause: |
-  Two independent compositing-law divergences, plus a same-track capture bug. (1) Studio: in aquarelle mode each watercolor layer carried its own CSS `mix-blend-mode: multiply` with the tracks-group isolation lifted, so a top watercolor track glazed over the tracks beneath instead of masking them (the editor flattened source-over among tracks — the correct opaque-sheet behavior). (2) Editor: `applyPaperPass` (valley multiply + peak lighten) was applied to the flattened watercolor transmittance raster before the fond multiply, a second paper modulation on an already paper-aware opaque sheet; the lighten step over dense pigment is the fine dark speckle, and the Studio live sheet (no pass) stayed clean. (3) Same track: the aquarelle capture merge used `mergeBlend: 'multiply'`, multiplying a new watercolor sheet with the cached paint instead of overpainting it.
+  ROUND 2: the round-1 blend law was correct but the watercolor sheet is OPAQUE transmittance in storage (`vec4(t, 1.0)`, alpha = 1 everywhere, white = no pigment). Under any source-over stacking that is a hard mask: wash borders that should read 50–80% transparent render fully opaque, and a sheet covers the cached base wholesale. The layer model must be straight-alpha pigment: alpha = 1 − min(r,g,b), color = (rgb − min)/alpha — exact over paper because a·C + 1 − a = t, so the one fond multiply (paper × t) is still exact while inter-track stacking becomes ordinary alpha compositing.
+
+  ROUND 1 (historical, superseded by round 2): two independent compositing-law divergences, plus a same-track capture bug. (1) Studio: in aquarelle mode each watercolor layer carried its own CSS `mix-blend-mode: multiply` with the tracks-group isolation lifted, so a top watercolor track glazed over the tracks beneath instead of masking them (the editor flattened source-over among tracks — the correct opaque-sheet behavior). (2) Editor: `applyPaperPass` (valley multiply + peak lighten) was applied to the flattened watercolor transmittance raster before the fond multiply, a second paper modulation on an already paper-aware opaque sheet; the lighten step over dense pigment is the fine dark speckle, and the Studio live sheet (no pass) stayed clean. (3) Same track: the aquarelle capture merge used `mergeBlend: 'multiply'`, multiplying a new watercolor sheet with the cached paint instead of overpainting it.
 
 fix: |
-  Opaque-sheet law applied in one seam per surface. Studio CSS: `.physics-paint-tracks-group` keeps `isolation: isolate` and owns the single `mix-blend-mode: multiply` over the fond in BOTH modules; all aquarelle per-layer multiply and isolation-lift rules removed; monitor set to `normal`; dead `dry-live-overlay` class removed from the view. Editor/export/preview: new `shouldApplyPaperPass` predicate in `paperPass.ts` skips the tooth for a pre-fond fully-opaque raster (probe `isFullyOpaqueRaster` taken before the fond multiply in `_resolveFlattenedFrame`; the same probe feeds the existing transmittance flag so there is one signature). Same-track capture: `mergeBlend` changed from `'multiply'` to `'source-over'`. Empty-sheet gate: the live aquarelle canvas renders `opacity: 0` until `engine.hasPaint`. Contract tests updated to pin the new law (group multiply once, no per-layer multiply, source-over merge, empty-sheet gate, pass gate).
+  ROUND 2 — option B (opaque storage, pigment conversion at display/composite seams). One conversion law + one memo: `transmittanceSourceToPigmentAlpha` (rasterAlpha.ts) probes full opacity and converts once per immutable raster via a WeakMap; `shouldConvertTransmittanceTracks` (efxPaintPigmentAlpha.ts) decides WHEN (more than one content track, background content, or no fond — a single track over a fond keeps the exact opaque fast path). `_resolveFlattenedFrame` converts pre-resolved track rasters, denies the RAW per-track memo on converting composites (the compositor reads it before the resolve port), and passes `transmittanceTrackConverted` to `shouldApplyPaperPass` so the engine-1 tooth stays off watercolor. Studio: displayFS `uMode 4` emits premultiplied pigment alpha and the compositor view renders in it; `AquarelleCachedBaseLayer` converts the committed sheet at display; `exportCanvas('transparent')` keeps the opaque storage format. Same-track capture and script rebake switch to `mergeBlend: 'pigment-alpha'` (white → cached base → converted sheet source-over; stored t' = a·C + (1−a)·t_base). Round-1 laws stay: group multiply once, pass gate, empty-sheet opacity gate.
+  ROUND 1 (historical): opaque-sheet law — group owns the single multiply; `shouldApplyPaperPass` skips the tooth for a pre-fond fully-opaque raster; empty live sheet opacity 0 until `hasPaint`.
 
 verification: |
-  `npx tsc --noEmit` clean. Targeted TDD tests: 46/46 (9 failed first as designed). Store/paper suites: 160/160. Studio/view/preview suites: 1833 tests across 76 files. Full app suite: 339 files passed | 2 skipped; 6164 passed | 1 skipped | 96 todo. Live UAT pending (the visual surfaces cannot be validated by vitest).
+  ROUND 2: RED-first — 12 targeted tests failed before implementation for the intended reasons. Green: targeted 68/68; full `npx vitest run` 340 files passed | 2 skipped, 6179 passed | 1 skipped | 96 todo; `npx tsc --noEmit` clean. LIVE UAT PENDING (visual surfaces cannot be validated by vitest).
+  ROUND 1: 46/46 targeted, full suite 6164 passed, tsc clean; live UAT failed on semi-transparency (this round).
 
-files_changed:
+round2_files_changed:
+  - app/src/lib/rasterAlpha.ts
+  - app/src/lib/rasterAlpha.test.ts
+  - app/src/efx-paint/compositor/efxPaintPigmentAlpha.ts (new)
+  - app/src/efx-paint/compositor/efxPaintPigmentAlpha.test.ts (new)
+  - app/src/lib/paperPass.ts
+  - app/src/lib/paperPass.transmittanceGate.test.ts
+  - app/src/lib/paperPass.frameGuard.test.ts
+  - app/src/stores/physicPaintStore.ts
+  - app/src/stores/physicPaintStore.test.ts
+  - packages/efx-watercolor/src/playground/shaders.ts
+  - packages/efx-watercolor/src/playground/Engine.ts
+  - app/src/components/physic-paint/engine/AquarelleCachedBaseLayer.tsx (new)
+  - app/src/components/physic-paint/engine/PhysicsPaintCanvasMount.tsx
+  - app/src/components/physic-paint/engine/aquarelleLayerContract.test.ts
+  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoAlphaMerge.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoAlphaMerge.test.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoScriptRebake.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoScriptRebake.test.ts
+  - app/src/components/physic-paint/roto/physicsPaintRotoScriptThumbnail.ts (doc)
+  - app/src/components/physic-paint/hooks/useRotoFramePersistenceCoordinator.ts (doc)
+  - app/src/components/physic-paint/performance/aquarelleRenderSplitCapture.ts (doc)
+
+round1_files_changed:
   - app/src/components/physic-paint/physicsPaintStudio.css
   - app/src/components/physic-paint/view/PhysicsPaintStudioView.tsx
   - app/src/components/physic-paint/PhysicsPaintStudio.tsx
@@ -123,3 +184,24 @@ files_changed:
 ## Prevention
 
 The class of bug is a compositing law that existed in two places (CSS per-layer rules and the canvas flatten) with no single statement of where the multiply belongs. It was not caught by any gate: no test asserted that the aquarelle Studio path and the editor flatten produce the same law, and the tooth pass had no guard that its input was engine-1 alpha paint. Guards now in place: `aquarelleLayerContract.test.ts` F2a pins "the tracks group is the ONE paper multiply in every module" (and forbids per-layer multiply), the CACHE test pins the source-over overpaint law, the EMPTY SHEET test pins the opacity gate, and `paperPass.transmittanceGate.test.ts` + `paperPass.frameGuard.test.ts` pin the transmittance skip and the probe ordering. Residual gap: no automated pixel-parity test between the Studio DOM stack and the flattened editor raster — both surfaces are pinned by law (source text), not by identical pixels; a future parity harness would need a headless layout engine and is out of scope for this session.
+
+## Round 2 — UAT failure (2026-10-26)
+
+uat_result: |
+  ROW 1 FAILED. The user reports "I lost the semi transparency of the watercolor": wash borders that should read ~50–80% transparent now render as a hard mask (capture: `8.png` in the conversation image cache). The user's proposed law: base the layer alpha on pigment strength. The same-track complaint follows the same mechanism — an opaque sheet covers the cached paint instead of letting unpainted areas read through.
+
+observed_mechanism: |
+  The watercolor engine output is opaque transmittance (`shaders.ts:652-660`, `o = vec4(t, 1.0)`), and round 1 only changed how that opaque sheet is blended. Under source-over the sheet is now a full-canvas opaque mask whose "no pigment" white is indistinguishable from paint coverage. The user wants the sheet converted to pigment alpha before compositing.
+
+required_law: |
+  STRAIGHT-ALPHA PIGMENT LAYER: alpha = 1 − min(r,g,b); color = (rgb − min)/alpha. Dense pigment → alpha near 1 → masks tracks below. Light wash → low alpha → reads as translucent. Over the paper fond the one multiply still reproduces the transmittance exactly (paper × t). Between tracks the law is ordinary source-over alpha compositing. Studio and editor must match.
+
+design_decision: |
+  OPTION B — storage stays opaque transmittance; conversion happens at display/composite seams. Rejected option A (persist alpha frames): frame records carry no engine discriminator today, so A needs a persisted aquarelle flag on every capture path plus a format change, and it would reinterpret every existing stored sheet. B keeps the bytes' meaning stable (old projects, thumbnails, pose margins, reveal bake, diagnostics all keep working) and reuses the runtime discriminator the round-1 paper-pass gate already trusts: `isFullyOpaqueRaster` — a stored transmittance sheet is fully opaque, engine-1 alpha paint is not. Cost: a per-frame CPU conversion, memoized by raster-object identity (WeakMap) so it runs once per track/frame revision, never per playback tick. Residual risk (shared with the round-1 gate): an engine-1 frame that is fully opaque everywhere would be misread as transmittance and recolored; accepted as the existing declared discriminator, documented here.
+  SEAMS: (1) editor/export/monitor — `_resolveFlattenedFrame` converts each participating fully-opaque track raster before `compositeFrame` (helper `transmittanceSourceToPigmentAlpha` in `rasterAlpha.ts`, WeakMap-memoized by immutable raster identity; store keeps its no-pixel-API guardrail) — but ONLY when the composite has other content (more than one participating track, background content, or no fond); a single watercolor track over the paper fond keeps the exact opaque fast path via the pure predicate `shouldConvertTransmittanceTracks`. The compositor is denied the RAW per-track memo on a converting composite (it reads the memo before the resolve port). (2) paper-pass gate — explicit `transmittanceTrackConverted` signal; skip the tooth when either it or the pre-fond opacity probe is set. (3) Studio live canvas — `MODE.pigment = 4` in displayFS: premultiplied `vec4(pigment·alpha, alpha)` where pigment = (t − min)/alpha; transparent outside the sheet; `Engine.render` uses it when `compositorLayer`; `exportCanvas('transparent')` still returns the opaque sheet so storage is unchanged. (4) Studio cached base — `AquarelleCachedBaseLayer` canvas replaces the raw `<img>`: one decode + one probe + one conversion per URL (the element is hidden during cached-roto playback, so never a hot path); raw bytes untouched for playback/thumbnails. (5) same-track capture — compose over white: white → cached base → pigment-alpha-converted live sheet source-over, yielding `t' = a·C + (1−a)·t_base`, which the one fond multiply turns into `a·(paper·C) + (1−a)·(paper·t_base)`. Script rebake adopts the same law. `transmittance` on the frozen record is false whenever a track was converted (the probe is no longer opaque) so previewRenderer draws source-over; transparent-background export now carries pigment alpha, as expected.
+
+open_questions_for_the_debugger: |
+  RESOLVED (see design_decision + Resolution): (1) conversion at both seams — GPU pigment display mode for the live surface, memoized CPU conversion in the store/capture (option B, storage untouched); (2) the paper pass learns it from the explicit `transmittanceTrackConverted` flag; (3) transparent-background export now carries pigment alpha, and every consumer that assumes opaque storage (thumbnails, pose margins, reveal bake, diagnostics, playback) was audited and keeps consuming the stored opaque bytes.
+
+known_separate_issue: |
+  The user also re-hit the "new stroke loses existing strokes" bug. Explicitly deferred: do not fix it in this session; only avoid making it worse.
