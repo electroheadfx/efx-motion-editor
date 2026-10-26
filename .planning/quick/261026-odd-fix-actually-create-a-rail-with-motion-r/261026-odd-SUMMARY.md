@@ -233,7 +233,14 @@ None — plan executed exactly as written.
 - **Reverted (Follow-up 5):** rail membership must NOT refuse Move and must NOT purge scripts — the user needs to paint on rail frames again ("NO it can't refuse… I need to paint again on them"). The `isRotoLoopRailFrame` gate, the rail purge, and the rail owner refusal were removed. The key-identity Move guard (a retained script stamped for a different key) stays.
 - **Measured cause (open):** `AquarelleCanvasLayer` wipes the sheet on every frame change and does NOT replay the recorded timeline on arrival; the frame's render comes from the baked pixel cache, while the selection handles come from the restored aquarelle registry. A cache that predates later strokes therefore shows handles with no paint.
 - **Diagnostic extension:** the provenance report now records each aquarelle event's document-UV `boundsUv`, `load`, `water`, `brushId`, `points`, `paramsSize`, `playFrame` — separating off-canvas strokes from not-replayed strokes from foreign (remapped) strokes.
-- **Status:** brush-Move/guide/snapshot work is complete; the aquarelle render-vs-script divergence is NOT fixed in this quick. Recommended next step: a dedicated debug deciding the truth model (replay the recorded script on arrival vs re-bake the cache on leave) before any code change.
+**Follow-up 7 (2026-10-26, final pass): purge at the bake, keep rails paintable.** User decision: rails must stay editable ("if I need to paint again on them"), so rail membership must never be a gate; the phantom handles are scripts left over from before the rail bake replaced the pixels.
+
+- Decoded the project snapshot from disk (`test.mce/scripts/<layer>/<track>-v1.snap`): frame 6 holds four real Water color strokes, all on-canvas (UV bounds 0.09–0.90), while the render is the rail's content (the visible pink C matches frame 0's size-182 stroke, not any frame-6 stroke). The handles were truthful; the render was rail-owned — a script/render mismatch, not strokes leaking between keys.
+- **Fix (bake purge):** an accepted `play-script` edit (Play Script / Motion / Static) purges both script stores across `affectedStart..affectedEnd`; Reveal creation purges its baked span. `loopOnly` edits are exempt.
+- **Fix (durability):** the same frames are dropped from the snapshot's retained union (`dropRetainedForFrames`) so a routine save / later restore cannot re-seed the purged scripts. A new script painted on a rail frame afterwards is real content and is never touched.
+- **Fix (one-time migration):** pre-fix projects are cleaned at launch from the CARRIED document's rail spans, once per project/layer/track (localStorage marker; unknown physical state defers to the next launch rather than marking clean).
+- **Pins:** `railScriptCleanup.test.ts` (finite/infinity/capacity spans, unknown document, per-track marker, unreadable storage = done); controller `dropRetainedForFrames` union test; Studio source pins for the bake, Reveal and migration purges.
+- **Test evidence:** full `vitest run` green (338 files, 6142 passed, 2 skipped) and `tsc --noEmit` clean.
 
 ## User Setup Required
 
