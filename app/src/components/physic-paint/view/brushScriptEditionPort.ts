@@ -23,6 +23,7 @@ import {
   brushScriptRevision,
   flushBrushScriptFrame,
   getBrushScriptForFrame,
+  isAquarelleGuideGroup,
   isBrushScriptLedgerComplete,
 } from './brushScriptRecordState';
 import { engineHoldsBrushScriptFrame } from './brushScriptHydration';
@@ -164,7 +165,10 @@ export function listBrushScriptStrokes(
   // dropped by engine.clear() (navigation without hydration) would draw dead
   // Move outlines the engine cannot edit.
   if (!engineHoldsBrushScriptFrame(engine, playFrame)) return [];
-  const groups = getBrushScriptForFrame(playFrame);
+  // quick-261026-odd follow-up: a guide proxy is render input, never a
+  // movable Brush stroke — stale entries persisted before the capture guard
+  // must not draw handles either.
+  const groups = getBrushScriptForFrame(playFrame).filter((group) => !isAquarelleGuideGroup(group));
   if (groups.length === 0) return [];
   const serials = engineSerials(engine);
   const stackTotal = groups.length;
@@ -195,7 +199,7 @@ export function hitTestBrushScriptStroke(
   if (!engineHoldsBrushScriptFrame(brushScriptEditionContext?.getEngine() ?? null, playFrame)) {
     return null;
   }
-  const groups = getBrushScriptForFrame(playFrame);
+  const groups = getBrushScriptForFrame(playFrame).filter((group) => !isAquarelleGuideGroup(group));
   for (let index = groups.length - 1; index >= 0; index -= 1) {
     const primary = groups[index]!.primary;
     const radius = Math.max(MIN_STROKE_PAD_PX, (primary.params?.size || 24) / 2);

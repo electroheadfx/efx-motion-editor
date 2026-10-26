@@ -2975,21 +2975,26 @@ describe('261022-pim watercolor stroke select surface', () => {
   it('greys Move and makes Cmd inert when there is no live script (both modes)', () => {
     expect(studio).toContain("isMoveAvailable: () => (activeModule.peek() === 'watercolor'");
     expect(studio).toContain('? aquarelleLiveStrokeCount.peek() > 0');
-    expect(studio).toContain(': brushMoveAvailable.peek()),');
+    expect(studio).toContain(': moveAvailable.peek()),');
     // Deleting the last selectable stroke leaves select mode.
     const selectionSource = readFileSync(fileURLToPath(new URL('./view/aquarelleStrokeSelection.ts', import.meta.url)), 'utf8');
     expect(selectionSource).toContain('if (aquarelleLiveStrokeCount.value === 0) setAquarelleSelectMode(false);');
   });
 
   it('applies the empty-script Move law to activation and exits a stale Move', () => {
-    expect(studio).toContain("if (tool === 'move' && activeModule.peek() === 'brush' && !brushMoveAvailable.peek()) return;");
+    expect(studio).toContain("const moveAvailable = useComputed(");
+    expect(studio).toContain("() => brushMoveAvailable.value && rotoTimelineModel.currentCell.value.kind === 'real',");
+    expect(studio).toContain("if (tool === 'move' && activeModule.peek() === 'brush' && !moveAvailable.peek()) return;");
     expect(studio).toContain("if (activeModule.value !== 'brush' || settings.tool !== 'move') return;");
-    expect(studio).toContain('if (brushMoveAvailable.value || mutationLocked) return;');
+    expect(studio).toContain('if (moveAvailable.value || mutationLocked) return;');
     expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
     // The owner funnel repairs pre-guard guide captures before resolving.
     expect(studio).toContain('if (!liveBrush) purgeAquarelleGuideGroups(frame);');
+    // A derived cell drops any stale capture and releases the owner.
+    expect(studio).toContain('dropNonKeyCellBrushScript(currentFrame);');
+    expect(studio).toContain('clearFrameScriptOwner();');
     expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
-    expect(studio).toContain('if (brushMoveAvailable.peek()) {');
+    expect(studio).toContain('if (moveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');
     const acceptanceStart = studio.lastIndexOf("if (transition === 'accepted' && accepted) {", acceptanceAnchor);
     expect(studio.slice(acceptanceStart, acceptanceAnchor)).toContain('applyFrameModuleState(currentFrame);');
@@ -3094,7 +3099,7 @@ describe('261022-pim aquarelle delete undo wiring', () => {
     expect(studio).toContain("const lastNonMoveToolRef = useRef<'paint' | 'erase'>('paint');");
     expect(studio).toContain("if (settings.tool !== 'move') lastNonMoveToolRef.current = settings.tool;");
     expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
-    expect(studio).toContain("if (settings.tool === 'paint' && brushMoveAvailable.peek()) {");
+    expect(studio).toContain("if (settings.tool === 'paint' && moveAvailable.peek()) {");
     expect(studio).toContain("selectTool('move', settings.physicsMode);");
   });
 

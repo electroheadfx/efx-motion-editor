@@ -106,6 +106,9 @@ const encoder = new TextEncoder();
  * identity source; live and restored ids match by construction.
  */
 export function isAquarelleGuideGroup(group: Readonly<RecordedStrokeGroup>): boolean {
+  // The explicit marker is the primary identity — it survives frames whose
+  // aquarelle script is not in the session registry (generated rail cells).
+  if (group.primary.guideProxy === true) return true;
   const mutationId = group.primary.mutationId;
   return typeof mutationId === 'number' && getRecordedAquarelleStroke(mutationId) !== undefined;
 }
@@ -484,6 +487,17 @@ export function purgeBrushScriptFrame(frame: number): boolean {
   if (!brushScriptFrames.delete(frame)) return false;
   bumpRevision();
   return true;
+}
+
+/**
+ * quick-261026-odd follow-up: a derived rail cell (Motion/Static/Reveal) or an
+ * empty cell has NO key script by construction. Drop any stale capture for
+ * the frame WITHOUT marking it purged or arrival-based: if the cell later
+ * becomes a REAL key, a normal Brush capture must still work. Returns true
+ * only when an entry was removed.
+ */
+export function dropNonKeyCellBrushScript(frame: number): boolean {
+  return deleteBrushScriptFrame(frame);
 }
 
 /**

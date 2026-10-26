@@ -180,6 +180,8 @@ export interface PaintStroke {
   diffusionFrames?: number  // v2 format: frames of diffusion since last stroke
   playFrame?: number        // optional Play-canvas frame where this stroke starts
   physicsMode?: PhysicsMode // per-stroke mode for Play-canvas replay
+  /** Water color guide proxy: render input for engine-1, never a Brush script. */
+  guideProxy?: boolean
 }
 
 // === PROJECT SERIALIZATION (v1.0 document) ===

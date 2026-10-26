@@ -699,7 +699,7 @@ describe('source pins — rail + Studio wiring (SOURCE PINS)', () => {
   });
 
   it('the Studio derives the Move gate from the frame owner, never the engine ledger', () => {
-    expect(studioSource).toContain('brushMoveAvailable.peek()');
+    expect(studioSource).toContain('moveAvailable.peek()');
     expect(studioSource).not.toContain('strokeScriptInMemory');
     const listenerStart = studioSource.indexOf('readyEngine.setHistoryAvailabilityListener(');
     expect(listenerStart).toBeGreaterThanOrEqual(0);
@@ -713,8 +713,8 @@ describe('source pins — rail + Studio wiring (SOURCE PINS)', () => {
     expect(memoStart).toBeGreaterThanOrEqual(0);
     const memoEnd = studioSource.indexOf('}));', memoStart);
     const memo = studioSource.slice(memoStart, memoEnd);
-    expect(memo).toContain('brushMoveAvailable');
-    expect(memo).toContain('moveAvailable: brushMoveAvailable,');
+    expect(memo).toContain('moveAvailable');
+    expect(memo).toContain('moveAvailable,');
     // Preact signals only — no useState for the feature gate.
     expect(studioSource).not.toContain('const [strokeScriptInMemory');
   });

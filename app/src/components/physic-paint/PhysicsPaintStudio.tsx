@@ -193,6 +193,7 @@ import {
   brushScriptRevision,
   clearBrushScriptFrame,
   computeBrushScriptPruneFrame,
+  dropNonKeyCellBrushScript,
   flushBrushScriptFrame,
   getBrushScriptFrameEntries,
   noteBrushScriptArrivalBase,
@@ -1491,6 +1492,25 @@ export function PhysicsPaintStudio() {
       ? 'generated-interpolation' as const
       : 'empty' as const;
   const currentCellKeyId = currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null;
+  const currentCellKind = currentPhysicalCell.kind;
+  // quick-261026-odd follow-up: the Move law is bound to the KEY, never the
+  // display. Only a REAL key can carry a Brush script; a derived
+  // Motion/Static/Reveal rail cell or an empty cell has none by construction,
+  // even while a stale store entry or a Water color guide proxy is still in
+  // memory. Combining the owner gate with the cell kind makes scripts strictly
+  // per key and per track — never a blend borrowed from the display.
+  const moveAvailable = useComputed(
+    () => brushMoveAvailable.value && rotoTimelineModel.currentCell.value.kind === 'real',
+  );
+  // quick-261026-odd follow-up: a derived cell has no key script by
+  // construction. Drop any stale brush capture for it and release the owner,
+  // so a Motion/Static/Reveal rail cell can never keep Move or the Brush
+  // module alive through leftover session data.
+  useEffect(() => {
+    if (currentCellKind === 'real') return;
+    dropNonKeyCellBrushScript(currentFrame);
+    clearFrameScriptOwner();
+  }, [currentFrame, currentCellKind]);
   const [rotoScriptNavigationLocked, setRotoScriptNavigationLocked] = useState(false);
   const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, findAcceptedRotoReferenceFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
   const cachedRotoReferenceUrlRef = useRef(cachedRotoReferenceUrl);
@@ -1714,7 +1734,7 @@ export function PhysicsPaintStudio() {
         selectTool(lastNonMoveToolRef.current, settings.physicsMode);
         return;
       }
-      if (settings.tool === 'paint' && brushMoveAvailable.peek()) {
+      if (settings.tool === 'paint' && moveAvailable.peek()) {
         selectTool('move', settings.physicsMode);
       }
     },
@@ -1722,7 +1742,7 @@ export function PhysicsPaintStudio() {
     // Move is greyed in the rail and Cmd is inert in both modes.
     isMoveAvailable: () => (activeModule.peek() === 'watercolor'
       ? aquarelleLiveStrokeCount.peek() > 0
-      : brushMoveAvailable.peek()),
+      : moveAvailable.peek()),
   };
   // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
   // getter reads the ref at event time (ref-read deps). Window-level because
@@ -1940,7 +1960,7 @@ export function PhysicsPaintStudio() {
     // quick-261026-odd: the activation boundary — a scriptless Brush key refuses
     // Move from the rail, the Cmd tap, the held-Cmd arm and every programmatic
     // reselect. The greyed icon is not the only gate.
-    if (tool === 'move' && activeModule.peek() === 'brush' && !brushMoveAvailable.peek()) return;
+    if (tool === 'move' && activeModule.peek() === 'brush' && !moveAvailable.peek()) return;
     const activeEngine = engineRef.current;
     if (!activeEngine || isPhysicalMutationLocked()) {
       selectToolEngine(tool, physicsMode);
@@ -1972,7 +1992,7 @@ export function PhysicsPaintStudio() {
   useEffect(() => {
     const dispose = effect(() => {
       if (activeModule.value !== 'brush' || settings.tool !== 'move') return;
-      if (brushMoveAvailable.value || mutationLocked) return;
+      if (moveAvailable.value || mutationLocked) return;
       selectTool(lastNonMoveToolRef.current, settings.physicsMode);
     });
     return dispose;
@@ -5083,11 +5103,11 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, brushMoveAvailable, setBrushColor], () => ({
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, moveAvailable, setBrushColor], () => ({
     activeTool: settings.tool,
     physicsMode: settings.physicsMode,
     historyAvailability,
-    moveAvailable: brushMoveAvailable,
+    moveAvailable,
     disabled: !engine || staticControlsLocked,
     onSelectTool: selectTool,
     onUndo: undo,
@@ -5479,7 +5499,7 @@ export function PhysicsPaintStudio() {
     // the current frame so the first click-select sees a script. Read the
     // deferred settingsRef here only (this callback runs after mount).
     if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {
-      if (brushMoveAvailable.peek()) {
+      if (moveAvailable.peek()) {
         readyEngine.setTool('move');
         readyEngine.setStrokeLabelsSuppressed(true);
         readyEngine.setCursorVisible(false);

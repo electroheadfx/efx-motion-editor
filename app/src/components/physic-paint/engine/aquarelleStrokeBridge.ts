@@ -130,5 +130,11 @@ export function aquarelleStrokeToPaintStroke(
       antiAlias: 1,
     },
     timestamp: stroke.timestamp,
+    // quick-261026-odd follow-up: this projected stroke exists only so
+    // engine-1 can draw the guide line / keep a ledger slot for the aquarelle
+    // stroke. It is never Brush script content: capture, restore and the Move
+    // overlay all refuse it by this flag, independent of the aquarelle
+    // registry (which is empty on Motion/Static/Reveal rail cells).
+    guideProxy: true,
   };
 }

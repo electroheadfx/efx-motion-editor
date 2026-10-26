@@ -190,6 +190,9 @@ describe('aquarelleStrokeToPaintStroke', () => {
     expect(paint.params.edgeDetail).toBe(50);
     expect(paint.points[0]!.p).toBe(0.5);
     expect(paint.points[0]!.spd).toBe(0);
+    // quick-261026-odd follow-up: the projection is a guide proxy, never a
+    // Brush script — capture/restore/overlay refuse it by this marker.
+    expect(paint.guideProxy).toBe(true);
   });
 
   it('falls back to the historic defaults when the record bag omits a slider', () => {

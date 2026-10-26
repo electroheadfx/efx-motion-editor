@@ -23,6 +23,7 @@ import {
   clearBrushScriptFrame,
   computeBrushScriptPruneFrame,
   deleteBrushScriptFrame,
+  dropNonKeyCellBrushScript,
   flushBrushScriptFrame,
   getBrushScriptForFrame,
   getBrushScriptFrameEntries,
@@ -230,6 +231,11 @@ describe('aquarelle guide proxies are never Brush script content', () => {
     expect(getBrushScriptForFrame(5).map((group) => group.primary.mutationId)).toEqual([1]);
   });
 
+  it('drops an explicitly marked guide proxy even without an aquarelle registry', () => {
+    expect(flushBrushScriptFrame(5, [{ ...stroke(7), guideProxy: true }])).toBe(false);
+    expect(getBrushScriptFrameEntry(5)).toBeUndefined();
+  });
+
   it('flush of a guide-only frame stores no entry', () => {
     recordAquarelleStroke(7, aquarelleStroke(7, 5));
 
@@ -250,6 +256,16 @@ describe('aquarelle guide proxies are never Brush script content', () => {
     expect(getBrushScriptFrameEntry(5)).toBeUndefined();
     expect(getBrushScriptForFrame(6).map((group) => group.primary.mutationId)).toEqual([9]);
     expect(getBrushScriptForFrame(8).map((group) => group.primary.mutationId)).toEqual([9]);
+  });
+
+  it('dropNonKeyCellBrushScript removes a stale entry without blocking a later real-key capture', () => {
+    captureBrushScriptForFrame(5, [{ primary: stroke(1), continuations: [] }]);
+
+    expect(dropNonKeyCellBrushScript(5)).toBe(true);
+    expect(getBrushScriptFrameEntry(5)).toBeUndefined();
+    expect(purgedBrushScriptFrame(5)).toBe(false);
+    expect(flushBrushScriptFrame(5, [stroke(2)])).toBe(true);
+    expect(getBrushScriptForFrame(5).map((group) => group.primary.mutationId)).toEqual([2]);
   });
 
   it('purge removes guide groups from an already-captured frame', () => {
