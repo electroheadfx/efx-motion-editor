@@ -186,7 +186,7 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
+import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
   adoptBrushScriptFrameAsComplete,
@@ -1220,12 +1220,6 @@ export function PhysicsPaintStudio() {
   }, []);
   const playButtonRef = useRef<HTMLButtonElement>(null);
   const historyAvailability = useSignal<PaintHistoryAvailability>({ undo: 0, redo: 0 });
-  // quick 261004-dn5: the Move rail icon is enabled only while a stroke script
-  // is in memory (the engine has at least one recorded entry to translate).
-  // Written from the EXISTING history-availability listener below — that one
-  // fires on attach and on every allActions change (load/accept/undo/redo/
-  // clear/erase), so it needs no second listener. Signal, never useState.
-  const strokeScriptInMemory = useSignal(false);
   const [onion, setOnionState] = useState<PhysicsPaintOnionState>(() => ({
     ...DEFAULT_ONION_STATE,
     opacity: Math.round(paintStore.onionSkinOpacity.value * 100),
@@ -1719,7 +1713,7 @@ export function PhysicsPaintStudio() {
         selectTool(lastNonMoveToolRef.current, settings.physicsMode);
         return;
       }
-      if (settings.tool === 'paint' && strokeScriptInMemory.peek()) {
+      if (settings.tool === 'paint' && brushMoveAvailable.peek()) {
         selectTool('move', settings.physicsMode);
       }
     },
@@ -1727,7 +1721,7 @@ export function PhysicsPaintStudio() {
     // Move is greyed in the rail and Cmd is inert in both modes.
     isMoveAvailable: () => (activeModule.peek() === 'watercolor'
       ? aquarelleLiveStrokeCount.peek() > 0
-      : strokeScriptInMemory.peek()),
+      : brushMoveAvailable.peek()),
   };
   // Listener lifecycle: mounted once, torn down (disarm) on unmount. The deps
   // getter reads the ref at event time (ref-read deps). Window-level because
@@ -1936,6 +1930,10 @@ export function PhysicsPaintStudio() {
   // the hook's own selectTool remains the only engine writer. Identity is
   // stable per engine+lock because selectToolEngine is the hook's useMemo.
   const selectTool = useCallback((tool: ToolType, physicsMode?: 'local' | null) => {
+    // quick-261026-odd: the activation boundary — a scriptless Brush key refuses
+    // Move from the rail, the Cmd tap, the held-Cmd arm and every programmatic
+    // reselect. The greyed icon is not the only gate.
+    if (tool === 'move' && activeModule.peek() === 'brush' && !brushMoveAvailable.peek()) return;
     const activeEngine = engineRef.current;
     if (!activeEngine || isPhysicalMutationLocked()) {
       selectToolEngine(tool, physicsMode);
@@ -1958,6 +1956,20 @@ export function PhysicsPaintStudio() {
     activeEngine.setCursorVisible(true);
     selectToolEngine(tool, physicsMode);
   }, [selectToolEngine, isPhysicalMutationLocked]);
+  // quick-261026-odd: the Move law on the EXIT side. When the current key's
+  // Brush script empties — a Motion/Static/Reveal bake replaced its records, a
+  // delete, or an explicit navigation to a pixel-only key — a persistent Move
+  // must leave the tool too. One gate: brushMoveAvailable. mutationLocked keeps
+  // the effect alive so an exit refused mid-operation retries when the lock
+  // clears. Signal reads/writes happen inside effect(), never the render.
+  useEffect(() => {
+    const dispose = effect(() => {
+      if (activeModule.value !== 'brush' || settings.tool !== 'move') return;
+      if (brushMoveAvailable.value || mutationLocked) return;
+      selectTool(lastNonMoveToolRef.current, settings.physicsMode);
+    });
+    return dispose;
+  }, [selectTool, settings.tool, settings.physicsMode, mutationLocked]);
   // 49-04 UAT fix: the swatch click must ALSO write the document fallback so
   // the monitor fond layer resolves the paper/solid/transparent record. The
   // 49-03 S6 write-through helper (backgroundModeToFallback) existed but the
@@ -3316,6 +3328,9 @@ export function PhysicsPaintStudio() {
       });
       if (result.ok) {
         if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+        // quick-261026-odd: the Reveal bake wrote pixel-only keys; republish the
+        // current key's owner so a prior Brush owner cannot keep Move open.
+        applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
         return { ok: true };
       }
       return { ok: false, reason: mapRevealRailRejectionReason(result.reason) };
@@ -4436,6 +4451,12 @@ export function PhysicsPaintStudio() {
       const accepted = physicalEditCoordinator.acceptedOutput.peek();
       try {
         if (transition === 'accepted' && accepted) {
+          // quick-261026-odd: Motion/Static/Reveal bakes REPLACE the span's key
+          // identities, so applyScriptRecordRemaps drops their session scripts.
+          // Republish the current key's owner from the stores in the same
+          // accepted transition so the Move gate closes without waiting for a
+          // navigation.
+          applyFrameModuleState(currentFrame);
           // D-17 post-acceptance selection aftermath: group-aware kinds keep
           // the set (move re-anchors to the grabbed key; force-spacing keyIds
           // survive retiming; paste-key-group selects the pasted set with the
@@ -5055,11 +5076,11 @@ export function PhysicsPaintStudio() {
   // input, so a startFrame-only Studio render returns the cached object and
   // the memo-wrapped rail skips its render. Signal objects pass through by
   // identity (never .value-cached), so signal-driven updates keep flowing.
-  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, strokeScriptInMemory, setBrushColor], () => ({
+  const toolRail = toolRailPropsMemo.resolve([settings.tool, settings.physicsMode, settings.opacity, historyAvailability, engine, staticControlsLocked, selectTool, undo, redo, clearActiveSource, brushMoveAvailable, setBrushColor], () => ({
     activeTool: settings.tool,
     physicsMode: settings.physicsMode,
     historyAvailability,
-    strokeScriptInMemory,
+    moveAvailable: brushMoveAvailable,
     disabled: !engine || staticControlsLocked,
     onSelectTool: selectTool,
     onUndo: undo,
@@ -5415,10 +5436,6 @@ export function PhysicsPaintStudio() {
     readyEngine.setHistoryAvailabilityListener((availability) => {
       rotoMoveHistory.reconcilePaintBarriers(availability);
       rotoScript.notifySourceRevision();
-      // quick 261004-dn5: same listener drives the Move icon's enable gate —
-      // it fires on attach and on every allActions change, so no second
-      // listener is needed to know a script is in memory.
-      strokeScriptInMemory.value = readyEngine.getStrokeCount() > 0;
     });
     // 260925-iy6 UAT round 8: the preview base lands on its own async decode.
     // Bump here so the program monitor recomposites the atomic base swap
@@ -5455,16 +5472,25 @@ export function PhysicsPaintStudio() {
     // the current frame so the first click-select sees a script. Read the
     // deferred settingsRef here only (this callback runs after mount).
     if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {
-      readyEngine.setTool('move');
-      readyEngine.setStrokeLabelsSuppressed(true);
-      readyEngine.setCursorVisible(false);
-      // 261023-h9v: never flush an EMPTY fresh engine over a retained entry.
-      if (readyEngine.getStrokes().length > 0) {
-        flushBrushScriptFrame(
-          launchContextRef.current?.startFrame ?? 0,
-          readyEngine.getStrokes(),
-          readyEngine.getFramePaintSettings() ?? readyEngine.getPaintRenderSettings(),
-        );
+      if (brushMoveAvailable.peek()) {
+        readyEngine.setTool('move');
+        readyEngine.setStrokeLabelsSuppressed(true);
+        readyEngine.setCursorVisible(false);
+        // 261023-h9v: never flush an EMPTY fresh engine over a retained entry.
+        if (readyEngine.getStrokes().length > 0) {
+          flushBrushScriptFrame(
+            launchContextRef.current?.startFrame ?? 0,
+            readyEngine.getStrokes(),
+            readyEngine.getFramePaintSettings() ?? readyEngine.getPaintRenderSettings(),
+          );
+        }
+      } else {
+        // quick-261026-odd: a fresh engine must never resurrect Move on a
+        // scriptless key. Restore the last non-Move tool in both the engine
+        // and settings.
+        readyEngine.setTool(lastNonMoveToolRef.current);
+        readyEngine.setPhysicsMode(settingsRef.current.physicsMode);
+        setSettings((current) => ({ ...current, tool: lastNonMoveToolRef.current, physicsMode: settingsRef.current.physicsMode }));
       }
     }
     // 261002 look-delta (MEASURE-ONLY): read-only Studio-paint-canvas probe —

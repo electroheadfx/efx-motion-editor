@@ -58,10 +58,9 @@ import {
  *    arms; the reset helper clears both signals plus the deferral state.
  *  - SOURCE PINS: the rail declares a 'move' item immediately after 'erase',
  *    an isItemActive branch for it, runAction dispatching onSelectTool('move',
- *    physicsMode) and a strokeScriptInMemory feature gate; the Studio writes
- *    strokeScriptInMemory from the existing history listener, peeks BOTH arms
- *    in the armed-guarded effect and passes the signal through the tool-rail
- *    identity memo.
+ *    physicsMode) and a brushMoveAvailable feature gate derived from the
+ *    frame's script owner; the Studio peeks the owner-derived gate in BOTH
+ *    arms and passes it through the tool-rail identity memo.
  *
  * Node environment: no real DOM. Everything is driven through the exported
  * handlers with injected deps; the mount takes window-like/document-like
@@ -684,11 +683,14 @@ describe('source pins — rail + Studio wiring (SOURCE PINS)', () => {
     expect(railSource).toMatch(/\|\s*'move'/);
   });
 
-  it('the rail highlights the move item, dispatches its selection and gates it on the stroke script', () => {
+  it("the rail highlights the move item, dispatches its selection and gates it on the key's Brush script", () => {
     expect(railSource).toContain("if (item.id === 'move') return activeTool === 'move';");
     expect(railSource).toContain("if (item.id === 'move') onSelectTool('move', physicsMode);");
-    expect(railSource).toContain('strokeScriptInMemory');
-    expect(railSource).toContain('!strokeScriptInMemory.value');
+    expect(railSource).toContain('moveAvailable');
+    expect(railSource).toContain('const moveDisabled = !moveAvailable.value;');
+    expect(railSource).toContain("const moveBlocked = item.id === 'move' && moveDisabled;");
+    expect(railSource).toContain('const active = isItemActive(item, displayTool, physicsMode) && !moveBlocked;');
+    expect(railSource).toContain('disabled={disabled || moveBlocked}');
     // The IMPL body must keep the existing narrow-history pin green.
     const railStart = railSource.indexOf('function PhysicsPaintToolRailImpl');
     const railEnd = railSource.indexOf('export const PhysicsPaintToolRail', railStart);
@@ -696,13 +698,13 @@ describe('source pins — rail + Studio wiring (SOURCE PINS)', () => {
     expect(railSource.slice(railStart, railEnd)).not.toContain('historyAvailability?.value');
   });
 
-  it('the Studio writes strokeScriptInMemory from the existing history listener', () => {
-    expect(studioSource).toContain('const strokeScriptInMemory = useSignal(false);');
-    expect(studioSource).toContain('strokeScriptInMemory.value = readyEngine.getStrokeCount() > 0;');
+  it('the Studio derives the Move gate from the frame owner, never the engine ledger', () => {
+    expect(studioSource).toContain('brushMoveAvailable.peek()');
+    expect(studioSource).not.toContain('strokeScriptInMemory');
     const listenerStart = studioSource.indexOf('readyEngine.setHistoryAvailabilityListener(');
     expect(listenerStart).toBeGreaterThanOrEqual(0);
     const listenerEnd = studioSource.indexOf('});', listenerStart);
-    expect(studioSource.slice(listenerStart, listenerEnd)).toContain('strokeScriptInMemory.value = readyEngine.getStrokeCount() > 0;');
+    expect(studioSource.slice(listenerStart, listenerEnd)).not.toContain('getStrokeCount()');
   });
 
   it('the armed-guarded effect peeks BOTH arms and the tool-rail memo passes the signal through', () => {
@@ -711,8 +713,8 @@ describe('source pins — rail + Studio wiring (SOURCE PINS)', () => {
     expect(memoStart).toBeGreaterThanOrEqual(0);
     const memoEnd = studioSource.indexOf('}));', memoStart);
     const memo = studioSource.slice(memoStart, memoEnd);
-    expect(memo).toContain('strokeScriptInMemory');
-    expect(memo).toContain('strokeScriptInMemory,');
+    expect(memo).toContain('brushMoveAvailable');
+    expect(memo).toContain('moveAvailable: brushMoveAvailable,');
     // Preact signals only — no useState for the feature gate.
     expect(studioSource).not.toContain('const [strokeScriptInMemory');
   });

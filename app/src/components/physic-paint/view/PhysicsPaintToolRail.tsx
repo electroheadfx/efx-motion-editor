@@ -163,8 +163,8 @@ export interface PhysicsPaintToolRailProps {
   activeTool: ToolType;
   physicsMode: 'local' | null;
   historyAvailability?: ReadonlySignal<PaintHistoryAvailability>;
-  /** quick 261004-dn5: gates the Move icon — a move needs a script entry to translate. */
-  strokeScriptInMemory: ReadonlySignal<boolean>;
+  /** quick-261026-odd — gates the Move icon; Move needs a Brush script on the current key. */
+  moveAvailable: ReadonlySignal<boolean>;
   disabled?: boolean;
   onSelectTool: (tool: ToolType, physicsMode: 'local' | null) => void;
   onUndo: () => void;
@@ -222,7 +222,7 @@ function PhysicsPaintToolRailImpl({
   activeTool,
   physicsMode,
   historyAvailability,
-  strokeScriptInMemory,
+  moveAvailable,
   disabled = false,
   onSelectTool,
   onUndo,
@@ -249,9 +249,10 @@ function PhysicsPaintToolRailImpl({
   // buttons) so the active highlight can show Erase/Move while Paint stays
   // selected.
   const displayTool = readEffectiveTool(activeTool);
-  // quick 261004-dn5: the Move icon is enabled only while a stroke script is
-  // in memory — same narrow-leaf signal precedent as readEffectiveTool above.
-  const moveDisabled = !strokeScriptInMemory.value;
+  // quick-261026-odd: the Move icon is enabled only while the current key owns
+  // a Brush script — same narrow-leaf signal precedent as readEffectiveTool
+  // above.
+  const moveDisabled = !moveAvailable.value;
   const runAction = (item: PhysicsPaintToolRailItem) => {
     if (disabled) return;
     if (item.id === 'paint') onSelectTool('paint', null);
@@ -276,7 +277,8 @@ function PhysicsPaintToolRailImpl({
           );
         }
 
-        const active = isItemActive(item, displayTool, physicsMode);
+        const moveBlocked = item.id === 'move' && moveDisabled;
+        const active = isItemActive(item, displayTool, physicsMode) && !moveBlocked;
         const className = `physics-paint-icon-button${active ? ' active' : ''}`;
 
         return (
@@ -284,7 +286,7 @@ function PhysicsPaintToolRailImpl({
             key={item.id}
             type="button"
             class={className}
-            disabled={disabled || (item.id === 'move' && moveDisabled)}
+            disabled={disabled || moveBlocked}
             title={item.tooltip ?? item.label}
             aria-label={item.label}
             aria-pressed={item.kind === 'tool' ? active : undefined}
