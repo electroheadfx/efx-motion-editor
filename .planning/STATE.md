@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-26T16:26:30.747Z"
-last_activity: 2026-10-25
-last_activity_desc: Quick task 261025-d3r UAT approved — brush hand hidden, pointer on hittable strokes, background-click deselect
-state_head: 312a4252347206aaccbcde8009507650e36a9036
+last_updated: "2026-10-26T16:48:20.948Z"
+last_activity: 2026-10-26
+last_activity_desc: Quick task 261026-odd automated-complete — empty-script Move law enforced on the current key; native UAT pending
+state_head: a74bf8cc6a47a171f20cbcde9fc6041310f5955b
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-26 - Completed quick task 261026-nvq: Watercolor script thumbnails now use the live aquarelle sheet (multiply over paper) instead of the thin engine-1 guide strokes — native UAT approved (6/6)
+Last activity: 2026-10-26 - Quick task 261026-odd automated-complete: Move is greyed and unactivatable on keys without a Brush script (Motion/Static/Reveal pixel-only rails); native UAT pending
 
 Progress: [██████████] 100%
 
@@ -599,6 +599,7 @@ None yet.
 | 261025-co0 | Color palette: remove the per-swatch X, add selectable swatches with commit-time in-place color rewrite, and delete the selected swatch with Delete/Backspace | 2026-10-25 | ac9fa3a1 | [261025-co0-enhance-color-palette-remove-the-delete-](./quick/261025-co0-enhance-color-palette-remove-the-delete-/) |
 | 261025-d3r | Brush Move hides the legacy pointing-hand cursor on hover (erase hover keeps it); held-Cmd momentary Move retained | 2026-10-25 | a8cb7897 | [261025-d3r-in-brush-there-is-the-old-move-code-with](./quick/261025-d3r-in-brush-there-is-the-old-move-code-with/) |
 | 261026-nvq | Watercolor scripts save the live aquarelle sheet as the library thumbnail (multiply over paper) instead of the thin engine-1 guide strokes | 2026-10-26 | 312a4252 | [261026-nvq-could-you-fix-the-watercolor-thumb-in-sc](./quick/261026-nvq-could-you-fix-the-watercolor-thumb-in-sc/) |
+| 261026-odd | Fix: actually create a rail with motion, reveal or static write just pixel and have no script for now but the Move tool is activated, it should not because these rails for now do not add stroke scripts (later yes like an option). If script is empty on a key -> no move (tool greyed) its a law we decided | 2026-10-26 | a74bf8cc | [261026-odd-fix-actually-create-a-rail-with-motion-r](./quick/261026-odd-fix-actually-create-a-rail-with-motion-r/) |
 
 ### Roadmap Evolution
 
