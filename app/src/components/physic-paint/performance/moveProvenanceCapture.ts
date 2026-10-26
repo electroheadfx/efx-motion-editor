@@ -224,9 +224,28 @@ export function captureMoveProvenanceNow(reason: string): void {
   void captureMoveProvenance(reason);
 }
 
+/**
+ * Proof-of-load beacon: the Studio writes this at probe install time so a
+ * stale window can be distinguished from a bug without any user interaction.
+ */
+async function writeBuildBeacon(): Promise<void> {
+  try {
+    const beacon = {
+      build: MOVE_PROVENANCE_BUILD,
+      installedAt: new Date().toISOString(),
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(beacon, null, 2));
+    const { exportWritePng } = await import('../../../lib/ipc');
+    await exportWritePng('/tmp', 'efx-build-check.json', Array.from(bytes));
+  } catch (error) {
+    console.warn('[move-provenance] beacon write failed', error);
+  }
+}
+
 export function installMoveProvenanceProbe(deps: MoveProvenanceDeps): void {
   if (!import.meta.env.DEV) return;
   installedDeps = deps;
+  void writeBuildBeacon();
   (window as unknown as { __EFX_MOVE_PROVENANCE__?: () => void }).__EFX_MOVE_PROVENANCE__ = () => {
     void captureMoveProvenance('manual');
   };
