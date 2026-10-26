@@ -175,12 +175,31 @@ export async function captureMoveProvenance(reason: string): Promise<void> {
         events: events.map((event) => {
           if (isAquarelleDryEvent(event)) return { dry: true };
           const payload = event.engine;
+          const pts = Array.isArray(event.pts) ? event.pts : [];
+          // Document UV bounds: a stroke wholly outside 0..1 cannot paint on
+          // the sheet — the "handle but no render" signature.
+          let bounds: { minX: number; minY: number; maxX: number; maxY: number } | null = null;
+          for (const point of pts) {
+            if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue;
+            bounds = bounds === null
+              ? { minX: point.x, minY: point.y, maxX: point.x, maxY: point.y }
+              : {
+                  minX: Math.min(bounds.minX, point.x),
+                  minY: Math.min(bounds.minY, point.y),
+                  maxX: Math.max(bounds.maxX, point.x),
+                  maxY: Math.max(bounds.maxY, point.y),
+                };
+          }
           return {
             dry: false,
             mutationId: payload.mutationId ?? null,
             color: payload.color ?? null,
             points: Array.isArray(event.pts) ? event.pts.length : null,
             paramsSize: payload.params?.['size'] ?? null,
+            load: payload.params?.['load'] ?? null,
+            water: payload.params?.['water'] ?? null,
+            brushId: payload.brushId ?? null,
+            boundsUv: bounds,
             playFrame: event.playFrame ?? null,
           };
         }),

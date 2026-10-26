@@ -191,7 +191,7 @@ import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
 import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
-import { isRotoLoopRailFrame, resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
+import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
@@ -1543,18 +1543,13 @@ export function PhysicsPaintStudio() {
   // Motion/Static/Reveal rail cell or an empty cell has none by construction,
   // even while a stale store entry or a Water color guide proxy is still in
   // memory. Combining the owner gate with the cell kind makes scripts strictly
-  // per key and per track — never a blend borrowed from the display.
-  //
-  // LOOP-CLIP HALF: a rail frame resolves as a REAL key (real-key-before-loop
-  // precedence, D-26) because the rail bakes INTO key records. The cell kind
-  // therefore cannot see the rail, and a baked key's retained script used to
-  // reopen Move with phantom handles. Every frame inside a Loop Clip range
-  // (Play Script / Motion / Static / Reveal) is pixel-only by law.
+  // per key and per track — never a blend borrowed from the display. Rails
+  // stay editable (the user may paint on them again), so rail membership is
+  // deliberately NOT a gate here.
   const moveAvailable = useComputed(() => {
     if (!brushMoveAvailable.value) return false;
     const cell = rotoTimelineModel.currentCell.value;
     if (cell.kind !== 'real') return false;
-    if (isRotoLoopRailFrame(rotoTimelineModel.loopResolutionContext.value.ranges, cell.appFrame)) return false;
     // A retained script belongs to the KEY it was captured on. An entry whose
     // stored identity is a different key is stale — never offer Move for it.
     const entryKeyId = getBrushScriptFrameEntry(cell.appFrame)?.keyId ?? null;
@@ -1564,19 +1559,12 @@ export function PhysicsPaintStudio() {
   // quick-261026-odd follow-up: a derived cell has no key script by
   // construction. Drop any stale brush capture for it and release the owner,
   // so a Motion/Static/Reveal rail cell can never keep Move or the Brush
-  // module alive through leftover session data. A LOOP CLIP frame is the same
-  // case even when it resolves as a real baked key: rails are pixel-only by
-  // law, so purge the frame so a later arrival also refuses hydration.
-  const currentFrameInsideRail = isRotoLoopRailFrame(
-    loopResolutionContext?.ranges,
-    currentFrame,
-  );
+  // module alive through leftover session data.
   useEffect(() => {
-    if (currentCellKind === 'real' && !currentFrameInsideRail) return;
-    if (currentFrameInsideRail) purgeBrushScriptFrame(currentFrame);
-    else dropNonKeyCellBrushScript(currentFrame);
+    if (currentCellKind === 'real') return;
+    dropNonKeyCellBrushScript(currentFrame);
     clearFrameScriptOwner();
-  }, [currentFrame, currentCellKind, currentFrameInsideRail]);
+  }, [currentFrame, currentCellKind]);
   const [rotoScriptNavigationLocked, setRotoScriptNavigationLocked] = useState(false);
   const { cachedRotoReferenceUrl, cachedRotoRepaintBaseFrame, setCachedRotoReferenceUrl, setCachedRotoRepaintBaseFrame, clearCachedRotoReferenceUrl, resetCachedRotoReference, findCachedRotoDisplayFrame, findAcceptedRotoReferenceFrame, loadCachedRotoReferenceFrame } = rotoPersistence.reference;
   const cachedRotoReferenceUrlRef = useRef(cachedRotoReferenceUrl);
@@ -1846,19 +1834,8 @@ export function PhysicsPaintStudio() {
       // before resolving ownership, so a wash-only key cannot keep the Brush
       // module unlocked or Move open. The per-completion live sample is exempt
       // (O(1) law) — the guarded flushes already refuse guide captures.
-      //
-      // LOOP CLIP LAW: a frame inside any rail (Play Script / Motion / Static /
-      // Reveal) is pixel-only, even when it resolves as a real baked key. Its
-      // retained script is stale by construction — purge it so no hydration or
-      // frame-leave flush can resurrect phantom Move handles, and never publish
-      // an owner (a rail frame owns no script for now).
-      const railOwned = isRotoLoopRailFrame(rotoTimelineModel.loopResolutionContext.peek().ranges, frame);
-      if (railOwned) {
-        if (!liveBrush) purgeBrushScriptFrame(frame);
-      } else if (!liveBrush) {
-        purgeAquarelleGuideGroups(frame);
-      }
-      const owner = railOwned ? null : resolveFrameScriptOwner(frame, liveBrush ?? null);
+      if (!liveBrush) purgeAquarelleGuideGroups(frame);
+      const owner = resolveFrameScriptOwner(frame, liveBrush ?? null);
       if (owner === 'brush' || owner === 'watercolor') {
         if (activeModule.peek() !== owner) activeModule.value = owner;
       }

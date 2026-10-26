@@ -22,7 +22,6 @@ import {
   resetAquarelleRecordState,
 } from './aquarelleRecordState';
 import {
-  isRotoLoopRailFrame,
   resolveFrameScriptOwner,
   type LiveBrushScriptSample,
 } from './frameScriptOwnership';
@@ -144,33 +143,5 @@ describe('resolveFrameScriptOwner', () => {
     expect(resolveFrameScriptOwner(10)).toBe('watercolor');
     expect(purgeAquarelleFrameScript(10)).toBe(1);
     expect(resolveFrameScriptOwner(10)).toBeNull();
-  });
-});
-
-describe('isRotoLoopRailFrame', () => {
-  const RANGES = [
-    { placementStart: 4, effectiveEnd: 8 },
-    { placementStart: 12, effectiveEnd: 20 },
-  ];
-
-  it('marks every frame inside a loop range, including its start', () => {
-    expect(isRotoLoopRailFrame(RANGES, 4)).toBe(true);
-    expect(isRotoLoopRailFrame(RANGES, 6)).toBe(true);
-    expect(isRotoLoopRailFrame(RANGES, 7)).toBe(true);
-    expect(isRotoLoopRailFrame(RANGES, 12)).toBe(true);
-    expect(isRotoLoopRailFrame(RANGES, 19)).toBe(true);
-  });
-
-  it('treats the effective end as half-open and the gap as outside', () => {
-    expect(isRotoLoopRailFrame(RANGES, 3)).toBe(false);
-    expect(isRotoLoopRailFrame(RANGES, 8)).toBe(false);
-    expect(isRotoLoopRailFrame(RANGES, 11)).toBe(false);
-    expect(isRotoLoopRailFrame(RANGES, 20)).toBe(false);
-  });
-
-  it('never marks anything without ranges', () => {
-    expect(isRotoLoopRailFrame(null, 6)).toBe(false);
-    expect(isRotoLoopRailFrame(undefined, 6)).toBe(false);
-    expect(isRotoLoopRailFrame([], 6)).toBe(false);
   });
 });

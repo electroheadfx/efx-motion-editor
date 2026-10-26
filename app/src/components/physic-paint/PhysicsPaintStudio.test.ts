@@ -2983,10 +2983,7 @@ describe('261022-pim watercolor stroke select surface', () => {
 
   it('applies the empty-script Move law to activation and exits a stale Move', () => {
     expect(studio).toContain("const moveAvailable = useComputed(");
-    // quick-261026-odd: a rail frame resolves as a REAL key (D-26), so the
-    // cell kind alone never sees it — the loop-range test is the second half.
     expect(studio).toContain("if (cell.kind !== 'real') return false;");
-    expect(studio).toContain('if (isRotoLoopRailFrame(rotoTimelineModel.loopResolutionContext.value.ranges, cell.appFrame)) return false;');
     // A retained script never unlocks Move on a DIFFERENT key's cell.
     expect(studio).toContain('if (entryKeyId !== null && entryKeyId !== cell.keyId) return false;');
     expect(studio).toContain("if (tool === 'move' && activeModule.peek() === 'brush' && !moveAvailable.peek()) return;");
@@ -2994,12 +2991,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(studio).toContain('if (moveAvailable.value || mutationLocked) return;');
     expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
     // The owner funnel repairs pre-guard guide captures before resolving.
-    expect(studio).toContain('purgeAquarelleGuideGroups(frame);');
-    // A derived cell or a Loop Clip rail frame drops any stale capture.
-    expect(studio).toContain('purgeBrushScriptFrame(currentFrame);');
+    expect(studio).toContain('if (!liveBrush) purgeAquarelleGuideGroups(frame);');
+    // A derived cell drops any stale capture and releases the owner.
     expect(studio).toContain('dropNonKeyCellBrushScript(currentFrame);');
     expect(studio).toContain('clearFrameScriptOwner();');
-    expect(studio).toContain('const railOwned = isRotoLoopRailFrame(');
     expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
     expect(studio).toContain('if (moveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');
@@ -4207,10 +4202,7 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const funnel = studio.slice(start, end);
-    // quick-261026-odd: a Loop Clip rail frame is pixel-only by law and never
-    // publishes an owner — even when it resolves as a real baked key.
-    expect(funnel).toContain('const railOwned = isRotoLoopRailFrame(');
-    expect(funnel).toContain('const owner = railOwned ? null : resolveFrameScriptOwner(frame, liveBrush ?? null);');
+    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, liveBrush ?? null);');
     expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
     expect(funnel).toContain('if (activeModule.peek() !== owner) activeModule.value = owner;');
     expect(funnel).toContain('setFrameScriptOwner(owner);');
