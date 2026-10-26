@@ -2,7 +2,7 @@
 status: resolved
 trigger: "I have a very old bug, it happen again I forgot to mention because it happen when studio stay open more than 10 minutes without working on it, the log are: 'Roto physical launch hydration failed: Launch cursor does not match the canonical physical document.' Its black canvas window with disconnected engine. Please look in history it was already reported."
 created: 2026-10-26T12:17Z
-updated: 2026-10-26T13:25Z
+updated: 2026-10-26T14:28Z
 ---
 
 ## Current Focus
@@ -11,7 +11,7 @@ updated: 2026-10-26T13:25Z
 hypothesis: "CONFIRMED. The native occlusion monitor reloads the hidden Studio every 3 minutes, so the child re-fetches the SAME stored launch envelope (same operationId, `startFrame` frozen at the original open frame) while `applySettledLaunchContext` substitutes the crash-recovery sessionStorage checkpoint document, whose active-track `cursorAppFrame` is the LIVE cursor at the last document push. Substituting only the document left the envelope stale; `prepareRotoPhysicalLaunch` refused the incoherent pair and hydration aborted before any launch context was committed — black canvas, 'Engine not ready'. The codebase's own law is that the document cursor is the authority and `startFrame` is derived from it (launch parser `physicsPaintLaunchContext.ts:84`, launch builder `physicPaintBridge.ts:3972`); the substitution alone broke that derivation."
 test: "Drive the real substitution path in the hook's own suite with launch frame A and checkpoint cursor B (A !== B): the pre-fix pair is refused with the exact message; the production resolver aligns `startFrame` to B and the same checkpoint hydrates. Plus: no checkpoint is a no-op, and a checkpoint without active-track physical state still refuses loudly (never a silent bypass)."
 expecting: "RED at base for the alignment cells; GREEN after `resolveLaunchHydrationContext`; no behavior change for a normal same-frame launch."
-next_action: "Closed — fix applied and all offline gates green. Live UAT pending (user runs the app; native idle/occlusion row)."
+next_action: "None — native UAT approved 2026-10-26: after hours away from the app with the computer asleep, the user returned with no black screen ('All UAT Approved')."
 tdd_checkpoint: "RED confirmed 2026-10-26T13:20Z (4 failed / 7 passed on the new cells, all from the missing alignment helper); GREEN 2026-10-26T13:20Z (11/11)."
 
 ## Eliminated
@@ -82,6 +82,11 @@ started: "Very old bug" per the user; it has recurred multiple times. Prior occu
   found: New cells in usePhysicsPaintLaunchIntegration.test.ts: the stale pair `{ ...context, document: checkpoint }` is refused with the exact message; `resolveLaunchHydrationContext(context, checkpoint)` yields `startFrame === 9` and hydrates; no checkpoint returns the identical envelope; a checkpoint without active-track physical state keeps the envelope and still refuses. RED 4 failed / 7 passed before the helper existed; GREEN 11/11 after.
   implication: The mechanism and the single-authority remedy are both pinned without a live app.
 
+- timestamp: 2026-10-26T14:28Z
+  checked: Native idle/occlusion UAT (the row requested at resolution)
+  found: The user left the app unfocused for hours with the computer asleep (veille ordinateur) and returned to a working Studio — no black screen, no "Engine not ready". User verdict: "no black screen more. All UAT Approved."
+  implication: The live path that previously reproduced the refusal (occlusion reload + checkpoint substitution) now recovers; the fix is UAT-confirmed and the session is closed.
+
 ## Resolution
 
 - root_cause: >
@@ -140,7 +145,8 @@ started: "Very old bug" per the user; it has recurred multiple times. Prior occu
   physicsPaintLaunchContext, physicsPaintBridgeTransport,
   PhysicsPaintStudio contract (338 tests), and `src/lib/physicPaintBridge.test.ts`
   (155 passed / 1 skipped). Full app suite run to confirm no wider
-  regression. Live UAT pending — the user runs the app; the exact row is:
+  regression. Live UAT APPROVED 2026-10-26 — hours unfocused with the computer
+  asleep, no black screen ("All UAT Approved"). The pending row was:
   open the Studio, navigate to another frame and make a document-pushing edit,
   leave the Studio occluded (display asleep or covered by another app) for
   more than 3 minutes, then return — the Studio must come back with the
