@@ -9,12 +9,23 @@ export interface RotoScriptThumbnailNativeEncoder {
   encodeWebp(input: { width: number; height: number; quality: number; rgba: Uint8Array }): Promise<{ width: number; height: number; mimeType: 'image/webp'; bytes: Uint8Array }>;
 }
 
+/**
+ * 261026-nvq: how the script canvas composites over the thumbnail's flat fill
+ * and paper. Aquarelle sheets are MODE.transparent OPAQUE transmittance (white
+ * = no pigment, alpha 255) and must MULTIPLY — the same law as the live seam
+ * (.aquarelle-live-canvas / .aquarelle-cached-base) and the frame-cache merge
+ * (`mergeBlend: 'multiply'`). Engine-1 `copyLiveAlphaCanvas` is a
+ * transparent-backed alpha canvas and stays source-over.
+ */
+export type RotoScriptThumbnailComposite = 'source-over' | 'multiply';
+
 export async function createRotoScriptThumbnail(input: {
   scriptAlphaCanvas: HTMLCanvasElement;
   sourceWidth: number;
   sourceHeight: number;
   background: PhysicPaintRotoBackgroundMetadata;
   nativeEncoder?: RotoScriptThumbnailNativeEncoder;
+  scriptComposite?: RotoScriptThumbnailComposite;
 }): Promise<PersistedRotoScriptThumbnailV1> {
   const { width, height } = fitThumbnail(input.sourceWidth, input.sourceHeight);
   const canvas = document.createElement('canvas');
@@ -40,6 +51,10 @@ export async function createRotoScriptThumbnail(input: {
     if (!paper) throw new Error('Required paper texture is unavailable');
     context.drawImage(paper, 0, 0, width, height);
   }
+  // 261026-nvq: the aquarelle sheet is OPAQUE transmittance — draw it with the
+  // requested blend so white (no pigment) leaves the background intact. The
+  // default keeps the engine-1 alpha canvas byte-identical (source-over).
+  context.globalCompositeOperation = input.scriptComposite ?? 'source-over';
   context.drawImage(input.scriptAlphaCanvas, 0, 0, width, height);
   let bytes: Uint8Array;
   if (input.nativeEncoder) {
