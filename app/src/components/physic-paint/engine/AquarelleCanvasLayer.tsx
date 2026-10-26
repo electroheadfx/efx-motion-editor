@@ -68,6 +68,16 @@ const cursorX = signal(-1);
 const cursorY = signal(-1);
 const cursorVisible = signal(false);
 
+/**
+ * Opaque-sheet law (2026-10-26): MODE.transparent is OPAQUE white where the
+ * sheet holds no pigment. Under source-over (the new track law) a blank live
+ * sheet would cover the cached base it sits over and read as bare paper. The
+ * canvas renders transparent until the engine holds paint — opacity, not
+ * visibility, so the canvas keeps owning the pointer (first stroke).
+ * Written only on change by the rAF poll (efx-preact-reactivity).
+ */
+const aquarelleLivePaint = signal(false);
+
 function AquarelleBrushCursor(): JSX.Element | null {
   // 261022-pim: select mode (rail toggle) or a held Cmd hides the paint-size
   // ring — the stroke overlay owns the pointer in both. Narrow leaf read.
@@ -588,6 +598,11 @@ export function AquarelleCanvasLayer(props: {
         engine.setPigment(pigmentFromHex(colorRef.current));
         applyPaper();
       }
+      // EMPTY SHEET GATE: hide the opaque white sheet until it holds paint.
+      // Read AFTER the frame-change clear above so a new sheet starts hidden
+      // in the same tick (opacity keeps the canvas interactive).
+      const painted = engine.hasPaint;
+      if (aquarelleLivePaint.value !== painted) aquarelleLivePaint.value = painted;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -607,6 +622,8 @@ export function AquarelleCanvasLayer(props: {
       cancelAnimationFrame(raf);
       engine.destroy();
       engineRef.current = null;
+      // The next mount starts on a blank sheet — never inherit painted state.
+      aquarelleLivePaint.value = false;
     };
   }, []);
 
@@ -617,6 +634,10 @@ export function AquarelleCanvasLayer(props: {
     height: '100%',
     pointerEvents: props.disabled ? 'none' : 'auto',
     touchAction: 'none',
+    // EMPTY SHEET GATE: nothing painted yet → let the cached base / lower
+    // tracks show through (an opaque white transmittance sheet would cover
+    // them under source-over). Opacity keeps the canvas as the pointer target.
+    opacity: aquarelleLivePaint.value ? 1 : 0,
   };
 
   return (

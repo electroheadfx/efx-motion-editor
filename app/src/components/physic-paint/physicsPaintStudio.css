@@ -6729,33 +6729,13 @@ button.destructive {
   align-items: center;
   justify-content: center;
   isolation: isolate;
-}
-
-/* F2a: aquarelle is a transmittance layer — its multiply must meet the
-   document fond. The isolation group (which keeps engine-1's track CSS blend
-   off the fond) would trap the blend on transparent black, so it lifts while
-   the water-colour layer is up. engine-1 is hidden in this mode anyway.
-   studio-reopen-paper-washout: also lift by DOM presence — the module signal
-   resets to 'brush' on Studio navigation, so the class can lag the layer. */
-.physics-paint-tracks-group.aquarelle-compositing,
-.physics-paint-tracks-group:has(.aquarelle-live-canvas),
-.physics-paint-tracks-group:has(.physics-paint-program-monitor) {
-  isolation: auto;
-}
-
-/* Brush one-law: the group is the paper pass. The program-monitor composite
-   (settled/cached paint) and the engine stack (wet + dry raw pigment) are
-   composited as ONE group, then multiplied by the document fond exactly once.
-   That is what makes a wet stroke match its settled colour and stops the raw
-   engine surface from ever showing unmultiplied. Water color keeps its own
-   per-layer multiply (live sheet + cached base) instead. */
-.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) {
+  /* Opaque-sheet law (2026-10-26): the group is the ONE paper pass in BOTH
+     modules. Every track composites source-over among the others (the track
+     stack is opaque-sheet semantics: a top watercolor masks what is below),
+     then the flattened stack multiplies over the document fond exactly once.
+     The previous per-layer aquarelle multiply glazed the tracks beneath —
+     Studio and editor disagreed on the same frame. */
   mix-blend-mode: multiply;
-}
-
-/* Inside the Brush paper pass the monitor must not multiply a second time. */
-.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) .physics-paint-program-monitor {
-  mix-blend-mode: normal;
 }
 
 /* The brush ring is UI, never pigment: it renders on its own canvas as a
@@ -6841,17 +6821,18 @@ button.destructive {
 /* 56-12: the live aquarelle pigment layer sits ABOVE the program monitor
    (z-index 0 — the cached composite) so new watercolour lands on top of the
    last painted cache, and BELOW the onion/overlay family (z-index 5).
-   F2a: multiply over the fond — transmittance × paper, exactly MODE.paper. */
+   Opaque sheets (2026-10-26): the sheet composites SOURCE-OVER inside the
+   tracks group — it masks the tracks below instead of glazing them; the group
+   multiplies the flattened stack over the fond exactly once. */
 .demo-canvas-shell .aquarelle-live-canvas {
   z-index: 4 !important;
-  mix-blend-mode: multiply;
   /* UI checklist row 1: the HTML pointer is replaced by the brush-size ring. */
   cursor: none;
 }
 
 /* In aquarelle mode engine-1's surface is opacity:0, so the cached frame it
    paints is invisible. The committed sheet renders here instead — below the
-   live canvas (4) and multiply over the fond, the same transmittance law. */
+   live canvas (4), source-over like every other track sheet in the group. */
 .demo-canvas-shell .aquarelle-cached-base {
   position: absolute;
   inset: 0;
@@ -6861,7 +6842,6 @@ button.destructive {
      shell, so the cached base must stretch identically or the paint misaligns. */
   object-fit: fill;
   z-index: 3;
-  mix-blend-mode: multiply;
   pointer-events: none;
 }
 
@@ -6889,14 +6869,16 @@ button.destructive {
    canvases are z-index 2/4) and BELOW the onion overlay (z-index 5): monitor <
    engine < onion. It draws the flattened composite only — pointer-events none
    so every interaction passes through to the engine canvas above.
-   studio-reopen-paper-washout: multiply over the document fond (transmittance
-   cache) — never cover the paper; transparent engine-1 pixels leave it. */
+   Opaque sheets (2026-10-26): the monitor is plain content INSIDE the tracks
+   group — the group owns the single multiply over the document fond, so the
+   monitor must not multiply a second time (that is what glazed the lower
+   tracks under a watercolor sheet). */
 .physics-paint-program-monitor {
   position: absolute;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  mix-blend-mode: multiply;
+  mix-blend-mode: normal;
 }
 
 .physics-paint-program-monitor > canvas {

@@ -241,15 +241,20 @@ describe('PhysicsPaintCanvasMount persistent boundary contract', () => {
     ]) expect(mount.split(`recordPhysicsPaintPerformanceCounter('${counter}')`).length - 1).toBe(1);
   });
 
-  it('applies the paper pass once to the whole Brush group and keeps the ring outside it (brush one-law)', () => {
+  it('applies the paper pass once to the whole tracks group and keeps the ring outside it', () => {
     const css = readFileSync(fileURLToPath(new URL('../physicsPaintStudio.css', import.meta.url)), 'utf8');
-    // The tracks group is the single paper pass in Brush: monitor composite +
-    // engine wet/dry stack are multiplied together, exactly once.
-    expect(css).toContain('.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) {\n  mix-blend-mode: multiply;');
+    // Product law 2026-10-26 (opaque sheets): the tracks group is the single
+    // paper pass in BOTH modules — monitor composite + engine wet/dry stack +
+    // the aquarelle sheet are flattened together, exactly once. The old
+    // aquarelle carve-outs (per-layer multiply, isolation lift) are gone.
+    const groupRule = css.slice(css.indexOf('.physics-paint-tracks-group {'));
+    expect(groupRule.slice(0, groupRule.indexOf('}'))).toContain('mix-blend-mode: multiply');
     // Inside that pass the monitor must not multiply a second time.
-    expect(css).toContain('.physics-paint-tracks-group:not(.aquarelle-compositing):not(:has(.aquarelle-live-canvas)) .physics-paint-program-monitor {\n  mix-blend-mode: normal;');
-    // Water color keeps its per-layer multiply, so the guards must exclude it.
-    expect(css).toContain('.physics-paint-tracks-group.aquarelle-compositing,');
+    const monitorRule = css.slice(css.indexOf('\n.physics-paint-program-monitor {'));
+    expect(monitorRule.slice(0, monitorRule.indexOf('}'))).toContain('mix-blend-mode: normal');
+    // No module-specific guard: one law for Brush and Water color.
+    expect(css).not.toContain('.physics-paint-tracks-group:not(.aquarelle-compositing)');
+    expect(css).not.toContain('.physics-paint-tracks-group.aquarelle-compositing,');
     // The ring renders on its own canvas above the group, never inside it.
     expect(css).toContain('.physics-paint-brush-cursor-overlay {\n  position: absolute;\n  z-index: 3;\n  pointer-events: none;');
     expect(view).toContain('class="physics-paint-brush-cursor-overlay"');

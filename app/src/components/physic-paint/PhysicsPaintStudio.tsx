@@ -7062,9 +7062,9 @@ export function PhysicsPaintStudio() {
           });
           return;
         }
-        // A cloned base multiplies the opaque transmittance sheet over the
-        // previous key's paint. A blank base must encode the sheet alone:
-        // multiply over a transparent base would erase it.
+        // Opaque-sheet law: the live sheet SOURCE-OVERS whatever base it gets.
+        // A cloned key starts from its blank frame (the sheet alone); a blank
+        // base needs no special blend — source-over encodes the sheet alone.
         cachedBase = pendingFirstPaintTarget.baseKind === 'clone' ? pendingFirstPaintTarget.blankFrame : null;
         aquarelleMergeBaseRef.current = { appFrame: playFrame, base: cachedBase };
       } else {
@@ -7077,10 +7077,10 @@ export function PhysicsPaintStudio() {
         }
         cachedBase = aquarelleMergeBaseRef.current?.base ?? null;
         // The sheet ACCUMULATES strokes until the session ends, so the base
-        // must stay the frame cache as of SHEET START. Advancing it to the
-        // just-committed payload would multiply the same sheet over itself on
-        // every re-capture (settle → frame-leave → close) and compound the
-        // pigment density — the darker-on-reopen cache.
+        // must stay the frame cache as of SHEET START (the session's one
+        // overpaint target). Advancing it to the just-committed payload would
+        // make each re-capture (settle → frame-leave → close) replace a
+        // different target and drift from the session's opaque-sheet law.
       }
       const currentLaunch = launchContextRef.current;
       if (!currentLaunch || currentLaunch.operationId !== operationId) return;
@@ -7098,7 +7098,7 @@ export function PhysicsPaintStudio() {
         pendingFirstPaintTarget: pendingFirstPaintTarget !== null,
         classification: summarizePhysicPaintRotoGroupFrameTarget(targetClassification),
         identityKey,
-        mergeBlend: 'multiply',
+        mergeBlend: 'source-over',
       }, cachedBase);
       // The snapshot is an eager canvas copy, so a retry can reuse it after the
       // live sheet was cleared by the frame change.
@@ -7108,10 +7108,12 @@ export function PhysicsPaintStudio() {
           appFrame: playFrame,
           liveAlphaCanvas,
           cachedBase,
-          // A5: MODE.transparent is opaque transmittance. Multiply matches the
-          // live CSS seam — white (no pigment) leaves the base untouched, pigment
-          // tints it. Source-over would cover the base with the full sheet.
-          mergeBlend: 'multiply',
+          // Opaque-sheet law (2026-10-26): MODE.transparent is an opaque
+          // transmittance SHEET. Watercolor over a cached paint on the SAME
+          // track OVERPAINTS it — source-over, the same replacement the
+          // editor's active-track overlay performs. Multiply glazed the cache
+          // (the see-through stroke artifact the user reported).
+          mergeBlend: 'source-over',
           size: { width: canvasWidth, height: canvasHeight },
         });
         recordAquarelleRenderSplitEvent('capture-enqueue', {

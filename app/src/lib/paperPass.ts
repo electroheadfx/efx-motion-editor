@@ -32,6 +32,28 @@ export interface PaperPassTile {
   readonly peak: HTMLCanvasElement;
 }
 
+/**
+ * 2026-10-26 (opaque-sheet parity): the post-bake tooth belongs to ENGINE-1
+ * alpha paint. A watercolor track is MODE.transparent OPAQUE transmittance —
+ * the engine already bakes its own paper response (granulation + edge
+ * darkening) into the sheet, and the Studio live sheet never routes through
+ * this pass. Modulating it a second time is the fine speckle across dense
+ * pigment the editor showed while the Studio stayed clean.
+ *
+ * `transmittanceSheet` is the PRE-FOND alpha signature: a fully opaque
+ * composite is the opaque transmittance sheet (engine-1 paint keeps real
+ * alpha wherever nothing was painted, so the probe leaves it false).
+ * One predicate so the law lives in one place (the pass's single seam).
+ */
+export function shouldApplyPaperPass(input: {
+  readonly passKind: 'paper' | 'color' | null;
+  readonly grainStrength: number;
+  readonly transmittanceSheet: boolean;
+}): boolean {
+  if (input.transmittanceSheet) return false;
+  return input.passKind === 'paper' && input.grainStrength > 0;
+}
+
 /** Entry-count bound: sizes/scales/strengths are finite but unbounded in theory. */
 const TILE_CACHE_ENTRY_LIMIT = 12;
 /** Footprint bound: 12 full-HD entries would be ~200MB in a WKWebView. */

@@ -118,11 +118,22 @@ describe('260925-iy6 frame/export guard', () => {
 // composited as the active track's live contribution BEFORE the paper pass, so
 // the tooth lands ONCE on the mixed paint) and the paperGrain removal.
 describe('260925-iy6 UAT follow-up — live-dry overlay + paperGrain removal', () => {
-  it('U1 the pass gate keys on kind === paper && grainStrength > 0 — never paperGrain', () => {
+  it('U1 the pass gate is paper kind + grainStrength > 0, and never an opaque transmittance sheet', () => {
     // The old gate was `kind === 'paper' && metadata.paperGrain && grainStrength > 0`
     // while the tile probe keyed on metadata.background — a silent-disable trap.
-    expect(storeSource).toMatch(/kind === 'paper' && passSource\.metadata\.grainStrength > 0/);
+    // 2026-10-26 opaque-sheet parity: the gate is `shouldApplyPaperPass`, which
+    // also refuses aquarelle transmittance (the editor speckle the Studio never
+    // showed). paperGrain must never come back.
     expect(storeSource).not.toMatch(/metadata\.paperGrain &&/);
+    expect(storeSource).toContain('shouldApplyPaperPass({');
+    // The transmittance probe runs BETWEEN the composite and the pass: it is
+    // the pre-fond alpha signature, unavailable once the fond multiplies.
+    const composite = storeSource.indexOf('const result = compositeFrame(');
+    const probe = storeSource.indexOf('const transmittanceSheet = isFullyOpaqueRaster(');
+    const pass = storeSource.indexOf('applyPaperPass(');
+    expect(composite).toBeGreaterThanOrEqual(0);
+    expect(probe).toBeGreaterThan(composite);
+    expect(pass).toBeGreaterThan(probe);
   });
 
   it('U2 _resolveFlattenedFrame threads the liveOverlay into the compositor AT the track slot, before applyPaperPass', () => {

@@ -221,7 +221,7 @@ function PhysicsPaintCanvasStackImpl(props: PhysicsPaintCanvasStackViewProps) {
       {canvasBounds && props.programMonitor && props.showTransparencyCheckerboard ? (
         <div class="physics-paint-transparency-checkerboard" style={{ left: canvasBounds.left, top: canvasBounds.top, width: canvasBounds.width, height: canvasBounds.height }} aria-hidden="true" />
       ) : null}
-      <div class={`physics-paint-tracks-group${props.programMonitor?.liveOverlay ? ' dry-live-overlay' : ''}${props.mount.aquarelleActive ? ' aquarelle-compositing' : ''}`}>
+      <div class={`physics-paint-tracks-group${props.programMonitor?.liveOverlay ? ' dry-live-overlay' : ''}`}>
         <MemoizedPhysicsPaintCanvasMount
           key={props.canvasKey}
           {...props.mount}

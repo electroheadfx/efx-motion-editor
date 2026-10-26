@@ -78,16 +78,17 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('wasAwake = false');
   });
 
-  it('CACHE: aquarelle capture composites over the existing cached paint (never replaces it)', () => {
-    // watercolor-clears-cached-paint: the aquarelle sheet is opaque transmittance
-    // and is frame-scoped — it does NOT contain the key's earlier (engine-1 or
-    // prior-session) paint. Passing cachedBase: null encoded only the live sheet
-    // and replaced the frame cache. The capture must merge against the session
-    // base (cache as of sheet start) with MULTIPLY so the transmittance glazes
-    // the existing paint instead of covering it.
+  it('CACHE: aquarelle capture OVERPAINTS the cached paint (opaque-sheet law)', () => {
+    // Product law 2026-10-26: a Paint track is one OPAQUE sheet. Watercolor
+    // painted over a cached paint on the SAME track overpaints it — it never
+    // glazes/multiplies with it. The session base is still pinned (the capture
+    // must know what it replaces), but the merge is source-over: the live
+    // transmittance sheet covers the cache exactly as the editor's active-track
+    // overlay replaces the store raster.
     expect(studio).not.toContain('cachedBase: null');
-    expect(studio).toContain("mergeBlend: 'multiply'");
     expect(studio).toContain('aquarelleMergeBaseRef');
+    expect(studio).toContain("mergeBlend: 'source-over'");
+    expect(studio).not.toContain("mergeBlend: 'multiply'");
     // Same seam engine-1 uses — no second cache system.
     expect(studio).toContain('captureLivePixels');
   });
@@ -143,11 +144,39 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(engine).toContain('premultipliedAlpha: true');
   });
 
-  it('F2a: aquarelle multiplies over the fond (paper-agnostic transmittance seam)', () => {
-    expect(css).toContain('mix-blend-mode: multiply');
-    // Isolation would trap the multiply on transparent black — it lifts.
-    expect(css).toContain('.physics-paint-tracks-group.aquarelle-compositing');
+  it('F2a (OPAQUE SHEETS): the tracks group is the ONE paper multiply in every module', () => {
+    // Product law 2026-10-26: each Paint track is its own sheet over the
+    // document paper. Tracks composite source-over among THEMSELVES, then the
+    // flattened stack multiplies ONCE over the fond. The old per-layer multiply
+    // (live canvas + cached base + monitor) glazed the tracks beneath instead
+    // of masking them — the Studio/editor divergence.
+    const groupRule = css.slice(css.indexOf('.physics-paint-tracks-group {'));
+    expect(groupRule.slice(0, groupRule.indexOf('}'))).toContain('mix-blend-mode: multiply');
+    // No per-layer aquarelle multiply: the sheet is opaque, so source-over is
+    // what masks the tracks below (and overpaints a same-track cache).
+    const liveRule = css.slice(css.indexOf('.demo-canvas-shell .aquarelle-live-canvas'));
+    expect(liveRule.slice(0, liveRule.indexOf('}'))).not.toContain('mix-blend-mode');
+    const cachedRule = css.slice(css.indexOf('.demo-canvas-shell .aquarelle-cached-base'));
+    expect(cachedRule.slice(0, cachedRule.indexOf('}'))).not.toContain('mix-blend-mode');
+    // The monitor is plain content inside the group — it must not multiply on
+    // its own or the watercolor above would glaze the lower tracks twice.
+    const monitorRule = css.slice(css.indexOf('\n.physics-paint-program-monitor {'));
+    expect(monitorRule.slice(0, monitorRule.indexOf('}'))).toContain('mix-blend-mode: normal');
+    // The isolation lift existed only to let the per-layer multiply reach the
+    // fond; with one group multiply it is dead code.
+    expect(css).not.toContain('.physics-paint-tracks-group.aquarelle-compositing');
+    expect(css).not.toContain(':has(.aquarelle-live-canvas)');
     expect(layer).toContain('engine.setCompositorLayer(true)');
+  });
+
+  it('EMPTY SHEET: the opaque live sheet never washes out the cache it sits over', () => {
+    // MODE.transparent is OPAQUE white where no pigment. Under the opaque-sheet
+    // law (source-over, not multiply) a blank live sheet would cover the cached
+    // base and read as bare paper. It must render transparent until the engine
+    // holds paint — opacity (not visibility) so the canvas keeps the pointer.
+    expect(layer).toContain('aquarelleLivePaint');
+    expect(layer).toMatch(/opacity: aquarelleLivePaint\.value \? 1 : 0/);
+    expect(layer).toContain('engine.hasPaint');
   });
 
   it('F3: Studio paper drives the engine deposit grain (R2.3)', () => {

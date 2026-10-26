@@ -26,7 +26,7 @@ import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/ph
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
 import { isFullyOpaqueRaster } from '../lib/rasterAlpha';
-import { applyPaperPass, getPaperPassTile } from '../lib/paperPass';
+import { applyPaperPass, getPaperPassTile, shouldApplyPaperPass } from '../lib/paperPass';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
@@ -2961,10 +2961,23 @@ function _resolveFlattenedFrame(
   // clears both memos and _fondSourceSignature rotates on paper/grainStrength/
   // grainScale, so a metadata change makes this build a memo MISS → a fresh
   // record with a fresh tile key (paper / WxH / grainScale / strength).
+  // Opaque-sheet parity (2026-10-26): probe BEFORE the fond multiply. A fully
+  // opaque PRE-FOND composite is aquarelle MODE.transparent transmittance —
+  // the engine already bakes its paper response and the Studio live sheet
+  // never receives this pass, so a second modulation is the fine speckle the
+  // editor showed over dense pigment. Engine-1 paint keeps real alpha, so the
+  // probe leaves it false and the tooth applies unchanged.
+  const transmittanceSheet = isFullyOpaqueRaster(result.raster as HTMLCanvasElement);
   const passSource = _resolveFondSource(layerId, efxDocument);
-  // Gate mirrors the fond grain gate (rotoFrameDraw): '' means grain off (CR-01)
-  // and strength None means no tooth — the pass is skipped untouched.
-  if (passSource?.kind === 'paper' && passSource.metadata.grainStrength > 0) {
+  // Gate mirrors the fond grain gate (rotoFrameDraw): '' means grain off (CR-01),
+  // strength None means no tooth, and an aquarelle transmittance sheet is
+  // already paper-aware — each is a deterministic skip that touches nothing.
+  if (passSource?.kind === 'paper'
+    && shouldApplyPaperPass({
+      passKind: passSource.kind,
+      grainStrength: passSource.metadata.grainStrength,
+      transmittanceSheet,
+    })) {
     const textureKey = passSource.metadata.background;
     // Subscribe in BOTH branches (today only the fond branch does): a Studio
     // monitor frame (includeFond=false) must also recomposite when a late
@@ -3032,7 +3045,9 @@ function _resolveFlattenedFrame(
   const transmittance = fondInstruction === null
     && efxDocument.background.fallback.mode === 'transparent'
     && !backgroundContentAtFrame
-    && isFullyOpaqueRaster(raster);
+    // Same pre-fond probe as the paper-pass gate: null fond ⇒ raster is
+    // result.raster; a non-null fond already short-circuits above.
+    && transmittanceSheet;
   // G-52-8 (FIX 4): the record carries the raster; draw surfaces consume it
   // directly. The WebP encode is async (Rust codec) and memoized on first call
   // via encodeBytes() — transport/serialization readers (bridge, export, tests)
