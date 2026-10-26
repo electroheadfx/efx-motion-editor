@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import {
+  brushMoveAvailable,
   clearFrameScriptOwner,
   frameScriptOwner,
   lockedModuleForOwner,
@@ -68,6 +69,38 @@ describe('frameScriptOwner signal', () => {
     setFrameScriptOwner('watercolor');
     clearFrameScriptOwner();
     expect(frameScriptOwner.value).toBeNull();
+  });
+});
+
+describe('brushMoveAvailable', () => {
+  it("opens only for a Brush-owned key", () => {
+    expect(brushMoveAvailable.value).toBe(false);
+    setFrameScriptOwner('watercolor');
+    expect(brushMoveAvailable.value).toBe(false);
+    setFrameScriptOwner('brush');
+    expect(brushMoveAvailable.value).toBe(true);
+    setFrameScriptOwner('both');
+    expect(brushMoveAvailable.value).toBe(true);
+    clearFrameScriptOwner();
+    expect(brushMoveAvailable.value).toBe(false);
+  });
+
+  it('tracks owner transitions in one effect and notifies only on a value change', () => {
+    const seen: boolean[] = [];
+    const dispose = effect(() => {
+      seen.push(brushMoveAvailable.value);
+    });
+    try {
+      setFrameScriptOwner('brush');
+      setFrameScriptOwner('both');
+      setFrameScriptOwner('watercolor');
+      setFrameScriptOwner(null);
+    } finally {
+      dispose();
+    }
+    // One initial run + one per actual BOOLEAN change: 'both' keeps true,
+    // null keeps false after 'watercolor'.
+    expect(seen).toEqual([false, true, false]);
   });
 });
 

@@ -10,7 +10,7 @@
  * with an unchanged value. This module holds the ONE FrameScriptOwner
  * declaration — frameScriptOwnership.ts re-exports it.
  */
-import { signal } from '@preact/signals';
+import { computed, signal } from '@preact/signals';
 import type { ActiveModule } from './activeModule';
 
 export type FrameScriptOwner = 'brush' | 'watercolor' | 'both' | null;
@@ -25,6 +25,19 @@ export function setFrameScriptOwner(owner: FrameScriptOwner): void {
 export function clearFrameScriptOwner(): void {
   setFrameScriptOwner(null);
 }
+
+/**
+ * quick-261026-odd — the Move tool's ONE enable gate.
+ *
+ * Move translates a stroke script, so only a Brush-owned key can enter it; a
+ * Water color-only key and a scriptless key (Motion/Static/Reveal rails bake
+ * pixels only) have nothing to move. Derived from frameScriptOwner so the
+ * rail, the Cmd tap, the held-Cmd arm and every programmatic activation read
+ * the same truth.
+ */
+export const brushMoveAvailable = computed(
+  () => frameScriptOwner.value === 'brush' || frameScriptOwner.value === 'both',
+);
 
 /** The non-owning module for a single-owner frame; both/none lock nothing. */
 export function lockedModuleForOwner(owner: FrameScriptOwner): ActiveModule | null {
