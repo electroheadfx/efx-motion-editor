@@ -77,6 +77,13 @@ export interface BrushScriptFrameEntry extends BrushScriptFrameTotals {
    * STICKY: the first non-null snapshot wins across recaptures.
    */
   readonly paintSettings?: PaintRenderSettings | null;
+  /**
+   * quick-261026-odd follow-up: the physical KEY this script belongs to. A
+   * script follows key identity, never a frame number — a bake/rail can
+   * replace the key at the same frame, and a retained script must never
+   * re-attach to the replacement. `null`/absent means unknown identity.
+   */
+  readonly keyId?: string | null;
 }
 
 export interface BrushScriptReportRow extends BrushScriptFrameTotals {
@@ -111,6 +118,20 @@ export function isAquarelleGuideGroup(group: Readonly<RecordedStrokeGroup>): boo
   if (group.primary.guideProxy === true) return true;
   const mutationId = group.primary.mutationId;
   return typeof mutationId === 'number' && getRecordedAquarelleStroke(mutationId) !== undefined;
+}
+
+/**
+ * quick-261026-odd follow-up: the live key-identity lookup every NEW capture
+ * stamps onto its entry. Restores pass the decoded keyId explicitly instead,
+ * so a legacy (v1) row is never blessed with the CURRENT key's identity.
+ * Configured by the Studio against the bound (layerId, trackId).
+ */
+let brushScriptKeyProvider: ((frame: number) => string | null) | null = null;
+
+export function configureBrushScriptKeyProvider(
+  provider: ((frame: number) => string | null) | null,
+): void {
+  brushScriptKeyProvider = provider;
 }
 
 /** Normalize FIRST, then drop guide groups so their continuations leave with them. */
@@ -255,6 +276,7 @@ function captureEntry(
   groups: readonly Readonly<RecordedStrokeGroup>[],
   complete?: boolean,
   paintSettings?: PaintRenderSettings | null,
+  keyId?: string | null,
 ): BrushScriptFrameEntry {
   // SINGLE-FUNNEL GUARD: every store write lands here, so no capture path
   // (flush, adopt, restore, remap) may ever retain a Water color guide proxy
@@ -262,6 +284,13 @@ function captureEntry(
   const scriptGroups = groups.filter((group) => !isAquarelleGuideGroup(group));
   const frozen = freezeRecordedStrokeGroups(scriptGroups);
   const previous = brushScriptFrames.get(frame);
+  // An explicit keyId (restore/remap) wins; a live capture asks the Studio's
+  // provider; with no provider the previous identity is the honest fallback.
+  const resolvedKeyId = keyId !== undefined
+    ? keyId
+    : brushScriptKeyProvider !== null
+      ? brushScriptKeyProvider(frame)
+      : previous?.keyId ?? null;
   const entry: BrushScriptFrameEntry = Object.freeze({
     frame,
     groups: frozen,
@@ -274,6 +303,7 @@ function captureEntry(
     diffusionFrames: countDiffusionFrames(frozen),
     // 261023-j5b: sticky paint globals — the first non-null snapshot wins.
     paintSettings: previous?.paintSettings ?? paintSettings ?? null,
+    keyId: resolvedKeyId,
   });
   if (frozen.length === 0) {
     // A guide-only (or empty) capture is not Brush script content: it never
@@ -363,6 +393,8 @@ export interface BrushScriptRestoreEntry {
   groups: readonly Readonly<RecordedStrokeGroup>[];
   complete: boolean;
   paintSettings?: PaintRenderSettings | null;
+  /** The decoded key identity (v2); absent for v1 rows = unknown. */
+  keyId?: string | null;
 }
 
 /**
@@ -386,7 +418,9 @@ export function restoreBrushScriptFrames(
     // seed only the real groups (a guide-only frame stays uncaptured).
     const groups = entry.groups.filter((group) => !isAquarelleGuideGroup(group));
     if (groups.length === 0) continue;
-    captureEntry(entry.frame, groups, entry.complete, entry.paintSettings);
+    // Explicit identity: a legacy row keeps `null` and must never inherit
+    // the CURRENT key's id through the live provider.
+    captureEntry(entry.frame, groups, entry.complete, entry.paintSettings, entry.keyId ?? null);
     restored += 1;
   }
   if (restored > 0) bumpRevision();
@@ -531,7 +565,7 @@ export function purgeAquarelleGuideGroups(frame: number): number {
     brushScriptFrames.delete(frame);
     dirtyBrushScriptFrames.delete(frame);
   } else {
-    captureEntry(frame, kept, entry.complete, entry.paintSettings);
+    captureEntry(frame, kept, entry.complete, entry.paintSettings, entry.keyId);
   }
   bumpRevision();
   return removed;

@@ -55,6 +55,11 @@ export interface MoveProvenanceDeps {
   getMoveAvailable(): boolean;
   getOwner(): string | null;
   getEngine(): MoveProvenanceEngine | null;
+  /** The live key occupying the current frame (identity truth). */
+  getCellKeyId?(): string | null;
+  getLiveKeyIdForFrame?(frame: number): string | null;
+  /** True on a Play Script / Reveal rail frame (pixels only by law). */
+  isPixelOnlyFrame?(frame: number): boolean;
 }
 
 let installedDeps: MoveProvenanceDeps | null = null;
@@ -121,8 +126,11 @@ export async function captureMoveProvenance(reason: string): Promise<void> {
       owner: readOr(() => deps.getOwner(), null, errors, 'owner'),
       tool: readOr(() => deps.getTool(), 'unknown', errors, 'tool'),
       moveAvailable: readOr(() => deps.getMoveAvailable(), false, errors, 'moveAvailable'),
+      cellKeyId: deps.getCellKeyId ? readOr(() => deps.getCellKeyId!(), null, errors, 'cellKeyId') : null,
+      cellInsideRail: deps.isPixelOnlyFrame ? readOr(() => deps.isPixelOnlyFrame!(frame), false, errors, 'cellInsideRail') : null,
       store: {
         hasEntry: entry !== undefined,
+        keyId: entry?.keyId ?? null,
         complete: entry?.complete ?? null,
         strokes: entry?.strokes ?? 0,
         points: entry?.points ?? 0,
@@ -184,6 +192,13 @@ export async function captureMoveProvenance(reason: string): Promise<void> {
         }
         return {
           frame: frameEntry.frame,
+          keyId: frameEntry.keyId ?? null,
+          liveKeyId: deps.getLiveKeyIdForFrame
+            ? readOr(() => deps.getLiveKeyIdForFrame!(frameEntry.frame), null, errors, 'liveKeyId')
+            : null,
+          pixelOnly: deps.isPixelOnlyFrame
+            ? readOr(() => deps.isPixelOnlyFrame!(frameEntry.frame), false, errors, 'pixelOnly')
+            : null,
           strokes: frameEntry.strokes,
           guideGroups: guides,
           realGroups: frameEntry.strokes - guides,

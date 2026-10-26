@@ -196,6 +196,7 @@ import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
   clearBrushScriptFrame,
+  configureBrushScriptKeyProvider,
   computeBrushScriptPruneFrame,
   dropNonKeyCellBrushScript,
   flushBrushScriptFrame,
@@ -595,6 +596,31 @@ function measureAquarelleCanvasInk(canvas: HTMLCanvasElement): number {
     // Measurement must never block a legitimate capture.
     return Number.POSITIVE_INFINITY;
   }
+}
+
+/**
+ * quick-261026-odd follow-up: the frames a bound track's Loop Clip rails
+ * (Play Script / Reveal) cover. Rails bake pixels only, so a legacy brush
+ * script row without a key identity on one of these frames is stale by
+ * construction. `null` = no bound identity (callers disable pruning).
+ */
+function resolveStudioPixelOnlyFrames(
+  identity: StudioScriptSnapshotIdentity | null,
+): Set<number> | null {
+  if (!identity) return null;
+  const clips = physicPaintStore.getRotoPhysicalLoopClips(identity.layerId, identity.trackId);
+  const capacity = physicPaintStore.getRotoPhysicalCapacity(identity.layerId, identity.trackId);
+  const frames = new Set<number>();
+  for (const clip of clips) {
+    const end = clip.repeat === 'infinity'
+      ? capacity
+      : clip.placementStart + clip.sourceKeyIds.length * clip.repeat;
+    const last = Math.min(end, capacity);
+    for (let frame = Math.max(0, clip.placementStart); frame < last; frame += 1) {
+      frames.add(frame);
+    }
+  }
+  return frames;
 }
 
 export function PhysicsPaintStudio() {
@@ -1111,6 +1137,19 @@ export function PhysicsPaintStudio() {
         const records = physicPaintStore.getRotoRealKeyRecords(identity.layerId, identity.trackId);
         return new Set(records.map((record) => record.appFrame));
       },
+      // quick-261026-odd follow-up: scripts follow KEY identity. A restored or
+      // retained row may only seed the key it was captured on, never whatever
+      // key a rail/bake later placed at that frame number.
+      getLiveKeyIds: () => {
+        const identity = studioScriptSnapshotIdentityRef.current;
+        if (!identity) return null;
+        const records = physicPaintStore.getRotoRealKeyRecords(identity.layerId, identity.trackId);
+        return new Map(records.map((record) => [record.appFrame, record.keyId]));
+      },
+      // Loop Clip rails (Play Script / Reveal) bake pixels only by law. A
+      // legacy (v1) row carries no keyId, so on a rail frame its identity is
+      // unprovable — such a row is stale and must not restore.
+      getPixelOnlyFrames: () => resolveStudioPixelOnlyFrames(studioScriptSnapshotIdentityRef.current),
       // Read LIVE (never frozen at launch): the controller asks at prepare and
       // restore time, so a save-as rebind retargets the next package write.
       getAuthority: () => studioScriptSnapshotAuthorityRef.current,
@@ -1694,10 +1733,25 @@ export function PhysicsPaintStudio() {
   useEffect(() => () => {
     resetBrushScriptStore();
     configureBrushScriptEdition(null);
+    configureBrushScriptKeyProvider(null);
     // quick-261023-l35: drop the bound snapshot identity and the dirty
     // baseline with the realm — a dead session must never be read as dirty.
     studioScriptSnapshot.reset();
   }, [studioScriptSnapshot]);
+  // quick-261026-odd follow-up: every live capture stamps the OWNING KEY id.
+  // The provider reads the BOUND snapshot identity (layer + track), which is
+  // exactly the script store's key scope — a late flush can never stamp the
+  // wrong track's key, and a frame with no live key stays honestly null.
+  useEffect(() => {
+    configureBrushScriptKeyProvider((frame) => {
+      const identity = studioScriptSnapshotIdentityRef.current;
+      if (!identity) return null;
+      return physicPaintStore
+        .getRotoRealKeyRecordByAppFrame(identity.layerId, identity.trackId, frame)
+        ?.keyId ?? null;
+    });
+    return () => configureBrushScriptKeyProvider(null);
+  }, []);
   // quick-261025-awl: a closed Studio cannot leave a stale ownership lock.
   useEffect(() => () => {
     clearFrameScriptOwner();
@@ -3364,6 +3418,20 @@ export function PhysicsPaintStudio() {
       });
       if (result.ok) {
         if (result.descriptor) rotoMoveHistory.recordBackgroundEdit(result.descriptor);
+        // quick-261026-odd follow-up: the Reveal bake REPLACED every key in its
+        // span with pixel-only content. Any retained Brush or Water color
+        // script for those keys is stale by construction — drop it now so it
+        // can neither stay in the session nor be written back to a snapshot.
+        const revealCapacity = carriedLaunch
+          ? physicPaintStore.getRotoPhysicalCapacity(carriedLaunch.layerId, studioActiveTrackId())
+          : input.startFrame + input.frameCount;
+        const revealEnd = input.repeat === 'infinity'
+          ? revealCapacity
+          : input.startFrame + input.frameCount * input.repeat;
+        for (let frame = input.startFrame; frame < Math.min(revealEnd, revealCapacity); frame += 1) {
+          purgeBrushScriptFrame(frame);
+          purgeAquarelleFrameScript(frame);
+        }
         // quick-261026-odd: the Reveal bake wrote pixel-only keys; republish the
         // current key's owner so a prior Brush owner cannot keep Move open.
         applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
@@ -5530,6 +5598,23 @@ export function PhysicsPaintStudio() {
         getMoveAvailable: () => moveAvailable.peek(),
         getOwner: () => frameScriptOwner.peek(),
         getEngine: () => engineRef.current,
+        getCellKeyId: () => {
+          const identity = studioScriptSnapshotIdentityRef.current;
+          const launch = launchContextRef.current;
+          if (!identity || !launch) return null;
+          return physicPaintStore
+            .getRotoRealKeyRecordByAppFrame(identity.layerId, identity.trackId, launch.startFrame ?? 0)
+            ?.keyId ?? null;
+        },
+        getLiveKeyIdForFrame: (frame) => {
+          const identity = studioScriptSnapshotIdentityRef.current;
+          if (!identity) return null;
+          return physicPaintStore
+            .getRotoRealKeyRecordByAppFrame(identity.layerId, identity.trackId, frame)
+            ?.keyId ?? null;
+        },
+        isPixelOnlyFrame: (frame) =>
+          resolveStudioPixelOnlyFrames(studioScriptSnapshotIdentityRef.current)?.has(frame) ?? false,
       });
     }
     // 261023-g4p: a recreated engine must re-enter the brush script-edition

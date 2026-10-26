@@ -22,6 +22,7 @@ import {
   captureBrushScriptForFrame,
   clearBrushScriptFrame,
   computeBrushScriptPruneFrame,
+  configureBrushScriptKeyProvider,
   deleteBrushScriptFrame,
   dropNonKeyCellBrushScript,
   flushBrushScriptFrame,
@@ -292,6 +293,37 @@ describe('aquarelle guide proxies are never Brush script content', () => {
     captureBrushScriptForFrame(6, [{ primary: stroke(7), continuations: [] }]);
     expect(getBrushScriptFrameEntry(6)).toBeUndefined();
     expect(purgeAquarelleGuideGroups(6)).toBe(0);
+  });
+});
+
+describe('key identity stamping', () => {
+  it('stamps a live capture with the owning key and keeps it across a frame remap', () => {
+    configureBrushScriptKeyProvider((frame) => (frame === 3 ? 'key-a' : null));
+    try {
+      flushBrushScriptFrame(3, [stroke(1)]);
+      expect(getBrushScriptFrameEntry(3)?.keyId).toBe('key-a');
+
+      const remap = remapBrushScriptsForRecords(
+        [{ keyId: 'key-a', appFrame: 3 }],
+        [{ keyId: 'key-a', appFrame: 5 }],
+      );
+      expect(remap).not.toBeNull();
+      expect(getBrushScriptFrameEntry(5)?.keyId).toBe('key-a');
+    } finally {
+      configureBrushScriptKeyProvider(null);
+    }
+  });
+
+  it('a restore seeds the DECODED identity, never the current key', () => {
+    configureBrushScriptKeyProvider(() => 'current-key');
+    try {
+      restoreBrushScriptFrames([
+        { frame: 3, groups: [{ primary: stroke(1), continuations: [] }], complete: true },
+      ]);
+      expect(getBrushScriptFrameEntry(3)?.keyId).toBeNull();
+    } finally {
+      configureBrushScriptKeyProvider(null);
+    }
   });
 });
 

@@ -143,7 +143,15 @@ interface Harness {
 }
 
 function harness(
-  overrides: Partial<Pick<StudioScriptSnapshotControllerDeps, 'getLiveFrames' | 'getContentSignature' | 'getBrushFrames' | 'getAuthority'>> = {},
+  overrides: Partial<Pick<
+    StudioScriptSnapshotControllerDeps,
+    | 'getLiveFrames'
+    | 'getContentSignature'
+    | 'getBrushFrames'
+    | 'getAuthority'
+    | 'getLiveKeyIds'
+    | 'getPixelOnlyFrames'
+  >> = {},
 ): Harness {
   let signature = 'sig-0';
   let authority: string | null = null;
@@ -183,6 +191,8 @@ function harness(
     getBrushFrames: overrides.getBrushFrames ?? (() => []),
     getContentSignature: overrides.getContentSignature ?? (() => signature),
     getLiveFrames: overrides.getLiveFrames ?? (() => new Set([7, 9])),
+    getLiveKeyIds: overrides.getLiveKeyIds ?? (() => null),
+    getPixelOnlyFrames: overrides.getPixelOnlyFrames ?? (() => null),
     getAuthority: overrides.getAuthority ?? (() => authority),
     report,
     write,
@@ -356,6 +366,42 @@ describe('studioScriptSnapshotController', () => {
     controller.bind(IDENTITY);
     await controller.restore();
     expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([7, 9]);
+  });
+
+  it('drops a v2 brush row whose keyId no longer owns its frame', async () => {
+    const bytes = encodedFixture([
+      { ...brushFrameFixture(7, 201), keyId: 'old-key' },
+      { ...brushFrameFixture(9, 202), keyId: 'key-9' },
+    ]);
+    const { controller, read } = harness({
+      getLiveFrames: () => new Set([7, 9]),
+      getLiveKeyIds: () => new Map([[7, 'new-key'], [9, 'key-9']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+    // Frame 7 was replaced by a new key (rail/bake): its old script must not
+    // re-attach. Frame 9's identity matches and survives.
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([9]);
+    expect(getBrushScriptFrameEntries()[0]?.keyId).toBe('key-9');
+  });
+
+  it('drops a legacy row on a rail frame and keeps legacy rows elsewhere', async () => {
+    const bytes = encodedFixture([brushFrameFixture(7, 201), brushFrameFixture(9, 202)]);
+    const { controller, read } = harness({
+      getLiveFrames: () => new Set([7, 9]),
+      getLiveKeyIds: () => new Map([[7, 'key-7'], [9, 'key-9']]),
+      getPixelOnlyFrames: () => new Set([7]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+    // v1 rows carry no keyId: on a rail (pixels-only) frame the identity is
+    // unprovable and the row is stale. An ordinary key keeps its legacy row.
+    expect(getBrushScriptFrameEntries().map((entry) => entry.frame)).toEqual([9]);
+    expect(getBrushScriptFrameEntries()[0]?.keyId).toBeNull();
   });
 });
 
@@ -899,8 +945,11 @@ describe('studioScriptSnapshotController — persistAfterPurge', () => {
 const HEAVY_PRIMARY_POINT_COUNT = 180;
 const HEAVY_GROUPS_PER_FRAME = 40;
 const HEAVY_FRAME_COUNT = 3;
-/** bytes — SNAP v1 container with three heavy brush frames, empty AQTL. */
-const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_790;
+/**
+ * bytes — SNAP container with three heavy brush frames, empty AQTL. Brush
+ * section v2 adds one keyId presence byte per frame (+3).
+ */
+const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_793;
 
 function heavyPoint(index: number): PenPoint {
   return {

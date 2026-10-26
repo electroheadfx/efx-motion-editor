@@ -45,8 +45,18 @@ export const STUDIO_SCRIPT_SNAPSHOT_MAGIC = 'SNP1';
 /** The one container version this module encodes and accepts. */
 export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 1;
 
-/** The brush section's own version (it evolves independently). */
-export const STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION = 1;
+/**
+ * The brush section's own version (it evolves independently).
+ *
+ * v2 adds the owning key identity per frame: a script follows the physical
+ * KEY, so a restore must never re-attach a frame's script to whatever key now
+ * occupies that frame. v1 files stay readable (their rows carry no keyId and
+ * are treated as unknown identity by the restore policy).
+ */
+export const STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION = 2;
+
+/** Every brush-section version this module decodes. */
+const STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSIONS = new Set([1, STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION]);
 
 export type StudioScriptSnapshotCodecErrorCode =
   | 'magic'
@@ -86,6 +96,12 @@ export interface StudioScriptSnapshotBrushFrame {
   groups: readonly Readonly<RecordedStrokeGroup>[];
   complete: boolean;
   paintSettings?: PaintRenderSettings | null;
+  /**
+   * v2: the physical key this script was captured on. `null`/absent means
+   * unknown identity (a v1 row or a capture with no live key) — the restore
+   * policy treats such a row as untrusted on a rail/loop-clip frame.
+   */
+  keyId?: string | null;
 }
 
 export interface StudioScriptSnapshotEncodeInput extends StudioScriptSnapshotIdentity {
@@ -281,6 +297,8 @@ function validateIdentityValue(value: unknown, what: string): string {
 // --- Brush section v1 -----------------------------------------------------
 
 /** frame u32 + flags u8 + reserved u8 + paintSettingsPresent u8 + groupCount u32. */
+// v1's minimum: the v2 keyId byte only makes a frame larger, so the looser
+// guard accepts both versions.
 const BRUSH_FRAME_MIN_BYTES = 4 + 1 + 1 + 1 + 4;
 /** continuationCount u32 + one minimum stroke record. */
 const BRUSH_GROUP_MIN_BYTES = 4 + (4 + 8 + 1 + 1 + 1 + 9 * 8 + 1 + 1 + 1 + 1);
@@ -393,6 +411,19 @@ function encodeBrushSection(frames: readonly StudioScriptSnapshotBrushFrame[]): 
     writer.u32(frame.frame);
     writer.u8(frame.complete ? 1 : 0);
     writer.u8(0);
+    // v2: the owning physical key identity. A script is per key, never per
+    // frame number — a row without an identity can only be trusted where the
+    // key layout is known to be unchanged (see the restore policy).
+    const keyId = frame.keyId;
+    if (typeof keyId === 'string' && keyId.length > 0) {
+      const encodedKeyId = UTF8_ENCODER.encode(keyId);
+      if (encodedKeyId.byteLength > 0xffff) fail('length', 'brush frame keyId exceeds 65535 UTF-8 bytes');
+      writer.u8(1);
+      writer.u16(encodedKeyId.byteLength);
+      writer.raw(encodedKeyId);
+    } else {
+      writer.u8(0);
+    }
     const settings = frame.paintSettings ?? null;
     if (settings === null) {
       writer.u8(0);
@@ -502,7 +533,7 @@ function decodeBrushSection(bytes: Uint8Array): StudioScriptSnapshotBrushFrame[]
     fail('truncated', 'brush section is shorter than its 8-byte header');
   }
   const version = reader.u16();
-  if (version !== STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSION) {
+  if (!STUDIO_SCRIPT_SNAPSHOT_BRUSH_VERSIONS.has(version)) {
     fail('version', `unsupported brush section version ${version}`);
   }
   const reserved = reader.u16();
@@ -517,6 +548,10 @@ function decodeBrushSection(bytes: Uint8Array): StudioScriptSnapshotBrushFrame[]
     const flags = reader.u8();
     if ((flags & ~1) !== 0) fail('flags', 'unsupported brush frame flags');
     if (reader.u8() !== 0) fail('flags', 'brush frame reserved byte must be 0');
+    // v1 carried no key identity; its rows decode as unknown (absent).
+    const keyIdPresent = version >= 2 ? reader.u8() : 0;
+    if (keyIdPresent > 1) fail('flags', 'brush frame keyId presence must be 0 or 1');
+    const keyId = keyIdPresent === 1 ? reader.string('brush frame keyId') : undefined;
     const settingsPresent = reader.u8();
     if (settingsPresent > 1) fail('flags', 'paint settings presence must be 0 or 1');
     let paintSettings: PaintRenderSettings | null = null;
@@ -544,6 +579,7 @@ function decodeBrushSection(bytes: Uint8Array): StudioScriptSnapshotBrushFrame[]
       frame,
       complete: (flags & 1) === 1,
       paintSettings,
+      ...(keyId !== undefined ? { keyId } : {}),
       groups,
     });
   }

@@ -275,6 +275,7 @@ function brushFramesFixture(): StudioScriptSnapshotBrushFrame[] {
       frame: 12,
       complete: false,
       paintSettings: BRUSH_SETTINGS,
+      keyId: 'key-12',
       groups: [
         {
           primary: brushStroke(),
@@ -354,6 +355,8 @@ describe('studioScriptSnapshotCodec — brush section', () => {
     expect(primary.points[1]!.x).toBe(900.75);
     expect(decoded.brushFrames[0]!.complete).toBe(false);
     expect(decoded.brushFrames[0]!.paintSettings).toEqual(BRUSH_SETTINGS);
+    // v2: the owning key identity survives the crossing.
+    expect(decoded.brushFrames[0]!.keyId).toBe('key-12');
 
     // The whole container is byte-stable through a decode/encode cycle.
     expect(
@@ -363,6 +366,28 @@ describe('studioScriptSnapshotCodec — brush section', () => {
         brushFrames: decoded.brushFrames,
       }),
     ).toEqual(bytes);
+  });
+
+  it('still decodes a v1 brush body (no keyId byte) as unknown identity', () => {
+    const body = new Uint8Array(2 + 2 + 4 + 4 + 1 + 1 + 1 + 4);
+    const view = new DataView(body.buffer);
+    let offset = 0;
+    view.setUint16(offset, 1, true); offset += 2; // v1 section
+    view.setUint16(offset, 0, true); offset += 2; // reserved
+    view.setUint32(offset, 1, true); offset += 4; // frameCount
+    view.setUint32(offset, 7, true); offset += 4; // frame
+    body[offset] = 1; offset += 1; // complete
+    body[offset] = 0; offset += 1; // reserved (v1 has no keyId byte)
+    body[offset] = 0; offset += 1; // paint settings absent
+    view.setUint32(offset, 0, true); // groupCount
+    const decoded = decodeStudioScriptSnapshot(
+      replaceBrushBody(brushContainer([]), body),
+      IDENTITY,
+    );
+    expect(decoded.brushFrames).toEqual([
+      { frame: 7, complete: true, paintSettings: null, groups: [] },
+    ]);
+    expect(decoded.brushFrames[0]!.keyId).toBeUndefined();
   });
 
   it('refuses an over-declared frame count before allocating', () => {
