@@ -29,14 +29,15 @@ export function clearFrameScriptOwner(): void {
 /**
  * quick-261026-odd — the Move tool's ONE enable gate.
  *
- * Move translates a stroke script, so only a Brush-owned key can enter it; a
- * Water color-only key and a scriptless key (Motion/Static/Reveal rails bake
- * pixels only) have nothing to move. Derived from frameScriptOwner so the
- * rail, the Cmd tap, the held-Cmd arm and every programmatic activation read
- * the same truth.
+ * Move translates a Brush stroke script. Only a Brush-ONLY key can enter it:
+ * a Water color key and a scriptless key (Motion/Static/Reveal rails bake
+ * pixels only) have nothing to move, and 'both' is the unsupported mixed
+ * state — a Water color wash plus engine-1 guide proxies is not a movable
+ * Brush script. Derived from frameScriptOwner so the rail, the Cmd tap, the
+ * held-Cmd arm and every programmatic activation read the same truth.
  */
 export const brushMoveAvailable = computed(
-  () => frameScriptOwner.value === 'brush' || frameScriptOwner.value === 'both',
+  () => frameScriptOwner.value === 'brush',
 );
 
 /** The non-owning module for a single-owner frame; both/none lock nothing. */

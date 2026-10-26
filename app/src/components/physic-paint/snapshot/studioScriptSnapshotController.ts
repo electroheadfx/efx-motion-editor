@@ -74,7 +74,10 @@ import {
   type StudioScriptSnapshotIdentity,
 } from '../performance/studioScriptSnapshotCodec';
 import { restoreAquarelleRecordTimeline } from '../view/aquarelleRecordState';
-import { restoreBrushScriptFrames } from '../view/brushScriptRecordState';
+import {
+  isAquarelleGuideGroup,
+  restoreBrushScriptFrames,
+} from '../view/brushScriptRecordState';
 
 export type StudioScriptSnapshotFailureKind = 'missing' | 'refused' | 'io';
 
@@ -228,6 +231,24 @@ export function pruneBrushFramesToLiveFrames<T extends { frame: number }>(
 ): T[] {
   if (!liveFrames || liveFrames.size === 0) return [...frames];
   return frames.filter((frame) => liveFrames.has(frame.frame));
+}
+
+/**
+ * quick-261026-odd follow-up: a snapshot saved before the guide-capture guard
+ * can still carry Water color guide proxies as Brush groups. The aquarelle
+ * registry must be restored FIRST (the predicate reads it); a frame left with
+ * no real groups is dropped so the file is cleaned on the next save.
+ */
+function withoutAquarelleGuideFrames(
+  frames: readonly StudioScriptSnapshotBrushFrame[],
+): StudioScriptSnapshotBrushFrame[] {
+  const cleaned: StudioScriptSnapshotBrushFrame[] = [];
+  for (const frame of frames) {
+    const groups = frame.groups.filter((group) => !isAquarelleGuideGroup(group));
+    if (groups.length === 0) continue;
+    cleaned.push({ ...frame, groups });
+  }
+  return cleaned;
 }
 
 /** The raw content of one snapshot: what the FILE holds, not the session. */
@@ -440,15 +461,18 @@ export function createStudioScriptSnapshotController(
       const events = pruneWatercolorEventsToLiveFrames(decoded.watercolorEvents, liveFrames);
       // The brush ledger is pruned to the SAME live real-key set: a frame whose
       // key no longer exists must never reappear in the editable store.
-      const brushFrames = pruneBrushFramesToLiveFrames(decoded.brushFrames, liveFrames);
+      const liveBrushFrames = pruneBrushFramesToLiveFrames(decoded.brushFrames, liveFrames);
       const maxRestoredMutationId = restoreAquarelleRecordTimeline(events);
+      // Guide filtering reads the restored aquarelle registry — run it AFTER
+      // the timeline seed, on both the session and the retained file content.
+      const brushFrames = withoutAquarelleGuideFrames(liveBrushFrames);
       restoreBrushScriptFrames(brushFrames);
       // The FILE holds the UNPRUNED content: pruning was a session seed, not
       // a file rewrite. Retain it so a later routine save cannot drop a
       // deleted key's script from the authoritative snapshot.
       retainedContent = {
         watercolorEvents: [...decoded.watercolorEvents],
-        brushFrames: decoded.brushFrames.filter((frame) => frame.groups.length > 0),
+        brushFrames: withoutAquarelleGuideFrames(decoded.brushFrames),
       };
       lastSavedSignature = deps.getContentSignature();
       return { status: 'restored', maxRestoredMutationId };

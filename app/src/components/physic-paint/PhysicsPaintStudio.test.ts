@@ -2986,6 +2986,8 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(studio).toContain("if (activeModule.value !== 'brush' || settings.tool !== 'move') return;");
     expect(studio).toContain('if (brushMoveAvailable.value || mutationLocked) return;');
     expect(studio).toContain('selectTool(lastNonMoveToolRef.current, settings.physicsMode);');
+    // The owner funnel repairs pre-guard guide captures before resolving.
+    expect(studio).toContain('if (!liveBrush) purgeAquarelleGuideGroups(frame);');
     expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
     expect(studio).toContain('if (brushMoveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');

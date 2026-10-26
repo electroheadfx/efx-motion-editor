@@ -73,13 +73,13 @@ describe('frameScriptOwner signal', () => {
 });
 
 describe('brushMoveAvailable', () => {
-  it("opens only for a Brush-owned key", () => {
+  it("opens only for a Brush-ONLY key — mixed 'both' stays closed", () => {
     expect(brushMoveAvailable.value).toBe(false);
     setFrameScriptOwner('watercolor');
     expect(brushMoveAvailable.value).toBe(false);
-    setFrameScriptOwner('brush');
-    expect(brushMoveAvailable.value).toBe(true);
     setFrameScriptOwner('both');
+    expect(brushMoveAvailable.value).toBe(false);
+    setFrameScriptOwner('brush');
     expect(brushMoveAvailable.value).toBe(true);
     clearFrameScriptOwner();
     expect(brushMoveAvailable.value).toBe(false);
@@ -98,8 +98,8 @@ describe('brushMoveAvailable', () => {
     } finally {
       dispose();
     }
-    // One initial run + one per actual BOOLEAN change: 'both' keeps true,
-    // null keeps false after 'watercolor'.
+    // One initial run + one per actual BOOLEAN change: 'both' closes Move
+    // (mixed state), watercolor/null keep false.
     expect(seen).toEqual([false, true, false]);
   });
 });

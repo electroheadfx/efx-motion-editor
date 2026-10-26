@@ -49,6 +49,7 @@ import {
   buildKeyIdentityFrameMap,
   type KeyIdentityFrameRecord,
 } from '../roto/keyIdentityFrameMap';
+import { getRecordedAquarelleStroke } from './aquarelleRecordState';
 
 export interface BrushScriptFrameTotals {
   strokes: number;
@@ -95,6 +96,26 @@ export const brushScriptRevision = signal(0);
 const EMPTY_GROUPS: readonly Readonly<RecordedStrokeGroup>[] = Object.freeze([]);
 const EMPTY_TOTALS: BrushScriptFrameTotals = Object.freeze({ strokes: 0, points: 0, approxBytes: 0 });
 const encoder = new TextEncoder();
+
+/**
+ * quick-261026-odd follow-up: Water color strokes are enqueued into engine-1
+ * as INVISIBLE guide proxies and keep the aquarelle stroke's mutation id.
+ * They are render input, never a Brush script — a capture that stores them
+ * makes a wash-only key look Brush-owned, opens Move on invisible strokes and
+ * unlocks the Brush module on a Water color key. The aquarelle registry is the
+ * identity source; live and restored ids match by construction.
+ */
+export function isAquarelleGuideGroup(group: Readonly<RecordedStrokeGroup>): boolean {
+  const mutationId = group.primary.mutationId;
+  return typeof mutationId === 'number' && getRecordedAquarelleStroke(mutationId) !== undefined;
+}
+
+/** Normalize FIRST, then drop guide groups so their continuations leave with them. */
+function normalizeBrushGroupsWithoutGuides(
+  strokes: readonly PaintStroke[],
+): readonly Readonly<RecordedStrokeGroup>[] {
+  return normalizeLogicalBrushes(strokes).filter((group) => !isAquarelleGuideGroup(group));
+}
 
 const brushScriptFrames = new Map<number, BrushScriptFrameEntry>();
 /** O(1) dirty marks — the only thing stroke completion writes. */
@@ -271,7 +292,7 @@ export function flushBrushScriptFrame(
   // second leg the engine's stale strokes would resurrect the purged script
   // on the very next frame leave.
   if (!wasDirty && (brushScriptFrames.has(frame) || purgedBrushScriptFrames.has(frame))) return false;
-  const groups = normalizeLogicalBrushes(strokes);
+  const groups = normalizeBrushGroupsWithoutGuides(strokes);
   if (groups.length === 0) {
     // An emptied frame must not keep a ghost row (undo-all / clear without a
     // completed 'clear' mutation).
@@ -346,8 +367,11 @@ export function restoreBrushScriptFrames(
   purgedBrushScriptFrames.clear();
   let restored = 0;
   for (const entry of entries) {
-    if (entry.groups.length === 0) continue;
-    captureEntry(entry.frame, entry.groups, entry.complete, entry.paintSettings);
+    // A persisted capture of aquarelle guide proxies is not Brush content;
+    // seed only the real groups (a guide-only frame stays uncaptured).
+    const groups = entry.groups.filter((group) => !isAquarelleGuideGroup(group));
+    if (groups.length === 0) continue;
+    captureEntry(entry.frame, groups, entry.complete, entry.paintSettings);
     restored += 1;
   }
   if (restored > 0) bumpRevision();
@@ -460,6 +484,31 @@ export function purgeBrushScriptFrame(frame: number): boolean {
   if (!brushScriptFrames.delete(frame)) return false;
   bumpRevision();
   return true;
+}
+
+/**
+ * quick-261026-odd follow-up: repair half of the guide-capture guard. Drop
+ * every captured aquarelle guide-proxy group from ONE frame — the ones that
+ * made a wash-only key read as Brush-owned in sessions captured before the
+ * guard existed. A frame left with no real groups loses its entry. Returns
+ * the number of groups removed; no-op (no bump) when nothing matches. The
+ * frame is NOT marked purged: the flush guard refuses guides anyway, so a
+ * later legitimate Brush edit can still capture normally.
+ */
+export function purgeAquarelleGuideGroups(frame: number): number {
+  const entry = brushScriptFrames.get(frame);
+  if (!entry) return 0;
+  const kept = entry.groups.filter((group) => !isAquarelleGuideGroup(group));
+  const removed = entry.groups.length - kept.length;
+  if (removed === 0) return 0;
+  if (kept.length === 0) {
+    brushScriptFrames.delete(frame);
+    dirtyBrushScriptFrames.delete(frame);
+  } else {
+    captureEntry(frame, kept, entry.complete, entry.paintSettings);
+  }
+  bumpRevision();
+  return removed;
 }
 
 /**

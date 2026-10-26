@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { effect } from '@preact/signals';
 import type { BrushOpts, PaintRenderSettings, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
+import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
@@ -36,12 +37,17 @@ import {
   pruneBrushScriptFramesTo,
   pruneBrushScriptsFromFrame,
   purgeAllBrushScriptFrames,
+  purgeAquarelleGuideGroups,
   purgeBrushScriptFrame,
   purgedBrushScriptFrame,
   remapBrushScriptsForRecords,
   resetBrushScriptStore,
   restoreBrushScriptFrames,
 } from './brushScriptRecordState';
+import {
+  recordAquarelleStroke,
+  resetAquarelleRecordState,
+} from './aquarelleRecordState';
 
 const encoder = new TextEncoder();
 const jsonBytes = (value: unknown): number => encoder.encode(JSON.stringify(value)).byteLength;
@@ -82,6 +88,23 @@ function continuation(mutationId: number, diffusionFrames = 4): PaintStroke {
     timestamp: mutationId,
     mutationId,
     diffusionFrames,
+  };
+}
+
+function aquarellePoint(x: number, y: number): AquarellePoint {
+  return { x, y, p: 1, tx: 0, ty: 0, tw: 0 };
+}
+
+function aquarelleStroke(mutationId: number, playFrame: number): AquarelleStroke {
+  return {
+    tool: 'brush',
+    color: '#103c65',
+    params: { size: 12 },
+    brushId: 'round',
+    points: [aquarellePoint(0.1, 0.5), aquarellePoint(0.2, 0.5)],
+    mutationId,
+    timestamp: mutationId,
+    playFrame,
   };
 }
 
@@ -192,6 +215,58 @@ describe('flush', () => {
     expect(flushBrushScriptFrame(5, [])).toBe(false);
     expect(getBrushScriptFrameEntry(5)).toBeUndefined();
     expect(getBrushScriptReport().frames).toEqual([]);
+  });
+});
+
+describe('aquarelle guide proxies are never Brush script content', () => {
+  beforeEach(() => {
+    resetAquarelleRecordState();
+  });
+
+  it('flush drops guide groups and keeps real Brush strokes', () => {
+    recordAquarelleStroke(7, aquarelleStroke(7, 5));
+
+    expect(flushBrushScriptFrame(5, [stroke(1), stroke(7)])).toBe(true);
+    expect(getBrushScriptForFrame(5).map((group) => group.primary.mutationId)).toEqual([1]);
+  });
+
+  it('flush of a guide-only frame stores no entry', () => {
+    recordAquarelleStroke(7, aquarelleStroke(7, 5));
+
+    expect(flushBrushScriptFrame(5, [stroke(7)])).toBe(false);
+    expect(getBrushScriptFrameEntry(5)).toBeUndefined();
+  });
+
+  it('restore seeds only non-guide groups and skips a guide-only frame', () => {
+    recordAquarelleStroke(7, aquarelleStroke(7, 5));
+
+    const restored = restoreBrushScriptFrames([
+      { frame: 5, groups: [{ primary: stroke(7), continuations: [] }], complete: true },
+      { frame: 6, groups: [{ primary: stroke(7), continuations: [] }, { primary: stroke(9), continuations: [] }], complete: true },
+      { frame: 8, groups: [{ primary: stroke(9), continuations: [] }], complete: true },
+    ]);
+
+    expect(restored).toBe(2);
+    expect(getBrushScriptFrameEntry(5)).toBeUndefined();
+    expect(getBrushScriptForFrame(6).map((group) => group.primary.mutationId)).toEqual([9]);
+    expect(getBrushScriptForFrame(8).map((group) => group.primary.mutationId)).toEqual([9]);
+  });
+
+  it('purge removes guide groups from an already-captured frame', () => {
+    // Direct capture models a snapshot written before the flush guard existed.
+    captureBrushScriptForFrame(5, [
+      { primary: stroke(1), continuations: [] },
+      { primary: stroke(7), continuations: [] },
+    ]);
+    recordAquarelleStroke(7, aquarelleStroke(7, 5));
+
+    expect(purgeAquarelleGuideGroups(5)).toBe(1);
+    expect(getBrushScriptForFrame(5).map((group) => group.primary.mutationId)).toEqual([1]);
+
+    captureBrushScriptForFrame(6, [{ primary: stroke(7), continuations: [] }]);
+    expect(purgeAquarelleGuideGroups(6)).toBe(1);
+    expect(getBrushScriptFrameEntry(6)).toBeUndefined();
+    expect(purgeAquarelleGuideGroups(6)).toBe(0);
   });
 });
 

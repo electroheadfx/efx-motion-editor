@@ -198,6 +198,7 @@ import {
   noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
   purgeAllBrushScriptFrames,
+  purgeAquarelleGuideGroups,
   purgeBrushScriptFrame,
   remapBrushScriptsForRecords,
   resetBrushScriptStore,
@@ -1739,6 +1740,12 @@ export function PhysicsPaintStudio() {
   // (before every seam) so later closures reference it without a TDZ hazard.
   const applyFrameModuleState = useCallback(
     (frame: number, liveBrush?: LiveBrushScriptSample | null) => {
+      // quick-261026-odd follow-up: a Water color key's engine-1 guide proxies
+      // are not a Brush script. Drop any guide groups an older capture stored
+      // before resolving ownership, so a wash-only key cannot keep the Brush
+      // module unlocked or Move open. The per-completion live sample is exempt
+      // (O(1) law) — the guarded flushes already refuse guide captures.
+      if (!liveBrush) purgeAquarelleGuideGroups(frame);
       const owner = resolveFrameScriptOwner(frame, liveBrush ?? null);
       if (owner === 'brush' || owner === 'watercolor') {
         if (activeModule.peek() !== owner) activeModule.value = owner;
