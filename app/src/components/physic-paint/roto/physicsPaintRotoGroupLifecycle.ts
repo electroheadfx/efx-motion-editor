@@ -267,6 +267,47 @@ function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;
 }
 
+/**
+ * 261026 (watercolor-loop-render-split): the ONE source-offset computation.
+ * Returns each source key's exact cycle offset from the group's first source
+ * frame, or null when a source key is missing or the timing is not strictly
+ * increasing — the same fail-closed rule the classifier applies.
+ */
+function resolveGroupSourceOffsets(
+  realKeyRecords: readonly PhysicPaintRotoRealKeyRecord[],
+  group: PhysicPaintRotoLoopClip,
+): readonly number[] | null {
+  const recordsById = new Map(realKeyRecords.map((record) => [record.keyId, record]));
+  const sourceFrames = group.sourceKeyIds.map((keyId) => recordsById.get(keyId)?.appFrame);
+  if (sourceFrames.some((frame) => frame === undefined)
+    || sourceFrames.some((frame, index) => index > 0 && sourceFrames[index - 1]! >= frame!)) {
+    return null;
+  }
+  const firstSourceFrame = sourceFrames[0]!;
+  return Object.freeze(sourceFrames.map((frame) => frame! - firstSourceFrame));
+}
+
+/**
+ * 261026 axis 2: the durable pixel-only base for a group-phase script re-bake
+ * is the group's SOURCE key payload at the EXACT cycle offset (the live-capture
+ * law: the source key keeps the rail paint while the override holds the
+ * flattened composite). A generated-phase offset has no exact source and
+ * resolves null — the caller fails closed.
+ */
+export function resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(
+  document: Pick<PhysicPaintRotoPhysicalDocument, 'loopClips' | 'realKeyRecords'>,
+  groupId: string,
+  cycleOffset: number,
+): string | null {
+  if (!Number.isSafeInteger(cycleOffset) || cycleOffset < 0) return null;
+  const group = document.loopClips.find((candidate) => candidate.loopId === groupId);
+  if (!group || !isLifecycleGroup(group)) return null;
+  const sourceOffsets = resolveGroupSourceOffsets(document.realKeyRecords, group);
+  if (!sourceOffsets) return null;
+  const index = sourceOffsets.indexOf(cycleOffset);
+  return index >= 0 ? group.sourceKeyIds[index]! : null;
+}
+
 interface PhysicPaintRotoGroupPhaseAuthority {
   readonly cycleOffset: number;
   readonly cycleLength: number;
@@ -385,13 +426,11 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
     });
   }
 
-  const recordsById = new Map(input.document.realKeyRecords.map((record) => [record.keyId, record]));
-  const missingSourceKeyIds = group.sourceKeyIds.filter((keyId) => !recordsById.has(keyId));
-  const sourceFrames = group.sourceKeyIds.map((keyId) => recordsById.get(keyId)?.appFrame);
-  const validTiming = missingSourceKeyIds.length === 0
-    && sourceFrames.every((frame): frame is number => frame !== undefined)
-    && sourceFrames.every((frame, index) => index === 0 || sourceFrames[index - 1]! < frame);
-  if (!validTiming) {
+  const missingSourceKeyIds = group.sourceKeyIds.filter((keyId) => (
+    !input.document.realKeyRecords.some((record) => record.keyId === keyId)
+  ));
+  const sourceOffsets = resolveGroupSourceOffsets(input.document.realKeyRecords, group);
+  if (!sourceOffsets) {
     return Object.freeze({
       kind: 'unresolved-group',
       groupId: group.loopId,
@@ -401,8 +440,6 @@ export function classifyPhysicPaintRotoGroupFrameTarget(
     });
   }
 
-  const firstSourceFrame = sourceFrames[0]!;
-  const sourceOffsets = sourceFrames.map((frame) => frame! - firstSourceFrame);
   const cycleOffset = phase.cycleOffset;
   const exactSourceIndex = sourceOffsets.indexOf(cycleOffset);
   if (exactSourceIndex >= 0) {

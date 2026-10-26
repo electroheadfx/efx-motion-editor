@@ -27,6 +27,35 @@ export interface RotoScriptSourceSnapshot {
 export interface RotoScriptPhysicalTarget {
   keyId: string;
   appFrame: number;
+  /**
+   * 261026 (watercolor-loop-render-split, axis 1): the PROJECTION identity the
+   * async currency guard compares against. On a group occurrence the publish
+   * key is the override key while the projection cell stays the underlying
+   * source key; comparing `keyId` would refuse a legitimate override publish.
+   * Absent = the target key IS the projection identity (ordinary keys).
+   */
+  sourceKeyId?: string | null;
+  /**
+   * 261026 axis 2: the group SOURCE key whose payload is the durable
+   * pixel-only base for a script re-bake. When set, the publish callback must
+   * multiply-composite the baked sheet over that base before publishing; when
+   * the base cannot be resolved the publish fails closed.
+   */
+  durableBaseKeyId?: string | null;
+  /**
+   * 261026 (third pass, ORDINARY KEYS): the key's own durable pixel-only base —
+   * the payload as of the FIRST sheet session in which its watercolor script
+   * began (the "cached key" paint under the wash). Ordinary keys have no
+   * separate source key, so the base travels as BYTES for the publish
+   * composite.
+   *
+   * Semantics: PRESENT (Uint8Array) = known base, multiply-composite the bake
+   * over it; PRESENT (null) = known to have no base paint, the script is the
+   * key's complete content (raw bake); ABSENT/undefined = base UNKNOWN (e.g. a
+   * scripted key after reopen) → the publish MUST fail closed and never erase
+   * the key's cached paint.
+   */
+  durableBaseBytes?: Uint8Array | null;
 }
 
 export interface RotoScriptSourceProvenance {
@@ -975,7 +1004,10 @@ export function createRotoScriptClipboardController(ports: RotoScriptClipboardCo
       && currentSource.layerId === source.layerId
       && currentSource.appFrame === target.appFrame
       && currentSource.selectionKind !== 'generated-interpolation'
-      && (currentSource.selectionKind !== 'real-key' || currentSource.keyId === target.keyId),
+      // 261026 axis 1: compare the PROJECTION identity. On an override frame
+      // the publish key is the override key while the mounted source keeps the
+      // underlying source key; a navigation/source change still refuses.
+      && (currentSource.selectionKind !== 'real-key' || currentSource.keyId === (target.sourceKeyId ?? target.keyId)),
     );
     if (
       !target

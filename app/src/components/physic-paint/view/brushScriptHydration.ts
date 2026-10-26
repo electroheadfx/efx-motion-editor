@@ -21,6 +21,10 @@
 //                 the base pixels);
 //    generated  — only a REAL key may attach (generated / none /
 //                 no-launch destinations always repaint pixels);
+//    foreign-key — the entry's physical key identity is unknown (legacy v1
+//                 row) or no longer the destination cell's key. A script
+//                 follows key identity: attaching it to a replaced key would
+//                 draw dead outlines and edit content the cell does not own;
 //    watercolor — the aquarelle sheet owns its own record store;
 //    playback / scrub — a moving playhead must never pause for a
 //                 synchronous ledger mutation;
@@ -103,6 +107,12 @@ export interface BrushHydrationRequest {
   frame: number;
   /** The destination cell kind; only 'real' is attachable. */
   destinationKind: string;
+  /**
+   * quick-261026-odd: the destination cell's physical key id. Hydration
+   * refuses any entry whose identity is unknown (legacy null) or differs —
+   * a retained script belongs to the KEY it was captured on.
+   */
+  keyId: string | null;
   /** Brush color mode is active (the Water color sheet owns its own store). */
   brushModuleActive: boolean;
   /** The navigation started while cached playback was running. */
@@ -116,6 +126,7 @@ export type BrushHydrationRefusal =
   | 'empty'
   | 'partial'
   | 'generated'
+  | 'foreign-key'
   | 'watercolor'
   | 'playback'
   | 'scrub'
@@ -132,6 +143,17 @@ export function planBrushScriptHydration(request: BrushHydrationRequest): BrushH
   if (entry.groups.length === 0) return { hydrate: false, reason: 'empty' };
   if (!entry.complete) return { hydrate: false, reason: 'partial' };
   if (request.destinationKind !== 'real') return { hydrate: false, reason: 'generated' };
+  // quick-261026-odd (empty-script gate): the KEY identity gate. A legacy null
+  // row and a row for a replaced key both fail closed — the cached pixels keep
+  // rendering, the engine stays empty, and Move has no dead handles to show.
+  if (
+    request.keyId === null
+    || entry.keyId === null
+    || entry.keyId === undefined
+    || entry.keyId !== request.keyId
+  ) {
+    return { hydrate: false, reason: 'foreign-key' };
+  }
   if (!request.brushModuleActive) return { hydrate: false, reason: 'watercolor' };
   if (request.wasPlaying) return { hydrate: false, reason: 'playback' };
   if (request.scrubActive) return { hydrate: false, reason: 'scrub' };

@@ -2982,10 +2982,19 @@ describe('261022-pim watercolor stroke select surface', () => {
   });
 
   it('applies the empty-script Move law to activation and exits a stale Move', () => {
-    expect(studio).toContain("const moveAvailable = useComputed(");
+    expect(studio).toContain('const moveAvailable = useComputed(');
     expect(studio).toContain("if (cell.kind !== 'real') return false;");
-    // A retained script never unlocks Move on a DIFFERENT key's cell.
-    expect(studio).toContain('if (entryKeyId !== null && entryKeyId !== cell.keyId) return false;');
+    // A retained script never unlocks Move unless it is hydratable AND bound
+    // to the CURRENT cell's key (legacy null / foreign / partial all fail).
+    expect(studio).toContain('const storedLeg = entry !== undefined');
+    expect(studio).toContain('&& entry.keyId === scriptCell.keyId');
+    expect(studio).toContain('&& isBrushScriptFrameHydratable(entry);');
+    // The first-stroke / mid-session leg reads the live engine ledger.
+    expect(studio).toContain('return engineHoldsBrushMoveStrokes();');
+    // Move entry demand-attaches before arming and never arms without a ledger.
+    expect(studio).toContain(
+      'if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) {',
+    );
     expect(studio).toContain("if (tool === 'move' && activeModule.peek() === 'brush' && !moveAvailable.peek()) return;");
     expect(studio).toContain("if (activeModule.value !== 'brush' || settings.tool !== 'move') return;");
     expect(studio).toContain('if (moveAvailable.value || mutationLocked) return;');
@@ -2998,7 +3007,16 @@ describe('261022-pim watercolor stroke select surface', () => {
     // The Water color half is frame-scoped: Select needs a script on the
     // CURRENT key, never a session-wide stroke count.
     expect(studio).toContain('const watercolorMoveAvailable = useComputed(() => {');
-    expect(studio).toContain('return cell.kind === \'real\' && hasAquarelleScriptForFrame(cell.appFrame);');
+    // quick-261026-odd (run-4 fix): a timeline-graph rebuild retires the
+    // computed's sources; a Studio generation signal re-binds both gates so a
+    // scripted frame's `true` can never freeze onto a scriptless rail cell.
+    expect(studio).toContain('const rotoModelGeneration = useSignal(0);');
+    expect(studio).toContain('rotoModelGeneration.value += 1;');
+    expect(studio).toContain('void rotoModelGeneration.value;');
+    // Identity is re-read in the SAME O(1) projection context as the owner
+    // resolver, and a null/non-real/keyless cell fails closed.
+    expect(studio).toContain('const scriptCell = resolveStudioScriptCell(cell.appFrame);');
+    expect(studio).toContain('return hasAquarelleScriptForFrame(cell.appFrame);');
     expect(studio).toContain("if (activeModule.value !== 'watercolor' || !aquarelleSelectMode.peek()) return;");
     // No purge: a script is content. The render must follow it instead.
     expect(studio).not.toContain('runPendingRailScriptCleanup');
@@ -3470,13 +3488,19 @@ describe('261023-g4p brush Move script-edition surface', () => {
     expect(brushScriptEditionPortSource.match(/resolvePaintSettings\(resolved\.engine\),/g)).toHaveLength(6);
     expect(brushScriptEditionPortSource).toContain('flushBrushScriptFrame(');
     expect(brushScriptEditionPortSource).toContain('resolved.engine.getStrokes(),');
-    // The Studio render body never subscribes the store revision. The ONE
-    // allowed read is the snapshot coalescing effect (quick-261023-l35
-    // Task 3), which lives inside a useEffect, never the render body.
-    expect(studio.match(/brushScriptRevision\.value/g)).toHaveLength(1);
+    // The Studio render body never subscribes the store revision directly.
+    // Two sanctioned reads: the snapshot coalescing effect (quick-261023-l35
+    // Task 3) and the Move gate's useComputed (quick-261026-odd) — a computed
+    // graph read whose boolean only notifies the component when it flips.
+    expect(countOccurrences(studio, 'brushScriptRevision.value')).toBe(2);
     const coalescingEffectStart = studio.indexOf('// quick-261023-l35 Task 3: ONE coalescing subscription');
     expect(coalescingEffectStart).toBeGreaterThan(-1);
-    expect(studio.indexOf('brushScriptRevision.value')).toBeGreaterThan(coalescingEffectStart);
+    expect(studio.indexOf('brushScriptRevision.value', coalescingEffectStart)).toBeGreaterThan(coalescingEffectStart);
+    const moveGateStart = studio.indexOf('const moveAvailable = useComputed(');
+    const moveGateEnd = studio.indexOf('const watercolorMoveAvailable = useComputed(', moveGateStart);
+    expect(moveGateStart).toBeGreaterThan(-1);
+    expect(moveGateEnd).toBeGreaterThan(moveGateStart);
+    expect(studio.slice(moveGateStart, moveGateEnd)).toContain('void brushScriptRevision.value;');
   });
 });
 
@@ -3654,6 +3678,8 @@ describe('261023-h9v brush script rehydration surface', () => {
     expect(navigationBody).toContain('const hydrationRequest: BrushHydrationRequest = {');
     expect(navigationBody).toContain('frame,');
     expect(navigationBody).toContain('destinationKind,');
+    // quick-261026-odd: hydration is key-bound to the destination cell.
+    expect(navigationBody).toContain('keyId: destinationKeyId,');
     expect(navigationBody).toContain("brushModuleActive: activeModule.peek() !== 'watercolor',");
     expect(navigationBody).toContain('wasPlaying: wasPlaying || rotoCachedPlayback.isActive,');
     expect(navigationBody).toContain('scrubActive: scrubActiveRef.current,');
@@ -4215,11 +4241,12 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const funnel = studio.slice(start, end);
-    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, liveBrush ?? null);');
+    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);');
+    expect(funnel).toContain('const scriptCell = resolveStudioScriptCell(frame);');
     expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
     expect(funnel).toContain('if (activeModule.peek() !== owner) activeModule.value = owner;');
     expect(funnel).toContain('setFrameScriptOwner(owner);');
-    expect(funnel).toContain('[],');
+    expect(funnel).toContain('[resolveStudioScriptCell],');
   });
 
   it('gates the navigation funnel between the outgoing flush and the pixel snapshot', () => {
@@ -4377,7 +4404,8 @@ describe('quick-261025-awl Raster handler (D-04)', () => {
       expect(index, guard).toBeGreaterThan(previous);
       previous = index;
     }
-    expect(handler).toContain('const owner = resolveFrameScriptOwner(frame, {');
+    expect(handler).toContain('const scriptCell = resolveStudioScriptCell(frame);');
+    expect(handler).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell, {');
     expect(handler).toContain('active: activeModule.peek() === \'brush\',');
     expect(handler).toContain('strokeCount: engine.getStrokeCount(),');
     // The frame identity is re-checked after the awaited pixel flush.
@@ -4442,5 +4470,286 @@ describe('261025-d3r canvas-region deselect', () => {
     expect(studioView).toContain('if (scriptSelectedStrokeIds.peek().size === 0) return;');
     expect(studioView).toContain('shouldClearSelectionOnCanvasRegionPointerDown(event, target)');
     expect(studioView).toContain('clearScriptStrokeSelection();');
+  });
+});
+
+// 261026 watercolor-loop-render-split: script Apply on a Loop Clip frame must
+// target the frame's LIFECYCLE key (override key, or the source key the route
+// creates a new override from) and must composite the re-bake over the durable
+// pixel-only base. Both axes are required — retargeting alone publishes a
+// stroke-only sheet over the flattened rail paint and erases it.
+describe('261026 watercolor-loop-render-split two-axis script Apply', () => {
+  function section(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('axis 1: maps the projection source through the group lifecycle classifier in prepareTarget', () => {
+    const prepareBlock = section(studio, 'prepareRotoScriptTargetRef.current = async (', '// RARE BLANK-AFTER-PLAY guard');
+    expect(prepareBlock).toContain('physicPaintStore.getRotoPhysicalDocument(');
+    expect(prepareBlock).toContain('classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: source.appFrame })');
+    expect(prepareBlock).toContain("if (target.kind === 'ordinary-key') {");
+    expect(prepareBlock).toContain("if (target.kind === 'source-occurrence') {");
+    expect(prepareBlock).toContain("if (target.kind === 'override') {");
+    // The override publish key is the override; its currency identity and
+    // durable base are the group SOURCE key at the exact cycle offset.
+    expect(prepareBlock).toContain('resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset)');
+    expect(prepareBlock).toContain('keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: sourceKeyId');
+    expect(prepareBlock).toContain('keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: target.sourceKeyId');
+    // 261026 ordinary-key regression: an ordinary key resolves its durable
+    // base from the launch-scoped map (first-stroke pin), falling back to the
+    // key record ONLY when the frame has no script and no timeline edit is in
+    // flight. An unknown base stays undefined so the publish fails closed.
+    expect(prepareBlock).toContain('if (target.keyId !== source.keyId) return null;');
+    expect(prepareBlock).toContain('aquarelleDurableBaseByKeyRef.current.has(target.keyId)');
+    expect(prepareBlock).toContain('!isAquarelleScriptEditInFlight()');
+    expect(prepareBlock).toContain('durableBaseKeyId: null,');
+    expect(prepareBlock).toContain('durableBaseBytes,');
+    // Never publish a record's own appFrame — an override record carries the
+    // PHASE frame, which refused every repeat instance.
+    expect(prepareBlock).not.toContain('record.appFrame');
+    // Generated occurrences and gaps fail closed.
+    expect(prepareBlock).toContain('return null;');
+  });
+
+  it('axis 2: composites the re-bake over the durable base before publishing and fails closed', () => {
+    const publishBlock = section(studio, 'publish: async (frame) => {', 'return ok;');
+    expect(publishBlock).toContain('target.durableBaseKeyId');
+    expect(publishBlock).toContain('physicPaintStore.getRotoRealKeyRecord(');
+    expect(publishBlock).toContain('requirePhysicPaintRotoInlineBytes(baseRecord.payload)');
+    expect(publishBlock).toContain('composeRotoScriptRebakeFrame({');
+    expect(publishBlock).toContain('durableBaseBytes: baseBytes');
+    expect(publishBlock).toContain('sheetBytes: frame.bytes');
+    expect(publishBlock).toContain('appFrame: frame.appFrame');
+    // Fail closed BEFORE the cache write: no stroke-only sheet on a group base.
+    const failClosed = publishBlock.indexOf('if (!composed) {');
+    expect(failClosed).toBeGreaterThan(-1);
+    expect(publishBlock.indexOf('return false;', failClosed)).toBeGreaterThan(failClosed);
+    expect(publishBlock.indexOf('upsertCachedFrame(')).toBeGreaterThan(failClosed);
+    // The published payload is the COMPOSITE, never the raw bake.
+    expect(publishBlock).toContain('bytes: publishBytes');
+    expect(publishBlock).not.toContain('frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes');
+    // The reverted stroke-only publish law is gone.
+    expect(publishBlock).not.toContain('REVERTED (2026-10-26)');
+    expect(publishBlock).toContain("recordAquarelleRenderSplitEvent('script-bake-composite'");
+    // 261026 ordinary-key regression (run 3): the SAME composite applies to
+    // the launch-scoped durable base. `null` = known-empty → raw bake;
+    // undefined = UNKNOWN → fail closed with no cache write.
+    expect(publishBlock).toContain('target.durableBaseBytes !== undefined');
+    expect(publishBlock).toContain('durableBaseBytes: target.durableBaseBytes');
+    expect(publishBlock).toContain("reason: 'durable-base-unknown'");
+    const unknownFail = publishBlock.indexOf("reason: 'durable-base-unknown'");
+    expect(publishBlock.indexOf('return false;', unknownFail)).toBeGreaterThan(unknownFail);
+    expect(publishBlock.lastIndexOf('upsertCachedFrame(')).toBeGreaterThan(unknownFail);
+    expect(publishBlock).toContain("recordAquarelleAlphaProof('composite-alpha-proof'");
+  });
+
+  it('pins the refreshed probe build marker and the script-bake-composite event', () => {
+    const capture = readFileSync(fileURLToPath(new URL('./performance/aquarelleRenderSplitCapture.ts', import.meta.url)), 'utf8');
+    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-3'");
+  });
+});
+
+// 261026 watercolor-loop-render-split — FINAL regression pins (native UAT
+// approved 2026-10-26). One test per root cause, so a later refactor cannot
+// silently reintroduce it:
+//   1. the gates froze on the retired timeline signal graph (native run 4);
+//   2. a cache-only key must resolve no owner and no Move (empty-script gate);
+//   3. an ordinary key's script re-bake erased its scriptless cached paint
+//      (native run 3) — launch-pinned base + multiply composite, fail closed;
+//   4. a group occurrence's re-bake targets its lifecycle key and composites
+//      over the group SOURCE key's pixels at the EXACT cycle offset.
+describe('261026 watercolor-loop-render-split final regression pins', () => {
+  function between(source: string, startMarker: string, endMarker: string): string {
+    const start = source.indexOf(startMarker);
+    expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1);
+    const end = source.indexOf(endMarker, start + startMarker.length);
+    expect(end, `missing end marker: ${endMarker}`).toBeGreaterThan(start);
+    return source.slice(start, end);
+  }
+
+  it('re-binds both script gates to the LIVE timeline graph after every rebuild', () => {
+    // `useRotoTimelineModel` rebuilds its WHOLE signal graph on structural
+    // changes. A once-created Computed keeps the sources its last evaluation
+    // registered — the retired graph — and is never notified again. The Studio
+    // generation leg forces one post-swap evaluation so the next registration
+    // lands on the live graph (native run 4: a scripted frame's `true`
+    // survived onto a scriptless Motion rail cell).
+    const generation = between(studio, 'const rotoModelGeneration = useSignal(0);', 'const loopResolutionContext');
+    expect(generation).toContain('rotoModelGeneration.value += 1;');
+    expect(generation).toContain('}, [rotoTimelineModel]);');
+    // Exactly one read per gate — the Move and Water color halves.
+    expect(countOccurrences(studio, 'void rotoModelGeneration.value;')).toBe(2);
+
+    const moveGate = between(studio, 'const moveAvailable = useComputed(', 'const watercolorMoveAvailable = useComputed(');
+    const waterGate = between(studio, 'const watercolorMoveAvailable = useComputed(() => {', 'const gateDiagnosticsRef = useRef');
+    for (const gate of [moveGate, waterGate]) {
+      const generationRead = gate.indexOf('void rotoModelGeneration.value;');
+      const cellRead = gate.indexOf('rotoTimelineModel.currentCell.value');
+      const projectionRead = gate.indexOf('resolveStudioScriptCell(cell.appFrame)');
+      expect(generationRead).toBeGreaterThan(-1);
+      expect(cellRead).toBeGreaterThan(generationRead);
+      expect(projectionRead).toBeGreaterThan(cellRead);
+      // Identity is projection-only; null / non-real / keyless cells fail closed.
+      expect(gate).toContain("if (cell.kind !== 'real') return false;");
+      expect(gate).toContain("if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;");
+      // The possibly-retired model cell never asserts a key by itself.
+      expect(gate).not.toContain('cell.keyId ===');
+    }
+    expect(waterGate).toContain('return hasAquarelleScriptForFrame(cell.appFrame);');
+    // DEV diagnostics prove the gates' OWN frame/cell context, so the next
+    // stale graph can never again hold `true` unnoticed.
+    const diagnostics = between(studio, 'const gateDiagnosticsRef = useRef', '// quick-261026-odd follow-up: a derived cell');
+    expect(diagnostics).toContain('const gateFrame = rotoTimelineModel.currentCell.peek().appFrame;');
+    expect(diagnostics).toContain('const gateCell = resolveStudioScriptCell(gateFrame);');
+    expect(diagnostics).toContain('hasWatercolor: hasAquarelleScriptForFrame(gateFrame),');
+    expect(diagnostics).toContain('if (import.meta.env.DEV) {');
+  });
+
+  it('keeps a cache-only key ownerless and Move fail-closed on ONE key-bound predicate', () => {
+    // Every gate/owner/hydration decision shares this key context: the O(1)
+    // physical projection cell. A derived or empty cell carries no key id.
+    const cellResolver = between(studio, 'const resolveStudioScriptCell = useCallback(', '// quick-261026-odd (empty-script gate): the engine leg');
+    expect(cellResolver).toContain('physicPaintStore.getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())?.cells[frame]');
+    expect(cellResolver).toContain('? { kind: cell.kind, keyId: cell.keyId }');
+    expect(cellResolver).toContain(': { kind: cell.kind, keyId: null };');
+
+    // The Move gate's engine leg preserves the first-stroke re-enable while
+    // staying cheap: creation serials (one per stroke), never a deep copy,
+    // and aquarelle guide proxies never count as a movable Brush script.
+    const engineLeg = between(studio, 'const engineHoldsBrushMoveStrokes = useCallback((): boolean => {', '// quick-261026-odd follow-up: the Move law is bound to the KEY');
+    expect(engineLeg).toContain('const serials = activeEngine.getStrokeSerials();');
+    expect(engineLeg).toContain('if (getRecordedAquarelleStroke(mutationId) === undefined) return true;');
+    expect(engineLeg).not.toContain('getStrokes(');
+
+    // Move entry demand-attaches with the SAME key context, then refuses to
+    // arm when neither the engine nor the attach holds a live ledger (defense
+    // in depth: an enabled Move always has handles).
+    const moveEntry = between(studio, "if (activeModule.peek() === 'brush' && tool === 'move') {", 'selectToolEngine(tool, physicsMode);');
+    expect(moveEntry).toContain('const scriptCell = resolveStudioScriptCell(scriptFrame);');
+    expect(moveEntry).toContain("keyId: scriptCell !== null && scriptCell.kind === 'real' ? scriptCell.keyId : null,");
+    expect(moveEntry).toContain('if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) return;');
+    // The stored leg needs THIS key's id AND hydratability; a legacy
+    // null-keyId row, a foreign key, a partial row or a missing entry all
+    // resolve false (the cached pixels stay view-only, never Move outlines).
+    const moveGate = between(studio, 'const moveAvailable = useComputed(', 'const watercolorMoveAvailable = useComputed(');
+    expect(moveGate).toContain('&& entry.keyId === scriptCell.keyId');
+    expect(moveGate).toContain('&& isBrushScriptFrameHydratable(entry);');
+    // Ownership publishes through the same cell; null leaves the module
+    // untouched and locks nothing (behavior pinned in frameScriptOwnership /
+    // frameModuleLock suites).
+    const funnel = between(studio, 'const applyFrameModuleState = useCallback(', '// 261023-g4p: the brush script-edition port');
+    expect(funnel).toContain('const scriptCell = resolveStudioScriptCell(frame);');
+    expect(funnel).toContain('const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);');
+    expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
+    expect(funnel).toContain('setFrameScriptOwner(owner);');
+  });
+
+  it('pins the ordinary-key durable base and the durable-base-unknown refusal', () => {
+    // Launch-scoped map per ordinary keyId: bytes = known base, null = known
+    // empty (blank promotion), MISSING = UNKNOWN (reopen → fail closed).
+    const mapLifecycle = between(studio, 'const aquarelleDurableBaseByKeyRef = useRef<Map<string, Uint8Array | null>>(new Map());', '// 261019-mj2 cache-loss');
+    expect(mapLifecycle).toContain('aquarelleDurableBaseByKeyRef.current = new Map();');
+    // A replaced launch is a different document/session.
+    expect(mapLifecycle).toContain('}, [launchContext?.operationId, launchContext?.layerId]);');
+
+    // The base is pinned BEFORE the first event lands — the only instant the
+    // display still holds the scriptless cached paint the composite preserves.
+    const strokeEnd = between(studio, 'const handleAquarelleStrokeEnd = useCallback(', 'const handleAquarelleStrokeSettled');
+    const pinIndex = strokeEnd.indexOf('recordAquarelleOrdinaryDurableBaseRef.current(');
+    const eventIndex = strokeEnd.indexOf('recordAquarelleStroke(mutationId,');
+    expect(pinIndex).toBeGreaterThan(-1);
+    expect(eventIndex).toBeGreaterThan(pinIndex);
+
+    // Recorder: ordinary-key only; a frame that already carries a script (a
+    // REOPENED flattened composite) stays UNKNOWN — recording it would double
+    // the earlier strokes on the next bake.
+    const recorder = between(studio, 'recordAquarelleOrdinaryDurableBaseRef.current = (appFrame) => {', 'const handleAquarelleCaptureFrame');
+    expect(recorder).toContain("if (target.kind !== 'ordinary-key') return;");
+    expect(recorder).toContain('if (aquarelleDurableBaseByKeyRef.current.has(target.keyId)) return;');
+    expect(recorder).toContain('if (getAquarelleEventsForFrame(appFrame).length > 0) {');
+    expect(recorder).toContain("reason: 'script-already-present',");
+    expect(recorder).toContain('const bytes = new Uint8Array(baseBytes);');
+    expect(recorder).toContain('aquarelleDurableBaseByKeyRef.current.set(target.keyId, bytes);');
+
+    // Promotions pin the seeding base (clone bytes / known-empty blank);
+    // rastering replaces the key's content, so its pinned base is stale.
+    expect(studio).toContain("const promotedBase = baseKind === 'clone' ? new Uint8Array(baseFrame.bytes) : null;");
+    expect(studio).toContain("source: baseKind === 'clone' ? 'promotion-clone' : 'promotion-blank',");
+    expect(studio).toContain('if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
+
+    // Exactly three pin sites (promotion, prepare fallback, first stroke) and
+    // ONE invalidation. The map is NEVER advanced to the composed output —
+    // advancing would compound the already-baked script on the next bake.
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(3);
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(1);
+    const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
+    expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');
+
+    // Present bytes compose with the SAME multiply law (group branch + the
+    // ordinary launch-map branch); null is a known-empty raw bake; undefined
+    // fails closed (Option D: a reopened scripted key refuses, never erases).
+    expect(countOccurrences(publishBlock, 'composeRotoScriptRebakeFrame({')).toBe(2);
+    expect(publishBlock).toContain('if (target.durableBaseBytes === null) {');
+    expect(publishBlock).toContain("durableBaseSource = 'known-empty';");
+    expect(publishBlock).toContain('target.durableBaseBytes !== undefined');
+    const unknownIndex = publishBlock.indexOf("reason: 'durable-base-unknown'");
+    const upsertIndex = publishBlock.indexOf('upsertCachedFrame(');
+    expect(unknownIndex).toBeGreaterThan(-1);
+    expect(upsertIndex).toBeGreaterThan(unknownIndex);
+    expect(publishBlock.indexOf('return false;', unknownIndex)).toBeLessThan(upsertIndex);
+    // The COMPOSITE reaches the cache, never the raw stroke-only bake.
+    expect(publishBlock).toContain('bytes: publishBytes');
+    expect(publishBlock.lastIndexOf('publishBytes = composed.bytes;')).toBeLessThan(upsertIndex);
+  });
+
+  it('pins the group-frame lifecycle target and the EXACT-offset source-key composite', () => {
+    const prepare = between(studio, 'prepareRotoScriptTargetRef.current = async (', '// RARE BLANK-AFTER-PLAY guard');
+
+    // Override frames publish to the OVERRIDE key; their currency identity and
+    // durable base are the group SOURCE key at the exact cycle offset (run 1:
+    // the source key still held the red-only payload under the composite).
+    const overrideBranch = between(prepare, "if (target.kind === 'override') {", 'if (source.keyId !== null) return null;');
+    expect(overrideBranch).toContain('const sourceKeyId = resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset);');
+    expect(overrideBranch).toContain('sourceKeyId !== null && sourceKeyId === source.keyId');
+    expect(overrideBranch).toContain('keyId: target.keyId');
+    expect(overrideBranch).toContain('durableBaseKeyId: sourceKeyId');
+
+    // A source occurrence publishes to the source key the route turns into a
+    // NEW override; its identity must match the mounted projection source.
+    const sourceBranch = between(prepare, "if (target.kind === 'source-occurrence') {", "if (target.kind === 'override') {");
+    expect(sourceBranch).toContain('target.sourceKeyId === source.keyId');
+    expect(sourceBranch).toContain('keyId: target.sourceKeyId');
+    expect(sourceBranch).toContain('durableBaseKeyId: target.sourceKeyId');
+
+    // The group composite reads the SOURCE RECORD payload (Rust-owned bytes)
+    // and fails closed BEFORE the cache write when it cannot resolve/compose.
+    const publish = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
+    const groupBranch = between(publish, 'if (target.durableBaseKeyId) {', '} else if (target.durableBaseBytes !== undefined) {');
+    expect(groupBranch).toContain("durableBaseSource = 'group-source-key';");
+    expect(groupBranch).toContain('getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), target.durableBaseKeyId)');
+    expect(groupBranch).toContain('requirePhysicPaintRotoInlineBytes(baseRecord.payload)');
+    expect(groupBranch).toContain('composeRotoScriptRebakeFrame({');
+    expect(groupBranch).toContain('durableBaseBytes: baseBytes');
+    expect(groupBranch).toContain("reason: 'durable-base-unavailable'");
+    const failClosed = groupBranch.indexOf('if (!composed) {');
+    expect(failClosed).toBeGreaterThan(-1);
+    expect(groupBranch.indexOf('return false;', failClosed)).toBeGreaterThan(failClosed);
+    expect(groupBranch.indexOf('upsertCachedFrame(')).toBe(-1);
+  });
+
+  it('keeps every debug probe DEV-gated and self-identifying', () => {
+    const capture = readFileSync(fileURLToPath(new URL('./performance/aquarelleRenderSplitCapture.ts', import.meta.url)), 'utf8');
+    // Every entry point (event, alpha proof, install, PNG dump) checks this.
+    expect(capture).toContain('return import.meta.env.DEV === true;');
+    expect(capture).toContain("AQUARELLE_RENDER_SPLIT_BUILD = 'debug-watercolor-loop-render-split-3'");
+    // The Studio display sampler is DEV-gated; the Move provenance build
+    // marker names this diagnostic revision so a stale window is detectable.
+    expect(studio).toContain('if (!import.meta.env.DEV) return;');
+    const moveProvenance = readFileSync(fileURLToPath(new URL('./performance/moveProvenanceCapture.ts', import.meta.url)), 'utf8');
+    expect(moveProvenance).toContain("MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-10-model-graph-gate';");
   });
 });

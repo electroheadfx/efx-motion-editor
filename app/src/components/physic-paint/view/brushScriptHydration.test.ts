@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
   captureBrushScriptForFrame,
+  configureBrushScriptKeyProvider,
   getBrushScriptFrameEntry,
   markBrushScriptFrameDirty,
   noteBrushScriptArrivalBase,
@@ -77,6 +78,7 @@ function continuation(mutationId: number, diffusionFrames = 4): PaintStroke {
 const IDLE_REQUEST: BrushHydrationRequest = {
   frame: 3,
   destinationKind: 'real',
+  keyId: 'key-3',
   brushModuleActive: true,
   wasPlaying: false,
   scrubActive: false,
@@ -108,6 +110,7 @@ function captureComplete(frame: number, strokes: PaintStroke[] = [stroke(1)]): v
 
 beforeEach(() => {
   resetBrushScriptStore();
+  configureBrushScriptKeyProvider((frame) => `key-${frame}`);
 });
 
 describe('plan: the happy path', () => {
@@ -169,6 +172,25 @@ describe('plan: every refusal is fail-closed', () => {
     const engine = createFakeEngine();
     expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'partial' });
     expect(attemptBrushScriptHydration(engine, request())).toBe(false);
+    expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
+  });
+
+  // quick-261026-odd (empty-script gate): a script follows KEY identity. A
+  // legacy null-keyId row and a row captured on a replaced key both refuse —
+  // the engine stays empty and the cached pixels keep rendering (no dead
+  // Move outlines over content the cell does not own).
+  it('refuses an entry with no key identity (legacy v1 row)', () => {
+    configureBrushScriptKeyProvider(null);
+    captureComplete(3);
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'foreign-key' });
+  });
+
+  it('refuses an entry captured on a different key', () => {
+    captureComplete(3);
+    const engine = createFakeEngine();
+    expect(planBrushScriptHydration(request({ keyId: 'key-replaced' }))).toEqual({ hydrate: false, reason: 'foreign-key' });
+    expect(planBrushScriptHydration(request({ keyId: null }))).toEqual({ hydrate: false, reason: 'foreign-key' });
+    expect(attemptBrushScriptHydration(engine, request({ keyId: 'key-replaced' }))).toBe(false);
     expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
   });
 

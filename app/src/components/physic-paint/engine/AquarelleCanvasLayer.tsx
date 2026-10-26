@@ -44,6 +44,9 @@ import { aquarelleSelectMode } from '../view/aquarelleStrokeSelection';
 import type { ScriptStrokeTransform } from '../view/scriptStrokeEdition';
 import { temporaryMove } from '../view/physicsPaintTemporaryErase';
 import { AquarelleStrokeOverlay } from './AquarelleStrokeOverlay';
+// debug-watercolor-loop-render-split (DEV ONLY): names the trigger that did or
+// did not reach the Studio capture handler. Installs nothing in production.
+import { recordAquarelleRenderSplitEvent } from '../performance/aquarelleRenderSplitCapture';
 
 /** Host tick grid (toStudioStroke law: pts[].tick = sample index). */
 const HOST_TICK_HZ = 60;
@@ -432,7 +435,14 @@ export function AquarelleCanvasLayer(props: {
     // has already drained — so without this the capture is queued too late and
     // sits in CAPTURE_PRODUCE_QUIET_MS (the empty-frame-on-return race).
     const flushCapture = () => {
-      if (!engine.hasPaint) return;
+      const hasPaint = engine.hasPaint;
+      recordAquarelleRenderSplitEvent('layer-capture', {
+        trigger: 'flush',
+        playFrame: lastPlayFrameRef.current,
+        hasPaint,
+        invoked: hasPaint,
+      });
+      if (!hasPaint) return;
       onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
     };
     onFlushCaptureReadyRef.current?.(flushCapture);
@@ -472,8 +482,17 @@ export function AquarelleCanvasLayer(props: {
       const dryPlayFrame = getPlayFrameRef.current();
       const timer = window.setTimeout(() => {
         pendingSettleTimers.delete(timer);
-        if (getPlayFrameRef.current() !== dryPlayFrame) return;
-        if (!engine.hasPaint) return;
+        const frameChanged = getPlayFrameRef.current() !== dryPlayFrame;
+        const hasPaint = engine.hasPaint;
+        recordAquarelleRenderSplitEvent('layer-capture', {
+          trigger: 'dry',
+          playFrame: dryPlayFrame,
+          hasPaint,
+          frameChanged,
+          invoked: !frameChanged && hasPaint,
+        });
+        if (frameChanged) return;
+        if (!hasPaint) return;
         onCaptureFrameRef.current?.(dryPlayFrame, snapshot);
       }, FIX_SETTLE_MS);
       pendingSettleTimers.add(timer);
@@ -502,7 +521,15 @@ export function AquarelleCanvasLayer(props: {
       if (lastPlayFrameRef.current !== playFrame) {
         // CACHE WRITE: leaving a frame lands whatever the sheet holds before
         // the wipe — never a blank sheet over existing cache.
-        if (engine.hasPaint) {
+        const leavingHasPaint = engine.hasPaint;
+        recordAquarelleRenderSplitEvent('layer-capture', {
+          trigger: 'frame-leave',
+          playFrame: lastPlayFrameRef.current,
+          nextPlayFrame: playFrame,
+          hasPaint: leavingHasPaint,
+          invoked: leavingHasPaint,
+        });
+        if (leavingHasPaint) {
           onCaptureFrameRef.current?.(lastPlayFrameRef.current, snapshot);
         }
         // PLAY FIDELITY: the sheet is about to be wiped — stamp the measured
@@ -537,7 +564,20 @@ export function AquarelleCanvasLayer(props: {
       // CACHE WRITE (settle): the dry (concentrated) look, not the wet stroke.
       const awake = engine.isAwake;
       if (wasAwake && !awake && engine.hasPaint) {
+        recordAquarelleRenderSplitEvent('layer-capture', {
+          trigger: 'settle',
+          playFrame,
+          hasPaint: true,
+          invoked: true,
+        });
         onCaptureFrameRef.current?.(playFrame, snapshot);
+      } else if (wasAwake && !awake) {
+        recordAquarelleRenderSplitEvent('layer-capture', {
+          trigger: 'settle',
+          playFrame,
+          hasPaint: false,
+          invoked: false,
+        });
       }
       // PLAY FIDELITY: the sheet slept — the stroke's real diffusion window
       // is now known; record it as its cuisson for the replay.

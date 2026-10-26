@@ -31,7 +31,7 @@ import { engineHoldsBrushScriptFrame } from '../view/brushScriptHydration';
 
 export const MOVE_PROVENANCE_PATH = '/tmp/efx-move-provenance.json';
 /** Bumped by every diagnostic revision so the report names its build. */
-export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-6-render-target';
+export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-10-model-graph-gate';
 
 export interface MoveProvenanceEngine {
   getStrokes(): readonly PaintStroke[];
@@ -98,7 +98,10 @@ function engineStrokeReport(
   };
 }
 
-export async function captureMoveProvenance(reason: string): Promise<void> {
+export async function captureMoveProvenance(
+  reason: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
   const deps = installedDeps;
   if (!deps) return;
   if (writeInFlight) return;
@@ -238,6 +241,7 @@ export async function captureMoveProvenance(reason: string): Promise<void> {
         };
       }),
       errors,
+      ...(extra ?? {}),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(report, null, 2));
     const { exportWritePng } = await import('../../../lib/ipc');
@@ -251,9 +255,9 @@ export async function captureMoveProvenance(reason: string): Promise<void> {
 }
 
 /** Fire-and-forget from event seams — a no-op until the probe is installed. */
-export function captureMoveProvenanceNow(reason: string): void {
+export function captureMoveProvenanceNow(reason: string, extra?: Record<string, unknown>): void {
   if (!import.meta.env.DEV) return;
-  void captureMoveProvenance(reason);
+  void captureMoveProvenance(reason, extra);
 }
 
 /**

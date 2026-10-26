@@ -15,6 +15,15 @@ import type { RotoGroupFramePaintExecuteInput } from './useRotoPhysicalEditCoord
 import { isPhysicsPaintProfilingEnabled, recordPhysicsPaintPerformance } from '../performance/physicsPaintPerformanceTrace';
 import { markEfxPaintDocumentSyncFrameDelivered } from '../bridge/physicsPaintBridgeTransport';
 import { createFinalizationQueue, type FinalizationQueue } from '../pilot/finalizationQueue';
+// debug-watercolor-loop-render-split (DEV ONLY): names the capture -> route
+// stage where a stroke's pixels stop short. Installs nothing in production.
+import {
+  digestRenderedFrameBytes,
+  recordAquarelleAlphaProof,
+  recordAquarelleRenderSplitEvent,
+  summarizePhysicPaintRotoGroupFrameTarget,
+  summarizeRenderedFrame,
+} from '../performance/aquarelleRenderSplitCapture';
 
 /** regression-refresh-multi-paint Layer 1: after a live-pixel capture fails
  * (superseded by a mid-sequence revision advance, or the frame vanished), the
@@ -464,7 +473,16 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const launchId = expectedOperationId ?? launch?.operationId;
     const projectContextId = launch?.project?.contextId;
     const trackId = inputRef.current.getActiveTrackId(layerId ?? '');
-    if (!layerId || !launchId || !projectContextId) return false;
+    if (!layerId || !launchId || !projectContextId) {
+      recordAquarelleRenderSplitEvent('route-preflight-failed', {
+        stage: 'identity-missing',
+        appFrame: renderedFrame.appFrame,
+        layerId: layerId ?? null,
+        launchId: launchId ?? null,
+        projectContextId: projectContextId ?? null,
+      });
+      return false;
+    }
     const document = inputRef.current.store.getRotoPhysicalDocument(layerId, trackId);
     const contentRevision = expectedContentRevision ?? inputRef.current.store.getRotoPhysicalContentRevision(layerId, trackId);
     if (!document || !contentRevision || document.revision !== contentRevision) {
@@ -472,8 +490,18 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
       // the ACTIVE track (re-resolved now) doesn't own the transaction's
       // expected revision — the cross-track effect of an active-track switch
       // racing a pending flush.
+      recordAquarelleRenderSplitEvent('route-preflight-failed', {
+        stage: 'revision-mismatch',
+        appFrame: renderedFrame.appFrame,
+        documentPresent: document !== null,
+        contentRevision: contentRevision ?? null,
+        documentRevision: document?.revision ?? null,
+        expectedContentRevision: expectedContentRevision ?? null,
+        payload: summarizeRenderedFrame(renderedFrame),
+      });
       return false;
     }
+    const routeClassification = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: renderedFrame.appFrame });
     const route = await routeRotoPhysicalPaintFrame({
       document,
       projectContextId,
@@ -493,6 +521,21 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     }, {
       updateOrdinaryKey: (updateLayerId, keyId, expectedContentRevision, payload, diagnostics) => inputRef.current.store.updateRotoPhysicalRealKeyPayload(updateLayerId, trackId, keyId, expectedContentRevision, payload, diagnostics),
       executePhysicalEdit: inputRef.current.executePhysicalEdit,
+    });
+    recordAquarelleRenderSplitEvent('route-result', {
+      appFrame: renderedFrame.appFrame,
+      trackId,
+      expectedKeyId: expectedKeyId ?? null,
+      expectedContentRevision: expectedContentRevision ?? null,
+      documentRevision: document.revision,
+      contentRevision,
+      classification: summarizePhysicPaintRotoGroupFrameTarget(routeClassification),
+      payload: summarizeRenderedFrame(renderedFrame),
+      route: route.ok
+        ? route.kind === 'ordinary-key'
+          ? { ok: true, kind: route.kind, keyId: route.keyId, contentRevision: route.contentRevision }
+          : { ok: true, kind: route.kind, groupId: route.groupId, appFrame: route.appFrame }
+        : { ok: false, reason: route.reason },
     });
     if (!route.ok) return false;
     if (route.kind === 'group-frame') {
@@ -555,12 +598,40 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
   }) => {
     const launch = inputRef.current.launchContext;
     const launchId = capture.operationId ?? launch?.operationId;
-    if (!launchId) return Promise.resolve(false);
+    if (!launchId) {
+      recordAquarelleRenderSplitEvent('coordinator-capture-entry', {
+        appFrame: capture.appFrame,
+        layerId: capture.layerId,
+        stage: 'no-launch-id',
+      });
+      return Promise.resolve(false);
+    }
     const trackId = inputRef.current.getActiveTrackId(capture.layerId);
     const document = inputRef.current.store.getRotoPhysicalDocument(capture.layerId, trackId);
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(capture.layerId, trackId);
+    const revisionMatches = document !== null && contentRevision !== null && document.revision === contentRevision;
+    const classification = document ? classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: capture.appFrame }) : null;
+    const identityKey = document ? resolveRotoLivePixelIdentityKey(document, capture.appFrame) : null;
+    recordAquarelleRenderSplitEvent('coordinator-capture-entry', {
+      appFrame: capture.appFrame,
+      layerId: capture.layerId,
+      trackId,
+      launchId,
+      mutationId: capture.mutationId ?? null,
+      documentPresent: document !== null,
+      contentRevision: contentRevision ?? null,
+      documentRevision: document?.revision ?? null,
+      revisionMatches,
+      classification: summarizePhysicPaintRotoGroupFrameTarget(classification),
+      identityKey,
+      requestedKeyId: capture.keyId ?? null,
+      hasCachedBase: capture.cachedBase !== null,
+      hasBaseCanvas: capture.baseCanvas !== null && capture.baseCanvas !== undefined,
+      baseFrame: summarizeRenderedFrame(capture.cachedBase),
+      mergeBlend: capture.mergeBlend ?? 'default',
+      backgroundOnly: capture.backgroundOnly === true,
+    });
     if (!document || !contentRevision || document.revision !== contentRevision) return Promise.resolve(false);
-    const identityKey = resolveRotoLivePixelIdentityKey(document, capture.appFrame);
     if (identityKey === null) return Promise.resolve(false);
     const identity: RotoLivePixelIdentity = {
       launchId,
@@ -581,7 +652,13 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         return identity;
       },
       recordPerformance: isPhysicsPaintProfilingEnabled() ? recordPhysicsPaintPerformance : undefined,
-      produce: () => {
+      onSettle: (outcome) => recordAquarelleRenderSplitEvent('coordinator-capture-settle', {
+        appFrame: capture.appFrame,
+        identityKey,
+        mutationId: capture.mutationId ?? null,
+        outcome,
+      }),
+      produce: async () => {
         // Resolve the snapshot only once the capture gate has settled and the
         // finalize loop has applied the pending rasters — never synchronously at
         // stroke-completion (see the liveAlphaCanvas factory note above).
@@ -589,9 +666,38 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
           ? capture.liveAlphaCanvas()
           : capture.liveAlphaCanvas;
         if (!liveAlphaCanvas) throw new Error('live-alpha snapshot unavailable');
-        return capture.cachedBase || capture.baseCanvas
+        const usedMerge = Boolean(capture.cachedBase || capture.baseCanvas);
+        const produced = await (usedMerge
           ? mergeCachedRotoAlphaFrame(capture.cachedBase, liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId, capture.baseCanvas, capture.mergeBlend)
-          : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId);
+          : encodeRotoFrameFromCanvas(liveAlphaCanvas, capture.appFrame, capture.size, capture.mutationId));
+        recordAquarelleRenderSplitEvent('coordinator-produce', {
+          appFrame: capture.appFrame,
+          identityKey,
+          mutationId: capture.mutationId ?? null,
+          usedMerge,
+          mergeBlend: usedMerge ? capture.mergeBlend ?? 'default' : null,
+          baseFrame: summarizeRenderedFrame(capture.cachedBase),
+          baseCanvasPresent: capture.baseCanvas !== null && capture.baseCanvas !== undefined,
+          produced: summarizeRenderedFrame(produced),
+        }, { producedInk: produced.bytes, baseInk: capture.cachedBase?.bytes ?? null });
+        // 261026 (third pass): prove the multiply composite keeps the base's
+        // visible paint. Base = the pre-script cache pinned at sheet start;
+        // sheet = the live transmittance canvas; produced = what will commit.
+        recordAquarelleAlphaProof('capture-alpha-proof', {
+          appFrame: capture.appFrame,
+          identityKey,
+          usedMerge,
+          mergeBlend: usedMerge ? capture.mergeBlend ?? 'default' : null,
+          baseDigest: digestRenderedFrameBytes(capture.cachedBase?.bytes),
+          producedDigest: digestRenderedFrameBytes(produced.bytes),
+        }, {
+          base: capture.cachedBase?.bytes ?? null,
+          sheet: liveAlphaCanvas,
+          produced: produced.bytes,
+        }, capture.cachedBase
+          ? [{ label: 'base->produced', base: capture.cachedBase.bytes, other: produced.bytes }]
+          : [], { dumpPng: true });
+        return produced;
       },
       commit: async (rendered, current) => {
         const result = await upsertCachedFrame(
@@ -606,6 +712,13 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
         capture.keyId,
         contentRevision,
         );
+        recordAquarelleRenderSplitEvent('coordinator-commit', {
+          appFrame: current.appFrame,
+          identityKey,
+          mutationId: capture.mutationId ?? null,
+          committed: result,
+          committedFrame: summarizeRenderedFrame(rendered),
+        });
         return result;
       },
     });

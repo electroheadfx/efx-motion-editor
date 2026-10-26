@@ -4,6 +4,11 @@
 //  A frame is owned by ONE module: Brush, Water color, both or none.
 //  The resolver reads the REAL stores (no mocks) plus an optional
 //  live brush ledger sample, and it never reads or writes a signal.
+//
+//  quick-261026-odd (empty-script gate): ownership is KEY-bound. A
+//  Brush entry only owns a frame when it is hydratable and stamped
+//  with the CURRENT real cell's key id; legacy null-keyId rows,
+//  replaced keys and non-hydratable rows resolve NO owner.
 // ============================================================
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -11,6 +16,8 @@ import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint'
 import type { AquarellePoint, AquarelleStroke } from '@efxlab/efx-watercolor/payload';
 import {
   captureBrushScriptForFrame,
+  configureBrushScriptKeyProvider,
+  noteBrushScriptArrivalBase,
   purgeBrushScriptFrame,
   resetBrushScriptStore,
 } from './brushScriptRecordState';
@@ -23,6 +30,7 @@ import {
 } from './aquarelleRecordState';
 import {
   resolveFrameScriptOwner,
+  type FrameScriptCell,
   type LiveBrushScriptSample,
 } from './frameScriptOwnership';
 
@@ -53,10 +61,15 @@ function brushStroke(mutationId: number): PaintStroke {
   };
 }
 
+/** The live key provider stamps `key-<frame>` on every capture. */
 function captureBrush(frame: number, mutationId = 1): void {
   captureBrushScriptForFrame(frame, [
     { primary: brushStroke(mutationId), continuations: [] },
   ]);
+}
+
+function cellFor(frame: number, keyId: string | null = `key-${frame}`): FrameScriptCell {
+  return { kind: 'real', keyId };
 }
 
 function aquarellePoint(x: number, y: number): AquarellePoint {
@@ -81,67 +94,92 @@ const LIVE: LiveBrushScriptSample = { active: true, strokeCount: 1 };
 beforeEach(() => {
   resetBrushScriptStore();
   resetAquarelleRecordState();
+  configureBrushScriptKeyProvider((frame) => `key-${frame}`);
 });
 
 describe('resolveFrameScriptOwner', () => {
   it('returns null for an empty frame', () => {
-    expect(resolveFrameScriptOwner(10)).toBeNull();
-    expect(resolveFrameScriptOwner(10, null)).toBeNull();
-    expect(resolveFrameScriptOwner(10, { active: false, strokeCount: 0 })).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10), null)).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10), { active: false, strokeCount: 0 })).toBeNull();
   });
 
-  it('returns brush for a captured brush entry', () => {
+  it('returns brush for a key-bound captured brush entry', () => {
     captureBrush(10);
-    expect(resolveFrameScriptOwner(10)).toBe('brush');
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBe('brush');
   });
 
-  it('returns watercolor for a recorded aquarelle stroke', () => {
+  it('returns watercolor for a recorded aquarelle stroke on a real cell', () => {
     recordAquarelleStroke(101, aquarelleStroke(101, 10));
-    expect(resolveFrameScriptOwner(10)).toBe('watercolor');
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBe('watercolor');
   });
 
   it('returns both when both stores hold a script for the frame', () => {
     captureBrush(10);
     recordAquarelleStroke(102, aquarelleStroke(102, 10));
-    expect(resolveFrameScriptOwner(10)).toBe('both');
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBe('both');
   });
 
   it('counts an active live brush ledger with strokes and no stored entry', () => {
-    expect(resolveFrameScriptOwner(10, { active: true, strokeCount: 2 })).toBe('brush');
+    expect(resolveFrameScriptOwner(10, cellFor(10), { active: true, strokeCount: 2 })).toBe('brush');
   });
 
   it('ignores an inactive or empty live brush sample', () => {
-    expect(resolveFrameScriptOwner(10, { active: false, strokeCount: 4 })).toBeNull();
-    expect(resolveFrameScriptOwner(10, { active: true, strokeCount: 0 })).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10), { active: false, strokeCount: 4 })).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10), { active: true, strokeCount: 0 })).toBeNull();
   });
 
   it('ignores a stale live sample on a purged frame', () => {
     purgeBrushScriptFrame(10);
-    expect(resolveFrameScriptOwner(10, LIVE)).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10), LIVE)).toBeNull();
   });
 
   it('never counts a Dry event as a script', () => {
     emitAquarelleDry(4242);
-    expect(resolveFrameScriptOwner(10)).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
   });
 
   it('never counts a deleted-stroke tombstone', () => {
     recordAquarelleStroke(103, aquarelleStroke(103, 10));
     markAquarelleStrokeDeleted(103);
-    expect(resolveFrameScriptOwner(10)).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
   });
 
-  it('never counts another frame', () => {
+  it('never counts another frame or another key', () => {
     captureBrush(11);
-    recordAquarelleStroke(104, aquarelleStroke(104, 11));
-    expect(resolveFrameScriptOwner(10)).toBeNull();
-    expect(resolveFrameScriptOwner(11)).toBe('both');
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
+    expect(resolveFrameScriptOwner(11, cellFor(11))).toBe('brush');
+    // The script belongs to key-11 — a different key at the same frame is foreign.
+    expect(resolveFrameScriptOwner(11, cellFor(11, 'key-replaced'))).toBeNull();
   });
 
   it('drops back to null after the aquarelle frame script is purged', () => {
     recordAquarelleStroke(105, aquarelleStroke(105, 10));
-    expect(resolveFrameScriptOwner(10)).toBe('watercolor');
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBe('watercolor');
     expect(purgeAquarelleFrameScript(10)).toBe(1);
-    expect(resolveFrameScriptOwner(10)).toBeNull();
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
+  });
+
+  // quick-261026-odd (empty-script gate, legacy-row Option A — fail closed):
+  // a v1 row carries no key identity, so it is not an editable script on the
+  // current key. Cached pixels still render; the owner stays null.
+  it('never blesses a legacy null-keyId row with the current key', () => {
+    configureBrushScriptKeyProvider(null);
+    captureBrush(10);
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
+  });
+
+  it('never counts a non-hydratable (partial) row', () => {
+    noteBrushScriptArrivalBase(10, true);
+    captureBrush(10);
+    expect(resolveFrameScriptOwner(10, cellFor(10))).toBeNull();
+  });
+
+  it('never counts a script on a derived or empty cell', () => {
+    captureBrush(10);
+    recordAquarelleStroke(106, aquarelleStroke(106, 10));
+    expect(resolveFrameScriptOwner(10, { kind: 'generated', keyId: null })).toBeNull();
+    expect(resolveFrameScriptOwner(10, { kind: 'empty', keyId: null })).toBeNull();
+    expect(resolveFrameScriptOwner(10, null)).toBeNull();
   });
 });

@@ -40,7 +40,7 @@ import {
   deleteBackgroundClip,
   type TrackMutationResult,
 } from '../../stores/efxPaintStore';
-import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
+import { buildPhysicPaintRotoPhysicalRevision, PHYSIC_PAINT_ROTO_INTERPOLATION_DISABLED, PHYSIC_PAINT_ROTO_LOOP_CLIPS_EMPTY, requirePhysicPaintRotoInlineBytes, type PhysicPaintRotoInterpolationState, type PhysicPaintRotoLoopClip, type PhysicPaintRotoPhysicalDocument, type PhysicPaintRotoRealKeyRecord } from './roto/physicsPaintRotoPhysicalModel';
 import { resolvePhysicPaintTrackVisibility } from '../../lib/previewRenderer';
 import { collectDiscardableRotoGroupOwnedFrames, rebuildRotoPhysicalOwnership } from './roto/rotoPhysicalOwnership';
 import { selectAllRotoKeyIds, collapseRotoKeySelection, toggleRotoKeySelection, extendRotoKeySelectionRange, resolvePostAcceptanceRotoStudioSelection } from './roto/physicsPaintRotoMultiSelection';
@@ -95,7 +95,9 @@ import { useRotoTimelineModel } from './hooks/useRotoTimelineModel';
 import { selectRealCachedRotoSourceFrameNumbers } from './roto/rotoTimelineSelectors';
 import { useRotoNavigationCoordinator } from './hooks/useRotoNavigationCoordinator';
 import { getFrameBlobUrl } from './hooks/useRotoReferenceController';
-import { recordsAsRuntimeFramesToleratingReferences, resolveRotoCompletedGroupPaintTarget, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { recordsAsRuntimeFramesToleratingReferences, resolveRotoCompletedGroupPaintTarget, resolveRotoLivePixelIdentityKey, shouldReloadRotoFrameAfterFailedCapture, useRotoFramePersistenceCoordinator } from './hooks/useRotoFramePersistenceCoordinator';
+import { classifyPhysicPaintRotoGroupFrameTarget, resolvePhysicPaintRotoGroupSourceKeyIdAtOffset } from './roto/physicsPaintRotoGroupLifecycle';
+import { composeRotoScriptRebakeFrame } from './roto/physicsPaintRotoScriptRebake';
 import { getCarriedRotoPhysical } from './roto/rotoLaunchHydration';
 import { useRotoFrameEditingController } from './hooks/useRotoFrameEditingController';
 import { useRotoPhysicalEditCoordinator, type RotoGroupFramePaintExecuteInput, type RotoGroupLifecycleDeleteExecuteInput, type RotoPhysicalEditCoordinatorExecuteInput, type RotoRailSetDeleteExecuteInput, type RotoRailSetPasteExecuteInput } from './hooks/useRotoPhysicalEditCoordinator';
@@ -132,6 +134,13 @@ import {
   captureMoveProvenanceNow,
   installMoveProvenanceProbe,
 } from './performance/moveProvenanceCapture';
+import {
+  installAquarelleRenderSplitProbe,
+  recordAquarelleAlphaProof,
+  recordAquarelleRenderSplitEvent,
+  summarizePhysicPaintRotoGroupFrameTarget,
+  summarizeRenderedFrame,
+} from './performance/aquarelleRenderSplitCapture';
 import {
   readStudioScriptMemorySnapshot,
   type StudioScriptMemoryKeyRail,
@@ -190,8 +199,8 @@ import { imageStore } from '../../stores/imageStore';
 import { open as openNativeImageDialog } from '@tauri-apps/plugin-dialog';
 import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnail';
 import { activeModule } from '../shared/activeModule';
-import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
-import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
+import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, lockedModuleForOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
+import { resolveFrameScriptOwner, type FrameScriptCell, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
@@ -208,6 +217,7 @@ import {
   purgeAllBrushScriptFrames,
   purgeAquarelleGuideGroups,
   purgeBrushScriptFrame,
+  purgedBrushScriptFrame,
   remapBrushScriptsForRecords,
   resetBrushScriptStore,
 } from './view/brushScriptRecordState';
@@ -215,6 +225,7 @@ import {
   applyCompletedBrushMutation,
   attemptBrushScriptHydration,
   engineHoldsBrushScriptFrame,
+  isBrushScriptFrameHydratable,
   planBrushScriptHydration,
   type BrushHydrationRequest,
 } from './view/brushScriptHydration';
@@ -222,6 +233,7 @@ import {
   aquarelleStrokesRevision,
   getAquarelleEventsForFrame,
   getRecordedAquarellePayloadTimeline,
+  getRecordedAquarelleStroke,
   hasAquarelleScriptForFrame,
   purgeAllAquarelleKeyScripts,
   purgeAquarelleFrameScript,
@@ -1380,6 +1392,22 @@ export function PhysicsPaintStudio() {
   const lastRotoStatusMessageRef = useRef<string | null>(null);
   const aquarelleResetSheetRef = useRef<(() => void) | null>(null);
   const aquarelleMergeBaseRef = useRef<{ appFrame: number; base: RenderedFramePayload | null } | null>(null);
+  // 261026 ordinary-key durable base (watercolor-loop-render-split run 3):
+  // `aquarelleMergeBaseRef` is per SHEET session and is deliberately cleared on
+  // every frame change, but a script edit later in the SAME launch (Move/Apply,
+  // even after navigating away and back) still needs the key's PRE-SCRIPT cache
+  // as its multiply base. This launch-scoped map pins that base per ordinary
+  // keyId. A `null` entry is a KNOWN empty base (blank promotion); a MISSING
+  // entry is UNKNOWN and the script publish fails closed rather than replacing
+  // pixels that may carry scriptless cached paint. It never persists — reopen
+  // durability is a separate design decision.
+  const aquarelleDurableBaseByKeyRef = useRef<Map<string, Uint8Array | null>>(new Map());
+  const recordAquarelleOrdinaryDurableBaseRef = useRef<(appFrame: number) => void>(() => {});
+  // A replaced launch is a different document/session: a pinned base from the
+  // previous launch must never composite into it.
+  useEffect(() => {
+    aquarelleDurableBaseByKeyRef.current = new Map();
+  }, [launchContext?.operationId, launchContext?.layerId]);
   // 261019-mj2 cache-loss: the aquarelle sheet lives outside the engine-1
   // stroke/capture queues, so the close/save flush gate cannot see its paint.
   // The sheet records its own dirty state; the close gate must consult it or a
@@ -1476,6 +1504,20 @@ export function PhysicsPaintStudio() {
     rotoLoopClips,
     rotoParentEndExclusive: launchContext ? physicPaintStore.getRotoPhysicalCapacity(launchContext.layerId, studioActiveTrackId()) : 0,
   });
+  // quick-261026-odd (run-4 fix): `useRotoTimelineModel` recreates its WHOLE
+  // signal graph whenever a structural input changes. The Studio's gate
+  // computeds are created once (useComputed), and a Computed keeps whatever
+  // sources its last evaluation registered — the RETIRED graph after a
+  // rebuild. Those signals never change again, so the gate is never notified
+  // and freezes at its last value (native run 4: a scripted frame's `true`
+  // survived navigation onto a scriptless Motion rail cell). A Studio-owned
+  // generation signal is bumped after every swap; the gates read it so their
+  // next evaluation re-registers on the LIVE graph (post-render — the latest
+  // closure — never on a stale one).
+  const rotoModelGeneration = useSignal(0);
+  useEffect(() => {
+    rotoModelGeneration.value += 1;
+  }, [rotoTimelineModel]);
   const loopResolutionContext = rotoTimelineModel.loopResolutionContext.value;
   // The single canonical cross-type rail ordering authority (D-01): gestures,
   // copy, and focus all consume this same ordered identity list.
@@ -1540,6 +1582,37 @@ export function PhysicsPaintStudio() {
       : 'empty' as const;
   const currentCellKeyId = currentPhysicalCell.kind === 'real' ? currentPhysicalCell.keyId : null;
   const currentCellKind = currentPhysicalCell.kind;
+  // quick-261026-odd (empty-script gate): ONE key context for every script
+  // gate. Built from the O(1) physical projection — never from the display
+  // source — so ownership, Move and hydration always name the SAME key.
+  const resolveStudioScriptCell = useCallback((frame: number): FrameScriptCell | null => {
+    const launch = launchContextRef.current;
+    if (!launch) return null;
+    const cell = physicPaintStore.getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())?.cells[frame];
+    if (!cell) return null;
+    return cell.kind === 'real'
+      ? { kind: cell.kind, keyId: cell.keyId }
+      : { kind: cell.kind, keyId: null };
+  }, []);
+  // quick-261026-odd (empty-script gate): the engine leg of the Move gate. The
+  // engine holds only the CURRENT visit's strokes; Move may arm on the first
+  // live paint before any capture exists. `getStrokes()` deep-copies every
+  // point (too heavy for a render-body read), so read the creation serials —
+  // one entry per movable stroke — and drop the invisible aquarelle guide
+  // proxies by their registry identity.
+  const engineHoldsBrushMoveStrokes = useCallback((): boolean => {
+    const activeEngine = engineRef.current;
+    if (!activeEngine) return false;
+    try {
+      const serials = activeEngine.getStrokeSerials();
+      for (const mutationId of serials.keys()) {
+        if (getRecordedAquarelleStroke(mutationId) === undefined) return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, []);
   // quick-261026-odd follow-up: the Move law is bound to the KEY, never the
   // display. Only a REAL key can carry a Brush script; a derived
   // Motion/Static/Reveal rail cell or an empty cell has none by construction,
@@ -1550,13 +1623,32 @@ export function PhysicsPaintStudio() {
   // deliberately NOT a gate here.
   const moveAvailable = useComputed(() => {
     if (!brushMoveAvailable.value) return false;
+    // quick-261026-odd: any store mutation re-evaluates the key-bound leg
+    // without waiting for an owner republish at the next seam.
+    void brushScriptRevision.value;
+    // quick-261026-odd (run-4 fix): re-bind after a timeline-graph rebuild.
+    void rotoModelGeneration.value;
     const cell = rotoTimelineModel.currentCell.value;
     if (cell.kind !== 'real') return false;
-    // A retained script belongs to the KEY it was captured on. An entry whose
-    // stored identity is a different key is stale — never offer Move for it.
-    const entryKeyId = getBrushScriptFrameEntry(cell.appFrame)?.keyId ?? null;
-    if (entryKeyId !== null && entryKeyId !== cell.keyId) return false;
-    return true;
+    // Identity always comes from the O(1) projection — the SAME key context
+    // the owner resolver uses — never from a possibly-retired model cell.
+    const scriptCell = resolveStudioScriptCell(cell.appFrame);
+    if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;
+    // A retained script belongs to the KEY it was captured on: the entry must
+    // be hydratable AND carry THIS cell's key id. A legacy null-keyId row, a
+    // replaced key, a partial/edit-cost row and a missing entry all fail here
+    // (identity is unprovable — fail closed, cached pixels stay view-only).
+    const entry = getBrushScriptFrameEntry(cell.appFrame);
+    const storedLeg = entry !== undefined
+      && entry.groups.length > 0
+      && entry.keyId !== null
+      && entry.keyId !== undefined
+      && entry.keyId === scriptCell.keyId
+      && isBrushScriptFrameHydratable(entry);
+    if (storedLeg) return true;
+    // First-stroke / mid-session leg: the engine holds this frame's real
+    // strokes even before they are captured into the store.
+    return engineHoldsBrushMoveStrokes();
   });
   // quick-261026-odd follow-up: Water color's Select/Move is bound to the
   // CURRENT key's script, never the session. The tool rail has no frame prop,
@@ -1564,9 +1656,36 @@ export function PhysicsPaintStudio() {
   // stroke on a rail/empty key creates its script and re-enables Select.
   const watercolorMoveAvailable = useComputed(() => {
     void aquarelleStrokesRevision.value;
+    // quick-261026-odd (run-4 fix): re-bind after a timeline-graph rebuild.
+    // A computed registered on the retired graph is never notified again and
+    // freezes — the run-4 stale `true` on a scriptless rail cell.
+    void rotoModelGeneration.value;
     const cell = rotoTimelineModel.currentCell.value;
-    return cell.kind === 'real' && hasAquarelleScriptForFrame(cell.appFrame);
+    if (cell.kind !== 'real') return false;
+    // Fail closed on identity, in the SAME key context the owner resolver
+    // uses: the frame must still be a real key cell in the O(1) projection.
+    // A script left behind by a deleted or replaced key never re-opens Select.
+    const scriptCell = resolveStudioScriptCell(cell.appFrame);
+    if (scriptCell === null || scriptCell.kind !== 'real' || scriptCell.keyId === null) return false;
+    return hasAquarelleScriptForFrame(cell.appFrame);
   });
+  // DEV-only: the gate's OWN frame context, read by the owner-resolve report.
+  // The report's resolve `frame` is the resolver target; this is the frame
+  // the gates actually evaluate (the two can differ during navigation).
+  const gateDiagnosticsRef = useRef<() => { frame: number; cellKind: string; hasWatercolor: boolean }>(
+    () => ({ frame: 0, cellKind: 'none', hasWatercolor: false }),
+  );
+  if (import.meta.env.DEV) {
+    gateDiagnosticsRef.current = () => {
+      const gateFrame = rotoTimelineModel.currentCell.peek().appFrame;
+      const gateCell = resolveStudioScriptCell(gateFrame);
+      return {
+        frame: gateFrame,
+        cellKind: gateCell?.kind ?? 'none',
+        hasWatercolor: hasAquarelleScriptForFrame(gateFrame),
+      };
+    };
+  }
   // quick-261026-odd follow-up: a derived cell has no key script by
   // construction. Drop any stale brush capture for it and release the owner,
   // so a Motion/Static/Reveal rail cell can never keep Move or the Brush
@@ -1582,6 +1701,66 @@ export function PhysicsPaintStudio() {
   const cachedRotoRepaintBaseFrameRef = useRef(cachedRotoRepaintBaseFrame);
   cachedRotoReferenceUrlRef.current = cachedRotoReferenceUrl;
   cachedRotoRepaintBaseFrameRef.current = cachedRotoRepaintBaseFrame;
+  // debug-watercolor-loop-render-split (DEV ONLY): one read-only display
+  // sample — render-source kind/key, the accepted display payload's digest,
+  // and the merge/repaint base. Refs + store reads only; never subscribes the
+  // Studio body and never throws into the paint pipeline.
+  const captureAquarelleRenderSplitDisplay = useCallback((
+    event: string,
+    appFrame: number,
+    extra: Record<string, unknown> = {},
+    baseFrame?: RenderedFramePayload | null,
+  ) => {
+    if (!import.meta.env.DEV) return;
+    try {
+      const launch = launchContextRef.current;
+      const trackId = studioActiveTrackId();
+      const document = launch ? physicPaintStore.getRotoPhysicalDocument(launch.layerId, trackId) : null;
+      const contentRevision = launch ? physicPaintStore.getRotoPhysicalContentRevision(launch.layerId, trackId) : null;
+      const source = launch ? physicPaintStore.getRotoPhysicalRenderSource(launch.layerId, trackId, appFrame) : null;
+      const cellKind = launch
+        ? physicPaintStore.getRotoPhysicalProjection(launch.layerId, trackId)?.cells[appFrame]?.kind ?? 'none'
+        : 'no-launch';
+      const display = findCachedRotoDisplayFrame(appFrame);
+      const repaintBase = cachedRotoRepaintBaseFrameRef.current;
+      recordAquarelleRenderSplitEvent(event, {
+        appFrame,
+        launchOperationId: launch?.operationId ?? null,
+        launchStartFrame: launch?.startFrame ?? null,
+        trackId,
+        cellKind,
+        documentRevision: document?.revision ?? null,
+        contentRevision,
+        renderSource: source === null
+          ? null
+          : source.kind === 'real'
+            ? { kind: source.kind, keyId: source.keyId, cacheRevision: source.cacheRevision }
+            : source.kind === 'generated'
+              ? {
+                  kind: source.kind,
+                  leftKeyId: source.leftKeyId,
+                  rightKeyId: source.rightKeyId,
+                  cacheRevision: source.cacheRevision,
+                  cycleOffset: source.cycleOffset ?? null,
+                }
+              : { kind: source.kind, loopId: source.loopId },
+        displayFrame: summarizeRenderedFrame(display),
+        repaintBase: summarizeRenderedFrame(repaintBase),
+        referenceUrlPresent: cachedRotoReferenceUrlRef.current !== null,
+        ...(baseFrame !== undefined ? { baseFrame: summarizeRenderedFrame(baseFrame), basePresent: baseFrame !== null } : {}),
+        ...extra,
+      }, {
+        displayInk: display?.bytes ?? null,
+        ...(baseFrame !== undefined ? { baseInk: baseFrame?.bytes ?? null } : {}),
+      });
+    } catch (error) {
+      recordAquarelleRenderSplitEvent('probe-error', {
+        event,
+        appFrame,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [findCachedRotoDisplayFrame]);
   const rotoScript = useRotoScriptClipboardController({
     getEngine: () => engineRef.current,
     getSource: () => ({
@@ -1626,12 +1805,151 @@ export function PhysicsPaintStudio() {
           grainScale: bgMeta.grainScale ?? 1,
         },
         publish: async (frame) => {
-          // REVERTED (2026-10-26): publishing this stroke-only re-bake to the
-          // displayed override key made the script edit succeed over the rail's
-          // cached paint and erased it. Do NOT retarget this publish until the
-          // re-bake composites the script layer over the pixel-only base.
+          // 261026 axis 2 (watercolor-loop-render-split): the baked sheet is the
+          // SCRIPT layer only. On a group frame the rail's cached paint is the
+          // durable pixel-only base — the group SOURCE key payload at this phase
+          // offset — and publishing the raw bake would erase it (the pre-revert
+          // destruction). Composite with the same multiply law the live capture
+          // uses, then publish the COMPOSITE under the lifecycle target. Fail
+          // closed when the base cannot be resolved: a stroke-only sheet must
+          // never reach a group base.
+          //
+          // 261026 ORDINARY-KEY regression (run 3): an ordinary key can carry
+          // scriptless cached paint too, so the same multiply composite applies
+          // to the launch-scoped durable base pinned at the key's first stroke.
+          // `durableBaseBytes` null = KNOWN empty (blank promotion) → the raw
+          // bake is the key's complete content; undefined = UNKNOWN (e.g. a
+          // reopened scripted key) → fail closed, never a stroke-only replace.
+          let publishBytes = frame.bytes;
+          let durableBaseSource: 'group-source-key' | 'launch-map' | 'known-empty' | 'unknown' = 'unknown';
+          if (target.durableBaseKeyId) {
+            durableBaseSource = 'group-source-key';
+            const launch = launchContextRef.current;
+            const baseRecord = launch
+              ? physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), target.durableBaseKeyId)
+              : null;
+            let baseBytes: Uint8Array | null = null;
+            try {
+              baseBytes = baseRecord ? requirePhysicPaintRotoInlineBytes(baseRecord.payload) : null;
+            } catch {
+              baseBytes = null;
+            }
+            const composed = baseBytes
+              ? await composeRotoScriptRebakeFrame({
+                  durableBaseBytes: baseBytes,
+                  sheetBytes: frame.bytes,
+                  appFrame: frame.appFrame,
+                  size: { width: frame.width, height: frame.height },
+                })
+              : null;
+            recordAquarelleRenderSplitEvent('script-bake-composite', {
+              appFrame: frame.appFrame,
+              targetKeyId: target.keyId,
+              targetSourceKeyId: target.sourceKeyId ?? null,
+              durableBaseKeyId: target.durableBaseKeyId,
+              durableBase: durableBaseSource,
+              baseResolved: baseBytes !== null,
+              composed: composed !== null,
+              size: { width: frame.width, height: frame.height },
+            }, { baseInk: baseBytes, sheetInk: frame.bytes, composedInk: composed?.bytes ?? null });
+            if (baseBytes) {
+              recordAquarelleAlphaProof('composite-alpha-proof', {
+                appFrame: frame.appFrame,
+                targetKeyId: target.keyId,
+                durableBaseKeyId: target.durableBaseKeyId,
+                durableBase: durableBaseSource,
+                composed: composed !== null,
+              }, { base: baseBytes, sheet: frame.bytes, composed: composed?.bytes ?? null },
+                [{ label: 'base->composed', base: baseBytes, other: composed?.bytes ?? null }],
+                { dumpPng: true });
+            }
+            if (!composed) {
+              recordAquarelleRenderSplitEvent('script-bake-result', {
+                appFrame: frame.appFrame,
+                targetKeyId: frame.keyId,
+                ok: false,
+                reason: 'durable-base-unavailable',
+              });
+              return false;
+            }
+            publishBytes = composed.bytes;
+          } else if (target.durableBaseBytes !== undefined) {
+            if (target.durableBaseBytes === null) {
+              // KNOWN empty base (blank promotion): the script IS the key's
+              // complete content, so the raw bake is complete — no composite.
+              durableBaseSource = 'known-empty';
+            } else {
+              durableBaseSource = 'launch-map';
+              const composed = await composeRotoScriptRebakeFrame({
+                durableBaseBytes: target.durableBaseBytes,
+                sheetBytes: frame.bytes,
+                appFrame: frame.appFrame,
+                size: { width: frame.width, height: frame.height },
+              });
+              recordAquarelleRenderSplitEvent('script-bake-composite', {
+                appFrame: frame.appFrame,
+                targetKeyId: target.keyId,
+                targetSourceKeyId: target.sourceKeyId ?? null,
+                durableBaseKeyId: null,
+                durableBase: durableBaseSource,
+                baseResolved: true,
+                composed: composed !== null,
+                size: { width: frame.width, height: frame.height },
+              }, { baseInk: target.durableBaseBytes, sheetInk: frame.bytes, composedInk: composed?.bytes ?? null });
+              recordAquarelleAlphaProof('composite-alpha-proof', {
+                appFrame: frame.appFrame,
+                targetKeyId: target.keyId,
+                durableBaseKeyId: null,
+                durableBase: durableBaseSource,
+                composed: composed !== null,
+              }, { base: target.durableBaseBytes, sheet: frame.bytes, composed: composed?.bytes ?? null },
+                [{ label: 'base->composed', base: target.durableBaseBytes, other: composed?.bytes ?? null }],
+                { dumpPng: true });
+              if (!composed) {
+                recordAquarelleRenderSplitEvent('script-bake-result', {
+                  appFrame: frame.appFrame,
+                  targetKeyId: frame.keyId,
+                  ok: false,
+                  reason: 'durable-base-unavailable',
+                });
+                return false;
+              }
+              publishBytes = composed.bytes;
+            }
+          } else {
+            // Ordinary key with an UNKNOWN base: the key may carry scriptless
+            // cached paint (run 3) and a replace would erase it. Group frames
+            // always carry `durableBaseKeyId`, so this is only the ordinary /
+            // reopened-scripted case.
+            recordAquarelleRenderSplitEvent('script-bake-result', {
+              appFrame: frame.appFrame,
+              targetKeyId: frame.keyId,
+              ok: false,
+              reason: 'durable-base-unknown',
+            });
+            return false;
+          }
+          captureAquarelleRenderSplitDisplay('script-bake-before-publish', frame.appFrame, {
+            bakeTargetKeyId: frame.keyId,
+            bakeEvents: events.length,
+            durableBaseKeyId: target.durableBaseKeyId ?? null,
+            durableBase: durableBaseSource,
+          });
+          recordAquarelleRenderSplitEvent('script-bake', {
+            appFrame: frame.appFrame,
+            targetKeyId: frame.keyId,
+            target: { keyId: target.keyId, appFrame: target.appFrame },
+            durableBaseKeyId: target.durableBaseKeyId ?? null,
+            durableBase: durableBaseSource,
+            events: events.length,
+            width: frame.width ?? null,
+            height: frame.height ?? null,
+            currentFrame: launchContextRef.current?.startFrame ?? null,
+            bakeFrame: summarizeRenderedFrame({ appFrame: frame.appFrame, bytes: frame.bytes, width: frame.width, height: frame.height }),
+            publishFrame: summarizeRenderedFrame({ appFrame: frame.appFrame, bytes: publishBytes, width: frame.width, height: frame.height }),
+          }, { bakeInk: frame.bytes, publishInk: publishBytes });
           const ok = await rotoPersistence.upsertCachedFrame(
-            { frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes, width: frame.width, height: frame.height },
+            { frameIndex: 0, appFrame: frame.appFrame, bytes: publishBytes, width: frame.width, height: frame.height },
             false,
             undefined,
             undefined,
@@ -1641,6 +1959,12 @@ export function PhysicsPaintStudio() {
             bgMeta,
             frame.keyId,
           );
+          recordAquarelleRenderSplitEvent('script-bake-result', {
+            appFrame: frame.appFrame,
+            targetKeyId: frame.keyId,
+            ok,
+          });
+          captureAquarelleRenderSplitDisplay('script-bake-after-publish', frame.appFrame, { bakeOk: ok });
           // aquarelle-apply-invisible: a cache-only publish never reaches the
           // display — the live aquarelle sheet is empty and the engine-1
           // preview base still holds the pre-Apply bytes. Force the same
@@ -1844,23 +2168,101 @@ export function PhysicsPaintStudio() {
   // (before every seam) so later closures reference it without a TDZ hazard.
   const applyFrameModuleState = useCallback(
     (frame: number, liveBrush?: LiveBrushScriptSample | null) => {
+      // DEV-only: the exact pre-switch module, captured for the owner-resolve
+      // report. A peek is free and never subscribes.
+      const activeModuleBefore = activeModule.peek();
+      // The KEY context every gate shares: the O(1) projection cell only.
+      const scriptCell = resolveStudioScriptCell(frame);
       // quick-261026-odd follow-up: a Water color key's engine-1 guide proxies
       // are not a Brush script. Drop any guide groups an older capture stored
       // before resolving ownership, so a wash-only key cannot keep the Brush
       // module unlocked or Move open. The per-completion live sample is exempt
       // (O(1) law) — the guarded flushes already refuse guide captures.
       if (!liveBrush) purgeAquarelleGuideGroups(frame);
-      const owner = resolveFrameScriptOwner(frame, liveBrush ?? null);
+      const owner = resolveFrameScriptOwner(frame, scriptCell, liveBrush ?? null);
       if (owner === 'brush' || owner === 'watercolor') {
         if (activeModule.peek() !== owner) activeModule.value = owner;
       }
       setFrameScriptOwner(owner);
       // DEV-only provenance: an owner republish is the exact reported path
       // (navigate onto a phantom key). Auto-write the report on EVERY resolve
-      // so a fresh diag lands without requiring a Move click.
-      if (import.meta.env.DEV) captureMoveProvenanceNow('owner-resolve');
+      // so a fresh diag lands without requiring a Move click. The RESOLVE block
+      // records the raw facts behind the published owner — whether the entry is
+      // key-bound, hydratable, engine-attached, or a legacy/guide artifact —
+      // and the module/lock/gate state before and after the publish. `frame`
+      // (the resolve target) and `currentFrame` (the report's own frame) are
+      // reported side by side: the two can differ during navigation.
+      if (import.meta.env.DEV) {
+        try {
+          const launch = launchContextRef.current;
+          const activeTrackId = studioActiveTrackId();
+          const cellKeyId = scriptCell && scriptCell.kind === 'real' ? scriptCell.keyId : null;
+          const liveKeyId = launch
+            ? physicPaintStore.getRotoRealKeyRecordByAppFrame(launch.layerId, activeTrackId, frame)?.keyId ?? null
+            : null;
+          const entry = getBrushScriptFrameEntry(frame);
+          // quick-261026-odd (run-4 fix): the gates' OWN evaluation context,
+          // so a stale graph can never again hold `true` unnoticed.
+          const gate = gateDiagnosticsRef.current();
+          const activeEngine = engineRef.current;
+          let liveRealStrokes = 0;
+          let liveGuideStrokes = 0;
+          if (activeEngine) {
+            for (const stroke of activeEngine.getStrokes()) {
+              if (stroke.guideProxy === true) liveGuideStrokes += 1;
+              else liveRealStrokes += 1;
+            }
+          }
+          let guideGroups = 0;
+          if (entry) {
+            for (const group of entry.groups) {
+              if (group.primary.guideProxy === true) guideGroups += 1;
+            }
+          }
+          captureMoveProvenanceNow('owner-resolve', {
+            currentFrame: launch?.startFrame ?? null,
+            resolve: {
+              frame,
+              cellKind: scriptCell?.kind ?? 'none',
+              cellKeyId,
+              liveKeyId,
+              entry: entry === undefined ? null : {
+                keyId: entry.keyId ?? null,
+                keyMatchesCell: entry.keyId !== null && entry.keyId !== undefined && entry.keyId === cellKeyId,
+                complete: entry.complete,
+                strokes: entry.strokes,
+                points: entry.points,
+                groups: entry.groups.length,
+                guideGroups,
+                diffusionFrames: entry.diffusionFrames,
+                hydratable: isBrushScriptFrameHydratable(entry),
+                engineHolds: engineHoldsBrushScriptFrame(activeEngine, frame),
+                purged: purgedBrushScriptFrame(frame),
+              },
+              liveBrush: liveBrush ?? null,
+              liveRealStrokes,
+              liveGuideStrokes,
+              hasWatercolor: hasAquarelleScriptForFrame(frame),
+              // Run-4 diagnostics: what the GATES themselves evaluated.
+              gateCellFrame: gate.frame,
+              gateCellKind: gate.cellKind,
+              gateHasWatercolor: gate.hasWatercolor,
+              aquarelleRevision: aquarelleStrokesRevision.peek(),
+              publishedOwner: owner,
+              lockedModule: lockedModuleForOwner(owner),
+              activeModuleBefore,
+              activeModuleAfter: activeModule.peek(),
+              brushMoveAvailable: brushMoveAvailable.peek(),
+              moveAvailable: moveAvailable.peek(),
+              watercolorMoveAvailable: watercolorMoveAvailable.peek(),
+            },
+          });
+        } catch (error) {
+          console.warn('[owner-resolve] report failed', error);
+        }
+      }
     },
-    [],
+    [resolveStudioScriptCell],
   );
   // 261023-g4p: the brush script-edition port reads the live Studio seams at
   // event time through this render-body ref (temporaryEraseDepsRef precedent)
@@ -2055,15 +2457,35 @@ export function PhysicsPaintStudio() {
       return;
     }
     if (activeModule.peek() === 'brush' && tool === 'move') {
+      const scriptFrame = launchContextRef.current?.startFrame ?? 0;
       // 261023-j5b: Move entry is a capture point — carry the frame's paint
       // globals so the faithful rebake reproduces the painted look.
       flushBrushScriptFrame(
-        launchContextRef.current?.startFrame ?? 0,
+        scriptFrame,
         activeEngine.getStrokes(),
         activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),
       );
+      // quick-261026-odd (empty-script gate): demand-attach before arming. A
+      // navigation may have refused hydration (or never ran: launch), leaving
+      // the engine empty while a key-bound script exists. Attach it HERE — the
+      // order-free seam — so an enabled Move always has handles. The key gate
+      // in attemptBrushScriptHydration refuses legacy/foreign-key rows.
+      if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) {
+        const scriptCell = resolveStudioScriptCell(scriptFrame);
+        attemptBrushScriptHydration(activeEngine, {
+          frame: scriptFrame,
+          keyId: scriptCell !== null && scriptCell.kind === 'real' ? scriptCell.keyId : null,
+          destinationKind: scriptCell?.kind ?? 'none',
+          brushModuleActive: true,
+          wasPlaying: false,
+          scrubActive: false,
+        });
+      }
       // DEV-only: the app writes the Move provenance report to /tmp.
       captureMoveProvenanceNow('move-entry');
+      // Defense in depth: never arm Move without a live ledger — the overlay
+      // would render no handles and every gesture would be dead.
+      if (!engineHoldsBrushScriptFrame(activeEngine, scriptFrame) && !engineHoldsBrushMoveStrokes()) return;
       selectToolEngine(tool, physicsMode);
       activeEngine.setStrokeLabelsSuppressed(true);
       activeEngine.setCursorVisible(false);
@@ -2072,7 +2494,7 @@ export function PhysicsPaintStudio() {
     activeEngine.setStrokeLabelsSuppressed(false);
     activeEngine.setCursorVisible(true);
     selectToolEngine(tool, physicsMode);
-  }, [selectToolEngine, isPhysicalMutationLocked]);
+  }, [engineHoldsBrushMoveStrokes, isPhysicalMutationLocked, resolveStudioScriptCell, selectToolEngine]);
   // quick-261026-odd: the Move law on the EXIT side. When the current key's
   // Brush script empties — a Motion/Static/Reveal bake replaced its records, a
   // delete, or an explicit navigation to a pixel-only key — a persistent Move
@@ -2782,6 +3204,20 @@ export function PhysicsPaintStudio() {
         acceptedSourceRevision: accepted.acceptedRevision,
       });
     }
+    // 261026 ordinary-key durable base: a promoted key is seeded with the base
+    // frame, so record the SAME base the first capture will use (clone =
+    // previous key's paint, blank = known-empty). Without this, the first
+    // script bake on a promoted key would fail closed as UNKNOWN.
+    if (!aquarelleDurableBaseByKeyRef.current.has(created.keyId)) {
+      const promotedBase = baseKind === 'clone' ? new Uint8Array(baseFrame.bytes) : null;
+      aquarelleDurableBaseByKeyRef.current.set(created.keyId, promotedBase);
+      recordAquarelleRenderSplitEvent('durable-base-record', {
+        appFrame: created.appFrame,
+        keyId: created.keyId,
+        recorded: true,
+        source: baseKind === 'clone' ? 'promotion-clone' : 'promotion-blank',
+      }, promotedBase ? { baseInk: promotedBase } : undefined);
+    }
     return { ok: true, keyId: created.keyId, appFrame: created.appFrame, blankFrame: baseFrame };
   };
 
@@ -2896,9 +3332,79 @@ export function PhysicsPaintStudio() {
     if (source.selectionKind === 'real-key') {
       if (!source.keyId) return null;
       const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), source.keyId);
-      return record?.appFrame === source.appFrame
-        ? { keyId: record.keyId, appFrame: record.appFrame }
-        : null;
+      if (!record) return null;
+      // 261026 axis 1 (watercolor-loop-render-split): projection cells are built
+      // only from realKeyRecords and group overrides live in
+      // groupOverrideRecords, so getSource().keyId stays the underlying SOURCE
+      // key on a group occurrence. Map the instance frame through the lifecycle
+      // classifier: an override publishes to ITS key, a source occurrence
+      // publishes to the sourceKeyId the route creates a new override from.
+      // Generated occurrences and gaps fail closed. Never publish a record's
+      // own appFrame — an override record carries the phase frame, so the old
+      // equality check refused every repeat instance.
+      const document = physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId());
+      if (!document) return null;
+      const target = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame: source.appFrame });
+      if (target.kind === 'ordinary-key') {
+        if (target.keyId !== source.keyId) return null;
+        // 261026 ordinary-key regression: a script edit must never REPLACE a
+        // key that can carry scriptless cached paint. Resolve the launch-scoped
+        // durable base pinned at this key's first recorded stroke. When the map
+        // has no entry yet, a frame with NO script uses its current display
+        // payload as the base — that payload IS the pre-script cache. A frame
+        // that already has a script but no entry (a REOPENED key) stays
+        // UNKNOWN: the publish fails closed rather than erasing unproven paint.
+        let durableBaseBytes: Uint8Array | null | undefined;
+        if (aquarelleDurableBaseByKeyRef.current.has(target.keyId)) {
+          durableBaseBytes = aquarelleDurableBaseByKeyRef.current.get(target.keyId) ?? null;
+        } else if (
+          // Timeline edits (move/delete/appearance/transform/reorder) re-bake
+          // the RECORDED script; when the map has no entry their base is
+          // genuinely unknown (a reopened key) and must fail closed — the key
+          // record already holds the flattened composite, not the base.
+          !isAquarelleScriptEditInFlight()
+          && getAquarelleEventsForFrame(source.appFrame).length === 0
+        ) {
+          // The key record payload IS the pre-script cache here: the frame has
+          // no aquarelle events, so nothing has re-baked over it.
+          const baseRecord = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), target.keyId);
+          let baseBytes: Uint8Array | null = null;
+          try {
+            baseBytes = baseRecord ? requirePhysicPaintRotoInlineBytes(baseRecord.payload) : null;
+          } catch {
+            baseBytes = null;
+          }
+          if (baseBytes) {
+            durableBaseBytes = new Uint8Array(baseBytes);
+            aquarelleDurableBaseByKeyRef.current.set(target.keyId, durableBaseBytes);
+            recordAquarelleRenderSplitEvent('durable-base-record', {
+              appFrame: source.appFrame,
+              keyId: target.keyId,
+              recorded: true,
+              source: 'prepare-target-key-record',
+            }, { baseInk: durableBaseBytes });
+          }
+        }
+        return {
+          keyId: target.keyId,
+          appFrame: source.appFrame,
+          sourceKeyId: target.keyId,
+          durableBaseKeyId: null,
+          durableBaseBytes,
+        };
+      }
+      if (target.kind === 'source-occurrence') {
+        return target.sourceKeyId === source.keyId
+          ? { keyId: target.sourceKeyId, appFrame: source.appFrame, sourceKeyId: target.sourceKeyId, durableBaseKeyId: target.sourceKeyId }
+          : null;
+      }
+      if (target.kind === 'override') {
+        const sourceKeyId = resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, target.groupId, target.cycleOffset);
+        return sourceKeyId !== null && sourceKeyId === source.keyId
+          ? { keyId: target.keyId, appFrame: source.appFrame, sourceKeyId, durableBaseKeyId: sourceKeyId }
+          : null;
+      }
+      return null;
     }
     if (source.keyId !== null) return null;
 
@@ -2909,9 +3415,19 @@ export function PhysicsPaintStudio() {
       selectionKind: source.selectionKind,
       source: 'auto-key-paint',
     });
-    return promotion.ok
-      ? { keyId: promotion.keyId, appFrame: promotion.appFrame }
-      : null;
+    if (!promotion.ok) return null;
+    // The promotion recorded what the new key was seeded with (cloned previous
+    // paint, or null for a blank key) — the first script bake must multiply
+    // over the SAME base the first capture uses.
+    const promotedBase = aquarelleDurableBaseByKeyRef.current.has(promotion.keyId)
+      ? aquarelleDurableBaseByKeyRef.current.get(promotion.keyId) ?? null
+      : undefined;
+    return {
+      keyId: promotion.keyId,
+      appFrame: promotion.appFrame,
+      durableBaseKeyId: null,
+      durableBaseBytes: promotedBase,
+    };
   };
 
   // JQ0 (261022-jq0): map the three existing rail-selection authorities to the
@@ -3989,9 +4505,16 @@ export function PhysicsPaintStudio() {
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();
-    const destinationKind = launchContext
-      ? physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame]?.kind ?? 'none'
-      : 'no-launch';
+    const destinationCell = launchContext
+      ? physicPaintStore.getRotoPhysicalProjection(launchContext.layerId, studioActiveTrackId())?.cells[frame] ?? null
+      : null;
+    const destinationKind = destinationCell?.kind ?? (launchContext ? 'none' : 'no-launch');
+    // quick-261026-odd (empty-script gate): hydration is bound to the
+    // destination KEY, not the frame number — a retained script may only
+    // attach where its captured identity still owns the cell.
+    const destinationKeyId = destinationCell !== null && destinationCell.kind === 'real'
+      ? destinationCell.keyId
+      : null;
     // A new navigation resets the status capsule: the previous operation's
     // rejection/success text no longer applies once the playhead moves, so the
     // capsule falls back to the ambient frame context ("Empty frame • Frame N").
@@ -4067,6 +4590,7 @@ export function PhysicsPaintStudio() {
         const hydrationRequest: BrushHydrationRequest = {
           frame,
           destinationKind,
+          keyId: destinationKeyId,
           brushModuleActive: activeModule.peek() !== 'watercolor',
           wasPlaying: wasPlaying || rotoCachedPlayback.isActive,
           scrubActive: scrubActiveRef.current,
@@ -4736,6 +5260,31 @@ export function PhysicsPaintStudio() {
             };
           }
         }
+        // debug-watercolor-loop-render-split (DEV ONLY): post-settlement display
+        // truth. `consumeBridgeApplyResult` above already published the deferred
+        // document and ran the reference reconcile, so this sample names the
+        // payload the canvas now resolves for the painted frame.
+        const splitSampleFrame = acceptedSelectedAppFrame ?? currentLaunch?.startFrame ?? currentFrame;
+        captureAquarelleRenderSplitDisplay('bridge-result', splitSampleFrame, {
+          transition,
+          operationId: accepted?.operationId ?? detail?.operationId ?? null,
+          acceptedOperationKind: accepted?.operationKind ?? null,
+          acceptedSelectedAppFrame,
+          acceptedSelectedKeyId,
+          acceptedSelfPromotion,
+          createdSelectedDestination,
+          currentFrame,
+          applyResult: detail === null || detail === undefined
+            ? null
+            : {
+                kind: (detail as { kind?: string }).kind ?? null,
+                ok: (detail as { ok?: boolean }).ok ?? null,
+                error: (detail as { error?: string }).error ?? null,
+                startFrame: (detail as { startFrame?: number }).startFrame ?? null,
+                operationKind: (detail as { operationKind?: string }).operationKind ?? null,
+                acceptedRevision: (detail as { acceptedRevision?: string | null }).acceptedRevision ?? null,
+              },
+        });
       } catch (error) {
         // The parent already committed: the aftermath is bookkeeping. Never let
         // it swallow the settlement ack (the finally below releases the lease)
@@ -5645,6 +6194,9 @@ export function PhysicsPaintStudio() {
           heldArm: temporaryMove.peek(),
         }),
       });
+      // debug-watercolor-loop-render-split (DEV ONLY): the capture -> route ->
+      // settlement -> display report (/tmp/efx-aquarelle-render-split.json).
+      installAquarelleRenderSplitProbe();
     }
     // 261023-g4p: a recreated engine must re-enter the brush script-edition
     // surface. The overlay is MOUNTED independently, but the engine defaults
@@ -5910,6 +6462,12 @@ export function PhysicsPaintStudio() {
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
     const mutationEngine = engineRef.current;
     if (!mutationEngine) return;
+    // 261026 ordinary-key durable base: pin the key's PRE-SCRIPT cache BEFORE
+    // the first event lands — this is the only moment the display still holds
+    // the scriptless paint the later multiply composite must preserve. The
+    // recorder is a no-op when an entry exists or the frame is not an ordinary
+    // key (group frames derive their base from the source key).
+    recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
     try {
       const mutationId = mutationEngine.enqueueRecordedStroke({ primary: paintStroke });
@@ -6022,6 +6580,13 @@ export function PhysicsPaintStudio() {
     const playFrame = launchContextRef.current?.startFrame ?? 0;
     const frameIds = aquarelleStrokesOnFrame(ids, playFrame);
     if (frameIds.length === 0) return false;
+    recordAquarelleRenderSplitEvent('script-move-entry', {
+      playFrame,
+      requestedIds: ids.length,
+      frameIds: frameIds.length,
+      dxPx,
+      dyPx,
+    });
     // The delta crosses from canvas pixels to document UV exactly once.
     const delta = aquarelleEnginePixelDeltaToUv(
       { x: dxPx, y: dyPx },
@@ -6036,6 +6601,12 @@ export function PhysicsPaintStudio() {
       // The recorded timeline IS the script (same replay source as delete).
       aquarelleResetSheetRef.current?.();
       const ok = await rotoScript.applyAquarelleTimeline(getAquarelleEventsForFrame(playFrame));
+      recordAquarelleRenderSplitEvent('script-move-result', {
+        playFrame,
+        ok,
+        events: getAquarelleEventsForFrame(playFrame).length,
+        error: ok ? null : rotoScript.error.peek()?.message ?? null,
+      });
       if (ok) {
         rotoMoveHistory.recordAquarelleScriptEdit(editId);
         setLastError(null);
@@ -6373,17 +6944,93 @@ export function PhysicsPaintStudio() {
   const aquarelleLatestCaptureSeqByFrameRef = useRef<Map<number, number>>(new Map());
   const findCachedRotoDisplayFrameRef = useRef(findCachedRotoDisplayFrame);
   findCachedRotoDisplayFrameRef.current = findCachedRotoDisplayFrame;
-  const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null) => {
+  // 261026 ordinary-key durable base recorder. Called at the FIRST recorded
+  // aquarelle stroke of a key, before the event lands. Only an ordinary key
+  // needs it (group frames use the group source key). The probe records both
+  // the success and the refusal so the next native run can tell them apart.
+  recordAquarelleOrdinaryDurableBaseRef.current = (appFrame) => {
     const launch = launchContextRef.current;
     if (!launch) return;
+    const document = physicPaintStore.getRotoPhysicalDocument(launch.layerId, studioActiveTrackId());
+    if (!document) return;
+    const target = classifyPhysicPaintRotoGroupFrameTarget({ document, appFrame });
+    if (target.kind !== 'ordinary-key') return;
+    if (aquarelleDurableBaseByKeyRef.current.has(target.keyId)) return;
+    // A frame that already carries a script began it in an EARLIER sheet
+    // session (this launch's first stroke always arrives with zero events).
+    // Its current pixels are a flattened composite, not the pre-script base —
+    // recording them would double the earlier strokes on the next bake. Leave
+    // the base UNKNOWN: the script publish fails closed instead.
+    if (getAquarelleEventsForFrame(appFrame).length > 0) {
+      recordAquarelleRenderSplitEvent('durable-base-record', {
+        appFrame,
+        keyId: target.keyId,
+        recorded: false,
+        reason: 'script-already-present',
+      });
+      return;
+    }
+    // The key record payload IS the frame's displayed cache for an ordinary
+    // key (getRotoPhysicalRenderSource returns this payload verbatim).
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, studioActiveTrackId(), target.keyId);
+    let baseBytes: Uint8Array | null = null;
+    try {
+      baseBytes = record ? requirePhysicPaintRotoInlineBytes(record.payload) : null;
+    } catch {
+      baseBytes = null;
+    }
+    if (!baseBytes) {
+      recordAquarelleRenderSplitEvent('durable-base-record', {
+        appFrame,
+        keyId: target.keyId,
+        recorded: false,
+        reason: record ? 'payload-unavailable' : 'record-unavailable',
+      });
+      return;
+    }
+    const bytes = new Uint8Array(baseBytes);
+    aquarelleDurableBaseByKeyRef.current.set(target.keyId, bytes);
+    recordAquarelleRenderSplitEvent('durable-base-record', {
+      appFrame,
+      keyId: target.keyId,
+      recorded: true,
+      source: 'pre-script-key-record',
+    }, { baseInk: bytes });
+    recordAquarelleAlphaProof('durable-base-alpha', {
+      appFrame,
+      keyId: target.keyId,
+    }, { base: bytes }, undefined, { dumpPng: true });
+  };
+  const handleAquarelleCaptureFrame = useCallback((playFrame: number, snapshot: () => HTMLCanvasElement | null) => {
+    const launch = launchContextRef.current;
+    if (!launch) {
+      recordAquarelleRenderSplitEvent('studio-capture-entry', { playFrame, stage: 'no-launch' });
+      return;
+    }
     // The snapshot must stay EAGER: the live layer clears the sheet on frame
     // leave, so a deferred read would commit empty. Awaiting the promotion
     // below therefore happens AFTER the copy.
     const liveAlphaCanvas = snapshot();
-    if (!liveAlphaCanvas) return;
+    if (!liveAlphaCanvas) {
+      recordAquarelleRenderSplitEvent('studio-capture-entry', {
+        playFrame,
+        operationId: launch.operationId,
+        stage: 'snapshot-unavailable',
+      });
+      return;
+    }
     // A cleared sheet still exports an opaque, near-uniform white texture tens
     // of KB large. Never let such a capture take ownership of the frame's cache.
     const ink = measureAquarelleCanvasInk(liveAlphaCanvas);
+    recordAquarelleRenderSplitEvent('studio-capture-entry', {
+      playFrame,
+      operationId: launch.operationId,
+      launchStartFrame: launch.startFrame,
+      stage: ink >= AQUARELLE_MIN_CAPTURE_INK ? 'accepted' : 'ink-gate',
+      ink: Math.round(ink * 100) / 100,
+      minInk: AQUARELLE_MIN_CAPTURE_INK,
+      passesInkGate: ink >= AQUARELLE_MIN_CAPTURE_INK,
+    });
     if (ink < AQUARELLE_MIN_CAPTURE_INK) return;
     const operationId = launch.operationId;
     const seq = ++aquarelleCaptureSeqRef.current;
@@ -6403,10 +7050,18 @@ export function PhysicsPaintStudio() {
     })();
     const runCapture = async () => {
       let cachedBase: RenderedFramePayload | null;
+      let mergeBaseWasFresh = false;
       if (pendingFirstPaintTarget !== null) {
         const promotion = await pendingFirstPaintTarget.promise;
         // Failure policy: the stroke was discarded — never persist it.
-        if (!promotion.ok) return;
+        if (!promotion.ok) {
+          recordAquarelleRenderSplitEvent('capture-base', {
+            playFrame,
+            stage: 'promotion-failed',
+            pendingFirstPaintTarget: true,
+          });
+          return;
+        }
         // A cloned base multiplies the opaque transmittance sheet over the
         // previous key's paint. A blank base must encode the sheet alone:
         // multiply over a transparent base would erase it.
@@ -6414,6 +7069,7 @@ export function PhysicsPaintStudio() {
         aquarelleMergeBaseRef.current = { appFrame: playFrame, base: cachedBase };
       } else {
         if (aquarelleMergeBaseRef.current?.appFrame !== playFrame) {
+          mergeBaseWasFresh = true;
           aquarelleMergeBaseRef.current = {
             appFrame: playFrame,
             base: findCachedRotoDisplayFrameRef.current(playFrame),
@@ -6428,19 +7084,55 @@ export function PhysicsPaintStudio() {
       }
       const currentLaunch = launchContextRef.current;
       if (!currentLaunch || currentLaunch.operationId !== operationId) return;
+      const targetTrackId = studioActiveTrackId();
+      const targetDocument = physicPaintStore.getRotoPhysicalDocument(currentLaunch.layerId, targetTrackId);
+      const targetClassification = targetDocument
+        ? classifyPhysicPaintRotoGroupFrameTarget({ document: targetDocument, appFrame: playFrame })
+        : null;
+      const identityKey = targetDocument ? resolveRotoLivePixelIdentityKey(targetDocument, playFrame) : null;
+      captureAquarelleRenderSplitDisplay('capture-base', playFrame, {
+        sessionBase: {
+          fresh: mergeBaseWasFresh,
+          pinnedAppFrame: aquarelleMergeBaseRef.current?.appFrame ?? null,
+        },
+        pendingFirstPaintTarget: pendingFirstPaintTarget !== null,
+        classification: summarizePhysicPaintRotoGroupFrameTarget(targetClassification),
+        identityKey,
+        mergeBlend: 'multiply',
+      }, cachedBase);
       // The snapshot is an eager canvas copy, so a retry can reuse it after the
       // live sheet was cleared by the frame change.
-      const enqueue = () => rotoPersistenceRef.current.captureLivePixels({
-        layerId: launch.layerId,
-        appFrame: playFrame,
-        liveAlphaCanvas,
-        cachedBase,
-        // A5: MODE.transparent is opaque transmittance. Multiply matches the
-        // live CSS seam — white (no pigment) leaves the base untouched, pigment
-        // tints it. Source-over would cover the base with the full sheet.
-        mergeBlend: 'multiply',
-        size: { width: canvasWidth, height: canvasHeight },
-      });
+      const enqueue = (attempt = 1) => {
+        const work = rotoPersistenceRef.current.captureLivePixels({
+          layerId: launch.layerId,
+          appFrame: playFrame,
+          liveAlphaCanvas,
+          cachedBase,
+          // A5: MODE.transparent is opaque transmittance. Multiply matches the
+          // live CSS seam — white (no pigment) leaves the base untouched, pigment
+          // tints it. Source-over would cover the base with the full sheet.
+          mergeBlend: 'multiply',
+          size: { width: canvasWidth, height: canvasHeight },
+        });
+        recordAquarelleRenderSplitEvent('capture-enqueue', {
+          playFrame,
+          attempt,
+          basePresent: cachedBase !== null,
+          identityKey,
+          classification: summarizePhysicPaintRotoGroupFrameTarget(targetClassification),
+        });
+        void work.then((ok) => {
+          recordAquarelleRenderSplitEvent('capture-work-result', { playFrame, attempt, ok });
+        }).catch((error) => {
+          recordAquarelleRenderSplitEvent('capture-work-result', {
+            playFrame,
+            attempt,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        return work;
+      };
       const work = enqueue();
       // 261019-mj2 cache-loss: the frame-leave flush runs BEFORE the promotion
       // promise resolves, so a promotion-deferred capture enqueues after that
@@ -6466,7 +7158,7 @@ export function PhysicsPaintStudio() {
         if (aquarelleLatestCaptureSeqByFrameRef.current.get(playFrame) !== seq) return;
         const retryLaunch = launchContextRef.current;
         if (!retryLaunch || retryLaunch.operationId !== operationId) return;
-        const retriedWork = enqueue();
+        const retriedWork = enqueue(2);
         flushDeferredPromotionCapture();
         void retriedWork.catch((error) => {
           console.error('[PhysicsPaintStudio] Aquarelle cache retry failed', error);
@@ -6518,7 +7210,8 @@ export function PhysicsPaintStudio() {
     // The confirmation may sit open while the window moves on (frame change,
     // track switch): a stale frame must never purge a different key.
     if (frame !== (launchContextRef.current?.startFrame ?? -1)) return;
-    const owner = resolveFrameScriptOwner(frame, {
+    const scriptCell = resolveStudioScriptCell(frame);
+    const owner = resolveFrameScriptOwner(frame, scriptCell, {
       active: activeModule.peek() === 'brush',
       strokeCount: engine.getStrokeCount(),
     });
@@ -6560,6 +7253,10 @@ export function PhysicsPaintStudio() {
     // Committed: both stores lose the key's script (Memory-tab per-key
     // semantics + snapshot cleanup), then the ownership signal republishes.
     purgeMemoryScriptFrame(frame);
+    // 261026 ordered with the raster: the rastered pixels ARE the key's full
+    // content now, so a pinned pre-script base is stale — the next stroke must
+    // re-pin the rastered display as the new durable base.
+    if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);
     applyFrameModuleState(frame);
   };
   const handleRasterKeyRequest = useCallback((frame: number) => {

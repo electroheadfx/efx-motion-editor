@@ -34,6 +34,7 @@ import {
   proposePhysicPaintRotoDeleteGroupFrame,
   proposePhysicPaintRotoGroupFramePaint,
   proposePhysicPaintRotoRegenerateGroup,
+  resolvePhysicPaintRotoGroupSourceKeyIdAtOffset,
 } from './physicsPaintRotoGroupLifecycle';
 import {
   derivePhysicPaintRotoLoopRanges,
@@ -4526,6 +4527,26 @@ describe('Phase 43.2 source-phase Group lifecycle proposals', () => {
       appFrame: 1,
       missingSourceKeyIds: ['missing-0', 'missing-1'],
     });
+  });
+
+  // 261026 axis 2 (watercolor-loop-render-split): the durable pixel-only base
+  // for a group-phase script re-bake is the group's SOURCE key at the EXACT
+  // cycle offset. A generated-phase offset has no exact source (fail closed).
+  it('resolves the durable group source key at an EXACT cycle offset only', () => {
+    const document = lifecycleDocument();
+    expect(resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, 'group-a', 0)).toBe('A0');
+    expect(resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, 'group-a', 2)).toBe('A1');
+    expect(resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, 'group-a', 1)).toBeNull();
+    expect(resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, 'group-a', 99)).toBeNull();
+    expect(resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, 'group-a', -1)).toBeNull();
+    expect(resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(document, 'missing-group', 0)).toBeNull();
+
+    const unresolved = lifecycleDocument(
+      [lifecycleGroup({ sourceKeyIds: ['A0', 'missing-1'], frameOverrides: [] })],
+      [lifecycleRecord('A0', 0)],
+      [],
+    );
+    expect(resolvePhysicPaintRotoGroupSourceKeyIdAtOffset(unresolved, 'group-a', 0)).toBeNull();
   });
 
   it('deletes one source phase by normalized range authority and cleans only its final override reference', () => {

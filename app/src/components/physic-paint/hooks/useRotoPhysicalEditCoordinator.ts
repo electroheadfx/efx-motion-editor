@@ -107,6 +107,12 @@ import type {
   RotoPhysicalEditPresentation,
   RotoPhysicalEditSnapshot,
 } from '../roto/rotoCoordinatorPorts';
+// debug-watercolor-loop-render-split (DEV ONLY): names the dispatch and
+// settlement stage of a paint-group-frame edit. Installs nothing in production.
+import {
+  recordAquarelleRenderSplitEvent,
+  summarizeRenderedFrame,
+} from '../performance/aquarelleRenderSplitCapture';
 
 const PHYSICAL_EDIT_TIMEOUT_MS = 5000;
 const PHYSICAL_EDIT_PENDING_MESSAGE = 'Applying Roto physical edit...';
@@ -1373,6 +1379,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         };
         leaseRef.current = null;
       }
+      recordAquarelleRenderSplitEvent('physical-finalize-accepted', {
+        operationId: pending.operationId,
+        operationKind: pending.operationKind,
+        layerId: pending.layerId,
+        acceptedRevision,
+        cursorAppFrame: after.currentAppFrame,
+        selectedKeyId: after.selectedKeyId,
+        selectedAppFrame: after.selectedAppFrame,
+        affectedFrames: [...affectedFrames],
+      });
       clearPendingOnce();
     },
     [captureSnapshot, clearPendingOnce],
@@ -1446,6 +1462,15 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         const detail = error instanceof Error ? error.message : String(error);
         portsRef.current.status.logDiagnostic(`Roto physical edit failed (${reason}): ${detail}`);
       }
+      recordAquarelleRenderSplitEvent('physical-finalize-failed', {
+        operationId: pending.operationId,
+        operationKind: pending.operationKind,
+        layerId: pending.layerId,
+        reason,
+        parentDidNotCommit,
+        restored,
+        message: error === undefined ? null : error instanceof Error ? error.message : String(error),
+      });
       clearPendingOnce();
     },
     [clearPendingOnce, restoreSnapshot],
@@ -1693,6 +1718,22 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
           || replayTarget !== undefined
           || !Number.isSafeInteger(groupFramePaintInput.appFrame)
           || groupFramePaintInput.renderedPayload.appFrame !== groupFramePaintInput.appFrame) {
+          recordAquarelleRenderSplitEvent('physical-dispatch-refused', {
+            stage: 'validate',
+            appFrame: groupFramePaintInput?.appFrame ?? null,
+            groupId: groupFramePaintInput?.groupId ?? null,
+            overrideKeyId: groupFramePaintInput?.overrideKeyId ?? null,
+            checks: {
+              inputPresent: groupFramePaintInput !== null,
+              proposalAbsent: proposal === null,
+              intentAbsent: intent === undefined,
+              historyAbsent: historyProvenance === undefined,
+              replayAbsent: replayTarget === undefined,
+              appFrameInteger: groupFramePaintInput !== null && Number.isSafeInteger(groupFramePaintInput.appFrame),
+              payloadFrameMatches: groupFramePaintInput !== null && groupFramePaintInput.renderedPayload.appFrame === groupFramePaintInput.appFrame,
+            },
+            payloadFrame: groupFramePaintInput === null ? null : summarizeRenderedFrame(groupFramePaintInput.renderedPayload),
+          });
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
           return false;
         }
@@ -1897,6 +1938,25 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             // studio-blend-off-corruption: name the failing sub-checks so the
             // live capture says WHICH comparison went stale (doc revision vs
             // ports records vs selection identity/frame), not just that one did.
+            if (isGroupFramePaint) {
+              recordAquarelleRenderSplitEvent('physical-dispatch-refused', {
+                stage: 'stale-document',
+                appFrame: groupFramePaintInput?.appFrame ?? null,
+                groupId: groupFramePaintInput?.groupId ?? null,
+                overrideKeyId: groupFramePaintInput?.overrideKeyId ?? null,
+                expectedRevision,
+                checks: {
+                  capacity: currentDocument.capacity === capacity,
+                  documentRevision: currentDocument.revision === expectedRevision,
+                  computedRevision: documentRevision === expectedRevision,
+                  recordsEqual: recordsEqual(currentDocument.realKeyRecords, currentRecords),
+                  interpolationEnabled: currentDocument.interpolation.enabled === currentInterpolation.enabled,
+                  interpolationMode: currentDocument.interpolation.mode === currentInterpolation.mode,
+                  selection: currentDocument.selectedKeyId === currentSelectedKeyIdForEdit,
+                  cursor: currentDocument.cursorAppFrame === currentAppFrameForEdit,
+                },
+              });
+            }
             portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
             portsRef.current.status.logDiagnostic('Group lifecycle physical document became stale before proposal staging.');
             clearPendingOnce();
@@ -1911,6 +1971,16 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
               renderedPayload: groupFramePaintInput.renderedPayload,
             });
             if (!proposed.ok) {
+              recordAquarelleRenderSplitEvent('physical-dispatch-refused', {
+                stage: 'proposal',
+                reason: proposed.reason,
+                appFrame: groupFramePaintInput.appFrame,
+                groupId: groupFramePaintInput.groupId,
+                overrideKeyId: groupFramePaintInput.overrideKeyId,
+                payloadFrame: summarizeRenderedFrame(groupFramePaintInput.renderedPayload),
+                documentRevision: currentDocument.revision,
+                expectedRevision,
+              });
               portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_BARRIER_MESSAGE);
               portsRef.current.status.logDiagnostic(`Group Paint physical proposal rejected: ${proposed.reason}`);
               clearPendingOnce();
@@ -2372,8 +2442,38 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
             // until the revision hash covers record content.
             records: payload.records,
           };
+          if (isGroupFramePaint) {
+            recordAquarelleRenderSplitEvent('physical-dispatch', {
+              operationId,
+              operationKind: input.operationKind,
+              appFrame: groupFramePaintInput?.appFrame ?? null,
+              groupId: groupFramePaintInput?.groupId ?? null,
+              overrideKeyId: groupFramePaintInput?.overrideKeyId ?? null,
+              payloadFrame: summarizeRenderedFrame(groupFramePaintInput?.renderedPayload),
+              recordCount: payload.records.length,
+              groupOverrideCount: payload.groupOverrideRecords?.length ?? 0,
+              expectedRevision,
+              stagedRevision: stagedRevision,
+            });
+          }
           await portsRef.current.bridge.sendPhysicalEditPayload(wirePayload);
+          if (isGroupFramePaint) {
+            recordAquarelleRenderSplitEvent('physical-dispatch-sent', {
+              operationId,
+              operationKind: input.operationKind,
+              appFrame: groupFramePaintInput?.appFrame ?? null,
+            });
+          }
         } catch (error) {
+          if (isGroupFramePaint) {
+            recordAquarelleRenderSplitEvent('physical-dispatch-refused', {
+              stage: 'transport',
+              operationKind: input.operationKind,
+              appFrame: groupFramePaintInput?.appFrame ?? null,
+              groupId: groupFramePaintInput?.groupId ?? null,
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
           finalizeFailed(pending, before, 'transport', error);
           return false;
         }
@@ -2383,6 +2483,13 @@ export function useRotoPhysicalEditCoordinator<EngineState = EfxPaintDocument>(
         timeoutRef.current = window.setTimeout(() => {
           const pending = pendingRef.current;
           if (!pending || pending.operationId !== operationId || !beforeRef.current) return;
+          if (isGroupFramePaint) {
+            recordAquarelleRenderSplitEvent('physical-timeout', {
+              operationId,
+              operationKind: input.operationKind,
+              appFrame: groupFramePaintInput?.appFrame ?? null,
+            });
+          }
           finalizeFailed(pending, beforeRef.current, 'timeout', PHYSICAL_EDIT_TIMEOUT_MESSAGE);
           portsRef.current.status.setConciseMessage(PHYSICAL_EDIT_TIMEOUT_MESSAGE);
         }, PHYSICAL_EDIT_TIMEOUT_MS);

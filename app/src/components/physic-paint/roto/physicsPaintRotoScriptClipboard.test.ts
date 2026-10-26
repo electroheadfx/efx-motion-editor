@@ -1522,6 +1522,67 @@ describe('261022-pim applyAquarelleTimeline', () => {
   });
 });
 
+// 261026 axis 1 (watercolor-loop-render-split): on a group occurrence the
+// publish key is the LIFECYCLE target (the override key, or the source key the
+// route creates a new override from) while the mounted projection cell stays
+// the underlying SOURCE key. The async currency guard must compare the
+// projection identity, and the aquarelle port must receive the durable base.
+describe('261026 axis 1 lifecycle-aware script target', () => {
+  it('accepts an override target when the mounted projection source is unchanged', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    test.setPrepareTarget(async () => ({
+      keyId: 'override-key',
+      appFrame: 4,
+      sourceKeyId: 'key-4',
+      durableBaseKeyId: 'key-4',
+    }));
+
+    const applying = test.controller.applyAquarelleTimeline([aquarelleStrokeEvent(81, 900)]);
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    expect(port.calls[0]!.target).toMatchObject({
+      keyId: 'override-key',
+      appFrame: 4,
+      sourceKeyId: 'key-4',
+      durableBaseKeyId: 'key-4',
+    });
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+    expect(test.controller.status.value).toBe('Applied');
+  });
+
+  it('still refuses when the mounted projection source changes while the target resolves', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    test.setPrepareTarget(async () => {
+      test.setSource({ selectionKind: 'real-key', layerId: null, keyId: 'key-5', appFrame: 4 });
+      return { keyId: 'override-key', appFrame: 4, sourceKeyId: 'key-4', durableBaseKeyId: 'key-4' };
+    });
+
+    await expect(test.controller.applyAquarelleTimeline([aquarelleStrokeEvent(82, 901)])).resolves.toBe(false);
+    expect(port.calls).toHaveLength(0);
+    expect(test.controller.error.value?.code).toBe('apply-empty-target-failed');
+  });
+
+  it('keeps replace semantics for an ordinary target (no durable base)', async () => {
+    const port = gatedAquarellePort();
+    const test = harness([stroke(1)], { applyAquarelleEvents: port.applyAquarelleEvents });
+    test.setPrepareTarget(async () => ({ keyId: 'key-4', appFrame: 4 }));
+
+    const applying = test.controller.applyAquarelleTimeline([aquarelleStrokeEvent(83, 902)]);
+    await flushMicrotasks(20);
+
+    expect(port.calls).toHaveLength(1);
+    expect(port.calls[0]!.target.durableBaseKeyId).toBeUndefined();
+
+    port.resolve(true);
+    await expect(applying).resolves.toBe(true);
+  });
+});
+
 // 261022-ujp: the capture projection follows the LIVE payload timeline, so a
 // stroke stack step survives Apply Script (and Save). The captured brush set
 // only decides WHICH strokes are projected; their order comes from the
