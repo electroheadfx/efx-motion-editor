@@ -172,9 +172,10 @@ describe('plan: every refusal is fail-closed', () => {
     expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
   });
 
-  it('refuses an empty projection even when the entry says complete', () => {
+  it('an empty capture stores no entry, so hydration refuses with no-entry', () => {
     captureBrushScriptForFrame(3, []);
-    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'empty' });
+    expect(getBrushScriptFrameEntry(3)).toBeUndefined();
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'no-entry' });
   });
 
   it('refuses generated, none and no-launch destinations', () => {

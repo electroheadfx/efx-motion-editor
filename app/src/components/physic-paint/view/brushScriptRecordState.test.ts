@@ -243,6 +243,13 @@ describe('aquarelle guide proxies are never Brush script content', () => {
     expect(getBrushScriptFrameEntry(5)).toBeUndefined();
   });
 
+  it('adopt refuses a guide-only ledger — the Duplicate seam captures no script', () => {
+    recordAquarelleStroke(7, aquarelleStroke(7, 5));
+
+    expect(adoptBrushScriptFrameAsComplete(5, [stroke(7)])).toBeNull();
+    expect(getBrushScriptFrameEntry(5)).toBeUndefined();
+  });
+
   it('restore seeds only non-guide groups and skips a guide-only frame', () => {
     recordAquarelleStroke(7, aquarelleStroke(7, 5));
 
@@ -269,7 +276,8 @@ describe('aquarelle guide proxies are never Brush script content', () => {
   });
 
   it('purge removes guide groups from an already-captured frame', () => {
-    // Direct capture models a snapshot written before the flush guard existed.
+    // Direct capture models a snapshot written before the flush guard existed:
+    // stroke 7 is captured while the registry does not know it yet.
     captureBrushScriptForFrame(5, [
       { primary: stroke(1), continuations: [] },
       { primary: stroke(7), continuations: [] },
@@ -279,8 +287,9 @@ describe('aquarelle guide proxies are never Brush script content', () => {
     expect(purgeAquarelleGuideGroups(5)).toBe(1);
     expect(getBrushScriptForFrame(5).map((group) => group.primary.mutationId)).toEqual([1]);
 
+    // The single-funnel guard refuses a guide-only capture outright: no entry
+    // is ever stored, so there is nothing left for the purge to remove.
     captureBrushScriptForFrame(6, [{ primary: stroke(7), continuations: [] }]);
-    expect(purgeAquarelleGuideGroups(6)).toBe(1);
     expect(getBrushScriptFrameEntry(6)).toBeUndefined();
     expect(purgeAquarelleGuideGroups(6)).toBe(0);
   });

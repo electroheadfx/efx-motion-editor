@@ -114,7 +114,7 @@ export function isAquarelleGuideGroup(group: Readonly<RecordedStrokeGroup>): boo
 }
 
 /** Normalize FIRST, then drop guide groups so their continuations leave with them. */
-function normalizeBrushGroupsWithoutGuides(
+export function normalizeBrushScriptGroups(
   strokes: readonly PaintStroke[],
 ): readonly Readonly<RecordedStrokeGroup>[] {
   return normalizeLogicalBrushes(strokes).filter((group) => !isAquarelleGuideGroup(group));
@@ -256,7 +256,11 @@ function captureEntry(
   complete?: boolean,
   paintSettings?: PaintRenderSettings | null,
 ): BrushScriptFrameEntry {
-  const frozen = freezeRecordedStrokeGroups(groups);
+  // SINGLE-FUNNEL GUARD: every store write lands here, so no capture path
+  // (flush, adopt, restore, remap) may ever retain a Water color guide proxy
+  // as Brush script content — even when the caller forgot to filter.
+  const scriptGroups = groups.filter((group) => !isAquarelleGuideGroup(group));
+  const frozen = freezeRecordedStrokeGroups(scriptGroups);
   const previous = brushScriptFrames.get(frame);
   const entry: BrushScriptFrameEntry = Object.freeze({
     frame,
@@ -271,6 +275,14 @@ function captureEntry(
     // 261023-j5b: sticky paint globals — the first non-null snapshot wins.
     paintSettings: previous?.paintSettings ?? paintSettings ?? null,
   });
+  if (frozen.length === 0) {
+    // A guide-only (or empty) capture is not Brush script content: it never
+    // creates an entry and it drops any stale one. The purge marker stays —
+    // this is not an explicit user edit.
+    brushScriptFrames.delete(frame);
+    dirtyBrushScriptFrames.delete(frame);
+    return entry;
+  }
   brushScriptFrames.set(frame, entry);
   dirtyBrushScriptFrames.delete(frame);
   // quick-261023-ors: a real capture is authoritative — the purge marker lifts.
@@ -295,7 +307,7 @@ export function flushBrushScriptFrame(
   // second leg the engine's stale strokes would resurrect the purged script
   // on the very next frame leave.
   if (!wasDirty && (brushScriptFrames.has(frame) || purgedBrushScriptFrames.has(frame))) return false;
-  const groups = normalizeBrushGroupsWithoutGuides(strokes);
+  const groups = normalizeBrushScriptGroups(strokes);
   if (groups.length === 0) {
     // An emptied frame must not keep a ghost row (undo-all / clear without a
     // completed 'clear' mutation).
@@ -322,7 +334,7 @@ export function adoptBrushScriptFrameAsComplete(
   paintSettings?: PaintRenderSettings | null,
 ): BrushScriptFrameEntry | null {
   if (strokes === null) return null;
-  const groups = normalizeLogicalBrushes(strokes);
+  const groups = normalizeBrushScriptGroups(strokes);
   if (groups.length === 0) return null;
   arrivalBaseFrames.delete(frame);
   return captureBrushScriptForFrame(frame, groups, true, paintSettings);

@@ -523,6 +523,12 @@ export function createStudioScriptSnapshotController(
         deps.getWatercolorEvents(),
         deps.getBrushFrames(),
       );
+      // A guide proxy is engine-1 render input, never Brush script content.
+      // The codec never carries the guideProxy flag, so a persisted guide row
+      // would restore as an ordinary Brush stroke and resurrect Move handles
+      // over a Water color key. The registry was seeded by this generation's
+      // restore, so the filter can identify them here too.
+      content.brushFrames = withoutAquarelleGuideFrames(content.brushFrames);
       if (
         !allowEmpty
         && content.watercolorEvents.length === 0

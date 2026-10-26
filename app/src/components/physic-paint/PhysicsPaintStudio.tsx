@@ -129,6 +129,10 @@ import { installDh1CaptureHook } from './performance/depositSpeckleCapture';
 import { installLookDeltaCapture } from './performance/lookDeltaCapture';
 import { installScriptMemoryProbe } from './performance/scriptMemoryProbe';
 import {
+  captureMoveProvenanceNow,
+  installMoveProvenanceProbe,
+} from './performance/moveProvenanceCapture';
+import {
   readStudioScriptMemorySnapshot,
   type StudioScriptMemoryKeyRail,
   type StudioScriptMemoryRailContext,
@@ -145,7 +149,7 @@ import {
 import { usePhysicsPaintWorkflowIntegration } from './hooks/usePhysicsPaintWorkflowIntegration';
 import { useRotoPlaybackSettingsController } from './hooks/useRotoPlaybackSettingsController';
 import { useRotoScriptClipboardController } from './hooks/useRotoScriptClipboardController';
-import { normalizeLogicalBrushes, type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
+import { type RotoScriptPhysicalTarget, type RotoScriptSourceSnapshot } from './roto/physicsPaintRotoScriptClipboard';
 import { copyAquarelleScriptToFrame, runRotoDuplicateWithScript, waitForRotoDuplicateSourceFrame } from './roto/physicsPaintRotoDuplicateScript';
 import { buildRotoScriptApplyRefusalMessage } from './roto/physicsPaintRotoScriptApplyRefusal';
 import { buildReplayProposal, snapshotRevision, useRotoPhysicalEditHistory } from './hooks/useRotoPhysicalEditHistory';
@@ -196,6 +200,7 @@ import {
   dropNonKeyCellBrushScript,
   flushBrushScriptFrame,
   getBrushScriptFrameEntries,
+  normalizeBrushScriptGroups,
   noteBrushScriptArrivalBase,
   pruneBrushScriptsFromFrame,
   purgeAllBrushScriptFrames,
@@ -1974,6 +1979,8 @@ export function PhysicsPaintStudio() {
         activeEngine.getStrokes(),
         activeEngine.getFramePaintSettings() ?? activeEngine.getPaintRenderSettings(),
       );
+      // DEV-only: the app writes the Move provenance report to /tmp.
+      captureMoveProvenanceNow('move-entry');
       selectToolEngine(tool, physicsMode);
       activeEngine.setStrokeLabelsSuppressed(true);
       activeEngine.setCursorVisible(false);
@@ -2979,10 +2986,12 @@ export function PhysicsPaintStudio() {
             captureBrushScript: () => {
               const engine = engineRef.current;
               if (!engine) return null;
-              // normalizeLogicalBrushes is the SAME engine-strokes projection
-              // every script capture uses (clones points/params, groups
-              // continuations) — the duplicate starts from the authored script.
-              const brushes = normalizeLogicalBrushes(engine.getStrokes());
+              // normalizeBrushScriptGroups is the SAME engine-strokes
+              // projection every script capture uses (clones points/params,
+              // groups continuations) — minus Water color guide proxies,
+              // which are render input and must never be duplicated as a
+              // Brush script (they would paint as thin visible lines).
+              const brushes = normalizeBrushScriptGroups(engine.getStrokes());
               if (brushes.length === 0) return null;
               const launch = launchContextRef.current;
               return {
@@ -5493,6 +5502,36 @@ export function PhysicsPaintStudio() {
     // window.__EFX_SCRIPT_MEMORY__.snapshot(). Installs nothing in a production
     // build; no effect, no signal, no component state.
     if (import.meta.env.DEV) installScriptMemoryProbe(readyEngine, () => launchContextRef.current?.startFrame ?? 0);
+    // quick-261026-odd (DEV ONLY): Move provenance report. Written to
+    // /tmp/efx-move-provenance.json on Move entry and on demand through
+    // window.__EFX_MOVE_PROVENANCE__(). Installs nothing in production.
+    if (import.meta.env.DEV) {
+      installMoveProvenanceProbe({
+        getIdentity: () => {
+          const launch = launchContextRef.current;
+          return {
+            projectId: launch?.project?.projectId ?? null,
+            layerId: launch?.layerId ?? null,
+            activeTrackId: studioActiveTrackId(),
+            snapshotTrackId: studioScriptSnapshotIdentityRef.current?.trackId ?? null,
+          };
+        },
+        getFrame: () => launchContextRef.current?.startFrame ?? 0,
+        getCellKind: () => {
+          const launch = launchContextRef.current;
+          if (!launch) return 'no-launch';
+          const frame = launch.startFrame ?? 0;
+          return physicPaintStore
+            .getRotoPhysicalProjection(launch.layerId, studioActiveTrackId())
+            ?.cells[frame]?.kind ?? 'none';
+        },
+        getModule: () => activeModule.peek(),
+        getTool: () => settingsRef.current.tool,
+        getMoveAvailable: () => moveAvailable.peek(),
+        getOwner: () => frameScriptOwner.peek(),
+        getEngine: () => engineRef.current,
+      });
+    }
     // 261023-g4p: a recreated engine must re-enter the brush script-edition
     // surface. The overlay is MOUNTED independently, but the engine defaults
     // are fresh (labels + cursor on) — re-apply the suppression and project
