@@ -3004,10 +3004,10 @@ describe('261022-pim watercolor stroke select surface', () => {
     expect(studio).not.toContain('runPendingRailScriptCleanup');
     expect(studio).not.toContain('studioScriptSnapshot.dropRetainedForFrames');
     expect(studio).not.toContain('studioScriptSnapshot.markRailCleanupDone');
-    // The script publish targets the DISPLAYED key (a frame override when the
-    // loop/Group frame has one), so the render and the script cannot split.
-    expect(studio).toContain('const displayed = physicPaintStore.getRotoPhysicalRenderSource(');
-    expect(studio).toContain("const renderKeyId = displayed?.kind === 'real' ? displayed.keyId : frame.keyId;");
+    // REVERTED: a stroke-only re-bake must NOT publish to the displayed
+    // override key — that erased the cached rail paint. The proper fix is a
+    // base merge, not a target swap.
+    expect(studio).not.toContain("const renderKeyId = displayed?.kind === 'real' ? displayed.keyId : frame.keyId;");
     expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
     expect(studio).toContain('if (moveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');

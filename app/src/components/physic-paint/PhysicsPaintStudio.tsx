@@ -1626,16 +1626,10 @@ export function PhysicsPaintStudio() {
           grainScale: bgMeta.grainScale ?? 1,
         },
         publish: async (frame) => {
-          // The canvas shows the Loop/Group frame override when one exists,
-          // even though the timeline cell still reports the source key.
-          // Publishing to the source key is refused as a stale target, which
-          // left a re-baked script unrendered (phantom strokes over old paint).
-          const displayed = physicPaintStore.getRotoPhysicalRenderSource(
-            launchContext?.layerId ?? '',
-            studioActiveTrackId(),
-            frame.appFrame,
-          );
-          const renderKeyId = displayed?.kind === 'real' ? displayed.keyId : frame.keyId;
+          // REVERTED (2026-10-26): publishing this stroke-only re-bake to the
+          // displayed override key made the script edit succeed over the rail's
+          // cached paint and erased it. Do NOT retarget this publish until the
+          // re-bake composites the script layer over the pixel-only base.
           const ok = await rotoPersistence.upsertCachedFrame(
             { frameIndex: 0, appFrame: frame.appFrame, bytes: frame.bytes, width: frame.width, height: frame.height },
             false,
@@ -1645,7 +1639,7 @@ export function PhysicsPaintStudio() {
             undefined,
             launchContext?.operationId,
             bgMeta,
-            renderKeyId,
+            frame.keyId,
           );
           // aquarelle-apply-invisible: a cache-only publish never reaches the
           // display — the live aquarelle sheet is empty and the engine-1
