@@ -5,7 +5,7 @@
 //  One file holds BOTH Studio script stores for one
 //  project/layer/track key, so restore is a single disk read:
 //
-//    magic 'SNP1' (4) | u16 version=1 | u16 flags=0
+//    magic 'SNP1' (4) | u16 version=2 | u16 flags=0 | u8 railCleanupDone
 //    u16 + UTF-8 projectId
 //    u16 + UTF-8 layerId
 //    u16 + UTF-8 trackId
@@ -42,8 +42,15 @@ import type { RecordedStrokeGroup } from '../view/recordedStrokeGroups';
 /** ASCII magic carried by every SNAP buffer. */
 export const STUDIO_SCRIPT_SNAPSHOT_MAGIC = 'SNP1';
 
-/** The one container version this module encodes and accepts. */
-export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 1;
+/**
+ * v2 adds the durable rail-cleanup marker as a container byte (after the flags
+ * word, before the identity strings). Per project/layer/track, it survives
+ * window restarts and file rewrites — the in-webview localStorage marker that
+ * preceded it was not durable here. v1 files stay readable (flag = false).
+ */
+export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 2;
+
+const STUDIO_SCRIPT_SNAPSHOT_VERSIONS = new Set([1, STUDIO_SCRIPT_SNAPSHOT_VERSION]);
 
 /**
  * The brush section's own version (it evolves independently).
@@ -107,11 +114,15 @@ export interface StudioScriptSnapshotBrushFrame {
 export interface StudioScriptSnapshotEncodeInput extends StudioScriptSnapshotIdentity {
   watercolorEvents: readonly AquarellePayloadEvent[];
   brushFrames?: readonly StudioScriptSnapshotBrushFrame[];
+  /** v2: the durable one-time rail-cleanup marker. Absent = not done yet. */
+  railCleanupDone?: boolean;
 }
 
 export interface StudioScriptSnapshotDecodeResult {
   watercolorEvents: AquarellePayloadEvent[];
   brushFrames: StudioScriptSnapshotBrushFrame[];
+  /** v2: true once the rail cleanup ran for this project/layer/track. */
+  railCleanupDone: boolean;
 }
 
 const CONTAINER_HEADER_BYTE_LENGTH = 8;
@@ -604,6 +615,7 @@ export function encodeStudioScriptSnapshot(
   }
   writer.u16(STUDIO_SCRIPT_SNAPSHOT_VERSION);
   writer.u16(0); // flags
+  writer.u8(input.railCleanupDone === true ? 1 : 0); // v2 marker
   writer.string(projectId, 'projectId');
   writer.string(layerId, 'layerId');
   writer.string(trackId, 'trackId');
@@ -632,11 +644,14 @@ export function decodeStudioScriptSnapshot(
 
   const reader = new Reader(bytes, 4);
   const version = reader.u16();
-  if (version !== STUDIO_SCRIPT_SNAPSHOT_VERSION) {
+  if (!STUDIO_SCRIPT_SNAPSHOT_VERSIONS.has(version)) {
     fail('version', `unsupported SNAP version ${version}`, 4);
   }
   const flags = reader.u16();
   if (flags !== 0) fail('flags', `unsupported flags ${flags}`, 6);
+  // v1 has no marker byte; its files decode as "cleanup not done".
+  const railCleanupFlag = version >= 2 ? reader.u8() : 0;
+  if (railCleanupFlag > 1) fail('flags', 'rail cleanup flag must be 0 or 1', 8);
 
   const projectId = reader.string('projectId');
   const layerId = reader.string('layerId');
@@ -668,5 +683,9 @@ export function decodeStudioScriptSnapshot(
     fail('watercolor', 'watercolor section is invalid');
   }
 
-  return { watercolorEvents, brushFrames: decodeBrushSection(brushBody) };
+  return {
+    watercolorEvents,
+    brushFrames: decodeBrushSection(brushBody),
+    railCleanupDone: railCleanupFlag === 1,
+  };
 }

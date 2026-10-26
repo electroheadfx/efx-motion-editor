@@ -6,13 +6,15 @@
 //  purge existed describes pixels the rail has since replaced, so it
 //  kept phantom Move/Select handles over a render it never painted.
 //
-//  The migration purges those stale scripts ONCE per project/layer/
-//  track (marker in localStorage). Rail membership is deliberately
-//  NOT a permanent gate: a script painted on a rail frame after this
-//  build is real content and must survive every later launch.
+//  The once-per-project/layer/track marker lives INSIDE the script
+//  snapshot container (studioScriptSnapshotCodec v2). A webview
+//  localStorage marker was tried first and was not durable here.
+//  Rail membership is deliberately NOT a permanent gate: a script
+//  painted on a rail frame after this build is real content and must
+//  survive every later launch.
 //
-//  Pure + DOM-free ports: the caller supplies the carried v1.0
-//  document and the Studio does the store purges.
+//  This module is the pure carried-document rail-span reader; the
+//  Studio owns the store purges and the controller owns the marker.
 // ============================================================
 
 /** The carried v1.0 document's rail-bearing slice. */
@@ -30,75 +32,6 @@ export interface LaunchRailTrack {
 
 export interface LaunchRailDocument {
   readonly tracks?: readonly LaunchRailTrack[];
-}
-
-export interface RailCleanupIdentity {
-  readonly projectId: string;
-  readonly layerId: string;
-  readonly trackId: string;
-}
-
-type RailCleanupStorage = Pick<Storage, 'getItem' | 'setItem'>;
-
-/**
- * v2 (2026-10-26): v1 could be marked done by the launch-document attempt
- * while the carried rail list was still empty, so the purge never ran.
- * Bumping the key invalidates that early marker and re-runs the cleanup once
- * with the store-authoritative path.
- */
-const RAIL_SCRIPT_CLEANUP_KEY = 'efx.rail-script-cleanup.v2';
-
-function defaultStorage(): RailCleanupStorage | null {
-  try {
-    return typeof window === 'undefined' ? null : window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-function markerKey(identity: RailCleanupIdentity): string {
-  return `${RAIL_SCRIPT_CLEANUP_KEY}:${identity.projectId}:${identity.layerId}:${identity.trackId}`;
-}
-
-/**
- * An unreadable/missing storage counts as DONE — a marker that cannot be
- * persisted must never authorize a repeat purge on every launch.
- */
-export function railScriptCleanupDone(
-  identity: RailCleanupIdentity,
-  storage: RailCleanupStorage | null | undefined = defaultStorage(),
-): boolean {
-  if (!storage) return true;
-  try {
-    return storage.getItem(markerKey(identity)) === '1';
-  } catch {
-    return true;
-  }
-}
-
-export function markRailScriptCleanupDone(
-  identity: RailCleanupIdentity,
-  storage: RailCleanupStorage | null | undefined = defaultStorage(),
-): void {
-  if (!storage) return;
-  try {
-    storage.setItem(markerKey(identity), '1');
-  } catch {
-    // Best effort: the purge already ran for this session.
-  }
-}
-
-/** Diagnosis: does this webview expose a readable localStorage at all? */
-export function railCleanupStorageAvailable(
-  storage: RailCleanupStorage | null | undefined = defaultStorage(),
-): boolean {
-  if (!storage) return false;
-  try {
-    storage.getItem(`${RAIL_SCRIPT_CLEANUP_KEY}:probe`);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 /**

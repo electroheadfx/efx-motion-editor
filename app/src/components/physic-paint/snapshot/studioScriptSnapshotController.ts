@@ -65,6 +65,7 @@
 //  refused there and reported through the existing failure paths.
 // ============================================================
 
+import { signal } from '@preact/signals';
 import { isAquarelleDryEvent, type AquarellePayloadEvent } from '@efxlab/efx-watercolor/payload';
 import {
   StudioScriptSnapshotCodecError,
@@ -215,12 +216,23 @@ export interface StudioScriptSnapshotController {
    * the next save/restore.
    */
   dropRetainedForFrames(frames: ReadonlySet<number>): void;
+  /** quick-261026-odd: the durable rail-cleanup marker read from the file. */
+  isRailCleanupDone(): boolean;
+  /** Mark it done; the next save writes the marker into the container. */
+  markRailCleanupDone(): void;
   getBoundIdentity(): StudioScriptSnapshotIdentity | null;
   getLastSavedSignature(): string | null;
 }
 
 /** Coalescing window for script mutations (Task 3). */
 const STUDIO_SCRIPT_SNAPSHOT_DEBOUNCE_MS = 800;
+
+/**
+ * quick-261026-odd: bumped by markRailCleanupDone() so the Studio's content
+ * signature changes even when the purge itself removed nothing — the durable
+ * marker must still reach the file on the next save.
+ */
+export const studioScriptSnapshotRailCleanupRevision = signal(0);
 
 function normalizeIdentity(
   identity: StudioScriptSnapshotIdentity | null,
@@ -418,6 +430,8 @@ export function createStudioScriptSnapshotController(
    * script from the authoritative snapshot; an explicit purge drops it.
    */
   let retainedContent: StudioScriptSnapshotContent | null = null;
+  /** quick-261026-odd: the file's durable rail-cleanup marker. */
+  let railCleanupDone = false;
   /** One restore-failure report per bound identity. */
   let restoreFailureReported = false;
   /** Coalescing timer — at most one armed at a time. */
@@ -460,6 +474,7 @@ export function createStudioScriptSnapshotController(
     // session must never be saved under it until its own restore has run.
     restoreSettledGeneration = null;
     retainedContent = null;
+    railCleanupDone = false;
     restoreFailureReported = false;
   }
 
@@ -510,6 +525,7 @@ export function createStudioScriptSnapshotController(
       if (requestGeneration !== generation) {
         return { status: 'empty', maxRestoredMutationId: 0 };
       }
+      railCleanupDone = decoded.railCleanupDone;
 
       const liveFrames = deps.getLiveFrames();
       const liveKeyIds = deps.getLiveKeyIds?.() ?? null;
@@ -615,6 +631,7 @@ export function createStudioScriptSnapshotController(
         ...identity,
         watercolorEvents: content.watercolorEvents,
         brushFrames: content.brushFrames,
+        railCleanupDone,
       });
       return { identity, bytes, signature, generation, authority, content };
     } catch (error) {
@@ -799,6 +816,7 @@ export function createStudioScriptSnapshotController(
     lastSavedSignature = null;
     restoreSettledGeneration = null;
     retainedContent = null;
+    railCleanupDone = false;
     restoreFailureReported = false;
   }
 
@@ -813,6 +831,12 @@ export function createStudioScriptSnapshotController(
     dispose,
     persistAfterPurge,
     dropRetainedForFrames,
+    isRailCleanupDone: () => railCleanupDone,
+    markRailCleanupDone: () => {
+      if (railCleanupDone) return;
+      railCleanupDone = true;
+      studioScriptSnapshotRailCleanupRevision.value += 1;
+    },
     getBoundIdentity: () => boundIdentity,
     getLastSavedSignature: () => lastSavedSignature,
   };

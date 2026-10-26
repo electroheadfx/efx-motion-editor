@@ -31,7 +31,7 @@ import { engineHoldsBrushScriptFrame } from '../view/brushScriptHydration';
 
 export const MOVE_PROVENANCE_PATH = '/tmp/efx-move-provenance.json';
 /** Bumped by every diagnostic revision so the report names its build. */
-export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-4-cleanup';
+export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-5-durable';
 
 export interface MoveProvenanceEngine {
   getStrokes(): readonly PaintStroke[];
@@ -65,7 +65,6 @@ export interface MoveProvenanceDeps {
   /** The one-time rail cleanup's state at this moment. */
   getRailCleanupState?(): {
     done: boolean;
-    storageOk: boolean;
     railFrameCount: number | null;
   };
 }

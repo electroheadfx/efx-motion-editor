@@ -154,8 +154,19 @@ describe('studioScriptSnapshotCodec', () => {
     );
   });
 
-  it('rejects version 2 with the version code', () => {
-    expect(codeOf(() => decodeStudioScriptSnapshot(withByte(encodeFixture(), 4, 2), IDENTITY))).toBe(
+  it('round-trips the v2 rail-cleanup marker', () => {
+    const notDone = encodeStudioScriptSnapshot({ ...IDENTITY, watercolorEvents: fixtureEvents() });
+    expect(decodeStudioScriptSnapshot(notDone, IDENTITY).railCleanupDone).toBe(false);
+    const done = encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: fixtureEvents(),
+      railCleanupDone: true,
+    });
+    expect(decodeStudioScriptSnapshot(done, IDENTITY).railCleanupDone).toBe(true);
+  });
+
+  it('rejects an unknown container version with the version code', () => {
+    expect(codeOf(() => decodeStudioScriptSnapshot(withByte(encodeFixture(), 4, 3), IDENTITY))).toBe(
       'version',
     );
   });
@@ -199,10 +210,11 @@ describe('studioScriptSnapshotCodec', () => {
 
   it('tags a corrupt watercolor section instead of leaking a raw RangeError', () => {
     const bytes = encodeFixture();
-    // Header is 8 bytes + three u16-prefixed identities; corrupt the AQTL
-    // magic that starts the watercolor body.
+    // Header is 9 bytes (v2: magic + version + flags + rail-cleanup marker)
+    // plus three u16-prefixed identities; corrupt the AQTL magic that starts
+    // the watercolor body.
     const identityByteLength = 2 * 3 + IDENTITY.projectId.length + IDENTITY.layerId.length + IDENTITY.trackId.length;
-    const watercolorStart = 8 + identityByteLength + 4;
+    const watercolorStart = 9 + identityByteLength + 4;
     const corrupted = withByte(bytes, watercolorStart, 0x00);
     expect(codeOf(() => decodeStudioScriptSnapshot(corrupted, IDENTITY))).toBe('watercolor');
   });
@@ -297,7 +309,9 @@ function brushContainer(frames: readonly StudioScriptSnapshotBrushFrame[]): Uint
 
 function brushBodyOffset(bytes: Uint8Array): number {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let offset = 8;
+  // v2 adds the rail-cleanup marker byte after the flags word.
+  const version = view.getUint16(4, true);
+  let offset = version >= 2 ? 9 : 8;
   for (let index = 0; index < 3; index += 1) {
     const length = view.getUint16(offset, true);
     offset += 2 + length;

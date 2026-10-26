@@ -162,6 +162,7 @@ import { buildDuplicatedSoundClip, usePhysicsPaintAudioController, type PhysicsP
 import { getTimelineViewportFrames } from './view/PhysicsPaintWorkflowStrip';
 import {
   createStudioScriptSnapshotController,
+  studioScriptSnapshotRailCleanupRevision,
   type StudioScriptSnapshotController,
 } from './snapshot/studioScriptSnapshotController';
 // quick-261023-ors Task 3: the committed rail delete cascades to that rail's
@@ -192,12 +193,7 @@ import { createRotoScriptThumbnail } from './roto/physicsPaintRotoScriptThumbnai
 import { activeModule } from '../shared/activeModule';
 import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
-import {
-  markRailScriptCleanupDone,
-  railCleanupStorageAvailable,
-  railScriptCleanupDone,
-  resolveCarriedRailFrames,
-} from './view/railScriptCleanup';
+import { resolveCarriedRailFrames } from './view/railScriptCleanup';
 import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
@@ -1135,7 +1131,7 @@ export function PhysicsPaintStudio() {
       // this signature is chosen to rule out (recordAquarelleStroke and the
       // brush capture path both bump).
       getContentSignature: () =>
-        `${aquarelleStrokesRevision.peek()}:${brushScriptRevision.peek()}`,
+        `${aquarelleStrokesRevision.peek()}:${brushScriptRevision.peek()}:${studioScriptSnapshotRailCleanupRevision.peek()}`,
       // Live real-key app frames for the bound track. An empty set disables
       // pruning in the controller (unknown ≠ empty), so a launch whose key
       // records are not loaded yet can never wipe the restored script.
@@ -1841,19 +1837,22 @@ export function PhysicsPaintStudio() {
   // it once per project/layer/track.
   const runPendingRailScriptCleanup = useCallback(() => {
     const cleanupIdentity = studioScriptSnapshotIdentityRef.current;
-    if (!cleanupIdentity || railScriptCleanupDone(cleanupIdentity)) return;
+    if (!cleanupIdentity || studioScriptSnapshot.isRailCleanupDone()) return;
     const physical = physicPaintStore.getRotoPhysicalDocument(cleanupIdentity.layerId, cleanupIdentity.trackId);
     if (!physical) return;
     const railFrames = resolveStudioPixelOnlyFrames(cleanupIdentity);
+    // Mark done ONLY after a purge with a NON-EMPTY rail set. An empty set can
+    // mean "the store is not ready yet", and marking then is what skipped the
+    // purge in diag-4. A track with no rails simply retries harmlessly.
     if (railFrames && railFrames.size > 0) {
       for (const railFrame of railFrames) {
         purgeBrushScriptFrame(railFrame);
         purgeAquarelleFrameScript(railFrame);
       }
       studioScriptSnapshot.dropRetainedForFrames(railFrames);
+      studioScriptSnapshot.markRailCleanupDone();
       studioScriptSnapshot.markDirty();
     }
-    markRailScriptCleanupDone(cleanupIdentity);
   }, []);
   const applyFrameModuleState = useCallback(
     (frame: number, liveBrush?: LiveBrushScriptSample | null) => {
@@ -4594,14 +4593,12 @@ export function PhysicsPaintStudio() {
       // same frames from the snapshot's retained union, once per project/layer/
       // track. A script painted on a rail frame AFTER this build is never
       // touched again (rail membership is not a permanent gate).
-      if (!railScriptCleanupDone(identity)) {
-        // The carried document is the launch authority (the store's physical
-        // state lands later). A missing physical state means "unknown" — never
-        // mark the track clean; the next launch retries.
-        // NEVER mark the track clean here: an empty rail list in the carried
-        // payload is ambiguous (the store may not hold the physical state yet),
-        // and marking it early is what skipped the purge. The store-authoritative
-        // retry in runPendingRailScriptCleanup owns the marker.
+      if (!studioScriptSnapshot.isRailCleanupDone()) {
+        // The carried document is the launch authority for a rail LIST, but an
+        // empty list there is ambiguous (the store's physical state lands
+        // later) and must never mark the track clean — that is exactly what
+        // skipped the purge in diag-4. Purging a NON-EMPTY list here is safe;
+        // marking is owned by the store-authoritative retry.
         const railFrames = resolveCarriedRailFrames(document, identity.trackId);
         if (railFrames !== null && railFrames.size > 0) {
           for (const railFrame of railFrames) {
@@ -4609,6 +4606,7 @@ export function PhysicsPaintStudio() {
             purgeAquarelleFrameScript(railFrame);
           }
           studioScriptSnapshot.dropRetainedForFrames(railFrames);
+          studioScriptSnapshot.markRailCleanupDone();
           studioScriptSnapshot.markDirty();
         }
       }
@@ -5721,8 +5719,7 @@ export function PhysicsPaintStudio() {
             ? resolveStudioPixelOnlyFrames(cleanupIdentity)
             : null;
           return {
-            done: cleanupIdentity ? railScriptCleanupDone(cleanupIdentity) : true,
-            storageOk: railCleanupStorageAvailable(),
+            done: studioScriptSnapshot.isRailCleanupDone(),
             railFrameCount: railFrames === null ? null : railFrames.size,
           };
         },

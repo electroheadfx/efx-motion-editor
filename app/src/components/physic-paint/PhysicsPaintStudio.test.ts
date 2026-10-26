@@ -3003,9 +3003,11 @@ describe('261022-pim watercolor stroke select surface', () => {
     // frames for the bake, Reveal and the one-time migration.
     expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(bakedFrames);');
     expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(revealFrames);');
-    // The one-time rail cleanup runs once per project/layer/track.
-    expect(studio).toContain('if (!railScriptCleanupDone(identity)) {');
+    // The one-time rail cleanup runs once per project/layer/track, and its
+    // durable marker rides the snapshot (never a webview-local marker).
+    expect(studio).toContain('if (!studioScriptSnapshot.isRailCleanupDone()) {');
     expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(railFrames);');
+    expect(studio).toContain('studioScriptSnapshot.markRailCleanupDone();');
     expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
     expect(studio).toContain('if (moveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');

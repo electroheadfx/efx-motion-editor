@@ -285,6 +285,32 @@ describe('studioScriptSnapshotController', () => {
     expect(decoded.brushFrames).toEqual([]);
   });
 
+  it('restores the durable rail-cleanup marker from the file', async () => {
+    const bytes = encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: fixtureEvents(),
+      railCleanupDone: true,
+    });
+    const { controller, read } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+    expect(controller.isRailCleanupDone()).toBe(true);
+  });
+
+  it('writes the rail-cleanup marker once marked', async () => {
+    const { controller, write, setSignature } = harness();
+    controller.bind(IDENTITY);
+    await controller.restore();
+    expect(controller.isRailCleanupDone()).toBe(false);
+    restoreAquarelleRecordTimeline(fixtureEvents());
+    setSignature('sig-marker');
+    controller.markRailCleanupDone();
+    await controller.saveNow();
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    expect(decodeStudioScriptSnapshot(written, IDENTITY).railCleanupDone).toBe(true);
+  });
+
   it('reports a corrupt snapshot ONCE and never mutates the store', async () => {
     restoreAquarelleRecordTimeline([fixtureStroke(7, 201)]);
     const before = [...getRecordedAquarellePayloadTimeline()];
@@ -977,7 +1003,8 @@ const HEAVY_FRAME_COUNT = 3;
  * bytes — SNAP container with three heavy brush frames, empty AQTL. Brush
  * section v2 adds one keyId presence byte per frame (+3).
  */
-const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_793;
+// +1 for the v2 container's rail-cleanup marker byte.
+const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_794;
 
 function heavyPoint(index: number): PenPoint {
   return {
