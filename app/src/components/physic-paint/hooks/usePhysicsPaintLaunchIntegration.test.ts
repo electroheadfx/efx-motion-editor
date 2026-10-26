@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { CompletedPaintMutation, PaintStroke } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext } from '../../../types/physicPaint';
+import { createEfxPaintDocument, type EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import { createRotoScriptClipboardController, type RecordedStrokeGroup } from '../roto/physicsPaintRotoScriptClipboard';
-import { createPhysicsPaintLaunchReplacementCoordinator } from './usePhysicsPaintLaunchIntegration';
+import { buildPhysicPaintRotoPhysicalRevision, type PhysicPaintRotoPhysicalDocument } from '../roto/physicsPaintRotoPhysicalModel';
+import { prepareRotoPhysicalLaunch } from '../roto/rotoLaunchHydration';
+import { createPhysicsPaintLaunchReplacementCoordinator, resolveLaunchHydrationContext } from './usePhysicsPaintLaunchIntegration';
 
 function launch(operationId: string, startFrame: number): PhysicPaintLaunchContext {
   return {
@@ -205,5 +209,113 @@ describe('Physics Paint launch replacement coordinator', () => {
     await Promise.resolve();
 
     expect(applyLatest).not.toHaveBeenCalled();
+  });
+});
+
+// debug studio-idle-cursor-mismatch: the occlusion monitor reloads the hidden
+// Studio every 3 minutes (`window_occlusion.rs`), so the child re-fetches the
+// SAME stored launch envelope (same operationId, `startFrame` frozen at the
+// original open frame) while `applySettledLaunchContext` substitutes the
+// crash-recovery checkpoint document, whose active-track cursor is the LIVE
+// cursor at the last document push. Substituting only the document leaves the
+// envelope stale and the launch door refuses, aborting hydration before any
+// launch context is committed — black canvas, "Engine not ready".
+const DISABLED_INTERPOLATION = { enabled: false as const, mode: 'duplicate' as const };
+const TRACK_ID = 'track-physical';
+
+function physicalWithCursor(cursorAppFrame: number): PhysicPaintRotoPhysicalDocument {
+  return {
+    capacity: 600,
+    realKeyRecords: [],
+    groupOverrideRecords: [],
+    interpolation: DISABLED_INTERPOLATION,
+    scriptMotion: { deformation: 0, position: 0 },
+    background: null,
+    selectedKeyId: null,
+    cursorAppFrame,
+    revision: buildPhysicPaintRotoPhysicalRevision([], DISABLED_INTERPOLATION, [], [], []),
+    loopClips: [],
+    incomingInterpolationBreakKeyIds: [],
+  };
+}
+
+function documentWithCursor(
+  layerId: string,
+  cursorAppFrame: number,
+  withPhysical = true,
+): EfxPaintDocument {
+  const base = createEfxPaintDocument(layerId);
+  return {
+    ...base,
+    activeTrackId: TRACK_ID,
+    tracks: [{
+      ...base.tracks[0]!,
+      id: TRACK_ID,
+      name: 'Paint 1',
+      rotoPhysical: withPhysical ? physicalWithCursor(cursorAppFrame) : null,
+    }],
+  } as EfxPaintDocument;
+}
+
+function launchWithCursor(operationId: string, startFrame: number): PhysicPaintLaunchContext {
+  const layerId = `layer-${operationId}`;
+  return {
+    operationId,
+    layerId,
+    startFrame,
+    document: documentWithCursor(layerId, startFrame),
+  };
+}
+
+describe('debug studio-idle-cursor-mismatch: the checkpoint document owns the launch cursor', () => {
+  it('reproduces the refusal when the checkpoint document is substituted without aligning startFrame', () => {
+    const context = launchWithCursor('op-idle', 4);
+    const checkpoint = documentWithCursor(context.layerId, 9);
+
+    const prepared = prepareRotoPhysicalLaunch({ ...context, document: checkpoint });
+
+    expect(prepared.ok).toBe(false);
+    if (!prepared.ok) {
+      expect(prepared.error).toBe('Launch cursor does not match the canonical physical document.');
+    }
+  });
+
+  it('aligns startFrame to the checkpoint active-track cursor so the same checkpoint hydrates', () => {
+    const context = launchWithCursor('op-idle', 4);
+    const checkpoint = documentWithCursor(context.layerId, 9);
+
+    const hydrationContext = resolveLaunchHydrationContext(context, checkpoint);
+
+    expect(hydrationContext).not.toBe(context);
+    expect(hydrationContext.document).toBe(checkpoint);
+    expect(hydrationContext.startFrame).toBe(9);
+    // The door stays strict — the aligned envelope is coherent, not bypassed.
+    expect(prepareRotoPhysicalLaunch(hydrationContext).ok).toBe(true);
+    // The stored launch envelope is never mutated in place.
+    expect(context.startFrame).toBe(4);
+  });
+
+  it('keeps the launch envelope untouched when no checkpoint exists', () => {
+    const context = launchWithCursor('op-none', 4);
+
+    expect(resolveLaunchHydrationContext(context, null)).toBe(context);
+  });
+
+  it('never invents a cursor when the checkpoint active track has no physical state (the door still refuses loudly)', () => {
+    const context = launchWithCursor('op-empty', 4);
+    const checkpoint = documentWithCursor(context.layerId, 9, false);
+
+    const hydrationContext = resolveLaunchHydrationContext(context, checkpoint);
+
+    expect(hydrationContext.startFrame).toBe(4);
+    expect(prepareRotoPhysicalLaunch(hydrationContext).ok).toBe(false);
+  });
+
+  it('production substitution routes through the alignment helper', () => {
+    const source = readFileSync(new URL('./usePhysicsPaintLaunchIntegration.ts', import.meta.url), 'utf8');
+
+    expect(source).toContain('resolveLaunchHydrationContext(context, sessionDocument)');
+    // The pre-fix ternary swapped the document without re-deriving the cursor.
+    expect(source).not.toContain('sessionDocument ? { ...context, document: sessionDocument } : context');
   });
 });

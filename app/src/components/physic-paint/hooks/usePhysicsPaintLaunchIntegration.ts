@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type StateUpdater } from
 import type { RefObject } from 'preact';
 import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
 import type { PhysicPaintLaunchContext, PhysicPaintRotoPlaybackSettings } from '../../../types/physicPaint';
+import type { EfxPaintDocument } from '../../../efx-paint/document/efxPaintDocument';
 import type { PendingPhysicPaintApply } from './usePhysicsPaintApplyResultController';
 import {
   physicPaintStore,
@@ -28,6 +29,49 @@ type PreviewBackgroundEngine = EfxPaintEngine & { setBackgroundImageUrl: (dataUr
 export interface PhysicsPaintLaunchReplacementCoordinator {
   request: (context: PhysicPaintLaunchContext) => void;
   dispose: () => void;
+}
+
+/**
+ * debug studio-idle-cursor-mismatch: the crash-recovery checkpoint document is
+ * the LAUNCH CURSOR AUTHORITY whenever it is substituted.
+ *
+ * Why the document owns the cursor: the launch envelope's own semantics derive
+ * `startFrame` from the carried active-track cursor in two places — the URL
+ * parser (`physicsPaintLaunchContext.ts:84`,
+ * `startFrame: cursorAppFrame ?? value.startFrame`) and the launch builder
+ * (`physicPaintBridge.ts:3972`, `startFrame: physical.cursorAppFrame`). The
+ * envelope is a projection of the document, never an independent frame.
+ *
+ * The substitution at `applySettledLaunchContext` swaps the document for the
+ * fresher sessionStorage checkpoint (written on every document push with the
+ * LIVE runtime cursor, `PhysicsPaintStudio.tsx:6840-6841`) but used to leave
+ * `context.startFrame` frozen at the original open frame. The native occlusion
+ * monitor (`window_occlusion.rs`) reloads the hidden Studio every 3 minutes and
+ * the child re-fetches the SAME stored envelope (same operationId), so after
+ * any edit on a different frame the launch door refused
+ * (`prepareRotoPhysicalLaunch`, `rotoLaunchHydration.ts:58-59`), hydration
+ * aborted before `applyPhysicsPaintLaunchContext`, and the Studio stayed black
+ * with "Engine not ready".
+ *
+ * The alternative — overriding the checkpoint cursor to `startFrame` — is
+ * rejected: it would roll the restored session back to the launch frame and
+ * contradict the checkpoint's `selectedKeyId`, which the physical parser
+ * requires to sit on the cursor frame (`physicsPaintRotoPhysicalModel.ts:1514`),
+ * forcing a second silent mutation of the freshest snapshot.
+ *
+ * No physical state on the checkpoint's active track keeps the envelope as-is:
+ * the door still refuses loudly rather than hydrating a frame the document
+ * cannot address.
+ */
+export function resolveLaunchHydrationContext(
+  context: PhysicPaintLaunchContext,
+  sessionDocument: EfxPaintDocument | null,
+): PhysicPaintLaunchContext {
+  if (!sessionDocument) return context;
+  const activeTrack = sessionDocument.tracks.find((track) => track.id === sessionDocument.activeTrackId);
+  const checkpointCursor = activeTrack?.rotoPhysical?.cursorAppFrame;
+  if (checkpointCursor === undefined) return { ...context, document: sessionDocument };
+  return { ...context, document: sessionDocument, startFrame: checkpointCursor };
 }
 
 export function createPhysicsPaintLaunchReplacementCoordinator(input: {
@@ -134,9 +178,13 @@ export function usePhysicsPaintLaunchIntegration(input: {
     // checkpoint (written on every document push) is fresher than the launch
     // context's carried document. It is consumed only by the launch that wrote
     // it — an earlier session's checkpoint is never substituted into a newer
-    // launch (quick-260913-52r H).
+    // launch (quick-260913-52r H). debug studio-idle-cursor-mismatch: the
+    // substitution also re-derives `startFrame` from the checkpoint's
+    // active-track cursor — the document stays the single frame authority, so
+    // the launch door never refuses a recovery whose cursor moved before the
+    // occlusion reload.
     const sessionDocument = readEfxPaintSessionDocumentCheckpoint(context.operationId);
-    const hydrationContext = sessionDocument ? { ...context, document: sessionDocument } : context;
+    const hydrationContext = resolveLaunchHydrationContext(context, sessionDocument);
     const hydration = await hydrateRotoPhysicalLaunchContext(hydrationContext, physicPaintStore);
     if (!hydration.ok) {
       // quick-260913-52r (G): a failed launch hydration used to be state-only
