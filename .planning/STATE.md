@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-26 - Completed quick task 261026-nvq: Watercolor script thumbnails now use the live aquarelle sheet (multiply over paper) instead of the thin engine-1 guide strokes — native UAT pending
+Last activity: 2026-10-26 - Completed quick task 261026-nvq: Watercolor script thumbnails now use the live aquarelle sheet (multiply over paper) instead of the thin engine-1 guide strokes — native UAT approved (6/6)
 
 Progress: [██████████] 100%
 

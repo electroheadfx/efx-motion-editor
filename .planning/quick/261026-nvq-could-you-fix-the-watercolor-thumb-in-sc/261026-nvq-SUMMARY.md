@@ -212,6 +212,8 @@ None — no external service configuration or dependency was added.
 | 5 | Reopen a saved script from the library (Load/Apply) | Applies exactly as before; the script schema is unchanged |
 | 6 | Save, then navigate frames and Save on another key | Each row gets its own frame's wash; no stale sheet leaks between frames, and frame navigation stays responsive |
 
+**Approved 2026-10-26** — all 6 rows passed in native UAT (user-driven, dev server on the user's side).
+
 ## Known Stubs
 
 None — no stub, placeholder, skipped test, or unrun `<verify>` was left behind.
