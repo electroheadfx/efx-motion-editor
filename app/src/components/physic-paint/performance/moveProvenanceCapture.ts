@@ -31,7 +31,7 @@ import { engineHoldsBrushScriptFrame } from '../view/brushScriptHydration';
 
 export const MOVE_PROVENANCE_PATH = '/tmp/efx-move-provenance.json';
 /** Bumped by every diagnostic revision so the report names its build. */
-export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-3-rail';
+export const MOVE_PROVENANCE_BUILD = 'quick-261026-odd-diag-4-cleanup';
 
 export interface MoveProvenanceEngine {
   getStrokes(): readonly PaintStroke[];
@@ -62,6 +62,12 @@ export interface MoveProvenanceDeps {
   isPixelOnlyFrame?(frame: number): boolean;
   /** Which script-edition surface is armed and why. */
   getOverlayArmed?(): { selectMode: boolean; heldArm: boolean };
+  /** The one-time rail cleanup's state at this moment. */
+  getRailCleanupState?(): {
+    done: boolean;
+    storageOk: boolean;
+    railFrameCount: number | null;
+  };
 }
 
 let installedDeps: MoveProvenanceDeps | null = null;
@@ -132,6 +138,9 @@ export async function captureMoveProvenance(reason: string): Promise<void> {
       cellInsideRail: deps.isPixelOnlyFrame ? readOr(() => deps.isPixelOnlyFrame!(frame), false, errors, 'cellInsideRail') : null,
       overlayArmed: deps.getOverlayArmed
         ? readOr(() => deps.getOverlayArmed!(), { selectMode: false, heldArm: false }, errors, 'overlayArmed')
+        : null,
+      railCleanup: deps.getRailCleanupState
+        ? readOr(() => deps.getRailCleanupState!(), null, errors, 'railCleanup')
         : null,
       store: {
         hasEntry: entry !== undefined,

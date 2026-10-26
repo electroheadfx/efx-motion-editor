@@ -82,6 +82,19 @@ export function markRailScriptCleanupDone(
   }
 }
 
+/** Diagnosis: does this webview expose a readable localStorage at all? */
+export function railCleanupStorageAvailable(
+  storage: RailCleanupStorage | null | undefined = defaultStorage(),
+): boolean {
+  if (!storage) return false;
+  try {
+    storage.getItem(`${RAIL_SCRIPT_CLEANUP_KEY}:probe`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Rail frames straight from the CARRIED document — the launch restore runs
  * before the store holds the physical state, so the store-based resolver is

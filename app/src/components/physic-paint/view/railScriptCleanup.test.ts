@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   markRailScriptCleanupDone,
+  railCleanupStorageAvailable,
   railScriptCleanupDone,
   resolveCarriedRailFrames,
   type RailCleanupIdentity,
@@ -116,5 +117,16 @@ describe('railScriptCleanupDone / markRailScriptCleanupDone', () => {
     };
     expect(railScriptCleanupDone(IDENTITY, throwing)).toBe(true);
     expect(() => markRailScriptCleanupDone(IDENTITY, throwing)).not.toThrow();
+  });
+
+  it('probes storage availability without writing', () => {
+    expect(railCleanupStorageAvailable(memoryStorage())).toBe(true);
+    expect(railCleanupStorageAvailable(null)).toBe(false);
+    expect(railCleanupStorageAvailable({
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: vi.fn(),
+    })).toBe(false);
   });
 });

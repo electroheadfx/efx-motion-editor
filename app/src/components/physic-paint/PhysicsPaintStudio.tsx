@@ -194,6 +194,7 @@ import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, setFrameSc
 import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
   markRailScriptCleanupDone,
+  railCleanupStorageAvailable,
   railScriptCleanupDone,
   resolveCarriedRailFrames,
 } from './view/railScriptCleanup';
@@ -5691,6 +5692,17 @@ export function PhysicsPaintStudio() {
           selectMode: aquarelleSelectMode.peek(),
           heldArm: temporaryMove.peek(),
         }),
+        getRailCleanupState: () => {
+          const cleanupIdentity = studioScriptSnapshotIdentityRef.current;
+          const railFrames = cleanupIdentity
+            ? resolveStudioPixelOnlyFrames(cleanupIdentity)
+            : null;
+          return {
+            done: cleanupIdentity ? railScriptCleanupDone(cleanupIdentity) : true,
+            storageOk: railCleanupStorageAvailable(),
+            railFrameCount: railFrames === null ? null : railFrames.size,
+          };
+        },
       });
     }
     // 261023-g4p: a recreated engine must re-enter the brush script-edition
