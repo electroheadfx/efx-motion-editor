@@ -1,10 +1,10 @@
 ---
-status: awaiting_human_verify
+status: resolved
 trigger: "Studio compositor and main-editor compositor disagree for watercolor tracks: Studio looks like the top watercolor track is transparent/multiplied with the layers beneath; the editor masks the lower track but shows a strange speckle noise. Same artifact appears when watercolor is stacked over a cached paint on the SAME track. User asks to confirm whether watercolor compositing uses a blend mode (multiply) instead of alpha."
 goal: find_and_fix
 symptoms_prefilled: true
 created: 2026-10-26T00:00:00.000Z
-updated: 2026-10-26T23:30:00.000Z
+updated: 2026-10-26T23:55:00.000Z
 ---
 
 ## Current Focus
@@ -12,7 +12,7 @@ updated: 2026-10-26T23:30:00.000Z
 hypothesis: CONFIRMED — ROUND 2 FIXED, AWAITING LIVE UAT. The watercolor sheet is OPAQUE transmittance in storage (`vec4(t, 1.0)`, white = no pigment); all display/composite seams now re-express it as STRAIGHT-ALPHA PIGMENT (alpha = 1 − min(r,g,b), color = (r,g,b − min)/alpha) so it stacks as a real paint layer: dense pigment masks, light washes stay translucent, and the one fond multiply (paper × t) stays exact. Engine-1 real-alpha paint is untouched (the full-opacity probe returns false).
 test: All automated gates green — targeted 68/68, full app suite 6179 passed / 2 files skipped, `npx tsc --noEmit` clean. RED-first evidence: 12 intended failures before implementation.
 expecting (live UAT): soft wash borders translucent in Studio AND editor/export; dense pigment masks lower tracks; cached base visible through unpainted areas; no speckle; Studio/editor parity.
-next_action: user runs the live UAT rows in the Round 2 verification list, then archive this session if the surfaces match.
+next_action: CLOSED — live UAT approved by the user 2026-10-26 ("watercolor seem working"). The separate same-track "new stroke loses existing strokes" regression remains open and is tracked outside this session.
 
 round2_constraints: |
   1. PAPER PASS GATE MUST BE RE-KEYED. `shouldApplyPaperPass` currently skips the tooth when the PRE-FOND raster is fully opaque (the aquarelle signature). Once the sheet carries pigment alpha the raster is no longer fully opaque, so that probe would re-enable the pass and the dense-pigment speckle returns. The gate needs an explicit aquarelle signal from the composite (e.g. the store sets "converted a transmittance track" while pre-resolving).
@@ -205,3 +205,13 @@ open_questions_for_the_debugger: |
 
 known_separate_issue: |
   The user also re-hit the "new stroke loses existing strokes" bug. Explicitly deferred: do not fix it in this session; only avoid making it worse.
+
+## Closure (2026-10-26)
+
+uat_verdict: |
+  APPROVED by the user: "watercolor seem working". The pigment-alpha law, the Studio/editor parity, and the sparse-wash appearance are accepted. The user did not require a repaint of existing frames — the display-seam conversion covers stored sheets.
+
+deferred_regression: |
+  The user reports the "painting a new watercolor stroke loses/erases the existing cached paint" bug is back and made MORE visible by this round. Prime suspect: the round-2 same-track capture merge (`mergeBlend: 'pigment-alpha'` in `physicsPaintRotoAlphaMerge.ts` + the white matte fill) changed the merge order on this exact path. Open the prior session `.planning/debug/resolved/watercolor-clears-cached-paint.md` when the user returns to it; do not treat this closure as evidence that path is healthy.
+
+follow_up_slug: watercolor-clears-cached-paint (reopen from resolved/)
