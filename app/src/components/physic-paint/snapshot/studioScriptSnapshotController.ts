@@ -208,6 +208,13 @@ export interface StudioScriptSnapshotController {
    * then delete the stale fallback cache leg. Never rejects.
    */
   persistAfterPurge(): Promise<void>;
+  /**
+   * quick-261026-odd: drop RETAINED content for specific frames (the one-time
+   * rail-script cleanup). The session stores are the caller's responsibility;
+   * this only stops the retained union from re-seeding the purged frames on
+   * the next save/restore.
+   */
+  dropRetainedForFrames(frames: ReadonlySet<number>): void;
   getBoundIdentity(): StudioScriptSnapshotIdentity | null;
   getLastSavedSignature(): string | null;
 }
@@ -748,6 +755,23 @@ export function createStudioScriptSnapshotController(
     if (!result.ok) deps.report(studioScriptSnapshotPurgeFailureMessage(result.error.kind));
   }
 
+  /**
+   * quick-261026-odd: the one-time rail cleanup's file half. Removes only the
+   * listed frames' retained content — every other retained entry (a deleted
+   * key's script, kept for undo) survives. Dry events carry no frame anchor
+   * and are always kept.
+   */
+  function dropRetainedForFrames(frames: ReadonlySet<number>): void {
+    if (!retainedContent || frames.size === 0) return;
+    retainedContent = {
+      watercolorEvents: retainedContent.watercolorEvents.filter((event) =>
+        isAquarelleDryEvent(event)
+        || typeof event.playFrame !== 'number'
+        || !frames.has(event.playFrame)),
+      brushFrames: retainedContent.brushFrames.filter((frame) => !frames.has(frame.frame)),
+    };
+  }
+
   function saveNow(): Promise<void> {
     // Synchronous capture: the track switch calls this fire-and-forget BEFORE
     // the stores are reset, and the prepared payload must be the OUTGOING
@@ -788,6 +812,7 @@ export function createStudioScriptSnapshotController(
     reset,
     dispose,
     persistAfterPurge,
+    dropRetainedForFrames,
     getBoundIdentity: () => boundIdentity,
     getLastSavedSignature: () => lastSavedSignature,
   };

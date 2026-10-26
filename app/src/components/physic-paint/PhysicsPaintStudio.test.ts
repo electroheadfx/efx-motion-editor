@@ -2995,6 +2995,17 @@ describe('261022-pim watercolor stroke select surface', () => {
     // A derived cell drops any stale capture and releases the owner.
     expect(studio).toContain('dropNonKeyCellBrushScript(currentFrame);');
     expect(studio).toContain('clearFrameScriptOwner();');
+    // quick-261026-odd: a Play Script / Motion / Static bake purges the baked
+    // span's scripts so no phantom handles survive over the new pixels.
+    expect(studio).toContain("accepted.operationKind === 'play-script'");
+    expect(studio).toContain('purgeAquarelleFrameScript(bakedFrame);');
+    // The purge is durable: the snapshot's retained union drops the same
+    // frames for the bake, Reveal and the one-time migration.
+    expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(bakedFrames);');
+    expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(revealFrames);');
+    // The one-time rail cleanup runs once per project/layer/track.
+    expect(studio).toContain('if (!railScriptCleanupDone(identity)) {');
+    expect(studio).toContain('studioScriptSnapshot.dropRetainedForFrames(railFrames);');
     expect(studio).toContain("if (activeModule.peek() === 'brush' && settingsRef.current.tool === 'move') {");
     expect(studio).toContain('if (moveAvailable.peek()) {');
     const acceptanceAnchor = studio.indexOf('const beforeKeyIds = new Set(');

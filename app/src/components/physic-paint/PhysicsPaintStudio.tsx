@@ -193,6 +193,11 @@ import { activeModule } from '../shared/activeModule';
 import { brushMoveAvailable, clearFrameScriptOwner, frameScriptOwner, setFrameScriptOwner } from '../shared/frameModuleLock';
 import { resolveFrameScriptOwner, type LiveBrushScriptSample } from './view/frameScriptOwnership';
 import {
+  markRailScriptCleanupDone,
+  railScriptCleanupDone,
+  resolveCarriedRailFrames,
+} from './view/railScriptCleanup';
+import {
   adoptBrushScriptFrameAsComplete,
   brushScriptRevision,
   clearBrushScriptFrame,
@@ -623,6 +628,7 @@ function resolveStudioPixelOnlyFrames(
   }
   return frames;
 }
+
 
 export function PhysicsPaintStudio() {
   recordPhysicsPaintPerformanceCounter('render.studio');
@@ -3442,10 +3448,17 @@ export function PhysicsPaintStudio() {
         const revealEnd = input.repeat === 'infinity'
           ? revealCapacity
           : input.startFrame + input.frameCount * input.repeat;
+        const revealFrames = new Set<number>();
         for (let frame = input.startFrame; frame < Math.min(revealEnd, revealCapacity); frame += 1) {
+          revealFrames.add(frame);
           purgeBrushScriptFrame(frame);
           purgeAquarelleFrameScript(frame);
         }
+        // The snapshot's retained union would otherwise re-seed those scripts
+        // on the next restore (a routine save keeps retained entries) — drop
+        // the same frames from it so the purge is durable.
+        studioScriptSnapshot.dropRetainedForFrames(revealFrames);
+        studioScriptSnapshot.markDirty();
         // quick-261026-odd: the Reveal bake wrote pixel-only keys; republish the
         // current key's owner so a prior Brush owner cannot keep Move open.
         applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);
@@ -4551,6 +4564,30 @@ export function PhysicsPaintStudio() {
         // engine-ready seam re-applies this reservation.
         engineRef.current?.reserveMutationClock(nextMutationId);
       }
+      // quick-261026-odd ONE-TIME MIGRATION: scripts recorded before the
+      // rail-bake purge existed are stale on every rail frame — the rail owns
+      // those pixels (Motion / Static / Play Script / Reveal bake into key
+      // records). Purge both stores across the track's rail spans and drop the
+      // same frames from the snapshot's retained union, once per project/layer/
+      // track. A script painted on a rail frame AFTER this build is never
+      // touched again (rail membership is not a permanent gate).
+      if (!railScriptCleanupDone(identity)) {
+        // The carried document is the launch authority (the store's physical
+        // state lands later). A missing physical state means "unknown" — never
+        // mark the track clean; the next launch retries.
+        const railFrames = resolveCarriedRailFrames(document, identity.trackId);
+        if (railFrames !== null) {
+          if (railFrames.size > 0) {
+            for (const railFrame of railFrames) {
+              purgeBrushScriptFrame(railFrame);
+              purgeAquarelleFrameScript(railFrame);
+            }
+            studioScriptSnapshot.dropRetainedForFrames(railFrames);
+            studioScriptSnapshot.markDirty();
+          }
+          markRailScriptCleanupDone(identity);
+        }
+      }
       // quick-261025-awl (D-02): the Studio launch settle publishes the start
       // frame's owner so the first render already shows the right module.
       applyFrameModuleState(context.startFrame);
@@ -4569,11 +4606,32 @@ export function PhysicsPaintStudio() {
       const accepted = physicalEditCoordinator.acceptedOutput.peek();
       try {
         if (transition === 'accepted' && accepted) {
-          // quick-261026-odd: Motion/Static/Reveal bakes REPLACE the span's key
-          // identities, so applyScriptRecordRemaps drops their session scripts.
-          // Republish the current key's owner from the stores in the same
-          // accepted transition so the Move gate closes without waiting for a
-          // navigation.
+          // quick-261026-odd: a Play Script / Motion / Static bake REPLACED
+          // the span's pixels. Every script recorded on those keys before the
+          // bake no longer describes the render, so purge BOTH stores across
+          // the affected span — otherwise the stale script keeps Move/Select
+          // handles alive over pixels it never painted (phantom strokes).
+          // loopOnly edits change no pixels; Reveal purges at creation.
+          const semanticDelta = accepted.semanticDelta;
+          if (
+            accepted.operationKind === 'play-script'
+            && semanticDelta?.kind === 'play-script'
+            && semanticDelta.loopOnly !== true
+          ) {
+            const start = Math.max(0, semanticDelta.affectedStartAppFrame);
+            const end = semanticDelta.affectedEndAppFrame;
+            const bakedFrames = new Set<number>();
+            for (let bakedFrame = start; bakedFrame <= end; bakedFrame += 1) {
+              bakedFrames.add(bakedFrame);
+              purgeBrushScriptFrame(bakedFrame);
+              purgeAquarelleFrameScript(bakedFrame);
+            }
+            // The retained union would re-seed them on the next restore.
+            studioScriptSnapshot.dropRetainedForFrames(bakedFrames);
+            studioScriptSnapshot.markDirty();
+          }
+          // Republish the current key's owner from the cleaned stores in the
+          // same accepted transition so the gate closes without a navigation.
           applyFrameModuleState(currentFrame);
           // D-17 post-acceptance selection aftermath: group-aware kinds keep
           // the set (move re-anchors to the grabbed key; force-spacing keyIds

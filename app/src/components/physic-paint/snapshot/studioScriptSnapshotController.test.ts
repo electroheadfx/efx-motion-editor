@@ -14,6 +14,7 @@ import type {
   AquarellePayloadEvent,
   AquarelleStrokePayload,
 } from '@efxlab/efx-watercolor/payload';
+import { isAquarelleDryEvent } from '@efxlab/efx-watercolor/payload';
 import type { StudioPoint, StudioStroke } from '@efxlab/efx-paint-host/animation';
 import type { BrushOpts, PaintStroke, PenPoint } from '@efxlab/efx-physic-paint';
 import {
@@ -255,6 +256,33 @@ describe('studioScriptSnapshotController', () => {
     controller.bind(IDENTITY);
     await controller.restore();
     expect(getRecordedAquarellePayloadTimeline()).toHaveLength(3);
+  });
+
+  it('dropRetainedForFrames removes only the purged frames from the saved union', async () => {
+    const bytes = encodedFixture([brushFrameFixture(3, 303)]);
+    const { controller, read, write, setSignature } = harness({
+      getLiveFrames: () => new Set([3, 7, 9]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // The rail cleanup purges the session stores AND the retained union for
+    // the rail frames; every other retained entry (frame 9, Dry) survives.
+    purgeAquarelleFrameScript(7);
+    purgeBrushScriptFrame(3);
+    controller.dropRetainedForFrames(new Set([7, 3]));
+    setSignature('sig-1');
+    await controller.saveNow();
+
+    const [, written] = write.mock.calls[0] as [StudioScriptSnapshotIdentity, Uint8Array];
+    const decoded = decodeStudioScriptSnapshot(written, IDENTITY);
+    const strokeFrames = decoded.watercolorEvents
+      .filter((event) => !isAquarelleDryEvent(event))
+      .map((event) => (event as StudioStroke<AquarelleStrokePayload>).playFrame);
+    expect(strokeFrames).toEqual([9]);
+    expect(decoded.watercolorEvents.some((event) => isAquarelleDryEvent(event))).toBe(true);
+    expect(decoded.brushFrames).toEqual([]);
   });
 
   it('reports a corrupt snapshot ONCE and never mutates the store', async () => {
