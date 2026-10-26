@@ -4,14 +4,17 @@ import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 
 const harness = vi.hoisted(() => ({
   encode: vi.fn(),
+  convert: vi.fn(),
 }));
 
 vi.mock('./rotoCanvasFrames', () => ({ encodeRotoFrameFromCanvas: harness.encode }));
+vi.mock('../../../lib/rasterAlpha', () => ({ transmittanceSourceToPigmentAlpha: harness.convert }));
 
 import { mergeCachedRotoAlphaFrame } from './physicsPaintRotoAlphaMerge';
 
 type RecordedCanvasOp =
   | { type: 'clearRect'; x: number; y: number; w: number; h: number }
+  | { type: 'fillRect'; x: number; y: number; w: number; h: number; style: string }
   | { type: 'drawImage'; source: string; args: number[]; compositeOp: string };
 
 let operations: RecordedCanvasOp[] = [];
@@ -20,9 +23,14 @@ let failImage = false;
 
 class RecordingCanvasContext {
   globalCompositeOperation = 'source-over';
+  fillStyle = '';
 
   clearRect(x: number, y: number, w: number, h: number): void {
     operations.push({ type: 'clearRect', x, y, w, h });
+  }
+
+  fillRect(x: number, y: number, w: number, h: number): void {
+    operations.push({ type: 'fillRect', x, y, w, h, style: this.fillStyle });
   }
 
   drawImage(source: CanvasImageSource, ...args: number[]): void {
@@ -114,6 +122,7 @@ describe('mergeCachedRotoAlphaFrame', () => {
     operations = [];
     failContext = false;
     failImage = false;
+    harness.convert.mockReset().mockReturnValue({ marker: 'pigment-alpha-sheet' });
     harness.encode.mockReset().mockImplementation(async (canvas: HTMLCanvasElement, appFrame: number) => ({
       frameIndex: 0,
       appFrame,
@@ -160,19 +169,37 @@ describe('mergeCachedRotoAlphaFrame', () => {
     ]);
   });
 
-  it('56-12/WATERCOLOR-CLEAR: multiply blend glazes the aquarelle transmittance over the cached base (never source-over cover)', async () => {
-    await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 }, undefined, undefined, 'multiply');
+  it('WATERCOLOR-ALPHA: pigment-alpha fills paper white, draws the base, then the converted sheet source-over', async () => {
+    // Round 2 law: the stored result keeps the sheet opaque —
+    // t' = a*C + (1-a)*t_base — by compositing the live transmittance through
+    // its straight-alpha pigment conversion over the cached base on white.
+    await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 }, undefined, undefined, 'pigment-alpha');
 
+    expect(harness.convert).toHaveBeenCalledTimes(1);
+    expect(harness.convert.mock.calls[0]![0]).toMatchObject({ marker: 'live-transparent-stroke-canvas' });
+    expect(operations[0]).toEqual({ type: 'clearRect', x: 0, y: 0, w: 320, h: 180 });
+    expect(operations[1]).toEqual({ type: 'fillRect', x: 0, y: 0, w: 320, h: 180, style: '#ffffff' });
     const draws = operations.filter((operation) => operation.type === 'drawImage');
     expect(draws).toEqual([
       { type: 'drawImage', source: 'cached-base-image', args: [0, 0, 320, 180], compositeOp: 'source-over' },
-      { type: 'drawImage', source: 'live-transparent-stroke-canvas', args: [0, 0, 320, 180], compositeOp: 'multiply' },
+      { type: 'drawImage', source: 'pigment-alpha-sheet', args: [0, 0, 320, 180], compositeOp: 'source-over' },
     ]);
+  });
+
+  it('WATERCOLOR-ALPHA: falls back to the raw sheet when the conversion readback is unavailable', async () => {
+    harness.convert.mockReturnValue(null);
+
+    await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 }, undefined, undefined, 'pigment-alpha');
+
+    const liveDraw = operations.find((operation) => operation.type === 'drawImage' && operation.source === 'live-transparent-stroke-canvas');
+    expect(liveDraw).toMatchObject({ compositeOp: 'source-over' });
   });
 
   it('56-12/WATERCOLOR-CLEAR: default blend stays source-over so engine-1 merges are unchanged', async () => {
     await mergeCachedRotoAlphaFrame(makeBaseFrame(), makeLiveCanvas(), 12, { width: 320, height: 180 });
 
+    expect(harness.convert).not.toHaveBeenCalled();
+    expect(operations.some((operation) => operation.type === 'fillRect')).toBe(false);
     const liveDraw = operations.find((operation) => operation.type === 'drawImage' && operation.source === 'live-transparent-stroke-canvas');
     expect(liveDraw).toMatchObject({ compositeOp: 'source-over' });
   });

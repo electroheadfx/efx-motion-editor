@@ -62,7 +62,7 @@ describe('261026 composeRotoScriptRebakeFrame (axis 2 — durable-base composite
     vi.unstubAllGlobals();
   });
 
-  it('multiply-composites the baked sheet OVER the durable base and re-encodes the composite', async () => {
+  it('pigment-alpha-composites the baked sheet OVER the durable base and re-encodes the composite', async () => {
     const durableBaseBytes = testWebpBytes('base-red-only');
     const sheetBytes = testWebpBytes('sheet-blue-only');
 
@@ -76,13 +76,14 @@ describe('261026 composeRotoScriptRebakeFrame (axis 2 — durable-base composite
     // The aquarelle bake decodes premultiply-pinned, like the cached base.
     expect(decodeMock.mock.calls[0]![1]).toEqual({ premultiplyAlpha: 'premultiply' });
     expect(drawCalls).toEqual([{ source: 'sheet-bitmap', args: [0, 0, 320, 180] }]);
-    // The base frame stays the durable source-key payload; blend is MULTIPLY.
+    // The base frame stays the durable source-key payload; the sheet meets it
+    // under the pigment-alpha law (round 2), never a raw overlay or a glaze.
     expect(harness.merge).toHaveBeenCalledWith(
       { bytes: durableBaseBytes },
       expect.objectContaining({ width: 320, height: 180 }),
       { width: 320, height: 180 },
       undefined,
-      'multiply',
+      'pigment-alpha',
     );
     expect(harness.encode).toHaveBeenCalledWith({ marker: 'merged-canvas' }, 6);
     expect(result).toEqual({

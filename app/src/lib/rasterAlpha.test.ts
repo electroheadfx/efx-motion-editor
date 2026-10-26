@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isFullyOpaqueRaster, transmittanceToAlpha } from './rasterAlpha'
+import { isFullyOpaqueRaster, transmittanceSourceToPigmentAlpha, transmittanceToAlpha } from './rasterAlpha'
 
 const PROBE_PIXELS = 64 * 64
 
@@ -105,5 +105,99 @@ describe('transmittanceToAlpha', () => {
     stubAlphaOutput()
     const unlucky = { width: 1, height: 1, getContext: () => null } as unknown as HTMLCanvasElement
     expect(transmittanceToAlpha(unlucky)).toBeNull()
+  })
+
+  it('SOFT BORDER: a light wash keeps a small alpha instead of an opaque sheet', () => {
+    // 12% neutral absorption (224/255 transmitted) → 12% alpha, not 255.
+    const data = new Uint8ClampedArray([224, 224, 224, 255])
+    const output = stubAlphaOutput()
+    transmittanceToAlpha(makeTransmittanceCanvas(data))
+    expect(Array.from(output.written()!)).toEqual([0, 0, 0, 31])
+  })
+})
+
+function stubConversionDocument(options: {
+  probeAlpha?: number
+  conversionData?: Uint8ClampedArray
+} = {}): {
+  written: Uint8ClampedArray[]
+  created: Array<{ width: number; height: number; drawn: CanvasImageSource[] }>
+} {
+  const probeAlpha = options.probeAlpha ?? 255
+  const conversionData = options.conversionData ?? new Uint8ClampedArray([255, 51, 255, 255])
+  const written: Uint8ClampedArray[] = []
+  const created: Array<{ width: number; height: number; drawn: CanvasImageSource[] }> = []
+  vi.stubGlobal('document', {
+    createElement: vi.fn(() => {
+      const element = {
+        width: 0,
+        height: 0,
+        drawn: [] as CanvasImageSource[],
+        getContext: vi.fn(() => {
+          const probeData = new Uint8ClampedArray(PROBE_PIXELS * 4)
+          for (let i = 3; i < probeData.length; i += 4) probeData[i] = probeAlpha
+          return {
+            clearRect: vi.fn(),
+            drawImage: vi.fn((source: CanvasImageSource) => {
+              element.drawn.push(source)
+            }),
+            // The 64×64 probe canvas reports the probed alpha; every other
+            // canvas (the draw-in of a non-canvas source) reports its pixels.
+            getImageData: vi.fn(() => ({
+              data: element.width === 64 && element.height === 64 ? probeData : conversionData,
+            })),
+            putImageData: vi.fn((image: { data: Uint8ClampedArray }) => {
+              written.push(image.data)
+            }),
+          }
+        }),
+      }
+      created.push(element)
+      return element
+    }),
+  })
+  return { written, created }
+}
+
+describe('transmittanceSourceToPigmentAlpha', () => {
+  it('converts a canvas source and memoizes the result by source identity', () => {
+    const source = makeTransmittanceCanvas(new Uint8ClampedArray([255, 51, 255, 255]))
+    const { written, created } = stubConversionDocument()
+
+    const converted = transmittanceSourceToPigmentAlpha(source)
+
+    expect(converted).not.toBeNull()
+    expect(Array.from(written[0]!)).toEqual([255, 0, 255, 204])
+    // Probe + output.
+    expect(created).toHaveLength(2)
+    // Second call serves the cached canvas — no second probe/conversion.
+    expect(transmittanceSourceToPigmentAlpha(source)).toBe(converted)
+    expect(written).toHaveLength(1)
+  })
+
+  it('returns null (and memoizes it) for a source with real alpha — engine-1 paint is untouched', () => {
+    const source = makeTransmittanceCanvas(new Uint8ClampedArray([255, 0, 0, 128]))
+    const { created } = stubConversionDocument({ probeAlpha: 128 })
+
+    expect(transmittanceSourceToPigmentAlpha(source)).toBeNull()
+    expect(transmittanceSourceToPigmentAlpha(source)).toBeNull()
+    // Only the probe canvas — the helper never allocates a conversion canvas
+    // for a non-transmittance source.
+    expect(created).toHaveLength(1)
+  })
+
+  it('draws a non-canvas source (ImageBitmap) into a sized canvas before converting', () => {
+    const source = { width: 2, height: 1 } as unknown as CanvasImageSource
+    const { written, created } = stubConversionDocument()
+
+    const converted = transmittanceSourceToPigmentAlpha(source)
+
+    expect(converted).not.toBeNull()
+    // Probe + draw-in + output.
+    expect(created).toHaveLength(3)
+    expect(created[1]!.width).toBe(2)
+    expect(created[1]!.height).toBe(1)
+    expect(created[1]!.drawn).toEqual([source])
+    expect(Array.from(written[0]!)).toEqual([255, 0, 255, 204])
   })
 })

@@ -585,9 +585,9 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
      * no pixel erase ran). When set, the merge draws it instead of cachedBase
      * bytes so the capture records the removal. */
     baseCanvas?: HTMLCanvasElement | null;
-    /** watercolor-clears-cached-paint: `multiply` when the live sheet is
-     * aquarelle opaque transmittance (it glazes the base); default
-     * `source-over` for engine-1 real-alpha strokes. */
+    /** 2026-10-26 round 2: `pigment-alpha` when the live sheet is aquarelle
+     * opaque transmittance (it converts to straight-alpha pigment over the
+     * base); default `source-over` for engine-1 real-alpha strokes. */
     mergeBlend?: RotoAlphaMergeBlend;
     size: { width: number; height: number };
     mutationId?: number;
@@ -680,7 +680,7 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
           baseCanvasPresent: capture.baseCanvas !== null && capture.baseCanvas !== undefined,
           produced: summarizeRenderedFrame(produced),
         }, { producedInk: produced.bytes, baseInk: capture.cachedBase?.bytes ?? null });
-        // 261026 (third pass): prove the multiply composite keeps the base's
+        // 261026 (round 2): prove the pigment-alpha composite keeps the base's
         // visible paint. Base = the pre-script cache pinned at sheet start;
         // sheet = the live transmittance canvas; produced = what will commit.
         recordAquarelleAlphaProof('capture-alpha-proof', {

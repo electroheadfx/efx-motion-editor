@@ -1197,9 +1197,11 @@ describe('Canvas navigation render localization', () => {
     expect(countOccurrences(canvasMount, 'memo(')).toBe(0);
     expect(memoizedCanvasMount).toContain('export const MemoizedPhysicsPaintCanvasMount = memo(PhysicsPaintCanvasMountRenderCounted);');
     // Water color's cached base is rendered under the live canvas — engine-1's
-    // preview base is invisible while the aquarelle layer is up.
+    // preview base is invisible while the aquarelle layer is up. Round 2: the
+    // dedicated layer converts the stored transmittance sheet to pigment alpha
+    // at display (its own module, so the mount stays plain).
     expect(canvasMount).toContain('aquarelleActive && props.aquarelleCachedBaseUrl');
-    expect(canvasMount).toContain('class="aquarelle-cached-base"');
+    expect(canvasMount).toContain('AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl}');
     expect(studioView).toContain('const MemoizedPhysicsPaintCanvasStack = memo(PhysicsPaintCanvasStackImpl);');
     expect(studioView).toContain('<MemoizedPhysicsPaintCanvasMount');
     expect(studioView).toContain('aquarelleCachedBaseUrl={props.cachedRotoPlaybackActive ? null : props.cachedRotoReferenceUrl ?? null}');

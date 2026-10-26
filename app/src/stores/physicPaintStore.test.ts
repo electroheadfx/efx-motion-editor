@@ -1833,6 +1833,17 @@ describe('physicPaintStore', () => {
 
     let createdCanvases: FlatTestCanvas[];
 
+    /**
+     * The compositor's own composite canvas. The round-2 pigment-alpha probe
+     * allocates 64×64 probe canvases first (it cannot read this stub, so it
+     * deterministically skips conversion), so index 0 is no longer reliable.
+     */
+    function compositeCanvas(): FlatTestCanvas {
+      const canvas = createdCanvases.find((candidate) => candidate.width === 4 && candidate.height === 3);
+      if (!canvas) throw new Error('composite canvas was not created');
+      return canvas;
+    }
+
     beforeEach(() => {
       resetEfxPaintStore();
       createdCanvases = [];
@@ -2198,8 +2209,7 @@ describe('physicPaintStore', () => {
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       // The composite canvas consumed the track's BARE frame image — no paper
       // composite, no fill: an upper track can never mask a lower one.
-      const compositeCanvas = createdCanvases[0];
-      expect(compositeCanvas.log()).toBe('clear|save|draw(bitmap:test-frame,1,source-over)|restore');
+      expect(compositeCanvas().log()).toBe('clear|save|draw(bitmap:test-frame,1,source-over)|restore');
       // The paper fond is drawn ONCE beneath the flattened raster (the
       // deterministic color-fill + grain fallback, texture-less by contract).
       expect((await record.encodeBytes())).toEqual(testWebpBytes('fill(#f4efe3,1,source-over)|draw(canvas,1,multiply)'));
@@ -2225,9 +2235,9 @@ describe('physicPaintStore', () => {
 
       const record = (await flattenAfterDecode(FLAT_LAYER, 5))!;
       // Both tracks' bare frames draw in bottom-to-top order — no per-track
-      // paper composite masking the lower track.
-      const compositeCanvas = createdCanvases[0];
-      expect(compositeCanvas.log()).toBe('clear|save|draw(bitmap:test-frame,1,source-over)|restore|save|draw(bitmap:test-frame,1,source-over)|restore');
+      // paper composite masking the lower track. (The unreadable stub keeps
+      // the stored-sheet fallback: two probes, zero conversions.)
+      expect(compositeCanvas().log()).toBe('clear|save|draw(bitmap:test-frame,1,source-over)|restore|save|draw(bitmap:test-frame,1,source-over)|restore');
       // Exactly ONE fond fill beneath the composite, resolved from the
       // document fallback.
       expect(decodeFlatLog((await record.encodeBytes())).match(/fill\(#f4efe3/g)?.length).toBe(1);

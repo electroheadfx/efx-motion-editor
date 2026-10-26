@@ -71,7 +71,9 @@ export interface DocumentSnapshot {
 }
 
 /** How the display shader composites: on screen (with the reference) or for an export. */
-const MODE = { screen: 0, paper: 1, transparent: 2, white: 3 } as const;
+// `transparent` is the OPAQUE transmittance export/capture (storage format);
+// `pigment` is the compositor DISPLAY mode (straight-alpha pigment, round 2).
+const MODE = { screen: 0, paper: 1, transparent: 2, white: 3, pigment: 4 } as const;
 const MAX_REF_SIDE = 4096;
 
 interface Sample { x: number; y: number; p: number; t: number; tx: number; ty: number }
@@ -2068,7 +2070,9 @@ export class WatercolorEngine {
         x1: Math.ceil(v.x + (d.x1 / this.dw) * v.w) + 2, y1: Math.ceil(v.y + (d.y1 / this.dh) * v.h) + 2,
       };
     }
-    this.drawDisplay(null, this.view, rect, false, this.compositorLayer ? MODE.transparent : MODE.screen);
+    // The compositor surface shows the sheet as a real paint layer (pigment
+    // alpha); the literal `transparent` mode stays the opaque capture format.
+    this.drawDisplay(null, this.view, rect, false, this.compositorLayer ? MODE.pigment : MODE.screen);
     this.dirty = null;
     this.dirtyAll = false;
   }

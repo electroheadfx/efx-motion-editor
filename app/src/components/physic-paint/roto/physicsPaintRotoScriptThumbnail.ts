@@ -11,11 +11,12 @@ export interface RotoScriptThumbnailNativeEncoder {
 
 /**
  * 261026-nvq: how the script canvas composites over the thumbnail's flat fill
- * and paper. Aquarelle sheets are MODE.transparent OPAQUE transmittance (white
- * = no pigment, alpha 255) and must MULTIPLY — the same law as the live seam
- * (.aquarelle-live-canvas / .aquarelle-cached-base) and the frame-cache merge
- * (`mergeBlend: 'multiply'`). Engine-1 `copyLiveAlphaCanvas` is a
- * transparent-backed alpha canvas and stays source-over.
+ * and paper. Aquarelle STORAGE is MODE.transparent OPAQUE transmittance (white
+ * = no pigment, alpha 255), so the thumbnail multiplies it over the paper —
+ * exact, and unchanged by the round-2 display conversion (which lives at the
+ * live/cache/composite seams, never in storage). Engine-1
+ * `copyLiveAlphaCanvas` is a transparent-backed alpha canvas and stays
+ * source-over.
  */
 export type RotoScriptThumbnailComposite = 'source-over' | 'multiply';
 

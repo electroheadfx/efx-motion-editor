@@ -13,10 +13,12 @@ export interface RotoScriptRebakeCompositeInput {
 
 /**
  * 261026 (watercolor-loop-render-split, axis 2): compose a script re-bake over
- * the durable pixel-only base with the SAME multiply law the live capture
- * uses. The aquarelle bake is MODE.transparent OPAQUE transmittance — white
- * (no pigment) leaves the base untouched, pigment tints it. Publishing the raw
- * bake over a group frame would erase the rail's cached paint (the pre-revert
+ * the durable pixel-only base with the SAME pigment-alpha law the live capture
+ * uses (2026-10-26 round 2). The aquarelle bake is MODE.transparent OPAQUE
+ * transmittance in storage; the merge converts it to straight-alpha pigment and
+ * composites it over the base on white, storing t' = a*C + (1-a)*t_base — the
+ * later one-fond multiply reconstructs the live result. Publishing the raw bake
+ * over a group frame would erase the rail's cached paint (the pre-revert
  * destruction), so the publish callback must use this composite instead.
  *
  * Returns null on any decode/merge/encode failure so the caller fails closed —
@@ -45,7 +47,7 @@ export async function composeRotoScriptRebakeFrame(
       sheetCanvas,
       input.size,
       undefined,
-      'multiply',
+      'pigment-alpha',
     );
     return await encodeRotoFrameFromCanvas(merged, input.appFrame);
   } catch {

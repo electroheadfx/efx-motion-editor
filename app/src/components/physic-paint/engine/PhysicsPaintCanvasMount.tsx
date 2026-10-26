@@ -8,6 +8,7 @@ import type { BlendMode } from '../../../efx-paint/document/efxPaintDocument';
 import { getContainedCanvasDisplaySize } from './physicsPaintCanvasSizing';
 import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPaintPerformanceTrace';
 import { AquarelleCanvasLayer } from './AquarelleCanvasLayer';
+import { AquarelleCachedBaseLayer } from './AquarelleCachedBaseLayer';
 import { BrushScriptOverlay } from './BrushScriptOverlay';
 
 const CANVAS_MOUNT_ERROR = 'Unable to mount physics paint canvas: canvas wrapper did not create a canvas';
@@ -219,11 +220,14 @@ export function PhysicsPaintCanvasMount(props: { width: number; height: number; 
         />
       ) : null}
       {/* Water color cached base: the engine-1 preview base is invisible in
-          aquarelle mode, so the committed sheet must render here, multiply over
-          the fond and UNDER the live canvas — the same transmittance law as the
-          live layer. Without it a cached key shows bare paper after return. */}
+          aquarelle mode, so the committed sheet renders here UNDER the live
+          canvas. Storage is the opaque transmittance sheet; the layer converts
+          it to pigment alpha at display (2026-10-26 round 2), the same law as
+          the live surface — source-over inside the tracks group, whose ONE
+          multiply over the fond stays the paper pass. Without it a cached key
+          shows bare paper after return. */}
       {aquarelleActive && props.aquarelleCachedBaseUrl ? (
-        <img class="aquarelle-cached-base" src={props.aquarelleCachedBaseUrl} alt="" aria-hidden="true" />
+        <AquarelleCachedBaseLayer url={props.aquarelleCachedBaseUrl} />
       ) : null}
       {aquarelleActive ? (
         <AquarelleCanvasLayer

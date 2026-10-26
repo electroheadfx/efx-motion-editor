@@ -590,7 +590,7 @@ uniform vec2 uTexel;      // document texel size
 uniform float uGranulation, uEdgeDarken;
 uniform float uFlat;      // 1: ignore the paper's relief, grain and wetness (for region picking)
 uniform vec3 uDesk;
-uniform int uMode;        // 0 screen, 1 export on paper, 2 export transparent, 3 export on white
+uniform int uMode;        // 0 screen, 1 export on paper, 2 export transparent, 3 export on white, 4 display pigment alpha
 uniform sampler2D uRef;   // reference image (screen only), sRGB, y up
 uniform vec4 uRefRect;    // its placement in document uv: xy origin, zw size
 uniform float uRefOpacity;
@@ -621,7 +621,7 @@ void main(){
   vec2 uv = (gl_FragCoord.xy - uView.xy) / uView.zw;
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0){
     // Compositor layer: nothing outside the sheet — the fond is the compositor's.
-    o = uMode == 2 ? vec4(0.0) : vec4(uShadow > 0.0 ? desk(gl_FragCoord.xy) : uDesk, 1.0);
+    o = (uMode == 2 || uMode == 4) ? vec4(0.0) : vec4(uShadow > 0.0 ? desk(gl_FragCoord.xy) : uDesk, 1.0);
     return;
   }
 
@@ -660,6 +660,22 @@ ${displayBasisGLSL()}
     // it as a pale veil (the pigment underneath still tints).
     t = mix(t, vec3(1.0), cov);
     o = vec4(t, 1.0);
+    return;
+  }
+
+  if (uMode == 4){
+    // PIGMENT ALPHA (compositor display, 2026-10-26 round 2). The same
+    // transmittance as mode 2, re-expressed as straight-alpha pigment so the
+    // live sheet stacks with REAL layer alpha: alpha = 1 - min(r,g,b),
+    // colour = (t - min) / alpha. Light washes stay translucent, dense pigment
+    // masks. displayFS writes PREMULTIPLIED pixels (F1 contract), so scale the
+    // colour by alpha. Storage/export keeps mode 2's opaque sheet.
+    vec3 t = toSRGB(rgb);
+    t = mix(t, vec3(1.0), cov);
+    float mn = min(min(t.r, t.g), t.b);
+    float alpha = 1.0 - mn;
+    vec3 pigment = alpha > 0.0 ? (t - vec3(mn)) / alpha : vec3(0.0);
+    o = vec4(pigment * alpha, alpha);
     return;
   }
 

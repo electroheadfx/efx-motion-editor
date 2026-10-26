@@ -136,6 +136,20 @@ describe('260925-iy6 UAT follow-up — live-dry overlay + paperGrain removal', (
     expect(pass).toBeGreaterThan(probe);
   });
 
+  it('U1b ROUND 2: converted pigment-alpha composites are re-keyed into the pass gate', () => {
+    // After the pigment-alpha conversion the composite is no longer fully
+    // opaque, so the stored-sheet probe alone would let the tooth back onto
+    // the watercolor. The store must pass the explicit conversion signal.
+    expect(storeSource).toMatch(/shouldApplyPaperPass\(\{[\s\S]{0,240}?transmittanceTrackConverted/);
+    // One conversion law: the decision is pure and lives outside the store.
+    expect(storeSource).toContain('shouldConvertTransmittanceTracks({');
+    expect(storeSource).toContain('transmittanceSourceToPigmentAlpha(');
+    // The RAW per-track memo must never serve a converting composite: the
+    // compositor reads it before the resolve port, which would bypass the
+    // converted rasters (hard mask returns).
+    expect(storeSource).toContain('trackRasterMemo: convertTransmittanceTracks ? undefined : trackRasterMemo');
+  });
+
   it('U2 _resolveFlattenedFrame threads the liveOverlay into the compositor AT the track slot, before applyPaperPass', () => {
     // studio-multi-track-only-active: the overlay is no longer appended after
     // the composite (which made the selected track always topmost). It rides

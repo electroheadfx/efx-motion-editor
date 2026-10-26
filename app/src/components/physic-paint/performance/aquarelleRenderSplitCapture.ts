@@ -313,8 +313,9 @@ export function sampleBytesAlphaStats(bytes: Uint8Array | null | undefined): Pro
 /**
  * Base-preservation proof: on every pixel where the BASE is visible (alpha >=
  * 8), does the produced/composed payload keep it visible, and with which
- * luminance shift? A correct multiply composite over an opaque sheet keeps
- * baseVisible -> visible at 100% (white multiplies the base through).
+ * luminance shift? The pigment-alpha composite (2026-10-26 round 2) keeps
+ * baseVisible -> visible everywhere: the live sheet's alpha is 0 where no
+ * pigment was deposited, so the base passes through untouched.
  */
 export interface ProbeAlphaRetention {
   samples: number;

@@ -7098,7 +7098,7 @@ export function PhysicsPaintStudio() {
         pendingFirstPaintTarget: pendingFirstPaintTarget !== null,
         classification: summarizePhysicPaintRotoGroupFrameTarget(targetClassification),
         identityKey,
-        mergeBlend: 'source-over',
+        mergeBlend: 'pigment-alpha',
       }, cachedBase);
       // The snapshot is an eager canvas copy, so a retry can reuse it after the
       // live sheet was cleared by the frame change.
@@ -7108,12 +7108,12 @@ export function PhysicsPaintStudio() {
           appFrame: playFrame,
           liveAlphaCanvas,
           cachedBase,
-          // Opaque-sheet law (2026-10-26): MODE.transparent is an opaque
-          // transmittance SHEET. Watercolor over a cached paint on the SAME
-          // track OVERPAINTS it — source-over, the same replacement the
-          // editor's active-track overlay performs. Multiply glazed the cache
-          // (the see-through stroke artifact the user reported).
-          mergeBlend: 'source-over',
+          // Pigment-alpha law (2026-10-26 round 2): the stored sheet stays
+          // opaque (MODE.transparent transmittance), but the merge converts the
+          // live sheet to straight-alpha pigment over the cached base on
+          // white — t' = a*C + (1-a)*t_base. Opaque source-over covered the
+          // cache wholesale; multiply glazed it. Neither is a paint layer.
+          mergeBlend: 'pigment-alpha',
           size: { width: canvasWidth, height: canvasHeight },
         });
         recordAquarelleRenderSplitEvent('capture-enqueue', {

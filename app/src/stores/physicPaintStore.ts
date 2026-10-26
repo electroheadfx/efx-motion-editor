@@ -25,8 +25,9 @@ import type { FrameMediaReference } from '../lib/efxPaintPackage';
 import { getExpandedRotoRealKeyFrames } from '../components/physic-paint/roto/physicsPaintRotoWorkflow';
 import { drawMissingRotoBackground, resolveMissingRotoFrameDraw, type MissingRotoFrameBackgroundState, type MissingRotoFrameDrawInstruction } from '../lib/rotoFrameDraw';
 import { getProjectPaperCanvas, isProjectPaperTextureResolved, subscribeProjectPaperTextureResolve } from '../lib/projectPaperRaster';
-import { isFullyOpaqueRaster } from '../lib/rasterAlpha';
+import { isFullyOpaqueRaster, transmittanceSourceToPigmentAlpha } from '../lib/rasterAlpha';
 import { applyPaperPass, getPaperPassTile, shouldApplyPaperPass } from '../lib/paperPass';
+import { shouldConvertTransmittanceTracks } from '../efx-paint/compositor/efxPaintPigmentAlpha';
 import { recordPhysicsPaintDecodeSample, recordPhysicsPaintPerformance, recordPhysicsPaintPerformanceCounter, type PhysicsPaintPerformanceSample } from '../components/physic-paint/performance/physicsPaintPerformanceTrace';
 // 48-03 (D-11/CMP-01): the flattened compositor delivery. The store imports the
 // pure compositor layer (efx-paint/compositor — no Preact/DOM/store) and the
@@ -2923,6 +2924,37 @@ function _resolveFlattenedFrame(
     }
   }
 
+  // 2026-10-26 (round 2, option B): a watercolor track is a PIGMENT layer
+  // (alpha = 1 − min(r,g,b)) — dense pigment masks the tracks below, light
+  // washes stay translucent. Storage keeps the opaque MODE.transparent
+  // transmittance bytes (no format change, old projects render); conversion is
+  // per-composite and only where it changes the result (see the predicate).
+  const fondInstruction = includeFond ? _resolveDocumentFondInstruction(layerId, efxDocument) : null;
+  const contentTrackCount = [...preResolved.values()]
+    .filter((resolution) => resolution.kind === 'content').length;
+  const convertTransmittanceTracks = shouldConvertTransmittanceTracks({
+    contentTrackCount,
+    backgroundContentAtFrame,
+    // The Studio monitor path (includeFond=false) still has its fond layer
+    // beneath the isolated tracks group; only a null instruction on the
+    // including path means the raster is delivered without a fond.
+    hasFond: includeFond ? fondInstruction !== null : true,
+  });
+  // `transmittanceSourceToPigmentAlpha` memoizes by raster identity (the
+  // content-token LRU hands out one immutable bitmap per revision), so repeated
+  // monitor redraws of the same frame never re-probe or re-convert. Sources
+  // that are not stored transmittance sheets (engine-1 real alpha) stay null
+  // and are drawn untouched.
+  const convertedTrackRasters = new Map<string, HTMLCanvasElement>();
+  if (convertTransmittanceTracks) {
+    for (const [trackId, resolution] of preResolved) {
+      if (resolution.kind !== 'content') continue;
+      const converted = transmittanceSourceToPigmentAlpha(resolution.raster);
+      if (converted) convertedTrackRasters.set(trackId, converted);
+    }
+  }
+  const transmittanceTrackConverted = convertedTrackRasters.size > 0;
+
   const ports: EfxPaintCompositorPorts = {
     createCanvas: (width, height) => {
       const canvas = document.createElement('canvas');
@@ -2932,11 +2964,20 @@ function _resolveFlattenedFrame(
       if (!ctx) throw new Error('_resolveFlattenedFrame: 2d rendering context unavailable');
       return { canvas, ctx };
     },
-    resolveTrackContent: (trackId) => preResolved.get(trackId) ?? { kind: 'missing', missingRefs: [] },
+    resolveTrackContent: (trackId) => {
+      const resolution = preResolved.get(trackId) ?? { kind: 'missing', missingRefs: [] };
+      const converted = convertedTrackRasters.get(trackId);
+      if (!converted || resolution.kind !== 'content') return resolution;
+      return { kind: 'content', raster: converted };
+    },
     resolveBackgroundFrame: (targetFrame) => resolveEfxPaintBackgroundFrame(backgroundContext!, targetFrame, knownSources),
     resolveBackgroundSourceImage: (sourceRef) => _resolveBackgroundSourceImage(sourceRef),
     compositeOp: blendModeToCompositeOp,
-    trackRasterMemo,
+    // Round 2: the compositor reads this memo BEFORE resolveTrackContent, so a
+    // converting composite must not receive it — the raw stored sheet would
+    // bypass the converted rasters and hard-mask the tracks below. The memo
+    // keeps RAW resolutions for every non-converting seam.
+    trackRasterMemo: convertTransmittanceTracks ? undefined : trackRasterMemo,
     trackContentRevisions,
     backgroundClipRevisions,
     excludeTrackIds,
@@ -2967,16 +3008,20 @@ function _resolveFlattenedFrame(
   // never receives this pass, so a second modulation is the fine speckle the
   // editor showed over dense pigment. Engine-1 paint keeps real alpha, so the
   // probe leaves it false and the tooth applies unchanged.
-  const transmittanceSheet = isFullyOpaqueRaster(result.raster as HTMLCanvasElement);
+  const transmittanceSheet = isFullyOpaqueRaster(result.raster);
   const passSource = _resolveFondSource(layerId, efxDocument);
   // Gate mirrors the fond grain gate (rotoFrameDraw): '' means grain off (CR-01),
   // strength None means no tooth, and an aquarelle transmittance sheet is
   // already paper-aware — each is a deterministic skip that touches nothing.
+  // Round 2: once a track is converted to pigment alpha the probe is no longer
+  // opaque, so the explicit conversion signal keeps the tooth off the same
+  // watercolor.
   if (passSource?.kind === 'paper'
     && shouldApplyPaperPass({
       passKind: passSource.kind,
       grainStrength: passSource.metadata.grainStrength,
       transmittanceSheet,
+      transmittanceTrackConverted,
     })) {
     const textureKey = passSource.metadata.background;
     // Subscribe in BOTH branches (today only the fond branch does): a Studio
@@ -3006,7 +3051,6 @@ function _resolveFlattenedFrame(
   // on a SEPARATE layer beneath an isolated tracks group (the active track's
   // CSS blend must never meet the paper). The `fond:0` key term keeps the two
   // variants in distinct memo entries.
-  const fondInstruction = includeFond ? _resolveDocumentFondInstruction(layerId, efxDocument) : null;
   let raster = result.raster as HTMLCanvasElement;
   if (fondInstruction) {
     // The fond pixel-matches the engine's own paper draw (white + tiled

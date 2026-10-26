@@ -49,8 +49,17 @@ export function shouldApplyPaperPass(input: {
   readonly passKind: 'paper' | 'color' | null;
   readonly grainStrength: number;
   readonly transmittanceSheet: boolean;
+  /**
+   * 2026-10-26 round 2: at least one track raster was converted from stored
+   * transmittance to straight-alpha pigment for this composite. The converted
+   * raster is no longer fully opaque, so the `transmittanceSheet` probe is
+   * false — this explicit signal is what keeps the engine-1 tooth off the
+   * watercolor (and off the other tracks flattened with it).
+   */
+  readonly transmittanceTrackConverted: boolean;
 }): boolean {
   if (input.transmittanceSheet) return false;
+  if (input.transmittanceTrackConverted) return false;
   return input.passKind === 'paper' && input.grainStrength > 0;
 }
 

@@ -12,9 +12,11 @@ import { shouldApplyPaperPass } from './paperPass';
 // clean — the surfaces disagreed on the same frame.
 //
 // The gate is one predicate so the law lives in one place: paper fond + grain
-// on, but NEVER an opaque transmittance sheet.
+// on, but NEVER an aquarelle sheet — whether it is still the opaque stored
+// transmittance (probe true) or was converted to straight-alpha pigment for
+// the composite (probe false, explicit conversion flag true).
 
-const PAPER = { passKind: 'paper' as const, grainStrength: 0.65 };
+const PAPER = { passKind: 'paper' as const, grainStrength: 0.65, transmittanceTrackConverted: false };
 
 describe('shouldApplyPaperPass — engine-1 tooth only', () => {
   it('applies to real-alpha paint over a paper fond with grain on', () => {
@@ -27,13 +29,24 @@ describe('shouldApplyPaperPass — engine-1 tooth only', () => {
     expect(shouldApplyPaperPass({ ...PAPER, transmittanceSheet: true })).toBe(false);
   });
 
+  it('SKIPS a converted aquarelle composite — the post-conversion probe is no longer opaque', () => {
+    // Once the track raster carries pigment alpha the fully-opaque probe is
+    // false, so the conversion flag is the ONLY thing keeping the tooth off
+    // the watercolor (and off the other tracks in the same composite).
+    expect(shouldApplyPaperPass({
+      ...PAPER,
+      transmittanceSheet: false,
+      transmittanceTrackConverted: true,
+    })).toBe(false);
+  });
+
   it('skips when the fond is not paper (solid colour / transparent)', () => {
-    expect(shouldApplyPaperPass({ passKind: 'color', grainStrength: 0.65, transmittanceSheet: false })).toBe(false);
-    expect(shouldApplyPaperPass({ passKind: null, grainStrength: 0.65, transmittanceSheet: false })).toBe(false);
+    expect(shouldApplyPaperPass({ passKind: 'color', grainStrength: 0.65, transmittanceSheet: false, transmittanceTrackConverted: false })).toBe(false);
+    expect(shouldApplyPaperPass({ passKind: null, grainStrength: 0.65, transmittanceSheet: false, transmittanceTrackConverted: false })).toBe(false);
   });
 
   it('skips when grain is off (strength None / 0) regardless of the sheet', () => {
-    expect(shouldApplyPaperPass({ passKind: 'paper', grainStrength: 0, transmittanceSheet: false })).toBe(false);
-    expect(shouldApplyPaperPass({ passKind: 'paper', grainStrength: -1, transmittanceSheet: false })).toBe(false);
+    expect(shouldApplyPaperPass({ passKind: 'paper', grainStrength: 0, transmittanceSheet: false, transmittanceTrackConverted: false })).toBe(false);
+    expect(shouldApplyPaperPass({ passKind: 'paper', grainStrength: -1, transmittanceSheet: false, transmittanceTrackConverted: false })).toBe(false);
   });
 });

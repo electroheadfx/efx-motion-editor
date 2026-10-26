@@ -32,11 +32,35 @@ const studio = readFileSync(resolve(__dirname, '../PhysicsPaintStudio.tsx'), 'ut
 describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
   it('TRANSPARENT: display composites pigment on transparent, never the vendor paper', () => {
     expect(layer).toContain('engine.setCompositorLayer(true)');
-    expect(engine).toContain('this.compositorLayer ? MODE.transparent : MODE.screen');
+    // 2026-10-26 round 2: the live surface is PIGMENT alpha, not the opaque
+    // transmittance export (that mode stays for capture/storage).
+    expect(engine).toContain('this.compositorLayer ? MODE.pigment : MODE.screen');
     // WebGL canvas must keep alpha, or transparent output is composited opaque.
     expect(engine).toContain('alpha: true');
-    // Outside the sheet is empty in compositor mode — never the desk colour.
-    expect(shaders).toContain('o = uMode == 2 ? vec4(0.0)');
+    // Outside the sheet is empty in every compositor mode — never the desk colour.
+    expect(shaders).toContain('o = (uMode == 2 || uMode == 4) ? vec4(0.0)');
+  });
+
+  it('LIVE ALPHA: the compositor display emits premultiplied pigment alpha', () => {
+    // alpha = 1 − min(r,g,b), colour = (t − min)/alpha, written PREMULTIPLIED
+    // (F1 contract: the WebGL context is premultipliedAlpha). Light washes
+    // stay translucent; dense pigment masks — the user-reported lost
+    // semi-transparency.
+    expect(engine).toContain('pigment: 4');
+    expect(shaders).toContain('float mn = min(min(t.r, t.g), t.b)');
+    expect(shaders).toContain('float alpha = 1.0 - mn');
+    expect(shaders).toContain('o = vec4(pigment * alpha, alpha)');
+  });
+
+  it('CACHED BASE: the committed sheet converts to pigment alpha at DISPLAY only', () => {
+    // Storage keeps the opaque transmittance bytes (option B); the cached-base
+    // element renders the same pigment law as the live surface.
+    expect(mount).toContain('AquarelleCachedBaseLayer');
+    const cachedBase = readFileSync(resolve(__dirname, './AquarelleCachedBaseLayer.tsx'), 'utf8');
+    expect(cachedBase).toContain('transmittanceSourceToPigmentAlpha');
+    expect(cachedBase).toContain('aquarelle-cached-base');
+    // The storage seam stays the raw opaque export.
+    expect(engine).toContain("exportCanvas(background: ExportBackground = 'transparent'");
   });
 
   it('ALIGNED: exact-fit view — pointer UV is the plain rect fraction, no fit margin', () => {
@@ -78,16 +102,17 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(layer).toContain('wasAwake = false');
   });
 
-  it('CACHE: aquarelle capture OVERPAINTS the cached paint (opaque-sheet law)', () => {
-    // Product law 2026-10-26: a Paint track is one OPAQUE sheet. Watercolor
-    // painted over a cached paint on the SAME track overpaints it — it never
-    // glazes/multiplies with it. The session base is still pinned (the capture
-    // must know what it replaces), but the merge is source-over: the live
-    // transmittance sheet covers the cache exactly as the editor's active-track
-    // overlay replaces the store raster.
+  it('CACHE: aquarelle capture composes cached base + live sheet under the pigment law', () => {
+    // 2026-10-26 round 2: a Paint track is one PIGMENT sheet. The live
+    // transmittance sheet converts to straight-alpha pigment and composites
+    // over the cached base (white paper base beneath), so the stored sheet is
+    // t' = a*C + (1-a)*t_base — the later one-fond multiply reconstructs the
+    // editor's live result exactly. Neither opaque source-over (covers the
+    // base wholesale) nor multiply (glazes it) is the law.
     expect(studio).not.toContain('cachedBase: null');
     expect(studio).toContain('aquarelleMergeBaseRef');
-    expect(studio).toContain("mergeBlend: 'source-over'");
+    expect(studio).toContain("mergeBlend: 'pigment-alpha'");
+    expect(studio).not.toContain("mergeBlend: 'source-over'");
     expect(studio).not.toContain("mergeBlend: 'multiply'");
     // Same seam engine-1 uses — no second cache system.
     expect(studio).toContain('captureLivePixels');
@@ -139,7 +164,10 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(studio).toContain("activeModule.value === 'watercolor'\n          || engineSurfaceHidden");
   });
 
-  it('F1/F2: transmittance encoding — opaque multiply-ready, no alpha to misread', () => {
+  it('F1/F2: STORAGE keeps the opaque transmittance encoding (option B)', () => {
+    // Capture/export still writes vec4(t, 1.0): the stored sheet stays opaque
+    // and old projects/thumbnails/pose margins keep working. Display converts
+    // to pigment alpha; storage never changes format.
     expect(shaders).toContain('o = vec4(t, 1.0)');
     expect(engine).toContain('premultipliedAlpha: true');
   });
