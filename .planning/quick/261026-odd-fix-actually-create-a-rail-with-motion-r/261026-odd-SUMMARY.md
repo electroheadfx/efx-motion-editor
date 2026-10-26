@@ -228,6 +228,13 @@ None — plan executed exactly as written.
 - **Pins:** `frameScriptOwnership.test.ts` rail-interval boundaries (inclusive start, half-open end, gaps, no ranges); the two Studio source pins updated to the new gate and funnel shapes.
 - **Test evidence:** full `vitest run` green and `tsc --noEmit` clean.
 
+**Follow-up 6 (2026-10-26, sixth native pass): Follow-up 5 was the wrong law; the remaining handles are Water color.** The diag-3 report for the reported frame reads `cellInsideRail: true`, `moveAvailable: false`, `owner: 'watercolor'`, `module: 'watercolor'`, `store.hasEntry: false`, `engine.strokeCount: 0`, and `aquarelle.hasScript: true` with exactly 4 events at `playFrame: 6` (mutationIds 36/37/93/106; colors #1469e8, #6aa6df, #103c65, #e64474). The four labelled handle boxes are therefore the **Water color selection overlay** over recorded aquarelle strokes — not Brush Move handles. The visible render shows only the pink wash (#e64474); the other three recorded strokes paint nothing visible.
+
+- **Reverted (Follow-up 5):** rail membership must NOT refuse Move and must NOT purge scripts — the user needs to paint on rail frames again ("NO it can't refuse… I need to paint again on them"). The `isRotoLoopRailFrame` gate, the rail purge, and the rail owner refusal were removed. The key-identity Move guard (a retained script stamped for a different key) stays.
+- **Measured cause (open):** `AquarelleCanvasLayer` wipes the sheet on every frame change and does NOT replay the recorded timeline on arrival; the frame's render comes from the baked pixel cache, while the selection handles come from the restored aquarelle registry. A cache that predates later strokes therefore shows handles with no paint.
+- **Diagnostic extension:** the provenance report now records each aquarelle event's document-UV `boundsUv`, `load`, `water`, `brushId`, `points`, `paramsSize`, `playFrame` — separating off-canvas strokes from not-replayed strokes from foreign (remapped) strokes.
+- **Status:** brush-Move/guide/snapshot work is complete; the aquarelle render-vs-script divergence is NOT fixed in this quick. Recommended next step: a dedicated debug deciding the truth model (replay the recorded script on arrival vs re-bake the cache on leave) before any code change.
+
 ## User Setup Required
 
 None — no external service configuration or dependency was added.
