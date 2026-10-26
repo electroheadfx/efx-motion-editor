@@ -1834,8 +1834,30 @@ export function PhysicsPaintStudio() {
   // exactly one owner; both/none leave it untouched. Always republishes the
   // lock signal so the Studio top bar never shows a stale owner. Declared here
   // (before every seam) so later closures reference it without a TDZ hazard.
+  // quick-261026-odd: the rail cleanup retry. The launch-document attempt can
+  // miss when the carried document's physical state is not ready; this runs at
+  // every owner resolve AFTER the launch context has reached the store, so the
+  // pending cleanup lands on the first navigation even then. The marker keeps
+  // it once per project/layer/track.
+  const runPendingRailScriptCleanup = useCallback(() => {
+    const cleanupIdentity = studioScriptSnapshotIdentityRef.current;
+    if (!cleanupIdentity || railScriptCleanupDone(cleanupIdentity)) return;
+    const physical = physicPaintStore.getRotoPhysicalDocument(cleanupIdentity.layerId, cleanupIdentity.trackId);
+    if (!physical) return;
+    const railFrames = resolveStudioPixelOnlyFrames(cleanupIdentity);
+    if (railFrames && railFrames.size > 0) {
+      for (const railFrame of railFrames) {
+        purgeBrushScriptFrame(railFrame);
+        purgeAquarelleFrameScript(railFrame);
+      }
+      studioScriptSnapshot.dropRetainedForFrames(railFrames);
+      studioScriptSnapshot.markDirty();
+    }
+    markRailScriptCleanupDone(cleanupIdentity);
+  }, []);
   const applyFrameModuleState = useCallback(
     (frame: number, liveBrush?: LiveBrushScriptSample | null) => {
+      runPendingRailScriptCleanup();
       // quick-261026-odd follow-up: a Water color key's engine-1 guide proxies
       // are not a Brush script. Drop any guide groups an older capture stored
       // before resolving ownership, so a wash-only key cannot keep the Brush
@@ -1852,7 +1874,7 @@ export function PhysicsPaintStudio() {
       // so a fresh diag lands without requiring a Move click.
       if (import.meta.env.DEV) captureMoveProvenanceNow('owner-resolve');
     },
-    [],
+    [runPendingRailScriptCleanup],
   );
   // 261023-g4p: the brush script-edition port reads the live Studio seams at
   // event time through this render-body ref (temporaryEraseDepsRef precedent)

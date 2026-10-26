@@ -4217,7 +4217,7 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     expect(funnel).toContain("if (owner === 'brush' || owner === 'watercolor') {");
     expect(funnel).toContain('if (activeModule.peek() !== owner) activeModule.value = owner;');
     expect(funnel).toContain('setFrameScriptOwner(owner);');
-    expect(funnel).toContain('    [],');
+    expect(funnel).toContain('[runPendingRailScriptCleanup],');
   });
 
   it('gates the navigation funnel between the outgoing flush and the pixel snapshot', () => {
