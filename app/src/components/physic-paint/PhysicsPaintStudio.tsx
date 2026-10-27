@@ -4610,11 +4610,13 @@ export function PhysicsPaintStudio() {
   const clearActiveSource = useCallback(() => {
     if (isPhysicalMutationLocked() || !engine || !launchContextRef.current) return;
     if (rotoFrameEditingRef.current.clearCurrentFrame()) {
-      // 261023-h9v: a USER clear drops the retained script. The completion
-      // listener no longer reacts to 'clear' (engine.clear() notifies on every
-      // navigation), so this is the ONE explicit drop site outside prune /
-      // launch teardown. Water color owns its own record store.
-      if (activeModule.peek() === 'brush') clearBrushScriptFrame(currentFrame);
+      // 261027-gh9b: Trash is the full test reset. The frame editor above
+      // already blanks the key's cached pixels; this drops BOTH script stores
+      // (Water color + Brush) exactly like Raster does, but without retaining
+      // any raster. 261023-h9v: the completion listener never reacts to
+      // 'clear', so this is the ONE explicit drop site outside prune / launch
+      // teardown.
+      purgeMemoryScriptFrame(currentFrame);
       // quick-261025-awl (D-02/D-03): the explicit clear can empty the frame —
       // refresh OUTSIDE the module gate so the owner lock can never go stale.
       applyFrameModuleState(currentFrame);

@@ -3820,12 +3820,12 @@ describe('261023-h9v brush script rehydration surface', () => {
     expect(brushCompletion).not.toContain("kind === 'clear'");
   });
 
-  it('drops the retained script on an explicit user clear only', () => {
+  it('drops both script stores on an explicit user clear (full reset)', () => {
     expect(clearSourceStart).toBeGreaterThan(-1);
     expect(clearSourceBody).toContain('if (rotoFrameEditingRef.current.clearCurrentFrame()) {');
-    expect(clearSourceBody).toContain("if (activeModule.peek() === 'brush') clearBrushScriptFrame(currentFrame);");
+    expect(clearSourceBody).toContain('purgeMemoryScriptFrame(currentFrame);');
     expect(clearSourceBody.indexOf('clearCurrentFrame()')).toBeLessThan(
-      clearSourceBody.indexOf('clearBrushScriptFrame('),
+      clearSourceBody.indexOf('purgeMemoryScriptFrame('),
     );
   });
 
@@ -4421,7 +4421,7 @@ describe('quick-261025-awl explicit-selection module ownership', () => {
     const clearSourceStart = studio.indexOf('const clearActiveSource = useCallback(');
     const clearSourceEnd = studio.indexOf('const navigateToSyncedPhysicalFrame', clearSourceStart);
     const clearSource = studio.slice(clearSourceStart, clearSourceEnd);
-    expect(clearSource).toContain('clearBrushScriptFrame(currentFrame);');
+    expect(clearSource).toContain('purgeMemoryScriptFrame(currentFrame);');
     expect(clearSource).toContain('applyFrameModuleState(currentFrame);');
 
     const clearCanvasStart = studio.indexOf('clearCanvas: (frame) => {');
