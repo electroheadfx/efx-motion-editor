@@ -97,6 +97,16 @@ export const aquarelleBrushMenuOpen = signal(false);
 export const aquarelleBrushMenuAnchor = signal<{ left: number; top: number } | null>(null);
 export const aquarelleBrushModalOpen = signal(false);
 
+/**
+ * 261027-k6j — the top-bar "Script" session switch. On (default) = the
+ * stroke-end path records the stroke into the current key's watercolor script.
+ * Off = the stroke still paints pixels and enqueues its engine mutation, but no
+ * script entry is written and an existing script is left untouched. Session
+ * scoped: never persisted in the project document, reset to On at every Studio
+ * launch.
+ */
+export const aquarelleScriptRecordingEnabled = signal(true);
+
 /** Compare-then-write. The anchor is only meaningful while opening. */
 export function setAquarelleBrushMenuOpen(open: boolean, anchor?: { left: number; top: number }): void {
   if (open && anchor) {
@@ -112,6 +122,21 @@ export function setAquarelleBrushMenuOpen(open: boolean, anchor?: { left: number
 export function setAquarelleBrushModalOpen(open: boolean): void {
   if (aquarelleBrushModalOpen.value === open) return;
   aquarelleBrushModalOpen.value = open;
+}
+
+/** Compare-then-write (efx-preact-reactivity rule 3). */
+export function setAquarelleScriptRecordingEnabled(enabled: boolean): void {
+  if (aquarelleScriptRecordingEnabled.value === enabled) return;
+  aquarelleScriptRecordingEnabled.value = enabled;
+}
+
+/**
+ * 261027-k6j — the Script switch is session state: every Studio launch starts
+ * On. Deliberately NOT folded into resetAquarelleRecordState, which also fires
+ * on every track switch.
+ */
+export function resetAquarelleScriptRecording(): void {
+  setAquarelleScriptRecordingEnabled(true);
 }
 
 /**
@@ -1062,6 +1087,23 @@ export function recordAquarelleStroke(
   recordedStrokeEntries.set(mutationId, entry);
   payloadTimeline.push(entry);
   bumpAquarelleStrokesRevision();
+}
+
+/**
+ * 261027-k6j — the ONLY stroke→script write behind the Script switch. The
+ * caller passes one peeked read per stroke so a stroke's pin decision and its
+ * write decision can never disagree. The enabled flag is an argument (not a
+ * hidden signal read) so the gate is unit-testable without mounting the Studio.
+ */
+export function recordAquarelleStrokeWhenEnabled(
+  enabled: boolean,
+  mutationId: number,
+  stroke: AquarelleStroke,
+  keyId?: string | null,
+): boolean {
+  if (!enabled) return false;
+  recordAquarelleStroke(mutationId, stroke, keyId);
+  return true;
 }
 
 /**
