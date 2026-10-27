@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T07:28:15.000Z
+updated: 2026-10-27T13:05:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -224,9 +224,10 @@ expecting: |
   alpha; SNAP v3 key anchors untouched.
 
 next_action: |
-  Human verification only: restart the dev app (Vite must pick up the new
-  watercolor source aliases), then run the ONE minimal UAT flow in
-  "UAT Round 4 verification (pending)" at the end of this file. On
+  Human verification only: restart the dev app, then (1) delete a key and
+  create a new key/rail at the same frame — the new key must render empty
+  immediately with no leave/return (UAT Round 5), then (2) run the ONE minimal
+  UAT flow in "UAT Round 4 verification (pending)" at the end of this file. On
   "confirmed fixed", archive the session and append the knowledge-base entry;
   on any failure, append the live evidence and reopen.
 
@@ -704,6 +705,39 @@ user_verdict: |
   have all the strokes back + the new, but I can't move them. ... Sometimes
   when I paint the any destination position, my paint draw far to 200 pixels
   from my pen, its like a offset, for fix I need to quit studio."
+
+## UAT Round 5 (2026-10-27) — delete/create stale cache
+
+uat: |
+  After the parent-layer lookup fix (`f2af1714`), the user deleted a key
+  successfully. Creating a new rail/key at the same frame 0 then showed the OLD
+  cache on the canvas; leaving and returning to the new key refreshed it to
+  empty. The user reports this refresh lag on every operation.
+
+root_cause: |
+  The physical-edit settlement reconcile
+  (`useRotoPhysicalEditCoordinator.ts`) ran only for an allowlist of operation
+  kinds. Ordinary `delete-key` was not in the list, so the deleted key's cached
+  reference URL stayed on screen until navigation. The add-key path is
+  `paste-key` (listed) but started from the stale reference state left by the
+  delete.
+
+fix: |
+  Reconcile the current frame after EVERY accepted physical edit. The
+  reference loader is dirty-aware and the auto-key promotion branch still
+  preserves the live first stroke; the reconcile remains visual-only and never
+  gates settlement. Added a RED-first pin: an accepted ordinary delete-key
+  triggers `reconcileCurrentFrame` once with the cursor frame.
+
+gates: |
+  Physical-edit coordinator suite 86/86; `pnpm typecheck` clean.
+
+uat_pending: |
+  1. Restart the app. Delete a key; create a new key/rail at the same frame.
+     The canvas must show the empty new key immediately — no leave/return.
+  2. Then resume the Round 4 flow: previous strokes visible while painting,
+     Move after reopen without the wash error, and ink under the pen after a
+     window resize/display move.
 
 DATA_END
 
