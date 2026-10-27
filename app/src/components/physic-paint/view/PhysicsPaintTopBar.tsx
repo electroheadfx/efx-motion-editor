@@ -8,9 +8,11 @@ import { recordPhysicsPaintPerformanceCounter } from '../performance/physicsPain
 import {
   aquarelleBrushMenuOpen,
   aquarelleParams,
+  aquarelleScriptRecordingEnabled,
   aquarelleSelectedTipId,
   setAquarelleBrushMenuOpen,
   setAquarelleParam,
+  setAquarelleScriptRecordingEnabled,
 } from './aquarelleRecordState';
 import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
 
@@ -35,6 +37,9 @@ import { WatercolorBrushThumb } from './WatercolorBrushLibrary';
  * after the Engine ready pill and open the brush dropdown; center = sliders
  * only. Water / Edges / Grain are the optional watercolor knobs and hide as
  * the settings area narrows (container queries in physicsPaintStudio.css).
+ *
+ * 261027-k6j — the Script switch sits beside the brush trigger and gates
+ * stroke recording only.
  */
 export interface PhysicsPaintTopBarProps {
   brushSize: number;
@@ -78,6 +83,35 @@ function TopBarBrushTrigger(props: {
       ) : <span class="physics-paint-brush-trigger-thumb is-empty" aria-hidden="true" />}
       <span class="physics-paint-brush-trigger-name">{preset?.name ?? 'Brushes'}</span>
       <ChevronDown size={13} class="physics-paint-brush-trigger-chevron" aria-hidden="true" />
+    </button>
+  );
+}
+
+/**
+ * 261027-k6j: the session "Script" switch. On (default) records finished
+ * watercolor strokes into the current key's script; Off paints pixels without
+ * writing any script entry. A native button: Enter/Space work for free.
+ * Never disabled — recording mode is orthogonal to mutation/apply locks.
+ */
+export function ScriptRecordingSwitch() {
+  // Narrow read (same idiom as aquarelleParams.value): only this switch
+  // re-renders when the session flag flips.
+  const enabled = aquarelleScriptRecordingEnabled.value;
+  return (
+    <button
+      type="button"
+      class={`physics-paint-script-switch${enabled ? ' is-on' : ''}`}
+      role="switch"
+      aria-checked={enabled ? 'true' : 'false'}
+      title={enabled
+        ? 'Script on — strokes are recorded into the key script'
+        : 'Script off — strokes paint pixels without a script entry'}
+      onClick={() => setAquarelleScriptRecordingEnabled(!aquarelleScriptRecordingEnabled.peek())}
+    >
+      <span class="physics-paint-script-switch-track" aria-hidden="true">
+        <span class="physics-paint-script-switch-knob" />
+      </span>
+      <span class="physics-paint-script-switch-label">Script</span>
     </button>
   );
 }
@@ -159,11 +193,14 @@ export function PhysicsPaintTopBar({
             a single Water color mode. The active brush's larger painted thumb
             and name open the brush dropdown. */}
         {isWatercolor ? (
-          <TopBarBrushTrigger
-            presetId={selectedTipId}
-            open={brushMenuOpen}
-            onToggle={toggleBrushMenu}
-          />
+          <>
+            <TopBarBrushTrigger
+              presetId={selectedTipId}
+              open={brushMenuOpen}
+              onToggle={toggleBrushMenu}
+            />
+            <ScriptRecordingSwitch />
+          </>
         ) : null}
       </div>
 

@@ -3,11 +3,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { VNode } from 'preact';
-import { PhysicsPaintTopBar, type PhysicsPaintTopBarProps } from './PhysicsPaintTopBar';
+import {
+  PhysicsPaintTopBar,
+  ScriptRecordingSwitch,
+  type PhysicsPaintTopBarProps,
+} from './PhysicsPaintTopBar';
 import { activeModule } from '../../shared/activeModule';
 import {
   aquarelleBrushMenuAnchor,
   aquarelleBrushMenuOpen,
+  aquarelleScriptRecordingEnabled,
+  setAquarelleScriptRecordingEnabled,
 } from './aquarelleRecordState';
 import { makeInitialPhysicsPaintStudioSettings } from '../engine/physicsPaintStudioSettings';
 
@@ -246,8 +252,10 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
       aquarelleSelectedTipId: { value: 'chalk' },
       aquarelleBrushMenuOpen: { value: false },
+      aquarelleScriptRecordingEnabled: { value: true, peek: () => true },
       setAquarelleBrushMenuOpen: vi.fn(),
       setAquarelleParam: vi.fn(),
+      setAquarelleScriptRecordingEnabled: vi.fn(),
     }));
     try {
       const { PhysicsPaintTopBar: WatercolorTopBar } = await import('./PhysicsPaintTopBar');
@@ -275,8 +283,10 @@ describe('261018-f15 watercolor top-bar aquarelle globals', () => {
       aquarelleParams: { value: { size: 22, load: 80, water: 40, edge: 60, granulation: 35 } },
       aquarelleSelectedTipId: { value: 'chalk' },
       aquarelleBrushMenuOpen: { value: false },
+      aquarelleScriptRecordingEnabled: { value: true, peek: () => true },
       setAquarelleBrushMenuOpen: vi.fn(),
       setAquarelleParam: vi.fn(),
+      setAquarelleScriptRecordingEnabled: vi.fn(),
     }));
     try {
       const { PhysicsPaintTopBar: BrushTopBar } = await import('./PhysicsPaintTopBar');
@@ -421,5 +431,90 @@ describe('260923-bcm Studio live wiring source pins', () => {
 describe('260923-bcm grain scale hydration defaults', () => {
   it('makeInitial settings default grainScale to 1', () => {
     expect(makeInitialPhysicsPaintStudioSettings().grainScale).toBe(1);
+  });
+});
+
+// 261027-k6j — the session "Script" switch: a native role="switch" pill that
+// seats immediately after the brush trigger and gates stroke recording only.
+describe('261027-k6j Script switch', () => {
+  function renderSwitch() {
+    return ScriptRecordingSwitch() as AnyVNode;
+  }
+
+  it('seats right after the brush trigger in the left cluster', () => {
+    const previousModule = activeModule.value;
+    activeModule.value = 'watercolor';
+    try {
+      const tree = renderTopBar(baseTopBarProps());
+      const left = childrenOf(tree).find(
+        (n) => (n as AnyVNode).props?.['class'] === 'physics-paint-topbar-left',
+      ) as AnyVNode | undefined;
+      expect(left, 'left slot must render').toBeDefined();
+      const leftDesc = childrenOf(left!);
+      const triggerIdx = leftDesc.findIndex(
+        (n) => typeof (n as AnyVNode).props?.onToggle === 'function',
+      );
+      const switchIdx = leftDesc.findIndex((n) => (n as AnyVNode).type === ScriptRecordingSwitch);
+      expect(triggerIdx, 'brush trigger seats in the left slot').toBeGreaterThan(-1);
+      expect(switchIdx, 'Script switch seats in the left slot').toBeGreaterThan(-1);
+      expect(switchIdx, 'the switch follows the brush trigger').toBeGreaterThan(triggerIdx);
+    } finally {
+      activeModule.value = previousModule;
+    }
+  });
+
+  it('renders a keyboard-operable role="switch" mirrored to the session signal', () => {
+    const previous = aquarelleScriptRecordingEnabled.value;
+    setAquarelleScriptRecordingEnabled(true);
+    try {
+      const tree = renderSwitch();
+      expect(tree.type).toBe('button');
+      expect(tree.props?.type).toBe('button');
+      expect(tree.props?.role).toBe('switch');
+      expect(tree.props?.['aria-checked']).toBe('true');
+      expect(String(tree.props?.class)).toContain('is-on');
+      // No aria-label: the visible text is the accessible name.
+      expect(tree.props?.['aria-label']).toBeUndefined();
+      const label = childrenOf(tree).find(
+        (n) => (n as AnyVNode).props?.class === 'physics-paint-script-switch-label',
+      ) as AnyVNode | undefined;
+      expect(label?.props?.children).toBe('Script');
+
+      setAquarelleScriptRecordingEnabled(false);
+      const offTree = renderSwitch();
+      expect(offTree.props?.['aria-checked']).toBe('false');
+      expect(String(offTree.props?.class)).not.toContain('is-on');
+
+      // Clicking flips through the setter, reading the signal at click time.
+      (offTree.props?.onClick as () => void)();
+      expect(aquarelleScriptRecordingEnabled.value).toBe(true);
+    } finally {
+      setAquarelleScriptRecordingEnabled(previous);
+    }
+  });
+
+  it('source pins the switch contract and never uses useState', () => {
+    const body = stripComments(topBarSource());
+    expect(body).toContain('role="switch"');
+    expect(body).toContain('aria-checked');
+    expect(body).toContain('setAquarelleScriptRecordingEnabled');
+    expect(body).not.toContain('useState');
+  });
+
+  it('pins the reference track/knob/label CSS contract', () => {
+    const styles = css();
+    const track = getCssRuleBlock(styles, '.physics-paint-script-switch-track {');
+    expect(track).toContain('width: 40px');
+    expect(track).toContain('height: 22px');
+    expect(track).toContain('border-radius: 999px');
+    expect(track).toContain('background: #5a5d61');
+    const onTrack = getCssRuleBlock(styles, '.physics-paint-script-switch.is-on .physics-paint-script-switch-track {');
+    expect(onTrack).toContain('#2f9fe0');
+    const knob = getCssRuleBlock(styles, '.physics-paint-script-switch-knob {');
+    expect(knob).toContain('width: 16px');
+    const onKnob = getCssRuleBlock(styles, '.physics-paint-script-switch.is-on .physics-paint-script-switch-knob {');
+    expect(onKnob).toContain('translateX(18px)');
+    const label = getCssRuleBlock(styles, '.physics-paint-script-switch-label {');
+    expect(label).toContain('font-size: 12px');
   });
 });

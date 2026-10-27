@@ -791,6 +791,70 @@ button.destructive {
   opacity: 0.7;
 }
 
+/* 261027-k6j: the session "Script" switch — sits right after the brush
+   trigger. The left cluster's gap is 0, so the control carries its own
+   left margin. */
+.physics-paint-script-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  margin-left: 12px;
+  padding: 0 2px;
+  background: transparent;
+  border: none;
+  color: #c9cfd6;
+  cursor: pointer;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+
+.physics-paint-script-switch:hover {
+  color: #f4f7fa;
+}
+
+.physics-paint-script-switch:focus-visible {
+  outline: 2px solid #2f9fe0;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.physics-paint-script-switch-track {
+  position: relative;
+  display: block;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: #5a5d61;
+  transition: background 120ms ease;
+}
+
+.physics-paint-script-switch.is-on .physics-paint-script-switch-track {
+  background: #2f9fe0;
+}
+
+.physics-paint-script-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 120ms ease;
+}
+
+.physics-paint-script-switch.is-on .physics-paint-script-switch-knob {
+  transform: translateX(18px);
+}
+
+.physics-paint-script-switch-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 /* The dropdown is viewport-fixed: the top bar is an overflow-x scroller, so an
    absolutely positioned child would be clipped. */
 .physics-paint-brush-menu {
