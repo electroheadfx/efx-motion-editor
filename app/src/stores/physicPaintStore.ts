@@ -5,7 +5,6 @@ import { rotoAlphaCanvasRegistry, canvasToPngBytes } from '../lib/rotoAlphaCanva
 import { sha256HexBytes } from '../lib/webpBytes';
 import { decodeWebpFrame, encodeCanvasAsWebp } from '../lib/webpFrameCodec';
 import { frameLru } from '../lib/frameLru';
-import { stripOpaqueWhiteMatte } from '../lib/opaqueWhiteMatte';
 // 52.2-09 Task 3 (D-13): the READ leg of the package media pair. The resolver
 // takes the LRU, the injected decode and the package root as parameters, so the
 // store keeps ownership of the LRU budget and the two-format sniff.
@@ -1544,11 +1543,14 @@ async function _decodeWebpToBitmap(bytes: Uint8Array, origin: 'draw' | 'prefetch
     width,
     height,
   );
-  // studio-multi-track-only-active: legacy Roto frames can carry the engine's
-  // white background baked in (fully opaque, pure-white corners). A paint track
-  // must be transparent between tracks — the document fond is the only opaque
-  // background — so strip that matte before the bitmap enters the compositor.
-  stripOpaqueWhiteMatte(imageData.data, width, height);
+  // 261027 (UAT round 1): the legacy white-matte strip used to run here. A
+  // stored aquarelle sheet (MODE.transparent) is fully opaque with white
+  // corners BY DESIGN — white means "no pigment". Stripping it destroyed the
+  // `isFullyOpaqueRaster` signature that `transmittanceSourceToPigmentAlpha`
+  // discriminates on, so the raw sheet entered the composite opaque and
+  // hard-masked every track beneath it (middle selection / editor). Matte
+  // repair is the pigment-alpha conversion's job at the composite seam — see
+  // `_resolveFlattenedFrame` and `shouldConvertTransmittanceTracks`.
   const convertEndedAt = performance.now();
   // 52.1 (washed-out regression): premultiply AT bitmap creation. drawImage
   // only ever consumes premultiplied data, and WKWebView draws a

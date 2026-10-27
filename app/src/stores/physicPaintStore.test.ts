@@ -1997,6 +1997,35 @@ describe('physicPaintStore', () => {
       expect(createImageBitmapSpy).toHaveBeenCalledWith(expect.anything(), { premultiplyAlpha: 'premultiply' });
     });
 
+    it('261027 UAT: the compositor decode preserves an opaque transmittance sheet — the pigment-alpha discriminator must still see it', async () => {
+      // Paint 2's real key shape (UAT round 1): an opaque transmittance sheet —
+      // white means "no pigment", every alpha is 255. The legacy white-matte
+      // strip zeroed every >=240 pixel here, so the downstream
+      // `isFullyOpaqueRaster` probe saw a partially transparent raster and
+      // skipped pigment-alpha conversion; the raw sheet then hard-masked every
+      // track beneath it in the middle-selection and editor composites.
+      const sheet = new Uint8Array(4 * 3 * 4);
+      for (let pixel = 0; pixel < 4 * 3; pixel += 1) sheet.set([255, 255, 255, 255], pixel * 4);
+      sheet.set([120, 80, 60, 255], 5 * 4); // pigmented pixel, below the near-white cutoff
+      decodeWebpFrameMock.mockResolvedValue({ width: 4, height: 3, rgba: sheet });
+      const createImageBitmapSpy = vi.fn(async (_imageData: unknown, _options: unknown) => new FlatTestBitmap());
+      vi.stubGlobal('createImageBitmap', createImageBitmapSpy);
+      registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));
+      seedRoto('track-a', [{ keyId: 'ka', appFrame: 5, bytes: makeFrame(0, 5).bytes }]);
+
+      await flattenAfterDecode(FLAT_LAYER, 5);
+
+      const decoded = createImageBitmapSpy.mock.calls[0]?.[0] as { data: Uint8ClampedArray };
+      expect(decoded).toBeDefined();
+      // Corners stay pure-white opaque and every alpha stays 255.
+      expect(Array.from(decoded.data.slice(0, 4))).toEqual([255, 255, 255, 255]);
+      for (let index = 3; index < decoded.data.length; index += 4) {
+        expect(decoded.data[index]).toBe(255);
+      }
+      // The pigment pixel keeps its transmittance value.
+      expect(Array.from(decoded.data.slice(5 * 4, 5 * 4 + 4))).toEqual([120, 80, 60, 255]);
+    });
+
     it('REPRO 52.1 refresh: a real-key payload update rotates the flattened memo and re-decodes the new bytes', async () => {
       const bytesA = testWebpBytes(btoa('refresh-content-A'));
       registerDocument(flatDocument([flatTrack('track-a')], { visible: false }));

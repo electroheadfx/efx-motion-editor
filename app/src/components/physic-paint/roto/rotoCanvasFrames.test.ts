@@ -3,6 +3,7 @@ import { hasRotoAlphaCanvasFrame, registerRotoAlphaCanvasFrame } from '../../../
 import { addOccupiedRotoFrame, buildBlankRotoFrame, drawCanvasAtSize, encodeRotoFrameFromCanvas, registerRotoAlphaCanvasFrameFromBytes } from './rotoCanvasFrames';
 import { testWebpBytes } from '../../../testUtils/testWebpBytes';
 import { isWebpBytes } from '../../../types/physicPaint';
+import { isFullyOpaqueRaster } from '../../../lib/rasterAlpha';
 
 vi.mock('../../../lib/rotoAlphaCanvasRegistry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../lib/rotoAlphaCanvasRegistry')>();
@@ -254,6 +255,88 @@ describe('registerRotoAlphaCanvasFrameFromBytes (G-52-7)', () => {
 
     expect(createImageBitmapSpy).not.toHaveBeenCalled();
     expect(createdCanvases).toHaveLength(0);
+  });
+});
+
+// 261027 UAT round 1: Paint 2's real key is an OPAQUE transmittance sheet
+// (white fill + pigment-alpha script merged over it). It carries the exact
+// geometry of the 2026-10-22 legacy white-matte corruption, but it is the
+// round-2 storage format — the pigment-alpha conversion discriminator must
+// see it. Registration must hand the compositor the sheet untouched.
+describe('registerRotoAlphaCanvasFrameFromBytes — opaque transmittance sheet (261027)', () => {
+  const originalDocument = globalThis.document;
+
+  // Pixel-backed canvas: both the strip's 16x16 probe and the full readback
+  // see the same sheet, so a legacy repair would actually fire here.
+  class PixelCanvas {
+    #width = 0;
+    #height = 0;
+    data = new Uint8ClampedArray(0);
+
+    get width(): number { return this.#width; }
+    set width(value: number) { this.#width = value; this.#resize(); }
+    get height(): number { return this.#height; }
+    set height(value: number) { this.#height = value; this.#resize(); }
+
+    #resize(): void {
+      const length = this.#width * this.#height * 4;
+      if (this.data.length !== length) this.data = new Uint8ClampedArray(length);
+    }
+
+    getContext(kind: string) {
+      if (kind !== '2d') return null;
+      return {
+        clearRect: () => { this.data.fill(0); },
+        drawImage: (source: unknown) => {
+          const pixels = source instanceof PixelCanvas
+            ? source.data
+            : (source as { pixels?: Uint8ClampedArray } | null)?.pixels;
+          if (pixels) this.data = new Uint8ClampedArray(pixels);
+        },
+        getImageData: (_x: number, _y: number, width: number, height: number) => ({
+          data: this.data.slice(0, width * height * 4),
+        }),
+        putImageData: (image: { data: Uint8ClampedArray }) => { this.data.set(image.data); },
+      };
+    }
+  }
+
+  function opaqueTransmittanceSheet(): Uint8ClampedArray {
+    const data = new Uint8ClampedArray(16 * 16 * 4);
+    for (let pixel = 0; pixel < 16 * 16; pixel += 1) data.set([255, 255, 255, 255], pixel * 4);
+    data.set([120, 80, 60, 255], (8 * 16 + 8) * 4); // pigmented pixel
+    return data;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(hasRotoAlphaCanvasFrame).mockReturnValue(false);
+    vi.stubGlobal('document', {
+      createElement: (tagName: string) => {
+        if (tagName !== 'canvas') throw new Error(`Unexpected test element: ${tagName}`);
+        return new PixelCanvas() as unknown as HTMLElement;
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.stubGlobal('document', originalDocument);
+  });
+
+  it('registers the decoded sheet untouched so isFullyOpaqueRaster still recognises it', async () => {
+    const bitmap = { width: 16, height: 16, pixels: opaqueTransmittanceSheet(), close: vi.fn() };
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => bitmap));
+
+    await registerRotoAlphaCanvasFrameFromBytes(WEBP_1X1_BYTES, { width: 16, height: 16 });
+
+    expect(registerRotoAlphaCanvasFrame).toHaveBeenCalledTimes(1);
+    const registered = vi.mocked(registerRotoAlphaCanvasFrame).mock.calls[0]?.[1] as unknown as PixelCanvas;
+    for (let index = 3; index < registered.data.length; index += 4) {
+      expect(registered.data[index]).toBe(255);
+    }
+    expect(Array.from(registered.data.slice(0, 4))).toEqual([255, 255, 255, 255]);
+    expect(isFullyOpaqueRaster(registered as unknown as CanvasImageSource)).toBe(true);
   });
 });
 
