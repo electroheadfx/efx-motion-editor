@@ -1183,6 +1183,20 @@ export function PhysicsPaintStudio() {
       // stroke stamps the key it was captured on, so a saved timeline can
       // prove ownership on restore instead of trusting a frame number.
       getWatercolorKeyAnchors: () => getAquarelleStrokeKeyAnchors(),
+      // 261027 UAT round 4: the per-key durable base rides SNAP v4. Without
+      // it, reopening a watercolor key left the base UNKNOWN and every Move
+      // publish failed closed ('durable-base-unknown'). Session bases win per
+      // keyId; a restored base never overwrites one already pinned this
+      // launch (a stroke captured before the restore settled is fresher than
+      // the snapshot copy).
+      getDurableBases: () => aquarelleDurableBaseByKeyRef.current,
+      seedDurableBases: (bases) => {
+        const durableBaseMap = aquarelleDurableBaseByKeyRef.current;
+        for (const [keyId, bytes] of bases) {
+          if (durableBaseMap.has(keyId)) continue;
+          durableBaseMap.set(keyId, bytes === null ? null : new Uint8Array(bytes));
+        }
+      },
       // Loop Clip rails (Play Script / Reveal) bake pixels only by law. A
       // legacy (v1) row carries no keyId, so on a rail frame its identity is
       // unprovable — such a row is stale and must not restore.
@@ -1421,13 +1435,21 @@ export function PhysicsPaintStudio() {
   // as its multiply base. This launch-scoped map pins that base per ordinary
   // keyId. A `null` entry is a KNOWN empty base (blank promotion); a MISSING
   // entry is UNKNOWN and the script publish fails closed rather than replacing
-  // pixels that may carry scriptless cached paint. It never persists — reopen
-  // durability is a separate design decision.
+  // pixels that may carry scriptless cached paint.
+  // 261027 UAT round 4: the base is a property of the KEY, not the launch —
+  // it now rides the SNAP v4 durable-base section and is seeded back by every
+  // successful restore, so Move works after a Studio reopen.
   const aquarelleDurableBaseByKeyRef = useRef<Map<string, Uint8Array | null>>(new Map());
   const recordAquarelleOrdinaryDurableBaseRef = useRef<(appFrame: number) => void>(() => {});
   // A replaced launch is a different document/session: a pinned base from the
-  // previous launch must never composite into it.
+  // previous launch must never composite into it. The launch key lets the
+  // pre-publish snapshot restore seed the map WITHOUT this effect wiping it
+  // moments later (the restore runs before launchContext publishes).
+  const aquarelleDurableBaseLaunchKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    const launchKey = `${launchContext?.operationId ?? ''}:${launchContext?.layerId ?? ''}`;
+    if (aquarelleDurableBaseLaunchKeyRef.current === launchKey) return;
+    aquarelleDurableBaseLaunchKeyRef.current = launchKey;
     aquarelleDurableBaseByKeyRef.current = new Map();
   }, [launchContext?.operationId, launchContext?.layerId]);
   // 261019-mj2 cache-loss: the aquarelle sheet lives outside the engine-1
@@ -5096,6 +5118,16 @@ export function PhysicsPaintStudio() {
       const projectId = context.project?.projectId ?? '';
       const layerId = context.layerId ?? '';
       const trackId = typeof carriedTrackId === 'string' ? carriedTrackId : '';
+      // 261027 UAT round 4: this restore runs BEFORE the launch context is
+      // published, so it is the FIRST place the incoming launch's durable-base
+      // map can be established. Pin its launch key here so the post-publish
+      // reset effect recognizes this launch and leaves the seeded map intact;
+      // a repeated restore of the SAME launch keeps session-pinned bases.
+      const durableBaseLaunchKey = `${context.operationId}:${layerId}`;
+      if (aquarelleDurableBaseLaunchKeyRef.current !== durableBaseLaunchKey) {
+        aquarelleDurableBaseLaunchKeyRef.current = durableBaseLaunchKey;
+        aquarelleDurableBaseByKeyRef.current = new Map();
+      }
       if (!projectId || !layerId || !trackId) {
         // No durable project identity (legacy parse tolerance) or no active
         // track: the launch cannot key a cache. Bind nothing rather than

@@ -144,6 +144,9 @@ interface Harness {
   remove: ReturnType<typeof vi.fn>;
   setSignature: (value: string) => void;
   setAuthority: (value: string | null) => void;
+  /** The launch-scoped durable-base map the Studio owns. */
+  durableBaseMap: Map<string, Uint8Array | null>;
+  seedDurableBases: ReturnType<typeof vi.fn>;
 }
 
 function harness(
@@ -156,11 +159,22 @@ function harness(
     | 'getLiveKeyIds'
     | 'getPixelOnlyFrames'
     | 'getWatercolorKeyAnchors'
+    | 'getDurableBases'
+    | 'seedDurableBases'
   >> = {},
 ): Harness {
   let signature = 'sig-0';
   let authority: string | null = null;
   const report = vi.fn();
+  // The Studio's seed port: a session-pinned base always wins; a restored base
+  // fills only a missing key. `has` keeps a known-empty null distinct.
+  const durableBaseMap = new Map<string, Uint8Array | null>();
+  const seedDurableBases = vi.fn((bases: ReadonlyMap<string, Uint8Array | null>) => {
+    for (const [keyId, bytes] of bases) {
+      if (durableBaseMap.has(keyId)) continue;
+      durableBaseMap.set(keyId, bytes === null ? null : new Uint8Array(bytes));
+    }
+  });
   const write = vi.fn(
     async (
       _identity: StudioScriptSnapshotIdentity,
@@ -200,6 +214,8 @@ function harness(
     getPixelOnlyFrames: overrides.getPixelOnlyFrames ?? (() => null),
     getWatercolorKeyAnchors:
       overrides.getWatercolorKeyAnchors ?? (() => getAquarelleStrokeKeyAnchors()),
+    getDurableBases: overrides.getDurableBases ?? (() => durableBaseMap),
+    seedDurableBases: overrides.seedDurableBases ?? seedDurableBases,
     getAuthority: overrides.getAuthority ?? (() => authority),
     report,
     write,
@@ -212,6 +228,8 @@ function harness(
     write,
     read,
     remove,
+    durableBaseMap,
+    seedDurableBases,
     setSignature: (value: string) => {
       signature = value;
     },
@@ -1020,8 +1038,9 @@ const HEAVY_FRAME_COUNT = 3;
  * section v2 adds one keyId presence byte per frame (+3).
  */
 // +1 for the v2 container's rail-cleanup marker byte, +12 for the v3
-// anchor section (4-byte length word + 8-byte empty header).
-const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_806;
+// anchor section (4-byte length word + 8-byte empty header), +12 for the v4
+// durable-base section (4-byte length word + 8-byte empty header).
+const HEAVY_SNAPSHOT_BYTE_LENGTH = 631_818;
 
 function heavyPoint(index: number): PenPoint {
   return {
@@ -1145,6 +1164,39 @@ function containerWithoutAnchorSection(bytes: Uint8Array): Uint8Array {
   return out;
 }
 
+/** The same snapshot without the v4 durable-base section, marked as a v3 file. */
+function containerWithoutDurableSection(bytes: Uint8Array): Uint8Array {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 9; // magic + version + flags + rail marker
+  for (let index = 0; index < 3; index += 1) {
+    offset += 2 + view.getUint16(offset, true);
+  }
+  offset += 4 + view.getUint32(offset, true); // watercolor body
+  offset += 4 + view.getUint32(offset, true); // brush body
+  offset += 4 + view.getUint32(offset, true); // anchor body
+  const out = bytes.slice(0, offset);
+  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(4, 3, true);
+  return out;
+}
+
+function durableSnapshotFixture(
+  bases: readonly { keyId: string; bytes: Uint8Array | null }[],
+  events: readonly AquarellePayloadEvent[] = fixtureEvents(),
+  anchors: readonly { mutationId: number; keyId: string }[] = [],
+): Uint8Array {
+  return encodeStudioScriptSnapshot({
+    ...IDENTITY,
+    watercolorEvents: events,
+    watercolorKeyAnchors: anchors,
+    durableBases: bases,
+  });
+}
+
+function writtenSnapshot(write: ReturnType<typeof vi.fn>, callIndex = 0) {
+  const [, bytes] = write.mock.calls[callIndex] as [StudioScriptSnapshotIdentity, Uint8Array];
+  return decodeStudioScriptSnapshot(bytes, IDENTITY);
+}
+
 function seededStrokeIds(): number[] {
   return getRecordedAquarellePayloadTimeline()
     .filter((event) => !isAquarelleDryEvent(event))
@@ -1242,5 +1294,162 @@ describe('studioScriptSnapshotController — watercolor key anchors (261027 UAT 
       { mutationId: 301, keyId: 'live-key' },
       { mutationId: 302, keyId: 'live-key' },
     ]);
+  });
+});
+
+// ------------------------------------------------------------
+//  261027 UAT round 4 — durable-base persistence.
+//
+//  "Move after reopen" failed because the launch-scoped
+//  durable-base map was never persisted: a reopened scripted key
+//  stayed UNKNOWN and the publish failed closed. The base is a
+//  KEY property, so it rides the track snapshot and is seeded
+//  back on restore. Absent stays fail-closed; a rastered key's
+//  stale base is dropped; another track's bases never leak in.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotController — durable bases (261027 UAT round 4)', () => {
+  const BASE_BYTES = Uint8Array.of(9, 8, 7, 6);
+
+  it('seeds every restored durable base into the launch map', async () => {
+    const bytes = durableSnapshotFixture([
+      { keyId: 'key-a', bytes: BASE_BYTES },
+      { keyId: 'key-b', bytes: null },
+    ]);
+    const { controller, read, seedDurableBases, durableBaseMap } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+
+    expect(seedDurableBases).toHaveBeenCalledTimes(1);
+    const seeded = seedDurableBases.mock.calls[0]![0] as ReadonlyMap<string, Uint8Array | null>;
+    expect([...seeded.keys()].sort()).toEqual(['key-a', 'key-b']);
+    expect(seeded.get('key-a')).toEqual(BASE_BYTES);
+    expect(seeded.get('key-b')).toBeNull();
+    expect(durableBaseMap.get('key-a')).toEqual(BASE_BYTES);
+    expect(durableBaseMap.has('key-b')).toBe(true);
+  });
+
+  it('writes the restored base together with a newly pinned base', async () => {
+    const bytes = durableSnapshotFixture([{ keyId: 'key-a', bytes: BASE_BYTES }]);
+    const { controller, read, write, durableBaseMap, setSignature } = harness({
+      getLiveKeyIds: () => new Map([[0, 'key-b']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    durableBaseMap.set('key-b', Uint8Array.of(4, 3, 2, 1));
+    setSignature('sig-durable');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).durableBases).toEqual([
+      { keyId: 'key-a', bytes: BASE_BYTES },
+      { keyId: 'key-b', bytes: Uint8Array.of(4, 3, 2, 1) },
+    ]);
+  });
+
+  it('lets the session base win over the retained base for the same key', async () => {
+    const bytes = durableSnapshotFixture([{ keyId: 'key-a', bytes: BASE_BYTES }]);
+    const { controller, read, write, durableBaseMap, setSignature } = harness({
+      getLiveKeyIds: () => new Map([[0, 'key-a']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    durableBaseMap.set('key-a', Uint8Array.of(1, 1));
+    setSignature('sig-session');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).durableBases).toEqual([
+      { keyId: 'key-a', bytes: Uint8Array.of(1, 1) },
+    ]);
+  });
+
+  it('drops a retained base for a live key the session no longer holds (raster clear)', async () => {
+    const bytes = durableSnapshotFixture([{ keyId: 'key-a', bytes: BASE_BYTES }]);
+    const { controller, read, write, durableBaseMap, setSignature } = harness({
+      getLiveKeyIds: () => new Map([[0, 'key-a']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // The raster action replaces the key's content, so its pinned pre-script
+    // base is stale and must not resurrect the old multiply on reopen.
+    durableBaseMap.delete('key-a');
+    setSignature('sig-raster');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).durableBases).toEqual([]);
+  });
+
+  it('keeps a deleted key’s durable base in the file for undo', async () => {
+    const bytes = durableSnapshotFixture([{ keyId: 'deleted-key', bytes: BASE_BYTES }]);
+    const { controller, read, write, durableBaseMap, setSignature } = harness({
+      getLiveKeyIds: () => new Map([[0, 'live-key']]),
+    });
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+    await controller.restore();
+
+    // The key is no longer live and the session map no longer holds it: the
+    // retained file content survives for a later undo / restore.
+    durableBaseMap.delete('deleted-key');
+    setSignature('sig-undo');
+    await controller.saveNow();
+
+    expect(writtenSnapshot(write).durableBases).toEqual([
+      { keyId: 'deleted-key', bytes: BASE_BYTES },
+    ]);
+  });
+
+  it('never writes another track’s session base (and a base-only save is allowed)', async () => {
+    const { controller, write, durableBaseMap, setSignature } = harness({
+      getLiveKeyIds: () => new Map([[0, 'live-key']]),
+    });
+    controller.bind(IDENTITY);
+    await controller.restore(); // missing snapshot: no retained content
+
+    durableBaseMap.set('live-key', Uint8Array.of(1, 2));
+    durableBaseMap.set('other-track-key', Uint8Array.of(3, 4));
+    setSignature('sig-scope');
+    await controller.saveNow();
+
+    // The session is otherwise empty; the durable base alone must pass the
+    // empty-save guard, and only the bound track's key may be written.
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(writtenSnapshot(write).durableBases).toEqual([
+      { keyId: 'live-key', bytes: Uint8Array.of(1, 2) },
+    ]);
+  });
+
+  it('seeds no durable bases from a v3 (pre-durable) container', async () => {
+    const v4 = durableSnapshotFixture([{ keyId: 'key-a', bytes: BASE_BYTES }]);
+    const v3 = containerWithoutDurableSection(v4);
+    const { controller, read, seedDurableBases } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes: v3, digest: 'd', byteLength: v3.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+
+    expect(seedDurableBases).toHaveBeenCalledTimes(1);
+    const seeded = seedDurableBases.mock.calls[0]![0] as ReadonlyMap<string, Uint8Array | null>;
+    expect(seeded.size).toBe(0);
+  });
+
+  it('never seeds durable bases from a corrupt snapshot', async () => {
+    const bytes = durableSnapshotFixture([{ keyId: 'key-a', bytes: BASE_BYTES }]);
+    bytes[0] = 0; // break the SNP1 magic
+    const { controller, read, seedDurableBases, report } = harness();
+    read.mockResolvedValue({ ok: true, data: { bytes, digest: 'd', byteLength: bytes.byteLength } });
+    controller.bind(IDENTITY);
+
+    await controller.restore();
+
+    expect(seedDurableBases).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(1);
   });
 });

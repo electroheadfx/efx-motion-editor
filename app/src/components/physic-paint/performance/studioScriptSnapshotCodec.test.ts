@@ -166,7 +166,7 @@ describe('studioScriptSnapshotCodec', () => {
   });
 
   it('rejects an unknown container version with the version code', () => {
-    expect(codeOf(() => decodeStudioScriptSnapshot(withByte(encodeFixture(), 4, 4), IDENTITY))).toBe(
+    expect(codeOf(() => decodeStudioScriptSnapshot(withByte(encodeFixture(), 4, 5), IDENTITY))).toBe(
       'version',
     );
   });
@@ -344,14 +344,18 @@ function anchorBodyOffset(container: Uint8Array): number {
   return brushStart + brushLength + 4;
 }
 
-/** Rewrite a v3 container's anchor body (length word included). */
+/** Rewrite a v3+ container's anchor body (length word included), keeping any v4 tail. */
 function replaceAnchorBody(container: Uint8Array, anchorBody: Uint8Array): Uint8Array {
   const offset = anchorBodyOffset(container);
+  const view = new DataView(container.buffer, container.byteOffset, container.byteLength);
+  const oldLength = view.getUint32(offset - 4, true);
   const head = container.subarray(0, offset - 4);
-  const out = new Uint8Array(head.byteLength + 4 + anchorBody.byteLength);
+  const tail = container.subarray(offset + oldLength);
+  const out = new Uint8Array(head.byteLength + 4 + anchorBody.byteLength + tail.byteLength);
   out.set(head, 0);
   new DataView(out.buffer).setUint32(head.byteLength, anchorBody.byteLength, true);
   out.set(anchorBody, head.byteLength + 4);
+  out.set(tail, head.byteLength + 4 + anchorBody.byteLength);
   return out;
 }
 
@@ -382,6 +386,74 @@ function anchorBody(entries: readonly { mutationId: number; keyId: string }[]): 
     body.set(record.keyId, offset); offset += record.keyId.byteLength;
   }
   return body;
+}
+
+/** v4 durable-base body start (after the u32 durable-section length word). */
+function durableBaseBodyOffset(container: Uint8Array): number {
+  const anchorStart = anchorBodyOffset(container);
+  const view = new DataView(container.buffer, container.byteOffset, container.byteLength);
+  const anchorLength = view.getUint32(anchorStart - 4, true);
+  return anchorStart + anchorLength + 4;
+}
+
+/** Rewrite a v4 container's durable-base body (length word included). */
+function replaceDurableBaseBody(container: Uint8Array, durableBody: Uint8Array): Uint8Array {
+  const offset = durableBaseBodyOffset(container);
+  const head = container.subarray(0, offset - 4);
+  const out = new Uint8Array(head.byteLength + 4 + durableBody.byteLength);
+  out.set(head, 0);
+  new DataView(out.buffer).setUint32(head.byteLength, durableBody.byteLength, true);
+  out.set(durableBody, head.byteLength + 4);
+  return out;
+}
+
+/** The same v4 snapshot without the durable-base section, marked as a v3 file. */
+function containerAsV3(container: Uint8Array): Uint8Array {
+  const durableLengthOffset = durableBaseBodyOffset(container) - 4;
+  const out = container.slice(0, durableLengthOffset);
+  new DataView(out.buffer, out.byteOffset, out.byteLength).setUint16(4, 3, true);
+  return out;
+}
+
+function durableBaseBody(
+  entries: readonly { keyId: string; bytes: Uint8Array | null }[],
+): Uint8Array {
+  const encoder = new TextEncoder();
+  const records = entries.map((entry) => ({
+    keyId: encoder.encode(entry.keyId),
+    bytes: entry.bytes,
+  }));
+  const length = 8 + records.reduce(
+    (sum, record) =>
+      sum + 1 + 2 + record.keyId.byteLength + (record.bytes ? 4 + record.bytes.byteLength : 0),
+    0,
+  );
+  const body = new Uint8Array(length);
+  const view = new DataView(body.buffer);
+  let offset = 0;
+  view.setUint16(offset, 1, true); offset += 2; // durable-base version
+  view.setUint16(offset, 0, true); offset += 2; // reserved
+  view.setUint32(offset, records.length, true); offset += 4;
+  for (const record of records) {
+    body[offset] = record.bytes ? 1 : 0; offset += 1;
+    view.setUint16(offset, record.keyId.byteLength, true); offset += 2;
+    body.set(record.keyId, offset); offset += record.keyId.byteLength;
+    if (record.bytes) {
+      view.setUint32(offset, record.bytes.byteLength, true); offset += 4;
+      body.set(record.bytes, offset); offset += record.bytes.byteLength;
+    }
+  }
+  return body;
+}
+
+function durableContainer(
+  bases: readonly { keyId: string; bytes: Uint8Array | null }[],
+): Uint8Array {
+  return encodeStudioScriptSnapshot({
+    ...IDENTITY,
+    watercolorEvents: fixtureEvents(),
+    durableBases: bases,
+  });
 }
 
 /** A brush body whose single stroke declares an impossible point count. */
@@ -558,5 +630,141 @@ describe('studioScriptSnapshotCodec — watercolor key anchors (261027)', () => 
         IDENTITY,
       )),
     ).toBe('count');
+  });
+});
+
+// ------------------------------------------------------------
+//  261027 UAT round 4 — the v4 durable-base section.
+//
+//  A scripted aquarelle key is a multiply composite over its
+//  PRE-SCRIPT base. Move after a Studio reopen needs that base
+//  again, but the key record holds the flattened composite, not
+//  the base. SNAP v4 persists the per-key base (bytes = known
+//  base, null = known-empty) so a restore can seed the launch map
+//  without ever reconstructing it from the committed sheet.
+// ------------------------------------------------------------
+
+describe('studioScriptSnapshotCodec — durable bases (261027 UAT round 4)', () => {
+  const BASE_BYTES = Uint8Array.of(1, 2, 3, 4);
+
+  it('round-trips durable base bytes and known-empty entries, byte-stable', () => {
+    const bytes = durableContainer([
+      { keyId: 'key-b', bytes: BASE_BYTES },
+      { keyId: 'key-a', bytes: null },
+    ]);
+    const decoded = decodeStudioScriptSnapshot(bytes, IDENTITY);
+    // Sorted by keyId on write so the file is deterministic.
+    expect(decoded.durableBases).toEqual([
+      { keyId: 'key-a', bytes: null },
+      { keyId: 'key-b', bytes: BASE_BYTES },
+    ]);
+    expect(
+      encodeStudioScriptSnapshot({
+        ...IDENTITY,
+        watercolorEvents: decoded.watercolorEvents,
+        durableBases: decoded.durableBases,
+      }),
+    ).toEqual(bytes);
+  });
+
+  it('sorts durable bases by key id regardless of input order', () => {
+    const forward = durableContainer([
+      { keyId: 'key-a', bytes: null },
+      { keyId: 'key-b', bytes: BASE_BYTES },
+    ]);
+    const reversed = durableContainer([
+      { keyId: 'key-b', bytes: BASE_BYTES },
+      { keyId: 'key-a', bytes: null },
+    ]);
+    expect(reversed).toEqual(forward);
+  });
+
+  it('returns durable base bytes as copies, not views into the source buffer', () => {
+    const container = durableContainer([{ keyId: 'key-a', bytes: BASE_BYTES }]);
+    const decoded = decodeStudioScriptSnapshot(container, IDENTITY);
+    container.fill(0, 40);
+    expect(decoded.durableBases[0]!.bytes).toEqual(BASE_BYTES);
+  });
+
+  it('decodes a v3 container as carrying no durable bases', () => {
+    const v4 = encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: fixtureEvents(),
+      watercolorKeyAnchors: [{ mutationId: 101, keyId: 'key-101' }],
+      durableBases: [{ keyId: 'key-a', bytes: BASE_BYTES }],
+    });
+    const decoded = decodeStudioScriptSnapshot(containerAsV3(v4), IDENTITY);
+    expect(decoded.watercolorKeyAnchors).toEqual([{ mutationId: 101, keyId: 'key-101' }]);
+    expect(decoded.durableBases).toEqual([]);
+  });
+
+  it('refuses two durable bases for the same key', () => {
+    const bytes = replaceDurableBaseBody(
+      durableContainer([]),
+      durableBaseBody([
+        { keyId: 'key-a', bytes: BASE_BYTES },
+        { keyId: 'key-a', bytes: null },
+      ]),
+    );
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('durableBase');
+  });
+
+  it('refuses an empty durable-base key id', () => {
+    const bytes = replaceDurableBaseBody(
+      durableContainer([]),
+      durableBaseBody([{ keyId: '', bytes: BASE_BYTES }]),
+    );
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('durableBase');
+  });
+
+  it('refuses a durable base entry with zero bytes', () => {
+    const bytes = replaceDurableBaseBody(
+      durableContainer([]),
+      durableBaseBody([{ keyId: 'key-a', bytes: new Uint8Array(0) }]),
+    );
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('durableBase');
+  });
+
+  it('refuses an unknown durable-base state byte', () => {
+    const body = durableBaseBody([{ keyId: 'key-a', bytes: null }]);
+    body[8] = 2; // first record state (8-byte header)
+    const bytes = replaceDurableBaseBody(durableContainer([]), body);
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('durableBase');
+  });
+
+  it('refuses an over-declared durable-base count before allocating', () => {
+    const body = durableBaseBody([]);
+    new DataView(body.buffer, body.byteOffset, body.byteLength).setUint32(4, 0xffffff, true);
+    const bytes = replaceDurableBaseBody(durableContainer([]), body);
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('count');
+  });
+
+  it('refuses trailing bytes inside the durable-base section', () => {
+    const body = durableBaseBody([{ keyId: 'key-a', bytes: null }]);
+    const padded = new Uint8Array(body.byteLength + 1);
+    padded.set(body);
+    const bytes = replaceDurableBaseBody(durableContainer([]), padded);
+    expect(codeOf(() => decodeStudioScriptSnapshot(bytes, IDENTITY))).toBe('trailing');
+  });
+
+  it('refuses a duplicate, empty or zero-byte entry at encode time', () => {
+    expect(codeOf(() => encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: [],
+      durableBases: [
+        { keyId: 'key-a', bytes: null },
+        { keyId: 'key-a', bytes: null },
+      ],
+    }))).toBe('durableBase');
+    expect(codeOf(() => encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: [],
+      durableBases: [{ keyId: '', bytes: null }],
+    }))).toBe('durableBase');
+    expect(codeOf(() => encodeStudioScriptSnapshot({
+      ...IDENTITY,
+      watercolorEvents: [],
+      durableBases: [{ keyId: 'key-a', bytes: new Uint8Array(0) }],
+    }))).toBe('durableBase');
   });
 });

@@ -77,6 +77,7 @@ import {
   decodeStudioScriptSnapshot,
   encodeStudioScriptSnapshot,
   type StudioScriptSnapshotBrushFrame,
+  type StudioScriptSnapshotDurableBase,
   type StudioScriptSnapshotIdentity,
   type StudioScriptSnapshotWatercolorKeyAnchor,
 } from '../performance/studioScriptSnapshotCodec';
@@ -141,6 +142,19 @@ export interface StudioScriptSnapshotControllerDeps {
    * null keeps the retained file anchors only.
    */
   getWatercolorKeyAnchors?: () => ReadonlyMap<number, string> | null;
+  /**
+   * 261027 UAT round 4: the session's durable base per ordinary keyId —
+   * `Uint8Array` = known base, `null` = known empty, ABSENT = unknown (the
+   * publish fails closed). The map is launch-scoped and spans tracks; a save
+   * writes only the keys this bound track owns.
+   */
+  getDurableBases?: () => ReadonlyMap<string, Uint8Array | null> | null;
+  /**
+   * Seed the launch map from a successful restore. A base the session already
+   * holds wins (a stroke painted in THIS session re-pinned it); the file only
+   * fills missing keyIds. Never called for a missing / refused / corrupt read.
+   */
+  seedDurableBases?: (bases: ReadonlyMap<string, Uint8Array | null>) => void;
   /**
    * Frames covered by the bound track's Loop Clip rails (Play Script / Reveal).
    * A legacy (v1) brush row carries no keyId, so on a rail frame its identity
@@ -422,6 +436,7 @@ export interface StudioScriptSnapshotContent {
   watercolorEvents: AquarellePayloadEvent[];
   watercolorKeyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[];
   brushFrames: StudioScriptSnapshotBrushFrame[];
+  durableBases: StudioScriptSnapshotDurableBase[];
 }
 
 function eventMutationId(event: AquarellePayloadEvent): number | undefined {
@@ -443,6 +458,8 @@ export function mergeStudioScriptSnapshotContent(
   sessionEvents: readonly AquarellePayloadEvent[],
   sessionBrushFrames: readonly StudioScriptSnapshotBrushFrame[],
   sessionKeyAnchors?: ReadonlyMap<number, string> | null,
+  sessionDurableBases?: ReadonlyMap<string, Uint8Array | null> | null,
+  liveKeyIds?: ReadonlyMap<number, string> | null,
 ): StudioScriptSnapshotContent {
   const watercolorEvents: AquarellePayloadEvent[] = [];
   if (!retained) {
@@ -522,7 +539,60 @@ export function mergeStudioScriptSnapshotContent(
     if (seenFrames.has(frame.frame)) continue;
     brushFrames.push(frame);
   }
-  return { watercolorEvents, watercolorKeyAnchors, brushFrames };
+
+  // 261027 UAT round 4: the durable base follows the KEY, like the anchors
+  // above. A retained base for a deleted key survives for undo. A retained
+  // base for a LIVE key the session no longer holds is DROPPED — the raster
+  // action replaced the key's content, so the stored pre-script base would
+  // resurrect a stale multiply on the next reopen.
+  const liveKeyIdValues = new Set<string>();
+  if (liveKeyIds) {
+    for (const keyId of liveKeyIds.values()) liveKeyIdValues.add(keyId);
+  }
+  const retainedBaseIds = new Set<string>();
+  if (retained) {
+    for (const base of retained.durableBases) retainedBaseIds.add(base.keyId);
+  }
+  const mergedBases = new Map<string, Uint8Array | null>();
+  if (retained) {
+    for (const base of retained.durableBases) {
+      if (
+        sessionDurableBases !== null
+        && sessionDurableBases !== undefined
+        && liveKeyIds !== null
+        && liveKeyIds !== undefined
+        && liveKeyIdValues.has(base.keyId)
+        && !sessionDurableBases.has(base.keyId)
+      ) {
+        continue;
+      }
+      mergedBases.set(base.keyId, base.bytes);
+    }
+  }
+  if (sessionDurableBases !== null && sessionDurableBases !== undefined) {
+    // The launch map spans tracks; a save may only write the keys this bound
+    // track owns. Identity comes from the live key map, the merged anchors and
+    // the retained bases — never from an array index or a frame number. An
+    // unknown (null) live key map disables scoping rather than losing a base.
+    const scopedKeyIds = new Set<string>([
+      ...liveKeyIdValues,
+      ...watercolorKeyAnchors.map((anchor) => anchor.keyId),
+      ...retainedBaseIds,
+    ]);
+    for (const [keyId, bytes] of sessionDurableBases) {
+      if (keyId.length === 0) continue;
+      if (liveKeyIds !== null && liveKeyIds !== undefined && !scopedKeyIds.has(keyId)) continue;
+      mergedBases.set(keyId, bytes);
+    }
+  }
+  const durableBases: StudioScriptSnapshotDurableBase[] = [...mergedBases.entries()]
+    .map(([keyId, bytes]) => ({ keyId, bytes }))
+    .sort((left, right) => {
+      if (left.keyId < right.keyId) return -1;
+      if (left.keyId > right.keyId) return 1;
+      return 0;
+    });
+  return { watercolorEvents, watercolorKeyAnchors, brushFrames, durableBases };
 }
 
 export function studioScriptSnapshotRestoreFailureMessage(kind: string): string {
@@ -654,6 +724,21 @@ export function createStudioScriptSnapshotController(
       }
       railCleanupDone = decoded.railCleanupDone;
 
+      // 261027 UAT round 4: seed the launch map from the persisted per-key
+      // bases. A key with no entry stays UNKNOWN (publish fails closed); null
+      // is a known-empty base. The Studio's port keeps any base this session
+      // already pinned, so a restore never overwrites fresher evidence.
+      if (deps.seedDurableBases) {
+        const restoredBases = new Map<string, Uint8Array | null>();
+        for (const base of decoded.durableBases) {
+          restoredBases.set(
+            base.keyId,
+            base.bytes === null ? null : new Uint8Array(base.bytes),
+          );
+        }
+        deps.seedDurableBases(restoredBases);
+      }
+
       const liveFrames = deps.getLiveFrames();
       const liveKeyIds = deps.getLiveKeyIds?.() ?? null;
       const pixelOnlyFrames = deps.getPixelOnlyFrames?.() ?? null;
@@ -695,6 +780,7 @@ export function createStudioScriptSnapshotController(
         brushFrames: withoutAquarelleGuideFrames(
           withoutForeignKeyFrames(decoded.brushFrames, liveKeyIds, pixelOnlyFrames),
         ),
+        durableBases: [...decoded.durableBases],
       };
       lastSavedSignature = deps.getContentSignature();
       return { status: 'restored', maxRestoredMutationId };
@@ -745,6 +831,8 @@ export function createStudioScriptSnapshotController(
         deps.getWatercolorEvents(),
         deps.getBrushFrames(),
         deps.getWatercolorKeyAnchors?.() ?? null,
+        deps.getDurableBases?.() ?? null,
+        deps.getLiveKeyIds?.() ?? null,
       );
       // A guide proxy is engine-1 render input, never Brush script content.
       // The codec never carries the guideProxy flag, so a persisted guide row
@@ -765,6 +853,7 @@ export function createStudioScriptSnapshotController(
         !allowEmpty
         && content.watercolorEvents.length === 0
         && content.brushFrames.length === 0
+        && content.durableBases.length === 0
       ) {
         // An empty session proves nothing about the file (refused read, or a
         // rebind whose restore has not seeded it). Never overwrite with it.
@@ -775,6 +864,7 @@ export function createStudioScriptSnapshotController(
         watercolorEvents: content.watercolorEvents,
         watercolorKeyAnchors: content.watercolorKeyAnchors,
         brushFrames: content.brushFrames,
+        durableBases: content.durableBases,
         railCleanupDone,
       });
       return { identity, bytes, signature, generation, authority, content };
@@ -941,6 +1031,9 @@ export function createStudioScriptSnapshotController(
         (anchor) => survivingIds.has(anchor.mutationId),
       ),
       brushFrames: retainedContent.brushFrames.filter((frame) => !frames.has(frame.frame)),
+      // A durable base is key-scoped, not frame-scoped: purging a rail frame's
+      // script leaves the key's pre-script base as its multiply base.
+      durableBases: retainedContent.durableBases,
     };
   }
 

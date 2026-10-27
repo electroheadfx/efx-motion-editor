@@ -4655,8 +4655,25 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // empty (blank promotion), MISSING = UNKNOWN (reopen → fail closed).
     const mapLifecycle = between(studio, 'const aquarelleDurableBaseByKeyRef = useRef<Map<string, Uint8Array | null>>(new Map());', '// 261019-mj2 cache-loss');
     expect(mapLifecycle).toContain('aquarelleDurableBaseByKeyRef.current = new Map();');
-    // A replaced launch is a different document/session.
+    // A replaced launch is a different document/session. The guard key lets the
+    // pre-publish snapshot restore seed the map WITHOUT the post-publish effect
+    // wiping it in the same launch.
+    expect(mapLifecycle).toContain('const aquarelleDurableBaseLaunchKeyRef = useRef<string | null>(null);');
+    expect(mapLifecycle).toContain('if (aquarelleDurableBaseLaunchKeyRef.current === launchKey) return;');
+    expect(mapLifecycle).toContain('aquarelleDurableBaseLaunchKeyRef.current = launchKey;');
     expect(mapLifecycle).toContain('}, [launchContext?.operationId, launchContext?.layerId]);');
+
+    // 261027 UAT round 4: the base is persisted per KEY in the SNAP v4
+    // durable-base section and seeded back by every successful restore. The
+    // launch map spans tracks; the controller scopes what each track writes.
+    expect(studio).toContain('getDurableBases: () => aquarelleDurableBaseByKeyRef.current,');
+    expect(studio).toContain('seedDurableBases: (bases) => {');
+    expect(studio).toContain('const durableBaseMap = aquarelleDurableBaseByKeyRef.current;');
+    expect(studio).toContain('if (durableBaseMap.has(keyId)) continue;');
+    expect(studio).toContain('durableBaseMap.set(keyId, bytes === null ? null : new Uint8Array(bytes));');
+    const restoreBlock = between(studio, 'restoreStudioScriptSnapshot: async (context, document) => {', 'usePhysicsPaintWorkflowIntegration');
+    expect(restoreBlock).toContain('aquarelleDurableBaseLaunchKeyRef.current =');
+    expect(restoreBlock).toContain('aquarelleDurableBaseByKeyRef.current = new Map();');
 
     // The base is pinned BEFORE the first event lands — the only instant the
     // display still holds the scriptless cached paint the composite preserves.

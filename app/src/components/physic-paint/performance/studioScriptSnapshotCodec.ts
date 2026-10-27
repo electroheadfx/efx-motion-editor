@@ -5,13 +5,14 @@
 //  One file holds BOTH Studio script stores for one
 //  project/layer/track key, so restore is a single disk read:
 //
-//    magic 'SNP1' (4) | u16 version=3 | u16 flags=0 | u8 railCleanupDone
+//    magic 'SNP1' (4) | u16 version=4 | u16 flags=0 | u8 railCleanupDone
 //    u16 + UTF-8 projectId
 //    u16 + UTF-8 layerId
 //    u16 + UTF-8 trackId
-//    u32 watercolorByteLength | watercolor body
-//    u32 brushByteLength      | brush body
-//    u32 anchorByteLength     | anchor body   (v3+)
+//    u32 watercolorByteLength  | watercolor body
+//    u32 brushByteLength       | brush body
+//    u32 anchorByteLength      | anchor body      (v3+)
+//    u32 durableBaseByteLength | durable-base body (v4+)
 //
 //  The watercolor body IS the proven AQTL v1 buffer
 //  (encodeScriptTimelineBinary) — the IDs, order, playFrame,
@@ -53,12 +54,19 @@ export const STUDIO_SCRIPT_SNAPSHOT_MAGIC = 'SNP1';
 /**
  * v2 adds the durable rail-cleanup marker as a container byte (after the flags
  * word, before the identity strings). v3 adds the watercolor key-anchor
- * section after the brush body. v1/v2 files stay readable (no marker / no
- * anchors respectively).
+ * section after the brush body. v4 adds the per-key durable-base section after
+ * the anchor section (261027 UAT round 4: "Move after reopen" needs the
+ * PRE-SCRIPT base the key record no longer holds). Older files stay readable
+ * (no marker / no anchors / no durable bases respectively).
  */
-export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 3;
+export const STUDIO_SCRIPT_SNAPSHOT_VERSION = 4;
 
-const STUDIO_SCRIPT_SNAPSHOT_VERSIONS = new Set([1, 2, STUDIO_SCRIPT_SNAPSHOT_VERSION]);
+const STUDIO_SCRIPT_SNAPSHOT_VERSIONS = new Set([
+  1,
+  2,
+  3,
+  STUDIO_SCRIPT_SNAPSHOT_VERSION,
+]);
 
 /**
  * The anchor section's own version:
@@ -75,6 +83,28 @@ const STUDIO_SCRIPT_SNAPSHOT_ANCHOR_VERSIONS = new Set([
 export interface StudioScriptSnapshotWatercolorKeyAnchor {
   readonly mutationId: number;
   readonly keyId: string;
+}
+
+/**
+ * The durable-base section's own version:
+ *   u16 version=1 | u16 reserved=0 | u32 count |
+ *   count x (u8 state, u16 UTF-8 keyId length, keyId bytes,
+ *            state=1 only: u32 byte length, base bytes)
+ *
+ * `state=0` is a KNOWN-EMPTY base (blank promotion); `state=1` carries the
+ * pre-script raster. An ABSENT key is UNKNOWN and keeps the publish
+ * fail-closed — the distinction is the whole contract.
+ */
+export const STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSION = 1;
+
+const STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSIONS = new Set([
+  STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSION,
+]);
+
+/** One key's pre-script raster (bytes) or a known-empty base (null). */
+export interface StudioScriptSnapshotDurableBase {
+  readonly keyId: string;
+  readonly bytes: Uint8Array | null;
 }
 
 /**
@@ -101,7 +131,8 @@ export type StudioScriptSnapshotCodecErrorCode =
   | 'trailing'
   | 'brush'
   | 'watercolor'
-  | 'anchor';
+  | 'anchor'
+  | 'durableBase';
 
 /** Every container failure is this typed error. */
 export class StudioScriptSnapshotCodecError extends Error {
@@ -142,6 +173,8 @@ export interface StudioScriptSnapshotEncodeInput extends StudioScriptSnapshotIde
   brushFrames?: readonly StudioScriptSnapshotBrushFrame[];
   /** v3: the owning physical key per watercolor stroke mutationId. */
   watercolorKeyAnchors?: readonly StudioScriptSnapshotWatercolorKeyAnchor[];
+  /** v4: the pre-script base per ordinary keyId (bytes, or null = empty). */
+  durableBases?: readonly StudioScriptSnapshotDurableBase[];
   /** v2: the durable one-time rail-cleanup marker. Absent = not done yet. */
   railCleanupDone?: boolean;
 }
@@ -151,6 +184,8 @@ export interface StudioScriptSnapshotDecodeResult {
   brushFrames: StudioScriptSnapshotBrushFrame[];
   /** v3: the owning key per watercolor stroke. Empty for v1/v2 files. */
   watercolorKeyAnchors: StudioScriptSnapshotWatercolorKeyAnchor[];
+  /** v4: the pre-script base per key. Empty for v1-v3 files. */
+  durableBases: StudioScriptSnapshotDurableBase[];
   /** v2: true once the rail cleanup ran for this project/layer/track. */
   railCleanupDone: boolean;
 }
@@ -160,6 +195,9 @@ const BRUSH_HEADER_BYTE_LENGTH = 8;
 const ANCHOR_HEADER_BYTE_LENGTH = 8;
 /** u32 mutationId + a u16 keyId length (an empty keyId is invalid, so this is a true minimum). */
 const ANCHOR_RECORD_MIN_BYTES = 4 + 2;
+const DURABLE_BASE_HEADER_BYTE_LENGTH = 8;
+/** u8 state + u16 keyId length + one keyId byte (an empty keyId is invalid). */
+const DURABLE_BASE_RECORD_MIN_BYTES = 1 + 2 + 1;
 
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
@@ -700,6 +738,106 @@ function decodeAnchorSection(bytes: Uint8Array): StudioScriptSnapshotWatercolorK
   return anchors;
 }
 
+// --- Durable-base section v1 ---------------------------------------------
+
+function compareKeyIds(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+/**
+ * The v4 durable-base section. Sorted by keyId so the file is byte-stable
+ * regardless of launch-map insertion order.
+ */
+function encodeDurableBaseSection(
+  bases: readonly StudioScriptSnapshotDurableBase[],
+): Uint8Array {
+  const writer = new Writer();
+  writer.u16(STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSION);
+  writer.u16(0);
+  const sorted = [...bases].sort((left, right) => compareKeyIds(left.keyId, right.keyId));
+  writer.u32(sorted.length);
+  const seen = new Set<string>();
+  for (const base of sorted) {
+    if (typeof base.keyId !== 'string' || base.keyId.length === 0) {
+      fail('durableBase', 'a durable-base keyId must be a non-empty string');
+    }
+    if (seen.has(base.keyId)) {
+      fail('durableBase', `duplicate durable base ${base.keyId}`);
+    }
+    seen.add(base.keyId);
+    const encodedKeyId = UTF8_ENCODER.encode(base.keyId);
+    if (encodedKeyId.byteLength > 0xffff) {
+      fail('length', 'durable-base keyId exceeds 65535 UTF-8 bytes');
+    }
+    if (base.bytes === null) {
+      writer.u8(0);
+    } else if (base.bytes instanceof Uint8Array && base.bytes.byteLength > 0) {
+      writer.u8(1);
+    } else {
+      fail('durableBase', `durable base for ${base.keyId} must be non-empty bytes or null`);
+    }
+    writer.u16(encodedKeyId.byteLength);
+    writer.raw(encodedKeyId);
+    if (base.bytes !== null) {
+      writer.u32(base.bytes.byteLength);
+      writer.raw(base.bytes);
+    }
+  }
+  return writer.finish();
+}
+
+function decodeDurableBaseSection(bytes: Uint8Array): StudioScriptSnapshotDurableBase[] {
+  const reader = new Reader(bytes);
+  if (bytes.byteLength < DURABLE_BASE_HEADER_BYTE_LENGTH) {
+    fail('truncated', 'durable-base section is shorter than its 8-byte header');
+  }
+  const version = reader.u16();
+  if (!STUDIO_SCRIPT_SNAPSHOT_DURABLE_BASE_VERSIONS.has(version)) {
+    fail('version', `unsupported durable-base section version ${version}`);
+  }
+  if (reader.u16() !== 0) fail('flags', 'durable-base section reserved word must be 0');
+  const count = reader.u32();
+  if (count > Math.floor(reader.remaining / DURABLE_BASE_RECORD_MIN_BYTES)) {
+    fail(
+      'count',
+      `durable-base section declares ${count} bases beyond the remaining bytes`,
+      reader.offset,
+    );
+  }
+  const bases: StudioScriptSnapshotDurableBase[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < count; index += 1) {
+    const state = reader.u8();
+    if (state > 1) {
+      fail('durableBase', 'durable-base state must be 0 (known empty) or 1 (bytes)', reader.offset);
+    }
+    const keyId = reader.string('durable-base keyId');
+    if (keyId.length === 0) {
+      fail('durableBase', 'a durable-base keyId must be a non-empty string', reader.offset);
+    }
+    if (seen.has(keyId)) {
+      fail('durableBase', `duplicate durable base ${keyId}`, reader.offset);
+    }
+    seen.add(keyId);
+    if (state === 1) {
+      const byteLength = reader.u32();
+      if (byteLength === 0) {
+        fail('durableBase', `durable base ${keyId} declares empty bytes`, reader.offset);
+      }
+      // Copy, never a view: the decoded result must survive its source buffer.
+      bases.push({ keyId, bytes: new Uint8Array(reader.slice(byteLength, 'durable base bytes')) });
+    } else {
+      bases.push({ keyId, bytes: null });
+    }
+  }
+  if (reader.remaining !== 0) {
+    fail('trailing', 'unread bytes remain in the durable-base section');
+  }
+  return bases;
+}
+
 export function encodeStudioScriptSnapshot(
   input: StudioScriptSnapshotEncodeInput,
 ): Uint8Array {
@@ -709,6 +847,7 @@ export function encodeStudioScriptSnapshot(
   const watercolor = encodeScriptTimelineBinary(input.watercolorEvents);
   const brush = encodeBrushSection(input.brushFrames ?? []);
   const anchors = encodeAnchorSection(input.watercolorKeyAnchors ?? []);
+  const durableBases = encodeDurableBaseSection(input.durableBases ?? []);
 
   const writer = new Writer();
   for (let index = 0; index < STUDIO_SCRIPT_SNAPSHOT_MAGIC.length; index += 1) {
@@ -726,6 +865,8 @@ export function encodeStudioScriptSnapshot(
   writer.raw(brush);
   writer.u32(anchors.byteLength);
   writer.raw(anchors);
+  writer.u32(durableBases.byteLength);
+  writer.raw(durableBases);
   return writer.finish();
 }
 
@@ -777,6 +918,12 @@ export function decodeStudioScriptSnapshot(
     const anchorByteLength = reader.u32();
     anchorBody = reader.slice(anchorByteLength, 'anchor body');
   }
+  // v1-v3 files carry no durable bases: every key is UNKNOWN (fail closed).
+  let durableBaseBody: Uint8Array | null = null;
+  if (version >= 4) {
+    const durableBaseByteLength = reader.u32();
+    durableBaseBody = reader.slice(durableBaseByteLength, 'durable-base body');
+  }
   if (reader.remaining !== 0) {
     fail('trailing', 'buffer is longer than the declared sections', reader.offset);
   }
@@ -796,6 +943,7 @@ export function decodeStudioScriptSnapshot(
     watercolorEvents,
     brushFrames: decodeBrushSection(brushBody),
     watercolorKeyAnchors: anchorBody === null ? [] : decodeAnchorSection(anchorBody),
+    durableBases: durableBaseBody === null ? [] : decodeDurableBaseSection(durableBaseBody),
     railCleanupDone: railCleanupFlag === 1,
   };
 }
