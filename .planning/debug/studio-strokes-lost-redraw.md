@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T10:05:00.000Z
+updated: 2026-10-27T08:00:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -142,51 +142,77 @@ and lost-stroke-identity behaviors. Exact first-bad build unknown.
 ## Current Focus
 
 hypothesis: |
-  CONFIRMED (byte + pixel evidence) — UAT round 1's wrong watercolor alpha is
-  the legacy white-matte strip running at the two compositor READ seams:
-  `_decodeWebpToBitmap` (physicPaintStore.ts) and
-  `registerRotoAlphaCanvasFrameFromBytes` (rotoCanvasFrames.ts).
+  CONFIRMED (persisted snapshot + live key map + code seams) — UAT round 2's
+  six phantom guides and lost wash are a KEY-IDENTITY defect in the script
+  snapshot layer, not a compositor defect. The watercolor timeline (AQTL) was
+  scoped to a FRAME NUMBER only; a deleted key's retained strokes therefore
+  seeded the NEW key created at the same frame.
 
-  Paint 2's real frame-0 key is an OPAQUE TRANSMITTANCE sheet: RGB WebP, all
-  alpha 255, pure-white corners, 75.2% of pixels near-white (>=240) — exactly
-  the round-2 merge output (white fill + pigment-alpha script over it). The
-  strip turns every near-white pixel transparent at decode/registration,
-  which destroys the `isFullyOpaqueRaster` signature that
-  `transmittanceSourceToPigmentAlpha` uses to convert a sheet into pigment
-  alpha. Every store-composited surface then draws the raw sheet opaque:
-  white covers the tracks beneath, and the pigment reads dense/dark. That is
-  the middle selection (Brush module -> getFlattenedFrameExcluding, exclude
-  Paint 4, Paint 2 + Paint 1 from the store) and the main editor (full
-  flatten).
+  Paint 2's persisted SNAP v2 carries SIX watercolor stroke events at
+  playFrame 0: mutationIds 917 / 920 / 921 / 922 / 923 (recorded 2026-10-26
+  23:33-23:34 UTC on the deleted key) plus 1259 (the new 'rigger' stroke,
+  2026-10-27T06:21:03.933Z) — and the live layer has exactly ONE real key on
+  Paint 2 at appFrame 0 (keyId fef0e1ef-...), zero keys on Paint 4 / Paint 1.
+  The frame-only restore prune seeded all five deleted-key strokes into the
+  new key; the overlay listed 5 stale + 1 new = six guides ("#1 : 6/6" …
+  "#6 : 1/6"). Two more stale events sit at playFrame 1 (mutationIds
+  1073/1074).
 
-  The top selection is correct because the active Paint 2 is a DOM reference
-  Image (`AquarelleCachedBaseLayer`, `new Image()` decode — no strip), and
-  the below slice contains only the two real-alpha tracks (Paint 4 alpha,
-  Paint 1 max alpha 126), which are not fully opaque and stay untouched.
+  Wash loss chain: the stale events make `getAquarelleEventsForFrame(0)`
+  non-empty, so `recordAquarelleOrdinaryDurableBaseRef` refuses the pre-script
+  durable base (`script-already-present`, PhysicsPaintStudio.tsx:7004); the
+  script publish then fails closed, the blank placeholder stays, the display
+  falls back to the cached blank frame and the dirty-refusal branch reports
+  "Cache restored at frame 0." (useRotoReferenceController.ts:256).
 
-  The 2026-10-22 strip is superseded by the 2026-10-26 round-2 pigment-alpha
-  law: the conversion predicate sees contentTrackCount = 3 here, so matte
-  repair is the conversion's job; the one-track fast path relies on the
-  single fond multiply. The strip stays only in the merge base load
-  (`physicsPaintRotoAlphaMerge.loadCachedRotoBaseImage`, visually neutral
-  over its white fill) and the engine preview-base repair (active paint
-  base, not implicated).
+  ROUND-1 CONTEXT (fixed, not reverted): the earlier wrong watercolor alpha
+  was the legacy white-matte strip at the compositor read seams
+  (`_decodeWebpToBitmap`, `registerRotoAlphaCanvasFrameFromBytes`); P2's
+  stored sheet is an opaque transmittance sheet by design. That fix
+  (8b0fe106) is untouched and its tests still pass.
 
 test: |
-  RED first: (1) store decode — an opaque white-cornered transmittance sheet
-  returned by decodeWebpFrame must reach createImageBitmap with all alphas
-  255 and white corners intact; (2) registration — the registered canvas must
-  still answer `isFullyOpaqueRaster` true for the same sheet. Both fail while
-  the strip runs. GREEN after removing the two calls.
+  RED-first, all three files failed on the missing identity law:
+  - `studioScriptSnapshotController.test.ts`: five deleted-key anchors + one
+    new key -> only the new key's stroke seeds; pre-v3 unanchored file seeds
+    only Dry; known-empty key map seeds no watercolor/brush.
+  - `studioScriptSnapshotCodec.test.ts`: SNAP v3 anchor section round-trip,
+    v2 back-compat (anchors = []), duplicate / empty / over-count refusals.
+  - `aquarelleRecordState.restore.test.ts`: record stamps the anchor, purge
+    drops it, restore seeds it, a key move keeps it, remap-drop/reset clear
+    it.
+  RED captured at 16 failed / 64 passed (80). GREEN after implementation:
+  80/80 in those three files.
 
 expecting: |
-  With both strips removed, the store composite converts Paint 2 to pigment
-  alpha in every selection path, so the middle selection and the editor match
-  the top selection's soft wash over the blue; Paint 4/Paint 1 (real alpha)
-  stay byte-identical.
+  After the fix: deleting every key leaves the session empty; a new key +
+  one watercolor stroke renders exactly one guide + its wash; a session save
+  writes SNAP v3 anchors, so the stroke proves its key on the next restore;
+  a deleted key's strokes survive only in the retained file (undo/retime) and
+  can never seed a different key at the same frame number; the brush ledger
+  follows the same key law.
 
-next_action: write the two RED tests, run them to confirm they fail, remove the strip calls, re-run focused tests + pnpm typecheck, commit atomically, return UAT rows.
-reasoning_checkpoint: null
+next_action: |
+  DONE (self-verified): focused 12 files / 541 tests; full app suite 340
+  files passed (+2 skipped), 6197 passed / 1 skipped / 96 todo (6294);
+  `pnpm typecheck` clean. ONE minimal native UAT row is queued below
+  ("UAT Round 3"). No dev-server run, no live verdict claimed.
+
+reasoning_checkpoint:
+  hypothesis: "The restore/save layer seeds watercolor strokes by frame number, so a deleted key's five retained strokes re-seed into the new key at frame 0; those stale events also block the ordinary durable base, which fails the publish and leaves the blank cached frame plus six overlay guides."
+  confirming_evidence:
+    - "Persisted Paint 2 SNAP v2: six watercolor strokes at playFrame 0 (917/920/921/922/923 recorded on the deleted key + 1259 new), zero brush frames; two more at playFrame 1 (1073/1074)."
+    - "Live layer revision 2067: exactly one real key on Paint 2 at appFrame 0 (keyId fef0e1ef-...), zero keys on Paint 4 and Paint 1."
+    - "Code: recordAquarelleOrdinaryDurableBaseRef refuses when getAquarelleEventsForFrame(appFrame).length > 0 (script-already-present); the display's dirty refusal emits 'Cache restored at frame N.' (useRotoReferenceController.ts:256)."
+    - "RED-first tests reproduced the law: five stale strokes seeded before the fix; legacy/unproven rows and known-empty key maps also seeded."
+  falsification_test: "If the persisted events had carried the live keyId (fef0e1ef) at playFrame 0, or if the pre-fix restore with the known-empty key map had seeded nothing, the frame-scoping hypothesis would be wrong."
+  fix_rationale: "Identity, not frame numbers: every recorded stroke stamps its owning keyId (record state), SNAP v3 persists the anchors, and restore seeds a stroke only when anchor(mutationId) == liveKeyIds(playFrame). Brush rows follow the same equality. A deleted key's content stays in the retained file for undo but is never seeded."
+  blind_spots: "No native UAT yet. Pre-fix (v2/unanchored) watercolor events are deliberately retained but never re-seed — a declared one-time consequence (Paint 2's six events are corrupted; Paint 4/Paint 1 currently have zero keys). The round-1 white-matte fix (8b0fe106) is untouched and its tests still pass."
+  candidate_causes:
+    - "code: frame-only pruning/union had no key identity (aquarelle + brush seed paths, retained merge)"
+    - "data: the persisted snapshot retained five strokes from a deleted key at the same frame number"
+    - "config/environment: ruled out — launch order (registerDocument before restore) and the live key map were verified correct"
+  and_gate: "yes — the failure required BOTH a data condition (stale retained events in the file) and a code condition (frame-only seeding without identity). Both are addressed at the seed seam; the save path now records proof for future restores."
 tdd_checkpoint: null
 
 ## Evidence
@@ -238,6 +264,31 @@ tdd_checkpoint: null
   found: The store's `_decodeWebpToBitmap` runs `stripOpaqueWhiteMatte(imageData.data, width, height)` before createImageBitmap (line 1551), and `registerRotoAlphaCanvasFrameFromBytes` runs `stripOpaqueWhiteMatteFromCanvas(canvas)` before registering the launch-hydration canvas (line 41). `_preResolveTrackContent` consumes the registry canvas when present, else `_compositorDecode`. So every store-composited track is stripped. `transmittanceSourceToPigmentAlpha` then probes `isFullyOpaqueRaster` and returns null for the stripped raster. The predicate converts when contentTrackCount > 1 (3 here). The DOM reference Image never passes through either strip. Merge base load and engine preview-base repair are separate, visually neutral seams.
   implication: Root cause pinned to two destructive calls. Removing them restores the discriminator; no compositing law changes (D-04, draw order, fond multiply, conversion predicate all untouched).
 
+- timestamp: 2026-10-27T07:20:00.000Z
+  checked: Persisted Paint 2 Studio snapshot (SNAP v2) decoded event-by-event + the live layer JSON `/Users/lmarques/Desktop/efx-motion-editor-project-test/test.mce/layers/7bcc71b6-816d-4b26-8b86-20c37f39787a.json` (revision 2067) + launch ordering in `usePhysicsPaintLaunchIntegration.ts`.
+  found: Paint 2's snapshot holds SIX watercolor stroke events at playFrame 0 — mutationIds 917 / 920 / 921 / 922 / 923 (recorded 2026-10-26 23:33–23:34 UTC on the key the user later deleted) plus 1259 (brushId 'rigger', 27 points, recorded 2026-10-27T06:21:03.933Z) — and two events at playFrame 1 (1073/1074). Zero brush frames. The live layer has exactly ONE real key on Paint 2 at appFrame 0 (keyId fef0e1ef-4415-48df-995e-7821f88cd131); Paint 4 and Paint 1 have zero keys. `registerDocument` (line 214) runs BEFORE `restoreStudioScriptSnapshot` (line 249), so an empty/one-key set at restore is genuinely known, not a launch race.
+  implication: The six guides are five deleted-key strokes seeded into the new key plus the new stroke (5 + 1 = 6). The defect is missing key identity in the seed/save layer — exactly the user's "IDs are not unique per frame" intuition, but the mutationIds themselves are unique; the FRAME is what was treated as identity.
+
+- timestamp: 2026-10-27T07:30:00.000Z
+  checked: `PhysicsPaintStudio.tsx:6991-7012` (recordAquarelleOrdinaryDurableBaseRef) + `useRotoReferenceController.ts:245-262` (message source) + `studioScriptSnapshotController.ts` pre-fix restore/merge paths + `aquarelleRecordState.ts` record/purge/remap paths.
+  found: With stale events present, `getAquarelleEventsForFrame(0).length > 0`, so the ordinary durable base is refused ('script-already-present') and never pinned; the publish then fails closed, leaving the blank placeholder. The display falls back to cached bytes and the dirty-refusal branch emits "Cache restored at frame 0." (line 256). Pre-fix, `restore()` pruned watercolor events by `playFrame` membership only, and `mergeStudioScriptSnapshotContent` unioned events by mutationId with no identity; brush restore treated an empty key Map as "unknown" and kept legacy no-keyId rows.
+  implication: Both halves of the symptom are one root cause: stale seeded events (guides) also block the durable base (washed-out blank frame + cache message). The fix must make every path key-scoped — record, save, restore, retain — and keep UNKNOWN (null) distinct from KNOWN-EMPTY (Map).
+
+- timestamp: 2026-10-27T07:40:00.000Z
+  checked: RED run of the three targeted test files before implementation.
+  found: `Test Files 3 failed (3)` / `Tests 16 failed | 64 passed (80)`. Failures were exactly the new laws: missing `getAquarelleStrokeKeyAnchors` export, `decoded.watercolorKeyAnchors` undefined, five stale strokes seeding, legacy brush row seeding, and the heavy-fixture byte length (v3 header).
+  implication: The defect is reproducible as a contract (not just a live screenshot); the tests that will pin the fix fail for the right reason.
+
+- timestamp: 2026-10-27T07:45:00.000Z
+  checked: GREEN run — the three targeted files, then 12 related files (snapshot, codec, record-state delete/move/reorder/transform/purge/restore, brush record state, PhysicsPaintStudio source contracts, duplicate-script port).
+  found: 3 files / 80 tests passed; then 12 files / 541 tests passed.
+  implication: SNAP v3 anchors, key-scoped watercolor seed, key-scoped brush seed, retained-union anchors, purge/reset/remap anchor lifecycle, and the Studio record/copy stamps are all contract-green. No unrelated regressions in the touched surfaces.
+
+- timestamp: 2026-10-27T07:58:00.000Z
+  checked: Full app suite + `pnpm typecheck`.
+  found: 340 test files passed | 2 skipped (342); 6197 passed | 1 skipped | 96 todo (6294); `tsc --noEmit` clean.
+  implication: Automated gates are green. Only the native visible UAT row remains; the session stays `awaiting_human_verify` until the user confirms it.
+
 ## Eliminated
 
 <!-- APPEND only -->
@@ -266,61 +317,105 @@ tdd_checkpoint: null
   ruled out: the store-vs-DOM raster-source divergence itself ("Real Roto key" vs "Cache loaded" consumes different bytes).
   why: "Cache loaded at frame N. Add paint to update this key." is the reference loader's apply message after loading cached bytes; "Real Roto key · Frame N" is the idle capsule for a real cell. Both selections resolve the same real key; the store always reads it through the same decode/registry seam. The difference is the strip, not the bytes.
 
+- timestamp: 2026-10-27T07:22:00.000Z
+  ruled out: mutationId collisions / non-unique ids across frames or tracks (the user's stated guess).
+  why: The persisted ids are unique (917/920/921/922/923 vs 1259 and 1073/1074) and the registry keys are per mutationId. The collision is at the FRAME/SESSION level: the snapshot restore/save layer treated `playFrame` as ownership, so a deleted key's events re-seeded whatever key occupied that frame number.
+
+- timestamp: 2026-10-27T07:23:00.000Z
+  ruled out: cross-track or cross-frame guide leakage (Paint 2 events appearing on Paint 4 / Paint 1).
+  why: Paint 4 and Paint 1 have zero real keys and the six stale events live only in Paint 2's per-track snapshot (`projectId/layerId/trackId` keyed). The phantom guides were all on Paint 2 at frame 0.
+
+- timestamp: 2026-10-27T07:24:00.000Z
+  ruled out: the round-1 white-matte fix (8b0fe106) causing the round-2 wash loss.
+  why: The wash loss is upstream of compositing: stale seeded events refuse the durable base and the publish fails closed, so the frame is blank before any raster reaches the compositor. The strip removal is untouched by this fix; its two RED-first tests still pass in the green run.
+
 ## Resolution
 
-status: awaiting_human_verify (round-1 fix landed 2026-10-27)
+status: awaiting_human_verify (round-2 fix landed 2026-10-27)
 
 root_cause: |
-  UAT round 1's wrong watercolor alpha (middle selection + main editor) was
-  the legacy white-matte strip running at the two compositor READ seams:
-  `stripOpaqueWhiteMatte` in `_decodeWebpToBitmap` (physicPaintStore.ts) and
+  ROUND 2 (phantom guides + lost wash): the Studio script snapshot layer tied
+  watercolor strokes to a FRAME NUMBER, never to the KEY that owned them.
+
+  Paint 2's persisted SNAP v2 carried six frame-0 watercolor strokes: five
+  (917/920/921/922/923) recorded on a key the user later deleted, plus the
+  new 1259. After every key was deleted and a new key created at frame 0,
+  the restore pruned events by frame membership only, so all five stale
+  strokes seeded the NEW key (5 + 1 = six guides "#1 : 6/6" … "#6 : 1/6").
+  The same stale events made `getAquarelleEventsForFrame(0)` non-empty, so
+  `recordAquarelleOrdinaryDurableBaseRef` refused the pre-script durable base
+  ('script-already-present'); the publish failed closed, the blank
+  placeholder stayed, and the display's dirty-refusal branch reported
+  "Cache restored at frame 0." — the wash "disappeared".
+
+  The brush leg had the same class of hole: a known-empty live key map was
+  read as "unknown", and legacy no-keyId rows were kept and could seed.
+  `mergeStudioScriptSnapshotContent` also unioned events by mutationId with
+  no identity proof for the next restore.
+
+  ROUND 1 CONTEXT (fixed earlier, not reverted): the wrong watercolor alpha
+  was the legacy white-matte strip at the two compositor READ seams
+  (`stripOpaqueWhiteMatte` in `_decodeWebpToBitmap`,
   `stripOpaqueWhiteMatteFromCanvas` in
-  `registerRotoAlphaCanvasFrameFromBytes` (rotoCanvasFrames.ts).
-
-  Paint 2's real frame-0 key is an OPAQUE TRANSMITTANCE sheet BY DESIGN:
-  RGB, alpha 255 on 100% of pixels, pure-white corners, 75.2% near-white —
-  the round-2 white-fill merge output. The strip zeroed every >=240 pixel
-  before the bitmap/canvas entered the compositor, so `isFullyOpaqueRaster`
-  no longer matched and `transmittanceSourceToPigmentAlpha` skipped the
-  conversion. The raw sheet then entered every store-composited surface
-  opaque: white covered the tracks beneath it and the pigment read
-  dense/dark. That is the middle selection (Brush module -> excludeActive,
-  Paint 2 + Paint 1 from the store) and the main editor (full flatten).
-
-  The top selection was correct because the active Paint 2 renders as a DOM
-  reference Image (`AquarelleCachedBaseLayer`, `new Image()` — no strip) and
-  the below slice contains only the two real-alpha tracks (Paint 4 alpha,
-  Paint 1 max alpha 126), which the probe leaves untouched.
-
-  The 2026-10-22 strip is superseded by the 2026-10-26 round-2 law: with more
-  than one content track (three here) matte repair belongs to the pigment
-  conversion; the one-track fast path relies on the single fond multiply.
+  `registerRotoAlphaCanvasFrameFromBytes`). P2's sheet is an opaque
+  transmittance sheet by design; the strip destroyed the
+  `isFullyOpaqueRaster` discriminator and the raw sheet entered the composite
+  opaque. That fix (8b0fe106) is untouched and still tested.
 
 fix: |
-  Removed `stripOpaqueWhiteMatte(imageData.data, width, height)` from
-  `_decodeWebpToBitmap` and `stripOpaqueWhiteMatteFromCanvas(canvas)` from
-  `registerRotoAlphaCanvasFrameFromBytes`, plus their imports. Kept the strip
-  function and its unit tests, the merge base load
-  (`physicsPaintRotoAlphaMerge.ts:101`, visually neutral over the white fill)
-  and the engine preview-base repair
-  (`EfxPaintEngine.repairPreviewBaseMatte`, active paint base only).
+  ROUND 2 — identity, not frame numbers, at every script seam:
+  - `aquarelleRecordState.ts`: a `mutationId -> keyId` anchor map is stamped
+    on record (optional keyId arg), cleared on frame purge / purge-all /
+    reset / remap-drop, survives a key move, and is seeded wholesale on
+    restore. New port `getAquarelleStrokeKeyAnchors()`.
+  - `studioScriptSnapshotCodec.ts`: SNAP v3 appends a WCKA anchor section
+    (u16 version, u16 reserved, u32 count, u32 mutationId + u16 len + UTF-8
+    keyId) with duplicate/empty/over-count validation; v1/v2 files decode
+    with empty anchors (back-compat).
+  - `studioScriptSnapshotController.ts`: `pruneWatercolorEventsToLiveKeys`
+    seeds a stroke only when `anchor(mutationId) === liveKeyIds(playFrame)`;
+    unanchored (pre-v3) events never seed; Dry always seeds; a null key map
+    keeps the frame-set fallback (launch safety) while a Map — even empty —
+    is a KNOWN identity set. `selectLiveBrushFrames` mirrors the equality for
+    brush rows. The retained union now carries anchors (session anchor wins,
+    else retained) so a routine save never strips identity; `dropRetainedFor
+    Frames` drops anchors with their strokes. Explicit purge
+    (`sessionOnly`) still writes the session alone.
+  - `PhysicsPaintStudio.tsx`: records the owning keyId at stroke end
+    (`resolveStudioScriptKeyIdForFrame` over the bound layer+track) and at
+    the Duplicate script copy (destination frame); supplies
+    `getWatercolorKeyAnchors` to the controller.
 
-  No compositing law changed: D-04 participation, document-order
-  bottom-to-top drawing, the one-fond multiply, the below/above slice
-  sandwich and `shouldConvertTransmittanceTracks` are untouched.
+  Round-1 strip removal remains as landed; no compositing law changed.
+
+files_changed:
+  - app/src/components/physic-paint/view/aquarelleRecordState.ts
+  - app/src/components/physic-paint/performance/studioScriptSnapshotCodec.ts
+  - app/src/components/physic-paint/snapshot/studioScriptSnapshotController.ts
+  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/view/aquarelleRecordState.restore.test.ts
+  - app/src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts
+  - app/src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts
 
 tests: |
-  RED-first — both failed on the strip before the edit:
-  - `physicPaintStore.test.ts` "261027 UAT: the compositor decode preserves
-    an opaque transmittance sheet — the pigment-alpha discriminator must
-    still see it" (ImageData reaches createImageBitmap with all alpha 255,
-    white corners and the pigment pixel intact).
-  - `rotoCanvasFrames.test.ts` "registers the decoded sheet untouched so
-    isFullyOpaqueRaster still recognises it" (pixel-backed probe canvas).
+  ROUND 2 RED-first — 16 failed / 64 passed (80) before implementation:
+  - controller: five deleted-key anchors + one new key -> only the new key's
+    stroke seeds; pre-v3 unanchored file seeds only Dry; known-empty key map
+    seeds no watercolor/brush; save emits the seeded + newly recorded anchors;
+    legacy brush rows never seed but stay in the retained file; exact
+    six-guide shape reproduced (5 stale + 1 new).
+  - codec: v3 anchor round-trip / byte stability; v2 decode -> []; duplicate,
+    empty-keyId and over-declared count refusals; heavy fixture +12 bytes.
+  - record state: anchor stamped on record, dropped on frame purge/purge-all/
+    remap-drop/reset; seeded and kept across a key move; never stamped
+    without a keyId.
 
-  GREEN: focused 5 files / 160 tests; full app suite 340 files passed
-  (+2 skipped), 6183 passed / 1 skipped / 96 todo (6280);
-  `pnpm typecheck` clean.
+  ROUND 2 GREEN: targeted 3 files 80/80; 12 related files 541/541; full app
+  suite 340 files passed (+2 skipped), 6197 passed / 1 skipped / 96 todo
+  (6294); `pnpm typecheck` clean.
+
+  ROUND 1 (already green): the two strip tests in physicPaintStore.test.ts
+  and rotoCanvasFrames.test.ts remain passing.
 
 open: |
   (C) Watercolor re-bake fidelity ("thinner after Move") is unchanged and
@@ -385,5 +480,78 @@ debugger_lead: |
   one is not converted there either. Verify live (track raster probe + pixel
   readback) before changing any law; also explain the selection-dependent cache
   flicker before stabilization.
+
+## UAT Round 2 (2026-10-27) — FAILED: phantom guides after key purge
+
+uat_setup: |
+  The user deleted ALL keys, then on the empty project/frame created a new key
+  and painted ONE watercolor stroke in Studio. Tracks Paint 2, Paint 4 and
+  Paint 1 still exist. Status bar reads "Cache restored at frame 0."
+
+actual: |
+  - The new watercolor stroke's wash DISAPPEARED from the canvas.
+  - SIX phantom guide strokes appear, each inside a dashed selection box and
+    labeled "#1 : 6/6", "#2 : 5/6", "#3 : 4/6", "#4 : 3/6", "#5 : 2/6",
+    "#6 : 1/6". They read like retained watercolor guide proxies / stack rows
+    (five old + the new one).
+  - The user sees this as the whole script/track management being broken and
+    cannot continue UAT until scripts are fixed.
+
+screenshot: /Users/lmarques/.claude/image-cache/7bb1a5d7-af0d-41bf-95c3-afbd38a2878a/18.png
+
+user_verdict: |
+  "All is broken after fail test width cache, stack of tracks etc ... I deleted
+  all keys, on empty project, I created a key and a stroke paint watercolor and
+  look what happen: my stroke new paint disapeared, I see plenty of strokes
+  phantoms. I think The scripts system management with tracks is totally
+  broken, this release is corrupted and far from ready. Its a total fail. I
+  can't continue more test until the scripts are fixed. Maybe ID are not unique
+  per track and per frame, I dont know. advice me"
+
+debugger_lead: |
+  This is the retained-script / guide-ledger layer, not the compositor. Six
+  guides after ONE new stroke plus a "Cache restored" status point at stale
+  scripts seeded into a new key. Prime suspects:
+  1. `studioScriptSnapshotController.withoutForeignKeyFrames`: when
+     `liveKeyIds.size === 0` it returns ALL retained frames, and a legacy row
+     with no keyId is KEPT on any normal frame even when the live key changed.
+     A deleted key's script can therefore resurrect on a new key at the same
+     frame number.
+  2. `mergeStudioScriptSnapshotContent` unions `watercolorEvents` by
+     mutationId only — no keyId/track/frame scoping for non-dry events. Five
+     retained strokes + one new = six guides.
+  3. The restore path ("Cache restored at frame 0") may seed the retained
+     script into the new key even though key identity changed.
+  4. The engine/record guide ledger may keep old guides after key deletion; the
+     new wash is not rendered (ownership/module or retained-script ownership).
+  Verify with app-written /tmp evidence first: snapshot events (mutationIds,
+  key/frame anchors), live key IDs per track/frame, frameScriptOwner, engine
+  guide count, and the seed/restore call path. Then scope every script entry to
+  its owning key identity (track+frame+keyId), purge on key deletion, and make
+  a new key incapable of inheriting a deleted key's strokes. RED tests:
+  delete all keys -> retained registry empty; new key + one watercolor stroke
+  -> exactly one guide + the wash, zero retained strokes; the same frame number
+  on another track/frame never collides.
+
+## UAT Round 3 (2026-10-27) — ONE minimal row
+
+declared_consequence: |
+  Pre-fix watercolor events (SNAP v1/v2, no key anchor) are retained in the
+  file but NEVER re-seed. That is deliberate: without an anchor they cannot
+  prove which key owned them. The six Paint 2 events are the corrupted set;
+  Paint 4 / Paint 1 currently have zero keys, so no visible script is lost.
+  From this build on, every newly recorded stroke is anchored and restores
+  normally.
+
+uat_row: |
+  Relaunch the app (the user runs it), open Studio on Paint 2 frame 0 with the
+  empty session, create ONE new key and paint ONE watercolor stroke.
+
+  PASS: exactly ONE guide is listed, its wash stays visible on the canvas,
+  the status line does NOT read "Cache restored at frame 0.", and closing /
+  reopening the Studio (or relaunching) restores that same single stroke +
+  wash (SNAP v3 anchor).
+  FAIL: any phantom guide (report its "#N : M/M" label), or the wash
+  disappears again.
 
 DATA_END
