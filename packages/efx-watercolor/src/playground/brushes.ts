@@ -156,31 +156,31 @@ const BASE: Omit<BrushPreset, 'id' | 'name' | 'hint' | 'tip'> = {
 const define = (p: Partial<BrushPreset> & Pick<BrushPreset, 'id' | 'name' | 'hint' | 'tip'>): BrushPreset => ({ ...BASE, ...p });
 
 export const BRUSH_PRESETS: BrushPreset[] = [
-  // 261027-gh9b: dry media and the FIRST card in the Brush tab grid. The
-  // tip is thresholded fbm, never a worley cell lattice — the cell-gap
-  // version stamped a repeating dot grid along the stroke — and the outline
-  // radius wanders with the angle so the stick's edge reads chipped.
+  // 261027-gh9c: dry media and the FIRST card in the Brush tab grid. Dense
+  // core, fine tooth: the coarse paper gate (grain 0.95) and the oversized
+  // fbm pores of earlier passes read as paper-sized blobs, so grain is now
+  // moderate (the paper modulates, never dominates) and the tip speckle is
+  // high-frequency. The outline wanders so the stick crumbles at the edge.
   // water 0 deposits no wetness by construction (the engine multiplies
   // `b.water` into the wet amount and brushWet blends with MAX).
   define({
-    id: 'chalk', name: 'Chalk', hint: 'Dry chalk stick: hard grainy tooth, no wet bloom',
-    aspect: 0.8, rotation: 'follow', angle: 0, angleJitter: 14,
-    size: [0.008, 0.03], pressureSize: 0.85, speedThin: 0.02,
-    spacing: 0.14, scatter: 0.15, dabs: 1, sizeJitter: 0.25,
-    water: 0, load: 1.2, flow: 0.7, capacity: 0.5, grain: 0.95, wetRound: 0,
+    id: 'chalk', name: 'Chalk', hint: 'Dry chalk stick: dense grainy core, crumbling edges, no wet bloom',
+    aspect: 0.8, rotation: 'follow', angle: 0, angleJitter: 12,
+    size: [0.008, 0.03], pressureSize: 0.9, speedThin: 0.02,
+    spacing: 0.12, scatter: 0.12, dabs: 1, sizeJitter: 0.22,
+    water: 0, load: 1.35, flow: 0.6, capacity: 0.9, grain: 0.35, wetRound: 0,
     tip: (n, N) => tip((u, v, r, ang) => {
-      // Chipped silhouette: the outline radius wanders with the angle.
-      const wander = N.fbm(ang * 1.7 + 3.2, r * 2.6 + 1.1, 3) * 2 - 1;
-      const rr = r * (1 + 0.24 * wander);
-      const edge = 1 - smoothstep(0.62, 0.94, rr);
-      // A second, higher-frequency bite eats into the rim only.
-      const rim = smoothstep(0.45, 0.9, r);
-      const bite = smoothstep(0.3, 0.62, N.fbm(u * 6.5 + 9, v * 6.5 + 4, 4));
-      // Porous body: thresholded fbm is organic — no repeating cell grid.
-      const pores = smoothstep(0.26, 0.5, N.fbm(u * 8.5 + 21, v * 8.5 + 13, 5));
-      // Fine grit at a second scale gives the dry media its tooth.
-      const grit = 0.58 + 0.42 * N.fbm(u * 24 + 7, v * 24 + 3, 2);
-      return edge * (1 - rim * (1 - bite)) * pores * grit;
+      // Chipped edge: the outline radius wanders with the angle and a finer
+      // mask bites the rim, so the stick crumbles instead of ending in a disc.
+      const wander = N.fbm(ang * 2.4 + 1.6, r * 4.2, 3) * 2 - 1;
+      const rr = r * (1 + 0.16 * wander);
+      const body = 1 - smoothstep(0.6, 0.98, rr);
+      const rim = smoothstep(0.55, 0.9, r);
+      const bite = smoothstep(0.28, 0.55, N.fbm(u * 9 + 11, v * 9 + 3, 4));
+      // Dense core with a fine chalk tooth — small speckle, never large blobs.
+      const pores = smoothstep(0.2, 0.4, N.fbm(u * 26 + 5, v * 26 + 11, 3));
+      const grit = 0.8 + 0.2 * N.fbm(u * 55 + 3, v * 55 + 7, 2);
+      return body * (1 - rim * (1 - bite)) * (0.7 + 0.3 * pores) * grit;
     })(n),
   }),
   define({

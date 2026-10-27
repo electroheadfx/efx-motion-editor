@@ -223,11 +223,14 @@ describe('chalk dry-media preset contract (261027-gh9)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('is a dry media: no water, no wet bloom, high grain', () => {
+  it('is a dry media: no water, no wet bloom, moderate paper tooth', () => {
     expect(chalk, 'chalk preset must exist').toBeTruthy();
     expect(chalk!.water).toBe(0);
     expect(chalk!.wetRound).toBe(0);
-    expect(chalk!.grain).toBeGreaterThanOrEqual(0.8);
+    // 261027-gh9c: the paper tooth must modulate the deposit, not dominate
+    // it — a high grain gate produced paper-sized blobs instead of chalk.
+    expect(chalk!.grain).toBeGreaterThan(0.2);
+    expect(chalk!.grain).toBeLessThan(0.6);
     expect(chalk!.flow).toBeGreaterThan(0);
     expect(chalk!.flow).toBeLessThan(1);
     expect(chalk!.capacity).toBeGreaterThan(0);
