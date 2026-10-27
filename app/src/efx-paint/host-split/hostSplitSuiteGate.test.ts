@@ -11,7 +11,6 @@ import { describe, expect, it } from 'vitest';
  * and that the paintVersion discipline pin is still intact after the re-point.
  *
  * Pins covered:
- *   - preSplitGoldenParity.test.ts         (55-01, HOST-03 / R5.2 golden)
  *   - hostGenericityRoundTrip.test.ts      (55-07, A5 automated / D-05)
  *   - hostImportGraphContract.test.ts      (55-07, D-07 import-graph)
  *   - hostSplitFailClosedApply.test.ts     (55-06, HOST-05 / DATA-02)
@@ -32,7 +31,6 @@ const APP_ROOT = resolve(HERE, '../../..');
 const REPO_ROOT = resolve(APP_ROOT, '..');
 
 const STANDING_PINS = [
-  'app/src/efx-paint/host-split/preSplitGoldenParity.test.ts',
   'app/src/efx-paint/host-split/hostGenericityRoundTrip.test.ts',
   'app/src/efx-paint/host-split/hostImportGraphContract.test.ts',
   'app/src/efx-paint/host-split/hostSplitFailClosedApply.test.ts',
@@ -41,7 +39,6 @@ const STANDING_PINS = [
 ] as const;
 
 const PIN_FIXTURES = [
-  'app/src/efx-paint/host-split/preSplitGoldenFixture.ts',
   'app/src/efx-paint/host-split/fakeEngine2Fixture.ts',
 ] as const;
 

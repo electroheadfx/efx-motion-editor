@@ -1,123 +1,138 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { EfxPaintEngine } from '@efxlab/efx-physic-paint';
-import { createPhysicsPaintEngineActions } from './usePhysicsPaintEngineActions';
+import {
+  createPhysicsPaintEngineActions,
+  type PhysicsPaintEngineActionsInput,
+} from './usePhysicsPaintEngineActions';
 import { makeInitialPhysicsPaintStudioSettings, type PhysicsPaintStudioSettings } from './physicsPaintStudioSettings';
 
-function makeHarness() {
-  let locked = true;
+/**
+ * 261027-klx — retargeted, not deleted. The engine-1 tool/physics cases
+ * (selectTool, setBrushColor/Size/Opacity, setEdgeDetail, setPickup,
+ * setSpread, setSmoothing, setEraseStrength, startPhysics, stopPhysics) died
+ * with the Brush engine they exercised. The PAPER-DISPLAY cases survive
+ * because background + grain are composite-only Studio state that must keep
+ * working across the single-engine cutover:
+ *
+ *  - 56-05 (PAPER-01): a library paper id reaches the settings slot verbatim
+ *    but never the engine's BgMode (library papers are paperPass, not engine).
+ *  - 260923-bcm: grain SCALE is project-side only — no engine call at all.
+ *  - studio-reopen-paper-washout: paper display must survive a NOT-YET-READY
+ *    engine (null) or the store mirror and settings diverge and the next
+ *    background-metadata sync clobbers the pick.
+ *
+ * The engine is structurally faked: `PhysicsPaintEngineActionsInput['engine']`
+ * is the source of truth for the accepted shape, so this file carries no
+ * `@efxlab/efx-physic-paint` import (Wave 2 clean break).
+ */
+type HarnessEngine = NonNullable<PhysicsPaintEngineActionsInput['engine']>;
+
+function makeHarness(options: { locked?: boolean; engine?: 'present' | 'null' } = {}) {
+  let locked = options.locked ?? false;
   let settings = makeInitialPhysicsPaintStudioSettings();
-  const engine = {
-    setTool: vi.fn(),
-    setPhysicsMode: vi.fn(),
-    setColorHex: vi.fn(),
-    setBrushOpacity: vi.fn(),
-    setBrushSize: vi.fn(),
+  const spies = {
     setBgMode: vi.fn(),
-    setPaperGrain: vi.fn(),
     setEmbossStrength: vi.fn(),
-    setEdgeDetail: vi.fn(),
-    setPickup: vi.fn(),
-    setLocalSpreadStrength: vi.fn(),
-    setAntiAlias: vi.fn(),
-    setEraseStrength: vi.fn(),
-    startPhysics: vi.fn(),
-    stopPhysics: vi.fn(),
-  } as unknown as EfxPaintEngine;
-  const setSettings = vi.fn((update: PhysicsPaintStudioSettings | ((current: PhysicsPaintStudioSettings) => PhysicsPaintStudioSettings)) => {
-    settings = typeof update === 'function' ? update(settings) : update;
-  });
+  };
+  const setSettings = vi.fn(
+    (update: PhysicsPaintStudioSettings | ((current: PhysicsPaintStudioSettings) => PhysicsPaintStudioSettings)) => {
+      settings = typeof update === 'function' ? update(settings) : update;
+    },
+  );
   const actions = createPhysicsPaintEngineActions({
-    engine,
+    engine: options.engine === 'null' ? null : (spies as unknown as HarnessEngine),
     settings,
     setSettings,
     isMutationLocked: () => locked,
   });
-  return { actions, engine, setSettings, getSettings: () => settings, unlock: () => { locked = false; } };
+  return {
+    actions,
+    spies,
+    setSettings,
+    getSettings: () => settings,
+    lock: () => {
+      locked = true;
+    },
+  };
 }
 
-function invokeEveryMutation(actions: ReturnType<typeof createPhysicsPaintEngineActions>) {
-  actions.selectTool('erase', 'local');
-  actions.setBrushColor('#abcdef', 42);
-  actions.setBrushSize(17);
-  actions.setBrushOpacity(63);
-  actions.setBackground('white');
-  actions.setGrainStrength(0.65);
-  actions.setEdgeDetail(71);
-  actions.setPickup(29);
-  actions.setSpread(36);
-  actions.setSmoothing(3);
-  actions.setEraseStrength(88);
-  actions.startPhysics('all');
-  actions.stopPhysics();
+const PAPER_KEYS = ['background', 'grainStrength', 'grainScale'] as const;
+
+function paperSnapshot(settings: PhysicsPaintStudioSettings) {
+  return Object.fromEntries(PAPER_KEYS.map((key) => [key, settings[key]]));
 }
 
-describe('Physics Paint engine actions', () => {
-  it('blocks every engine-mutating action and setting update while the controller lock is active', () => {
+describe('Physics Paint engine actions — paper display', () => {
+  it('setBackground / setGrainStrength write the settings and mirror to a present engine', () => {
     const harness = makeHarness();
-    const initialSettings = harness.getSettings();
 
-    invokeEveryMutation(harness.actions);
+    harness.actions.setBackground('canvas2');
+    harness.actions.setGrainStrength(0.65);
 
-    for (const method of Object.values(harness.engine as unknown as Record<string, ReturnType<typeof vi.fn>>)) {
-      expect(method).not.toHaveBeenCalled();
-    }
-    expect(harness.setSettings).not.toHaveBeenCalled();
-    expect(harness.getSettings()).toEqual(initialSettings);
+    expect(harness.spies.setBgMode).toHaveBeenCalledTimes(1);
+    expect(harness.spies.setBgMode).toHaveBeenCalledWith('canvas2');
+    expect(harness.spies.setEmbossStrength).toHaveBeenCalledTimes(1);
+    expect(harness.spies.setEmbossStrength).toHaveBeenCalledWith(0.65);
+    expect(harness.getSettings()).toMatchObject({ background: 'canvas2', grainStrength: 0.65 });
   });
 
-  it('resumes every engine-mutating action immediately after the lock releases', () => {
+  it('never sends a library paper id to engine.setBgMode (PAPER-01: papers are paperPass)', () => {
     const harness = makeHarness();
-    harness.unlock();
 
-    invokeEveryMutation(harness.actions);
+    harness.actions.setBackground('paper/kraft');
 
-    expect(harness.engine.setTool).toHaveBeenCalledWith('erase');
-    expect(harness.engine.setPhysicsMode).toHaveBeenCalledWith('local');
-    expect(harness.engine.setColorHex).toHaveBeenCalledWith('#abcdef');
-    expect(harness.engine.setBrushOpacity).toHaveBeenNthCalledWith(1, 42);
-    expect(harness.engine.setBrushSize).toHaveBeenCalledWith(17);
-    expect(harness.engine.setBrushOpacity).toHaveBeenNthCalledWith(2, 63);
-    expect(harness.engine.setBgMode).toHaveBeenCalledWith('white');
-    expect(harness.engine.setEmbossStrength).toHaveBeenCalledWith(0.65);
-    expect(harness.engine.setEdgeDetail).toHaveBeenCalledWith(71);
-    expect(harness.engine.setPickup).toHaveBeenCalledWith(29);
-    expect(harness.engine.setLocalSpreadStrength).toHaveBeenCalledWith(36);
-    expect(harness.engine.setAntiAlias).toHaveBeenCalledWith(3);
-    expect(harness.engine.setEraseStrength).toHaveBeenCalledWith(88);
-    expect(harness.engine.startPhysics).toHaveBeenCalledWith('all');
-    expect(harness.engine.stopPhysics).toHaveBeenCalledTimes(1);
+    expect(harness.spies.setBgMode).toHaveBeenCalledWith('transparent');
+    expect(harness.getSettings().background).toBe('paper/kraft');
+  });
+
+  it('setGrainScale writes the setting with NO engine call (260923-bcm: project-side scale only)', () => {
+    const harness = makeHarness();
+
+    harness.actions.setGrainScale(2.5);
+
+    expect(harness.spies.setBgMode).not.toHaveBeenCalled();
+    expect(harness.spies.setEmbossStrength).not.toHaveBeenCalled();
+    expect(harness.getSettings().grainScale).toBe(2.5);
+  });
+
+  it('setBackground / setGrainStrength / setGrainScale still write settings with no engine (composite-only)', () => {
+    const harness = makeHarness({ engine: 'null' });
+
+    harness.actions.setBackground('paper/kraft');
+    harness.actions.setGrainStrength(0.8);
+    harness.actions.setGrainScale(3);
+
+    expect(harness.setSettings).toHaveBeenCalledTimes(3);
     expect(harness.getSettings()).toMatchObject({
-      tool: 'erase', physicsMode: 'local', color: '#abcdef', opacity: 63, size: 17,
-      background: 'white', grainStrength: 0.65,
-      edgeDetail: 71, pickup: 29, spread: 36, smoothing: 3, eraseStrength: 88,
-      activePhysicsAction: null,
+      background: 'paper/kraft',
+      grainStrength: 0.8,
+      grainScale: 3,
     });
   });
 
-  /**
-   * studio-reopen-paper-washout: paper display (background id + grain) is a
-   * COMPOSITE-ONLY field — it must never be gated on engine readiness. The
-   * Studio's paper pick path (handlePaperIdChange) writes the store mirror
-   * unconditionally via setPaperId but updates settings through this action;
-   * when the engine is not yet ready the settings write is dropped and
-   * settings.background stays the unhydrated default. The next
-   * useRotoBackgroundMetadataSync write then clobbers the track mirror with
-   * that stale id, and the fond renders the jpg wash (canvas1) instead of the
-   * engine sheet.
-   */
-  it('setBackground / setGrainStrength update settings even with no engine (paper display is composite-only)', () => {
-    const settings = makeInitialPhysicsPaintStudioSettings();
-    const setSettings = vi.fn((_update: PhysicsPaintStudioSettings | ((current: PhysicsPaintStudioSettings) => PhysicsPaintStudioSettings)) => {});
-    const actions = createPhysicsPaintEngineActions({
-      engine: null,
-      settings,
-      setSettings,
-      isMutationLocked: () => false,
-    });
+  it('blocks every paper-display write while the controller lock is active', () => {
+    const harness = makeHarness({ locked: true });
+    const initialPaper = paperSnapshot(harness.getSettings());
 
-    actions.setBackground('paper/kraft');
-    actions.setGrainStrength(0.8);
+    harness.actions.setBackground('white');
+    harness.actions.setGrainStrength(0.65);
+    harness.actions.setGrainScale(2);
+    harness.actions.updateSetting('grainScale', 2);
 
-    expect(setSettings).toHaveBeenCalledTimes(2);
+    expect(harness.setSettings).not.toHaveBeenCalled();
+    expect(harness.spies.setBgMode).not.toHaveBeenCalled();
+    expect(harness.spies.setEmbossStrength).not.toHaveBeenCalled();
+    expect(paperSnapshot(harness.getSettings())).toEqual(initialPaper);
+  });
+
+  it('updateSetting applies a single-key patch once the lock releases', () => {
+    const harness = makeHarness();
+
+    harness.actions.updateSetting('grainScale', 4);
+
+    expect(harness.setSettings).toHaveBeenCalledTimes(1);
+    expect(harness.getSettings().grainScale).toBe(4);
+    expect(harness.getSettings().background).toBe(
+      makeInitialPhysicsPaintStudioSettings().background,
+    );
   });
 });

@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ToolType } from '@efxlab/efx-physic-paint';
+import type { ToolType } from '../types/paintCore';
 import {
   combineEffectiveTool,
   handleTemporaryEraseBlur,
   handleTemporaryEraseGestureBoundary,
-  handleTemporaryEraseKeyDown,
   handleTemporaryEraseVisibilityChange,
   handleTemporaryMoveKeyDown,
   handleTemporaryMoveKeyUp,
@@ -13,7 +12,6 @@ import {
   resetTemporaryEraseForTests,
   resolveEffectiveTool,
   readEffectiveTool,
-  temporaryErase,
   temporaryMove,
   type TemporaryEraseDeps,
   type TemporaryEraseEngine,
@@ -26,25 +24,25 @@ import {
 } from './physicsPaintStudioKeyboard';
 
 /**
- * quick 261004-dn5 — Cmd = temporary Move in the Physics Paint Studio window
- * (the dual-arm extension of the UAT-closed Alt = temporary erase module).
- * THIS CELL LIST IS THE CONTRACT OF RECORD (mirrors PLAN.md Task 1):
+ * quick 261004-dn5 — Cmd = temporary Move in the Physics Paint Studio window.
  *
- *  - PRECEDENCE: combineEffectiveTool is the ONE combination rule and move
- *    outranks erase — moveArmed + selected 'paint' resolves to 'move'; the
- *    erase arm alone resolves to 'erase'; a disarmed selection passes through;
- *    a selected 'erase' is never flipped to 'move' (the selected tool wins).
- *    The 2-argument call form (no move arm) still resolves exactly as before.
+ * quick 261027-klx — this is the SPLIT survivor of the former dual-arm suite.
+ * The Alt = temporary-erase arm was engine-1-only and is deleted with the
+ * Brush engine; every cell below covers the surviving move arm. THIS CELL
+ * LIST IS THE CONTRACT OF RECORD:
+ *
+ *  - PRECEDENCE: combineEffectiveTool is the ONE combination rule —
+ *    moveArmed + selected 'paint' resolves to 'move'; a disarmed selection
+ *    passes through; a selected 'erase' is never flipped.
  *  - GATED META ARM: a Meta/Cmd keydown arms ONLY when the shortcut target is
  *    clean, the selected tool is 'paint', an engine is mounted, mutations are
  *    not locked and the event is not a key repeat; a non-Meta key never arms.
  *  - UNCONDITIONAL META KEYUP: releasing Meta clears the move arm no matter
  *    which gates now fail — including a keyup delivered while an input is
  *    focused.
- *  - BLUR / VISIBILITY: window blur and visibilitychange-to-hidden clear BOTH
- *    arms (temporaryErase and temporaryMove); visibilitychange-to-visible
- *    clears neither.
- *  - EVENT HYGIENE: neither arm handler ever calls preventDefault or
+ *  - BLUR / VISIBILITY: window blur and visibilitychange-to-hidden clear the
+ *    arm; visibilitychange-to-visible clears nothing.
+ *  - EVENT HYGIENE: no arm handler ever calls preventDefault or
  *    stopPropagation (source assertion over the handler bodies), and a
  *    dispatcher integration cell proves meta+Z still fires the Studio undo
  *    while the move arm is armed — every existing Cmd chord keeps working.
@@ -53,22 +51,20 @@ import {
  *    defers the apply; pointerup coalesces to exactly ONE final setTool; a
  *    lost Meta keyup followed by blur ends on 'paint' (never stuck on 'move').
  *  - MOUNT / TEARDOWN: mount wires keydown/keyup/blur/pointerdown(capture)/
- *    pointerup/pointercancel/visibilitychange, dispatching BOTH arm handlers
- *    from the key listeners; teardown removes every listener and clears both
- *    arms; the reset helper clears both signals plus the deferral state.
- *  - SOURCE PINS: the rail declares a 'move' item immediately after 'erase',
- *    an isItemActive branch for it, runAction dispatching onSelectTool('move',
- *    physicsMode) and a brushMoveAvailable feature gate derived from the
- *    frame's script owner; the Studio peeks the owner-derived gate in BOTH
- *    arms and passes it through the tool-rail identity memo.
+ *    pointerup/pointercancel on the window-like target and visibilitychange on
+ *    the document-like target; teardown removes every listener and clears the
+ *    arm; the reset helper clears the signal plus the deferral state.
+ *  - DISPATCHER ALT EXCLUSIONS: the preserved-Alt guards in
+ *    physicsPaintStudioKeyboard.ts stay intact (Backspace/Delete inert under
+ *    Alt, Meta+Alt+C never roto-copies, Escape under Alt never collapses) —
+ *    moved here from the retired erase suite so the surviving dispatcher
+ *    export keeps its coverage.
  *
  * Node environment: no real DOM. Everything is driven through the exported
  * handlers with injected deps; the mount takes window-like/document-like
  * fakes so no global is touched at import time.
  */
 
-const railSource = readFileSync(new URL('./PhysicsPaintToolRail.tsx', import.meta.url), 'utf8');
-const studioSource = readFileSync(new URL('../PhysicsPaintStudio.tsx', import.meta.url), 'utf8');
 const armModuleSource = readFileSync(new URL('./physicsPaintTemporaryErase.ts', import.meta.url), 'utf8');
 
 function harness(selected: ToolType = 'paint') {
@@ -252,13 +248,6 @@ function handlerBody(name: string): string {
   throw new Error(`unterminated handler body: ${name}`);
 }
 
-function railArrayBody(): string {
-  const open = railSource.indexOf('PHYSICS_PAINT_TOOL_RAIL_ITEMS: PhysicsPaintToolRailItem[] = [');
-  expect(open).toBeGreaterThanOrEqual(0);
-  const close = railSource.indexOf('\n];', open);
-  return railSource.slice(open, close);
-}
-
 beforeEach(() => {
   resetTemporaryEraseForTests();
   vi.stubGlobal('HTMLElement', TestHTMLElement);
@@ -271,43 +260,31 @@ afterEach(() => {
 });
 
 describe('combineEffectiveTool (PRECEDENCE)', () => {
-  it("move outranks erase: armed move + selected 'paint' resolves to 'move'", () => {
-    expect(combineEffectiveTool(true, 'paint', true)).toBe('move');
+  it("the move arm resolves a selected 'paint' to 'move'", () => {
+    expect(combineEffectiveTool('paint', true)).toBe('move');
+    expect(combineEffectiveTool('paint', false)).toBe('paint');
   });
 
-  it("the erase arm alone still resolves to 'erase'", () => {
-    expect(combineEffectiveTool(true, 'paint', false)).toBe('erase');
-    expect(combineEffectiveTool(false, 'paint', true)).toBe('paint');
-    expect(combineEffectiveTool(false, 'paint', false)).toBe('paint');
+  it('a disarmed selection always passes through untouched', () => {
+    expect(combineEffectiveTool('paint')).toBe('paint');
+    expect(combineEffectiveTool('erase')).toBe('erase');
+    expect(combineEffectiveTool('move')).toBe('move');
   });
 
   it("a selected 'erase' is never flipped to 'move' — the selected tool wins", () => {
-    expect(combineEffectiveTool(true, 'erase', true)).toBe('erase');
-    expect(combineEffectiveTool(true, 'erase', false)).toBe('erase');
+    expect(combineEffectiveTool('erase', true)).toBe('erase');
+    expect(combineEffectiveTool('move', true)).toBe('move');
   });
 
-  it('the 2-argument call form (no move arm) behaves exactly as before', () => {
-    expect(combineEffectiveTool(true, 'paint')).toBe('erase');
-    expect(combineEffectiveTool(false, 'paint')).toBe('paint');
-    expect(combineEffectiveTool(true, 'erase')).toBe('erase');
-  });
-
-  it('resolveEffectiveTool and readEffectiveTool pass the live move signal as the third argument', () => {
-    temporaryErase.value = false;
+  it('resolveEffectiveTool and readEffectiveTool read the live move signal', () => {
     temporaryMove.value = false;
     expect(resolveEffectiveTool('paint')).toBe('paint');
     expect(readEffectiveTool('paint')).toBe('paint');
 
-    temporaryErase.value = true;
-    expect(resolveEffectiveTool('paint')).toBe('erase');
-
-    // Both arms armed → move wins (discretion decision 1).
     temporaryMove.value = true;
     expect(resolveEffectiveTool('paint')).toBe('move');
     expect(readEffectiveTool('paint')).toBe('move');
 
-    temporaryErase.value = false;
-    expect(resolveEffectiveTool('paint')).toBe('move');
     temporaryMove.value = false;
     expect(resolveEffectiveTool('paint')).toBe('paint');
   });
@@ -362,13 +339,6 @@ describe('gated Meta arm (ARM / GATED ARM)', () => {
     expect(temporaryMove.peek()).toBe(false);
     expect(h.engine.setTool).not.toHaveBeenCalled();
   });
-
-  it("arming does NOT touch the Alt arm — temporaryErase stays false", () => {
-    const h = harness();
-    handleTemporaryMoveKeyDown(keyEvent('Meta').event, h.deps);
-
-    expect(temporaryErase.peek()).toBe(false);
-  });
 });
 
 describe('unconditional Meta keyup (KEYUP)', () => {
@@ -411,37 +381,30 @@ describe('unconditional Meta keyup (KEYUP)', () => {
   });
 });
 
-describe('blur / visibility clear BOTH arms (LOST FOCUS)', () => {
-  it('window blur clears temporaryErase and temporaryMove', () => {
+describe('blur / visibility clear the move arm (LOST FOCUS)', () => {
+  it('window blur clears temporaryMove even when every arm gate now fails', () => {
     const h = harness();
-    handleTemporaryEraseKeyDown(keyEvent('Alt').event, h.deps);
     handleTemporaryMoveKeyDown(keyEvent('Meta').event, h.deps);
-    expect(temporaryErase.peek()).toBe(true);
     expect(temporaryMove.peek()).toBe(true);
     h.box.locked = true;
     h.box.shortcut = false;
 
     handleTemporaryEraseBlur(h.deps);
 
-    expect(temporaryErase.peek()).toBe(false);
     expect(temporaryMove.peek()).toBe(false);
     expect(h.engine.setTool).toHaveBeenLastCalledWith('paint');
   });
 
-  it('visibilitychange-to-hidden clears both arms; visibilitychange-to-visible clears neither', () => {
+  it('visibilitychange-to-hidden clears the arm; visibilitychange-to-visible clears nothing', () => {
     const h = harness();
-    handleTemporaryEraseKeyDown(keyEvent('Alt').event, h.deps);
     handleTemporaryMoveKeyDown(keyEvent('Meta').event, h.deps);
 
     handleTemporaryEraseVisibilityChange(h.deps, 'hidden');
-    expect(temporaryErase.peek()).toBe(false);
     expect(temporaryMove.peek()).toBe(false);
     expect(h.engine.setTool).toHaveBeenLastCalledWith('paint');
 
-    handleTemporaryEraseKeyDown(keyEvent('Alt').event, h.deps);
     handleTemporaryMoveKeyDown(keyEvent('Meta').event, h.deps);
     handleTemporaryEraseVisibilityChange(h.deps, 'visible');
-    expect(temporaryErase.peek()).toBe(true);
     expect(temporaryMove.peek()).toBe(true);
   });
 });
@@ -451,8 +414,6 @@ describe('event hygiene — preserved Cmd chords (EVENT HYGIENE)', () => {
     for (const name of [
       'handleTemporaryMoveKeyDown',
       'handleTemporaryMoveKeyUp',
-      'handleTemporaryEraseKeyDown',
-      'handleTemporaryEraseKeyUp',
       'handleTemporaryEraseBlur',
       'handleTemporaryEraseVisibilityChange',
       'handleTemporaryEraseGestureBoundary',
@@ -510,6 +471,29 @@ describe('event hygiene — preserved Cmd chords (EVENT HYGIENE)', () => {
     expect(selectAll.actions.selectAllRotoKeys).toHaveBeenCalled();
     const redo = dispatcherDispatch('z', { metaKey: true, shiftKey: true });
     expect(redo.actions.redo).toHaveBeenCalled();
+  });
+});
+
+describe('dispatcher Alt exclusions — physicsPaintStudioKeyboard.ts untouched (PRESERVED ALT)', () => {
+  it('Backspace/Delete with altKey held never calls deleteRotoKey and never prevents its default', () => {
+    for (const key of ['Backspace', 'Delete']) {
+      const { actions, preventDefault } = dispatcherDispatch(key, { altKey: true });
+      expect(actions.deleteRotoKey).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+  });
+
+  it('Meta+Alt+C never calls copyRotoKey (roto clipboard exclusion preserved)', () => {
+    const { actions, preventDefault } = dispatcherDispatch('c', { metaKey: true, altKey: true });
+    expect(actions.copyRotoKey).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('Escape with altKey held never collapses the selection', () => {
+    const { actions, preventDefault } = dispatcherDispatch('Escape', { altKey: true });
+    expect(actions.collapseRotoSelection).not.toHaveBeenCalled();
+    expect(actions.disarmPushTool).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 });
 
@@ -627,18 +611,15 @@ describe('mount wiring (MOUNT WIRING)', () => {
     expect(options!.capture).toBe(true);
   });
 
-  it('the teardown removes every listener and clears BOTH arms', () => {
+  it('the teardown removes every listener and clears the move arm', () => {
     const h = harness();
     const targets = mountTargets();
     const teardown = wireMount(targets, h.deps);
-    handleTemporaryEraseKeyDown(keyEvent('Alt').event, h.deps);
     handleTemporaryMoveKeyDown(keyEvent('Meta').event, h.deps);
-    expect(temporaryErase.peek()).toBe(true);
     expect(temporaryMove.peek()).toBe(true);
 
     teardown();
 
-    expect(temporaryErase.peek()).toBe(false);
     expect(temporaryMove.peek()).toBe(false);
     expect(targets.window.registrations).toHaveLength(0);
     expect(targets.document.registrations).toHaveLength(0);
@@ -662,61 +643,6 @@ describe('mount wiring (MOUNT WIRING)', () => {
     expect(h.engine.setTool).toHaveBeenLastCalledWith('paint');
 
     teardown();
-  });
-});
-
-describe('source pins — rail + Studio wiring (SOURCE PINS)', () => {
-  it("the rail declares a 'move' item immediately after the 'erase' item", () => {
-    const body = railArrayBody();
-    const entries = body.split('\n').filter((line) => line.trim().startsWith('{ id:'));
-    const eraseIndex = entries.findIndex((line) => line.includes("id: 'erase'"));
-    const moveIndex = entries.findIndex((line) => line.includes("id: 'move'"));
-    expect(eraseIndex).toBeGreaterThanOrEqual(0);
-    expect(moveIndex).toBe(eraseIndex + 1);
-    expect(entries[moveIndex]).toContain("label: 'Move'");
-    expect(entries[moveIndex]).toContain("kind: 'tool'");
-    expect(entries[moveIndex]).toContain('moveToolIcon');
-  });
-
-  it("the rail imports the move icon and unions the 'move' action", () => {
-    expect(railSource).toContain("import moveToolIcon from '../../../assets/physics-paint-ui/icons/move-tool.svg';");
-    expect(railSource).toMatch(/\|\s*'move'/);
-  });
-
-  it("the rail highlights the move item, dispatches its selection and gates it on the key's Brush script", () => {
-    expect(railSource).toContain("if (item.id === 'move') return activeTool === 'move';");
-    expect(railSource).toContain("if (item.id === 'move') onSelectTool('move', physicsMode);");
-    expect(railSource).toContain('moveAvailable');
-    expect(railSource).toContain('const moveDisabled = !moveAvailable.value;');
-    expect(railSource).toContain("const moveBlocked = item.id === 'move' && moveDisabled;");
-    expect(railSource).toContain('const active = isItemActive(item, displayTool, physicsMode) && !moveBlocked;');
-    expect(railSource).toContain('disabled={disabled || moveBlocked}');
-    // The IMPL body must keep the existing narrow-history pin green.
-    const railStart = railSource.indexOf('function PhysicsPaintToolRailImpl');
-    const railEnd = railSource.indexOf('export const PhysicsPaintToolRail', railStart);
-    expect(railStart).toBeGreaterThanOrEqual(0);
-    expect(railSource.slice(railStart, railEnd)).not.toContain('historyAvailability?.value');
-  });
-
-  it('the Studio derives the Move gate from the frame owner, never the engine ledger', () => {
-    expect(studioSource).toContain('moveAvailable.peek()');
-    expect(studioSource).not.toContain('strokeScriptInMemory');
-    const listenerStart = studioSource.indexOf('readyEngine.setHistoryAvailabilityListener(');
-    expect(listenerStart).toBeGreaterThanOrEqual(0);
-    const listenerEnd = studioSource.indexOf('});', listenerStart);
-    expect(studioSource.slice(listenerStart, listenerEnd)).not.toContain('getStrokeCount()');
-  });
-
-  it('the armed-guarded effect peeks BOTH arms and the tool-rail memo passes the signal through', () => {
-    expect(studioSource).toContain('if (!temporaryErase.peek() && !temporaryMove.peek()) return;');
-    const memoStart = studioSource.indexOf('const toolRail = toolRailPropsMemo.resolve(');
-    expect(memoStart).toBeGreaterThanOrEqual(0);
-    const memoEnd = studioSource.indexOf('}));', memoStart);
-    const memo = studioSource.slice(memoStart, memoEnd);
-    expect(memo).toContain('moveAvailable');
-    expect(memo).toContain('moveAvailable,');
-    // Preact signals only — no useState for the feature gate.
-    expect(studioSource).not.toContain('const [strokeScriptInMemory');
   });
 });
 

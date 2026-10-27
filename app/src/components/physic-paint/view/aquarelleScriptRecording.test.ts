@@ -21,6 +21,7 @@ import {
   getAquarelleStrokeKeyAnchors,
   getRecordedAquarellePayloadTimeline,
   getRecordedAquarelleStroke,
+  getRecordedAquarelleStrokeEntries,
   isAquarelleStrokeDeleted,
   recordAquarelleStrokeWhenEnabled,
   resetAquarelleRecordState,
@@ -90,6 +91,53 @@ describe('261027-k6j Script On records exactly like before', () => {
     expect(getRecordedAquarelleStroke(9001)).toBeDefined();
     expect(nonDryEvents()).toHaveLength(1);
     expect(getAquarelleStrokeKeyAnchors().get(9001)).toBe('key-a');
+  });
+});
+
+// ============================================================
+//  261027-klx — moved from the deleted brushScriptRecordState.test.ts.
+//
+//  The Brush store carried an "aquarelle guide proxies are never Brush
+//  script content" block: engine-1 guide proxies (the paint-stroke
+//  projection of a watercolor stroke) were refused by Brush capture,
+//  restore and the overlay through `guideProxy: true` — that marker is
+//  still pinned against the surviving projection in
+//  engine/aquarelleStrokeBridge.test.ts. The rest of the block exercised
+//  Brush-store exports and dies with its subject. What survives, and what
+//  this block pins, is the other half of the coexistence contract: the
+//  aquarelle registry is the ONLY script authority — a stroke is script
+//  content if and only if the aquarelle record path recorded it, with no
+//  implicit seeding from raw paint strokes.
+// ============================================================
+describe('261027-klx aquarelle registry is the only script authority', () => {
+  it('records strokes in recording order with their key anchors', () => {
+    recordAquarelleStrokeWhenEnabled(true, 9101, stroke(9101, 5), 'key-a');
+    recordAquarelleStrokeWhenEnabled(true, 9102, stroke(9102, 5), 'key-a');
+
+    const entries = getRecordedAquarelleStrokeEntries();
+    expect([...entries.keys()]).toEqual([9101, 9102]);
+    expect(entries.get(9102)!.playFrame).toBe(5);
+    expect([...getAquarelleStrokeKeyAnchors().entries()]).toEqual([
+      [9101, 'key-a'],
+      [9102, 'key-a'],
+    ]);
+    expect(nonDryEvents()).toHaveLength(2);
+  });
+
+  it('an unrecorded mutation id is absent from every script view (no implicit capture)', () => {
+    recordAquarelleStrokeWhenEnabled(true, 9101, stroke(9101, 5), 'key-a');
+
+    expect(getRecordedAquarelleStrokeEntries().has(9199)).toBe(false);
+    expect(getAquarelleStrokeKeyAnchors().has(9199)).toBe(false);
+    expect(getRecordedAquarelleStroke(9199)).toBeUndefined();
+    expect(nonDryEvents()).toHaveLength(1);
+  });
+
+  it('an unanchored record carries no key identity (never a guessed identity)', () => {
+    recordAquarelleStrokeWhenEnabled(true, 9103, stroke(9103, 5));
+
+    expect(getRecordedAquarelleStrokeEntries().has(9103)).toBe(true);
+    expect(getAquarelleStrokeKeyAnchors().has(9103)).toBe(false);
   });
 });
 
