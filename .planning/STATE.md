@@ -5,10 +5,10 @@ milestone_name: Multi-Module Paint Workstation (MAJOR)
 current_phase: 56
 status: completed
 stopped_at: Completed 261024-mz5-PLAN.md
-last_updated: "2026-10-27T13:44:25.737Z"
+last_updated: "2026-10-27T20:43:38.711Z"
 last_activity: 2026-10-27
-last_activity_desc: Quick task 261026-odd automated-complete — empty-script Move law enforced on the current key; native UAT pending
-state_head: e1d437fd8dbe11e3d88633ff7d92348bf974210f
+last_activity_desc: Quick task 261027-klx complete — engine-1 Brush module removed; automated gates green, native UAT pending
+state_head: b148d5c03c6b533a8d8c01e05580d48aaf459345
 progress:
   total_phases: 3
   completed_phases: 3
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-14 after milestone v2.0.0 started)
 Phase: 56 — COMPLETE
 Plan: 11/11 complete
 Status: All phases complete — milestone v2.0.0 awaiting dev verification, QUICK-01, and milestone close
-Last activity: 2026-10-27 - Quick task 261027-k6j UAT PASSED: Script switch in the Studio top bar (On records painted strokes into the key's watercolor script; Off paints pixels without writing or extending any script); hover surface removed after review
+Last activity: 2026-10-27 - Completed quick task 261027-klx: Remove 'engine-1' called Brush mode (efx-physic-paint) — automated gates green (typecheck 0, full suite 6,069 passed, chunk 911,432 bytes), native UAT pending
 
 Progress: [██████████] 100%
 
@@ -602,6 +602,7 @@ None yet.
 | 261026-odd | Fix: actually create a rail with motion, reveal or static write just pixel and have no script for now but the Move tool is activated, it should not because these rails for now do not add stroke scripts (later yes like an option). If script is empty on a key -> no move (tool greyed) its a law we decided | 2026-10-26 | a74bf8cc | [261026-odd-fix-actually-create-a-rail-with-motion-r](./quick/261026-odd-fix-actually-create-a-rail-with-motion-r/) |
 | 261027-gh9 | Watercolor-only UI gate + Chalk dry-media preset: one WATERCOLOR_ONLY seam, inert Brush/Krita slots, clamped setActiveModule, and a 15-card Brush tab | 2026-10-27 | be27a481 | [261027-gh9-watercolor-only-ui-gate-chalk-dry-brush-](./quick/261027-gh9-watercolor-only-ui-gate-chalk-dry-brush-/) |
 | 261027-k6j | Script switch in the Studio top bar: On (default) records painted strokes into the key's watercolor script; Off paints pixels without writing or extending any script (existing scripts stay editable) | 2026-10-27 | e1d437fd | [261027-k6j-add-near-brush-dropdown-in-top-bar-an-on](./quick/261027-k6j-add-near-brush-dropdown-in-top-bar-an-on/) |
+| 261027-klx | Remove 'engine-1' called Brush mode (efx-physic-paint) | 2026-10-27 | b148d5c0 | [261027-klx-remove-engine-1-called-brush-mode-efx-ph](./quick/261027-klx-remove-engine-1-called-brush-mode-efx-ph/) |
 
 ### Roadmap Evolution
 
