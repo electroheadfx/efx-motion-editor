@@ -4790,10 +4790,13 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     expect(studio).toContain('if (scriptCell?.keyId) aquarelleDurableBaseByKeyRef.current.delete(scriptCell.keyId);');
 
     // Exactly three pin sites (promotion, prepare fallback, first stroke) and
-    // ONE invalidation. The map is NEVER advanced to the composed output —
-    // advancing would compound the already-baked script on the next bake.
+    // TWO invalidations by design: Raster replaces the key's content, and the
+    // explicit Trash full reset (261027-gh9c) drops the key's cached pixels
+    // AND both scripts, so its pinned base is stale as well. The map is NEVER
+    // advanced to the composed output — advancing would compound the
+    // already-baked script on the next bake.
     expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.set(')).toBe(3);
-    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(1);
+    expect(countOccurrences(studio, 'aquarelleDurableBaseByKeyRef.current.delete(')).toBe(2);
     const publishBlock = between(studio, 'publish: async (frame) => {', 'onFirstAcceptedBrush');
     expect(publishBlock).not.toContain('aquarelleDurableBaseByKeyRef');
 

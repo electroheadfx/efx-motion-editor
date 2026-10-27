@@ -4617,12 +4617,19 @@ export function PhysicsPaintStudio() {
       // 'clear', so this is the ONE explicit drop site outside prune / launch
       // teardown.
       purgeMemoryScriptFrame(currentFrame);
+      // 261027-gh9c: the key's pre-script raster is stale after a full reset —
+      // drop it so the next stroke re-pins the blank key as its durable base
+      // (same ordering law as Raster).
+      const clearedCell = resolveStudioScriptCell(currentFrame);
+      if (clearedCell !== null && clearedCell.kind === 'real' && typeof clearedCell.keyId === 'string') {
+        aquarelleDurableBaseByKeyRef.current.delete(clearedCell.keyId);
+      }
       // quick-261025-awl (D-02/D-03): the explicit clear can empty the frame —
       // refresh OUTSIDE the module gate so the owner lock can never go stale.
       applyFrameModuleState(currentFrame);
       rotoScript.notifySourceRevision();
     }
-  }, [applyFrameModuleState, currentFrame, engine, rotoScript]);
+  }, [applyFrameModuleState, currentFrame, engine, resolveStudioScriptCell, rotoScript]);
   const navigateToSyncedPhysicalFrame = useCallback(async (frame: number) => {
     if (!Number.isInteger(frame) || frame < 0) return false;
     const navigationSyncStartedAtMs = performance.now();

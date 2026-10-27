@@ -91,6 +91,29 @@ describe('Roto frame persistence coordinator loop-placeholder rejection (D-28, a
   });
 });
 
+describe('261027-gh9c Trash clears the painted cache', () => {
+  it('evicts the display cache and rewrites the key payload to a blank frame', () => {
+    const start = coordinatorSource.indexOf(
+      'const clearCurrentFrame = useCallback((keyId: string, appFrame: number, size:',
+    );
+    expect(start, 'clearCurrentFrame seam').toBeGreaterThan(-1);
+    const end = coordinatorSource.indexOf('const snapshotLivePixels', start);
+    const body = coordinatorSource.slice(start, end);
+    expect(body).toContain('livePixelTransactionsRef.current.invalidate(');
+    // No cached handle may serve the old pixels while the blank is in flight.
+    expect(body).toContain('confirmedFramesRef.current.delete(appFrame);');
+    expect(body).toContain('reference.clearCachedRotoReferenceUrl();');
+    expect(body).toContain('buildBlankRotoFrame(size.width, size.height, appFrame)');
+    // The blank commit resolves the content revision AT COMMIT TIME and pins
+    // the owning track: a revision captured before the async encode was
+    // rejected as stale, which left the painted cache in place.
+    expect(body).toContain(
+      'upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, undefined, trackId)',
+    );
+    expect(body, 'no click-time revision is passed to the blank commit').not.toContain('keyId, contentRevision)');
+  });
+});
+
 type CowRange = Readonly<{ start: number; endExclusive: number }>;
 type CowGroup = Readonly<{
   groupId: string;

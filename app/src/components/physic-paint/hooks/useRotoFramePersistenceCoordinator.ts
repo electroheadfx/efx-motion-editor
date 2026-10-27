@@ -779,11 +779,20 @@ export function useRotoFramePersistenceCoordinator(input: UseRotoFramePersistenc
     const contentRevision = inputRef.current.store.getRotoPhysicalContentRevision(launch.layerId, trackId);
     if (!record || record.appFrame !== appFrame || !contentRevision) return false;
     livePixelTransactionsRef.current.invalidate({ launchId: launch.operationId, layerId: launch.layerId, keyId });
+    // 261027-gh9c: drop every display-cache handle NOW — until the blank
+    // payload lands, nothing may serve the old pixels for this frame.
+    confirmedFramesRef.current.delete(appFrame);
+    reference.clearCachedRotoReferenceUrl();
     void buildBlankRotoFrame(size.width, size.height, appFrame).then((blank) => {
-      void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, contentRevision);
+      // 261027-gh9c: resolve the content revision at COMMIT time (no expected
+      // revision passed). The blank encode is asynchronous, so the revision
+      // read at click time can be superseded mid-flight; the store then
+      // rejected the blank as stale and the painted pixels stayed in the key
+      // cache. The track stays pinned to the one that owned the key.
+      void upsertCachedFrame(blank, true, undefined, undefined, launch.layerId, undefined, launch.operationId, inputRef.current.getBackgroundMetadata(), keyId, undefined, trackId);
     });
     return true;
-  }, [upsertCachedFrame]);
+  }, [reference.clearCachedRotoReferenceUrl, upsertCachedFrame]);
 
   const snapshotLivePixels = useCallback((appFrame: number): void => {
     const identity = resolveFrameIdentityInput(appFrame);
