@@ -284,6 +284,27 @@ export const BRUSH_PRESETS: BrushPreset[] = [
       })(n);
     },
   }),
+  // 261027-gh9: dry media. `dry` still carries water 0.2 and a bristle
+  // footprint; chalk is a hard, grain-gated stick. water 0 deposits no
+  // wetness by construction — the engine multiplies `b.water` into the wet
+  // amount and brushWet blends with MAX, so 0 clears nothing.
+  define({
+    id: 'chalk', name: 'Chalk', hint: 'Dry chalk stick: hard grainy tooth, no wet bloom',
+    aspect: 0.8, rotation: 'follow', angle: 0, angleJitter: 10,
+    size: [0.008, 0.03], pressureSize: 0.85, speedThin: 0.02,
+    spacing: 0.1, scatter: 0.08, dabs: 1, sizeJitter: 0.15,
+    water: 0, load: 1.2, flow: 0.7, capacity: 0.5, grain: 0.95, wetRound: 0,
+    tip: (n, N) => tip((u, v, r) => {
+      // Worley cell gaps: the seeded chalk tooth (never Math.random / a clock).
+      const [f1, f2] = N.worley(u * 6 + 11, v * 6 + 5);
+      const tooth = smoothstep(0.02, 0.16, f2 - f1);
+      // Cloud modulation breaks the deposit up so the mark is never solid.
+      const cloud = 0.45 + 0.55 * N.fbm(u * 3.5 + 2, v * 3.5 + 7, 3);
+      // Hard edge from r 0.78: a textured hard tip, not a soft disc.
+      const edge = 1 - smoothstep(0.78, 0.98, r);
+      return edge * tooth * cloud;
+    })(n),
+  }),
 ];
 
 /** Behaviour for an imported texture: a textured round that follows the stroke. */

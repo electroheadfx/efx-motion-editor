@@ -1,8 +1,8 @@
 /**
- * 261017-xa0 I-03 — Brush tab is the 14 playground brushes.
+ * 261017-xa0 I-03 — Brush tab is the 15 playground brushes.
  *
  * Laws pinned here:
- *   14 cards, one per BRUSH_PRESETS entry, in catalog order, 2-column grid
+ *   15 cards, one per BRUSH_PRESETS entry, in catalog order, 2-column grid
  *   each card = 150x44 stroke thumb canvas + uppercase name + title tooltip
  *   testids: root watercolor-brush-library, cards watercolor-brush-card-${id}
  *   no category filter / search / import affordance / wc/ size-variant rows
@@ -213,7 +213,7 @@ function resetSelection(): void {
   });
 }
 
-describe('WatercolorBrushLibrary 14-card grid (I-03)', () => {
+describe('WatercolorBrushLibrary 15-card grid (I-03, 261027-gh9)', () => {
   beforeEach(() => {
     originalDocument = globalThis.document;
     resetSelection();
@@ -223,10 +223,10 @@ describe('WatercolorBrushLibrary 14-card grid (I-03)', () => {
     Object.assign(globalThis, { document: originalDocument });
   });
 
-  it('renders exactly 14 cards in BRUSH_PRESETS catalog order', () => {
+  it('renders exactly 15 cards in BRUSH_PRESETS catalog order', () => {
     const tree = renderLibrary();
     const cards = cardNodes(tree);
-    expect(cards.length).toBe(14);
+    expect(cards.length).toBe(15);
     const walkedIds = cards.map((c) => String(c.props?.['data-testid']).replace('watercolor-brush-card-', ''));
     expect(walkedIds).toEqual(PRESET_IDS);
   });
@@ -348,11 +348,20 @@ describe('WatercolorBrushLibrary stroke-thumb cache (52.1 D-19)', () => {
     try {
       renderLibrary();
       renderLibrary();
-      expect(paintSpy.mock.calls.length, 'one paint per preset id across two mounts').toBe(14);
+      expect(paintSpy.mock.calls.length, 'one paint per preset id across two mounts').toBe(15);
       expect(toDataUrlCalls, 'never toDataURL / toBlob').toEqual([]);
     } finally {
       paintSpy.mockRestore();
     }
+  });
+
+  it('resolves the new chalk catalog id to one painted thumb', () => {
+    // 261027-gh9: the thumb path must know every catalog id — the new preset
+    // included — or the card would throw on its first paint.
+    const first = getStrokeThumb('chalk');
+    expect(first, 'chalk thumb canvas').toBeTruthy();
+    const second = getStrokeThumb('chalk');
+    expect(second, 'chalk cache hit returns the same canvas').toBe(first);
   });
 
   it('repeated getStrokeThumb calls return the same cached canvas (no repaint)', () => {

@@ -1,8 +1,8 @@
 // ============================================================
-//  WatercolorBrushLibrary — the Brush tab's 14-card playground
-//  brush grid (261017-xa0 I-03).
+//  WatercolorBrushLibrary — the Brush tab's 15-card playground
+//  brush grid (261017-xa0 I-03; chalk added by 261027-gh9).
 //
-//  Exactly the BRUSH_PRESETS catalog (round … stipple), nothing
+//  Exactly the BRUSH_PRESETS catalog (round … chalk), nothing
 //  else: no category filter, no search, no import affordance, no
 //  wc/ size-variant rows. Each card is a painted stroke thumb
 //  (watercolorStrokeThumb, paint-once cache) + name + hint.

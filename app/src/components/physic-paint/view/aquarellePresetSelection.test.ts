@@ -2,17 +2,19 @@
  * 261017-xa0 I-03 — playground preset ids ride the tip seam.
  *
  * Laws pinned here:
- *   each of the 14 BRUSH_PRESETS ids selects cleanly (no silent clear)
+ *   each of the 15 BRUSH_PRESETS ids selects cleanly (no silent clear)
  *   a successful pick forces aquarelleActiveTool to 'brush'
  *   a preset pick loads NEUTRAL_TOOL_OVERRIDES; setAquarelleMultiplier rides on top
  *   snapshotAquarelleRecord().brushId / buildAquarelleStrokePayload().brushId carry the id
  *   buildBrushForStroke(id) matches buildBrush(preset) on the vendor Brush fields
+ *   261027-gh9: 'chalk' is a dry media — no water, no wet bloom, high grain —
+ *   whose deterministic tip replays through buildBrushForStroke
  *   legacy wc/* tip ids and the null-clear path stay unchanged
  *
  * Assertion style: scalar predicates so TAP diagnostics stay one-line.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BRUSH_PRESETS, buildBrush, buildBrushForStroke } from '@efxlab/efx-watercolor';
+import { BRUSH_PRESETS, buildBrush, buildBrushForStroke, TIP_SIZE } from '@efxlab/efx-watercolor';
 import { NEUTRAL_TOOL_OVERRIDES, findTip } from '@efxlab/efx-watercolor/brushes';
 import {
   aquarelleActiveTool,
@@ -47,7 +49,7 @@ describe('I-03 playground preset ids on the tip seam', () => {
     resetSelection();
   });
 
-  it('exposes exactly the 14 playground preset ids in catalog order', () => {
+  it('exposes exactly the 15 playground preset ids in catalog order', () => {
     expect(PRESET_IDS).toEqual([
       'round',
       'detail',
@@ -63,11 +65,12 @@ describe('I-03 playground preset ids on the tip seam', () => {
       'sumi',
       'dagger',
       'stipple',
+      'chalk',
     ]);
   });
 
   it('every BRUSH_PRESETS id selects without clearing selection', () => {
-    expect(PRESET_IDS.length).toBe(14);
+    expect(PRESET_IDS.length).toBe(15);
     for (const id of PRESET_IDS) {
       resetSelection();
       selectAquarelleTip(id);
@@ -208,5 +211,71 @@ describe('I-11 per-brush response memory', () => {
     selectAquarelleTip('round');
     selectAquarelleTip('flat');
     expect(snapshotAquarelleRecord().toolOverrides.capacity).toBe(1.6);
+  });
+});
+
+describe('chalk dry-media preset contract (261027-gh9)', () => {
+  const chalk = BRUSH_PRESETS.find((preset) => preset.id === 'chalk');
+
+  it('adds exactly one chalk entry and keeps every id unique', () => {
+    expect(BRUSH_PRESETS.filter((preset) => preset.id === 'chalk').length).toBe(1);
+    const ids = BRUSH_PRESETS.map((preset) => preset.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('is a dry media: no water, no wet bloom, high grain', () => {
+    expect(chalk, 'chalk preset must exist').toBeTruthy();
+    expect(chalk!.water).toBe(0);
+    expect(chalk!.wetRound).toBe(0);
+    expect(chalk!.grain).toBeGreaterThanOrEqual(0.8);
+    expect(chalk!.flow).toBeGreaterThan(0);
+    expect(chalk!.flow).toBeLessThan(1);
+    expect(chalk!.capacity).toBeGreaterThan(0);
+    expect(chalk!.capacity).toBeLessThan(1);
+  });
+
+  it('builds a textured, non-empty tip with finite Brush fields', () => {
+    const brush = buildBrush(chalk!);
+    expect(brush.tipSize).toBe(TIP_SIZE);
+    expect(brush.tipData.length).toBe(TIP_SIZE * TIP_SIZE);
+    expect(brush.tipMean).toBeGreaterThan(0.01);
+    expect(brush.tipMean).toBeLessThanOrEqual(1);
+    const numericFields = [
+      'tipMean',
+      'aspect',
+      'angle',
+      'angleJitter',
+      'pressureSize',
+      'speedThin',
+      'spacing',
+      'scatter',
+      'dabs',
+      'sizeJitter',
+      'water',
+      'load',
+      'flow',
+      'capacity',
+      'grain',
+      'wetRound',
+    ] as const;
+    for (const field of numericFields) {
+      expect(Number.isFinite(brush[field]), `finite ${field}`).toBe(true);
+    }
+    // Texture, not an empty or solid block: both zero and painted cells.
+    expect(brush.tipData.some((value) => value === 0), 'tip has zero cells').toBe(true);
+    expect(brush.tipData.some((value) => value > 0), 'tip has painted cells').toBe(true);
+  });
+
+  it('replays through buildBrushForStroke deterministically', () => {
+    const viaStroke = buildBrushForStroke('chalk', undefined, 7);
+    const viaPreset = buildBrush(chalk!, 7);
+    expect(viaStroke.tipSize).toBe(viaPreset.tipSize);
+    expect(viaStroke.tipMean).toBe(viaPreset.tipMean);
+    expect(viaStroke.aspect).toBe(viaPreset.aspect);
+    expect(viaStroke.spacing).toBe(viaPreset.spacing);
+    expect(viaStroke.capacity).toBe(viaPreset.capacity);
+    expect(viaStroke.grain).toBe(viaPreset.grain);
+    expect(viaStroke.wetRound).toBe(viaPreset.wetRound);
+    expect(buildBrushForStroke('chalk', undefined, 7).tipMean).toBe(viaStroke.tipMean);
   });
 });
