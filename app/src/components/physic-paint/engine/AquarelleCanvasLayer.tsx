@@ -429,6 +429,36 @@ export function AquarelleCanvasLayer(props: {
     };
     applyPaper();
 
+    // REFIT (261027 UAT round 4, Bug 3): the engine captures dpr + canvasSize
+    // + view at construction (`fitCanvas`) and maps EVERY pointer through
+    // them (`toUv`). The canvas CSS box can change later without remounting
+    // this element — a Studio window/panel resize, or a DPR change when the
+    // window moves across displays — and the stale capture then paints ~200
+    // px away from the pen until Studio reopens. Observe both drifts and call
+    // the engine's public resize(), which re-captures the live box.
+    let lastBoxWidth = 0;
+    let lastBoxHeight = 0;
+    let lastDpr = 0;
+    const refitIfDrifted = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      if (rect.width === lastBoxWidth && rect.height === lastBoxHeight && dpr === lastDpr) return;
+      lastBoxWidth = rect.width;
+      lastBoxHeight = rect.height;
+      lastDpr = dpr;
+      engine.resize();
+    };
+    const resizeObserver = new ResizeObserver(refitIfDrifted);
+    resizeObserver.observe(canvas);
+    let dprQuery: MediaQueryList | null = null;
+    const onDprChange = () => {
+      dprQuery?.removeEventListener('change', onDprChange);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprQuery.addEventListener('change', onDprChange);
+      refitIfDrifted();
+    };
+    onDprChange();
+
     // CACHE WRITE: the composited sheet (transparent background — A5 export
     // law). Resolved later by captureLivePixels (52.1 deferred-copy law).
     const snapshot = () => {
@@ -615,6 +645,8 @@ export function AquarelleCanvasLayer(props: {
       // never call a closure holding the destroyed engine.
       onSnapshotReadyRef.current?.(null);
       window.removeEventListener('pointerdown', reopenSettleOnPaint, true);
+      resizeObserver.disconnect();
+      dprQuery?.removeEventListener('change', onDprChange);
       offDry();
       offDryCapture();
       for (const timer of pendingSettleTimers) window.clearTimeout(timer);

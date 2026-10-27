@@ -71,6 +71,31 @@ describe('aquarelle layer is a compositor pigment layer (56-12)', () => {
     expect(engine).toContain('this.canvas.getBoundingClientRect()');
   });
 
+  it('REFIT: a live rect or DPR change re-fits the captured pointer geometry', () => {
+    // 261027 UAT round 4 (Bug 3): `fitCanvas` captures dpr + canvasSize + view
+    // at construction and `toUv` maps the LIVE rect through those captured
+    // values. A CSS box change (Studio window/panel resize) or a DPR change
+    // (window moved across displays) with no canvas remount left the mapping
+    // stale — paint landed ~200 px away from the pen until Studio reopened.
+    // The layer must observe both drifts and call the engine's public resize().
+    expect(layer).toContain('new ResizeObserver(');
+    expect(layer).toContain('resizeObserver.observe(canvas)');
+    expect(layer).toContain('engine.resize()');
+    expect(layer).toContain('window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)');
+    expect(layer).toContain('resizeObserver.disconnect()');
+    // resize() must route through fitCanvas, which re-captures ALL THREE
+    // mapped inputs from the live canvas before updateView derives the view.
+    const resizeBody = engine.slice(engine.indexOf('resize() {'), engine.indexOf('destroy() {'));
+    expect(resizeBody).toContain('this.fitCanvas()');
+    const fitCanvasBody = engine.slice(
+      engine.indexOf('private fitCanvas() {'),
+      engine.indexOf('/** The zoom that shows the whole sheet'),
+    );
+    expect(fitCanvasBody).toContain('window.devicePixelRatio');
+    expect(fitCanvasBody).toContain('this.canvas.getBoundingClientRect()');
+    expect(fitCanvasBody).toContain('this.updateView()');
+  });
+
   it('STACKED: above the cached composite, below the overlay family', () => {
     expect(css).toContain('.demo-canvas-shell .aquarelle-live-canvas');
     const rule = css.slice(css.indexOf('.demo-canvas-shell .aquarelle-live-canvas'));
