@@ -232,6 +232,7 @@ import {
 } from './view/brushScriptHydration';
 import {
   anchorUnownedAquarelleStrokesForFrame,
+  aquarelleScriptRecordingEnabled,
   aquarelleStrokesRevision,
   getAquarelleEventsForFrame,
   getAquarelleStrokeKeyAnchors,
@@ -241,8 +242,10 @@ import {
   purgeAllAquarelleKeyScripts,
   purgeAquarelleFrameScript,
   recordAquarelleStroke,
+  recordAquarelleStrokeWhenEnabled,
   remapAquarelleScriptsForRecords,
   resetAquarelleRecordState,
+  resetAquarelleScriptRecording,
   setAquarelleParam,
   setAquarelleStrokeDiffusionFrames,
 } from './view/aquarelleRecordState';
@@ -1473,6 +1476,9 @@ export function PhysicsPaintStudio() {
     if (aquarelleDurableBaseLaunchKeyRef.current === launchKey) return;
     aquarelleDurableBaseLaunchKeyRef.current = launchKey;
     aquarelleDurableBaseByKeyRef.current = new Map();
+    // 261027-k6j — the Script switch is session state; every Studio launch
+    // starts On.
+    resetAquarelleScriptRecording();
   }, [launchContext?.operationId, launchContext?.layerId]);
   // 261019-mj2 cache-loss: the aquarelle sheet lives outside the engine-1
   // stroke/capture queues, so the close/save flush gate cannot see its paint.
@@ -6749,12 +6755,19 @@ export function PhysicsPaintStudio() {
   const handleAquarelleStrokeEnd = useCallback((stroke: AquarelleStroke) => {
     const mutationEngine = engineRef.current;
     if (!mutationEngine) return;
+    // 261027-k6j — Script Off is pixels-only: the pre-script durable base is
+    // only meaningful for a script that is about to start, so it is not
+    // pinned. ONE peeked read per stroke drives both this pin and the script
+    // write below, so the two decisions can never disagree.
     // 261026 ordinary-key durable base: pin the key's PRE-SCRIPT cache BEFORE
     // the first event lands — this is the only moment the display still holds
     // the scriptless paint the later multiply composite must preserve. The
     // recorder is a no-op when an entry exists or the frame is not an ordinary
     // key (group frames derive their base from the source key).
-    recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
+    const scriptRecordingOn = aquarelleScriptRecordingEnabled.peek();
+    if (scriptRecordingOn) {
+      recordAquarelleOrdinaryDurableBaseRef.current(launchContextRef.current?.startFrame ?? 0);
+    }
     const paintStroke = aquarelleStrokeToPaintStroke(stroke, { width: canvasWidth, height: canvasHeight });
     try {
       const mutationId = mutationEngine.enqueueRecordedStroke({ primary: paintStroke });
@@ -6786,7 +6799,7 @@ export function PhysicsPaintStudio() {
             anchorFrame,
           )?.keyId ?? null
         : null;
-      recordAquarelleStroke(mutationId, { ...stroke, mutationId }, capturedKeyId);
+      recordAquarelleStrokeWhenEnabled(scriptRecordingOn, mutationId, { ...stroke, mutationId }, capturedKeyId);
       // The sheet now holds paint that no queue can see until it is captured;
       // the close/save flush gate reads this flag.
       aquarelleSheetHasPaintRef.current = true;
@@ -6796,7 +6809,7 @@ export function PhysicsPaintStudio() {
     } catch {
       // A malformed recorded stroke must not kill the live surface — drop it.
     }
-  }, [applyFrameModuleState, recordAquarelleStroke, canvasWidth, canvasHeight]);
+  }, [applyFrameModuleState, recordAquarelleStrokeWhenEnabled, canvasWidth, canvasHeight]);
   const handleAquarelleStrokeSettled = useCallback((stroke: AquarelleStroke, ticks: number) => {
     const mutationId = aquarelleStrokeMutationIdsRef.current.get(stroke);
     if (mutationId !== undefined) setAquarelleStrokeDiffusionFrames(mutationId, ticks);

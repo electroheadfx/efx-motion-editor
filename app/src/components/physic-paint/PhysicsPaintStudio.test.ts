@@ -4782,10 +4782,25 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // The base is pinned BEFORE the first event lands — the only instant the
     // display still holds the scriptless cached paint the composite preserves.
     const strokeEnd = between(studio, 'const handleAquarelleStrokeEnd = useCallback(', 'const handleAquarelleStrokeSettled');
+    // 261027-k6j: the Script switch is peeked ONCE per stroke and that single
+    // read drives both the durable-base pin and the gated script write, so a
+    // mid-callback change can never pin a base without writing (or the reverse).
+    const peekIndex = strokeEnd.indexOf('aquarelleScriptRecordingEnabled.peek()');
     const pinIndex = strokeEnd.indexOf('recordAquarelleOrdinaryDurableBaseRef.current(');
-    const eventIndex = strokeEnd.indexOf('recordAquarelleStroke(mutationId,');
+    const eventIndex = strokeEnd.indexOf('recordAquarelleStrokeWhenEnabled(');
+    expect(peekIndex).toBeGreaterThan(-1);
     expect(pinIndex).toBeGreaterThan(-1);
+    expect(pinIndex).toBeGreaterThan(peekIndex);
     expect(eventIndex).toBeGreaterThan(pinIndex);
+    // The pin only means something for a script that is about to start:
+    // Script Off pins nothing.
+    const branchIndex = strokeEnd.indexOf('if (scriptRecordingOn) {');
+    expect(branchIndex).toBeGreaterThan(-1);
+    expect(branchIndex).toBeLessThan(pinIndex);
+    // The pixels/enqueue/publish half is NOT gated — Off still paints.
+    expect(strokeEnd).toContain('enqueueRecordedStroke(');
+    expect(strokeEnd).toContain('aquarelleSheetHasPaintRef.current = true;');
+    expect(strokeEnd).toContain('applyFrameModuleState(launchContextRef.current?.startFrame ?? 0);');
 
     // Recorder: ordinary-key only; a frame that already carries a script (a
     // REOPENED flattened composite) stays UNKNOWN — recording it would double
@@ -4830,6 +4845,30 @@ describe('261026 watercolor-loop-render-split final regression pins', () => {
     // The COMPOSITE reaches the cache, never the raw stroke-only bake.
     expect(publishBlock).toContain('bytes: publishBytes');
     expect(publishBlock.lastIndexOf('publishBytes = composed.bytes;')).toBeLessThan(upsertIndex);
+  });
+
+  it('261027-k6j resets the Script switch per launch, never on a track switch', () => {
+    // Session state (K-05): every Studio launch starts On. The reset rides the
+    // existing launch-key effect (operationId/layerId) — NOT
+    // resetAquarelleRecordState, which also fires on every track switch and
+    // must leave the user's chosen recording mode alone.
+    const launchEffect = between(
+      studio,
+      'const launchKey =',
+      '}, [launchContext?.operationId, launchContext?.layerId]);',
+    );
+    expect(launchEffect).toContain('resetAquarelleScriptRecording();');
+
+    const trackSwitch = between(
+      studio,
+      'if (sessionNeedsCommit) {',
+      'const engine = engineRef.current as PreviewBackgroundEngine | null;',
+    );
+    expect(trackSwitch).toContain('resetAquarelleRecordState();');
+    expect(trackSwitch).not.toContain('resetAquarelleScriptRecording');
+
+    // Exactly one reset site in the whole Studio source — the launch effect.
+    expect(countOccurrences(studio, 'resetAquarelleScriptRecording(')).toBe(1);
   });
 
   it('pins the group-frame lifecycle target and the EXACT-offset source-key composite', () => {
