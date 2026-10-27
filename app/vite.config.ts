@@ -112,13 +112,8 @@ export default defineConfig({
             },
           },
           // vite:esbuild snapshots config.esbuild at plugin-creation time,
-          // before any user configResolved hook runs — so the esbuild repair
-          // MUST be returned from a config hook to take effect. As a post
-          // plugin this wins over MC's jsxImportSource ('@efxlab/.../lib'),
-          // which is otherwise injected into workspace .tsx files (e.g.
-          // packages/efx-physic-paint) that cannot resolve it under pnpm's
-          // strict layout. Scene files keep MC's runtime via their per-file
-          // @jsxImportSource pragmas, which override this config.
+          // before any user configResolved hook runs — so this override
+          // MUST be returned from a config hook to take effect.
           esbuild: { jsx: 'automatic', jsxImportSource: 'preact' },
           optimizeDeps: {
             exclude: [],
@@ -157,8 +152,6 @@ export default defineConfig({
     alias: {
       '@efxlab/efx-paint-host/animation': fileURLToPath(new URL('../packages/efx-paint-host/src/animation/index.ts', import.meta.url)),
       '@efxlab/efx-paint-host': fileURLToPath(new URL('../packages/efx-paint-host/src/index.ts', import.meta.url)),
-      '@efxlab/efx-physic-paint/preact': fileURLToPath(new URL('../packages/efx-physic-paint/src/preact.tsx', import.meta.url)),
-      '@efxlab/efx-physic-paint': fileURLToPath(new URL('../packages/efx-physic-paint/src/index.ts', import.meta.url)),
       // Watercolor must also resolve to source. Its package exports point at
       // packages/efx-watercolor/dist, which the root build script never
       // rebuilds; a stale dist silently ran an older engine (the 2026-10-27
@@ -188,7 +181,7 @@ export default defineConfig({
   // p5.brush standalone uses WebGL2 internally with complex module-scoped state.
   // esbuild pre-bundling breaks its internal variable scoping (ReferenceError: v).
   optimizeDeps: {
-    exclude: ['p5.brush', '@efxlab/efx-physic-paint'],
+    exclude: ['p5.brush'],
   },
   build: {
     // NOTE: motion-canvas:project's config hook contributes build.target

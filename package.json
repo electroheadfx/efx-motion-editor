@@ -3,9 +3,8 @@
   "packageManager": "pnpm@10.27.0+sha512.72d699da16b1179c14ba9e64dc71c9a40988cbdc65c264cb0e489db7de917f20dcf4d64d8723625f2969ba52d4b7e2a1170682d9ac2a5dcaeaab732b7e16f04a",
   "scripts": {
     "dev": "pnpm --filter efx-motion-editor dev",
-    "build": "pnpm --filter @efxlab/efx-physic-paint build && pnpm --filter efx-motion-editor build",
+    "build": "pnpm --filter efx-motion-editor build",
     "tauri": "pnpm --dir app tauri",
-    "dev:paint": "pnpm --filter @efxlab/efx-physic-paint demo:dev",
     "repomix": "npx repomix@latest --config repomix.config.json --compress -o repomix-output.codex.xml",
     "repomix:check": "npx repomix@latest --config repomix.config.json --compress --top-files-len 20 --token-count-tree 1000 -o repomix-output.codex.xml",
     "repomix:full": "npx repomix@latest --config repomix.config.json -o repomix-output.full.xml",

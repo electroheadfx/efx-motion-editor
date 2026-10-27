@@ -13,11 +13,10 @@ import { describe, expect, it } from 'vitest';
  *
  *   (1) the retired engine-1 animation subpath specifier has zero matches
  *       under app/ and packages/ source;
- *   (2) engine-1's package.json publishes no `./animation` export key and
- *       declares `@efxlab/efx-paint-host` as `workspace:*`;
- *   (3) engine-1's tsup.config.ts has no `animation` entry;
- *   (4) `packages/efx-physic-paint/src/animation/` does not exist;
- *   (5) `packages/efx-paint-host/src/animation/` exists with its `index.ts`.
+ *   (2) the engine-1 package directory does not exist, so it publishes no
+ *       `./animation` export key and no tsup `animation` entry;
+ *   (3) `packages/efx-physic-paint/src/animation/` does not exist;
+ *   (4) `packages/efx-paint-host/src/animation/` exists with its `index.ts`.
  *
  * Comment stripping (the readFileSync idiom of `grep -v` header-comment
  * filtering) runs before every zero-match gate so comment prose — including
@@ -50,8 +49,7 @@ const ENGINE1_ANIMATION_SUBPATH = ['@efxlab/efx-physic-paint', 'animation'].join
 /** Host-owned subpath that remains legal (the move's destination). */
 const HOST_ANIMATION_SUBPATH = ['@efxlab/efx-paint-host', 'animation'].join('/');
 
-const ENGINE1_PACKAGE_JSON = resolve(REPO_ROOT, 'packages/efx-physic-paint/package.json');
-const ENGINE1_TSUP_CONFIG = resolve(REPO_ROOT, 'packages/efx-physic-paint/tsup.config.ts');
+const ENGINE1_PACKAGE_DIR = resolve(REPO_ROOT, 'packages/efx-physic-paint');
 const ENGINE1_ANIMATION_DIR = resolve(REPO_ROOT, 'packages/efx-physic-paint/src/animation');
 const HOST_ANIMATION_INDEX = resolve(REPO_ROOT, 'packages/efx-paint-host/src/animation/index.ts');
 
@@ -231,38 +229,14 @@ describe('HOST-01 animation residue + package-surface lock pin (55-09)', () => {
     expect(countSubpathMatches(hostImport, ENGINE1_ANIMATION_SUBPATH)).toBe(0);
   });
 
-  it('engine-1 package.json publishes no ./animation export and depends on @efxlab/efx-paint-host as workspace:*', () => {
-    const raw = readFileSync(ENGINE1_PACKAGE_JSON, 'utf8');
-    const pkg = JSON.parse(raw) as {
-      exports?: Record<string, unknown>;
-      dependencies?: Record<string, string>;
-    };
-
+  it('engine-1 package directory does not exist, so it publishes no ./animation export and no tsup animation entry', () => {
+    // Stronger form of the former package.json / tsup.config.ts surface rows:
+    // a deleted package cannot publish an exports["./animation"] key or build
+    // an `animation` tsup entry. Re-creating the directory is the regression
+    // this pin locks.
     expect(
-      pkg.exports && Object.prototype.hasOwnProperty.call(pkg.exports, './animation'),
-      'engine-1 package.json must not publish an exports["./animation"] key (55-02 deleted the dual subpath; re-adding it is the regression this pin locks)',
-    ).toBe(false);
-
-    expect(
-      pkg.dependencies?.['@efxlab/efx-paint-host'],
-      'engine-1 must declare @efxlab/efx-paint-host as a workspace:* dependency (the move destination)',
-    ).toBe('workspace:*');
-  });
-
-  it('engine-1 tsup.config.ts has no animation entry', () => {
-    const raw = readFileSync(ENGINE1_TSUP_CONFIG, 'utf8');
-    const strip = createCommentStripper();
-    const code = raw
-      .split('\n')
-      .map((line) => strip(line))
-      .join('\n');
-
-    // An `animation:` object key is the tsup entry this pin forbids. The
-    // host-owned package keeps its own animation entry; engine-1 must not.
-    const entryKey = /\banimation\s*:/;
-    expect(
-      entryKey.test(code),
-      'packages/efx-physic-paint/tsup.config.ts must not declare an `animation` entry (the old subpath build target)',
+      existsSync(ENGINE1_PACKAGE_DIR),
+      'packages/efx-physic-paint must not exist (the engine-1 package was deleted; re-adding it reintroduces the retired ./animation subpath surface)',
     ).toBe(false);
   });
 
