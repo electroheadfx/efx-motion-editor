@@ -31,7 +31,7 @@ fn action_document(id: &str) -> Value {
     let webp = webp::Encoder::from_rgba(&[255, 255, 255, 255], 1, 1).encode(80.0);
     json!({
         "kind": "efx-studio-paint-script",
-        "engineId": "efx-physic-paint",
+        "engineId": "efx-watercolor",
         "schemaVersion": 1,
         "id": id,
         "name": "Action",
@@ -39,7 +39,7 @@ fn action_document(id: &str) -> Value {
         "updatedAt": "2026-08-11T00:00:00Z",
         "source": {"projectName":"Project","layerId":"layer-1","layerName":"Paint","sourceFrame":0,"displayFrame":0,"width":1,"height":1,"background":{"background":"white","grainStrength":0.0}},
         "thumbnail": {"mimeType":"image/webp","width":1,"height":1,"quality":0.8,"dataUrl":format!("data:image/webp;base64,{}", encode_base64(webp.as_ref()))},
-        "brushPack":{"kind":"efx-physic-paint","entries":[]},"strokes":[{"pts":[{"x":0,"y":0,"p":1,"tx":0,"ty":0,"tw":0,"tick":0}],"ticks":1,"cuisson":0,"motion":null,"brushId":"efx-physic-paint","toolOverrides":{},"traceSeed":1,"recordedOrder":0,"playFrame":null,"color":"#000000","engine":{"tool":"paint","color":"#000000","params":{"size":1,"opacity":100,"pressure":100,"waterAmount":0,"dryAmount":0,"edgeDetail":0,"pickup":0,"eraseStrength":0,"antiAlias":0},"timestamp":0}}]})
+        "brushPack":{"kind":"efx-watercolor","entries":[]},"strokes":[{"pts":[{"x":0,"y":0,"p":1,"tx":0,"ty":0,"tw":0,"tick":0}],"ticks":1,"cuisson":0,"motion":null,"brushId":"efx-watercolor","toolOverrides":{},"traceSeed":1,"recordedOrder":0,"playFrame":null,"color":"#000000","engine":{"tool":"brush","color":"#000000","params":{"size":1,"water":0},"brushId":"wc/round-small","timestamp":0}}]})
 }
 
 fn action_integrity(fixture: &FixtureLibrary, action_id: &str) -> String {

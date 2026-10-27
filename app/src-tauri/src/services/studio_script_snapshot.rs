@@ -57,9 +57,10 @@ use uuid::Uuid;
 /// The cache root directory below `app_data_dir`.
 pub const STUDIO_SCRIPT_SNAPSHOT_ROOT_DIR: &str = "studio-script-snapshots";
 
-/// The one format version this service names in the file name. The container
-/// codec repeats the same version in its header; a newer writer is refused by
-/// the decoder before anything is allocated.
+/// The one format version this service names in the FILE NAME
+/// (`<trackId>-v1.snap`). It is deliberately independent of the app-side
+/// container header version (SNAP v5 after 261027-klx): this service stores the
+/// opaque bytes and never parses the container, so the leaf name stays `-v1`.
 pub const STUDIO_SCRIPT_SNAPSHOT_FORMAT_VERSION: u32 = 1;
 
 /// Hard ceiling on one snapshot file, checked before a write and before a read.

@@ -7,13 +7,27 @@ use uuid::Uuid;
 
 fn document(id: &str, webp_base64: &str) -> Value {
     json!({
+        "kind": "efx-studio-paint-script", "engineId": "efx-watercolor", "schemaVersion": 1, "id": id, "name": "Preset",
+        "createdAt": "2026-07-16T12:00:00Z", "updatedAt": "2026-07-16T12:00:00Z",
+        "source": { "projectName": "Project", "layerId": "layer-1", "layerName": "Ink", "sourceFrame": 2, "displayFrame": 4, "width": 1920, "height": 1080,
+            "background": { "background": "transparent", "grainStrength": 0.0 } },
+        "thumbnail": { "mimeType": "image/webp", "width": 2, "height": 2, "quality": 0.8, "dataUrl": format!("data:image/webp;base64,{webp_base64}") },
+        "brushPack": { "kind": "efx-watercolor", "entries": [] },
+        "strokes": [{"pts":[{"x":1.0,"y":2.0,"p":0.5,"tx":0.0,"ty":0.0,"tw":0.0,"tick":0}],"ticks":1,"cuisson":0,"motion":null,"brushId":"efx-watercolor","toolOverrides":{},"traceSeed":1,"recordedOrder":1,"playFrame":null,"color":"#112233","engine":{"tool":"brush","color":"#112233","params":{"size":12.0,"water":50.0,"load":50.0,"flow":50.0},"brushId":"wc/round-medium","timestamp":1}}, {"pts":[],"ticks":0,"cuisson":0,"motion":null,"brushId":"efx-watercolor","toolOverrides":{},"traceSeed":0,"recordedOrder":2,"playFrame":null,"color":null,"engine":{"kind":"dry","tick":1,"recordedOrder":2}}]
+    })
+}
+
+/// The retired engine-1 document shape. 261027-klx keeps this literal as
+/// REFUSAL INPUT only — the watercolor-only engine filter must reject it.
+fn legacy_engine1_document(id: &str, webp_base64: &str) -> Value {
+    json!({
         "kind": "efx-studio-paint-script", "engineId": "efx-physic-paint", "schemaVersion": 1, "id": id, "name": "Preset",
         "createdAt": "2026-07-16T12:00:00Z", "updatedAt": "2026-07-16T12:00:00Z",
         "source": { "projectName": "Project", "layerId": "layer-1", "layerName": "Ink", "sourceFrame": 2, "displayFrame": 4, "width": 1920, "height": 1080,
             "background": { "background": "transparent", "grainStrength": 0.0 } },
         "thumbnail": { "mimeType": "image/webp", "width": 2, "height": 2, "quality": 0.8, "dataUrl": format!("data:image/webp;base64,{webp_base64}") },
         "brushPack": { "kind": "efx-physic-paint", "entries": [] },
-        "strokes": [{"pts":[{"x":1.0,"y":2.0,"p":0.5,"tx":0.0,"ty":0.0,"tw":0.0,"tick":0}],"ticks":1,"cuisson":0,"motion":null,"brushId":"efx-physic-paint","toolOverrides":{},"traceSeed":1,"recordedOrder":1,"playFrame":null,"color":"#112233","engine":{"tool":"paint","color":"#112233","params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},"timestamp":1,"hasPenInput":true,"playFrame":0,"physicsMode":"local"}}, {"pts":[],"ticks":1,"cuisson":3,"motion":null,"brushId":"efx-physic-paint","toolOverrides":{},"traceSeed":2,"recordedOrder":2,"playFrame":null,"color":"#112233","engine":{"tool":"paint","color":"#112233","params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},"timestamp":2,"diffusionFrames":3}}]
+        "strokes": [{"pts":[{"x":1.0,"y":2.0,"p":0.5,"tx":0.0,"ty":0.0,"tw":0.0,"tick":0}],"ticks":1,"cuisson":0,"motion":null,"brushId":"efx-physic-paint","toolOverrides":{},"traceSeed":1,"recordedOrder":1,"playFrame":null,"color":"#112233","engine":{"tool":"paint","color":"#112233","params":{"size":12.0,"opacity":100.0,"pressure":100.0,"waterAmount":50.0,"dryAmount":50.0,"edgeDetail":50.0,"pickup":50.0,"eraseStrength":50.0,"antiAlias":1},"timestamp":1}}]
     })
 }
 
@@ -45,6 +59,20 @@ fn validates_schema_parity_and_real_lossy_webp() {
     assert!(validate_document(value.clone(), Some(&id)).is_ok());
     value["schemaVersion"] = json!(2);
     assert!(validate_document(value, Some(&id)).is_err());
+}
+
+// 261027-klx clean break: `efx-watercolor` is the only accepted engine id. An
+// old engine-1 Brush document is refused by the same validator — no migration
+// code, no compatibility branch — and the refusal stays a clean `Err`.
+#[test]
+fn refuses_legacy_engine1_document() {
+    let (_, base64) = webp();
+    let id = Uuid::new_v4().to_string();
+    let legacy = legacy_engine1_document(&id, &base64);
+    assert!(
+        validate_document(legacy, Some(&id)).is_err(),
+        "a legacy efx-physic-paint document must be refused"
+    );
 }
 
 #[test]

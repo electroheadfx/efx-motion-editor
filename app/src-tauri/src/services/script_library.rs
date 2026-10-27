@@ -13,7 +13,9 @@ use uuid::Uuid;
 pub const SCRIPT_KIND: &str = "efx-studio-paint-script";
 /// Pre-envelope kind — recognized ONLY to refuse it as a clean-break row (D-16).
 pub const LEGACY_SCRIPT_KIND: &str = "efx-physics-paint-roto-script";
-pub const SCRIPT_ENGINE_ID: &str = "efx-physic-paint";
+/// The only paint engine a managed script may name (261027-klx clean break).
+/// The retired `efx-physic-paint` literal survives only as refusal input in
+/// tests — never as an accepted engine id.
 pub const SCRIPT_ENGINE_ID_AQUARELLE: &str = "efx-watercolor";
 pub const SCRIPT_VERSION: u64 = 1;
 pub const SCRIPT_EXTENSION: &str = ".efx-roto-script.json";
@@ -2149,7 +2151,7 @@ pub(crate) fn validate_document(value: Value, expected_id: Option<&str>) -> Resu
     let engine_id = object
         .get("engineId")
         .and_then(Value::as_str)
-        .filter(|id| *id == SCRIPT_ENGINE_ID || *id == SCRIPT_ENGINE_ID_AQUARELLE)
+        .filter(|id| *id == SCRIPT_ENGINE_ID_AQUARELLE)
         .ok_or_else(|| "Invalid script engineId".to_string())?;
     if object.get("schemaVersion").and_then(Value::as_u64) != Some(SCRIPT_VERSION) {
         return Err("Unsupported script schemaVersion".to_string());
@@ -2264,9 +2266,9 @@ fn validate_brush_pack(value: Option<&Value>) -> Result<(), String> {
 }
 
 /// Flattened StudioStroke list (55-05 D-23 field mapping).
-/// cuisson > 0 = continuation of the previous primary; cuisson == 0 = new group.
-/// 261018-odm: for an aquarelle document, Dry markers are legal empty-pt
-/// entries that do not consume a brush or continuation slot.
+/// 261027-klx: the watercolor engine is the only script writer, so `cuisson`
+/// is always 0 and every non-Dry stroke is a primary. 261018-odm: Dry markers
+/// are legal empty-pt entries that do not consume a brush slot.
 fn validate_strokes(value: Option<&Value>, engine_id: &str) -> Result<(), String> {
     let strokes = value
         .and_then(Value::as_array)
@@ -2274,38 +2276,22 @@ fn validate_strokes(value: Option<&Value>, engine_id: &str) -> Result<(), String
     if strokes.is_empty() || strokes.len() > MAX_BRUSHES + MAX_BRUSHES * MAX_CONTINUATIONS {
         return Err("Stroke count is outside the supported range".to_string());
     }
-    let aquarelle = engine_id == SCRIPT_ENGINE_ID_AQUARELLE;
     let mut total_points = 0usize;
-    let mut continuations_in_group = 0usize;
     let mut brushes = 0usize;
     for stroke in strokes {
-        let is_dry = aquarelle
-            && stroke
-                .get("engine")
-                .and_then(|e| e.get("kind"))
-                .and_then(Value::as_str)
-                == Some("dry");
+        let is_dry = stroke
+            .get("engine")
+            .and_then(|e| e.get("kind"))
+            .and_then(Value::as_str)
+            == Some("dry");
         if is_dry {
-            validate_envelope_stroke(stroke, false, engine_id)?;
+            validate_envelope_stroke(stroke, engine_id)?;
             continue;
         }
-        let continuation = !aquarelle
-            && stroke
-                .get("cuisson")
-                .and_then(Value::as_u64)
-                .is_some_and(|value| value > 0);
-        total_points += validate_envelope_stroke(stroke, continuation, engine_id)?;
-        if continuation {
-            continuations_in_group += 1;
-            if continuations_in_group > MAX_CONTINUATIONS {
-                return Err("Too many brush continuations".to_string());
-            }
-        } else {
-            continuations_in_group = 0;
-            brushes += 1;
-            if brushes > MAX_BRUSHES {
-                return Err("Too many brushes".to_string());
-            }
+        total_points += validate_envelope_stroke(stroke, engine_id)?;
+        brushes += 1;
+        if brushes > MAX_BRUSHES {
+            return Err("Too many brushes".to_string());
         }
         if total_points > MAX_TOTAL_POINTS {
             return Err("Script has too many total points".to_string());
@@ -2314,11 +2300,7 @@ fn validate_strokes(value: Option<&Value>, engine_id: &str) -> Result<(), String
     Ok(())
 }
 
-fn validate_envelope_stroke(
-    value: &Value,
-    continuation: bool,
-    engine_id: &str,
-) -> Result<usize, String> {
+fn validate_envelope_stroke(value: &Value, engine_id: &str) -> Result<usize, String> {
     let stroke = value
         .as_object()
         .ok_or_else(|| "Invalid stroke".to_string())?;
@@ -2326,13 +2308,11 @@ fn validate_envelope_stroke(
         .get("pts")
         .and_then(Value::as_array)
         .ok_or_else(|| "Invalid stroke pts".to_string())?;
-    let aquarelle = engine_id == SCRIPT_ENGINE_ID_AQUARELLE;
-    let is_dry = aquarelle
-        && stroke
-            .get("engine")
-            .and_then(|e| e.get("kind"))
-            .and_then(Value::as_str)
-            == Some("dry");
+    let is_dry = stroke
+        .get("engine")
+        .and_then(|e| e.get("kind"))
+        .and_then(Value::as_str)
+        == Some("dry");
     if is_dry {
         // Dry marker: empty pts, ticks 0, cuisson 0, brushId = aquarelle engine.
         if !pts.is_empty() {
@@ -2370,11 +2350,7 @@ fn validate_envelope_stroke(
         validate_engine_payload_dry(stroke.get("engine"))?;
         return Ok(0);
     }
-    if continuation {
-        if !pts.is_empty() {
-            return Err("Continuation strokes must have zero points".to_string());
-        }
-    } else if pts.is_empty() || pts.len() > MAX_POINTS_PER_BRUSH {
+    if pts.is_empty() || pts.len() > MAX_POINTS_PER_BRUSH {
         return Err("Primary stroke point count is outside the supported range".to_string());
     }
     for point in pts {
@@ -2382,13 +2358,9 @@ fn validate_envelope_stroke(
         non_negative_integer(point.get("tick"), "tick")?;
     }
     non_negative_integer(stroke.get("ticks"), "ticks")?;
-    if aquarelle {
-        // Aquarelle: cuisson is always 0 (diffusionFrames lives in the engine slot).
-        if stroke.get("cuisson").and_then(Value::as_u64) != Some(0) {
-            return Err("Aquarelle stroke cuisson must be 0".to_string());
-        }
-    } else {
-        non_negative_integer(stroke.get("cuisson"), "cuisson")?;
+    // Aquarelle: cuisson is always 0 (diffusionFrames lives in the engine slot).
+    if stroke.get("cuisson").and_then(Value::as_u64) != Some(0) {
+        return Err("Aquarelle stroke cuisson must be 0".to_string());
     }
     if !stroke.get("motion").is_some_and(Value::is_null) {
         return Err("Stroke motion must be null".to_string());
@@ -2417,81 +2389,15 @@ fn validate_envelope_stroke(
             return Err("Invalid stroke color".to_string());
         }
     }
-    validate_engine_payload(stroke.get("engine"), continuation, engine_id)?;
+    validate_engine_payload(stroke.get("engine"))?;
     Ok(pts.len())
 }
 
-fn validate_engine_payload(
-    value: Option<&Value>,
-    continuation: bool,
-    engine_id: &str,
-) -> Result<(), String> {
+fn validate_engine_payload(value: Option<&Value>) -> Result<(), String> {
     let engine = value
         .and_then(Value::as_object)
         .ok_or_else(|| "Invalid engine payload".to_string())?;
-    if engine_id == SCRIPT_ENGINE_ID_AQUARELLE {
-        return validate_engine_payload_aquarelle(engine);
-    }
-    match engine.get("tool").and_then(Value::as_str) {
-        Some("paint" | "erase") => {}
-        _ => return Err("Invalid stroke tool".to_string()),
-    }
-    if let Some(color) = engine.get("color") {
-        if !color.is_null()
-            && !color.as_str().is_some_and(|value| {
-                value.len() == 7
-                    && value.starts_with('#')
-                    && value[1..].chars().all(|c| c.is_ascii_hexdigit())
-            })
-        {
-            return Err("Invalid stroke color".to_string());
-        }
-    }
-    let params = engine
-        .get("params")
-        .and_then(Value::as_object)
-        .ok_or_else(|| "Invalid stroke params".to_string())?;
-    for (key, min, max) in [
-        ("size", 1.0, 80.0),
-        ("opacity", 10.0, 100.0),
-        ("pressure", 10.0, 100.0),
-        ("waterAmount", 0.0, 100.0),
-        ("dryAmount", 0.0, 100.0),
-        ("edgeDetail", 0.0, 100.0),
-        ("pickup", 0.0, 100.0),
-        ("eraseStrength", 0.0, 100.0),
-    ] {
-        finite_range(params.get(key), key, min, max)?;
-    }
-    non_negative_integer(params.get("antiAlias"), "antiAlias")?;
-    if params
-        .get("antiAlias")
-        .and_then(Value::as_u64)
-        .is_none_or(|value| value > 3)
-    {
-        return Err("Invalid antiAlias".to_string());
-    }
-    non_negative_integer(engine.get("timestamp"), "timestamp")?;
-    if let Some(value) = engine.get("hasPenInput") {
-        if !value.is_boolean() {
-            return Err("Invalid hasPenInput".to_string());
-        }
-    }
-    if let Some(value) = engine.get("diffusionFrames") {
-        // Engine cap policy (D-20) stays engine-side.
-        positive_integer(Some(value), "diffusionFrames", 600)?;
-    } else if continuation {
-        return Err("Continuation strokes require diffusionFrames".to_string());
-    }
-    if let Some(value) = engine.get("playFrame") {
-        non_negative_integer(Some(value), "playFrame")?;
-    }
-    if let Some(value) = engine.get("physicsMode") {
-        if !value.is_null() && !matches!(value.as_str(), Some("local" | "last" | "all")) {
-            return Err("Invalid physicsMode".to_string());
-        }
-    }
-    Ok(())
+    validate_engine_payload_aquarelle(engine)
 }
 
 /// 261018-odm: aquarelle stroke engine-slot guard (AquarelleStrokePayload).
@@ -2567,7 +2473,7 @@ fn validate_point(value: &Value) -> Result<(), String> {
         ("x", -1_000_000.0, 1_000_000.0),
         ("y", -1_000_000.0, 1_000_000.0),
         // p: -1 is the aquarelle mouse sentinel (pushSample reports -1 when no
-        // pen pressure is available). Engine-1 normalizes to 0.5 before serialize.
+        // pen pressure is available).
         ("p", -1.0, 1.0),
         ("tx", -90.0, 90.0),
         ("ty", -90.0, 90.0),
@@ -3082,11 +2988,13 @@ mod tests {
     }
 
     #[test]
-    fn validate_document_accepts_engine1_document() {
+    fn validate_document_refuses_legacy_engine1_document() {
+        // 261027-klx clean break: an engine-1 Brush document is REFUSED, never
+        // migrated. The retired literal is refusal INPUT here only.
         let document = json!({
             "kind": SCRIPT_KIND,
             "schemaVersion": SCRIPT_VERSION,
-            "engineId": SCRIPT_ENGINE_ID,
+            "engineId": "efx-physic-paint",
             "id": "123e4567-e89b-42d3-a456-426614174000",
             "name": "Preset",
             "createdAt": "2026-07-16T12:00:00.000Z",
@@ -3100,11 +3008,11 @@ mod tests {
                 "mimeType": "image/webp", "width": 1, "height": 1, "quality": 0.8,
                 "dataUrl": "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAUAmJaQAA3AA/vz0AAA="
             },
-            "brushPack": { "kind": SCRIPT_ENGINE_ID, "entries": [] },
+            "brushPack": { "kind": "efx-physic-paint", "entries": [] },
             "strokes": [{
                 "pts": [{ "x": 1.0, "y": 2.0, "p": 0.5, "tx": 0, "ty": 0, "tw": 0, "tick": 0 }],
                 "ticks": 1, "cuisson": 0, "motion": null,
-                "brushId": SCRIPT_ENGINE_ID,
+                "brushId": "efx-physic-paint",
                 "toolOverrides": {}, "traceSeed": 1,
                 "recordedOrder": 10, "playFrame": null, "color": null,
                 "engine": {
@@ -3118,7 +3026,10 @@ mod tests {
                 }
             }]
         });
-        assert!(validate_document(document, None).is_ok(), "an engine-1 document must still validate");
+        assert!(
+            validate_document(document, None).is_err(),
+            "a legacy engine-1 document must be refused"
+        );
     }
 
     // ---- quick-261023-o3n: Save As / Duplicate carries the snapshot folders ----
