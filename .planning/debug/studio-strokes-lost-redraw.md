@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T08:00:00.000Z
+updated: 2026-10-27T07:28:15.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -142,61 +142,93 @@ and lost-stroke-identity behaviors. Exact first-bad build unknown.
 ## Current Focus
 
 hypothesis: |
-  CONFIRMED (persisted snapshot + live key map + code seams) — UAT round 2's
-  six phantom guides and lost wash are a KEY-IDENTITY defect in the script
-  snapshot layer, not a compositor defect. The watercolor timeline (AQTL) was
-  scoped to a FRAME NUMBER only; a deleted key's retained strokes therefore
-  seeded the NEW key created at the same frame.
+  ROUND 4 — ALL THREE FAULTS FIXED (working tree, gates + guardrail green);
+  awaiting ONE live UAT.
 
-  Paint 2's persisted SNAP v2 carries SIX watercolor stroke events at
-  playFrame 0: mutationIds 917 / 920 / 921 / 922 / 923 (recorded 2026-10-26
-  23:33-23:34 UTC on the deleted key) plus 1259 (the new 'rigger' stroke,
-  2026-10-27T06:21:03.933Z) — and the live layer has exactly ONE real key on
-  Paint 2 at appFrame 0 (keyId fef0e1ef-...), zero keys on Paint 4 / Paint 1.
-  The frame-only restore prune seeded all five deleted-key strokes into the
-  new key; the overlay listed 5 stale + 1 new = six guides ("#1 : 6/6" …
-  "#6 : 1/6"). Two more stale events sit at playFrame 1 (mutationIds
-  1073/1074).
+  BUG 2 STATUS: FIXED (working tree, gates green). The app consumed a stale
+  `packages/efx-watercolor/dist/index.mjs` (built 16:59, before the
+  pigment-alpha commit 99fc8378 at 23:24) through the package exports, so the
+  live compositor sheet still used MODE.transparent and covered the z3 base.
+  The alias to source landed in `app/vite.config.ts` (root + all five public
+  subpaths, subpaths first for Vite's prefix match). RED-first guard: 2 new
+  tests in `app/src/viteBuild.test.ts` failed before / pass after (13/13).
 
-  Wash loss chain: the stale events make `getAquarelleEventsForFrame(0)`
-  non-empty, so `recordAquarelleOrdinaryDurableBaseRef` refuses the pre-script
-  durable base (`script-already-present`, PhysicsPaintStudio.tsx:7004); the
-  script publish then fails closed, the blank placeholder stays, the display
-  falls back to the cached blank frame and the dirty-refusal branch reports
-  "Cache restored at frame 0." (useRotoReferenceController.ts:256).
+  BUG 1 STATUS: FIXED. The launch `aquarelleDurableBaseByKeyRef` map was
+  never persisted; on reopen a scripted ordinary key left `durableBaseBytes`
+  undefined and publish failed closed (`durable-base-unknown`). Landed design
+  (option B, smallest trusted): persist the durable base per keyId in a new
+  SNAP v4 durable-base section; restore seeds the launch map at snapshot
+  restore (session wins per keyId); merge is scoped by live key ids + merged
+  anchors + retained bases; a retained base for a live key missing from the
+  session is DROPPED (raster-clear safety); a deleted key's base is retained
+  for undo; absent stays fail-closed. The pre-publish restore pins the launch
+  key so the post-publish reset effect cannot wipe the seeded map. Tradeoffs:
+  +~100-300 KB per scripted key in the snapshot and pre-v4 keys (painted
+  before this build) still cannot Move after reopen until recreated —
+  declared consequence.
 
-  ROUND-1 CONTEXT (fixed, not reverted): the earlier wrong watercolor alpha
-  was the legacy white-matte strip at the compositor read seams
-  (`_decodeWebpToBitmap`, `registerRotoAlphaCanvasFrameFromBytes`); P2's
-  stored sheet is an opaque transmittance sheet by design. That fix
-  (8b0fe106) is untouched and its tests still pass.
+  BUG 3 STATUS: FIXED. `fitCanvas` captures dpr/size/view and `toUv` maps the
+  live rect through them; the Studio never re-fit on a later CSS-box or DPR
+  change, so paint landed ~200 px off until Studio reopened. The live layer
+  now observes the canvas box (ResizeObserver) and DPR (re-armed matchMedia)
+  and calls the engine's public `resize()`, which re-captures all three
+  inputs.
+
+hypothesis_round4: |
+  ROUND 4 — three distinct faults, each localized to one seam:
+
+  (1) MOVE AFTER REOPEN = durable-base persistence gap. The launch-scoped
+  `aquarelleDurableBaseByKeyRef` map is empty after a reopen; a scripted
+  ordinary key fails the gated fallback (it requires zero events) and leaves
+  `durableBaseBytes` undefined (UNKNOWN), so the publish port correctly
+  fails closed (`durable-base-unknown`) and Move reports "Apply Script could
+  not paint the aquarelle wash." Live proof: /tmp/efx-aquarelle-render-split.json
+  (key fef0e1ef, appFrame 0, four refusals, events 18/19). The base was never
+  persisted; re-baking without it would double-composite the committed script.
+
+  (2) PREVIOUS STROKES HIDDEN WHILE PAINTING = STALE VENDORED ENGINE BUILD.
+  The app resolves `@efxlab/efx-watercolor` via its package `exports` to
+  `packages/efx-watercolor/dist/index.mjs`; Vite aliases only efx-paint-host
+  and efx-physic-paint to source. That dist was built 2026-10-26 16:59:51,
+  BEFORE 99fc8378 (23:24), so it still calls `drawDisplay(..., MODE.transparent)`
+  and has no pigment-alpha code. Once a stroke exists the live canvas flips
+  `opacity:1` with an OPAQUE transmittance sheet and covers the z3 cached
+  base and the z0 monitor; leaving the key destroys the engine and reveals
+  the DOM base again. Capture was proven sound (base 263806 B merged with the
+  live sheet, 100% retention), so no paint is lost.
+
+  (3) ~200 PX OFFSET = captured geometry. `fitCanvas()` stores dpr +
+  canvasSize + view at construction (Engine.ts:307-331); `toUv` maps the live
+  rect through those captured values (Engine.ts:1377-1381). The Studio never
+  calls `engine.resize()` on a rect/DPR change. Lower priority; fix only if a
+  deterministic testable seam exists, otherwise return one precise probe.
 
 test: |
-  RED-first, all three files failed on the missing identity law:
-  - `studioScriptSnapshotController.test.ts`: five deleted-key anchors + one
-    new key -> only the new key's stroke seeds; pre-v3 unanchored file seeds
-    only Dry; known-empty key map seeds no watercolor/brush.
-  - `studioScriptSnapshotCodec.test.ts`: SNAP v3 anchor section round-trip,
-    v2 back-compat (anchors = []), duplicate / empty / over-count refusals.
-  - `aquarelleRecordState.restore.test.ts`: record stamps the anchor, purge
-    drops it, restore seeds it, a key move keeps it, remap-drop/reset clear
-    it.
-  RED captured at 16 failed / 64 passed (80). GREEN after implementation:
-  80/80 in those three files.
+  RED-first:
+  - Bug 2: a config/consumer contract test proving the app consumes the
+    watercolor SOURCE entry (pigment-era engine), not the stale dist; it must
+    fail before the alias is added.
+  - Bug 1: codec + controller + record-state tests proving the durable base
+    is persisted per key in the snapshot and restored into the launch map on
+    reopen; a reopened scripted key's publish target must carry bytes.
+  - Bug 3: an engine pointer-mapping test when the rect/DPR change, if the
+    harness can drive it; otherwise a single live probe request.
 
 expecting: |
-  After the fix: deleting every key leaves the session empty; a new key +
-  one watercolor stroke renders exactly one guide + its wash; a session save
-  writes SNAP v3 anchors, so the stroke proves its key on the next restore;
-  a deleted key's strokes survive only in the retained file (undo/retime) and
-  can never seed a different key at the same frame number; the brush ledger
-  follows the same key law.
+  With the fresh engine the live aquarelle canvas is transparent where no
+  pigment exists (MODE 4 alpha ~= 1 - min(transmittance)), so the committed
+  base stays visible under the new stroke with no double composite. With the
+  durable base restored per key, Move after reopen re-bakes over the same
+  pre-script base and never erases scriptless cached paint; absent base stays
+  fail-closed. Storage remains opaque transmittance; display remains pigment
+  alpha; SNAP v3 key anchors untouched.
 
 next_action: |
-  DONE (self-verified): focused 12 files / 541 tests; full app suite 340
-  files passed (+2 skipped), 6197 passed / 1 skipped / 96 todo (6294);
-  `pnpm typecheck` clean. ONE minimal native UAT row is queued below
-  ("UAT Round 3"). No dev-server run, no live verdict claimed.
+  Human verification only: restart the dev app (Vite must pick up the new
+  watercolor source aliases), then run the ONE minimal UAT flow in
+  "UAT Round 4 verification (pending)" at the end of this file. On
+  "confirmed fixed", archive the session and append the knowledge-base entry;
+  on any failure, append the live evidence and reopen.
 
 reasoning_checkpoint:
   hypothesis: "The restore/save layer seeds watercolor strokes by frame number, so a deleted key's five retained strokes re-seed into the new key at frame 0; those stale events also block the ordinary durable base, which fails the publish and leaves the blank cached frame plus six overlay guides."
@@ -289,6 +321,46 @@ tdd_checkpoint: null
   found: 340 test files passed | 2 skipped (342); 6197 passed | 1 skipped | 96 todo (6294); `tsc --noEmit` clean.
   implication: Automated gates are green. Only the native visible UAT row remains; the session stays `awaiting_human_verify` until the user confirms it.
 
+- timestamp: 2026-10-27T13:05:00.000Z
+  checked: `app/vite.config.ts:157-161` resolve.alias; `packages/efx-watercolor/package.json` exports; root `package.json` build script; `packages/efx-watercolor/dist/index.mjs` vs source.
+  found: Vite aliases `@efxlab/efx-paint-host` (+/animation) and `@efxlab/efx-physic-paint` (+/preact) to source, but NOT `@efxlab/efx-watercolor`; that package resolves through exports to `dist/index.mjs`. Dist mtime 2026-10-26 16:59:51; it still contains `drawDisplay(null, this.view, rect, false, this.compositorLayer ? MODE.transparent : MODE.screen)` and zero `MODE.pigment` / `uMode == 4` pigment-alpha code. Source files mtime 23:20:56; the pigment display fix is commit 99fc8378 at 23:24:39. The root build script only builds `@efxlab/efx-physic-paint` then the app — it never rebuilds efx-watercolor.
+  implication: ROUND-4 BUG 2 root cause. With the compositor layer on, the live aquarelle canvas renders the OPAQUE transmittance sheet; `aquarelleLivePaint` flips `opacity:1` on the first stroke and covers `.aquarelle-cached-base` (z3) and the z0 monitor. Leaving/reopening destroys the engine and reveals the DOM base, restoring every stroke. The SOURCE shader (MODE 4) is correct: unpainted transmittance ~white -> alpha ~0.
+
+- timestamp: 2026-10-27T13:08:00.000Z
+  checked: /tmp/efx-aquarelle-render-split.json (`coordinator-produce`, `script-bake-result`, `script-move-result`) and the alpha-proof dumps /tmp/efx-aquarelle-probe-capture-alpha-proof-base.png / -produced.png.
+  found: Capture preserved the committed base: usedMerge=true blend=pigment-alpha, baseDigest 4067e:6221f287 (263806 B, key fef0e1ef), producedDigest 465f8:5e8a6673 (288248 B), committed=true, opaque 100% / retention 100%; the produced sheet holds the 18 blue scribbles plus the new light-blue wash. Separately, four `script-bake-result` events report {appFrame:0, targetKeyId:"fef0e1ef-...", ok:false, reason:"durable-base-unknown"} and four `script-move-result` report {playFrame:0, ok:false, events:18|19, error:"Apply Script could not paint the aquarelle wash."}
+  implication: Bug 2 is display-only — no data is lost. Bug 1 is the durable-base contract refusing the re-bake, not event loss or a compositor fault.
+
+- timestamp: 2026-10-27T13:10:00.000Z
+  checked: `PhysicsPaintStudio.tsx:3346-3453` (prepareRotoScriptTargetRef), `:1898-1930` (publish fail-closed), `:3379-3415` (launch-map lookup), `:6991-7012` (recordAquarelleOrdinaryDurableBaseRef), `physicsPaintRotoScriptClipboard.ts:58,1070`, `physicsPaintRotoScriptRebake.ts`.
+  found: An ordinary key takes its base from `aquarelleDurableBaseByKeyRef.current.get(keyId)`; the map is a launch-scoped ref pinned only at first recorded stroke, at promotion, or by a fallback gated to a frame with ZERO events. On reopen the map is empty and a scripted key stays `undefined` (UNKNOWN), so publish refuses. `null` means KNOWN EMPTY and is allowed. Nothing in the snapshot save/restore carries the base.
+  implication: Root cause of Bug 1 is persistence/restore of a per-key durable base — not the publish contract. The contract (absent = fail closed) must stay; any reconstruction from the committed sheet would double-composite the script.
+
+- timestamp: 2026-10-27T13:12:00.000Z
+  checked: `packages/efx-watercolor/src/playground/Engine.ts:306-331` (fitCanvas), `:1359-1362` (resize), `:1377-1381` (toUv); `AquarelleCanvasLayer.tsx` attach/refit usage.
+  found: fitCanvas captures dpr, canvasSize and view at construction; toUv reads the live getBoundingClientRect but maps through the captured canvasSize/view. The Studio creates the engine with width/height refs and never calls resize/fitCanvas on a later rect/DPR change (no ResizeObserver / matchMedia refit).
+  implication: A layout shift or DPR change after mount yields a constant pointer offset until the engine is recreated (quit/reopen Studio). Testability is limited in jsdom; decide between a targeted engine-level test and a single live probe.
+
+- timestamp: 2026-10-27T07:15:00.000Z
+  checked: Bug 1 RED run of the three targeted files after the SNAP v4 durable-base tests were written (codec, controller, PhysicsPaintStudio source contracts), before implementation.
+  found: `Test Files 3 failed (3)` / `Tests 18 failed | 357 passed (375)`. The failures were exactly the new laws: v4 round-trip/byte-stability/v3-empty decode and the five refusals; restore-seed, session-wins, raster-drop, deleted-key-retain, cross-track-exclusion and base-only-save controller laws; and the Studio seed/deps contract. Two new invariant tests (input-order sort determinism, trailing-bytes refusal) pass trivially by construction — accepted as guards.
+  implication: The durable-base gap is reproducible as a contract, not just the /tmp refusal trace; the tests driving the fix fail for the right reason.
+
+- timestamp: 2026-10-27T07:22:00.000Z
+  checked: Bug 1 implementation + GREEN. Codec SNAP v4 durable-base section; controller deps/content/merge/restore/encode/empty-guard; Studio wiring (`getDurableBases`, `seedDurableBases`, launch-key guard, restore-start reset).
+  found: Targeted GREEN 3 files / 375 tests pass. Related snapshot + aquarelle record-state + clipboard/rebake suites: 7 files / 188 tests pass. `pnpm typecheck` clean.
+  implication: The restored base now rides the same identity law as the strokes: per KEY, session wins, raster-clear drops a vanished live key's base, absent remains fail-closed. Snapshot restore seeds the launch map BEFORE launchContext publishes; the launch-key guard prevents the reset effect from wiping it.
+
+- timestamp: 2026-10-27T07:25:00.000Z
+  checked: Fix-acceptance guardrail for Bug 1.
+  found: Signal 1 target tests pass (375/375). Signal 2 mutation check SKIPPED — no Stryker configuration exists in the repo (`app/stryker.conf.*`, `stryker.conf.*`, package.json all absent). Signal 3 no-op/deletion: diff is +971/−72 overall; the implementation deletions are the v3 header comment, the version constants and the old 3-field merge return, each replaced by a superset; the old unconditional reset effect was replaced by a launch-key-guarded one plus the restore-start reset (RCA-justified against the pre-publish seed). No weakened assertions. Signal 4 adjacent: 188 related tests + full physic-paint suite 180 files / 3965 tests + typecheck, all pass. Signal 5 revert-and-reconfirm: `git stash` of the three implementation files → 18 failed | 357 passed (the same RED set); `git stash pop` → 375/375.
+  implication: guardrail_verdict accepted; the fix is minimal, additive and provably the change that greens the tests.
+
+- timestamp: 2026-10-27T07:27:00.000Z
+  checked: Bug 3 fix + guardrail. RED-first contract test added to `aquarelleLayerContract.test.ts` ('REFIT: a live rect or DPR change re-fits the captured pointer geometry').
+  found: RED: 1 failed | 17 passed (no `ResizeObserver` in the layer). Implemented ResizeObserver + re-armed `matchMedia('(resolution: Xdppx)')` in the engine mount; both call the engine's public `resize()` (→ `fitCanvas` re-captures dpr + box size + view) only when the box or DPR actually drifts; observer and media listener are removed in the engine cleanup. GREEN 18/18. Revert check: stash of `AquarelleCanvasLayer.tsx` → 1 failed | 17 passed; pop → green. `pnpm typecheck` clean; full physic-paint suite 180 files / 3965 tests pass.
+  implication: The only way the captured pointer geometry can drift (CSS-box resize or DPR change without remount) now self-heals; pointer mapping stays 1:1 with the pen. Live trigger still needs the UAT row (resize the Studio window, then paint).
+
 ## Eliminated
 
 <!-- APPEND only -->
@@ -329,113 +401,136 @@ tdd_checkpoint: null
   ruled out: the round-1 white-matte fix (8b0fe106) causing the round-2 wash loss.
   why: The wash loss is upstream of compositing: stale seeded events refuse the durable base and the publish fails closed, so the frame is blank before any raster reaches the compositor. The strip removal is untouched by this fix; its two RED-first tests still pass in the green run.
 
+- timestamp: 2026-10-27T13:15:00.000Z
+  ruled out: the cached-base URL being cleared by painting or by Move (Bug 2).
+  why: Every `setCachedRotoReferenceUrl(null)` call is on navigation/frame change, cross-track switch, frame removal, or reset; the dirty-reference clear is watercolor-guarded (`if (activeModule.value === 'watercolor') return`). The base DOM layer keeps its URL through painting; the live canvas simply covers it.
+
+- timestamp: 2026-10-27T13:16:00.000Z
+  ruled out: a stacking inversion in the active-track stack (Bug 2).
+  why: `.aquarelle-cached-base` is z3, `.aquarelle-live-canvas` z4 and the program monitor z0, all inside the isolated tracks group; the base is below the live sheet by design. The cover is the live sheet's opaque pixels, not z-order.
+
+- timestamp: 2026-10-27T13:17:00.000Z
+  ruled out: the aquarelle capture merge dropping the committed strokes (Bug 2).
+  why: `coordinator-produce` merged the 263806 B base with the live sheet (opaque 100%, retention 100%) and committed 288248 B; both proof dumps show all 18 previous scribbles. Only the live DISPLAY was wrong.
+
+- timestamp: 2026-10-27T13:18:00.000Z
+  ruled out: Move losing or corrupting the watercolor events (Bug 1).
+  why: `script-move-result` reports events:18|19 and `script-bake-result` reports reason:"durable-base-unknown"; the refusal happens before any bake, so the timeline is intact and the defect is only the missing base.
+
 ## Resolution
 
-status: awaiting_human_verify (round-2 fix landed 2026-10-27)
+status: awaiting_human_verify (round-4 fixes landed 2026-10-27)
 
 root_cause: |
-  ROUND 2 (phantom guides + lost wash): the Studio script snapshot layer tied
-  watercolor strokes to a FRAME NUMBER, never to the KEY that owned them.
+  ROUND 4 — three independent faults at three seams:
 
-  Paint 2's persisted SNAP v2 carried six frame-0 watercolor strokes: five
-  (917/920/921/922/923) recorded on a key the user later deleted, plus the
-  new 1259. After every key was deleted and a new key created at frame 0,
-  the restore pruned events by frame membership only, so all five stale
-  strokes seeded the NEW key (5 + 1 = six guides "#1 : 6/6" … "#6 : 1/6").
-  The same stale events made `getAquarelleEventsForFrame(0)` non-empty, so
-  `recordAquarelleOrdinaryDurableBaseRef` refused the pre-script durable base
-  ('script-already-present'); the publish failed closed, the blank
-  placeholder stayed, and the display's dirty-refusal branch reported
-  "Cache restored at frame 0." — the wash "disappeared".
+  (1) MOVE AFTER REOPEN = durable-base persistence gap. The launch-scoped
+  `aquarelleDurableBaseByKeyRef` map is pinned only at the first recorded
+  stroke, at promotion, or by a fallback gated to a frame with zero events.
+  After a reopen the map is empty, so a scripted ordinary key leaves
+  `durableBaseBytes` undefined (UNKNOWN) and the publish port correctly fails
+  closed (`durable-base-unknown`) — "Apply Script could not paint the
+  aquarelle wash." The base was never saved; rebuilding it from the committed
+  sheet would double-composite the script.
 
-  The brush leg had the same class of hole: a known-empty live key map was
-  read as "unknown", and legacy no-keyId rows were kept and could seed.
-  `mergeStudioScriptSnapshotContent` also unioned events by mutationId with
-  no identity proof for the next restore.
+  (2) PREVIOUS STROKES HIDDEN WHILE PAINTING = stale vendored engine build.
+  The app resolved `@efxlab/efx-watercolor` via package `exports` to
+  `packages/efx-watercolor/dist/index.mjs` (built 2026-10-26 16:59:51, BEFORE
+  pigment-alpha commit 99fc8378 at 23:24). That dist still renders the OPAQUE
+  transmittance sheet on the compositor layer; the first stroke flips
+  `aquarelleLivePaint` to opacity 1 and covers the z3 cached base and the z0
+  monitor. Capture was already sound (base 263806 B, merge retention 100%),
+  so no paint was lost — only the live display was wrong.
 
-  ROUND 1 CONTEXT (fixed earlier, not reverted): the wrong watercolor alpha
-  was the legacy white-matte strip at the two compositor READ seams
-  (`stripOpaqueWhiteMatte` in `_decodeWebpToBitmap`,
-  `stripOpaqueWhiteMatteFromCanvas` in
-  `registerRotoAlphaCanvasFrameFromBytes`). P2's sheet is an opaque
-  transmittance sheet by design; the strip destroyed the
-  `isFullyOpaqueRaster` discriminator and the raw sheet entered the composite
-  opaque. That fix (8b0fe106) is untouched and still tested.
+  (3) ~200 PX OFFSET = captured pointer geometry. `fitCanvas` stores dpr +
+  canvasSize + view at construction; `toUv` maps the live rect through those
+  captured values. A canvas CSS-box change (Studio window/panel resize) or a
+  DPR change (window moved across displays) without a canvas remount left the
+  capture stale, so every pointer mapped offset until Studio was recreated.
 
 fix: |
-  ROUND 2 — identity, not frame numbers, at every script seam:
-  - `aquarelleRecordState.ts`: a `mutationId -> keyId` anchor map is stamped
-    on record (optional keyId arg), cleared on frame purge / purge-all /
-    reset / remap-drop, survives a key move, and is seeded wholesale on
-    restore. New port `getAquarelleStrokeKeyAnchors()`.
-  - `studioScriptSnapshotCodec.ts`: SNAP v3 appends a WCKA anchor section
-    (u16 version, u16 reserved, u32 count, u32 mutationId + u16 len + UTF-8
-    keyId) with duplicate/empty/over-count validation; v1/v2 files decode
-    with empty anchors (back-compat).
-  - `studioScriptSnapshotController.ts`: `pruneWatercolorEventsToLiveKeys`
-    seeds a stroke only when `anchor(mutationId) === liveKeyIds(playFrame)`;
-    unanchored (pre-v3) events never seed; Dry always seeds; a null key map
-    keeps the frame-set fallback (launch safety) while a Map — even empty —
-    is a KNOWN identity set. `selectLiveBrushFrames` mirrors the equality for
-    brush rows. The retained union now carries anchors (session anchor wins,
-    else retained) so a routine save never strips identity; `dropRetainedFor
-    Frames` drops anchors with their strokes. Explicit purge
-    (`sessionOnly`) still writes the session alone.
-  - `PhysicsPaintStudio.tsx`: records the owning keyId at stroke end
-    (`resolveStudioScriptKeyIdForFrame` over the bound layer+track) and at
-    the Duplicate script copy (destination frame); supplies
-    `getWatercolorKeyAnchors` to the controller.
+  ROUND 4:
+  - Bug 2 (`app/vite.config.ts`): alias `@efxlab/efx-watercolor` (root + all
+    five public subpaths, subpaths first for Vite prefix matching) to
+    `packages/efx-watercolor/src`, the same source-resolution law already
+    used for efx-paint-host and efx-physic-paint. The app never consumes the
+    stale dist again.
+  - Bug 1 (`studioScriptSnapshotCodec.ts`, `studioScriptSnapshotController.ts`,
+    `PhysicsPaintStudio.tsx`): SNAP v4 appends a durable-base section
+    (u16 version=1, u16 reserved, u32 count, count × state/keyId/bytes,
+    sorted by keyId; fail-closed on duplicate, empty keyId, zero-byte bytes,
+    unknown state, over-count and trailing bytes; v1–v3 decode to []). The
+    controller gains `getDurableBases` / `seedDurableBases`; restore fills the
+    launch map BEFORE the launch context publishes (session wins per keyId);
+    merge is scoped by live key ids + merged anchors + retained base ids, a
+    retained base for a LIVE key missing from the session is dropped
+    (raster-clear safety), a deleted key's base is kept (undo), and the
+    empty-save guard counts bases. The Studio pins the incoming launch key and
+    resets the map at restore start; a launch-key-guarded effect keeps the
+    seeded map instead of wiping it after publish.
+  - Bug 3 (`AquarelleCanvasLayer.tsx`): the live layer observes the canvas
+    box (ResizeObserver) and DPR (re-armed `matchMedia('(resolution: …)')`)
+    and calls the engine's public `resize()` — which re-runs `fitCanvas` and
+    recaptures all three mapped inputs — only when the box or DPR drifts.
+    Observer and media listener are removed with the engine.
 
-  Round-1 strip removal remains as landed; no compositing law changed.
+  Storage stays opaque transmittance; display stays pigment alpha; one paper
+  multiply on the tracks group; SNAP v3 key anchors and the round-1
+  white-matte fix (8b0fe106) are untouched. Prior rounds remain as landed:
+  round 1 (strip removal), round 2 (key identity at every script seam),
+  round 3 (one-row UAT pass).
 
 files_changed:
-  - app/src/components/physic-paint/view/aquarelleRecordState.ts
+  - app/vite.config.ts
+  - app/src/viteBuild.test.ts
   - app/src/components/physic-paint/performance/studioScriptSnapshotCodec.ts
-  - app/src/components/physic-paint/snapshot/studioScriptSnapshotController.ts
-  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
-  - app/src/components/physic-paint/view/aquarelleRecordState.restore.test.ts
   - app/src/components/physic-paint/performance/studioScriptSnapshotCodec.test.ts
+  - app/src/components/physic-paint/snapshot/studioScriptSnapshotController.ts
   - app/src/components/physic-paint/snapshot/studioScriptSnapshotController.test.ts
+  - app/src/components/physic-paint/PhysicsPaintStudio.tsx
+  - app/src/components/physic-paint/PhysicsPaintStudio.test.ts
+  - app/src/components/physic-paint/engine/AquarelleCanvasLayer.tsx
+  - app/src/components/physic-paint/engine/aquarelleLayerContract.test.ts
+
+verification:
+  target_test:        { result: pass }
+  mutation_check:     { result: skipped, reason_if_skipped: "no Stryker configuration in the repo", mutant_killed: false }
+  no_op_deletion:     { result: pass, deletion_justified_by_rca: true }
+  adjacent_tests:     { result: pass, suites_run: ["snapshot/aquarelle record-state/clipboard/rebake 7 files 188 tests", "full physic-paint 180 files 3965 tests", "pnpm typecheck"] }
+  revert_and_reconfirm: { result: pass, bug_returned_on_revert: true, fixed_on_reapply: true }
+  guardrail_verdict:  accepted
+  rejected_signal:    null
 
 tests: |
-  ROUND 2 RED-first — 16 failed / 64 passed (80) before implementation:
-  - controller: five deleted-key anchors + one new key -> only the new key's
-    stroke seeds; pre-v3 unanchored file seeds only Dry; known-empty key map
-    seeds no watercolor/brush; save emits the seeded + newly recorded anchors;
-    legacy brush rows never seed but stay in the retained file; exact
-    six-guide shape reproduced (5 stale + 1 new).
-  - codec: v3 anchor round-trip / byte stability; v2 decode -> []; duplicate,
-    empty-keyId and over-declared count refusals; heavy fixture +12 bytes.
-  - record state: anchor stamped on record, dropped on frame purge/purge-all/
-    remap-drop/reset; seeded and kept across a key move; never stamped
-    without a keyId.
+  RED-first:
+  - Bug 2: alias/source-resolution + bundled pigment-shader marker → 2 failed
+    before / 13/13 after.
+  - Bug 1: codec v4 (round-trip bytes+null byte-stable, input-order sort,
+    decoded copies, v3 → [], duplicate/empty/zero-byte/state/over-count/
+    trailing refusals, encode-time refusals), controller (seed all restored
+    bases, routine save persists restored + newly pinned, session wins,
+    raster-clear drop, deleted-key retain, cross-track exclusion, base-only
+    save passes the empty guard, v3 seeds none, corrupt snapshot never seeds)
+    and the Studio source contract → 18 failed | 357 passed before /
+    375 passed after.
+  - Bug 3: REFIT contract → 1 failed | 17 passed before / 18/18 after.
 
-  ROUND 2 GREEN: targeted 3 files 80/80; 12 related files 541/541; full app
-  suite 340 files passed (+2 skipped), 6197 passed / 1 skipped / 96 todo
-  (6294); `pnpm typecheck` clean.
-
-  ROUND 1 (already green): the two strip tests in physicPaintStore.test.ts
-  and rotoCanvasFrames.test.ts remain passing.
+  GREEN: targeted 3 files 375/375; related 7 files 188/188; full physic-paint
+  180 files 3965/3965; `pnpm typecheck` clean. Revert-and-reconfirm: Bug 1
+  stash → 18 failed | 357 passed; Bug 3 stash → 1 failed | 17 passed; both
+  green on reapply.
 
 open: |
-  (C) Watercolor re-bake fidelity ("thinner after Move") is unchanged and
-  still needs the settle-law decision.
-  Round-1 flicker: this fix does not change decode or reference-load timing.
-  The leading explanation remains the async store decode (null tick + version
-  bump) and reference-URL load/unload while the selection path switches.
-  UAT should report whether it persists.
+  Declared consequences: (a) pre-v4 scripted keys (painted before this
+  build) carry no durable base, so a Move right after reopen still fails
+  closed until the key is recreated and painted once under this build;
+  (b) the snapshot grows by the base raster (~100-300 KB per scripted key)
+  and is rewritten on script saves — accepted, no Rust/package-format change.
+  The round-2 "thinner after Move" fidelity note (open item C) is unchanged
+  and out of round-4 scope.
 
 uat_pending: |
-  1. Water color, 3 tracks, no Solo/hide: select Paint 2, Paint 4 and Paint 1
-     in turn, then open the main editor. The tan watercolor wash must read
-     soft (pigment alpha) on every surface, with the blue zigzag visible
-     through/under it exactly as in the previous top-selection view.
-  2. The middle selection must no longer read dense/dark; it must match the
-     top-selection composite.
-  3. The main editor must match the Studio composite.
-  4. No white-cover regression on a lone watercolor track over paper/video.
-  5. No regression on a watercolor interpolation frame between two real keys.
-  6. Flicker: report whether caches still appear/disappear before settling.
+  ONE flow — see "UAT Round 4 verification (pending)" at the end of this file.
 
 ## UAT Round 1 (2026-10-27) — FAILED
 
@@ -554,4 +649,89 @@ uat_row: |
   FAIL: any phantom guide (report its "#N : M/M" label), or the wash
   disappears again.
 
+## UAT Round 4 (2026-10-27) — post-fix editing failures
+
+context: |
+  The phantom-guide/key-identity round is not re-reported (no phantom guides
+  mentioned), but three editing blockers appeared. They are a different layer:
+  aquarelle durable-base persistence, live display base, and engine geometry.
+
+bug_1_move_after_reopen: |
+  Paint many strokes on a key, leave or quit Studio, return and select a stroke
+  to move it. Move errors: "Apply Script could not paint the aquarelle wash."
+  The stroke cannot be moved.
+  Lead: the Apply port (`PhysicsPaintStudio.tsx:1817` ->
+  `applyAquarelleEventsToKey`) fail-closes when `target.durableBaseBytes` is
+  undefined (reopened ordinary scripted key => `durable-base-unknown`,
+  `PhysicsPaintStudio.tsx:1940-1960`) and returns false; the clipboard shows
+  the generic message at `physicsPaintRotoScriptClipboard.ts:1070`. The prior
+  sessions deferred durable-base persistence (options A/B). Move after reopen
+  requires persisting/restoring the durable base per key (or an equivalent
+  reconstruction) without erasing scriptless cached paint.
+
+bug_2_previous_strokes_hidden: |
+  While adding a new stroke, all previous strokes disappear and only the last
+  stroke is shown. After leaving the key and returning, all strokes + the new
+  one are back, but they still cannot be moved (bug 1).
+  Lead: the aquarelle live sheet starts blank on a new session; the committed
+  strokes live in the cached base (`.aquarelle-cached-base`, z3) while the live
+  sheet (`z4`) accumulates only the current session. The cached base is mounted
+  from `cachedRotoReferenceUrl` (`PhysicsPaintStudioView.tsx:238`,
+  `PhysicsPaintCanvasMount.tsx:229`) and the live canvas gets `opacity:1` once
+  `aquarelleLivePaint` is true. Verify whether the base URL is null/cleared on
+  a real key or the live canvas covers it; the known caveat in
+  `watercolor-clears-cached-paint.md` says pre-existing paint is not visible
+  during the module session. Fix: show the current key's committed base under
+  the live sheet without double-compositing or an opaque cover.
+
+bug_3_paint_offset: |
+  Sometimes painting at any destination position renders the paint ~200 px away
+  from the pen; quitting Studio fixes it.
+  Lead: the vendored engine captures `dpr` + canvas backing size + view in
+  `fitCanvas()` at construction (`packages/efx-watercolor/src/playground/Engine.ts:307-331`).
+  `toUv` reads the live `getBoundingClientRect()` but maps through the captured
+  `canvasSize`/`view` (Engine.ts:1377-1381). If the Studio canvas rect or the
+  DPR changes after mount (layout shift, window/display change), the pointer
+  mapping is stale by a constant offset. Check whether the Studio ever calls a
+  resize/fit on canvas geometry or DPR changes, and reproduce with a live
+  pointer-mapping probe.
+
+user_verdict: |
+  "now I have 3 bugs: ... I want edit it, I move the selected stroke it out
+  errors: 'Apply Script could not paint the aquarelle wash.' The stroke can't
+  to be moved ... When I want add a new stroke paint: all the previous stroke
+  disapear and show only the last stroke, when I left the key and back to it I
+  have all the strokes back + the new, but I can't move them. ... Sometimes
+  when I paint the any destination position, my paint draw far to 200 pixels
+  from my pen, its like a offset, for fix I need to quit studio."
+
 DATA_END
+
+## UAT Round 4 verification (pending) — ONE minimal flow
+
+setup: |
+  Restart the dev app once (Vite must re-resolve `@efxlab/efx-watercolor`
+  from SOURCE after the alias change), then open Studio on a Water color
+  layer/track with at least one real key. Paint under THIS build so the key
+  gets a persisted durable base (pre-v4 keys have none by design).
+
+steps: |
+  1. Frame 0: paint several watercolor strokes on the key. While painting a
+     NEW stroke, the previous strokes of the SAME key must stay visible under
+     it (Bug 2 — no opaque cover, no vanish).
+  2. Leave the key (navigate away and back) or quit and reopen Studio, then
+     return to frame 0. Every stroke must still be there.
+  3. Select one of those strokes and Move it a few pixels, then confirm.
+     Expected: the wash re-bakes cleanly — NO "Apply Script could not paint
+     the aquarelle wash." — and the moved stroke sits over the same
+     pre-script paint; the other strokes are unchanged (Bug 1).
+  4. Resize the Studio window (or move it to another display), then paint a
+     new stroke at a known spot. Expected: the ink starts under the pen — no
+     ~200 px offset (Bug 3).
+  5. Quit and reopen Studio once more; frame 0 still shows every stroke over
+     its intact base.
+
+report: |
+  "confirmed fixed" only if all five rows pass. Otherwise report WHICH step
+  failed, with a screenshot and the app-written evidence file, and the
+  session reopens on that evidence.
