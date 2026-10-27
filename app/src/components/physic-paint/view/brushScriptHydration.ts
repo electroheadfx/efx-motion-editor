@@ -16,9 +16,11 @@
 //  never touches the engine. Refusals:
 //    no-entry   — the frame was never captured this session;
 //    empty      — the captured projection has no strokes;
-//    partial    — a cached pixel base sits under the session script
-//                 (the ledger could never be edited without deleting
-//                 the base pixels);
+//    partial    — a cached pixel base sits under the session script and the
+//                 key carries NO pre-script base. With a carried base (the
+//                 raster/purged pixels pinned at the script's first stroke)
+//                 the ledger hydrates OVER it (`preserveBase`); without one
+//                 the ledger stays view-only;
 //    generated  — only a REAL key may attach (generated / none /
 //                 no-launch destinations always repaint pixels);
 //    foreign-key — the entry's physical key identity is unknown (legacy v1
@@ -119,6 +121,13 @@ export interface BrushHydrationRequest {
   wasPlaying: boolean;
   /** The ruler scrub gesture is armed. */
   scrubActive: boolean;
+  /**
+   * 261027 UAT round 11: the destination key's pre-script raster, when this
+   * session carries one. A PARTIAL ledger hydrates only with it — the strokes
+   * replay over the untouched base instead of a flattened composite (which
+   * already contains them).
+   */
+  durableBaseBytes?: Uint8Array | null;
 }
 
 export type BrushHydrationRefusal =
@@ -133,7 +142,7 @@ export type BrushHydrationRefusal =
   | 'edit-cost';
 
 export type BrushHydrationDecision =
-  | { hydrate: true; entry: BrushScriptFrameEntry }
+  | { hydrate: true; entry: BrushScriptFrameEntry; preserveBase: boolean }
   | { hydrate: false; reason: BrushHydrationRefusal };
 
 /** The pure policy read: no engine, no store mutation. */
@@ -141,7 +150,16 @@ export function planBrushScriptHydration(request: BrushHydrationRequest): BrushH
   const entry = getBrushScriptFrameEntry(request.frame);
   if (!entry) return { hydrate: false, reason: 'no-entry' };
   if (entry.groups.length === 0) return { hydrate: false, reason: 'empty' };
-  if (!entry.complete) return { hydrate: false, reason: 'partial' };
+  // 261027 UAT round 11: a partial ledger (a raster/purged key repainted with
+  // Brush) is editable when the session carries the key's pre-script base.
+  // The ledger + that base ARE the frame's whole content; the strokes replay
+  // over the base on re-entry. Without the base the flattened cached pixels
+  // already contain the strokes, so attaching would double them.
+  const durableBase = request.durableBaseBytes;
+  const preserveBase = entry.complete !== true
+    && durableBase instanceof Uint8Array
+    && durableBase.length > 0;
+  if (!entry.complete && !preserveBase) return { hydrate: false, reason: 'partial' };
   if (request.destinationKind !== 'real') return { hydrate: false, reason: 'generated' };
   // quick-261026-odd (empty-script gate): the KEY identity gate. A legacy null
   // row and a row for a replaced key both fail closed — the cached pixels keep
@@ -165,7 +183,7 @@ export function planBrushScriptHydration(request: BrushHydrationRequest): BrushH
   if (!isWithinBrushEditCostCap(entry.diffusionFrames)) {
     return { hydrate: false, reason: 'edit-cost' };
   }
-  return { hydrate: true, entry };
+  return { hydrate: true, entry, preserveBase };
 }
 
 /** The engine surface the attach seam needs (structural). */
@@ -185,8 +203,38 @@ export function attemptBrushScriptHydration(
   request: BrushHydrationRequest,
 ): boolean {
   const decision = planBrushScriptHydration(request);
-  if (!decision.hydrate || !engine) return false;
+  if (!decision.hydrate || decision.preserveBase || !engine) return false;
   return engine.attachStrokesBaseline(decision.entry.groups, decision.entry.paintSettings ?? null) > 0;
+}
+
+/** The engine surface the base-preserving attach needs (EfxPaintEngine). */
+export interface BrushHydrationBaseEngine extends BrushHydrationEngine {
+  setScriptBaseClearPending(pending: boolean): void;
+  rebakeStrokesFaithfully(settings?: PaintRenderSettings | null): number;
+}
+
+/**
+ * 261027 UAT round 11: attach a PARTIAL ledger over the key's pre-script base.
+ * The caller has already painted that base as the engine's preview base. The
+ * first faithful rebake must KEEP it — the base-clear path is only for a base
+ * that duplicates the whole ledger — so the strokes replay on top of the
+ * untouched raster. The live canvas then shows base + strokes and captures
+ * merge against the same durable payload.
+ */
+export function attemptBrushScriptHydrationOverBase(
+  engine: BrushHydrationBaseEngine | null | undefined,
+  request: BrushHydrationRequest,
+): boolean {
+  const decision = planBrushScriptHydration(request);
+  if (!decision.hydrate || !decision.preserveBase || !engine) return false;
+  const attached = engine.attachStrokesBaseline(
+    decision.entry.groups,
+    decision.entry.paintSettings ?? null,
+  );
+  if (attached === 0) return false;
+  engine.setScriptBaseClearPending(false);
+  engine.rebakeStrokesFaithfully(decision.entry.paintSettings ?? null);
+  return true;
 }
 
 /** The engine surface the liveness gate needs (structural). */

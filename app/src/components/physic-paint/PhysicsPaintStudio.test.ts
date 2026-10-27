@@ -3735,11 +3735,15 @@ describe('261023-h9v brush script rehydration surface', () => {
     // Refusal = the observed cached-pixel path (which records the arrival base).
     expect(navigationBody).toContain('loadReferenceObserved(frame, engine as PreviewBackgroundEngine);');
     // Pixels FIRST, ledger SECOND — the loader's internal engine.clear() must
-    // run before the attach or the attached ledger would be wiped.
+    // run before the attach or the attached ledger would be wiped. Round 11:
+    // both the plain path AND the partial-over-durable-base path load their
+    // pixels before their attach (the first load in the block is the preserve
+    // path's base load, followed by its hydrate).
     expect(navigationBody.indexOf('engine.clear();')).toBeLessThan(
-      navigationBody.indexOf('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine)'),
+      navigationBody.indexOf('loadCachedRotoReferenceFrame('),
     );
-    expect(navigationBody.indexOf('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine)')).toBeLessThan(
+    expect(navigationBody.indexOf('loadCachedRotoReferenceFrame(')).toBeGreaterThan(-1);
+    expect(navigationBody.indexOf('loadCachedRotoReferenceFrame(')).toBeLessThan(
       navigationBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
     );
     // Attach success records NO arrival base (the entry must stay complete);
@@ -3768,8 +3772,42 @@ describe('261023-h9v brush script rehydration surface', () => {
 
     const hydrateStart = studio.indexOf('const hydrateBrushScriptFrame = useCallback(');
     const hydrateBody = studio.slice(hydrateStart, studio.indexOf('const clearActiveSource', hydrateStart));
-    expect(hydrateBody).toContain('attemptBrushScriptHydration(targetEngine, request),');
+    expect(hydrateBody).toContain('attemptBrushScriptHydration(targetEngine, request)');
+    expect(hydrateBody).toContain('attemptBrushScriptHydrationOverBase(targetEngine, request)');
+    expect(hydrateBody).toContain('decision.preserveBase');
     expect(hydrateBody).toContain('useCallback(');
+  });
+
+  it('pins the pre-script raster for a Brush script over a raster/purged key (UAT round 11)', () => {
+    // The raster purge marks the frame arrival-base and drops the ledger, so
+    // the next Brush capture is PARTIAL. The first stroke pins the key's
+    // pre-stroke pixels as the durable base, and the arrival hydrates the
+    // partial ledger over that base instead of leaving it view-only.
+    expect(studio).toContain('const pinBrushDurableBaseForFirstStroke = (frame: number, keyId: string | null): void => {');
+    expect(studio).toContain("if ((kind === 'paint' || kind === 'physics') && completedTarget.kind === 'ordinary-key') {");
+    expect(studio).toContain('pinBrushDurableBaseForFirstStroke(appFrame, initialKeyId ?? null);');
+    expect(studio).toContain('durableBaseBytes: durableBaseBytes instanceof Uint8Array ? durableBaseBytes : null,');
+    expect(studio).toContain('if (hydrationPlan.preserveBase && durableBaseBytes instanceof Uint8Array) {');
+    // The base must be the display base BEFORE the attach/rebake, and the
+    // engine's base-clear law must not wipe it.
+    const preserveStart = navigationBody.indexOf('if (hydrationPlan.preserveBase && durableBaseBytes instanceof Uint8Array) {');
+    const preserveBody = navigationBody.slice(preserveStart, navigationBody.indexOf('} else {', preserveStart));
+    expect(preserveBody.indexOf('loadCachedRotoReferenceFrame(')).toBeLessThan(
+      preserveBody.indexOf('hydrateBrushScriptFrame(engine, hydrationRequest)'),
+    );
+    expect(preserveBody).toContain('durableFrame');
+    expect(preserveBody).toContain('durableBaseBytes,');
+    // Fail-closed: an engine refusal reloads the cached pixels (view-only).
+    expect(preserveBody).toContain('loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine, undefined, true);');
+    // The pin refuses to claim a composite of an existing script or of a
+    // watercolor-owned frame, and only pins a real key's pre-script cache.
+    const pinStart = studio.indexOf('const pinBrushDurableBaseForFirstStroke = (frame: number, keyId: string | null): void => {');
+    const pinBody = studio.slice(pinStart, studio.indexOf('canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {', pinStart));
+    expect(pinBody).toContain('const existing = getBrushScriptFrameEntry(frame);');
+    expect(pinBody).toContain('if (existing !== undefined && existing.keyId === keyId) return;');
+    expect(pinBody).toContain('if (hasAquarelleScriptForFrame(frame)) return;');
+    expect(pinBody).toContain('if (durableBases.has(keyId)) return;');
+    expect(pinBody).toContain('requirePhysicPaintRotoInlineBytes(record.payload)');
   });
 
   it('routes every completion through the ONE completion law and never drops on clear', () => {

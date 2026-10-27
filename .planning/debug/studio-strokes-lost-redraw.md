@@ -13,7 +13,7 @@ trigger: |
   - Original paint that I paint a big red stroke on it — red stroke disapear
   - now I edited the paint an selected the new stroke (red) but the width was decreased
 created: 2026-10-26T23:55:00.000Z
-updated: 2026-10-27T11:05:00.000Z
+updated: 2026-10-27T11:38:00.000Z
 goal: find_and_fix
 symptoms_prefilled: true
 ---
@@ -1068,3 +1068,65 @@ status: |
   must compose unchanged above it. Then Move one stroke on each track: both
   must keep the density they had when painted, before and after a track
   switch (the sentinel fix is exercised by the restore round-trip).
+
+## UAT Round 11 — Brush script over a rastered key (2026-10-27)
+
+symptom: |
+  Round 10 is accepted live (frame 0, two stacked watercolor tracks). New key at
+  frame 3: watercolor paint → edit → raster → repaint watercolor all work. Then
+  raster → Brush paint: the strokes are editable at first, but leaving the key
+  and returning loses the Brush script.
+
+on_disk_evidence: |
+  The saved snapshot (Paint 1 track) carries the frame-3 brush row: 3 groups
+  (mutationIds 163-165, tool 'paint', #1811bc) with keyId 95b4187d (the live
+  frame-3 key) and `complete: false`. The raster purge had run on that frame,
+  so the first Brush capture was stamped arrival-base/partial. Ownership
+  resolves 'brush' correctly; the loss is the HYDRATION gate —
+  planBrushScriptHydration refuses a partial entry ('partial'), the engine
+  never re-attaches the ledger, and Move has no handles. One more stroke in
+  that state would overwrite the saved 3-stroke entry with only the new
+  stroke (silent data loss).
+
+root_cause: |
+  A raster/purged key's new Brush script is a PARTIAL ledger: the pixels under
+  it are not in the script. Partial hydration was refused because the cached
+  display is the flattened COMPOSITE (it already contains the strokes) —
+  replaying the ledger over it would double every stroke. The missing piece is
+  the pre-script base; engine-1 had no durable-base equivalent of the
+  aquarelle ordinary-key base.
+
+fix: |
+  1. PIN: the first completed Brush paint/physics stroke of a fresh script
+     session (no same-key entry, no aquarelle script) stores the key's current
+     (pre-stroke) record bytes as the key's durable base in the shared
+     per-key base map — the same map and snapshot v4 section the aquarelle
+     ordinary-key base uses.
+  2. POLICY: a partial entry hydrates when the key carries a non-empty durable
+     base (decision `preserveBase`). The over-base seam attaches the ledger,
+     keeps the base through the first faithful rebake
+     (setScriptBaseClearPending(false)) and replays the strokes on top.
+  3. ARRIVAL: the durable base is loaded as the display base (explicit bytes +
+     a fresh generation) and pinned as the capture merge base; any engine
+     refusal fails closed to the cached composite (the previous view-only
+     path).
+
+declared_consequence: |
+  Frames saved BEFORE this fix (a partial brush row with no pinned base) stay
+  view-only: their pre-script raster was overwritten by the composite capture
+  and cannot be reconstructed. Recovery: Memory-tab purge the frame's script
+  (pixels stay), then paint again — the first new stroke pins the current
+  pixels as the base, and strokes stay editable across visits from then on.
+
+verification: |
+  Hydration pins (5): partial+base hydrates with preserveBase; partial without
+  a base still refuses; a complete entry never preserves a base; the over-base
+  seam attaches, disables the base clear and rebakes; an engine refusal fails
+  closed without a rebake. Studio source pins the first-stroke pin, the
+  durable-base request, the base-before-attach order and the fail-closed
+  reload. Gates: full physic-paint folder, efx-watercolor package, typecheck.
+
+status: |
+  awaiting live UAT — restart required. Test on frame 3: paint Brush → leave →
+  return: the strokes must show outlines and Move must work; move one, leave
+  and return again; the raster paint beneath must stay intact.

@@ -224,6 +224,7 @@ import {
 import {
   applyCompletedBrushMutation,
   attemptBrushScriptHydration,
+  attemptBrushScriptHydrationOverBase,
   engineHoldsBrushScriptFrame,
   isBrushScriptFrameHydratable,
   planBrushScriptHydration,
@@ -4389,9 +4390,18 @@ export function PhysicsPaintStudio() {
     [loadReferenceObserved],
   );
   // Stable hydration seam for the navigation callback (identity-stable deps).
+  // 261027 UAT round 11: a PARTIAL ledger (a raster/purged key repainted with
+  // Brush) hydrates over the key's carried pre-script base — the caller loads
+  // that base as the preview base first, and this seam attaches + faithfully
+  // rebakes the strokes on top of it (base preserved, never cleared).
   const hydrateBrushScriptFrame = useCallback(
-    (targetEngine: EfxPaintEngine, request: BrushHydrationRequest): boolean =>
-      attemptBrushScriptHydration(targetEngine, request),
+    (targetEngine: EfxPaintEngine, request: BrushHydrationRequest): boolean => {
+      const decision = planBrushScriptHydration(request);
+      if (decision.hydrate && decision.preserveBase) {
+        return attemptBrushScriptHydrationOverBase(targetEngine, request);
+      }
+      return attemptBrushScriptHydration(targetEngine, request);
+    },
     [],
   );
   // 261023-h9v: the engine's deferred undo pops history WITHOUT a completed
@@ -4694,6 +4704,13 @@ export function PhysicsPaintStudio() {
         // engine.clear(), which would wipe an earlier attach.
         // Every refusal is fail-closed: record the arrival base and keep
         // today's pixels — a PARTIAL script must never replace them.
+        // 261027 UAT round 11: a raster/purged key carries the pixels under a
+        // fresh Brush script as its durable base. A PARTIAL ledger hydrates
+        // only over that base (never over the flattened cached composite,
+        // which already contains the strokes).
+        const durableBaseBytes = destinationKeyId !== null
+          ? aquarelleDurableBaseByKeyRef.current.get(destinationKeyId) ?? null
+          : null;
         const hydrationRequest: BrushHydrationRequest = {
           frame,
           destinationKind,
@@ -4701,27 +4718,65 @@ export function PhysicsPaintStudio() {
           brushModuleActive: activeModule.peek() !== 'watercolor',
           wasPlaying: wasPlaying || rotoCachedPlayback.isActive,
           scrubActive: scrubActiveRef.current,
+          durableBaseBytes: durableBaseBytes instanceof Uint8Array ? durableBaseBytes : null,
         };
         const hydrationPlan = planBrushScriptHydration(hydrationRequest);
         if (hydrationPlan.hydrate) {
-          const loaded = loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
-          if (hydrateBrushScriptFrame(engine, hydrationRequest)) {
-            // Attach success: NO arrival-base note — the cached pixels render
-            // the same script, so the entry stays COMPLETE for future visits.
-            if (!loaded) {
-              // No cached pixels exist anywhere for this key (a pruned or
-              // never-flushed display frame): repaint the script now so the
-              // frame is not blank. 261023-j5b Task 2 upgrades this stand-in
-              // to rebakeStrokesFaithfully (live deposit semantics).
-              engine.restoreStrokesBaseline(
-                hydrationPlan.entry.groups,
-                hydrationPlan.entry.paintSettings ?? null,
-              );
+          if (hydrationPlan.preserveBase && durableBaseBytes instanceof Uint8Array) {
+            // The pre-script raster IS the display base. The cached frame is
+            // the composite and would double every replayed stroke.
+            const displayFrame = findCachedRotoDisplayFrame(frame);
+            const durableFrame = displayFrame
+              ? { ...displayFrame, bytes: durableBaseBytes }
+              : {
+                  frameIndex: 0,
+                  appFrame: frame,
+                  bytes: durableBaseBytes,
+                  width: canvasWidth,
+                  height: canvasHeight,
+                  keyId: destinationKeyId,
+                };
+            const durableBaseGeneration = Math.max(
+              rotoPreviewBaseContentToken(),
+              engine.getAppliedPreviewBaseContentToken?.() ?? 0,
+            );
+            loadCachedRotoReferenceFrame(
+              frame,
+              engine as PreviewBackgroundEngine,
+              undefined,
+              true,
+              durableBaseGeneration,
+              durableBaseBytes,
+            );
+            // The capture's merge base is the durable raster, never the
+            // composite (which already contains the replayed strokes).
+            setCachedRotoRepaintBaseFrame(durableFrame);
+            if (!hydrateBrushScriptFrame(engine, hydrationRequest)) {
+              // Engine refused the attach: fail closed to the cached pixels
+              // (view-only, the pre-round-11 path) instead of a stroke-less
+              // base.
+              loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine, undefined, true);
             }
           } else {
-            // The engine refused the attach (malformed groups): fall back to
-            // today's observed loader semantics without loading twice.
-            noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
+            const loaded = loadCachedRotoReferenceFrame(frame, engine as PreviewBackgroundEngine);
+            if (hydrateBrushScriptFrame(engine, hydrationRequest)) {
+              // Attach success: NO arrival-base note — the cached pixels render
+              // the same script, so the entry stays COMPLETE for future visits.
+              if (!loaded) {
+                // No cached pixels exist anywhere for this key (a pruned or
+                // never-flushed display frame): repaint the script now so the
+                // frame is not blank. 261023-j5b Task 2 upgrades this stand-in
+                // to rebakeStrokesFaithfully (live deposit semantics).
+                engine.restoreStrokesBaseline(
+                  hydrationPlan.entry.groups,
+                  hydrationPlan.entry.paintSettings ?? null,
+                );
+              }
+            } else {
+              // The engine refused the attach (malformed groups): fall back to
+              // today's observed loader semantics without loading twice.
+              noteBrushScriptArrivalBase(frame, loaded || findCachedRotoDisplayFrame(frame) !== null);
+            }
           }
         } else {
           loadReferenceObserved(frame, engine as PreviewBackgroundEngine);
@@ -6394,6 +6449,39 @@ export function PhysicsPaintStudio() {
     canvasEngineReadyImplRef.current(readyEngine);
   }, []);
   const canvasCompletedMutationImplRef = useRef<(mutation: CompletedPaintMutation, mutationEngine: EfxPaintEngine) => void>(() => {});
+  /**
+   * 261027 UAT round 11: a Brush script painted over a raster/purged key is a
+   * PARTIAL ledger — the pixels beneath are not in it. Pin those pre-script
+   * pixels as the key's durable base at the script's FIRST stroke (the same
+   * law the aquarelle ordinary-key base follows), so the frame can hydrate
+   * OVER that base on the next visit instead of staying view-only.
+   */
+  const pinBrushDurableBaseForFirstStroke = (frame: number, keyId: string | null): void => {
+    if (!keyId) return;
+    // A script that already belongs to THIS key began in an earlier visit; the
+    // current display is a flattened composite, not the pre-script base. A row
+    // for a REPLACED key is not this key's script — the new key still needs
+    // its own base.
+    const existing = getBrushScriptFrameEntry(frame);
+    if (existing !== undefined && existing.keyId === keyId) return;
+    // A mixed key's display already carries the aquarelle script; the
+    // aquarelle merge owns that content (never pin a foreign composite).
+    if (hasAquarelleScriptForFrame(frame)) return;
+    const durableBases = aquarelleDurableBaseByKeyRef.current;
+    if (durableBases.has(keyId)) return;
+    const launch = launchContextRef.current;
+    if (!launch) return;
+    const trackId = aquarelleSessionTrackIdRef.current ?? studioActiveTrackId();
+    const record = physicPaintStore.getRotoRealKeyRecord(launch.layerId, trackId, keyId);
+    let baseBytes: Uint8Array | null = null;
+    try {
+      baseBytes = record ? requirePhysicPaintRotoInlineBytes(record.payload) : null;
+    } catch {
+      baseBytes = null;
+    }
+    if (!baseBytes) return;
+    durableBases.set(keyId, new Uint8Array(baseBytes));
+  };
   canvasCompletedMutationImplRef.current = (mutation, mutationEngine) => {
     // 260925-iy6 UAT follow-up: bump the paint version SYNCHRONOUSLY at finalize
     // so the program monitor redraws its live-overlay composite in the same
@@ -6462,6 +6550,13 @@ export function PhysicsPaintStudio() {
       : completedTarget.kind === 'group-frame'
         ? completedTarget.expectedKeyId
         : null;
+    // 261027 UAT round 11: the FIRST Brush stroke of a fresh script session
+    // pins the key's pre-stroke pixels as its durable base BEFORE this
+    // capture commits the stroke into the cache. A raster/purged key's new
+    // script is then editable across visits (the ledger replays over it).
+    if ((kind === 'paint' || kind === 'physics') && completedTarget.kind === 'ordinary-key') {
+      pinBrushDurableBaseForFirstStroke(appFrame, initialKeyId ?? null);
+    }
     // 52.1 (2nd-stroke freeze): do NOT snapshot the engine canvas here — the
     // eager copyLiveAlphaCanvas() synchronously flushes every pending stroke
     // finalization (~500-1900ms full-raster drain) at the very moment the user

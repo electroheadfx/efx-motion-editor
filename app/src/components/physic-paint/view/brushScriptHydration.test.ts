@@ -27,6 +27,7 @@ import {
 import {
   applyCompletedBrushMutation,
   attemptBrushScriptHydration,
+  attemptBrushScriptHydrationOverBase,
   engineHoldsBrushScriptFrame,
   isBrushScriptFrameHydratable,
   MAX_ATTACH_POINTS,
@@ -98,6 +99,8 @@ function createFakeEngine(options: {
     attachStrokesBaseline: vi.fn(() => options.attachResult ?? 1),
     getStrokeSerials: vi.fn(() => options.serials ?? new Map<number, number>()),
     getStrokes: vi.fn(() => strokes),
+    setScriptBaseClearPending: vi.fn(),
+    rebakeStrokesFaithfully: vi.fn(() => options.attachResult ?? 1),
   };
 }
 
@@ -166,7 +169,7 @@ describe('plan: every refusal is fail-closed', () => {
     expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
   });
 
-  it('refuses a partial entry (never replace cached pixels with a partial script)', () => {
+  it('refuses a partial entry without a carried base (never replace cached pixels with a partial script)', () => {
     noteBrushScriptArrivalBase(3, true);
     captureComplete(3);
     const engine = createFakeEngine();
@@ -174,6 +177,65 @@ describe('plan: every refusal is fail-closed', () => {
     expect(attemptBrushScriptHydration(engine, request())).toBe(false);
     expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
   });
+
+describe('plan: a partial ledger over a carried durable base (261027 UAT round 11)', () => {
+  const BASE = new Uint8Array([1, 2, 3]);
+
+  function capturePartial(): void {
+    noteBrushScriptArrivalBase(3, true);
+    captureComplete(3);
+  }
+
+  it('hydrates a partial entry when the key carries its pre-script base', () => {
+    capturePartial();
+    const decision = planBrushScriptHydration(request({ durableBaseBytes: BASE }));
+    expect(decision.hydrate).toBe(true);
+    if (decision.hydrate) expect(decision.preserveBase).toBe(true);
+  });
+
+  it('keeps the plain attach for a complete entry (never preserves a base)', () => {
+    captureComplete(3);
+    const engine = createFakeEngine({ attachResult: 1 });
+    const decision = planBrushScriptHydration(request({ durableBaseBytes: BASE }));
+    expect(decision.hydrate).toBe(true);
+    if (decision.hydrate) expect(decision.preserveBase).toBe(false);
+    expect(attemptBrushScriptHydration(engine, request({ durableBaseBytes: BASE }))).toBe(true);
+    expect(attemptBrushScriptHydrationOverBase(engine, request({ durableBaseBytes: BASE }))).toBe(false);
+  });
+
+  it('refuses the over-base seam without a base and never attaches', () => {
+    capturePartial();
+    const engine = createFakeEngine({ attachResult: 1 });
+    expect(planBrushScriptHydration(request())).toEqual({ hydrate: false, reason: 'partial' });
+    expect(attemptBrushScriptHydrationOverBase(engine, request())).toBe(false);
+    expect(engine.attachStrokesBaseline).not.toHaveBeenCalled();
+  });
+
+  it('attaches over the base, keeps it through the first rebake, and replays the strokes', () => {
+    capturePartial();
+    const engine = {
+      ...createFakeEngine({ attachResult: 2 }),
+      setScriptBaseClearPending: vi.fn(),
+      rebakeStrokesFaithfully: vi.fn(() => 2),
+    };
+    expect(attemptBrushScriptHydrationOverBase(engine, request({ durableBaseBytes: BASE }))).toBe(true);
+    expect(engine.attachStrokesBaseline).toHaveBeenCalledTimes(1);
+    expect(engine.setScriptBaseClearPending).toHaveBeenCalledWith(false);
+    expect(engine.rebakeStrokesFaithfully).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the engine refuses the baseline', () => {
+    capturePartial();
+    const engine = {
+      ...createFakeEngine({ attachResult: 0 }),
+      setScriptBaseClearPending: vi.fn(),
+      rebakeStrokesFaithfully: vi.fn(() => 0),
+    };
+    expect(attemptBrushScriptHydrationOverBase(engine, request({ durableBaseBytes: BASE }))).toBe(false);
+    expect(engine.setScriptBaseClearPending).not.toHaveBeenCalled();
+    expect(engine.rebakeStrokesFaithfully).not.toHaveBeenCalled();
+  });
+});
 
   // quick-261026-odd (empty-script gate): a script follows KEY identity. A
   // legacy null-keyId row and a row captured on a replaced key both refuse —

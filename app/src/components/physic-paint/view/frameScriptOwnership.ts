@@ -60,8 +60,9 @@ export function resolveFrameScriptOwner(
   // Stored Brush script: the entry must be the CURRENT key's script. Any
   // other entry is content the engine cannot attribute here, so it must never
   // publish an owner. Completeness is deliberately NOT required — a partial
-  // (arrival-base) row is still this key's Brush script; it only cannot be
-  // HYDRATED back into the engine (planBrushScriptHydration refuses it).
+  // (arrival-base) row is still this key's Brush script. It hydrates back
+  // into the engine when the key carries its pre-script base (261027 UAT
+  // round 11) and stays view-only on cached pixels otherwise.
   const entry = realCell ? getBrushScriptFrameEntry(frame) : undefined;
   const storedBrush =
     entry !== undefined
